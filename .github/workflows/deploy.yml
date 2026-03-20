@@ -22,6 +22,12 @@ jobs:
             DOMAIN=${{ secrets.DOMAIN }}
             ENCRYPTION_MASTER_KEY=${{ secrets.ENCRYPTION_MASTER_KEY }}
             PRIVACY_URL=${{ secrets.PRIVACY_URL }}
+            ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
+            VAPID_PUBLIC_KEY=${{ secrets.VAPID_PUBLIC_KEY }}
+            VAPID_PRIVATE_KEY=${{ secrets.VAPID_PRIVATE_KEY }}
+            VAPID_CLAIMS_EMAIL=${{ secrets.VAPID_CLAIMS_EMAIL }}
+            RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+            RESEND_FROM=${{ secrets.RESEND_FROM }}
             ENVEOF
             # Remove leading whitespace from heredoc
             sed -i 's/^[[:space:]]*//' .env

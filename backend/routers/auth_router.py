@@ -1,4 +1,6 @@
+import os
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -36,3 +38,24 @@ def google_login(body: GoogleAuthRequest, db: Session = Depends(get_db)):
         db.commit()
 
     return AuthResponse(access_token=create_token(user.id))
+
+
+# E2E test-only endpoint: creates a user without Google OAuth
+if os.getenv("E2E_TEST") == "1":
+    class TestLoginRequest(BaseModel):
+        email: str
+        name: str = "Test User"
+
+    @router.post("/test-login", response_model=AuthResponse)
+    def test_login(body: TestLoginRequest, db: Session = Depends(get_db)):
+        user = db.query(User).filter(User.email == body.email).first()
+        if not user:
+            enc_key = encrypt_user_key(generate_user_key()) if encryption_enabled() else None
+            user = User(
+                email=body.email, google_id=f"test-{body.email}",
+                name=body.name, encrypted_key=enc_key,
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+        return AuthResponse(access_token=create_token(user.id))

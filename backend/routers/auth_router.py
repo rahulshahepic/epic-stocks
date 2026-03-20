@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import User, BlockedEmail
 from schemas import GoogleAuthRequest, AuthResponse
-from auth import verify_google_token, create_token
+from auth import verify_google_token, create_token, get_admin_emails
 from crypto import encryption_enabled, generate_user_key, encrypt_user_key
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -42,6 +42,7 @@ def google_login(body: GoogleAuthRequest, db: Session = Depends(get_db)):
         user.picture = picture
         db.commit()
 
+    user.is_admin = user.email.lower() in get_admin_emails()
     user.last_login = datetime.now(timezone.utc)
     db.commit()
 

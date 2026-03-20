@@ -17,8 +17,12 @@ from crypto import encryption_enabled, decrypt_user_key, set_current_key
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-me")
 JWT_EXPIRE_HOURS = 24
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
-def get_admin_email() -> str:
-    return os.getenv("ADMIN_EMAIL", "")
+def get_admin_emails() -> set[str]:
+    """Parse ADMIN_EMAIL env var (semicolon-delimited) into a set of lowercase emails."""
+    raw = os.getenv("ADMIN_EMAIL", "")
+    if not raw:
+        return set()
+    return {e.strip().lower() for e in raw.split(";") if e.strip()}
 GOOGLE_TOKENINFO_URL = "https://oauth2.googleapis.com/tokeninfo"
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/google")
@@ -86,10 +90,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
 
 def get_admin_user(user: User = Depends(get_current_user)) -> User:
-    """Verify the authenticated user is the admin. Checked against ADMIN_EMAIL on every request."""
-    admin_email = get_admin_email()
-    if not admin_email:
-        raise HTTPException(status_code=403, detail="Admin not configured")
-    if user.email.lower() != admin_email.lower():
+    """Verify the authenticated user has the is_admin flag (set on login from ADMIN_EMAIL)."""
+    if not user.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
     return user

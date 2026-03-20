@@ -112,10 +112,7 @@ def client_config():
 
 @_fastapi_app.get("/api/me")
 def current_user_info(user=Depends(get_current_user)):
-    from auth import get_admin_email
-    admin_email = get_admin_email()
-    is_admin = bool(admin_email and user.email.lower() == admin_email.lower())
-    return {"id": user.id, "email": user.email, "name": user.name, "is_admin": is_admin}
+    return {"id": user.id, "email": user.email, "name": user.name, "is_admin": bool(user.is_admin)}
 
 
 # Serve React build if the static directory exists (production)

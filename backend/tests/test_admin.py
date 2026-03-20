@@ -35,12 +35,12 @@ def test_admin_requires_admin_email(client):
 
 
 def test_admin_no_admin_configured(client):
-    """When ADMIN_EMAIL is not set, admin endpoints return 403."""
+    """When ADMIN_EMAIL is not set, no user gets admin flag."""
     with patch.dict(os.environ, {"ADMIN_EMAIL": ""}):
         token = register_user(client)
         resp = client.get("/api/admin/stats", headers=auth_header(token))
         assert resp.status_code == 403
-        assert "not configured" in resp.json()["detail"]
+        assert "Admin access required" in resp.json()["detail"]
 
 
 def test_admin_requires_auth(client):
@@ -55,6 +55,50 @@ def test_admin_access_case_insensitive(client):
         token = _register_admin(client)
         resp = client.get("/api/admin/stats", headers=auth_header(token))
         assert resp.status_code == 200
+
+
+def test_admin_multiple_emails(client):
+    """ADMIN_EMAIL supports semicolon-delimited list."""
+    with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@example.com; other@admin.com"}):
+        token = _register_admin(client)
+        resp = client.get("/api/admin/stats", headers=auth_header(token))
+        assert resp.status_code == 200
+
+        # Second admin email also works
+        from tests.conftest import _fake_google_info
+        info = _fake_google_info("other@admin.com")
+        with patch("routers.auth_router.verify_google_token", return_value=info):
+            resp = client.post("/api/auth/google", json={"token": "t"})
+        token2 = resp.json()["access_token"]
+        resp = client.get("/api/admin/stats", headers=auth_header(token2))
+        assert resp.status_code == 200
+
+
+def test_admin_revoked_on_env_change(client):
+    """Removing email from ADMIN_EMAIL revokes admin on next login."""
+    # Use a fixed google ID so re-login finds existing user
+    fixed_info = {
+        "sub": "admin-google-id-fixed",
+        "email": ADMIN_EMAIL,
+        "email_verified": "true",
+        "name": "Admin",
+        "picture": "",
+        "aud": "",
+    }
+    with _admin_env():
+        with patch("routers.auth_router.verify_google_token", return_value=fixed_info):
+            resp = client.post("/api/auth/google", json={"token": "t1"})
+        token = resp.json()["access_token"]
+        resp = client.get("/api/admin/stats", headers=auth_header(token))
+        assert resp.status_code == 200
+
+    # Re-login with admin removed from env — should lose admin on next login
+    with patch.dict(os.environ, {"ADMIN_EMAIL": ""}):
+        with patch("routers.auth_router.verify_google_token", return_value=fixed_info):
+            resp = client.post("/api/auth/google", json={"token": "t2"})
+        token2 = resp.json()["access_token"]
+        resp = client.get("/api/admin/stats", headers=auth_header(token2))
+        assert resp.status_code == 403
 
 
 # ============================================================

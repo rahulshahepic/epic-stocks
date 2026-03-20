@@ -121,9 +121,10 @@ A `PRIVACY.md` at the repo root, linked from:
 
 ### Admin Designation
 
-- Admin is designated via `ADMIN_EMAIL` environment variable
-- **Security: no `is_admin` flag stored on the user record.** Instead, every admin request checks the authenticated user's email against `ADMIN_EMAIL` at request time. Changing or removing the env var instantly revokes admin access.
-- Admin auth is enforced via `get_admin_user()` dependency in `auth.py`
+- Admin is designated via `ADMIN_EMAIL` environment variable — **semicolon-delimited** to support multiple admins (e.g. `admin@co.com; cto@co.com`)
+- `is_admin` flag on the User model, set on every login by checking the user's email against `ADMIN_EMAIL`
+- Changing `ADMIN_EMAIL` takes effect on the user's next login — adding/removing emails grants/revokes access
+- Admin auth is enforced via `get_admin_user()` dependency in `auth.py`, which checks the `is_admin` flag
 
 ### Admin Dashboard
 

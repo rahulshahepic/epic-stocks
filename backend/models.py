@@ -16,6 +16,7 @@ class User(Base):
     encrypted_key: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_login: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    is_admin: Mapped[bool] = mapped_column(Integer, default=0, server_default="0")
 
     grants: Mapped[list["Grant"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     loans: Mapped[list["Loan"]] = relationship(back_populates="user", cascade="all, delete-orphan")

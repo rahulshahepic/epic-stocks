@@ -1,12 +1,12 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from database import init_db
+import database
 from routers import auth_router, grants, loans, prices, events, flows
 
 
 @asynccontextmanager
 async def lifespan(app):
-    init_db()
+    database.Base.metadata.create_all(bind=database.engine)
     yield
 
 

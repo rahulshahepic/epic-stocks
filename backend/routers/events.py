@@ -1,4 +1,3 @@
-import math
 from datetime import date, datetime
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -39,16 +38,11 @@ def _user_source_data(user: User, db: Session):
 
 
 def _serialize_event(e):
-    """Convert datetime fields to ISO strings for JSON response."""
-    out = {}
-    for k, v in e.items():
-        if k == "source":
-            continue
-        if isinstance(v, datetime):
-            out[k] = v.strftime("%Y-%m-%d")
-        else:
-            out[k] = v
-    return out
+    return {
+        k: v.strftime("%Y-%m-%d") if isinstance(v, datetime) else v
+        for k, v in e.items()
+        if k != "source"
+    }
 
 
 @router.get("/events")
@@ -76,13 +70,6 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
     timeline = compute_timeline(events, initial_price)
     last = timeline[-1] if timeline else {}
 
-    current_price = last.get("share_price", initial_price)
-    total_shares = last.get("cum_shares", 0)
-    total_income = last.get("cum_income", 0)
-    total_cap_gains = last.get("cum_cap_gains", 0)
-
-    total_loan_principal = sum(ln["amount"] for ln in loans)
-
     today = date.today()
     next_event = None
     for e in timeline:
@@ -94,10 +81,10 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
             break
 
     return {
-        "current_price": current_price,
-        "total_shares": total_shares,
-        "total_income": total_income,
-        "total_cap_gains": total_cap_gains,
-        "total_loan_principal": total_loan_principal,
+        "current_price": last.get("share_price", initial_price),
+        "total_shares": last.get("cum_shares", 0),
+        "total_income": last.get("cum_income", 0),
+        "total_cap_gains": last.get("cum_cap_gains", 0),
+        "total_loan_principal": sum(ln["amount"] for ln in loans),
         "next_event": next_event,
     }

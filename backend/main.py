@@ -2,7 +2,7 @@ import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 import database
-from routers import auth_router, grants, loans, prices, events, flows
+from routers import auth_router, grants, loans, prices, events, flows, import_export
 from crypto import encryption_enabled, decrypt_user_key, set_current_key
 
 
@@ -58,6 +58,7 @@ _fastapi_app.include_router(loans.router)
 _fastapi_app.include_router(prices.router)
 _fastapi_app.include_router(events.router)
 _fastapi_app.include_router(flows.router)
+_fastapi_app.include_router(import_export.router)
 
 
 @_fastapi_app.get("/api/health")

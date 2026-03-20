@@ -2,10 +2,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import Login from '../pages/Login.tsx'
+import { resetConfigCache } from '../hooks/useConfig.ts'
 
 beforeEach(() => {
   localStorage.clear()
   vi.restoreAllMocks()
+  resetConfigCache()
 })
 
 function mockConfig(clientId: string) {

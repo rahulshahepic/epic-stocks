@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.ts'
+import { useConfig } from '../hooks/useConfig.ts'
 
 declare global {
   interface Window {
@@ -25,20 +26,15 @@ export default function Login() {
   const { isAuthenticated, login, loading, error } = useAuth()
   const navigate = useNavigate()
   const btnRef = useRef<HTMLDivElement>(null)
-  const [clientId, setClientId] = useState<string | null>(null)
+  const config = useConfig()
+  const clientId = config?.google_client_id ?? null
+  const privacyUrl = config?.privacy_url ?? ''
 
   useEffect(() => {
     if (isAuthenticated) {
       navigate('/', { replace: true })
     }
   }, [isAuthenticated, navigate])
-
-  useEffect(() => {
-    fetch('/api/config')
-      .then(r => r.json())
-      .then(data => setClientId(data.google_client_id || ''))
-      .catch(() => setClientId(''))
-  }, [])
 
   useEffect(() => {
     if (!clientId || !btnRef.current) return
@@ -95,17 +91,19 @@ export default function Login() {
           </p>
         )}
 
-        <p className="mt-8 text-xs text-gray-400 dark:text-gray-500">
-          By signing in, you agree to our{' '}
-          <a
-            href="https://github.com/rahulshahepic/epic-stocks/blob/main/PRIVACY.md"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline hover:text-gray-600 dark:hover:text-gray-300"
-          >
-            Privacy Policy
-          </a>
-        </p>
+        {privacyUrl && (
+          <p className="mt-8 text-xs text-gray-400 dark:text-gray-500">
+            By signing in, you agree to our{' '}
+            <a
+              href={privacyUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-gray-600 dark:hover:text-gray-300"
+            >
+              Privacy Policy
+            </a>
+          </p>
+        )}
       </div>
     </div>
   )

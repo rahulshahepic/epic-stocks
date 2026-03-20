@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 import database
@@ -28,4 +29,5 @@ def health():
 @app.get("/api/config")
 def client_config():
     from auth import GOOGLE_CLIENT_ID
-    return {"google_client_id": GOOGLE_CLIENT_ID}
+    privacy_url = os.environ.get("PRIVACY_URL", "")
+    return {"google_client_id": GOOGLE_CLIENT_ID, "privacy_url": privacy_url}

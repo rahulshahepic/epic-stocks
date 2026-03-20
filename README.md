@@ -74,7 +74,8 @@ Create a `.env` file in the repo root (or export these):
 JWT_SECRET=your-secret-key-here
 GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
 
-# Optional (for push notifications)
+# Optional
+PRIVACY_URL=https://github.com/youruser/epic-stocks/blob/main/PRIVACY.md
 VAPID_PRIVATE_KEY=...
 VAPID_PUBLIC_KEY=...
 ```

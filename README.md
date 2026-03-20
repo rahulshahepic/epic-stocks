@@ -4,17 +4,19 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 
 ## Screenshots
 
-### Dashboard (Desktop)
+### Import Flow
 
-| Light | Dark |
-|-------|------|
-| ![Dashboard Light](screenshots/dashboard-light-desktop.png) | ![Dashboard Dark](screenshots/dashboard-dark-desktop.png) |
+| Upload | Confirm | Success |
+|--------|---------|---------|
+| ![Import Page](screenshots/01-import-page.png) | ![Import Confirm](screenshots/02-import-confirm.png) | ![Import Success](screenshots/03-import-success.png) |
 
-### Dashboard (Mobile — 375px)
+### Dashboard
 
-| Light | Dark |
-|-------|------|
-| ![Dashboard Light Mobile](screenshots/dashboard-light-mobile.png) | ![Dashboard Dark Mobile](screenshots/dashboard-dark-mobile.png) |
+![Dashboard](screenshots/04-dashboard-after-import.png)
+
+### Export
+
+![Export](screenshots/05-export-ready.png)
 
 ## Features
 
@@ -101,12 +103,14 @@ This starts the FastAPI app + Caddy reverse proxy with auto-HTTPS.
 ### Manual VPS Setup
 
 ```bash
-cd /opt
-git clone <repo-url> equity-vesting
-cd equity-vesting
-cp .env.example .env   # fill in secrets
-docker compose up -d
+# One-time setup on the VPS
+curl -fsSL https://get.docker.com | sh
+mkdir -p /opt/epic-stocks/data
+cd /opt/epic-stocks
+git clone <repo-url> .
 ```
+
+Secrets are managed via GitHub Actions secrets — the deploy workflow writes `.env` automatically on every push to `main`. Never create `.env` on the VPS manually.
 
 ## Development
 

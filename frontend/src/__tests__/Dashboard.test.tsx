@@ -89,6 +89,20 @@ describe('Dashboard', () => {
     expect(screen.getByText(/Vesting/)).toBeInTheDocument()
   })
 
+  it('renders color-coded card labels', async () => {
+    mockApi()
+    renderDashboard()
+
+    await waitFor(() => {
+      expect(screen.getByText('Share Price')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Total Shares')).toBeInTheDocument()
+    expect(screen.getByText('Total Income')).toBeInTheDocument()
+    expect(screen.getByText('Total Cap Gains')).toBeInTheDocument()
+    expect(screen.getByText('Loan Principal')).toBeInTheDocument()
+    expect(screen.getByText('Next Event')).toBeInTheDocument()
+  })
+
   it('renders chart titles', async () => {
     mockApi()
     renderDashboard()

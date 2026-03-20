@@ -60,13 +60,19 @@ export default function Login() {
   }, [login])
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 dark:bg-gray-950">
       <div className="w-full max-w-sm text-center">
-        <h1 className="mb-2 text-2xl font-bold text-gray-900">Equity Vesting Tracker</h1>
-        <p className="mb-8 text-sm text-gray-500">Sign in to manage your equity compensation</p>
+        <h1 className="mb-2 bg-gradient-to-r from-indigo-500 to-purple-500 bg-clip-text text-2xl font-bold text-transparent">
+          Equity Vesting Tracker
+        </h1>
+        <p className="mb-8 text-sm text-gray-500 dark:text-gray-400">
+          Sign in to manage your equity compensation
+        </p>
 
         {error && (
-          <p className="mb-4 rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>
+          <p className="mb-4 rounded bg-red-50 p-2 text-sm text-red-600 dark:bg-red-900/30 dark:text-red-400">
+            {error}
+          </p>
         )}
 
         {loading ? (
@@ -76,7 +82,7 @@ export default function Login() {
         )}
 
         {!GOOGLE_CLIENT_ID && (
-          <p className="mt-4 text-xs text-gray-400">
+          <p className="mt-4 text-xs text-gray-400 dark:text-gray-500">
             Google Client ID not configured. Set VITE_GOOGLE_CLIENT_ID.
           </p>
         )}

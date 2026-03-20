@@ -7,6 +7,7 @@ import Events from './pages/Events.tsx'
 import Grants from './pages/Grants.tsx'
 import Loans from './pages/Loans.tsx'
 import Prices from './pages/Prices.tsx'
+import ImportExport from './pages/ImportExport.tsx'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   return getToken() ? <>{children}</> : <Navigate to="/login" replace />
@@ -23,6 +24,7 @@ export default function App() {
           <Route path="grants" element={<Grants />} />
           <Route path="loans" element={<Loans />} />
           <Route path="prices" element={<Prices />} />
+          <Route path="import" element={<ImportExport />} />
         </Route>
       </Routes>
     </BrowserRouter>

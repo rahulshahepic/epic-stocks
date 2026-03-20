@@ -16,12 +16,6 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 |-------|------|
 | ![Dashboard Light Mobile](screenshots/dashboard-light-mobile.png) | ![Dashboard Dark Mobile](screenshots/dashboard-dark-mobile.png) |
 
-### Login
-
-| Light | Dark |
-|-------|------|
-| ![Login Light](screenshots/login-light.png) | ![Login Dark](screenshots/login-dark.png) |
-
 ## Features
 
 - **Event Timeline** — computed on the fly from grants, prices, and loans. Never stored. Shows income, capital gains, share price, and cumulative totals.

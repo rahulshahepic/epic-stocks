@@ -17,9 +17,23 @@ from crypto import encryption_enabled, decrypt_user_key, set_current_key
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
+def _migrate_schema():
+    """Add columns that exist in models but not yet in the DB (lightweight migration)."""
+    import sqlalchemy
+    insp = sqlalchemy.inspect(database.engine)
+    if insp.has_table("users"):
+        cols = {c["name"] for c in insp.get_columns("users")}
+        with database.engine.begin() as conn:
+            if "last_login" not in cols:
+                conn.execute(sqlalchemy.text("ALTER TABLE users ADD COLUMN last_login DATETIME"))
+            if "is_admin" not in cols:
+                conn.execute(sqlalchemy.text("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0"))
+
+
 @asynccontextmanager
 async def lifespan(app):
     database.Base.metadata.create_all(bind=database.engine)
+    _migrate_schema()
     task = _start_daily_scheduler()
     yield
     if task:

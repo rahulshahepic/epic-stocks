@@ -1,9 +1,14 @@
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from starlette.responses import FileResponse
 import database
 from routers import auth_router, grants, loans, prices, events, flows, import_export
 from crypto import encryption_enabled, decrypt_user_key, set_current_key
+
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
 @asynccontextmanager
@@ -71,6 +76,18 @@ def client_config():
     from auth import GOOGLE_CLIENT_ID
     privacy_url = os.environ.get("PRIVACY_URL", "")
     return {"google_client_id": GOOGLE_CLIENT_ID, "privacy_url": privacy_url}
+
+
+# Serve React build if the static directory exists (production)
+if STATIC_DIR.is_dir():
+    _fastapi_app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
+
+    @_fastapi_app.get("/{path:path}")
+    def spa_fallback(path: str):
+        file = STATIC_DIR / path
+        if file.is_file():
+            return FileResponse(file)
+        return FileResponse(STATIC_DIR / "index.html")
 
 
 # Wrap FastAPI app with encryption middleware

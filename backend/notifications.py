@@ -3,8 +3,9 @@ import json
 import logging
 import os
 from collections import Counter
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
@@ -113,8 +114,18 @@ def _get_origin(url: str) -> str:
     return f"{p.scheme}://{p.netloc}"
 
 
+def _already_notified_today(user: User, today: date) -> bool:
+    """Check if we already sent notifications to this user today."""
+    if not user.last_notified_at:
+        return False
+    return user.last_notified_at.date() >= today
+
+
 def send_daily_notifications(today: date | None = None):
-    """Check all users and send push + email notifications as appropriate."""
+    """Check all users and send push + email notifications as appropriate.
+
+    Uses last_notified_at to ensure at most one notification batch per user per day.
+    """
     today = today or date.today()
     db = SessionLocal()
     try:
@@ -129,6 +140,9 @@ def send_daily_notifications(today: date | None = None):
         users = db.query(User).filter(User.id.in_(all_user_ids)).all()
 
         for user in users:
+            if _already_notified_today(user, today):
+                continue
+
             events = get_todays_events_for_user(user, db, today)
             if not events:
                 continue
@@ -145,13 +159,128 @@ def send_daily_notifications(today: date | None = None):
 
             # Email notifications
             if user.id in email_user_ids:
-                from email_sender import build_event_email, send_email, smtp_configured
-                if smtp_configured():
+                from email_sender import build_event_email, send_email, email_configured
+                if email_configured():
                     subject, text, html = build_event_email(events)
                     send_email(user.email, subject, text, html)
+
+            user.last_notified_at = datetime.now(timezone.utc)
 
         db.commit()
     except Exception:
         logger.exception("Error in daily notification check")
+    finally:
+        db.close()
+
+
+def send_admin_new_user_notification(user: User):
+    """Notify admins when a new user signs up. Called from auth_router."""
+    from auth import get_admin_emails
+    from email_sender import send_email, email_configured
+    if not email_configured():
+        return
+
+    admin_emails = get_admin_emails()
+    if not admin_emails:
+        return
+
+    subject = f"Equity Tracker: New user signup — {user.email}"
+    text = f"New user registered:\n\nName: {user.name or 'N/A'}\nEmail: {user.email}\n"
+    html = f"""<div style="font-family: sans-serif; max-width: 480px;">
+  <h2 style="color: #4472C4;">Equity Tracker — New User</h2>
+  <p>A new user has registered:</p>
+  <table style="border-collapse: collapse;">
+    <tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">Name</td><td>{user.name or 'N/A'}</td></tr>
+    <tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">Email</td><td>{user.email}</td></tr>
+  </table>
+</div>"""
+
+    for admin_email in admin_emails:
+        send_email(admin_email, subject, text, html)
+
+
+def send_admin_milestone_notification(total_users: int):
+    """Notify admins when user count hits a milestone (10, 25, 50, 100, 250, ...)."""
+    from auth import get_admin_emails
+    from email_sender import send_email, email_configured
+    if not email_configured():
+        return
+
+    admin_emails = get_admin_emails()
+    if not admin_emails:
+        return
+
+    subject = f"Equity Tracker: Milestone — {total_users} users!"
+    text = f"Congratulations! Your Equity Tracker instance now has {total_users} registered users."
+    html = f"""<div style="font-family: sans-serif; max-width: 480px;">
+  <h2 style="color: #4472C4;">Equity Tracker — Milestone</h2>
+  <p>Your instance now has <strong>{total_users}</strong> registered users!</p>
+</div>"""
+
+    for admin_email in admin_emails:
+        send_email(admin_email, subject, text, html)
+
+
+MILESTONES = {10, 25, 50, 100, 250, 500, 1000}
+
+
+def check_user_milestone(db: Session):
+    """Check if total user count just hit a milestone."""
+    total = db.query(func.count(User.id)).scalar()
+    if total in MILESTONES:
+        send_admin_milestone_notification(total)
+
+
+def send_admin_daily_digest():
+    """Send a daily system health digest to admins."""
+    from auth import get_admin_emails
+    from email_sender import send_email, email_configured
+    from datetime import timedelta
+
+    if not email_configured():
+        return
+
+    admin_emails = get_admin_emails()
+    if not admin_emails:
+        return
+
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        yesterday = now - timedelta(days=1)
+
+        total_users = db.query(func.count(User.id)).scalar()
+        new_signups = db.query(func.count(User.id)).filter(User.created_at >= yesterday).scalar()
+        active_24h = db.query(func.count(User.id)).filter(User.last_login >= yesterday).scalar()
+        total_grants = db.query(func.count(Grant.id)).scalar()
+        total_loans = db.query(func.count(Loan.id)).scalar()
+        total_prices = db.query(func.count(Price.id)).scalar()
+
+        subject = f"Equity Tracker: Daily digest — {total_users} users"
+        text = (
+            f"Daily System Digest\n\n"
+            f"Total users: {total_users}\n"
+            f"New signups (24h): {new_signups}\n"
+            f"Active users (24h): {active_24h}\n"
+            f"Total grants: {total_grants}\n"
+            f"Total loans: {total_loans}\n"
+            f"Total prices: {total_prices}\n"
+        )
+        html = f"""<div style="font-family: sans-serif; max-width: 480px;">
+  <h2 style="color: #4472C4;">Equity Tracker — Daily Digest</h2>
+  <table style="border-collapse: collapse;">
+    <tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">Total users</td><td>{total_users}</td></tr>
+    <tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">New signups (24h)</td><td>{new_signups}</td></tr>
+    <tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">Active users (24h)</td><td>{active_24h}</td></tr>
+    <tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">Total grants</td><td>{total_grants}</td></tr>
+    <tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">Total loans</td><td>{total_loans}</td></tr>
+    <tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">Total prices</td><td>{total_prices}</td></tr>
+  </table>
+</div>"""
+
+        for admin_email in admin_emails:
+            send_email(admin_email, subject, text, html)
+    except Exception:
+        logger.exception("Error sending admin daily digest")
     finally:
         db.close()

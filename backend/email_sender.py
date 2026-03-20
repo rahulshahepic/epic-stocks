@@ -1,52 +1,43 @@
-"""Email notification sending via SMTP."""
+"""Email notification sending via Resend API."""
 import logging
 import os
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+
+import httpx
 
 logger = logging.getLogger(__name__)
 
-
-def smtp_configured() -> bool:
-    return bool(os.getenv("SMTP_HOST", ""))
+RESEND_API_URL = "https://api.resend.com/emails"
 
 
-def _get_smtp_config() -> dict:
-    return {
-        "host": os.environ["SMTP_HOST"],
-        "port": int(os.getenv("SMTP_PORT", "587")),
-        "user": os.getenv("SMTP_USER", ""),
-        "password": os.getenv("SMTP_PASSWORD", ""),
-        "from_email": os.getenv("SMTP_FROM", os.getenv("SMTP_USER", "")),
-        "use_tls": os.getenv("SMTP_TLS", "true").lower() == "true",
-    }
+def email_configured() -> bool:
+    return bool(os.getenv("RESEND_API_KEY", ""))
 
 
 def send_email(to_email: str, subject: str, body_text: str, body_html: str | None = None) -> bool:
-    if not smtp_configured():
-        logger.warning("SMTP not configured, skipping email")
+    api_key = os.getenv("RESEND_API_KEY", "")
+    if not api_key:
+        logger.warning("RESEND_API_KEY not set, skipping email")
         return False
 
-    cfg = _get_smtp_config()
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = cfg["from_email"]
-    msg["To"] = to_email
-    msg.attach(MIMEText(body_text, "plain"))
+    from_email = os.getenv("RESEND_FROM", "Equity Tracker <noreply@example.com>")
+
+    payload = {
+        "from": from_email,
+        "to": [to_email],
+        "subject": subject,
+        "text": body_text,
+    }
     if body_html:
-        msg.attach(MIMEText(body_html, "html"))
+        payload["html"] = body_html
 
     try:
-        if cfg["use_tls"]:
-            server = smtplib.SMTP(cfg["host"], cfg["port"])
-            server.starttls()
-        else:
-            server = smtplib.SMTP(cfg["host"], cfg["port"])
-        if cfg["user"]:
-            server.login(cfg["user"], cfg["password"])
-        server.sendmail(cfg["from_email"], [to_email], msg.as_string())
-        server.quit()
+        resp = httpx.post(
+            RESEND_API_URL,
+            json=payload,
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=10,
+        )
+        resp.raise_for_status()
         return True
     except Exception:
         logger.exception("Failed to send email to %s", to_email)

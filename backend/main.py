@@ -28,6 +28,8 @@ def _migrate_schema():
                 conn.execute(sqlalchemy.text("ALTER TABLE users ADD COLUMN last_login DATETIME"))
             if "is_admin" not in cols:
                 conn.execute(sqlalchemy.text("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0"))
+            if "last_notified_at" not in cols:
+                conn.execute(sqlalchemy.text("ALTER TABLE users ADD COLUMN last_notified_at DATETIME"))
 
 
 @asynccontextmanager
@@ -46,11 +48,12 @@ def _start_daily_scheduler():
     from datetime import datetime, time, timezone, timedelta
 
     vapid_key = os.getenv("VAPID_PRIVATE_KEY", "")
-    if not vapid_key:
+    smtp_host = os.getenv("SMTP_HOST", "")
+    if not vapid_key and not smtp_host:
         return None
 
     async def _daily_loop():
-        from notifications import send_daily_notifications
+        from notifications import send_daily_notifications, send_admin_daily_digest
         while True:
             now = datetime.now(timezone.utc)
             target = datetime.combine(now.date(), time(7, 0), tzinfo=timezone.utc)
@@ -59,6 +62,10 @@ def _start_daily_scheduler():
             await asyncio.sleep((target - now).total_seconds())
             try:
                 send_daily_notifications()
+            except Exception:
+                pass
+            try:
+                send_admin_daily_digest()
             except Exception:
                 pass
 
@@ -133,14 +140,14 @@ def health():
 @_fastapi_app.get("/api/config")
 def client_config():
     from auth import GOOGLE_CLIENT_ID
-    from email_sender import smtp_configured
+    from email_sender import email_configured
     privacy_url = os.environ.get("PRIVACY_URL", "")
     vapid_public_key = os.environ.get("VAPID_PUBLIC_KEY", "")
     return {
         "google_client_id": GOOGLE_CLIENT_ID,
         "privacy_url": privacy_url,
         "vapid_public_key": vapid_public_key,
-        "email_notifications_available": smtp_configured(),
+        "email_notifications_available": email_configured(),
     }
 
 

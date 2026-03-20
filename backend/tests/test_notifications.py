@@ -1,6 +1,7 @@
 """Tests for email notification preferences and notification logic."""
 import sys, os
 from unittest.mock import patch, MagicMock
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from tests.conftest import register_user, auth_header
@@ -51,14 +52,14 @@ def test_email_pref_user_isolation(client):
 # CONFIG ENDPOINT
 # ============================================================
 
-def test_config_no_smtp(client):
-    with patch.dict(os.environ, {"SMTP_HOST": ""}, clear=False):
+def test_config_no_resend(client):
+    with patch.dict(os.environ, {"RESEND_API_KEY": ""}, clear=False):
         resp = client.get("/api/config")
         assert resp.json()["email_notifications_available"] is False
 
 
-def test_config_with_smtp(client):
-    with patch.dict(os.environ, {"SMTP_HOST": "smtp.test.com"}):
+def test_config_with_resend(client):
+    with patch.dict(os.environ, {"RESEND_API_KEY": "re_test_key"}):
         resp = client.get("/api/config")
         assert resp.json()["email_notifications_available"] is True
 
@@ -83,7 +84,7 @@ def test_build_event_email():
 
 def test_send_email_when_not_configured():
     from email_sender import send_email
-    with patch.dict(os.environ, {"SMTP_HOST": ""}):
+    with patch.dict(os.environ, {"RESEND_API_KEY": ""}):
         result = send_email("test@test.com", "subj", "body")
         assert result is False
 
@@ -91,22 +92,23 @@ def test_send_email_when_not_configured():
 def test_send_email_success():
     from email_sender import send_email
     with patch.dict(os.environ, {
-        "SMTP_HOST": "smtp.test.com",
-        "SMTP_PORT": "587",
-        "SMTP_USER": "user",
-        "SMTP_PASSWORD": "pass",
-        "SMTP_FROM": "noreply@test.com",
-        "SMTP_TLS": "true",
+        "RESEND_API_KEY": "re_test_key",
+        "RESEND_FROM": "Equity Tracker <noreply@test.com>",
     }):
-        with patch("email_sender.smtplib.SMTP") as mock_smtp:
-            mock_server = MagicMock()
-            mock_smtp.return_value = mock_server
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+        with patch("email_sender.httpx.post", return_value=mock_response) as mock_post:
             result = send_email("test@test.com", "Test Subject", "Test Body", "<p>Test</p>")
             assert result is True
-            mock_server.starttls.assert_called_once()
-            mock_server.login.assert_called_once_with("user", "pass")
-            mock_server.sendmail.assert_called_once()
-            mock_server.quit.assert_called_once()
+            mock_post.assert_called_once()
+            call_kwargs = mock_post.call_args
+            payload = call_kwargs.kwargs["json"]
+            assert payload["to"] == ["test@test.com"]
+            assert payload["subject"] == "Test Subject"
+            assert payload["text"] == "Test Body"
+            assert payload["html"] == "<p>Test</p>"
+            assert "Bearer re_test_key" in call_kwargs.kwargs["headers"]["Authorization"]
 
 
 # ============================================================
@@ -127,12 +129,9 @@ def test_send_daily_notifications_with_email(client, db_session):
     from datetime import date
 
     token = register_user(client)
-    # Get user
     user = db_session.query(User).first()
-    # Enable email
     pref = EmailPreference(user_id=user.id, enabled=True)
     db_session.add(pref)
-    # Add a grant that vests today (we'll mock the date)
     db_session.add(Grant(
         user_id=user.id, year=2020, type="Purchase", shares=100, price=5.0,
         vest_start=date(2025, 3, 20), periods=5,
@@ -143,13 +142,11 @@ def test_send_daily_notifications_with_email(client, db_session):
     ))
     db_session.commit()
 
-    with patch.dict(os.environ, {"SMTP_HOST": "smtp.test.com", "SMTP_USER": "u", "SMTP_PASSWORD": "p", "SMTP_FROM": "n@t.com"}):
-        with patch("email_sender.smtplib.SMTP") as mock_smtp:
-            mock_server = MagicMock()
-            mock_smtp.return_value = mock_server
-
+    with patch.dict(os.environ, {"RESEND_API_KEY": "re_test_key", "RESEND_FROM": "n@t.com"}):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status = MagicMock()
+        with patch("email_sender.httpx.post", return_value=mock_response) as mock_post:
             from notifications import send_daily_notifications
             send_daily_notifications(today=date(2026, 3, 20))
-
-            # Should have sent an email
-            assert mock_server.sendmail.call_count >= 1
+            assert mock_post.call_count >= 1

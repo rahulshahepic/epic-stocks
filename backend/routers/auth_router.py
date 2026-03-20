@@ -9,8 +9,21 @@ from models import User, BlockedEmail
 from schemas import GoogleAuthRequest, AuthResponse
 from auth import verify_google_token, create_token, get_admin_emails
 from crypto import encryption_enabled, generate_user_key, encrypt_user_key
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+def _notify_admin_new_user(user: User, db: Session):
+    """Send admin email + check milestone (best-effort, never blocks login)."""
+    try:
+        from notifications import send_admin_new_user_notification, check_user_milestone
+        send_admin_new_user_notification(user)
+        check_user_milestone(db)
+    except Exception:
+        logger.exception("Failed to send admin notification for new user")
 
 
 @router.post("/google", response_model=AuthResponse)
@@ -36,6 +49,7 @@ def google_login(body: GoogleAuthRequest, db: Session = Depends(get_db)):
         db.add(user)
         db.commit()
         db.refresh(user)
+        _notify_admin_new_user(user, db)
     else:
         user.email = email
         user.name = name

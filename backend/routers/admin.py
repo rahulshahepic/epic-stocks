@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 from database import get_db
 from models import User, Grant, Loan, Price, PushSubscription, BlockedEmail
-from auth import get_admin_user
+from auth import get_admin_user, get_admin_emails
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -25,6 +25,7 @@ class UserSummary(BaseModel):
     id: int
     email: str
     name: str | None
+    is_admin: bool
     created_at: str
     last_login: str | None
     grant_count: int
@@ -69,9 +70,26 @@ def admin_stats(admin: User = Depends(get_admin_user), db: Session = Depends(get
     )
 
 
-@router.get("/users", response_model=list[UserSummary])
-def admin_users(admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
-    users = db.query(User).order_by(User.created_at.desc()).all()
+class UserListResponse(BaseModel):
+    users: list[UserSummary]
+    total: int
+
+
+@router.get("/users", response_model=UserListResponse)
+def admin_users(
+    q: str = "",
+    limit: int = 10,
+    offset: int = 0,
+    admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    admin_emails = get_admin_emails()
+    query = db.query(User)
+    if q:
+        query = query.filter(User.email.ilike(f"%{q}%") | User.name.ilike(f"%{q}%"))
+    total = query.count()
+    # Sort by last_login descending, nulls last
+    users = query.order_by(User.last_login.desc().nullslast()).offset(offset).limit(limit).all()
     result = []
     for u in users:
         gc = db.query(func.count(Grant.id)).filter(Grant.user_id == u.id).scalar()
@@ -79,11 +97,12 @@ def admin_users(admin: User = Depends(get_admin_user), db: Session = Depends(get
         pc = db.query(func.count(Price.id)).filter(Price.user_id == u.id).scalar()
         result.append(UserSummary(
             id=u.id, email=u.email, name=u.name,
+            is_admin=u.email.lower() in admin_emails,
             created_at=u.created_at.isoformat() if u.created_at else "",
             last_login=u.last_login.isoformat() if u.last_login else None,
             grant_count=gc, loan_count=lc, price_count=pc,
         ))
-    return result
+    return UserListResponse(users=result, total=total)
 
 
 @router.delete("/users/{user_id}", status_code=204)
@@ -93,6 +112,8 @@ def admin_delete_user(user_id: int, admin: User = Depends(get_admin_user), db: S
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if user.email.lower() in get_admin_emails():
+        raise HTTPException(status_code=400, detail="Cannot delete an admin user")
     # Delete related records first to avoid loading encrypted columns with wrong key
     db.query(Grant).filter(Grant.user_id == user_id).delete()
     db.query(Loan).filter(Loan.user_id == user_id).delete()

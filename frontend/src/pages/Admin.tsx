@@ -195,25 +195,27 @@ export default function Admin() {
       {/* Blocked Emails */}
       <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
         <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Blocked Emails</h3>
-        <form onSubmit={handleBlock} className="mt-3 flex gap-2">
+        <form onSubmit={handleBlock} className="mt-3 space-y-2">
           <input
             type="email"
             value={blockEmail}
             onChange={e => setBlockEmail(e.target.value)}
             placeholder="email@example.com"
-            className="flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
             required
           />
-          <input
-            type="text"
-            value={blockReason}
-            onChange={e => setBlockReason(e.target.value)}
-            placeholder="Reason (optional)"
-            className="flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-          />
-          <button type="submit" className="shrink-0 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700">
-            Block
-          </button>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={blockReason}
+              onChange={e => setBlockReason(e.target.value)}
+              placeholder="Reason (optional)"
+              className="min-w-0 flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+            />
+            <button type="submit" className="shrink-0 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700">
+              Block
+            </button>
+          </div>
         </form>
 
         {blocked.length > 0 && (

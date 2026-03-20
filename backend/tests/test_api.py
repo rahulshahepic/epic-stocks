@@ -231,3 +231,164 @@ def test_user_isolation(client):
     # User B can't delete user A's grant
     resp = client.delete(f"/api/grants/{created['id']}", headers=auth_header(token_b))
     assert resp.status_code == 404
+
+
+# ============================================================
+# EVENTS (computed)
+# ============================================================
+
+def _seed_data(client, token):
+    """Seed a minimal set of grants, prices, loans for event testing."""
+    grant = {
+        "year": 2020, "type": "Purchase", "shares": 10000, "price": 1.99,
+        "vest_start": "2021-03-01", "periods": 5,
+        "exercise_date": "2020-12-31", "dp_shares": -500,
+    }
+    bonus = {
+        "year": 2020, "type": "Bonus", "shares": 5000, "price": 0.0,
+        "vest_start": "2021-03-01", "periods": 5,
+        "exercise_date": "2020-12-31", "dp_shares": 0,
+    }
+    client.post("/api/grants/bulk", json=[grant, bonus], headers=auth_header(token))
+    client.post("/api/prices", json={"effective_date": "2020-12-31", "price": 1.99}, headers=auth_header(token))
+    client.post("/api/prices", json={"effective_date": "2021-03-01", "price": 2.50}, headers=auth_header(token))
+    client.post("/api/loans", json={
+        "grant_year": 2020, "grant_type": "Purchase", "loan_type": "Purchase",
+        "loan_year": 2020, "amount": 19900.0, "interest_rate": 3.5,
+        "due_date": "2025-12-31", "loan_number": "123456",
+    }, headers=auth_header(token))
+
+
+def test_events_empty(client):
+    token = register_user(client)
+    resp = client.get("/api/events", headers=auth_header(token))
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_events_returns_computed_timeline(client):
+    token = register_user(client)
+    _seed_data(client, token)
+    resp = client.get("/api/events", headers=auth_header(token))
+    assert resp.status_code == 200
+    events = resp.json()
+    assert len(events) > 0
+    # Should have various event types
+    types = {e["event_type"] for e in events}
+    assert "Exercise" in types
+    assert "Vesting" in types
+    assert "Share Price" in types
+    assert "Down payment exchange" in types
+    assert "Loan Repayment" in types
+
+
+def test_events_has_timeline_fields(client):
+    token = register_user(client)
+    _seed_data(client, token)
+    events = client.get("/api/events", headers=auth_header(token)).json()
+    last = events[-1]
+    assert "share_price" in last
+    assert "cum_shares" in last
+    assert "cum_income" in last
+    assert "cum_cap_gains" in last
+    assert "income" in last
+    assert "total_cap_gains" in last
+
+
+def test_events_isolation(client):
+    token_a = register_user(client, "a@test.com")
+    token_b = register_user(client, "b@test.com")
+    _seed_data(client, token_a)
+    events_a = client.get("/api/events", headers=auth_header(token_a)).json()
+    events_b = client.get("/api/events", headers=auth_header(token_b)).json()
+    assert len(events_a) > 0
+    assert len(events_b) == 0
+
+
+# ============================================================
+# DASHBOARD
+# ============================================================
+
+def test_dashboard_empty(client):
+    token = register_user(client)
+    resp = client.get("/api/dashboard", headers=auth_header(token))
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["current_price"] == 0
+    assert data["total_shares"] == 0
+    assert data["next_event"] is None
+
+
+def test_dashboard_with_data(client):
+    token = register_user(client)
+    _seed_data(client, token)
+    resp = client.get("/api/dashboard", headers=auth_header(token))
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["current_price"] > 0
+    assert data["total_income"] >= 0
+    assert data["total_cap_gains"] >= 0
+    assert data["total_loan_principal"] == 19900.0
+
+
+# ============================================================
+# FLOWS
+# ============================================================
+
+def test_flow_new_purchase_grant_only(client):
+    token = register_user(client)
+    resp = client.post("/api/flows/new-purchase", json={
+        "year": 2022, "shares": 5000, "price": 3.50,
+        "vest_start": "2023-03-01", "periods": 5,
+        "exercise_date": "2022-12-31",
+    }, headers=auth_header(token))
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["grant"]["year"] == 2022
+    assert data["grant"]["type"] == "Purchase"
+    assert "loan" not in data
+
+
+def test_flow_new_purchase_with_loan(client):
+    token = register_user(client)
+    resp = client.post("/api/flows/new-purchase", json={
+        "year": 2022, "shares": 5000, "price": 3.50,
+        "vest_start": "2023-03-01", "periods": 5,
+        "exercise_date": "2022-12-31",
+        "loan_amount": 17500.0, "loan_rate": 4.0,
+        "loan_due_date": "2027-12-31", "loan_number": "654321",
+    }, headers=auth_header(token))
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["grant"]["shares"] == 5000
+    assert data["loan"]["amount"] == 17500.0
+    assert data["loan"]["loan_type"] == "Purchase"
+    # Verify they appear in the CRUD lists
+    grants = client.get("/api/grants", headers=auth_header(token)).json()
+    loans = client.get("/api/loans", headers=auth_header(token)).json()
+    assert len(grants) == 1
+    assert len(loans) == 1
+
+
+def test_flow_annual_price(client):
+    token = register_user(client)
+    resp = client.post("/api/flows/annual-price", json={
+        "effective_date": "2023-03-01", "price": 4.25,
+    }, headers=auth_header(token))
+    assert resp.status_code == 201
+    assert resp.json()["price"] == 4.25
+    prices = client.get("/api/prices", headers=auth_header(token)).json()
+    assert len(prices) == 1
+
+
+def test_flow_add_bonus(client):
+    token = register_user(client)
+    resp = client.post("/api/flows/add-bonus", json={
+        "year": 2023, "shares": 2000, "price": 0.0,
+        "vest_start": "2024-03-01", "periods": 5,
+        "exercise_date": "2023-12-31",
+    }, headers=auth_header(token))
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["type"] == "Bonus"
+    assert data["shares"] == 2000

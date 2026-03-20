@@ -1,11 +1,12 @@
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import FileResponse
 import database
-from routers import auth_router, grants, loans, prices, events, flows, import_export
+from routers import auth_router, grants, loans, prices, events, flows, import_export, push, admin, notifications
+from auth import get_current_user
 from crypto import encryption_enabled, decrypt_user_key, set_current_key
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -14,7 +15,35 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 @asynccontextmanager
 async def lifespan(app):
     database.Base.metadata.create_all(bind=database.engine)
+    task = _start_daily_scheduler()
     yield
+    if task:
+        task.cancel()
+
+
+def _start_daily_scheduler():
+    """Start background task that runs daily notification check at 7 AM."""
+    import asyncio
+    from datetime import datetime, time, timezone, timedelta
+
+    vapid_key = os.getenv("VAPID_PRIVATE_KEY", "")
+    if not vapid_key:
+        return None
+
+    async def _daily_loop():
+        from notifications import send_daily_notifications
+        while True:
+            now = datetime.now(timezone.utc)
+            target = datetime.combine(now.date(), time(7, 0), tzinfo=timezone.utc)
+            if now >= target:
+                target += timedelta(days=1)
+            await asyncio.sleep((target - now).total_seconds())
+            try:
+                send_daily_notifications()
+            except Exception:
+                pass
+
+    return asyncio.ensure_future(_daily_loop())
 
 
 class EncryptionMiddleware:
@@ -64,6 +93,9 @@ _fastapi_app.include_router(prices.router)
 _fastapi_app.include_router(events.router)
 _fastapi_app.include_router(flows.router)
 _fastapi_app.include_router(import_export.router)
+_fastapi_app.include_router(push.router)
+_fastapi_app.include_router(admin.router)
+_fastapi_app.include_router(notifications.router)
 
 
 @_fastapi_app.get("/api/health")
@@ -74,8 +106,20 @@ def health():
 @_fastapi_app.get("/api/config")
 def client_config():
     from auth import GOOGLE_CLIENT_ID
+    from email_sender import smtp_configured
     privacy_url = os.environ.get("PRIVACY_URL", "")
-    return {"google_client_id": GOOGLE_CLIENT_ID, "privacy_url": privacy_url}
+    vapid_public_key = os.environ.get("VAPID_PUBLIC_KEY", "")
+    return {
+        "google_client_id": GOOGLE_CLIENT_ID,
+        "privacy_url": privacy_url,
+        "vapid_public_key": vapid_public_key,
+        "email_notifications_available": smtp_configured(),
+    }
+
+
+@_fastapi_app.get("/api/me")
+def current_user_info(user=Depends(get_current_user)):
+    return {"id": user.id, "email": user.email, "name": user.name, "is_admin": bool(user.is_admin)}
 
 
 # Serve React build if the static directory exists (production)

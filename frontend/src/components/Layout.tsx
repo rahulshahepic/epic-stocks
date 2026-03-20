@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.ts'
 import { useConfig } from '../hooks/useConfig.ts'
+import { useMe } from '../hooks/useMe.ts'
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard' },
@@ -9,12 +10,15 @@ const NAV_ITEMS = [
   { to: '/loans', label: 'Loans' },
   { to: '/prices', label: 'Prices' },
   { to: '/import', label: 'Import' },
+  { to: '/settings', label: 'Settings' },
 ]
 
 export default function Layout() {
   const { logout } = useAuth()
   const config = useConfig()
+  const me = useMe()
   const privacyUrl = config?.privacy_url
+  const navItems = me?.is_admin ? [...NAV_ITEMS, { to: '/admin', label: 'Admin' }] : NAV_ITEMS
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-50 dark:bg-gray-950">
@@ -32,7 +36,7 @@ export default function Layout() {
         </div>
 
         <nav className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-4 pb-2">
-          {NAV_ITEMS.map(({ to, label }) => (
+          {navItems.map(({ to, label }) => (
             <NavLink
               key={to}
               to={to}

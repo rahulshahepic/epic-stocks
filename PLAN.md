@@ -117,24 +117,25 @@ A `PRIVACY.md` at the repo root, linked from:
 
 ---
 
-## 3. Admin System (Future)
+## 3. Admin System (Implemented)
 
 ### Admin Designation
 
-- One user is marked as admin via an environment variable: `ADMIN_EMAIL=admin@example.com`
-- On login, if the user's email matches `ADMIN_EMAIL`, set an `is_admin` flag on their user record
-- Admin status is checked via a dependency, similar to `get_current_user()`
+- Admin is designated via `ADMIN_EMAIL` environment variable — **semicolon-delimited** to support multiple admins (e.g. `admin@co.com; cto@co.com`)
+- `is_admin` flag on the User model, set on every login by checking the user's email against `ADMIN_EMAIL`
+- Changing `ADMIN_EMAIL` takes effect on the user's next login — adding/removing emails grants/revokes access
+- Admin auth is enforced via `get_admin_user()` dependency in `auth.py`, which checks the `is_admin` flag
 
 ### Admin Dashboard
 
-A new `/admin` route (backend + frontend) visible only to the admin user.
+`/admin` route (backend + frontend), visible only when the logged-in user's email matches `ADMIN_EMAIL`.
 
 **Metrics displayed:**
 - Total registered users
 - Active users (logged in within last 30 days)
 - Total grants / loans / prices across all users (counts only, no financial values)
 - Storage usage (database file size)
-- User list: email, created_at, last_login, grant/loan/price counts
+- User list: email, name, created_at, last_login, grant/loan/price counts
 
 **What admin CANNOT see:**
 - Any user's financial data (prices, amounts, shares, computed events)
@@ -142,20 +143,119 @@ A new `/admin` route (backend + frontend) visible only to the admin user.
 
 ### Admin Actions
 
-- **Delete user** — cascades to all their grants, loans, prices
+- **Delete user** — cascades to all their grants, loans, prices, push subscriptions
+- **Block email** — enter free-text email address + optional reason to prevent login
+- **Unblock email** — remove from blocklist
 - **View user activity** — when they last logged in, how many records they have
 - No ability to impersonate users or view their data
 
+### Blocked Email System
+
+- `BlockedEmail` model stores email + reason + timestamp
+- Auth flow checks against blocklist before allowing login (case-insensitive)
+- Blocked emails cannot create new accounts or log into existing ones
+- Admin can add/remove from the blocklist via `/api/admin/blocked`
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/admin/stats` | Aggregate stats (counts, db size) |
+| GET | `/api/admin/users` | User list with metadata + record counts |
+| DELETE | `/api/admin/users/{id}` | Delete user + all their data |
+| GET | `/api/admin/blocked` | List blocked emails |
+| POST | `/api/admin/blocked` | Block an email (email + reason) |
+| DELETE | `/api/admin/blocked/{id}` | Unblock an email |
+| GET | `/api/me` | Current user info + is_admin flag |
+
+---
+
+## 4. Email Notifications (Future)
+
+### Overview
+
+Add email notifications alongside existing push notifications, with a **strict once-per-day maximum** for any user across all notification channels.
+
+### User Notifications (Email + Push)
+
+- **Event reminders** — same as push: vesting, exercise, loan repayment events happening today
+- **Weekly/monthly summary** — optional digest of upcoming events
+- Combine email + push into ONE daily notification job. If a user has both email and push enabled, send both in the same batch. Never send more than one email per user per day.
+
+### Admin Notifications
+
+- **New user signup** — email + push to admin when a new account is created
+- **Milestone alerts** — e.g., user count reaches 10, 50, 100; first data import
+- **System health** — daily summary: active users, new signups, errors (if any)
+- Admin notifications are also subject to the once-per-day rule: batch all admin events into a single daily digest
+
 ### Implementation Plan
 
-1. Add `is_admin` boolean to User model + `last_login` timestamp
-2. Add `ADMIN_EMAIL` env var check in auth flow
-3. Create `backend/routers/admin.py` with admin-only endpoints
-4. Create `frontend/src/pages/Admin.tsx` dashboard page
-5. Gate the admin route behind `is_admin` check
-6. Add tests for admin endpoints (authorization, data visibility)
+1. Add `SMTP_*` env vars (host, port, user, password, from_address)
+2. Create `backend/email.py` — send via SMTP (or use a service like SendGrid/SES)
+3. Add notification preferences to User model (email_notifications: bool)
+4. Add Settings page toggle for email notifications
+5. Extend `send_daily_notifications()` in `notifications.py` to include email
+6. Add admin notification logic (new signups, milestones)
+7. Add `last_notified_at` timestamp to prevent duplicates
+8. Tests: email sending (mocked SMTP), notification deduplication, admin alerts
 
-**Implementation effort:** ~1-2 days.
+**Implementation effort:** ~2-3 days.
+
+---
+
+## 5. Security Hardening (Future)
+
+### DDoS / Rate Limiting
+
+- Add rate limiting middleware (e.g., `slowapi` or custom token bucket)
+- Rate limits per endpoint:
+  - Auth endpoints: 5 requests/minute per IP
+  - API endpoints: 60 requests/minute per user
+  - Admin endpoints: 30 requests/minute per user
+- Add `X-RateLimit-*` response headers
+- Configure Caddy for connection rate limiting at the reverse proxy level
+- Add fail2ban rules for repeated 401/403 responses
+
+### Input Validation & Injection Prevention
+
+- **SQL injection:** Already mitigated by SQLAlchemy ORM (parameterized queries). Add explicit audit.
+- **XSS:** React's JSX escaping handles output. Audit for `dangerouslySetInnerHTML` usage (should be zero).
+- **CSRF:** Not applicable (JWT bearer tokens, no cookies for auth).
+- **File upload validation:** Validate Excel files more strictly in import (file size limit, magic bytes check, sheet structure validation before parsing).
+- **Header injection:** Validate redirect URLs, sanitize user-provided strings in notifications.
+
+### Security Testing
+
+- Add OWASP ZAP or similar DAST scanner to CI pipeline
+- Create `backend/tests/test_security.py` with explicit tests:
+  - SQL injection attempts in all string parameters
+  - XSS payloads in user name, grant type, loan number fields
+  - Path traversal in file upload
+  - JWT tampering (expired, wrong signature, malformed)
+  - IDOR tests (accessing other users' resources by ID)
+  - Rate limit enforcement
+- Add `npm audit` and `pip-audit` to CI for dependency vulnerability scanning
+- Add Content-Security-Policy headers via Caddy
+
+### Authentication Hardening
+
+- JWT token rotation (refresh tokens)
+- Session invalidation on password change / account deletion
+- Brute force protection on auth endpoints
+- Audit logging: log all admin actions, failed auth attempts, data deletions
+
+### Implementation Plan
+
+1. Add `slowapi` rate limiting to FastAPI
+2. Configure Caddy rate limits
+3. Create security test suite
+4. Add DAST scanner to GitHub Actions
+5. Add dependency audit to CI
+6. Add CSP headers
+7. Add audit logging table + admin view
+
+**Implementation effort:** ~3-4 days.
 
 ---
 
@@ -163,6 +263,8 @@ A new `/admin` route (backend + frontend) visible only to the admin user.
 
 1. **Done:** Privacy policy + transparency
 2. **Done:** Per-user column-level encryption (AES-256-GCM)
-3. **Next:** Admin system (section 3)
-4. **Later:** Migration script for existing plaintext databases
-5. **Later:** Client-side encryption (Option C), if architecture supports it
+3. **Done:** Admin system (section 3) — admin dashboard, user management, email blocking
+4. **Next:** Email notifications (section 4)
+5. **Next:** Security hardening (section 5)
+6. **Later:** Migration script for existing plaintext databases
+7. **Later:** Client-side encryption, if architecture supports it

@@ -7,6 +7,7 @@ interface ImportResult {
   grants: number
   prices: number
   loans: number
+  sheets_imported: string[]
 }
 
 export default function ImportExport() {
@@ -81,15 +82,48 @@ export default function ImportExport() {
     }
   }
 
+  async function handleTemplateDownload() {
+    try {
+      const resp = await fetch('/api/import/template', {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      })
+      if (!resp.ok) throw new Error(`Download failed (${resp.status})`)
+      const blob = await resp.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'Vesting_Template.xlsx'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Template download failed')
+      setStatus('error')
+    }
+  }
+
   return (
     <div className="space-y-6">
       <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Import / Export</h2>
+
+      {/* Template Section */}
+      <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+        <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Get Started</h3>
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          Download a template with the correct format. Fill in only the sheets you need — Schedule (grants), Loans, and/or Prices.
+        </p>
+        <button
+          onClick={handleTemplateDownload}
+          className="mt-3 rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+        >
+          Download Template
+        </button>
+      </section>
 
       {/* Import Section */}
       <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
         <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Import from Excel</h3>
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          Upload a Vesting.xlsx file to populate your grants, loans, and prices.
+          Upload a .xlsx file with Schedule, Loans, and/or Prices sheets. Only the sheets present in your file will be imported — others are left unchanged.
         </p>
 
         <div className="mt-3">
@@ -105,14 +139,14 @@ export default function ImportExport() {
         {status === 'confirm' && selectedFile && (
           <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-900/30">
             <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
-              This will replace all your existing grants, loans, and prices with data from the uploaded file. This cannot be undone.
+              Data for each imported sheet will be replaced. Sheets not in the file are left untouched.
             </p>
             <div className="mt-2 flex gap-2">
               <button
                 onClick={confirmImport}
                 className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
               >
-                Replace All Data
+                Import
               </button>
               <button
                 onClick={cancelImport}
@@ -131,13 +165,15 @@ export default function ImportExport() {
         {status === 'success' && result && (
           <div className="mt-3 rounded-md bg-green-50 p-3 dark:bg-green-900/30">
             <p className="text-xs font-medium text-green-800 dark:text-green-300">
-              Import complete: {result.grants} grants, {result.loans} loans, {result.prices} prices
+              Imported {result.sheets_imported.join(', ')}: {result.grants} grants, {result.loans} loans, {result.prices} prices
             </p>
           </div>
         )}
 
         {status === 'error' && error && (
-          <p className="mt-3 text-xs text-red-500">{error}</p>
+          <div className="mt-3 rounded-md bg-red-50 p-3 dark:bg-red-900/30">
+            <p className="whitespace-pre-wrap text-xs text-red-600 dark:text-red-400">{error}</p>
+          </div>
         )}
       </section>
 

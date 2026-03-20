@@ -27,11 +27,11 @@ test.describe('Full user journey', () => {
     await fileInput.setInputFiles(fixtureFile)
 
     // Confirm destructive import
-    await expect(page.getByText('This will replace all your existing')).toBeVisible()
-    await page.getByRole('button', { name: 'Replace All Data' }).click()
+    await expect(page.getByText('Data for each imported sheet will be replaced')).toBeVisible()
+    await page.getByRole('button', { name: 'Import' }).click()
 
     // Wait for success message
-    await expect(page.getByText('Import complete')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('Imported')).toBeVisible({ timeout: 10000 })
     await expect(page.getByText('12 grants')).toBeVisible()
     await expect(page.getByText('21 loans')).toBeVisible()
     await expect(page.getByText('8 prices')).toBeVisible()

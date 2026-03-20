@@ -15,10 +15,14 @@ class User(Base):
     picture: Mapped[str] = mapped_column(String, nullable=True)
     encrypted_key: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_login: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    is_admin: Mapped[bool] = mapped_column(Integer, default=0, server_default="0")
 
     grants: Mapped[list["Grant"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     loans: Mapped[list["Loan"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     prices: Mapped[list["Price"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    push_subscriptions: Mapped[list["PushSubscription"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    email_preference: Mapped["EmailPreference | None"] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
 
 
 class Grant(Base):
@@ -64,3 +68,36 @@ class Price(Base):
     price: Mapped[float] = mapped_column(EncryptedFloat, nullable=False)
 
     user: Mapped["User"] = relationship(back_populates="prices")
+
+
+class PushSubscription(Base):
+    __tablename__ = "push_subscriptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    endpoint: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    p256dh: Mapped[str] = mapped_column(String, nullable=False)
+    auth: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    user: Mapped["User"] = relationship(back_populates="push_subscriptions")
+
+
+class EmailPreference(Base):
+    __tablename__ = "email_preferences"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, unique=True, index=True)
+    enabled: Mapped[bool] = mapped_column(Integer, default=1, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    user: Mapped["User"] = relationship(back_populates="email_preference")
+
+
+class BlockedEmail(Base):
+    __tablename__ = "blocked_emails"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    reason: Mapped[str] = mapped_column(String, nullable=True)
+    blocked_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))

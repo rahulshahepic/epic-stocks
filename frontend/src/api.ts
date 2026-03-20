@@ -155,4 +155,55 @@ export const api = {
 
   annualPrice: (data: { effective_date: string; price: number }) =>
     post<PriceEntry>('/api/flows/annual-price', data),
+
+  // User info
+  getMe: () => apiFetch<{ id: number; email: string; name: string; is_admin: boolean }>('/api/me'),
+
+  // Push notifications
+  pushSubscribe: (subscription: PushSubscriptionJSON) =>
+    post<{ id: number; endpoint: string }>('/api/push/subscribe', subscription),
+  pushUnsubscribe: (subscription: PushSubscriptionJSON) =>
+    apiFetch<void>('/api/push/subscribe', { method: 'DELETE', body: JSON.stringify(subscription) }),
+  pushStatus: () => apiFetch<{ subscribed: boolean; subscription_count: number }>('/api/push/status'),
+
+  // Email notifications
+  getEmailPref: () => apiFetch<{ enabled: boolean }>('/api/notifications/email'),
+  setEmailPref: (enabled: boolean) =>
+    put<{ enabled: boolean }>(`/api/notifications/email?enabled=${enabled}`, {}),
+
+  // Admin
+  adminStats: () => apiFetch<AdminStats>('/api/admin/stats'),
+  adminUsers: () => apiFetch<AdminUser[]>('/api/admin/users'),
+  adminDeleteUser: (id: number) => del(`/api/admin/users/${id}`),
+  adminListBlocked: () => apiFetch<BlockedEmailEntry[]>('/api/admin/blocked'),
+  adminBlockEmail: (email: string, reason: string) =>
+    post<BlockedEmailEntry>('/api/admin/blocked', { email, reason }),
+  adminUnblock: (id: number) => del(`/api/admin/blocked/${id}`),
+}
+
+export interface AdminStats {
+  total_users: number
+  active_users_30d: number
+  total_grants: number
+  total_loans: number
+  total_prices: number
+  db_size_bytes: number
+}
+
+export interface AdminUser {
+  id: number
+  email: string
+  name: string | null
+  created_at: string
+  last_login: string | null
+  grant_count: number
+  loan_count: number
+  price_count: number
+}
+
+export interface BlockedEmailEntry {
+  id: number
+  email: string
+  reason: string | null
+  blocked_at: string
 }

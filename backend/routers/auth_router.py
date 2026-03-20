@@ -1,12 +1,13 @@
 import os
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import User
+from models import User, BlockedEmail
 from schemas import GoogleAuthRequest, AuthResponse
-from auth import verify_google_token, create_token
+from auth import verify_google_token, create_token, get_admin_emails
 from crypto import encryption_enabled, generate_user_key, encrypt_user_key
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -24,6 +25,10 @@ def google_login(body: GoogleAuthRequest, db: Session = Depends(get_db)):
     name = google_info.get("name")
     picture = google_info.get("picture")
 
+    blocked = db.query(BlockedEmail).filter(BlockedEmail.email == email.lower()).first()
+    if blocked:
+        raise HTTPException(status_code=403, detail="Account blocked")
+
     user = db.query(User).filter(User.google_id == google_id).first()
     if not user:
         enc_key = encrypt_user_key(generate_user_key()) if encryption_enabled() else None
@@ -36,6 +41,10 @@ def google_login(body: GoogleAuthRequest, db: Session = Depends(get_db)):
         user.name = name
         user.picture = picture
         db.commit()
+
+    user.is_admin = user.email.lower() in get_admin_emails()
+    user.last_login = datetime.now(timezone.utc)
+    db.commit()
 
     return AuthResponse(access_token=create_token(user.id))
 

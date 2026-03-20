@@ -1,5 +1,8 @@
 import sys
 import os
+
+os.environ["TESTING"] = "1"
+
 import pytest
 from unittest.mock import patch
 from sqlalchemy import create_engine, event as sa_event

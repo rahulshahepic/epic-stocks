@@ -1,12 +1,18 @@
 from contextlib import asynccontextmanager
+import os
 from fastapi import FastAPI
-from database import engine, Base
+from database import engine, Base, DATABASE_URL
 from routers import auth_router, grants, loans, prices, events, flows
 
 
 @asynccontextmanager
 async def lifespan(app):
-    Base.metadata.create_all(bind=engine)
+    if os.getenv("TESTING") != "1":
+        db_path = DATABASE_URL.replace("sqlite:///", "")
+        db_dir = os.path.dirname(db_path)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
+        Base.metadata.create_all(bind=engine)
     yield
 
 

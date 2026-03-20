@@ -8,6 +8,20 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from tests.conftest import register_user, auth_header
 
 
+def _mock_resend_env():
+    return patch.dict(os.environ, {
+        "RESEND_API_KEY": "re_test_key",
+        "RESEND_FROM": "Equity Tracker <n@t.com>",
+    })
+
+
+def _mock_resend_post():
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.raise_for_status = MagicMock()
+    return patch("email_sender.httpx.post", return_value=mock_response)
+
+
 # ============================================================
 # DEDUP: last_notified_at prevents duplicate notifications
 # ============================================================
@@ -31,19 +45,16 @@ def test_dedup_skips_already_notified_user(client, db_session):
 
     today = date(2026, 3, 20)
 
-    with patch.dict(os.environ, {"SMTP_HOST": "smtp.test.com", "SMTP_USER": "u", "SMTP_PASSWORD": "p", "SMTP_FROM": "n@t.com"}):
-        with patch("email_sender.smtplib.SMTP") as mock_smtp:
-            mock_server = MagicMock()
-            mock_smtp.return_value = mock_server
-
+    with _mock_resend_env():
+        with _mock_resend_post() as mock_post:
             # First run — should send
             send_daily_notifications(today=today)
-            first_count = mock_server.sendmail.call_count
+            first_count = mock_post.call_count
             assert first_count >= 1
 
             # Second run — should skip (already notified today)
             send_daily_notifications(today=today)
-            assert mock_server.sendmail.call_count == first_count  # no additional sends
+            assert mock_post.call_count == first_count  # no additional sends
 
 
 def test_dedup_allows_next_day(client, db_session):
@@ -77,26 +88,20 @@ def test_admin_new_user_notification(client, db_session):
     """Registering a new user sends an email to admins."""
     with patch.dict(os.environ, {
         "ADMIN_EMAIL": "admin@test.com",
-        "SMTP_HOST": "smtp.test.com",
-        "SMTP_USER": "u",
-        "SMTP_PASSWORD": "p",
-        "SMTP_FROM": "n@t.com",
+        "RESEND_API_KEY": "re_test_key",
+        "RESEND_FROM": "n@t.com",
     }):
-        with patch("email_sender.smtplib.SMTP") as mock_smtp:
-            mock_server = MagicMock()
-            mock_smtp.return_value = mock_server
-            # Register triggers _notify_admin_new_user
+        with _mock_resend_post() as mock_post:
             register_user(client, "newuser@test.com")
-            assert mock_server.sendmail.call_count >= 1
-            # Check the email was sent to admin
-            call_args = mock_server.sendmail.call_args
-            assert call_args[0][1] == ["admin@test.com"]
+            assert mock_post.call_count >= 1
+            call_kwargs = mock_post.call_args
+            payload = call_kwargs.kwargs["json"]
+            assert "admin@test.com" in payload["to"]
 
 
-def test_admin_no_notification_without_smtp(client, db_session):
-    """No crash when SMTP not configured."""
-    with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@test.com", "SMTP_HOST": ""}):
-        # Should not raise
+def test_admin_no_notification_without_resend(client, db_session):
+    """No crash when Resend not configured."""
+    with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@test.com", "RESEND_API_KEY": ""}):
         register_user(client, "newuser2@test.com")
 
 
@@ -108,27 +113,18 @@ def test_milestone_notification_at_10_users(client, db_session):
     from notifications import check_user_milestone
     from models import User
 
-    # Create 9 users already in db
     for i in range(9):
         register_user(client, f"user{i}@test.com")
 
     with patch.dict(os.environ, {
         "ADMIN_EMAIL": "admin@test.com",
-        "SMTP_HOST": "smtp.test.com",
-        "SMTP_USER": "u",
-        "SMTP_PASSWORD": "p",
-        "SMTP_FROM": "n@t.com",
+        "RESEND_API_KEY": "re_test_key",
+        "RESEND_FROM": "n@t.com",
     }):
-        with patch("email_sender.smtplib.SMTP") as mock_smtp:
-            mock_server = MagicMock()
-            mock_smtp.return_value = mock_server
-
-            # Register user #10
+        with _mock_resend_post() as mock_post:
             register_user(client, "user10@test.com")
-
-            # Now call check_user_milestone explicitly to verify it sends
             check_user_milestone(db_session)
-            assert mock_server.sendmail.call_count >= 1
+            assert mock_post.call_count >= 1
 
 
 def test_no_milestone_at_7_users(client, db_session):
@@ -139,16 +135,12 @@ def test_no_milestone_at_7_users(client, db_session):
 
     with patch.dict(os.environ, {
         "ADMIN_EMAIL": "admin@test.com",
-        "SMTP_HOST": "smtp.test.com",
-        "SMTP_USER": "u",
-        "SMTP_PASSWORD": "p",
-        "SMTP_FROM": "n@t.com",
+        "RESEND_API_KEY": "re_test_key",
+        "RESEND_FROM": "n@t.com",
     }):
-        with patch("email_sender.smtplib.SMTP") as mock_smtp:
-            mock_server = MagicMock()
-            mock_smtp.return_value = mock_server
+        with _mock_resend_post() as mock_post:
             check_user_milestone(db_session)
-            assert mock_server.sendmail.call_count == 0
+            assert mock_post.call_count == 0
 
 
 # ============================================================
@@ -163,31 +155,25 @@ def test_admin_daily_digest(client, db_session):
 
     with patch.dict(os.environ, {
         "ADMIN_EMAIL": "admin@test.com",
-        "SMTP_HOST": "smtp.test.com",
-        "SMTP_USER": "u",
-        "SMTP_PASSWORD": "p",
-        "SMTP_FROM": "n@t.com",
+        "RESEND_API_KEY": "re_test_key",
+        "RESEND_FROM": "n@t.com",
     }):
-        with patch("email_sender.smtplib.SMTP") as mock_smtp:
-            mock_server = MagicMock()
-            mock_smtp.return_value = mock_server
+        with _mock_resend_post() as mock_post:
             send_admin_daily_digest()
-            assert mock_server.sendmail.call_count == 1
-            # Verify it includes user count info
-            call_args = mock_server.sendmail.call_args
-            msg_str = call_args[0][2]
-            assert "2" in msg_str  # total users
+            assert mock_post.call_count == 1
+            payload = mock_post.call_args.kwargs["json"]
+            assert "2" in payload["text"]  # total users
 
 
-def test_admin_daily_digest_no_smtp(client, db_session):
+def test_admin_daily_digest_no_resend(client, db_session):
     from notifications import send_admin_daily_digest
-    with patch.dict(os.environ, {"SMTP_HOST": ""}):
+    with patch.dict(os.environ, {"RESEND_API_KEY": ""}):
         send_admin_daily_digest()  # should not raise
 
 
 def test_admin_daily_digest_no_admins(client, db_session):
     from notifications import send_admin_daily_digest
-    with patch.dict(os.environ, {"SMTP_HOST": "smtp.test.com", "ADMIN_EMAIL": ""}):
+    with patch.dict(os.environ, {"RESEND_API_KEY": "re_test_key", "ADMIN_EMAIL": ""}):
         send_admin_daily_digest()  # should not raise
 
 

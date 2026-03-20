@@ -140,14 +140,14 @@ def health():
 @_fastapi_app.get("/api/config")
 def client_config():
     from auth import GOOGLE_CLIENT_ID
-    from email_sender import smtp_configured
+    from email_sender import email_configured
     privacy_url = os.environ.get("PRIVACY_URL", "")
     vapid_public_key = os.environ.get("VAPID_PUBLIC_KEY", "")
     return {
         "google_client_id": GOOGLE_CLIENT_ID,
         "privacy_url": privacy_url,
         "vapid_public_key": vapid_public_key,
-        "email_notifications_available": smtp_configured(),
+        "email_notifications_available": email_configured(),
     }
 
 

@@ -159,8 +159,8 @@ def send_daily_notifications(today: date | None = None):
 
             # Email notifications
             if user.id in email_user_ids:
-                from email_sender import build_event_email, send_email, smtp_configured
-                if smtp_configured():
+                from email_sender import build_event_email, send_email, email_configured
+                if email_configured():
                     subject, text, html = build_event_email(events)
                     send_email(user.email, subject, text, html)
 
@@ -176,8 +176,8 @@ def send_daily_notifications(today: date | None = None):
 def send_admin_new_user_notification(user: User):
     """Notify admins when a new user signs up. Called from auth_router."""
     from auth import get_admin_emails
-    from email_sender import send_email, smtp_configured
-    if not smtp_configured():
+    from email_sender import send_email, email_configured
+    if not email_configured():
         return
 
     admin_emails = get_admin_emails()
@@ -202,8 +202,8 @@ def send_admin_new_user_notification(user: User):
 def send_admin_milestone_notification(total_users: int):
     """Notify admins when user count hits a milestone (10, 25, 50, 100, 250, ...)."""
     from auth import get_admin_emails
-    from email_sender import send_email, smtp_configured
-    if not smtp_configured():
+    from email_sender import send_email, email_configured
+    if not email_configured():
         return
 
     admin_emails = get_admin_emails()
@@ -234,10 +234,10 @@ def check_user_milestone(db: Session):
 def send_admin_daily_digest():
     """Send a daily system health digest to admins."""
     from auth import get_admin_emails
-    from email_sender import send_email, smtp_configured
+    from email_sender import send_email, email_configured
     from datetime import timedelta
 
-    if not smtp_configured():
+    if not email_configured():
         return
 
     admin_emails = get_admin_emails()

@@ -1,10 +1,15 @@
+import logging
 import os
+import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import FileResponse
 import database
+
+logger = logging.getLogger(__name__)
 from routers import auth_router, grants, loans, prices, events, flows, import_export, push, admin, notifications
 from auth import get_current_user
 from crypto import encryption_enabled, decrypt_user_key, set_current_key
@@ -85,6 +90,14 @@ class EncryptionMiddleware:
 
 
 _fastapi_app = FastAPI(title="Equity Vesting Tracker", lifespan=lifespan)
+
+
+@_fastapi_app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error("Unhandled error on %s %s: %s", request.method, request.url.path, exc, exc_info=True)
+    detail = str(exc) if str(exc) else type(exc).__name__
+    return JSONResponse(status_code=500, content={"detail": detail})
+
 
 _fastapi_app.include_router(auth_router.router)
 _fastapi_app.include_router(grants.router)

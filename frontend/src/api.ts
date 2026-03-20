@@ -33,7 +33,12 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   }
 
   if (!resp.ok) {
-    throw new Error(`API error: ${resp.status}`)
+    let detail = `Error ${resp.status}`
+    try {
+      const body = await resp.json()
+      if (body?.detail) detail = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)
+    } catch { /* no json body */ }
+    throw new Error(detail)
   }
 
   if (resp.status === 204) return undefined as T

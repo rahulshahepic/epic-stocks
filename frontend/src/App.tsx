@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { getToken } from './api.ts'
 import Layout from './components/Layout.tsx'
+import { ToastProvider } from './components/Toast.tsx'
 import Login from './pages/Login.tsx'
 import Dashboard from './pages/Dashboard.tsx'
 import Events from './pages/Events.tsx'
@@ -18,19 +19,21 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route element={<RequireAuth><Layout /></RequireAuth>}>
-          <Route index element={<Dashboard />} />
-          <Route path="events" element={<Events />} />
-          <Route path="grants" element={<Grants />} />
-          <Route path="loans" element={<Loans />} />
-          <Route path="prices" element={<Prices />} />
-          <Route path="import" element={<ImportExport />} />
-          <Route path="settings" element={<Settings />} />
-          <Route path="admin" element={<Admin />} />
-        </Route>
-      </Routes>
+      <ToastProvider>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route element={<RequireAuth><Layout /></RequireAuth>}>
+            <Route index element={<Dashboard />} />
+            <Route path="events" element={<Events />} />
+            <Route path="grants" element={<Grants />} />
+            <Route path="loans" element={<Loans />} />
+            <Route path="prices" element={<Prices />} />
+            <Route path="import" element={<ImportExport />} />
+            <Route path="settings" element={<Settings />} />
+            <Route path="admin" element={<Admin />} />
+          </Route>
+        </Routes>
+      </ToastProvider>
     </BrowserRouter>
   )
 }

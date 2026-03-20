@@ -92,6 +92,6 @@ describe('apiFetch', () => {
       new Response('Not found', { status: 404 })
     )
 
-    await expect(apiFetch('/api/test')).rejects.toThrow('API error: 404')
+    await expect(apiFetch('/api/test')).rejects.toThrow('Error 404')
   })
 })

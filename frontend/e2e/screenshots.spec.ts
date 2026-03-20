@@ -1,11 +1,14 @@
 /**
  * Capture README screenshots. Run via: ./screenshots/run.sh
+ * Skipped unless SCREENSHOT_TOKEN is set.
  */
-import { test, type Page } from '@playwright/test'
+import { test as base, type Page } from '@playwright/test'
 
 const BASE = process.env.SCREENSHOT_BASE_URL ?? 'http://localhost:5173'
 const TOKEN = process.env.SCREENSHOT_TOKEN ?? ''
 const OUT = '../screenshots'
+
+const test = TOKEN ? base : base.skip
 
 const MOBILE = { width: 375, height: 812 }
 const DESKTOP = { width: 1280, height: 800 }

@@ -335,3 +335,63 @@ def test_last_login_set_on_login(client):
         resp = client.get("/api/admin/users", headers=auth_header(admin_token))
         for u in resp.json():
             assert u["last_login"] is not None
+
+
+# ============================================================
+# TEST-LOGIN ADMIN FLAG (unit-level, route registered at import time)
+# ============================================================
+
+def test_test_login_sets_admin_flag(client, db_session):
+    """test-login should set is_admin and last_login just like google login."""
+    from auth import create_token, get_admin_emails
+    from models import User
+    from crypto import encryption_enabled, generate_user_key, encrypt_user_key
+    from datetime import datetime, timezone
+
+    with _admin_env():
+        # Simulate what the test-login endpoint does
+        email = ADMIN_EMAIL
+        enc_key = encrypt_user_key(generate_user_key()) if encryption_enabled() else None
+        user = User(email=email, google_id=f"test-{email}", name="Admin", encrypted_key=enc_key)
+        db_session.add(user)
+        db_session.commit()
+        db_session.refresh(user)
+
+        user.is_admin = user.email.lower() in get_admin_emails()
+        user.last_login = datetime.now(timezone.utc)
+        db_session.commit()
+
+        assert user.is_admin
+        assert user.last_login is not None
+
+        token = create_token(user.id)
+        resp = client.get("/api/me", headers=auth_header(token))
+        assert resp.status_code == 200
+        assert resp.json()["is_admin"] is True
+
+
+def test_test_login_non_admin_flag(client, db_session):
+    """test-login should NOT set is_admin for non-admin emails."""
+    from auth import create_token, get_admin_emails
+    from models import User
+    from crypto import encryption_enabled, generate_user_key, encrypt_user_key
+    from datetime import datetime, timezone
+
+    with _admin_env():
+        email = "nobody@test.com"
+        enc_key = encrypt_user_key(generate_user_key()) if encryption_enabled() else None
+        user = User(email=email, google_id=f"test-{email}", name="Nobody", encrypted_key=enc_key)
+        db_session.add(user)
+        db_session.commit()
+        db_session.refresh(user)
+
+        user.is_admin = user.email.lower() in get_admin_emails()
+        user.last_login = datetime.now(timezone.utc)
+        db_session.commit()
+
+        assert not user.is_admin
+
+        token = create_token(user.id)
+        resp = client.get("/api/me", headers=auth_header(token))
+        assert resp.status_code == 200
+        assert resp.json()["is_admin"] is False

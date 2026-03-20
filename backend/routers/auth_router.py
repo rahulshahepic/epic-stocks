@@ -67,4 +67,9 @@ if os.getenv("E2E_TEST") == "1":
             db.add(user)
             db.commit()
             db.refresh(user)
+
+        user.is_admin = user.email.lower() in get_admin_emails()
+        user.last_login = datetime.now(timezone.utc)
+        db.commit()
+
         return AuthResponse(access_token=create_token(user.id))

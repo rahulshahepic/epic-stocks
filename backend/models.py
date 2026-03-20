@@ -9,7 +9,9 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     email: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
-    password_hash: Mapped[str] = mapped_column(String, nullable=False)
+    google_id: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String, nullable=True)
+    picture: Mapped[str] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     grants: Mapped[list["Grant"]] = relationship(back_populates="user", cascade="all, delete-orphan")

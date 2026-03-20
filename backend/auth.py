@@ -8,23 +8,17 @@ from datetime import datetime, timedelta, timezone
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
-import bcrypt
+import httpx
 
 from database import get_db
 from models import User
 
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-me")
 JWT_EXPIRE_HOURS = 24
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_TOKENINFO_URL = "https://oauth2.googleapis.com/tokeninfo"
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
-
-
-def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-
-
-def verify_password(password: str, hashed: str) -> bool:
-    return bcrypt.checkpw(password.encode(), hashed.encode())
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/google")
 
 
 def _b64url_encode(data: bytes) -> str:
@@ -57,6 +51,18 @@ def _decode_token(token: str) -> dict:
     payload = json.loads(_b64url_decode(parts[1]))
     if payload.get("exp", 0) < time.time():
         raise ValueError("expired")
+    return payload
+
+
+def verify_google_token(id_token: str) -> dict:
+    resp = httpx.get(GOOGLE_TOKENINFO_URL, params={"id_token": id_token}, timeout=10)
+    if resp.status_code != 200:
+        raise ValueError("Invalid Google token")
+    payload = resp.json()
+    if payload.get("aud") != GOOGLE_CLIENT_ID:
+        raise ValueError("Token not issued for this app")
+    if payload.get("email_verified") != "true":
+        raise ValueError("Email not verified")
     return payload
 
 

@@ -16,12 +16,6 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 |-------|------|
 | ![Dashboard Light Mobile](screenshots/dashboard-light-mobile.png) | ![Dashboard Dark Mobile](screenshots/dashboard-dark-mobile.png) |
 
-### Login
-
-| Light | Dark |
-|-------|------|
-| ![Login Light](screenshots/login-light.png) | ![Login Dark](screenshots/login-dark.png) |
-
 ## Features
 
 - **Event Timeline** — computed on the fly from grants, prices, and loans. Never stored. Shows income, capital gains, share price, and cumulative totals.
@@ -80,13 +74,12 @@ Create a `.env` file in the repo root (or export these):
 JWT_SECRET=your-secret-key-here
 GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
 
-# Frontend (create frontend/.env.local)
-VITE_GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
-
 # Optional (for push notifications)
 VAPID_PRIVATE_KEY=...
 VAPID_PUBLIC_KEY=...
 ```
+
+The frontend fetches the Google Client ID from the backend at `/api/config` — no separate frontend env var needed.
 
 ## Production Deployment
 

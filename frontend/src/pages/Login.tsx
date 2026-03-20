@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.ts'
 
@@ -21,12 +21,11 @@ declare global {
   }
 }
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? ''
-
 export default function Login() {
   const { isAuthenticated, login, loading, error } = useAuth()
   const navigate = useNavigate()
   const btnRef = useRef<HTMLDivElement>(null)
+  const [clientId, setClientId] = useState<string | null>(null)
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -35,14 +34,21 @@ export default function Login() {
   }, [isAuthenticated, navigate])
 
   useEffect(() => {
-    if (!GOOGLE_CLIENT_ID || !btnRef.current) return
+    fetch('/api/config')
+      .then(r => r.json())
+      .then(data => setClientId(data.google_client_id || ''))
+      .catch(() => setClientId(''))
+  }, [])
+
+  useEffect(() => {
+    if (!clientId || !btnRef.current) return
 
     const script = document.createElement('script')
     script.src = 'https://accounts.google.com/gsi/client'
     script.async = true
     script.onload = () => {
       window.google?.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
+        client_id: clientId,
         callback: async (response) => {
           await login(response.credential)
         },
@@ -57,7 +63,7 @@ export default function Login() {
     }
     document.head.appendChild(script)
     return () => { script.remove() }
-  }, [login])
+  }, [clientId, login])
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 dark:bg-gray-950">
@@ -77,13 +83,15 @@ export default function Login() {
 
         {loading ? (
           <p className="text-sm text-gray-400">Signing in...</p>
+        ) : clientId === null ? (
+          <p className="text-sm text-gray-400">Loading...</p>
         ) : (
           <div ref={btnRef} className="flex justify-center" />
         )}
 
-        {!GOOGLE_CLIENT_ID && (
+        {clientId === '' && (
           <p className="mt-4 text-xs text-gray-400 dark:text-gray-500">
-            Google Client ID not configured. Set VITE_GOOGLE_CLIENT_ID.
+            Google Client ID not configured. Set GOOGLE_CLIENT_ID on the server.
           </p>
         )}
       </div>

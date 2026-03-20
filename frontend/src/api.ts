@@ -41,6 +41,8 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   return resp.json()
 }
 
+// --- Types ---
+
 export interface DashboardData {
   current_price: number
   total_shares: number
@@ -70,6 +72,18 @@ export interface TimelineEvent {
   cum_cap_gains: number
 }
 
+export interface GrantEntry {
+  id: number
+  year: number
+  type: string
+  shares: number
+  price: number
+  vest_start: string
+  periods: number
+  exercise_date: string
+  dp_shares: number
+}
+
 export interface PriceEntry {
   id: number
   effective_date: string
@@ -88,18 +102,57 @@ export interface LoanEntry {
   loan_number: string | null
 }
 
+// --- API ---
+
+function post<T>(path: string, body: object) {
+  return apiFetch<T>(path, { method: 'POST', body: JSON.stringify(body) })
+}
+
+function put<T>(path: string, body: object) {
+  return apiFetch<T>(path, { method: 'PUT', body: JSON.stringify(body) })
+}
+
+function del(path: string) {
+  return apiFetch<void>(path, { method: 'DELETE' })
+}
+
 export const api = {
   loginGoogle: (token: string) =>
-    apiFetch<{ access_token: string }>('/api/auth/google', {
-      method: 'POST',
-      body: JSON.stringify({ token }),
-    }),
+    post<{ access_token: string }>('/api/auth/google', { token }),
 
   getDashboard: () => apiFetch<DashboardData>('/api/dashboard'),
-
   getEvents: () => apiFetch<TimelineEvent[]>('/api/events'),
 
-  getPrices: () => apiFetch<PriceEntry[]>('/api/prices'),
+  // Grants
+  getGrants: () => apiFetch<GrantEntry[]>('/api/grants'),
+  createGrant: (data: Omit<GrantEntry, 'id'>) => post<GrantEntry>('/api/grants', data),
+  updateGrant: (id: number, data: Partial<Omit<GrantEntry, 'id'>>) => put<GrantEntry>(`/api/grants/${id}`, data),
+  deleteGrant: (id: number) => del(`/api/grants/${id}`),
 
+  // Loans
   getLoans: () => apiFetch<LoanEntry[]>('/api/loans'),
+  createLoan: (data: Omit<LoanEntry, 'id'>) => post<LoanEntry>('/api/loans', data),
+  updateLoan: (id: number, data: Partial<Omit<LoanEntry, 'id'>>) => put<LoanEntry>(`/api/loans/${id}`, data),
+  deleteLoan: (id: number) => del(`/api/loans/${id}`),
+
+  // Prices
+  getPrices: () => apiFetch<PriceEntry[]>('/api/prices'),
+  createPrice: (data: Omit<PriceEntry, 'id'>) => post<PriceEntry>('/api/prices', data),
+  updatePrice: (id: number, data: Partial<Omit<PriceEntry, 'id'>>) => put<PriceEntry>(`/api/prices/${id}`, data),
+  deletePrice: (id: number) => del(`/api/prices/${id}`),
+
+  // Quick flows
+  newPurchase: (data: {
+    year: number; shares: number; price: number; vest_start: string;
+    periods: number; exercise_date: string; dp_shares?: number;
+    loan_amount?: number; loan_rate?: number; loan_due_date?: string; loan_number?: string;
+  }) => post<{ grant: GrantEntry; loan?: LoanEntry }>('/api/flows/new-purchase', data),
+
+  addBonus: (data: {
+    year: number; shares: number; price?: number; vest_start: string;
+    periods: number; exercise_date: string;
+  }) => post<GrantEntry>('/api/flows/add-bonus', data),
+
+  annualPrice: (data: { effective_date: string; price: number }) =>
+    post<PriceEntry>('/api/flows/annual-price', data),
 }

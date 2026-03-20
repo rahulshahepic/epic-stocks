@@ -4,6 +4,7 @@ interface AppConfig {
   google_client_id: string
   privacy_url: string
   vapid_public_key: string
+  email_notifications_available: boolean
 }
 
 let cached: AppConfig | null = null
@@ -24,11 +25,12 @@ export function useConfig() {
           google_client_id: data.google_client_id || '',
           privacy_url: data.privacy_url || '',
           vapid_public_key: data.vapid_public_key || '',
+          email_notifications_available: !!data.email_notifications_available,
         }
         setConfig(cached)
       })
       .catch(() => {
-        cached = { google_client_id: '', privacy_url: '', vapid_public_key: '' }
+        cached = { google_client_id: '', privacy_url: '', vapid_public_key: '', email_notifications_available: false }
         setConfig(cached)
       })
   }, [])

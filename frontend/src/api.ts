@@ -166,6 +166,11 @@ export const api = {
     apiFetch<void>('/api/push/subscribe', { method: 'DELETE', body: JSON.stringify(subscription) }),
   pushStatus: () => apiFetch<{ subscribed: boolean; subscription_count: number }>('/api/push/status'),
 
+  // Email notifications
+  getEmailPref: () => apiFetch<{ enabled: boolean }>('/api/notifications/email'),
+  setEmailPref: (enabled: boolean) =>
+    put<{ enabled: boolean }>(`/api/notifications/email?enabled=${enabled}`, {}),
+
   // Admin
   adminStats: () => apiFetch<AdminStats>('/api/admin/stats'),
   adminUsers: () => apiFetch<AdminUser[]>('/api/admin/users'),

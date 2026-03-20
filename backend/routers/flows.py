@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from datetime import date
 
 from database import get_db
@@ -24,10 +24,59 @@ class NewPurchaseRequest(BaseModel):
     loan_due_date: date | None = None
     loan_number: str | None = None
 
+    @field_validator("year")
+    @classmethod
+    def year_range(cls, v):
+        if v < 1900 or v > 2100:
+            raise ValueError("year must be between 1900 and 2100")
+        return v
+
+    @field_validator("shares")
+    @classmethod
+    def shares_positive(cls, v):
+        if v <= 0:
+            raise ValueError("shares must be positive")
+        return v
+
+    @field_validator("price")
+    @classmethod
+    def price_non_negative(cls, v):
+        if v < 0:
+            raise ValueError("price cannot be negative")
+        return v
+
+    @field_validator("periods")
+    @classmethod
+    def periods_positive(cls, v):
+        if v <= 0:
+            raise ValueError("periods must be positive")
+        return v
+
+    @field_validator("loan_amount")
+    @classmethod
+    def loan_amount_positive(cls, v):
+        if v is not None and v <= 0:
+            raise ValueError("loan_amount must be positive")
+        return v
+
+    @field_validator("loan_rate")
+    @classmethod
+    def loan_rate_non_negative(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("loan_rate cannot be negative")
+        return v
+
 
 class AnnualPriceRequest(BaseModel):
     effective_date: date
     price: float
+
+    @field_validator("price")
+    @classmethod
+    def price_positive(cls, v):
+        if v <= 0:
+            raise ValueError("price must be positive")
+        return v
 
 
 class AddBonusRequest(BaseModel):
@@ -37,6 +86,27 @@ class AddBonusRequest(BaseModel):
     vest_start: date
     periods: int
     exercise_date: date
+
+    @field_validator("year")
+    @classmethod
+    def year_range(cls, v):
+        if v < 1900 or v > 2100:
+            raise ValueError("year must be between 1900 and 2100")
+        return v
+
+    @field_validator("shares")
+    @classmethod
+    def shares_positive(cls, v):
+        if v <= 0:
+            raise ValueError("shares must be positive")
+        return v
+
+    @field_validator("periods")
+    @classmethod
+    def periods_positive(cls, v):
+        if v <= 0:
+            raise ValueError("periods must be positive")
+        return v
 
 
 @router.post("/new-purchase", status_code=201)

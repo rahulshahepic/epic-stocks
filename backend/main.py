@@ -5,7 +5,7 @@ from fastapi import Depends, FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import FileResponse
 import database
-from routers import auth_router, grants, loans, prices, events, flows, import_export, push, admin
+from routers import auth_router, grants, loans, prices, events, flows, import_export, push, admin, notifications
 from auth import get_current_user
 from crypto import encryption_enabled, decrypt_user_key, set_current_key
 
@@ -95,6 +95,7 @@ _fastapi_app.include_router(flows.router)
 _fastapi_app.include_router(import_export.router)
 _fastapi_app.include_router(push.router)
 _fastapi_app.include_router(admin.router)
+_fastapi_app.include_router(notifications.router)
 
 
 @_fastapi_app.get("/api/health")
@@ -105,9 +106,15 @@ def health():
 @_fastapi_app.get("/api/config")
 def client_config():
     from auth import GOOGLE_CLIENT_ID
+    from email_sender import smtp_configured
     privacy_url = os.environ.get("PRIVACY_URL", "")
     vapid_public_key = os.environ.get("VAPID_PUBLIC_KEY", "")
-    return {"google_client_id": GOOGLE_CLIENT_ID, "privacy_url": privacy_url, "vapid_public_key": vapid_public_key}
+    return {
+        "google_client_id": GOOGLE_CLIENT_ID,
+        "privacy_url": privacy_url,
+        "vapid_public_key": vapid_public_key,
+        "email_notifications_available": smtp_configured(),
+    }
 
 
 @_fastapi_app.get("/api/me")

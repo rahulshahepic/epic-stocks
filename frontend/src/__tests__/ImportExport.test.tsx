@@ -14,12 +14,13 @@ function renderPage() {
 }
 
 describe('ImportExport', () => {
-  it('renders import and export sections', () => {
+  it('renders all sections including template', () => {
     renderPage()
     expect(screen.getByText('Import / Export')).toBeInTheDocument()
+    expect(screen.getByText('Get Started')).toBeInTheDocument()
+    expect(screen.getByText('Download Template')).toBeInTheDocument()
     expect(screen.getByText('Import from Excel')).toBeInTheDocument()
     expect(screen.getByText('Export to Excel')).toBeInTheDocument()
-    expect(screen.getByText('Download Vesting.xlsx')).toBeInTheDocument()
   })
 
   it('shows confirmation dialog after file selection', async () => {
@@ -28,8 +29,8 @@ describe('ImportExport', () => {
     const file = new File(['test'], 'Vesting.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     await userEvent.upload(input, file)
 
-    expect(screen.getByText(/This will replace all your existing/)).toBeInTheDocument()
-    expect(screen.getByText('Replace All Data')).toBeInTheDocument()
+    expect(screen.getByText(/Data for each imported sheet will be replaced/)).toBeInTheDocument()
+    expect(screen.getByText('Import')).toBeInTheDocument()
     expect(screen.getByText('Cancel')).toBeInTheDocument()
   })
 
@@ -40,21 +41,21 @@ describe('ImportExport', () => {
     await userEvent.upload(input, file)
 
     await userEvent.click(screen.getByText('Cancel'))
-    expect(screen.queryByText('Replace All Data')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Data for each imported sheet/)).not.toBeInTheDocument()
   })
 
   it('shows success message after import', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ grants: 12, loans: 21, prices: 8 }), { status: 201 })
+      new Response(JSON.stringify({ grants: 12, loans: 21, prices: 8, sheets_imported: ['Schedule', 'Loans', 'Prices'] }), { status: 201 })
     )
     renderPage()
     const input = screen.getByAcceptingUpload()
     const file = new File(['test'], 'Vesting.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     await userEvent.upload(input, file)
-    await userEvent.click(screen.getByText('Replace All Data'))
+    await userEvent.click(screen.getByText('Import'))
 
     await waitFor(() => {
-      expect(screen.getByText(/Import complete: 12 grants, 21 loans, 8 prices/)).toBeInTheDocument()
+      expect(screen.getByText(/Imported Schedule, Loans, Prices: 12 grants, 21 loans, 8 prices/)).toBeInTheDocument()
     })
   })
 
@@ -66,10 +67,31 @@ describe('ImportExport', () => {
     const input = screen.getByAcceptingUpload()
     const file = new File(['test'], 'Vesting.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     await userEvent.upload(input, file)
-    await userEvent.click(screen.getByText('Replace All Data'))
+    await userEvent.click(screen.getByText('Import'))
 
     await waitFor(() => {
       expect(screen.getByText('Bad file format')).toBeInTheDocument()
+    })
+  })
+
+  it('template download triggers fetch', async () => {
+    const mockBlob = new Blob(['xlsx-data'])
+    const mockResponse = {
+      ok: true,
+      status: 200,
+      blob: () => Promise.resolve(mockBlob),
+    } as unknown as Response
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockResponse)
+    const createObjectURL = vi.fn(() => 'blob:test')
+    const revokeObjectURL = vi.fn()
+    globalThis.URL.createObjectURL = createObjectURL
+    globalThis.URL.revokeObjectURL = revokeObjectURL
+
+    renderPage()
+    await userEvent.click(screen.getByText('Download Template'))
+
+    await waitFor(() => {
+      expect(createObjectURL).toHaveBeenCalled()
     })
   })
 

@@ -1,4 +1,4 @@
-"""Push notification logic — daily check for today's events, send consolidated push per user."""
+"""Notification logic — daily check for today's events, send push + email per user."""
 import json
 import logging
 import os
@@ -8,13 +8,12 @@ from datetime import date, datetime
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
-from models import User, Grant, Loan, Price, PushSubscription
+from models import User, Grant, Loan, Price, PushSubscription, EmailPreference
 from core import generate_all_events, compute_timeline
 
 logger = logging.getLogger(__name__)
 
 VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
-VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
 VAPID_CLAIMS_EMAIL = os.getenv("VAPID_CLAIMS_EMAIL", "mailto:admin@example.com")
 
 NOTIFY_EVENT_TYPES = {"Vesting", "Loan Repayment", "Exercise"}
@@ -88,9 +87,6 @@ def send_push(subscription: PushSubscription, payload: dict) -> bool:
             "sub": VAPID_CLAIMS_EMAIL,
             "aud": _get_origin(subscription.endpoint),
         })
-        # For simplicity, send unencrypted JSON payload via TTL-based push
-        # Real encryption would use RFC 8291, but most push services accept
-        # plaintext with proper VAPID auth
         resp = httpx.post(
             subscription.endpoint,
             content=json.dumps(payload).encode(),
@@ -118,27 +114,43 @@ def _get_origin(url: str) -> str:
 
 
 def send_daily_notifications(today: date | None = None):
-    """Check all users with push subscriptions and send one notification per user."""
+    """Check all users and send push + email notifications as appropriate."""
     today = today or date.today()
     db = SessionLocal()
     try:
-        users_with_subs = (
-            db.query(User)
-            .join(PushSubscription)
-            .distinct()
-            .all()
-        )
-        for user in users_with_subs:
+        # Get all users who have push subscriptions OR email notifications enabled
+        push_user_ids = {row[0] for row in db.query(PushSubscription.user_id).distinct().all()}
+        email_user_ids = {row[0] for row in db.query(EmailPreference.user_id).filter(EmailPreference.enabled == True).all()}
+        all_user_ids = push_user_ids | email_user_ids
+
+        if not all_user_ids:
+            return
+
+        users = db.query(User).filter(User.id.in_(all_user_ids)).all()
+
+        for user in users:
             events = get_todays_events_for_user(user, db, today)
-            payload = build_notification_payload(events)
-            if not payload:
+            if not events:
                 continue
-            subs = db.query(PushSubscription).filter(PushSubscription.user_id == user.id).all()
-            for sub in subs:
-                ok = send_push(sub, payload)
-                if not ok:
-                    db.delete(sub)
-            db.commit()
+
+            # Push notifications
+            if user.id in push_user_ids:
+                payload = build_notification_payload(events)
+                if payload:
+                    subs = db.query(PushSubscription).filter(PushSubscription.user_id == user.id).all()
+                    for sub in subs:
+                        ok = send_push(sub, payload)
+                        if not ok:
+                            db.delete(sub)
+
+            # Email notifications
+            if user.id in email_user_ids:
+                from email_sender import build_event_email, send_email, smtp_configured
+                if smtp_configured():
+                    subject, text, html = build_event_email(events)
+                    send_email(user.email, subject, text, html)
+
+        db.commit()
     except Exception:
         logger.exception("Error in daily notification check")
     finally:

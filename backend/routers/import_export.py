@@ -9,8 +9,9 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import User, Grant, Loan, Price
 from auth import get_current_user
-from excel_io import read_all_from_excel, write_events_to_excel
+from excel_io import read_grants_from_excel, read_prices_from_excel, read_loans_from_excel, write_events_to_excel
 from core import generate_all_events, compute_timeline
+from schemas import LOAN_TYPES
 
 import openpyxl
 from openpyxl.styles import Font, PatternFill
@@ -33,6 +34,93 @@ def _to_year(val) -> int:
     return int(val)
 
 
+# ============================================================
+# VALIDATION HELPERS
+# ============================================================
+
+def _validate_grant(g: dict, row: int) -> list[str]:
+    errors = []
+    year = g.get("year")
+    if not isinstance(year, (int, float)) or int(year) < 1900 or int(year) > 2100:
+        errors.append(f"Row {row}: year must be between 1900 and 2100")
+    gtype = g.get("type")
+    if not gtype or not str(gtype).strip():
+        errors.append(f"Row {row}: type cannot be empty")
+    shares = g.get("shares")
+    if not isinstance(shares, (int, float)) or int(shares) <= 0:
+        errors.append(f"Row {row}: shares must be positive")
+    price = g.get("price")
+    if not isinstance(price, (int, float)) or float(price) < 0:
+        errors.append(f"Row {row}: price cannot be negative")
+    periods = g.get("periods")
+    if not isinstance(periods, (int, float)) or int(periods) <= 0:
+        errors.append(f"Row {row}: periods must be positive")
+    # dp_shares can be negative (DP exchange returns shares)
+    for field in ("vest_start", "exercise_date"):
+        v = g.get(field)
+        if v is None:
+            errors.append(f"Row {row}: {field} is required")
+        else:
+            try:
+                _to_date(v)
+            except Exception:
+                errors.append(f"Row {row}: {field} is not a valid date")
+    return errors
+
+
+def _validate_loan(ln: dict, row: int) -> list[str]:
+    errors = []
+    for yr_field in ("grant_yr", "loan_year"):
+        v = ln.get(yr_field)
+        try:
+            yr = _to_year(v) if v is not None else None
+            if yr is None or yr < 1900 or yr > 2100:
+                errors.append(f"Row {row}: {yr_field} must be between 1900 and 2100")
+        except (ValueError, TypeError):
+            errors.append(f"Row {row}: {yr_field} is not a valid year")
+    gtype = ln.get("grant_type")
+    if not gtype or not str(gtype).strip():
+        errors.append(f"Row {row}: grant_type cannot be empty")
+    ltype = (ln.get("loan_type") or "").strip()
+    if ltype not in LOAN_TYPES:
+        errors.append(f"Row {row}: loan_type must be one of {sorted(LOAN_TYPES)}, got '{ltype}'")
+    amt = ln.get("amount")
+    if not isinstance(amt, (int, float)) or float(amt) <= 0:
+        errors.append(f"Row {row}: amount must be positive")
+    rate = ln.get("interest_rate")
+    if not isinstance(rate, (int, float)) or float(rate) < 0:
+        errors.append(f"Row {row}: interest_rate cannot be negative")
+    due = ln.get("due")
+    if due is None:
+        errors.append(f"Row {row}: due_date is required")
+    else:
+        try:
+            _to_date(due)
+        except Exception:
+            errors.append(f"Row {row}: due_date is not a valid date")
+    return errors
+
+
+def _validate_price(p: dict, row: int) -> list[str]:
+    errors = []
+    d = p.get("date")
+    if d is None:
+        errors.append(f"Row {row}: date is required")
+    else:
+        try:
+            _to_date(d)
+        except Exception:
+            errors.append(f"Row {row}: date is not a valid date")
+    price = p.get("price")
+    if not isinstance(price, (int, float)) or float(price) <= 0:
+        errors.append(f"Row {row}: price must be positive")
+    return errors
+
+
+# ============================================================
+# IMPORT (now supports partial — only sheets that exist)
+# ============================================================
+
 @router.post("/import/excel", status_code=201)
 def import_excel(
     file: UploadFile = File(...),
@@ -46,16 +134,63 @@ def import_excel(
         tmp.write(file.file.read())
         tmp.flush()
         try:
-            grants_raw, prices_raw, loans_raw, _ = read_all_from_excel(tmp.name)
+            wb = openpyxl.load_workbook(tmp.name)
         except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Failed to parse Excel file: {e}")
+            raise HTTPException(status_code=400, detail=f"Failed to open Excel file: {e}")
 
-    # Wipe existing data for this user
-    db.query(Grant).filter(Grant.user_id == user.id).delete()
-    db.query(Loan).filter(Loan.user_id == user.id).delete()
-    db.query(Price).filter(Price.user_id == user.id).delete()
+    sheet_names = [s.lower() for s in wb.sheetnames]
 
-    # Insert grants
+    # Read whichever sheets exist
+    grants_raw = []
+    prices_raw = []
+    loans_raw = []
+    has_schedule = "schedule" in sheet_names
+    has_prices = "prices" in sheet_names
+    has_loans = "loans" in sheet_names
+
+    if not has_schedule and not has_prices and not has_loans:
+        wb.close()
+        raise HTTPException(
+            status_code=400,
+            detail="No recognized sheets found. Expected one or more of: Schedule, Prices, Loans"
+        )
+
+    try:
+        if has_schedule:
+            ws_name = wb.sheetnames[[s.lower() for s in wb.sheetnames].index("schedule")]
+            grants_raw = read_grants_from_excel(wb[ws_name])
+        if has_prices:
+            ws_name = wb.sheetnames[[s.lower() for s in wb.sheetnames].index("prices")]
+            prices_raw = read_prices_from_excel(wb[ws_name])
+        if has_loans:
+            ws_name = wb.sheetnames[[s.lower() for s in wb.sheetnames].index("loans")]
+            loans_raw = read_loans_from_excel(wb[ws_name])
+    except Exception as e:
+        wb.close()
+        raise HTTPException(status_code=400, detail=f"Failed to parse Excel file: {e}")
+    finally:
+        wb.close()
+
+    # Validate all rows, collect errors
+    all_errors = []
+    for i, g in enumerate(grants_raw):
+        all_errors.extend(_validate_grant(g, i + 2))
+    for i, p in enumerate(prices_raw):
+        all_errors.extend(_validate_price(p, i + 2))
+    for i, ln in enumerate(loans_raw):
+        all_errors.extend(_validate_loan(ln, i + 2))
+
+    if all_errors:
+        raise HTTPException(status_code=400, detail="Validation errors:\n" + "\n".join(all_errors))
+
+    # Only wipe data types that were in the uploaded file
+    if has_schedule:
+        db.query(Grant).filter(Grant.user_id == user.id).delete()
+    if has_loans:
+        db.query(Loan).filter(Loan.user_id == user.id).delete()
+    if has_prices:
+        db.query(Price).filter(Price.user_id == user.id).delete()
+
     for g in grants_raw:
         db.add(Grant(
             user_id=user.id,
@@ -69,7 +204,6 @@ def import_excel(
             dp_shares=g.get("dp_shares", 0),
         ))
 
-    # Insert prices
     for p in prices_raw:
         db.add(Price(
             user_id=user.id,
@@ -77,13 +211,12 @@ def import_excel(
             price=p["price"],
         ))
 
-    # Insert loans
     for ln in loans_raw:
         db.add(Loan(
             user_id=user.id,
             grant_year=_to_year(ln["grant_yr"]),
             grant_type=ln["grant_type"],
-            loan_type=ln["loan_type"],
+            loan_type=ln["loan_type"].strip(),
             loan_year=_to_year(ln["loan_year"]),
             amount=ln["amount"],
             interest_rate=ln["interest_rate"],
@@ -97,7 +230,76 @@ def import_excel(
         "grants": len(grants_raw),
         "prices": len(prices_raw),
         "loans": len(loans_raw),
+        "sheets_imported": [s for s, present in [("Schedule", has_schedule), ("Prices", has_prices), ("Loans", has_loans)] if present],
     }
+
+
+# ============================================================
+# TEMPLATE DOWNLOAD
+# ============================================================
+
+@router.get("/import/template")
+def download_template():
+    """Download an empty Excel template with correct headers and example rows."""
+    wb = openpyxl.Workbook()
+
+    # Schedule sheet
+    ws = wb.active
+    ws.title = "Schedule"
+    sched_headers = ["Year", "Type", "Shares", "Price", "Vest Start", "Periods",
+                     "", "", "", "", "", "", "", "Exercise Date", "DP Shares"]
+    _write_headers(ws, sched_headers)
+    # Example row
+    _body_cell(ws, 2, 1, 2020)
+    _body_cell(ws, 2, 2, "Purchase")
+    _body_cell(ws, 2, 3, 10000)
+    _body_cell(ws, 2, 4, 5.00, "\\$#,##0.00")
+    _body_cell(ws, 2, 5, date(2020, 3, 15), "mm/dd/yyyy")
+    _body_cell(ws, 2, 6, 5)
+    _body_cell(ws, 2, 14, date(2030, 3, 15), "mm/dd/yyyy")
+    _body_cell(ws, 2, 15, 0)
+    # Add note row
+    note_font = Font(name="Arial", size=9, italic=True, color="FF888888")
+    for col, note in [(1, "e.g. 2020"), (2, "Purchase or Bonus"), (3, "# of shares"),
+                      (4, "$ per share"), (5, "mm/dd/yyyy"), (6, "# vesting periods")]:
+        c = ws.cell(row=3, column=col, value=note)
+        c.font = note_font
+
+    # Loans sheet
+    ws_loans = wb.create_sheet("Loans")
+    loan_headers = ["Loan #", "Grant Year", "Grant Type", "Loan Type", "Loan Year",
+                    "Amount", "Rate", "Due Date"]
+    _write_headers(ws_loans, loan_headers)
+    _body_cell(ws_loans, 2, 1, "L001")
+    _body_cell(ws_loans, 2, 2, 2020)
+    _body_cell(ws_loans, 2, 3, "Purchase")
+    _body_cell(ws_loans, 2, 4, "Interest")
+    _body_cell(ws_loans, 2, 5, 2020)
+    _body_cell(ws_loans, 2, 6, 5000.00, "\\$#,##0.00")
+    _body_cell(ws_loans, 2, 7, 0.05, "0.00%")
+    _body_cell(ws_loans, 2, 8, date(2025, 3, 15), "mm/dd/yyyy")
+    for col, note in [(3, "Purchase or Bonus"), (4, "Interest, Tax, Principal, or Purchase"),
+                      (7, "decimal, e.g. 0.05 = 5%")]:
+        c = ws_loans.cell(row=3, column=col, value=note)
+        c.font = note_font
+
+    # Prices sheet
+    ws_prices = wb.create_sheet("Prices")
+    _write_headers(ws_prices, ["Date", "Price"])
+    _body_cell(ws_prices, 2, 1, date(2020, 1, 1), "mm/dd/yyyy")
+    _body_cell(ws_prices, 2, 2, 5.00, "\\$#,##0.00")
+    c = ws_prices.cell(row=3, column=1, value="One row per annual price update")
+    c.font = note_font
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=Vesting_Template.xlsx"},
+    )
 
 
 # ============================================================

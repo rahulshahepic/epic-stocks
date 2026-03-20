@@ -1,11 +1,43 @@
+import { useState, useEffect, useCallback } from 'react'
 import { useConfig } from '../hooks/useConfig.ts'
 import { usePush } from '../hooks/usePush.ts'
 import { useAuth } from '../hooks/useAuth.ts'
+import { api } from '../api.ts'
 
 export default function Settings() {
   const config = useConfig()
   const { subscribed, loading, supported, subscribe, unsubscribe } = usePush(config?.vapid_public_key ?? '')
   const { logout } = useAuth()
+
+  const [emailEnabled, setEmailEnabled] = useState(false)
+  const [emailLoading, setEmailLoading] = useState(false)
+
+  const loadEmailPref = useCallback(async () => {
+    try {
+      const { enabled } = await api.getEmailPref()
+      setEmailEnabled(enabled)
+    } catch {
+      // not available
+    }
+  }, [])
+
+  useEffect(() => {
+    if (config?.email_notifications_available) {
+      loadEmailPref()
+    }
+  }, [config?.email_notifications_available, loadEmailPref])
+
+  async function toggleEmail() {
+    setEmailLoading(true)
+    try {
+      const { enabled } = await api.setEmailPref(!emailEnabled)
+      setEmailEnabled(enabled)
+    } catch {
+      // ignore
+    } finally {
+      setEmailLoading(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -45,6 +77,32 @@ export default function Settings() {
           </div>
         )}
       </section>
+
+      {/* Email Notifications — only if SMTP configured */}
+      {config?.email_notifications_available && (
+        <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+          <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Email Notifications</h3>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Receive an email on days when you have vesting, exercise, or loan repayment events.
+          </p>
+          <div className="mt-3 flex items-center gap-3">
+            <button
+              onClick={toggleEmail}
+              disabled={emailLoading}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50 ${
+                emailEnabled
+                  ? 'bg-gray-500 hover:bg-gray-600'
+                  : 'bg-indigo-600 hover:bg-indigo-700'
+              }`}
+            >
+              {emailLoading ? 'Loading...' : emailEnabled ? 'Disable Email' : 'Enable Email'}
+            </button>
+            {emailEnabled && (
+              <span className="text-xs text-green-600 dark:text-green-400">Email notifications enabled</span>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* Account */}
       <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">

@@ -9,6 +9,7 @@ import Loans from './pages/Loans.tsx'
 import Prices from './pages/Prices.tsx'
 import ImportExport from './pages/ImportExport.tsx'
 import Settings from './pages/Settings.tsx'
+import Admin from './pages/Admin.tsx'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   return getToken() ? <>{children}</> : <Navigate to="/login" replace />
@@ -27,6 +28,7 @@ export default function App() {
           <Route path="prices" element={<Prices />} />
           <Route path="import" element={<ImportExport />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="admin" element={<Admin />} />
         </Route>
       </Routes>
     </BrowserRouter>

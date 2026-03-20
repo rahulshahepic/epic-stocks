@@ -1,11 +1,12 @@
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import FileResponse
 import database
-from routers import auth_router, grants, loans, prices, events, flows, import_export, push
+from routers import auth_router, grants, loans, prices, events, flows, import_export, push, admin
+from auth import get_current_user
 from crypto import encryption_enabled, decrypt_user_key, set_current_key
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -93,6 +94,7 @@ _fastapi_app.include_router(events.router)
 _fastapi_app.include_router(flows.router)
 _fastapi_app.include_router(import_export.router)
 _fastapi_app.include_router(push.router)
+_fastapi_app.include_router(admin.router)
 
 
 @_fastapi_app.get("/api/health")
@@ -106,6 +108,14 @@ def client_config():
     privacy_url = os.environ.get("PRIVACY_URL", "")
     vapid_public_key = os.environ.get("VAPID_PUBLIC_KEY", "")
     return {"google_client_id": GOOGLE_CLIENT_ID, "privacy_url": privacy_url, "vapid_public_key": vapid_public_key}
+
+
+@_fastapi_app.get("/api/me")
+def current_user_info(user=Depends(get_current_user)):
+    from auth import get_admin_email
+    admin_email = get_admin_email()
+    is_admin = bool(admin_email and user.email.lower() == admin_email.lower())
+    return {"id": user.id, "email": user.email, "name": user.name, "is_admin": is_admin}
 
 
 # Serve React build if the static directory exists (production)

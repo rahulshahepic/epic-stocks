@@ -24,7 +24,8 @@ test('login - light - mobile', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'light' })
   await page.setViewportSize(MOBILE)
   await page.goto(`${BASE}/login`)
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('domcontentloaded')
+  await page.waitForTimeout(2000)
   await page.screenshot({ path: `${OUT}/login-light.png` })
 })
 
@@ -32,7 +33,8 @@ test('login - dark - mobile', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' })
   await page.setViewportSize(MOBILE)
   await page.goto(`${BASE}/login`)
-  await page.waitForLoadState('networkidle')
+  await page.waitForLoadState('domcontentloaded')
+  await page.waitForTimeout(2000)
   await page.screenshot({ path: `${OUT}/login-dark.png` })
 })
 

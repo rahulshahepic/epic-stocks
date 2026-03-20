@@ -8,3 +8,8 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>,
 )
+
+// Register service worker for cache busting and push notifications
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js')
+}

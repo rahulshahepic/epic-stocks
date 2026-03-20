@@ -1,3 +1,11 @@
 {$DOMAIN:localhost} {
+    # Hashed assets — cache forever
+    @hashed path /assets/*
+    header @hashed Cache-Control "public, max-age=31536000, immutable"
+
+    # HTML, SW, manifest — always revalidate
+    @nocache path / /index.html /sw.js /manifest.json
+    header @nocache Cache-Control "no-cache"
+
     reverse_proxy app:8000
 }

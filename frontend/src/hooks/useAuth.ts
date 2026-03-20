@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { getToken, setToken, clearToken, api } from '../api.ts'
+import { resetMeCache } from './useMe.ts'
+import { resetConfigCache } from './useConfig.ts'
 
 export function useAuth() {
   const [token, setTokenState] = useState<string | null>(getToken)
@@ -33,7 +35,10 @@ export function useAuth() {
 
   const logout = useCallback(() => {
     clearToken()
+    resetMeCache()
+    resetConfigCache()
     setTokenState(null)
+    window.location.href = '/login'
   }, [])
 
   return { isAuthenticated, login, logout, loading, error }

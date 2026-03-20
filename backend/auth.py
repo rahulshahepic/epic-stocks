@@ -82,6 +82,11 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    # Refresh admin flag on every request so env changes take effect immediately
+    is_admin = user.email.lower() in get_admin_emails()
+    if bool(user.is_admin) != is_admin:
+        user.is_admin = is_admin
+        db.commit()
     if encryption_enabled() and user.encrypted_key:
         set_current_key(decrypt_user_key(user.encrypted_key))
     else:

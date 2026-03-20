@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.ts'
+import { useConfig } from '../hooks/useConfig.ts'
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard' },
@@ -11,6 +12,8 @@ const NAV_ITEMS = [
 
 export default function Layout() {
   const { logout } = useAuth()
+  const config = useConfig()
+  const privacyUrl = config?.privacy_url
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-50 dark:bg-gray-950">
@@ -50,6 +53,19 @@ export default function Layout() {
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
         <Outlet />
       </main>
+
+      {privacyUrl && (
+        <footer className="border-t border-gray-200 py-4 text-center text-xs text-gray-400 dark:border-gray-800 dark:text-gray-500">
+          <a
+            href={privacyUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-gray-600 dark:hover:text-gray-300"
+          >
+            Privacy Policy
+          </a>
+        </footer>
+      )}
     </div>
   )
 }

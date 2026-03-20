@@ -23,3 +23,9 @@ app.include_router(flows.router)
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/api/config")
+def client_config():
+    from auth import GOOGLE_CLIENT_ID
+    return {"google_client_id": GOOGLE_CLIENT_ID}

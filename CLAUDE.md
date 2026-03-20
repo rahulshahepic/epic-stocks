@@ -8,6 +8,9 @@ Equity vesting tracker PWA. See SPEC.md for full requirements.
 - **Events are never stored in the database.** They are computed on the fly from Grants + Loans + Prices via core.py.
 - **backend/excel_io.py contains the Excel read/write logic.** Adapt as needed for the import/export endpoints but preserve the column mappings.
 - **test_data/fixture.xlsx is a synthetic test fixture.** Use it to validate import logic. It contains no real data.
+- **Schema migrations are lightweight.** `_migrate_schema()` in main.py adds missing columns on startup via ALTER TABLE. No heavy migration framework — keep it simple.
+- **Encryption is per-user.** When `ENCRYPTION_MASTER_KEY` is set, `backend/crypto.py` handles AES-256-GCM column-level encryption via SQLAlchemy TypeDecorators. Transparent to routers and core.py.
+- **Admin access is dynamic.** Set via `ADMIN_EMAIL` env var (semicolon-delimited). `is_admin` flag is set on every login — no persistent admin designation. Admin endpoints in `backend/routers/admin.py` never expose financial data.
 
 ## Tech Stack
 - Backend: Python 3.12, FastAPI, SQLite (WAL mode), SQLAlchemy
@@ -34,3 +37,8 @@ Follow the order in SPEC.md. Build backend first, then frontend. **Every step mu
 - Python: minimal comments, concise, no unnecessary abstractions
 - TypeScript: functional components, hooks, Tailwind utility classes
 - Mobile-first responsive design — this is primarily used on a phone
+
+## Deployment Notes
+- Caddy serves hashed assets (`/assets/*`) with immutable cache headers. `index.html`, `sw.js`, and `manifest.json` use `no-cache` for instant updates.
+- The service worker (`frontend/public/sw.js`) uses `skipWaiting` + `clients.claim` and network-first navigation for cache busting.
+- See PLAN.md for the privacy/encryption/admin roadmap and future plans (email notifications, security hardening).

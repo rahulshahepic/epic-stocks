@@ -178,7 +178,8 @@ export const api = {
 
   // Admin
   adminStats: () => apiFetch<AdminStats>('/api/admin/stats'),
-  adminUsers: () => apiFetch<AdminUser[]>('/api/admin/users'),
+  adminUsers: (q = '', limit = 10, offset = 0) =>
+    apiFetch<AdminUserListResponse>(`/api/admin/users?q=${encodeURIComponent(q)}&limit=${limit}&offset=${offset}`),
   adminDeleteUser: (id: number) => del(`/api/admin/users/${id}`),
   adminListBlocked: () => apiFetch<BlockedEmailEntry[]>('/api/admin/blocked'),
   adminBlockEmail: (email: string, reason: string) =>
@@ -199,11 +200,17 @@ export interface AdminUser {
   id: number
   email: string
   name: string | null
+  is_admin: boolean
   created_at: string
   last_login: string | null
   grant_count: number
   loan_count: number
   price_count: number
+}
+
+export interface AdminUserListResponse {
+  users: AdminUser[]
+  total: number
 }
 
 export interface BlockedEmailEntry {

@@ -18,6 +18,10 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 
 ![Export](screenshots/05-export-ready.png)
 
+### Admin Dashboard
+
+![Admin](screenshots/admin-light-mobile.png)
+
 ## Features
 
 - **Event Timeline** — computed on the fly from grants, prices, and loans. Never stored. Shows income, capital gains, share price, and cumulative totals.
@@ -225,7 +229,7 @@ All endpoints require `Authorization: Bearer <jwt>` except auth, health, config,
 | GET | `/api/push/status` | Check push subscription status |
 | GET/PUT | `/api/notifications/email` | Get/set email notification preference |
 | GET | `/api/admin/stats` | Aggregate stats (admin only) |
-| GET | `/api/admin/users` | User list with metadata (admin only) |
+| GET | `/api/admin/users?q=&limit=10&offset=0` | User list with metadata, searchable + paginated (admin only) |
 | DELETE | `/api/admin/users/{id}` | Delete user + all data (admin only) |
 | GET/POST | `/api/admin/blocked` | List/block emails (admin only) |
 | DELETE | `/api/admin/blocked/{id}` | Unblock email (admin only) |
@@ -245,7 +249,8 @@ The admin system is opt-in via the `ADMIN_EMAIL` environment variable. Admins ar
 - Total registered users and active users (last 30 days)
 - Aggregate counts: total grants, loans, prices across all users
 - Database storage usage
-- Per-user metadata: email, name, created_at, last_login, record counts
+- Per-user metadata: email, name, created_at, last_login, record counts, admin badge
+- Searchable user list (filter by email or name) with pagination, sorted by last active
 
 ### What Admins Cannot See
 
@@ -256,7 +261,7 @@ The admin system is opt-in via the `ADMIN_EMAIL` environment variable. Admins ar
 
 | Action | Description |
 |--------|-------------|
-| **Delete user** | Permanently removes user and all their data (grants, loans, prices, subscriptions). Admin cannot delete themselves. |
+| **Delete user** | Permanently removes user and all their data (grants, loans, prices, subscriptions). Admin users cannot be deleted. |
 | **Block email** | Prevents an email address from logging in or creating an account. Includes optional reason field. |
 | **Unblock email** | Removes an email from the blocklist, restoring login access. |
 | **View user activity** | See when each user last logged in and how many records they have. |

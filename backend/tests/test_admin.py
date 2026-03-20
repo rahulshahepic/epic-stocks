@@ -134,9 +134,9 @@ def test_admin_user_list(client):
 
         resp = client.get("/api/admin/users", headers=auth_header(admin_token))
         assert resp.status_code == 200
-        users = resp.json()
-        assert len(users) == 3  # admin + alice + bob
-        emails = {u["email"] for u in users}
+        data = resp.json()
+        assert data["total"] == 3  # admin + alice + bob
+        emails = {u["email"] for u in data["users"]}
         assert "alice@test.com" in emails
         assert "bob@test.com" in emails
 
@@ -154,7 +154,7 @@ def test_admin_user_list_shows_counts(client):
         }, headers=auth_header(user_token))
 
         resp = client.get("/api/admin/users", headers=auth_header(admin_token))
-        users = resp.json()
+        users = resp.json()["users"]
         user_entry = next(u for u in users if u["email"] == "user@test.com")
         assert user_entry["grant_count"] == 1
         assert user_entry["price_count"] == 1
@@ -165,7 +165,7 @@ def test_admin_user_list_no_financial_data(client):
     with _admin_env():
         admin_token = _register_admin(client)
         resp = client.get("/api/admin/users", headers=auth_header(admin_token))
-        users = resp.json()
+        users = resp.json()["users"]
         for u in users:
             assert "shares" not in u
             assert "price" not in u
@@ -182,14 +182,14 @@ def test_admin_delete_user(client):
         user_token = register_user(client, "delete-me@test.com")
         # Get user id
         resp = client.get("/api/admin/users", headers=auth_header(admin_token))
-        user_entry = next(u for u in resp.json() if u["email"] == "delete-me@test.com")
+        user_entry = next(u for u in resp.json()["users"] if u["email"] == "delete-me@test.com")
 
         resp = client.delete(f"/api/admin/users/{user_entry['id']}", headers=auth_header(admin_token))
         assert resp.status_code == 204
 
         # Verify user is gone
         resp = client.get("/api/admin/users", headers=auth_header(admin_token))
-        emails = {u["email"] for u in resp.json()}
+        emails = {u["email"] for u in resp.json()["users"]}
         assert "delete-me@test.com" not in emails
 
 
@@ -215,12 +215,88 @@ def test_admin_delete_cascades(client):
         }, headers=auth_header(user_token))
 
         resp = client.get("/api/admin/users", headers=auth_header(admin_token))
-        user_entry = next(u for u in resp.json() if u["email"] == "cascade@test.com")
+        user_entry = next(u for u in resp.json()["users"] if u["email"] == "cascade@test.com")
         client.delete(f"/api/admin/users/{user_entry['id']}", headers=auth_header(admin_token))
 
         # Stats should show 0 grants now (only admin user left, with no data)
         resp = client.get("/api/admin/stats", headers=auth_header(admin_token))
         assert resp.json()["total_grants"] == 0
+
+
+def test_admin_cannot_delete_admin_user(client):
+    """Admins cannot delete other admin users."""
+    with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@example.com;admin2@example.com"}):
+        admin_token = _register_admin(client)
+        # Register second admin
+        from tests.conftest import _fake_google_info
+        info = _fake_google_info("admin2@example.com")
+        with patch("routers.auth_router.verify_google_token", return_value=info):
+            resp = client.post("/api/auth/google", json={"token": "t"})
+        resp = client.get("/api/admin/users", headers=auth_header(admin_token))
+        admin2 = next(u for u in resp.json()["users"] if u["email"] == "admin2@example.com")
+
+        resp = client.delete(f"/api/admin/users/{admin2['id']}", headers=auth_header(admin_token))
+        assert resp.status_code == 400
+        assert "Cannot delete an admin" in resp.json()["detail"]
+
+
+def test_admin_user_list_includes_is_admin(client):
+    """User list includes is_admin flag."""
+    with _admin_env():
+        admin_token = _register_admin(client)
+        register_user(client, "regular@test.com")
+
+        resp = client.get("/api/admin/users", headers=auth_header(admin_token))
+        users = resp.json()["users"]
+        admin_entry = next(u for u in users if u["email"] == ADMIN_EMAIL)
+        assert admin_entry["is_admin"] is True
+        regular = next(u for u in users if u["email"] == "regular@test.com")
+        assert regular["is_admin"] is False
+
+
+def test_admin_user_search(client):
+    """User list supports search by email."""
+    with _admin_env():
+        admin_token = _register_admin(client)
+        register_user(client, "alice@test.com")
+        register_user(client, "bob@test.com")
+
+        resp = client.get("/api/admin/users?q=alice", headers=auth_header(admin_token))
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["users"][0]["email"] == "alice@test.com"
+
+
+def test_admin_user_pagination(client):
+    """User list supports limit and offset."""
+    with _admin_env():
+        admin_token = _register_admin(client)
+        for i in range(5):
+            register_user(client, f"user{i}@test.com")
+
+        resp = client.get("/api/admin/users?limit=2&offset=0", headers=auth_header(admin_token))
+        data = resp.json()
+        assert data["total"] == 6  # admin + 5 users
+        assert len(data["users"]) == 2
+
+        resp = client.get("/api/admin/users?limit=2&offset=4", headers=auth_header(admin_token))
+        data = resp.json()
+        assert len(data["users"]) == 2  # last 2
+
+
+def test_admin_user_sorted_by_last_login(client):
+    """User list is sorted by last_login descending."""
+    with _admin_env():
+        admin_token = _register_admin(client)
+        register_user(client, "old@test.com")
+        register_user(client, "new@test.com")
+
+        # All users logged in during registration; admin was first, so new@test.com is most recent
+        resp = client.get("/api/admin/users?limit=100", headers=auth_header(admin_token))
+        users = resp.json()["users"]
+        # First user should have the most recent last_login
+        logins = [u["last_login"] for u in users if u["last_login"]]
+        assert logins == sorted(logins, reverse=True)
 
 
 # ============================================================
@@ -333,7 +409,7 @@ def test_last_login_set_on_login(client):
         register_user(client, "user@test.com")
 
         resp = client.get("/api/admin/users", headers=auth_header(admin_token))
-        for u in resp.json():
+        for u in resp.json()["users"]:
             assert u["last_login"] is not None
 
 

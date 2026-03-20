@@ -30,9 +30,11 @@ const STATS = {
 }
 
 const USERS = [
-  { id: 1, email: 'admin@test.com', name: 'Admin', created_at: '2025-01-01T00:00:00', last_login: '2025-06-01T00:00:00', grant_count: 5, loan_count: 3, price_count: 2 },
-  { id: 2, email: 'user@test.com', name: 'User', created_at: '2025-02-01T00:00:00', last_login: null, grant_count: 0, loan_count: 0, price_count: 0 },
+  { id: 1, email: 'admin@test.com', name: 'Admin', is_admin: true, created_at: '2025-01-01T00:00:00', last_login: '2025-06-01T00:00:00', grant_count: 5, loan_count: 3, price_count: 2 },
+  { id: 2, email: 'user@test.com', name: 'User', is_admin: false, created_at: '2025-02-01T00:00:00', last_login: null, grant_count: 0, loan_count: 0, price_count: 0 },
 ]
+
+const USERS_RESPONSE = { users: USERS, total: 2 }
 
 function renderPage() {
   return render(<MemoryRouter><Admin /></MemoryRouter>)
@@ -40,7 +42,7 @@ function renderPage() {
 
 describe('Admin', () => {
   it('renders stats overview', async () => {
-    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS, '/api/admin/blocked': [] })
+    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
     renderPage()
 
     await waitFor(() => {
@@ -52,7 +54,7 @@ describe('Admin', () => {
   })
 
   it('renders user list', async () => {
-    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS, '/api/admin/blocked': [] })
+    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
     renderPage()
 
     await waitFor(() => {
@@ -63,7 +65,7 @@ describe('Admin', () => {
 
   it('renders blocked emails section', async () => {
     mockFetch({
-      '/api/admin/stats': STATS, '/api/admin/users': USERS,
+      '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE,
       '/api/admin/blocked': [{ id: 1, email: 'bad@evil.com', reason: 'Spam', blocked_at: '2025-01-01T00:00:00' }],
     })
     renderPage()
@@ -76,7 +78,7 @@ describe('Admin', () => {
   })
 
   it('shows no blocked emails message when empty', async () => {
-    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS, '/api/admin/blocked': [] })
+    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
     renderPage()
 
     await waitFor(() => {
@@ -96,7 +98,7 @@ describe('Admin', () => {
   })
 
   it('has block email form', async () => {
-    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS, '/api/admin/blocked': [] })
+    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
     renderPage()
 
     await waitFor(() => {
@@ -107,7 +109,7 @@ describe('Admin', () => {
   })
 
   it('shows user record counts', async () => {
-    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS, '/api/admin/blocked': [] })
+    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
     renderPage()
 
     await waitFor(() => {
@@ -116,14 +118,38 @@ describe('Admin', () => {
   })
 
   it('delete requires confirmation click', async () => {
-    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS, '/api/admin/blocked': [] })
+    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
     renderPage()
 
     await waitFor(() => {
-      expect(screen.getAllByText('Delete')).toHaveLength(2)
+      // Only non-admin user gets a Delete button
+      expect(screen.getAllByText('Delete')).toHaveLength(1)
     })
 
-    await userEvent.click(screen.getAllByText('Delete')[0])
+    await userEvent.click(screen.getByText('Delete'))
     expect(screen.getByText('Confirm Delete')).toBeInTheDocument()
+  })
+
+  it('shows admin badge and hides delete button for admin users', async () => {
+    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
+    renderPage()
+
+    await waitFor(() => {
+      // Admin badge is a span inside the user row (distinct from the page heading)
+      const badges = screen.getAllByText('Admin')
+      // Page heading "Admin" + badge = 2
+      expect(badges.length).toBeGreaterThanOrEqual(2)
+      // Only 1 Delete button (for non-admin user)
+      expect(screen.getAllByText('Delete')).toHaveLength(1)
+    })
+  })
+
+  it('has a search input field', async () => {
+    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Search by email or name...')).toBeInTheDocument()
+    })
   })
 })

@@ -5,25 +5,50 @@ import type { AdminStats, AdminUser, BlockedEmailEntry } from '../api.ts'
 export default function Admin() {
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
+  const [totalUsers, setTotalUsers] = useState(0)
   const [blocked, setBlocked] = useState<BlockedEmailEntry[]>([])
   const [error, setError] = useState('')
   const [blockEmail, setBlockEmail] = useState('')
   const [blockReason, setBlockReason] = useState('')
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null)
+  const [search, setSearch] = useState('')
+  const [searchInput, setSearchInput] = useState('')
 
-  const load = useCallback(async () => {
+  const loadUsers = useCallback(async (q = '') => {
     try {
-      const [s, u, b] = await Promise.all([api.adminStats(), api.adminUsers(), api.adminListBlocked()])
-      setStats(s)
-      setUsers(u)
-      setBlocked(b)
-      setError('')
+      const res = await api.adminUsers(q)
+      setUsers(res.users)
+      setTotalUsers(res.total)
     } catch {
-      setError('Failed to load admin data. You may not have admin access.')
+      // Only set error if not already showing an auth error
+      setError(prev => prev || 'Failed to load users')
     }
   }, [])
 
+  const load = useCallback(async () => {
+    try {
+      const [s, b] = await Promise.all([api.adminStats(), api.adminListBlocked()])
+      setStats(s)
+      setBlocked(b)
+      setError('')
+      loadUsers()
+    } catch {
+      setError('Failed to load admin data. You may not have admin access.')
+    }
+  }, [loadUsers])
+
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchInput])
+
+  useEffect(() => {
+    loadUsers(search)
+  }, [search, loadUsers])
 
   async function handleBlock(e: React.FormEvent) {
     e.preventDefault()
@@ -51,9 +76,9 @@ export default function Admin() {
     try {
       await api.adminDeleteUser(id)
       setConfirmDelete(null)
-      load()
-    } catch {
-      setError('Failed to delete user')
+      loadUsers(search)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete user')
     }
   }
 
@@ -118,12 +143,28 @@ export default function Admin() {
 
       {/* Users */}
       <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
-        <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Users ({users.length})</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Users ({totalUsers})</h3>
+        </div>
+        <input
+          type="text"
+          value={searchInput}
+          onChange={e => setSearchInput(e.target.value)}
+          placeholder="Search by email or name..."
+          className="mt-2 w-full rounded-md border border-gray-300 px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+        />
         <div className="mt-3 space-y-2">
           {users.map(u => (
             <div key={u.id} className="flex items-center justify-between rounded-md border border-gray-100 p-2 text-xs dark:border-gray-700">
               <div className="min-w-0 flex-1">
-                <p className="truncate font-medium text-gray-900 dark:text-gray-100">{u.email}</p>
+                <p className="truncate font-medium text-gray-900 dark:text-gray-100">
+                  {u.email}
+                  {u.is_admin && (
+                    <span className="ml-1.5 inline-block rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+                      Admin
+                    </span>
+                  )}
+                </p>
                 <p className="text-gray-500 dark:text-gray-400">
                   {u.name ?? 'No name'} · Joined {formatDate(u.created_at)} · Last login {formatDate(u.last_login)}
                 </p>
@@ -131,16 +172,23 @@ export default function Admin() {
                   {u.grant_count} grants · {u.loan_count} loans · {u.price_count} prices
                 </p>
               </div>
-              <button
-                onClick={() => handleDelete(u.id)}
-                className={`ml-2 shrink-0 rounded px-2 py-1 text-xs font-medium text-white ${
-                  confirmDelete === u.id ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-400 hover:bg-gray-500'
-                }`}
-              >
-                {confirmDelete === u.id ? 'Confirm Delete' : 'Delete'}
-              </button>
+              {!u.is_admin && (
+                <button
+                  onClick={() => handleDelete(u.id)}
+                  className={`ml-2 shrink-0 rounded px-2 py-1 text-xs font-medium text-white ${
+                    confirmDelete === u.id ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-400 hover:bg-gray-500'
+                  }`}
+                >
+                  {confirmDelete === u.id ? 'Confirm Delete' : 'Delete'}
+                </button>
+              )}
             </div>
           ))}
+          {users.length === 0 && (
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              {search ? 'No users match your search.' : 'No users.'}
+            </p>
+          )}
         </div>
       </section>
 

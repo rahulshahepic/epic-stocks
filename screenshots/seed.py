@@ -10,7 +10,8 @@ from datetime import date, datetime, timezone
 Base.metadata.create_all(bind=engine)
 db = SessionLocal()
 
-user = User(email="demo@example.com", google_id="demo-screenshot", name="Demo User", picture="")
+user = User(email="demo@example.com", google_id="demo-screenshot", name="Demo User",
+            picture="", is_admin=True, last_login=datetime(2026, 3, 20, 10, 0, tzinfo=timezone.utc))
 db.add(user)
 db.flush()
 
@@ -57,6 +58,38 @@ loans = [
          loan_year=2022, amount=1552.0, interest_rate=4.5, due_date=date(2028, 12, 31), loan_number="100007"),
 ]
 db.add_all(loans)
+
+# Extra users for admin screenshots
+extra_users = [
+    User(email="alice.johnson@company.com", google_id="alice-g", name="Alice Johnson",
+         last_login=datetime(2026, 3, 19, 14, 30, tzinfo=timezone.utc),
+         created_at=datetime(2025, 6, 15, tzinfo=timezone.utc)),
+    User(email="bob.martinez@company.com", google_id="bob-g", name="Bob Martinez",
+         last_login=datetime(2026, 3, 18, 9, 0, tzinfo=timezone.utc),
+         created_at=datetime(2025, 8, 1, tzinfo=timezone.utc)),
+    User(email="carol.chen@company.com", google_id="carol-g", name="Carol Chen",
+         last_login=datetime(2026, 3, 15, 16, 45, tzinfo=timezone.utc),
+         created_at=datetime(2025, 9, 10, tzinfo=timezone.utc)),
+    User(email="dave.wilson@company.com", google_id="dave-g", name="Dave Wilson",
+         last_login=datetime(2026, 2, 28, 11, 0, tzinfo=timezone.utc),
+         created_at=datetime(2025, 11, 1, tzinfo=timezone.utc)),
+    User(email="eva.garcia@company.com", google_id="eva-g", name="Eva Garcia",
+         last_login=datetime(2026, 1, 10, 8, 0, tzinfo=timezone.utc),
+         created_at=datetime(2026, 1, 5, tzinfo=timezone.utc)),
+    User(email="frank.lee@external.io", google_id="frank-g", name="Frank Lee",
+         last_login=None,
+         created_at=datetime(2026, 3, 1, tzinfo=timezone.utc)),
+]
+db.add_all(extra_users)
+db.flush()
+
+# Give some extra users sample data counts
+for i, eu in enumerate(extra_users[:3]):
+    for j in range(i + 1):
+        db.add(Grant(user_id=eu.id, year=2020+j, type="Purchase", shares=1000*(j+1), price=2.0+j,
+                     vest_start=date(2021+j, 3, 1), periods=5, exercise_date=date(2020+j, 12, 31), dp_shares=0))
+    for j in range(i):
+        db.add(Price(user_id=eu.id, effective_date=date(2021+j, 3, 1), price=3.0+j))
 
 db.commit()
 token = create_token(user.id)

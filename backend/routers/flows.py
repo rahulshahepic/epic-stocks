@@ -19,7 +19,6 @@ class NewPurchaseRequest(BaseModel):
     periods: int
     exercise_date: date
     dp_shares: int = 0
-    # Optional loan
     loan_amount: float | None = None
     loan_rate: float | None = None
     loan_due_date: date | None = None
@@ -49,11 +48,8 @@ def new_purchase(body: NewPurchaseRequest, user: User = Depends(get_current_user
         exercise_date=body.exercise_date, dp_shares=body.dp_shares,
     )
     db.add(grant)
-    db.flush()
 
-    result = {"grant": GrantOut.model_validate(grant)}
     loan = None
-
     if body.loan_amount is not None:
         loan = Loan(
             user_id=user.id, grant_year=body.year, grant_type="Purchase",
@@ -63,12 +59,11 @@ def new_purchase(body: NewPurchaseRequest, user: User = Depends(get_current_user
             loan_number=body.loan_number,
         )
         db.add(loan)
-        db.flush()
-        result["loan"] = LoanOut.model_validate(loan)
 
     db.commit()
     db.refresh(grant)
-    result["grant"] = GrantOut.model_validate(grant)
+
+    result = {"grant": GrantOut.model_validate(grant)}
     if loan:
         db.refresh(loan)
         result["loan"] = LoanOut.model_validate(loan)

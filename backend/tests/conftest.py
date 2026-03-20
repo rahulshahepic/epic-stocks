@@ -9,8 +9,8 @@ from starlette.testclient import TestClient
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from database import Base, get_db
 import database
+from database import Base, get_db
 
 TEST_ENGINE = create_engine(
     "sqlite://",
@@ -26,13 +26,12 @@ def _fk(dbapi_conn, _):
 
 TestSession = sessionmaker(bind=TEST_ENGINE, autoflush=False, autocommit=False)
 
-_user_counter = 0
-
-# Swap init_db so the app lifespan creates tables on the test engine
-_original_init_db = database.init_db
-database.init_db = lambda eng=None: Base.metadata.create_all(bind=TEST_ENGINE)
+# Swap the engine so the app lifespan creates tables on the test engine
+database.engine = TEST_ENGINE
 
 from main import app
+
+_user_counter = 0
 
 
 @pytest.fixture(autouse=True)

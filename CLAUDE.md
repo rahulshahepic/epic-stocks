@@ -13,7 +13,7 @@ Equity vesting tracker PWA. See SPEC.md for full requirements.
 - Backend: Python 3.12, FastAPI, SQLite (WAL mode), SQLAlchemy
 - Frontend: React, TypeScript, Vite, Tailwind CSS, Recharts
 - Deploy: Docker Compose + Caddy (auto-HTTPS)
-- Auth: JWT + bcrypt
+- Auth: Google Sign-In (OAuth 2.0) → backend JWT session tokens
 
 ## Build Order
 Follow the order in SPEC.md. Build backend first, then frontend. **Every step must include tests before moving on.** Ask before making architectural decisions.

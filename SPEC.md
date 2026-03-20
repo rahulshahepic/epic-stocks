@@ -9,7 +9,7 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 - **Backend**: Python, FastAPI, SQLite (WAL mode), single process
 - **Frontend**: React (Vite), TypeScript, Tailwind CSS, PWA with push notifications
 - **Deploy**: Docker Compose on a VPS behind Caddy (auto-HTTPS)
-- **Auth**: Email + password, bcrypt, JWT tokens
+- **Auth**: Google Sign-In (OAuth 2.0 ID tokens), backend issues JWT session tokens
 
 The FastAPI app serves the React build as static files. One container for the app, one for Caddy.
 
@@ -19,7 +19,7 @@ Three source-of-truth tables, one derived table. The derived Events table is nev
 
 ### Users
 ```
-id, email, password_hash, created_at
+id, email, google_id, name, picture, created_at
 ```
 
 ### Grants (Schedule)
@@ -236,8 +236,7 @@ def compute_timeline(events, initial_price):
 ## API Endpoints
 
 ### Auth
-- `POST /api/auth/register` — email, password → JWT
-- `POST /api/auth/login` — email, password → JWT
+- `POST /api/auth/google` — Google ID token → JWT (creates user on first login, updates profile on subsequent logins)
 - All other endpoints require `Authorization: Bearer <jwt>`
 
 ### CRUD (standard REST for each source table)
@@ -272,8 +271,8 @@ def compute_timeline(events, initial_price):
 
 ## Frontend Pages
 
-### 1. Login / Register
-Simple email + password forms.
+### 1. Login
+Google Sign-In button. No registration form needed — accounts are created automatically on first Google login.
 
 ### 2. Dashboard (home)
 Top cards:
@@ -411,6 +410,7 @@ services:
     environment:
       - DATABASE_URL=sqlite:///data/vesting.db
       - JWT_SECRET=${JWT_SECRET}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
     expose:
@@ -465,7 +465,7 @@ Test every layer. Use test_data/fixture.xlsx as a fixture for import tests.
 - Round-trip: generate events from test fixture data, verify totals match known-good values (89 events, final cum_shares=269843, cum_income=$144,325, cum_cap_gains=$1,243,695)
 
 **API tests** (test_api.py):
-- Auth: register, login, token refresh, reject bad credentials
+- Auth: Google login (mocked), auto-create user, reject invalid tokens
 - CRUD for each resource: create, read, update, delete, list. Verify ownership isolation (user A can't see user B's data)
 - Bulk create endpoints
 - Quick flow endpoints (e.g., new-purchase creates both grant and loan)
@@ -479,7 +479,7 @@ Test every layer. Use test_data/fixture.xlsx as a fixture for import tests.
 - Write → read round-trip: generate events, write to file, verify formulas reference correct cells
 
 ### Frontend Tests (Vitest + React Testing Library)
-- Auth flow: login form, register form, token storage, redirect on 401
+- Auth flow: Google Sign-In button, token storage, redirect on 401
 - Dashboard: renders cards and charts with mock API data
 - CRUD pages: add/edit/delete forms submit correct payloads
 - "Add Another" pattern: form clears but stays open after save
@@ -487,7 +487,7 @@ Test every layer. Use test_data/fixture.xlsx as a fixture for import tests.
 - Events table: filtering, sorting, correct column display
 
 ### E2E Tests (Playwright)
-- Full user journey: register → import xlsx → view dashboard → verify event count → add a new price → see dashboard update → export xlsx
+- Full user journey: Google login → import xlsx → view dashboard → verify event count → add a new price → see dashboard update → export xlsx
 - Quick flow: add purchase grant + loan → verify both appear in their tables → verify new events in timeline
 - Multi-user isolation: two users, verify they can't see each other's data
 - Mobile viewport: run the full journey at 375px width

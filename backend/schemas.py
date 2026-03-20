@@ -3,9 +3,8 @@ from pydantic import BaseModel, EmailStr
 
 
 # Auth
-class AuthRequest(BaseModel):
-    email: str
-    password: str
+class GoogleAuthRequest(BaseModel):
+    token: str
 
 class AuthResponse(BaseModel):
     access_token: str

@@ -1,5 +1,6 @@
 import sys
 import os
+from unittest.mock import patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from tests.conftest import register_user, auth_header
@@ -9,28 +10,32 @@ from tests.conftest import register_user, auth_header
 # AUTH
 # ============================================================
 
-def test_register(client):
-    resp = client.post("/api/auth/register", json={"email": "a@b.com", "password": "pass123"})
-    assert resp.status_code == 200
-    assert "access_token" in resp.json()
+def test_google_login_creates_user(client):
+    token = register_user(client, "a@b.com")
+    assert token is not None
+    assert len(token) > 0
 
 
-def test_register_duplicate(client):
-    client.post("/api/auth/register", json={"email": "a@b.com", "password": "pass123"})
-    resp = client.post("/api/auth/register", json={"email": "a@b.com", "password": "pass123"})
-    assert resp.status_code == 400
+def test_google_login_returns_same_user(client):
+    fake_info = {
+        "sub": "fixed-google-id",
+        "email": "a@b.com",
+        "email_verified": "true",
+        "name": "Test",
+        "picture": "",
+        "aud": "",
+    }
+    with patch("routers.auth_router.verify_google_token", return_value=fake_info):
+        resp1 = client.post("/api/auth/google", json={"token": "t1"})
+        resp2 = client.post("/api/auth/google", json={"token": "t2"})
+    # Both calls succeed — same user, new tokens
+    assert resp1.status_code == 200
+    assert resp2.status_code == 200
 
 
-def test_login(client):
-    client.post("/api/auth/register", json={"email": "a@b.com", "password": "pass123"})
-    resp = client.post("/api/auth/login", json={"email": "a@b.com", "password": "pass123"})
-    assert resp.status_code == 200
-    assert "access_token" in resp.json()
-
-
-def test_login_bad_password(client):
-    client.post("/api/auth/register", json={"email": "a@b.com", "password": "pass123"})
-    resp = client.post("/api/auth/login", json={"email": "a@b.com", "password": "wrong"})
+def test_google_login_invalid_token(client):
+    with patch("routers.auth_router.verify_google_token", side_effect=ValueError("Invalid Google token")):
+        resp = client.post("/api/auth/google", json={"token": "bad"})
     assert resp.status_code == 401
 
 

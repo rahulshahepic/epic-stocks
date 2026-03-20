@@ -1,6 +1,7 @@
 import sys
 import os
 import pytest
+from unittest.mock import patch
 from sqlalchemy import create_engine, event as sa_event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -25,9 +26,13 @@ def _fk(dbapi_conn, _):
 
 TestSession = sessionmaker(bind=TEST_ENGINE, autoflush=False, autocommit=False)
 
+_user_counter = 0
+
 
 @pytest.fixture(autouse=True)
 def setup_db():
+    global _user_counter
+    _user_counter = 0
     Base.metadata.create_all(bind=TEST_ENGINE)
     yield
     Base.metadata.drop_all(bind=TEST_ENGINE)
@@ -57,8 +62,22 @@ def client(db_session):
     app.dependency_overrides.clear()
 
 
-def register_user(client, email="test@example.com", password="password123"):
-    resp = client.post("/api/auth/register", json={"email": email, "password": password})
+def _fake_google_info(email):
+    global _user_counter
+    _user_counter += 1
+    return {
+        "sub": f"google-id-{_user_counter}",
+        "email": email,
+        "email_verified": "true",
+        "name": f"Test User {_user_counter}",
+        "picture": "",
+        "aud": "",
+    }
+
+
+def register_user(client, email="test@example.com"):
+    with patch("routers.auth_router.verify_google_token", return_value=_fake_google_info(email)):
+        resp = client.post("/api/auth/google", json={"token": "fake-google-token"})
     return resp.json()["access_token"]
 
 

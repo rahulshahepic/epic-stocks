@@ -1,28 +1,36 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from database import get_db
 from models import User
-from schemas import AuthRequest, AuthResponse
-from auth import hash_password, verify_password, create_token
+from schemas import GoogleAuthRequest, AuthResponse
+from auth import verify_google_token, create_token
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
-@router.post("/register", response_model=AuthResponse)
-def register(body: AuthRequest, db: Session = Depends(get_db)):
-    if db.query(User).filter(User.email == body.email).first():
-        raise HTTPException(status_code=400, detail="Email already registered")
-    user = User(email=body.email, password_hash=hash_password(body.password))
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return AuthResponse(access_token=create_token(user.id))
+@router.post("/google", response_model=AuthResponse)
+def google_login(body: GoogleAuthRequest, db: Session = Depends(get_db)):
+    try:
+        google_info = verify_google_token(body.token)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
 
+    google_id = google_info["sub"]
+    email = google_info["email"]
+    name = google_info.get("name")
+    picture = google_info.get("picture")
 
-@router.post("/login", response_model=AuthResponse)
-def login(body: AuthRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == body.email).first()
-    if not user or not verify_password(body.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+    user = db.query(User).filter(User.google_id == google_id).first()
+    if not user:
+        user = User(email=email, google_id=google_id, name=name, picture=picture)
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    else:
+        user.email = email
+        user.name = name
+        user.picture = picture
+        db.commit()
+
     return AuthResponse(access_token=create_token(user.id))

@@ -22,6 +22,17 @@ class Base(DeclarativeBase):
     pass
 
 
+def init_db(eng=None):
+    """Create all tables. Pass a different engine for testing."""
+    target = eng or engine
+    if target == engine:
+        db_path = DATABASE_URL.replace("sqlite:///", "")
+        db_dir = os.path.dirname(db_path)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
+    Base.metadata.create_all(bind=target)
+
+
 def get_db():
     db = SessionLocal()
     try:

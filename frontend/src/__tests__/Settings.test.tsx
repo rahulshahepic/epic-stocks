@@ -1,0 +1,114 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
+import { resetConfigCache } from '../hooks/useConfig.ts'
+import Settings from '../pages/Settings.tsx'
+
+beforeEach(() => {
+  localStorage.setItem('auth_token', 'test-token')
+  vi.restoreAllMocks()
+  resetConfigCache()
+})
+
+function mockFetch(responses: Record<string, unknown>) {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = typeof input === 'string' ? input : (input as Request).url
+    for (const [path, data] of Object.entries(responses)) {
+      if (url.includes(path)) {
+        return new Response(JSON.stringify(data), { status: 200 })
+      }
+    }
+    return new Response('{}', { status: 200 })
+  })
+}
+
+function mockPushSupport() {
+  Object.defineProperty(navigator, 'serviceWorker', {
+    value: { register: vi.fn(), ready: Promise.resolve({}), getRegistration: vi.fn() },
+    writable: true,
+    configurable: true,
+  })
+  Object.defineProperty(window, 'PushManager', {
+    value: class {},
+    writable: true,
+    configurable: true,
+  })
+}
+
+function renderPage() {
+  return render(<MemoryRouter><Settings /></MemoryRouter>)
+}
+
+describe('Settings', () => {
+  it('renders push notification and account sections', () => {
+    mockFetch({
+      '/api/config': { google_client_id: '', privacy_url: '', vapid_public_key: '' },
+      '/api/push/status': { subscribed: false, subscription_count: 0 },
+    })
+    renderPage()
+    expect(screen.getByText('Settings')).toBeInTheDocument()
+    expect(screen.getByText('Push Notifications')).toBeInTheDocument()
+    expect(screen.getByText('Account')).toBeInTheDocument()
+  })
+
+  it('shows not supported when no serviceWorker', async () => {
+    mockFetch({
+      '/api/config': { google_client_id: '', privacy_url: '', vapid_public_key: 'test-key' },
+      '/api/push/status': { subscribed: false, subscription_count: 0 },
+    })
+    // Don't mock push support — jsdom has no serviceWorker
+    renderPage()
+    expect(screen.getByText(/not supported in this browser/)).toBeInTheDocument()
+  })
+
+  it('shows not configured when no VAPID key', async () => {
+    mockPushSupport()
+    mockFetch({
+      '/api/config': { google_client_id: '', privacy_url: '', vapid_public_key: '' },
+      '/api/push/status': { subscribed: false, subscription_count: 0 },
+    })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText(/not configured on this server/)).toBeInTheDocument()
+    })
+  })
+
+  it('shows enable button when VAPID key present and not subscribed', async () => {
+    mockPushSupport()
+    mockFetch({
+      '/api/config': { google_client_id: '', privacy_url: '', vapid_public_key: 'test-vapid-key' },
+      '/api/push/status': { subscribed: false, subscription_count: 0 },
+    })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Enable Notifications')).toBeInTheDocument()
+    })
+  })
+
+  it('shows disable button when subscribed', async () => {
+    mockPushSupport()
+    mockFetch({
+      '/api/config': { google_client_id: '', privacy_url: '', vapid_public_key: 'test-vapid-key' },
+      '/api/push/status': { subscribed: true, subscription_count: 1 },
+    })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Disable Notifications')).toBeInTheDocument()
+      expect(screen.getByText('Notifications enabled')).toBeInTheDocument()
+    })
+  })
+
+  it('sign out clears token', async () => {
+    mockFetch({
+      '/api/config': { google_client_id: '', privacy_url: '', vapid_public_key: '' },
+      '/api/push/status': { subscribed: false, subscription_count: 0 },
+    })
+    renderPage()
+    await userEvent.click(screen.getByText('Sign Out'))
+    expect(localStorage.getItem('auth_token')).toBeNull()
+  })
+})

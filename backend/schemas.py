@@ -75,3 +75,18 @@ class PriceUpdate(BaseModel):
 class PriceOut(PriceCreate):
     id: int
     model_config = {"from_attributes": True}
+
+
+# Push Subscription
+class PushSubscriptionKeys(BaseModel):
+    p256dh: str
+    auth: str
+
+class PushSubscriptionCreate(BaseModel):
+    endpoint: str
+    keys: PushSubscriptionKeys
+
+class PushSubscriptionOut(BaseModel):
+    id: int
+    endpoint: str
+    model_config = {"from_attributes": True}

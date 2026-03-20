@@ -155,4 +155,11 @@ export const api = {
 
   annualPrice: (data: { effective_date: string; price: number }) =>
     post<PriceEntry>('/api/flows/annual-price', data),
+
+  // Push notifications
+  pushSubscribe: (subscription: PushSubscriptionJSON) =>
+    post<{ id: number; endpoint: string }>('/api/push/subscribe', subscription),
+  pushUnsubscribe: (subscription: PushSubscriptionJSON) =>
+    apiFetch<void>('/api/push/subscribe', { method: 'DELETE', body: JSON.stringify(subscription) }),
+  pushStatus: () => apiFetch<{ subscribed: boolean; subscription_count: number }>('/api/push/status'),
 }

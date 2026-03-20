@@ -3,3 +3,8 @@ __pycache__/
 data/
 *.db
 .pytest_cache/
+backend/static/
+frontend/dist/
+node_modules/
+.env
+test-results/

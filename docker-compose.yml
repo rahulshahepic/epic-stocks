@@ -1,0 +1,27 @@
+services:
+  app:
+    build: .
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DATABASE_URL=sqlite:///data/vesting.db
+      - JWT_SECRET=${JWT_SECRET}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - ENCRYPTION_MASTER_KEY=${ENCRYPTION_MASTER_KEY}
+      - PRIVACY_URL=${PRIVACY_URL:-}
+    expose:
+      - "8000"
+
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+    depends_on:
+      - app
+
+volumes:
+  caddy_data:

@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { to: '/grants', label: 'Grants' },
   { to: '/loans', label: 'Loans' },
   { to: '/prices', label: 'Prices' },
+  { to: '/import', label: 'Import' },
 ]
 
 export default function Layout() {

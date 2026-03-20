@@ -9,6 +9,9 @@ from starlette.testclient import TestClient
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+# Enable encryption for tests
+os.environ["ENCRYPTION_MASTER_KEY"] = "test-master-key-for-encryption-tests"
+
 import database
 from database import Base, get_db
 
@@ -28,8 +31,9 @@ TestSession = sessionmaker(bind=TEST_ENGINE, autoflush=False, autocommit=False)
 
 # Swap the engine so the app lifespan creates tables on the test engine
 database.engine = TEST_ENGINE
+database.SessionLocal.configure(bind=TEST_ENGINE)
 
-from main import app
+from main import app, _fastapi_app
 
 _user_counter = 0
 
@@ -61,10 +65,10 @@ def client(db_session):
         finally:
             pass
 
-    app.dependency_overrides[get_db] = _override
+    _fastapi_app.dependency_overrides[get_db] = _override
     with TestClient(app) as c:
         yield c
-    app.dependency_overrides.clear()
+    _fastapi_app.dependency_overrides.clear()
 
 
 def _fake_google_info(email):

@@ -74,8 +74,13 @@ Create a `.env` file in the repo root (or export these):
 JWT_SECRET=your-secret-key-here
 GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
 
-# Optional
+# Optional — encryption (encrypts financial data per-user in SQLite)
+ENCRYPTION_MASTER_KEY=your-random-master-key-here
+
+# Optional — privacy policy link shown on login page and footer
 PRIVACY_URL=https://github.com/youruser/epic-stocks/blob/main/PRIVACY.md
+
+# Optional — push notifications
 VAPID_PRIVATE_KEY=...
 VAPID_PUBLIC_KEY=...
 ```
@@ -183,11 +188,11 @@ This application stores sensitive financial data. Please read **[PRIVACY.md](PRI
 
 Key points:
 - **Data isolation** — every API query filters by authenticated user ID. Users cannot see each other's data.
-- **No encryption at rest (yet)** — the site operator has technical access to the SQLite database file. See [PLAN.md](PLAN.md) for the encryption roadmap.
+- **Encryption at rest** — set `ENCRYPTION_MASTER_KEY` to encrypt all financial data (shares, prices, loan amounts) per-user with AES-256-GCM. Each user gets a unique key. See [PLAN.md](PLAN.md) for details.
 - **Open source** — users can audit the code, self-host their own instance, or fork the project.
 - **Data portability** — users can export all their data to Excel at any time.
 
-If you run an instance for others: secure the database file, use HTTPS, and keep your `JWT_SECRET` secret.
+If you run an instance for others: secure the database file, use HTTPS, set `ENCRYPTION_MASTER_KEY`, and keep your secrets safe.
 
 ## Key Design Decisions
 

@@ -5,6 +5,7 @@ from database import get_db
 from models import User
 from schemas import GoogleAuthRequest, AuthResponse
 from auth import verify_google_token, create_token
+from crypto import encryption_enabled, generate_user_key, encrypt_user_key
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -23,7 +24,8 @@ def google_login(body: GoogleAuthRequest, db: Session = Depends(get_db)):
 
     user = db.query(User).filter(User.google_id == google_id).first()
     if not user:
-        user = User(email=email, google_id=google_id, name=name, picture=picture)
+        enc_key = encrypt_user_key(generate_user_key()) if encryption_enabled() else None
+        user = User(email=email, google_id=google_id, name=name, picture=picture, encrypted_key=enc_key)
         db.add(user)
         db.commit()
         db.refresh(user)

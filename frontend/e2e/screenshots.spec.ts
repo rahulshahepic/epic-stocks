@@ -39,3 +39,19 @@ test('dashboard - dark - desktop', async ({ page }) => {
   await authedPage(page, DESKTOP, 'dark')
   await page.screenshot({ path: `${OUT}/dashboard-dark-desktop.png`, fullPage: true })
 })
+
+test('admin - light - mobile', async ({ page }) => {
+  await authedPage(page, MOBILE, 'light')
+  await page.click('text=Admin')
+  await page.waitForLoadState('networkidle')
+  await page.waitForTimeout(1000)
+  await page.screenshot({ path: `${OUT}/admin-light-mobile.png`, fullPage: true })
+})
+
+test('admin - dark - mobile', async ({ page }) => {
+  await authedPage(page, MOBILE, 'dark')
+  await page.click('text=Admin')
+  await page.waitForLoadState('networkidle')
+  await page.waitForTimeout(1000)
+  await page.screenshot({ path: `${OUT}/admin-dark-mobile.png`, fullPage: true })
+})

@@ -135,7 +135,9 @@ A `PRIVACY.md` at the repo root, linked from:
 - Active users (logged in within last 30 days)
 - Total grants / loans / prices across all users (counts only, no financial values)
 - Storage usage (database file size)
-- User list: email, name, created_at, last_login, grant/loan/price counts
+- User list: email, name, created_at, last_login, grant/loan/price counts, admin badge
+- **Search** — filter users by email or name (debounced, server-side)
+- **Pagination** — 10 users per page by default, sorted by last active (most recent first)
 
 **What admin CANNOT see:**
 - Any user's financial data (prices, amounts, shares, computed events)
@@ -143,7 +145,7 @@ A `PRIVACY.md` at the repo root, linked from:
 
 ### Admin Actions
 
-- **Delete user** — cascades to all their grants, loans, prices, push subscriptions
+- **Delete user** — cascades to all their grants, loans, prices, push subscriptions. **Admin users cannot be deleted** (enforced server-side).
 - **Block email** — enter free-text email address + optional reason to prevent login
 - **Unblock email** — remove from blocklist
 - **View user activity** — when they last logged in, how many records they have
@@ -161,7 +163,7 @@ A `PRIVACY.md` at the repo root, linked from:
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/admin/stats` | Aggregate stats (counts, db size) |
-| GET | `/api/admin/users` | User list with metadata + record counts |
+| GET | `/api/admin/users?q=&limit=10&offset=0` | User list with metadata + record counts + is_admin flag (paginated, searchable) |
 | DELETE | `/api/admin/users/{id}` | Delete user + all their data |
 | GET | `/api/admin/blocked` | List blocked emails |
 | POST | `/api/admin/blocked` | Block an email (email + reason) |

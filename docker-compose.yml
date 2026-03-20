@@ -9,6 +9,7 @@ services:
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - ENCRYPTION_MASTER_KEY=${ENCRYPTION_MASTER_KEY}
       - PRIVACY_URL=${PRIVACY_URL:-}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-}
     expose:
       - "8000"
 

@@ -6,28 +6,45 @@ Epic Stocks tracks sensitive financial data (equity grants, stock prices, loan a
 
 ---
 
-## 1. Per-User Data Encryption (Future)
+## 1. Per-User Data Encryption
 
 ### Problem
 
 The site operator (whoever runs the server) has direct access to the SQLite database and can read any user's financial data — share counts, prices, loan amounts, grant details, and computed income/capital gains.
 
-### Current State
+### Implemented: Column-Level Encryption at Rest
 
-- Data isolation is enforced at the **query level** — every API endpoint filters by `user_id`
-- No encryption at rest; the database file is plain SQLite
-- The operator can open the `.db` file and read everything
+When `ENCRYPTION_MASTER_KEY` is set, all sensitive financial data is encrypted per-user before being written to SQLite.
 
-### Option A — Transparency (Implemented Now)
+**How it works:**
+- Each user gets a random AES-256 key on signup, stored encrypted with the server master key
+- Sensitive columns are encrypted via SQLAlchemy TypeDecorators (transparent to all routers and `core.py`)
+- Encrypted values are prefixed with `$ENC$` to distinguish from legacy plaintext
+- A pure ASGI middleware sets the user's decrypted key in a `contextvar` before each request
 
-Be upfront about the trust model. Since this is open-source and self-hosted:
+**Encrypted fields:**
+- `Grant.shares`, `Grant.price`, `Grant.dp_shares`
+- `Loan.amount`, `Loan.interest_rate`, `Loan.loan_number`
+- `Price.price`
 
-- Add a clear **Privacy Policy** explaining what's stored, who can see it, and what the operator's responsibilities are
-- Show the privacy policy link on the **Login page** (before users create an account) and in the app **footer**
-- Update the **README** to document the trust model
-- Let users make an informed decision before entering data
+**What this protects against:**
+- Casual database browsing (opening the `.db` file)
+- Database file theft or backup leaks
+- One user's data being readable if another user's key is compromised
 
-### Option B — Application-Level Encryption (Future)
+**What this does NOT protect against:**
+- Full server compromise (attacker has both DB file AND `ENCRYPTION_MASTER_KEY`)
+- This is defense-in-depth, not zero-knowledge
+
+**To enable:** Set `ENCRYPTION_MASTER_KEY` to a strong random string in your `.env` file. If not set, encryption is disabled and data is stored as plaintext (backward compatible).
+
+### Also Implemented: Transparency
+
+- **Privacy Policy** (`PRIVACY.md`) linked from Login page and app footer
+- **`PRIVACY_URL`** env var makes the link configurable for self-hosters
+- **README** documents the trust model and encryption options
+
+### Option C — Client-Side Encryption (Future, Complex)
 
 Encrypt sensitive financial fields before writing to SQLite, decrypt on read.
 
@@ -144,6 +161,8 @@ A new `/admin` route (backend + frontend) visible only to the admin user.
 
 ## Implementation Order
 
-1. **Now:** Privacy policy + transparency (Option A) ← this PR
-2. **Next:** Admin system (section 3)
-3. **Later:** Application-level encryption (Option B), if users request it
+1. **Done:** Privacy policy + transparency
+2. **Done:** Per-user column-level encryption (AES-256-GCM)
+3. **Next:** Admin system (section 3)
+4. **Later:** Migration script for existing plaintext databases
+5. **Later:** Client-side encryption (Option C), if architecture supports it

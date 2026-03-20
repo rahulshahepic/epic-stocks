@@ -12,6 +12,7 @@ import httpx
 
 from database import get_db
 from models import User
+from crypto import encryption_enabled, decrypt_user_key, set_current_key
 
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-me")
 JWT_EXPIRE_HOURS = 24
@@ -75,4 +76,8 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    if encryption_enabled() and user.encrypted_key:
+        set_current_key(decrypt_user_key(user.encrypted_key))
+    else:
+        set_current_key(None)
     return user

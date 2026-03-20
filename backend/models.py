@@ -2,6 +2,7 @@ from datetime import datetime, date, timezone
 from sqlalchemy import Integer, String, Float, Date, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
+from crypto import EncryptedFloat, EncryptedInt, EncryptedString
 
 
 class User(Base):
@@ -12,6 +13,7 @@ class User(Base):
     google_id: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String, nullable=True)
     picture: Mapped[str] = mapped_column(String, nullable=True)
+    encrypted_key: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     grants: Mapped[list["Grant"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -26,12 +28,12 @@ class Grant(Base):
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     type: Mapped[str] = mapped_column(String, nullable=False)
-    shares: Mapped[int] = mapped_column(Integer, nullable=False)
-    price: Mapped[float] = mapped_column(Float, nullable=False)
+    shares: Mapped[int] = mapped_column(EncryptedInt, nullable=False)
+    price: Mapped[float] = mapped_column(EncryptedFloat, nullable=False)
     vest_start: Mapped[date] = mapped_column(Date, nullable=False)
     periods: Mapped[int] = mapped_column(Integer, nullable=False)
     exercise_date: Mapped[date] = mapped_column(Date, nullable=False)
-    dp_shares: Mapped[int] = mapped_column(Integer, default=0)
+    dp_shares: Mapped[int] = mapped_column(EncryptedInt, default=0)
 
     user: Mapped["User"] = relationship(back_populates="grants")
 
@@ -45,10 +47,10 @@ class Loan(Base):
     grant_type: Mapped[str] = mapped_column(String, nullable=False)
     loan_type: Mapped[str] = mapped_column(String, nullable=False)
     loan_year: Mapped[int] = mapped_column(Integer, nullable=False)
-    amount: Mapped[float] = mapped_column(Float, nullable=False)
-    interest_rate: Mapped[float] = mapped_column(Float, nullable=False)
+    amount: Mapped[float] = mapped_column(EncryptedFloat, nullable=False)
+    interest_rate: Mapped[float] = mapped_column(EncryptedFloat, nullable=False)
     due_date: Mapped[date] = mapped_column(Date, nullable=False)
-    loan_number: Mapped[str] = mapped_column(String, nullable=True)
+    loan_number: Mapped[str] = mapped_column(EncryptedString, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="loans")
 
@@ -59,6 +61,6 @@ class Price(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     effective_date: Mapped[date] = mapped_column(Date, nullable=False)
-    price: Mapped[float] = mapped_column(Float, nullable=False)
+    price: Mapped[float] = mapped_column(EncryptedFloat, nullable=False)
 
     user: Mapped["User"] = relationship(back_populates="prices")

@@ -42,8 +42,18 @@ jobs:
         env:
           E2E_TEST: "1"
           JWT_SECRET: "e2e-test-secret"
+          DATABASE_URL: "sqlite:////tmp/e2e-test.db"
         run: |
-          cd backend && E2E_TEST=1 uvicorn main:app --host 0.0.0.0 --port 8000 &
+          cd backend && uvicorn main:app --host 0.0.0.0 --port 8000 &
           cd frontend && npx vite --port 5173 &
-          sleep 5
+          # Wait for backend to be ready
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8000/api/health && break
+            sleep 1
+          done
+          # Wait for frontend to be ready
+          for i in $(seq 1 15); do
+            curl -sf http://localhost:5173 && break
+            sleep 1
+          done
           cd frontend && npx playwright test

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { api, AdminStats, AdminUser, BlockedEmailEntry } from '../api.ts'
+import { api } from '../api.ts'
+import type { AdminStats, AdminUser, BlockedEmailEntry } from '../api.ts'
 
 export default function Admin() {
   const [stats, setStats] = useState<AdminStats | null>(null)

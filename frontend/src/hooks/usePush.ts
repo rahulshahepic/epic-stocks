@@ -31,7 +31,7 @@ export function usePush(vapidPublicKey: string) {
       await navigator.serviceWorker.ready
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey).buffer as ArrayBuffer,
       })
       const json = sub.toJSON()
       await api.pushSubscribe(json)

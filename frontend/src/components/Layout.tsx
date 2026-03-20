@@ -50,6 +50,26 @@ export default function Layout() {
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
         <Outlet />
       </main>
+
+      <footer className="border-t border-gray-200 py-4 text-center text-xs text-gray-400 dark:border-gray-800 dark:text-gray-500">
+        <a
+          href="https://github.com/rahulshahepic/epic-stocks/blob/main/PRIVACY.md"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline hover:text-gray-600 dark:hover:text-gray-300"
+        >
+          Privacy Policy
+        </a>
+        {' · '}
+        <a
+          href="https://github.com/rahulshahepic/epic-stocks"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline hover:text-gray-600 dark:hover:text-gray-300"
+        >
+          Source Code
+        </a>
+      </footer>
     </div>
   )
 }

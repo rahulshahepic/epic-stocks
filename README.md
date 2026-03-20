@@ -176,6 +176,18 @@ All endpoints require `Authorization: Bearer <jwt>` except auth and health.
 | POST | `/api/flows/add-bonus` | Add a bonus grant |
 | GET | `/api/health` | Health check |
 
+## Privacy & Data Security
+
+This application stores sensitive financial data. Please read **[PRIVACY.md](PRIVACY.md)** before deploying for others.
+
+Key points:
+- **Data isolation** — every API query filters by authenticated user ID. Users cannot see each other's data.
+- **No encryption at rest (yet)** — the site operator has technical access to the SQLite database file. See [PLAN.md](PLAN.md) for the encryption roadmap.
+- **Open source** — users can audit the code, self-host their own instance, or fork the project.
+- **Data portability** — users can export all their data to Excel at any time.
+
+If you run an instance for others: secure the database file, use HTTPS, and keep your `JWT_SECRET` secret.
+
 ## Key Design Decisions
 
 - **Events are never stored.** They're computed per-request from the three source tables (Grants, Loans, Prices). This eliminates sync issues entirely.

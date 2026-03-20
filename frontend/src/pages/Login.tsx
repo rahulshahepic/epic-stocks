@@ -94,6 +94,18 @@ export default function Login() {
             Google Client ID not configured. Set GOOGLE_CLIENT_ID on the server.
           </p>
         )}
+
+        <p className="mt-8 text-xs text-gray-400 dark:text-gray-500">
+          By signing in, you agree to our{' '}
+          <a
+            href="https://github.com/rahulshahepic/epic-stocks/blob/main/PRIVACY.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-gray-600 dark:hover:text-gray-300"
+          >
+            Privacy Policy
+          </a>
+        </p>
       </div>
     </div>
   )

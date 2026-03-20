@@ -13,7 +13,19 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            cd /opt/equity-vesting
+            cd /opt/epic-stocks
+
+            # Write .env from GitHub Secrets (VPS never stores secrets manually)
+            cat > .env <<'ENVEOF'
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+            DOMAIN=${{ secrets.DOMAIN }}
+            ENCRYPTION_MASTER_KEY=${{ secrets.ENCRYPTION_MASTER_KEY }}
+            PRIVACY_URL=${{ secrets.PRIVACY_URL }}
+            ENVEOF
+            # Remove leading whitespace from heredoc
+            sed -i 's/^[[:space:]]*//' .env
+
             git pull origin main
             docker compose build
             docker compose up -d

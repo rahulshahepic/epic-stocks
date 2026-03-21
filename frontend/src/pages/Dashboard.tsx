@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine,
+  XAxis, YAxis, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts'
 import { api } from '../api.ts'
 import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry } from '../api.ts'
@@ -24,6 +24,10 @@ function fmtDate(d: string) {
   const m = d.slice(5, 7)
   const y = d.slice(2, 4)
   return `${m}/${y}` // "2021-03-01" → "03/21"
+}
+
+function fmtFullDate(d: string) {
+  return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 /** Compute a tick interval that shows ~maxTicks evenly-spaced labels. */
@@ -124,50 +128,108 @@ function Card({ label, value, variant }: { label: string; value: string; variant
   )
 }
 
-function SharesChart({ events, c, range }: { events: TimelineEvent[]; c: ChartColors; range: DateRange }) {
+/** Detail card shown below a chart when user clicks a data point */
+function DetailCard({ items, onClose }: { items: { label: string; value: string }[]; onClose: () => void }) {
+  return (
+    <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800">
+      <div className="flex items-start justify-between">
+        <div className="flex flex-wrap gap-x-4 gap-y-0.5">
+          {items.map(({ label, value }) => (
+            <span key={label} className="text-xs text-gray-600 dark:text-gray-400">
+              <span className="font-medium text-gray-900 dark:text-gray-200">{value}</span>{' '}{label}
+            </span>
+          ))}
+        </div>
+        <button onClick={onClose} className="ml-2 shrink-0 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">&times;</button>
+      </div>
+    </div>
+  )
+}
+
+function SharesChart({ events, c, range, hasFuturePrices }: { events: TimelineEvent[]; c: ChartColors; range: DateRange; hasFuturePrices: boolean }) {
+  const [selected, setSelected] = useState<number | null>(null)
+
   const data = useMemo(() => {
     const filtered = filterByDateRange(events, range, 'date')
       .filter(e => e.cum_shares !== 0 || e.event_type === 'Exercise')
+    if (!hasFuturePrices) {
+      return filtered.map(e => ({
+        _date: e.date,
+        _label: fmtDate(e.date),
+        _event: e,
+        shares: e.cum_shares,
+      }))
+    }
+    // With future prices: split into solid past + dashed projected
     return filtered.map(e => {
       const isPast = e.date <= TODAY
       return {
         _date: e.date,
         _label: fmtDate(e.date),
-        pastShares: isPast ? e.cum_shares : null,
-        futureShares: !isPast ? e.cum_shares : null,
+        _event: e,
+        shares: isPast ? e.cum_shares : null,
+        projected: !isPast ? e.cum_shares : null,
       }
     }).map((d, i, arr) => {
-      // overlap: last past point also gets futureShares for line continuity
-      if (d.pastShares !== null && (i === arr.length - 1 || arr[i + 1].futureShares !== null)) {
-        return { ...d, futureShares: d.pastShares }
+      if (d.shares !== null && (i === arr.length - 1 || arr[i + 1].projected !== null)) {
+        return { ...d, projected: d.shares }
       }
       return d
     })
-  }, [events, range])
+  }, [events, range, hasFuturePrices])
+
   const tIdx = todayIndex(data)
+  const sel = selected !== null && selected < data.length ? data[selected] : null
 
   return (
-    <ResponsiveContainer width="100%" height={220}>
-      <LineChart data={data}>
-        <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
-        <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} padding={{ right: 10 }} />
-        <YAxis tick={{ fontSize: 10, fill: c.axis }} />
-        <Tooltip
-          formatter={(v, name) => [fmtNum(Number(v)), name === 'futureShares' ? 'Shares (projected)' : 'Shares']}
-          contentStyle={{ backgroundColor: c.tooltipBg, color: c.tooltipText, border: 'none', borderRadius: 8 }}
+    <>
+      <ResponsiveContainer width="100%" height={220}>
+        <LineChart data={data} onClick={(state) => {
+          if (state?.activeTooltipIndex != null) setSelected(state.activeTooltipIndex)
+        }}>
+          <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
+          <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} padding={{ right: 10 }} />
+          <YAxis tick={{ fontSize: 10, fill: c.axis }} />
+          {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
+          {selected !== null && selected < data.length && (
+            <ReferenceLine x={data[selected]._label} stroke="#818cf8" strokeWidth={1.5} />
+          )}
+          <Line type="monotone" dataKey="shares" stroke="#818cf8" strokeWidth={2} dot={false} name="Shares" connectNulls={false} />
+          {hasFuturePrices && (
+            <Line type="monotone" dataKey="projected" stroke="#818cf8" strokeWidth={2} dot={false} name="Projected" strokeDasharray="6 3" opacity={0.5} connectNulls={false} />
+          )}
+        </LineChart>
+      </ResponsiveContainer>
+      {sel && (
+        <DetailCard
+          onClose={() => setSelected(null)}
+          items={[
+            { label: '', value: fmtFullDate(sel._date) },
+            { label: 'shares', value: fmtNum(sel._event.cum_shares) },
+            ...(sel._event.event_type ? [{ label: '', value: sel._event.event_type }] : []),
+            ...(sel._event.vested_shares ? [{ label: 'vested', value: fmtNum(sel._event.vested_shares) }] : []),
+          ]}
         />
-        {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
-        <Line type="monotone" dataKey="pastShares" stroke="#818cf8" strokeWidth={2} dot={false} name="Shares" connectNulls={false} />
-        <Line type="monotone" dataKey="futureShares" stroke="#818cf8" strokeWidth={2} dot={false} name="Shares (projected)" strokeDasharray="6 3" opacity={0.5} connectNulls={false} />
-      </LineChart>
-    </ResponsiveContainer>
+      )}
+    </>
   )
 }
 
-function IncomeCapGainsChart({ events, c, range }: { events: TimelineEvent[]; c: ChartColors; range: DateRange }) {
+function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: TimelineEvent[]; c: ChartColors; range: DateRange; hasFuturePrices: boolean }) {
+  const [selected, setSelected] = useState<number | null>(null)
+
   const data = useMemo(() => {
     const filtered = filterByDateRange(events, range, 'date')
-    // Compute cumulative vesting vs price cap gains for the future split
+    if (!hasFuturePrices) {
+      return filtered.map(e => ({
+        _date: e.date,
+        _label: fmtDate(e.date),
+        _event: e,
+        income: e.cum_income,
+        gains: e.cum_cap_gains,
+      }))
+    }
+    // With future prices: split past solid vs future projected
     let cumVestCg = 0
     let cumPriceCg = 0
     return filtered.map(e => {
@@ -177,114 +239,143 @@ function IncomeCapGainsChart({ events, c, range }: { events: TimelineEvent[]; c:
       return {
         _date: e.date,
         _label: fmtDate(e.date),
-        // Past: solid series
-        pastIncome: isPast ? e.cum_income : null,
-        pastGains: isPast ? e.cum_cap_gains : null,
-        // Future: solid for vesting-driven, half-shade for price-driven
-        futureIncome: !isPast ? e.cum_income : null,
-        futureVestGains: !isPast ? cumVestCg : null,
-        futurePriceGains: !isPast ? cumPriceCg : null,
+        _event: e,
+        income: isPast ? e.cum_income : null,
+        gains: isPast ? e.cum_cap_gains : null,
+        projIncome: !isPast ? e.cum_income : null,
+        projVestGains: !isPast ? cumVestCg : null,
+        projPriceGains: !isPast ? cumPriceCg : null,
       }
     }).map((d, i, arr) => {
-      // overlap: last past point also gets future values for area continuity
-      if (d.pastIncome !== null && (i === arr.length - 1 || arr[i + 1].futureIncome !== null)) {
-        return { ...d, futureIncome: d.pastIncome, futureVestGains: d.pastGains, futurePriceGains: 0 }
+      if (d.income !== null && (i === arr.length - 1 || arr[i + 1].projIncome !== null)) {
+        return { ...d, projIncome: d.income, projVestGains: d.gains, projPriceGains: 0 }
       }
       return d
     })
-  }, [events, range])
+  }, [events, range, hasFuturePrices])
+
   const tIdx = todayIndex(data)
+  const sel = selected !== null && selected < data.length ? data[selected] : null
 
   return (
-    <ResponsiveContainer width="100%" height={250}>
-      <AreaChart data={data}>
-        <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
-        <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} padding={{ right: 10 }} />
-        <YAxis tick={{ fontSize: 10, fill: c.axis }} />
-        <Tooltip
-          formatter={(v, name) => {
-            const label = String(name).startsWith('future') ? `${String(name).replace('future', '')} (projected)` : String(name)
-            return [fmt$(Number(v)), label]
-          }}
-          contentStyle={{ backgroundColor: c.tooltipBg, color: c.tooltipText, border: 'none', borderRadius: 8 }}
+    <>
+      <ResponsiveContainer width="100%" height={250}>
+        <AreaChart data={data} onClick={(state) => {
+          if (state?.activeTooltipIndex != null) setSelected(state.activeTooltipIndex)
+        }}>
+          <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
+          <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} padding={{ right: 10 }} />
+          <YAxis tick={{ fontSize: 10, fill: c.axis }} />
+          {hasFuturePrices && (
+            <text x="50%" y={16} textAnchor="middle" fontSize={10} fill={c.axis}>
+              <tspan fill="#10b981">&#9632;</tspan> Income{'  '}
+              <tspan fill="#8b5cf6">&#9632;</tspan> Cap Gains{'  '}
+              <tspan fill="#c4b5fd">&#9632;</tspan> Projected
+            </text>
+          )}
+          {!hasFuturePrices && (
+            <text x="50%" y={16} textAnchor="middle" fontSize={10} fill={c.axis}>
+              <tspan fill="#10b981">&#9632;</tspan> Income{'  '}
+              <tspan fill="#8b5cf6">&#9632;</tspan> Cap Gains
+            </text>
+          )}
+          {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
+          {selected !== null && selected < data.length && (
+            <ReferenceLine x={data[selected]._label} stroke="#8b5cf6" strokeWidth={1.5} />
+          )}
+          {/* Solid fills — always present */}
+          <Area type="monotone" dataKey="income" stackId="main" fill="#34d399" fillOpacity={0.7} stroke="#10b981" name="Income" connectNulls={false} />
+          <Area type="monotone" dataKey="gains" stackId="main" fill="#a78bfa" fillOpacity={0.7} stroke="#8b5cf6" name="Cap Gains" connectNulls={false} />
+          {/* Projected — only when future prices exist */}
+          {hasFuturePrices && <>
+            <Area type="monotone" dataKey="projIncome" stackId="proj" fill="#34d399" fillOpacity={0.35} stroke="#10b981" strokeDasharray="6 3" name="projIncome" connectNulls={false} />
+            <Area type="monotone" dataKey="projVestGains" stackId="proj" fill="#a78bfa" fillOpacity={0.35} stroke="#8b5cf6" strokeDasharray="6 3" name="projVestGains" connectNulls={false} />
+            <Area type="monotone" dataKey="projPriceGains" stackId="proj" fill="#c4b5fd" fillOpacity={0.2} stroke="#c4b5fd" strokeDasharray="3 3" name="projPriceGains" connectNulls={false} />
+          </>}
+        </AreaChart>
+      </ResponsiveContainer>
+      {sel && (
+        <DetailCard
+          onClose={() => setSelected(null)}
+          items={[
+            { label: '', value: fmtFullDate(sel._date) },
+            { label: 'income', value: fmt$(sel._event.cum_income) },
+            { label: 'cap gains', value: fmt$(sel._event.cum_cap_gains) },
+            ...(sel._event.event_type ? [{ label: '', value: sel._event.event_type }] : []),
+          ]}
         />
-        <Legend wrapperStyle={{ fontSize: 11 }} content={() => (
-          <div className="flex justify-center gap-3 text-[11px]">
-            <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: '#10b981' }} />Income</span>
-            <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: '#8b5cf6' }} />Cap Gains</span>
-            <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: '#c4b5fd' }} />Projected</span>
-          </div>
-        )} />
-        {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
-        {/* Past: solid fills */}
-        <Area type="monotone" dataKey="pastIncome" stackId="past" fill="#34d399" fillOpacity={0.7} stroke="#10b981" name="Income" connectNulls={false} />
-        <Area type="monotone" dataKey="pastGains" stackId="past" fill="#a78bfa" fillOpacity={0.7} stroke="#8b5cf6" name="Cap Gains" connectNulls={false} />
-        {/* Future: solid for vesting-driven gains */}
-        <Area type="monotone" dataKey="futureIncome" stackId="future" fill="#34d399" fillOpacity={0.35} stroke="#10b981" strokeDasharray="6 3" name="futureIncome" connectNulls={false} />
-        <Area type="monotone" dataKey="futureVestGains" stackId="future" fill="#a78bfa" fillOpacity={0.35} stroke="#8b5cf6" strokeDasharray="6 3" name="futureVestGains" connectNulls={false} />
-        {/* Future: half-shade for price-driven (speculative) gains */}
-        <Area type="monotone" dataKey="futurePriceGains" stackId="future" fill="#c4b5fd" fillOpacity={0.2} stroke="#c4b5fd" strokeDasharray="3 3" name="futurePriceGains" connectNulls={false} />
-      </AreaChart>
-    </ResponsiveContainer>
+      )}
+    </>
   )
 }
 
-function PriceChart({ prices, events, c, range }: { prices: PriceEntry[]; events: TimelineEvent[]; c: ChartColors; range: DateRange }) {
+function PriceChart({ prices, events, c, range, hasFuturePrices }: { prices: PriceEntry[]; events: TimelineEvent[]; c: ChartColors; range: DateRange; hasFuturePrices: boolean }) {
+  const [selected, setSelected] = useState<number | null>(null)
+
   const data = useMemo(() => {
     const filtered = filterByDateRange(prices, range, 'effective_date')
     if (filtered.length === 0) return []
 
-    // Build past price data
+    if (!hasFuturePrices) {
+      return filtered.map(p => ({
+        _date: p.effective_date,
+        _label: fmtDate(p.effective_date),
+        _price: p.price,
+        price: p.price,
+      }))
+    }
+
+    // With future prices: split solid past + dashed future
     const result = filtered.map(p => ({
       _date: p.effective_date,
       _label: fmtDate(p.effective_date),
-      pastPrice: p.effective_date <= TODAY ? p.price : null,
-      futurePrice: p.effective_date > TODAY ? p.price : null,
+      _price: p.price,
+      price: p.effective_date <= TODAY ? p.price : null,
+      projected: p.effective_date > TODAY ? p.price : null,
     }))
 
-    // Find last known price and last event date for flat-forward projection
-    const lastPrice = filtered[filtered.length - 1].price
-    const lastPriceDate = filtered[filtered.length - 1].effective_date
-    const lastEventDate = events.length > 0 ? events[events.length - 1].date : null
-
-    if (lastEventDate && lastEventDate > lastPriceDate) {
-      // Overlap: last past/known point also gets futurePrice
-      const lastKnownIdx = result.findIndex(d => d._date > TODAY) - 1
-      const overlapIdx = lastKnownIdx >= 0 ? lastKnownIdx : result.length - 1
-      if (result[overlapIdx]) {
-        result[overlapIdx] = { ...result[overlapIdx], futurePrice: result[overlapIdx].pastPrice ?? lastPrice }
-      }
-
-      // Add flat-forward endpoint at last event date (if within custom range)
-      if (range.mode === 'all' || lastEventDate <= range.end) {
-        result.push({
-          _date: lastEventDate,
-          _label: fmtDate(lastEventDate),
-          pastPrice: null,
-          futurePrice: lastPrice,
-        })
-      }
+    // Overlap: last past point also gets projected for line continuity
+    const lastKnownIdx = result.findIndex(d => d._date > TODAY) - 1
+    const overlapIdx = lastKnownIdx >= 0 ? lastKnownIdx : result.length - 1
+    if (result[overlapIdx] && result.some(d => d.projected !== null)) {
+      result[overlapIdx] = { ...result[overlapIdx], projected: result[overlapIdx].price ?? result[overlapIdx]._price }
     }
 
     return result
-  }, [prices, events, range])
+  }, [prices, range, hasFuturePrices])
+
   const tIdx = todayIndex(data)
+  const sel = selected !== null && selected < data.length ? data[selected] : null
 
   return (
-    <ResponsiveContainer width="100%" height={220}>
-      <LineChart data={data}>
-        <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
-        <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} padding={{ right: 10 }} />
-        <YAxis tick={{ fontSize: 10, fill: c.axis }} />
-        <Tooltip
-          formatter={(v, name) => [fmtPrice(Number(v)), name === 'futurePrice' ? 'Price (projected)' : 'Price']}
-          contentStyle={{ backgroundColor: c.tooltipBg, color: c.tooltipText, border: 'none', borderRadius: 8 }}
+    <>
+      <ResponsiveContainer width="100%" height={220}>
+        <LineChart data={data} onClick={(state) => {
+          if (state?.activeTooltipIndex != null) setSelected(state.activeTooltipIndex)
+        }}>
+          <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
+          <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} padding={{ right: 10 }} />
+          <YAxis tick={{ fontSize: 10, fill: c.axis }} />
+          {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
+          {selected !== null && selected < data.length && (
+            <ReferenceLine x={data[selected]._label} stroke="#fbbf24" strokeWidth={1.5} />
+          )}
+          <Line type="monotone" dataKey="price" stroke="#fbbf24" strokeWidth={2} dot={false} name="Price" connectNulls={false} />
+          {hasFuturePrices && (
+            <Line type="monotone" dataKey="projected" stroke="#fbbf24" strokeWidth={2} dot={false} name="Projected" strokeDasharray="6 3" opacity={0.5} connectNulls={false} />
+          )}
+        </LineChart>
+      </ResponsiveContainer>
+      {sel && (
+        <DetailCard
+          onClose={() => setSelected(null)}
+          items={[
+            { label: '', value: fmtFullDate(sel._date) },
+            { label: '', value: fmtPrice(sel._price) },
+          ]}
         />
-        {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
-        <Line type="monotone" dataKey="pastPrice" stroke="#fbbf24" strokeWidth={2} dot={false} name="Price" connectNulls={false} />
-        <Line type="monotone" dataKey="futurePrice" stroke="#fbbf24" strokeWidth={2} dot={false} name="Price (projected)" strokeDasharray="6 3" opacity={0.5} connectNulls={false} />
-      </LineChart>
-    </ResponsiveContainer>
+      )}
+    </>
   )
 }
 
@@ -305,10 +396,6 @@ function LoanChart({ loans, c }: { loans: LoanEntry[]; c: ChartColors }) {
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
           <XAxis dataKey="year" tick={{ fontSize: 10, fill: c.axis }} />
           <YAxis tick={{ fontSize: 10, fill: c.axis }} />
-          <Tooltip
-            formatter={(v) => fmt$(Number(v))}
-            contentStyle={{ backgroundColor: c.tooltipBg, color: c.tooltipText, border: 'none', borderRadius: 8 }}
-          />
           <Bar dataKey="amount" fill="#f87171" radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
@@ -344,6 +431,12 @@ export default function Dashboard() {
   const c = useChartColors()
   const [range, setRange] = useState<DateRange>({ mode: 'all', start: '', end: '' })
 
+  // Only show projected/dashed styling when there are actual future price entries (what-if scenario)
+  const hasFuturePrices = useMemo(() => {
+    if (!prices) return false
+    return prices.some(p => p.effective_date > TODAY)
+  }, [prices])
+
   if (dashLoading) {
     return <p className="p-6 text-center text-sm text-gray-400">Loading...</p>
   }
@@ -370,17 +463,17 @@ export default function Dashboard() {
       <div className="grid gap-4 md:grid-cols-2">
         {events && events.length > 0 && (
           <ChartBox title="Shares Over Time" range={range} setRange={setRange}>
-            <SharesChart events={events} c={c} range={range} />
+            <SharesChart events={events} c={c} range={range} hasFuturePrices={hasFuturePrices} />
           </ChartBox>
         )}
         {events && events.length > 0 && (
           <ChartBox title="Income vs Cap Gains" range={range} setRange={setRange}>
-            <IncomeCapGainsChart events={events} c={c} range={range} />
+            <IncomeCapGainsChart events={events} c={c} range={range} hasFuturePrices={hasFuturePrices} />
           </ChartBox>
         )}
         {prices && prices.length > 0 && (
           <ChartBox title="Share Price History" range={range} setRange={setRange}>
-            <PriceChart prices={prices} events={events ?? []} c={c} range={range} />
+            <PriceChart prices={prices} events={events ?? []} c={c} range={range} hasFuturePrices={hasFuturePrices} />
           </ChartBox>
         )}
         {loans && loans.length > 0 && <LoanChart loans={loans} c={c} />}

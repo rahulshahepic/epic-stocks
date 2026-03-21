@@ -189,6 +189,8 @@ export const api = {
   adminBlockEmail: (email: string, reason: string) =>
     post<BlockedEmailEntry>('/api/admin/blocked', { email, reason }),
   adminUnblock: (id: number) => del(`/api/admin/blocked/${id}`),
+  adminErrors: (limit = 50) => apiFetch<ErrorLogEntry[]>(`/api/admin/errors?limit=${limit}`),
+  adminClearErrors: () => del('/api/admin/errors'),
 }
 
 export interface AdminStats {
@@ -222,4 +224,15 @@ export interface BlockedEmailEntry {
   email: string
   reason: string | null
   blocked_at: string
+}
+
+export interface ErrorLogEntry {
+  id: number
+  timestamp: string
+  method: string | null
+  path: string | null
+  error_type: string | null
+  error_message: string | null
+  traceback: string | null
+  user_id: number | null
 }

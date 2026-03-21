@@ -7,5 +7,12 @@
     @nocache path / /index.html /sw.js /manifest.json
     header @nocache Cache-Control "no-cache"
 
+    # Security headers
+    header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://accounts.google.com; frame-ancestors 'none'"
+    header X-Content-Type-Options "nosniff"
+    header X-Frame-Options "DENY"
+    header Referrer-Policy "strict-origin-when-cross-origin"
+    header Permissions-Policy "geolocation=(), camera=(), microphone=()"
+
     reverse_proxy app:8000
 }

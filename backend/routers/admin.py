@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 
 from database import get_db
-from models import User, Grant, Loan, Price, PushSubscription, BlockedEmail
+from models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, ErrorLog
 from auth import get_admin_user, get_admin_emails
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -156,4 +156,40 @@ def unblock_email(block_id: int, admin: User = Depends(get_admin_user), db: Sess
     if not entry:
         raise HTTPException(status_code=404, detail="Blocked entry not found")
     db.delete(entry)
+    db.commit()
+
+
+class ErrorLogOut(BaseModel):
+    id: int
+    timestamp: str
+    method: str | None
+    path: str | None
+    error_type: str | None
+    error_message: str | None
+    traceback: str | None
+    user_id: int | None
+
+
+@router.get("/errors", response_model=list[ErrorLogOut])
+def admin_errors(
+    limit: int = 50,
+    admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    entries = db.query(ErrorLog).order_by(ErrorLog.timestamp.desc()).limit(limit).all()
+    return [ErrorLogOut(
+        id=e.id,
+        timestamp=e.timestamp.isoformat() if e.timestamp else "",
+        method=e.method,
+        path=e.path,
+        error_type=e.error_type,
+        error_message=e.error_message,
+        traceback=e.traceback,
+        user_id=e.user_id,
+    ) for e in entries]
+
+
+@router.delete("/errors", status_code=204)
+def clear_errors(admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    db.query(ErrorLog).delete()
     db.commit()

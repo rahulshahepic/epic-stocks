@@ -121,17 +121,27 @@ def _validate_price(p: dict, row: int) -> list[str]:
 # IMPORT (now supports partial — only sheets that exist)
 # ============================================================
 
+_MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
+_XLSX_MAGIC = b"PK\x03\x04"  # ZIP/OOXML magic bytes
+
+
 @router.post("/import/excel", status_code=201)
 def import_excel(
     file: UploadFile = File(...),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if not file.filename or not file.filename.endswith((".xlsx", ".xls")):
+    if not file.filename or not file.filename.lower().endswith((".xlsx", ".xls")):
         raise HTTPException(status_code=400, detail="File must be an Excel (.xlsx) file")
 
+    raw = file.file.read(_MAX_UPLOAD_BYTES + 1)
+    if len(raw) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="File too large (max 5 MB)")
+    if not raw.startswith(_XLSX_MAGIC):
+        raise HTTPException(status_code=400, detail="File is not a valid Excel (.xlsx) file")
+
     with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=True) as tmp:
-        tmp.write(file.file.read())
+        tmp.write(raw)
         tmp.flush()
         try:
             wb = openpyxl.load_workbook(tmp.name)

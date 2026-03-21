@@ -2,13 +2,11 @@
  * Capture README screenshots. Run via: ./screenshots/run.sh
  * Skipped unless SCREENSHOT_TOKEN is set.
  */
-import { test as base, type Page } from '@playwright/test'
+import { test, type Page } from '@playwright/test'
 
 const BASE = process.env.SCREENSHOT_BASE_URL ?? 'http://localhost:5173'
 const TOKEN = process.env.SCREENSHOT_TOKEN ?? ''
 const OUT = '../screenshots'
-
-const test = TOKEN ? base : base.skip
 
 const MOBILE = { width: 375, height: 812 }
 const DESKTOP = { width: 1280, height: 800 }
@@ -23,38 +21,44 @@ async function authedPage(page: Page, viewport: { width: number; height: number 
   await page.waitForTimeout(1500)
 }
 
-test('dashboard - light - mobile', async ({ page }) => {
-  await authedPage(page, MOBILE, 'light')
-  await page.screenshot({ path: `${OUT}/dashboard-light-mobile.png`, fullPage: true })
-})
+test.describe('Screenshots', () => {
+  test.beforeEach(() => {
+    test.skip(!TOKEN, 'Set SCREENSHOT_TOKEN env var to run screenshot tests')
+  })
 
-test('dashboard - dark - mobile', async ({ page }) => {
-  await authedPage(page, MOBILE, 'dark')
-  await page.screenshot({ path: `${OUT}/dashboard-dark-mobile.png`, fullPage: true })
-})
+  test('dashboard - light - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    await page.screenshot({ path: `${OUT}/dashboard-light-mobile.png`, fullPage: true })
+  })
 
-test('dashboard - light - desktop', async ({ page }) => {
-  await authedPage(page, DESKTOP, 'light')
-  await page.screenshot({ path: `${OUT}/dashboard-light-desktop.png`, fullPage: true })
-})
+  test('dashboard - dark - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'dark')
+    await page.screenshot({ path: `${OUT}/dashboard-dark-mobile.png`, fullPage: true })
+  })
 
-test('dashboard - dark - desktop', async ({ page }) => {
-  await authedPage(page, DESKTOP, 'dark')
-  await page.screenshot({ path: `${OUT}/dashboard-dark-desktop.png`, fullPage: true })
-})
+  test('dashboard - light - desktop', async ({ page }) => {
+    await authedPage(page, DESKTOP, 'light')
+    await page.screenshot({ path: `${OUT}/dashboard-light-desktop.png`, fullPage: true })
+  })
 
-test('admin - light - mobile', async ({ page }) => {
-  await authedPage(page, MOBILE, 'light')
-  await page.click('text=Admin')
-  await page.waitForLoadState('networkidle')
-  await page.waitForTimeout(1000)
-  await page.screenshot({ path: `${OUT}/admin-light-mobile.png`, fullPage: true })
-})
+  test('dashboard - dark - desktop', async ({ page }) => {
+    await authedPage(page, DESKTOP, 'dark')
+    await page.screenshot({ path: `${OUT}/dashboard-dark-desktop.png`, fullPage: true })
+  })
 
-test('admin - dark - mobile', async ({ page }) => {
-  await authedPage(page, MOBILE, 'dark')
-  await page.click('text=Admin')
-  await page.waitForLoadState('networkidle')
-  await page.waitForTimeout(1000)
-  await page.screenshot({ path: `${OUT}/admin-dark-mobile.png`, fullPage: true })
+  test('admin - light - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    await page.click('text=Admin')
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(1000)
+    await page.screenshot({ path: `${OUT}/admin-light-mobile.png`, fullPage: true })
+  })
+
+  test('admin - dark - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'dark')
+    await page.click('text=Admin')
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(1000)
+    await page.screenshot({ path: `${OUT}/admin-dark-mobile.png`, fullPage: true })
+  })
 })

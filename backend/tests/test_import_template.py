@@ -6,6 +6,8 @@ import openpyxl
 from datetime import date
 from tests.conftest import register_user, auth_header
 
+FIXTURE = os.path.join(os.path.dirname(__file__), "..", "..", "test_data", "fixture.xlsx")
+
 
 def _make_xlsx(sheets: dict[str, list[list]]) -> bytes:
     """Build a minimal xlsx with given sheets. Each sheet is {name: [[row1], [row2], ...]}."""
@@ -176,3 +178,117 @@ def test_import_rejects_negative_price(client):
     )
     assert resp.status_code == 400
     assert "price must be positive" in resp.json()["detail"]
+
+
+# ============================================================
+# TEMPLATE FILL-AND-IMPORT
+# ============================================================
+
+def test_template_fill_and_import(client):
+    """
+    Download template → write real data into it → import → verify state and events.
+    Catches regressions where the template structure diverges from what the importer expects.
+    """
+    token = register_user(client)
+
+    # Download the template
+    resp = client.get("/api/import/template", headers=auth_header(token))
+    assert resp.status_code == 200
+    wb = openpyxl.load_workbook(io.BytesIO(resp.content))
+
+    # --- Schedule: overwrite example row with real data ---
+    ws = wb["Schedule"]
+    ws.cell(row=2, column=1).value = 2022
+    ws.cell(row=2, column=2).value = "Purchase"
+    ws.cell(row=2, column=3).value = 8000
+    ws.cell(row=2, column=4).value = 12.00
+    ws.cell(row=2, column=5).value = date(2022, 3, 1)
+    ws.cell(row=2, column=6).value = 4
+    ws.cell(row=2, column=14).value = date(2032, 3, 1)
+    ws.cell(row=2, column=15).value = 0
+
+    # --- Prices: overwrite example row ---
+    wp = wb["Prices"]
+    wp.cell(row=2, column=1).value = date(2022, 1, 1)
+    wp.cell(row=2, column=2).value = 12.00
+
+    # --- Loans: clear example row so importer sees zero loans ---
+    wl = wb["Loans"]
+    for col in range(1, 9):
+        wl.cell(row=2, column=col).value = None
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    resp = client.post(
+        "/api/import/excel",
+        files={"file": ("filled_template.xlsx", buf, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 201, resp.json()
+    data = resp.json()
+    assert data["grants"] == 1
+    assert data["prices"] == 1
+    assert data["loans"] == 0
+
+    # Events computation must succeed and produce vesting events for the grant
+    events = client.get("/api/events", headers=auth_header(token)).json()
+    assert isinstance(events, list)
+    assert len(events) > 0
+
+
+# ============================================================
+# EXPORT IDEMPOTENCY
+# ============================================================
+
+def _data_snapshot(client, token):
+    """Return sorted, id-stripped dicts for grants, loans, and prices."""
+    def _pick(rows, keys):
+        return sorted([{k: r[k] for k in keys} for r in rows], key=str)
+
+    grants = _pick(
+        client.get("/api/grants", headers=auth_header(token)).json(),
+        ["year", "type", "shares", "price", "vest_start", "periods", "exercise_date", "dp_shares"],
+    )
+    loans = _pick(
+        client.get("/api/loans", headers=auth_header(token)).json(),
+        ["grant_year", "grant_type", "loan_type", "loan_year", "amount", "interest_rate", "due_date"],
+    )
+    prices = _pick(
+        client.get("/api/prices", headers=auth_header(token)).json(),
+        ["effective_date", "price"],
+    )
+    return grants, loans, prices
+
+
+def test_export_idempotent(client):
+    """
+    Import fixture → export → re-import the export → data rows are field-for-field identical.
+    Verifies that the exporter and importer are fully concordant for real data.
+    """
+    token = register_user(client)
+
+    with open(FIXTURE, "rb") as f:
+        client.post(
+            "/api/import/excel",
+            files={"file": ("fixture.xlsx", f, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            headers=auth_header(token),
+        )
+
+    grants_before, loans_before, prices_before = _data_snapshot(client, token)
+
+    # Export then re-import
+    exported = client.get("/api/export/excel", headers=auth_header(token)).content
+    resp = client.post(
+        "/api/import/excel",
+        files={"file": ("exported.xlsx", io.BytesIO(exported), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 201
+
+    grants_after, loans_after, prices_after = _data_snapshot(client, token)
+
+    assert grants_after == grants_before, "grants changed after export→import"
+    assert loans_after == loans_before, "loans changed after export→import"
+    assert prices_after == prices_before, "prices changed after export→import"

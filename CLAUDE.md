@@ -38,6 +38,9 @@ Follow the order in SPEC.md. Build backend first, then frontend. **Every step mu
 - TypeScript: functional components, hooks, Tailwind utility classes
 - Mobile-first responsive design — this is primarily used on a phone
 
+## UI Change Checklist
+- **Update README screenshots after any significant UI change.** When modifying dashboard charts, adding new pages, or changing visual layout, capture updated screenshots and update README.md so documentation stays current.
+
 ## Deployment Notes
 - Caddy serves hashed assets (`/assets/*`) with immutable cache headers. `index.html`, `sw.js`, and `manifest.json` use `no-cache` for instant updates.
 - The service worker (`frontend/public/sw.js`) uses `skipWaiting` + `clients.claim` and network-first navigation for cache busting.

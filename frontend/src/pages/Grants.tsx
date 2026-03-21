@@ -17,8 +17,8 @@ const empty: GrantForm = {
   dp_shares: 0,
 }
 
-function fmt$(n: number) {
-  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+function fmtPrice(n: number) {
+  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 function fmtNum(n: number) {
@@ -138,16 +138,16 @@ export default function Grants() {
           <Field label="Year" type="number" value={form.year} onChange={v => setForm(f => ({ ...f, year: +v }))} />
           <Field label="Shares" type="number" value={form.shares} onChange={v => setForm(f => ({ ...f, shares: +v }))} />
           {mode !== 'bonus' && (
-            <Field label="Price per Share" type="number" step="0.01" value={form.price} onChange={v => setForm(f => ({ ...f, price: +v }))} />
+            <Field label="Cost Basis" type="number" step="0.01" value={form.price} onChange={v => setForm(f => ({ ...f, price: +v }))} />
           )}
           {mode === 'bonus' && (
-            <Field label="Price (optional)" type="number" step="0.01" value={form.price} onChange={v => setForm(f => ({ ...f, price: +v }))} />
+            <Field label="Cost Basis (optional)" type="number" step="0.01" value={form.price} onChange={v => setForm(f => ({ ...f, price: +v }))} />
           )}
           <Field label="Vest Start" type="date" value={form.vest_start} onChange={v => setForm(f => ({ ...f, vest_start: v }))} />
           <Field label="Vest Periods" type="number" value={form.periods} onChange={v => setForm(f => ({ ...f, periods: +v }))} />
           <Field label="Exercise Date" type="date" value={form.exercise_date} onChange={v => setForm(f => ({ ...f, exercise_date: v }))} />
           {mode === 'purchase' && (
-            <Field label="DP Shares" type="number" value={form.dp_shares} onChange={v => setForm(f => ({ ...f, dp_shares: +v }))} />
+            <FieldWithInfo label="Down Payment Shares" info="Shares used as down payment in a stock exchange" type="number" value={form.dp_shares} onChange={v => setForm(f => ({ ...f, dp_shares: +v }))} />
           )}
         </div>
 
@@ -206,11 +206,11 @@ export default function Grants() {
               <th className="px-3 py-2">Year</th>
               <th className="px-3 py-2">Type</th>
               <th className="px-3 py-2 text-right">Shares</th>
-              <th className="px-3 py-2 text-right">Price</th>
+              <th className="px-3 py-2 text-right">Cost Basis</th>
               <th className="px-3 py-2">Vest Start</th>
               <th className="px-3 py-2 text-right">Periods</th>
               <th className="px-3 py-2">Exercise</th>
-              <th className="px-3 py-2 text-right">DP</th>
+              <th className="px-3 py-2 text-right" title="Down Payment Shares">Down Pmt</th>
               <th className="px-3 py-2"></th>
             </tr>
           </thead>
@@ -224,14 +224,14 @@ export default function Grants() {
                   </span>
                 </td>
                 <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtNum(g.shares)}</td>
-                <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmt$(g.price)}</td>
+                <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtPrice(g.price)}</td>
                 <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{g.vest_start}</td>
                 <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{g.periods}</td>
                 <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{g.exercise_date}</td>
                 <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{g.dp_shares ? fmtNum(g.dp_shares) : '—'}</td>
                 <td className="px-3 py-2 text-right">
                   <button onClick={() => openEdit(g)} className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 mr-2">Edit</button>
-                  <button onClick={() => handleDelete(g.id)} className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300">Del</button>
+                  <button onClick={() => handleDelete(g.id)} className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300">Delete</button>
                 </td>
               </tr>
             ))}
@@ -252,6 +252,33 @@ function Field({ label, type, value, onChange, step }: {
   return (
     <label className="block">
       <span className="text-xs text-gray-500 dark:text-gray-400">{label}</span>
+      <input
+        type={type}
+        step={step}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+      />
+    </label>
+  )
+}
+
+function FieldWithInfo({ label, info, type, value, onChange, step }: {
+  label: string; info: string; type: string; value: string | number; onChange: (v: string) => void; step?: string
+}) {
+  const [showInfo, setShowInfo] = useState(false)
+  return (
+    <label className="block">
+      <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+        {label}
+        <button
+          type="button"
+          onClick={e => { e.preventDefault(); setShowInfo(v => !v) }}
+          className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 leading-none"
+          aria-label="More info"
+        >ⓘ</button>
+      </span>
+      {showInfo && <p className="mt-0.5 text-[10px] text-gray-400 dark:text-gray-500">{info}</p>}
       <input
         type={type}
         step={step}

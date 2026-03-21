@@ -153,8 +153,7 @@ function SharesChart({ events, c, range, hasFuturePrices }: { events: TimelineEv
     const filtered = filterByDateRange(events, range, 'date')
       .filter(e => e.cum_shares !== 0 || e.event_type === 'Exercise')
     return filtered.map(e => {
-      // Only project future Share Price events with an actual price change; vesting is always certain
-      const isPast = !hasFuturePrices || e.date <= TODAY || e.event_type !== 'Share Price' || e.price_increase === 0
+      const isPast = !hasFuturePrices || e.date <= TODAY
       return {
         _date: e.date,
         _label: fmtDate(e.date),
@@ -217,8 +216,7 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: Ti
     return filtered.map(e => {
       cumVestCg += e.vesting_cap_gains
       cumPriceCg += e.price_cap_gains
-      // Only project future Share Price events with an actual price change; vesting is always certain
-      const isPast = !hasFuturePrices || e.date <= TODAY || e.event_type !== 'Share Price' || e.price_increase === 0
+      const isPast = !hasFuturePrices || e.date <= TODAY
       return {
         _date: e.date,
         _label: fmtDate(e.date),

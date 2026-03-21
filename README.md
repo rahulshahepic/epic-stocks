@@ -158,30 +158,23 @@ pytest backend/tests/ -v && cd frontend && npm test
 
 ### Running E2E Tests
 
-E2E tests use Playwright and require both backend and frontend running. First-time setup:
+E2E tests use Playwright. First-time setup:
 
 ```bash
 cd frontend && npm ci && npx playwright install chromium
 ```
 
-Then start the servers and run:
+Then use the script from the repo root — it handles type-checking, spinning up a fresh backend + frontend, waiting for both to be healthy, and cleaning up on exit:
 
 ```bash
-# Terminal 1 — backend (E2E_TEST=1 enables the test-login endpoint)
-cd backend
-E2E_TEST=1 JWT_SECRET=dev-secret ADMIN_EMAIL=admin@e2e.test \
-  uvicorn main:app --reload --port 8000
-
-# Terminal 2 — frontend
-cd frontend && npm run dev
-
-# Terminal 3 — run E2E tests
-cd frontend && npx playwright test
+./e2e.sh
 ```
 
-To run a single spec:
+To pass Playwright args (filter, reporter, etc.):
 ```bash
-cd frontend && npx playwright test e2e/user-journey.spec.ts
+./e2e.sh --grep "quick-flow"
+./e2e.sh e2e/user-journey.spec.ts
+./e2e.sh --reporter=list
 ```
 
 ### Regenerating Screenshots

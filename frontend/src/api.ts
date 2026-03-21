@@ -1,5 +1,3 @@
-const TOKEN_KEY = 'auth_token'
-
 export class ConflictError extends Error {
   currentVersion: number
   constructor(currentVersion: number) {
@@ -8,6 +6,8 @@ export class ConflictError extends Error {
     this.currentVersion = currentVersion
   }
 }
+
+const TOKEN_KEY = 'auth_token'
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY)
@@ -97,6 +97,7 @@ export interface TimelineEvent {
 
 export interface GrantEntry {
   id: number
+  version: number
   year: number
   type: string
   shares: number
@@ -105,18 +106,18 @@ export interface GrantEntry {
   periods: number
   exercise_date: string
   dp_shares: number
-  version: number
 }
 
 export interface PriceEntry {
   id: number
+  version: number
   effective_date: string
   price: number
-  version: number
 }
 
 export interface LoanEntry {
   id: number
+  version: number
   grant_year: number
   grant_type: string
   loan_type: string
@@ -125,7 +126,6 @@ export interface LoanEntry {
   interest_rate: number
   due_date: string
   loan_number: string | null
-  version: number
 }
 
 // --- API ---

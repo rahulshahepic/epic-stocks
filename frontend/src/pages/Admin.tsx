@@ -30,7 +30,7 @@ export default function Admin() {
   const loadErrors = useCallback(async () => {
     try {
       const logs = await api.adminErrors()
-      setErrorLogs(logs)
+      setErrorLogs(Array.isArray(logs) ? logs : [])
     } catch { /* ignore */ }
   }, [])
 

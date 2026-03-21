@@ -54,7 +54,7 @@ function filterByDateRange<T>(items: T[], range: DateRange, dateKey: keyof T): T
   })
 }
 
-function RangeControls({ range, setRange }: { range: DateRange; setRange: (r: DateRange) => void }) {
+function RangeControls({ range, setRange, maxDate }: { range: DateRange; setRange: (r: DateRange) => void; maxDate: string }) {
   const isAll = range.mode === 'all'
   return (
     <div className="flex items-center gap-1.5">
@@ -72,7 +72,7 @@ function RangeControls({ range, setRange }: { range: DateRange; setRange: (r: Da
         type="date"
         aria-label="Range start date"
         value={range.mode === 'custom' ? range.start : ''}
-        onChange={e => setRange({ mode: 'custom', start: e.target.value, end: range.end || '2099-12-31' })}
+        onChange={e => setRange({ mode: 'custom', start: e.target.value, end: range.end || maxDate })}
         className="h-6 rounded border border-gray-300 bg-white px-1 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
       />
       <span className="text-xs text-gray-400">–</span>
@@ -282,7 +282,6 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: Ti
             { label: '', value: fmtFullDate(sel._date) },
             { label: 'income', value: fmt$(sel._event.cum_income) },
             { label: 'cap gains', value: fmt$(sel._event.cum_cap_gains) },
-            ...(sel._event.event_type ? [{ label: '', value: sel._event.event_type }] : []),
           ]}
         />
       )}
@@ -379,15 +378,15 @@ function LoanChart({ loans, c }: { loans: LoanEntry[]; c: ChartColors }) {
   )
 }
 
-function ChartBox({ title, children, range, setRange }: {
+function ChartBox({ title, children, range, setRange, maxDate }: {
   title: string; children: React.ReactNode
-  range?: DateRange; setRange?: (r: DateRange) => void
+  range?: DateRange; setRange?: (r: DateRange) => void; maxDate?: string
 }) {
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">{title}</h3>
-        {range && setRange && <RangeControls range={range} setRange={setRange} />}
+        {range && setRange && <RangeControls range={range} setRange={setRange} maxDate={maxDate ?? '2099-12-31'} />}
       </div>
       {children}
     </div>
@@ -412,6 +411,17 @@ export default function Dashboard() {
     if (!prices) return false
     return prices.some(p => p.effective_date > TODAY)
   }, [prices])
+
+  // Last event/price date for default end in range picker
+  const maxDate = useMemo(() => {
+    let last = TODAY
+    if (events?.length) last = events[events.length - 1].date > last ? events[events.length - 1].date : last
+    if (prices?.length) {
+      const lp = prices[prices.length - 1].effective_date
+      if (lp > last) last = lp
+    }
+    return last
+  }, [events, prices])
 
   if (dashLoading) {
     return <p className="p-6 text-center text-sm text-gray-400">Loading...</p>
@@ -438,17 +448,17 @@ export default function Dashboard() {
 
       <div className="grid gap-4 md:grid-cols-2">
         {events && events.length > 0 && (
-          <ChartBox title="Shares Over Time" range={range} setRange={setRange}>
+          <ChartBox title="Shares Over Time" range={range} setRange={setRange} maxDate={maxDate}>
             <SharesChart events={events} c={c} range={range} hasFuturePrices={hasFuturePrices} />
           </ChartBox>
         )}
         {events && events.length > 0 && (
-          <ChartBox title="Income vs Cap Gains" range={range} setRange={setRange}>
+          <ChartBox title="Income vs Cap Gains" range={range} setRange={setRange} maxDate={maxDate}>
             <IncomeCapGainsChart events={events} c={c} range={range} hasFuturePrices={hasFuturePrices} />
           </ChartBox>
         )}
         {prices && prices.length > 0 && (
-          <ChartBox title="Share Price History" range={range} setRange={setRange}>
+          <ChartBox title="Share Price History" range={range} setRange={setRange} maxDate={maxDate}>
             <PriceChart prices={prices} c={c} range={range} hasFuturePrices={hasFuturePrices} />
           </ChartBox>
         )}

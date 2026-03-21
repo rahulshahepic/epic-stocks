@@ -45,6 +45,7 @@ jobs:
           E2E_TEST: "1"
           JWT_SECRET: "e2e-test-secret"
           DATABASE_URL: "sqlite:////tmp/e2e-test.db"
+          ADMIN_EMAIL: "admin@e2e.test"
         run: |
           cd backend && uvicorn main:app --host 0.0.0.0 --port 8000 &
           cd frontend && npx vite --port 5173 &

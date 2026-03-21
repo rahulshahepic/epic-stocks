@@ -18,7 +18,8 @@ TOKEN=$(cat /tmp/screenshot_token.txt)
 
 echo "==> Starting backend on :8000..."
 DATABASE_URL="sqlite:///$TMPDB" GOOGLE_CLIENT_ID="demo.apps.googleusercontent.com" \
-  ADMIN_EMAIL="demo@example.com" \
+  ADMIN_EMAIL="demo@example.com;admin@e2e.test" \
+  E2E_TEST=1 JWT_SECRET="screenshots-secret" \
   python -m uvicorn main:app --host 127.0.0.1 --port 8000 --app-dir backend &
 BACKEND_PID=$!
 sleep 2

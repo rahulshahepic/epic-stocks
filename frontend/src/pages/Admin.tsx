@@ -113,6 +113,7 @@ export default function Admin() {
     try {
       const result = await api.adminTestNotify(notifyUserId, notifyTitle, notifyBody)
       setNotifyResult(result)
+      loadErrors()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send notification')
     } finally {

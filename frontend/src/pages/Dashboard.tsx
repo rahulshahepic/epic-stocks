@@ -34,39 +34,51 @@ function smartInterval(len: number, maxTicks = 6): number {
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
-type Range = '1Y' | '3Y' | '5Y' | 'All'
-const RANGES: Range[] = ['1Y', '3Y', '5Y', 'All']
+type RangeMode = 'all' | 'custom'
 
-function rangeStart(range: Range): string {
-  if (range === 'All') return '0000-01-01'
-  const d = new Date()
-  d.setFullYear(d.getFullYear() - Number(range[0]))
-  return d.toISOString().slice(0, 10)
+interface DateRange {
+  mode: RangeMode
+  start: string
+  end: string
 }
 
-/** Filter dated items to a time range. Items must have a `date` or `effective_date` field. */
-function filterByRange<T>(items: T[], range: Range, dateKey: keyof T): T[] {
-  if (range === 'All') return items
-  const start = rangeStart(range)
-  return items.filter(item => (item[dateKey] as string) >= start)
+function filterByDateRange<T>(items: T[], range: DateRange, dateKey: keyof T): T[] {
+  if (range.mode === 'all') return items
+  return items.filter(item => {
+    const d = item[dateKey] as string
+    return d >= range.start && d <= range.end
+  })
 }
 
-function RangeButtons({ range, setRange }: { range: Range; setRange: (r: Range) => void }) {
+function RangeControls({ range, setRange }: { range: DateRange; setRange: (r: DateRange) => void }) {
+  const isAll = range.mode === 'all'
   return (
-    <div className="flex gap-1">
-      {RANGES.map(r => (
-        <button
-          key={r}
-          onClick={() => setRange(r)}
-          className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
-            r === range
-              ? 'bg-indigo-600 text-white'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
-          }`}
-        >
-          {r}
-        </button>
-      ))}
+    <div className="flex items-center gap-1.5">
+      <button
+        onClick={() => setRange({ mode: 'all', start: '', end: '' })}
+        className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+          isAll
+            ? 'bg-indigo-600 text-white'
+            : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+        }`}
+      >
+        All
+      </button>
+      <input
+        type="date"
+        aria-label="Range start date"
+        value={range.mode === 'custom' ? range.start : ''}
+        onChange={e => setRange({ mode: 'custom', start: e.target.value, end: range.end || '2099-12-31' })}
+        className="h-6 rounded border border-gray-300 bg-white px-1 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+      />
+      <span className="text-xs text-gray-400">–</span>
+      <input
+        type="date"
+        aria-label="Range end date"
+        value={range.mode === 'custom' ? range.end : ''}
+        onChange={e => setRange({ mode: 'custom', start: range.start || '0000-01-01', end: e.target.value })}
+        className="h-6 rounded border border-gray-300 bg-white px-1 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+      />
     </div>
   )
 }
@@ -112,83 +124,163 @@ function Card({ label, value, variant }: { label: string; value: string; variant
   )
 }
 
-function SharesChart({ events, c, range }: { events: TimelineEvent[]; c: ChartColors; range: Range }) {
-  const data = useMemo(() =>
-    filterByRange(events, range, 'date')
+function SharesChart({ events, c, range }: { events: TimelineEvent[]; c: ChartColors; range: DateRange }) {
+  const data = useMemo(() => {
+    const filtered = filterByDateRange(events, range, 'date')
       .filter(e => e.cum_shares !== 0 || e.event_type === 'Exercise')
-      .map(e => ({ _date: e.date, _label: fmtDate(e.date), shares: e.cum_shares })),
-    [events, range])
+    return filtered.map(e => {
+      const isPast = e.date <= TODAY
+      return {
+        _date: e.date,
+        _label: fmtDate(e.date),
+        pastShares: isPast ? e.cum_shares : null,
+        futureShares: !isPast ? e.cum_shares : null,
+      }
+    }).map((d, i, arr) => {
+      // overlap: last past point also gets futureShares for line continuity
+      if (d.pastShares !== null && (i === arr.length - 1 || arr[i + 1].futureShares !== null)) {
+        return { ...d, futureShares: d.pastShares }
+      }
+      return d
+    })
+  }, [events, range])
   const tIdx = todayIndex(data)
 
   return (
     <ResponsiveContainer width="100%" height={220}>
       <LineChart data={data}>
         <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
-        <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} />
+        <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} padding={{ right: 10 }} />
         <YAxis tick={{ fontSize: 10, fill: c.axis }} />
         <Tooltip
-          formatter={(v) => fmtNum(Number(v))}
+          formatter={(v, name) => [fmtNum(Number(v)), name === 'futureShares' ? 'Shares (projected)' : 'Shares']}
           contentStyle={{ backgroundColor: c.tooltipBg, color: c.tooltipText, border: 'none', borderRadius: 8 }}
         />
         {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
-        <Line type="monotone" dataKey="shares" stroke="#818cf8" strokeWidth={2} dot={false} name="Shares" />
+        <Line type="monotone" dataKey="pastShares" stroke="#818cf8" strokeWidth={2} dot={false} name="Shares" connectNulls={false} />
+        <Line type="monotone" dataKey="futureShares" stroke="#818cf8" strokeWidth={2} dot={false} name="Shares (projected)" strokeDasharray="6 3" opacity={0.5} connectNulls={false} />
       </LineChart>
     </ResponsiveContainer>
   )
 }
 
-function IncomeCapGainsChart({ events, c, range }: { events: TimelineEvent[]; c: ChartColors; range: Range }) {
-  const data = useMemo(() =>
-    filterByRange(events, range, 'date').map(e => ({
-      _date: e.date,
-      _label: fmtDate(e.date),
-      Income: e.cum_income,
-      'Cap Gains': e.cum_cap_gains,
-    })),
-    [events, range])
+function IncomeCapGainsChart({ events, c, range }: { events: TimelineEvent[]; c: ChartColors; range: DateRange }) {
+  const data = useMemo(() => {
+    const filtered = filterByDateRange(events, range, 'date')
+    // Compute cumulative vesting vs price cap gains for the future split
+    let cumVestCg = 0
+    let cumPriceCg = 0
+    return filtered.map(e => {
+      cumVestCg += e.vesting_cap_gains
+      cumPriceCg += e.price_cap_gains
+      const isPast = e.date <= TODAY
+      return {
+        _date: e.date,
+        _label: fmtDate(e.date),
+        // Past: solid series
+        pastIncome: isPast ? e.cum_income : null,
+        pastGains: isPast ? e.cum_cap_gains : null,
+        // Future: solid for vesting-driven, half-shade for price-driven
+        futureIncome: !isPast ? e.cum_income : null,
+        futureVestGains: !isPast ? cumVestCg : null,
+        futurePriceGains: !isPast ? cumPriceCg : null,
+      }
+    }).map((d, i, arr) => {
+      // overlap: last past point also gets future values for area continuity
+      if (d.pastIncome !== null && (i === arr.length - 1 || arr[i + 1].futureIncome !== null)) {
+        return { ...d, futureIncome: d.pastIncome, futureVestGains: d.pastGains, futurePriceGains: 0 }
+      }
+      return d
+    })
+  }, [events, range])
   const tIdx = todayIndex(data)
 
   return (
     <ResponsiveContainer width="100%" height={250}>
       <AreaChart data={data}>
         <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
-        <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} />
+        <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} padding={{ right: 10 }} />
         <YAxis tick={{ fontSize: 10, fill: c.axis }} />
         <Tooltip
-          formatter={(v) => fmt$(Number(v))}
+          formatter={(v, name) => {
+            const label = String(name).startsWith('future') ? `${String(name).replace('future', '')} (projected)` : String(name)
+            return [fmt$(Number(v)), label]
+          }}
           contentStyle={{ backgroundColor: c.tooltipBg, color: c.tooltipText, border: 'none', borderRadius: 8 }}
         />
-        <Legend wrapperStyle={{ fontSize: 11 }} />
+        <Legend wrapperStyle={{ fontSize: 11 }} payload={[
+          { value: 'Income', type: 'square', color: '#10b981' },
+          { value: 'Cap Gains', type: 'square', color: '#8b5cf6' },
+          { value: 'Projected', type: 'square', color: '#c4b5fd' },
+        ]} />
         {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
-        <Area type="monotone" dataKey="Income" stackId="1" fill="#34d399" fillOpacity={0.7} stroke="#10b981" />
-        <Area type="monotone" dataKey="Cap Gains" stackId="1" fill="#a78bfa" fillOpacity={0.7} stroke="#8b5cf6" />
+        {/* Past: solid fills */}
+        <Area type="monotone" dataKey="pastIncome" stackId="past" fill="#34d399" fillOpacity={0.7} stroke="#10b981" name="Income" connectNulls={false} />
+        <Area type="monotone" dataKey="pastGains" stackId="past" fill="#a78bfa" fillOpacity={0.7} stroke="#8b5cf6" name="Cap Gains" connectNulls={false} />
+        {/* Future: solid for vesting-driven gains */}
+        <Area type="monotone" dataKey="futureIncome" stackId="future" fill="#34d399" fillOpacity={0.35} stroke="#10b981" strokeDasharray="6 3" name="futureIncome" connectNulls={false} />
+        <Area type="monotone" dataKey="futureVestGains" stackId="future" fill="#a78bfa" fillOpacity={0.35} stroke="#8b5cf6" strokeDasharray="6 3" name="futureVestGains" connectNulls={false} />
+        {/* Future: half-shade for price-driven (speculative) gains */}
+        <Area type="monotone" dataKey="futurePriceGains" stackId="future" fill="#c4b5fd" fillOpacity={0.2} stroke="#c4b5fd" strokeDasharray="3 3" name="futurePriceGains" connectNulls={false} />
       </AreaChart>
     </ResponsiveContainer>
   )
 }
 
-function PriceChart({ prices, c, range }: { prices: PriceEntry[]; c: ChartColors; range: Range }) {
-  const data = useMemo(() =>
-    filterByRange(prices, range, 'effective_date').map(p => ({
+function PriceChart({ prices, events, c, range }: { prices: PriceEntry[]; events: TimelineEvent[]; c: ChartColors; range: DateRange }) {
+  const data = useMemo(() => {
+    const filtered = filterByDateRange(prices, range, 'effective_date')
+    if (filtered.length === 0) return []
+
+    // Build past price data
+    const result = filtered.map(p => ({
       _date: p.effective_date,
       _label: fmtDate(p.effective_date),
-      price: p.price,
-    })),
-    [prices, range])
+      pastPrice: p.effective_date <= TODAY ? p.price : null,
+      futurePrice: p.effective_date > TODAY ? p.price : null,
+    }))
+
+    // Find last known price and last event date for flat-forward projection
+    const lastPrice = filtered[filtered.length - 1].price
+    const lastPriceDate = filtered[filtered.length - 1].effective_date
+    const lastEventDate = events.length > 0 ? events[events.length - 1].date : null
+
+    if (lastEventDate && lastEventDate > lastPriceDate) {
+      // Overlap: last past/known point also gets futurePrice
+      const lastKnownIdx = result.findIndex(d => d._date > TODAY) - 1
+      const overlapIdx = lastKnownIdx >= 0 ? lastKnownIdx : result.length - 1
+      if (result[overlapIdx]) {
+        result[overlapIdx] = { ...result[overlapIdx], futurePrice: result[overlapIdx].pastPrice ?? lastPrice }
+      }
+
+      // Add flat-forward endpoint at last event date (if within custom range)
+      if (range.mode === 'all' || lastEventDate <= range.end) {
+        result.push({
+          _date: lastEventDate,
+          _label: fmtDate(lastEventDate),
+          pastPrice: null,
+          futurePrice: lastPrice,
+        })
+      }
+    }
+
+    return result
+  }, [prices, events, range])
   const tIdx = todayIndex(data)
 
   return (
     <ResponsiveContainer width="100%" height={220}>
       <LineChart data={data}>
         <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
-        <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} />
+        <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} padding={{ right: 10 }} />
         <YAxis tick={{ fontSize: 10, fill: c.axis }} />
         <Tooltip
-          formatter={(v) => fmtPrice(Number(v))}
+          formatter={(v, name) => [fmtPrice(Number(v)), name === 'futurePrice' ? 'Price (projected)' : 'Price']}
           contentStyle={{ backgroundColor: c.tooltipBg, color: c.tooltipText, border: 'none', borderRadius: 8 }}
         />
         {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
-        <Line type="monotone" dataKey="price" stroke="#fbbf24" strokeWidth={2} dot={false} name="Price" />
+        <Line type="monotone" dataKey="pastPrice" stroke="#fbbf24" strokeWidth={2} dot={false} name="Price" connectNulls={false} />
+        <Line type="monotone" dataKey="futurePrice" stroke="#fbbf24" strokeWidth={2} dot={false} name="Price (projected)" strokeDasharray="6 3" opacity={0.5} connectNulls={false} />
       </LineChart>
     </ResponsiveContainer>
   )
@@ -224,13 +316,13 @@ function LoanChart({ loans, c }: { loans: LoanEntry[]; c: ChartColors }) {
 
 function ChartBox({ title, children, range, setRange }: {
   title: string; children: React.ReactNode
-  range?: Range; setRange?: (r: Range) => void
+  range?: DateRange; setRange?: (r: DateRange) => void
 }) {
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">{title}</h3>
-        {range && setRange && <RangeButtons range={range} setRange={setRange} />}
+        {range && setRange && <RangeControls range={range} setRange={setRange} />}
       </div>
       {children}
     </div>
@@ -248,7 +340,7 @@ export default function Dashboard() {
   const { data: prices } = useApiData<PriceEntry[]>(fetchPrices)
   const { data: loans } = useApiData<LoanEntry[]>(fetchLoans)
   const c = useChartColors()
-  const [range, setRange] = useState<Range>('All')
+  const [range, setRange] = useState<DateRange>({ mode: 'all', start: '', end: '' })
 
   if (dashLoading) {
     return <p className="p-6 text-center text-sm text-gray-400">Loading...</p>
@@ -286,7 +378,7 @@ export default function Dashboard() {
         )}
         {prices && prices.length > 0 && (
           <ChartBox title="Share Price History" range={range} setRange={setRange}>
-            <PriceChart prices={prices} c={c} range={range} />
+            <PriceChart prices={prices} events={events ?? []} c={c} range={range} />
           </ChartBox>
         )}
         {loans && loans.length > 0 && <LoanChart loans={loans} c={c} />}

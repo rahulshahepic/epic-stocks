@@ -243,4 +243,5 @@ export interface TestNotifyResult {
   push_sent: number
   push_failed: number
   email_sent: boolean
+  email_skipped_reason?: string | null
 }

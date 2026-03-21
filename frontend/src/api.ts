@@ -1,9 +1,11 @@
 const TOKEN_KEY = 'auth_token'
 
 export class ConflictError extends Error {
-  constructor(public currentVersion: number) {
+  currentVersion: number
+  constructor(currentVersion: number) {
     super('modified_elsewhere')
     this.name = 'ConflictError'
+    this.currentVersion = currentVersion
   }
 }
 
@@ -149,19 +151,19 @@ export const api = {
 
   // Grants
   getGrants: () => apiFetch<GrantEntry[]>('/api/grants'),
-  createGrant: (data: Omit<GrantEntry, 'id'>) => post<GrantEntry>('/api/grants', data),
+  createGrant: (data: Omit<GrantEntry, 'id' | 'version'>) => post<GrantEntry>('/api/grants', data),
   updateGrant: (id: number, data: Partial<Omit<GrantEntry, 'id'>>) => put<GrantEntry>(`/api/grants/${id}`, data),
   deleteGrant: (id: number) => del(`/api/grants/${id}`),
 
   // Loans
   getLoans: () => apiFetch<LoanEntry[]>('/api/loans'),
-  createLoan: (data: Omit<LoanEntry, 'id'>) => post<LoanEntry>('/api/loans', data),
+  createLoan: (data: Omit<LoanEntry, 'id' | 'version'>) => post<LoanEntry>('/api/loans', data),
   updateLoan: (id: number, data: Partial<Omit<LoanEntry, 'id'>>) => put<LoanEntry>(`/api/loans/${id}`, data),
   deleteLoan: (id: number) => del(`/api/loans/${id}`),
 
   // Prices
   getPrices: () => apiFetch<PriceEntry[]>('/api/prices'),
-  createPrice: (data: Omit<PriceEntry, 'id'>) => post<PriceEntry>('/api/prices', data),
+  createPrice: (data: Omit<PriceEntry, 'id' | 'version'>) => post<PriceEntry>('/api/prices', data),
   updatePrice: (id: number, data: Partial<Omit<PriceEntry, 'id'>>) => put<PriceEntry>(`/api/prices/${id}`, data),
   deletePrice: (id: number) => del(`/api/prices/${id}`),
 

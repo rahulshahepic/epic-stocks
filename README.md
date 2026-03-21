@@ -12,9 +12,10 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 
 ### Dashboard
 
-| Light | Dark |
-|-------|------|
-| ![Dashboard Light](screenshots/dashboard-light-mobile.png) | ![Dashboard Dark](screenshots/dashboard-dark-mobile.png) |
+| | Light | Dark |
+|--|-------|------|
+| **Mobile** | ![Dashboard Light Mobile](screenshots/dashboard-light-mobile.png) | ![Dashboard Dark Mobile](screenshots/dashboard-dark-mobile.png) |
+| **Desktop** | ![Dashboard Light Desktop](screenshots/dashboard-light-desktop.png) | ![Dashboard Dark Desktop](screenshots/dashboard-dark-desktop.png) |
 
 ### Export
 
@@ -22,7 +23,9 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 
 ### Admin Dashboard
 
-![Admin](screenshots/admin-light-mobile.png)
+| Light | Dark |
+|-------|------|
+| ![Admin Light](screenshots/admin-light-mobile.png) | ![Admin Dark](screenshots/admin-dark-mobile.png) |
 
 ## Features
 
@@ -52,7 +55,7 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.12+
 - Node.js 20+
 - A Google OAuth Client ID ([create one here](https://console.cloud.google.com/apis/credentials))
 
@@ -278,6 +281,8 @@ All endpoints require `Authorization: Bearer <jwt>` except auth, health, config,
 | GET/POST | `/api/admin/blocked` | List/block emails (admin only) |
 | DELETE | `/api/admin/blocked/{id}` | Unblock email (admin only) |
 | POST | `/api/admin/test-notify` | Send a test push/email notification to any user (admin only) |
+| GET | `/api/admin/errors` | List recent backend error logs (admin only) |
+| DELETE | `/api/admin/errors` | Clear error log (admin only) |
 
 ## Admin Workflows
 
@@ -318,7 +323,7 @@ Blocked emails are checked at login time (case-insensitive). A blocked user cann
 
 ## Notifications
 
-Notifications are sent once per day, at 7 AM server time, only on days when the user has at least one event occurring that day.
+Notifications are sent once per day, at 7 AM UTC, only on days when the user has at least one event occurring that day.
 
 **Which events trigger a notification:**
 | Event type | Notified? |

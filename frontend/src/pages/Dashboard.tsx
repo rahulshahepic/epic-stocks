@@ -1,7 +1,7 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine,
 } from 'recharts'
 import { api } from '../api.ts'
 import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry } from '../api.ts'
@@ -30,6 +30,53 @@ function fmtDate(d: string) {
 function smartInterval(len: number, maxTicks = 6): number {
   if (len <= maxTicks) return 0
   return Math.ceil(len / maxTicks) - 1
+}
+
+const TODAY = new Date().toISOString().slice(0, 10)
+
+type Range = '1Y' | '3Y' | '5Y' | 'All'
+const RANGES: Range[] = ['1Y', '3Y', '5Y', 'All']
+
+function rangeStart(range: Range): string {
+  if (range === 'All') return '0000-01-01'
+  const d = new Date()
+  d.setFullYear(d.getFullYear() - Number(range[0]))
+  return d.toISOString().slice(0, 10)
+}
+
+/** Filter dated items to a time range. Items must have a `date` or `effective_date` field. */
+function filterByRange<T>(items: T[], range: Range, dateKey: keyof T): T[] {
+  if (range === 'All') return items
+  const start = rangeStart(range)
+  return items.filter(item => (item[dateKey] as string) >= start)
+}
+
+function RangeButtons({ range, setRange }: { range: Range; setRange: (r: Range) => void }) {
+  return (
+    <div className="flex gap-1">
+      {RANGES.map(r => (
+        <button
+          key={r}
+          onClick={() => setRange(r)}
+          className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+            r === range
+              ? 'bg-indigo-600 text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+          }`}
+        >
+          {r}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** Find the index of the data point closest to today for the ReferenceLine. */
+function todayIndex(data: { _date: string }[]): number | null {
+  for (let i = 0; i < data.length; i++) {
+    if (data[i]._date >= TODAY) return i
+  }
+  return null
 }
 
 interface ChartColors {
@@ -65,74 +112,85 @@ function Card({ label, value, variant }: { label: string; value: string; variant
   )
 }
 
-function SharesChart({ events, c }: { events: TimelineEvent[]; c: ChartColors }) {
-  const data = events
-    .filter(e => e.cum_shares !== 0 || e.event_type === 'Exercise')
-    .map(e => ({ _label: fmtDate(e.date), shares: e.cum_shares }))
+function SharesChart({ events, c, range }: { events: TimelineEvent[]; c: ChartColors; range: Range }) {
+  const data = useMemo(() =>
+    filterByRange(events, range, 'date')
+      .filter(e => e.cum_shares !== 0 || e.event_type === 'Exercise')
+      .map(e => ({ _date: e.date, _label: fmtDate(e.date), shares: e.cum_shares })),
+    [events, range])
+  const tIdx = todayIndex(data)
 
   return (
-    <ChartBox title="Shares Over Time">
-      <ResponsiveContainer width="100%" height={220}>
-        <LineChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
-          <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} />
-          <YAxis tick={{ fontSize: 10, fill: c.axis }} />
-          <Tooltip
-            formatter={(v) => fmtNum(Number(v))}
-            contentStyle={{ backgroundColor: c.tooltipBg, color: c.tooltipText, border: 'none', borderRadius: 8 }}
-          />
-          <Line type="monotone" dataKey="shares" stroke="#818cf8" strokeWidth={2} dot={false} name="Shares" />
-        </LineChart>
-      </ResponsiveContainer>
-    </ChartBox>
+    <ResponsiveContainer width="100%" height={220}>
+      <LineChart data={data}>
+        <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
+        <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} />
+        <YAxis tick={{ fontSize: 10, fill: c.axis }} />
+        <Tooltip
+          formatter={(v) => fmtNum(Number(v))}
+          contentStyle={{ backgroundColor: c.tooltipBg, color: c.tooltipText, border: 'none', borderRadius: 8 }}
+        />
+        {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
+        <Line type="monotone" dataKey="shares" stroke="#818cf8" strokeWidth={2} dot={false} name="Shares" />
+      </LineChart>
+    </ResponsiveContainer>
   )
 }
 
-function IncomeCapGainsChart({ events, c }: { events: TimelineEvent[]; c: ChartColors }) {
-  const data = events.map(e => ({
-    _label: fmtDate(e.date),
-    Income: e.cum_income,
-    'Cap Gains': e.cum_cap_gains,
-  }))
+function IncomeCapGainsChart({ events, c, range }: { events: TimelineEvent[]; c: ChartColors; range: Range }) {
+  const data = useMemo(() =>
+    filterByRange(events, range, 'date').map(e => ({
+      _date: e.date,
+      _label: fmtDate(e.date),
+      Income: e.cum_income,
+      'Cap Gains': e.cum_cap_gains,
+    })),
+    [events, range])
+  const tIdx = todayIndex(data)
 
   return (
-    <ChartBox title="Income vs Cap Gains">
-      <ResponsiveContainer width="100%" height={250}>
-        <AreaChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
-          <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} />
-          <YAxis tick={{ fontSize: 10, fill: c.axis }} />
-          <Tooltip
-            formatter={(v) => fmt$(Number(v))}
-            contentStyle={{ backgroundColor: c.tooltipBg, color: c.tooltipText, border: 'none', borderRadius: 8 }}
-          />
-          <Legend wrapperStyle={{ fontSize: 11 }} />
-          <Area type="monotone" dataKey="Income" stackId="1" fill="#34d399" fillOpacity={0.7} stroke="#10b981" />
-          <Area type="monotone" dataKey="Cap Gains" stackId="1" fill="#a78bfa" fillOpacity={0.7} stroke="#8b5cf6" />
-        </AreaChart>
-      </ResponsiveContainer>
-    </ChartBox>
+    <ResponsiveContainer width="100%" height={250}>
+      <AreaChart data={data}>
+        <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
+        <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} />
+        <YAxis tick={{ fontSize: 10, fill: c.axis }} />
+        <Tooltip
+          formatter={(v) => fmt$(Number(v))}
+          contentStyle={{ backgroundColor: c.tooltipBg, color: c.tooltipText, border: 'none', borderRadius: 8 }}
+        />
+        <Legend wrapperStyle={{ fontSize: 11 }} />
+        {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
+        <Area type="monotone" dataKey="Income" stackId="1" fill="#34d399" fillOpacity={0.7} stroke="#10b981" />
+        <Area type="monotone" dataKey="Cap Gains" stackId="1" fill="#a78bfa" fillOpacity={0.7} stroke="#8b5cf6" />
+      </AreaChart>
+    </ResponsiveContainer>
   )
 }
 
-function PriceChart({ prices, c }: { prices: PriceEntry[]; c: ChartColors }) {
-  const data = prices.map(p => ({ _label: fmtDate(p.effective_date), price: p.price }))
+function PriceChart({ prices, c, range }: { prices: PriceEntry[]; c: ChartColors; range: Range }) {
+  const data = useMemo(() =>
+    filterByRange(prices, range, 'effective_date').map(p => ({
+      _date: p.effective_date,
+      _label: fmtDate(p.effective_date),
+      price: p.price,
+    })),
+    [prices, range])
+  const tIdx = todayIndex(data)
 
   return (
-    <ChartBox title="Share Price History">
-      <ResponsiveContainer width="100%" height={220}>
-        <LineChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
-          <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} />
-          <YAxis tick={{ fontSize: 10, fill: c.axis }} />
-          <Tooltip
-            formatter={(v) => fmtPrice(Number(v))}
-            contentStyle={{ backgroundColor: c.tooltipBg, color: c.tooltipText, border: 'none', borderRadius: 8 }}
-          />
-          <Line type="monotone" dataKey="price" stroke="#fbbf24" strokeWidth={2} dot={false} name="Price" />
-        </LineChart>
-      </ResponsiveContainer>
-    </ChartBox>
+    <ResponsiveContainer width="100%" height={220}>
+      <LineChart data={data}>
+        <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
+        <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} />
+        <YAxis tick={{ fontSize: 10, fill: c.axis }} />
+        <Tooltip
+          formatter={(v) => fmtPrice(Number(v))}
+          contentStyle={{ backgroundColor: c.tooltipBg, color: c.tooltipText, border: 'none', borderRadius: 8 }}
+        />
+        {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
+        <Line type="monotone" dataKey="price" stroke="#fbbf24" strokeWidth={2} dot={false} name="Price" />
+      </LineChart>
+    </ResponsiveContainer>
   )
 }
 
@@ -164,10 +222,16 @@ function LoanChart({ loans, c }: { loans: LoanEntry[]; c: ChartColors }) {
   )
 }
 
-function ChartBox({ title, children }: { title: string; children: React.ReactNode }) {
+function ChartBox({ title, children, range, setRange }: {
+  title: string; children: React.ReactNode
+  range?: Range; setRange?: (r: Range) => void
+}) {
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
-      <h3 className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">{title}</h3>
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">{title}</h3>
+        {range && setRange && <RangeButtons range={range} setRange={setRange} />}
+      </div>
       {children}
     </div>
   )
@@ -184,6 +248,7 @@ export default function Dashboard() {
   const { data: prices } = useApiData<PriceEntry[]>(fetchPrices)
   const { data: loans } = useApiData<LoanEntry[]>(fetchLoans)
   const c = useChartColors()
+  const [range, setRange] = useState<Range>('All')
 
   if (dashLoading) {
     return <p className="p-6 text-center text-sm text-gray-400">Loading...</p>
@@ -209,9 +274,21 @@ export default function Dashboard() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        {events && events.length > 0 && <SharesChart events={events} c={c} />}
-        {events && events.length > 0 && <IncomeCapGainsChart events={events} c={c} />}
-        {prices && prices.length > 0 && <PriceChart prices={prices} c={c} />}
+        {events && events.length > 0 && (
+          <ChartBox title="Shares Over Time" range={range} setRange={setRange}>
+            <SharesChart events={events} c={c} range={range} />
+          </ChartBox>
+        )}
+        {events && events.length > 0 && (
+          <ChartBox title="Income vs Cap Gains" range={range} setRange={setRange}>
+            <IncomeCapGainsChart events={events} c={c} range={range} />
+          </ChartBox>
+        )}
+        {prices && prices.length > 0 && (
+          <ChartBox title="Share Price History" range={range} setRange={setRange}>
+            <PriceChart prices={prices} c={c} range={range} />
+          </ChartBox>
+        )}
         {loans && loans.length > 0 && <LoanChart loans={loans} c={c} />}
       </div>
     </div>

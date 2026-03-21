@@ -17,10 +17,6 @@ const empty: GrantForm = {
   dp_shares: 0,
 }
 
-function fmt$(n: number) {
-  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
-}
-
 function fmtPrice(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }

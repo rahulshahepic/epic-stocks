@@ -127,7 +127,7 @@ describe('Admin', () => {
     })
 
     await userEvent.click(screen.getByText('Delete'))
-    expect(screen.getByText('Confirm Delete')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText('Confirm Delete')).toBeInTheDocument())
   })
 
   it('shows admin badge and hides delete button for admin users', async () => {
@@ -150,6 +150,100 @@ describe('Admin', () => {
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText('Search by email or name...')).toBeInTheDocument()
+    })
+  })
+
+  it('renders test notification section', async () => {
+    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Notification')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Send Now' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Send Now' })).toBeDisabled()
+    })
+  })
+
+  it('Notify button pre-selects user in test notification form', async () => {
+    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('user@test.com')).toBeInTheDocument())
+
+    const notifyButtons = screen.getAllByRole('button', { name: 'Notify' })
+    await userEvent.click(notifyButtons[0])
+
+    const userSelect = screen.getByRole('combobox', { name: 'User' }) as HTMLSelectElement
+    expect(userSelect.value).not.toBe('')
+  })
+
+  it('selecting a template pre-fills title and body', async () => {
+    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
+    renderPage()
+
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Template' })).toBeInTheDocument())
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Template' }), 'vesting')
+
+    const titleInput = screen.getByRole('textbox', { name: 'Title' }) as HTMLInputElement
+    const bodyInput = screen.getByRole('textbox', { name: 'Body' }) as HTMLTextAreaElement
+    expect(titleInput.value).toBe('Equity Tracker')
+    expect(bodyInput.value).toBe('You have 1 event today: 1 Vesting')
+  })
+
+  it('each event type template uses correct content', async () => {
+    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
+    renderPage()
+
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Template' })).toBeInTheDocument())
+
+    const templateSelect = screen.getByRole('combobox', { name: 'Template' })
+    const titleInput = screen.getByRole('textbox', { name: 'Title' }) as HTMLInputElement
+    const bodyInput = screen.getByRole('textbox', { name: 'Body' }) as HTMLTextAreaElement
+
+    await userEvent.selectOptions(templateSelect, 'exercise')
+    expect(bodyInput.value).toBe('You have 1 event today: 1 Exercise')
+
+    await userEvent.selectOptions(templateSelect, 'loan_repayment')
+    expect(bodyInput.value).toBe('You have 1 event today: 1 Loan Repayment')
+  })
+
+  it('editing title/body resets template to custom', async () => {
+    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
+    renderPage()
+
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Template' })).toBeInTheDocument())
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Template' }), 'vesting')
+    const templateSelect = screen.getByRole('combobox', { name: 'Template' }) as HTMLSelectElement
+    expect(templateSelect.value).toBe('vesting')
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Title' }), ' extra')
+    expect(templateSelect.value).toBe('custom')
+  })
+
+  it('shows send result after successful notification', async () => {
+    const notifyResult = { push_sent: 2, push_failed: 1, email_sent: true }
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : (input as Request).url
+      const method = init?.method ?? 'GET'
+      if (url.includes('/api/admin/test-notify') && method === 'POST')
+        return new Response(JSON.stringify(notifyResult), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (url.includes('/api/admin/stats')) return new Response(JSON.stringify(STATS), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (url.includes('/api/admin/users')) return new Response(JSON.stringify(USERS_RESPONSE), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (url.includes('/api/admin/blocked')) return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      return new Response('{}', { status: 200 })
+    })
+    renderPage()
+
+    await waitFor(() => expect(screen.getByText('user@test.com')).toBeInTheDocument())
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'User' }), '2')
+    await userEvent.click(screen.getByRole('button', { name: 'Send Now' }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/Push: 2 sent, 1 expired/)).toBeInTheDocument()
+      expect(screen.getByText(/Email: sent/)).toBeInTheDocument()
     })
   })
 })

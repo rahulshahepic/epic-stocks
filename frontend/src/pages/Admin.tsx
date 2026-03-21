@@ -2,6 +2,13 @@ import { useState, useEffect, useCallback } from 'react'
 import { api } from '../api.ts'
 import type { AdminStats, AdminUser, BlockedEmailEntry, ErrorLogEntry, TestNotifyResult } from '../api.ts'
 
+const NOTIFY_TEMPLATES: Record<string, { title: string; body: string }> = {
+  custom:        { title: 'Test from admin', body: 'This is a test notification from the Epic Stocks admin panel.' },
+  vesting:       { title: 'Equity Tracker', body: 'You have 1 event today: 1 Vesting' },
+  exercise:      { title: 'Equity Tracker', body: 'You have 1 event today: 1 Exercise' },
+  loan_repayment:{ title: 'Equity Tracker', body: 'You have 1 event today: 1 Loan Repayment' },
+}
+
 export default function Admin() {
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
@@ -16,8 +23,9 @@ export default function Admin() {
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
   const [notifyUserId, setNotifyUserId] = useState<number | ''>('')
-  const [notifyTitle, setNotifyTitle] = useState('Test from admin')
-  const [notifyBody, setNotifyBody] = useState('This is a test notification from the Epic Stocks admin panel.')
+  const [notifyTemplate, setNotifyTemplate] = useState('custom')
+  const [notifyTitle, setNotifyTitle] = useState(NOTIFY_TEMPLATES.custom.title)
+  const [notifyBody, setNotifyBody] = useState(NOTIFY_TEMPLATES.custom.body)
   const [notifySending, setNotifySending] = useState(false)
   const [notifyResult, setNotifyResult] = useState<TestNotifyResult | null>(null)
 
@@ -216,7 +224,7 @@ export default function Admin() {
                       confirmDelete === u.id ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-400 hover:bg-gray-500'
                     }`}
                   >
-                    {confirmDelete === u.id ? 'Confirm' : 'Delete'}
+                    {confirmDelete === u.id ? 'Confirm Delete' : 'Delete'}
                   </button>
                 )}
               </div>
@@ -331,10 +339,11 @@ export default function Admin() {
       <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
         <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Test Notification</h3>
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          Send an immediate push/email notification to any user. Click <span className="font-medium">Notify</span> next to a user above to pre-select them.
+          Send an immediate notification to any user. Respects user preferences — push only goes to active subscriptions, email only if the user has it enabled.
         </p>
         <form onSubmit={handleTestNotify} className="mt-3 space-y-2">
           <select
+            aria-label="User"
             value={notifyUserId}
             onChange={e => { setNotifyUserId(e.target.value === '' ? '' : +e.target.value); setNotifyResult(null) }}
             className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
@@ -344,16 +353,35 @@ export default function Admin() {
               <option key={u.id} value={u.id}>{u.email}{u.name ? ` (${u.name})` : ''}</option>
             ))}
           </select>
+          <select
+            aria-label="Template"
+            value={notifyTemplate}
+            onChange={e => {
+              const tpl = e.target.value
+              setNotifyTemplate(tpl)
+              setNotifyTitle(NOTIFY_TEMPLATES[tpl].title)
+              setNotifyBody(NOTIFY_TEMPLATES[tpl].body)
+              setNotifyResult(null)
+            }}
+            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+          >
+            <option value="custom">Custom</option>
+            <option value="vesting">Vesting event</option>
+            <option value="exercise">Exercise event</option>
+            <option value="loan_repayment">Loan Repayment event</option>
+          </select>
           <input
             type="text"
+            aria-label="Title"
             value={notifyTitle}
-            onChange={e => setNotifyTitle(e.target.value)}
+            onChange={e => { setNotifyTitle(e.target.value); setNotifyTemplate('custom') }}
             placeholder="Title"
             className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
           />
           <textarea
+            aria-label="Body"
             value={notifyBody}
-            onChange={e => setNotifyBody(e.target.value)}
+            onChange={e => { setNotifyBody(e.target.value); setNotifyTemplate('custom') }}
             placeholder="Body"
             rows={2}
             className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"

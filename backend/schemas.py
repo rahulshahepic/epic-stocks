@@ -68,6 +68,7 @@ class GrantUpdate(BaseModel):
     periods: int | None = None
     exercise_date: date | None = None
     dp_shares: int | None = None
+    version: int | None = None
 
     @field_validator("type")
     @classmethod
@@ -106,6 +107,7 @@ class GrantUpdate(BaseModel):
 
 class GrantOut(GrantCreate):
     id: int
+    version: int = 1
     model_config = {"from_attributes": True}
 
 
@@ -164,6 +166,7 @@ class LoanUpdate(BaseModel):
     interest_rate: float | None = None
     due_date: date | None = None
     loan_number: str | None = None
+    version: int | None = None
 
     @field_validator("grant_type")
     @classmethod
@@ -202,6 +205,7 @@ class LoanUpdate(BaseModel):
 
 class LoanOut(LoanCreate):
     id: int
+    version: int = 1
     model_config = {"from_attributes": True}
 
 
@@ -220,6 +224,7 @@ class PriceCreate(BaseModel):
 class PriceUpdate(BaseModel):
     effective_date: date | None = None
     price: float | None = None
+    version: int | None = None
 
     @field_validator("price")
     @classmethod
@@ -230,6 +235,7 @@ class PriceUpdate(BaseModel):
 
 class PriceOut(PriceCreate):
     id: int
+    version: int = 1
     model_config = {"from_attributes": True}
 
 

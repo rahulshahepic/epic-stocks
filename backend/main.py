@@ -32,6 +32,12 @@ def _migrate_schema():
                 conn.execute(sqlalchemy.text("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0"))
             if "last_notified_at" not in cols:
                 conn.execute(sqlalchemy.text("ALTER TABLE users ADD COLUMN last_notified_at DATETIME"))
+    for table in ("grants", "loans", "prices"):
+        if insp.has_table(table):
+            cols = {c["name"] for c in insp.get_columns(table)}
+            if "version" not in cols:
+                with database.engine.begin() as conn:
+                    conn.execute(sqlalchemy.text(f"ALTER TABLE {table} ADD COLUMN version INTEGER NOT NULL DEFAULT 1"))
 
 
 @asynccontextmanager

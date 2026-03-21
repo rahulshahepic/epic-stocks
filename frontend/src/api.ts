@@ -1,5 +1,12 @@
 const TOKEN_KEY = 'auth_token'
 
+export class ConflictError extends Error {
+  constructor(public currentVersion: number) {
+    super('modified_elsewhere')
+    this.name = 'ConflictError'
+  }
+}
+
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY)
 }
@@ -30,6 +37,15 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     clearToken()
     window.location.href = '/login'
     throw new Error('Unauthorized')
+  }
+
+  if (resp.status === 409) {
+    let currentVersion = 0
+    try {
+      const body = await resp.json()
+      if (typeof body?.current_version === 'number') currentVersion = body.current_version
+    } catch { /* no json body */ }
+    throw new ConflictError(currentVersion)
   }
 
   if (!resp.ok) {
@@ -87,12 +103,14 @@ export interface GrantEntry {
   periods: number
   exercise_date: string
   dp_shares: number
+  version: number
 }
 
 export interface PriceEntry {
   id: number
   effective_date: string
   price: number
+  version: number
 }
 
 export interface LoanEntry {
@@ -105,6 +123,7 @@ export interface LoanEntry {
   interest_rate: number
   due_date: string
   loan_number: string | null
+  version: number
 }
 
 // --- API ---

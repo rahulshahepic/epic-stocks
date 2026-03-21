@@ -1,12 +1,31 @@
 import { useCallback, useState } from 'react'
-import { api } from '../api.ts'
+import { api, ConflictError } from '../api.ts'
 import type { PriceEntry } from '../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
+import { broadcastChange, useDataSync } from '../hooks/useDataSync.ts'
 
-type PriceForm = Omit<PriceEntry, 'id'>
+type PriceForm = { effective_date: string; price: number }
 type Mode = 'list' | 'add' | 'edit'
 
 const empty: PriceForm = { effective_date: '', price: 0 }
+
+function ConflictBanner({ onReload, onDiscard }: { onReload: () => void; onDiscard: () => void }) {
+  return (
+    <div className="rounded-md border border-yellow-300 bg-yellow-50 p-3 dark:border-yellow-700 dark:bg-yellow-900/20">
+      <p className="text-xs font-medium text-yellow-800 dark:text-yellow-300">
+        This record was changed on another device. Reload to see the latest version, or discard your changes.
+      </p>
+      <div className="mt-2 flex gap-2">
+        <button onClick={onReload} className="rounded-md bg-yellow-600 px-2 py-1 text-xs font-medium text-white hover:bg-yellow-700">
+          Reload latest
+        </button>
+        <button onClick={onDiscard} className="rounded-md bg-gray-200 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600">
+          Discard my changes
+        </button>
+      </div>
+    </div>
+  )
+}
 
 function fmt$(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
@@ -19,13 +38,19 @@ export default function Prices() {
   const [mode, setMode] = useState<Mode>('list')
   const [form, setForm] = useState<PriceForm>(empty)
   const [editId, setEditId] = useState<number | null>(null)
+  const [editVersion, setEditVersion] = useState(1)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [conflict, setConflict] = useState(false)
+
+  useDataSync('prices', reload)
 
   function resetForm() {
     setForm(empty)
     setEditId(null)
+    setEditVersion(1)
     setError('')
+    setConflict(false)
   }
 
   function openAdd() {
@@ -36,7 +61,9 @@ export default function Prices() {
   function openEdit(p: PriceEntry) {
     setForm({ effective_date: p.effective_date, price: p.price })
     setEditId(p.id)
+    setEditVersion(p.version)
     setError('')
+    setConflict(false)
     setMode('edit')
   }
 
@@ -47,8 +74,9 @@ export default function Prices() {
       if (mode === 'add') {
         await api.annualPrice({ effective_date: form.effective_date, price: form.price })
       } else if (editId != null) {
-        await api.updatePrice(editId, form)
+        await api.updatePrice(editId, { ...form, version: editVersion })
       }
+      broadcastChange('prices')
       reload()
       if (addAnother) {
         resetForm()
@@ -57,7 +85,11 @@ export default function Prices() {
         resetForm()
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Save failed')
+      if (e instanceof ConflictError) {
+        setConflict(true)
+      } else {
+        setError(e instanceof Error ? e.message : 'Save failed')
+      }
     } finally {
       setSaving(false)
     }
@@ -66,6 +98,7 @@ export default function Prices() {
   async function handleDelete(id: number) {
     if (!confirm('Delete this price entry?')) return
     await api.deletePrice(id)
+    broadcastChange('prices')
     reload()
   }
 
@@ -80,6 +113,12 @@ export default function Prices() {
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
           <button onClick={() => { setMode('list'); resetForm() }} className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
         </div>
+        {conflict && (
+          <ConflictBanner
+            onReload={() => { reload(); setMode('list'); resetForm() }}
+            onDiscard={() => { setMode('list'); resetForm() }}
+          />
+        )}
         {error && <p className="text-xs text-red-500">{error}</p>}
         <div className="grid grid-cols-2 gap-3">
           <label className="block">

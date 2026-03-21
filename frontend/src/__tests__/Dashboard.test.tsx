@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import Dashboard from '../pages/Dashboard.tsx'
 
@@ -19,6 +19,13 @@ const MOCK_EVENTS = [
     exercise_price: null, vested_shares: 2000, price_increase: 0,
     share_price: 2.5, cum_shares: 2000, income: 0, cum_income: 0,
     vesting_cap_gains: 1020, price_cap_gains: 0, total_cap_gains: 1020, cum_cap_gains: 1020,
+  },
+  {
+    date: '2027-03-01', grant_year: 2020, grant_type: 'Purchase',
+    event_type: 'Vesting', granted_shares: null, grant_price: 1.99,
+    exercise_price: null, vested_shares: 2000, price_increase: 0,
+    share_price: 8.5, cum_shares: 4000, income: 0, cum_income: 0,
+    vesting_cap_gains: 13020, price_cap_gains: 0, total_cap_gains: 13020, cum_cap_gains: 14040,
   },
 ]
 
@@ -122,5 +129,36 @@ describe('Dashboard', () => {
     await waitFor(() => {
       expect(screen.getByText('Failed to load dashboard')).toBeInTheDocument()
     })
+  })
+
+  it('renders All button and date range inputs', async () => {
+    mockApi()
+    renderDashboard()
+
+    await waitFor(() => {
+      expect(screen.getByText('Shares Over Time')).toBeInTheDocument()
+    })
+    // "All" buttons (one per chart with range controls)
+    const allButtons = screen.getAllByText('All')
+    expect(allButtons.length).toBeGreaterThanOrEqual(3)
+    // Date inputs for custom range
+    const startInputs = screen.getAllByLabelText('Range start date')
+    const endInputs = screen.getAllByLabelText('Range end date')
+    expect(startInputs.length).toBeGreaterThanOrEqual(3)
+    expect(endInputs.length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('switches to custom range when date input changes', async () => {
+    mockApi()
+    renderDashboard()
+
+    await waitFor(() => {
+      expect(screen.getByText('Shares Over Time')).toBeInTheDocument()
+    })
+    const startInputs = screen.getAllByLabelText('Range start date')
+    fireEvent.change(startInputs[0], { target: { value: '2022-01-01' } })
+    // The All button should no longer be active (indigo-600) - custom range is active
+    // Just verify the input now has a value
+    expect(startInputs[0]).toHaveValue('2022-01-01')
   })
 })

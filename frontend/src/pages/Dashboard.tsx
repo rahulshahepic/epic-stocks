@@ -152,26 +152,17 @@ function SharesChart({ events, c, range, hasFuturePrices }: { events: TimelineEv
   const data = useMemo(() => {
     const filtered = filterByDateRange(events, range, 'date')
       .filter(e => e.cum_shares !== 0 || e.event_type === 'Exercise')
-    if (!hasFuturePrices) {
-      return filtered.map(e => ({
-        _date: e.date,
-        _label: fmtDate(e.date),
-        _event: e,
-        shares: e.cum_shares,
-      }))
-    }
-    // With future prices: split into solid past + dashed projected
     return filtered.map(e => {
-      const isPast = e.date <= TODAY
+      const isPast = !hasFuturePrices || e.date <= TODAY
       return {
         _date: e.date,
         _label: fmtDate(e.date),
         _event: e,
-        shares: isPast ? e.cum_shares : null,
-        projected: !isPast ? e.cum_shares : null,
+        shares: isPast ? e.cum_shares : null as number | null,
+        projected: !isPast ? e.cum_shares : null as number | null,
       }
     }).map((d, i, arr) => {
-      if (d.shares !== null && (i === arr.length - 1 || arr[i + 1].projected !== null)) {
+      if (hasFuturePrices && d.shares !== null && (i === arr.length - 1 || arr[i + 1].projected !== null)) {
         return { ...d, projected: d.shares }
       }
       return d
@@ -185,7 +176,7 @@ function SharesChart({ events, c, range, hasFuturePrices }: { events: TimelineEv
     <>
       <ResponsiveContainer width="100%" height={220}>
         <LineChart data={data} onClick={(state) => {
-          if (state?.activeTooltipIndex != null) setSelected(state.activeTooltipIndex)
+          if (state?.activeTooltipIndex != null) setSelected(Number(state.activeTooltipIndex))
         }}>
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
           <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} padding={{ right: 10 }} />
@@ -220,34 +211,24 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: Ti
 
   const data = useMemo(() => {
     const filtered = filterByDateRange(events, range, 'date')
-    if (!hasFuturePrices) {
-      return filtered.map(e => ({
-        _date: e.date,
-        _label: fmtDate(e.date),
-        _event: e,
-        income: e.cum_income,
-        gains: e.cum_cap_gains,
-      }))
-    }
-    // With future prices: split past solid vs future projected
     let cumVestCg = 0
     let cumPriceCg = 0
     return filtered.map(e => {
       cumVestCg += e.vesting_cap_gains
       cumPriceCg += e.price_cap_gains
-      const isPast = e.date <= TODAY
+      const isPast = !hasFuturePrices || e.date <= TODAY
       return {
         _date: e.date,
         _label: fmtDate(e.date),
         _event: e,
-        income: isPast ? e.cum_income : null,
-        gains: isPast ? e.cum_cap_gains : null,
-        projIncome: !isPast ? e.cum_income : null,
-        projVestGains: !isPast ? cumVestCg : null,
-        projPriceGains: !isPast ? cumPriceCg : null,
+        income: isPast ? e.cum_income : null as number | null,
+        gains: isPast ? e.cum_cap_gains : null as number | null,
+        projIncome: !isPast ? e.cum_income : null as number | null,
+        projVestGains: !isPast ? cumVestCg : null as number | null,
+        projPriceGains: !isPast ? cumPriceCg : null as number | null,
       }
     }).map((d, i, arr) => {
-      if (d.income !== null && (i === arr.length - 1 || arr[i + 1].projIncome !== null)) {
+      if (hasFuturePrices && d.income !== null && (i === arr.length - 1 || arr[i + 1].projIncome !== null)) {
         return { ...d, projIncome: d.income, projVestGains: d.gains, projPriceGains: 0 }
       }
       return d
@@ -261,7 +242,7 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: Ti
     <>
       <ResponsiveContainer width="100%" height={250}>
         <AreaChart data={data} onClick={(state) => {
-          if (state?.activeTooltipIndex != null) setSelected(state.activeTooltipIndex)
+          if (state?.activeTooltipIndex != null) setSelected(Number(state.activeTooltipIndex))
         }}>
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
           <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} padding={{ right: 10 }} />
@@ -309,36 +290,31 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: Ti
   )
 }
 
-function PriceChart({ prices, events, c, range, hasFuturePrices }: { prices: PriceEntry[]; events: TimelineEvent[]; c: ChartColors; range: DateRange; hasFuturePrices: boolean }) {
+function PriceChart({ prices, c, range, hasFuturePrices }: { prices: PriceEntry[]; c: ChartColors; range: DateRange; hasFuturePrices: boolean }) {
   const [selected, setSelected] = useState<number | null>(null)
 
   const data = useMemo(() => {
     const filtered = filterByDateRange(prices, range, 'effective_date')
     if (filtered.length === 0) return []
 
-    if (!hasFuturePrices) {
-      return filtered.map(p => ({
+    const result = filtered.map(p => {
+      const isPast = !hasFuturePrices || p.effective_date <= TODAY
+      return {
         _date: p.effective_date,
         _label: fmtDate(p.effective_date),
         _price: p.price,
-        price: p.price,
-      }))
-    }
+        price: isPast ? p.price : null as number | null,
+        projected: !isPast ? p.price : null as number | null,
+      }
+    })
 
-    // With future prices: split solid past + dashed future
-    const result = filtered.map(p => ({
-      _date: p.effective_date,
-      _label: fmtDate(p.effective_date),
-      _price: p.price,
-      price: p.effective_date <= TODAY ? p.price : null,
-      projected: p.effective_date > TODAY ? p.price : null,
-    }))
-
-    // Overlap: last past point also gets projected for line continuity
-    const lastKnownIdx = result.findIndex(d => d._date > TODAY) - 1
-    const overlapIdx = lastKnownIdx >= 0 ? lastKnownIdx : result.length - 1
-    if (result[overlapIdx] && result.some(d => d.projected !== null)) {
-      result[overlapIdx] = { ...result[overlapIdx], projected: result[overlapIdx].price ?? result[overlapIdx]._price }
+    if (hasFuturePrices) {
+      // Overlap: last past point also gets projected for line continuity
+      const lastKnownIdx = result.findIndex(d => d._date > TODAY) - 1
+      const overlapIdx = lastKnownIdx >= 0 ? lastKnownIdx : result.length - 1
+      if (result[overlapIdx] && result.some(d => d.projected !== null)) {
+        result[overlapIdx] = { ...result[overlapIdx], projected: result[overlapIdx].price ?? result[overlapIdx]._price }
+      }
     }
 
     return result
@@ -351,7 +327,7 @@ function PriceChart({ prices, events, c, range, hasFuturePrices }: { prices: Pri
     <>
       <ResponsiveContainer width="100%" height={220}>
         <LineChart data={data} onClick={(state) => {
-          if (state?.activeTooltipIndex != null) setSelected(state.activeTooltipIndex)
+          if (state?.activeTooltipIndex != null) setSelected(Number(state.activeTooltipIndex))
         }}>
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
           <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} padding={{ right: 10 }} />
@@ -473,7 +449,7 @@ export default function Dashboard() {
         )}
         {prices && prices.length > 0 && (
           <ChartBox title="Share Price History" range={range} setRange={setRange}>
-            <PriceChart prices={prices} events={events ?? []} c={c} range={range} hasFuturePrices={hasFuturePrices} />
+            <PriceChart prices={prices} c={c} range={range} hasFuturePrices={hasFuturePrices} />
           </ChartBox>
         )}
         {loans && loans.length > 0 && <LoanChart loans={loans} c={c} />}

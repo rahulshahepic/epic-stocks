@@ -241,17 +241,20 @@ def admin_test_notify(
     if not pref or not pref.enabled:
         email_skipped_reason = "user has email notifications disabled"
     else:
-        from email_sender import send_email, email_configured
+        from email_sender import send_email, email_configured, app_url
         if not email_configured():
             email_skipped_reason = "RESEND_API_KEY not configured"
         else:
             try:
+                url = app_url()
+                link_html = f'<a href="{url}" style="color: #4472C4;">Open Equity Tracker</a>' if url else ""
                 html_body = (
                     f'<div style="font-family: sans-serif; max-width: 480px;">'
                     f'<h2 style="color: #4472C4;">Equity Tracker</h2>'
                     f'<h3 style="margin-bottom: 4px;">{body.title}</h3>'
                     f'<p style="color: #374151;">{body.body}</p>'
-                    f'<p style="font-size: 12px; color: #9CA3AF;">This is a test notification.</p>'
+                    + (f'<p>{link_html}</p>' if link_html else "")
+                    + f'<p style="font-size: 12px; color: #9CA3AF;">This is a test notification.</p>'
                     f'</div>'
                 )
                 email_sent = send_email(

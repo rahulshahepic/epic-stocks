@@ -2,6 +2,7 @@
 import io
 import tempfile
 from datetime import datetime, date
+from openpyxl.comments import Comment
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -268,12 +269,10 @@ def download_template():
     _body_cell(ws, 2, 6, 5)
     _body_cell(ws, 2, 14, date(2030, 3, 15), "mm/dd/yyyy")
     _body_cell(ws, 2, 15, 0)
-    # Add note row
-    note_font = Font(name="Arial", size=9, italic=True, color="FF888888")
+    # Add hints as cell comments on headers (avoids extra rows that break import)
     for col, note in [(1, "e.g. 2020"), (2, "Purchase or Bonus"), (3, "# of shares"),
                       (4, "$ per share"), (5, "mm/dd/yyyy"), (6, "# vesting periods")]:
-        c = ws.cell(row=3, column=col, value=note)
-        c.font = note_font
+        ws.cell(row=1, column=col).comment = Comment(note, "Template")
 
     # Loans sheet
     ws_loans = wb.create_sheet("Loans")
@@ -290,16 +289,14 @@ def download_template():
     _body_cell(ws_loans, 2, 8, date(2025, 3, 15), "mm/dd/yyyy")
     for col, note in [(3, "Purchase or Bonus"), (4, "Interest, Tax, Principal, or Purchase"),
                       (7, "decimal, e.g. 0.05 = 5%")]:
-        c = ws_loans.cell(row=3, column=col, value=note)
-        c.font = note_font
+        ws_loans.cell(row=1, column=col).comment = Comment(note, "Template")
 
     # Prices sheet
     ws_prices = wb.create_sheet("Prices")
     _write_headers(ws_prices, ["Date", "Price"])
     _body_cell(ws_prices, 2, 1, date(2020, 1, 1), "mm/dd/yyyy")
     _body_cell(ws_prices, 2, 2, 5.00, "\\$#,##0.00")
-    c = ws_prices.cell(row=3, column=1, value="One row per annual price update")
-    c.font = note_font
+    ws_prices.cell(row=1, column=1).comment = Comment("One row per annual price update", "Template")
 
     buf = io.BytesIO()
     wb.save(buf)

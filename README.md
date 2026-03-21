@@ -98,12 +98,12 @@ VAPID_PUBLIC_KEY=...
 # Optional — admin access (semicolon-delimited for multiple admins)
 ADMIN_EMAIL=admin@example.com; cto@example.com
 
-# Optional — email notifications (SMTP)
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_USER=...
-SMTP_PASSWORD=...
-SMTP_FROM=noreply@example.com
+# Optional — email notifications (via Resend)
+RESEND_API_KEY=re_...
+RESEND_FROM=Equity Tracker <noreply@yourdomain.com>
+
+# Optional — public URL of the app (included as a link in email notifications)
+APP_URL=https://yourdomain.com
 ```
 
 The frontend fetches the Google Client ID from the backend at `/api/config` — no separate frontend env var needed.

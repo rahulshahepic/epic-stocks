@@ -31,9 +31,10 @@ def _make_token(payload: dict, secret: str = "dev-secret-change-me") -> str:
 
 def test_jwt_wrong_signature_rejected(client):
     token = register_user(client)
-    # Tamper: replace last char of signature
+    # Tamper: replace first char of signature (guaranteed to flip real bits,
+    # unlike the last char which may only carry padding zeros in base64url)
     parts = token.split(".")
-    bad_sig = parts[2][:-1] + ("A" if parts[2][-1] != "A" else "B")
+    bad_sig = ("A" if parts[2][0] != "A" else "B") + parts[2][1:]
     bad_token = ".".join([parts[0], parts[1], bad_sig])
     resp = client.get("/api/me", headers=auth_header(bad_token))
     assert resp.status_code == 401

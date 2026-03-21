@@ -33,7 +33,7 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 - **Excel Import/Export** — bootstrap from an existing Vesting.xlsx or export current state.
 - **Google Sign-In** — OAuth 2.0 authentication, automatic account creation.
 - **Admin Dashboard** — user management, aggregate stats, email blocking. Admin cannot see financial data.
-- **Push & Email Notifications** — daily reminders for vesting/exercise/loan events. Per-user opt-in.
+- **Push & Email Notifications** — daily reminders on the day of each vesting, exercise, or loan repayment event. Per-user opt-in for each channel independently.
 - **Per-User Encryption** — AES-256-GCM column-level encryption when `ENCRYPTION_MASTER_KEY` is set.
 - **Dark/Light Mode** — auto-detects system preference, updates live.
 - **Mobile-First** — designed for 375px phone viewports.
@@ -273,6 +273,35 @@ The admin system is opt-in via the `ADMIN_EMAIL` environment variable. Admins ar
 ### Blocked Email System
 
 Blocked emails are checked at login time (case-insensitive). A blocked user cannot log in or create a new account. The blocklist is managed via the admin panel or the `/api/admin/blocked` endpoints.
+
+## Notifications
+
+Notifications are sent once per day, at 7 AM server time, only on days when the user has at least one event occurring that day.
+
+**Which events trigger a notification:**
+| Event type | Notified? |
+|---|---|
+| Vesting | Yes |
+| Exercise | Yes |
+| Loan Repayment | Yes |
+| Share Price update | No |
+| Down payment exchange | No |
+
+**What the notification contains:**
+Notifications are intentionally minimal — they contain no financial data, no share counts, and no dollar amounts. The content is identical across push and email:
+
+- **Push notification** — a single notification with title `Equity Tracker` and a body like: `You have 2 events today: 1 Loan Repayment, 1 Vesting`. Tapping it opens the app dashboard.
+- **Email** — subject: `Equity Tracker: 2 events today`. Body: the same event count summary plus a link prompt to log in and view details.
+
+If a user has multiple events of the same type on the same day they are counted together (`2 Vesting`). Users open the app to see the full details.
+
+**At-most-once-per-day guarantee:** A `last_notified_at` timestamp on each user ensures only one batch is sent per day regardless of server restarts or retries.
+
+**Opt-in per channel:**
+- *Push* — enabled by subscribing in the browser (Settings → Enable Notifications). Requires VAPID keys to be configured. Each device subscribes independently; all active devices receive the notification.
+- *Email* — enabled via the toggle in Settings. Requires `RESEND_API_KEY` to be configured. Disabled by default.
+
+**Admin test tool:** Admins can send an immediate test notification to any user from the Admin panel, using either a pre-built event template (Vesting, Exercise, Loan Repayment) or fully custom title/body. Test notifications respect user preferences — push only goes to active subscriptions, email only if the user has it enabled.
 
 ## Privacy & Data Security
 

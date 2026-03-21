@@ -79,7 +79,7 @@ describe('Dashboard', () => {
     renderDashboard()
 
     await waitFor(() => {
-      expect(screen.getByText('$9')).toBeInTheDocument() // $8.50 rounded to $9
+      expect(screen.getByText('$8.50')).toBeInTheDocument()
     })
     expect(screen.getByText('150,000')).toBeInTheDocument()
     expect(screen.getByText('$50,000')).toBeInTheDocument()

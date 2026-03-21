@@ -37,11 +37,17 @@ def send_email(to_email: str, subject: str, body_text: str, body_html: str | Non
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=10,
         )
+        if not resp.is_success:
+            logger.error("Resend API error %s: %s", resp.status_code, resp.text)
+            return False
         resp.raise_for_status()
         return True
+    except httpx.HTTPStatusError as e:
+        logger.error("Resend HTTP error %s: %s", e.response.status_code, e.response.text)
+        raise
     except Exception:
         logger.exception("Failed to send email to %s", to_email)
-        return False
+        raise
 
 
 def build_event_email(events: list[dict]) -> tuple[str, str, str]:

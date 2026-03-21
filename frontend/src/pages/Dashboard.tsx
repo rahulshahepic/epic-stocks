@@ -153,7 +153,8 @@ function SharesChart({ events, c, range, hasFuturePrices }: { events: TimelineEv
     const filtered = filterByDateRange(events, range, 'date')
       .filter(e => e.cum_shares !== 0 || e.event_type === 'Exercise')
     return filtered.map(e => {
-      const isPast = !hasFuturePrices || e.date <= TODAY
+      // Only project future Share Price events with an actual price change; vesting is always certain
+      const isPast = !hasFuturePrices || e.date <= TODAY || e.event_type !== 'Share Price' || e.price_increase === 0
       return {
         _date: e.date,
         _label: fmtDate(e.date),
@@ -216,11 +217,14 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: Ti
     return filtered.map(e => {
       cumVestCg += e.vesting_cap_gains
       cumPriceCg += e.price_cap_gains
-      const isPast = !hasFuturePrices || e.date <= TODAY
+      // Only project future Share Price events with an actual price change; vesting is always certain
+      const isPast = !hasFuturePrices || e.date <= TODAY || e.event_type !== 'Share Price' || e.price_increase === 0
       return {
         _date: e.date,
         _label: fmtDate(e.date),
         _event: e,
+        _cumVestCg: cumVestCg,
+        _cumPriceCg: cumPriceCg,
         income: isPast ? e.cum_income : null as number | null,
         gains: isPast ? e.cum_cap_gains : null as number | null,
         projIncome: !isPast ? e.cum_income : null as number | null,
@@ -229,7 +233,7 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: Ti
       }
     }).map((d, i, arr) => {
       if (hasFuturePrices && d.income !== null && (i === arr.length - 1 || arr[i + 1].projIncome !== null)) {
-        return { ...d, projIncome: d.income, projVestGains: d.gains, projPriceGains: 0 }
+        return { ...d, projIncome: d.income, projVestGains: d._cumVestCg, projPriceGains: d._cumPriceCg }
       }
       return d
     })
@@ -406,10 +410,14 @@ export default function Dashboard() {
   const c = useChartColors()
   const [range, setRange] = useState<DateRange>({ mode: 'all', start: '', end: '' })
 
-  // Only show projected/dashed styling when there are actual future price entries (what-if scenario)
+  // Only show projected/dashed styling when a future price actually differs from the current price
   const hasFuturePrices = useMemo(() => {
     if (!prices) return false
-    return prices.some(p => p.effective_date > TODAY)
+    const futurePrices = prices.filter(p => p.effective_date > TODAY)
+    if (!futurePrices.length) return false
+    const pastPrices = prices.filter(p => p.effective_date <= TODAY)
+    const currentPrice = pastPrices.length ? pastPrices[pastPrices.length - 1].price : 0
+    return futurePrices.some(p => Math.abs(p.price - currentPrice) > 0.005)
   }, [prices])
 
   // Last event/price date for default end in range picker

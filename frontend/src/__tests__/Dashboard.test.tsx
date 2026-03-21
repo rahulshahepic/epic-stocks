@@ -34,6 +34,12 @@ const MOCK_PRICES = [
   { id: 2, effective_date: '2021-03-01', price: 2.50 },
 ]
 
+const MOCK_PRICES_WITH_FUTURE_SAME = [
+  { id: 1, effective_date: '2020-12-31', price: 1.99 },
+  { id: 2, effective_date: '2021-03-01', price: 2.50 },
+  { id: 3, effective_date: '2028-01-01', price: 2.50 },  // same as current
+]
+
 const MOCK_LOANS = [
   {
     id: 1, grant_year: 2020, grant_type: 'Purchase', loan_type: 'Purchase',
@@ -47,7 +53,7 @@ beforeEach(() => {
   vi.restoreAllMocks()
 })
 
-function mockApi() {
+function mockApi(prices = MOCK_PRICES) {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url
     if (url.includes('/api/dashboard')) {
@@ -57,7 +63,7 @@ function mockApi() {
       return new Response(JSON.stringify(MOCK_EVENTS), { status: 200 })
     }
     if (url.includes('/api/prices')) {
-      return new Response(JSON.stringify(MOCK_PRICES), { status: 200 })
+      return new Response(JSON.stringify(prices), { status: 200 })
     }
     if (url.includes('/api/loans')) {
       return new Response(JSON.stringify(MOCK_LOANS), { status: 200 })
@@ -160,5 +166,19 @@ describe('Dashboard', () => {
     // The All button should no longer be active (indigo-600) - custom range is active
     // Just verify the input now has a value
     expect(startInputs[0]).toHaveValue('2022-01-01')
+  })
+
+  it('renders without error when future price equals current price', async () => {
+    mockApi(MOCK_PRICES_WITH_FUTURE_SAME)
+    renderDashboard()
+
+    // Dashboard should render normally — no crash or error state
+    await waitFor(() => {
+      expect(screen.getByText('Income vs Cap Gains')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('Failed to load dashboard')).not.toBeInTheDocument()
+    // All chart section headers should still be visible
+    expect(screen.getByText('Shares Over Time')).toBeInTheDocument()
+    expect(screen.getByText('Share Price History')).toBeInTheDocument()
   })
 })

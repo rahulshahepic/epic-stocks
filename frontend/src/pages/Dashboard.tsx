@@ -26,14 +26,10 @@ function fmtDate(d: string) {
   return `${m}/${y}` // "2021-03-01" → "03/21"
 }
 
-/** Deduplicate consecutive year labels for clean x-axis on dense event charts. */
-function dedupeYearLabels(data: { _year: string }[]): string[] {
-  let prev = ''
-  return data.map(d => {
-    if (d._year === prev) return ''
-    prev = d._year
-    return d._year
-  })
+/** Compute a tick interval that shows ~maxTicks evenly-spaced labels. */
+function smartInterval(len: number, maxTicks = 6): number {
+  if (len <= maxTicks) return 0
+  return Math.ceil(len / maxTicks) - 1
 }
 
 interface ChartColors {
@@ -72,18 +68,16 @@ function Card({ label, value, variant }: { label: string; value: string; variant
 function SharesChart({ events, c }: { events: TimelineEvent[]; c: ChartColors }) {
   const data = events
     .filter(e => e.cum_shares !== 0 || e.event_type === 'Exercise')
-    .map(e => ({ _year: e.date.slice(0, 4), _full: fmtDate(e.date), shares: e.cum_shares }))
-  const labels = dedupeYearLabels(data)
+    .map(e => ({ _label: fmtDate(e.date), shares: e.cum_shares }))
 
   return (
     <ChartBox title="Shares Over Time">
       <ResponsiveContainer width="100%" height={220}>
-        <LineChart data={data.map((d, i) => ({ ...d, label: labels[i] }))}>
+        <LineChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
-          <XAxis dataKey="label" tick={{ fontSize: 10, fill: c.axis }} interval={0} />
+          <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} />
           <YAxis tick={{ fontSize: 10, fill: c.axis }} />
           <Tooltip
-            labelFormatter={(_, payload) => payload[0]?.payload?._full ?? ''}
             formatter={(v) => fmtNum(Number(v))}
             contentStyle={{ backgroundColor: c.tooltipBg, color: c.tooltipText, border: 'none', borderRadius: 8 }}
           />
@@ -96,22 +90,19 @@ function SharesChart({ events, c }: { events: TimelineEvent[]; c: ChartColors })
 
 function IncomeCapGainsChart({ events, c }: { events: TimelineEvent[]; c: ChartColors }) {
   const data = events.map(e => ({
-    _year: e.date.slice(0, 4),
-    _full: fmtDate(e.date),
+    _label: fmtDate(e.date),
     Income: e.cum_income,
     'Cap Gains': e.cum_cap_gains,
   }))
-  const labels = dedupeYearLabels(data)
 
   return (
     <ChartBox title="Income vs Cap Gains">
       <ResponsiveContainer width="100%" height={250}>
-        <AreaChart data={data.map((d, i) => ({ ...d, label: labels[i] }))}>
+        <AreaChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
-          <XAxis dataKey="label" tick={{ fontSize: 10, fill: c.axis }} interval={0} />
+          <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} />
           <YAxis tick={{ fontSize: 10, fill: c.axis }} />
           <Tooltip
-            labelFormatter={(_, payload) => payload[0]?.payload?._full ?? ''}
             formatter={(v) => fmt$(Number(v))}
             contentStyle={{ backgroundColor: c.tooltipBg, color: c.tooltipText, border: 'none', borderRadius: 8 }}
           />
@@ -125,20 +116,20 @@ function IncomeCapGainsChart({ events, c }: { events: TimelineEvent[]; c: ChartC
 }
 
 function PriceChart({ prices, c }: { prices: PriceEntry[]; c: ChartColors }) {
-  const data = prices.map(p => ({ date: fmtDate(p.effective_date), price: p.price }))
+  const data = prices.map(p => ({ _label: fmtDate(p.effective_date), price: p.price }))
 
   return (
     <ChartBox title="Share Price History">
       <ResponsiveContainer width="100%" height={220}>
         <LineChart data={data}>
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
-          <XAxis dataKey="date" tick={{ fontSize: 10, fill: c.axis }} interval={0} />
+          <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} />
           <YAxis tick={{ fontSize: 10, fill: c.axis }} />
           <Tooltip
-            formatter={(v) => fmt$(Number(v))}
+            formatter={(v) => fmtPrice(Number(v))}
             contentStyle={{ backgroundColor: c.tooltipBg, color: c.tooltipText, border: 'none', borderRadius: 8 }}
           />
-          <Line type="monotone" dataKey="price" stroke="#fbbf24" strokeWidth={2} dot name="Price" />
+          <Line type="monotone" dataKey="price" stroke="#fbbf24" strokeWidth={2} dot={false} name="Price" />
         </LineChart>
       </ResponsiveContainer>
     </ChartBox>

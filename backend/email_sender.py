@@ -9,6 +9,10 @@ logger = logging.getLogger(__name__)
 RESEND_API_URL = "https://api.resend.com/emails"
 
 
+def app_url() -> str:
+    return os.getenv("APP_URL", "").rstrip("/")
+
+
 def email_configured() -> bool:
     return bool(os.getenv("RESEND_API_KEY", ""))
 
@@ -54,11 +58,13 @@ def build_event_email(events: list[dict]) -> tuple[str, str, str]:
     total = sum(counts.values())
     parts = [f"{count} {etype}" for etype, count in sorted(counts.items())]
     subject = f"Equity Tracker: {total} event{'s' if total != 1 else ''} today"
-    text = f"You have {total} event{'s' if total != 1 else ''} today: {', '.join(parts)}\n\nLog in to view details."
+    url = app_url()
+    link_text = f' <a href="{url}">Log in to view details.</a>' if url else " Log in to view details."
+    text = f"You have {total} event{'s' if total != 1 else ''} today: {', '.join(parts)}\n\n{'Log in at ' + url if url else 'Log in to view details.'}"
     html = f"""<div style="font-family: sans-serif; max-width: 480px;">
   <h2 style="color: #4472C4;">Equity Tracker</h2>
   <p>You have <strong>{total}</strong> event{'s' if total != 1 else ''} today:</p>
   <ul>{''.join(f'<li>{count} {etype}</li>' for etype, count in sorted(counts.items()))}</ul>
-  <p>Log in to view details.</p>
+  <p>{link_text.strip()}</p>
 </div>"""
     return subject, text, html

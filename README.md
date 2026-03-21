@@ -12,9 +12,14 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 
 ### Dashboard
 
-| Light | Dark |
-|-------|------|
-| ![Dashboard Light](screenshots/dashboard-light-mobile.png) | ![Dashboard Dark](screenshots/dashboard-dark-mobile.png) |
+| | Light | Dark |
+|--|-------|------|
+| **Mobile** | ![Dashboard Light Mobile](screenshots/dashboard-light-mobile.png) | ![Dashboard Dark Mobile](screenshots/dashboard-dark-mobile.png) |
+| **Desktop** | ![Dashboard Light Desktop](screenshots/dashboard-light-desktop.png) | ![Dashboard Dark Desktop](screenshots/dashboard-dark-desktop.png) |
+
+### Import / Export (Template + Upload + Download)
+
+![Import Export](screenshots/import-export-mobile.png)
 
 ### Export
 
@@ -22,7 +27,9 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 
 ### Admin Dashboard
 
-![Admin](screenshots/admin-light-mobile.png)
+| Light | Dark |
+|-------|------|
+| ![Admin Light](screenshots/admin-light-mobile.png) | ![Admin Dark](screenshots/admin-dark-mobile.png) |
 
 ## Features
 
@@ -52,7 +59,7 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.12+
 - Node.js 20+
 - A Google OAuth Client ID ([create one here](https://console.cloud.google.com/apis/credentials))
 
@@ -64,7 +71,7 @@ pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
 
-The backend creates `data/vesting.db` automatically on first run.
+The backend creates `data/vesting.db` automatically on first run. To reset the local database, delete the file: `rm backend/data/vesting.db`.
 
 ### Frontend
 
@@ -78,32 +85,29 @@ The dev server proxies `/api` requests to `localhost:8000`.
 
 ### Environment Variables
 
-Create a `.env` file in the repo root (or export these):
+Copy the example file and fill in your secrets:
 
 ```bash
-# Required
-JWT_SECRET=your-secret-key-here
-GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+cp .env.example .env
+```
 
-# Optional — encryption (encrypts financial data per-user in SQLite)
-ENCRYPTION_MASTER_KEY=your-random-master-key-here
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `JWT_SECRET` | Yes | Random secret for signing JWT tokens |
+| `GOOGLE_CLIENT_ID` | Yes | From [Google Cloud Console](https://console.cloud.google.com/apis/credentials) |
+| `ENCRYPTION_MASTER_KEY` | No | Enables per-user AES-256-GCM encryption of all financial data |
+| `PRIVACY_URL` | No | Link to your privacy policy shown on the login page and footer |
+| `ADMIN_EMAIL` | No | Semicolon-delimited email(s) granted admin access on login |
+| `VAPID_PUBLIC_KEY` | No | Required for push notifications |
+| `VAPID_PRIVATE_KEY` | No | Required for push notifications |
+| `VAPID_CLAIMS_EMAIL` | No | Contact email embedded in push requests (e.g. `mailto:admin@yourdomain.com`) |
+| `RESEND_API_KEY` | No | Enables email notifications via [Resend](https://resend.com) |
+| `RESEND_FROM` | No | Sender address for emails (e.g. `Equity Tracker <noreply@yourdomain.com>`) |
+| `APP_URL` | No | Public app URL included as a link in email notifications |
 
-# Optional — privacy policy link shown on login page and footer
-PRIVACY_URL=https://github.com/youruser/epic-stocks/blob/main/PRIVACY.md
-
-# Optional — push notifications
-VAPID_PRIVATE_KEY=...
-VAPID_PUBLIC_KEY=...
-
-# Optional — admin access (semicolon-delimited for multiple admins)
-ADMIN_EMAIL=admin@example.com; cto@example.com
-
-# Optional — email notifications (via Resend)
-RESEND_API_KEY=re_...
-RESEND_FROM=Equity Tracker <noreply@yourdomain.com>
-
-# Optional — public URL of the app (included as a link in email notifications)
-APP_URL=https://yourdomain.com
+**Generating VAPID keys** (one-time, requires Node):
+```bash
+npx web-push generate-vapid-keys
 ```
 
 The frontend fetches the Google Client ID from the backend at `/api/config` — no separate frontend env var needed.
@@ -136,23 +140,66 @@ Secrets are managed via GitHub Actions secrets — the deploy workflow writes `.
 ### Running Tests
 
 ```bash
-# Backend (from repo root)
+# Backend unit tests (from repo root)
 pytest backend/tests/ -v
 
-# Frontend (from frontend/)
+# Frontend unit tests
 cd frontend && npm test
 
-# All tests
+# Frontend unit tests — watch mode (re-runs on file save)
+cd frontend && npm run test:watch
+
+# Lint frontend
+cd frontend && npm run lint
+
+# All unit tests
 pytest backend/tests/ -v && cd frontend && npm test
 ```
 
+### Running E2E Tests
+
+E2E tests use Playwright and require both backend and frontend running. First-time setup:
+
+```bash
+cd frontend && npm ci && npx playwright install chromium
+```
+
+Then start the servers and run:
+
+```bash
+# Terminal 1 — backend (E2E_TEST=1 enables the test-login endpoint)
+cd backend
+E2E_TEST=1 JWT_SECRET=dev-secret ADMIN_EMAIL=admin@e2e.test \
+  uvicorn main:app --reload --port 8000
+
+# Terminal 2 — frontend
+cd frontend && npm run dev
+
+# Terminal 3 — run E2E tests
+cd frontend && npx playwright test
+```
+
+To run a single spec:
+```bash
+cd frontend && npx playwright test e2e/user-journey.spec.ts
+```
+
 ### Regenerating Screenshots
+
+First-time setup:
+
+```bash
+cd backend && pip install -r requirements.txt
+cd frontend && npm ci && npx playwright install chromium
+```
+
+Then from the repo root:
 
 ```bash
 ./screenshots/run.sh
 ```
 
-This starts a temporary backend + frontend, seeds sample data, and captures all screenshots with Playwright.
+This spins up a temporary backend + frontend with seeded sample data, runs all Playwright specs (including screenshot capture), and writes PNGs to `screenshots/`. Commit any updated screenshots to the repo.
 
 ### Project Structure
 
@@ -237,6 +284,9 @@ All endpoints require `Authorization: Bearer <jwt>` except auth, health, config,
 | DELETE | `/api/admin/users/{id}` | Delete user + all data (admin only) |
 | GET/POST | `/api/admin/blocked` | List/block emails (admin only) |
 | DELETE | `/api/admin/blocked/{id}` | Unblock email (admin only) |
+| POST | `/api/admin/test-notify` | Send a test push/email notification to any user (admin only) |
+| GET | `/api/admin/errors` | List recent backend error logs (admin only) |
+| DELETE | `/api/admin/errors` | Clear error log (admin only) |
 
 ## Admin Workflows
 
@@ -269,6 +319,7 @@ The admin system is opt-in via the `ADMIN_EMAIL` environment variable. Admins ar
 | **Block email** | Prevents an email address from logging in or creating an account. Includes optional reason field. |
 | **Unblock email** | Removes an email from the blocklist, restoring login access. |
 | **View user activity** | See when each user last logged in and how many records they have. |
+| **Send test notification** | Immediately sends a push and/or email notification to any user for debugging. Uses a pre-built event template or custom title/body. Respects user preferences (push only goes to active subscriptions; email only if the user has it enabled). |
 
 ### Blocked Email System
 
@@ -276,7 +327,7 @@ Blocked emails are checked at login time (case-insensitive). A blocked user cann
 
 ## Notifications
 
-Notifications are sent once per day, at 7 AM server time, only on days when the user has at least one event occurring that day.
+Notifications are sent once per day, at 7 AM UTC, only on days when the user has at least one event occurring that day.
 
 **Which events trigger a notification:**
 | Event type | Notified? |

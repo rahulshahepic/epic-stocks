@@ -13,12 +13,14 @@ trap cleanup EXIT
 TMPDB=$(mktemp /tmp/screenshots-XXXXX.db)
 
 echo "==> Seeding temporary database..."
-DATABASE_URL="sqlite:///$TMPDB" python screenshots/seed.py > /tmp/screenshot_token.txt
+DATABASE_URL="sqlite:///$TMPDB" JWT_SECRET="screenshots-secret" \
+  python screenshots/seed.py > /tmp/screenshot_token.txt
 TOKEN=$(cat /tmp/screenshot_token.txt)
 
 echo "==> Starting backend on :8000..."
 DATABASE_URL="sqlite:///$TMPDB" GOOGLE_CLIENT_ID="demo.apps.googleusercontent.com" \
-  ADMIN_EMAIL="demo@example.com" \
+  ADMIN_EMAIL="demo@example.com;admin@e2e.test" \
+  E2E_TEST=1 JWT_SECRET="screenshots-secret" \
   python -m uvicorn main:app --host 127.0.0.1 --port 8000 --app-dir backend &
 BACKEND_PID=$!
 sleep 2
@@ -33,7 +35,7 @@ sleep 3
 echo "==> Capturing screenshots..."
 cd frontend
 SCREENSHOT_TOKEN="$TOKEN" SCREENSHOT_BASE_URL="http://localhost:5173" \
-  npx playwright test --project=chromium 2>&1
+  npx playwright test --project=chromium e2e/screenshots.spec.ts 2>&1
 cd ..
 
 echo "==> Done. Screenshots:"

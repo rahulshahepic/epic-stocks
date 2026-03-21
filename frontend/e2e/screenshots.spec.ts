@@ -61,4 +61,11 @@ test.describe('Screenshots', () => {
     await page.waitForTimeout(1000)
     await page.screenshot({ path: `${OUT}/admin-dark-mobile.png`, fullPage: true })
   })
+
+  test('import-export page - light - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    await page.click('text=Import')
+    await page.waitForLoadState('networkidle')
+    await page.screenshot({ path: `${OUT}/import-export-mobile.png`, fullPage: true })
+  })
 })

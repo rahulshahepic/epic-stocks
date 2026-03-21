@@ -526,8 +526,8 @@ Add to `_migrate_schema()` in `main.py`:
 1. **Done:** Privacy policy + transparency
 2. **Done:** Per-user column-level encryption (AES-256-GCM)
 3. **Done:** Admin system — admin dashboard, user management, email blocking
-4. **Next:** Multi-device / concurrent session hardening (section 6)
-5. **Next:** Admin test notification sender (section 7)
+4. **Done:** Admin test notification sender (section 7)
+5. **Next:** Multi-device / concurrent session hardening (section 6)
 6. **Next:** Stock sales + Wisconsin tax calculator (section 8)
 7. **Backlog:** Email notifications (section 4)
 8. **Backlog:** Security hardening (section 5)

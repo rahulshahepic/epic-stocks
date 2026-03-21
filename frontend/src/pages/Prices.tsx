@@ -3,7 +3,7 @@ import { api } from '../api.ts'
 import type { PriceEntry } from '../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 
-type PriceForm = Omit<PriceEntry, 'id'>
+type PriceForm = Omit<PriceEntry, 'id' | 'version'>
 type Mode = 'list' | 'add' | 'edit'
 
 const empty: PriceForm = { effective_date: '', price: 0 }

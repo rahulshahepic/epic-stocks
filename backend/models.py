@@ -39,6 +39,7 @@ class Grant(Base):
     periods: Mapped[int] = mapped_column(Integer, nullable=False)
     exercise_date: Mapped[date] = mapped_column(Date, nullable=False)
     dp_shares: Mapped[int] = mapped_column(EncryptedInt, default=0)
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
 
     user: Mapped["User"] = relationship(back_populates="grants")
 
@@ -56,6 +57,7 @@ class Loan(Base):
     interest_rate: Mapped[float] = mapped_column(EncryptedFloat, nullable=False)
     due_date: Mapped[date] = mapped_column(Date, nullable=False)
     loan_number: Mapped[str] = mapped_column(EncryptedString, nullable=True)
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
 
     user: Mapped["User"] = relationship(back_populates="loans")
 
@@ -67,6 +69,7 @@ class Price(Base):
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     effective_date: Mapped[date] = mapped_column(Date, nullable=False)
     price: Mapped[float] = mapped_column(EncryptedFloat, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
 
     user: Mapped["User"] = relationship(back_populates="prices")
 

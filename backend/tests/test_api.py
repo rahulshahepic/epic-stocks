@@ -392,3 +392,121 @@ def test_flow_add_bonus(client):
     data = resp.json()
     assert data["type"] == "Bonus"
     assert data["shares"] == 2000
+
+
+# ============================================================
+# OPTIMISTIC LOCKING (multi-device conflict detection)
+# ============================================================
+
+def test_grant_update_no_version_succeeds(client):
+    """PUT without version field → backward compat, no check performed."""
+    token = register_user(client)
+    created = client.post("/api/grants", json=GRANT_DATA, headers=auth_header(token)).json()
+    resp = client.put(f"/api/grants/{created['id']}", json={"shares": 5000}, headers=auth_header(token))
+    assert resp.status_code == 200
+    assert resp.json()["shares"] == 5000
+
+
+def test_grant_update_correct_version_succeeds(client):
+    """PUT with correct version → 200, version incremented."""
+    token = register_user(client)
+    created = client.post("/api/grants", json=GRANT_DATA, headers=auth_header(token)).json()
+    assert created["version"] == 1
+    resp = client.put(
+        f"/api/grants/{created['id']}",
+        json={"shares": 5000, "version": 1},
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["shares"] == 5000
+    assert data["version"] == 2
+
+
+def test_grant_update_stale_version_conflicts(client):
+    """PUT with stale version → 409 Conflict."""
+    token = register_user(client)
+    created = client.post("/api/grants", json=GRANT_DATA, headers=auth_header(token)).json()
+    # First update bumps version to 2
+    client.put(f"/api/grants/{created['id']}", json={"shares": 5000, "version": 1}, headers=auth_header(token))
+    # Second update with the old version=1 should conflict
+    resp = client.put(
+        f"/api/grants/{created['id']}",
+        json={"shares": 9000, "version": 1},
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 409
+    body = resp.json()
+    assert body["detail"] == "modified_elsewhere"
+    assert body["current_version"] == 2
+
+
+def test_loan_update_correct_version(client):
+    """Loan PUT with correct version → 200, version incremented."""
+    token = register_user(client)
+    created = client.post("/api/loans", json=LOAN_DATA, headers=auth_header(token)).json()
+    assert created["version"] == 1
+    resp = client.put(
+        f"/api/loans/{created['id']}",
+        json={"amount": 99999.0, "version": 1},
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["version"] == 2
+
+
+def test_loan_update_stale_version_conflicts(client):
+    """Loan PUT with stale version → 409."""
+    token = register_user(client)
+    created = client.post("/api/loans", json=LOAN_DATA, headers=auth_header(token)).json()
+    client.put(f"/api/loans/{created['id']}", json={"amount": 50000.0, "version": 1}, headers=auth_header(token))
+    resp = client.put(
+        f"/api/loans/{created['id']}",
+        json={"amount": 99999.0, "version": 1},
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "modified_elsewhere"
+
+
+def test_price_update_correct_version(client):
+    """Price PUT with correct version → 200, version incremented."""
+    token = register_user(client)
+    created = client.post("/api/prices", json={"effective_date": "2023-03-01", "price": 3.50}, headers=auth_header(token)).json()
+    assert created["version"] == 1
+    resp = client.put(
+        f"/api/prices/{created['id']}",
+        json={"price": 4.25, "version": 1},
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["version"] == 2
+
+
+def test_price_update_stale_version_conflicts(client):
+    """Price PUT with stale version → 409."""
+    token = register_user(client)
+    created = client.post("/api/prices", json={"effective_date": "2023-03-01", "price": 3.50}, headers=auth_header(token)).json()
+    client.put(f"/api/prices/{created['id']}", json={"price": 4.25, "version": 1}, headers=auth_header(token))
+    resp = client.put(
+        f"/api/prices/{created['id']}",
+        json={"price": 5.00, "version": 1},
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "modified_elsewhere"
+
+
+def test_version_not_stored_in_update_payload(client):
+    """The version field in PUT body is not persisted as a data field; only used for conflict check."""
+    token = register_user(client)
+    created = client.post("/api/grants", json=GRANT_DATA, headers=auth_header(token)).json()
+    resp = client.put(
+        f"/api/grants/{created['id']}",
+        json={"shares": 7777, "version": 1},
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["shares"] == 7777
+    assert data["version"] == 2  # incremented by server, not set to submitted value

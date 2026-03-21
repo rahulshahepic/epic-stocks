@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -46,8 +47,16 @@ def update_grant(grant_id: int, body: GrantUpdate, user: User = Depends(get_curr
     grant = db.query(Grant).filter(Grant.id == grant_id, Grant.user_id == user.id).first()
     if not grant:
         raise HTTPException(status_code=404, detail="Grant not found")
-    for k, v in body.model_dump(exclude_unset=True).items():
+    submitted_version = body.version
+    if submitted_version is not None and grant.version != submitted_version:
+        return JSONResponse(
+            status_code=409,
+            content={"detail": "modified_elsewhere", "current_version": grant.version},
+        )
+    updates = {k: v for k, v in body.model_dump(exclude_unset=True).items() if k != "version"}
+    for k, v in updates.items():
         setattr(grant, k, v)
+    grant.version = grant.version + 1
     db.commit()
     db.refresh(grant)
     return grant

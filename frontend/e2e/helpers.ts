@@ -26,3 +26,10 @@ export async function navigateTo(page: Page, label: string) {
   await page.getByRole('link', { name: label, exact: true }).click()
   await page.waitForLoadState('networkidle')
 }
+
+/** Reset the current user's data (grants, loans, prices) via the API */
+export async function resetUserData(request: APIRequestContext, token: string) {
+  await request.post(`${API_BASE}/api/me/reset`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}

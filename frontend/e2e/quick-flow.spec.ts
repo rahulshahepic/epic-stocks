@@ -1,11 +1,12 @@
 import { test, expect } from '@playwright/test'
-import { getTestToken, loginAs, navigateTo } from './helpers'
+import { getTestToken, loginAs, navigateTo, resetUserData } from './helpers'
 
 test.describe('Quick flow: purchase grant + loan', () => {
   let token: string
 
   test.beforeEach(async ({ page, request }) => {
     token = await getTestToken(request, `quickflow-${test.info().testId}@test.com`, 'QuickFlow User')
+    await resetUserData(request, token)
     await loginAs(page, token)
   })
 
@@ -16,6 +17,7 @@ test.describe('Quick flow: purchase grant + loan', () => {
     await page.getByLabel('Effective Date').fill('2024-12-31')
     await page.getByLabel('Price per Share').fill('10.00')
     await page.getByRole('button', { name: 'Save', exact: true }).click()
+    await page.waitForLoadState('networkidle')
     await expect(page.getByText('1 price entries')).toBeVisible({ timeout: 10000 })
 
     // Navigate to Grants
@@ -79,6 +81,7 @@ test.describe('Quick flow: purchase grant + loan', () => {
     await page.getByLabel('Effective Date').fill('2024-12-31')
     await page.getByLabel('Price per Share').fill('10.00')
     await page.getByRole('button', { name: 'Save', exact: true }).click()
+    await page.waitForLoadState('networkidle')
     await expect(page.getByText('1 price entries')).toBeVisible({ timeout: 10000 })
 
     // Navigate to Grants and add a Bonus

@@ -1,3 +1,12 @@
+export class ConflictError extends Error {
+  currentVersion: number
+  constructor(currentVersion: number) {
+    super('modified_elsewhere')
+    this.name = 'ConflictError'
+    this.currentVersion = currentVersion
+  }
+}
+
 const TOKEN_KEY = 'auth_token'
 
 export function getToken(): string | null {
@@ -30,6 +39,15 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     clearToken()
     window.location.href = '/login'
     throw new Error('Unauthorized')
+  }
+
+  if (resp.status === 409) {
+    let currentVersion = 0
+    try {
+      const body = await resp.json()
+      if (typeof body?.current_version === 'number') currentVersion = body.current_version
+    } catch { /* no json body */ }
+    throw new ConflictError(currentVersion)
   }
 
   if (!resp.ok) {
@@ -79,6 +97,7 @@ export interface TimelineEvent {
 
 export interface GrantEntry {
   id: number
+  version: number
   year: number
   type: string
   shares: number
@@ -91,12 +110,14 @@ export interface GrantEntry {
 
 export interface PriceEntry {
   id: number
+  version: number
   effective_date: string
   price: number
 }
 
 export interface LoanEntry {
   id: number
+  version: number
   grant_year: number
   grant_type: string
   loan_type: string
@@ -130,19 +151,19 @@ export const api = {
 
   // Grants
   getGrants: () => apiFetch<GrantEntry[]>('/api/grants'),
-  createGrant: (data: Omit<GrantEntry, 'id'>) => post<GrantEntry>('/api/grants', data),
+  createGrant: (data: Omit<GrantEntry, 'id' | 'version'>) => post<GrantEntry>('/api/grants', data),
   updateGrant: (id: number, data: Partial<Omit<GrantEntry, 'id'>>) => put<GrantEntry>(`/api/grants/${id}`, data),
   deleteGrant: (id: number) => del(`/api/grants/${id}`),
 
   // Loans
   getLoans: () => apiFetch<LoanEntry[]>('/api/loans'),
-  createLoan: (data: Omit<LoanEntry, 'id'>) => post<LoanEntry>('/api/loans', data),
+  createLoan: (data: Omit<LoanEntry, 'id' | 'version'>) => post<LoanEntry>('/api/loans', data),
   updateLoan: (id: number, data: Partial<Omit<LoanEntry, 'id'>>) => put<LoanEntry>(`/api/loans/${id}`, data),
   deleteLoan: (id: number) => del(`/api/loans/${id}`),
 
   // Prices
   getPrices: () => apiFetch<PriceEntry[]>('/api/prices'),
-  createPrice: (data: Omit<PriceEntry, 'id'>) => post<PriceEntry>('/api/prices', data),
+  createPrice: (data: Omit<PriceEntry, 'id' | 'version'>) => post<PriceEntry>('/api/prices', data),
   updatePrice: (id: number, data: Partial<Omit<PriceEntry, 'id'>>) => put<PriceEntry>(`/api/prices/${id}`, data),
   deletePrice: (id: number) => del(`/api/prices/${id}`),
 

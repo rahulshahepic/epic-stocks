@@ -1,9 +1,10 @@
 import { useCallback, useState } from 'react'
-import { api } from '../api.ts'
+import { api, ConflictError } from '../api.ts'
 import type { LoanEntry } from '../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
+import { broadcastChange, useDataSync } from '../hooks/useDataSync.ts'
 
-type LoanForm = Omit<LoanEntry, 'id'>
+type LoanForm = Omit<LoanEntry, 'id' | 'version'>
 type Mode = 'list' | 'add' | 'edit'
 
 const empty: LoanForm = {
@@ -15,6 +16,24 @@ const empty: LoanForm = {
   interest_rate: 0,
   due_date: '',
   loan_number: null,
+}
+
+function ConflictBanner({ onReload, onDiscard }: { onReload: () => void; onDiscard: () => void }) {
+  return (
+    <div className="rounded-md border border-yellow-300 bg-yellow-50 p-3 dark:border-yellow-700 dark:bg-yellow-900/20">
+      <p className="text-xs font-medium text-yellow-800 dark:text-yellow-300">
+        This record was changed on another device. Reload to see the latest version, or discard your changes.
+      </p>
+      <div className="mt-2 flex gap-2">
+        <button onClick={onReload} className="rounded-md bg-yellow-600 px-2 py-1 text-xs font-medium text-white hover:bg-yellow-700">
+          Reload latest
+        </button>
+        <button onClick={onDiscard} className="rounded-md bg-gray-200 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600">
+          Discard my changes
+        </button>
+      </div>
+    </div>
+  )
 }
 
 function fmt$(n: number) {
@@ -30,13 +49,19 @@ export default function Loans() {
   const [mode, setMode] = useState<Mode>('list')
   const [form, setForm] = useState<LoanForm>(empty)
   const [editId, setEditId] = useState<number | null>(null)
+  const [editVersion, setEditVersion] = useState(1)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [conflict, setConflict] = useState(false)
+
+  useDataSync('loans', reload)
 
   function resetForm() {
     setForm(empty)
     setEditId(null)
+    setEditVersion(1)
     setError('')
+    setConflict(false)
   }
 
   function openAdd() {
@@ -45,10 +70,12 @@ export default function Loans() {
   }
 
   function openEdit(l: LoanEntry) {
-    const { id, ...rest } = l
+    const { id, version, ...rest } = l
     setForm(rest)
     setEditId(id)
+    setEditVersion(version)
     setError('')
+    setConflict(false)
     setMode('edit')
   }
 
@@ -59,8 +86,9 @@ export default function Loans() {
       if (mode === 'add') {
         await api.createLoan(form)
       } else if (editId != null) {
-        await api.updateLoan(editId, form)
+        await api.updateLoan(editId, { ...form, version: editVersion })
       }
+      broadcastChange('loans')
       reload()
       if (addAnother) {
         resetForm()
@@ -69,7 +97,11 @@ export default function Loans() {
         resetForm()
       }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Save failed')
+      if (e instanceof ConflictError) {
+        setConflict(true)
+      } else {
+        setError(e instanceof Error ? e.message : 'Save failed')
+      }
     } finally {
       setSaving(false)
     }
@@ -78,6 +110,7 @@ export default function Loans() {
   async function handleDelete(id: number) {
     if (!confirm('Delete this loan?')) return
     await api.deleteLoan(id)
+    broadcastChange('loans')
     reload()
   }
 
@@ -92,6 +125,12 @@ export default function Loans() {
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
           <button onClick={() => { setMode('list'); resetForm() }} className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
         </div>
+        {conflict && (
+          <ConflictBanner
+            onReload={() => { reload(); setMode('list'); resetForm() }}
+            onDiscard={() => { setMode('list'); resetForm() }}
+          />
+        )}
         {error && <p className="text-xs text-red-500">{error}</p>}
         <div className="grid grid-cols-2 gap-3">
           <Field label="Grant Year" type="number" value={form.grant_year} onChange={v => setForm(f => ({ ...f, grant_year: +v }))} />

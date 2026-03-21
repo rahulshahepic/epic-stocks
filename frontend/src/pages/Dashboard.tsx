@@ -211,27 +211,20 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: Ti
 
   const data = useMemo(() => {
     const filtered = filterByDateRange(events, range, 'date')
-    let cumVestCg = 0
-    let cumPriceCg = 0
     return filtered.map(e => {
-      cumVestCg += e.vesting_cap_gains
-      cumPriceCg += e.price_cap_gains
       const isPast = !hasFuturePrices || e.date <= TODAY
       return {
         _date: e.date,
         _label: fmtDate(e.date),
         _event: e,
-        _cumVestCg: cumVestCg,
-        _cumPriceCg: cumPriceCg,
         income: isPast ? e.cum_income : null as number | null,
         gains: isPast ? e.cum_cap_gains : null as number | null,
         projIncome: !isPast ? e.cum_income : null as number | null,
-        projVestGains: !isPast ? cumVestCg : null as number | null,
-        projPriceGains: !isPast ? cumPriceCg : null as number | null,
+        projGains: !isPast ? e.cum_cap_gains : null as number | null,
       }
     }).map((d, i, arr) => {
       if (hasFuturePrices && d.income !== null && (i === arr.length - 1 || arr[i + 1].projIncome !== null)) {
-        return { ...d, projIncome: d.income, projVestGains: d._cumVestCg, projPriceGains: d._cumPriceCg }
+        return { ...d, projIncome: d.income, projGains: d.gains }
       }
       return d
     })
@@ -267,13 +260,12 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: Ti
             <ReferenceLine x={data[selected]._label} stroke="#8b5cf6" strokeWidth={1.5} />
           )}
           {/* Solid fills — always present */}
-          <Area type="monotone" dataKey="income" stackId="main" fill="#34d399" fillOpacity={0.7} stroke="#10b981" name="Income" connectNulls={false} />
-          <Area type="monotone" dataKey="gains" stackId="main" fill="#a78bfa" fillOpacity={0.7} stroke="#8b5cf6" name="Cap Gains" connectNulls={false} />
+          <Area type="monotone" dataKey="income" stackId="main" fill="#34d399" fillOpacity={0.7} stroke="#10b981" name="Income" connectNulls={false} dot={false} />
+          <Area type="monotone" dataKey="gains" stackId="main" fill="#a78bfa" fillOpacity={0.7} stroke="#8b5cf6" name="Cap Gains" connectNulls={false} dot={false} />
           {/* Projected — only when future prices exist */}
           {hasFuturePrices && <>
-            <Area type="monotone" dataKey="projIncome" stackId="proj" fill="#34d399" fillOpacity={0.35} stroke="#10b981" strokeDasharray="6 3" name="projIncome" connectNulls={false} />
-            <Area type="monotone" dataKey="projVestGains" stackId="proj" fill="#a78bfa" fillOpacity={0.35} stroke="#8b5cf6" strokeDasharray="6 3" name="projVestGains" connectNulls={false} />
-            <Area type="monotone" dataKey="projPriceGains" stackId="proj" fill="#c4b5fd" fillOpacity={0.2} stroke="#c4b5fd" strokeDasharray="3 3" name="projPriceGains" connectNulls={false} />
+            <Area type="monotone" dataKey="projIncome" stackId="proj" fill="#34d399" fillOpacity={0.35} stroke="#10b981" strokeDasharray="6 3" name="projIncome" connectNulls={false} dot={false} />
+            <Area type="monotone" dataKey="projGains" stackId="proj" fill="#a78bfa" fillOpacity={0.35} stroke="#8b5cf6" strokeDasharray="6 3" name="projGains" connectNulls={false} dot={false} />
           </>}
         </AreaChart>
       </ResponsiveContainer>

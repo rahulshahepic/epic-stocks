@@ -12,7 +12,9 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 
 ### Dashboard
 
-![Dashboard](screenshots/04-dashboard-after-import.png)
+| Light | Dark |
+|-------|------|
+| ![Dashboard Light](screenshots/dashboard-light-mobile.png) | ![Dashboard Dark](screenshots/dashboard-dark-mobile.png) |
 
 ### Export
 

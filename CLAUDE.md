@@ -39,7 +39,10 @@ Follow the order in SPEC.md. Build backend first, then frontend. **Every step mu
 - Mobile-first responsive design — this is primarily used on a phone
 
 ## UI Change Checklist
-- **Update README screenshots after any significant UI change.** When modifying dashboard charts, adding new pages, or changing visual layout, capture updated screenshots and update README.md so documentation stays current.
+- **Update README screenshots after any significant UI change.** When modifying dashboard charts, adding new pages, or changing visual layout, regenerate screenshots and commit them.
+- **How:** Run `./screenshots/run.sh` from the repo root. This spins up a temp backend + frontend, seeds sample data, and runs `frontend/e2e/screenshots.spec.ts` via Playwright to capture all screenshots into `screenshots/`.
+- **What to capture:** The spec captures dashboard (light/dark × mobile/desktop) and admin (light/dark × mobile). Add new test cases to the spec when adding new pages.
+- **README:** After capturing, update `README.md` to reference any new screenshot files.
 
 ## Deployment Notes
 - Caddy serves hashed assets (`/assets/*`) with immutable cache headers. `index.html`, `sw.js`, and `manifest.json` use `no-cache` for instant updates.

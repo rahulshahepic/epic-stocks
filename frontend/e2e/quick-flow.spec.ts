@@ -29,7 +29,7 @@ test.describe('Quick flow: purchase grant + loan', () => {
     // Fill grant fields
     await page.getByLabel('Year').fill('2024')
     await page.getByLabel('Shares', { exact: true }).fill('10000')
-    await page.getByLabel('Price per Share').fill('10.00')
+    await page.getByLabel('Cost Basis').fill('10.00')
     await page.getByLabel('Vest Start').fill('2025-03-01')
     await page.getByLabel('Vest Periods').fill('4')
     await page.getByLabel('Exercise Date').fill('2024-12-31')

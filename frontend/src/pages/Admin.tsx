@@ -396,7 +396,7 @@ export default function Admin() {
           {notifyResult && (
             <p className="text-xs text-green-600 dark:text-green-400">
               Push: {notifyResult.push_sent} sent{notifyResult.push_failed > 0 ? `, ${notifyResult.push_failed} expired` : ''}.{' '}
-              Email: {notifyResult.email_sent ? 'sent' : 'not sent'}.
+              Email: {notifyResult.email_sent ? 'sent' : `not sent${notifyResult.email_skipped_reason ? ` — ${notifyResult.email_skipped_reason}` : ''}`}.
             </p>
           )}
         </form>

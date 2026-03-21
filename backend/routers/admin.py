@@ -1,5 +1,8 @@
+import logging
 import os
 from fastapi import APIRouter, Depends, HTTPException
+
+logger = logging.getLogger(__name__)
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -205,6 +208,7 @@ class TestNotifyResult(BaseModel):
     push_sent: int
     push_failed: int
     email_sent: bool
+    email_skipped_reason: str | None = None
 
 
 @router.post("/test-notify", response_model=TestNotifyResult)
@@ -232,18 +236,26 @@ def admin_test_notify(
         db.commit()
 
     email_sent = False
+    email_skipped_reason = None
     pref = db.query(EmailPreference).filter(EmailPreference.user_id == user.id).first()
-    if pref and pref.enabled:
-        try:
-            from email_sender import send_email, email_configured
-            if email_configured():
+    if not pref or not pref.enabled:
+        email_skipped_reason = "user has email notifications disabled"
+    else:
+        from email_sender import send_email, email_configured
+        if not email_configured():
+            email_skipped_reason = "RESEND_API_KEY not configured"
+        else:
+            try:
                 email_sent = send_email(
                     user.email,
                     body.title,
                     body.body,
                     f"<p>{body.body}</p>",
                 )
-        except Exception:
-            pass
+                if not email_sent:
+                    email_skipped_reason = "send failed (check server logs)"
+            except Exception:
+                logger.exception("Error sending test email to %s", user.email)
+                email_skipped_reason = "send failed (check server logs)"
 
-    return TestNotifyResult(push_sent=push_sent, push_failed=push_failed, email_sent=email_sent)
+    return TestNotifyResult(push_sent=push_sent, push_failed=push_failed, email_sent=email_sent, email_skipped_reason=email_skipped_reason)

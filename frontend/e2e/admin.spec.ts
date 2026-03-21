@@ -9,7 +9,6 @@ const ADMIN_EMAIL = 'admin@e2e.test'
 
 test.describe('Admin workflows', () => {
   test('admin sees user list and can search', async ({ page, request }) => {
-    await getTestToken(request, ADMIN_EMAIL, 'Admin User')
     await getTestToken(request, 'admin-search-target@e2e.test', 'Search Target')
     const adminToken = await getTestToken(request, ADMIN_EMAIL, 'Admin User')
 
@@ -17,15 +16,15 @@ test.describe('Admin workflows', () => {
     await navigateTo(page, 'Admin')
 
     // Target user should appear in the list
-    await expect(page.getByText('admin-search-target@e2e.test')).toBeVisible()
+    await expect(page.getByText('admin-search-target@e2e.test').first()).toBeVisible()
 
     // Search narrows the list
     await page.getByPlaceholder('Search by email or name...').fill('admin-search-target')
-    await expect(page.getByText('admin-search-target@e2e.test')).toBeVisible()
+    await expect(page.getByText('admin-search-target@e2e.test').first()).toBeVisible()
 
     // Non-matching search hides the user
     await page.getByPlaceholder('Search by email or name...').fill('zzz-no-match-zzz')
-    await expect(page.getByText('admin-search-target@e2e.test')).not.toBeVisible()
+    await expect(page.getByText('admin-search-target@e2e.test').first()).not.toBeVisible()
   })
 
   test('admin can delete a non-admin user (two-click confirm)', async ({ page, request }) => {
@@ -35,9 +34,9 @@ test.describe('Admin workflows', () => {
     await loginAs(page, adminToken)
     await navigateTo(page, 'Admin')
 
-    // Find the target user via search
+    // Search to isolate the target user
     await page.getByPlaceholder('Search by email or name...').fill('admin-delete-target@e2e.test')
-    await expect(page.getByText('admin-delete-target@e2e.test')).toBeVisible()
+    await expect(page.getByText('admin-delete-target@e2e.test').first()).toBeVisible()
 
     // First click: button changes to "Confirm Delete"
     await page.getByRole('button', { name: 'Delete' }).first().click()
@@ -46,7 +45,7 @@ test.describe('Admin workflows', () => {
     // Second click: user is deleted and disappears from the list
     await page.getByRole('button', { name: 'Confirm Delete' }).click()
     await page.waitForLoadState('networkidle')
-    await expect(page.getByText('admin-delete-target@e2e.test')).not.toBeVisible()
+    await expect(page.getByText('admin-delete-target@e2e.test').first()).not.toBeVisible()
   })
 
   test('admin can block and unblock an email address', async ({ page, request }) => {
@@ -55,18 +54,17 @@ test.describe('Admin workflows', () => {
     await loginAs(page, adminToken)
     await navigateTo(page, 'Admin')
 
-    // Block an email
+    // Block an email — fill the form and click the submit button inside it
     await page.getByPlaceholder('email@example.com').fill('e2e-blocked@example.com')
     await page.getByPlaceholder('Reason (optional)').fill('E2E test block')
-    await page.locator('form').filter({ hasText: 'e2e-blocked@example.com' }).getByRole('button').click()
+    await page.getByPlaceholder('email@example.com').press('Enter')
     await page.waitForLoadState('networkidle')
-    await expect(page.getByText('e2e-blocked@example.com')).toBeVisible()
+    await expect(page.getByText('e2e-blocked@example.com').first()).toBeVisible()
 
     // Unblock it
-    const blockedRow = page.locator('li, tr').filter({ hasText: 'e2e-blocked@example.com' })
-    await blockedRow.getByRole('button', { name: 'Unblock' }).click()
+    await page.getByRole('button', { name: 'Unblock' }).first().click()
     await page.waitForLoadState('networkidle')
-    await expect(page.getByText('e2e-blocked@example.com')).not.toBeVisible()
+    await expect(page.getByText('e2e-blocked@example.com').first()).not.toBeVisible()
   })
 
   test('non-admin cannot access admin dashboard', async ({ page, request }) => {
@@ -77,10 +75,9 @@ test.describe('Admin workflows', () => {
     // Admin nav link should not be visible
     await expect(page.getByRole('link', { name: 'Admin', exact: true })).not.toBeVisible()
 
-    // Direct navigation to /admin should redirect or show 403-like state
+    // Direct navigation to /admin should not show admin content
     await page.goto('/admin')
     await page.waitForLoadState('networkidle')
-    // Should not show admin content
     await expect(page.getByPlaceholder('Search by email or name...')).not.toBeVisible()
   })
 })

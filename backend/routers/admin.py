@@ -255,7 +255,17 @@ def admin_test_notify(
                 if not email_sent:
                     email_skipped_reason = "send failed (check server logs)"
             except Exception:
+                import traceback as tb
                 logger.exception("Error sending test email to %s", user.email)
+                db.add(ErrorLog(
+                    method="POST",
+                    path="/api/admin/test-notify",
+                    error_type="EmailSendError",
+                    error_message=f"Failed to send test email to {user.email}",
+                    traceback=tb.format_exc(),
+                    user_id=admin.id,
+                ))
+                db.commit()
                 email_skipped_reason = "send failed (check server logs)"
 
     return TestNotifyResult(push_sent=push_sent, push_failed=push_failed, email_sent=email_sent, email_skipped_reason=email_skipped_reason)

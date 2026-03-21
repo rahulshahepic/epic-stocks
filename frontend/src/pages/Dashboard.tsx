@@ -211,22 +211,29 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: Ti
 
   const data = useMemo(() => {
     const filtered = filterByDateRange(events, range, 'date')
+    // Track cap gains attributable solely to future price changes (the uncertain part).
+    // For the future price event: all of price_cap_gains is "extra".
+    // For future vests AFTER a price change: each share vests at the higher price,
+    // contributing cumFuturePriceIncrease × shares_vested of additional gain.
+    let cumFuturePriceIncrease = 0
+    let cumSurplusCg = 0
     return filtered.map(e => {
-      const isPast = !hasFuturePrices || e.date <= TODAY
+      if (hasFuturePrices && e.date > TODAY) {
+        if (e.event_type === 'Share Price') {
+          cumFuturePriceIncrease += e.price_increase
+          cumSurplusCg += e.price_cap_gains
+        } else if (cumFuturePriceIncrease > 0 && (e.vested_shares ?? 0) > 0) {
+          cumSurplusCg += cumFuturePriceIncrease * (e.vested_shares ?? 0)
+        }
+      }
       return {
         _date: e.date,
         _label: fmtDate(e.date),
         _event: e,
-        income: isPast ? e.cum_income : null as number | null,
-        gains: isPast ? e.cum_cap_gains : null as number | null,
-        projIncome: !isPast ? e.cum_income : null as number | null,
-        projGains: !isPast ? e.cum_cap_gains : null as number | null,
+        income: e.cum_income,
+        gains: e.cum_cap_gains - cumSurplusCg,
+        projExtra: hasFuturePrices && cumSurplusCg > 0 ? cumSurplusCg : null as number | null,
       }
-    }).map((d, i, arr) => {
-      if (hasFuturePrices && d.income !== null && (i === arr.length - 1 || arr[i + 1].projIncome !== null)) {
-        return { ...d, projIncome: d.income, projGains: d.gains }
-      }
-      return d
     })
   }, [events, range, hasFuturePrices])
 
@@ -259,14 +266,12 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: Ti
           {selected !== null && selected < data.length && (
             <ReferenceLine x={data[selected]._label} stroke="#8b5cf6" strokeWidth={1.5} />
           )}
-          {/* Solid fills — always present */}
-          <Area type="monotone" dataKey="income" stackId="main" fill="#34d399" fillOpacity={0.7} stroke="#10b981" name="Income" connectNulls={false} dot={false} />
-          <Area type="monotone" dataKey="gains" stackId="main" fill="#a78bfa" fillOpacity={0.7} stroke="#8b5cf6" name="Cap Gains" connectNulls={false} dot={false} />
-          {/* Projected — only when future prices exist */}
-          {hasFuturePrices && <>
-            <Area type="monotone" dataKey="projIncome" stackId="proj" fill="#34d399" fillOpacity={0.35} stroke="#10b981" strokeDasharray="6 3" name="projIncome" connectNulls={false} dot={false} />
-            <Area type="monotone" dataKey="projGains" stackId="proj" fill="#a78bfa" fillOpacity={0.35} stroke="#8b5cf6" strokeDasharray="6 3" name="projGains" connectNulls={false} dot={false} />
-          </>}
+          {/* Single stack: income + certain gains + projected extra (price-driven surplus) */}
+          <Area type="monotone" dataKey="income" stackId="main" fill="#34d399" fillOpacity={0.7} stroke="#10b981" name="Income" dot={false} />
+          <Area type="monotone" dataKey="gains" stackId="main" fill="#a78bfa" fillOpacity={0.7} stroke="#8b5cf6" name="Cap Gains" dot={false} />
+          {hasFuturePrices && (
+            <Area type="monotone" dataKey="projExtra" stackId="main" fill="#c4b5fd" fillOpacity={0.5} stroke="#c4b5fd" strokeDasharray="6 3" name="Projected" dot={false} />
+          )}
         </AreaChart>
       </ResponsiveContainer>
       {sel && (

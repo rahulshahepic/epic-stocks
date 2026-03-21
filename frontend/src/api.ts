@@ -191,6 +191,8 @@ export const api = {
   adminUnblock: (id: number) => del(`/api/admin/blocked/${id}`),
   adminErrors: (limit = 50) => apiFetch<ErrorLogEntry[]>(`/api/admin/errors?limit=${limit}`),
   adminClearErrors: () => del('/api/admin/errors'),
+  adminTestNotify: (user_id: number, title: string, body: string) =>
+    post<TestNotifyResult>('/api/admin/test-notify', { user_id, title, body }),
 }
 
 export interface AdminStats {
@@ -235,4 +237,10 @@ export interface ErrorLogEntry {
   error_message: string | null
   traceback: string | null
   user_id: number | null
+}
+
+export interface TestNotifyResult {
+  push_sent: number
+  push_failed: number
+  email_sent: boolean
 }

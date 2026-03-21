@@ -1,6 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../api.ts'
-import type { AdminStats, AdminUser, BlockedEmailEntry, ErrorLogEntry } from '../api.ts'
+import type { AdminStats, AdminUser, BlockedEmailEntry, ErrorLogEntry, TestNotifyResult } from '../api.ts'
+
+const NOTIFY_TEMPLATES: Record<string, { title: string; body: string }> = {
+  custom:        { title: 'Test from admin', body: 'This is a test notification from the Epic Stocks admin panel.' },
+  vesting:       { title: 'Equity Tracker', body: 'You have 1 event today: 1 Vesting' },
+  exercise:      { title: 'Equity Tracker', body: 'You have 1 event today: 1 Exercise' },
+  loan_repayment:{ title: 'Equity Tracker', body: 'You have 1 event today: 1 Loan Repayment' },
+}
 
 export default function Admin() {
   const [stats, setStats] = useState<AdminStats | null>(null)
@@ -15,6 +22,12 @@ export default function Admin() {
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null)
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
+  const [notifyUserId, setNotifyUserId] = useState<number | ''>('')
+  const [notifyTemplate, setNotifyTemplate] = useState('custom')
+  const [notifyTitle, setNotifyTitle] = useState(NOTIFY_TEMPLATES.custom.title)
+  const [notifyBody, setNotifyBody] = useState(NOTIFY_TEMPLATES.custom.body)
+  const [notifySending, setNotifySending] = useState(false)
+  const [notifyResult, setNotifyResult] = useState<TestNotifyResult | null>(null)
 
   const loadUsers = useCallback(async (q = '') => {
     try {
@@ -89,6 +102,21 @@ export default function Admin() {
       loadUsers(search)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete user')
+    }
+  }
+
+  async function handleTestNotify(e: React.FormEvent) {
+    e.preventDefault()
+    if (!notifyUserId) return
+    setNotifySending(true)
+    setNotifyResult(null)
+    try {
+      const result = await api.adminTestNotify(notifyUserId, notifyTitle, notifyBody)
+      setNotifyResult(result)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send notification')
+    } finally {
+      setNotifySending(false)
     }
   }
 
@@ -182,16 +210,24 @@ export default function Admin() {
                   {u.grant_count} grants · {u.loan_count} loans · {u.price_count} prices
                 </p>
               </div>
-              {!u.is_admin && (
+              <div className="ml-2 flex shrink-0 gap-1">
                 <button
-                  onClick={() => handleDelete(u.id)}
-                  className={`ml-2 shrink-0 rounded px-2 py-1 text-xs font-medium text-white ${
-                    confirmDelete === u.id ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-400 hover:bg-gray-500'
-                  }`}
+                  onClick={() => { setNotifyUserId(u.id); setNotifyResult(null) }}
+                  className="rounded px-2 py-1 text-xs font-medium text-white bg-indigo-500 hover:bg-indigo-600"
                 >
-                  {confirmDelete === u.id ? 'Confirm Delete' : 'Delete'}
+                  Notify
                 </button>
-              )}
+                {!u.is_admin && (
+                  <button
+                    onClick={() => handleDelete(u.id)}
+                    className={`rounded px-2 py-1 text-xs font-medium text-white ${
+                      confirmDelete === u.id ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-400 hover:bg-gray-500'
+                    }`}
+                  >
+                    {confirmDelete === u.id ? 'Confirm Delete' : 'Delete'}
+                  </button>
+                )}
+              </div>
             </div>
           ))}
           {users.length === 0 && (
@@ -298,6 +334,72 @@ export default function Admin() {
             </div>
           ))}
         </div>
+      </section>
+
+      <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+        <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Test Notification</h3>
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          Send an immediate notification to any user. Respects user preferences — push only goes to active subscriptions, email only if the user has it enabled.
+        </p>
+        <form onSubmit={handleTestNotify} className="mt-3 space-y-2">
+          <select
+            aria-label="User"
+            value={notifyUserId}
+            onChange={e => { setNotifyUserId(e.target.value === '' ? '' : +e.target.value); setNotifyResult(null) }}
+            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+          >
+            <option value="">Select a user…</option>
+            {users.map(u => (
+              <option key={u.id} value={u.id}>{u.email}{u.name ? ` (${u.name})` : ''}</option>
+            ))}
+          </select>
+          <select
+            aria-label="Template"
+            value={notifyTemplate}
+            onChange={e => {
+              const tpl = e.target.value
+              setNotifyTemplate(tpl)
+              setNotifyTitle(NOTIFY_TEMPLATES[tpl].title)
+              setNotifyBody(NOTIFY_TEMPLATES[tpl].body)
+              setNotifyResult(null)
+            }}
+            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+          >
+            <option value="custom">Custom</option>
+            <option value="vesting">Vesting event</option>
+            <option value="exercise">Exercise event</option>
+            <option value="loan_repayment">Loan Repayment event</option>
+          </select>
+          <input
+            type="text"
+            aria-label="Title"
+            value={notifyTitle}
+            onChange={e => { setNotifyTitle(e.target.value); setNotifyTemplate('custom') }}
+            placeholder="Title"
+            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+          />
+          <textarea
+            aria-label="Body"
+            value={notifyBody}
+            onChange={e => { setNotifyBody(e.target.value); setNotifyTemplate('custom') }}
+            placeholder="Body"
+            rows={2}
+            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+          />
+          <button
+            type="submit"
+            disabled={!notifyUserId || notifySending}
+            className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {notifySending ? 'Sending…' : 'Send Now'}
+          </button>
+          {notifyResult && (
+            <p className="text-xs text-green-600 dark:text-green-400">
+              Push: {notifyResult.push_sent} sent{notifyResult.push_failed > 0 ? `, ${notifyResult.push_failed} expired` : ''}.{' '}
+              Email: {notifyResult.email_sent ? 'sent' : 'not sent'}.
+            </p>
+          )}
+        </form>
       </section>
     </div>
   )

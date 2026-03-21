@@ -1,8 +1,8 @@
-# Roadmap: Privacy, Encryption & Admin
+# Roadmap: Privacy, Encryption, Admin & Beyond
 
 ## Context
 
-Epic Stocks tracks sensitive financial data (equity grants, stock prices, loan amounts, capital gains). As an open-source, self-hosted tool, users need to trust the operator. This plan addresses three areas: data privacy, a formal privacy policy, and admin capabilities.
+Epic Stocks tracks sensitive financial data (equity grants, stock prices, loan amounts, capital gains). As an open-source, self-hosted tool, users need to trust the operator. This plan addresses data privacy, a formal privacy policy, admin capabilities, and future feature work.
 
 ---
 
@@ -261,12 +261,275 @@ Add email notifications alongside existing push notifications, with a **strict o
 
 ---
 
+---
+
+## 6. Multi-Device / Concurrent Session Hardening
+
+### Problem
+
+A user logged in on two devices (or two browser tabs) at the same time can create race conditions: both read the same grant, both modify it, one saves first and the other silently overwrites it. Currently the app has no protection against this.
+
+### Approach: Optimistic Locking + UI Sync
+
+**Backend: version fields**
+- Add a `version` integer column to `Grant`, `Loan`, and `Price` models (default 1, auto-incremented on every write)
+- PUT endpoints accept an optional `If-Match: <version>` header (or `version` field in the body)
+- If the submitted version doesn't match the current DB version, return `409 Conflict` with `{ "detail": "modified_elsewhere", "current_version": N }`
+- Deletes also check version if provided
+
+**Frontend: handle conflicts gracefully**
+- On `409 Conflict` from any write, show a non-dismissible banner: *"This record was changed on another device. Refresh to see the latest version."*
+- Refresh button reloads the data and opens the edit form pre-populated with the latest values
+- Discard button closes the form without saving
+
+**Frontend: cross-tab sync via BroadcastChannel**
+- After any successful save or delete, post a message on a `BroadcastChannel('data_sync')` channel
+- Other open tabs listen and trigger a reload of the affected data type (grants, loans, prices)
+- Works only across tabs in the same browser — cross-device sync still relies on the user manually refreshing
+
+**Token management**
+- Multiple valid JWTs at once is fine — no single-session enforcement
+- Push subscriptions already support multiple endpoints per user (one per device)
+- `PRAGMA busy_timeout=10000` is already set on SQLite — handles concurrent DB writes
+
+### Schema Changes
+
+```sql
+ALTER TABLE grants ADD COLUMN version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE loans ADD COLUMN version INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE prices ADD COLUMN version INTEGER NOT NULL DEFAULT 1;
+```
+
+Added via `_migrate_schema()` in `main.py` (no migration framework needed).
+
+### API Changes
+
+All PUT endpoints for grants, loans, prices:
+- Accept optional `version` in request body
+- Return `409 Conflict` if version mismatch
+- Increment version on successful write
+
+### Tests
+
+- Unit: PUT with stale version → 409
+- Unit: PUT with correct version → 200, version incremented
+- Unit: PUT without version → 200 (backward compat, no version check)
+- E2E: simulate two-tab conflict, verify conflict banner appears
+
+### Effort: ~1 day
+
+---
+
+## 7. Admin: Test Notification Sender
+
+### Problem
+
+There's no way to verify that push/email notifications are working for a specific user without waiting for a real event. Admins need a "send now" tool for testing and support.
+
+### Approach
+
+**New admin endpoint:** `POST /api/admin/test-notify`
+
+```json
+{
+  "user_id": 42,
+  "title": "Test notification",
+  "body": "This is a test from the admin panel."
+}
+```
+
+Response:
+```json
+{
+  "push_sent": 2,
+  "push_failed": 0,
+  "email_sent": true
+}
+```
+
+- Sends push notification to ALL active push subscriptions for the user (they may have multiple devices)
+- If the user has email notifications enabled and SMTP is configured, sends an email too
+- Uses the existing `send_push_to_user()` helper and email sender from `notifications.py`
+- Returns count of successful/failed pushes and whether email was sent
+- Stale/expired push subscriptions that return 410 Gone are automatically deleted (same behavior as daily notifications)
+- Admin-only endpoint, never exposes user financial data
+
+**Frontend (Admin page)**
+
+Add a "Test Notification" card in the Admin UI:
+- User search/selector: type to search by email or name (reuses existing admin user search)
+- Title field (pre-filled: "Test from admin")
+- Body field (pre-filled: "This is a test notification from the Epic Stocks admin panel.")
+- Send button → shows result inline: "Sent 2 push notifications. Email: sent."
+- If the user has no push subscriptions and no email, show a warning before sending
+
+### Tests
+
+- Backend unit: POST → sends push to all user subscriptions, returns correct counts
+- Backend unit: user with no subscriptions → push_sent=0, no error
+- Backend unit: non-admin → 403
+- Frontend: admin sees the form, can search users, submits, sees result
+
+### Effort: ~0.5 days
+
+---
+
+## 8. Stock Sales with Wisconsin Tax Calculator
+
+### Overview
+
+Allow users to record stock sales and see estimated tax liability broken down by Wisconsin rates. Sales of unvested stock are allowed with a warning. Tax rates are configurable per-user with Wisconsin defaults.
+
+### New Model: `Sale`
+
+```sql
+CREATE TABLE sales (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  date TEXT NOT NULL,           -- YYYY-MM-DD
+  shares INTEGER NOT NULL,
+  price_per_share REAL NOT NULL,
+  notes TEXT NOT NULL DEFAULT ''
+);
+```
+
+No `cost_basis` stored — that's computed from the grant history at sale time.
+
+### New Model: `TaxSettings`
+
+```sql
+CREATE TABLE tax_settings (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  -- Federal
+  federal_income_rate REAL NOT NULL DEFAULT 0.37,
+  federal_lt_cg_rate REAL NOT NULL DEFAULT 0.20,
+  federal_st_cg_rate REAL NOT NULL DEFAULT 0.37,
+  niit_rate REAL NOT NULL DEFAULT 0.038,
+  -- State (Wisconsin defaults)
+  state_income_rate REAL NOT NULL DEFAULT 0.0765,
+  state_lt_cg_rate REAL NOT NULL DEFAULT 0.0536,  -- 7.65% × 70% WI exclusion
+  state_st_cg_rate REAL NOT NULL DEFAULT 0.0765,
+  -- Holding period threshold (days)
+  lt_holding_days INTEGER NOT NULL DEFAULT 365
+);
+```
+
+Wisconsin notes baked into defaults:
+- Wisconsin taxes capital gains as ordinary income with a **30% exclusion** for qualifying assets held > 5 years (Epic stock qualifies as Wisconsin-based business)
+- Default state LT rate = 7.65% × 0.70 = **5.36%** (assumes > 5 year hold)
+- Default state ST rate = 7.65% (no exclusion)
+- NIIT applies to federal investment income; no WI equivalent
+
+**Effective combined rates with defaults:**
+| Type | Federal | State | NIIT | Total |
+|------|---------|-------|------|-------|
+| LT cap gains | 20% | 5.36% | 3.8% | **29.16%** |
+| ST cap gains | 37% | 7.65% | 3.8% | **48.45%** |
+| Ordinary income (unvested) | 37% | 7.65% | — | **44.65%** |
+
+*These are marginal rates for high earners. Users should consult a tax professional.*
+
+### Sale Event Computation (`sales_engine.py`)
+
+A new module (does NOT modify `core.py`) wraps the core timeline:
+
+```python
+def compute_sale_events(timeline_events, sales, tax_settings):
+    """
+    For each sale, walk the cumulative share/basis state at the sale date
+    to determine cost basis, gain/loss, and estimated tax.
+    Returns list of sale event dicts to merge into the timeline.
+    """
+```
+
+**Share identification method:** FIFO (first-in, first-out) — the oldest vested shares are sold first. For unvested shares, use the current grant price as basis with an "unvested" flag.
+
+**For each sale event, compute:**
+- `gross_proceeds` = shares × price_per_share
+- `cost_basis` = FIFO basis of sold shares
+- `gain_loss` = gross_proceeds - cost_basis
+- `hold_days` = days from vesting date to sale date
+- `is_long_term` = hold_days ≥ lt_holding_days
+- `unvested_shares` = shares sold that were not yet vested (0 for normal sales)
+- `estimated_tax` = gain × applicable rate (LT/ST) + unvested_portion × income_rate
+- `net_proceeds` = gross_proceeds - estimated_tax
+
+**Unvested stock:**
+- User can record a sale of unvested stock (some plans allow this)
+- UI warns: "These shares are not yet vested. Proceeds may be taxed as ordinary income."
+- Unvested portion uses `federal_income_rate + state_income_rate`
+
+### Frontend
+
+**Sales page** (new `/sales` nav item):
+- CRUD table similar to Grants/Loans/Prices
+- `+ Sale` form: Date, Shares, Price per Share, Notes
+- On save, show the computed tax breakdown inline
+- "Unvested shares" warning banner if the sale date is before full vesting
+
+**Tax breakdown card** (shown after adding a sale and in the sale detail view):
+```
+Gross proceeds:     $125,000
+Cost basis (FIFO):  $ 42,500
+Net gain:           $ 82,500
+  Long-term (X shares): $75,000 × 29.16% = $21,870
+  Short-term (Y shares): $7,500 × 48.45% = $3,634
+Estimated total tax:    $25,504
+Net after tax:          $99,496
+```
+
+**Tax Settings** (new section in Settings page):
+- Shows current rates for Federal income, Federal LT CG, Federal ST CG, NIIT, State income, State LT CG, State ST CG, Holding period threshold
+- "Reset to Wisconsin defaults" button
+- Edit form with explanatory labels
+
+### Backend Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/sales` | List user's sales |
+| POST | `/api/sales` | Create a sale |
+| PUT | `/api/sales/{id}` | Update a sale |
+| DELETE | `/api/sales/{id}` | Delete a sale |
+| GET | `/api/sales/{id}/tax` | Compute tax breakdown for a sale |
+| GET | `/api/tax-settings` | Get user's tax settings |
+| PUT | `/api/tax-settings` | Update tax settings |
+
+The `/api/sales/{id}/tax` endpoint re-runs the full timeline computation to get the cumulative state at the sale date, then applies FIFO cost basis allocation and tax rates.
+
+### Schema Migration
+
+Add to `_migrate_schema()` in `main.py`:
+- Create `sales` table if not exists
+- Create `tax_settings` table if not exists
+
+### Tests
+
+- Unit: FIFO basis allocation for various grant combinations
+- Unit: LT vs ST classification based on hold period
+- Unit: unvested shares detection and income tax classification
+- Unit: Wisconsin rate defaults
+- Unit: CRUD endpoints (auth, user isolation)
+- E2E: add a sale, verify tax breakdown visible
+
+### Encryption
+
+`Sale.price_per_share` and `TaxSettings` rate fields are financial data → encrypt if `ENCRYPTION_MASTER_KEY` is set.
+
+### Effort: ~2-3 days
+
+---
+
 ## Implementation Order
 
 1. **Done:** Privacy policy + transparency
 2. **Done:** Per-user column-level encryption (AES-256-GCM)
-3. **Done:** Admin system (section 3) — admin dashboard, user management, email blocking
-4. **Next:** Email notifications (section 4)
-5. **Next:** Security hardening (section 5)
-6. **Later:** Migration script for existing plaintext databases
-7. **Later:** Client-side encryption, if architecture supports it
+3. **Done:** Admin system — admin dashboard, user management, email blocking
+4. **Next:** Multi-device / concurrent session hardening (section 6)
+5. **Next:** Admin test notification sender (section 7)
+6. **Next:** Stock sales + Wisconsin tax calculator (section 8)
+7. **Backlog:** Email notifications (section 4)
+8. **Backlog:** Security hardening (section 5)
+9. **Later:** Migration script for existing plaintext databases
+10. **Later:** Client-side encryption, if architecture supports it

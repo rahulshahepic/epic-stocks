@@ -13,7 +13,8 @@ trap cleanup EXIT
 TMPDB=$(mktemp /tmp/screenshots-XXXXX.db)
 
 echo "==> Seeding temporary database..."
-DATABASE_URL="sqlite:///$TMPDB" python screenshots/seed.py > /tmp/screenshot_token.txt
+DATABASE_URL="sqlite:///$TMPDB" JWT_SECRET="screenshots-secret" \
+  python screenshots/seed.py > /tmp/screenshot_token.txt
 TOKEN=$(cat /tmp/screenshot_token.txt)
 
 echo "==> Starting backend on :8000..."

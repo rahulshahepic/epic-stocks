@@ -207,6 +207,8 @@ All endpoints require `Authorization: Bearer <jwt>` except auth, health, config,
 |--------|------|-------------|
 | POST | `/api/auth/google` | Exchange Google ID token for JWT |
 | GET | `/api/me` | Current user info + is_admin flag |
+| POST | `/api/me/reset` | Reset all financial data (keeps account) |
+| DELETE | `/api/me` | Delete account and all associated data |
 | GET | `/api/config` | Client config (Google client ID, VAPID key, etc.) |
 | GET | `/api/health` | Health check |
 | GET | `/api/dashboard` | Summary cards data |

@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Last updated:** 2026-03-20
+**Last updated:** 2026-03-21
 
 Equity Vesting Tracker ("Epic Stocks") is open-source software that you or your organization self-host. This policy explains what data the application collects, how it's stored, and who can access it.
 
@@ -52,7 +52,10 @@ You have full access to your own data through the application UI and API. You ca
 
 - View, create, update, and delete all your grants, loans, and prices
 - Export all your data to Excel at any time
-- Delete your account, which permanently removes all your data
+- **Reset your data** — delete all grants, loans, and prices while keeping your account (Settings > Danger Zone > Reset All Data)
+- **Delete your account** — permanently remove your account and all associated data, including grants, loans, prices, notification preferences, and push subscriptions (Settings > Danger Zone > Delete Account)
+
+Both actions are self-service, immediate, and irreversible. No admin involvement is required.
 
 ### The Site Operator
 
@@ -78,7 +81,9 @@ The application does not send your data to any third-party services. The only ex
 ## Data Retention
 
 - Your data persists until you explicitly delete it or delete your account
-- Deleting your account removes all your grants, loans, prices, and profile information permanently
+- **Resetting your data** (Settings > Danger Zone) removes all grants, loans, and prices but keeps your account active
+- **Deleting your account** (Settings > Danger Zone) permanently removes your user record and all associated data: grants, loans, prices, push subscriptions, and email preferences
+- Both actions take effect immediately and cannot be undone
 - There are no backups unless the site operator configures them independently
 
 ## Data Portability

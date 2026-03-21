@@ -4,6 +4,7 @@ import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import Depends, FastAPI, Request
+from sqlalchemy.orm import Session
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import FileResponse
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 from routers import auth_router, grants, loans, prices, events, flows, import_export, push, admin, notifications
 from auth import get_current_user
 from crypto import encryption_enabled, decrypt_user_key, set_current_key
+from database import get_db
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -154,6 +156,29 @@ def client_config():
 @_fastapi_app.get("/api/me")
 def current_user_info(user=Depends(get_current_user)):
     return {"id": user.id, "email": user.email, "name": user.name, "is_admin": bool(user.is_admin)}
+
+
+@_fastapi_app.post("/api/me/reset", status_code=204)
+def reset_my_data(user=Depends(get_current_user), db: Session = Depends(get_db)):
+    """Delete all financial data (grants, loans, prices) but keep the account."""
+    from models import Grant, Loan, Price
+    db.query(Grant).filter(Grant.user_id == user.id).delete()
+    db.query(Loan).filter(Loan.user_id == user.id).delete()
+    db.query(Price).filter(Price.user_id == user.id).delete()
+    db.commit()
+
+
+@_fastapi_app.delete("/api/me", status_code=204)
+def delete_my_account(user=Depends(get_current_user), db: Session = Depends(get_db)):
+    """Permanently delete account and all associated data."""
+    from models import User, Grant, Loan, Price, PushSubscription, EmailPreference
+    db.query(Grant).filter(Grant.user_id == user.id).delete()
+    db.query(Loan).filter(Loan.user_id == user.id).delete()
+    db.query(Price).filter(Price.user_id == user.id).delete()
+    db.query(PushSubscription).filter(PushSubscription.user_id == user.id).delete()
+    db.query(EmailPreference).filter(EmailPreference.user_id == user.id).delete()
+    db.query(User).filter(User.id == user.id).delete()
+    db.commit()
 
 
 # Serve React build if the static directory exists (production)

@@ -12,6 +12,10 @@ function fmt$(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 }
 
+function fmtPrice(n: number) {
+  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 })
+}
+
 function fmtNum(n: number) {
   return n.toLocaleString('en-US')
 }
@@ -201,7 +205,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Card label="Share Price" value={fmt$(dash.current_price)} variant="price" />
+        <Card label="Share Price" value={fmtPrice(dash.current_price)} variant="price" />
         <Card label="Total Shares" value={fmtNum(dash.total_shares)} variant="shares" />
         <Card label="Total Income" value={fmt$(dash.total_income)} variant="income" />
         <Card label="Total Cap Gains" value={fmt$(dash.total_cap_gains)} variant="gains" />

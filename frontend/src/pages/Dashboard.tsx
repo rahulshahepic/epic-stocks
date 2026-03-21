@@ -221,6 +221,8 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: Ti
         _date: e.date,
         _label: fmtDate(e.date),
         _event: e,
+        _cumVestCg: cumVestCg,
+        _cumPriceCg: cumPriceCg,
         income: isPast ? e.cum_income : null as number | null,
         gains: isPast ? e.cum_cap_gains : null as number | null,
         projIncome: !isPast ? e.cum_income : null as number | null,
@@ -229,7 +231,7 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: Ti
       }
     }).map((d, i, arr) => {
       if (hasFuturePrices && d.income !== null && (i === arr.length - 1 || arr[i + 1].projIncome !== null)) {
-        return { ...d, projIncome: d.income, projVestGains: d.gains, projPriceGains: 0 }
+        return { ...d, projIncome: d.income, projVestGains: d._cumVestCg, projPriceGains: d._cumPriceCg }
       }
       return d
     })

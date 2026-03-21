@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 
 from database import get_db
-from models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, ErrorLog
+from models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, ErrorLog, EmailPreference
 from auth import get_admin_user, get_admin_emails
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -193,3 +193,57 @@ def admin_errors(
 def clear_errors(admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
     db.query(ErrorLog).delete()
     db.commit()
+
+
+class TestNotifyRequest(BaseModel):
+    user_id: int
+    title: str
+    body: str
+
+
+class TestNotifyResult(BaseModel):
+    push_sent: int
+    push_failed: int
+    email_sent: bool
+
+
+@router.post("/test-notify", response_model=TestNotifyResult)
+def admin_test_notify(
+    body: TestNotifyRequest,
+    admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.id == body.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    from notifications import send_push
+    payload = {"title": body.title, "body": body.body}
+    subs = db.query(PushSubscription).filter(PushSubscription.user_id == user.id).all()
+    push_sent = push_failed = 0
+    for sub in subs:
+        ok = send_push(sub, payload)
+        if ok:
+            push_sent += 1
+        else:
+            push_failed += 1
+            db.delete(sub)
+    if push_failed:
+        db.commit()
+
+    email_sent = False
+    pref = db.query(EmailPreference).filter(EmailPreference.user_id == user.id).first()
+    if pref and pref.enabled:
+        try:
+            from email_sender import send_email, email_configured
+            if email_configured():
+                email_sent = send_email(
+                    user.email,
+                    body.title,
+                    body.body,
+                    f"<p>{body.body}</p>",
+                )
+        except Exception:
+            pass
+
+    return TestNotifyResult(push_sent=push_sent, push_failed=push_failed, email_sent=email_sent)

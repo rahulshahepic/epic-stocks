@@ -471,3 +471,126 @@ def test_test_login_non_admin_flag(client, db_session):
         resp = client.get("/api/me", headers=auth_header(token))
         assert resp.status_code == 200
         assert resp.json()["is_admin"] is False
+
+
+# ============================================================
+# TEST NOTIFY
+# ============================================================
+
+def test_admin_test_notify_push(client, db_session):
+    """Admin can send a test push notification to a user."""
+    from unittest.mock import MagicMock, patch as upatch
+    from models import PushSubscription
+
+    with _admin_env():
+        admin_token = _register_admin(client)
+        target_token = register_user(client, "target@test.com")
+
+        # Give target user a push subscription
+        from auth import get_current_user as _gcu
+        resp = client.get("/api/me", headers=auth_header(target_token))
+        target_id = resp.json()["id"]
+
+        sub = PushSubscription(
+            user_id=target_id,
+            endpoint="https://example.com/push/1",
+            p256dh="key",
+            auth="auth",
+        )
+        db_session.add(sub)
+        db_session.commit()
+
+        with upatch("notifications.send_push", return_value=True) as mock_push:
+            resp = client.post(
+                "/api/admin/test-notify",
+                json={"user_id": target_id, "title": "Hello", "body": "World"},
+                headers=auth_header(admin_token),
+            )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["push_sent"] == 1
+        assert data["push_failed"] == 0
+        assert data["email_sent"] is False
+        mock_push.assert_called_once()
+
+
+def test_admin_test_notify_expired_sub_deleted(client, db_session):
+    """Expired push subscription (send_push returns False) is deleted."""
+    from unittest.mock import patch as upatch
+    from models import PushSubscription
+
+    with _admin_env():
+        admin_token = _register_admin(client)
+        target_token = register_user(client, "expired@test.com")
+        resp = client.get("/api/me", headers=auth_header(target_token))
+        target_id = resp.json()["id"]
+
+        sub = PushSubscription(
+            user_id=target_id,
+            endpoint="https://example.com/push/expired",
+            p256dh="key",
+            auth="auth",
+        )
+        db_session.add(sub)
+        db_session.commit()
+
+        with upatch("notifications.send_push", return_value=False):
+            resp = client.post(
+                "/api/admin/test-notify",
+                json={"user_id": target_id, "title": "Hi", "body": "Test"},
+                headers=auth_header(admin_token),
+            )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["push_sent"] == 0
+        assert data["push_failed"] == 1
+
+        # Subscription should be deleted
+        remaining = db_session.query(PushSubscription).filter(
+            PushSubscription.user_id == target_id
+        ).count()
+        assert remaining == 0
+
+
+def test_admin_test_notify_user_not_found(client):
+    """Returns 404 for unknown user_id."""
+    with _admin_env():
+        admin_token = _register_admin(client)
+        resp = client.post(
+            "/api/admin/test-notify",
+            json={"user_id": 999999, "title": "Hi", "body": "Test"},
+            headers=auth_header(admin_token),
+        )
+        assert resp.status_code == 404
+
+
+def test_admin_test_notify_non_admin_forbidden(client):
+    """Non-admin cannot use test-notify endpoint."""
+    with _admin_env():
+        token = register_user(client, "notadmin@test.com")
+        resp = client.post(
+            "/api/admin/test-notify",
+            json={"user_id": 1, "title": "Hi", "body": "Test"},
+            headers=auth_header(token),
+        )
+        assert resp.status_code == 403
+
+
+def test_admin_test_notify_no_subscriptions(client):
+    """User with no push subscriptions returns push_sent=0, no error."""
+    with _admin_env():
+        admin_token = _register_admin(client)
+        target_token = register_user(client, "nosub@test.com")
+        resp = client.get("/api/me", headers=auth_header(target_token))
+        target_id = resp.json()["id"]
+
+        resp = client.post(
+            "/api/admin/test-notify",
+            json={"user_id": target_id, "title": "Hi", "body": "Test"},
+            headers=auth_header(admin_token),
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["push_sent"] == 0
+        assert data["push_failed"] == 0
+        assert data["email_sent"] is False

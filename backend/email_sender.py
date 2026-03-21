@@ -37,9 +37,6 @@ def send_email(to_email: str, subject: str, body_text: str, body_html: str | Non
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=10,
         )
-        if not resp.is_success:
-            logger.error("Resend API error %s: %s", resp.status_code, resp.text)
-            return False
         resp.raise_for_status()
         return True
     except httpx.HTTPStatusError as e:

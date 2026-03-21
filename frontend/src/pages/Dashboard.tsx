@@ -208,11 +208,13 @@ function IncomeCapGainsChart({ events, c, range }: { events: TimelineEvent[]; c:
           }}
           contentStyle={{ backgroundColor: c.tooltipBg, color: c.tooltipText, border: 'none', borderRadius: 8 }}
         />
-        <Legend wrapperStyle={{ fontSize: 11 }} payload={[
-          { value: 'Income', type: 'square', color: '#10b981' },
-          { value: 'Cap Gains', type: 'square', color: '#8b5cf6' },
-          { value: 'Projected', type: 'square', color: '#c4b5fd' },
-        ]} />
+        <Legend wrapperStyle={{ fontSize: 11 }} content={() => (
+          <div className="flex justify-center gap-3 text-[11px]">
+            <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: '#10b981' }} />Income</span>
+            <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: '#8b5cf6' }} />Cap Gains</span>
+            <span className="flex items-center gap-1"><span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: '#c4b5fd' }} />Projected</span>
+          </div>
+        )} />
         {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
         {/* Past: solid fills */}
         <Area type="monotone" dataKey="pastIncome" stackId="past" fill="#34d399" fillOpacity={0.7} stroke="#10b981" name="Income" connectNulls={false} />

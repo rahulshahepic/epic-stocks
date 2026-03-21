@@ -211,27 +211,34 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: Ti
 
   const data = useMemo(() => {
     const filtered = filterByDateRange(events, range, 'date')
-    // Track cap gains attributable solely to future price changes (the uncertain part).
-    // For the future price event: all of price_cap_gains is "extra".
-    // For future vests AFTER a price change: each share vests at the higher price,
-    // contributing cumFuturePriceIncrease × shares_vested of additional gain.
+    // Track the portion of income and cap gains attributable solely to future price changes.
+    // RSU vests (grant_price=0) produce income; option vests (grant_price>0) produce cap gains.
+    // For the future price event: price_cap_gains is entirely price-driven surplus.
+    // For future vests after a price change: extra = cumFuturePriceIncrease × shares_vested.
     let cumFuturePriceIncrease = 0
+    let cumSurplusIncome = 0
     let cumSurplusCg = 0
     return filtered.map(e => {
       if (hasFuturePrices && e.date > TODAY) {
+        const vs = (e.vested_shares ?? 0)
         if (e.event_type === 'Share Price') {
           cumFuturePriceIncrease += e.price_increase
           cumSurplusCg += e.price_cap_gains
-        } else if (cumFuturePriceIncrease > 0 && (e.vested_shares ?? 0) > 0) {
-          cumSurplusCg += cumFuturePriceIncrease * (e.vested_shares ?? 0)
+        } else if (cumFuturePriceIncrease > 0 && vs > 0) {
+          if ((e.grant_price ?? 0) === 0) {
+            cumSurplusIncome += cumFuturePriceIncrease * vs  // RSU: extra shows as income
+          } else {
+            cumSurplusCg += cumFuturePriceIncrease * vs      // option: extra shows as cap gains
+          }
         }
       }
       return {
         _date: e.date,
         _label: fmtDate(e.date),
         _event: e,
-        income: e.cum_income,
+        income: e.cum_income - cumSurplusIncome,
         gains: e.cum_cap_gains - cumSurplusCg,
+        projExtraIncome: hasFuturePrices && cumSurplusIncome > 0 ? cumSurplusIncome : null as number | null,
         projExtra: hasFuturePrices && cumSurplusCg > 0 ? cumSurplusCg : null as number | null,
       }
     })
@@ -253,7 +260,7 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: Ti
             <text x="50%" y={16} textAnchor="middle" fontSize={10} fill={c.axis}>
               <tspan fill="#10b981">&#9632;</tspan> Income{'  '}
               <tspan fill="#8b5cf6">&#9632;</tspan> Cap Gains{'  '}
-              <tspan fill="#c4b5fd">&#9632;</tspan> Projected
+              <tspan fill="#6ee7b7">&#9632;</tspan>/<tspan fill="#c4b5fd">&#9632;</tspan> Projected
             </text>
           )}
           {!hasFuturePrices && (
@@ -266,11 +273,14 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: Ti
           {selected !== null && selected < data.length && (
             <ReferenceLine x={data[selected]._label} stroke="#8b5cf6" strokeWidth={1.5} />
           )}
-          {/* Single stack: income + certain gains + projected extra (price-driven surplus) */}
+          {/* Single stack: income + certain gains + projected extras (price-driven surplus) */}
           <Area type="monotone" dataKey="income" stackId="main" fill="#34d399" fillOpacity={0.7} stroke="#10b981" name="Income" dot={false} />
+          {hasFuturePrices && (
+            <Area type="monotone" dataKey="projExtraIncome" stackId="main" fill="#6ee7b7" fillOpacity={0.5} stroke="#6ee7b7" strokeDasharray="6 3" name="Proj Income" dot={false} />
+          )}
           <Area type="monotone" dataKey="gains" stackId="main" fill="#a78bfa" fillOpacity={0.7} stroke="#8b5cf6" name="Cap Gains" dot={false} />
           {hasFuturePrices && (
-            <Area type="monotone" dataKey="projExtra" stackId="main" fill="#c4b5fd" fillOpacity={0.5} stroke="#c4b5fd" strokeDasharray="6 3" name="Projected" dot={false} />
+            <Area type="monotone" dataKey="projExtra" stackId="main" fill="#c4b5fd" fillOpacity={0.5} stroke="#c4b5fd" strokeDasharray="6 3" name="Proj Cap Gains" dot={false} />
           )}
         </AreaChart>
       </ResponsiveContainer>

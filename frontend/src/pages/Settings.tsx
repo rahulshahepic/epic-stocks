@@ -11,6 +11,9 @@ export default function Settings() {
 
   const [emailEnabled, setEmailEnabled] = useState(false)
   const [emailLoading, setEmailLoading] = useState(false)
+  const [resetConfirm, setResetConfirm] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState(false)
+  const [actionLoading, setActionLoading] = useState(false)
 
   const loadEmailPref = useCallback(async () => {
     try {
@@ -112,10 +115,90 @@ export default function Settings() {
         </p>
         <button
           onClick={logout}
-          className="mt-3 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+          className="mt-3 rounded-md bg-gray-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700"
         >
           Sign Out
         </button>
+      </section>
+
+      {/* Data Management */}
+      <section className="rounded-lg border border-red-200 bg-white p-4 dark:border-red-900 dark:bg-gray-900">
+        <h3 className="text-sm font-medium text-red-700 dark:text-red-400">Danger Zone</h3>
+
+        {/* Reset Data */}
+        <div className="mt-3">
+          <p className="text-xs text-gray-700 dark:text-gray-300">
+            <span className="font-medium">Reset data</span> — delete all your grants, loans, and prices. Your account stays active.
+          </p>
+          {!resetConfirm ? (
+            <button
+              onClick={() => setResetConfirm(true)}
+              className="mt-2 rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/30"
+            >
+              Reset All Data
+            </button>
+          ) : (
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                onClick={async () => {
+                  setActionLoading(true)
+                  try {
+                    await api.resetMyData()
+                    setResetConfirm(false)
+                    window.location.reload()
+                  } catch { /* ignore */ } finally { setActionLoading(false) }
+                }}
+                disabled={actionLoading}
+                className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {actionLoading ? 'Resetting...' : 'Yes, delete all my data'}
+              </button>
+              <button
+                onClick={() => setResetConfirm(false)}
+                className="rounded-md px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Delete Account */}
+        <div className="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700">
+          <p className="text-xs text-gray-700 dark:text-gray-300">
+            <span className="font-medium">Delete account</span> — permanently remove your account and all associated data. This cannot be undone.
+          </p>
+          {!deleteConfirm ? (
+            <button
+              onClick={() => setDeleteConfirm(true)}
+              className="mt-2 rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/30"
+            >
+              Delete Account
+            </button>
+          ) : (
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                onClick={async () => {
+                  setActionLoading(true)
+                  try {
+                    await api.deleteMyAccount()
+                    logout()
+                  } catch { /* ignore */ } finally { setActionLoading(false) }
+                }}
+                disabled={actionLoading}
+                className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {actionLoading ? 'Deleting...' : 'Yes, delete my account'}
+              </button>
+              <button
+                onClick={() => setDeleteConfirm(false)}
+                className="rounded-md px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
       </section>
     </div>
   )

@@ -176,6 +176,10 @@ export const api = {
   setEmailPref: (enabled: boolean) =>
     put<{ enabled: boolean }>(`/api/notifications/email?enabled=${enabled}`, {}),
 
+  // Account
+  resetMyData: () => apiFetch<void>('/api/me/reset', { method: 'POST' }),
+  deleteMyAccount: () => apiFetch<void>('/api/me', { method: 'DELETE' }),
+
   // Admin
   adminStats: () => apiFetch<AdminStats>('/api/admin/stats'),
   adminUsers: (q = '', limit = 10, offset = 0) =>

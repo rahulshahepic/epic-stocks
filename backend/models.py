@@ -102,3 +102,16 @@ class BlockedEmail(Base):
     email: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
     reason: Mapped[str] = mapped_column(String, nullable=True)
     blocked_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class ErrorLog(Base):
+    __tablename__ = "error_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    method: Mapped[str] = mapped_column(String, nullable=True)
+    path: Mapped[str] = mapped_column(String, nullable=True)
+    error_type: Mapped[str] = mapped_column(String, nullable=True)
+    error_message: Mapped[str] = mapped_column(String, nullable=True)
+    traceback: Mapped[str] = mapped_column(String, nullable=True)
+    user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)

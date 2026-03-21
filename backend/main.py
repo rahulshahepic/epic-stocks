@@ -115,10 +115,60 @@ class EncryptionMiddleware:
 _fastapi_app = FastAPI(title="Equity Vesting Tracker", lifespan=lifespan)
 
 
+def _is_admin_request(request: Request) -> bool:
+    """Return True if the request carries a valid admin JWT."""
+    try:
+        auth = request.headers.get("authorization", "")
+        if not auth.startswith("Bearer "):
+            return False
+        from auth import _decode_token, get_admin_emails
+        payload = _decode_token(auth[7:])
+        user_id = int(payload["sub"])
+        db = database.SessionLocal()
+        try:
+            from models import User
+            user = db.get(User, user_id)
+            return bool(user and user.email.lower() in get_admin_emails())
+        finally:
+            db.close()
+    except Exception:
+        return False
+
+
 @_fastapi_app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    import traceback as tb
+    tb_str = tb.format_exc()
     logger.error("Unhandled error on %s %s: %s", request.method, request.url.path, exc, exc_info=True)
-    detail = str(exc) if str(exc) else type(exc).__name__
+
+    # Persist to error_logs table (best-effort)
+    try:
+        from models import ErrorLog
+        auth = request.headers.get("authorization", "")
+        user_id = None
+        if auth.startswith("Bearer "):
+            try:
+                from auth import _decode_token
+                user_id = int(_decode_token(auth[7:])["sub"])
+            except Exception:
+                pass
+        db = database.SessionLocal()
+        try:
+            db.add(ErrorLog(
+                method=request.method,
+                path=str(request.url.path),
+                error_type=type(exc).__name__,
+                error_message=str(exc) or type(exc).__name__,
+                traceback=tb_str,
+                user_id=user_id,
+            ))
+            db.commit()
+        finally:
+            db.close()
+    except Exception:
+        pass
+
+    detail = (str(exc) or type(exc).__name__) if _is_admin_request(request) else "Internal server error"
     return JSONResponse(status_code=500, content={"detail": detail})
 
 

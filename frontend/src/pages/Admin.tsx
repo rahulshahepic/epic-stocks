@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../api.ts'
-import type { AdminStats, AdminUser, BlockedEmailEntry } from '../api.ts'
+import type { AdminStats, AdminUser, BlockedEmailEntry, ErrorLogEntry } from '../api.ts'
 
 export default function Admin() {
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
   const [totalUsers, setTotalUsers] = useState(0)
   const [blocked, setBlocked] = useState<BlockedEmailEntry[]>([])
+  const [errorLogs, setErrorLogs] = useState<ErrorLogEntry[]>([])
+  const [expandedError, setExpandedError] = useState<number | null>(null)
   const [error, setError] = useState('')
   const [blockEmail, setBlockEmail] = useState('')
   const [blockReason, setBlockReason] = useState('')
@@ -25,6 +27,13 @@ export default function Admin() {
     }
   }, [])
 
+  const loadErrors = useCallback(async () => {
+    try {
+      const logs = await api.adminErrors()
+      setErrorLogs(Array.isArray(logs) ? logs : [])
+    } catch { /* ignore */ }
+  }, [])
+
   const load = useCallback(async () => {
     try {
       const [s, b] = await Promise.all([api.adminStats(), api.adminListBlocked()])
@@ -32,10 +41,11 @@ export default function Admin() {
       setBlocked(b)
       setError('')
       loadUsers()
+      loadErrors()
     } catch {
       setError('Failed to load admin data. You may not have admin access.')
     }
-  }, [loadUsers])
+  }, [loadUsers, loadErrors])
 
   useEffect(() => { load() }, [load])
 
@@ -237,6 +247,57 @@ export default function Admin() {
         {blocked.length === 0 && (
           <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">No blocked emails.</p>
         )}
+      </section>
+
+      {/* Error Logs */}
+      <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">
+            Error Logs ({errorLogs.length})
+          </h3>
+          {errorLogs.length > 0 && (
+            <button
+              onClick={async () => { await api.adminClearErrors(); setErrorLogs([]) }}
+              className="text-xs text-red-500 hover:text-red-700 dark:text-red-400"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+        {errorLogs.length === 0 && (
+          <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">No errors logged.</p>
+        )}
+        <div className="mt-3 space-y-2">
+          {errorLogs.map(e => (
+            <div key={e.id} className="rounded-md border border-gray-100 p-2 text-xs dark:border-gray-700">
+              <div
+                className="flex cursor-pointer items-start justify-between"
+                onClick={() => setExpandedError(expandedError === e.id ? null : e.id)}
+              >
+                <div className="min-w-0 flex-1">
+                  <span className="font-mono font-medium text-red-600 dark:text-red-400">
+                    {e.error_type}
+                  </span>
+                  <span className="ml-2 text-gray-500 dark:text-gray-400">
+                    {e.method} {e.path}
+                  </span>
+                  {e.user_id && (
+                    <span className="ml-2 text-gray-400 dark:text-gray-500">uid:{e.user_id}</span>
+                  )}
+                  <p className="mt-0.5 truncate text-gray-700 dark:text-gray-300">{e.error_message}</p>
+                </div>
+                <span className="ml-2 shrink-0 text-gray-400 dark:text-gray-500">
+                  {new Date(e.timestamp).toLocaleString()}
+                </span>
+              </div>
+              {expandedError === e.id && e.traceback && (
+                <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all rounded bg-gray-50 p-2 font-mono text-[10px] text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                  {e.traceback}
+                </pre>
+              )}
+            </div>
+          ))}
+        </div>
       </section>
     </div>
   )

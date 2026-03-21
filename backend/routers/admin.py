@@ -246,11 +246,19 @@ def admin_test_notify(
             email_skipped_reason = "RESEND_API_KEY not configured"
         else:
             try:
+                html_body = (
+                    f'<div style="font-family: sans-serif; max-width: 480px;">'
+                    f'<h2 style="color: #4472C4;">Equity Tracker</h2>'
+                    f'<h3 style="margin-bottom: 4px;">{body.title}</h3>'
+                    f'<p style="color: #374151;">{body.body}</p>'
+                    f'<p style="font-size: 12px; color: #9CA3AF;">This is a test notification.</p>'
+                    f'</div>'
+                )
                 email_sent = send_email(
                     user.email,
                     body.title,
                     body.body,
-                    f"<p>{body.body}</p>",
+                    html_body,
                 )
                 if not email_sent:
                     email_skipped_reason = "send failed (check server logs)"

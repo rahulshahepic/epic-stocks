@@ -21,6 +21,10 @@ WI_DEFAULTS = {
     "state_lt_cg_rate": 0.0536,
     "state_st_cg_rate": 0.0765,
     "lt_holding_days": 365,
+    "lot_selection_method": "lifo",
+    "prefer_stock_dp": False,
+    "dp_min_percent": 0.10,
+    "dp_min_cap": 20000.0,
 }
 
 
@@ -248,6 +252,27 @@ def update_loan(
             db.commit()
 
     return loan
+
+
+@router.post("/regenerate-all-payoff-sales")
+def regenerate_all_payoff_sales(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Recompute payoff sale share counts for all future loans that have a linked payoff sale."""
+    from datetime import date as date_type
+    today = date_type.today()
+    future_loans = db.query(Loan).filter(Loan.user_id == user.id, Loan.due_date >= today).all()
+    updated = 0
+    for loan in future_loans:
+        existing_sale = db.query(Sale).filter(Sale.loan_id == loan.id, Sale.user_id == user.id).first()
+        if not existing_sale:
+            continue
+        suggestion = _compute_payoff_sale(loan, user, db)
+        existing_sale.date = suggestion["date"]
+        existing_sale.shares = suggestion["shares"]
+        existing_sale.price_per_share = suggestion["price_per_share"]
+        existing_sale.notes = suggestion["notes"]
+        updated += 1
+    db.commit()
+    return {"updated": updated}
 
 
 @router.delete("/{loan_id}", status_code=204)

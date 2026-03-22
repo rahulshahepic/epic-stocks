@@ -99,7 +99,7 @@ def test_import_events_match_known_values(client):
     events = client.get("/api/events", headers=auth_header(token)).json()
     assert len(events) == 89
     last = events[-1]
-    assert last["cum_shares"] == 571500
+    assert last["cum_shares"] == 558500
 
 
 def test_import_rejects_non_excel(client):

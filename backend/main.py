@@ -54,6 +54,12 @@ def _migrate_schema():
         with database.engine.begin() as conn:
             if "lot_selection_method" not in ts_cols:
                 conn.execute(sqlalchemy.text("ALTER TABLE tax_settings ADD COLUMN lot_selection_method TEXT NOT NULL DEFAULT 'lifo'"))
+            if "prefer_stock_dp" not in ts_cols:
+                conn.execute(sqlalchemy.text("ALTER TABLE tax_settings ADD COLUMN prefer_stock_dp INTEGER NOT NULL DEFAULT 0"))
+            if "dp_min_percent" not in ts_cols:
+                conn.execute(sqlalchemy.text("ALTER TABLE tax_settings ADD COLUMN dp_min_percent REAL NOT NULL DEFAULT 0.10"))
+            if "dp_min_cap" not in ts_cols:
+                conn.execute(sqlalchemy.text("ALTER TABLE tax_settings ADD COLUMN dp_min_cap REAL NOT NULL DEFAULT 20000.0"))
     with database.engine.begin() as conn:
         conn.execute(sqlalchemy.text("""
             CREATE TABLE IF NOT EXISTS sales (

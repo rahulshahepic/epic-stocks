@@ -61,6 +61,7 @@ export default function Loans() {
   const [conflict, setConflict] = useState(false)
   const [payoffSaleChecked, setPayoffSaleChecked] = useState(true)
   const [saleRates, setSaleRates] = useState<TaxRates>(DEFAULT_RATES)
+  const [regenerating, setRegenerating] = useState(false)
 
   useDataSync('loans', reload)
   useDataSync('sales', reloadSales)
@@ -162,6 +163,21 @@ export default function Loans() {
     reload()
   }
 
+  async function handleRegenerateAll() {
+    if (!confirm('Recompute payoff sale share counts for all future loans using current lot selection method?')) return
+    setRegenerating(true)
+    try {
+      const result = await api.regenerateAllPayoffSales()
+      broadcastChange('sales')
+      reloadSales()
+      alert(`Updated ${result.updated} payoff sale${result.updated !== 1 ? 's' : ''}.`)
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : 'Failed to regenerate payoff sales')
+    } finally {
+      setRegenerating(false)
+    }
+  }
+
   if (loading) return <p className="p-6 text-center text-sm text-gray-400">Loading...</p>
   if (!loans) return <p className="p-6 text-center text-sm text-red-500">Failed to load loans</p>
 
@@ -256,9 +272,19 @@ export default function Loans() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Loans</h2>
-        <button onClick={openAdd} className="rounded-md bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700">
-          + Loan
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleRegenerateAll}
+            disabled={regenerating}
+            className="rounded-md bg-gray-200 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-300 disabled:opacity-50 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+            title="Recompute payoff sale share counts for all future loans using current lot selection method"
+          >
+            {regenerating ? 'Regenerating…' : 'Regen payoff sales'}
+          </button>
+          <button onClick={openAdd} className="rounded-md bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700">
+            + Loan
+          </button>
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">

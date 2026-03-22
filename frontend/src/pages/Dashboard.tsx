@@ -375,6 +375,9 @@ const WI_TAX_DEFAULTS: TaxSettings = {
   state_st_cg_rate: 0.0765,
   lt_holding_days: 365,
   lot_selection_method: 'lifo',
+  prefer_stock_dp: false,
+  dp_min_percent: 0.10,
+  dp_min_cap: 20000,
 }
 
 function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices }: {
@@ -499,14 +502,14 @@ function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices }: {
 }
 
 function LoanChart({ loanPaymentByYear, c }: {
-  loanPaymentByYear: { year: string; same_tranche_sale: number; cash_in: number }[]
+  loanPaymentByYear: { year: string; payoff_sale: number; cash_in: number }[]
   c: ChartColors
 }) {
   if (!loanPaymentByYear || loanPaymentByYear.length === 0) return null
   return (
     <ChartBox title="Loan Payments by Due Year">
       <div className="mb-2 text-center text-[10px]" style={{ color: c.axis }}>
-        <span style={{ color: '#4ade80' }}>&#9632;</span> Same-tranche sale{'  '}
+        <span style={{ color: '#4ade80' }}>&#9632;</span> Payoff sale{'  '}
         <span style={{ color: '#fb923c' }}>&#9632;</span> Cash in
       </div>
       <ResponsiveContainer width="100%" height={220}>
@@ -514,7 +517,7 @@ function LoanChart({ loanPaymentByYear, c }: {
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
           <XAxis dataKey="year" tick={{ fontSize: 10, fill: c.axis }} />
           <YAxis tick={{ fontSize: 10, fill: c.axis }} />
-          <Bar dataKey="same_tranche_sale" stackId="a" fill="#4ade80" name="Same-tranche sale" radius={[0, 0, 0, 0]} />
+          <Bar dataKey="payoff_sale" stackId="a" fill="#4ade80" name="Payoff sale" radius={[0, 0, 0, 0]} />
           <Bar dataKey="cash_in" stackId="a" fill="#fb923c" name="Cash in" radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>

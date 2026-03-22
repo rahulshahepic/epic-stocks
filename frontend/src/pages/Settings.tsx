@@ -31,6 +31,9 @@ export default function Settings() {
     state_st_cg_rate: 0.0765,
     lt_holding_days: 365,
     lot_selection_method: 'lifo',
+    prefer_stock_dp: false,
+    dp_min_percent: 0.10,
+    dp_min_cap: 20000,
   }
 
   const loadTaxSettings = useCallback(async () => {
@@ -193,6 +196,20 @@ export default function Settings() {
                  'Same tranche'}
               </dd>
             </div>
+            <div className="flex justify-between col-span-2">
+              <dt className="text-gray-500 dark:text-gray-400">Prefer stock for DP</dt>
+              <dd className="font-medium text-gray-700 dark:text-gray-300">
+                {taxSettings.prefer_stock_dp ? 'Yes — auto-calculate DP shares' : 'No — manual'}
+              </dd>
+            </div>
+            <div className="flex justify-between col-span-2">
+              <dt className="text-gray-500 dark:text-gray-400">Min DP rule</dt>
+              <dd className="font-medium text-gray-700 dark:text-gray-300">
+                {taxSettings.dp_min_percent > 0 || taxSettings.dp_min_cap > 0
+                  ? `min(${(taxSettings.dp_min_percent * 100).toFixed(0)}%, $${taxSettings.dp_min_cap.toLocaleString()})`
+                  : 'None'}
+              </dd>
+            </div>
           </dl>
         )}
 
@@ -237,6 +254,35 @@ export default function Settings() {
                   type="number"
                   value={taxForm.lt_holding_days}
                   onChange={e => setTaxForm(f => f ? { ...f, lt_holding_days: +e.target.value } : f)}
+                  className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                />
+              </label>
+              <label className="block col-span-2 flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={taxForm.prefer_stock_dp}
+                  onChange={e => setTaxForm(f => f ? { ...f, prefer_stock_dp: e.target.checked } : f)}
+                  className="rounded border-gray-300 dark:border-gray-600"
+                />
+                <span className="text-xs text-gray-700 dark:text-gray-300">
+                  Prefer stock for down payment — auto-calculate DP shares on new purchases
+                </span>
+              </label>
+              <label className="block">
+                <span className="text-xs text-gray-500 dark:text-gray-400">Min DP % of purchase</span>
+                <input
+                  type="number" step="0.1" min="0" max="100"
+                  value={+(taxForm.dp_min_percent * 100).toFixed(2)}
+                  onChange={e => setTaxForm(f => f ? { ...f, dp_min_percent: +e.target.value / 100 } : f)}
+                  className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs text-gray-500 dark:text-gray-400">Min DP cap ($)</span>
+                <input
+                  type="number" step="1000" min="0"
+                  value={taxForm.dp_min_cap}
+                  onChange={e => setTaxForm(f => f ? { ...f, dp_min_cap: +e.target.value } : f)}
                   className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
                 />
               </label>

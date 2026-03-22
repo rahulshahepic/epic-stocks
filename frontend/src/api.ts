@@ -74,7 +74,7 @@ export interface DashboardData {
   total_loan_principal: number
   total_tax_paid: number
   cash_received: number
-  loan_payment_by_year: { year: string; same_tranche_sale: number; cash_in: number }[]
+  loan_payment_by_year: { year: string; payoff_sale: number; cash_in: number }[]
   next_event: { date: string; event_type: string } | null
 }
 
@@ -177,6 +177,7 @@ export const api = {
   updateLoan: (id: number, data: Partial<Omit<LoanEntry, 'id'>>, regeneratePayoffSale = false) =>
     put<LoanEntry>(`/api/loans/${id}?regenerate_payoff_sale=${regeneratePayoffSale}`, data),
   deleteLoan: (id: number) => del(`/api/loans/${id}`),
+  regenerateAllPayoffSales: () => apiFetch<{ updated: number }>('/api/loans/regenerate-all-payoff-sales', { method: 'POST' }),
   getLoanPayoffSuggestion: (loanId: number) => apiFetch<LoanPayoffSuggestion>(`/api/loans/${loanId}/payoff-sale-suggestion`),
 
   // Loan Payments
@@ -353,6 +354,9 @@ export interface TaxSettings {
   state_st_cg_rate: number
   lt_holding_days: number
   lot_selection_method: 'fifo' | 'lifo' | 'same_tranche'
+  prefer_stock_dp: boolean
+  dp_min_percent: number
+  dp_min_cap: number
 }
 
 export interface TaxBreakdown {

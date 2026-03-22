@@ -53,6 +53,7 @@ export default function Loans() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [conflict, setConflict] = useState(false)
+  const [generatePayoffSale, setGeneratePayoffSale] = useState(true)
 
   useDataSync('loans', reload)
 
@@ -84,7 +85,7 @@ export default function Loans() {
     setError('')
     try {
       if (mode === 'add') {
-        await api.createLoan(form)
+        await api.createLoan(form, generatePayoffSale)
       } else if (editId != null) {
         await api.updateLoan(editId, { ...form, version: editVersion })
       }
@@ -161,6 +162,20 @@ export default function Loans() {
           <Field label="Due Date" type="date" value={form.due_date} onChange={v => setForm(f => ({ ...f, due_date: v }))} />
           <Field label="Loan Number" type="text" value={form.loan_number ?? ''} onChange={v => setForm(f => ({ ...f, loan_number: v || null }))} />
         </div>
+        {mode === 'add' && (
+          <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+            <input
+              type="checkbox"
+              checked={generatePayoffSale}
+              onChange={e => setGeneratePayoffSale(e.target.checked)}
+              className="rounded border-gray-300 dark:border-gray-600"
+            />
+            <span>
+              Generate payoff sale (recommended)
+              <span className="ml-1 text-gray-400" title="Creates a stock sale at the loan's due date sized to cover the payoff after capital gains tax">ⓘ</span>
+            </span>
+          </label>
+        )}
         <div className="flex gap-2 pt-2">
           <button
             onClick={() => handleSave(false)}

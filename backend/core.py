@@ -2,14 +2,13 @@
 Core event generation — pure functions, no I/O dependencies.
 Operates on plain dicts. Drop into any app.
 """
-import math
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
 
 _TYPE_ORDER = {
     'Share Price': 0, 'Exercise': 1, 'Down payment exchange': 2,
-    'Vesting': 3, 'Loan Repayment': 4,
+    'Vesting': 3, 'Loan Payoff': 4,
 }
 _LOAN_TYPE_ORDER = {'Purchase': 0, 'Interest': 1, 'Tax': 2}
 
@@ -91,13 +90,13 @@ def generate_price_events(prices):
     } for i in range(1, len(prices))]
 
 
-def generate_loan_repayment_events(loans):
-    """One repayment event per loan."""
+def generate_loan_payoff_events(loans):
+    """One payoff event per loan — cash obligation, no auto share sale."""
     return [{
         'date': loan['due'],
         'grant_year': loan['grant_yr'],
         'grant_type': loan['loan_type'],
-        'event_type': 'Loan Repayment',
+        'event_type': 'Loan Payoff',
         'granted_shares': None,
         'grant_price': None,
         'exercise_price': None,
@@ -105,6 +104,10 @@ def generate_loan_repayment_events(loans):
         'price_increase': 0.0,
         'source': {'type': 'loan', 'index': i, 'amount': loan['amount']},
     } for i, loan in enumerate(loans)]
+
+
+# Backward-compat alias (tests and callers may still use old name)
+generate_loan_repayment_events = generate_loan_payoff_events
 
 
 # ============================================================
@@ -135,7 +138,7 @@ def generate_all_events(grants, prices, loans):
         + generate_dp_events(grants)
         + generate_vesting_events(grants)
         + generate_price_events(prices)
-        + generate_loan_repayment_events(loans)
+        + generate_loan_payoff_events(loans)
     )
     return sort_events(events)
 
@@ -162,9 +165,8 @@ def compute_timeline(events, initial_price):
         price += e['price_increase']
 
         vs = e['vested_shares'] or 0
-        if e['event_type'] == 'Loan Repayment' and e.get('source'):
-            amount = e['source'].get('amount', 0)
-            vs = -math.ceil(amount / price) if price > 0 else 0
+        # Loan Payoff events are cash obligations — no auto share sale.
+        # Shares are only reduced when the user explicitly records a Sale.
 
         cum_shares += vs
         cb = e['grant_price'] or 0

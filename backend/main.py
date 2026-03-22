@@ -11,7 +11,7 @@ from starlette.responses import FileResponse
 import database
 
 logger = logging.getLogger(__name__)
-from routers import auth_router, grants, loans, prices, events, flows, import_export, push, admin, notifications
+from routers import auth_router, grants, loans, prices, events, flows, import_export, push, admin, notifications, sales
 from auth import get_current_user
 from crypto import encryption_enabled, decrypt_user_key, set_current_key
 from database import get_db
@@ -38,6 +38,49 @@ def _migrate_schema():
             if "version" not in cols:
                 with database.engine.begin() as conn:
                     conn.execute(sqlalchemy.text(f"ALTER TABLE {table} ADD COLUMN version INTEGER NOT NULL DEFAULT 1"))
+    if insp.has_table("sales"):
+        sales_cols = {c["name"] for c in insp.get_columns("sales")}
+        with database.engine.begin() as conn:
+            if "loan_id" not in sales_cols:
+                conn.execute(sqlalchemy.text("ALTER TABLE sales ADD COLUMN loan_id INTEGER REFERENCES loans(id) ON DELETE SET NULL"))
+    with database.engine.begin() as conn:
+        conn.execute(sqlalchemy.text("""
+            CREATE TABLE IF NOT EXISTS sales (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                date DATE NOT NULL,
+                shares INTEGER NOT NULL,
+                price_per_share REAL NOT NULL,
+                notes TEXT NOT NULL DEFAULT '',
+                loan_id INTEGER REFERENCES loans(id) ON DELETE SET NULL,
+                version INTEGER NOT NULL DEFAULT 1
+            )
+        """))
+        conn.execute(sqlalchemy.text("""
+            CREATE TABLE IF NOT EXISTS loan_payments (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                loan_id INTEGER NOT NULL REFERENCES loans(id) ON DELETE CASCADE,
+                date DATE NOT NULL,
+                amount REAL NOT NULL,
+                notes TEXT NOT NULL DEFAULT '',
+                version INTEGER NOT NULL DEFAULT 1
+            )
+        """))
+        conn.execute(sqlalchemy.text("""
+            CREATE TABLE IF NOT EXISTS tax_settings (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+                federal_income_rate REAL NOT NULL DEFAULT 0.37,
+                federal_lt_cg_rate REAL NOT NULL DEFAULT 0.20,
+                federal_st_cg_rate REAL NOT NULL DEFAULT 0.37,
+                niit_rate REAL NOT NULL DEFAULT 0.038,
+                state_income_rate REAL NOT NULL DEFAULT 0.0765,
+                state_lt_cg_rate REAL NOT NULL DEFAULT 0.0536,
+                state_st_cg_rate REAL NOT NULL DEFAULT 0.0765,
+                lt_holding_days INTEGER NOT NULL DEFAULT 365
+            )
+        """))
 
 
 @asynccontextmanager
@@ -188,6 +231,9 @@ _fastapi_app.include_router(import_export.router)
 _fastapi_app.include_router(push.router)
 _fastapi_app.include_router(admin.router)
 _fastapi_app.include_router(notifications.router)
+_fastapi_app.include_router(sales.router)
+_fastapi_app.include_router(sales.tax_router)
+_fastapi_app.include_router(loans.lp_router)
 
 
 @_fastapi_app.get("/api/health")
@@ -216,8 +262,10 @@ def current_user_info(user=Depends(get_current_user)):
 
 @_fastapi_app.post("/api/me/reset", status_code=204)
 def reset_my_data(user=Depends(get_current_user), db: Session = Depends(get_db)):
-    """Delete all financial data (grants, loans, prices) but keep the account."""
-    from models import Grant, Loan, Price
+    """Delete all financial data (grants, loans, prices, sales, loan payments) but keep the account."""
+    from models import Grant, Loan, LoanPayment, Price, Sale
+    db.query(LoanPayment).filter(LoanPayment.user_id == user.id).delete()
+    db.query(Sale).filter(Sale.user_id == user.id).delete()
     db.query(Grant).filter(Grant.user_id == user.id).delete()
     db.query(Loan).filter(Loan.user_id == user.id).delete()
     db.query(Price).filter(Price.user_id == user.id).delete()

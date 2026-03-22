@@ -24,6 +24,9 @@ class User(Base):
     prices: Mapped[list["Price"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     push_subscriptions: Mapped[list["PushSubscription"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     email_preference: Mapped["EmailPreference | None"] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
+    sales: Mapped[list["Sale"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    loan_payments: Mapped[list["LoanPayment"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    tax_settings: Mapped["TaxSettings | None"] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
 
 
 class Grant(Base):
@@ -96,6 +99,54 @@ class EmailPreference(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     user: Mapped["User"] = relationship(back_populates="email_preference")
+
+
+class Sale(Base):
+    __tablename__ = "sales"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+    shares: Mapped[int] = mapped_column(Integer, nullable=False)
+    price_per_share: Mapped[float] = mapped_column(EncryptedFloat, nullable=False)
+    notes: Mapped[str] = mapped_column(String, nullable=False, default="")
+    # If set, this sale was generated to cover this loan's payoff.
+    loan_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("loans.id", ondelete="SET NULL"), nullable=True, index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+
+    user: Mapped["User"] = relationship(back_populates="sales")
+
+
+class LoanPayment(Base):
+    """User-recorded early cash payment against a loan (reduces final payoff balance)."""
+    __tablename__ = "loan_payments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    loan_id: Mapped[int] = mapped_column(Integer, ForeignKey("loans.id", ondelete="CASCADE"), nullable=False, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+    amount: Mapped[float] = mapped_column(EncryptedFloat, nullable=False)
+    notes: Mapped[str] = mapped_column(String, nullable=False, default="")
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+
+    user: Mapped["User"] = relationship(back_populates="loan_payments")
+
+
+class TaxSettings(Base):
+    __tablename__ = "tax_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, unique=True, index=True)
+    federal_income_rate: Mapped[float] = mapped_column(EncryptedFloat, nullable=False, default=0.37)
+    federal_lt_cg_rate: Mapped[float] = mapped_column(EncryptedFloat, nullable=False, default=0.20)
+    federal_st_cg_rate: Mapped[float] = mapped_column(EncryptedFloat, nullable=False, default=0.37)
+    niit_rate: Mapped[float] = mapped_column(EncryptedFloat, nullable=False, default=0.038)
+    state_income_rate: Mapped[float] = mapped_column(EncryptedFloat, nullable=False, default=0.0765)
+    state_lt_cg_rate: Mapped[float] = mapped_column(EncryptedFloat, nullable=False, default=0.0536)
+    state_st_cg_rate: Mapped[float] = mapped_column(EncryptedFloat, nullable=False, default=0.0765)
+    lt_holding_days: Mapped[int] = mapped_column(Integer, nullable=False, default=365)
+
+    user: Mapped["User"] = relationship(back_populates="tax_settings")
 
 
 class BlockedEmail(Base):

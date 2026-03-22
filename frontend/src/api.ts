@@ -72,6 +72,9 @@ export interface DashboardData {
   total_income: number
   total_cap_gains: number
   total_loan_principal: number
+  total_tax_paid: number
+  cash_received: number
+  loan_payment_by_year: { year: string; same_tranche_sale: number; cash_in: number }[]
   next_event: { date: string; event_type: string } | null
 }
 
@@ -93,6 +96,15 @@ export interface TimelineEvent {
   price_cap_gains: number
   total_cap_gains: number
   cum_cap_gains: number
+  // Loan Payoff enrichment
+  loan_db_id?: number | null
+  cash_due?: number | null
+  covered_by_sale?: boolean
+  status?: 'covered' | 'planned'
+  // Early Loan Payment fields
+  loan_id?: number | null
+  amount?: number | null
+  notes?: string | null
 }
 
 export interface GrantEntry {
@@ -157,9 +169,20 @@ export const api = {
 
   // Loans
   getLoans: () => apiFetch<LoanEntry[]>('/api/loans'),
-  createLoan: (data: Omit<LoanEntry, 'id' | 'version'>) => post<LoanEntry>('/api/loans', data),
+  createLoan: (data: Omit<LoanEntry, 'id' | 'version'>, generatePayoffSale = true) =>
+    post<LoanEntry>(`/api/loans?generate_payoff_sale=${generatePayoffSale}`, data),
   updateLoan: (id: number, data: Partial<Omit<LoanEntry, 'id'>>) => put<LoanEntry>(`/api/loans/${id}`, data),
   deleteLoan: (id: number) => del(`/api/loans/${id}`),
+  getLoanPayoffSuggestion: (loanId: number) => apiFetch<LoanPayoffSuggestion>(`/api/loans/${loanId}/payoff-sale-suggestion`),
+
+  // Loan Payments
+  getLoanPayments: (loanId?: number) =>
+    apiFetch<LoanPaymentEntry[]>(loanId != null ? `/api/loan-payments?loan_id=${loanId}` : '/api/loan-payments'),
+  createLoanPayment: (data: Omit<LoanPaymentEntry, 'id' | 'version'>) =>
+    post<LoanPaymentEntry>('/api/loan-payments', data),
+  updateLoanPayment: (id: number, data: Partial<Omit<LoanPaymentEntry, 'id'>>) =>
+    put<LoanPaymentEntry>(`/api/loan-payments/${id}`, data),
+  deleteLoanPayment: (id: number) => del(`/api/loan-payments/${id}`),
 
   // Prices
   getPrices: () => apiFetch<PriceEntry[]>('/api/prices'),
@@ -200,6 +223,17 @@ export const api = {
   // Account
   resetMyData: () => apiFetch<void>('/api/me/reset', { method: 'POST' }),
   deleteMyAccount: () => apiFetch<void>('/api/me', { method: 'DELETE' }),
+
+  // Sales
+  getSales: () => apiFetch<SaleEntry[]>('/api/sales'),
+  createSale: (data: Omit<SaleEntry, 'id' | 'version'>) => post<SaleEntry>('/api/sales', data),
+  updateSale: (id: number, data: Partial<Omit<SaleEntry, 'id'>>) => put<SaleEntry>(`/api/sales/${id}`, data),
+  deleteSale: (id: number) => del(`/api/sales/${id}`),
+  getSaleTax: (id: number) => apiFetch<TaxBreakdown>(`/api/sales/${id}/tax`),
+
+  // Tax Settings
+  getTaxSettings: () => apiFetch<TaxSettings>('/api/tax-settings'),
+  updateTaxSettings: (data: Partial<TaxSettings>) => put<TaxSettings>('/api/tax-settings', data),
 
   // Admin
   adminStats: () => apiFetch<AdminStats>('/api/admin/stats'),
@@ -265,4 +299,63 @@ export interface TestNotifyResult {
   push_failed: number
   email_sent: boolean
   email_skipped_reason?: string | null
+}
+
+export interface SaleEntry {
+  id: number
+  version: number
+  date: string
+  shares: number
+  price_per_share: number
+  notes: string
+  loan_id: number | null
+}
+
+export interface LoanPaymentEntry {
+  id: number
+  version: number
+  loan_id: number
+  date: string
+  amount: number
+  notes: string
+}
+
+export interface LoanPayoffSuggestion {
+  date: string
+  shares: number
+  price_per_share: number
+  loan_id: number
+  notes: string
+  cash_due: number
+}
+
+export interface TaxSettings {
+  federal_income_rate: number
+  federal_lt_cg_rate: number
+  federal_st_cg_rate: number
+  niit_rate: number
+  state_income_rate: number
+  state_lt_cg_rate: number
+  state_st_cg_rate: number
+  lt_holding_days: number
+}
+
+export interface TaxBreakdown {
+  gross_proceeds: number
+  cost_basis: number
+  net_gain: number
+  lt_shares: number
+  lt_gain: number
+  lt_rate: number
+  lt_tax: number
+  st_shares: number
+  st_gain: number
+  st_rate: number
+  st_tax: number
+  unvested_shares: number
+  unvested_proceeds: number
+  unvested_rate: number
+  unvested_tax: number
+  estimated_tax: number
+  net_proceeds: number
 }

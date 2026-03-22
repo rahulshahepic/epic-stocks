@@ -9,6 +9,9 @@ const MOCK_DASHBOARD = {
   total_income: 50000,
   total_cap_gains: 200000,
   total_loan_principal: 75000,
+  total_tax_paid: 5000,
+  cash_received: 10000,
+  loan_payment_by_year: [{ year: '2025', same_tranche_sale: 19900, cash_in: 0 }],
   next_event: { date: '2026-03-01', event_type: 'Vesting' },
 }
 
@@ -125,7 +128,7 @@ describe('Dashboard', () => {
     })
     expect(screen.getByText('Income vs Cap Gains')).toBeInTheDocument()
     expect(screen.getByText('Share Price History')).toBeInTheDocument()
-    expect(screen.getByText('Loan Principal by Due Year')).toBeInTheDocument()
+    expect(screen.getByText('Loan Payments by Due Year')).toBeInTheDocument()
   })
 
   it('shows error when fetch fails', async () => {

@@ -16,6 +16,10 @@ trap cleanup EXIT
 echo "==> Type-checking frontend..."
 cd "$ROOT/frontend" && npx tsc -b --noEmit
 
+echo "==> Clearing ports 8000 and 5173..."
+fuser -k 8000/tcp 5173/tcp 2>/dev/null || true
+sleep 1
+
 echo "==> Starting backend on :8000..."
 cd "$ROOT/backend" && \
   E2E_TEST=1 ADMIN_EMAIL=admin@e2e.test DATABASE_URL="sqlite:///$TMPDB" \

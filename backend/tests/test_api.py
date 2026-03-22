@@ -279,7 +279,7 @@ def test_events_returns_computed_timeline(client):
     assert "Vesting" in types
     assert "Share Price" in types
     assert "Down payment exchange" in types
-    assert "Loan Repayment" in types
+    assert "Loan Payoff" in types
 
 
 def test_events_has_timeline_fields(client):

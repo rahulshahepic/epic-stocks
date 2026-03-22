@@ -50,7 +50,7 @@ describe('Events', () => {
       expect(screen.getByText('2021-03-01')).toBeInTheDocument()
     })
     expect(screen.getByText('2021-06-01')).toBeInTheDocument()
-    expect(screen.getByText('2 events')).toBeInTheDocument()
+    expect(screen.getByText(/^2 events/)).toBeInTheDocument()
   })
 
   it('renders event type badges', async () => {
@@ -66,13 +66,13 @@ describe('Events', () => {
     mockApi()
     renderEvents()
     await waitFor(() => {
-      expect(screen.getByText('2 events')).toBeInTheDocument()
+      expect(screen.getByText(/^2 events/)).toBeInTheDocument()
     })
 
     const select = screen.getByRole('combobox')
     await userEvent.selectOptions(select, 'Vesting')
 
-    expect(screen.getByText('1 events')).toBeInTheDocument()
+    expect(screen.getByText(/^1 events/)).toBeInTheDocument()
     expect(screen.getByText('2021-03-01')).toBeInTheDocument()
     expect(screen.queryByText('2021-06-01')).not.toBeInTheDocument()
   })

@@ -10,6 +10,7 @@ from core import (
     generate_vesting_events,
     generate_price_events,
     generate_loan_repayment_events,
+    generate_loan_payoff_events,
     generate_all_events,
     compute_timeline,
     sort_events,
@@ -89,13 +90,27 @@ def test_price_events_skip_first():
     assert events[1]["price_increase"] == 0.50
 
 
-def test_loan_repayment_events():
+def test_loan_payoff_events():
+    loans = [
+        {"due": datetime(2025, 12, 31), "grant_yr": 2020, "loan_type": "Purchase", "amount": 19900.0},
+    ]
+    events = generate_loan_payoff_events(loans)
+    assert len(events) == 1
+    assert events[0]["event_type"] == "Loan Payoff"
+    assert events[0]["source"]["amount"] == 19900.0
+    # Loan Payoff is a cash obligation — no shares sold
+    assert events[0]["vested_shares"] is None
+
+
+def test_loan_repayment_events_alias():
+    """generate_loan_repayment_events is a backward-compat alias for generate_loan_payoff_events."""
     loans = [
         {"due": datetime(2025, 12, 31), "grant_yr": 2020, "loan_type": "Purchase", "amount": 19900.0},
     ]
     events = generate_loan_repayment_events(loans)
     assert len(events) == 1
-    assert events[0]["event_type"] == "Loan Repayment"
+    # Alias returns Loan Payoff events (new name)
+    assert events[0]["event_type"] == "Loan Payoff"
     assert events[0]["source"]["amount"] == 19900.0
 
 
@@ -161,23 +176,23 @@ def test_compute_timeline_price_increase_cap_gains():
     assert timeline[1]["price_cap_gains"] == 100.0  # 1.0 increase * 100 shares
 
 
-def test_compute_timeline_loan_repayment():
-    """Loan repayment sells shares (negative vested_shares)."""
-    import math
+def test_compute_timeline_loan_payoff_no_share_reduction():
+    """Loan Payoff is a cash obligation — does NOT reduce cum_shares."""
     events = [
         {"date": datetime(2021, 1, 1), "grant_year": 2020, "grant_type": "Bonus",
          "event_type": "Vesting", "granted_shares": None, "grant_price": 0,
          "exercise_price": None, "vested_shares": 1000, "price_increase": 0.0,
          "source": {"type": "grant", "index": 0}},
         {"date": datetime(2025, 12, 31), "grant_year": 2020, "grant_type": "Purchase",
-         "event_type": "Loan Repayment", "granted_shares": None, "grant_price": None,
+         "event_type": "Loan Payoff", "granted_shares": None, "grant_price": None,
          "exercise_price": None, "vested_shares": None, "price_increase": 0.0,
          "source": {"type": "loan", "index": 0, "amount": 500.0}},
     ]
     timeline = compute_timeline(events, initial_price=5.0)
-    sold = -math.ceil(500.0 / 5.0)  # -100
-    assert timeline[1]["vested_shares"] == sold
-    assert timeline[1]["cum_shares"] == 1000 + sold
+    # Loan Payoff has no vested_shares — cum_shares stays at 1000
+    assert timeline[1]["cum_shares"] == 1000
+    # vested_shares is None/0 — not a share sale
+    assert (timeline[1]["vested_shares"] or 0) == 0
 
 
 # ============================================================
@@ -195,7 +210,9 @@ def test_fixture_timeline_totals():
     events = generate_all_events(grants, prices, loans)
     timeline = compute_timeline(events, initial_price)
     last = timeline[-1]
-    assert last["cum_shares"] == 269843
+    # cum_shares is 571500 since Loan Payoff events no longer auto-sell shares
+    # (old value was 269843 when loans auto-sold shares to cover payoff)
+    assert last["cum_shares"] == 571500
     assert last["cum_income"] == 144325.0
     assert last["cum_cap_gains"] == 1243695.0
 

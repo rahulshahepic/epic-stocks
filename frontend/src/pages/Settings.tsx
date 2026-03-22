@@ -3,6 +3,7 @@ import { useConfig } from '../hooks/useConfig.ts'
 import { usePush } from '../hooks/usePush.ts'
 import { useAuth } from '../hooks/useAuth.ts'
 import { api } from '../api.ts'
+import type { TaxSettings } from '../api.ts'
 
 export default function Settings() {
   const config = useConfig()
@@ -14,6 +15,31 @@ export default function Settings() {
   const [resetConfirm, setResetConfirm] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
+
+  const [taxSettings, setTaxSettings] = useState<TaxSettings | null>(null)
+  const [editingTax, setEditingTax] = useState(false)
+  const [taxForm, setTaxForm] = useState<TaxSettings | null>(null)
+  const [taxSaving, setTaxSaving] = useState(false)
+
+  const WI_DEFAULTS: TaxSettings = {
+    federal_income_rate: 0.37,
+    federal_lt_cg_rate: 0.20,
+    federal_st_cg_rate: 0.37,
+    niit_rate: 0.038,
+    state_income_rate: 0.0765,
+    state_lt_cg_rate: 0.0536,
+    state_st_cg_rate: 0.0765,
+    lt_holding_days: 365,
+  }
+
+  const loadTaxSettings = useCallback(async () => {
+    try {
+      const ts = await api.getTaxSettings()
+      setTaxSettings(ts)
+    } catch { /* ignore */ }
+  }, [])
+
+  useEffect(() => { loadTaxSettings() }, [loadTaxSettings])
 
   const loadEmailPref = useCallback(async () => {
     try {
@@ -119,6 +145,111 @@ export default function Settings() {
         >
           Sign Out
         </button>
+      </section>
+
+      {/* Tax Settings */}
+      <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Tax Rates (Wisconsin Defaults)</h3>
+          {!editingTax && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setTaxForm(taxSettings ? { ...taxSettings } : { ...WI_DEFAULTS }); setEditingTax(true) }}
+                className="text-xs text-indigo-600 hover:text-indigo-800 dark:text-indigo-400"
+              >Edit</button>
+            </div>
+          )}
+        </div>
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          Used to estimate tax on share sales. Wisconsin 30% exclusion on qualifying LT gains is baked into state LT rate.
+        </p>
+
+        {taxSettings && !editingTax && (
+          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+            {[
+              ['Federal Income', taxSettings.federal_income_rate],
+              ['Federal LT CG', taxSettings.federal_lt_cg_rate],
+              ['Federal ST CG', taxSettings.federal_st_cg_rate],
+              ['NIIT', taxSettings.niit_rate],
+              ['State Income', taxSettings.state_income_rate],
+              ['State LT CG', taxSettings.state_lt_cg_rate],
+              ['State ST CG', taxSettings.state_st_cg_rate],
+            ].map(([label, val]) => (
+              <div key={label as string} className="flex justify-between">
+                <dt className="text-gray-500 dark:text-gray-400">{label}</dt>
+                <dd className="font-medium text-gray-700 dark:text-gray-300">{((val as number) * 100).toFixed(2)}%</dd>
+              </div>
+            ))}
+            <div className="flex justify-between">
+              <dt className="text-gray-500 dark:text-gray-400">LT Threshold</dt>
+              <dd className="font-medium text-gray-700 dark:text-gray-300">{taxSettings.lt_holding_days}d</dd>
+            </div>
+          </dl>
+        )}
+
+        {editingTax && taxForm && (
+          <div className="mt-3 space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              {([
+                ['Federal Income Rate', 'federal_income_rate'],
+                ['Federal LT CG Rate', 'federal_lt_cg_rate'],
+                ['Federal ST CG Rate', 'federal_st_cg_rate'],
+                ['NIIT Rate', 'niit_rate'],
+                ['State Income Rate', 'state_income_rate'],
+                ['State LT CG Rate', 'state_lt_cg_rate'],
+                ['State ST CG Rate', 'state_st_cg_rate'],
+              ] as [string, keyof TaxSettings][]).map(([label, key]) => (
+                <label key={key} className="block">
+                  <span className="text-xs text-gray-500 dark:text-gray-400">{label}</span>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    value={taxForm[key] as number}
+                    onChange={e => setTaxForm(f => f ? { ...f, [key]: +e.target.value } : f)}
+                    className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                  />
+                </label>
+              ))}
+              <label className="block">
+                <span className="text-xs text-gray-500 dark:text-gray-400">LT Holding Threshold (days)</span>
+                <input
+                  type="number"
+                  value={taxForm.lt_holding_days}
+                  onChange={e => setTaxForm(f => f ? { ...f, lt_holding_days: +e.target.value } : f)}
+                  className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                />
+              </label>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  setTaxSaving(true)
+                  try {
+                    const updated = await api.updateTaxSettings(taxForm)
+                    setTaxSettings(updated)
+                    setEditingTax(false)
+                  } catch { /* ignore */ } finally { setTaxSaving(false) }
+                }}
+                disabled={taxSaving}
+                className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {taxSaving ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                onClick={() => { setTaxForm({ ...WI_DEFAULTS }) }}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
+              >
+                Reset to WI Defaults
+              </button>
+              <button
+                onClick={() => setEditingTax(false)}
+                className="rounded-md px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* Data Management */}

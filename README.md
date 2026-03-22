@@ -37,7 +37,7 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 
 - **Event Timeline** — computed on the fly from grants, prices, and loans. Never stored. Shows income, capital gains, share price, and cumulative totals.
 - **Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, tax paid, cash received, next event) with an "As of" date picker (Today / End quick buttons) + 4 interactive charts.
-- **Stock Sales** — record share sales with FIFO cost-basis tracking, LT/ST capital gains split, and Wisconsin tax calculator. Payoff sales can be linked to loans and auto-sized to cover the cash due after tax (gross-up calculation).
+- **Stock Sales** — record share sales with configurable lot selection (LIFO/FIFO/same-tranche), LT/ST capital gains split, and Wisconsin tax calculator. Payoff sales can be linked to loans and auto-sized to cover the cash due after tax (gross-up calculation).
 - **CRUD Management** — full create/read/update/delete for Grants, Loans, Prices, and Sales.
 - **Quick Flows** — convenience endpoints: "New Purchase" (grant + loan), "Annual Price", "Add Bonus".
 - **Excel Import/Export** — bootstrap from an existing Vesting.xlsx or export current state.
@@ -376,5 +376,8 @@ If you run an instance for others: secure the database file, use HTTPS, set `ENC
 - **Events are never stored.** They're computed per-request from the three source tables (Grants, Loans, Prices). This eliminates sync issues entirely.
 - **core.py is frozen.** The event generation logic is tested against known-good values (89 events, cum_shares=571,500, cum_income=$144,325, cum_cap_gains=$1,243,695). Don't modify it.
 - **Excel import is destructive.** It replaces all existing data for that user. The import flow validates first, previews second, writes third — all in one transaction.
-- **Payoff sales use FIFO lot selection (not tax-optimal).** When computing gross-up shares for a loan payoff, the oldest vested lots across *all* grants are sold first. The tax-optimal strategy would be to sell highest-cost-basis lots first (minimising cap gains). FIFO is used for simplicity; a future improvement could let users choose the lot selection method.
+- **Lot selection method is user-configurable (default: LIFO).** In Tax Settings, users choose between:
+  - **LIFO** (default) — newest vested lots sold first. For rising stock this maximises cost basis and minimises cap gains.
+  - **FIFO** — oldest lots first. Maximises LT-qualified shares when stock was purchased long ago.
+  - **Same tranche** — lots from the same grant year/type sold first (chains into LIFO for any remainder). Matches each payoff sale to its originating grant.
 - **Cost basis for purchase grants is the purchase price, not FMV at vest.** For grants with a purchase price (`grant_price > 0`), vesting only lifts the sale restriction — it does not create a new tax event or step up the cost basis. Capital gains are computed as `sale price − purchase price`. For income/RSU grants (`grant_price = 0`), FMV at vesting is recognised as ordinary income and becomes the cost basis.

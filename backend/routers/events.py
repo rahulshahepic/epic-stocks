@@ -59,18 +59,22 @@ def get_events(user: User = Depends(get_current_user), db: Session = Depends(get
 def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     grants, prices, loans, initial_price = _user_source_data(user, db)
 
+    today = date.today()
+    total_tax_paid = sum(
+        ln["amount"] for ln in loans
+        if ln["loan_type"] == "Tax" and ln["due"].date() <= today
+    )
+
     if not grants and not prices:
         return {
             "current_price": 0, "total_shares": 0,
             "total_income": 0, "total_cap_gains": 0,
-            "total_loan_principal": 0, "next_event": None,
+            "total_loan_principal": 0, "total_tax_paid": 0, "next_event": None,
         }
 
     events = generate_all_events(grants, prices, loans)
     timeline = compute_timeline(events, initial_price)
     last = timeline[-1] if timeline else {}
-
-    today = date.today()
     next_event = None
     for e in timeline:
         edate = e["date"]
@@ -86,5 +90,6 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
         "total_income": last.get("cum_income", 0),
         "total_cap_gains": last.get("cum_cap_gains", 0),
         "total_loan_principal": sum(ln["amount"] for ln in loans),
+        "total_tax_paid": total_tax_paid,
         "next_event": next_event,
     }

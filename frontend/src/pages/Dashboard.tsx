@@ -4,7 +4,7 @@ import {
   XAxis, YAxis, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts'
 import { api } from '../api.ts'
-import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry } from '../api.ts'
+import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, TaxSettings } from '../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { useDark } from '../hooks/useDark.ts'
 
@@ -116,6 +116,7 @@ const CARD_STYLES: Record<string, { bg: string; border: string; label: string }>
   gains:  { bg: 'bg-purple-50 dark:bg-purple-950/40', border: 'border-purple-200 dark:border-purple-800', label: 'text-purple-700 dark:text-purple-400' },
   loans:  { bg: 'bg-red-50 dark:bg-red-950/40', border: 'border-red-200 dark:border-red-800', label: 'text-red-700 dark:text-red-400' },
   event:  { bg: 'bg-sky-50 dark:bg-sky-950/40', border: 'border-sky-200 dark:border-sky-800', label: 'text-sky-700 dark:text-sky-400' },
+  tax:    { bg: 'bg-orange-50 dark:bg-orange-950/40', border: 'border-orange-200 dark:border-orange-800', label: 'text-orange-700 dark:text-orange-400' },
 }
 
 function Card({ label, value, variant }: { label: string; value: string; variant: string }) {
@@ -363,6 +364,134 @@ function PriceChart({ prices, c, range, hasFuturePrices }: { prices: PriceEntry[
   )
 }
 
+const WI_TAX_DEFAULTS: TaxSettings = {
+  federal_income_rate: 0.37,
+  federal_lt_cg_rate: 0.20,
+  federal_st_cg_rate: 0.37,
+  niit_rate: 0.038,
+  state_income_rate: 0.0765,
+  state_lt_cg_rate: 0.0536,
+  state_st_cg_rate: 0.0765,
+  lt_holding_days: 365,
+}
+
+function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices }: {
+  events: TimelineEvent[]
+  loans: LoanEntry[]
+  taxSettings: TaxSettings
+  c: ChartColors
+  range: DateRange
+  hasFuturePrices: boolean
+}) {
+  const [selected, setSelected] = useState<number | null>(null)
+
+  const data = useMemo(() => {
+    const incomeRate = taxSettings.federal_income_rate + taxSettings.state_income_rate
+    const ltCgRate = taxSettings.federal_lt_cg_rate + taxSettings.niit_rate + taxSettings.state_lt_cg_rate
+
+    // Build sorted list of Tax loans for running total computation
+    const sortedTaxLoans = [...loans]
+      .filter(l => l.loan_type === 'Tax')
+      .sort((a, b) => a.due_date.localeCompare(b.due_date))
+    let taxLoanIdx = 0
+    let cumTaxPaid = 0
+
+    // Track price-driven surplus (same approach as IncomeCapGainsChart)
+    let cumFuturePriceIncrease = 0
+    let cumSurplusIncome = 0
+    let cumSurplusCg = 0
+
+    const filtered = filterByDateRange(events, range, 'date')
+    return filtered.map(e => {
+      // Accumulate tax loan payments up to this event date
+      while (taxLoanIdx < sortedTaxLoans.length && sortedTaxLoans[taxLoanIdx].due_date <= e.date) {
+        cumTaxPaid += sortedTaxLoans[taxLoanIdx].amount
+        taxLoanIdx++
+      }
+
+      // Track future price surplus (same logic as IncomeCapGainsChart)
+      if (hasFuturePrices && e.date > TODAY) {
+        const vs = e.vested_shares ?? 0
+        if (e.event_type === 'Share Price') {
+          cumFuturePriceIncrease += e.price_increase
+          cumSurplusCg += e.price_cap_gains
+        } else if (cumFuturePriceIncrease > 0 && vs > 0) {
+          if ((e.grant_price ?? 0) === 0) {
+            cumSurplusIncome += cumFuturePriceIncrease * vs
+          } else {
+            cumSurplusCg += cumFuturePriceIncrease * vs
+          }
+        }
+      }
+
+      // "Sure" tax = tax on base income + base vesting cap gains (no price surplus)
+      const taxSure = Math.round(
+        (e.cum_income - cumSurplusIncome) * incomeRate +
+        (e.cum_cap_gains - cumSurplusCg) * ltCgRate
+      )
+
+      // "Half" tax = tax on price-driven surplus (uncertain - depends on future price)
+      const hasSurplus = hasFuturePrices && (cumSurplusIncome + cumSurplusCg) > 0
+      const taxHalf = hasSurplus
+        ? Math.round(cumSurplusIncome * incomeRate + cumSurplusCg * ltCgRate)
+        : null as number | null
+
+      return {
+        _date: e.date,
+        _label: fmtDate(e.date),
+        _event: e,
+        taxSure,
+        taxHalf,
+        taxPaid: cumTaxPaid > 0 ? cumTaxPaid : null as number | null,
+      }
+    })
+  }, [events, loans, taxSettings, range, hasFuturePrices])
+
+  const tIdx = todayIndex(data)
+  const sel = selected !== null && selected < data.length ? data[selected] : null
+
+  return (
+    <>
+      <ResponsiveContainer width="100%" height={250}>
+        <AreaChart data={data} onClick={(state) => {
+          if (state?.activeTooltipIndex != null) setSelected(Number(state.activeTooltipIndex))
+        }}>
+          <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
+          <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} padding={{ right: 10 }} />
+          <YAxis tick={{ fontSize: 10, fill: c.axis }} />
+          <text x="50%" y={16} textAnchor="middle" fontSize={10} fill={c.axis}>
+            <tspan fill="#fb923c">&#9632;</tspan> Est. Tax (Sure){'  '}
+            {hasFuturePrices && <><tspan fill="#fed7aa">&#9632;</tspan> +Projected{'  '}</>}
+            <tspan fill="#ef4444">&#9632;</tspan> Paid
+          </text>
+          {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
+          {selected !== null && selected < data.length && (
+            <ReferenceLine x={data[selected]._label} stroke="#fb923c" strokeWidth={1.5} />
+          )}
+          {/* Stacked: sure tax + projected half tax */}
+          <Area type="monotone" dataKey="taxSure" stackId="tax" fill="#fb923c" fillOpacity={0.7} stroke="#ea580c" name="Est. Tax (Sure)" dot={false} />
+          {hasFuturePrices && (
+            <Area type="monotone" dataKey="taxHalf" stackId="tax" fill="#fed7aa" fillOpacity={0.5} stroke="#fed7aa" strokeDasharray="6 3" name="Est. Tax (Projected)" dot={false} />
+          )}
+          {/* Paid line overlaid (not stacked) */}
+          <Line type="monotone" dataKey="taxPaid" stroke="#ef4444" strokeWidth={2} dot={false} name="Tax Paid" connectNulls />
+        </AreaChart>
+      </ResponsiveContainer>
+      {sel && (
+        <DetailCard
+          onClose={() => setSelected(null)}
+          items={[
+            { label: '', value: fmtFullDate(sel._date) },
+            { label: 'est. tax (sure)', value: fmt$(sel.taxSure) },
+            ...(sel.taxHalf ? [{ label: 'est. tax (projected)', value: fmt$(sel.taxHalf) }] : []),
+            ...(sel.taxPaid ? [{ label: 'tax paid', value: fmt$(sel.taxPaid) }] : []),
+          ]}
+        />
+      )}
+    </>
+  )
+}
+
 function LoanChart({ loans, c }: { loans: LoanEntry[]; c: ChartColors }) {
   const byYear: Record<string, number> = {}
   for (const l of loans) {
@@ -407,11 +536,13 @@ export default function Dashboard() {
   const fetchEvents = useCallback(() => api.getEvents(), [])
   const fetchPrices = useCallback(() => api.getPrices(), [])
   const fetchLoans = useCallback(() => api.getLoans(), [])
+  const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
 
   const { data: dash, loading: dashLoading } = useApiData<DashboardData>(fetchDashboard)
   const { data: events } = useApiData<TimelineEvent[]>(fetchEvents)
   const { data: prices } = useApiData<PriceEntry[]>(fetchPrices)
   const { data: loans } = useApiData<LoanEntry[]>(fetchLoans)
+  const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
   const c = useChartColors()
   const [range, setRange] = useState<DateRange>({ mode: 'all', start: '', end: '' })
 
@@ -452,6 +583,7 @@ export default function Dashboard() {
         <Card label="Total Income" value={fmt$(dash.total_income)} variant="income" />
         <Card label="Total Cap Gains" value={fmt$(dash.total_cap_gains)} variant="gains" />
         <Card label="Loan Principal" value={fmt$(dash.total_loan_principal)} variant="loans" />
+        <Card label="Tax Paid" value={fmt$(dash.total_tax_paid ?? 0)} variant="tax" />
         <Card
           label="Next Event"
           value={dash.next_event ? `${dash.next_event.date} — ${dash.next_event.event_type}` : 'None'}
@@ -473,6 +605,18 @@ export default function Dashboard() {
         {prices && prices.length > 0 && (
           <ChartBox title="Share Price History" range={range} setRange={setRange} maxDate={maxDate}>
             <PriceChart prices={prices} c={c} range={range} hasFuturePrices={hasFuturePrices} />
+          </ChartBox>
+        )}
+        {events && events.length > 0 && loans !== undefined && (
+          <ChartBox title="Estimated Tax Liability" range={range} setRange={setRange} maxDate={maxDate}>
+            <TaxChart
+              events={events}
+              loans={loans ?? []}
+              taxSettings={taxSettings ?? WI_TAX_DEFAULTS}
+              c={c}
+              range={range}
+              hasFuturePrices={hasFuturePrices}
+            />
           </ChartBox>
         )}
         {loans && loans.length > 0 && <LoanChart loans={loans} c={c} />}

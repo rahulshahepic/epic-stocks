@@ -72,6 +72,7 @@ export interface DashboardData {
   total_income: number
   total_cap_gains: number
   total_loan_principal: number
+  total_tax_paid: number
   next_event: { date: string; event_type: string } | null
 }
 

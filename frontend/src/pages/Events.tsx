@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { api } from '../api.ts'
-import type { TimelineEvent } from '../api.ts'
+import type { TimelineEvent, TaxSettings } from '../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 
 const EVENT_TYPES = ['Exercise', 'Down payment exchange', 'Vesting', 'Share Price', 'Loan Repayment']
@@ -25,10 +25,29 @@ function fmtNum(n: number | null) {
   return n != null ? n.toLocaleString('en-US') : '—'
 }
 
+const TODAY = new Date().toISOString().slice(0, 10)
+
+const WI_TAX_DEFAULTS: TaxSettings = {
+  federal_income_rate: 0.37, federal_lt_cg_rate: 0.20, federal_st_cg_rate: 0.37,
+  niit_rate: 0.038, state_income_rate: 0.0765, state_lt_cg_rate: 0.0536,
+  state_st_cg_rate: 0.0765, lt_holding_days: 365,
+}
+
+function estTaxForVesting(e: TimelineEvent, ts: TaxSettings): number {
+  const incomeRate = ts.federal_income_rate + ts.state_income_rate
+  const ltCgRate = ts.federal_lt_cg_rate + ts.niit_rate + ts.state_lt_cg_rate
+  return (e.income > 0 ? e.income * incomeRate : 0)
+       + (e.vesting_cap_gains > 0 ? e.vesting_cap_gains * ltCgRate : 0)
+}
+
 export default function Events() {
   const fetchEvents = useCallback(() => api.getEvents(), [])
+  const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
   const { data: events, loading } = useApiData<TimelineEvent[]>(fetchEvents)
+  const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
   const [typeFilter, setTypeFilter] = useState<string>('')
+
+  const ts = taxSettings ?? WI_TAX_DEFAULTS
 
   if (loading) return <p className="p-6 text-center text-sm text-gray-400">Loading...</p>
   if (!events) return <p className="p-6 text-center text-sm text-red-500">Failed to load events</p>
@@ -62,6 +81,7 @@ export default function Events() {
               <th className="px-3 py-2 text-right">Price</th>
               <th className="px-3 py-2 text-right">Income</th>
               <th className="px-3 py-2 text-right">Cap Gains</th>
+              <th className="px-3 py-2 text-right" title="Estimated tax due (income or cap gains events only). Price appreciation is unrealized — not a taxable event.">Est. Tax</th>
               <th className="px-3 py-2 text-right">Cum Shares</th>
             </tr>
           </thead>
@@ -81,13 +101,26 @@ export default function Events() {
                 <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtPrice(e.share_price)}</td>
                 <td className="px-3 py-2 text-right text-emerald-600 dark:text-emerald-400">{e.income ? fmt$(e.income) : '—'}</td>
                 <td className="px-3 py-2 text-right text-purple-600 dark:text-purple-400">{e.total_cap_gains ? fmt$(e.total_cap_gains) : '—'}</td>
+                <td className="px-3 py-2 text-right">
+                  {e.event_type === 'Vesting' && (e.income > 0 || e.vesting_cap_gains > 0) ? (
+                    <span className="text-orange-600 dark:text-orange-400" title={
+                      e.date > TODAY
+                        ? `Future vesting — sell ≈${Math.ceil(estTaxForVesting(e, ts) / e.share_price)} shares to cover`
+                        : 'Income/cap gains tax due at vesting'
+                    }>
+                      {fmt$(estTaxForVesting(e, ts))}
+                    </span>
+                  ) : e.event_type === 'Share Price' ? (
+                    <span className="text-xs text-gray-400 dark:text-gray-600" title="Price appreciation is unrealized — not a taxable event">—*</span>
+                  ) : '—'}
+                </td>
                 <td className="px-3 py-2 text-right font-medium text-gray-900 dark:text-gray-100">{fmtNum(e.cum_shares)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-gray-400">{filtered.length} events</p>
+      <p className="text-xs text-gray-400">{filtered.length} events &nbsp;·&nbsp; * price appreciation is unrealized — not a taxable event &nbsp;·&nbsp; hover Est. Tax for sell-to-cover share count</p>
     </div>
   )
 }

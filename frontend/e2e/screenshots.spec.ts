@@ -68,4 +68,20 @@ test.describe('Screenshots', () => {
     await page.waitForLoadState('networkidle')
     await page.screenshot({ path: `${OUT}/import-export-mobile.png`, fullPage: true })
   })
+
+  test('sales page - light - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    await page.click('text=Sales')
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: `${OUT}/sales-light-mobile.png`, fullPage: true })
+  })
+
+  test('sales page - dark - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'dark')
+    await page.click('text=Sales')
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: `${OUT}/sales-dark-mobile.png`, fullPage: true })
+  })
 })

@@ -177,6 +177,7 @@ export const api = {
   updateLoan: (id: number, data: Partial<Omit<LoanEntry, 'id'>>, regeneratePayoffSale = false) =>
     put<LoanEntry>(`/api/loans/${id}?regenerate_payoff_sale=${regeneratePayoffSale}`, data),
   deleteLoan: (id: number) => del(`/api/loans/${id}`),
+  regenerateAllPayoffSales: () => apiFetch<{ updated: number }>('/api/loans/regenerate-all-payoff-sales', { method: 'POST' }),
   getLoanPayoffSuggestion: (loanId: number) => apiFetch<LoanPayoffSuggestion>(`/api/loans/${loanId}/payoff-sale-suggestion`),
 
   // Loan Payments

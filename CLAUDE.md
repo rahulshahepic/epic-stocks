@@ -28,7 +28,7 @@ Follow the order in SPEC.md. Build backend first, then frontend. **Every step mu
 - E2E: Playwright, mobile viewport (375x812), chromium only.
 - **Always run `npx tsc -b --noEmit` before committing frontend changes.** The dev server skips type-checking; CI catches it.
 - **Run E2E tests via `./e2e.sh` from the repo root.** This script handles type-checking, starting a fresh backend + Vite server, waiting for both to be healthy, and cleanup. Do not manually spin up servers and run Playwright separately.
-- Known-good values for core logic validation: 89 events, final cum_shares=269843, cum_income=$144,325, cum_cap_gains=$1,243,695.
+- Known-good values for core logic validation: 89 events, final cum_shares=571500, cum_income=$144,325, cum_cap_gains=$1,243,695. (cum_shares changed from 269843 when Loan Payoff events were changed from auto-selling shares to cash obligations in the Loan Payoff model refactor.)
 
 ## CI/CD
 - GitHub Actions runs tests on every push and PR.

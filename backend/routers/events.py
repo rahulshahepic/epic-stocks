@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import User, Grant, Loan, Price
+from models import User, Grant, Loan, Price, LoanPayment, Sale
 from auth import get_current_user
 from core import generate_all_events, compute_timeline
 
@@ -34,7 +34,7 @@ def _user_source_data(user: User, db: Session):
     } for ln in loans_db]
 
     initial_price = prices[0]["price"] if prices else 0
-    return grants, prices, loans, initial_price
+    return grants, prices, loans, loans_db, initial_price
 
 
 def _serialize_event(e):
@@ -45,19 +45,134 @@ def _serialize_event(e):
     }
 
 
+def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales: list) -> list:
+    """
+    Enrich Loan Payoff events with cash_due / covered_by_sale.
+    Inject Early Loan Payment events for user-recorded LoanPayments.
+    """
+    # Build lookup: loan_id → sum of early payments
+    payments_by_loan: dict[int, float] = {}
+    for lp in loan_payments:
+        payments_by_loan[lp.loan_id] = payments_by_loan.get(lp.loan_id, 0.0) + lp.amount
+
+    # Set of loan_ids covered by a linked sale
+    covered_loan_ids = {s.loan_id for s in sales if s.loan_id is not None}
+
+    enriched = []
+    for e in timeline:
+        if e["event_type"] == "Loan Payoff" and e.get("source"):
+            idx = e["source"].get("index", -1)
+            if 0 <= idx < len(loans_db):
+                loan = loans_db[idx]
+                early_paid = payments_by_loan.get(loan.id, 0.0)
+                cash_due = round(max(0.0, loan.amount - early_paid), 2)
+                enriched.append({
+                    **e,
+                    "loan_db_id": loan.id,
+                    "cash_due": cash_due,
+                    "covered_by_sale": loan.id in covered_loan_ids,
+                    "status": "covered" if loan.id in covered_loan_ids else "planned",
+                })
+            else:
+                enriched.append(e)
+        else:
+            enriched.append(e)
+
+    # Determine current price at a given date from the timeline
+    # (used for injected events that need a share_price reference)
+    last_price = 0.0
+    last_cum_shares = 0
+    date_to_price: dict = {}
+    date_to_shares: dict = {}
+    for e in timeline:
+        edate = e["date"]
+        if isinstance(edate, datetime):
+            edate = edate.date()
+        last_price = e.get("share_price", last_price)
+        last_cum_shares = e.get("cum_shares", last_cum_shares)
+        date_to_price[edate] = last_price
+        date_to_shares[edate] = last_cum_shares
+
+    def price_at(d: date) -> float:
+        # Last known price on or before d
+        result = 0.0
+        for k in sorted(date_to_price.keys()):
+            if k <= d:
+                result = date_to_price[k]
+            else:
+                break
+        return result
+
+    def shares_at(d: date) -> int:
+        result = 0
+        for k in sorted(date_to_shares.keys()):
+            if k <= d:
+                result = date_to_shares[k]
+            else:
+                break
+        return result
+
+    # Inject LoanPayment records as "Early Loan Payment" events
+    for lp in loan_payments:
+        sp = price_at(lp.date)
+        cs = shares_at(lp.date)
+        enriched.append({
+            "date": datetime.combine(lp.date, datetime.min.time()),
+            "event_type": "Early Loan Payment",
+            "grant_year": None,
+            "grant_type": None,
+            "granted_shares": None,
+            "grant_price": None,
+            "exercise_price": None,
+            "vested_shares": None,
+            "price_increase": 0.0,
+            "share_price": sp,
+            "cum_shares": cs,
+            "income": 0.0,
+            "cum_income": 0.0,
+            "vesting_cap_gains": 0.0,
+            "price_cap_gains": 0.0,
+            "total_cap_gains": 0.0,
+            "cum_cap_gains": 0.0,
+            "loan_id": lp.loan_id,
+            "amount": round(lp.amount, 2),
+            "notes": lp.notes,
+        })
+
+    # Sort: date first, then by event type order
+    _TYPE_ORDER = {
+        "Share Price": 0, "Exercise": 1, "Down payment exchange": 2,
+        "Vesting": 3, "Loan Payoff": 4, "Early Loan Payment": 5,
+    }
+
+    def sort_key(e):
+        d = e["date"]
+        if isinstance(d, datetime):
+            d = d.date()
+        return (d, _TYPE_ORDER.get(e["event_type"], 9))
+
+    enriched.sort(key=sort_key)
+    return enriched
+
+
 @router.get("/events")
 def get_events(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    grants, prices, loans, initial_price = _user_source_data(user, db)
+    grants, prices, loans, loans_db, initial_price = _user_source_data(user, db)
     if not grants and not prices:
         return []
     events = generate_all_events(grants, prices, loans)
     timeline = compute_timeline(events, initial_price)
-    return [_serialize_event(e) for e in timeline]
+
+    loan_payments = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).order_by(LoanPayment.date).all()
+    sales = db.query(Sale).filter(Sale.user_id == user.id).all()
+
+    enriched = _enrich_timeline(timeline, loans_db, loan_payments, sales)
+    return [_serialize_event(e) for e in enriched]
 
 
 @router.get("/dashboard")
 def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    grants, prices, loans, initial_price = _user_source_data(user, db)
+    grants, prices, loans, loans_db, initial_price = _user_source_data(user, db)
 
     today = date.today()
     total_tax_paid = sum(
@@ -65,15 +180,44 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
         if ln["loan_type"] == "Tax" and ln["due"].date() <= today
     )
 
+    # Cash received from cash-out sales (no loan_id)
+    sales_db = db.query(Sale).filter(Sale.user_id == user.id).all()
+    cash_received = round(sum(
+        s.shares * s.price_per_share for s in sales_db
+        if s.loan_id is None and s.date <= today
+    ), 2)
+
     if not grants and not prices:
         return {
             "current_price": 0, "total_shares": 0,
             "total_income": 0, "total_cap_gains": 0,
-            "total_loan_principal": 0, "total_tax_paid": 0, "next_event": None,
+            "total_loan_principal": 0, "total_tax_paid": 0,
+            "cash_received": 0, "next_event": None,
         }
 
     events = generate_all_events(grants, prices, loans)
     timeline = compute_timeline(events, initial_price)
+
+    # Build loan payment data for the loan payment chart
+    loan_payments_db = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).all()
+    payments_by_loan: dict[int, float] = {}
+    for lp in loan_payments_db:
+        payments_by_loan[lp.loan_id] = payments_by_loan.get(lp.loan_id, 0.0) + lp.amount
+    covered_loan_ids = {s.loan_id for s in sales_db if s.loan_id is not None}
+
+    # Loan payment by year: same_tranche_sale vs cash_in
+    loan_payment_by_year: dict[str, dict] = {}
+    for i, ln in enumerate(loans_db):
+        year = str(ln.due_date.year)
+        early_paid = payments_by_loan.get(ln.id, 0.0)
+        cash_due = max(0.0, ln.amount - early_paid)
+        if year not in loan_payment_by_year:
+            loan_payment_by_year[year] = {"year": year, "same_tranche_sale": 0.0, "cash_in": 0.0}
+        if ln.id in covered_loan_ids:
+            loan_payment_by_year[year]["same_tranche_sale"] += cash_due
+        else:
+            loan_payment_by_year[year]["cash_in"] += cash_due
+
     last = timeline[-1] if timeline else {}
     next_event = None
     for e in timeline:
@@ -91,5 +235,7 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
         "total_cap_gains": last.get("cum_cap_gains", 0),
         "total_loan_principal": sum(ln["amount"] for ln in loans),
         "total_tax_paid": total_tax_paid,
+        "cash_received": cash_received,
+        "loan_payment_by_year": sorted(loan_payment_by_year.values(), key=lambda x: x["year"]),
         "next_event": next_event,
     }

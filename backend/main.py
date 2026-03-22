@@ -38,6 +38,11 @@ def _migrate_schema():
             if "version" not in cols:
                 with database.engine.begin() as conn:
                     conn.execute(sqlalchemy.text(f"ALTER TABLE {table} ADD COLUMN version INTEGER NOT NULL DEFAULT 1"))
+    if insp.has_table("sales"):
+        sales_cols = {c["name"] for c in insp.get_columns("sales")}
+        with database.engine.begin() as conn:
+            if "loan_id" not in sales_cols:
+                conn.execute(sqlalchemy.text("ALTER TABLE sales ADD COLUMN loan_id INTEGER REFERENCES loans(id) ON DELETE SET NULL"))
     with database.engine.begin() as conn:
         conn.execute(sqlalchemy.text("""
             CREATE TABLE IF NOT EXISTS sales (
@@ -46,6 +51,18 @@ def _migrate_schema():
                 date DATE NOT NULL,
                 shares INTEGER NOT NULL,
                 price_per_share REAL NOT NULL,
+                notes TEXT NOT NULL DEFAULT '',
+                loan_id INTEGER REFERENCES loans(id) ON DELETE SET NULL,
+                version INTEGER NOT NULL DEFAULT 1
+            )
+        """))
+        conn.execute(sqlalchemy.text("""
+            CREATE TABLE IF NOT EXISTS loan_payments (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                loan_id INTEGER NOT NULL REFERENCES loans(id) ON DELETE CASCADE,
+                date DATE NOT NULL,
+                amount REAL NOT NULL,
                 notes TEXT NOT NULL DEFAULT '',
                 version INTEGER NOT NULL DEFAULT 1
             )
@@ -216,6 +233,7 @@ _fastapi_app.include_router(admin.router)
 _fastapi_app.include_router(notifications.router)
 _fastapi_app.include_router(sales.router)
 _fastapi_app.include_router(sales.tax_router)
+_fastapi_app.include_router(loans.lp_router)
 
 
 @_fastapi_app.get("/api/health")

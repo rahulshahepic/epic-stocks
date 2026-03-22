@@ -117,6 +117,7 @@ const CARD_STYLES: Record<string, { bg: string; border: string; label: string }>
   loans:  { bg: 'bg-red-50 dark:bg-red-950/40', border: 'border-red-200 dark:border-red-800', label: 'text-red-700 dark:text-red-400' },
   event:  { bg: 'bg-sky-50 dark:bg-sky-950/40', border: 'border-sky-200 dark:border-sky-800', label: 'text-sky-700 dark:text-sky-400' },
   tax:    { bg: 'bg-orange-50 dark:bg-orange-950/40', border: 'border-orange-200 dark:border-orange-800', label: 'text-orange-700 dark:text-orange-400' },
+  cash:   { bg: 'bg-green-50 dark:bg-green-950/40', border: 'border-green-200 dark:border-green-800', label: 'text-green-700 dark:text-green-400' },
 }
 
 function Card({ label, value, variant }: { label: string; value: string; variant: string }) {
@@ -492,24 +493,24 @@ function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices }: {
   )
 }
 
-function LoanChart({ loans, c }: { loans: LoanEntry[]; c: ChartColors }) {
-  const byYear: Record<string, number> = {}
-  for (const l of loans) {
-    const year = l.due_date.slice(0, 4)
-    byYear[year] = (byYear[year] ?? 0) + l.amount
-  }
-  const data = Object.entries(byYear)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([year, amount]) => ({ year, amount }))
-
+function LoanChart({ loanPaymentByYear, c }: {
+  loanPaymentByYear: { year: string; same_tranche_sale: number; cash_in: number }[]
+  c: ChartColors
+}) {
+  if (!loanPaymentByYear || loanPaymentByYear.length === 0) return null
   return (
-    <ChartBox title="Loan Principal by Due Year">
+    <ChartBox title="Loan Payments by Due Year">
+      <text x="50%" y={16} textAnchor="middle" fontSize={10} fill={c.axis} style={{ display: 'block', textAlign: 'center', marginBottom: 4 }}>
+        <tspan fill="#4ade80">&#9632;</tspan> Same-tranche sale{'  '}
+        <tspan fill="#fb923c">&#9632;</tspan> Cash in
+      </text>
       <ResponsiveContainer width="100%" height={220}>
-        <BarChart data={data}>
+        <BarChart data={loanPaymentByYear}>
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
           <XAxis dataKey="year" tick={{ fontSize: 10, fill: c.axis }} />
           <YAxis tick={{ fontSize: 10, fill: c.axis }} />
-          <Bar dataKey="amount" fill="#f87171" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="same_tranche_sale" stackId="a" fill="#4ade80" name="Same-tranche sale" radius={[0, 0, 0, 0]} />
+          <Bar dataKey="cash_in" stackId="a" fill="#fb923c" name="Cash in" radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </ChartBox>
@@ -584,6 +585,7 @@ export default function Dashboard() {
         <Card label="Total Cap Gains" value={fmt$(dash.total_cap_gains)} variant="gains" />
         <Card label="Loan Principal" value={fmt$(dash.total_loan_principal)} variant="loans" />
         <Card label="Tax Paid" value={fmt$(dash.total_tax_paid ?? 0)} variant="tax" />
+        <Card label="Cash Received" value={fmt$(dash.cash_received ?? 0)} variant="cash" />
         <Card
           label="Next Event"
           value={dash.next_event ? `${dash.next_event.date} — ${dash.next_event.event_type}` : 'None'}
@@ -619,7 +621,9 @@ export default function Dashboard() {
             />
           </ChartBox>
         )}
-        {loans && loans.length > 0 && <LoanChart loans={loans} c={c} />}
+        {dash.loan_payment_by_year && dash.loan_payment_by_year.length > 0 && (
+          <LoanChart loanPaymentByYear={dash.loan_payment_by_year} c={c} />
+        )}
       </div>
     </div>
   )

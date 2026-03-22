@@ -66,4 +66,4 @@ def test_roundtrip_generates_correct_events():
     events = generate_all_events(grants, prices, loans)
     timeline = compute_timeline(events, initial_price)
     assert len(events) == 89
-    assert timeline[-1]["cum_shares"] == 269843
+    assert timeline[-1]["cum_shares"] == 571500

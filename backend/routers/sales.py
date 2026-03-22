@@ -63,6 +63,38 @@ def _build_timeline(user: User, db: Session) -> list:
     return compute_timeline(events, initial_price)
 
 
+def _check_cash_out_allowed(user: User, sale_date, db: Session):
+    """
+    Block cash-out sale if any loan with due_date <= sale_date has no linked payoff Sale.
+    Raises HTTPException 422 if blocked.
+    """
+    outstanding_loans = db.query(Loan).filter(
+        Loan.user_id == user.id,
+        Loan.due_date <= sale_date,
+    ).all()
+
+    covered_ids = {
+        s.loan_id for s in
+        db.query(Sale).filter(Sale.user_id == user.id, Sale.loan_id.isnot(None)).all()
+    }
+
+    uncovered = [
+        ln for ln in outstanding_loans
+        if ln.id not in covered_ids
+    ]
+
+    if uncovered:
+        names = "; ".join(
+            f"${ln.amount:,.0f} due {ln.due_date} ({ln.grant_year}/{ln.loan_type})"
+            for ln in uncovered[:3]
+        )
+        suffix = f" (+{len(uncovered) - 3} more)" if len(uncovered) > 3 else ""
+        raise HTTPException(
+            status_code=422,
+            detail=f"Repay loans before taking cash out: {names}{suffix}",
+        )
+
+
 # --- Sales CRUD ---
 
 @router.get("", response_model=list[SaleOut])
@@ -72,6 +104,19 @@ def list_sales(user: User = Depends(get_current_user), db: Session = Depends(get
 
 @router.post("", response_model=SaleOut, status_code=201)
 def create_sale(body: SaleCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if body.loan_id is not None:
+        # Validate loan belongs to this user
+        loan = db.query(Loan).filter(Loan.id == body.loan_id, Loan.user_id == user.id).first()
+        if not loan:
+            raise HTTPException(status_code=404, detail="Loan not found")
+        # Prevent duplicate payoff sale for the same loan
+        existing = db.query(Sale).filter(Sale.loan_id == body.loan_id).first()
+        if existing:
+            raise HTTPException(status_code=409, detail="A sale already covers this loan's payoff")
+    else:
+        # Cash-out sale: enforce loan repayment rule
+        _check_cash_out_allowed(user, body.date, db)
+
     sale = Sale(**body.model_dump(), user_id=user.id)
     db.add(sale)
     db.commit()

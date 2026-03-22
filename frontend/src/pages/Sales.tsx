@@ -12,6 +12,7 @@ const empty: SaleForm = {
   shares: 0,
   price_per_share: 0,
   notes: '',
+  loan_id: null,
 }
 
 function fmtUSD(n: number) {
@@ -252,6 +253,7 @@ export default function Sales() {
           <thead className="bg-gray-50 dark:bg-gray-800">
             <tr className="text-gray-500 dark:text-gray-400">
               <th className="px-3 py-2">Date</th>
+              <th className="px-3 py-2">Type</th>
               <th className="px-3 py-2 text-right">Shares</th>
               <th className="px-3 py-2 text-right">Price/Share</th>
               <th className="px-3 py-2 text-right">Gross Proceeds</th>
@@ -263,6 +265,17 @@ export default function Sales() {
             {sales.map(s => (
               <tr key={s.id} className="bg-white dark:bg-gray-900">
                 <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{s.date}</td>
+                <td className="px-3 py-2">
+                  {s.loan_id != null ? (
+                    <span className="inline-block rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-medium text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300">
+                      Payoff
+                    </span>
+                  ) : (
+                    <span className="inline-block rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">
+                      Cash Out
+                    </span>
+                  )}
+                </td>
                 <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtNum(s.shares)}</td>
                 <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtUSD(s.price_per_share)}</td>
                 <td className="px-3 py-2 text-right font-medium text-gray-900 dark:text-gray-100">
@@ -277,7 +290,7 @@ export default function Sales() {
               </tr>
             ))}
             {sales.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-400">No sales recorded yet</td></tr>
+              <tr><td colSpan={7} className="px-3 py-6 text-center text-gray-400">No sales recorded yet</td></tr>
             )}
           </tbody>
         </table>

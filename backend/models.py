@@ -25,6 +25,7 @@ class User(Base):
     push_subscriptions: Mapped[list["PushSubscription"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     email_preference: Mapped["EmailPreference | None"] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
     sales: Mapped[list["Sale"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    loan_payments: Mapped[list["LoanPayment"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     tax_settings: Mapped["TaxSettings | None"] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
 
 
@@ -109,9 +110,26 @@ class Sale(Base):
     shares: Mapped[int] = mapped_column(Integer, nullable=False)
     price_per_share: Mapped[float] = mapped_column(EncryptedFloat, nullable=False)
     notes: Mapped[str] = mapped_column(String, nullable=False, default="")
+    # If set, this sale was generated to cover this loan's payoff.
+    loan_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("loans.id", ondelete="SET NULL"), nullable=True, index=True)
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
 
     user: Mapped["User"] = relationship(back_populates="sales")
+
+
+class LoanPayment(Base):
+    """User-recorded early cash payment against a loan (reduces final payoff balance)."""
+    __tablename__ = "loan_payments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    loan_id: Mapped[int] = mapped_column(Integer, ForeignKey("loans.id", ondelete="CASCADE"), nullable=False, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+    amount: Mapped[float] = mapped_column(EncryptedFloat, nullable=False)
+    notes: Mapped[str] = mapped_column(String, nullable=False, default="")
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+
+    user: Mapped["User"] = relationship(back_populates="loan_payments")
 
 
 class TaxSettings(Base):

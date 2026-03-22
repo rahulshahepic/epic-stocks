@@ -3,6 +3,7 @@ Sales tax computation engine.
 FIFO cost basis allocation for vested share lots.
 Does NOT modify core.py.
 """
+import math
 from collections import deque
 from datetime import date, datetime
 
@@ -45,6 +46,49 @@ def build_fifo_lots(timeline_events, as_of: date) -> deque:
                     to_reduce = 0
 
     return lots
+
+
+def compute_grossup_shares(lots: deque, cash_due: float, price: float, sale_date: date, tax_settings: dict) -> int:
+    """
+    Compute how many shares to sell so that net_proceeds (after LT/ST cap gains tax) >= cash_due.
+    Walks FIFO lots oldest-first. Any shortfall after lots exhausted falls back to ceil(remaining/price).
+    Always returns >= ceil(cash_due / price).
+    """
+    if price <= 0 or cash_due <= 0:
+        return 0
+
+    ts = tax_settings
+    lt_days = int(ts.get("lt_holding_days", 365))
+    lt_rate = (float(ts.get("federal_lt_cg_rate", 0.20))
+               + float(ts.get("niit_rate", 0.038))
+               + float(ts.get("state_lt_cg_rate", 0.0536)))
+    st_rate = (float(ts.get("federal_st_cg_rate", 0.37))
+               + float(ts.get("niit_rate", 0.038))
+               + float(ts.get("state_st_cg_rate", 0.0765)))
+
+    remaining = cash_due
+    total_shares = 0
+
+    for lot in lots:
+        if remaining <= 0:
+            break
+        vest_date, lot_shares, basis = lot[0], lot[1], lot[2]
+        hold_days = (sale_date - _to_date(vest_date)).days
+        rate = lt_rate if hold_days >= lt_days else st_rate
+        # net received per share after paying cap gains tax on the gain portion
+        net_per_share = price - rate * max(0.0, price - basis)
+        if net_per_share <= 0:
+            shares_from_lot = lot_shares
+        else:
+            shares_from_lot = min(lot_shares, math.ceil(remaining / net_per_share))
+        total_shares += shares_from_lot
+        remaining -= shares_from_lot * net_per_share
+
+    # Any remaining cash_due covered by unvested / no-basis shares (net = price)
+    if remaining > 0:
+        total_shares += math.ceil(remaining / price)
+
+    return max(total_shares, math.ceil(cash_due / price))
 
 
 def compute_sale_tax(timeline_events: list, sale: dict, tax_settings: dict) -> dict:

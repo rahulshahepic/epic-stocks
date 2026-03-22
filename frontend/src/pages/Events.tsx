@@ -3,14 +3,15 @@ import { api } from '../api.ts'
 import type { TimelineEvent, TaxSettings } from '../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 
-const EVENT_TYPES = ['Exercise', 'Down payment exchange', 'Vesting', 'Share Price', 'Loan Repayment']
+const EVENT_TYPES = ['Exercise', 'Down payment exchange', 'Vesting', 'Share Price', 'Loan Payoff', 'Early Loan Payment']
 
 const TYPE_COLORS: Record<string, string> = {
   'Exercise': 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
   'Down payment exchange': 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300',
   'Vesting': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
   'Share Price': 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
-  'Loan Repayment': 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
+  'Loan Payoff': 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
+  'Early Loan Payment': 'bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300',
 }
 
 function fmt$(n: number) {
@@ -97,10 +98,24 @@ export default function Events() {
                 <td className="whitespace-nowrap px-3 py-2 text-gray-500 dark:text-gray-400">
                   {e.grant_year ? `${e.grant_year} ${e.grant_type}` : '—'}
                 </td>
-                <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtNum(e.vested_shares ?? e.granted_shares)}</td>
+                <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">
+                  {e.event_type === 'Early Loan Payment'
+                    ? (e.amount != null ? fmt$(e.amount) : '—')
+                    : fmtNum(e.vested_shares ?? e.granted_shares)}
+                </td>
                 <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtPrice(e.share_price)}</td>
                 <td className="px-3 py-2 text-right text-emerald-600 dark:text-emerald-400">{e.income ? fmt$(e.income) : '—'}</td>
-                <td className="px-3 py-2 text-right text-purple-600 dark:text-purple-400">{e.total_cap_gains ? fmt$(e.total_cap_gains) : '—'}</td>
+                <td className="px-3 py-2 text-right text-purple-600 dark:text-purple-400">
+                  {e.event_type === 'Loan Payoff' && e.cash_due != null
+                    ? <span title={e.status === 'covered' ? 'Covered by linked sale' : 'No linked sale — cash required'}>
+                        {fmt$(e.cash_due)}
+                        {' '}
+                        <span className={e.status === 'covered' ? 'text-emerald-600' : 'text-orange-500'}>
+                          {e.status === 'covered' ? '✓' : '!'}
+                        </span>
+                      </span>
+                    : e.total_cap_gains ? fmt$(e.total_cap_gains) : '—'}
+                </td>
                 <td className="px-3 py-2 text-right">
                   {e.event_type === 'Vesting' && (e.income > 0 || e.vesting_cap_gains > 0) ? (
                     <span className="text-orange-600 dark:text-orange-400" title={

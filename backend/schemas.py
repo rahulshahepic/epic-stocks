@@ -246,6 +246,8 @@ class SaleCreate(BaseModel):
     shares: int
     price_per_share: float
     notes: str = ""
+    # If set, this sale was recorded to cover this loan's payoff.
+    loan_id: Optional[int] = None
 
     @field_validator("shares")
     @classmethod
@@ -283,6 +285,39 @@ class SaleUpdate(BaseModel):
         return v
 
 class SaleOut(SaleCreate):
+    id: int
+    version: int = 1
+    model_config = {"from_attributes": True}
+
+
+# LoanPayment
+class LoanPaymentCreate(BaseModel):
+    loan_id: int
+    date: date
+    amount: float
+    notes: str = ""
+
+    @field_validator("amount")
+    @classmethod
+    def amount_positive(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("amount must be positive")
+        return v
+
+class LoanPaymentUpdate(BaseModel):
+    date: Optional[date] = None
+    amount: Optional[float] = None
+    notes: Optional[str] = None
+    version: Optional[int] = None
+
+    @field_validator("amount")
+    @classmethod
+    def amount_positive(cls, v):
+        if v is not None and v <= 0:
+            raise ValueError("amount must be positive")
+        return v
+
+class LoanPaymentOut(LoanPaymentCreate):
     id: int
     version: int = 1
     model_config = {"from_attributes": True}

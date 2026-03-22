@@ -603,7 +603,19 @@ export default function Dashboard() {
       total_shares: lastEvent?.cum_shares ?? 0,
       total_income: lastEvent?.cum_income ?? 0,
       total_cap_gains: lastEvent?.cum_cap_gains ?? 0,
-      total_loan_principal: loans.reduce((sum, l) => sum + l.amount, 0),
+      total_loan_principal: (() => {
+        // Loans settled by a linked payoff Sale on or before cardDate
+        const settledIds = new Set(
+          (sales ?? []).filter(s => s.loan_id !== null && s.date <= cardDate).map(s => s.loan_id)
+        )
+        // Early payments made before cardDate against unsettled loans
+        const earlyPaidByLoan = new Map<number, number>()
+        events.filter(e => e.event_type === 'Early Loan Payment' && e.date <= cardDate && e.loan_id != null)
+          .forEach(e => { earlyPaidByLoan.set(e.loan_id!, (earlyPaidByLoan.get(e.loan_id!) ?? 0) + (e.amount ?? 0)) })
+        return loans
+          .filter(l => !settledIds.has(l.id))
+          .reduce((sum, l) => sum + Math.max(0, l.amount - (earlyPaidByLoan.get(l.id) ?? 0)), 0)
+      })(),
       total_tax_paid: taxPaid,
       cash_received: cashReceived ?? 0,
       next_event: nextEvent,

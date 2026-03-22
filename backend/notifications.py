@@ -9,7 +9,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
-from models import User, Grant, Loan, Price, PushSubscription, EmailPreference
+from models import User, Grant, Loan, Price, PushSubscription, EmailPreference, Sale
 from core import generate_all_events, compute_timeline
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
 VAPID_CLAIMS_EMAIL = os.getenv("VAPID_CLAIMS_EMAIL", "mailto:admin@example.com")
 
-NOTIFY_EVENT_TYPES = {"Vesting", "Loan Repayment", "Exercise"}
+NOTIFY_EVENT_TYPES = {"Vesting", "Loan Repayment", "Exercise", "Sale"}
 
 
 def _user_source_data(user: User, db: Session):
@@ -49,19 +49,28 @@ def _user_source_data(user: User, db: Session):
 
 def get_todays_events_for_user(user: User, db: Session, today: date | None = None) -> list[dict]:
     today = today or date.today()
-    grants, prices, loans, initial_price = _user_source_data(user, db)
-    if not grants and not prices:
-        return []
-    events = generate_all_events(grants, prices, loans)
-    timeline = compute_timeline(events, initial_price)
-
     todays = []
-    for e in timeline:
-        edate = e["date"]
-        if isinstance(edate, datetime):
-            edate = edate.date()
-        if edate == today and e["event_type"] in NOTIFY_EVENT_TYPES:
-            todays.append(e)
+
+    grants, prices, loans, initial_price = _user_source_data(user, db)
+    if grants and prices:
+        events = generate_all_events(grants, prices, loans)
+        timeline = compute_timeline(events, initial_price)
+        for e in timeline:
+            edate = e["date"]
+            if isinstance(edate, datetime):
+                edate = edate.date()
+            if edate == today and e["event_type"] in NOTIFY_EVENT_TYPES:
+                todays.append(e)
+
+    sales = db.query(Sale).filter(Sale.user_id == user.id, Sale.date == today).all()
+    for s in sales:
+        todays.append({
+            "event_type": "Sale",
+            "date": today,
+            "shares": s.shares,
+            "price_per_share": s.price_per_share,
+        })
+
     return todays
 
 

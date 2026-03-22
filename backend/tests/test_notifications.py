@@ -123,6 +123,51 @@ def test_notification_build_payload():
     assert "1 event" in payload["body"]
 
 
+def test_sale_included_in_todays_events(client, db_session):
+    """A sale dated today appears in today's events."""
+    from models import User, Sale
+    from notifications import get_todays_events_for_user
+    from datetime import date
+
+    register_user(client)
+    user = db_session.query(User).first()
+    today = date(2026, 3, 22)
+    db_session.add(Sale(user_id=user.id, date=today, shares=200, price_per_share=42.0, notes=""))
+    db_session.commit()
+
+    events = get_todays_events_for_user(user, db_session, today)
+    sale_events = [e for e in events if e["event_type"] == "Sale"]
+    assert len(sale_events) == 1
+    assert sale_events[0]["shares"] == 200
+
+
+def test_future_sale_not_in_todays_events(client, db_session):
+    """A sale dated tomorrow does not appear in today's events."""
+    from models import User, Sale
+    from notifications import get_todays_events_for_user
+    from datetime import date
+
+    register_user(client)
+    user = db_session.query(User).first()
+    db_session.add(Sale(user_id=user.id, date=date(2026, 3, 23), shares=100, price_per_share=42.0, notes=""))
+    db_session.commit()
+
+    events = get_todays_events_for_user(user, db_session, date(2026, 3, 22))
+    assert not any(e["event_type"] == "Sale" for e in events)
+
+
+def test_sale_in_notification_payload():
+    """Sale events are included in push/email notification payload."""
+    from notifications import build_notification_payload
+    payload = build_notification_payload([
+        {"event_type": "Vesting"},
+        {"event_type": "Sale"},
+    ])
+    assert payload is not None
+    assert "Sale" in payload["body"]
+    assert "Vesting" in payload["body"]
+
+
 def test_send_daily_notifications_with_email(client, db_session):
     """Integration: user with email pref enabled gets email for today's events."""
     from models import User, Grant, Price, EmailPreference

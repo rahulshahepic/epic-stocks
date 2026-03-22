@@ -563,47 +563,115 @@ jobs:
           cd ../frontend && npx playwright test
 ```
 
-#### `.github/workflows/deploy.yml` — runs on push to main (after tests pass)
+#### `.github/workflows/deploy.yml` — deploys staging on push to `staging`, production on push to `main`
 ```yaml
 name: Deploy
 on:
   push:
-    branches: [main]
+    branches: [main, staging]
 jobs:
-  deploy:
+  deploy-staging:
+    if: github.ref == 'refs/heads/staging'
     runs-on: ubuntu-latest
-    needs: []  # relies on branch protection requiring test.yml to pass
+    environment: staging
     steps:
-      - name: Deploy to VPS
+      - name: Deploy to staging
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
+          host: ${{ vars.VPS_HOST }}
+          username: ${{ vars.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            cd /opt/equity-vesting
+            cd /opt/epic-stocks-staging
+            cat > .env <<'ENVEOF'
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+            DOMAIN=${{ vars.DOMAIN }}
+            ENCRYPTION_MASTER_KEY=${{ secrets.ENCRYPTION_MASTER_KEY }}
+            PRIVACY_URL=${{ vars.PRIVACY_URL }}
+            ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
+            VAPID_PUBLIC_KEY=${{ vars.VAPID_PUBLIC_KEY }}
+            VAPID_PRIVATE_KEY=${{ secrets.VAPID_PRIVATE_KEY }}
+            VAPID_CLAIMS_EMAIL=${{ vars.VAPID_CLAIMS_EMAIL }}
+            RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+            RESEND_FROM=${{ vars.RESEND_FROM }}
+            APP_URL=${{ vars.APP_URL }}
+            ENVEOF
+            sed -i 's/^[[:space:]]*//' .env
+            git pull origin staging
+            docker compose build
+            docker compose up -d
+
+  deploy-production:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Deploy to production
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ vars.VPS_HOST }}
+          username: ${{ vars.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd /opt/epic-stocks
+            cat > .env <<'ENVEOF'
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+            DOMAIN=${{ vars.DOMAIN }}
+            ENCRYPTION_MASTER_KEY=${{ secrets.ENCRYPTION_MASTER_KEY }}
+            PRIVACY_URL=${{ vars.PRIVACY_URL }}
+            ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
+            VAPID_PUBLIC_KEY=${{ vars.VAPID_PUBLIC_KEY }}
+            VAPID_PRIVATE_KEY=${{ secrets.VAPID_PRIVATE_KEY }}
+            VAPID_CLAIMS_EMAIL=${{ vars.VAPID_CLAIMS_EMAIL }}
+            RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+            RESEND_FROM=${{ vars.RESEND_FROM }}
+            APP_URL=${{ vars.APP_URL }}
+            ENVEOF
+            sed -i 's/^[[:space:]]*//' .env
             git pull origin main
             docker compose build
             docker compose up -d
 ```
 
 ### Branch Protection
-Set up on GitHub: require `test.yml` to pass before merging PRs to main. Direct pushes to main also trigger tests first, then deploy.
+- Require `test.yml` to pass before merging PRs to `main` or `staging`
+- Consider requiring a reviewer approval on the `production` GitHub environment for an extra gate before prod deploys
 
-### VPS Setup (one-time)
+### GitHub Environments
+Configure two environments in repo Settings → Environments: `staging` and `production`. Each has its own copy of secrets and variables. Secrets are write-only; retrieve current values from the VPS via `cat /opt/epic-stocks/.env` if needed.
+
+**Secrets** (sensitive — set per environment):
+- `VPS_SSH_KEY` — SSH private key for deployment
+- `JWT_SECRET` — signs session tokens
+- `GOOGLE_CLIENT_ID` — OAuth client ID
+- `ENCRYPTION_MASTER_KEY` — encrypts user data at rest
+- `ADMIN_EMAIL` — semicolon-delimited admin emails
+- `VAPID_PRIVATE_KEY` — Web Push private key
+- `RESEND_API_KEY` — email API credential
+
+**Variables** (plaintext — set per environment):
+- `VPS_HOST` — VPS IP or hostname
+- `VPS_USER` — SSH username
+- `DOMAIN` — public domain (e.g. `staging.yourdomain.com` / `yourdomain.com`)
+- `VAPID_PUBLIC_KEY` — Web Push public key
+- `VAPID_CLAIMS_EMAIL` — Web Push contact email
+- `RESEND_FROM` — sender address for email notifications
+- `PRIVACY_URL` — public privacy policy URL
+- `APP_URL` — public app URL (used in email links)
+
+### VPS Setup (one-time, per environment)
 ```bash
-# On the VPS
+# On the VPS — repeat for /opt/epic-stocks-staging pointing at the staging branch
 cd /opt
-git clone git@github.com:YOURUSER/equity-vesting.git
-cd equity-vesting
-cp .env.example .env  # fill in secrets
+git clone git@github.com:YOURUSER/epic-stocks.git epic-stocks
+cd epic-stocks
+# .env is written fresh on each deploy by GitHub Actions
 docker compose up -d
 ```
 
-### GitHub Secrets Required
-- `VPS_HOST` — your VPS IP or domain
-- `VPS_USER` — SSH username
-- `VPS_SSH_KEY` — SSH private key for deployment
+Caddy handles both domains via virtual hosting. Run a single shared Caddy container (or use the prod Caddy config) with a second site block pointing `staging.yourdomain.com` to the staging app container on its internal port.
 
 ### Security Hardening
 See **[SECURITY_HARDENING.md](SECURITY_HARDENING.md)** for what to configure in your hosting environment after deploying. It distinguishes between security that's built into the app (automatic) and infrastructure tasks you need to do yourself (Cloudflare, VPS firewall, SSH hardening).

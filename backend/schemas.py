@@ -353,6 +353,9 @@ class TaxSettingsRead(BaseModel):
     state_st_cg_rate: float
     lt_holding_days: int
     lot_selection_method: str = 'lifo'
+    prefer_stock_dp: bool = False
+    dp_min_percent: float = 0.10
+    dp_min_cap: float = 20000.0
     model_config = {"from_attributes": True}
 
 class TaxSettingsUpdate(BaseModel):
@@ -365,6 +368,9 @@ class TaxSettingsUpdate(BaseModel):
     state_st_cg_rate: float | None = None
     lt_holding_days: int | None = None
     lot_selection_method: str | None = None
+    prefer_stock_dp: bool | None = None
+    dp_min_percent: float | None = None
+    dp_min_cap: float | None = None
 
 class TaxBreakdown(BaseModel):
     gross_proceeds: float

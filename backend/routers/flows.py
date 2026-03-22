@@ -1,10 +1,11 @@
+import math
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, field_validator
 from datetime import date
 
 from database import get_db
-from models import User, Grant, Loan, Price, Sale
+from models import User, Grant, Loan, Price, Sale, TaxSettings
 from schemas import GrantOut, LoanOut, PriceOut
 from auth import get_current_user
 
@@ -110,6 +111,17 @@ class AddBonusRequest(BaseModel):
         return v
 
 
+def _compute_min_dp(total_purchase: float, ts: TaxSettings | None) -> float:
+    """Return the minimum required down-payment amount based on user's DP rules."""
+    if ts is None:
+        return 0.0
+    pct = ts.dp_min_percent if ts.dp_min_percent is not None else 0.10
+    cap = ts.dp_min_cap if ts.dp_min_cap is not None else 20000.0
+    if pct <= 0 and cap <= 0:
+        return 0.0
+    return min(pct * total_purchase, cap)
+
+
 @router.post("/new-purchase", status_code=201)
 def new_purchase(body: NewPurchaseRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     existing = db.query(Grant).filter(
@@ -117,20 +129,58 @@ def new_purchase(body: NewPurchaseRequest, user: User = Depends(get_current_user
     ).first()
     if existing:
         raise HTTPException(status_code=409, detail=f"A Purchase grant for {body.year} already exists")
+
+    ts = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
+    total_purchase = body.shares * body.price
+    min_dp = _compute_min_dp(total_purchase, ts)
+
+    dp_shares = body.dp_shares  # negative int or 0
+    loan_amount = body.loan_amount
+
+    if ts and ts.prefer_stock_dp and dp_shares == 0 and body.price > 0 and min_dp > 0:
+        # Auto-calculate minimum DP in shares (rounded up so we don't undershoot)
+        dp_shares = -math.ceil(min_dp / body.price)
+
+    # Adjust loan amount to net of DP when not explicitly provided
+    if loan_amount is None and dp_shares < 0 and body.price > 0:
+        dp_amount = abs(dp_shares) * body.price
+        loan_amount = max(0.0, total_purchase - dp_amount)
+
+    # Validate minimum DP when rules are configured and a purchase loan is being created
+    if min_dp > 0 and loan_amount is not None:
+        dp_amount = abs(dp_shares) * body.price if dp_shares < 0 else 0.0
+        if dp_amount < min_dp:
+            min_shares = math.ceil(min_dp / body.price)
+            raise HTTPException(
+                status_code=422,
+                detail=f"Down payment must be at least ${min_dp:,.2f} "
+                       f"({min_shares:,} shares at ${body.price:.2f}). "
+                       f"Provided: ${dp_amount:,.2f} ({abs(dp_shares):,} shares).",
+            )
+
+    # Validate vested share availability for the DP
+    if dp_shares < 0:
+        from routers.grants import _check_dp_shares, _grants_as_dicts, _load_prices_and_loans
+        prices, loans_data = _load_prices_and_loans(user, db)
+        existing_grants = _grants_as_dicts(
+            db.query(Grant).filter(Grant.user_id == user.id).order_by(Grant.year).all()
+        )
+        _check_dp_shares(dp_shares, body.exercise_date, existing_grants, prices, loans_data)
+
     grant = Grant(
         user_id=user.id, year=body.year, type="Purchase",
         shares=body.shares, price=body.price,
         vest_start=body.vest_start, periods=body.periods,
-        exercise_date=body.exercise_date, dp_shares=body.dp_shares,
+        exercise_date=body.exercise_date, dp_shares=dp_shares,
     )
     db.add(grant)
 
     loan = None
-    if body.loan_amount is not None:
+    if loan_amount is not None:
         loan = Loan(
             user_id=user.id, grant_year=body.year, grant_type="Purchase",
             loan_type="Purchase", loan_year=body.year,
-            amount=body.loan_amount, interest_rate=body.loan_rate or 0.0,
+            amount=loan_amount, interest_rate=body.loan_rate or 0.0,
             due_date=body.loan_due_date or body.exercise_date,
             loan_number=body.loan_number,
         )

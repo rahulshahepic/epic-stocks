@@ -40,6 +40,11 @@ def _get_tax_settings_dict(user: User, db: Session) -> dict:
     return WI_DEFAULTS
 
 
+def _get_lot_selection_method(user: User, db: Session) -> str:
+    ts = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
+    return ts.lot_selection_method if ts else 'lifo'
+
+
 def _build_timeline_for_user(user: User, db: Session) -> list:
     from core import generate_all_events, compute_timeline
     grants_db = db.query(Grant).filter(Grant.user_id == user.id).order_by(Grant.year).all()
@@ -95,8 +100,34 @@ def _compute_payoff_sale(loan: Loan, user: User, db: Session) -> dict:
         latest = db.query(Price).filter(Price.user_id == user.id).order_by(Price.effective_date.desc()).first()
         price = latest.price if latest else 0.0
 
+    # Inject prior sales (excluding this loan's own payoff sale) so build_fifo_lots
+    # sees the same consumed-lot state as compute_sale_tax does in get_sale_tax.
+    existing_payoff = db.query(Sale).filter(Sale.loan_id == loan.id).first()
+    prior_sales_q = db.query(Sale).filter(
+        Sale.user_id == user.id,
+        Sale.date <= loan.due_date,
+    )
+    if existing_payoff:
+        prior_sales_q = prior_sales_q.filter(Sale.id != existing_payoff.id)
+    for ps in prior_sales_q.all():
+        timeline.append({
+            "date": datetime.combine(ps.date, datetime.min.time()),
+            "event_type": "Sale",
+            "vested_shares": -ps.shares,
+            "grant_price": None,
+            "share_price": 0.0,
+        })
+    timeline.sort(key=lambda e: (
+        e["date"].date() if isinstance(e["date"], datetime) else e["date"],
+        0 if e.get("event_type") == "Vesting" else 1,
+    ))
+
     ts = _get_tax_settings_dict(user, db)
-    lots = build_fifo_lots(timeline, loan.due_date)
+    method = _get_lot_selection_method(user, db)
+    lot_order = 'fifo' if method == 'fifo' else 'lifo'
+    gy = loan.grant_year if method == 'same_tranche' else None
+    gt = loan.grant_type if method == 'same_tranche' else None
+    lots = build_fifo_lots(timeline, loan.due_date, order=lot_order, grant_year=gy, grant_type=gt)
     shares = compute_grossup_shares(lots, cash_due, price, loan.due_date, ts)
 
     loan_label = loan.loan_number or f"{loan.grant_year}/{loan.loan_type}"

@@ -30,6 +30,7 @@ export default function Settings() {
     state_lt_cg_rate: 0.0536,
     state_st_cg_rate: 0.0765,
     lt_holding_days: 365,
+    lot_selection_method: 'lifo',
   }
 
   const loadTaxSettings = useCallback(async () => {
@@ -184,6 +185,14 @@ export default function Settings() {
               <dt className="text-gray-500 dark:text-gray-400">LT Threshold</dt>
               <dd className="font-medium text-gray-700 dark:text-gray-300">{taxSettings.lt_holding_days}d</dd>
             </div>
+            <div className="flex justify-between col-span-2">
+              <dt className="text-gray-500 dark:text-gray-400">Lot selection</dt>
+              <dd className="font-medium text-gray-700 dark:text-gray-300">
+                {taxSettings.lot_selection_method === 'fifo' ? 'FIFO (oldest first)' :
+                 taxSettings.lot_selection_method === 'lifo' ? 'LIFO (newest first)' :
+                 'Same tranche'}
+              </dd>
+            </div>
           </dl>
         )}
 
@@ -210,6 +219,18 @@ export default function Settings() {
                   />
                 </label>
               ))}
+              <label className="block col-span-2">
+                <span className="text-xs text-gray-500 dark:text-gray-400">Lot Selection Method</span>
+                <select
+                  value={taxForm.lot_selection_method}
+                  onChange={e => setTaxForm(f => f ? { ...f, lot_selection_method: e.target.value as TaxSettings['lot_selection_method'] } : f)}
+                  className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                >
+                  <option value="fifo">FIFO — oldest lots first</option>
+                  <option value="lifo">LIFO — newest lots first (lowest cap gains for rising stock)</option>
+                  <option value="same_tranche">Same tranche — sell shares from the matching grant only</option>
+                </select>
+              </label>
               <label className="block">
                 <span className="text-xs text-gray-500 dark:text-gray-400">LT Holding Threshold (days)</span>
                 <input

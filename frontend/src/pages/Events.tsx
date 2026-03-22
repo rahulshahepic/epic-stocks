@@ -32,7 +32,7 @@ const TODAY = new Date().toISOString().slice(0, 10)
 const WI_TAX_DEFAULTS: TaxSettings = {
   federal_income_rate: 0.37, federal_lt_cg_rate: 0.20, federal_st_cg_rate: 0.37,
   niit_rate: 0.038, state_income_rate: 0.0765, state_lt_cg_rate: 0.0536,
-  state_st_cg_rate: 0.0765, lt_holding_days: 365,
+  state_st_cg_rate: 0.0765, lt_holding_days: 365, lot_selection_method: 'lifo',
 }
 
 function estTaxForVesting(e: TimelineEvent, ts: TaxSettings): number {

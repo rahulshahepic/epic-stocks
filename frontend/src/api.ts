@@ -352,6 +352,7 @@ export interface TaxSettings {
   state_lt_cg_rate: number
   state_st_cg_rate: number
   lt_holding_days: number
+  lot_selection_method: 'fifo' | 'lifo' | 'same_tranche'
 }
 
 export interface TaxBreakdown {

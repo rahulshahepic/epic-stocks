@@ -84,4 +84,20 @@ test.describe('Screenshots', () => {
     await page.waitForTimeout(500)
     await page.screenshot({ path: `${OUT}/sales-dark-mobile.png`, fullPage: true })
   })
+
+  test('settings page - light - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    await page.click('text=Settings')
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: `${OUT}/settings-light-mobile.png`, fullPage: true })
+  })
+
+  test('settings page - dark - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'dark')
+    await page.click('text=Settings')
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: `${OUT}/settings-dark-mobile.png`, fullPage: true })
+  })
 })

@@ -154,6 +154,7 @@ class TaxSettings(Base):
     state_lt_cg_rate: Mapped[float] = mapped_column(EncryptedFloat, nullable=False, default=0.0536)
     state_st_cg_rate: Mapped[float] = mapped_column(EncryptedFloat, nullable=False, default=0.0765)
     lt_holding_days: Mapped[int] = mapped_column(Integer, nullable=False, default=365)
+    lot_selection_method: Mapped[str] = mapped_column(String, nullable=False, default='lifo')
 
     user: Mapped["User"] = relationship(back_populates="tax_settings")
 

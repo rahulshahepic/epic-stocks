@@ -206,7 +206,7 @@ export default function Loans() {
           </label>
           <Field label="Loan Year" type="number" value={form.loan_year} onChange={v => setForm(f => ({ ...f, loan_year: +v }))} />
           <Field label="Amount" type="number" step="0.01" value={form.amount} onChange={v => setForm(f => ({ ...f, amount: +v }))} />
-          <Field label="Interest Rate (%)" type="number" step="0.01" value={form.interest_rate} onChange={v => setForm(f => ({ ...f, interest_rate: +v }))} />
+          <Field label="Interest Rate (%)" type="number" step="0.01" value={+(form.interest_rate * 100).toFixed(4)} onChange={v => setForm(f => ({ ...f, interest_rate: +v / 100 }))} />
           <Field label="Due Date" type="date" value={form.due_date} onChange={v => setForm(f => ({ ...f, due_date: v }))} />
           <Field label="Loan Number" type="text" value={form.loan_number ?? ''} onChange={v => setForm(f => ({ ...f, loan_number: v || null }))} />
         </div>
@@ -293,7 +293,7 @@ export default function Loans() {
                   </td>
                   <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{l.loan_year}</td>
                   <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmt$(l.amount)}</td>
-                  <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{l.interest_rate}%</td>
+                  <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{(l.interest_rate * 100).toFixed(2)}%</td>
                   <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{l.due_date}</td>
                   <td className="px-3 py-2 text-gray-400">{l.loan_number ?? '—'}</td>
                   <td className="px-3 py-2">

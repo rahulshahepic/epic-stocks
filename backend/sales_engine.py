@@ -14,16 +14,29 @@ def _to_date(d) -> date:
     return d
 
 
-def build_fifo_lots(timeline_events, as_of: date) -> deque:
+def build_fifo_lots(
+    timeline_events,
+    as_of: date,
+    order: str = 'fifo',
+    grant_year: int | None = None,
+    grant_type: str | None = None,
+) -> deque:
     """
-    Build a FIFO queue of (vest_date, shares, basis_price) from timeline events
-    up to as_of date. Reductions (loan repayments, down-payment exchanges) are
-    applied in FIFO order so the returned queue reflects truly available shares.
+    Build a lot queue from timeline events up to as_of date.
 
-    basis_price = share_price at vesting (FMV), which is the recognized cost
-    basis after vesting income/cap-gains have been computed.
+    Each lot item: [vest_date, shares_remaining, basis_price, grant_year, grant_type]
+
+    basis_price:
+      - Purchase grants (grant_price > 0): original purchase price (no step-up at vest).
+      - Income/RSU grants (grant_price = 0/None): FMV at vest (basis after income recognition).
+
+    order: 'fifo' (oldest first) or 'lifo' (newest first). Reductions in the timeline
+    (loan repayments, dp exchanges) are always applied oldest-first regardless of order.
+
+    grant_year / grant_type: when both provided, only lots from that grant are returned
+    (same-tranche selection). Falls back gracefully if no matching lots exist.
     """
-    lots: deque = deque()  # each item: [vest_date, shares_remaining, basis_price]
+    lots: deque = deque()  # [vest_date, shares_remaining, basis_price, grant_year, grant_type]
 
     for e in timeline_events:
         edate = _to_date(e["date"])
@@ -33,9 +46,10 @@ def build_fifo_lots(timeline_events, as_of: date) -> deque:
         vs = e.get("vested_shares") or 0
 
         if e["event_type"] == "Vesting" and vs > 0:
-            lots.append([edate, vs, e.get("share_price", 0.0)])
+            basis = e.get("grant_price") or e.get("share_price", 0.0)
+            lots.append([edate, vs, basis, e.get("grant_year"), e.get("grant_type")])
         elif vs < 0:
-            # Reduction (loan repayment or dp exchange) — consume oldest lots first
+            # Reductions always consume oldest lots first (historical order)
             to_reduce = abs(vs)
             while to_reduce > 0 and lots:
                 if lots[0][1] <= to_reduce:
@@ -44,6 +58,16 @@ def build_fifo_lots(timeline_events, as_of: date) -> deque:
                 else:
                     lots[0][1] -= to_reduce
                     to_reduce = 0
+
+    if order == 'lifo':
+        lots = deque(reversed(lots))
+
+    if grant_year is not None and grant_type is not None:
+        # Same-tranche: sell matching lots first, then fall through to the rest
+        # (in the selected order) so we never get stuck if the tranche runs dry.
+        tranche = [l for l in lots if l[3] == grant_year and l[4] == grant_type]
+        others  = [l for l in lots if not (l[3] == grant_year and l[4] == grant_type)]
+        lots = deque(tranche + others)
 
     return lots
 
@@ -91,7 +115,10 @@ def compute_grossup_shares(lots: deque, cash_due: float, price: float, sale_date
     return max(total_shares, math.ceil(cash_due / price))
 
 
-def compute_sale_tax(timeline_events: list, sale: dict, tax_settings: dict) -> dict:
+def compute_sale_tax(timeline_events: list, sale: dict, tax_settings: dict,
+                     lot_order: str = 'fifo',
+                     grant_year: int | None = None,
+                     grant_type: str | None = None) -> dict:
     """
     Compute FIFO cost basis, LT/ST classification, and estimated tax for one sale.
 
@@ -116,7 +143,8 @@ def compute_sale_tax(timeline_events: list, sale: dict, tax_settings: dict) -> d
     state_lt = float(ts.get("state_lt_cg_rate", 0.0536))
     state_st = float(ts.get("state_st_cg_rate", 0.0765))
 
-    lots = build_fifo_lots(timeline_events, sale_date)
+    lots = build_fifo_lots(timeline_events, sale_date,
+                           order=lot_order, grant_year=grant_year, grant_type=grant_type)
     total_available = sum(l[1] for l in lots)
 
     # Shares sold before vesting (if user is selling more than available vested shares)
@@ -128,7 +156,7 @@ def compute_sale_tax(timeline_events: list, sale: dict, tax_settings: dict) -> d
     remaining = vested_shares_to_sell
     working_lots = deque(lots)
     while remaining > 0 and working_lots:
-        lot_date, lot_shares, lot_basis = working_lots[0]
+        lot_date, lot_shares, lot_basis = working_lots[0][0], working_lots[0][1], working_lots[0][2]
         consumed = min(lot_shares, remaining)
         lots_consumed.append({
             "vest_date": lot_date,

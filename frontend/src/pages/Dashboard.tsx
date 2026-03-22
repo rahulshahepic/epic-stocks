@@ -374,6 +374,7 @@ const WI_TAX_DEFAULTS: TaxSettings = {
   state_lt_cg_rate: 0.0536,
   state_st_cg_rate: 0.0765,
   lt_holding_days: 365,
+  lot_selection_method: 'lifo',
 }
 
 function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices }: {

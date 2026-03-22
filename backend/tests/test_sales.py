@@ -391,6 +391,7 @@ def test_grossup_insufficient_lots_fallback():
     assert shares >= math.ceil(cash_due / price)
 
 
+
 # ============================================================
 # LOAN PAYMENT CRUD TESTS
 # ============================================================

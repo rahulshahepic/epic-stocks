@@ -23,14 +23,24 @@ const MOCK_EVENTS = [
     share_price: 2.5, cum_shares: 2000, income: 0, cum_income: 0,
     vesting_cap_gains: 1020, price_cap_gains: 0, total_cap_gains: 1020, cum_cap_gains: 1020,
   },
+  // Last event before today (2026-03-22) — values should match what cards display
+  {
+    date: '2025-12-31', grant_year: 2020, grant_type: 'Purchase',
+    event_type: 'Share Price', granted_shares: null, grant_price: null,
+    exercise_price: null, vested_shares: null, price_increase: 6.0,
+    share_price: 8.5, cum_shares: 150000, income: 0, cum_income: 50000,
+    vesting_cap_gains: 0, price_cap_gains: 199000, total_cap_gains: 199000, cum_cap_gains: 200000,
+  },
   {
     date: '2027-03-01', grant_year: 2020, grant_type: 'Purchase',
     event_type: 'Vesting', granted_shares: null, grant_price: 1.99,
     exercise_price: null, vested_shares: 2000, price_increase: 0,
-    share_price: 8.5, cum_shares: 4000, income: 0, cum_income: 0,
-    vesting_cap_gains: 13020, price_cap_gains: 0, total_cap_gains: 13020, cum_cap_gains: 14040,
+    share_price: 8.5, cum_shares: 152000, income: 0, cum_income: 50000,
+    vesting_cap_gains: 13020, price_cap_gains: 0, total_cap_gains: 13020, cum_cap_gains: 213020,
   },
 ]
+
+const MOCK_SALES: never[] = []
 
 const MOCK_PRICES = [
   { id: 1, effective_date: '2020-12-31', price: 1.99 },
@@ -45,8 +55,8 @@ const MOCK_PRICES_WITH_FUTURE_SAME = [
 
 const MOCK_LOANS = [
   {
-    id: 1, grant_year: 2020, grant_type: 'Purchase', loan_type: 'Purchase',
-    loan_year: 2020, amount: 19900, interest_rate: 3.5, due_date: '2025-12-31',
+    id: 1, version: 1, grant_year: 2020, grant_type: 'Purchase', loan_type: 'Purchase',
+    loan_year: 2020, amount: 75000, interest_rate: 3.5, due_date: '2025-12-31',
     loan_number: '123456',
   },
 ]
@@ -70,6 +80,9 @@ function mockApi(prices = MOCK_PRICES) {
     }
     if (url.includes('/api/loans')) {
       return new Response(JSON.stringify(MOCK_LOANS), { status: 200 })
+    }
+    if (url.includes('/api/sales')) {
+      return new Response(JSON.stringify(MOCK_SALES), { status: 200 })
     }
     return new Response('Not found', { status: 404 })
   })
@@ -101,7 +114,7 @@ describe('Dashboard', () => {
     expect(screen.getByText('$50,000')).toBeInTheDocument()
     expect(screen.getByText('$200,000')).toBeInTheDocument()
     expect(screen.getByText('$75,000')).toBeInTheDocument()
-    expect(screen.getByText(/2026-03-01/)).toBeInTheDocument()
+    expect(screen.getByText(/2027-03-01/)).toBeInTheDocument()
     expect(screen.getByText(/Vesting/)).toBeInTheDocument()
   })
 

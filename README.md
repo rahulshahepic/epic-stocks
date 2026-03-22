@@ -36,7 +36,7 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 ## Features
 
 - **Event Timeline** — computed on the fly from grants, prices, and loans. Never stored. Shows income, capital gains, share price, and cumulative totals.
-- **Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, next event) + 4 interactive charts.
+- **Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, tax paid, cash received, next event) with an "As of" date picker (Today / End quick buttons) + 4 interactive charts.
 - **Stock Sales** — record share sales with FIFO cost-basis tracking, LT/ST capital gains split, and Wisconsin tax calculator. Payoff sales can be linked to loans and auto-sized to cover the cash due after tax (gross-up calculation).
 - **CRUD Management** — full create/read/update/delete for Grants, Loans, Prices, and Sales.
 - **Quick Flows** — convenience endpoints: "New Purchase" (grant + loan), "Annual Price", "Add Bonus".

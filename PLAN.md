@@ -193,8 +193,8 @@ Add email notifications alongside existing push notifications, with a **strict o
 
 ### Implementation Plan
 
-1. Add `SMTP_*` env vars (host, port, user, password, from_address)
-2. Create `backend/email.py` — send via SMTP (or use a service like SendGrid/SES)
+1. Add `RESEND_API_KEY` and `EMAIL_FROM` env vars
+2. Create `backend/email_sender.py` — send via Resend API
 3. Add notification preferences to User model (email_notifications: bool)
 4. Add Settings page toggle for email notifications
 5. Extend `send_daily_notifications()` in `notifications.py` to include email
@@ -210,14 +210,9 @@ Add email notifications alongside existing push notifications, with a **strict o
 
 ### DDoS / Rate Limiting
 
-- Add rate limiting middleware (e.g., `slowapi` or custom token bucket)
-- Rate limits per endpoint:
-  - Auth endpoints: 5 requests/minute per IP
-  - API endpoints: 60 requests/minute per user
-  - Admin endpoints: 30 requests/minute per user
-- Add `X-RateLimit-*` response headers
-- Configure Caddy for connection rate limiting at the reverse proxy level
-- Add fail2ban rules for repeated 401/403 responses
+- **Handled by Cloudflare** (deployed in front of Caddy). No app-level rate limiting middleware needed.
+- Cloudflare handles: DDoS mitigation, IP rate limiting, bot protection
+- No need for `slowapi` or Caddy rate limit rules
 
 ### Input Validation & Injection Prevention
 
@@ -249,13 +244,12 @@ Add email notifications alongside existing push notifications, with a **strict o
 
 ### Implementation Plan
 
-1. Add `slowapi` rate limiting to FastAPI
-2. Configure Caddy rate limits
-3. Create security test suite
-4. Add DAST scanner to GitHub Actions
-5. Add dependency audit to CI
-6. Add CSP headers
-7. Add audit logging table + admin view
+1. ~~Rate limiting~~ — handled by Cloudflare
+2. Create security test suite (IDOR, JWT tampering, injection, path traversal)
+3. Add DAST scanner to GitHub Actions (OWASP ZAP — scans running app for vulns)
+4. Add `npm audit` + `pip-audit` to CI for dependency vulnerability scanning
+5. Add CSP headers via Caddy
+6. Add audit logging table + admin view
 
 **Implementation effort:** ~3-4 days.
 

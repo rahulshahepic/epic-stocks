@@ -409,6 +409,10 @@ function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices }: {
         cumTaxPaid += sortedTaxLoans[taxLoanIdx].amount
         taxLoanIdx++
       }
+      // Accumulate Sale estimated taxes at the sale date
+      if (e.event_type === 'Sale' && e.estimated_tax) {
+        cumTaxPaid += e.estimated_tax
+      }
 
       // Track future price surplus (same logic as IncomeCapGainsChart)
       if (hasFuturePrices && e.date > TODAY) {

@@ -11,7 +11,7 @@ from starlette.responses import FileResponse
 import database
 
 logger = logging.getLogger(__name__)
-from routers import auth_router, grants, loans, prices, events, flows, import_export, push, admin, notifications
+from routers import auth_router, grants, loans, prices, events, flows, import_export, push, admin, notifications, sales
 from auth import get_current_user
 from crypto import encryption_enabled, decrypt_user_key, set_current_key
 from database import get_db
@@ -38,6 +38,32 @@ def _migrate_schema():
             if "version" not in cols:
                 with database.engine.begin() as conn:
                     conn.execute(sqlalchemy.text(f"ALTER TABLE {table} ADD COLUMN version INTEGER NOT NULL DEFAULT 1"))
+    with database.engine.begin() as conn:
+        conn.execute(sqlalchemy.text("""
+            CREATE TABLE IF NOT EXISTS sales (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                date DATE NOT NULL,
+                shares INTEGER NOT NULL,
+                price_per_share REAL NOT NULL,
+                notes TEXT NOT NULL DEFAULT '',
+                version INTEGER NOT NULL DEFAULT 1
+            )
+        """))
+        conn.execute(sqlalchemy.text("""
+            CREATE TABLE IF NOT EXISTS tax_settings (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+                federal_income_rate REAL NOT NULL DEFAULT 0.37,
+                federal_lt_cg_rate REAL NOT NULL DEFAULT 0.20,
+                federal_st_cg_rate REAL NOT NULL DEFAULT 0.37,
+                niit_rate REAL NOT NULL DEFAULT 0.038,
+                state_income_rate REAL NOT NULL DEFAULT 0.0765,
+                state_lt_cg_rate REAL NOT NULL DEFAULT 0.0536,
+                state_st_cg_rate REAL NOT NULL DEFAULT 0.0765,
+                lt_holding_days INTEGER NOT NULL DEFAULT 365
+            )
+        """))
 
 
 @asynccontextmanager
@@ -188,6 +214,8 @@ _fastapi_app.include_router(import_export.router)
 _fastapi_app.include_router(push.router)
 _fastapi_app.include_router(admin.router)
 _fastapi_app.include_router(notifications.router)
+_fastapi_app.include_router(sales.router)
+_fastapi_app.include_router(sales.tax_router)
 
 
 @_fastapi_app.get("/api/health")

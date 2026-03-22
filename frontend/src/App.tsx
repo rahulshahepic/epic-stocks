@@ -11,6 +11,7 @@ import Prices from './pages/Prices.tsx'
 import ImportExport from './pages/ImportExport.tsx'
 import Settings from './pages/Settings.tsx'
 import Admin from './pages/Admin.tsx'
+import Sales from './pages/Sales.tsx'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   return getToken() ? <>{children}</> : <Navigate to="/login" replace />
@@ -26,6 +27,7 @@ export default function App() {
             <Route index element={<Dashboard />} />
             <Route path="events" element={<Events />} />
             <Route path="grants" element={<Grants />} />
+            <Route path="sales" element={<Sales />} />
             <Route path="loans" element={<Loans />} />
             <Route path="prices" element={<Prices />} />
             <Route path="import" element={<ImportExport />} />

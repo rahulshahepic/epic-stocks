@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { to: '/', label: 'Dashboard' },
   { to: '/events', label: 'Events' },
   { to: '/grants', label: 'Grants' },
+  { to: '/sales', label: 'Sales' },
   { to: '/loans', label: 'Loans' },
   { to: '/prices', label: 'Prices' },
   { to: '/import', label: 'Import' },

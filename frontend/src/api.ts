@@ -201,6 +201,17 @@ export const api = {
   resetMyData: () => apiFetch<void>('/api/me/reset', { method: 'POST' }),
   deleteMyAccount: () => apiFetch<void>('/api/me', { method: 'DELETE' }),
 
+  // Sales
+  getSales: () => apiFetch<SaleEntry[]>('/api/sales'),
+  createSale: (data: Omit<SaleEntry, 'id' | 'version'>) => post<SaleEntry>('/api/sales', data),
+  updateSale: (id: number, data: Partial<Omit<SaleEntry, 'id'>>) => put<SaleEntry>(`/api/sales/${id}`, data),
+  deleteSale: (id: number) => del(`/api/sales/${id}`),
+  getSaleTax: (id: number) => apiFetch<TaxBreakdown>(`/api/sales/${id}/tax`),
+
+  // Tax Settings
+  getTaxSettings: () => apiFetch<TaxSettings>('/api/tax-settings'),
+  updateTaxSettings: (data: Partial<TaxSettings>) => put<TaxSettings>('/api/tax-settings', data),
+
   // Admin
   adminStats: () => apiFetch<AdminStats>('/api/admin/stats'),
   adminUsers: (q = '', limit = 10, offset = 0) =>
@@ -265,4 +276,44 @@ export interface TestNotifyResult {
   push_failed: number
   email_sent: boolean
   email_skipped_reason?: string | null
+}
+
+export interface SaleEntry {
+  id: number
+  version: number
+  date: string
+  shares: number
+  price_per_share: number
+  notes: string
+}
+
+export interface TaxSettings {
+  federal_income_rate: number
+  federal_lt_cg_rate: number
+  federal_st_cg_rate: number
+  niit_rate: number
+  state_income_rate: number
+  state_lt_cg_rate: number
+  state_st_cg_rate: number
+  lt_holding_days: number
+}
+
+export interface TaxBreakdown {
+  gross_proceeds: number
+  cost_basis: number
+  net_gain: number
+  lt_shares: number
+  lt_gain: number
+  lt_rate: number
+  lt_tax: number
+  st_shares: number
+  st_gain: number
+  st_rate: number
+  st_tax: number
+  unvested_shares: number
+  unvested_proceeds: number
+  unvested_rate: number
+  unvested_tax: number
+  estimated_tax: number
+  net_proceeds: number
 }

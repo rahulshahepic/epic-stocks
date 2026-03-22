@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 
-type Resource = 'grants' | 'loans' | 'prices' | 'all'
+type Resource = 'grants' | 'loans' | 'prices' | 'sales' | 'all'
 
 let _channel: BroadcastChannel | null = null
 

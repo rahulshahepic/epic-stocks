@@ -4,7 +4,7 @@ import {
   XAxis, YAxis, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts'
 import { api } from '../api.ts'
-import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, TaxSettings } from '../api.ts'
+import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, TaxSettings, SaleEntry } from '../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { useDark } from '../hooks/useDark.ts'
 
@@ -474,8 +474,8 @@ function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices }: {
           {hasFuturePrices && (
             <Area type="monotone" dataKey="taxHalf" stackId="tax" fill="#fed7aa" fillOpacity={0.5} stroke="#fed7aa" strokeDasharray="6 3" name="Est. Tax (Projected)" dot={false} />
           )}
-          {/* Paid line overlaid (not stacked) */}
-          <Line type="monotone" dataKey="taxPaid" stroke="#ef4444" strokeWidth={2} dot={false} name="Tax Paid" connectNulls />
+          {/* Paid area overlaid (not stacked) — fills the tax-loan-covered region */}
+          <Area type="monotone" dataKey="taxPaid" fill="#fca5a5" fillOpacity={0.45} stroke="#ef4444" strokeWidth={2} dot={false} name="Tax Paid" connectNulls />
         </AreaChart>
       </ResponsiveContainer>
       {sel && (
@@ -538,14 +538,17 @@ export default function Dashboard() {
   const fetchPrices = useCallback(() => api.getPrices(), [])
   const fetchLoans = useCallback(() => api.getLoans(), [])
   const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
+  const fetchSales = useCallback(() => api.getSales(), [])
 
   const { data: dash, loading: dashLoading } = useApiData<DashboardData>(fetchDashboard)
   const { data: events } = useApiData<TimelineEvent[]>(fetchEvents)
   const { data: prices } = useApiData<PriceEntry[]>(fetchPrices)
   const { data: loans } = useApiData<LoanEntry[]>(fetchLoans)
   const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
+  const { data: sales } = useApiData<SaleEntry[]>(fetchSales)
   const c = useChartColors()
   const [range, setRange] = useState<DateRange>({ mode: 'all', start: '', end: '' })
+  const [cardDate, setCardDate] = useState<string>(TODAY)
 
   // Only show projected/dashed styling when a future price actually differs from the current price
   const hasFuturePrices = useMemo(() => {
@@ -568,6 +571,39 @@ export default function Dashboard() {
     return last
   }, [events, prices])
 
+  // Card values computed from local data as of cardDate
+  const cardValues = useMemo(() => {
+    if (!events || !loans) return null
+    // Last event at or before cardDate
+    let lastEvent: TimelineEvent | null = null
+    for (const e of events) {
+      if (e.date <= cardDate) lastEvent = e
+      else break
+    }
+    // Next event after cardDate
+    let nextEvent: { date: string; event_type: string } | null = null
+    for (const e of events) {
+      if (e.date > cardDate) { nextEvent = { date: e.date, event_type: e.event_type }; break }
+    }
+    const taxPaid = loans
+      .filter(l => l.loan_type === 'Tax' && l.due_date <= cardDate)
+      .reduce((sum, l) => sum + l.amount, 0)
+    const cashReceived = sales
+      ? sales.filter(s => s.loan_id === null && s.date <= cardDate)
+          .reduce((sum, s) => sum + s.shares * s.price_per_share, 0)
+      : null
+    return {
+      current_price: lastEvent?.share_price ?? 0,
+      total_shares: lastEvent?.cum_shares ?? 0,
+      total_income: lastEvent?.cum_income ?? 0,
+      total_cap_gains: lastEvent?.cum_cap_gains ?? 0,
+      total_loan_principal: loans.reduce((sum, l) => sum + l.amount, 0),
+      total_tax_paid: taxPaid,
+      cash_received: cashReceived ?? 0,
+      next_event: nextEvent,
+    }
+  }, [events, loans, sales, cardDate])
+
   if (dashLoading) {
     return <p className="p-6 text-center text-sm text-gray-400">Loading...</p>
   }
@@ -576,19 +612,62 @@ export default function Dashboard() {
     return <p className="p-6 text-center text-sm text-red-500">Failed to load dashboard</p>
   }
 
+  const cv = cardValues ?? {
+    current_price: dash.current_price,
+    total_shares: dash.total_shares,
+    total_income: dash.total_income,
+    total_cap_gains: dash.total_cap_gains,
+    total_loan_principal: dash.total_loan_principal,
+    total_tax_paid: dash.total_tax_paid ?? 0,
+    cash_received: dash.cash_received ?? 0,
+    next_event: dash.next_event,
+  }
+
   return (
     <div className="space-y-6">
+      {/* Date selector for card values */}
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-900">
+        <span className="text-xs font-medium text-gray-500 dark:text-gray-400">As of</span>
+        <input
+          type="date"
+          value={cardDate}
+          max={maxDate}
+          onChange={e => setCardDate(e.target.value)}
+          className="h-7 rounded border border-gray-300 bg-white px-2 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+        />
+        <button
+          onClick={() => setCardDate(TODAY)}
+          className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
+            cardDate === TODAY
+              ? 'bg-indigo-600 text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+          }`}
+        >
+          Today
+        </button>
+        <button
+          onClick={() => setCardDate(maxDate)}
+          className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
+            cardDate === maxDate
+              ? 'bg-indigo-600 text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+          }`}
+        >
+          End
+        </button>
+      </div>
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Card label="Share Price" value={fmtPrice(dash.current_price)} variant="price" />
-        <Card label="Total Shares" value={fmtNum(dash.total_shares)} variant="shares" />
-        <Card label="Total Income" value={fmt$(dash.total_income)} variant="income" />
-        <Card label="Total Cap Gains" value={fmt$(dash.total_cap_gains)} variant="gains" />
-        <Card label="Loan Principal" value={fmt$(dash.total_loan_principal)} variant="loans" />
-        <Card label="Tax Paid" value={fmt$(dash.total_tax_paid ?? 0)} variant="tax" />
-        <Card label="Cash Received" value={fmt$(dash.cash_received ?? 0)} variant="cash" />
+        <Card label="Share Price" value={fmtPrice(cv.current_price)} variant="price" />
+        <Card label="Total Shares" value={fmtNum(cv.total_shares)} variant="shares" />
+        <Card label="Total Income" value={fmt$(cv.total_income)} variant="income" />
+        <Card label="Total Cap Gains" value={fmt$(cv.total_cap_gains)} variant="gains" />
+        <Card label="Loan Principal" value={fmt$(cv.total_loan_principal)} variant="loans" />
+        <Card label="Tax Paid" value={fmt$(cv.total_tax_paid)} variant="tax" />
+        <Card label="Cash Received" value={fmt$(cv.cash_received)} variant="cash" />
         <Card
           label="Next Event"
-          value={dash.next_event ? `${dash.next_event.date} — ${dash.next_event.event_type}` : 'None'}
+          value={cv.next_event ? `${cv.next_event.date} — ${cv.next_event.event_type}` : 'None'}
           variant="event"
         />
       </div>

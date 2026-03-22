@@ -44,9 +44,9 @@ When `ENCRYPTION_MASTER_KEY` is set, all sensitive financial data is encrypted p
 - **`PRIVACY_URL`** env var makes the link configurable for self-hosters
 - **README** documents the trust model and encryption options
 
-### Option C — Client-Side Encryption (Future, Complex)
+### Option B — Alternative: HKDF-Derived Keys (Not Implemented)
 
-Encrypt sensitive financial fields before writing to SQLite, decrypt on read.
+An alternative server-side approach: derive per-user keys from the Google OAuth token rather than storing random keys.
 
 **Approach:**
 - Derive a per-user encryption key from their Google OAuth token using HKDF (HMAC-based Key Derivation Function)
@@ -73,9 +73,9 @@ user_key = HKDF(
 - If the master key is lost, all encrypted data is unrecoverable
 - Adds complexity to import/export flows
 
-**Implementation effort:** ~2-3 days. Requires a migration to convert existing plaintext data.
+Not chosen — the implemented approach (random per-user keys stored encrypted with the master key) is simpler and equally secure.
 
-### Option C — Client-Side Encryption (Future, Complex)
+### Option C — Client-Side Encryption (Not Recommended)
 
 True zero-knowledge: encrypt/decrypt in the browser using a key derived from the user's Google identity token.
 
@@ -172,7 +172,7 @@ A `PRIVACY.md` at the repo root, linked from:
 
 ---
 
-## 4. Email Notifications (Future)
+## 4. Email Notifications (Implemented)
 
 ### Overview
 
@@ -206,7 +206,7 @@ Add email notifications alongside existing push notifications, with a **strict o
 
 ---
 
-## 5. Security Hardening (Future)
+## 5. Security Hardening (Implemented)
 
 ### DDoS / Rate Limiting
 
@@ -256,11 +256,11 @@ Add email notifications alongside existing push notifications, with a **strict o
 
 ---
 
-## 6. Multi-Device / Concurrent Session Hardening
+## 6. Multi-Device / Concurrent Session Hardening (Implemented)
 
 ### Problem
 
-A user logged in on two devices (or two browser tabs) at the same time can create race conditions: both read the same grant, both modify it, one saves first and the other silently overwrites it. Currently the app has no protection against this.
+A user logged in on two devices (or two browser tabs) at the same time can create race conditions: both read the same grant, both modify it, one saves first and the other silently overwrites it.
 
 ### Approach: Optimistic Locking + UI Sync
 
@@ -313,7 +313,7 @@ All PUT endpoints for grants, loans, prices:
 
 ---
 
-## 7. Admin: Test Notification Sender
+## 7. Admin: Test Notification Sender (Implemented)
 
 ### Problem
 
@@ -367,7 +367,7 @@ Add a "Test Notification" card in the Admin UI:
 
 ---
 
-## 8. Stock Sales with Wisconsin Tax Calculator
+## 8. Stock Sales with Wisconsin Tax Calculator (Implemented)
 
 ### Overview
 

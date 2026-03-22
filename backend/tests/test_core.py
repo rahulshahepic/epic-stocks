@@ -210,11 +210,11 @@ def test_fixture_timeline_totals():
     events = generate_all_events(grants, prices, loans)
     timeline = compute_timeline(events, initial_price)
     last = timeline[-1]
-    # cum_shares is 571500 since Loan Payoff events no longer auto-sell shares
+    # cum_shares reflects dp_shares=-15000 on 2024 Purchase (was 571500 with dp_shares=-2000)
     # (old value was 269843 when loans auto-sold shares to cover payoff)
-    assert last["cum_shares"] == 571500
+    assert last["cum_shares"] == 558500
     assert last["cum_income"] == 144325.0
-    assert last["cum_cap_gains"] == 1243695.0
+    assert last["cum_cap_gains"] == 1224195.0
 
 
 def test_fixture_timeline_share_price_chain():

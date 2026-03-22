@@ -57,9 +57,9 @@ test.describe('Quick flow: purchase grant + loan', () => {
     await navigateTo(page, 'Events')
     await expect(page.getByText('Events Timeline')).toBeVisible()
 
-    // Should have events: 1 Exercise + 4 Vesting + 1 Loan Payoff = 6 events
+    // Should have events: 1 Exercise + 4 Vesting + 1 Loan Payoff + 1 Sale = 7 events
     const typeSelect = page.locator('select')
-    await expect(typeSelect).toContainText('All types (6)')
+    await expect(typeSelect).toContainText('All types (7)')
 
     // Filter to Exercise
     await typeSelect.selectOption('Exercise')

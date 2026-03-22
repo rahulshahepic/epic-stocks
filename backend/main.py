@@ -49,6 +49,11 @@ def _migrate_schema():
                     conn.execute(sqlalchemy.text(f"ALTER TABLE sales ADD COLUMN {_col} REAL"))
             if "lt_holding_days" not in sales_cols:
                 conn.execute(sqlalchemy.text("ALTER TABLE sales ADD COLUMN lt_holding_days INTEGER"))
+    if insp.has_table("tax_settings"):
+        ts_cols = {c["name"] for c in insp.get_columns("tax_settings")}
+        with database.engine.begin() as conn:
+            if "lot_selection_method" not in ts_cols:
+                conn.execute(sqlalchemy.text("ALTER TABLE tax_settings ADD COLUMN lot_selection_method TEXT NOT NULL DEFAULT 'fifo'"))
     with database.engine.begin() as conn:
         conn.execute(sqlalchemy.text("""
             CREATE TABLE IF NOT EXISTS sales (

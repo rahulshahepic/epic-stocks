@@ -352,6 +352,7 @@ class TaxSettingsRead(BaseModel):
     state_lt_cg_rate: float
     state_st_cg_rate: float
     lt_holding_days: int
+    lot_selection_method: str = 'fifo'
     model_config = {"from_attributes": True}
 
 class TaxSettingsUpdate(BaseModel):
@@ -363,6 +364,7 @@ class TaxSettingsUpdate(BaseModel):
     state_lt_cg_rate: float | None = None
     state_st_cg_rate: float | None = None
     lt_holding_days: int | None = None
+    lot_selection_method: str | None = None
 
 class TaxBreakdown(BaseModel):
     gross_proceeds: float

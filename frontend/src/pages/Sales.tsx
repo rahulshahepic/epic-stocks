@@ -97,7 +97,7 @@ function TaxCard({ breakdown }: { breakdown: TaxBreakdown }) {
       )}
       <div className="space-y-1">
         <Row label="Gross proceeds" value={fmtUSD(breakdown.gross_proceeds)} />
-        {(hasLT || hasST) && <Row label="Cost basis (FIFO)" value={fmtUSD(breakdown.cost_basis)} />}
+        {(hasLT || hasST) && <Row label="Cost basis" value={fmtUSD(breakdown.cost_basis)} />}
         {(hasLT || hasST) && <Row label="Net gain" value={fmtUSD(breakdown.net_gain)} bold />}
         {hasLT && (
           <Row

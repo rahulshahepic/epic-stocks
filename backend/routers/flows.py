@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, field_validator
 from datetime import date
@@ -112,6 +112,11 @@ class AddBonusRequest(BaseModel):
 
 @router.post("/new-purchase", status_code=201)
 def new_purchase(body: NewPurchaseRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    existing = db.query(Grant).filter(
+        Grant.user_id == user.id, Grant.year == body.year, Grant.type == "Purchase"
+    ).first()
+    if existing:
+        raise HTTPException(status_code=409, detail=f"A Purchase grant for {body.year} already exists")
     grant = Grant(
         user_id=user.id, year=body.year, type="Purchase",
         shares=body.shares, price=body.price,

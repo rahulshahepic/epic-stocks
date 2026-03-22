@@ -174,7 +174,8 @@ export const api = {
   getLoans: () => apiFetch<LoanEntry[]>('/api/loans'),
   createLoan: (data: Omit<LoanEntry, 'id' | 'version'>, generatePayoffSale = true) =>
     post<LoanEntry>(`/api/loans?generate_payoff_sale=${generatePayoffSale}`, data),
-  updateLoan: (id: number, data: Partial<Omit<LoanEntry, 'id'>>) => put<LoanEntry>(`/api/loans/${id}`, data),
+  updateLoan: (id: number, data: Partial<Omit<LoanEntry, 'id'>>, regeneratePayoffSale = false) =>
+    put<LoanEntry>(`/api/loans/${id}?regenerate_payoff_sale=${regeneratePayoffSale}`, data),
   deleteLoan: (id: number) => del(`/api/loans/${id}`),
   getLoanPayoffSuggestion: (loanId: number) => apiFetch<LoanPayoffSuggestion>(`/api/loans/${loanId}/payoff-sale-suggestion`),
 

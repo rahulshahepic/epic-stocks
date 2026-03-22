@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { api, ConflictError } from '../api.ts'
-import type { GrantEntry, PriceEntry } from '../api.ts'
+import type { GrantEntry, LoanEntry, PriceEntry } from '../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { broadcastChange, useDataSync } from '../hooks/useDataSync.ts'
 
@@ -54,6 +54,8 @@ export default function Grants() {
   const { data: grants, loading, reload } = useApiData<GrantEntry[]>(fetchGrants)
   const fetchPrices = useCallback(() => api.getPrices(), [])
   const { data: prices } = useApiData<PriceEntry[]>(fetchPrices)
+  const fetchLoans = useCallback(() => api.getLoans(), [])
+  const { data: loans, reload: reloadLoans } = useApiData<LoanEntry[]>(fetchLoans)
 
   const [mode, setMode] = useState<Mode>('list')
   const [form, setForm] = useState<GrantForm>(empty)
@@ -71,6 +73,8 @@ export default function Grants() {
   const [loanDueDate, setLoanDueDate] = useState('')
   const [loanNumber, setLoanNumber] = useState('')
   const [generatePayoffSale, setGeneratePayoffSale] = useState(true)
+  const [editLoanId, setEditLoanId] = useState<number | null>(null)
+  const [editLoanVersion, setEditLoanVersion] = useState(1)
 
   function resetForm() {
     setForm(empty)
@@ -81,6 +85,8 @@ export default function Grants() {
     setGeneratePayoffSale(true)
     setEditId(null)
     setEditVersion(1)
+    setEditLoanId(null)
+    setEditLoanVersion(1)
     setError('')
     setConflict(false)
   }
@@ -100,15 +106,30 @@ export default function Grants() {
   function openEdit(g: GrantEntry) {
     const { id, version, ...rest } = g
     setForm(rest)
-    setLoanAmount(0)
-    setLoanRate(0)
-    setLoanDueDate('')
-    setLoanNumber('')
-    setGeneratePayoffSale(true)
     setEditId(id)
     setEditVersion(version)
     setError('')
     setConflict(false)
+
+    const existingLoan = loans?.find(
+      l => l.grant_year === g.year && l.grant_type === g.type && l.loan_type === 'Purchase'
+    ) ?? null
+    if (existingLoan) {
+      setLoanAmount(existingLoan.amount)
+      setLoanRate(existingLoan.interest_rate)
+      setLoanDueDate(existingLoan.due_date)
+      setLoanNumber(existingLoan.loan_number ?? '')
+      setEditLoanId(existingLoan.id)
+      setEditLoanVersion(existingLoan.version)
+    } else {
+      setLoanAmount(0)
+      setLoanRate(0)
+      setLoanDueDate('')
+      setLoanNumber('')
+      setEditLoanId(null)
+      setEditLoanVersion(1)
+    }
+    setGeneratePayoffSale(true)
     setMode('edit')
   }
 
@@ -144,18 +165,31 @@ export default function Grants() {
         }
       } else if (mode === 'edit' && editId != null) {
         await api.updateGrant(editId, { ...form, version: editVersion })
-        if (loanAmount > 0 && form.type === 'Purchase') {
-          await api.createLoan({
-            grant_year: form.year,
-            grant_type: 'Purchase',
-            loan_type: 'Purchase',
-            loan_year: form.year,
-            amount: loanAmount,
-            interest_rate: loanRate,
-            due_date: loanDueDate,
-            loan_number: loanNumber || null,
-          }, generatePayoffSale)
-          broadcastChange('loans')
+        if (form.type === 'Purchase') {
+          if (editLoanId != null) {
+            await api.updateLoan(editLoanId, {
+              amount: loanAmount,
+              interest_rate: loanRate,
+              due_date: loanDueDate,
+              loan_number: loanNumber || null,
+              version: editLoanVersion,
+            }, generatePayoffSale)
+            broadcastChange('loans')
+            reloadLoans()
+          } else if (loanAmount > 0) {
+            await api.createLoan({
+              grant_year: form.year,
+              grant_type: 'Purchase',
+              loan_type: 'Purchase',
+              loan_year: form.year,
+              amount: loanAmount,
+              interest_rate: loanRate,
+              due_date: loanDueDate,
+              loan_number: loanNumber || null,
+            }, generatePayoffSale)
+            broadcastChange('loans')
+            reloadLoans()
+          }
         }
       }
       broadcastChange('grants')
@@ -250,7 +284,7 @@ export default function Grants() {
         {showLoanSection && (
           <>
             <h3 className="pt-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-              {mode === 'edit' ? 'Add Loan' : 'Optional Loan'}
+              {mode === 'edit' && editLoanId != null ? 'Purchase Loan' : mode === 'edit' ? 'Add Loan' : 'Optional Loan'}
             </h3>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Loan Amount" type="number" step="0.01" value={loanAmount} onChange={v => setLoanAmount(+v)} />
@@ -267,7 +301,7 @@ export default function Grants() {
                   className="rounded border-gray-300 dark:border-gray-600"
                 />
                 <span>
-                  Generate payoff sale (recommended)
+                  {editLoanId != null ? 'Regenerate payoff sale' : 'Generate payoff sale (recommended)'}
                   <span className="ml-1 text-gray-400" title="Creates a stock sale at the loan's due date sized to cover the payoff after capital gains tax">ⓘ</span>
                 </span>
               </label>

@@ -192,6 +192,14 @@ def import_excel(
     for i, ln in enumerate(loans_raw):
         all_errors.extend(_validate_loan(ln, i + 2))
 
+    # Check for duplicate (year, type) within the imported grants
+    seen_grants: set[tuple] = set()
+    for i, g in enumerate(grants_raw):
+        key = (_to_year(g["year"]), str(g.get("type", "")).strip())
+        if key in seen_grants:
+            all_errors.append(f"Duplicate grant: {key[1]} {key[0]} appears more than once in the Schedule sheet")
+        seen_grants.add(key)
+
     if all_errors:
         raise HTTPException(status_code=400, detail="Validation errors:\n" + "\n".join(all_errors))
 

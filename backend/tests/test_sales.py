@@ -572,3 +572,89 @@ def test_create_loan_auto_sale_skipped_without_price(client):
     assert resp.status_code == 201
     sales_resp = client.get("/api/sales", headers=auth_header(token))
     assert len(sales_resp.json()) == 0
+
+
+# ============================================================
+# SALE EVENTS IN TIMELINE
+# ============================================================
+
+def _setup_grant_and_price(client, token):
+    """Create a grant with 2-year vesting and a price entry."""
+    client.post("/api/grants", json={
+        "year": 2020, "type": "Bonus", "shares": 1000, "price": 0.0,
+        "vest_start": "2021-01-01", "periods": 2, "exercise_date": "2030-01-01",
+        "dp_shares": 0,
+    }, headers=auth_header(token))
+    client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 10.0},
+                headers=auth_header(token))
+
+
+def test_sale_appears_in_events_timeline(client):
+    """A recorded sale injects a Sale event into the timeline."""
+    token = register_user(client)
+    _setup_grant_and_price(client, token)
+
+    client.post("/api/sales", json={
+        "date": "2022-01-01", "shares": 200, "price_per_share": 10.0,
+    }, headers=auth_header(token))
+
+    events = client.get("/api/events", headers=auth_header(token)).json()
+    sale_events = [e for e in events if e["event_type"] == "Sale"]
+    assert len(sale_events) == 1
+    assert sale_events[0]["vested_shares"] == -200
+    assert sale_events[0]["gross_proceeds"] == 2000.0
+
+
+def test_sale_decrements_cum_shares(client):
+    """cum_shares must decrease after a sale event."""
+    token = register_user(client)
+    _setup_grant_and_price(client, token)
+
+    events_before = client.get("/api/events", headers=auth_header(token)).json()
+    # Find cum_shares at the last vesting before sale date
+    vesting_2021 = next(e for e in events_before
+                        if e["event_type"] == "Vesting" and e["date"] == "2021-01-01")
+    shares_before_sale = vesting_2021["cum_shares"]  # 500 (half of 1000)
+
+    client.post("/api/sales", json={
+        "date": "2022-01-01", "shares": 200, "price_per_share": 10.0,
+    }, headers=auth_header(token))
+
+    events_after = client.get("/api/events", headers=auth_header(token)).json()
+    sale_event = next(e for e in events_after if e["event_type"] == "Sale")
+    # Sale event cum_shares = shares after vesting 2 (500+500=1000) minus 200 sold
+    assert sale_event["cum_shares"] == 1000 - 200
+
+    # Events after the sale also have reduced cum_shares
+    later_events = [e for e in events_after if e["date"] > "2022-01-01"]
+    for e in later_events:
+        assert e["cum_shares"] <= shares_before_sale + 500 - 200
+
+
+def test_sale_tax_accounts_for_prior_sale(client):
+    """Second sale's tax computation excludes lots consumed by first sale."""
+    token = register_user(client)
+    _setup_grant_and_price(client, token)
+
+    # First sale: sell 300 shares (all from 2021-01-01 vesting lot of 500)
+    sale1 = client.post("/api/sales", json={
+        "date": "2022-06-01", "shares": 300, "price_per_share": 12.0,
+    }, headers=auth_header(token)).json()
+
+    # Second sale: sell 300 shares — only 200 remain from the 2021 lot (after first sale),
+    # plus 500 from the 2022 vesting. So 200 from 2021 lot + 100 from 2022 lot.
+    sale2 = client.post("/api/sales", json={
+        "date": "2023-06-01", "shares": 300, "price_per_share": 15.0,
+    }, headers=auth_header(token)).json()
+
+    tax1 = client.get(f"/api/sales/{sale1['id']}/tax", headers=auth_header(token)).json()
+    tax2 = client.get(f"/api/sales/{sale2['id']}/tax", headers=auth_header(token)).json()
+
+    # First sale: 300 shares, all from 2021 lot (held > 1yr by 2022-06-01)
+    assert tax1["lt_shares"] + tax1["st_shares"] + tax1["unvested_shares"] == 300
+
+    # Second sale: 300 shares — should NOT double-count the 300 already sold
+    # Total available: 500 (2021 lot) - 300 (first sale) = 200 remaining + 500 (2022 lot) = 700
+    # So all 300 should come from vested lots, none unvested
+    assert tax2["unvested_shares"] == 0
+    assert tax2["lt_shares"] + tax2["st_shares"] == 300

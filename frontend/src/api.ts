@@ -105,6 +105,8 @@ export interface TimelineEvent {
   loan_id?: number | null
   amount?: number | null
   notes?: string | null
+  // Sale event fields
+  gross_proceeds?: number | null
 }
 
 export interface GrantEntry {

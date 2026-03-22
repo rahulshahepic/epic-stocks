@@ -1,36 +1,48 @@
-# Security Hardening Plan
+# Security Hardening
 
-Three areas in priority order. Sections 1 and 3 are infrastructure tasks requiring server/DNS access; Section 2 is implemented in this repo.
+This document covers three layers of security. **Sections 1 and 3 are infrastructure tasks — they are not in this repository and must be configured manually for each deployment.** Section 2 is implemented in the repo and applies automatically to anyone who self-hosts.
 
 ---
 
-## 1. Cloudflare (DDoS / bot protection) — Infrastructure Task
+## 1. Edge Protection (Infrastructure — not in this repo)
 
-> **Status: Manual — requires DNS/Cloudflare access**
+> This must be configured by whoever operates the deployment. Self-hosters should follow these steps.
 
-### Steps
+The reference deployment uses **Cloudflare** in front of Caddy. No app-level rate limiting is implemented — Cloudflare handles it at the edge.
 
-1. Add site to Cloudflare free tier, update nameservers at domain registrar
-2. Set SSL/TLS mode to **Full (Strict)** (Caddy already provisions a cert from Let's Encrypt; Cloudflare validates it end-to-end)
-3. Confirm "Under Attack Mode" is available in the Cloudflare dashboard (enable only during active attacks — it adds a JS challenge for all visitors)
-4. Create WAF rate-limiting rules:
-   - Block IPs that hit `/api/auth/*` more than **10 req/min**
-   - Block IPs that hit `/api/*` more than **200 req/min**
-5. Lock Hetzner Firewall (or equivalent VPS firewall) to allow ports 80/443 **only from Cloudflare IP ranges**:
+### Steps for self-hosters
+
+1. Add your site to Cloudflare (free tier is sufficient), update nameservers at your registrar
+2. Set SSL/TLS mode to **Full (Strict)** — Caddy provisions a Let's Encrypt cert; Cloudflare validates it end-to-end
+3. Create WAF rate-limiting rules:
+   - Block IPs hitting `/api/auth/*` more than **10 req/min**
+   - Block IPs hitting `/api/*` more than **200 req/min**
+4. Lock your VPS firewall to allow ports 80/443 **only from Cloudflare IP ranges**:
    - IPv4: https://www.cloudflare.com/ips-v4
    - IPv6: https://www.cloudflare.com/ips-v6
-   - This prevents attackers from bypassing Cloudflare by hitting the origin IP directly
-6. Verify Caddy receives real client IPs via the `CF-Connecting-IP` header (Cloudflare sets this; Caddy passes it through — no extra config needed for logging, but if you add IP-based logic in the app, read this header, not `X-Forwarded-For`)
+   - This prevents attackers from bypassing Cloudflare by hitting your origin IP directly
+5. Caddy receives real client IPs via the `CF-Connecting-IP` header — no extra app config needed
 
-**No Python-level rate limiting (slowapi) — Cloudflare handles this at the edge.**
+> If you don't use Cloudflare, consider adding `slowapi` rate limiting to FastAPI and configuring Caddy's `rate_limit` directive instead.
+
+### Reference deployment status
+
+| Step | Status |
+|------|--------|
+| Cloudflare active, nameservers updated | ✅ Done |
+| SSL/TLS Full (Strict) | ✅ Done |
+| WAF rate-limiting rules | ✅ Done |
+| VPS firewall locked to CF IPs only | ✅ Done |
 
 ---
 
-## 2. Application-Level Security — Implemented in This Repo
+## 2. Application-Level Security (In this repo — applies to all deployments)
 
-### 2a. Security Headers (Caddyfile) ✅
+These are implemented in the codebase. Self-hosters get them automatically.
 
-Added to all routes:
+### Security headers (Caddyfile)
+
+All responses include:
 
 | Header | Value |
 |--------|-------|
@@ -40,73 +52,55 @@ Added to all routes:
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |
 | `Permissions-Policy` | `geolocation=(), camera=(), microphone=()` |
 
-### 2b. File Upload Hardening (import_export.py) ✅
+### File upload hardening (`backend/routers/import_export.py`)
 
 - Reject files larger than **5 MB** before parsing
-- Validate **XLSX magic bytes** (`PK\x03\x04` — ZIP format) before passing to openpyxl
-- Prevents: oversized file DoS, malformed/malicious file parsing
+- Validate **XLSX magic bytes** (`PK\x03\x04`) before passing to openpyxl
+- Validate sheet structure and row data before committing anything to the database
 
-### 2c. Hybrid 500 Error Sanitization ✅
+### Error sanitization
 
-- Unhandled exceptions are logged to the `error_logs` DB table (timestamp, path, method, error type, message, traceback, user ID)
-- **Non-admin users** receive a generic `"Internal server error"` response
-- **Admin users** receive the full error detail in the response (identified by valid admin JWT)
-- Admin dashboard has an **Error Logs** section showing the last 50 errors with timestamps, paths, and full tracebacks
+- Unhandled exceptions are logged to the `error_logs` DB table (timestamp, path, method, error, traceback, user ID)
+- Non-admin users receive a generic `"Internal server error"` — no stack traces leaked
+- Admin users see full error detail in the response and in the admin dashboard Error Logs section
 
-### 2d. Security Test Suite (backend/tests/test_security.py) ✅
+### Security test suite (`backend/tests/test_security.py`)
 
-Covers:
-- JWT tampering: modified payload rejected, bad signature rejected, expired token rejected
-- IDOR: user A cannot read or modify user B's grants, loans, prices, or events
-- File upload: oversized file rejected, non-XLSX magic bytes rejected
-- Admin endpoints: return 403 for non-admin authenticated users
+- JWT tampering: modified payload, bad signature, expired token all rejected
+- IDOR: user A cannot read or modify user B's data
+- File upload: oversized files and non-XLSX magic bytes rejected
+- Admin endpoints: 403 for non-admin authenticated users
 
-### 2e. Dependency Auditing in CI ✅
+### Dependency auditing (CI)
 
-Added to `.github/workflows/test.yml`:
+`.github/workflows/test.yml` runs on every push and PR:
 - `pip-audit` on Python dependencies
 - `npm audit --audit-level=high` on frontend dependencies
 
 ---
 
-## 3. SSH Hardening — Infrastructure Task
+## 3. SSH Hardening (Infrastructure — not in this repo)
 
-> **Status: Manual — requires server SSH access**
+> This must be configured manually on the server. Self-hosters should do this before going to production.
 
-### Steps (in order — do not disable password auth before adding your key)
+Port 22 is not behind Cloudflare (Cloudflare only proxies HTTP/S). The critical step is disabling password authentication so the only attack surface is a stolen SSH private key.
 
-1. Add your public SSH key to `~/.ssh/authorized_keys` on the server
-2. Verify you can log in with the key **before** changing sshd config
+> A separate non-root deploy user is not worth the complexity here: any user that can run `docker` commands has effective root access (docker group = root equivalent). Disabling password auth is the real protection.
+
+### Steps
+
+1. Add your SSH public key to `~/.ssh/authorized_keys` on the server
+2. Verify key-based login works **before** disabling password auth
 3. Edit `/etc/ssh/sshd_config`:
    ```
    PasswordAuthentication no
-   PermitRootLogin no
+   PermitRootLogin prohibit-password
    ```
 4. Reload: `systemctl reload sshd`
-5. Create a non-root deploy user:
-   ```bash
-   useradd -m -s /bin/bash deploy
-   usermod -aG docker deploy
-   mkdir -p /home/deploy/.ssh
-   cp ~/.ssh/authorized_keys /home/deploy/.ssh/
-   chown -R deploy:deploy /home/deploy/.ssh
-   chmod 700 /home/deploy/.ssh
-   chmod 600 /home/deploy/.ssh/authorized_keys
-   ```
-6. Update the `SSH_PRIVATE_KEY` GitHub Actions secret to use the deploy user's key
-7. Update `deploy.yml` to SSH as `deploy@<host>` instead of `root@<host>`
 
----
+### Reference deployment status
 
-## Implementation Order
-
-| # | Item | Status |
-|---|------|--------|
-| 1 | Cloudflare setup + WAF rules | Manual |
-| 2 | Hetzner firewall locked to CF IPs | Manual |
-| 3 | Security headers in Caddyfile | ✅ Done |
-| 4 | File upload hardening | ✅ Done |
-| 5 | Hybrid 500 sanitization + error log UI | ✅ Done |
-| 6 | Security test suite | ✅ Done |
-| 7 | pip-audit + npm audit in CI | ✅ Done |
-| 8 | SSH hardening + deploy user | Manual |
+| Step | Status |
+|------|--------|
+| SSH key added, GitHub Actions deploys via key | ✅ Done |
+| Password authentication disabled | ⚠️ Pending |

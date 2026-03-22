@@ -193,8 +193,8 @@ Add email notifications alongside existing push notifications, with a **strict o
 
 ### Implementation Plan
 
-1. Add `SMTP_*` env vars (host, port, user, password, from_address)
-2. Create `backend/email.py` — send via SMTP (or use a service like SendGrid/SES)
+1. Add `RESEND_API_KEY` and `EMAIL_FROM` env vars
+2. Create `backend/email_sender.py` — send via Resend API
 3. Add notification preferences to User model (email_notifications: bool)
 4. Add Settings page toggle for email notifications
 5. Extend `send_daily_notifications()` in `notifications.py` to include email
@@ -210,14 +210,9 @@ Add email notifications alongside existing push notifications, with a **strict o
 
 ### DDoS / Rate Limiting
 
-- Add rate limiting middleware (e.g., `slowapi` or custom token bucket)
-- Rate limits per endpoint:
-  - Auth endpoints: 5 requests/minute per IP
-  - API endpoints: 60 requests/minute per user
-  - Admin endpoints: 30 requests/minute per user
-- Add `X-RateLimit-*` response headers
-- Configure Caddy for connection rate limiting at the reverse proxy level
-- Add fail2ban rules for repeated 401/403 responses
+- **Handled by Cloudflare** (deployed in front of Caddy). No app-level rate limiting middleware needed.
+- Cloudflare handles: DDoS mitigation, IP rate limiting, bot protection
+- No need for `slowapi` or Caddy rate limit rules
 
 ### Input Validation & Injection Prevention
 
@@ -242,20 +237,18 @@ Add email notifications alongside existing push notifications, with a **strict o
 
 ### Authentication Hardening
 
-- JWT token rotation (refresh tokens)
-- Session invalidation on password change / account deletion
-- Brute force protection on auth endpoints
-- Audit logging: log all admin actions, failed auth attempts, data deletions
+- JWT tokens expire after 24 hours; re-auth via Google OAuth is seamless (no refresh token mechanism — acceptable for this architecture)
+- Brute force protection on auth endpoints handled by Cloudflare WAF
+- Audit logging: log all admin actions, failed auth attempts, data deletions (not yet implemented)
 
 ### Implementation Plan
 
-1. Add `slowapi` rate limiting to FastAPI
-2. Configure Caddy rate limits
-3. Create security test suite
-4. Add DAST scanner to GitHub Actions
-5. Add dependency audit to CI
-6. Add CSP headers
-7. Add audit logging table + admin view
+1. ~~Rate limiting~~ — handled by Cloudflare
+2. Create security test suite (IDOR, JWT tampering, injection, path traversal)
+3. Add DAST scanner to GitHub Actions (OWASP ZAP — scans running app for vulns)
+4. Add `npm audit` + `pip-audit` to CI for dependency vulnerability scanning
+5. Add CSP headers via Caddy
+6. Add audit logging table + admin view
 
 **Implementation effort:** ~3-4 days.
 
@@ -523,13 +516,26 @@ Add to `_migrate_schema()` in `main.py`:
 
 ## Implementation Order
 
-1. **Done:** Privacy policy + transparency
-2. **Done:** Per-user column-level encryption (AES-256-GCM)
-3. **Done:** Admin system — admin dashboard, user management, email blocking
-4. **Done:** Admin test notification sender (section 7)
-5. **Next:** Multi-device / concurrent session hardening (section 6)
-6. **Next:** Stock sales + Wisconsin tax calculator (section 8)
-7. **Backlog:** Email notifications (section 4)
-8. **Backlog:** Security hardening (section 5)
-9. **Later:** Migration script for existing plaintext databases
-10. **Later:** Client-side encryption, if architecture supports it
+1. ✅ Privacy policy + transparency
+2. ✅ Per-user column-level encryption (AES-256-GCM)
+3. ✅ Admin system — dashboard, user management, email blocking
+4. ✅ Admin test notification sender (section 7)
+5. ✅ Multi-device / concurrent session hardening (section 6)
+6. ✅ Stock sales + Wisconsin tax calculator (section 8)
+7. ✅ Email notifications via Resend API (section 4)
+8. ✅ Security hardening — app-level (section 5): headers, file validation, error sanitization, test suite, dependency auditing in CI
+9. ✅ Security hardening — infrastructure: Cloudflare + VPS firewall locked to CF IPs
+
+## Remaining / Future Work
+
+| Item | Notes |
+|------|-------|
+| **SSH: disable password auth** | Two lines in `sshd_config` + reload. See SECURITY_HARDENING.md §3. |
+| **Audit logging** | Log admin actions, failed auth attempts, data deletions to a DB table. Show in admin dashboard. |
+| **DAST scanner in CI** | Add OWASP ZAP to GitHub Actions — scans the running app for vulnerabilities on every PR. |
+| **Migration script** | Convert existing plaintext databases when enabling `ENCRYPTION_MASTER_KEY` for the first time. |
+| **PDF loan statement import** | OCR or structured template for importing loan data directly from Epic's PDF statements. Stretch goal. |
+
+**Decided against:**
+- JWT refresh tokens — 24hr access tokens + seamless Google re-auth is sufficient for this use case
+- Client-side (zero-knowledge) encryption — would break server-side event computation, Excel export, and push notifications. Not practical for this architecture.

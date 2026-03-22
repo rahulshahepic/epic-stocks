@@ -8,8 +8,8 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 
 - **Backend**: Python, FastAPI, SQLite (WAL mode), single process
 - **Frontend**: React (Vite), TypeScript, Tailwind CSS, PWA with push notifications
-- **Deploy**: Docker Compose on a VPS behind Caddy (auto-HTTPS)
-- **Auth**: Google Sign-In (OAuth 2.0 ID tokens), backend issues JWT session tokens
+- **Deploy**: Docker Compose on a VPS behind Caddy (auto-HTTPS), Cloudflare in front for DDoS/rate limiting
+- **Auth**: Google Sign-In (OAuth 2.0 ID tokens), backend issues JWT session tokens (24hr expiry)
 
 The FastAPI app serves the React build as static files. One container for the app, one for Caddy.
 
@@ -317,7 +317,9 @@ Simple table + "Add New Price" (date + price). This is the simplest page.
 
 ### 8. Settings
 - Push notification enable/disable
-- Account management
+- Email notification enable/disable
+- Tax settings (rates for LT/ST cap gains, income; Wisconsin defaults)
+- Account management (reset data, delete account)
 
 ## Excel Import Logic
 
@@ -349,7 +351,7 @@ Use openpyxl. Create 4 sheets: Schedule, Loans, Prices, Events. The Events sheet
 ## Project Structure
 
 ```
-equity-vesting/
+epic-stocks/
 ├── .github/
 │   └── workflows/
 │       ├── test.yml               # runs on push + PR
@@ -362,7 +364,7 @@ equity-vesting/
 │   ├── core.py                    # THE core logic (frozen, do not modify)
 │   ├── models.py                  # SQLAlchemy models
 │   ├── database.py                # SQLite setup, WAL mode
-│   ├── auth.py                    # JWT + bcrypt
+│   ├── auth.py                    # JWT + Google OAuth verification
 │   ├── routers/
 │   │   ├── grants.py
 │   │   ├── loans.py
@@ -401,6 +403,8 @@ equity-vesting/
 
 ## Docker Compose
 
+> Illustrative only — the actual `docker-compose.yml` includes additional env vars (`ENCRYPTION_MASTER_KEY`, `ADMIN_EMAIL`, `RESEND_API_KEY`, etc.). See `.env.example` for the full list.
+
 ```yaml
 services:
   app:
@@ -433,6 +437,8 @@ volumes:
 
 ## Caddyfile
 
+> Illustrative only — the actual `Caddyfile` includes CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, and Permissions-Policy security headers. See `Caddyfile` in the repo root.
+
 ```
 yourdomain.com {
     reverse_proxy app:8000
@@ -462,7 +468,7 @@ Test every layer. Use test_data/fixture.xlsx as a fixture for import tests.
 - generate_all_events with known grants/prices/loans → verify event count, types, dates, sort order
 - compute_timeline → verify share price chain, income/cap gains math against hand-calculated values
 - Edge cases: zero-price grants, single-period vesting, grants with no loans
-- Round-trip: generate events from test fixture data, verify totals match known-good values (89 events, final cum_shares=269843, cum_income=$144,325, cum_cap_gains=$1,243,695)
+- Round-trip: generate events from test fixture data, verify totals match known-good values (89 events, final cum_shares=571500, cum_income=$144,325, cum_cap_gains=$1,243,695)
 
 **API tests** (test_api.py):
 - Auth: Google login (mocked), auto-create user, reject invalid tokens
@@ -508,6 +514,8 @@ asyncio_mode = "auto"
 ## CI/CD
 
 ### GitHub Actions
+
+> CI snippets below are illustrative. The actual workflows also run `pip-audit` and `npm audit --audit-level=high`, and E2E tests use `./e2e.sh` rather than manually starting servers.
 
 #### `.github/workflows/test.yml` — runs on every push and PR
 ```yaml
@@ -597,19 +605,21 @@ docker compose up -d
 - `VPS_USER` — SSH username
 - `VPS_SSH_KEY` — SSH private key for deployment
 
+### Security Hardening
+See **[SECURITY_HARDENING.md](SECURITY_HARDENING.md)** for what to configure in your hosting environment after deploying. It distinguishes between security that's built into the app (automatic) and infrastructure tasks you need to do yourself (Cloudflare, VPS firewall, SSH hardening).
+
 ## Order of Implementation
 
-Build in this order:
+> **This project is fully implemented.** The order below is historical — it reflects the build sequence that was followed.
+
 1. Backend: models, database, auth, CRUD endpoints + unit tests
 2. Core logic integration (wire up /api/events) + core tests
 3. Frontend: auth pages, then Dashboard with charts + component tests
 4. Frontend: CRUD pages (Grants, Loans, Prices) with quick flows + tests
 5. Excel import/export + round-trip tests
 6. E2E tests (Playwright)
-7. Push notifications
-8. Docker + Caddy deployment config
+7. Push notifications + email notifications (Resend API)
+8. Docker + Caddy + Cloudflare deployment config
 9. GitHub Actions CI/CD
-
-**Every step must include tests for that step's functionality before moving on.** Do not build a feature without its tests.
-
-Start with step 1. Ask me before making major architectural decisions.
+10. Per-user encryption, admin system, stock sales + tax calculator (see PLAN.md)
+11. Security hardening (see SECURITY_HARDENING.md)

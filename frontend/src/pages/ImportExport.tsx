@@ -16,7 +16,7 @@ export default function ImportExport() {
   const [result, setResult] = useState<ImportResult | null>(null)
   const [error, setError] = useState('')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [generatePayoffSales, setGeneratePayoffSales] = useState(true)
+  const [generatePayoffSales, setGeneratePayoffSales] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -125,7 +125,7 @@ export default function ImportExport() {
       <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
         <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Import from Excel</h3>
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          Upload a .xlsx file with Schedule, Loans, and/or Prices sheets. Only the sheets present in your file will be imported — others are left unchanged.
+          Upload a .xlsx file with Schedule, Loans, and/or Prices sheets. Only sheets present in your file will be processed — others are left unchanged.
         </p>
 
         <div className="mt-3 space-y-3">
@@ -144,7 +144,7 @@ export default function ImportExport() {
               className="rounded border-gray-300 dark:border-gray-600"
             />
             <span>
-              Generate payoff sales for imported loans (recommended)
+              Generate payoff sales for loans in this file (recommended)
               <span className="ml-1 text-gray-400" title="For each loan in the file, automatically creates a stock sale sized to cover the payoff after capital gains tax. Only applies if file contains a Loans sheet.">ⓘ</span>
             </span>
           </label>
@@ -153,8 +153,7 @@ export default function ImportExport() {
         {status === 'confirm' && selectedFile && (
           <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-900/30">
             <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
-              Data for each imported sheet will be replaced. Sheets not in the file are left untouched.
-              {generatePayoffSales && ' Payoff sales for any existing loans will be cleared and regenerated.'}
+              Data for each imported sheet will be replaced (including any existing payoff sales if Loans sheet is present). Sheets not in the file are left untouched.
             </p>
             <div className="mt-2 flex gap-2">
               <button

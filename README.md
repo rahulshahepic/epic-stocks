@@ -27,7 +27,7 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 |-------|------|
 | ![Sales Light Mobile](screenshots/sales-light-mobile.png) | ![Sales Dark Mobile](screenshots/sales-dark-mobile.png) |
 
-### Settings (Tax Rates & Lot Selection)
+### Settings (Tax Rates, Lot Selection & Down Payment)
 
 | Light | Dark |
 |-------|------|
@@ -42,7 +42,7 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 ## Features
 
 - **Event Timeline** — computed on the fly from grants, prices, and loans. Never stored. Shows income, capital gains, share price, and cumulative totals.
-- **Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, tax paid, cash received, next event) with an "As of" date picker (Today / End quick buttons) + 4 interactive charts.
+- **Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, total interest, tax paid, cash received, next event) with an "As of" date picker + interactive charts including an Interest Over Time chart with guaranteed vs. projected interest-on-interest layers.
 - **Stock Sales** — record share sales with configurable lot selection (LIFO/FIFO/same-tranche), LT/ST capital gains split, and Wisconsin tax calculator. Payoff sales can be linked to loans and auto-sized to cover the cash due after tax (gross-up calculation). Use "Regen payoff sales" on the Loans page to recompute all future payoff sale share counts after changing lot selection.
 - **CRUD Management** — full create/read/update/delete for Grants, Loans, Prices, and Sales.
 - **Quick Flows** — convenience endpoints: "New Purchase" (grant + loan with optional stock down payment), "Annual Price", "Add Bonus".

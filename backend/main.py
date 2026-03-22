@@ -53,7 +53,7 @@ def _migrate_schema():
         ts_cols = {c["name"] for c in insp.get_columns("tax_settings")}
         with database.engine.begin() as conn:
             if "lot_selection_method" not in ts_cols:
-                conn.execute(sqlalchemy.text("ALTER TABLE tax_settings ADD COLUMN lot_selection_method TEXT NOT NULL DEFAULT 'fifo'"))
+                conn.execute(sqlalchemy.text("ALTER TABLE tax_settings ADD COLUMN lot_selection_method TEXT NOT NULL DEFAULT 'lifo'"))
     with database.engine.begin() as conn:
         conn.execute(sqlalchemy.text("""
             CREATE TABLE IF NOT EXISTS sales (

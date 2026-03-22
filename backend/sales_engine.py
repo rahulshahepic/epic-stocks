@@ -63,10 +63,11 @@ def build_fifo_lots(
         lots = deque(reversed(lots))
 
     if grant_year is not None and grant_type is not None:
-        filtered = deque(l for l in lots if l[3] == grant_year and l[4] == grant_type)
-        if filtered:
-            lots = filtered
-        # else: no matching lots — return full pool so gross-up can still proceed
+        # Same-tranche: sell matching lots first, then fall through to the rest
+        # (in the selected order) so we never get stuck if the tranche runs dry.
+        tranche = [l for l in lots if l[3] == grant_year and l[4] == grant_type]
+        others  = [l for l in lots if not (l[3] == grant_year and l[4] == grant_type)]
+        lots = deque(tranche + others)
 
     return lots
 

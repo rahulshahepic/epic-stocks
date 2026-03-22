@@ -42,7 +42,7 @@ def _get_tax_settings_dict(user: User, db: Session) -> dict:
 
 def _get_lot_selection_method(user: User, db: Session) -> str:
     ts = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
-    return ts.lot_selection_method if ts else 'fifo'
+    return ts.lot_selection_method if ts else 'lifo'
 
 
 def _build_timeline_for_user(user: User, db: Session) -> list:
@@ -124,7 +124,7 @@ def _compute_payoff_sale(loan: Loan, user: User, db: Session) -> dict:
 
     ts = _get_tax_settings_dict(user, db)
     method = _get_lot_selection_method(user, db)
-    lot_order = 'lifo' if method == 'lifo' else 'fifo'
+    lot_order = 'fifo' if method == 'fifo' else 'lifo'
     gy = loan.grant_year if method == 'same_tranche' else None
     gt = loan.grant_type if method == 'same_tranche' else None
     lots = build_fifo_lots(timeline, loan.due_date, order=lot_order, grant_year=gy, grant_type=gt)

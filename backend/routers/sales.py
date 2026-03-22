@@ -195,8 +195,8 @@ def get_sale_tax(sale_id: int, user: User = Depends(get_current_user), db: Sessi
         "state_st_cg_rate": sale.state_st_cg_rate if sale.state_st_cg_rate is not None else ts.state_st_cg_rate,
         "lt_holding_days": sale.lt_holding_days if sale.lt_holding_days is not None else ts.lt_holding_days,
     }
-    method = ts.lot_selection_method if ts else 'fifo'
-    lot_order = 'lifo' if method == 'lifo' else 'fifo'
+    method = ts.lot_selection_method if ts else 'lifo'
+    lot_order = 'fifo' if method == 'fifo' else 'lifo'
     gy, gt = None, None
     if method == 'same_tranche' and sale.loan_id:
         linked_loan = db.query(Loan).filter(Loan.id == sale.loan_id).first()

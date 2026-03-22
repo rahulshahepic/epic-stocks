@@ -33,7 +33,11 @@ def build_fifo_lots(timeline_events, as_of: date) -> deque:
         vs = e.get("vested_shares") or 0
 
         if e["event_type"] == "Vesting" and vs > 0:
-            lots.append([edate, vs, e.get("share_price", 0.0)])
+            # Purchase grants (grant_price > 0): basis = what was paid, no step-up at vest.
+            # Income grants (grant_price = 0/None): ordinary income recognised at vest,
+            # so basis steps up to FMV (share_price) at that point.
+            basis = e.get("grant_price") or e.get("share_price", 0.0)
+            lots.append([edate, vs, basis])
         elif vs < 0:
             # Reduction (loan repayment or dp exchange) — consume oldest lots first
             to_reduce = abs(vs)

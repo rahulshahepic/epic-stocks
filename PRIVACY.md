@@ -73,10 +73,14 @@ Other users of the same instance **cannot** access your data. The API enforces s
 
 ### Third Parties
 
-The application does not send your data to any third-party services. The only external communication is:
+The site operator uses the following third-party infrastructure. Your data may pass through or be processed by these services:
 
-- **Google OAuth** — to verify your identity during sign-in
-- **Push notifications** (if enabled) — sent via Web Push protocol; notification content is generated server-side
+- **Google OAuth** — to verify your identity during sign-in. Google receives your Google account credentials; the application only receives your profile fields (email, name, profile picture, subject ID).
+- **Hetzner** — the VPS hosting provider. The application and database run on Hetzner hardware. Hetzner has physical and administrative access to the server environment.
+- **Cloudflare** — used for DDoS protection and DNS. HTTPS traffic passes through Cloudflare's network, which means Cloudflare can observe (but does not decrypt, under standard configuration) the metadata of your requests.
+- **Porkbun** — domain registrar. Porkbun manages the domain name; they have no access to your application data.
+- **Resend** — used to deliver email notifications (if you have enabled them). Resend receives the recipient address and email content. Email notifications contain **no financial data** — only a summary count of events (e.g., "you have 2 events today") and a link to log in. No share counts, prices, or loan amounts are included.
+- **Push notifications** (if enabled) — delivered via the Web Push protocol through your browser vendor's push service (e.g., Google FCM for Chrome). Notification content contains no financial data — only an event count summary.
 
 ## Data Retention
 

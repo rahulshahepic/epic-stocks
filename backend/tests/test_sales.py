@@ -658,3 +658,32 @@ def test_sale_tax_accounts_for_prior_sale(client):
     # So all 300 should come from vested lots, none unvested
     assert tax2["unvested_shares"] == 0
     assert tax2["lt_shares"] + tax2["st_shares"] == 300
+
+
+def test_per_sale_tax_rates_stored_and_used(client):
+    """Sale can store per-sale tax rates that override TaxSettings in the tax endpoint."""
+    token = register_user(client)
+    # Create sale with custom per-sale rates
+    resp = client.post("/api/sales", json={
+        "date": "2025-01-01",
+        "shares": 100,
+        "price_per_share": 50.0,
+        "federal_lt_cg_rate": 0.10,  # custom lower rate
+        "federal_st_cg_rate": 0.20,
+        "federal_income_rate": 0.30,
+        "niit_rate": 0.0,
+        "state_income_rate": 0.05,
+        "state_lt_cg_rate": 0.02,
+        "state_st_cg_rate": 0.05,
+        "lt_holding_days": 180,
+    }, headers=auth_header(token))
+    assert resp.status_code == 201
+    sale = resp.json()
+    assert sale["federal_lt_cg_rate"] == 0.10
+    assert sale["lt_holding_days"] == 180
+
+    # Update should preserve and allow changing per-sale rates
+    upd = client.put(f"/api/sales/{sale['id']}", json={
+        "federal_lt_cg_rate": 0.15,
+    }, headers=auth_header(token)).json()
+    assert upd["federal_lt_cg_rate"] == 0.15

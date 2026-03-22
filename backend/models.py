@@ -113,6 +113,15 @@ class Sale(Base):
     # If set, this sale was generated to cover this loan's payoff.
     loan_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("loans.id", ondelete="SET NULL"), nullable=True, index=True)
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+    # Per-sale tax rate overrides (null = fall back to user's TaxSettings)
+    federal_income_rate: Mapped[float | None] = mapped_column(EncryptedFloat, nullable=True)
+    federal_lt_cg_rate: Mapped[float | None] = mapped_column(EncryptedFloat, nullable=True)
+    federal_st_cg_rate: Mapped[float | None] = mapped_column(EncryptedFloat, nullable=True)
+    niit_rate: Mapped[float | None] = mapped_column(EncryptedFloat, nullable=True)
+    state_income_rate: Mapped[float | None] = mapped_column(EncryptedFloat, nullable=True)
+    state_lt_cg_rate: Mapped[float | None] = mapped_column(EncryptedFloat, nullable=True)
+    state_st_cg_rate: Mapped[float | None] = mapped_column(EncryptedFloat, nullable=True)
+    lt_holding_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="sales")
 

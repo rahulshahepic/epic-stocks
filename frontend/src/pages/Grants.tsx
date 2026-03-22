@@ -1,8 +1,10 @@
 import { useCallback, useState } from 'react'
 import { api, ConflictError } from '../api.ts'
-import type { GrantEntry, LoanEntry, PriceEntry } from '../api.ts'
+import type { GrantEntry, LoanEntry, PriceEntry, SaleEntry, TaxSettings } from '../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { broadcastChange, useDataSync } from '../hooks/useDataSync.ts'
+import { TaxRateFields, ratesFromDefaults, ratesFromSale, DEFAULT_RATES } from './Sales.tsx'
+import type { TaxRates } from './Sales.tsx'
 
 type GrantForm = Omit<GrantEntry, 'id' | 'version'>
 type Mode = 'list' | 'add' | 'edit'
@@ -56,6 +58,10 @@ export default function Grants() {
   const { data: prices } = useApiData<PriceEntry[]>(fetchPrices)
   const fetchLoans = useCallback(() => api.getLoans(), [])
   const { data: loans, reload: reloadLoans } = useApiData<LoanEntry[]>(fetchLoans)
+  const fetchSales = useCallback(() => api.getSales(), [])
+  const { data: sales, reload: reloadSales } = useApiData<SaleEntry[]>(fetchSales)
+  const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
+  const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
 
   const [mode, setMode] = useState<Mode>('list')
   const [form, setForm] = useState<GrantForm>(empty)
@@ -66,15 +72,19 @@ export default function Grants() {
   const [conflict, setConflict] = useState(false)
 
   useDataSync('grants', reload)
+  useDataSync('sales', reloadSales)
 
-  // Optional loan fields (for purchase-type grants in both add and edit)
+  // Loan fields (Purchase grants only)
   const [loanAmount, setLoanAmount] = useState(0)
   const [loanRate, setLoanRate] = useState(0)
   const [loanDueDate, setLoanDueDate] = useState('')
   const [loanNumber, setLoanNumber] = useState('')
-  const [generatePayoffSale, setGeneratePayoffSale] = useState(true)
   const [editLoanId, setEditLoanId] = useState<number | null>(null)
   const [editLoanVersion, setEditLoanVersion] = useState(1)
+
+  // Payoff sale
+  const [payoffSaleChecked, setPayoffSaleChecked] = useState(true)
+  const [saleRates, setSaleRates] = useState<TaxRates>(DEFAULT_RATES)
 
   function resetForm() {
     setForm(empty)
@@ -82,11 +92,12 @@ export default function Grants() {
     setLoanRate(0)
     setLoanDueDate('')
     setLoanNumber('')
-    setGeneratePayoffSale(true)
     setEditId(null)
     setEditVersion(1)
     setEditLoanId(null)
     setEditLoanVersion(1)
+    setPayoffSaleChecked(true)
+    setSaleRates(ratesFromDefaults(taxSettings))
     setError('')
     setConflict(false)
   }
@@ -114,6 +125,7 @@ export default function Grants() {
     const existingLoan = loans?.find(
       l => l.grant_year === g.year && l.grant_type === g.type && l.loan_type === 'Purchase'
     ) ?? null
+
     if (existingLoan) {
       setLoanAmount(existingLoan.amount)
       setLoanRate(existingLoan.interest_rate)
@@ -121,6 +133,10 @@ export default function Grants() {
       setLoanNumber(existingLoan.loan_number ?? '')
       setEditLoanId(existingLoan.id)
       setEditLoanVersion(existingLoan.version)
+
+      const linkedSale = sales?.find(s => s.loan_id === existingLoan.id) ?? null
+      setPayoffSaleChecked(!!linkedSale)
+      setSaleRates(linkedSale ? ratesFromSale(linkedSale, taxSettings) : ratesFromDefaults(taxSettings))
     } else {
       setLoanAmount(0)
       setLoanRate(0)
@@ -128,8 +144,9 @@ export default function Grants() {
       setLoanNumber('')
       setEditLoanId(null)
       setEditLoanVersion(1)
+      setPayoffSaleChecked(true)
+      setSaleRates(ratesFromDefaults(taxSettings))
     }
-    setGeneratePayoffSale(true)
     setMode('edit')
   }
 
@@ -139,7 +156,7 @@ export default function Grants() {
     try {
       if (mode === 'add') {
         if (form.type === 'Purchase') {
-          await api.newPurchase({
+          const result = await api.newPurchase({
             year: form.year,
             shares: form.shares,
             price: form.price,
@@ -151,8 +168,22 @@ export default function Grants() {
             loan_rate: loanRate || undefined,
             loan_due_date: loanDueDate || undefined,
             loan_number: loanNumber || undefined,
-            generate_payoff_sale: loanAmount > 0 ? generatePayoffSale : undefined,
+            generate_payoff_sale: false,  // handle manually below
           })
+          // Handle payoff sale for new purchase
+          const newLoanId = result.loan?.id
+          if (newLoanId && loanAmount > 0 && payoffSaleChecked) {
+            const suggestion = await api.getLoanPayoffSuggestion(newLoanId)
+            await api.createSale({
+              date: suggestion.date,
+              shares: suggestion.shares,
+              price_per_share: suggestion.price_per_share,
+              notes: suggestion.notes,
+              loan_id: newLoanId,
+              ...saleRates,
+            })
+            broadcastChange('sales')
+          }
         } else {
           await api.addBonus({
             year: form.year,
@@ -165,7 +196,10 @@ export default function Grants() {
         }
       } else if (mode === 'edit' && editId != null) {
         await api.updateGrant(editId, { ...form, version: editVersion })
+
         if (form.type === 'Purchase') {
+          let loanId = editLoanId
+
           if (editLoanId != null) {
             await api.updateLoan(editLoanId, {
               amount: loanAmount,
@@ -173,11 +207,11 @@ export default function Grants() {
               due_date: loanDueDate,
               loan_number: loanNumber || null,
               version: editLoanVersion,
-            }, generatePayoffSale)
+            })
             broadcastChange('loans')
             reloadLoans()
           } else if (loanAmount > 0) {
-            await api.createLoan({
+            const newLoan = await api.createLoan({
               grant_year: form.year,
               grant_type: 'Purchase',
               loan_type: 'Purchase',
@@ -186,12 +220,41 @@ export default function Grants() {
               interest_rate: loanRate,
               due_date: loanDueDate,
               loan_number: loanNumber || null,
-            }, generatePayoffSale)
+            }, false)
+            loanId = newLoan.id
             broadcastChange('loans')
             reloadLoans()
           }
+
+          // Handle payoff sale
+          if (loanId != null && loanAmount > 0) {
+            const linkedSale = sales?.find(s => s.loan_id === loanId)
+            if (payoffSaleChecked) {
+              const suggestion = await api.getLoanPayoffSuggestion(loanId)
+              const salePayload = {
+                date: suggestion.date,
+                shares: suggestion.shares,
+                price_per_share: suggestion.price_per_share,
+                notes: suggestion.notes,
+                loan_id: loanId,
+                ...saleRates,
+              }
+              if (linkedSale) {
+                await api.updateSale(linkedSale.id, { ...salePayload, version: linkedSale.version })
+              } else {
+                await api.createSale(salePayload)
+              }
+              broadcastChange('sales')
+              reloadSales()
+            } else if (linkedSale) {
+              await api.deleteSale(linkedSale.id)
+              broadcastChange('sales')
+              reloadSales()
+            }
+          }
         }
       }
+
       broadcastChange('grants')
       reload()
       if (addAnother) {
@@ -244,7 +307,7 @@ export default function Grants() {
         )}
         {error && <p className="text-xs text-red-500">{error}</p>}
 
-        {/* Grant type selector — only for add mode so user can switch between Purchase/Bonus */}
+        {/* Grant type selector — only for add mode */}
         {mode === 'add' && (
           <div className="flex gap-2">
             <button
@@ -293,18 +356,24 @@ export default function Grants() {
               <Field label="Loan Number" type="text" value={loanNumber} onChange={v => setLoanNumber(v)} />
             </div>
             {loanAmount > 0 && (
-              <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
-                <input
-                  type="checkbox"
-                  checked={generatePayoffSale}
-                  onChange={e => setGeneratePayoffSale(e.target.checked)}
-                  className="rounded border-gray-300 dark:border-gray-600"
-                />
-                <span>
-                  {editLoanId != null ? 'Regenerate payoff sale' : 'Generate payoff sale (recommended)'}
-                  <span className="ml-1 text-gray-400" title="Creates a stock sale at the loan's due date sized to cover the payoff after capital gains tax">ⓘ</span>
-                </span>
-              </label>
+              <div className="space-y-3">
+                <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                  <input
+                    type="checkbox"
+                    checked={payoffSaleChecked}
+                    onChange={e => setPayoffSaleChecked(e.target.checked)}
+                    className="rounded border-gray-300 dark:border-gray-600"
+                  />
+                  <span>Payoff loan via sale</span>
+                </label>
+                {payoffSaleChecked && (
+                  <TaxRateFields
+                    rates={saleRates}
+                    onChange={setSaleRates}
+                    onReset={() => setSaleRates(ratesFromDefaults(taxSettings))}
+                  />
+                )}
+              </div>
             )}
           </>
         )}
@@ -357,32 +426,46 @@ export default function Grants() {
               <th className="px-3 py-2 text-right">Periods</th>
               <th className="px-3 py-2">Exercise</th>
               <th className="px-3 py-2 text-right" title="Down Payment Shares">Down Pmt</th>
+              <th className="px-3 py-2">Loan</th>
               <th className="px-3 py-2"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-            {grants.map(g => (
-              <tr key={g.id} className="bg-white dark:bg-gray-900">
-                <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{g.year}</td>
-                <td className="px-3 py-2">
-                  <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${g.type === 'Purchase' ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'}`}>
-                    {g.type}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtNum(g.shares)}</td>
-                <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtPrice(g.price)}</td>
-                <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{g.vest_start}</td>
-                <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{g.periods}</td>
-                <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{g.exercise_date}</td>
-                <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{g.dp_shares ? fmtNum(g.dp_shares) : '—'}</td>
-                <td className="px-3 py-2 text-right">
-                  <button onClick={() => openEdit(g)} className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 mr-2">Edit</button>
-                  <button onClick={() => handleDelete(g.id)} className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300">Delete</button>
-                </td>
-              </tr>
-            ))}
+            {grants.map(g => {
+              const loan = loans?.find(l => l.grant_year === g.year && l.grant_type === g.type && l.loan_type === 'Purchase')
+              const hasSale = loan ? sales?.some(s => s.loan_id === loan.id) : false
+              return (
+                <tr key={g.id} className="bg-white dark:bg-gray-900">
+                  <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{g.year}</td>
+                  <td className="px-3 py-2">
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${g.type === 'Purchase' ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'}`}>
+                      {g.type}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtNum(g.shares)}</td>
+                  <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtPrice(g.price)}</td>
+                  <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{g.vest_start}</td>
+                  <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{g.periods}</td>
+                  <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{g.exercise_date}</td>
+                  <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{g.dp_shares ? fmtNum(g.dp_shares) : '—'}</td>
+                  <td className="px-3 py-2">
+                    {loan ? (
+                      <span className={`text-[10px] ${hasSale ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                        {hasSale ? '✓ loan+sale' : '✓ loan'}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-gray-400">—</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <button onClick={() => openEdit(g)} className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 mr-2">Edit</button>
+                    <button onClick={() => handleDelete(g.id)} className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300">Delete</button>
+                  </td>
+                </tr>
+              )
+            })}
             {grants.length === 0 && (
-              <tr><td colSpan={9} className="px-3 py-6 text-center text-gray-400">No grants yet</td></tr>
+              <tr><td colSpan={10} className="px-3 py-6 text-center text-gray-400">No grants yet</td></tr>
             )}
           </tbody>
         </table>

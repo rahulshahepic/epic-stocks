@@ -1,13 +1,69 @@
 import { useCallback, useState } from 'react'
 import { api, ConflictError } from '../api.ts'
-import type { SaleEntry, TaxBreakdown } from '../api.ts'
+import type { SaleEntry, TaxBreakdown, TaxSettings } from '../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { broadcastChange, useDataSync } from '../hooks/useDataSync.ts'
 
-type SaleForm = Omit<SaleEntry, 'id' | 'version'>
+export type TaxRates = {
+  federal_income_rate: number
+  federal_lt_cg_rate: number
+  federal_st_cg_rate: number
+  niit_rate: number
+  state_income_rate: number
+  state_lt_cg_rate: number
+  state_st_cg_rate: number
+  lt_holding_days: number
+}
+
+export const DEFAULT_RATES: TaxRates = {
+  federal_income_rate: 0.37,
+  federal_lt_cg_rate: 0.20,
+  federal_st_cg_rate: 0.37,
+  niit_rate: 0.038,
+  state_income_rate: 0.0765,
+  state_lt_cg_rate: 0.0536,
+  state_st_cg_rate: 0.0765,
+  lt_holding_days: 365,
+}
+
+export function ratesFromDefaults(ts: TaxSettings | null | undefined): TaxRates {
+  if (!ts) return DEFAULT_RATES
+  return {
+    federal_income_rate: ts.federal_income_rate,
+    federal_lt_cg_rate: ts.federal_lt_cg_rate,
+    federal_st_cg_rate: ts.federal_st_cg_rate,
+    niit_rate: ts.niit_rate,
+    state_income_rate: ts.state_income_rate,
+    state_lt_cg_rate: ts.state_lt_cg_rate,
+    state_st_cg_rate: ts.state_st_cg_rate,
+    lt_holding_days: ts.lt_holding_days,
+  }
+}
+
+export function ratesFromSale(sale: SaleEntry, defaults: TaxSettings | null | undefined): TaxRates {
+  const d = ratesFromDefaults(defaults)
+  return {
+    federal_income_rate: sale.federal_income_rate ?? d.federal_income_rate,
+    federal_lt_cg_rate: sale.federal_lt_cg_rate ?? d.federal_lt_cg_rate,
+    federal_st_cg_rate: sale.federal_st_cg_rate ?? d.federal_st_cg_rate,
+    niit_rate: sale.niit_rate ?? d.niit_rate,
+    state_income_rate: sale.state_income_rate ?? d.state_income_rate,
+    state_lt_cg_rate: sale.state_lt_cg_rate ?? d.state_lt_cg_rate,
+    state_st_cg_rate: sale.state_st_cg_rate ?? d.state_st_cg_rate,
+    lt_holding_days: sale.lt_holding_days ?? d.lt_holding_days,
+  }
+}
+
+type SaleForm = {
+  date: string
+  shares: number
+  price_per_share: number
+  notes: string
+  loan_id: number | null
+}
 type Mode = 'list' | 'add' | 'edit'
 
-const empty: SaleForm = {
+const emptyForm: SaleForm = {
   date: new Date().toISOString().slice(0, 10),
   shares: 0,
   price_per_share: 0,
@@ -95,12 +151,73 @@ function Field({ label, type, value, onChange, step }: {
   )
 }
 
+export function TaxRateFields({ rates, onChange, onReset }: {
+  rates: TaxRates
+  onChange: (r: TaxRates) => void
+  onReset?: () => void
+}) {
+  function set(key: keyof TaxRates, val: string) {
+    onChange({ ...rates, [key]: key === 'lt_holding_days' ? parseInt(val) || 0 : parseFloat(val) || 0 })
+  }
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Tax rates for this sale</span>
+        {onReset && (
+          <button type="button" onClick={onReset} className="text-[10px] text-indigo-500 hover:text-indigo-700 dark:text-indigo-400">
+            Reset to defaults
+          </button>
+        )}
+      </div>
+      <div className="grid grid-cols-4 gap-2">
+        <RateField label="Fed Income" value={rates.federal_income_rate} onChange={v => set('federal_income_rate', v)} />
+        <RateField label="Fed LT CG" value={rates.federal_lt_cg_rate} onChange={v => set('federal_lt_cg_rate', v)} />
+        <RateField label="Fed ST CG" value={rates.federal_st_cg_rate} onChange={v => set('federal_st_cg_rate', v)} />
+        <RateField label="NIIT" value={rates.niit_rate} onChange={v => set('niit_rate', v)} />
+        <RateField label="State Inc" value={rates.state_income_rate} onChange={v => set('state_income_rate', v)} />
+        <RateField label="State LT" value={rates.state_lt_cg_rate} onChange={v => set('state_lt_cg_rate', v)} />
+        <RateField label="State ST" value={rates.state_st_cg_rate} onChange={v => set('state_st_cg_rate', v)} />
+        <label className="block">
+          <span className="text-[10px] text-gray-500 dark:text-gray-400">LT Hold Days</span>
+          <input
+            type="number"
+            value={rates.lt_holding_days}
+            onChange={e => set('lt_holding_days', e.target.value)}
+            className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-1.5 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+          />
+        </label>
+      </div>
+    </div>
+  )
+}
+
+function RateField({ label, value, onChange }: { label: string; value: number; onChange: (v: string) => void }) {
+  return (
+    <label className="block">
+      <span className="text-[10px] text-gray-500 dark:text-gray-400">{label}</span>
+      <div className="relative mt-0.5">
+        <input
+          type="number"
+          step="0.001"
+          value={(value * 100).toFixed(2)}
+          onChange={e => onChange(String(parseFloat(e.target.value) / 100))}
+          className="block w-full rounded-md border border-gray-300 bg-white py-1 pl-1.5 pr-4 text-[11px] dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+        />
+        <span className="pointer-events-none absolute inset-y-0 right-1 flex items-center text-[10px] text-gray-400">%</span>
+      </div>
+    </label>
+  )
+}
+
 export default function Sales() {
   const fetchSales = useCallback(() => api.getSales(), [])
   const { data: sales, loading, reload } = useApiData<SaleEntry[]>(fetchSales)
+  const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
+  const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
 
   const [mode, setMode] = useState<Mode>('list')
-  const [form, setForm] = useState<SaleForm>(empty)
+  const [form, setForm] = useState<SaleForm>(emptyForm)
+  const [taxRates, setTaxRates] = useState<TaxRates>(DEFAULT_RATES)
   const [editId, setEditId] = useState<number | null>(null)
   const [editVersion, setEditVersion] = useState(1)
   const [saving, setSaving] = useState(false)
@@ -112,7 +229,8 @@ export default function Sales() {
   useDataSync('sales', reload)
 
   function resetForm() {
-    setForm(empty)
+    setForm(emptyForm)
+    setTaxRates(ratesFromDefaults(taxSettings))
     setEditId(null)
     setEditVersion(1)
     setError('')
@@ -122,12 +240,15 @@ export default function Sales() {
 
   function openAdd() {
     resetForm()
+    setTaxRates(ratesFromDefaults(taxSettings))
     setMode('add')
   }
 
   function openEdit(s: SaleEntry) {
-    const { id, version, ...rest } = s
+    const { id, version, federal_income_rate, federal_lt_cg_rate, federal_st_cg_rate,
+            niit_rate, state_income_rate, state_lt_cg_rate, state_st_cg_rate, lt_holding_days, ...rest } = s
     setForm(rest)
+    setTaxRates(ratesFromSale(s, taxSettings))
     setEditId(id)
     setEditVersion(version)
     setError('')
@@ -142,10 +263,11 @@ export default function Sales() {
     setBreakdown(null)
     try {
       let saved: SaleEntry
+      const payload = { ...form, ...taxRates }
       if (mode === 'add') {
-        saved = await api.createSale(form)
+        saved = await api.createSale(payload)
       } else if (mode === 'edit' && editId != null) {
-        saved = await api.updateSale(editId, { ...form, version: editVersion })
+        saved = await api.updateSale(editId, { ...payload, version: editVersion })
       } else {
         return
       }
@@ -154,7 +276,6 @@ export default function Sales() {
       setMode('list')
       resetForm()
 
-      // Fetch tax breakdown for the saved sale
       setLoadingTax(true)
       try {
         const tax = await api.getSaleTax(saved.id)
@@ -223,6 +344,11 @@ export default function Sales() {
             <Field label="Notes (optional)" type="text" value={form.notes} onChange={v => setForm(f => ({ ...f, notes: v }))} />
           </div>
         </div>
+        <TaxRateFields
+          rates={taxRates}
+          onChange={setTaxRates}
+          onReset={() => setTaxRates(ratesFromDefaults(taxSettings))}
+        />
         <div className="flex gap-2 pt-2">
           <button
             onClick={handleSave}

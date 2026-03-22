@@ -184,15 +184,16 @@ def get_sale_tax(sale_id: int, user: User = Depends(get_current_user), db: Sessi
     ))
 
     sale_dict = {"date": sale.date, "shares": sale.shares, "price_per_share": sale.price_per_share}
+    # Use per-sale overrides when set, otherwise fall back to user's TaxSettings
     ts_dict = {
-        "federal_income_rate": ts.federal_income_rate,
-        "federal_lt_cg_rate": ts.federal_lt_cg_rate,
-        "federal_st_cg_rate": ts.federal_st_cg_rate,
-        "niit_rate": ts.niit_rate,
-        "state_income_rate": ts.state_income_rate,
-        "state_lt_cg_rate": ts.state_lt_cg_rate,
-        "state_st_cg_rate": ts.state_st_cg_rate,
-        "lt_holding_days": ts.lt_holding_days,
+        "federal_income_rate": sale.federal_income_rate if sale.federal_income_rate is not None else ts.federal_income_rate,
+        "federal_lt_cg_rate": sale.federal_lt_cg_rate if sale.federal_lt_cg_rate is not None else ts.federal_lt_cg_rate,
+        "federal_st_cg_rate": sale.federal_st_cg_rate if sale.federal_st_cg_rate is not None else ts.federal_st_cg_rate,
+        "niit_rate": sale.niit_rate if sale.niit_rate is not None else ts.niit_rate,
+        "state_income_rate": sale.state_income_rate if sale.state_income_rate is not None else ts.state_income_rate,
+        "state_lt_cg_rate": sale.state_lt_cg_rate if sale.state_lt_cg_rate is not None else ts.state_lt_cg_rate,
+        "state_st_cg_rate": sale.state_st_cg_rate if sale.state_st_cg_rate is not None else ts.state_st_cg_rate,
+        "lt_holding_days": sale.lt_holding_days if sale.lt_holding_days is not None else ts.lt_holding_days,
     }
     return compute_sale_tax(timeline, sale_dict, ts_dict)
 

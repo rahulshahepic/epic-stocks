@@ -500,10 +500,10 @@ function LoanChart({ loanPaymentByYear, c }: {
   if (!loanPaymentByYear || loanPaymentByYear.length === 0) return null
   return (
     <ChartBox title="Loan Payments by Due Year">
-      <text x="50%" y={16} textAnchor="middle" fontSize={10} fill={c.axis} style={{ display: 'block', textAlign: 'center', marginBottom: 4 }}>
-        <tspan fill="#4ade80">&#9632;</tspan> Same-tranche sale{'  '}
-        <tspan fill="#fb923c">&#9632;</tspan> Cash in
-      </text>
+      <div className="mb-2 text-center text-[10px]" style={{ color: c.axis }}>
+        <span style={{ color: '#4ade80' }}>&#9632;</span> Same-tranche sale{'  '}
+        <span style={{ color: '#fb923c' }}>&#9632;</span> Cash in
+      </div>
       <ResponsiveContainer width="100%" height={220}>
         <BarChart data={loanPaymentByYear}>
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />

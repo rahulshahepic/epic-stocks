@@ -263,8 +263,10 @@ class SaleCreate(BaseModel):
             raise ValueError("price_per_share must be positive")
         return v
 
+_Date = date  # alias to avoid field-name shadowing Optional[date] = None in Pydantic v2
+
 class SaleUpdate(BaseModel):
-    date: Optional[date] = None
+    date: Optional[_Date] = None
     shares: Optional[int] = None
     price_per_share: Optional[float] = None
     notes: Optional[str] = None
@@ -305,7 +307,7 @@ class LoanPaymentCreate(BaseModel):
         return v
 
 class LoanPaymentUpdate(BaseModel):
-    date: Optional[date] = None
+    date: Optional[_Date] = None
     amount: Optional[float] = None
     notes: Optional[str] = None
     version: Optional[int] = None

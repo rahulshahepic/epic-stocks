@@ -262,8 +262,10 @@ def current_user_info(user=Depends(get_current_user)):
 
 @_fastapi_app.post("/api/me/reset", status_code=204)
 def reset_my_data(user=Depends(get_current_user), db: Session = Depends(get_db)):
-    """Delete all financial data (grants, loans, prices) but keep the account."""
-    from models import Grant, Loan, Price
+    """Delete all financial data (grants, loans, prices, sales, loan payments) but keep the account."""
+    from models import Grant, Loan, LoanPayment, Price, Sale
+    db.query(LoanPayment).filter(LoanPayment.user_id == user.id).delete()
+    db.query(Sale).filter(Sale.user_id == user.id).delete()
     db.query(Grant).filter(Grant.user_id == user.id).delete()
     db.query(Loan).filter(Loan.user_id == user.id).delete()
     db.query(Price).filter(Price.user_id == user.id).delete()

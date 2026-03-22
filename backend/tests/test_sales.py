@@ -391,6 +391,42 @@ def test_grossup_insufficient_lots_fallback():
     assert shares >= math.ceil(cash_due / price)
 
 
+def test_grossup_loss_lot_offsets_gain_lot():
+    """Loss lot (basis > price) should reduce aggregate taxable gain, requiring fewer shares."""
+    sale_date = date(2023, 6, 1)
+    price = 10.0
+    cash_due = 500.0
+    # Lot 1 (LT, loss): basis=15 > price; reduces lt_gain
+    # Lot 2 (LT, gain): basis=5
+    lots = _make_lots(
+        (date(2021, 1, 1), 20, 15.0),   # loss lot: gain = -5/share → lt_gain contribution = -100
+        (date(2021, 6, 1), 1000, 5.0),  # gain lot: gain = +5/share
+    )
+    shares = compute_grossup_shares(lots, cash_due, price, sale_date, WI_DEFAULTS)
+    # Verify result: net after tax must cover cash_due
+    from sales_engine import build_fifo_lots
+    lt_rate = WI_DEFAULTS["federal_lt_cg_rate"] + WI_DEFAULTS["niit_rate"] + WI_DEFAULTS["state_lt_cg_rate"]
+    # Simulate aggregate net:
+    #   20 loss shares: gain = -100; next gain shares consume the -100 loss before tax kicks in
+    # The per-lot algorithm (broken) would over-shoot; aggregate algorithm gives correct result.
+    gross = shares * price
+    # Compute aggregate lt_gain for the actual shares (FIFO)
+    lot1_shares = min(shares, 20)
+    lot2_shares = shares - lot1_shares
+    agg_lt_gain = lot1_shares * (price - 15.0) + lot2_shares * (price - 5.0)
+    tax = max(0.0, agg_lt_gain) * lt_rate
+    net = gross - tax
+    assert net >= cash_due, f"net {net} < cash_due {cash_due}"
+    # Verify we don't over-shoot by more than one share worth
+    if shares > 1:
+        lot1_m = min(shares - 1, 20)
+        lot2_m = (shares - 1) - lot1_m
+        agg_gain_m = lot1_m * (price - 15.0) + lot2_m * (price - 5.0)
+        tax_m = max(0.0, agg_gain_m) * lt_rate
+        net_m = (shares - 1) * price - tax_m
+        assert net_m < cash_due, f"over-shot by more than 1 share: net-1 {net_m} >= cash_due {cash_due}"
+
+
 # ============================================================
 # LOAN PAYMENT CRUD TESTS
 # ============================================================

@@ -53,6 +53,9 @@ def compute_grossup_shares(lots: deque, cash_due: float, price: float, sale_date
     Compute how many shares to sell so that net_proceeds (after LT/ST cap gains tax) >= cash_due.
     Walks FIFO lots oldest-first. Any shortfall after lots exhausted falls back to ceil(remaining/price).
     Always returns >= ceil(cash_due / price).
+
+    Tax is computed on aggregate LT/ST gains (matching compute_sale_tax), so loss lots
+    correctly offset gain lots within the same bucket rather than being taxed independently.
     """
     if price <= 0 or cash_due <= 0:
         return 0
@@ -66,27 +69,53 @@ def compute_grossup_shares(lots: deque, cash_due: float, price: float, sale_date
                + float(ts.get("niit_rate", 0.038))
                + float(ts.get("state_st_cg_rate", 0.0765)))
 
-    remaining = cash_due
     total_shares = 0
+    lt_gain = 0.0  # cumulative LT gain (may be negative for loss lots)
+    st_gain = 0.0  # cumulative ST gain (may be negative for loss lots)
+
+    def _net(n, lg, sg):
+        return n * price - max(0.0, lg) * lt_rate - max(0.0, sg) * st_rate
 
     for lot in lots:
-        if remaining <= 0:
+        if _net(total_shares, lt_gain, st_gain) >= cash_due:
             break
         vest_date, lot_shares, basis = lot[0], lot[1], lot[2]
         hold_days = (sale_date - _to_date(vest_date)).days
-        rate = lt_rate if hold_days >= lt_days else st_rate
-        # net received per share after paying cap gains tax on the gain portion
-        net_per_share = price - rate * max(0.0, price - basis)
-        if net_per_share <= 0:
-            shares_from_lot = lot_shares
-        else:
-            shares_from_lot = min(lot_shares, math.ceil(remaining / net_per_share))
-        total_shares += shares_from_lot
-        remaining -= shares_from_lot * net_per_share
+        is_lt = hold_days >= lt_days
+        gain_per_share = price - basis
 
-    # Any remaining cash_due covered by unvested / no-basis shares (net = price)
-    if remaining > 0:
-        total_shares += math.ceil(remaining / price)
+        if is_lt:
+            new_lt, new_st = lt_gain + lot_shares * gain_per_share, st_gain
+        else:
+            new_lt, new_st = lt_gain, st_gain + lot_shares * gain_per_share
+
+        if _net(total_shares + lot_shares, new_lt, new_st) >= cash_due:
+            # Binary search for minimum shares needed from this lot.
+            # _net is monotonically non-decreasing in s for any gain_per_share value.
+            lo, hi = 0, lot_shares
+            while lo < hi:
+                mid = (lo + hi) // 2
+                t_lt = lt_gain + mid * gain_per_share if is_lt else lt_gain
+                t_st = st_gain + mid * gain_per_share if not is_lt else st_gain
+                if _net(total_shares + mid, t_lt, t_st) >= cash_due:
+                    hi = mid
+                else:
+                    lo = mid + 1
+            total_shares += lo
+            if is_lt:
+                lt_gain += lo * gain_per_share
+            else:
+                st_gain += lo * gain_per_share
+            return max(total_shares, math.ceil(cash_due / price))
+
+        # Take all shares from this lot and continue
+        total_shares += lot_shares
+        lt_gain, st_gain = new_lt, new_st
+
+    # Lots exhausted; cover any shortfall with unvested/no-basis shares at net = price
+    current_net = _net(total_shares, lt_gain, st_gain)
+    if current_net < cash_due:
+        total_shares += math.ceil((cash_due - current_net) / price)
 
     return max(total_shares, math.ceil(cash_due / price))
 

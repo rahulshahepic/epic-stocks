@@ -43,9 +43,10 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 
 - **Event Timeline** — computed on the fly from grants, prices, and loans. Never stored. Shows income, capital gains, share price, and cumulative totals.
 - **Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, tax paid, cash received, next event) with an "As of" date picker (Today / End quick buttons) + 4 interactive charts.
-- **Stock Sales** — record share sales with configurable lot selection (LIFO/FIFO/same-tranche), LT/ST capital gains split, and Wisconsin tax calculator. Payoff sales can be linked to loans and auto-sized to cover the cash due after tax (gross-up calculation).
+- **Stock Sales** — record share sales with configurable lot selection (LIFO/FIFO/same-tranche), LT/ST capital gains split, and Wisconsin tax calculator. Payoff sales can be linked to loans and auto-sized to cover the cash due after tax (gross-up calculation). Use "Regen payoff sales" on the Loans page to recompute all future payoff sale share counts after changing lot selection.
 - **CRUD Management** — full create/read/update/delete for Grants, Loans, Prices, and Sales.
-- **Quick Flows** — convenience endpoints: "New Purchase" (grant + loan), "Annual Price", "Add Bonus".
+- **Quick Flows** — convenience endpoints: "New Purchase" (grant + loan with optional stock down payment), "Annual Price", "Add Bonus".
+- **Down Payment Rules** — configurable minimum DP policy (percent of purchase and dollar cap). "Prefer stock DP" auto-calculates the minimum stock exchange down payment on new purchases. Default: 10% or $20,000, whichever is lower.
 - **Excel Import/Export** — bootstrap from an existing Vesting.xlsx or export current state.
 - **Google Sign-In** — OAuth 2.0 authentication, automatic account creation.
 - **Admin Dashboard** — user management, aggregate stats, email blocking. Admin cannot see financial data.
@@ -278,6 +279,7 @@ All endpoints require `Authorization: Bearer <jwt>` except auth, health, config,
 | GET/PUT/DELETE | `/api/sales/{id}` | Get/update/delete sale |
 | GET | `/api/sales/{id}/tax-breakdown` | FIFO tax breakdown for a sale |
 | GET | `/api/loans/{id}/payoff-sale-suggestion` | Suggested gross-up sale for a loan |
+| POST | `/api/loans/regenerate-all-payoff-sales` | Recompute all future payoff sale share counts |
 | GET/POST | `/api/loan-payments` | List/create early loan payments |
 | PUT/DELETE | `/api/loan-payments/{id}` | Update/delete a loan payment |
 | POST | `/api/flows/new-purchase` | Create grant + optional loan |
@@ -380,10 +382,12 @@ If you run an instance for others: secure the database file, use HTTPS, set `ENC
 ## Key Design Decisions
 
 - **Events are never stored.** They're computed per-request from the three source tables (Grants, Loans, Prices). This eliminates sync issues entirely.
-- **core.py is frozen.** The event generation logic is tested against known-good values (89 events, cum_shares=571,500, cum_income=$144,325, cum_cap_gains=$1,243,695). Don't modify it.
+- **core.py is frozen.** The event generation logic is tested against known-good values (89 events, cum_shares=558,500, cum_income=$144,325, cum_cap_gains=$1,224,195). Don't modify it.
 - **Excel import is destructive.** It replaces all existing data for that user. The import flow validates first, previews second, writes third — all in one transaction.
 - **Lot selection method is user-configurable (default: LIFO).** In Tax Settings, users choose between:
   - **LIFO** (default) — newest vested lots sold first. For rising stock this maximises cost basis and minimises cap gains.
   - **FIFO** — oldest lots first. Maximises LT-qualified shares when stock was purchased long ago.
   - **Same tranche** — lots from the same grant year/type sold first (chains into LIFO for any remainder). Matches each payoff sale to its originating grant.
+- **Payoff sale share counts are stored, not recomputed.** When a payoff sale is auto-generated, the share count is computed via gross-up and stored. It does not automatically update if you later change lot selection. Hit "Regen payoff sales" on the Loans page to refresh all future payoff sales at once.
+- **Down payment via stock exchange is non-taxable.** The `dp_shares` field on a grant records vested shares exchanged at exercise. They are consumed FIFO from the oldest vested lots, reduce the loan principal, and generate no income or capital gains event.
 - **Cost basis for purchase grants is the purchase price, not FMV at vest.** For grants with a purchase price (`grant_price > 0`), vesting only lifts the sale restriction — it does not create a new tax event or step up the cost basis. Capital gains are computed as `sale price − purchase price`. For income/RSU grants (`grant_price = 0`), FMV at vesting is recognised as ordinary income and becomes the cost basis.

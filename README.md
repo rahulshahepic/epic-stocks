@@ -27,6 +27,12 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 |-------|------|
 | ![Sales Light Mobile](screenshots/sales-light-mobile.png) | ![Sales Dark Mobile](screenshots/sales-dark-mobile.png) |
 
+### Settings (Tax Rates & Lot Selection)
+
+| Light | Dark |
+|-------|------|
+| ![Settings Light](screenshots/settings-light-mobile.png) | ![Settings Dark](screenshots/settings-dark-mobile.png) |
+
 ### Admin Dashboard
 
 | Light | Dark |

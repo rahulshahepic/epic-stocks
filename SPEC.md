@@ -597,6 +597,9 @@ docker compose up -d
 - `VPS_USER` — SSH username
 - `VPS_SSH_KEY` — SSH private key for deployment
 
+### Security Hardening
+See **[SECURITY_HARDENING.md](SECURITY_HARDENING.md)** for what to configure in your hosting environment after deploying. It distinguishes between security that's built into the app (automatic) and infrastructure tasks you need to do yourself (Cloudflare, VPS firewall, SSH hardening).
+
 ## Order of Implementation
 
 Build in this order:

@@ -15,9 +15,9 @@ Equity vesting tracker PWA. See SPEC.md for full requirements.
 ## Tech Stack
 - Backend: Python 3.12, FastAPI, SQLite (WAL mode), SQLAlchemy
 - Frontend: React, TypeScript, Vite, Tailwind CSS, Recharts
-- Deploy: Docker Compose + Caddy (auto-HTTPS), Cloudflare in front for DDoS protection and rate limiting
-- Auth: Google Sign-In (OAuth 2.0) → backend JWT session tokens
-- Email: Resend API (not SMTP)
+- Deploy: Docker Compose + Caddy (auto-HTTPS), Cloudflare in front for DDoS/rate limiting
+- Auth: Google Sign-In (OAuth 2.0) → backend JWT session tokens (24hr expiry, no refresh tokens)
+- Email: Resend API (`RESEND_API_KEY` env var)
 
 ## Build Order
 Follow the order in SPEC.md. Build backend first, then frontend. **Every step must include tests before moving on.** Ask before making architectural decisions.
@@ -50,4 +50,5 @@ Follow the order in SPEC.md. Build backend first, then frontend. **Every step mu
 ## Deployment Notes
 - Caddy serves hashed assets (`/assets/*`) with immutable cache headers. `index.html`, `sw.js`, and `manifest.json` use `no-cache` for instant updates.
 - The service worker (`frontend/public/sw.js`) uses `skipWaiting` + `clients.claim` and network-first navigation for cache busting.
-- See PLAN.md for the privacy/encryption/admin roadmap and future plans (email notifications, security hardening).
+- See PLAN.md for the full feature roadmap (encryption, admin, sales, notifications — most now implemented).
+- See SECURITY_HARDENING.md for what's in the app vs. what requires hosting environment setup.

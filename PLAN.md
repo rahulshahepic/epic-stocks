@@ -516,13 +516,26 @@ Add to `_migrate_schema()` in `main.py`:
 
 ## Implementation Order
 
-1. **Done:** Privacy policy + transparency
-2. **Done:** Per-user column-level encryption (AES-256-GCM)
-3. **Done:** Admin system — admin dashboard, user management, email blocking
-4. **Done:** Admin test notification sender (section 7)
-5. **Next:** Multi-device / concurrent session hardening (section 6)
-6. **Next:** Stock sales + Wisconsin tax calculator (section 8)
-7. **Backlog:** Email notifications (section 4)
-8. **Backlog:** Security hardening (section 5)
-9. **Later:** Migration script for existing plaintext databases
-10. **Later:** Client-side encryption, if architecture supports it
+1. ✅ Privacy policy + transparency
+2. ✅ Per-user column-level encryption (AES-256-GCM)
+3. ✅ Admin system — dashboard, user management, email blocking
+4. ✅ Admin test notification sender (section 7)
+5. ✅ Multi-device / concurrent session hardening (section 6)
+6. ✅ Stock sales + Wisconsin tax calculator (section 8)
+7. ✅ Email notifications via Resend API (section 4)
+8. ✅ Security hardening — app-level (section 5): headers, file validation, error sanitization, test suite, dependency auditing in CI
+9. ✅ Security hardening — infrastructure: Cloudflare + VPS firewall locked to CF IPs
+
+## Remaining / Future Work
+
+| Item | Notes |
+|------|-------|
+| **SSH: disable password auth** | Two lines in `sshd_config` + reload. See SECURITY_HARDENING.md §3. |
+| **Audit logging** | Log admin actions, failed auth attempts, data deletions to a DB table. Show in admin dashboard. |
+| **DAST scanner in CI** | Add OWASP ZAP to GitHub Actions — scans the running app for vulnerabilities on every PR. |
+| **Migration script** | Convert existing plaintext databases when enabling `ENCRYPTION_MASTER_KEY` for the first time. |
+| **PDF loan statement import** | OCR or structured template for importing loan data directly from Epic's PDF statements. Stretch goal. |
+
+**Decided against:**
+- JWT refresh tokens — 24hr access tokens + seamless Google re-auth is sufficient for this use case
+- Client-side (zero-knowledge) encryption — would break server-side event computation, Excel export, and push notifications. Not practical for this architecture.

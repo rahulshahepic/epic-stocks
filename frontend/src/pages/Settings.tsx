@@ -18,6 +18,7 @@ export default function Settings() {
 
   const [taxSettings, setTaxSettings] = useState<TaxSettings | null>(null)
   const [editingTax, setEditingTax] = useState(false)
+  const [editingDp, setEditingDp] = useState(false)
   const [taxForm, setTaxForm] = useState<TaxSettings | null>(null)
   const [taxSaving, setTaxSaving] = useState(false)
 
@@ -196,20 +197,6 @@ export default function Settings() {
                  'Same tranche'}
               </dd>
             </div>
-            <div className="flex justify-between col-span-2">
-              <dt className="text-gray-500 dark:text-gray-400">Prefer stock for DP</dt>
-              <dd className="font-medium text-gray-700 dark:text-gray-300">
-                {taxSettings.prefer_stock_dp ? 'Yes — auto-calculate DP shares' : 'No — manual'}
-              </dd>
-            </div>
-            <div className="flex justify-between col-span-2">
-              <dt className="text-gray-500 dark:text-gray-400">Min DP rule</dt>
-              <dd className="font-medium text-gray-700 dark:text-gray-300">
-                {taxSettings.dp_min_percent > 0 || taxSettings.dp_min_cap > 0
-                  ? `min(${(taxSettings.dp_min_percent * 100).toFixed(0)}%, $${taxSettings.dp_min_cap.toLocaleString()})`
-                  : 'None'}
-              </dd>
-            </div>
           </dl>
         )}
 
@@ -257,6 +244,76 @@ export default function Settings() {
                   className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
                 />
               </label>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  setTaxSaving(true)
+                  try {
+                    const updated = await api.updateTaxSettings(taxForm)
+                    setTaxSettings(updated)
+                    setEditingTax(false)
+                  } catch { /* ignore */ } finally { setTaxSaving(false) }
+                }}
+                disabled={taxSaving}
+                className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {taxSaving ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                onClick={() => { setTaxForm({ ...WI_DEFAULTS }) }}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
+              >
+                Reset to WI Defaults
+              </button>
+              <button
+                onClick={() => setEditingTax(false)}
+                className="rounded-md px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* Down Payment Settings */}
+      <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Down Payment Settings</h3>
+          {!editingDp && (
+            <button
+              onClick={() => { setTaxForm(taxSettings ? { ...taxSettings } : { ...WI_DEFAULTS }); setEditingDp(true) }}
+              className="text-xs text-indigo-600 hover:text-indigo-800 dark:text-indigo-400"
+            >Edit</button>
+          )}
+        </div>
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          Controls how down payment shares are calculated when adding a new purchase.
+        </p>
+
+        {taxSettings && !editingDp && (
+          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+            <div className="flex justify-between col-span-2">
+              <dt className="text-gray-500 dark:text-gray-400">Prefer stock for DP</dt>
+              <dd className="font-medium text-gray-700 dark:text-gray-300">
+                {taxSettings.prefer_stock_dp ? 'Yes — auto-calculate DP shares' : 'No — manual'}
+              </dd>
+            </div>
+            <div className="flex justify-between col-span-2">
+              <dt className="text-gray-500 dark:text-gray-400">Min DP rule</dt>
+              <dd className="font-medium text-gray-700 dark:text-gray-300">
+                {taxSettings.dp_min_percent > 0 || taxSettings.dp_min_cap > 0
+                  ? `min(${(taxSettings.dp_min_percent * 100).toFixed(0)}%, $${taxSettings.dp_min_cap.toLocaleString()})`
+                  : 'None'}
+              </dd>
+            </div>
+          </dl>
+        )}
+
+        {editingDp && taxForm && (
+          <div className="mt-3 space-y-3">
+            <div className="grid grid-cols-2 gap-3">
               <label className="block col-span-2 flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -294,7 +351,7 @@ export default function Settings() {
                   try {
                     const updated = await api.updateTaxSettings(taxForm)
                     setTaxSettings(updated)
-                    setEditingTax(false)
+                    setEditingDp(false)
                   } catch { /* ignore */ } finally { setTaxSaving(false) }
                 }}
                 disabled={taxSaving}
@@ -303,13 +360,7 @@ export default function Settings() {
                 {taxSaving ? 'Saving...' : 'Save'}
               </button>
               <button
-                onClick={() => { setTaxForm({ ...WI_DEFAULTS }) }}
-                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
-              >
-                Reset to WI Defaults
-              </button>
-              <button
-                onClick={() => setEditingTax(false)}
+                onClick={() => setEditingDp(false)}
                 className="rounded-md px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
               >
                 Cancel

@@ -7,6 +7,7 @@ interface ImportResult {
   grants: number
   prices: number
   loans: number
+  payoff_sales: number
   sheets_imported: string[]
 }
 
@@ -15,6 +16,7 @@ export default function ImportExport() {
   const [result, setResult] = useState<ImportResult | null>(null)
   const [error, setError] = useState('')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [generatePayoffSales, setGeneratePayoffSales] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -39,7 +41,7 @@ export default function ImportExport() {
     try {
       const form = new FormData()
       form.append('file', selectedFile)
-      const resp = await fetch('/api/import/excel', {
+      const resp = await fetch(`/api/import/excel?generate_payoff_sales=${generatePayoffSales}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${getToken()}` },
         body: form,
@@ -123,10 +125,10 @@ export default function ImportExport() {
       <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
         <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Import from Excel</h3>
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          Upload a .xlsx file with Schedule, Loans, and/or Prices sheets. Only the sheets present in your file will be imported — others are left unchanged.
+          Upload a .xlsx file with Schedule, Loans, and/or Prices sheets. Only sheets present in your file will be processed — others are left unchanged.
         </p>
 
-        <div className="mt-3">
+        <div className="mt-3 space-y-3">
           <input
             ref={fileRef}
             type="file"
@@ -134,12 +136,24 @@ export default function ImportExport() {
             onChange={handleFileSelect}
             className="block w-full text-xs text-gray-500 file:mr-3 file:rounded-md file:border-0 file:bg-indigo-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-indigo-700 hover:file:bg-indigo-100 dark:text-gray-400 dark:file:bg-indigo-900/40 dark:file:text-indigo-300"
           />
+          <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+            <input
+              type="checkbox"
+              checked={generatePayoffSales}
+              onChange={e => setGeneratePayoffSales(e.target.checked)}
+              className="rounded border-gray-300 dark:border-gray-600"
+            />
+            <span>
+              Generate payoff sales for loans in this file (recommended)
+              <span className="ml-1 text-gray-400" title="For each loan in the file, automatically creates a stock sale sized to cover the payoff after capital gains tax. Only applies if file contains a Loans sheet.">ⓘ</span>
+            </span>
+          </label>
         </div>
 
         {status === 'confirm' && selectedFile && (
           <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-900/30">
             <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
-              Data for each imported sheet will be replaced. Sheets not in the file are left untouched.
+              Data for each imported sheet will be replaced (including any existing payoff sales if Loans sheet is present). Sheets not in the file are left untouched.
             </p>
             <div className="mt-2 flex gap-2">
               <button
@@ -166,6 +180,7 @@ export default function ImportExport() {
           <div className="mt-3 rounded-md bg-green-50 p-3 dark:bg-green-900/30">
             <p className="text-xs font-medium text-green-800 dark:text-green-300">
               Imported {result.sheets_imported.join(', ')}: {result.grants} grants, {result.loans} loans, {result.prices} prices
+              {result.payoff_sales > 0 && `, ${result.payoff_sales} payoff sales generated`}
             </p>
           </div>
         )}

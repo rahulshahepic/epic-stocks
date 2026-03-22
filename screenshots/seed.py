@@ -3,7 +3,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 
 from database import Base, engine, SessionLocal
-from models import User, Grant, Loan, Price
+from models import User, Grant, Loan, Price, Sale
 from auth import create_token
 from datetime import date, datetime, timezone
 
@@ -58,6 +58,20 @@ loans = [
          loan_year=2022, amount=1552.0, interest_rate=4.5, due_date=date(2028, 12, 31), loan_number="100007"),
 ]
 db.add_all(loans)
+db.flush()  # need IDs for sale loan_id FKs
+
+# Sales: a past cash-out sale and payoff sales for the 2025 loans
+sales = [
+    Sale(user_id=user.id, date=date(2024, 6, 15), shares=500, price_per_share=7.50,
+         loan_id=None, notes="Cash out"),
+    Sale(user_id=user.id, date=date(2025, 12, 31), shares=6900, price_per_share=8.50,
+         loan_id=loans[0].id, notes="Payoff sale for purchase loan 100001"),
+    Sale(user_id=user.id, date=date(2025, 12, 31), shares=260, price_per_share=8.50,
+         loan_id=loans[1].id, notes="Payoff sale for interest loan 100002"),
+    Sale(user_id=user.id, date=date(2025, 12, 31), shares=1050, price_per_share=8.50,
+         loan_id=loans[5].id, notes="Payoff sale for tax loan 100006"),
+]
+db.add_all(sales)
 
 # Extra users for admin screenshots
 extra_users = [

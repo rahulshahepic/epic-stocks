@@ -1,11 +1,11 @@
 import { useCallback, useState } from 'react'
 import { api, ConflictError } from '../api.ts'
-import type { GrantEntry } from '../api.ts'
+import type { GrantEntry, PriceEntry } from '../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { broadcastChange, useDataSync } from '../hooks/useDataSync.ts'
 
 type GrantForm = Omit<GrantEntry, 'id' | 'version'>
-type Mode = 'list' | 'purchase' | 'bonus' | 'edit'
+type Mode = 'list' | 'add' | 'edit'
 
 const empty: GrantForm = {
   year: new Date().getFullYear(),
@@ -44,9 +44,16 @@ function fmtNum(n: number) {
   return n.toLocaleString('en-US')
 }
 
+function latestPrice(prices: PriceEntry[] | null | undefined): number {
+  if (!prices || prices.length === 0) return 0
+  return prices.reduce((a, b) => a.effective_date > b.effective_date ? a : b).price
+}
+
 export default function Grants() {
   const fetchGrants = useCallback(() => api.getGrants(), [])
   const { data: grants, loading, reload } = useApiData<GrantEntry[]>(fetchGrants)
+  const fetchPrices = useCallback(() => api.getPrices(), [])
+  const { data: prices } = useApiData<PriceEntry[]>(fetchPrices)
 
   const [mode, setMode] = useState<Mode>('list')
   const [form, setForm] = useState<GrantForm>(empty)
@@ -58,11 +65,12 @@ export default function Grants() {
 
   useDataSync('grants', reload)
 
-  // Purchase flow extras
+  // Optional loan fields (for purchase-type grants in both add and edit)
   const [loanAmount, setLoanAmount] = useState(0)
   const [loanRate, setLoanRate] = useState(0)
   const [loanDueDate, setLoanDueDate] = useState('')
   const [loanNumber, setLoanNumber] = useState('')
+  const [generatePayoffSale, setGeneratePayoffSale] = useState(true)
 
   function resetForm() {
     setForm(empty)
@@ -70,6 +78,7 @@ export default function Grants() {
     setLoanRate(0)
     setLoanDueDate('')
     setLoanNumber('')
+    setGeneratePayoffSale(true)
     setEditId(null)
     setEditVersion(1)
     setError('')
@@ -78,19 +87,24 @@ export default function Grants() {
 
   function openPurchase() {
     resetForm()
-    setForm({ ...empty, type: 'Purchase' })
-    setMode('purchase')
+    setForm({ ...empty, type: 'Purchase', price: latestPrice(prices) })
+    setMode('add')
   }
 
   function openBonus() {
     resetForm()
-    setForm({ ...empty, type: 'Bonus', price: 0, dp_shares: 0 })
-    setMode('bonus')
+    setForm({ ...empty, type: 'Bonus', price: latestPrice(prices), dp_shares: 0 })
+    setMode('add')
   }
 
   function openEdit(g: GrantEntry) {
     const { id, version, ...rest } = g
     setForm(rest)
+    setLoanAmount(0)
+    setLoanRate(0)
+    setLoanDueDate('')
+    setLoanNumber('')
+    setGeneratePayoffSale(true)
     setEditId(id)
     setEditVersion(version)
     setError('')
@@ -102,37 +116,54 @@ export default function Grants() {
     setSaving(true)
     setError('')
     try {
-      if (mode === 'purchase') {
-        await api.newPurchase({
-          year: form.year,
-          shares: form.shares,
-          price: form.price,
-          vest_start: form.vest_start,
-          periods: form.periods,
-          exercise_date: form.exercise_date,
-          dp_shares: form.dp_shares || undefined,
-          loan_amount: loanAmount || undefined,
-          loan_rate: loanRate || undefined,
-          loan_due_date: loanDueDate || undefined,
-          loan_number: loanNumber || undefined,
-        })
-      } else if (mode === 'bonus') {
-        await api.addBonus({
-          year: form.year,
-          shares: form.shares,
-          price: form.price || undefined,
-          vest_start: form.vest_start,
-          periods: form.periods,
-          exercise_date: form.exercise_date,
-        })
+      if (mode === 'add') {
+        if (form.type === 'Purchase') {
+          await api.newPurchase({
+            year: form.year,
+            shares: form.shares,
+            price: form.price,
+            vest_start: form.vest_start,
+            periods: form.periods,
+            exercise_date: form.exercise_date,
+            dp_shares: form.dp_shares || undefined,
+            loan_amount: loanAmount || undefined,
+            loan_rate: loanRate || undefined,
+            loan_due_date: loanDueDate || undefined,
+            loan_number: loanNumber || undefined,
+            generate_payoff_sale: loanAmount > 0 ? generatePayoffSale : undefined,
+          })
+        } else {
+          await api.addBonus({
+            year: form.year,
+            shares: form.shares,
+            price: form.price || undefined,
+            vest_start: form.vest_start,
+            periods: form.periods,
+            exercise_date: form.exercise_date,
+          })
+        }
       } else if (mode === 'edit' && editId != null) {
         await api.updateGrant(editId, { ...form, version: editVersion })
+        if (loanAmount > 0 && form.type === 'Purchase') {
+          await api.createLoan({
+            grant_year: form.year,
+            grant_type: 'Purchase',
+            loan_type: 'Purchase',
+            loan_year: form.year,
+            amount: loanAmount,
+            interest_rate: loanRate,
+            due_date: loanDueDate,
+            loan_number: loanNumber || null,
+          }, generatePayoffSale)
+          broadcastChange('loans')
+        }
       }
       broadcastChange('grants')
       reload()
       if (addAnother) {
+        const prevType = form.type
         resetForm()
-        setForm(prev => ({ ...empty, type: prev.type }))
+        setForm(() => ({ ...empty, type: prevType, price: latestPrice(prices) }))
       } else {
         setMode('list')
         resetForm()
@@ -158,8 +189,13 @@ export default function Grants() {
   if (loading) return <p className="p-6 text-center text-sm text-gray-400">Loading...</p>
   if (!grants) return <p className="p-6 text-center text-sm text-red-500">Failed to load grants</p>
 
+  const showLoanSection = form.type === 'Purchase'
+
   if (mode !== 'list') {
-    const title = mode === 'purchase' ? 'New Purchase Grant' : mode === 'bonus' ? 'New Bonus Grant' : 'Edit Grant'
+    const title = mode === 'add'
+      ? (form.type === 'Purchase' ? 'New Purchase Grant' : 'New Bonus Grant')
+      : 'Edit Grant'
+
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -173,32 +209,69 @@ export default function Grants() {
           />
         )}
         {error && <p className="text-xs text-red-500">{error}</p>}
+
+        {/* Grant type selector — only for add mode so user can switch between Purchase/Bonus */}
+        {mode === 'add' && (
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setForm(f => ({ ...f, type: 'Purchase', dp_shares: f.dp_shares }))}
+              className={`rounded-md px-3 py-1 text-xs font-medium ${form.type === 'Purchase' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'}`}
+            >
+              Purchase
+            </button>
+            <button
+              type="button"
+              onClick={() => setForm(f => ({ ...f, type: 'Bonus', dp_shares: 0 }))}
+              className={`rounded-md px-3 py-1 text-xs font-medium ${form.type === 'Bonus' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'}`}
+            >
+              Bonus
+            </button>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-3">
           <Field label="Year" type="number" value={form.year} onChange={v => setForm(f => ({ ...f, year: +v }))} />
           <Field label="Shares" type="number" value={form.shares} onChange={v => setForm(f => ({ ...f, shares: +v }))} />
-          {mode !== 'bonus' && (
-            <Field label="Cost Basis" type="number" step="0.01" value={form.price} onChange={v => setForm(f => ({ ...f, price: +v }))} />
-          )}
-          {mode === 'bonus' && (
-            <Field label="Cost Basis (optional)" type="number" step="0.01" value={form.price} onChange={v => setForm(f => ({ ...f, price: +v }))} />
-          )}
+          <Field
+            label={form.type === 'Bonus' ? 'Cost Basis (optional)' : 'Cost Basis'}
+            type="number" step="0.01"
+            value={form.price}
+            onChange={v => setForm(f => ({ ...f, price: +v }))}
+          />
           <Field label="Vest Start" type="date" value={form.vest_start} onChange={v => setForm(f => ({ ...f, vest_start: v }))} />
           <Field label="Vest Periods" type="number" value={form.periods} onChange={v => setForm(f => ({ ...f, periods: +v }))} />
           <Field label="Exercise Date" type="date" value={form.exercise_date} onChange={v => setForm(f => ({ ...f, exercise_date: v }))} />
-          {mode === 'purchase' && (
+          {form.type === 'Purchase' && (
             <FieldWithInfo label="Down Payment Shares" info="Shares used as down payment in a stock exchange" type="number" value={form.dp_shares} onChange={v => setForm(f => ({ ...f, dp_shares: +v }))} />
           )}
         </div>
 
-        {mode === 'purchase' && (
+        {showLoanSection && (
           <>
-            <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 pt-2">Optional Loan</h3>
+            <h3 className="pt-1 text-sm font-medium text-gray-700 dark:text-gray-300">
+              {mode === 'edit' ? 'Add Loan' : 'Optional Loan'}
+            </h3>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Loan Amount" type="number" step="0.01" value={loanAmount} onChange={v => setLoanAmount(+v)} />
               <Field label="Interest Rate (%)" type="number" step="0.01" value={loanRate} onChange={v => setLoanRate(+v)} />
               <Field label="Due Date" type="date" value={loanDueDate} onChange={v => setLoanDueDate(v)} />
               <Field label="Loan Number" type="text" value={loanNumber} onChange={v => setLoanNumber(v)} />
             </div>
+            {loanAmount > 0 && (
+              <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                <input
+                  type="checkbox"
+                  checked={generatePayoffSale}
+                  onChange={e => setGeneratePayoffSale(e.target.checked)}
+                  className="rounded border-gray-300 dark:border-gray-600"
+                />
+                <span>
+                  Generate payoff sale (recommended)
+                  <span className="ml-1 text-gray-400" title="Creates a stock sale at the loan's due date sized to cover the payoff after capital gains tax">ⓘ</span>
+                </span>
+              </label>
+            )}
           </>
         )}
 

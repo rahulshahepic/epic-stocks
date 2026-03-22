@@ -21,9 +21,11 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 
 ![Import Export](screenshots/import-export-mobile.png)
 
-### Export
+### Stock Sales
 
-![Export](screenshots/05-export-ready.png)
+| Light | Dark |
+|-------|------|
+| ![Sales Light Mobile](screenshots/sales-light-mobile.png) | ![Sales Dark Mobile](screenshots/sales-dark-mobile.png) |
 
 ### Admin Dashboard
 
@@ -35,7 +37,8 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 
 - **Event Timeline** — computed on the fly from grants, prices, and loans. Never stored. Shows income, capital gains, share price, and cumulative totals.
 - **Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, next event) + 4 interactive charts.
-- **CRUD Management** — full create/read/update/delete for Grants, Loans, and Prices.
+- **Stock Sales** — record share sales with FIFO cost-basis tracking, LT/ST capital gains split, and Wisconsin tax calculator. Payoff sales can be linked to loans and auto-sized to cover the cash due after tax (gross-up calculation).
+- **CRUD Management** — full create/read/update/delete for Grants, Loans, Prices, and Sales.
 - **Quick Flows** — convenience endpoints: "New Purchase" (grant + loan), "Annual Price", "Add Bonus".
 - **Excel Import/Export** — bootstrap from an existing Vesting.xlsx or export current state.
 - **Google Sign-In** — OAuth 2.0 authentication, automatic account creation.
@@ -201,7 +204,8 @@ epic-stocks/
 ├── backend/
 │   ├── main.py              # FastAPI app + schema migration
 │   ├── core.py              # Event generation logic (frozen)
-│   ├── models.py            # SQLAlchemy models (User, Grant, Loan, Price, etc.)
+│   ├── sales_engine.py      # FIFO cost-basis + tax + gross-up calculations
+│   ├── models.py            # SQLAlchemy models (User, Grant, Loan, Price, Sale, etc.)
 │   ├── database.py          # SQLite setup (WAL mode)
 │   ├── auth.py              # JWT + Google OAuth + admin checks
 │   ├── crypto.py            # Per-user AES-256-GCM encryption
@@ -216,6 +220,7 @@ epic-stocks/
 │   │   ├── events.py        # Computed timeline + dashboard
 │   │   ├── flows.py         # Quick flows (new purchase, bonus, price)
 │   │   ├── import_export.py # Excel import/export + template
+│   │   ├── sales.py         # Sales CRUD + tax breakdown
 │   │   ├── push.py          # Push notification subscriptions
 │   │   ├── notifications.py # Email notification preferences
 │   │   └── admin.py         # Admin dashboard, user mgmt, blocklist
@@ -263,6 +268,12 @@ All endpoints require `Authorization: Bearer <jwt>` except auth, health, config,
 | POST | `/api/loans/bulk` | Bulk create loans |
 | GET/POST | `/api/prices` | List/create prices |
 | GET/PUT/DELETE | `/api/prices/{id}` | Get/update/delete price |
+| GET/POST | `/api/sales` | List/create sales |
+| GET/PUT/DELETE | `/api/sales/{id}` | Get/update/delete sale |
+| GET | `/api/sales/{id}/tax-breakdown` | FIFO tax breakdown for a sale |
+| GET | `/api/loans/{id}/payoff-sale-suggestion` | Suggested gross-up sale for a loan |
+| GET/POST | `/api/loan-payments` | List/create early loan payments |
+| PUT/DELETE | `/api/loan-payments/{id}` | Update/delete a loan payment |
 | POST | `/api/flows/new-purchase` | Create grant + optional loan |
 | POST | `/api/flows/annual-price` | Add a price entry |
 | POST | `/api/flows/add-bonus` | Add a bonus grant |
@@ -327,7 +338,8 @@ Notifications are sent once per day, at 7 AM UTC, only on days when the user has
 |---|---|
 | Vesting | Yes |
 | Exercise | Yes |
-| Loan Repayment | Yes |
+| Loan Payoff | Yes |
+| Planned sale (loan payoff) | Yes |
 | Share Price update | No |
 | Down payment exchange | No |
 
@@ -362,5 +374,5 @@ If you run an instance for others: secure the database file, use HTTPS, set `ENC
 ## Key Design Decisions
 
 - **Events are never stored.** They're computed per-request from the three source tables (Grants, Loans, Prices). This eliminates sync issues entirely.
-- **core.py is frozen.** The event generation logic is tested against known-good values (89 events, cum_shares=269,843, cum_income=$144,325, cum_cap_gains=$1,243,695). Don't modify it.
+- **core.py is frozen.** The event generation logic is tested against known-good values (89 events, cum_shares=571,500, cum_income=$144,325, cum_cap_gains=$1,243,695). Don't modify it.
 - **Excel import is destructive.** It replaces all existing data for that user. The import flow validates first, previews second, writes third — all in one transaction.

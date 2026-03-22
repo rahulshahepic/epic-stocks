@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { api, ConflictError } from '../api.ts'
-import type { LoanEntry } from '../api.ts'
+import type { LoanEntry, SaleEntry } from '../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { broadcastChange, useDataSync } from '../hooks/useDataSync.ts'
 
@@ -40,11 +40,13 @@ function fmt$(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 }
 
-const LOAN_TYPES = ['Interest', 'Tax', 'Principal']
+const LOAN_TYPES = ['Interest', 'Tax', 'Principal', 'Purchase']
 
 export default function Loans() {
   const fetchLoans = useCallback(() => api.getLoans(), [])
   const { data: loans, loading, reload } = useApiData<LoanEntry[]>(fetchLoans)
+  const fetchSales = useCallback(() => api.getSales(), [])
+  const { data: sales, reload: reloadSales } = useApiData<SaleEntry[]>(fetchSales)
 
   const [mode, setMode] = useState<Mode>('list')
   const [form, setForm] = useState<LoanForm>(empty)
@@ -54,8 +56,10 @@ export default function Loans() {
   const [error, setError] = useState('')
   const [conflict, setConflict] = useState(false)
   const [generatePayoffSale, setGeneratePayoffSale] = useState(true)
+  const [generatingSale, setGeneratingSale] = useState(false)
 
   useDataSync('loans', reload)
+  useDataSync('sales', reloadSales)
 
   function resetForm() {
     setForm(empty)
@@ -63,6 +67,7 @@ export default function Loans() {
     setEditVersion(1)
     setError('')
     setConflict(false)
+    setGeneratePayoffSale(true)
   }
 
   function openAdd() {
@@ -108,6 +113,28 @@ export default function Loans() {
     }
   }
 
+  async function handleGeneratePayoffSale() {
+    if (!editId) return
+    setGeneratingSale(true)
+    setError('')
+    try {
+      const suggestion = await api.getLoanPayoffSuggestion(editId)
+      await api.createSale({
+        date: suggestion.date,
+        shares: suggestion.shares,
+        price_per_share: suggestion.price_per_share,
+        loan_id: suggestion.loan_id,
+        notes: suggestion.notes,
+      })
+      broadcastChange('sales')
+      reloadSales()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to generate payoff sale')
+    } finally {
+      setGeneratingSale(false)
+    }
+  }
+
   async function handleDelete(id: number) {
     if (!confirm('Delete this loan?')) return
     await api.deleteLoan(id)
@@ -120,6 +147,10 @@ export default function Loans() {
 
   if (mode !== 'list') {
     const title = mode === 'add' ? 'Add Loan' : 'Edit Loan'
+    const linkedSale: SaleEntry | undefined = mode === 'edit' && editId != null
+      ? sales?.find(s => s.loan_id === editId)
+      : undefined
+
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -162,6 +193,7 @@ export default function Loans() {
           <Field label="Due Date" type="date" value={form.due_date} onChange={v => setForm(f => ({ ...f, due_date: v }))} />
           <Field label="Loan Number" type="text" value={form.loan_number ?? ''} onChange={v => setForm(f => ({ ...f, loan_number: v || null }))} />
         </div>
+
         {mode === 'add' && (
           <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
             <input
@@ -176,6 +208,36 @@ export default function Loans() {
             </span>
           </label>
         )}
+
+        {mode === 'edit' && (
+          <div>
+            <h3 className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">Payoff Sale</h3>
+            {linkedSale ? (
+              <div className="rounded-md border border-green-200 bg-green-50 p-3 dark:border-green-800 dark:bg-green-900/20">
+                <p className="text-xs font-medium text-green-800 dark:text-green-300">Sale linked</p>
+                <p className="mt-1 text-xs text-green-700 dark:text-green-400">
+                  {linkedSale.date} · {linkedSale.shares.toLocaleString()} shares @ ${linkedSale.price_per_share.toFixed(2)}/share
+                  {linkedSale.notes && <span className="ml-1 text-gray-400">— {linkedSale.notes}</span>}
+                </p>
+                <p className="mt-1 text-[10px] text-gray-400">To edit this sale, go to the Sales page.</p>
+              </div>
+            ) : (
+              <div className="rounded-md border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/50">
+                <p className="text-xs text-gray-500 dark:text-gray-400">No payoff sale linked to this loan.</p>
+                <button
+                  type="button"
+                  onClick={handleGeneratePayoffSale}
+                  disabled={generatingSale}
+                  className="mt-2 rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {generatingSale ? 'Generating...' : 'Generate payoff sale suggestion'}
+                </button>
+                <p className="mt-1 text-[10px] text-gray-400">Calculates gross-up shares to cover the cash due after tax.</p>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="flex gap-2 pt-2">
           <button
             onClick={() => handleSave(false)}
@@ -218,35 +280,45 @@ export default function Loans() {
               <th className="px-3 py-2 text-right">Rate</th>
               <th className="px-3 py-2">Due</th>
               <th className="px-3 py-2">Loan #</th>
+              <th className="px-3 py-2">Sale</th>
               <th className="px-3 py-2"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-            {loans.map(l => (
-              <tr key={l.id} className="bg-white dark:bg-gray-900">
-                <td className="whitespace-nowrap px-3 py-2 text-gray-700 dark:text-gray-300">{l.grant_year} {l.grant_type}</td>
-                <td className="px-3 py-2">
-                  <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                    l.loan_type === 'Interest' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' :
-                    l.loan_type === 'Tax' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300' :
-                    'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
-                  }`}>
-                    {l.loan_type}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{l.loan_year}</td>
-                <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmt$(l.amount)}</td>
-                <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{l.interest_rate}%</td>
-                <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{l.due_date}</td>
-                <td className="px-3 py-2 text-gray-400">{l.loan_number ?? '—'}</td>
-                <td className="px-3 py-2 text-right">
-                  <button onClick={() => openEdit(l)} className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 mr-2">Edit</button>
-                  <button onClick={() => handleDelete(l.id)} className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300">Del</button>
-                </td>
-              </tr>
-            ))}
+            {loans.map(l => {
+              const hasSale = sales?.some(s => s.loan_id === l.id)
+              return (
+                <tr key={l.id} className="bg-white dark:bg-gray-900">
+                  <td className="whitespace-nowrap px-3 py-2 text-gray-700 dark:text-gray-300">{l.grant_year} {l.grant_type}</td>
+                  <td className="px-3 py-2">
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                      l.loan_type === 'Interest' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' :
+                      l.loan_type === 'Tax' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300' :
+                      'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
+                    }`}>
+                      {l.loan_type}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{l.loan_year}</td>
+                  <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmt$(l.amount)}</td>
+                  <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{l.interest_rate}%</td>
+                  <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{l.due_date}</td>
+                  <td className="px-3 py-2 text-gray-400">{l.loan_number ?? '—'}</td>
+                  <td className="px-3 py-2">
+                    {hasSale
+                      ? <span className="text-[10px] text-green-600 dark:text-green-400">✓ linked</span>
+                      : <span className="text-[10px] text-gray-400">none</span>
+                    }
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <button onClick={() => openEdit(l)} className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 mr-2">Edit</button>
+                    <button onClick={() => handleDelete(l.id)} className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300">Del</button>
+                  </td>
+                </tr>
+              )
+            })}
             {loans.length === 0 && (
-              <tr><td colSpan={8} className="px-3 py-6 text-center text-gray-400">No loans yet</td></tr>
+              <tr><td colSpan={9} className="px-3 py-6 text-center text-gray-400">No loans yet</td></tr>
             )}
           </tbody>
         </table>

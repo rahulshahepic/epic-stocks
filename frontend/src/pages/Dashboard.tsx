@@ -759,9 +759,26 @@ export default function Dashboard() {
       total_shares: lastEvent?.cum_shares ?? 0,
       total_income: lastEvent?.cum_income ?? 0,
       total_cap_gains: lastEvent?.cum_cap_gains ?? 0,
-      total_interest: loans
-        .filter(l => l.loan_type === 'Interest')
-        .reduce((sum, l) => sum + l.amount, 0),
+      total_interest: (() => {
+        const cardYear = parseInt(cardDate.slice(0, 4), 10)
+        const purchaseLoans = loans.filter(l => l.loan_type === 'Purchase')
+        const interestLoans = loans.filter(l => l.loan_type === 'Interest')
+        // Existing interest loans up to cardYear
+        let total = interestLoans
+          .filter(l => l.loan_year <= cardYear)
+          .reduce((sum, l) => sum + l.amount, 0)
+        // Projected interest from purchase loans for years not yet in DB, up to cardYear
+        for (const p of purchaseLoans) {
+          const dueYear = new Date(p.due_date + 'T00:00:00').getFullYear()
+          for (let yr = p.loan_year + 1; yr <= Math.min(cardYear, dueYear); yr++) {
+            const exists = interestLoans.some(
+              l => l.grant_year === p.grant_year && l.grant_type === p.grant_type && l.loan_year === yr
+            )
+            if (!exists) total += p.amount * p.interest_rate
+          }
+        }
+        return total
+      })(),
       total_loan_principal: (() => {
         // Loans settled by a linked payoff Sale on or before cardDate
         const settledIds = new Set(

@@ -195,6 +195,7 @@ export const api = {
     year: number; shares: number; price: number; vest_start: string;
     periods: number; exercise_date: string; dp_shares?: number;
     loan_amount?: number; loan_rate?: number; loan_due_date?: string; loan_number?: string;
+    generate_payoff_sale?: boolean;
   }) => post<{ grant: GrantEntry; loan?: LoanEntry }>('/api/flows/new-purchase', data),
 
   addBonus: (data: {

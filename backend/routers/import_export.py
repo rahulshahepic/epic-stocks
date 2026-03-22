@@ -3,12 +3,12 @@ import io
 import tempfile
 from datetime import datetime, date
 from openpyxl.comments import Comment
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import User, Grant, Loan, Price
+from models import User, Grant, Loan, Price, Sale
 from auth import get_current_user
 from excel_io import read_grants_from_excel, read_prices_from_excel, read_loans_from_excel, write_events_to_excel
 from core import generate_all_events, compute_timeline
@@ -129,6 +129,7 @@ _XLSX_MAGIC = b"PK\x03\x04"  # ZIP/OOXML magic bytes
 @router.post("/import/excel", status_code=201)
 def import_excel(
     file: UploadFile = File(...),
+    generate_payoff_sales: bool = Query(default=False),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -198,6 +199,8 @@ def import_excel(
     if has_schedule:
         db.query(Grant).filter(Grant.user_id == user.id).delete()
     if has_loans:
+        # Remove loan-linked payoff sales first to avoid orphaned loan_id references
+        db.query(Sale).filter(Sale.user_id == user.id, Sale.loan_id.isnot(None)).delete()
         db.query(Loan).filter(Loan.user_id == user.id).delete()
     if has_prices:
         db.query(Price).filter(Price.user_id == user.id).delete()
@@ -237,10 +240,33 @@ def import_excel(
 
     db.commit()
 
+    payoff_sales_created = 0
+    if has_loans and generate_payoff_sales:
+        from routers.loans import _compute_payoff_sale
+        new_loans = db.query(Loan).filter(Loan.user_id == user.id).all()
+        for ln in new_loans:
+            try:
+                suggestion = _compute_payoff_sale(ln, user, db)
+                if suggestion["shares"] > 0 and suggestion["price_per_share"] > 0:
+                    db.add(Sale(
+                        user_id=user.id,
+                        date=suggestion["date"],
+                        shares=suggestion["shares"],
+                        price_per_share=suggestion["price_per_share"],
+                        loan_id=ln.id,
+                        notes=suggestion["notes"],
+                    ))
+                    payoff_sales_created += 1
+            except Exception:
+                pass  # best-effort; missing price data etc. silently skipped
+        if payoff_sales_created:
+            db.commit()
+
     return {
         "grants": len(grants_raw),
         "prices": len(prices_raw),
         "loans": len(loans_raw),
+        "payoff_sales": payoff_sales_created,
         "sheets_imported": [s for s, present in [("Schedule", has_schedule), ("Prices", has_prices), ("Loans", has_loans)] if present],
     }
 

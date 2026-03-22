@@ -4,7 +4,7 @@ from pydantic import BaseModel, field_validator
 from datetime import date
 
 from database import get_db
-from models import User, Grant, Loan, Price
+from models import User, Grant, Loan, Price, Sale
 from schemas import GrantOut, LoanOut, PriceOut
 from auth import get_current_user
 
@@ -23,6 +23,7 @@ class NewPurchaseRequest(BaseModel):
     loan_rate: float | None = None
     loan_due_date: date | None = None
     loan_number: str | None = None
+    generate_payoff_sale: bool = True
 
     @field_validator("year")
     @classmethod
@@ -133,9 +134,25 @@ def new_purchase(body: NewPurchaseRequest, user: User = Depends(get_current_user
     db.commit()
     db.refresh(grant)
 
-    result = {"grant": GrantOut.model_validate(grant)}
     if loan:
         db.refresh(loan)
+        if body.generate_payoff_sale:
+            from routers.loans import _compute_payoff_sale
+            suggestion = _compute_payoff_sale(loan, user, db)
+            if suggestion["shares"] > 0 and suggestion["price_per_share"] > 0:
+                sale = Sale(
+                    user_id=user.id,
+                    date=suggestion["date"],
+                    shares=suggestion["shares"],
+                    price_per_share=suggestion["price_per_share"],
+                    loan_id=loan.id,
+                    notes=suggestion["notes"],
+                )
+                db.add(sale)
+                db.commit()
+
+    result = {"grant": GrantOut.model_validate(grant)}
+    if loan:
         result["loan"] = LoanOut.model_validate(loan)
 
     return result

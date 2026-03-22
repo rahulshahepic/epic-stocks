@@ -11,7 +11,7 @@ const MOCK_DASHBOARD = {
   total_loan_principal: 75000,
   total_tax_paid: 5000,
   cash_received: 10000,
-  loan_payment_by_year: [{ year: '2025', same_tranche_sale: 19900, cash_in: 0 }],
+  loan_payment_by_year: [{ year: '2025', payoff_sale: 19900, cash_in: 0 }],
   next_event: { date: '2026-03-01', event_type: 'Vesting' },
 }
 

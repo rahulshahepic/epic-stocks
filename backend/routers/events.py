@@ -352,16 +352,16 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
         payments_by_loan[lp.loan_id] = payments_by_loan.get(lp.loan_id, 0.0) + lp.amount
     covered_loan_ids = {s.loan_id for s in sales_db if s.loan_id is not None}
 
-    # Loan payment by year: same_tranche_sale vs cash_in
+    # Loan payment by year: payoff_sale vs cash_in
     loan_payment_by_year: dict[str, dict] = {}
     for i, ln in enumerate(loans_db):
         year = str(ln.due_date.year)
         early_paid = payments_by_loan.get(ln.id, 0.0)
         cash_due = max(0.0, ln.amount - early_paid)
         if year not in loan_payment_by_year:
-            loan_payment_by_year[year] = {"year": year, "same_tranche_sale": 0.0, "cash_in": 0.0}
+            loan_payment_by_year[year] = {"year": year, "payoff_sale": 0.0, "cash_in": 0.0}
         if ln.id in covered_loan_ids:
-            loan_payment_by_year[year]["same_tranche_sale"] += cash_due
+            loan_payment_by_year[year]["payoff_sale"] += cash_due
         else:
             loan_payment_by_year[year]["cash_in"] += cash_due
 

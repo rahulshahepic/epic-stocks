@@ -74,7 +74,7 @@ export interface DashboardData {
   total_loan_principal: number
   total_tax_paid: number
   cash_received: number
-  loan_payment_by_year: { year: string; same_tranche_sale: number; cash_in: number }[]
+  loan_payment_by_year: { year: string; payoff_sale: number; cash_in: number }[]
   next_event: { date: string; event_type: string } | null
 }
 

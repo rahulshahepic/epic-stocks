@@ -237,10 +237,9 @@ Add email notifications alongside existing push notifications, with a **strict o
 
 ### Authentication Hardening
 
-- JWT token rotation (refresh tokens)
-- Session invalidation on password change / account deletion
-- Brute force protection on auth endpoints
-- Audit logging: log all admin actions, failed auth attempts, data deletions
+- JWT tokens expire after 24 hours; re-auth via Google OAuth is seamless (no refresh token mechanism — acceptable for this architecture)
+- Brute force protection on auth endpoints handled by Cloudflare WAF
+- Audit logging: log all admin actions, failed auth attempts, data deletions (not yet implemented)
 
 ### Implementation Plan
 

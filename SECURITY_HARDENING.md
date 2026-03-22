@@ -4,23 +4,19 @@ Three areas in priority order. Sections 1 and 3 are infrastructure tasks requiri
 
 ---
 
-## 1. Cloudflare (DDoS / bot protection) — Infrastructure Task
+## 1. Cloudflare (DDoS / bot protection) — ✅ Done
 
-> **Status: Manual — requires DNS/Cloudflare access**
+> **Status: Complete — Cloudflare is live, all web traffic required to go through it**
 
-### Steps
+### Completed
 
-1. Add site to Cloudflare free tier, update nameservers at domain registrar
-2. Set SSL/TLS mode to **Full (Strict)** (Caddy already provisions a cert from Let's Encrypt; Cloudflare validates it end-to-end)
-3. Confirm "Under Attack Mode" is available in the Cloudflare dashboard (enable only during active attacks — it adds a JS challenge for all visitors)
-4. Create WAF rate-limiting rules:
-   - Block IPs that hit `/api/auth/*` more than **10 req/min**
-   - Block IPs that hit `/api/*` more than **200 req/min**
-5. Lock Hetzner Firewall (or equivalent VPS firewall) to allow ports 80/443 **only from Cloudflare IP ranges**:
-   - IPv4: https://www.cloudflare.com/ips-v4
-   - IPv6: https://www.cloudflare.com/ips-v6
-   - This prevents attackers from bypassing Cloudflare by hitting the origin IP directly
-6. Verify Caddy receives real client IPs via the `CF-Connecting-IP` header (Cloudflare sets this; Caddy passes it through — no extra config needed for logging, but if you add IP-based logic in the app, read this header, not `X-Forwarded-For`)
+1. ✅ Site added to Cloudflare, nameservers updated at registrar
+2. ✅ SSL/TLS mode set to **Full (Strict)**
+3. ✅ WAF rate-limiting rules active:
+   - Block IPs hitting `/api/auth/*` more than **10 req/min**
+   - Block IPs hitting `/api/*` more than **200 req/min**
+4. ✅ VPS firewall locked to allow ports 80/443 **only from Cloudflare IP ranges** — origin IP not directly reachable
+5. Caddy receives real client IPs via `CF-Connecting-IP` header (no extra config needed)
 
 **No Python-level rate limiting (slowapi) — Cloudflare handles this at the edge.**
 
@@ -69,21 +65,20 @@ Added to `.github/workflows/test.yml`:
 
 ---
 
-## 3. SSH Hardening — Infrastructure Task
+## 3. SSH Hardening — ⚠️ Pending
 
-> **Status: Manual — requires server SSH access**
+> **Status: Port 22 is open and still allows password authentication. Key-based auth works but password auth is not yet disabled.**
 
 ### Steps (in order — do not disable password auth before adding your key)
 
-1. Add your public SSH key to `~/.ssh/authorized_keys` on the server
-2. Verify you can log in with the key **before** changing sshd config
-3. Edit `/etc/ssh/sshd_config`:
+1. ✅ SSH key added to `~/.ssh/authorized_keys` (GitHub Actions deploys via key)
+2. ⬜ Edit `/etc/ssh/sshd_config` to disable password auth and root login:
    ```
    PasswordAuthentication no
    PermitRootLogin no
    ```
-4. Reload: `systemctl reload sshd`
-5. Create a non-root deploy user:
+3. ⬜ Reload: `systemctl reload sshd`
+4. ⬜ Create a non-root deploy user:
    ```bash
    useradd -m -s /bin/bash deploy
    usermod -aG docker deploy
@@ -93,8 +88,10 @@ Added to `.github/workflows/test.yml`:
    chmod 700 /home/deploy/.ssh
    chmod 600 /home/deploy/.ssh/authorized_keys
    ```
-6. Update the `SSH_PRIVATE_KEY` GitHub Actions secret to use the deploy user's key
-7. Update `deploy.yml` to SSH as `deploy@<host>` instead of `root@<host>`
+5. ⬜ Update the `SSH_PRIVATE_KEY` GitHub Actions secret to use the deploy user's key
+6. ⬜ Update `deploy.yml` to SSH as `deploy@<host>` instead of `root@<host>`
+
+> Note: Port 22 is exposed directly (not behind Cloudflare — Cloudflare only proxies HTTP/S). Disabling password auth is the critical step here.
 
 ---
 
@@ -102,11 +99,11 @@ Added to `.github/workflows/test.yml`:
 
 | # | Item | Status |
 |---|------|--------|
-| 1 | Cloudflare setup + WAF rules | Manual |
-| 2 | Hetzner firewall locked to CF IPs | Manual |
+| 1 | Cloudflare setup + WAF rules | ✅ Done |
+| 2 | VPS firewall locked to CF IPs only | ✅ Done |
 | 3 | Security headers in Caddyfile | ✅ Done |
 | 4 | File upload hardening | ✅ Done |
 | 5 | Hybrid 500 sanitization + error log UI | ✅ Done |
 | 6 | Security test suite | ✅ Done |
 | 7 | pip-audit + npm audit in CI | ✅ Done |
-| 8 | SSH hardening + deploy user | Manual |
+| 8 | SSH: disable password auth + deploy user | ⚠️ Pending |

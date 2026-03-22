@@ -107,6 +107,7 @@ export interface TimelineEvent {
   notes?: string | null
   // Sale event fields
   gross_proceeds?: number | null
+  estimated_tax?: number | null
 }
 
 export interface GrantEntry {

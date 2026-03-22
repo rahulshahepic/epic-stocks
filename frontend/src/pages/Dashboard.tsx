@@ -585,9 +585,11 @@ export default function Dashboard() {
     for (const e of events) {
       if (e.date > cardDate) { nextEvent = { date: e.date, event_type: e.event_type }; break }
     }
-    const taxPaid = loans
-      .filter(l => l.loan_type === 'Tax' && l.due_date <= cardDate)
-      .reduce((sum, l) => sum + l.amount, 0)
+    const taxPaid =
+      loans.filter(l => l.loan_type === 'Tax' && l.due_date <= cardDate)
+        .reduce((sum, l) => sum + l.amount, 0)
+      + events.filter(e => e.event_type === 'Sale' && e.date <= cardDate)
+        .reduce((sum, e) => sum + (e.estimated_tax ?? 0), 0)
     const cashReceived = sales
       ? sales.filter(s => s.loan_id === null && s.date <= cardDate)
           .reduce((sum, s) => sum + s.shares * s.price_per_share, 0)

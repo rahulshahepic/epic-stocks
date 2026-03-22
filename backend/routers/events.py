@@ -3,9 +3,10 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import User, Grant, Loan, Price, LoanPayment, Sale
+from models import User, Grant, Loan, Price, LoanPayment, Sale, TaxSettings
 from auth import get_current_user
 from core import generate_all_events, compute_timeline
+from sales_engine import compute_sale_tax
 
 router = APIRouter(prefix="/api", tags=["events"])
 
@@ -219,6 +220,39 @@ def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales:
     return enriched
 
 
+def _annotate_sale_taxes(enriched: list, timeline: list, ts_dict: dict) -> None:
+    """
+    Compute estimated_tax for each Sale event in place, in chronological order.
+    Prior sales are injected as negative vested_shares so FIFO lots are consumed correctly.
+    """
+    prior_sales: list[dict] = []
+    for e in enriched:
+        if e.get("event_type") != "Sale":
+            continue
+        fifo_tl = list(timeline)
+        for ps in prior_sales:
+            fifo_tl.append({
+                "date": datetime.combine(ps["date"], datetime.min.time())
+                        if not isinstance(ps["date"], datetime) else ps["date"],
+                "event_type": "Sale",
+                "vested_shares": -ps["shares"],
+                "grant_price": None,
+                "share_price": 0.0,
+            })
+        fifo_tl.sort(key=lambda x: (
+            x["date"].date() if isinstance(x["date"], datetime) else x["date"],
+            0 if x.get("event_type") == "Vesting" else 1,
+        ))
+        sale_date = e["date"]
+        if isinstance(sale_date, datetime):
+            sale_date = sale_date.date()
+        shares = abs(e.get("vested_shares") or 0)
+        price_per_share = round(e["gross_proceeds"] / shares, 10) if shares else 0.0
+        result = compute_sale_tax(fifo_tl, {"date": sale_date, "shares": shares, "price_per_share": price_per_share}, ts_dict)
+        e["estimated_tax"] = result["estimated_tax"]
+        prior_sales.append({"date": sale_date, "shares": shares})
+
+
 @router.get("/events")
 def get_events(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     grants, prices, loans, loans_db, initial_price = _user_source_data(user, db)
@@ -231,6 +265,21 @@ def get_events(user: User = Depends(get_current_user), db: Session = Depends(get
     sales = db.query(Sale).filter(Sale.user_id == user.id).all()
 
     enriched = _enrich_timeline(timeline, loans_db, loan_payments, sales)
+
+    ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
+    if ts_row:
+        ts_dict = {
+            "federal_income_rate": ts_row.federal_income_rate,
+            "federal_lt_cg_rate": ts_row.federal_lt_cg_rate,
+            "federal_st_cg_rate": ts_row.federal_st_cg_rate,
+            "niit_rate": ts_row.niit_rate,
+            "state_income_rate": ts_row.state_income_rate,
+            "state_lt_cg_rate": ts_row.state_lt_cg_rate,
+            "state_st_cg_rate": ts_row.state_st_cg_rate,
+            "lt_holding_days": ts_row.lt_holding_days,
+        }
+        _annotate_sale_taxes(enriched, timeline, ts_dict)
+
     return [_serialize_event(e) for e in enriched]
 
 
@@ -261,6 +310,40 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
 
     events = generate_all_events(grants, prices, loans)
     timeline = compute_timeline(events, initial_price)
+
+    # Add estimated tax from Sale events (FIFO, chronological order)
+    ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
+    if ts_row and sales_db:
+        ts_dict = {
+            "federal_income_rate": ts_row.federal_income_rate,
+            "federal_lt_cg_rate": ts_row.federal_lt_cg_rate,
+            "federal_st_cg_rate": ts_row.federal_st_cg_rate,
+            "niit_rate": ts_row.niit_rate,
+            "state_income_rate": ts_row.state_income_rate,
+            "state_lt_cg_rate": ts_row.state_lt_cg_rate,
+            "state_st_cg_rate": ts_row.state_st_cg_rate,
+            "lt_holding_days": ts_row.lt_holding_days,
+        }
+        prior: list[dict] = []
+        for s in sorted(sales_db, key=lambda x: x.date):
+            if s.date > today:
+                continue
+            fifo_tl = list(timeline)
+            for ps in prior:
+                fifo_tl.append({
+                    "date": datetime.combine(ps["date"], datetime.min.time()),
+                    "event_type": "Sale",
+                    "vested_shares": -ps["shares"],
+                    "grant_price": None,
+                    "share_price": 0.0,
+                })
+            fifo_tl.sort(key=lambda x: (
+                x["date"].date() if isinstance(x["date"], datetime) else x["date"],
+                0 if x.get("event_type") == "Vesting" else 1,
+            ))
+            result = compute_sale_tax(fifo_tl, {"date": s.date, "shares": s.shares, "price_per_share": s.price_per_share}, ts_dict)
+            total_tax_paid += result["estimated_tax"]
+            prior.append({"date": s.date, "shares": s.shares})
 
     # Build loan payment data for the loan payment chart
     loan_payments_db = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).all()

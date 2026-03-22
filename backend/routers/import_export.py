@@ -284,7 +284,7 @@ def download_template():
     ws = wb.active
     ws.title = "Schedule"
     sched_headers = ["Year", "Type", "Shares", "Price", "Vest Start", "Periods",
-                     "", "", "", "", "", "", "", "Exercise Date", "DP Shares"]
+                     "Exercise Date", "DP Shares"]
     _write_headers(ws, sched_headers)
     # Example row
     _body_cell(ws, 2, 1, 2020)
@@ -293,8 +293,8 @@ def download_template():
     _body_cell(ws, 2, 4, 5.00, "\\$#,##0.00")
     _body_cell(ws, 2, 5, date(2020, 3, 15), "mm/dd/yyyy")
     _body_cell(ws, 2, 6, 5)
-    _body_cell(ws, 2, 14, date(2030, 3, 15), "mm/dd/yyyy")
-    _body_cell(ws, 2, 15, 0)
+    _body_cell(ws, 2, 7, date(2030, 3, 15), "mm/dd/yyyy")
+    _body_cell(ws, 2, 8, 0)
     # Add hints as cell comments on headers (avoids extra rows that break import)
     for col, note in [(1, "e.g. 2020"), (2, "Purchase or Bonus"), (3, "# of shares"),
                       (4, "$ per share"), (5, "mm/dd/yyyy"), (6, "# vesting periods")]:
@@ -340,7 +340,7 @@ def download_template():
 # ============================================================
 
 _SCHED_HEADERS = ["Year", "Type", "Shares", "Price", "Vest Start", "Periods",
-                   "", "", "", "", "", "", "", "Exercise Date", "DP Shares"]
+                   "Exercise Date", "DP Shares"]
 _LOAN_HEADERS = ["Loan #", "Grant Year", "Grant Type", "Loan Type", "Loan Year",
                   "Amount", "Rate", "Due Date"]
 _PRICE_HEADERS = ["Date", "Price"]
@@ -394,8 +394,8 @@ def export_excel(
         _body_cell(ws_sched, i, 4, g.price, "\\$#,##0.00")
         _body_cell(ws_sched, i, 5, g.vest_start, "mm/dd/yyyy")
         _body_cell(ws_sched, i, 6, g.periods)
-        _body_cell(ws_sched, i, 14, g.exercise_date, "mm/dd/yyyy")
-        _body_cell(ws_sched, i, 15, g.dp_shares, "#,##0")
+        _body_cell(ws_sched, i, 7, g.exercise_date, "mm/dd/yyyy")
+        _body_cell(ws_sched, i, 8, g.dp_shares, "#,##0")
 
     # -- Loans sheet --
     ws_loans = wb.create_sheet("Loans")

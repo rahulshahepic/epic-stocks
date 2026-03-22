@@ -95,8 +95,8 @@ def test_import_schedule_only(client):
                 headers=auth_header(token))
 
     xlsx = _make_xlsx({"Schedule": [
-        ["Year", "Type", "Shares", "Price", "Vest Start", "Periods", "", "", "", "", "", "", "", "Exercise Date", "DP Shares"],
-        [2020, "Purchase", 100, 5.0, date(2020, 1, 1), 5, None, None, None, None, None, None, None, date(2025, 1, 1), 0],
+        ["Year", "Type", "Shares", "Price", "Vest Start", "Periods", "Exercise Date", "DP Shares"],
+        [2020, "Purchase", 100, 5.0, date(2020, 1, 1), 5, date(2025, 1, 1), 0],
     ]})
     resp = client.post("/api/import/excel",
         files={"file": ("grants.xlsx", xlsx, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
@@ -130,8 +130,8 @@ def test_import_no_recognized_sheets(client):
 def test_import_rejects_empty_grant_type(client):
     token = register_user(client)
     xlsx = _make_xlsx({"Schedule": [
-        ["Year", "Type", "Shares", "Price", "Vest Start", "Periods", "", "", "", "", "", "", "", "Exercise Date", "DP Shares"],
-        [2020, "", 100, 5.0, date(2020, 1, 1), 5, None, None, None, None, None, None, None, date(2025, 1, 1), 0],
+        ["Year", "Type", "Shares", "Price", "Vest Start", "Periods", "Exercise Date", "DP Shares"],
+        [2020, "", 100, 5.0, date(2020, 1, 1), 5, date(2025, 1, 1), 0],
     ]})
     resp = client.post("/api/import/excel",
         files={"file": ("bad.xlsx", xlsx, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
@@ -143,8 +143,8 @@ def test_import_rejects_empty_grant_type(client):
 def test_import_rejects_negative_shares(client):
     token = register_user(client)
     xlsx = _make_xlsx({"Schedule": [
-        ["Year", "Type", "Shares", "Price", "Vest Start", "Periods", "", "", "", "", "", "", "", "Exercise Date", "DP Shares"],
-        [2020, "Purchase", -10, 5.0, date(2020, 1, 1), 5, None, None, None, None, None, None, None, date(2025, 1, 1), 0],
+        ["Year", "Type", "Shares", "Price", "Vest Start", "Periods", "Exercise Date", "DP Shares"],
+        [2020, "Purchase", -10, 5.0, date(2020, 1, 1), 5, date(2025, 1, 1), 0],
     ]})
     resp = client.post("/api/import/excel",
         files={"file": ("bad.xlsx", xlsx, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
@@ -204,8 +204,8 @@ def test_template_fill_and_import(client):
     ws.cell(row=2, column=4).value = 12.00
     ws.cell(row=2, column=5).value = date(2022, 3, 1)
     ws.cell(row=2, column=6).value = 4
-    ws.cell(row=2, column=14).value = date(2032, 3, 1)
-    ws.cell(row=2, column=15).value = 0
+    ws.cell(row=2, column=7).value = date(2032, 3, 1)
+    ws.cell(row=2, column=8).value = 0
 
     # --- Prices: overwrite example row ---
     wp = wb["Prices"]

@@ -23,8 +23,8 @@ def read_grants_from_excel(ws):
             'price': float(ws.cell(row=i, column=4).value),
             'vest_start': ws.cell(row=i, column=5).value,
             'periods': int(ws.cell(row=i, column=6).value),
-            'exercise_date': ws.cell(row=i, column=14).value,
-            'dp_shares': int(ws.cell(row=i, column=15).value or 0),
+            'exercise_date': ws.cell(row=i, column=7).value,
+            'dp_shares': int(ws.cell(row=i, column=8).value or 0),
         })
     return grants
 
@@ -131,7 +131,7 @@ def write_events_to_excel(filepath, events, prices):
             w(8, None)
         elif evt['event_type'] == 'Down payment exchange' and sr:
             w(5, None); w(6, None); w(7, None)
-            w(8, f'=Schedule!O{sr}')
+            w(8, f'=Schedule!H{sr}')
         elif evt['event_type'] == 'Vesting' and sr:
             w(5, None)
             w(6, f'=Schedule!D{sr}')

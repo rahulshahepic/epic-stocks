@@ -184,9 +184,9 @@ function SharesChart({ events, c, range, hasFuturePrices }: { events: TimelineEv
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
           <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} padding={{ right: 10 }} />
           <YAxis tick={{ fontSize: 10, fill: c.axis }} />
-          {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
+          {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
           {selected !== null && selected < data.length && (
-            <ReferenceLine x={data[selected]._label} stroke="#818cf8" strokeWidth={1.5} />
+            <ReferenceLine x={data[selected]._label} stroke="#818cf8" strokeWidth={1.5} zIndex={600} />
           )}
           <Line type="monotone" dataKey="shares" stroke="#818cf8" strokeWidth={2} dot={false} name="Shares" connectNulls={false} />
           {hasFuturePrices && (
@@ -272,9 +272,9 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: Ti
               <tspan fill="#8b5cf6">&#9632;</tspan> Cap Gains
             </text>
           )}
-          {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
+          {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
           {selected !== null && selected < data.length && (
-            <ReferenceLine x={data[selected]._label} stroke="#8b5cf6" strokeWidth={1.5} />
+            <ReferenceLine x={data[selected]._label} stroke="#8b5cf6" strokeWidth={1.5} zIndex={600} />
           )}
           {/* Single stack: income + certain gains + projected extras (price-driven surplus) */}
           <Area type="monotone" dataKey="income" stackId="main" fill="#34d399" fillOpacity={0.7} stroke="#10b981" name="Income" dot={false} />
@@ -343,9 +343,9 @@ function PriceChart({ prices, c, range, hasFuturePrices }: { prices: PriceEntry[
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
           <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} padding={{ right: 10 }} />
           <YAxis tick={{ fontSize: 10, fill: c.axis }} />
-          {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
+          {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#818cf8" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#818cf8', position: 'top' }} />}
           {selected !== null && selected < data.length && (
-            <ReferenceLine x={data[selected]._label} stroke="#fbbf24" strokeWidth={1.5} />
+            <ReferenceLine x={data[selected]._label} stroke="#fbbf24" strokeWidth={1.5} zIndex={600} />
           )}
           <Line type="monotone" dataKey="price" stroke="#fbbf24" strokeWidth={2} dot={false} name="Price" connectNulls={false} />
           {hasFuturePrices && (
@@ -474,9 +474,9 @@ function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices }: {
             {hasFuturePrices && <><tspan fill="#fed7aa">&#9632;</tspan> +Projected{'  '}</>}
             <tspan fill="#ef4444">&#9632;</tspan> Paid
           </text>
-          {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
+          {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#60a5fa" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#60a5fa', position: 'top' }} />}
           {selected !== null && selected < data.length && (
-            <ReferenceLine x={data[selected]._label} stroke="#fb923c" strokeWidth={1.5} />
+            <ReferenceLine x={data[selected]._label} stroke="#fb923c" strokeWidth={1.5} zIndex={600} />
           )}
           {/* Stacked: sure tax + projected half tax */}
           <Area type="monotone" dataKey="taxSure" stackId="tax" fill="#fb923c" fillOpacity={0.7} stroke="#ea580c" name="Est. Tax (Sure)" dot={false} />
@@ -613,9 +613,9 @@ function InterestChart({ loans, c }: { loans: LoanEntry[]; c: ChartColors }) {
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
           <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} />
           <YAxis tick={{ fontSize: 10, fill: c.axis }} />
-          {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
+          {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
           {selected !== null && selected < data.length && (
-            <ReferenceLine x={data[selected]._label} stroke="#fb7185" strokeWidth={1.5} />
+            <ReferenceLine x={data[selected]._label} stroke="#fb7185" strokeWidth={1.5} zIndex={600} />
           )}
           <Area type="monotone" dataKey="guaranteed" stackId="i" fill="#fb7185" fillOpacity={0.7} stroke="#e11d48" name="Guaranteed" dot={false} />
           {hasProjected && (

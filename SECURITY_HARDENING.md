@@ -69,29 +69,19 @@ Added to `.github/workflows/test.yml`:
 
 > **Status: Port 22 is open and still allows password authentication. Key-based auth works but password auth is not yet disabled.**
 
-### Steps (in order — do not disable password auth before adding your key)
+### Steps
 
 1. ✅ SSH key added to `~/.ssh/authorized_keys` (GitHub Actions deploys via key)
-2. ⬜ Edit `/etc/ssh/sshd_config` to disable password auth and root login:
+2. ⬜ Edit `/etc/ssh/sshd_config` to disable password auth:
    ```
    PasswordAuthentication no
-   PermitRootLogin no
+   PermitRootLogin prohibit-password
    ```
 3. ⬜ Reload: `systemctl reload sshd`
-4. ⬜ Create a non-root deploy user:
-   ```bash
-   useradd -m -s /bin/bash deploy
-   usermod -aG docker deploy
-   mkdir -p /home/deploy/.ssh
-   cp ~/.ssh/authorized_keys /home/deploy/.ssh/
-   chown -R deploy:deploy /home/deploy/.ssh
-   chmod 700 /home/deploy/.ssh
-   chmod 600 /home/deploy/.ssh/authorized_keys
-   ```
-5. ⬜ Update the `SSH_PRIVATE_KEY` GitHub Actions secret to use the deploy user's key
-6. ⬜ Update `deploy.yml` to SSH as `deploy@<host>` instead of `root@<host>`
 
-> Note: Port 22 is exposed directly (not behind Cloudflare — Cloudflare only proxies HTTP/S). Disabling password auth is the critical step here.
+> A separate non-root deploy user is not worth the complexity: any user that can run `docker` commands has effective root access (docker group = root equivalent). The real protection is disabling password auth so the only attack surface is a stolen SSH private key.
+
+> Note: Port 22 is not behind Cloudflare — Cloudflare only proxies HTTP/S. Disabling password auth is the only meaningful step here.
 
 ---
 
@@ -106,4 +96,4 @@ Added to `.github/workflows/test.yml`:
 | 5 | Hybrid 500 sanitization + error log UI | ✅ Done |
 | 6 | Security test suite | ✅ Done |
 | 7 | pip-audit + npm audit in CI | ✅ Done |
-| 8 | SSH: disable password auth + deploy user | ⚠️ Pending |
+| 8 | SSH: disable password auth | ⚠️ Pending |

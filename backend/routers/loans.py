@@ -173,7 +173,13 @@ def get_payoff_sale_suggestion(loan_id: int, user: User = Depends(get_current_us
 
 
 @router.put("/{loan_id}", response_model=LoanOut)
-def update_loan(loan_id: int, body: LoanUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def update_loan(
+    loan_id: int,
+    body: LoanUpdate,
+    regenerate_payoff_sale: bool = Query(default=False),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     loan = db.query(Loan).filter(Loan.id == loan_id, Loan.user_id == user.id).first()
     if not loan:
         raise HTTPException(status_code=404, detail="Loan not found")
@@ -189,6 +195,27 @@ def update_loan(loan_id: int, body: LoanUpdate, user: User = Depends(get_current
     loan.version = loan.version + 1
     db.commit()
     db.refresh(loan)
+
+    if regenerate_payoff_sale:
+        suggestion = _compute_payoff_sale(loan, user, db)
+        existing_sale = db.query(Sale).filter(Sale.loan_id == loan.id, Sale.user_id == user.id).first()
+        if existing_sale:
+            existing_sale.date = suggestion["date"]
+            existing_sale.shares = suggestion["shares"]
+            existing_sale.price_per_share = suggestion["price_per_share"]
+            existing_sale.notes = suggestion["notes"]
+            db.commit()
+        elif suggestion["shares"] > 0 and suggestion["price_per_share"] > 0:
+            db.add(Sale(
+                user_id=user.id,
+                date=suggestion["date"],
+                shares=suggestion["shares"],
+                price_per_share=suggestion["price_per_share"],
+                loan_id=loan.id,
+                notes=suggestion["notes"],
+            ))
+            db.commit()
+
     return loan
 
 

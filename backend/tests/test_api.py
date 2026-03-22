@@ -510,3 +510,119 @@ def test_version_not_stored_in_update_payload(client):
     data = resp.json()
     assert data["shares"] == 7777
     assert data["version"] == 2  # incremented by server, not set to submitted value
+
+
+# ============================================================
+# GRANT UNIQUENESS (one grant per year+type per user)
+# ============================================================
+
+def test_duplicate_grant_create_rejected(client):
+    """Creating two grants with same year+type returns 409."""
+    token = register_user(client)
+    resp1 = client.post("/api/grants", json=GRANT_DATA, headers=auth_header(token))
+    assert resp1.status_code == 201
+    resp2 = client.post("/api/grants", json=GRANT_DATA, headers=auth_header(token))
+    assert resp2.status_code == 409
+
+
+def test_duplicate_grant_different_type_allowed(client):
+    """Same year but different type (Purchase vs Bonus) is allowed."""
+    token = register_user(client)
+    client.post("/api/grants", json=GRANT_DATA, headers=auth_header(token))
+    bonus = {**GRANT_DATA, "type": "Bonus", "price": 0.0}
+    resp = client.post("/api/grants", json=bonus, headers=auth_header(token))
+    assert resp.status_code == 201
+
+
+def test_duplicate_grant_different_year_allowed(client):
+    """Same type but different year is allowed."""
+    token = register_user(client)
+    client.post("/api/grants", json=GRANT_DATA, headers=auth_header(token))
+    resp = client.post("/api/grants", json={**GRANT_DATA, "year": 2021}, headers=auth_header(token))
+    assert resp.status_code == 201
+
+
+def test_update_grant_to_conflicting_year_type_rejected(client):
+    """Updating a grant's year to match another grant of the same type returns 409."""
+    token = register_user(client)
+    client.post("/api/grants", json=GRANT_DATA, headers=auth_header(token))
+    g2 = client.post("/api/grants", json={**GRANT_DATA, "year": 2021}, headers=auth_header(token)).json()
+    resp = client.put(f"/api/grants/{g2['id']}", json={"year": 2020}, headers=auth_header(token))
+    assert resp.status_code == 409
+
+
+def test_update_grant_same_year_type_allowed(client):
+    """Updating other fields without changing year+type is fine."""
+    token = register_user(client)
+    g = client.post("/api/grants", json=GRANT_DATA, headers=auth_header(token)).json()
+    resp = client.put(f"/api/grants/{g['id']}", json={"shares": 99999}, headers=auth_header(token))
+    assert resp.status_code == 200
+
+
+def test_flow_new_purchase_duplicate_rejected(client):
+    """new_purchase for a year that already has a Purchase grant returns 409."""
+    token = register_user(client)
+    payload = {
+        "year": 2022, "shares": 5000, "price": 3.50,
+        "vest_start": "2023-03-01", "periods": 5, "exercise_date": "2022-12-31",
+    }
+    client.post("/api/flows/new-purchase", json=payload, headers=auth_header(token))
+    resp = client.post("/api/flows/new-purchase", json=payload, headers=auth_header(token))
+    assert resp.status_code == 409
+
+
+def test_duplicate_grants_isolated_between_users(client):
+    """Two different users can each have a Purchase grant for the same year."""
+    token_a = register_user(client, "a@test.com")
+    token_b = register_user(client, "b@test.com")
+    r_a = client.post("/api/grants", json=GRANT_DATA, headers=auth_header(token_a))
+    r_b = client.post("/api/grants", json=GRANT_DATA, headers=auth_header(token_b))
+    assert r_a.status_code == 201
+    assert r_b.status_code == 201
+
+
+# ============================================================
+# LOAN UPDATE WITH REGENERATE PAYOFF SALE
+# ============================================================
+
+def test_update_loan_regenerate_payoff_sale_creates_sale(client):
+    """PUT /api/loans/{id}?regenerate_payoff_sale=true creates a payoff sale."""
+    token = register_user(client)
+    # Need a grant and price for _compute_payoff_sale to work
+    client.post("/api/grants", json=GRANT_DATA, headers=auth_header(token))
+    client.post("/api/prices", json={"effective_date": "2020-12-31", "price": 5.00}, headers=auth_header(token))
+    loan = client.post("/api/loans", json={**LOAN_DATA, "due_date": "2030-12-31"}, headers=auth_header(token)).json()
+
+    resp = client.put(
+        f"/api/loans/{loan['id']}?regenerate_payoff_sale=true",
+        json={"amount": 25000.0},
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 200
+
+    sales = client.get("/api/sales", headers=auth_header(token)).json()
+    payoff = [s for s in sales if s["loan_id"] == loan["id"]]
+    assert len(payoff) == 1
+
+
+def test_update_loan_regenerate_payoff_sale_updates_existing(client):
+    """Regenerating when a payoff sale already exists updates it rather than creating a duplicate."""
+    token = register_user(client)
+    client.post("/api/grants", json=GRANT_DATA, headers=auth_header(token))
+    client.post("/api/prices", json={"effective_date": "2020-12-31", "price": 5.00}, headers=auth_header(token))
+    loan = client.post(
+        "/api/loans?generate_payoff_sale=true",
+        json={**LOAN_DATA, "due_date": "2030-12-31"},
+        headers=auth_header(token),
+    ).json()
+
+    # Regenerate after updating the amount
+    client.put(
+        f"/api/loans/{loan['id']}?regenerate_payoff_sale=true",
+        json={"amount": 30000.0},
+        headers=auth_header(token),
+    )
+
+    sales = client.get("/api/sales", headers=auth_header(token)).json()
+    payoff = [s for s in sales if s["loan_id"] == loan["id"]]
+    assert len(payoff) == 1  # still one, not two

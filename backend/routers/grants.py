@@ -17,6 +17,11 @@ def list_grants(user: User = Depends(get_current_user), db: Session = Depends(ge
 
 @router.post("", response_model=GrantOut, status_code=201)
 def create_grant(body: GrantCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    existing = db.query(Grant).filter(
+        Grant.user_id == user.id, Grant.year == body.year, Grant.type == body.type
+    ).first()
+    if existing:
+        raise HTTPException(status_code=409, detail=f"A {body.type} grant for {body.year} already exists")
     grant = Grant(**body.model_dump(), user_id=user.id)
     db.add(grant)
     db.commit()
@@ -53,6 +58,13 @@ def update_grant(grant_id: int, body: GrantUpdate, user: User = Depends(get_curr
             status_code=409,
             content={"detail": "modified_elsewhere", "current_version": grant.version},
         )
+    new_year = body.year if body.year is not None else grant.year
+    new_type = body.type if body.type is not None else grant.type
+    conflict = db.query(Grant).filter(
+        Grant.user_id == user.id, Grant.year == new_year, Grant.type == new_type, Grant.id != grant_id
+    ).first()
+    if conflict:
+        raise HTTPException(status_code=409, detail=f"A {new_type} grant for {new_year} already exists")
     updates = {k: v for k, v in body.model_dump(exclude_unset=True).items() if k != "version"}
     for k, v in updates.items():
         setattr(grant, k, v)

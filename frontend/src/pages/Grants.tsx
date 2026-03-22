@@ -173,7 +173,7 @@ export default function Grants() {
               due_date: loanDueDate,
               loan_number: loanNumber || null,
               version: editLoanVersion,
-            })
+            }, generatePayoffSale)
             broadcastChange('loans')
             reloadLoans()
           } else if (loanAmount > 0) {
@@ -292,7 +292,7 @@ export default function Grants() {
               <Field label="Due Date" type="date" value={loanDueDate} onChange={v => setLoanDueDate(v)} />
               <Field label="Loan Number" type="text" value={loanNumber} onChange={v => setLoanNumber(v)} />
             </div>
-            {loanAmount > 0 && editLoanId == null && (
+            {loanAmount > 0 && (
               <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
                 <input
                   type="checkbox"
@@ -301,7 +301,7 @@ export default function Grants() {
                   className="rounded border-gray-300 dark:border-gray-600"
                 />
                 <span>
-                  Generate payoff sale (recommended)
+                  {editLoanId != null ? 'Regenerate payoff sale' : 'Generate payoff sale (recommended)'}
                   <span className="ml-1 text-gray-400" title="Creates a stock sale at the loan's due date sized to cover the payoff after capital gains tax">ⓘ</span>
                 </span>
               </label>

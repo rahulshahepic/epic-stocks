@@ -182,3 +182,29 @@ def test_export_roundtrip(client):
     events_after = client.get("/api/events", headers=auth_header(token)).json()
     assert len(events_after) == len(events_before)
     assert events_after[-1]["cum_shares"] == events_before[-1]["cum_shares"]
+
+
+def test_import_rejects_duplicate_grants_in_sheet(client):
+    """Import with two rows having the same year+type in Schedule sheet returns 400."""
+    token = register_user(client)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Schedule"
+    headers = ["Year", "Type", "Shares", "Price", "Vest Start", "Periods", "Exercise Date", "DP Shares"]
+    ws.append(headers)
+    row = [2020, "Purchase", 10000, 1.99, "2021-03-01", 5, "2020-12-31", 0]
+    ws.append(row)
+    ws.append(row)  # duplicate
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    resp = client.post(
+        "/api/import/excel",
+        files={"file": ("dup.xlsx", buf, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        headers=auth_header(token),
+    )
+    assert resp.status_code == 400
+    assert "Duplicate" in resp.json()["detail"]

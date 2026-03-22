@@ -78,23 +78,30 @@ def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales:
         else:
             enriched.append(e)
 
-    # Determine current price at a given date from the timeline
+    # Determine current price/shares/income/cap_gains at a given date from the timeline
     # (used for injected events that need a share_price reference)
     last_price = 0.0
     last_cum_shares = 0
+    last_cum_income = 0.0
+    last_cum_cap_gains = 0.0
     date_to_price: dict = {}
     date_to_shares: dict = {}
+    date_to_cum_income: dict = {}
+    date_to_cum_cap_gains: dict = {}
     for e in timeline:
         edate = e["date"]
         if isinstance(edate, datetime):
             edate = edate.date()
         last_price = e.get("share_price", last_price)
         last_cum_shares = e.get("cum_shares", last_cum_shares)
+        last_cum_income = e.get("cum_income", last_cum_income)
+        last_cum_cap_gains = e.get("cum_cap_gains", last_cum_cap_gains)
         date_to_price[edate] = last_price
         date_to_shares[edate] = last_cum_shares
+        date_to_cum_income[edate] = last_cum_income
+        date_to_cum_cap_gains[edate] = last_cum_cap_gains
 
     def price_at(d: date) -> float:
-        # Last known price on or before d
         result = 0.0
         for k in sorted(date_to_price.keys()):
             if k <= d:
@@ -108,6 +115,24 @@ def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales:
         for k in sorted(date_to_shares.keys()):
             if k <= d:
                 result = date_to_shares[k]
+            else:
+                break
+        return result
+
+    def cum_income_at(d: date) -> float:
+        result = 0.0
+        for k in sorted(date_to_cum_income.keys()):
+            if k <= d:
+                result = date_to_cum_income[k]
+            else:
+                break
+        return result
+
+    def cum_cap_gains_at(d: date) -> float:
+        result = 0.0
+        for k in sorted(date_to_cum_cap_gains.keys()):
+            if k <= d:
+                result = date_to_cum_cap_gains[k]
             else:
                 break
         return result
@@ -139,10 +164,37 @@ def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales:
             "notes": lp.notes,
         })
 
+    # Inject Sale records as "Sale" events with negative vested_shares
+    for s in sales:
+        sd = s.date
+        sp = price_at(sd)
+        cs = shares_at(sd)
+        enriched.append({
+            "date": datetime.combine(sd, datetime.min.time()),
+            "event_type": "Sale",
+            "grant_year": None,
+            "grant_type": None,
+            "granted_shares": None,
+            "grant_price": None,
+            "exercise_price": None,
+            "vested_shares": -s.shares,
+            "price_increase": 0.0,
+            "share_price": sp,
+            "cum_shares": cs,  # adjusted below after sort
+            "income": 0.0,
+            "cum_income": cum_income_at(sd),
+            "vesting_cap_gains": 0.0,
+            "price_cap_gains": 0.0,
+            "total_cap_gains": 0.0,
+            "cum_cap_gains": cum_cap_gains_at(sd),
+            "gross_proceeds": round(s.shares * s.price_per_share, 2),
+            "notes": s.notes,
+        })
+
     # Sort: date first, then by event type order
     _TYPE_ORDER = {
         "Share Price": 0, "Exercise": 1, "Down payment exchange": 2,
-        "Vesting": 3, "Loan Payoff": 4, "Early Loan Payment": 5,
+        "Vesting": 3, "Loan Payoff": 4, "Early Loan Payment": 5, "Sale": 6,
     }
 
     def sort_key(e):
@@ -152,6 +204,18 @@ def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales:
         return (d, _TYPE_ORDER.get(e["event_type"], 9))
 
     enriched.sort(key=sort_key)
+
+    # Adjust cum_shares for all events to account for cumulative shares sold.
+    # Sale events reduce cum_shares; all subsequent events reflect the reduced total.
+    cumulative_sold = 0
+    for e in enriched:
+        if e["event_type"] == "Sale":
+            sold = abs(e.get("vested_shares") or 0)
+            e["cum_shares"] = e["cum_shares"] - cumulative_sold - sold
+            cumulative_sold += sold
+        else:
+            e["cum_shares"] = e["cum_shares"] - cumulative_sold
+
     return enriched
 
 

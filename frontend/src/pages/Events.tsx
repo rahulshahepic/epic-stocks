@@ -3,7 +3,7 @@ import { api } from '../api.ts'
 import type { TimelineEvent, TaxSettings } from '../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 
-const EVENT_TYPES = ['Exercise', 'Down payment exchange', 'Vesting', 'Share Price', 'Loan Payoff', 'Early Loan Payment']
+const EVENT_TYPES = ['Exercise', 'Down payment exchange', 'Vesting', 'Share Price', 'Loan Payoff', 'Early Loan Payment', 'Sale']
 
 const TYPE_COLORS: Record<string, string> = {
   'Exercise': 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
@@ -12,6 +12,7 @@ const TYPE_COLORS: Record<string, string> = {
   'Share Price': 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
   'Loan Payoff': 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
   'Early Loan Payment': 'bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300',
+  'Sale': 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
 }
 
 function fmt$(n: number) {
@@ -98,7 +99,7 @@ export default function Events() {
                 <td className="whitespace-nowrap px-3 py-2 text-gray-500 dark:text-gray-400">
                   {e.grant_year ? `${e.grant_year} ${e.grant_type}` : '—'}
                 </td>
-                <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">
+                <td className={`px-3 py-2 text-right ${e.event_type === 'Sale' ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300'}`}>
                   {e.event_type === 'Early Loan Payment'
                     ? (e.amount != null ? fmt$(e.amount) : '—')
                     : fmtNum(e.vested_shares ?? e.granted_shares)}
@@ -114,6 +115,8 @@ export default function Events() {
                           {e.status === 'covered' ? '✓' : '!'}
                         </span>
                       </span>
+                    : e.event_type === 'Sale' && e.gross_proceeds != null
+                    ? <span className="text-green-600 dark:text-green-400" title="Gross proceeds from sale">{fmt$(e.gross_proceeds)}</span>
                     : e.total_cap_gains ? fmt$(e.total_cap_gains) : '—'}
                 </td>
                 <td className="px-3 py-2 text-right">

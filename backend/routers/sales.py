@@ -162,6 +162,27 @@ def get_sale_tax(sale_id: int, user: User = Depends(get_current_user), db: Sessi
     timeline = _build_timeline(user, db)
     ts = _get_or_create_tax_settings(user, db)
 
+    # Inject prior sales as negative vested_shares events so build_fifo_lots
+    # correctly accounts for lots already consumed by earlier sales.
+    prior_sales = db.query(Sale).filter(
+        Sale.user_id == user.id,
+        Sale.date < sale.date,
+    ).all()
+    for ps in prior_sales:
+        timeline.append({
+            "date": datetime.combine(ps.date, datetime.min.time()),
+            "event_type": "Sale",
+            "vested_shares": -ps.shares,
+            "grant_price": None,
+            "share_price": 0.0,
+        })
+
+    # Re-sort: vestings before sales on the same day
+    timeline.sort(key=lambda e: (
+        e["date"].date() if isinstance(e["date"], datetime) else e["date"],
+        0 if e.get("event_type") == "Vesting" else 1,
+    ))
+
     sale_dict = {"date": sale.date, "shares": sale.shares, "price_per_share": sale.price_per_share}
     ts_dict = {
         "federal_income_rate": ts.federal_income_rate,

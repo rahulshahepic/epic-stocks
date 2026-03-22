@@ -30,7 +30,14 @@ function fmtFullDate(d: string) {
   return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-/** Compute a tick interval that shows ~maxTicks evenly-spaced labels. */
+/** Compute ~maxTicks evenly-spaced numeric indices for a dataset of length len. */
+function numericTicks(len: number, maxTicks = 6): number[] {
+  if (len === 0) return []
+  if (len <= maxTicks) return Array.from({ length: len }, (_, i) => i)
+  return Array.from({ length: maxTicks }, (_, k) => Math.round(k * (len - 1) / (maxTicks - 1)))
+}
+
+/** @deprecated use numericTicks instead */
 function smartInterval(len: number, maxTicks = 6): number {
   if (len <= maxTicks) return 0
   return Math.ceil(len / maxTicks) - 1
@@ -155,9 +162,10 @@ function SharesChart({ events, c, range, hasFuturePrices }: { events: TimelineEv
   const data = useMemo(() => {
     const filtered = filterByDateRange(events, range, 'date')
       .filter(e => e.cum_shares !== 0 || e.event_type === 'Exercise')
-    return filtered.map(e => {
+    return filtered.map((e, i) => {
       const isPast = !hasFuturePrices || e.date <= TODAY
       return {
+        _idx: i,
         _date: e.date,
         _label: fmtDate(e.date),
         _event: e,
@@ -182,11 +190,11 @@ function SharesChart({ events, c, range, hasFuturePrices }: { events: TimelineEv
           if (state?.activeTooltipIndex != null) setSelected(Number(state.activeTooltipIndex))
         }}>
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
-          <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} padding={{ right: 10 }} />
+          <XAxis dataKey="_idx" type="number" domain={[0, Math.max(0, data.length - 1)]} ticks={numericTicks(data.length)} tickFormatter={(i: number) => data[i]?._label ?? ''} tick={{ fontSize: 10, fill: c.axis }} padding={{ right: 10 }} />
           <YAxis tick={{ fontSize: 10, fill: c.axis }} />
-          {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
+          {tIdx !== null && <ReferenceLine x={tIdx} stroke="#f59e0b" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
           {selected !== null && selected < data.length && (
-            <ReferenceLine x={data[selected]._label} stroke="#818cf8" strokeWidth={1.5} zIndex={600} />
+            <ReferenceLine x={selected} stroke="#818cf8" strokeWidth={1.5} zIndex={600} />
           )}
           <Line type="monotone" dataKey="shares" stroke="#818cf8" strokeWidth={2} dot={false} name="Shares" connectNulls={false} />
           {hasFuturePrices && (
@@ -221,7 +229,7 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: Ti
     let cumFuturePriceIncrease = 0
     let cumSurplusIncome = 0
     let cumSurplusCg = 0
-    return filtered.map(e => {
+    return filtered.map((e, i) => {
       if (hasFuturePrices && e.date > TODAY) {
         const vs = (e.vested_shares ?? 0)
         if (e.event_type === 'Share Price') {
@@ -236,6 +244,7 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: Ti
         }
       }
       return {
+        _idx: i,
         _date: e.date,
         _label: fmtDate(e.date),
         _event: e,
@@ -257,7 +266,7 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: Ti
           if (state?.activeTooltipIndex != null) setSelected(Number(state.activeTooltipIndex))
         }}>
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
-          <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} padding={{ right: 10 }} />
+          <XAxis dataKey="_idx" type="number" domain={[0, Math.max(0, data.length - 1)]} ticks={numericTicks(data.length)} tickFormatter={(i: number) => data[i]?._label ?? ''} tick={{ fontSize: 10, fill: c.axis }} padding={{ right: 10 }} />
           <YAxis tick={{ fontSize: 10, fill: c.axis }} />
           {hasFuturePrices && (
             <text x="50%" y={16} textAnchor="middle" fontSize={10} fill={c.axis}>
@@ -272,9 +281,9 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: Ti
               <tspan fill="#8b5cf6">&#9632;</tspan> Cap Gains
             </text>
           )}
-          {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
+          {tIdx !== null && <ReferenceLine x={tIdx} stroke="#f59e0b" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
           {selected !== null && selected < data.length && (
-            <ReferenceLine x={data[selected]._label} stroke="#8b5cf6" strokeWidth={1.5} zIndex={600} />
+            <ReferenceLine x={selected} stroke="#8b5cf6" strokeWidth={1.5} zIndex={600} />
           )}
           {/* Single stack: income + certain gains + projected extras (price-driven surplus) */}
           <Area type="monotone" dataKey="income" stackId="main" fill="#34d399" fillOpacity={0.7} stroke="#10b981" name="Income" dot={false} />
@@ -308,9 +317,10 @@ function PriceChart({ prices, c, range, hasFuturePrices }: { prices: PriceEntry[
     const filtered = filterByDateRange(prices, range, 'effective_date')
     if (filtered.length === 0) return []
 
-    const result = filtered.map(p => {
+    const result = filtered.map((p, i) => {
       const isPast = !hasFuturePrices || p.effective_date <= TODAY
       return {
+        _idx: i,
         _date: p.effective_date,
         _label: fmtDate(p.effective_date),
         _price: p.price,
@@ -341,11 +351,11 @@ function PriceChart({ prices, c, range, hasFuturePrices }: { prices: PriceEntry[
           if (state?.activeTooltipIndex != null) setSelected(Number(state.activeTooltipIndex))
         }}>
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
-          <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} padding={{ right: 10 }} />
+          <XAxis dataKey="_idx" type="number" domain={[0, Math.max(0, data.length - 1)]} ticks={numericTicks(data.length)} tickFormatter={(i: number) => data[i]?._label ?? ''} tick={{ fontSize: 10, fill: c.axis }} padding={{ right: 10 }} />
           <YAxis tick={{ fontSize: 10, fill: c.axis }} />
-          {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#818cf8" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#818cf8', position: 'top' }} />}
+          {tIdx !== null && <ReferenceLine x={tIdx} stroke="#818cf8" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#818cf8', position: 'top' }} />}
           {selected !== null && selected < data.length && (
-            <ReferenceLine x={data[selected]._label} stroke="#fbbf24" strokeWidth={1.5} zIndex={600} />
+            <ReferenceLine x={selected} stroke="#fbbf24" strokeWidth={1.5} zIndex={600} />
           )}
           <Line type="monotone" dataKey="price" stroke="#fbbf24" strokeWidth={2} dot={false} name="Price" connectNulls={false} />
           {hasFuturePrices && (
@@ -408,7 +418,7 @@ function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices }: {
     let cumSurplusCg = 0
 
     const filtered = filterByDateRange(events, range, 'date')
-    return filtered.map(e => {
+    return filtered.map((e, i) => {
       // Accumulate tax loan payments up to this event date
       while (taxLoanIdx < sortedTaxLoans.length && sortedTaxLoans[taxLoanIdx].due_date <= e.date) {
         cumTaxPaid += sortedTaxLoans[taxLoanIdx].amount
@@ -447,6 +457,7 @@ function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices }: {
         : null as number | null
 
       return {
+        _idx: i,
         _date: e.date,
         _label: fmtDate(e.date),
         _event: e,
@@ -467,16 +478,16 @@ function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices }: {
           if (state?.activeTooltipIndex != null) setSelected(Number(state.activeTooltipIndex))
         }}>
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
-          <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} padding={{ right: 10 }} />
+          <XAxis dataKey="_idx" type="number" domain={[0, Math.max(0, data.length - 1)]} ticks={numericTicks(data.length)} tickFormatter={(i: number) => data[i]?._label ?? ''} tick={{ fontSize: 10, fill: c.axis }} padding={{ right: 10 }} />
           <YAxis tick={{ fontSize: 10, fill: c.axis }} />
           <text x="50%" y={16} textAnchor="middle" fontSize={10} fill={c.axis}>
             <tspan fill="#fb923c">&#9632;</tspan> Est. Tax (Sure){'  '}
             {hasFuturePrices && <><tspan fill="#fed7aa">&#9632;</tspan> +Projected{'  '}</>}
             <tspan fill="#ef4444">&#9632;</tspan> Paid
           </text>
-          {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#60a5fa" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#60a5fa', position: 'top' }} />}
+          {tIdx !== null && <ReferenceLine x={tIdx} stroke="#60a5fa" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#60a5fa', position: 'top' }} />}
           {selected !== null && selected < data.length && (
-            <ReferenceLine x={data[selected]._label} stroke="#fb923c" strokeWidth={1.5} zIndex={600} />
+            <ReferenceLine x={selected} stroke="#fb923c" strokeWidth={1.5} zIndex={600} />
           )}
           {/* Stacked: sure tax + projected half tax */}
           <Area type="monotone" dataKey="taxSure" stackId="tax" fill="#fb923c" fillOpacity={0.7} stroke="#ea580c" name="Est. Tax (Sure)" dot={false} />

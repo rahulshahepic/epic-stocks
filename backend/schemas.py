@@ -248,6 +248,15 @@ class SaleCreate(BaseModel):
     notes: str = ""
     # If set, this sale was recorded to cover this loan's payoff.
     loan_id: Optional[int] = None
+    # Per-sale tax rate overrides (None = use user's TaxSettings)
+    federal_income_rate: Optional[float] = None
+    federal_lt_cg_rate: Optional[float] = None
+    federal_st_cg_rate: Optional[float] = None
+    niit_rate: Optional[float] = None
+    state_income_rate: Optional[float] = None
+    state_lt_cg_rate: Optional[float] = None
+    state_st_cg_rate: Optional[float] = None
+    lt_holding_days: Optional[int] = None
 
     @field_validator("shares")
     @classmethod
@@ -271,6 +280,14 @@ class SaleUpdate(BaseModel):
     price_per_share: Optional[float] = None
     notes: Optional[str] = None
     version: Optional[int] = None
+    federal_income_rate: Optional[float] = None
+    federal_lt_cg_rate: Optional[float] = None
+    federal_st_cg_rate: Optional[float] = None
+    niit_rate: Optional[float] = None
+    state_income_rate: Optional[float] = None
+    state_lt_cg_rate: Optional[float] = None
+    state_st_cg_rate: Optional[float] = None
+    lt_holding_days: Optional[int] = None
 
     @field_validator("shares")
     @classmethod

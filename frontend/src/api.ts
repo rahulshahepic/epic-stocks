@@ -314,6 +314,15 @@ export interface SaleEntry {
   price_per_share: number
   notes: string
   loan_id: number | null
+  // Per-sale tax rate overrides (null = use user TaxSettings)
+  federal_income_rate?: number | null
+  federal_lt_cg_rate?: number | null
+  federal_st_cg_rate?: number | null
+  niit_rate?: number | null
+  state_income_rate?: number | null
+  state_lt_cg_rate?: number | null
+  state_st_cg_rate?: number | null
+  lt_holding_days?: number | null
 }
 
 export interface LoanPaymentEntry {

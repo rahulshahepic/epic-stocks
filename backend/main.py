@@ -43,6 +43,12 @@ def _migrate_schema():
         with database.engine.begin() as conn:
             if "loan_id" not in sales_cols:
                 conn.execute(sqlalchemy.text("ALTER TABLE sales ADD COLUMN loan_id INTEGER REFERENCES loans(id) ON DELETE SET NULL"))
+            for _col in ("federal_income_rate", "federal_lt_cg_rate", "federal_st_cg_rate",
+                         "niit_rate", "state_income_rate", "state_lt_cg_rate", "state_st_cg_rate"):
+                if _col not in sales_cols:
+                    conn.execute(sqlalchemy.text(f"ALTER TABLE sales ADD COLUMN {_col} REAL"))
+            if "lt_holding_days" not in sales_cols:
+                conn.execute(sqlalchemy.text("ALTER TABLE sales ADD COLUMN lt_holding_days INTEGER"))
     with database.engine.begin() as conn:
         conn.execute(sqlalchemy.text("""
             CREATE TABLE IF NOT EXISTS sales (

@@ -1,8 +1,10 @@
 import { useCallback, useState } from 'react'
 import { api, ConflictError } from '../api.ts'
-import type { LoanEntry, SaleEntry } from '../api.ts'
+import type { LoanEntry, SaleEntry, TaxSettings } from '../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { broadcastChange, useDataSync } from '../hooks/useDataSync.ts'
+import { TaxRateFields, ratesFromDefaults, ratesFromSale, DEFAULT_RATES } from './Sales.tsx'
+import type { TaxRates } from './Sales.tsx'
 
 type LoanForm = Omit<LoanEntry, 'id' | 'version'>
 type Mode = 'list' | 'add' | 'edit'
@@ -47,6 +49,8 @@ export default function Loans() {
   const { data: loans, loading, reload } = useApiData<LoanEntry[]>(fetchLoans)
   const fetchSales = useCallback(() => api.getSales(), [])
   const { data: sales, reload: reloadSales } = useApiData<SaleEntry[]>(fetchSales)
+  const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
+  const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
 
   const [mode, setMode] = useState<Mode>('list')
   const [form, setForm] = useState<LoanForm>(empty)
@@ -55,8 +59,8 @@ export default function Loans() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [conflict, setConflict] = useState(false)
-  const [generatePayoffSale, setGeneratePayoffSale] = useState(true)
-  const [generatingSale, setGeneratingSale] = useState(false)
+  const [payoffSaleChecked, setPayoffSaleChecked] = useState(true)
+  const [saleRates, setSaleRates] = useState<TaxRates>(DEFAULT_RATES)
 
   useDataSync('loans', reload)
   useDataSync('sales', reloadSales)
@@ -67,11 +71,14 @@ export default function Loans() {
     setEditVersion(1)
     setError('')
     setConflict(false)
-    setGeneratePayoffSale(true)
+    setPayoffSaleChecked(true)
+    setSaleRates(ratesFromDefaults(taxSettings))
   }
 
   function openAdd() {
     resetForm()
+    setPayoffSaleChecked(true)
+    setSaleRates(ratesFromDefaults(taxSettings))
     setMode('add')
   }
 
@@ -82,6 +89,9 @@ export default function Loans() {
     setEditVersion(version)
     setError('')
     setConflict(false)
+    const linkedSale = sales?.find(s => s.loan_id === id) ?? null
+    setPayoffSaleChecked(!!linkedSale)
+    setSaleRates(linkedSale ? ratesFromSale(linkedSale, taxSettings) : ratesFromDefaults(taxSettings))
     setMode('edit')
   }
 
@@ -89,11 +99,43 @@ export default function Loans() {
     setSaving(true)
     setError('')
     try {
+      let savedLoanId: number
+
       if (mode === 'add') {
-        await api.createLoan(form, generatePayoffSale)
+        const newLoan = await api.createLoan(form, false)  // handle payoff sale manually
+        savedLoanId = newLoan.id
       } else if (editId != null) {
         await api.updateLoan(editId, { ...form, version: editVersion })
+        savedLoanId = editId
+      } else {
+        return
       }
+
+      // Handle payoff sale
+      const linkedSale = sales?.find(s => s.loan_id === savedLoanId)
+      if (payoffSaleChecked) {
+        const suggestion = await api.getLoanPayoffSuggestion(savedLoanId)
+        const salePayload = {
+          date: suggestion.date,
+          shares: suggestion.shares,
+          price_per_share: suggestion.price_per_share,
+          notes: suggestion.notes,
+          loan_id: savedLoanId,
+          ...saleRates,
+        }
+        if (linkedSale) {
+          await api.updateSale(linkedSale.id, { ...salePayload, version: linkedSale.version })
+        } else {
+          await api.createSale(salePayload)
+        }
+        broadcastChange('sales')
+        reloadSales()
+      } else if (linkedSale) {
+        await api.deleteSale(linkedSale.id)
+        broadcastChange('sales')
+        reloadSales()
+      }
+
       broadcastChange('loans')
       reload()
       if (addAnother) {
@@ -113,28 +155,6 @@ export default function Loans() {
     }
   }
 
-  async function handleGeneratePayoffSale() {
-    if (!editId) return
-    setGeneratingSale(true)
-    setError('')
-    try {
-      const suggestion = await api.getLoanPayoffSuggestion(editId)
-      await api.createSale({
-        date: suggestion.date,
-        shares: suggestion.shares,
-        price_per_share: suggestion.price_per_share,
-        loan_id: suggestion.loan_id,
-        notes: suggestion.notes,
-      })
-      broadcastChange('sales')
-      reloadSales()
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to generate payoff sale')
-    } finally {
-      setGeneratingSale(false)
-    }
-  }
-
   async function handleDelete(id: number) {
     if (!confirm('Delete this loan?')) return
     await api.deleteLoan(id)
@@ -147,9 +167,6 @@ export default function Loans() {
 
   if (mode !== 'list') {
     const title = mode === 'add' ? 'Add Loan' : 'Edit Loan'
-    const linkedSale: SaleEntry | undefined = mode === 'edit' && editId != null
-      ? sales?.find(s => s.loan_id === editId)
-      : undefined
 
     return (
       <div className="space-y-4">
@@ -194,49 +211,24 @@ export default function Loans() {
           <Field label="Loan Number" type="text" value={form.loan_number ?? ''} onChange={v => setForm(f => ({ ...f, loan_number: v || null }))} />
         </div>
 
-        {mode === 'add' && (
+        <div className="space-y-3">
           <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
             <input
               type="checkbox"
-              checked={generatePayoffSale}
-              onChange={e => setGeneratePayoffSale(e.target.checked)}
+              checked={payoffSaleChecked}
+              onChange={e => setPayoffSaleChecked(e.target.checked)}
               className="rounded border-gray-300 dark:border-gray-600"
             />
-            <span>
-              Generate payoff sale (recommended)
-              <span className="ml-1 text-gray-400" title="Creates a stock sale at the loan's due date sized to cover the payoff after capital gains tax">ⓘ</span>
-            </span>
+            <span>Payoff loan via sale</span>
           </label>
-        )}
-
-        {mode === 'edit' && (
-          <div>
-            <h3 className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">Payoff Sale</h3>
-            {linkedSale ? (
-              <div className="rounded-md border border-green-200 bg-green-50 p-3 dark:border-green-800 dark:bg-green-900/20">
-                <p className="text-xs font-medium text-green-800 dark:text-green-300">Sale linked</p>
-                <p className="mt-1 text-xs text-green-700 dark:text-green-400">
-                  {linkedSale.date} · {linkedSale.shares.toLocaleString()} shares @ ${linkedSale.price_per_share.toFixed(2)}/share
-                  {linkedSale.notes && <span className="ml-1 text-gray-400">— {linkedSale.notes}</span>}
-                </p>
-                <p className="mt-1 text-[10px] text-gray-400">To edit this sale, go to the Sales page.</p>
-              </div>
-            ) : (
-              <div className="rounded-md border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/50">
-                <p className="text-xs text-gray-500 dark:text-gray-400">No payoff sale linked to this loan.</p>
-                <button
-                  type="button"
-                  onClick={handleGeneratePayoffSale}
-                  disabled={generatingSale}
-                  className="mt-2 rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-                >
-                  {generatingSale ? 'Generating...' : 'Generate payoff sale suggestion'}
-                </button>
-                <p className="mt-1 text-[10px] text-gray-400">Calculates gross-up shares to cover the cash due after tax.</p>
-              </div>
-            )}
-          </div>
-        )}
+          {payoffSaleChecked && (
+            <TaxRateFields
+              rates={saleRates}
+              onChange={setSaleRates}
+              onReset={() => setSaleRates(ratesFromDefaults(taxSettings))}
+            />
+          )}
+        </div>
 
         <div className="flex gap-2 pt-2">
           <button

@@ -44,36 +44,6 @@ When `ENCRYPTION_MASTER_KEY` is set, all sensitive financial data is encrypted p
 - **`PRIVACY_URL`** env var makes the link configurable for self-hosters
 - **README** documents the trust model and encryption options
 
-### Not Used: HKDF-Derived Keys
-
-An alternative server-side approach considered but not chosen: derive per-user keys from the Google OAuth token rather than storing random keys.
-
-**Approach:**
-- Derive a per-user encryption key from their Google OAuth token using HKDF (HMAC-based Key Derivation Function)
-- Use the Google `sub` (subject ID) as a stable salt — it never changes for a given Google account
-- Encrypt sensitive fields: `Grant.price`, `Grant.shares`, `Loan.amount`, `Loan.interest_rate`, `Price.price`
-- Use AES-256-GCM (authenticated encryption) via Python's `cryptography` library
-- Store encrypted values as base64-encoded strings in the database
-- Decrypt in the API layer before returning data or passing to `core.py`
-
-**Key derivation:**
-```
-user_key = HKDF(
-    algorithm=SHA256,
-    length=32,
-    salt=google_sub.encode(),
-    info=b"epic-stocks-user-encryption",
-    ikm=server_master_key.encode()   # from JWT_SECRET or separate env var
-)
-```
-
-**Trade-offs:**
-- The operator still holds the master key (it's a server env var), so this is defense-in-depth, not zero-knowledge
-- Encrypted fields can't be queried/indexed by the DB (but we only ever filter by `user_id`, never by financial values)
-- If the master key is lost, all encrypted data is unrecoverable
-- Adds complexity to import/export flows
-
-Not chosen — the implemented approach (random per-user keys stored encrypted with the master key) is simpler and equally secure.
 
 ### Not Practical: Client-Side Zero-Knowledge Encryption
 
@@ -91,7 +61,7 @@ True zero-knowledge: encrypt/decrypt in the browser using a key derived from the
 - Breaks push notifications (server can't compute "next event" for notifications)
 - Major architectural change; essentially a different app
 
-**Recommendation:** Client-side zero-knowledge encryption is not practical for this architecture — it would break server-side event computation, Excel export, and push notifications. The implemented approach (random per-user keys + master key) provides meaningful protection against casual database inspection while keeping server-side computation intact.
+**Not doing this.** It would break server-side event computation (`core.py`), Excel export, and push notifications. The implemented approach — AES-256-GCM column encryption with random per-user keys stored encrypted under a server master key — provides meaningful protection against database theft while keeping server-side computation intact.
 
 ---
 

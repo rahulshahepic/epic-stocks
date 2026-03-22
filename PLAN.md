@@ -44,9 +44,9 @@ When `ENCRYPTION_MASTER_KEY` is set, all sensitive financial data is encrypted p
 - **`PRIVACY_URL`** env var makes the link configurable for self-hosters
 - **README** documents the trust model and encryption options
 
-### Option B — Alternative: HKDF-Derived Keys (Not Implemented)
+### Not Used: HKDF-Derived Keys
 
-An alternative server-side approach: derive per-user keys from the Google OAuth token rather than storing random keys.
+An alternative server-side approach considered but not chosen: derive per-user keys from the Google OAuth token rather than storing random keys.
 
 **Approach:**
 - Derive a per-user encryption key from their Google OAuth token using HKDF (HMAC-based Key Derivation Function)
@@ -75,7 +75,7 @@ user_key = HKDF(
 
 Not chosen — the implemented approach (random per-user keys stored encrypted with the master key) is simpler and equally secure.
 
-### Option C — Client-Side Encryption (Not Recommended)
+### Not Practical: Client-Side Zero-Knowledge Encryption
 
 True zero-knowledge: encrypt/decrypt in the browser using a key derived from the user's Google identity token.
 
@@ -91,7 +91,7 @@ True zero-knowledge: encrypt/decrypt in the browser using a key derived from the
 - Breaks push notifications (server can't compute "next event" for notifications)
 - Major architectural change; essentially a different app
 
-**Recommendation:** Option C is not practical for this architecture. Option B provides meaningful protection against casual database inspection while keeping server-side computation intact.
+**Recommendation:** Client-side zero-knowledge encryption is not practical for this architecture — it would break server-side event computation, Excel export, and push notifications. The implemented approach (random per-user keys + master key) provides meaningful protection against casual database inspection while keeping server-side computation intact.
 
 ---
 

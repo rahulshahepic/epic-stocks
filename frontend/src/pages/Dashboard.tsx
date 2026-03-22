@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, ResponsiveContainer, CartesianGrid, ReferenceLine,
@@ -551,8 +551,24 @@ export default function Dashboard() {
   const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
   const { data: sales } = useApiData<SaleEntry[]>(fetchSales)
   const c = useChartColors()
-  const [range, setRange] = useState<DateRange>({ mode: 'all', start: '', end: '' })
-  const [cardDate, setCardDate] = useState<string>(TODAY)
+  const [range, setRange] = useState<DateRange>(() => {
+    try {
+      const saved = localStorage.getItem('dashboard_range')
+      if (saved) return JSON.parse(saved) as DateRange
+    } catch {}
+    return { mode: 'all', start: '', end: '' }
+  })
+  const [cardDate, setCardDate] = useState<string>(() => {
+    return localStorage.getItem('dashboard_cardDate') ?? TODAY
+  })
+
+  useEffect(() => {
+    localStorage.setItem('dashboard_range', JSON.stringify(range))
+  }, [range])
+
+  useEffect(() => {
+    localStorage.setItem('dashboard_cardDate', cardDate)
+  }, [cardDate])
 
   // Only show projected/dashed styling when a future price actually differs from the current price
   const hasFuturePrices = useMemo(() => {

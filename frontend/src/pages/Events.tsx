@@ -17,6 +17,10 @@ function fmt$(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 }
 
+function fmtPrice(n: number) {
+  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
 function fmtNum(n: number | null) {
   return n != null ? n.toLocaleString('en-US') : '—'
 }
@@ -74,7 +78,7 @@ export default function Events() {
                   {e.grant_year ? `${e.grant_year} ${e.grant_type}` : '—'}
                 </td>
                 <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtNum(e.vested_shares ?? e.granted_shares)}</td>
-                <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmt$(e.share_price)}</td>
+                <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtPrice(e.share_price)}</td>
                 <td className="px-3 py-2 text-right text-emerald-600 dark:text-emerald-400">{e.income ? fmt$(e.income) : '—'}</td>
                 <td className="px-3 py-2 text-right text-purple-600 dark:text-purple-400">{e.total_cap_gains ? fmt$(e.total_cap_gains) : '—'}</td>
                 <td className="px-3 py-2 text-right font-medium text-gray-900 dark:text-gray-100">{fmtNum(e.cum_shares)}</td>

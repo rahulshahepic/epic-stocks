@@ -146,16 +146,17 @@ def new_purchase(body: NewPurchaseRequest, user: User = Depends(get_current_user
         dp_amount = abs(dp_shares) * body.price
         loan_amount = max(0.0, total_purchase - dp_amount)
 
-    # Validate minimum DP when rules are configured and a purchase loan is being created
+    # Validate minimum DP when rules are configured and a purchase loan is being created.
+    # Equity = total_purchase - loan_amount (the portion not borrowed, whether via stock DP or cash).
     if min_dp > 0 and loan_amount is not None:
-        dp_amount = abs(dp_shares) * body.price if dp_shares < 0 else 0.0
-        if dp_amount < min_dp:
-            min_shares = math.ceil(min_dp / body.price)
+        equity = total_purchase - loan_amount
+        if equity < min_dp:
+            min_shares = math.ceil(min_dp / body.price) if body.price > 0 else 0
             raise HTTPException(
                 status_code=422,
                 detail=f"Down payment must be at least ${min_dp:,.2f} "
-                       f"({min_shares:,} shares at ${body.price:.2f}). "
-                       f"Provided: ${dp_amount:,.2f} ({abs(dp_shares):,} shares).",
+                       f"(e.g. {min_shares:,} shares at ${body.price:.2f} via stock exchange, "
+                       f"or equivalent cash). Equity provided: ${equity:,.2f}.",
             )
 
     # Validate vested share availability for the DP

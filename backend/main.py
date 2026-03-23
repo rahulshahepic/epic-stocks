@@ -31,6 +31,9 @@ async def lifespan(app):
         from alembic import command as alembic_command
         cfg = Config(Path(__file__).parent / "alembic.ini")
         alembic_command.upgrade(cfg, "head")
+        # One-time migration from SQLite if data/vesting.db exists and PG is empty
+        from migrate_sqlite_to_pg import maybe_migrate
+        maybe_migrate()
     task = _start_daily_scheduler()
     yield
     if task:

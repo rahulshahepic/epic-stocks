@@ -4,6 +4,10 @@
 
 Equity Vesting Tracker ("Epic Stocks") is open-source software that you or your organization self-host. This policy explains what data the application collects, how it's stored, and who can access it.
 
+## We Will Never Sell Your Data
+
+**Your data is never sold.** We do not sell, rent, or trade your personal or financial data to any third party for any purpose, commercial or otherwise. This commitment applies to all data you enter — account information, equity grants, loans, prices, and everything else.
+
 ## What We Collect
 
 ### Account Information (from Google Sign-In)
@@ -81,6 +85,8 @@ The site operator uses the following third-party infrastructure. Your data may p
 - **Porkbun** — domain registrar. Porkbun manages the domain name; they have no access to your application data.
 - **Resend** — used to deliver email notifications (if you have enabled them). Resend receives the recipient address and email content. Email notifications contain **no financial data** — only a summary count of events (e.g., "you have 2 events today") and a link to log in. No share counts, prices, or loan amounts are included.
 - **Push notifications** (if enabled) — delivered via the Web Push protocol through your browser vendor's push service (e.g., Google FCM for Chrome). Notification content contains no financial data — only an event count summary.
+
+None of these services receive your financial data for their own purposes, and your data is never sold to any of them or to any other third party.
 
 ## Data Retention
 

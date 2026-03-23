@@ -4,6 +4,7 @@ import Layout from './components/Layout.tsx'
 import { ToastProvider } from './components/Toast.tsx'
 import { ThemeProvider } from './contexts/ThemeContext.tsx'
 import Login from './pages/Login.tsx'
+import PrivacyPolicy from './pages/PrivacyPolicy.tsx'
 import Dashboard from './pages/Dashboard.tsx'
 import Events from './pages/Events.tsx'
 import Grants from './pages/Grants.tsx'
@@ -25,6 +26,7 @@ export default function App() {
       <ToastProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route element={<RequireAuth><Layout /></RequireAuth>}>
             <Route index element={<Dashboard />} />
             <Route path="events" element={<Events />} />

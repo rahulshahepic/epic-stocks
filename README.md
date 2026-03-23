@@ -39,6 +39,14 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 |-------|------|
 | ![Admin Light](screenshots/admin-light-mobile.png) | ![Admin Dark](screenshots/admin-dark-mobile.png) |
 
+### Login & Privacy Policy
+
+| Light | Dark |
+|-------|------|
+| ![Login Light Mobile](screenshots/login-light-mobile.png) | ![Login Dark Mobile](screenshots/login-dark-mobile.png) |
+
+![Privacy Policy](screenshots/privacy-light-mobile.png)
+
 ## Getting Started (User Guide)
 
 1. **Sign in** — use any Google account. Your data is tied to that account, and you can export everything anytime.
@@ -121,7 +129,7 @@ cp .env.example .env
 | `DATABASE_URL` | Yes (prod) | PostgreSQL DSN, e.g. `postgresql://postgres:pass@localhost:5432/vesting`. Docker Compose sets this automatically. |
 | `POSTGRES_PASSWORD` | Yes (prod) | Password for the `postgres` user in the Docker Compose `db` service |
 | `ENCRYPTION_MASTER_KEY` | No | Enables per-user AES-256-GCM encryption of all financial data |
-| `PRIVACY_URL` | No | Link to your privacy policy shown on the login page and footer |
+| `PRIVACY_URL` | No | Override the privacy policy link on the login page (defaults to the built-in `/privacy` page) |
 | `ADMIN_EMAIL` | No | Semicolon-delimited email(s) granted admin access on login |
 | `VAPID_PUBLIC_KEY` | No | Required for push notifications |
 | `VAPID_PRIVATE_KEY` | No | Required for push notifications |
@@ -250,7 +258,7 @@ epic-stocks/
 │   └── tests/               # pytest tests
 ├── frontend/
 │   ├── src/
-│   │   ├── pages/           # Login, Dashboard, Events, Grants, Loans, Prices, etc.
+│   │   ├── pages/           # Login, PrivacyPolicy (public), Dashboard, Events, Grants, Loans, Prices, etc.
 │   │   ├── components/      # Layout shell, shared UI
 │   │   ├── hooks/           # useAuth, useApiData, useDark, usePush, etc.
 │   │   └── __tests__/       # Vitest tests

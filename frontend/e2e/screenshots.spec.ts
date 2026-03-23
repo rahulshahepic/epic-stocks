@@ -100,4 +100,31 @@ test.describe('Screenshots', () => {
     await page.waitForTimeout(500)
     await page.screenshot({ path: `${OUT}/settings-dark-mobile.png`, fullPage: true })
   })
+
+  test('login page - light - mobile', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' })
+    await page.setViewportSize(MOBILE)
+    await page.goto(`${BASE}/login`)
+    await page.waitForLoadState('domcontentloaded')
+    // wait for privacy blurb to appear (doesn't need external Google script)
+    await page.waitForSelector('text=We will never sell your data')
+    await page.screenshot({ path: `${OUT}/login-light-mobile.png`, fullPage: true })
+  })
+
+  test('login page - dark - mobile', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await page.setViewportSize(MOBILE)
+    await page.goto(`${BASE}/login`)
+    await page.waitForLoadState('domcontentloaded')
+    await page.waitForSelector('text=We will never sell your data')
+    await page.screenshot({ path: `${OUT}/login-dark-mobile.png`, fullPage: true })
+  })
+
+  test('privacy policy page - light - mobile', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' })
+    await page.setViewportSize(MOBILE)
+    await page.goto(`${BASE}/privacy`)
+    await page.waitForLoadState('domcontentloaded')
+    await page.screenshot({ path: `${OUT}/privacy-light-mobile.png`, fullPage: true })
+  })
 })

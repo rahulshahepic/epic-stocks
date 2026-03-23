@@ -30,8 +30,9 @@ def build_fifo_lots(
       - Purchase grants (grant_price > 0): original purchase price (no step-up at vest).
       - Income/RSU grants (grant_price = 0/None): FMV at vest (basis after income recognition).
 
-    order: 'fifo' (oldest first) or 'lifo' (newest first). Reductions in the timeline
-    (loan repayments, dp exchanges) are always applied oldest-first regardless of order.
+    order: 'fifo' (oldest first) or 'lifo' (newest first). Loan repayments and other
+    reductions are applied oldest-first. Down payment exchanges consume lowest-cost-basis
+    lots first (Bonus grant lots first, then FIFO among remaining).
 
     grant_year / grant_type: when both provided, only lots from that grant are returned
     (same-tranche selection). Falls back gracefully if no matching lots exist.
@@ -49,15 +50,33 @@ def build_fifo_lots(
             basis = e.get("grant_price") or e.get("share_price", 0.0)
             lots.append([edate, vs, basis, e.get("grant_year"), e.get("grant_type")])
         elif vs < 0:
-            # Reductions always consume oldest lots first (historical order)
             to_reduce = abs(vs)
-            while to_reduce > 0 and lots:
-                if lots[0][1] <= to_reduce:
-                    to_reduce -= lots[0][1]
-                    lots.popleft()
-                else:
-                    lots[0][1] -= to_reduce
-                    to_reduce = 0
+            if e["event_type"] == "Down payment exchange":
+                # Consume lowest cost basis first: Bonus lots first, then oldest
+                ordered = sorted(lots, key=lambda l: (l[4] != 'Bonus', l[0]))
+                new_lots = []
+                for lot in ordered:
+                    if to_reduce <= 0:
+                        new_lots.append(lot)
+                        continue
+                    if lot[1] <= to_reduce:
+                        to_reduce -= lot[1]
+                    else:
+                        lot[1] -= to_reduce
+                        to_reduce = 0
+                        new_lots.append(lot)
+                # Restore FIFO order for remaining lots
+                new_lots.sort(key=lambda l: l[0])
+                lots = deque(new_lots)
+            else:
+                # Other reductions consume oldest lots first (historical order)
+                while to_reduce > 0 and lots:
+                    if lots[0][1] <= to_reduce:
+                        to_reduce -= lots[0][1]
+                        lots.popleft()
+                    else:
+                        lots[0][1] -= to_reduce
+                        to_reduce = 0
 
     if order == 'lifo':
         lots = deque(reversed(lots))

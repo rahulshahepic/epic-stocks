@@ -42,7 +42,9 @@ Follow the order in SPEC.md. Build backend first, then frontend. **Every step mu
 - Mobile-first responsive design — this is primarily used on a phone
 
 ## UI Change Checklist
-- **Update README screenshots after any significant UI change.** When modifying dashboard charts, adding new pages, or changing visual layout, regenerate screenshots and commit them.
+> **⚠️ MANDATORY AFTER EVERY UI CHANGE: Run `./screenshots/run.sh` and commit the updated screenshots. DO NOT skip this. DO NOT forget. This is not optional.**
+
+- **ALWAYS update README screenshots after any UI change** — login page, dashboard, import, settings, any page.
 - **How:** Run `./screenshots/run.sh` from the repo root. This spins up a temp backend + frontend, seeds sample data, and runs `frontend/e2e/screenshots.spec.ts` via Playwright to capture all screenshots into `screenshots/`.
 - **What to capture:** The spec captures dashboard (light/dark × mobile/desktop) and admin (light/dark × mobile). Add new test cases to the spec when adding new pages.
 - **README:** After capturing, update `README.md` to reference any new screenshot files.

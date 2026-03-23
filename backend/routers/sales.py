@@ -22,7 +22,7 @@ WI_DEFAULTS = {
     "state_st_cg_rate": 0.0765,
     "lt_holding_days": 365,
     "lot_selection_method": "lifo",
-    "prefer_stock_dp": False,
+    "prefer_stock_dp": 0,
     "dp_min_percent": 0.10,
     "dp_min_cap": 20000.0,
 }

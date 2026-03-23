@@ -43,7 +43,7 @@ export default function ImportExport() {
   const [result, setResult] = useState<ImportResult | null>(null)
   const [error, setError] = useState('')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [generatePayoffSales, setGeneratePayoffSales] = useState(false)
+  const [generatePayoffSales, setGeneratePayoffSales] = useState(true)
   const [showGuide, setShowGuide] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -131,6 +131,25 @@ export default function ImportExport() {
     }
   }
 
+  async function handleSampleDownload() {
+    try {
+      const resp = await fetch('/api/import/sample', {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      })
+      if (!resp.ok) throw new Error(`Download failed (${resp.status})`)
+      const blob = await resp.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'Vesting_Sample.xlsx'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Sample download failed')
+      setStatus('error')
+    }
+  }
+
   return (
     <div className="space-y-6">
       <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Import / Export</h2>
@@ -139,14 +158,21 @@ export default function ImportExport() {
       <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
         <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Get Started</h3>
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          Download a template with the correct format. Fill in only the sheets you need — Schedule (grants), Loans, and/or Prices.
+          Download a sample filled with fake data to see what the format looks like — each cell has a comment explaining what it means.
+          Or download a blank template to fill in yourself.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            onClick={handleSampleDownload}
+            className="rounded-md bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60"
+          >
+            Download Sample (with fake data)
+          </button>
           <button
             onClick={handleTemplateDownload}
             className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
           >
-            Download Template
+            Download Blank Template
           </button>
           <button
             onClick={() => setShowGuide(v => !v)}
@@ -190,16 +216,18 @@ export default function ImportExport() {
             onChange={handleFileSelect}
             className="block w-full text-xs text-gray-500 file:mr-3 file:rounded-md file:border-0 file:bg-indigo-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-indigo-700 hover:file:bg-indigo-100 dark:text-gray-400 dark:file:bg-indigo-900/40 dark:file:text-indigo-300"
           />
-          <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+          <label className="flex items-start gap-2 text-xs text-gray-600 dark:text-gray-400">
             <input
               type="checkbox"
               checked={generatePayoffSales}
               onChange={e => setGeneratePayoffSales(e.target.checked)}
-              className="rounded border-gray-300 dark:border-gray-600"
+              className="mt-0.5 rounded border-gray-300 dark:border-gray-600"
             />
             <span>
-              Generate payoff sales for loans in this file (recommended)
-              <span className="ml-1 text-gray-400" title="For each loan in the file, automatically creates a stock sale sized to cover the payoff after capital gains tax. Only applies if file contains a Loans sheet.">ⓘ</span>
+              <span className="font-medium">Generate payoff sales for loans</span>
+              <span className="ml-1 text-gray-400">(recommended)</span>
+              <br />
+              <span className="text-gray-400 dark:text-gray-500">For each loan, automatically creates a stock sale sized to cover the payoff after capital gains tax. Only applies when the file includes a Loans sheet.</span>
             </span>
           </label>
         </div>

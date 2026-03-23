@@ -344,6 +344,158 @@ def download_template():
 
 
 # ============================================================
+# SAMPLE DOWNLOAD
+# ============================================================
+
+@router.get("/import/sample")
+def download_sample():
+    """Download a sample Excel file pre-filled with realistic fake data and explanatory comments."""
+    from openpyxl.comments import Comment
+
+    wb = openpyxl.Workbook()
+
+    # ---- Schedule sheet ----
+    ws = wb.active
+    ws.title = "Schedule"
+    _write_headers(ws, ["Year", "Type", "Shares", "Price", "Vest Start", "Periods", "Exercise Date", "DP Shares"])
+
+    # Header comments
+    header_comments = [
+        (1, "The year of this grant — matches your Epic annual statement (e.g. 2020)."),
+        (2, "Grant type: Purchase, Bonus, Catch-Up, Free, etc."),
+        (3, "Total shares in this grant."),
+        (4, "Purchase price per share ($0 for RSU/Bonus grants, strike price for options)."),
+        (5, "Date vesting begins (the day Epic starts the vesting clock)."),
+        (6, "Number of vesting periods (e.g. 8 = quarterly over 4 years, 4 = quarterly over 2 years)."),
+        (7, "Date by which options must be exercised. For RSU/Bonus grants use Dec 31 of the grant year."),
+        (8, "Down-payment shares used to buy this grant (from purchase confirmation). "
+            "Negative means Epic returned shares to you. 0 if none."),
+    ]
+    for col, note in header_comments:
+        ws.cell(row=1, column=col).comment = Comment(note, "Sample")
+
+    sched_rows = [
+        (2020, "Purchase", 50000, 1.85, date(2022, 6, 15), 5, date(2020, 12, 31), 0),
+        (2020, "Bonus",    5000,  0.00, date(2022, 6, 15), 4, date(2020, 12, 31), 0),
+        (2021, "Purchase", 80000, 2.20, date(2023, 9, 30), 5, date(2021, 12, 31), 0),
+        (2022, "Purchase", 100000, 2.75, date(2024, 9, 30), 4, date(2022, 12, 31), 0),
+        (2022, "Bonus",    20000, 0.00, date(2027, 9, 30), 1, date(2022, 12, 31), 0),
+        (2023, "Purchase", 120000, 3.10, date(2025, 9, 30), 4, date(2023, 12, 31), 0),
+        (2024, "Purchase", 150000, 3.60, date(2026, 9, 30), 4, date(2024, 12, 31), -15000),
+    ]
+    fmts = [None, None, "#,##0", "\\$#,##0.00", "mm/dd/yyyy", None, "mm/dd/yyyy", "#,##0"]
+    for r, row_data in enumerate(sched_rows, 2):
+        for c, (val, fmt) in enumerate(zip(row_data, fmts), 1):
+            _body_cell(ws, r, c, val, fmt)
+
+    # Annotate first data row
+    first_row_notes = [
+        (1, "2020 = grant issued in 2020"),
+        (2, "Purchase = standard yearly purchase grant"),
+        (3, "50,000 total shares in this grant"),
+        (4, "$1.85 = price per share at purchase (from statement)"),
+        (5, "Vesting starts June 15, 2022"),
+        (6, "5 periods = 5 quarterly vests"),
+        (7, "Exercise deadline Dec 31, 2020 (RSU-style — use grant year end)"),
+        (8, "0 = no down-payment shares used"),
+    ]
+    for col, note in first_row_notes:
+        ws.cell(row=2, column=col).comment = Comment(note, "Sample")
+
+    # DP Shares note on the row that uses it
+    ws.cell(row=len(sched_rows) + 1, column=8).comment = Comment(
+        "-15,000 = Epic returned 15,000 shares as a down-payment credit (enter as negative)", "Sample"
+    )
+
+    # ---- Loans sheet ----
+    ws_loans = wb.create_sheet("Loans")
+    _write_headers(ws_loans, ["Loan #", "Grant Year", "Grant Type", "Loan Type", "Loan Year",
+                               "Amount", "Rate", "Due Date"])
+
+    loan_header_comments = [
+        (1, "Loan number from your Epic statement (e.g. 002001). Used to match payoff sales."),
+        (2, "Year of the grant this loan is associated with."),
+        (3, "Grant type — must match the Schedule sheet (e.g. Purchase, Bonus)."),
+        (4, "Loan type: Purchase (original purchase loan), Interest (accrued interest loan), "
+            "Tax (tax withholding loan)."),
+        (5, "Year this loan was issued."),
+        (6, "Principal amount of the loan in dollars."),
+        (7, "Annual interest rate as a decimal (e.g. 0.0095 = 0.95%)."),
+        (8, "Loan due date — when you must repay it."),
+    ]
+    for col, note in loan_header_comments:
+        ws_loans.cell(row=1, column=col).comment = Comment(note, "Sample")
+
+    loan_rows = [
+        ("002001", 2020, "Purchase", "Purchase",  2020, 92500.00,  0.0095, date(2029, 7, 15)),
+        ("002002", 2020, "Purchase", "Interest",  2022,   850.00,  0.0200, date(2029, 7, 15)),
+        ("002003", 2020, "Purchase", "Interest",  2023,  1100.00,  0.0350, date(2029, 7, 15)),
+        ("003001", 2021, "Purchase", "Purchase",  2021, 176000.00, 0.0095, date(2030, 7, 15)),
+        ("003002", 2021, "Purchase", "Interest",  2023,  1620.00,  0.0350, date(2030, 7, 15)),
+        ("004001", 2022, "Purchase", "Purchase",  2022, 275000.00, 0.0200, date(2031, 6, 30)),
+        ("005001", 2023, "Purchase", "Purchase",  2023, 372000.00, 0.0350, date(2032, 6, 30)),
+        ("006001", 2024, "Purchase", "Purchase",  2024, 540000.00, 0.0400, date(2033, 6, 30)),
+    ]
+    loan_fmts = [None, None, None, None, None, "\\$#,##0.00", "0.00%", "mm/dd/yyyy"]
+    for r, row_data in enumerate(loan_rows, 2):
+        for c, (val, fmt) in enumerate(zip(row_data, loan_fmts), 1):
+            _body_cell(ws_loans, r, c, val, fmt)
+
+    loan_first_notes = [
+        (1, "002001 = loan number from your Epic statement"),
+        (2, "2020 = this loan is for the 2020 grant"),
+        (3, "Purchase = matches the Type in the Schedule sheet"),
+        (4, "Purchase = the original loan taken to buy the shares"),
+        (5, "2020 = year this loan was issued"),
+        (6, "$92,500 = principal loan amount"),
+        (7, "0.0095 = 0.95% annual interest rate"),
+        (8, "Due July 15, 2029"),
+    ]
+    for col, note in loan_first_notes:
+        ws_loans.cell(row=2, column=col).comment = Comment(note, "Sample")
+
+    ws_loans.cell(row=3, column=4).comment = Comment(
+        "Interest = a separate loan Epic issued for accumulated interest on the Purchase loan", "Sample"
+    )
+
+    # ---- Prices sheet ----
+    ws_prices = wb.create_sheet("Prices")
+    _write_headers(ws_prices, ["Date", "Price"])
+    ws_prices.cell(row=1, column=1).comment = Comment(
+        "One row per year. Epic announces the share price each March. "
+        "The first row's price is used as the baseline for all cap-gains calculations.", "Sample"
+    )
+    ws_prices.cell(row=1, column=2).comment = Comment("Share price in dollars on that date.", "Sample")
+
+    price_rows = [
+        (date(2020, 3, 1), 1.85),
+        (date(2021, 3, 1), 2.20),
+        (date(2022, 3, 1), 2.75),
+        (date(2023, 3, 1), 3.10),
+        (date(2024, 3, 1), 3.60),
+        (date(2025, 3, 1), 4.25),
+        (date(2026, 3, 1), 5.10),
+    ]
+    for r, (d, p) in enumerate(price_rows, 2):
+        _body_cell(ws_prices, r, 1, d, "mm/dd/yyyy")
+        _body_cell(ws_prices, r, 2, p, "\\$#,##0.00")
+
+    ws_prices.cell(row=2, column=1).comment = Comment(
+        "March 1, 2020 = the day Epic announced the 2020 share price", "Sample"
+    )
+    ws_prices.cell(row=2, column=2).comment = Comment("$1.85 per share in 2020", "Sample")
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=Vesting_Sample.xlsx"},
+    )
+
+
+# ============================================================
 # EXPORT
 # ============================================================
 

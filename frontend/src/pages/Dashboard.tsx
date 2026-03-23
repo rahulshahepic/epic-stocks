@@ -817,6 +817,44 @@ export default function Dashboard() {
     return <p className="p-6 text-center text-sm text-red-500">Failed to load dashboard</p>
   }
 
+  const isEmpty = !events || events.length === 0
+
+  if (isEmpty) {
+    return (
+      <div className="space-y-6">
+        <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-6 dark:border-indigo-800 dark:bg-indigo-950/40">
+          <h2 className="text-base font-semibold text-indigo-900 dark:text-indigo-200">Welcome! Let's get your data in.</h2>
+          <p className="mt-1 text-sm text-indigo-700 dark:text-indigo-300">
+            Your dashboard is empty — here are a few ways to get started:
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <a
+              href="/import"
+              className="flex flex-col rounded-lg border border-indigo-300 bg-white p-4 hover:border-indigo-500 hover:shadow-sm dark:border-indigo-700 dark:bg-gray-900 dark:hover:border-indigo-500"
+            >
+              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Import from Excel</span>
+              <span className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Download the template, fill in your grant history, and upload it here.
+              </span>
+            </a>
+            <a
+              href="/grants"
+              className="flex flex-col rounded-lg border border-indigo-300 bg-white p-4 hover:border-indigo-500 hover:shadow-sm dark:border-indigo-700 dark:bg-gray-900 dark:hover:border-indigo-500"
+            >
+              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Add a grant manually</span>
+              <span className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Enter your grant details one by one — no spreadsheet needed.
+              </span>
+            </a>
+          </div>
+          <p className="mt-4 text-xs text-indigo-600 dark:text-indigo-400">
+            You'll also need at least one share price (go to <a href="/prices" className="underline">Prices</a>) before events will appear.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   const cv = cardValues ?? {
     current_price: dash.current_price,
     total_shares: dash.total_shares,
@@ -853,6 +891,7 @@ export default function Dashboard() {
         </button>
         <button
           onClick={() => setCardDate(maxDate)}
+          title="Jump to the date of your last vesting event or price entry"
           className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
             cardDate === maxDate
               ? 'bg-indigo-600 text-white'

@@ -1,6 +1,33 @@
 import { useState, useRef } from 'react'
 import { getToken } from '../api.ts'
 
+const COLUMN_GUIDE = {
+  Schedule: [
+    { col: 'year', desc: 'Grant year (e.g. 2021). Matches the year on your Epic annual statement.' },
+    { col: 'type', desc: '"RSU" for restricted stock units, "Option" for stock options.' },
+    { col: 'shares', desc: 'Total shares granted that year.' },
+    { col: 'price', desc: 'Grant price per share — $0 for RSUs, the option strike price for options.' },
+    { col: 'vest_start', desc: 'Date vesting begins (YYYY-MM-DD). Typically March 1 of the grant year.' },
+    { col: 'periods', desc: 'Number of vesting periods (usually 8 for a standard 4-year quarterly schedule).' },
+    { col: 'exercise_date', desc: 'Date by which options must be exercised. Leave blank for RSUs.' },
+    { col: 'dp_shares', desc: 'Down-payment shares used to purchase this grant. Find on your purchase confirmation; enter as a positive number.' },
+  ],
+  Loans: [
+    { col: 'grant_year', desc: 'Year of the grant this loan is associated with.' },
+    { col: 'grant_type', desc: '"RSU" or "Option" — must match the Schedule entry.' },
+    { col: 'loan_type', desc: '"Purchase" for the original loan, "Interest" for accrued interest loans, "Tax" for tax-withholding loans.' },
+    { col: 'loan_year', desc: 'Year this loan was issued.' },
+    { col: 'amount', desc: 'Loan principal amount in dollars.' },
+    { col: 'interest_rate', desc: 'Annual interest rate as a decimal (e.g. 0.05 for 5%).' },
+    { col: 'due_date', desc: 'Loan due date (YYYY-MM-DD).' },
+    { col: 'loan_number', desc: 'Loan number from your Epic statement. Used to match loans to payoff sales.' },
+  ],
+  Prices: [
+    { col: 'effective_date', desc: 'Date the price takes effect (YYYY-MM-DD). Usually March 1 each year when Epic announces the share price.' },
+    { col: 'price', desc: 'Share price in dollars.' },
+  ],
+}
+
 type Status = 'idle' | 'uploading' | 'success' | 'error' | 'confirm' | 'exporting'
 
 interface ImportResult {
@@ -17,6 +44,7 @@ export default function ImportExport() {
   const [error, setError] = useState('')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [generatePayoffSales, setGeneratePayoffSales] = useState(false)
+  const [showGuide, setShowGuide] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -113,12 +141,38 @@ export default function ImportExport() {
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
           Download a template with the correct format. Fill in only the sheets you need — Schedule (grants), Loans, and/or Prices.
         </p>
-        <button
-          onClick={handleTemplateDownload}
-          className="mt-3 rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-        >
-          Download Template
-        </button>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            onClick={handleTemplateDownload}
+            className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+          >
+            Download Template
+          </button>
+          <button
+            onClick={() => setShowGuide(v => !v)}
+            className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+          >
+            {showGuide ? 'Hide column guide' : 'What do the columns mean?'}
+          </button>
+        </div>
+
+        {showGuide && (
+          <div className="mt-4 space-y-4">
+            {(Object.entries(COLUMN_GUIDE) as [string, { col: string; desc: string }[]][]).map(([sheet, cols]) => (
+              <div key={sheet}>
+                <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">{sheet} sheet</p>
+                <dl className="mt-1 divide-y divide-gray-100 dark:divide-gray-800">
+                  {cols.map(({ col, desc }) => (
+                    <div key={col} className="flex gap-2 py-1.5">
+                      <dt className="w-32 shrink-0 font-mono text-xs text-indigo-600 dark:text-indigo-400">{col}</dt>
+                      <dd className="text-xs text-gray-500 dark:text-gray-400">{desc}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Import Section */}

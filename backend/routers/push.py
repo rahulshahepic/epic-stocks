@@ -47,3 +47,22 @@ def unsubscribe(body: PushSubscriptionCreate, user: User = Depends(get_current_u
 def push_status(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     count = db.query(PushSubscription).filter(PushSubscription.user_id == user.id).count()
     return {"subscribed": count > 0, "subscription_count": count}
+
+
+@router.post("/test")
+def push_test(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Send a test push notification to the current user's subscriptions."""
+    from notifications import send_push
+    subs = db.query(PushSubscription).filter(PushSubscription.user_id == user.id).all()
+    if not subs:
+        raise HTTPException(status_code=404, detail="No push subscriptions found. Enable push notifications first.")
+    payload = {"title": "Equity Tracker", "body": "Test notification — push is working!"}
+    sent = 0
+    for sub in subs:
+        ok = send_push(sub, payload)
+        if ok:
+            sent += 1
+        elif ok is False:
+            db.delete(sub)
+    db.commit()
+    return {"sent": sent}

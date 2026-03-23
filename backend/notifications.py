@@ -3,7 +3,7 @@ import json
 import logging
 import os
 from collections import Counter
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -47,8 +47,9 @@ def _user_source_data(user: User, db: Session):
     return grants, prices, loans, initial_price
 
 
-def get_todays_events_for_user(user: User, db: Session, today: date | None = None) -> list[dict]:
+def get_todays_events_for_user(user: User, db: Session, today: date | None = None, advance_days: int = 0) -> list[dict]:
     today = today or date.today()
+    target_date = today + timedelta(days=advance_days)
     todays = []
 
     grants, prices, loans, initial_price = _user_source_data(user, db)
@@ -59,14 +60,14 @@ def get_todays_events_for_user(user: User, db: Session, today: date | None = Non
             edate = e["date"]
             if isinstance(edate, datetime):
                 edate = edate.date()
-            if edate == today and e["event_type"] in NOTIFY_EVENT_TYPES:
+            if edate == target_date and e["event_type"] in NOTIFY_EVENT_TYPES:
                 todays.append(e)
 
-    sales = db.query(Sale).filter(Sale.user_id == user.id, Sale.date == today).all()
+    sales = db.query(Sale).filter(Sale.user_id == user.id, Sale.date == target_date).all()
     for s in sales:
         todays.append({
             "event_type": "Sale",
-            "date": today,
+            "date": target_date,
             "shares": s.shares,
             "price_per_share": s.price_per_share,
         })
@@ -148,11 +149,15 @@ def send_daily_notifications(today: date | None = None):
 
         users = db.query(User).filter(User.id.in_(all_user_ids)).all()
 
+        # Build a map of user_id → advance_days preference
+        all_prefs = {p.user_id: (p.advance_days or 0) for p in db.query(EmailPreference).filter(EmailPreference.user_id.in_(all_user_ids)).all()}
+
         for user in users:
             if _already_notified_today(user, today):
                 continue
 
-            events = get_todays_events_for_user(user, db, today)
+            advance_days = all_prefs.get(user.id, 0)
+            events = get_todays_events_for_user(user, db, today, advance_days=advance_days)
             if not events:
                 continue
 

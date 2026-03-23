@@ -270,10 +270,12 @@ def admin_db_tables(admin: User = Depends(get_admin_user), db: Session = Depends
             SELECT
                 t.tablename AS table_name,
                 pg_total_relation_size(quote_ident(t.schemaname) || '.' || quote_ident(t.tablename)) AS size_bytes,
-                COALESCE(c.reltuples::bigint, 0) AS row_estimate
+                COALESCE(s.n_live_tup, GREATEST(c.reltuples::bigint, 0)) AS row_estimate
             FROM pg_tables t
             LEFT JOIN pg_class c ON c.relname = t.tablename
                 AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = t.schemaname)
+            LEFT JOIN pg_stat_user_tables s ON s.relname = t.tablename
+                AND s.schemaname = t.schemaname
             WHERE t.schemaname = 'public'
             ORDER BY size_bytes DESC
         """)).fetchall()

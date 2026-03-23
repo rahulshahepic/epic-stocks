@@ -44,7 +44,7 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 1. **Sign in** — use any Google account. Your data is tied to that account, and you can export everything anytime.
 2. **Add a price** — go to **Prices** and enter the current share price (Epic announces this each March). Without at least one price, no events will be computed.
 3. **Add your data** — two options:
-   - **Import from Excel** — go to **Import**, download the template, fill it in, and upload. Click "What do the columns mean?" for a plain-English guide to every field.
+   - **Import from Excel** — go to **Import**, download the **Sample** (pre-filled with fake data and explanatory cell comments) to see what the format looks like, then fill in your real data and upload. Click "What do the columns mean?" for a plain-English guide to every field.
    - **Add manually** — go to **Grants** and add grants one by one. Then add any **Loans** and their annual interest loans.
 4. **View the Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, interest, tax paid, cash received, next event). Use the **As of** date picker to time-travel. **Today** snaps to the current date; **End** jumps to your last vesting/price date.
 5. **View Events** — the full computed timeline of vesting, exercise, loan payoff, and sale events.
@@ -60,7 +60,7 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 - **CRUD Management** — full create/read/update/delete for Grants, Loans, Prices, and Sales.
 - **Quick Flows** — convenience endpoints: "New Purchase" (grant + loan with optional stock down payment), "Annual Price", "Add Bonus".
 - **Down Payment Rules** — configurable minimum DP policy (percent of purchase and dollar cap). "Prefer stock DP" auto-calculates the minimum stock exchange down payment on new purchases. Default: 10% or $20,000, whichever is lower.
-- **Excel Import/Export** — bootstrap from an existing Vesting.xlsx or export current state. The Import page includes a built-in column reference guide explaining every template field in plain English.
+- **Excel Import/Export** — bootstrap from an existing Vesting.xlsx or export current state. The Import page includes a downloadable sample file (pre-filled with fake data, with cell comments explaining every field) and a built-in column reference guide.
 - **Google Sign-In** — OAuth 2.0 authentication, automatic account creation. Any Google account works; data is tied to that account.
 - **Admin Dashboard** — user management, aggregate stats, email blocking. Admin cannot see financial data.
 - **Push & Email Notifications** — configurable advance timing: day-of, 3 days before, or 1 week before each event. Per-user opt-in for each channel independently. Includes a "Send test" button to confirm push is working.
@@ -300,6 +300,7 @@ All endpoints require `Authorization: Bearer <jwt>` except auth, health, config,
 | POST | `/api/flows/add-bonus` | Add a bonus grant |
 | POST | `/api/import/excel` | Upload Excel file to populate tables |
 | GET | `/api/import/template` | Download empty Excel template |
+| GET | `/api/import/sample` | Download sample Excel file pre-filled with fake data and cell comments |
 | GET | `/api/export/excel` | Download Vesting.xlsx with all data |
 | POST/DELETE | `/api/push/subscribe` | Subscribe/unsubscribe push notifications |
 | GET | `/api/push/status` | Check push subscription status |

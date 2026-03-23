@@ -26,7 +26,7 @@ function Sparkline({ data, dataKey, color, formatter }: {
   color: string
   formatter?: (v: number) => string
 }) {
-  if (data.length < 2) {
+  if (data.length === 0) {
     return <div className="flex h-16 items-center justify-center text-xs text-gray-400 dark:text-gray-500">collecting…</div>
   }
   return (
@@ -42,7 +42,7 @@ function Sparkline({ data, dataKey, color, formatter }: {
           type="monotone"
           dataKey={dataKey as string}
           stroke={color}
-          dot={false}
+          dot={data.length === 1 ? { r: 3, fill: color } : false}
           strokeWidth={1.5}
           isAnimationActive={false}
         />

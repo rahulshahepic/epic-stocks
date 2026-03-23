@@ -594,3 +594,34 @@ def test_admin_test_notify_no_subscriptions(client):
         assert data["push_sent"] == 0
         assert data["push_failed"] == 0
         assert data["email_sent"] is False
+
+
+def test_admin_test_notify_rate_limited(client):
+    """test-notify is rate-limited to 5 per hour per admin."""
+    from routers import admin as admin_router
+    # Clear the in-memory counter before test
+    admin_router._test_notify_counts.clear()
+
+    with _admin_env():
+        admin_token = _register_admin(client)
+        target_token = register_user(client, "ratelimit@test.com")
+        target_id = client.get("/api/me", headers=auth_header(target_token)).json()["id"]
+
+        for i in range(5):
+            resp = client.post(
+                "/api/admin/test-notify",
+                json={"user_id": target_id, "title": "Hi", "body": "Test"},
+                headers=auth_header(admin_token),
+            )
+            assert resp.status_code == 200, f"Call {i+1} failed unexpectedly"
+
+        # 6th call should be rate-limited
+        resp = client.post(
+            "/api/admin/test-notify",
+            json={"user_id": target_id, "title": "Hi", "body": "Test"},
+            headers=auth_header(admin_token),
+        )
+        assert resp.status_code == 429
+        assert "Rate limit" in resp.json()["detail"]
+
+    admin_router._test_notify_counts.clear()

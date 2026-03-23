@@ -1,5 +1,6 @@
 import logging
 import os
+from collections import defaultdict
 from fastapi import APIRouter, Depends, HTTPException
 
 logger = logging.getLogger(__name__)
@@ -13,6 +14,10 @@ from models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, Err
 from auth import get_admin_user, get_admin_emails
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+# In-memory rate limiter for admin test-notify: 5 calls per hour per admin user
+_TEST_NOTIFY_LIMIT = 5
+_test_notify_counts: dict[tuple, int] = defaultdict(int)  # (user_id, hour_utc) -> count
 
 
 class AdminStats(BaseModel):
@@ -57,11 +62,19 @@ def admin_stats(admin: User = Depends(get_admin_user), db: Session = Depends(get
     total_loans = db.query(func.count(Loan.id)).scalar()
     total_prices = db.query(func.count(Price.id)).scalar()
 
-    db_path = os.path.join(os.path.dirname(__file__), "..", "data", "vesting.db")
-    try:
-        db_size = os.path.getsize(db_path)
-    except OSError:
-        db_size = 0
+    import database as _db_module
+    if _db_module._is_sqlite:
+        db_path = os.path.join(os.path.dirname(__file__), "..", "data", "vesting.db")
+        try:
+            db_size = os.path.getsize(db_path)
+        except OSError:
+            db_size = 0
+    else:
+        from sqlalchemy import text
+        try:
+            db_size = db.execute(text("SELECT pg_database_size(current_database())")).scalar() or 0
+        except Exception:
+            db_size = 0
 
     return AdminStats(
         total_users=total_users,
@@ -217,6 +230,11 @@ def admin_test_notify(
     admin: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ):
+    hour_key = (admin.id, datetime.now(timezone.utc).strftime("%Y%m%d%H"))
+    if _test_notify_counts[hour_key] >= _TEST_NOTIFY_LIMIT:
+        raise HTTPException(status_code=429, detail=f"Rate limit: max {_TEST_NOTIFY_LIMIT} test notifications per hour")
+    _test_notify_counts[hour_key] += 1
+
     user = db.query(User).filter(User.id == body.user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")

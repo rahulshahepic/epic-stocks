@@ -8,12 +8,12 @@ Equity vesting tracker PWA. See SPEC.md for full requirements.
 - **Events are never stored in the database.** They are computed on the fly from Grants + Loans + Prices via core.py.
 - **backend/excel_io.py contains the Excel read/write logic.** Adapt as needed for the import/export endpoints but preserve the column mappings.
 - **test_data/fixture.xlsx is a synthetic test fixture.** Use it to validate import logic. It contains no real data.
-- **Schema migrations are lightweight.** `_migrate_schema()` in main.py adds missing columns on startup via ALTER TABLE. No heavy migration framework — keep it simple.
+- **Schema migrations use Alembic.** Migrations live in `backend/alembic/versions/`. `alembic upgrade head` runs automatically in the lifespan on startup (PostgreSQL only; SQLite test environments use `create_all`). To create a new migration: `alembic revision --autogenerate -m "description"`.
 - **Encryption is per-user.** When `ENCRYPTION_MASTER_KEY` is set, `backend/crypto.py` handles AES-256-GCM column-level encryption via SQLAlchemy TypeDecorators. Transparent to routers and core.py.
 - **Admin access is dynamic.** Set via `ADMIN_EMAIL` env var (semicolon-delimited). `is_admin` flag is set on every login — no persistent admin designation. Admin endpoints in `backend/routers/admin.py` never expose financial data.
 
 ## Tech Stack
-- Backend: Python 3.12, FastAPI, SQLite (WAL mode), SQLAlchemy
+- Backend: Python 3.12, FastAPI, PostgreSQL, SQLAlchemy, Alembic
 - Frontend: React, TypeScript, Vite, Tailwind CSS, Recharts
 - Deploy: Docker Compose + Caddy (auto-HTTPS), Cloudflare in front for DDoS/rate limiting
 - Auth: Google Sign-In (OAuth 2.0) → backend JWT session tokens (24hr expiry, no refresh tokens)

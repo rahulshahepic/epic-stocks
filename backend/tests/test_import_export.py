@@ -208,3 +208,106 @@ def test_import_rejects_duplicate_grants_in_sheet(client):
     )
     assert resp.status_code == 400
     assert "Duplicate" in resp.json()["detail"]
+
+
+# ============================================================
+# IMPORT BACKUPS
+# ============================================================
+
+def test_import_creates_backup(client):
+    """After import, a backup of the replaced data is created."""
+    token = register_user(client)
+    # First import to populate data
+    with open(FIXTURE, "rb") as f:
+        client.post("/api/import/excel",
+            files={"file": ("fixture.xlsx", f, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            headers=auth_header(token))
+    # Second import should create a backup of the first import's data
+    with open(FIXTURE, "rb") as f:
+        client.post("/api/import/excel",
+            files={"file": ("fixture.xlsx", f, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            headers=auth_header(token))
+    backups = client.get("/api/import/backups", headers=auth_header(token)).json()
+    assert len(backups) >= 1
+    assert backups[0]["grant_count"] == 12
+    assert backups[0]["price_count"] == 8
+    assert backups[0]["loan_count"] == 21
+
+
+def test_import_backup_trimmed_to_three(client):
+    """Backups are capped at 3 per user."""
+    token = register_user(client)
+    with open(FIXTURE, "rb") as f:
+        data = f.read()
+    for _ in range(5):
+        client.post("/api/import/excel",
+            files={"file": ("fixture.xlsx", io.BytesIO(data), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            headers=auth_header(token))
+    backups = client.get("/api/import/backups", headers=auth_header(token)).json()
+    assert len(backups) <= 3
+
+
+def test_import_no_backup_when_empty(client):
+    """No backup is created when there's nothing to back up."""
+    token = register_user(client)
+    with open(FIXTURE, "rb") as f:
+        client.post("/api/import/excel",
+            files={"file": ("fixture.xlsx", f, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            headers=auth_header(token))
+    backups = client.get("/api/import/backups", headers=auth_header(token)).json()
+    # First import has no previous data so no backup
+    assert len(backups) == 0
+
+
+def test_restore_backup(client):
+    """Restoring a backup brings back the pre-import data."""
+    token = register_user(client)
+    # Import fixture (12 grants)
+    with open(FIXTURE, "rb") as f:
+        client.post("/api/import/excel",
+            files={"file": ("fixture.xlsx", f, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            headers=auth_header(token))
+    grants_after_first = client.get("/api/grants", headers=auth_header(token)).json()
+    assert len(grants_after_first) == 12
+
+    # Build a minimal xlsx with 1 grant
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Schedule"
+    ws.append(["Year", "Type", "Shares", "Price", "Vest Start", "Periods", "Exercise Date", "DP Shares"])
+    ws.append([2024, "Bonus", 5000, 0.00, "2024-01-01", 4, "2024-12-31", 0])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    client.post("/api/import/excel",
+        files={"file": ("one.xlsx", buf, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        headers=auth_header(token))
+    # Now only 1 grant
+    assert len(client.get("/api/grants", headers=auth_header(token)).json()) == 1
+
+    # Restore the backup
+    backups = client.get("/api/import/backups", headers=auth_header(token)).json()
+    assert len(backups) >= 1
+    resp = client.post(f"/api/import/backups/{backups[0]['id']}/restore", headers=auth_header(token))
+    assert resp.status_code == 200
+    assert resp.json()["restored_grants"] == 12
+    # Should be back to 12 grants
+    assert len(client.get("/api/grants", headers=auth_header(token)).json()) == 12
+
+
+def test_restore_backup_wrong_user(client):
+    """Cannot restore another user's backup."""
+    token1 = register_user(client, "user1@example.com")
+    token2 = register_user(client, "user2@example.com")
+    with open(FIXTURE, "rb") as f:
+        data = f.read()
+    # User1 imports twice to create a backup
+    for _ in range(2):
+        client.post("/api/import/excel",
+            files={"file": ("fixture.xlsx", io.BytesIO(data), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+            headers=auth_header(token1))
+    backups = client.get("/api/import/backups", headers=auth_header(token1)).json()
+    assert len(backups) >= 1
+    # User2 tries to restore user1's backup
+    resp = client.post(f"/api/import/backups/{backups[0]['id']}/restore", headers=auth_header(token2))
+    assert resp.status_code == 404

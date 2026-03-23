@@ -72,7 +72,7 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 
 | Layer | Technology |
 |-------|-----------|
-| Backend | Python 3.12, FastAPI, SQLAlchemy, SQLite (WAL mode) |
+| Backend | Python 3.12, FastAPI, SQLAlchemy, PostgreSQL (Alembic migrations) |
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS 4, Recharts |
 | Auth | Google Sign-In (OAuth 2.0) → backend JWT session tokens |
 | Deploy | Docker Compose + Caddy (auto-HTTPS) + Cloudflare (DDoS/WAF) |
@@ -118,6 +118,8 @@ cp .env.example .env
 |----------|----------|-------------|
 | `JWT_SECRET` | Yes | Random secret for signing JWT tokens |
 | `GOOGLE_CLIENT_ID` | Yes | From [Google Cloud Console](https://console.cloud.google.com/apis/credentials) |
+| `DATABASE_URL` | Yes (prod) | PostgreSQL DSN, e.g. `postgresql://postgres:pass@localhost:5432/vesting`. Docker Compose sets this automatically. |
+| `POSTGRES_PASSWORD` | Yes (prod) | Password for the `postgres` user in the Docker Compose `db` service |
 | `ENCRYPTION_MASTER_KEY` | No | Enables per-user AES-256-GCM encryption of all financial data |
 | `PRIVACY_URL` | No | Link to your privacy policy shown on the login page and footer |
 | `ADMIN_EMAIL` | No | Semicolon-delimited email(s) granted admin access on login |
@@ -226,7 +228,8 @@ epic-stocks/
 │   ├── core.py              # Event generation logic (frozen)
 │   ├── sales_engine.py      # FIFO cost-basis + tax + gross-up calculations
 │   ├── models.py            # SQLAlchemy models (User, Grant, Loan, Price, Sale, etc.)
-│   ├── database.py          # SQLite setup (WAL mode)
+│   ├── database.py          # SQLAlchemy engine setup (PostgreSQL in production, SQLite for tests)
+│   ├── alembic/             # Alembic migrations (run on startup)
 │   ├── auth.py              # JWT + Google OAuth + admin checks
 │   ├── crypto.py            # Per-user AES-256-GCM encryption
 │   ├── excel_io.py          # Excel read/write (openpyxl)
@@ -401,11 +404,12 @@ If you run an instance for others: secure the database file, use HTTPS, set `ENC
 
 - **Events are never stored.** They're computed per-request from the three source tables (Grants, Loans, Prices). This eliminates sync issues entirely.
 - **core.py is frozen.** The event generation logic is tested against known-good values (89 events, cum_shares=558,500, cum_income=$144,325, cum_cap_gains=$1,224,195). Don't modify it.
-- **Excel import is per-sheet, not all-or-nothing.** Only the sheets present in the uploaded file are replaced (Schedule → grants, Loans → loans + payoff sales, Prices → prices). Sheets not included in the file are left untouched. The import flow validates first, previews second, writes third — all in one transaction.
+- **Excel import is per-sheet, not all-or-nothing.** Only the sheets present in the uploaded file are replaced (Schedule → grants, Loans → loans + payoff sales, Prices → prices). Sheets not included in the file are left untouched. The import flow validates first, previews second, writes third — all in one transaction. A backup snapshot of the affected data is saved automatically before each import (last 3 kept per user). Restore via `GET /api/import/backups` + `POST /api/import/backups/{id}/restore`.
 - **Lot selection method is user-configurable (default: LIFO).** In Tax Settings, users choose between:
   - **LIFO** (default) — newest vested lots sold first. For rising stock this maximises cost basis and minimises cap gains.
   - **FIFO** — oldest lots first. Maximises LT-qualified shares when stock was purchased long ago.
   - **Same tranche** — lots from the same grant year/type sold first (chains into LIFO for any remainder). Matches each payoff sale to its originating grant.
+  - **Note:** The IRS may require a consistent lot selection method election at time of sale. Consult a tax advisor before changing this.
 - **Payoff sale share counts are stored, not recomputed.** When a payoff sale is auto-generated, the share count is computed via gross-up and stored. It does not automatically update if you later change lot selection. Hit "Regen payoff sales" on the Loans page to refresh all future payoff sales at once.
 - **Down payment via stock exchange is non-taxable.** The `dp_shares` field on a grant records vested shares exchanged at exercise. They are consumed FIFO from the oldest vested lots, reduce the loan principal, and generate no income or capital gains event.
 - **Cost basis for purchase grants is the purchase price, not FMV at vest.** For grants with a purchase price (`grant_price > 0`), vesting only lifts the sale restriction — it does not create a new tax event or step up the cost basis. Capital gains are computed as `sale price − purchase price`. For income/RSU grants (`grant_price = 0`), FMV at vesting is recognised as ordinary income and becomes the cost basis.

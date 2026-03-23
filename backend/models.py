@@ -163,6 +163,17 @@ class TaxSettings(Base):
     user: Mapped["User"] = relationship(back_populates="tax_settings")
 
 
+class ImportBackup(Base):
+    """Snapshot of user data taken immediately before an import, for recovery."""
+    __tablename__ = "import_backups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    # JSON snapshot: {"grants": [...], "prices": [...], "loans": [...]}
+    data_json: Mapped[str] = mapped_column(String, nullable=False)
+
+
 class BlockedEmail(Base):
     __tablename__ = "blocked_emails"
 

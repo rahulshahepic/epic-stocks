@@ -23,7 +23,7 @@ export async function loginAs(page: Page, token: string) {
 
 /** Navigate to a page via the nav bar */
 export async function navigateTo(page: Page, label: string) {
-  await page.getByRole('link', { name: label, exact: true }).click()
+  await page.getByRole('navigation').getByRole('link', { name: label, exact: true }).click()
   await page.waitForLoadState('networkidle')
 }
 

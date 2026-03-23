@@ -39,18 +39,31 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 |-------|------|
 | ![Admin Light](screenshots/admin-light-mobile.png) | ![Admin Dark](screenshots/admin-dark-mobile.png) |
 
+## Getting Started (User Guide)
+
+1. **Sign in** — use any Google account. Your data is tied to that account, and you can export everything anytime.
+2. **Add a price** — go to **Prices** and enter the current share price (Epic announces this each March). Without at least one price, no events will be computed.
+3. **Add your data** — two options:
+   - **Import from Excel** — go to **Import**, download the template, fill it in, and upload. Click "What do the columns mean?" for a plain-English guide to every field.
+   - **Add manually** — go to **Grants** and add grants one by one. Then add any **Loans** and their annual interest loans.
+4. **View the Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, interest, tax paid, cash received, next event). Use the **As of** date picker to time-travel. **Today** snaps to the current date; **End** jumps to your last vesting/price date.
+5. **View Events** — the full computed timeline of vesting, exercise, loan payoff, and sale events.
+6. **Record a sale** — go to **Sales**, add a sale. The lot selection method (LIFO/FIFO/same-tranche) and tax rates are set in **Settings → Tax Rates**. For a loan payoff sale, link it to a loan and the share count is auto-sized to cover the full payoff after tax.
+7. **Set up notifications** — go to **Settings → Notifications**. Enable push (browser) or email, then choose timing: day-of, 3 days before, or 1 week before your events. Hit **Send test** to confirm push is working.
+8. **Export your data** — go to **Import/Export → Download Vesting.xlsx** to get a full export at any time.
+
 ## Features
 
 - **Event Timeline** — computed on the fly from grants, prices, and loans. Never stored. Shows income, capital gains, share price, and cumulative totals.
-- **Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, total interest, tax paid, cash received, next event) with an "As of" date picker + interactive charts including an Interest Over Time chart with guaranteed vs. projected interest-on-interest layers.
+- **Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, total interest, tax paid, cash received, next event) with an "As of" date picker + interactive charts including an Interest Over Time chart with guaranteed vs. projected interest-on-interest layers. Empty state shows getting-started prompts for new users.
 - **Stock Sales** — record share sales with configurable lot selection (LIFO/FIFO/same-tranche), LT/ST capital gains split, and Wisconsin tax calculator. Payoff sales can be linked to loans and auto-sized to cover the cash due after tax (gross-up calculation). Use "Regen payoff sales" on the Loans page to recompute all future payoff sale share counts after changing lot selection.
 - **CRUD Management** — full create/read/update/delete for Grants, Loans, Prices, and Sales.
 - **Quick Flows** — convenience endpoints: "New Purchase" (grant + loan with optional stock down payment), "Annual Price", "Add Bonus".
 - **Down Payment Rules** — configurable minimum DP policy (percent of purchase and dollar cap). "Prefer stock DP" auto-calculates the minimum stock exchange down payment on new purchases. Default: 10% or $20,000, whichever is lower.
-- **Excel Import/Export** — bootstrap from an existing Vesting.xlsx or export current state.
-- **Google Sign-In** — OAuth 2.0 authentication, automatic account creation.
+- **Excel Import/Export** — bootstrap from an existing Vesting.xlsx or export current state. The Import page includes a built-in column reference guide explaining every template field in plain English.
+- **Google Sign-In** — OAuth 2.0 authentication, automatic account creation. Any Google account works; data is tied to that account.
 - **Admin Dashboard** — user management, aggregate stats, email blocking. Admin cannot see financial data.
-- **Push & Email Notifications** — daily reminders on the day of each vesting, exercise, or loan repayment event. Per-user opt-in for each channel independently.
+- **Push & Email Notifications** — configurable advance timing: day-of, 3 days before, or 1 week before each event. Per-user opt-in for each channel independently. Includes a "Send test" button to confirm push is working.
 - **Per-User Encryption** — AES-256-GCM column-level encryption when `ENCRYPTION_MASTER_KEY` is set.
 - **Dark/Light Mode** — auto-detects system preference, updates live.
 - **Mobile-First** — designed for 375px phone viewports.
@@ -290,7 +303,9 @@ All endpoints require `Authorization: Bearer <jwt>` except auth, health, config,
 | GET | `/api/export/excel` | Download Vesting.xlsx with all data |
 | POST/DELETE | `/api/push/subscribe` | Subscribe/unsubscribe push notifications |
 | GET | `/api/push/status` | Check push subscription status |
-| GET/PUT | `/api/notifications/email` | Get/set email notification preference |
+| POST | `/api/push/test` | Send a test push notification to the current user's subscriptions |
+| GET/PUT | `/api/notifications/email` | Get/set email notification preference (returns `enabled` + `advance_days`) |
+| PUT | `/api/notifications/advance-days` | Set how many days in advance to send notifications (0 = day-of, 3, or 7) |
 | GET | `/api/admin/stats` | Aggregate stats (admin only) |
 | GET | `/api/admin/users?q=&limit=10&offset=0` | User list with metadata, searchable + paginated (admin only) |
 | DELETE | `/api/admin/users/{id}` | Delete user + all data (admin only) |
@@ -339,7 +354,7 @@ Blocked emails are checked at login time (case-insensitive). A blocked user cann
 
 ## Notifications
 
-Notifications are sent once per day, at 7 AM UTC, only on days when the user has at least one event occurring that day.
+Notifications are sent once per day, at 7 AM UTC. Each user can configure how far in advance to be notified — day-of, 3 days before, or 1 week before their events. The scheduler checks events falling on `today + advance_days` for each user.
 
 **Which events trigger a notification:**
 | Event type | Notified? |
@@ -362,8 +377,10 @@ If a user has multiple events of the same type on the same day they are counted 
 **At-most-once-per-day guarantee:** A `last_notified_at` timestamp on each user ensures only one batch is sent per day regardless of server restarts or retries.
 
 **Opt-in per channel:**
-- *Push* — enabled by subscribing in the browser (Settings → Enable Notifications). Requires VAPID keys to be configured. Each device subscribes independently; all active devices receive the notification.
+- *Push* — enabled by subscribing in the browser (Settings → Notifications → Enable). Requires VAPID keys to be configured. Each device subscribes independently; all active devices receive the notification. A **Send test** button in Settings lets users confirm push is working without waiting for a real event.
 - *Email* — enabled via the toggle in Settings. Requires `RESEND_API_KEY` to be configured. Disabled by default.
+
+**Advance timing** — users choose when to receive notifications: day-of (default), 3 days before, or 1 week before the event. This is set in Settings → Notifications and applies to both push and email.
 
 **Admin test tool:** Admins can send an immediate test notification to any user from the Admin panel, using either a pre-built event template (Vesting, Exercise, Loan Repayment) or fully custom title/body. Test notifications respect user preferences — push only goes to active subscriptions, email only if the user has it enabled.
 
@@ -383,7 +400,7 @@ If you run an instance for others: secure the database file, use HTTPS, set `ENC
 
 - **Events are never stored.** They're computed per-request from the three source tables (Grants, Loans, Prices). This eliminates sync issues entirely.
 - **core.py is frozen.** The event generation logic is tested against known-good values (89 events, cum_shares=558,500, cum_income=$144,325, cum_cap_gains=$1,224,195). Don't modify it.
-- **Excel import is destructive.** It replaces all existing data for that user. The import flow validates first, previews second, writes third — all in one transaction.
+- **Excel import is per-sheet, not all-or-nothing.** Only the sheets present in the uploaded file are replaced (Schedule → grants, Loans → loans + payoff sales, Prices → prices). Sheets not included in the file are left untouched. The import flow validates first, previews second, writes third — all in one transaction.
 - **Lot selection method is user-configurable (default: LIFO).** In Tax Settings, users choose between:
   - **LIFO** (default) — newest vested lots sold first. For rising stock this maximises cost basis and minimises cap gains.
   - **FIFO** — oldest lots first. Maximises LT-qualified shares when stock was purchased long ago.

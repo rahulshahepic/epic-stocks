@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { resetConfigCache } from '../hooks/useConfig.ts'
+import { ThemeProvider } from '../contexts/ThemeContext.tsx'
 import Settings from '../pages/Settings.tsx'
 
 beforeEach(() => {
@@ -37,18 +38,22 @@ function mockPushSupport() {
 }
 
 function renderPage() {
-  return render(<MemoryRouter><Settings /></MemoryRouter>)
+  return render(
+    <ThemeProvider>
+      <MemoryRouter><Settings /></MemoryRouter>
+    </ThemeProvider>
+  )
 }
 
 describe('Settings', () => {
-  it('renders push notification and account sections', () => {
+  it('renders display, account, and tax sections', () => {
     mockFetch({
       '/api/config': { google_client_id: '', privacy_url: '', vapid_public_key: '', email_notifications_available: false },
       '/api/push/status': { subscribed: false, subscription_count: 0 },
     })
     renderPage()
     expect(screen.getByText('Settings')).toBeInTheDocument()
-    expect(screen.getByText('Push Notifications')).toBeInTheDocument()
+    expect(screen.getByText('Display')).toBeInTheDocument()
     expect(screen.getByText('Account')).toBeInTheDocument()
   })
 
@@ -58,7 +63,9 @@ describe('Settings', () => {
       '/api/push/status': { subscribed: false, subscription_count: 0 },
     })
     renderPage()
-    expect(screen.getByText(/not supported in this browser/)).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText(/not supported in this browser/)).toBeInTheDocument()
+    })
   })
 
   it('shows not configured when no VAPID key', async () => {
@@ -83,7 +90,8 @@ describe('Settings', () => {
     renderPage()
 
     await waitFor(() => {
-      expect(screen.getByText('Enable Notifications')).toBeInTheDocument()
+      expect(screen.getByText('Push notifications')).toBeInTheDocument()
+      expect(screen.getAllByText('Enable').length).toBeGreaterThan(0)
     })
   })
 
@@ -96,8 +104,8 @@ describe('Settings', () => {
     renderPage()
 
     await waitFor(() => {
-      expect(screen.getByText('Disable Notifications')).toBeInTheDocument()
-      expect(screen.getByText('Notifications enabled')).toBeInTheDocument()
+      expect(screen.getByText('Disable')).toBeInTheDocument()
+      expect(screen.getByText('Enabled')).toBeInTheDocument()
     })
   })
 
@@ -110,7 +118,7 @@ describe('Settings', () => {
     await waitFor(() => {
       expect(screen.getByText('Account')).toBeInTheDocument()
     })
-    expect(screen.queryByText('Email Notifications')).not.toBeInTheDocument()
+    expect(screen.queryByText('Email notifications')).not.toBeInTheDocument()
   })
 
   it('shows email section when SMTP is configured', async () => {
@@ -122,8 +130,8 @@ describe('Settings', () => {
     renderPage()
 
     await waitFor(() => {
-      expect(screen.getByText('Email Notifications')).toBeInTheDocument()
-      expect(screen.getByText('Enable Email')).toBeInTheDocument()
+      expect(screen.getByText('Email notifications')).toBeInTheDocument()
+      expect(screen.getAllByText('Enable').length).toBeGreaterThan(0)
     })
   })
 
@@ -136,8 +144,8 @@ describe('Settings', () => {
     renderPage()
 
     await waitFor(() => {
-      expect(screen.getByText('Disable Email')).toBeInTheDocument()
-      expect(screen.getByText('Email notifications enabled')).toBeInTheDocument()
+      expect(screen.getByText('Disable')).toBeInTheDocument()
+      expect(screen.getByText('Enabled')).toBeInTheDocument()
     })
   })
 

@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { getToken } from './api.ts'
 import Layout from './components/Layout.tsx'
 import { ToastProvider } from './components/Toast.tsx'
+import { ThemeProvider } from './contexts/ThemeContext.tsx'
 import Login from './pages/Login.tsx'
 import Dashboard from './pages/Dashboard.tsx'
 import Events from './pages/Events.tsx'
@@ -19,6 +20,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
+    <ThemeProvider>
     <BrowserRouter>
       <ToastProvider>
         <Routes>
@@ -37,5 +39,6 @@ export default function App() {
         </Routes>
       </ToastProvider>
     </BrowserRouter>
+    </ThemeProvider>
   )
 }

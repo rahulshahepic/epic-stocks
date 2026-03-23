@@ -140,7 +140,7 @@ def send_daily_notifications(today: date | None = None):
     try:
         # Get all users who have push subscriptions OR email notifications enabled
         push_user_ids = {row[0] for row in db.query(PushSubscription.user_id).distinct().all()}
-        email_user_ids = {row[0] for row in db.query(EmailPreference.user_id).filter(EmailPreference.enabled == True).all()}
+        email_user_ids = {row[0] for row in db.query(EmailPreference.user_id).filter(EmailPreference.enabled == 1).all()}
         all_user_ids = push_user_ids | email_user_ids
 
         if not all_user_ids:

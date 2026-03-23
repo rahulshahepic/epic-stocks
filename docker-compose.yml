@@ -30,6 +30,8 @@ services:
       - VAPID_CLAIMS_EMAIL=${VAPID_CLAIMS_EMAIL:-}
       - RESEND_API_KEY=${RESEND_API_KEY:-}
       - RESEND_FROM=${RESEND_FROM:-}
+    volumes:
+      - ./data:/app/data  # sqlite migration source + sentinel file
     expose:
       - "8000"
 

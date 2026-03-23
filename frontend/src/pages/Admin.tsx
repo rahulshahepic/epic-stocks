@@ -1,12 +1,54 @@
 import { useState, useEffect, useCallback } from 'react'
+import { LineChart, Line, ResponsiveContainer, Tooltip, YAxis } from 'recharts'
 import { api } from '../api.ts'
-import type { AdminStats, AdminUser, BlockedEmailEntry, ErrorLogEntry, TestNotifyResult } from '../api.ts'
+import type {
+  AdminStats, AdminUser, BlockedEmailEntry, ErrorLogEntry, TestNotifyResult,
+  SystemMetricPoint, DbTableInfo,
+} from '../api.ts'
 
 const NOTIFY_TEMPLATES: Record<string, { title: string; body: string }> = {
   custom:        { title: 'Test from admin', body: 'This is a test notification from the Epic Stocks admin panel.' },
   vesting:       { title: 'Equity Tracker', body: 'You have 1 event today: 1 Vesting' },
   exercise:      { title: 'Equity Tracker', body: 'You have 1 event today: 1 Exercise' },
   loan_repayment:{ title: 'Equity Tracker', body: 'You have 1 event today: 1 Loan Repayment' },
+}
+
+const METRIC_WINDOWS = [
+  { label: '24h', hours: 24 },
+  { label: '72h', hours: 72 },
+  { label: '7d', hours: 168 },
+  { label: '30d', hours: 720 },
+]
+
+function Sparkline({ data, dataKey, color, formatter }: {
+  data: SystemMetricPoint[]
+  dataKey: keyof SystemMetricPoint
+  color: string
+  formatter?: (v: number) => string
+}) {
+  if (data.length < 2) {
+    return <div className="flex h-16 items-center justify-center text-xs text-gray-400 dark:text-gray-500">collecting…</div>
+  }
+  return (
+    <ResponsiveContainer width="100%" height={64}>
+      <LineChart data={data}>
+        <YAxis domain={['auto', 'auto']} hide />
+        <Tooltip
+          contentStyle={{ fontSize: 10, padding: '2px 6px' }}
+          labelFormatter={(label) => new Date(label as string).toLocaleString()}
+          formatter={(v) => [formatter ? formatter(v as number) : String(v), '']}
+        />
+        <Line
+          type="monotone"
+          dataKey={dataKey as string}
+          stroke={color}
+          dot={false}
+          strokeWidth={1.5}
+          isAnimationActive={false}
+        />
+      </LineChart>
+    </ResponsiveContainer>
+  )
 }
 
 export default function Admin() {
@@ -29,13 +71,17 @@ export default function Admin() {
   const [notifySending, setNotifySending] = useState(false)
   const [notifyResult, setNotifyResult] = useState<TestNotifyResult | null>(null)
 
+  // Metrics state
+  const [metrics, setMetrics] = useState<SystemMetricPoint[]>([])
+  const [metricHours, setMetricHours] = useState(72)
+  const [dbTables, setDbTables] = useState<DbTableInfo[]>([])
+
   const loadUsers = useCallback(async (q = '') => {
     try {
       const res = await api.adminUsers(q)
       setUsers(res.users)
       setTotalUsers(res.total)
     } catch {
-      // Only set error if not already showing an auth error
       setError(prev => prev || 'Failed to load users')
     }
   }, [])
@@ -44,6 +90,14 @@ export default function Admin() {
     try {
       const logs = await api.adminErrors()
       setErrorLogs(Array.isArray(logs) ? logs : [])
+    } catch { /* ignore */ }
+  }, [])
+
+  const loadMetrics = useCallback(async (hours: number) => {
+    try {
+      const [m, t] = await Promise.all([api.adminMetrics(hours), api.adminDbTables()])
+      setMetrics(m)
+      setDbTables(t)
     } catch { /* ignore */ }
   }, [])
 
@@ -61,17 +115,14 @@ export default function Admin() {
   }, [loadUsers, loadErrors])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => { loadMetrics(metricHours) }, [metricHours, loadMetrics])
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setSearch(searchInput)
-    }, 300)
+    const timer = setTimeout(() => { setSearch(searchInput) }, 300)
     return () => clearTimeout(timer)
   }, [searchInput])
 
-  useEffect(() => {
-    loadUsers(search)
-  }, [search, loadUsers])
+  useEffect(() => { loadUsers(search) }, [search, loadUsers])
 
   async function handleBlock(e: React.FormEvent) {
     e.preventDefault()
@@ -142,6 +193,10 @@ export default function Admin() {
     )
   }
 
+  const ramPercent = stats?.ram_used_mb && stats?.ram_total_mb
+    ? Math.round((stats.ram_used_mb / stats.ram_total_mb) * 100)
+    : null
+
   return (
     <div className="space-y-6">
       <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Admin</h2>
@@ -180,6 +235,125 @@ export default function Admin() {
           </div>
         </section>
       )}
+
+      {/* System Health */}
+      <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">System Health</h3>
+          <div className="flex gap-1">
+            {METRIC_WINDOWS.map(w => (
+              <button
+                key={w.hours}
+                onClick={() => setMetricHours(w.hours)}
+                className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+                  metricHours === w.hours
+                    ? 'bg-indigo-600 text-white'
+                    : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100'
+                }`}
+              >
+                {w.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Current readings */}
+        {stats && (
+          <div className="mt-3 grid grid-cols-3 gap-3 text-xs">
+            <div>
+              <span className="text-gray-500 dark:text-gray-400">CPU</span>
+              <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                {stats.cpu_percent != null ? `${stats.cpu_percent.toFixed(0)}%` : '—'}
+              </p>
+            </div>
+            <div>
+              <span className="text-gray-500 dark:text-gray-400">RAM</span>
+              <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                {ramPercent != null ? `${ramPercent}%` : '—'}
+              </p>
+              {stats.ram_used_mb != null && stats.ram_total_mb != null && (
+                <p className="text-gray-400 dark:text-gray-500">
+                  {(stats.ram_used_mb / 1024).toFixed(1)} / {(stats.ram_total_mb / 1024).toFixed(1)} GB
+                </p>
+              )}
+            </div>
+            <div>
+              <span className="text-gray-500 dark:text-gray-400">DB</span>
+              <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">{formatBytes(stats.db_size_bytes)}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Sparklines */}
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div>
+            <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">CPU %</p>
+            <Sparkline
+              data={metrics}
+              dataKey="cpu_percent"
+              color="#6366f1"
+              formatter={v => `${v.toFixed(1)}%`}
+            />
+          </div>
+          <div>
+            <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">RAM %</p>
+            <Sparkline
+              data={metrics.map(m => ({ ...m, ram_percent: Math.round((m.ram_used_mb / m.ram_total_mb) * 100) }))}
+              dataKey={'ram_percent' as keyof SystemMetricPoint}
+              color="#10b981"
+              formatter={v => `${v.toFixed(0)}%`}
+            />
+          </div>
+          <div>
+            <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">DB size</p>
+            <Sparkline
+              data={metrics}
+              dataKey="db_size_bytes"
+              color="#f59e0b"
+              formatter={v => formatBytes(v)}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Database Breakdown */}
+      <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+        <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Database Tables</h3>
+        {dbTables.length === 0 ? (
+          <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
+            Table breakdown is only available on PostgreSQL.
+          </p>
+        ) : (
+          <>
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-gray-100 text-left text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                    <th className="pb-1.5 font-medium">Table</th>
+                    <th className="pb-1.5 text-right font-medium">Size</th>
+                    <th className="pb-1.5 text-right font-medium">~Rows</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                  {dbTables.map(t => (
+                    <tr key={t.table_name}>
+                      <td className="py-1.5 font-mono text-gray-900 dark:text-gray-100">{t.table_name}</td>
+                      <td className="py-1.5 text-right text-gray-700 dark:text-gray-300">{formatBytes(t.size_bytes)}</td>
+                      <td className="py-1.5 text-right text-gray-500 dark:text-gray-400">
+                        {t.row_estimate < 0 ? '?' : t.row_estimate.toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
+              PostgreSQL baseline (~7–8 MB) is included in DB size — system catalogs, template databases, and WAL overhead.
+              Row counts are pg_class estimates; they may lag until after a VACUUM ANALYZE.
+            </p>
+          </>
+        )}
+      </section>
 
       {/* Users */}
       <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">

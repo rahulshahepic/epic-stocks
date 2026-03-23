@@ -257,6 +257,8 @@ export const api = {
   adminClearErrors: () => del('/api/admin/errors'),
   adminTestNotify: (user_id: number, title: string, body: string) =>
     post<TestNotifyResult>('/api/admin/test-notify', { user_id, title, body }),
+  adminMetrics: (hours = 72) => apiFetch<SystemMetricPoint[]>(`/api/admin/metrics?hours=${hours}`),
+  adminDbTables: () => apiFetch<DbTableInfo[]>('/api/admin/db-tables'),
 }
 
 export interface AdminStats {
@@ -266,6 +268,24 @@ export interface AdminStats {
   total_loans: number
   total_prices: number
   db_size_bytes: number
+  cpu_percent: number | null
+  ram_used_mb: number | null
+  ram_total_mb: number | null
+}
+
+export interface SystemMetricPoint {
+  timestamp: string
+  cpu_percent: number
+  ram_used_mb: number
+  ram_total_mb: number
+  db_size_bytes: number
+  error_log_count: number
+}
+
+export interface DbTableInfo {
+  table_name: string
+  size_bytes: number
+  row_estimate: number
 }
 
 export interface AdminUser {

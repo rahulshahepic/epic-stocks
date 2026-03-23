@@ -19,6 +19,10 @@ function mockFetch(responses: Record<string, unknown>) {
         return new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } })
       }
     }
+    // Default: return empty arrays for list endpoints
+    if (url.includes('/api/admin/metrics')) return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    if (url.includes('/api/admin/db-tables')) return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    if (url.includes('/api/admin/errors')) return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
     return new Response('{}', { status: 200 })
   })
 }
@@ -27,6 +31,14 @@ const STATS = {
   total_users: 5, active_users_30d: 3,
   total_grants: 20, total_loans: 10, total_prices: 8,
   db_size_bytes: 524288,
+  cpu_percent: 42.0, ram_used_mb: 2048.0, ram_total_mb: 8192.0,
+}
+
+const STATS_NO_METRICS = {
+  total_users: 5, active_users_30d: 3,
+  total_grants: 20, total_loans: 10, total_prices: 8,
+  db_size_bytes: 524288,
+  cpu_percent: null, ram_used_mb: null, ram_total_mb: null,
 }
 
 const USERS = [
@@ -35,6 +47,16 @@ const USERS = [
 ]
 
 const USERS_RESPONSE = { users: USERS, total: 2 }
+
+const METRICS = [
+  { timestamp: '2026-03-23T10:00:00', cpu_percent: 30.0, ram_used_mb: 1000.0, ram_total_mb: 8192.0, db_size_bytes: 8500000, error_log_count: 0 },
+  { timestamp: '2026-03-23T10:15:00', cpu_percent: 42.0, ram_used_mb: 2048.0, ram_total_mb: 8192.0, db_size_bytes: 8500000, error_log_count: 2 },
+]
+
+const DB_TABLES = [
+  { table_name: 'error_logs', size_bytes: 4096000, row_estimate: 150 },
+  { table_name: 'users', size_bytes: 65536, row_estimate: 3 },
+]
 
 function renderPage() {
   return render(<MemoryRouter><Admin /></MemoryRouter>)
@@ -49,7 +71,7 @@ describe('Admin', () => {
       expect(screen.getByText('5')).toBeInTheDocument()  // total users
       expect(screen.getByText('3')).toBeInTheDocument()  // active
       expect(screen.getByText('20')).toBeInTheDocument() // grants
-      expect(screen.getByText('512.0 KB')).toBeInTheDocument() // db size
+      expect(screen.getAllByText('512.0 KB').length).toBeGreaterThanOrEqual(1) // db size
     })
   })
 
@@ -232,7 +254,7 @@ describe('Admin', () => {
       if (url.includes('/api/admin/stats')) return new Response(JSON.stringify(STATS), { status: 200, headers: { 'Content-Type': 'application/json' } })
       if (url.includes('/api/admin/users')) return new Response(JSON.stringify(USERS_RESPONSE), { status: 200, headers: { 'Content-Type': 'application/json' } })
       if (url.includes('/api/admin/blocked')) return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } })
-      return new Response('{}', { status: 200 })
+      return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
     })
     renderPage()
 
@@ -244,6 +266,143 @@ describe('Admin', () => {
     await waitFor(() => {
       expect(screen.getByText(/Push: 2 sent, 1 expired/)).toBeInTheDocument()
       expect(screen.getByText(/Email: sent/)).toBeInTheDocument()
+    })
+  })
+
+  // ============================================================
+  // SYSTEM HEALTH SECTION
+  // ============================================================
+
+  it('renders System Health section', async () => {
+    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('System Health')).toBeInTheDocument()
+    })
+  })
+
+  it('shows current CPU and RAM percentages from stats', async () => {
+    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('42%')).toBeInTheDocument()  // CPU
+      expect(screen.getByText('25%')).toBeInTheDocument()  // RAM (2048/8192)
+    })
+  })
+
+  it('shows dashes when no metrics collected yet', async () => {
+    mockFetch({ '/api/admin/stats': STATS_NO_METRICS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2)
+    })
+  })
+
+  it('shows sparkline labels', async () => {
+    mockFetch({
+      '/api/admin/stats': STATS,
+      '/api/admin/users': USERS_RESPONSE,
+      '/api/admin/blocked': [],
+      '/api/admin/metrics': METRICS,
+    })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('CPU %')).toBeInTheDocument()
+      expect(screen.getByText('RAM %')).toBeInTheDocument()
+      expect(screen.getByText('DB size')).toBeInTheDocument()
+    })
+  })
+
+  it('shows collecting message when not enough data', async () => {
+    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
+    renderPage()
+
+    await waitFor(() => {
+      const collecting = screen.getAllByText('collecting…')
+      expect(collecting.length).toBeGreaterThanOrEqual(1)
+    })
+  })
+
+  it('renders time window toggle buttons', async () => {
+    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '24h' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: '72h' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: '7d' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: '30d' })).toBeInTheDocument()
+    })
+  })
+
+  it('shows GB breakdown for RAM', async () => {
+    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
+    renderPage()
+
+    await waitFor(() => {
+      // 2048 MB / 1024 = 2.0 GB, 8192 MB / 1024 = 8.0 GB
+      expect(screen.getByText(/2.0 \/ 8.0 GB/)).toBeInTheDocument()
+    })
+  })
+
+  // ============================================================
+  // DATABASE TABLES SECTION
+  // ============================================================
+
+  it('renders Database Tables section', async () => {
+    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Database Tables')).toBeInTheDocument()
+    })
+  })
+
+  it('shows SQLite fallback message when no table data', async () => {
+    mockFetch({
+      '/api/admin/stats': STATS,
+      '/api/admin/users': USERS_RESPONSE,
+      '/api/admin/blocked': [],
+      '/api/admin/db-tables': [],
+    })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText(/only available on PostgreSQL/)).toBeInTheDocument()
+    })
+  })
+
+  it('renders table rows when db-tables data provided', async () => {
+    mockFetch({
+      '/api/admin/stats': STATS,
+      '/api/admin/users': USERS_RESPONSE,
+      '/api/admin/blocked': [],
+      '/api/admin/db-tables': DB_TABLES,
+    })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('error_logs')).toBeInTheDocument()
+      expect(screen.getByText('users')).toBeInTheDocument()
+      expect(screen.getByText('3.9 MB')).toBeInTheDocument()  // 4096000 bytes
+    })
+  })
+
+  it('shows PostgreSQL baseline note when tables are present', async () => {
+    mockFetch({
+      '/api/admin/stats': STATS,
+      '/api/admin/users': USERS_RESPONSE,
+      '/api/admin/blocked': [],
+      '/api/admin/db-tables': DB_TABLES,
+    })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText(/PostgreSQL baseline/)).toBeInTheDocument()
     })
   })
 })

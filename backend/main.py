@@ -35,9 +35,11 @@ async def lifespan(app):
         from migrate_sqlite_to_pg import maybe_migrate
         maybe_migrate()
     task = _start_daily_scheduler()
+    metrics_task = _start_metrics_sampler()
     yield
     if task:
         task.cancel()
+    metrics_task.cancel()
 
 
 def _start_daily_scheduler():
@@ -68,6 +70,73 @@ def _start_daily_scheduler():
                 pass
 
     return asyncio.ensure_future(_daily_loop())
+
+
+def _sample_metrics():
+    """Take a single system metrics snapshot and persist it. Trims stale data."""
+    import psutil
+    from datetime import datetime, timezone, timedelta
+    from sqlalchemy import func, text
+    from models import SystemMetric, ErrorLog
+
+    db = database.SessionLocal()
+    try:
+        cpu = psutil.cpu_percent(interval=0.5)
+        mem = psutil.virtual_memory()
+
+        if database._is_sqlite:
+            db_path = os.path.join(os.path.dirname(__file__), "data", "vesting.db")
+            try:
+                db_size = os.path.getsize(db_path)
+            except OSError:
+                db_size = 0
+        else:
+            try:
+                db_size = db.execute(text("SELECT pg_database_size(current_database())")).scalar() or 0
+            except Exception:
+                db_size = 0
+
+        error_count = db.query(func.count(ErrorLog.id)).scalar() or 0
+
+        db.add(SystemMetric(
+            cpu_percent=cpu,
+            ram_used_mb=mem.used / (1024 * 1024),
+            ram_total_mb=mem.total / (1024 * 1024),
+            db_size_bytes=db_size,
+            error_log_count=error_count,
+        ))
+
+        # Rolling cleanup: keep last 30 days of metrics
+        cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+        db.query(SystemMetric).filter(SystemMetric.timestamp < cutoff).delete(synchronize_session=False)
+
+        # Trim error_logs to the most recent 500 entries
+        keep_ids = [
+            row[0] for row in
+            db.query(ErrorLog.id).order_by(ErrorLog.timestamp.desc()).limit(500).all()
+        ]
+        if keep_ids:
+            db.query(ErrorLog).filter(ErrorLog.id.notin_(keep_ids)).delete(synchronize_session=False)
+        else:
+            db.query(ErrorLog).delete()
+
+        db.commit()
+    except Exception:
+        pass
+    finally:
+        db.close()
+
+
+def _start_metrics_sampler():
+    """Start background task that samples system metrics every 15 minutes."""
+    import asyncio
+
+    async def _loop():
+        while True:
+            _sample_metrics()
+            await asyncio.sleep(15 * 60)
+
+    return asyncio.ensure_future(_loop())
 
 
 class EncryptionMiddleware:

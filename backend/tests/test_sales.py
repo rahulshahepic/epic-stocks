@@ -14,13 +14,14 @@ from collections import deque
 # FIFO ENGINE UNIT TESTS
 # ============================================================
 
-def _make_vesting_event(vest_date, shares, share_price, grant_price=0.0):
+def _make_vesting_event(vest_date, shares, share_price, grant_price=0.0, grant_type=None):
     return {
         "date": vest_date,
         "event_type": "Vesting",
         "vested_shares": shares,
         "grant_price": grant_price,
         "share_price": share_price,
+        "grant_type": grant_type,
     }
 
 
@@ -95,6 +96,67 @@ def test_build_fifo_lots_with_partial_reduction():
     lots = build_fifo_lots(events, date(2023, 1, 1))
     assert len(lots) == 1
     assert lots[0][1] == 70
+
+
+def test_dp_exchange_consumes_bonus_lots_first():
+    """Down payment exchange uses Bonus lots before Purchase lots (lowest cost basis first)."""
+    events = [
+        _make_vesting_event(date(2021, 1, 1), 100, 5.0, grant_price=5.0, grant_type='Purchase'),
+        _make_vesting_event(date(2022, 1, 1), 50, 10.0, grant_price=0.0, grant_type='Bonus'),
+        {"date": date(2022, 6, 1), "event_type": "Down payment exchange", "vested_shares": -50,
+         "grant_price": None, "share_price": 10.0},
+    ]
+    lots = build_fifo_lots(events, date(2023, 1, 1))
+    # Bonus lot (50 shares) should be fully consumed; Purchase lot (100 shares) intact
+    assert len(lots) == 1
+    assert lots[0][2] == 5.0  # Purchase lot basis
+    assert lots[0][1] == 100
+
+
+def test_dp_exchange_bonus_first_then_fifo_for_remainder():
+    """After bonus lots exhausted, DP exchange consumes oldest Purchase lots."""
+    events = [
+        _make_vesting_event(date(2020, 1, 1), 30, 3.0, grant_price=3.0, grant_type='Purchase'),
+        _make_vesting_event(date(2021, 1, 1), 40, 5.0, grant_price=5.0, grant_type='Purchase'),
+        _make_vesting_event(date(2022, 1, 1), 20, 10.0, grant_price=0.0, grant_type='Bonus'),
+        {"date": date(2022, 6, 1), "event_type": "Down payment exchange", "vested_shares": -40,
+         "grant_price": None, "share_price": 10.0},
+    ]
+    lots = build_fifo_lots(events, date(2023, 1, 1))
+    # 20 bonus consumed, then 20 from oldest Purchase (2020 lot of 30 → 10 remain)
+    assert len(lots) == 2
+    remaining_shares = {l[2]: l[1] for l in lots}
+    assert remaining_shares[3.0] == 10   # 30 - 20 = 10 remaining from oldest Purchase
+    assert remaining_shares[5.0] == 40   # 2021 Purchase untouched
+
+
+def test_dp_exchange_fifo_when_no_bonus_lots():
+    """Without Bonus lots, DP exchange falls back to FIFO (oldest first)."""
+    events = [
+        _make_vesting_event(date(2021, 1, 1), 50, 5.0, grant_price=5.0, grant_type='Purchase'),
+        _make_vesting_event(date(2022, 1, 1), 100, 10.0, grant_price=10.0, grant_type='Purchase'),
+        {"date": date(2022, 6, 1), "event_type": "Down payment exchange", "vested_shares": -50,
+         "grant_price": None, "share_price": 10.0},
+    ]
+    lots = build_fifo_lots(events, date(2023, 1, 1))
+    # Oldest lot (2021, 50 shares) fully consumed; 2022 lot intact
+    assert len(lots) == 1
+    assert lots[0][2] == 10.0
+    assert lots[0][1] == 100
+
+
+def test_loan_repayment_still_uses_fifo():
+    """Loan repayments continue to consume oldest lots first (unchanged behavior)."""
+    events = [
+        _make_vesting_event(date(2021, 1, 1), 50, 5.0, grant_price=5.0, grant_type='Purchase'),
+        _make_vesting_event(date(2022, 1, 1), 20, 10.0, grant_price=0.0, grant_type='Bonus'),
+        _make_reduction_event(date(2022, 6, 1), -50, event_type="Loan Repayment"),
+    ]
+    lots = build_fifo_lots(events, date(2023, 1, 1))
+    # FIFO: oldest Purchase lot (50) consumed first; Bonus lot intact
+    assert len(lots) == 1
+    assert lots[0][2] == 0.0  # Bonus lot (share_price basis since grant_price=0)
+    assert lots[0][1] == 20
 
 
 def test_fifo_lt_classification():

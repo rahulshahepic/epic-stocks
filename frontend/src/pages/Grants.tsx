@@ -340,7 +340,16 @@ export default function Grants() {
           <Field label="Vest Periods" type="number" value={form.periods} onChange={v => setForm(f => ({ ...f, periods: +v }))} />
           <Field label="Exercise Date" type="date" value={form.exercise_date} onChange={v => setForm(f => ({ ...f, exercise_date: v }))} />
           {form.type === 'Purchase' && (
-            <FieldWithInfo label="Down Payment Shares" info="Shares used as down payment in a stock exchange" type="number" value={form.dp_shares} onChange={v => setForm(f => ({ ...f, dp_shares: +v }))} />
+            <label className="block">
+              <span className="text-xs text-gray-500 dark:text-gray-400">Down Payment Shares</span>
+              <p className="text-[10px] text-gray-400 dark:text-gray-500">Bonus shares used first, then oldest (non-taxable exchange)</p>
+              <input
+                type="number"
+                value={form.dp_shares}
+                onChange={e => setForm(f => ({ ...f, dp_shares: +e.target.value }))}
+                className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+              />
+            </label>
           )}
         </div>
 
@@ -481,33 +490,6 @@ function Field({ label, type, value, onChange, step }: {
   return (
     <label className="block">
       <span className="text-xs text-gray-500 dark:text-gray-400">{label}</span>
-      <input
-        type={type}
-        step={step}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
-      />
-    </label>
-  )
-}
-
-function FieldWithInfo({ label, info, type, value, onChange, step }: {
-  label: string; info: string; type: string; value: string | number; onChange: (v: string) => void; step?: string
-}) {
-  const [showInfo, setShowInfo] = useState(false)
-  return (
-    <label className="block">
-      <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-        {label}
-        <button
-          type="button"
-          onClick={e => { e.preventDefault(); setShowInfo(v => !v) }}
-          className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 leading-none"
-          aria-label="More info"
-        >ⓘ</button>
-      </span>
-      {showInfo && <p className="mt-0.5 text-[10px] text-gray-400 dark:text-gray-500">{info}</p>}
       <input
         type={type}
         step={step}

@@ -1,5 +1,5 @@
 from datetime import datetime, date, timezone
-from sqlalchemy import Integer, String, Float, Date, DateTime, ForeignKey
+from sqlalchemy import Integer, String, Float, BigInteger, Date, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
 from crypto import EncryptedFloat, EncryptedInt, EncryptedString
@@ -194,3 +194,16 @@ class ErrorLog(Base):
     error_message: Mapped[str] = mapped_column(String, nullable=True)
     traceback: Mapped[str] = mapped_column(String, nullable=True)
     user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class SystemMetric(Base):
+    """Periodic system health snapshot (CPU, RAM, DB size). Rolling 30-day window."""
+    __tablename__ = "system_metrics"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    cpu_percent: Mapped[float] = mapped_column(Float, nullable=False)
+    ram_used_mb: Mapped[float] = mapped_column(Float, nullable=False)
+    ram_total_mb: Mapped[float] = mapped_column(Float, nullable=False)
+    db_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    error_log_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

@@ -5,12 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException
 
 logger = logging.getLogger(__name__)
 from pydantic import BaseModel
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 
 from database import get_db
-from models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, ErrorLog, EmailPreference
+from models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, ErrorLog, EmailPreference, SystemMetric
 from auth import get_admin_user, get_admin_emails
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -27,6 +27,9 @@ class AdminStats(BaseModel):
     total_loans: int
     total_prices: int
     db_size_bytes: int
+    cpu_percent: float | None = None
+    ram_used_mb: float | None = None
+    ram_total_mb: float | None = None
 
 
 class UserSummary(BaseModel):
@@ -76,6 +79,8 @@ def admin_stats(admin: User = Depends(get_admin_user), db: Session = Depends(get
         except Exception:
             db_size = 0
 
+    latest = db.query(SystemMetric).order_by(SystemMetric.timestamp.desc()).first()
+
     return AdminStats(
         total_users=total_users,
         active_users_30d=active_users,
@@ -83,6 +88,9 @@ def admin_stats(admin: User = Depends(get_admin_user), db: Session = Depends(get
         total_loans=total_loans,
         total_prices=total_prices,
         db_size_bytes=db_size,
+        cpu_percent=latest.cpu_percent if latest else None,
+        ram_used_mb=latest.ram_used_mb if latest else None,
+        ram_total_mb=latest.ram_total_mb if latest else None,
     )
 
 
@@ -209,6 +217,72 @@ def admin_errors(
 def clear_errors(admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
     db.query(ErrorLog).delete()
     db.commit()
+
+
+class SystemMetricPoint(BaseModel):
+    timestamp: str
+    cpu_percent: float
+    ram_used_mb: float
+    ram_total_mb: float
+    db_size_bytes: int
+    error_log_count: int
+
+
+@router.get("/metrics", response_model=list[SystemMetricPoint])
+def admin_metrics(
+    hours: int = 72,
+    admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=max(1, min(hours, 720)))
+    rows = (
+        db.query(SystemMetric)
+        .filter(SystemMetric.timestamp >= cutoff)
+        .order_by(SystemMetric.timestamp)
+        .all()
+    )
+    return [
+        SystemMetricPoint(
+            timestamp=r.timestamp.isoformat(),
+            cpu_percent=r.cpu_percent,
+            ram_used_mb=r.ram_used_mb,
+            ram_total_mb=r.ram_total_mb,
+            db_size_bytes=r.db_size_bytes,
+            error_log_count=r.error_log_count,
+        )
+        for r in rows
+    ]
+
+
+class DbTableInfo(BaseModel):
+    table_name: str
+    size_bytes: int
+    row_estimate: int
+
+
+@router.get("/db-tables", response_model=list[DbTableInfo])
+def admin_db_tables(admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    import database as _db_module
+    if _db_module._is_sqlite:
+        return []
+    try:
+        rows = db.execute(text("""
+            SELECT
+                t.tablename AS table_name,
+                pg_total_relation_size(quote_ident(t.schemaname) || '.' || quote_ident(t.tablename)) AS size_bytes,
+                COALESCE(c.reltuples::bigint, 0) AS row_estimate
+            FROM pg_tables t
+            LEFT JOIN pg_class c ON c.relname = t.tablename
+                AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = t.schemaname)
+            WHERE t.schemaname = 'public'
+            ORDER BY size_bytes DESC
+        """)).fetchall()
+        return [
+            DbTableInfo(table_name=r.table_name, size_bytes=r.size_bytes, row_estimate=r.row_estimate)
+            for r in rows
+        ]
+    except Exception:
+        return []
 
 
 class TestNotifyRequest(BaseModel):

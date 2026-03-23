@@ -70,7 +70,7 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 - **Down Payment Rules** — configurable minimum DP policy (percent of purchase and dollar cap). "Prefer stock DP" auto-calculates the minimum stock exchange down payment on new purchases. Default: 10% or $20,000, whichever is lower.
 - **Excel Import/Export** — bootstrap from an existing Vesting.xlsx or export current state. The Import page includes a downloadable sample file (pre-filled with fake data, with cell comments explaining every field) and a built-in column reference guide.
 - **Google Sign-In** — OAuth 2.0 authentication, automatic account creation. Any Google account works; data is tied to that account.
-- **Admin Dashboard** — user management, aggregate stats, email blocking. Admin cannot see financial data.
+- **Admin Dashboard** — user management, aggregate stats, email blocking, and system health monitoring (CPU, RAM, DB size sparklines with 24h/72h/7d/30d windows, per-table DB size breakdown). Admin cannot see financial data.
 - **Push & Email Notifications** — configurable advance timing: day-of, 3 days before, or 1 week before each event. Per-user opt-in for each channel independently. Includes a "Send test" button to confirm push is working.
 - **Per-User Encryption** — AES-256-GCM column-level encryption when `ENCRYPTION_MASTER_KEY` is set.
 - **Dark/Light Mode** — auto-detects system preference, updates live.
@@ -232,10 +232,10 @@ This spins up a temporary backend + frontend with seeded sample data, runs all P
 ```
 epic-stocks/
 ├── backend/
-│   ├── main.py              # FastAPI app + schema migration
+│   ├── main.py              # FastAPI app + schema migration + metrics sampler
 │   ├── core.py              # Event generation logic (frozen)
 │   ├── sales_engine.py      # FIFO cost-basis + tax + gross-up calculations
-│   ├── models.py            # SQLAlchemy models (User, Grant, Loan, Price, Sale, etc.)
+│   ├── models.py            # SQLAlchemy models (User, Grant, Loan, Price, Sale, SystemMetric, etc.)
 │   ├── database.py          # SQLAlchemy engine setup (PostgreSQL in production, SQLite for tests)
 │   ├── alembic/             # Alembic migrations (run on startup)
 │   ├── auth.py              # JWT + Google OAuth + admin checks
@@ -318,7 +318,7 @@ All endpoints require `Authorization: Bearer <jwt>` except auth, health, config,
 | POST | `/api/push/test` | Send a test push notification to the current user's subscriptions |
 | GET/PUT | `/api/notifications/email` | Get/set email notification preference (returns `enabled` + `advance_days`) |
 | PUT | `/api/notifications/advance-days` | Set how many days in advance to send notifications (0 = day-of, 3, or 7) |
-| GET | `/api/admin/stats` | Aggregate stats (admin only) |
+| GET | `/api/admin/stats` | Aggregate stats + latest CPU/RAM snapshot (admin only) |
 | GET | `/api/admin/users?q=&limit=10&offset=0` | User list with metadata, searchable + paginated (admin only) |
 | DELETE | `/api/admin/users/{id}` | Delete user + all data (admin only) |
 | GET/POST | `/api/admin/blocked` | List/block emails (admin only) |
@@ -326,6 +326,8 @@ All endpoints require `Authorization: Bearer <jwt>` except auth, health, config,
 | POST | `/api/admin/test-notify` | Send a test push/email notification to any user (admin only) |
 | GET | `/api/admin/errors` | List recent backend error logs (admin only) |
 | DELETE | `/api/admin/errors` | Clear error log (admin only) |
+| GET | `/api/admin/metrics?hours=72` | Time-series CPU/RAM/DB metrics history (admin only) |
+| GET | `/api/admin/db-tables` | Per-table DB size breakdown (PostgreSQL only, admin only) |
 
 ## Admin Workflows
 
@@ -342,6 +344,8 @@ The admin system is opt-in via the `ADMIN_EMAIL` environment variable. Admins ar
 - Total registered users and active users (last 30 days)
 - Aggregate counts: total grants, loans, prices across all users
 - Database storage usage
+- **System Health** — current CPU %, RAM %, and DB size with sparkline charts (24h/72h/7d/30d windows). Sampled every 15 minutes; 30-day rolling retention.
+- **Database Tables** — per-table size breakdown showing which tables are large (PostgreSQL only). Useful for diagnosing storage growth; includes a note explaining PostgreSQL's ~7–8 MB baseline overhead.
 - Per-user metadata: email, name, created_at, last_login, record counts, admin badge
 - Searchable user list (filter by email or name) with pagination, sorted by last active
 

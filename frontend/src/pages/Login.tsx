@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.ts'
 import { useConfig } from '../hooks/useConfig.ts'
 
@@ -28,7 +28,6 @@ export default function Login() {
   const btnRef = useRef<HTMLDivElement>(null)
   const config = useConfig()
   const clientId = config?.google_client_id ?? null
-  const privacyUrl = config?.privacy_url ?? ''
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -91,23 +90,34 @@ export default function Login() {
           </p>
         )}
 
-        <p className="mt-6 text-xs text-gray-400 dark:text-gray-500">
-          Use any Google account — your data is tied to it, and you can export everything anytime.
-        </p>
+        <div className="mt-8 rounded-lg border border-gray-200 bg-white p-4 text-left dark:border-gray-800 dark:bg-gray-900">
+          <p className="mb-2 text-xs font-medium text-gray-700 dark:text-gray-300">Your data &amp; privacy</p>
+          <ul className="space-y-1.5 text-xs text-gray-500 dark:text-gray-400">
+            <li>
+              <span className="font-medium text-gray-600 dark:text-gray-300">Why Google Sign-In?</span>{' '}
+              We never handle your password — Google verifies your identity and shares only your name and email with us.
+            </li>
+            <li>
+              <span className="font-medium text-gray-600 dark:text-gray-300">Your financial data</span>{' '}
+              is stored only on this server, tied to your Google account, and exportable at any time.
+            </li>
+            <li>
+              <span className="font-medium text-gray-600 dark:text-gray-300">We will never sell your data</span>{' '}
+              to any third party, for any reason.
+            </li>
+          </ul>
+        </div>
 
-        {privacyUrl && (
-          <p className="mt-4 text-xs text-gray-400 dark:text-gray-500">
-            By signing in, you agree to our{' '}
-            <a
-              href={privacyUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline hover:text-gray-600 dark:hover:text-gray-300"
-            >
-              Privacy Policy
-            </a>
-          </p>
-        )}
+        <p className="mt-4 text-xs text-gray-400 dark:text-gray-500">
+          By using this site, you agree to our{' '}
+          <Link
+            to="/privacy"
+            className="underline hover:text-gray-600 dark:hover:text-gray-300"
+          >
+            Privacy Policy
+          </Link>
+          .
+        </p>
       </div>
     </div>
   )

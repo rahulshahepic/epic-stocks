@@ -50,4 +50,22 @@ describe('Login page', () => {
       expect(screen.getByText(/google client id not configured/i)).toBeInTheDocument()
     })
   })
+
+  it('shows privacy policy link', () => {
+    mockConfig('')
+    renderLogin()
+    expect(screen.getByRole('link', { name: /privacy policy/i })).toBeInTheDocument()
+  })
+
+  it('shows data privacy blurb', () => {
+    mockConfig('')
+    renderLogin()
+    expect(screen.getByText(/we will never sell your data/i)).toBeInTheDocument()
+  })
+
+  it('shows why google sign-in explanation', () => {
+    mockConfig('')
+    renderLogin()
+    expect(screen.getByText(/why google sign-in/i)).toBeInTheDocument()
+  })
 })

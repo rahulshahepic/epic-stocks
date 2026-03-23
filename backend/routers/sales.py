@@ -219,7 +219,7 @@ def get_tax_settings(user: User = Depends(get_current_user), db: Session = Depen
 def update_tax_settings(body: TaxSettingsUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     ts = _get_or_create_tax_settings(user, db)
     for k, v in body.model_dump(exclude_unset=True).items():
-        setattr(ts, k, v)
+        setattr(ts, k, int(v) if k == 'prefer_stock_dp' else v)
     db.commit()
     db.refresh(ts)
     return ts

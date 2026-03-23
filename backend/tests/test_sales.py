@@ -279,6 +279,16 @@ def test_update_tax_settings(client):
     assert abs(resp.json()["state_lt_cg_rate"] - 0.0536) < 0.0001
 
 
+def test_update_prefer_stock_dp(client):
+    token = register_user(client)
+    resp = client.put("/api/tax-settings", json={"prefer_stock_dp": True}, headers=auth_header(token))
+    assert resp.status_code == 200
+    assert resp.json()["prefer_stock_dp"] is True
+    resp = client.put("/api/tax-settings", json={"prefer_stock_dp": False}, headers=auth_header(token))
+    assert resp.status_code == 200
+    assert resp.json()["prefer_stock_dp"] is False
+
+
 def test_tax_settings_user_isolation(client):
     token1 = register_user(client, "user1@example.com")
     token2 = register_user(client, "user2@example.com")

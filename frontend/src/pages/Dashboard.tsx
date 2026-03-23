@@ -791,6 +791,7 @@ export default function Dashboard() {
         return total
       })(),
       total_loan_principal: (() => {
+        const cardYear = parseInt(cardDate.slice(0, 4), 10)
         // Loans settled by a linked payoff Sale on or before cardDate
         const settledIds = new Set(
           (sales ?? []).filter(s => s.loan_id !== null && s.date <= cardDate).map(s => s.loan_id)
@@ -800,7 +801,7 @@ export default function Dashboard() {
         events.filter(e => e.event_type === 'Early Loan Payment' && e.date <= cardDate && e.loan_id != null)
           .forEach(e => { earlyPaidByLoan.set(e.loan_id!, (earlyPaidByLoan.get(e.loan_id!) ?? 0) + (e.amount ?? 0)) })
         return loans
-          .filter(l => !settledIds.has(l.id))
+          .filter(l => l.loan_year <= cardYear && !settledIds.has(l.id))
           .reduce((sum, l) => sum + Math.max(0, l.amount - (earlyPaidByLoan.get(l.id) ?? 0)), 0)
       })(),
       total_tax_paid: taxPaid,

@@ -18,7 +18,8 @@ describe('ImportExport', () => {
     renderPage()
     expect(screen.getByText('Import / Export')).toBeInTheDocument()
     expect(screen.getByText('Get Started')).toBeInTheDocument()
-    expect(screen.getByText('Download Template')).toBeInTheDocument()
+    expect(screen.getByText('Download Blank Template')).toBeInTheDocument()
+    expect(screen.getByText('Download Sample (with fake data)')).toBeInTheDocument()
     expect(screen.getByText('Import from Excel')).toBeInTheDocument()
     expect(screen.getByText('Export to Excel')).toBeInTheDocument()
   })
@@ -88,9 +89,31 @@ describe('ImportExport', () => {
     globalThis.URL.revokeObjectURL = revokeObjectURL
 
     renderPage()
-    await userEvent.click(screen.getByText('Download Template'))
+    await userEvent.click(screen.getByText('Download Blank Template'))
 
     await waitFor(() => {
+      expect(createObjectURL).toHaveBeenCalled()
+    })
+  })
+
+  it('sample download triggers fetch', async () => {
+    const mockBlob = new Blob(['xlsx-data'])
+    const mockResponse = {
+      ok: true,
+      status: 200,
+      blob: () => Promise.resolve(mockBlob),
+    } as unknown as Response
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockResponse)
+    const createObjectURL = vi.fn(() => 'blob:test')
+    const revokeObjectURL = vi.fn()
+    globalThis.URL.createObjectURL = createObjectURL
+    globalThis.URL.revokeObjectURL = revokeObjectURL
+
+    renderPage()
+    await userEvent.click(screen.getByText('Download Sample (with fake data)'))
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith('/api/import/sample', expect.any(Object))
       expect(createObjectURL).toHaveBeenCalled()
     })
   })

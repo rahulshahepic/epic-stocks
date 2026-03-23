@@ -834,7 +834,7 @@ export default function Dashboard() {
             >
               <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Import from Excel</span>
               <span className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Download the template, fill in your grant history, and upload it here.
+                Download the sample file to see exactly what to fill in (with explanations), then upload your real data.
               </span>
             </a>
             <a

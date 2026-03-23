@@ -13,7 +13,9 @@ test.describe('Sales journey', () => {
     await resetUserData(request, token)
     await loginAs(page, token)
     // Import fixture data so there are vesting events to sell against
+    // Uncheck "generate payoff sales" so the sales list starts empty
     await navigateTo(page, 'Import')
+    await page.locator('input[type="checkbox"]').uncheck()
     const fixtureFile = path.resolve(__dirname, '../../test_data/fixture.xlsx')
     await page.locator('input[type="file"]').setInputFiles(fixtureFile)
     await expect(page.getByText('Data for each imported sheet will be replaced')).toBeVisible()
@@ -118,9 +120,10 @@ test.describe('Full user journey', () => {
     await navigateTo(page, 'Import')
     await expect(page.getByText('Import from Excel')).toBeVisible()
 
-    // Upload fixture.xlsx
+    // Upload fixture.xlsx (no payoff sales — keeps event count at the known-good 89)
     const fixtureFile = path.resolve(__dirname, '../../test_data/fixture.xlsx')
     const fileInput = page.locator('input[type="file"]')
+    await page.locator('input[type="checkbox"]').uncheck()
     await fileInput.setInputFiles(fixtureFile)
 
     // Confirm destructive import

@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 @keyframes slide-up {
   from { opacity: 0; transform: translateY(1rem); }

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import User, Grant, Loan, Price, LoanPayment, Sale, TaxSettings
 from auth import get_current_user
-from core import generate_all_events, compute_timeline
+from timeline_cache import get_timeline
 from sales_engine import compute_sale_tax
 
 router = APIRouter(prefix="/api", tags=["events"])
@@ -258,8 +258,7 @@ def get_events(user: User = Depends(get_current_user), db: Session = Depends(get
     grants, prices, loans, loans_db, initial_price = _user_source_data(user, db)
     if not grants and not prices:
         return []
-    events = generate_all_events(grants, prices, loans)
-    timeline = compute_timeline(events, initial_price)
+    timeline = get_timeline(user.id, grants, prices, loans, initial_price)
 
     loan_payments = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).order_by(LoanPayment.date).all()
     sales = db.query(Sale).filter(Sale.user_id == user.id).all()
@@ -308,8 +307,7 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
             "cash_received": 0, "next_event": None,
         }
 
-    events = generate_all_events(grants, prices, loans)
-    timeline = compute_timeline(events, initial_price)
+    timeline = get_timeline(user.id, grants, prices, loans, initial_price)
 
     # Add estimated tax from Sale events (FIFO, chronological order)
     ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()

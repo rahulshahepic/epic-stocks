@@ -39,7 +39,7 @@ def _get_or_create_tax_settings(user: User, db: Session) -> TaxSettings:
 
 
 def _build_timeline(user: User, db: Session) -> list:
-    from core import generate_all_events, compute_timeline
+    from timeline_cache import get_timeline
     grants_db = db.query(Grant).filter(Grant.user_id == user.id).order_by(Grant.year).all()
     prices_db = db.query(Price).filter(Price.user_id == user.id).order_by(Price.effective_date).all()
     loans_db = db.query(Loan).filter(Loan.user_id == user.id).order_by(Loan.due_date).all()
@@ -63,8 +63,7 @@ def _build_timeline(user: User, db: Session) -> list:
     if not grants and not prices:
         return []
     initial_price = prices[0]["price"] if prices else 0
-    events = generate_all_events(grants, prices, loans)
-    return compute_timeline(events, initial_price)
+    return get_timeline(user.id, grants, prices, loans, initial_price)
 
 
 def _check_cash_out_allowed(user: User, sale_date, db: Session):

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from database import SessionLocal
 from models import User, Grant, Loan, Price, PushSubscription, EmailPreference, Sale
-from core import generate_all_events, compute_timeline
+from timeline_cache import get_timeline
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +54,7 @@ def get_todays_events_for_user(user: User, db: Session, today: date | None = Non
 
     grants, prices, loans, initial_price = _user_source_data(user, db)
     if grants and prices:
-        events = generate_all_events(grants, prices, loans)
-        timeline = compute_timeline(events, initial_price)
+        timeline = get_timeline(user.id, grants, prices, loans, initial_price)
         for e in timeline:
             edate = e["date"]
             if isinstance(edate, datetime):

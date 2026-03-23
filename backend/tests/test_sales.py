@@ -155,7 +155,7 @@ def test_loan_repayment_still_uses_fifo():
     lots = build_fifo_lots(events, date(2023, 1, 1))
     # FIFO: oldest Purchase lot (50) consumed first; Bonus lot intact
     assert len(lots) == 1
-    assert lots[0][2] == 0.0  # Bonus lot (share_price basis since grant_price=0)
+    assert lots[0][2] == 10.0  # Bonus lot basis = FMV at vest (share_price)
     assert lots[0][1] == 20
 
 

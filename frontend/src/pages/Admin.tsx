@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { LineChart, Line, ResponsiveContainer, Tooltip, YAxis } from 'recharts'
+import { LineChart, Line, ResponsiveContainer, Tooltip, YAxis, XAxis } from 'recharts'
 import { api } from '../api.ts'
 import type {
   AdminStats, AdminUser, BlockedEmailEntry, ErrorLogEntry, TestNotifyResult,
@@ -32,6 +32,7 @@ function Sparkline({ data, dataKey, color, formatter }: {
   return (
     <ResponsiveContainer width="100%" height={64}>
       <LineChart data={data}>
+        <XAxis dataKey="timestamp" hide />
         <YAxis domain={['auto', 'auto']} hide />
         <Tooltip
           contentStyle={{ fontSize: 10, padding: '2px 6px' }}

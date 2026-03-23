@@ -22,9 +22,9 @@ def get_email_pref(user: User = Depends(get_current_user), db: Session = Depends
 def set_email_pref(enabled: bool, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     pref = db.query(EmailPreference).filter(EmailPreference.user_id == user.id).first()
     if pref:
-        pref.enabled = enabled
+        pref.enabled = int(enabled)
     else:
-        pref = EmailPreference(user_id=user.id, enabled=enabled)
+        pref = EmailPreference(user_id=user.id, enabled=int(enabled))
         db.add(pref)
     db.commit()
     return {
@@ -41,7 +41,7 @@ def set_advance_days(advance_days: int, user: User = Depends(get_current_user), 
     if pref:
         pref.advance_days = advance_days
     else:
-        pref = EmailPreference(user_id=user.id, enabled=False, advance_days=advance_days)
+        pref = EmailPreference(user_id=user.id, enabled=0, advance_days=advance_days)
         db.add(pref)
     db.commit()
     return {

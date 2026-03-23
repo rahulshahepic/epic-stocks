@@ -17,11 +17,31 @@ def _prices():
     ]
 
 
-def test_cache_hit_returns_same_object():
+def test_cache_hit_returns_equal_content():
     tc._cache.clear()
     result1 = tc.get_timeline(1, _grants(), _prices(), [], 10.0)
     result2 = tc.get_timeline(1, _grants(), _prices(), [], 10.0)
-    assert result1 is result2  # same object — cache hit
+    # Returns copies (not the same object) so callers can mutate without corrupting cache
+    assert result1 is not result2
+    assert result1 == result2
+
+
+def test_cache_hit_mutations_do_not_corrupt_cache():
+    """Callers that append to the list or mutate event dicts must not corrupt the cache."""
+    tc._cache.clear()
+    result1 = tc.get_timeline(1, _grants(), _prices(), [], 10.0)
+    original_len = len(result1)
+    original_cum_shares = result1[-1]["cum_shares"]
+
+    # Simulate what _enrich_timeline and _compute_payoff_sale do:
+    result1.append({"event_type": "Sale", "vested_shares": -999})
+    result1[-2]["cum_shares"] = -1  # mutate a field on a returned event dict
+
+    result2 = tc.get_timeline(1, _grants(), _prices(), [], 10.0)
+    assert len(result2) == original_len, "append to returned list must not grow the cache"
+    assert result2[-1]["cum_shares"] == original_cum_shares, (
+        "mutating a returned event dict must not corrupt cached cum_shares"
+    )
 
 
 def test_cache_miss_on_changed_data():

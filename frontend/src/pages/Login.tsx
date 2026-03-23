@@ -98,8 +98,8 @@ export default function Login() {
               We never handle your password — Google verifies your identity and shares only your name and email with us.
             </li>
             <li>
-              <span className="font-medium text-gray-600 dark:text-gray-300">Your financial data</span>{' '}
-              is stored only on this server, tied to your Google account, and exportable at any time.
+              <span className="font-medium text-gray-600 dark:text-gray-300">Your data is encrypted with a unique per-user key.</span>{' '}
+              Your financial data is stored encrypted using AES-256-GCM with a key unique to your account. The operator of this site commits to never reading your data, and the per-user key design makes accidental access hard. You can export your data at any time.
             </li>
             <li>
               <span className="font-medium text-gray-600 dark:text-gray-300">We will never sell your data</span>{' '}

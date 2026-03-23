@@ -1,0 +1,12 @@
+# Playwright test runner for E2E tests.
+# Paired with docker-compose.e2e.yml — not used directly.
+FROM mcr.microsoft.com/playwright:v1.56.0-jammy
+
+WORKDIR /app
+
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm ci
+
+COPY frontend/ ./
+
+CMD ["npx", "playwright", "test"]

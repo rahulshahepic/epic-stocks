@@ -514,7 +514,7 @@ function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices }: {
   )
 }
 
-function InterestChart({ loans, c }: { loans: LoanEntry[]; c: ChartColors }) {
+function InterestChart({ loans, c, range }: { loans: LoanEntry[]; c: ChartColors; range: DateRange }) {
   const [selected, setSelected] = useState<number | null>(null)
 
   const data = useMemo(() => {
@@ -608,9 +608,10 @@ function InterestChart({ loans, c }: { loans: LoanEntry[]; c: ChartColors }) {
 
   if (data.length === 0) return null
 
-  const tIdx = todayIndex(data)
-  const sel = selected !== null && selected < data.length ? data[selected] : null
-  const hasProjected = data.some(d => d.projected !== null && d.projected > 0)
+  const displayed = filterByDateRange(data, range, '_date')
+  const tIdx = todayIndex(displayed)
+  const sel = selected !== null && selected < displayed.length ? displayed[selected] : null
+  const hasProjected = displayed.some(d => d.projected !== null && d.projected > 0)
 
   return (
     <>
@@ -619,15 +620,15 @@ function InterestChart({ loans, c }: { loans: LoanEntry[]; c: ChartColors }) {
         {hasProjected && <><span style={{ color: '#fda4af' }}>&#9632;</span> + Est. interest-on-interest</>}
       </div>
       <ResponsiveContainer width="100%" height={220}>
-        <AreaChart data={data} onClick={(state) => {
+        <AreaChart data={displayed} onClick={(state) => {
           if (state?.activeTooltipIndex != null) setSelected(Number(state.activeTooltipIndex))
         }}>
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
-          <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(data.length)} />
+          <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(displayed.length)} />
           <YAxis tick={{ fontSize: 10, fill: c.axis }} />
-          {tIdx !== null && <ReferenceLine x={data[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
-          {selected !== null && selected < data.length && (
-            <ReferenceLine x={data[selected]._label} stroke="#fb7185" strokeWidth={1.5} zIndex={600} />
+          {tIdx !== null && <ReferenceLine x={displayed[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
+          {selected !== null && selected < displayed.length && (
+            <ReferenceLine x={displayed[selected]._label} stroke="#fb7185" strokeWidth={1.5} zIndex={600} />
           )}
           <Area type="monotone" dataKey="guaranteed" stackId="i" fill="#fb7185" fillOpacity={0.7} stroke="#e11d48" name="Guaranteed" dot={false} />
           {hasProjected && (
@@ -649,19 +650,25 @@ function InterestChart({ loans, c }: { loans: LoanEntry[]; c: ChartColors }) {
   )
 }
 
-function LoanChart({ loanPaymentByYear, c }: {
+function LoanChart({ loanPaymentByYear, c, range, setRange, maxDate }: {
   loanPaymentByYear: { year: string; payoff_sale: number; cash_in: number }[]
   c: ChartColors
+  range: DateRange; setRange: (r: DateRange) => void; maxDate: string
 }) {
   if (!loanPaymentByYear || loanPaymentByYear.length === 0) return null
+  const displayed = range.mode === 'all' ? loanPaymentByYear
+    : loanPaymentByYear.filter(d => {
+        const y = d.year + '-01-01'
+        return y >= range.start && y <= range.end
+      })
   return (
-    <ChartBox title="Loan Payments by Due Year">
+    <ChartBox title="Loan Payments by Due Year" range={range} setRange={setRange} maxDate={maxDate}>
       <div className="mb-2 text-center text-[10px]" style={{ color: c.axis }}>
         <span style={{ color: '#4ade80' }}>&#9632;</span> Payoff sale{'  '}
         <span style={{ color: '#fb923c' }}>&#9632;</span> Cash in
       </div>
       <ResponsiveContainer width="100%" height={220}>
-        <BarChart data={loanPaymentByYear}>
+        <BarChart data={displayed}>
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
           <XAxis dataKey="year" tick={{ fontSize: 10, fill: c.axis }} />
           <YAxis tick={{ fontSize: 10, fill: c.axis }} />
@@ -703,6 +710,8 @@ export default function Dashboard() {
   const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
   const { data: sales } = useApiData<SaleEntry[]>(fetchSales)
   const c = useChartColors()
+  const [rangeInterest, setRangeInterest] = useState<DateRange>({ mode: 'all', start: '', end: '' })
+  const [rangeLoan, setRangeLoan] = useState<DateRange>({ mode: 'all', start: '', end: '' })
   const [range, setRange] = useState<DateRange>(() => {
     try {
       const saved = localStorage.getItem('dashboard_range')
@@ -949,12 +958,12 @@ export default function Dashboard() {
           </ChartBox>
         )}
         {loans && loans.some(l => l.loan_type === 'Interest' || l.loan_type === 'Purchase') && (
-          <ChartBox title="Interest Over Time">
-            <InterestChart loans={loans} c={c} />
+          <ChartBox title="Interest Over Time" range={rangeInterest} setRange={setRangeInterest} maxDate={maxDate}>
+            <InterestChart loans={loans} c={c} range={rangeInterest} />
           </ChartBox>
         )}
         {dash.loan_payment_by_year && dash.loan_payment_by_year.length > 0 && (
-          <LoanChart loanPaymentByYear={dash.loan_payment_by_year} c={c} />
+          <LoanChart loanPaymentByYear={dash.loan_payment_by_year} c={c} range={rangeLoan} setRange={setRangeLoan} maxDate={maxDate} />
         )}
       </div>
     </div>

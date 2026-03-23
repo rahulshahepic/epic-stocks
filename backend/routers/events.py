@@ -289,7 +289,7 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
     today = date.today()
     total_tax_paid = sum(
         ln["amount"] for ln in loans
-        if ln["loan_type"] == "Tax" and ln["due"].date() <= today
+        if ln["loan_type"] == "Tax" and ln["loan_year"] <= today.year
     )
 
     # Cash received from cash-out sales (no loan_id)

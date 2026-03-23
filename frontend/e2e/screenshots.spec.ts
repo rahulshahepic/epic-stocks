@@ -100,4 +100,30 @@ test.describe('Screenshots', () => {
     await page.waitForTimeout(500)
     await page.screenshot({ path: `${OUT}/settings-dark-mobile.png`, fullPage: true })
   })
+
+  test('login page - light - mobile', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' })
+    await page.setViewportSize(MOBILE)
+    await page.goto(`${BASE}/login`)
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: `${OUT}/login-light-mobile.png`, fullPage: true })
+  })
+
+  test('login page - dark - mobile', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await page.setViewportSize(MOBILE)
+    await page.goto(`${BASE}/login`)
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: `${OUT}/login-dark-mobile.png`, fullPage: true })
+  })
+
+  test('privacy policy page - light - mobile', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' })
+    await page.setViewportSize(MOBILE)
+    await page.goto(`${BASE}/privacy`)
+    await page.waitForLoadState('networkidle')
+    await page.screenshot({ path: `${OUT}/privacy-light-mobile.png`, fullPage: true })
+  })
 })

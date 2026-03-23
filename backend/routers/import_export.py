@@ -13,7 +13,7 @@ from database import get_db
 from models import User, Grant, Loan, Price, Sale, ImportBackup
 from auth import get_current_user
 from excel_io import read_grants_from_excel, read_prices_from_excel, read_loans_from_excel, write_events_to_excel
-from core import generate_all_events, compute_timeline
+from timeline_cache import get_timeline
 from schemas import LOAN_TYPES
 
 import openpyxl
@@ -733,9 +733,8 @@ def export_excel(
     } for ln in loans_db]
 
     if grants_dicts or prices_dicts:
-        events = generate_all_events(grants_dicts, prices_dicts, loans_dicts)
         initial_price = prices_dicts[0]["price"] if prices_dicts else 0
-        timeline = compute_timeline(events, initial_price)
+        timeline = get_timeline(user.id, grants_dicts, prices_dicts, loans_dicts, initial_price)
 
         # Save to temp file so write_events_to_excel can open it
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:

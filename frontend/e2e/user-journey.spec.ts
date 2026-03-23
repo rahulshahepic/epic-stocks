@@ -120,9 +120,10 @@ test.describe('Full user journey', () => {
     await navigateTo(page, 'Import')
     await expect(page.getByText('Import from Excel')).toBeVisible()
 
-    // Upload fixture.xlsx
+    // Upload fixture.xlsx (no payoff sales — keeps event count at the known-good 89)
     const fixtureFile = path.resolve(__dirname, '../../test_data/fixture.xlsx')
     const fileInput = page.locator('input[type="file"]')
+    await page.locator('input[type="checkbox"]').uncheck()
     await fileInput.setInputFiles(fixtureFile)
 
     // Confirm destructive import

@@ -8,5 +8,6 @@ COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm ci
 
 COPY frontend/ ./
+COPY test_data/ /test_data/
 
 CMD ["npx", "playwright", "test"]

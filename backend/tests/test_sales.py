@@ -698,3 +698,57 @@ def test_per_sale_tax_rates_stored_and_used(client):
         "federal_lt_cg_rate": 0.15,
     }, headers=auth_header(token)).json()
     assert upd["federal_lt_cg_rate"] == 0.15
+
+
+def test_payoff_sale_uses_price_at_loan_due_date_not_final_price(client):
+    """
+    Payoff sale gross-up must use the share price at the loan due date,
+    not the last (possibly far-future and lower) price in the timeline.
+
+    Regression: _compute_payoff_sale previously used _current_price_from_timeline
+    which returned the final timeline price. If future price projections are lower
+    than the price at the loan due date, the gross-up would compute too many shares,
+    causing cum_shares to go deeply negative in the chart.
+    """
+    token = register_user(client)
+
+    # Grant: 1000 shares, vesting 2021-01-01 (2 periods), exercise 2030-01-01
+    client.post("/api/grants", json={
+        "year": 2020, "type": "Bonus", "shares": 1000, "price": 0.0,
+        "vest_start": "2021-01-01", "periods": 2, "exercise_date": "2030-01-01",
+        "dp_shares": 0,
+    }, headers=auth_header(token))
+
+    # Price at loan due date: $10/share
+    client.post("/api/prices", json={"effective_date": "2021-01-01", "price": 10.0},
+                headers=auth_header(token))
+    # Far-future price projection: $1/share (much lower — the bug would use this)
+    client.post("/api/prices", json={"effective_date": "2030-01-01", "price": 1.0},
+                headers=auth_header(token))
+
+    # Loan of $500, due 2022-01-01 (when 500 shares are vested at $10)
+    resp = client.post("/api/loans?generate_payoff_sale=true", json={
+        "grant_year": 2020, "grant_type": "Bonus", "loan_type": "Purchase",
+        "loan_year": 2020, "amount": 500.0, "interest_rate": 0.0,
+        "due_date": "2022-01-01",
+    }, headers=auth_header(token))
+    assert resp.status_code == 201
+
+    sales = client.get("/api/sales", headers=auth_header(token)).json()
+    assert len(sales) == 1
+    sale = sales[0]
+
+    # price_per_share should be $10 (price at loan due date), not $1 (final price)
+    assert sale["price_per_share"] == 10.0
+
+    # shares should be ~ceil(500 / 10) = 50 (no cap gains since basis=price for income grant)
+    # With the bug (price=$1), shares would be ~500, causing negative cum_shares on 500 vested
+    assert sale["shares"] <= 100, f"Expected ≤100 shares (at $10 price), got {sale['shares']}"
+
+    # Verify cum_shares never goes negative in the events timeline
+    events = client.get("/api/events", headers=auth_header(token)).json()
+    for e in events:
+        assert e.get("cum_shares", 0) >= 0, (
+            f"cum_shares went negative ({e['cum_shares']}) at {e['date']} ({e['event_type']}). "
+            "Payoff sale share count computed with wrong (far-future) price."
+        )

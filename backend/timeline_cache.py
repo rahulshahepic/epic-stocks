@@ -23,8 +23,10 @@ def get_timeline(user_id: int, grants: list, prices: list, loans: list, initial_
     key = _hash(grants, prices, loans, initial_price)
     cached = _cache.get(user_id)
     if cached and cached[0] == key:
-        return cached[1]
+        # Return shallow copies of each event dict so callers can append, sort, or
+        # mutate fields (e.g. cum_shares in _enrich_timeline) without corrupting the cache.
+        return [{**e} for e in cached[1]]
     events = generate_all_events(grants, prices, loans)
     timeline = compute_timeline(events, initial_price)
     _cache[user_id] = (key, timeline)
-    return timeline
+    return [{**e} for e in timeline]

@@ -77,13 +77,23 @@ def _build_timeline_for_user(user: User, db: Session) -> list:
     return get_timeline(user.id, grants, prices, loans, initial_price)
 
 
-def _current_price_from_timeline(timeline: list) -> float:
-    """Return the most recent share_price from the timeline."""
+def _price_at_date(timeline: list, as_of) -> float:
+    """Return the share price from the timeline at or just before as_of date."""
+    if isinstance(as_of, datetime):
+        as_of = as_of.date()
     price = 0.0
     for e in timeline:
-        p = e.get("share_price")
-        if p is not None:
-            price = p
+        edate = e.get("date")
+        if edate is None:
+            continue
+        if isinstance(edate, datetime):
+            edate = edate.date()
+        if edate <= as_of:
+            p = e.get("share_price")
+            if p is not None and p > 0:
+                price = p
+        else:
+            break
     return price
 
 
@@ -97,7 +107,9 @@ def _compute_payoff_sale(loan: Loan, user: User, db: Session) -> dict:
     cash_due = max(0.0, loan.amount - early_paid)
 
     timeline = _build_timeline_for_user(user, db)
-    price = _current_price_from_timeline(timeline)
+    # Use the price at the loan due date, not the final timeline price.
+    # Using a far-future price (which may be lower) would compute too many shares.
+    price = _price_at_date(timeline, loan.due_date)
     if price <= 0:
         # Fall back to most recent DB price
         latest = db.query(Price).filter(Price.user_id == user.id).order_by(Price.effective_date.desc()).first()

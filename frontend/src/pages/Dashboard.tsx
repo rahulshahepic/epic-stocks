@@ -408,7 +408,7 @@ function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices }: {
     // Build sorted list of Tax loans for running total computation
     const sortedTaxLoans = [...loans]
       .filter(l => l.loan_type === 'Tax')
-      .sort((a, b) => a.due_date.localeCompare(b.due_date))
+      .sort((a, b) => a.loan_year - b.loan_year)
     let taxLoanIdx = 0
     let cumTaxPaid = 0
 
@@ -419,8 +419,9 @@ function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices }: {
 
     const filtered = filterByDateRange(events, range, 'date')
     return filtered.map((e, i) => {
-      // Accumulate tax loan payments up to this event date
-      while (taxLoanIdx < sortedTaxLoans.length && sortedTaxLoans[taxLoanIdx].due_date <= e.date) {
+      // Accumulate tax loan payments up to this event's year (tax paid when loan was taken, not when due)
+      const eYear = parseInt(e.date.slice(0, 4), 10)
+      while (taxLoanIdx < sortedTaxLoans.length && sortedTaxLoans[taxLoanIdx].loan_year <= eYear) {
         cumTaxPaid += sortedTaxLoans[taxLoanIdx].amount
         taxLoanIdx++
       }
@@ -757,7 +758,7 @@ export default function Dashboard() {
       if (e.date > cardDate) { nextEvent = { date: e.date, event_type: e.event_type }; break }
     }
     const taxPaid =
-      loans.filter(l => l.loan_type === 'Tax' && l.due_date <= cardDate)
+      loans.filter(l => l.loan_type === 'Tax' && l.loan_year <= parseInt(cardDate.slice(0, 4), 10))
         .reduce((sum, l) => sum + l.amount, 0)
       + events.filter(e => e.event_type === 'Sale' && e.date <= cardDate)
         .reduce((sum, e) => sum + (e.estimated_tax ?? 0), 0)

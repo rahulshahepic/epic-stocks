@@ -13,7 +13,9 @@ test.describe('Sales journey', () => {
     await resetUserData(request, token)
     await loginAs(page, token)
     // Import fixture data so there are vesting events to sell against
+    // Uncheck "generate payoff sales" so the sales list starts empty
     await navigateTo(page, 'Import')
+    await page.locator('input[type="checkbox"]').uncheck()
     const fixtureFile = path.resolve(__dirname, '../../test_data/fixture.xlsx')
     await page.locator('input[type="file"]').setInputFiles(fixtureFile)
     await expect(page.getByText('Data for each imported sheet will be replaced')).toBeVisible()

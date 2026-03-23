@@ -1,6 +1,5 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.ts'
-import { useConfig } from '../hooks/useConfig.ts'
 import { useMe } from '../hooks/useMe.ts'
 
 const NAV_ITEMS = [
@@ -16,9 +15,7 @@ const NAV_ITEMS = [
 
 export default function Layout() {
   const { logout } = useAuth()
-  const config = useConfig()
   const me = useMe()
-  const privacyUrl = config?.privacy_url
   const navItems = me?.is_admin ? [...NAV_ITEMS, { to: '/admin', label: 'Admin' }] : NAV_ITEMS
 
   return (
@@ -60,18 +57,14 @@ export default function Layout() {
         <Outlet />
       </main>
 
-      {privacyUrl && (
-        <footer className="border-t border-gray-200 py-4 text-center text-xs text-gray-400 dark:border-gray-800 dark:text-gray-500">
-          <a
-            href={privacyUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline hover:text-gray-600 dark:hover:text-gray-300"
-          >
-            Privacy Policy
-          </a>
-        </footer>
-      )}
+      <footer className="border-t border-gray-200 py-4 text-center text-xs text-gray-400 dark:border-gray-800 dark:text-gray-500">
+        <Link
+          to="/privacy"
+          className="underline hover:text-gray-600 dark:hover:text-gray-300"
+        >
+          Privacy Policy
+        </Link>
+      </footer>
     </div>
   )
 }

@@ -91,8 +91,12 @@ export default function Login() {
           </p>
         )}
 
+        <p className="mt-6 text-xs text-gray-400 dark:text-gray-500">
+          Use any Google account — your data is tied to it, and you can export everything anytime.
+        </p>
+
         {privacyUrl && (
-          <p className="mt-8 text-xs text-gray-400 dark:text-gray-500">
+          <p className="mt-4 text-xs text-gray-400 dark:text-gray-500">
             By signing in, you agree to our{' '}
             <a
               href={privacyUrl}

@@ -41,8 +41,23 @@ Follow the order in SPEC.md. Build backend first, then frontend. **Every step mu
 - TypeScript: functional components, hooks, Tailwind utility classes
 - Mobile-first responsive design — this is primarily used on a phone
 
+## README Documentation Checklist
+> **⚠️ MANDATORY: Update README.md whenever any of the following change. DO NOT ship a feature without updating the docs.**
+
+- **User-facing features** — new pages, workflows, or settings a user would interact with: update the "How to use" / getting started section of the README.
+- **Admin workflows** — new env vars, admin endpoints, operational procedures (e.g. notifications, user management, blocked users): update the admin/ops section of the README.
+- **Code structure** — new routers, models, services, frontend pages, or hooks added: update the architecture/code structure section of the README.
+- **Environment variables** — any new `SOME_VAR` required or optional: document it in the README env var table.
+- **What to update in README.md:**
+  1. Feature description / how to use it (user perspective)
+  2. Admin/ops notes if it affects deployment or server config
+  3. Code structure diagram or file list if new files were added
+  4. Any new env vars with description and whether they are required
+
 ## UI Change Checklist
-- **Update README screenshots after any significant UI change.** When modifying dashboard charts, adding new pages, or changing visual layout, regenerate screenshots and commit them.
+> **⚠️ MANDATORY AFTER EVERY UI CHANGE: Run `./screenshots/run.sh` and commit the updated screenshots. DO NOT skip this. DO NOT forget. This is not optional.**
+
+- **ALWAYS update README screenshots after any UI change** — login page, dashboard, import, settings, any page.
 - **How:** Run `./screenshots/run.sh` from the repo root. This spins up a temp backend + frontend, seeds sample data, and runs `frontend/e2e/screenshots.spec.ts` via Playwright to capture all screenshots into `screenshots/`.
 - **What to capture:** The spec captures dashboard (light/dark × mobile/desktop) and admin (light/dark × mobile). Add new test cases to the spec when adding new pages.
 - **README:** After capturing, update `README.md` to reference any new screenshot files.

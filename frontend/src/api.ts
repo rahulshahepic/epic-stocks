@@ -220,11 +220,14 @@ export const api = {
   pushUnsubscribe: (subscription: PushSubscriptionJSON) =>
     apiFetch<void>('/api/push/subscribe', { method: 'DELETE', body: JSON.stringify(subscription) }),
   pushStatus: () => apiFetch<{ subscribed: boolean; subscription_count: number }>('/api/push/status'),
+  pushTest: () => post<{ sent: number }>('/api/push/test', {}),
 
   // Email notifications
-  getEmailPref: () => apiFetch<{ enabled: boolean }>('/api/notifications/email'),
+  getEmailPref: () => apiFetch<{ enabled: boolean; advance_days: number }>('/api/notifications/email'),
   setEmailPref: (enabled: boolean) =>
-    put<{ enabled: boolean }>(`/api/notifications/email?enabled=${enabled}`, {}),
+    put<{ enabled: boolean; advance_days: number }>(`/api/notifications/email?enabled=${enabled}`, {}),
+  setAdvanceDays: (advance_days: number) =>
+    put<{ enabled: boolean; advance_days: number }>(`/api/notifications/advance-days?advance_days=${advance_days}`, {}),
 
   // Account
   resetMyData: () => apiFetch<void>('/api/me/reset', { method: 'POST' }),

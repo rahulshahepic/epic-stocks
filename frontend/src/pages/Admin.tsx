@@ -99,6 +99,7 @@ export default function Admin() {
     try {
       await api.adminDeleteUser(id)
       setConfirmDelete(null)
+      setUsers(prev => prev.filter(u => u.id !== id))
       loadUsers(search)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete user')

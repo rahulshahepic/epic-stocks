@@ -61,6 +61,11 @@ def _migrate_schema():
             if "dp_min_cap" not in ts_cols:
                 conn.execute(sqlalchemy.text("ALTER TABLE tax_settings ADD COLUMN dp_min_cap REAL NOT NULL DEFAULT 20000.0"))
     with database.engine.begin() as conn:
+        ep_cols = {row[1] for row in conn.execute(sqlalchemy.text("PRAGMA table_info(email_preferences)"))}
+        if ep_cols:
+            if "advance_days" not in ep_cols:
+                conn.execute(sqlalchemy.text("ALTER TABLE email_preferences ADD COLUMN advance_days INTEGER NOT NULL DEFAULT 0"))
+    with database.engine.begin() as conn:
         conn.execute(sqlalchemy.text("""
             CREATE TABLE IF NOT EXISTS sales (
                 id INTEGER PRIMARY KEY,

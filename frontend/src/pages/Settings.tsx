@@ -15,6 +15,10 @@ export default function Settings() {
 
   const [emailEnabled, setEmailEnabled] = useState(false)
   const [emailLoading, setEmailLoading] = useState(false)
+  const [advanceDays, setAdvanceDays] = useState(0)
+  const [advanceDaysLoading, setAdvanceDaysLoading] = useState(false)
+  const [pushTestLoading, setPushTestLoading] = useState(false)
+  const [pushTestResult, setPushTestResult] = useState<string | null>(null)
   const [resetConfirm, setResetConfirm] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
@@ -51,8 +55,9 @@ export default function Settings() {
 
   const loadEmailPref = useCallback(async () => {
     try {
-      const { enabled } = await api.getEmailPref()
-      setEmailEnabled(enabled)
+      const pref = await api.getEmailPref()
+      setEmailEnabled(pref.enabled)
+      setAdvanceDays(pref.advance_days ?? 0)
     } catch { /* ignore */ }
   }, [])
 
@@ -63,9 +68,28 @@ export default function Settings() {
   async function toggleEmail() {
     setEmailLoading(true)
     try {
-      const { enabled } = await api.setEmailPref(!emailEnabled)
-      setEmailEnabled(enabled)
+      const pref = await api.setEmailPref(!emailEnabled)
+      setEmailEnabled(pref.enabled)
     } catch { /* ignore */ } finally { setEmailLoading(false) }
+  }
+
+  async function changeAdvanceDays(days: number) {
+    setAdvanceDaysLoading(true)
+    try {
+      const pref = await api.setAdvanceDays(days)
+      setAdvanceDays(pref.advance_days ?? days)
+    } catch { /* ignore */ } finally { setAdvanceDaysLoading(false) }
+  }
+
+  async function sendTestPush() {
+    setPushTestLoading(true)
+    setPushTestResult(null)
+    try {
+      const { sent } = await api.pushTest()
+      setPushTestResult(sent > 0 ? 'Test notification sent!' : 'No subscriptions found — enable push first.')
+    } catch (e: unknown) {
+      setPushTestResult(e instanceof Error ? e.message : 'Failed to send test notification')
+    } finally { setPushTestLoading(false) }
   }
 
   const THEME_OPTIONS: { value: Theme; label: string }[] = [
@@ -106,7 +130,7 @@ export default function Settings() {
         <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
           <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Notifications</h3>
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Get notified on days when you have vesting, exercise, or loan repayment events.
+            Get notified when you have vesting, exercise, or loan repayment events.
           </p>
 
           <div className="mt-3 space-y-3">
@@ -158,6 +182,47 @@ export default function Settings() {
                   </button>
                 </div>
               </div>
+            )}
+
+            {/* Advance timing — shown when any notification is active */}
+            {(subscribed || emailEnabled) && (
+              <div className="flex items-center justify-between border-t border-gray-100 pt-3 dark:border-gray-800">
+                <div>
+                  <span className="text-xs text-gray-700 dark:text-gray-300">Notify me</span>
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500">When to send the notification</p>
+                </div>
+                <select
+                  value={advanceDays}
+                  disabled={advanceDaysLoading}
+                  onChange={e => changeAdvanceDays(Number(e.target.value))}
+                  className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                >
+                  <option value={0}>Day of event</option>
+                  <option value={7}>1 week before</option>
+                  <option value={3}>3 days before</option>
+                </select>
+              </div>
+            )}
+
+            {/* Test push button */}
+            {subscribed && (
+              <div className="flex items-center justify-between border-t border-gray-100 pt-3 dark:border-gray-800">
+                <div>
+                  <span className="text-xs text-gray-700 dark:text-gray-300">Test push</span>
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500">Confirm notifications are working</p>
+                </div>
+                <button
+                  onClick={sendTestPush}
+                  disabled={pushTestLoading}
+                  className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                >
+                  {pushTestLoading ? 'Sending...' : 'Send test'}
+                </button>
+              </div>
+            )}
+
+            {pushTestResult && (
+              <p className="text-xs text-gray-500 dark:text-gray-400">{pushTestResult}</p>
             )}
           </div>
         </section>

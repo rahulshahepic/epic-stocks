@@ -8,7 +8,7 @@ This document covers three layers of security. **Sections 1 and 3 are infrastruc
 
 > This must be configured by whoever operates the deployment. Self-hosters should follow these steps.
 
-The reference deployment uses **Cloudflare** in front of Caddy. No app-level rate limiting is implemented — Cloudflare handles it at the edge.
+The reference deployment uses **Cloudflare** in front of Caddy. No general app-level rate limiting is implemented — Cloudflare handles it at the edge. The one exception is `POST /api/admin/test-notify`, which is capped at **5 calls per hour per admin** in the application layer regardless of deployment setup.
 
 ### Steps for self-hosters
 
@@ -23,7 +23,7 @@ The reference deployment uses **Cloudflare** in front of Caddy. No app-level rat
    - This prevents attackers from bypassing Cloudflare by hitting your origin IP directly
 5. Caddy receives real client IPs via the `CF-Connecting-IP` header — no extra app config needed
 
-> If you don't use Cloudflare, consider adding `slowapi` rate limiting to FastAPI and configuring Caddy's `rate_limit` directive instead.
+> **Self-hosting without Cloudflare?** The app has no general request-rate limiting beyond the admin test-notify cap. Add Caddy's [`rate_limit` directive](https://caddyserver.com/docs/caddyfile/directives/rate_limit) or `slowapi` FastAPI middleware before exposing to the internet.
 
 ### Reference deployment status
 

@@ -1,14 +1,16 @@
 """Import/export endpoints for Excel files."""
 import io
+import json
 import tempfile
 from datetime import datetime, date
 from openpyxl.comments import Comment
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import User, Grant, Loan, Price, Sale
+from models import User, Grant, Loan, Price, Sale, ImportBackup
 from auth import get_current_user
 from excel_io import read_grants_from_excel, read_prices_from_excel, read_loans_from_excel, write_events_to_excel
 from core import generate_all_events, compute_timeline
@@ -16,6 +18,8 @@ from schemas import LOAN_TYPES
 
 import openpyxl
 from openpyxl.styles import Font, PatternFill
+
+_MAX_BACKUPS_PER_USER = 3
 
 router = APIRouter(prefix="/api", tags=["import_export"])
 
@@ -203,6 +207,9 @@ def import_excel(
     if all_errors:
         raise HTTPException(status_code=400, detail="Validation errors:\n" + "\n".join(all_errors))
 
+    # Snapshot current data before wiping (keep last 3 backups per user)
+    _save_import_backup(user.id, has_schedule, has_prices, has_loans, db)
+
     # Only wipe data types that were in the uploaded file
     if has_schedule:
         db.query(Grant).filter(Grant.user_id == user.id).delete()
@@ -276,6 +283,131 @@ def import_excel(
         "loans": len(loans_raw),
         "payoff_sales": payoff_sales_created,
         "sheets_imported": [s for s, present in [("Schedule", has_schedule), ("Prices", has_prices), ("Loans", has_loans)] if present],
+    }
+
+
+# ============================================================
+# BACKUP HELPERS & ENDPOINTS
+# ============================================================
+
+def _save_import_backup(user_id: int, has_schedule: bool, has_prices: bool, has_loans: bool, db: Session):
+    """Snapshot the affected data types before an import overwrites them."""
+    grants = []
+    prices = []
+    loans = []
+    if has_schedule:
+        for g in db.query(Grant).filter(Grant.user_id == user_id).all():
+            grants.append({
+                "year": g.year, "type": g.type, "shares": g.shares, "price": g.price,
+                "vest_start": str(g.vest_start), "periods": g.periods,
+                "exercise_date": str(g.exercise_date), "dp_shares": g.dp_shares or 0,
+            })
+    if has_prices:
+        for p in db.query(Price).filter(Price.user_id == user_id).all():
+            prices.append({"effective_date": str(p.effective_date), "price": p.price})
+    if has_loans:
+        for ln in db.query(Loan).filter(Loan.user_id == user_id).all():
+            loans.append({
+                "grant_year": ln.grant_year, "grant_type": ln.grant_type,
+                "loan_type": ln.loan_type, "loan_year": ln.loan_year,
+                "amount": ln.amount, "interest_rate": ln.interest_rate,
+                "due_date": str(ln.due_date), "loan_number": ln.loan_number or "",
+            })
+
+    if not grants and not prices and not loans:
+        return  # Nothing to back up
+
+    db.add(ImportBackup(user_id=user_id, data_json=json.dumps(
+        {"grants": grants, "prices": prices, "loans": loans}
+    )))
+    db.flush()  # ensure new backup is visible in the trimming query
+    # Trim to last _MAX_BACKUPS_PER_USER
+    all_backups = (
+        db.query(ImportBackup)
+        .filter(ImportBackup.user_id == user_id)
+        .order_by(ImportBackup.created_at.desc())
+        .all()
+    )
+    for old in all_backups[_MAX_BACKUPS_PER_USER:]:
+        db.delete(old)
+
+
+class BackupOut(BaseModel):
+    id: int
+    created_at: str
+    grant_count: int
+    price_count: int
+    loan_count: int
+
+
+@router.get("/import/backups", response_model=list[BackupOut])
+def list_import_backups(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    backups = (
+        db.query(ImportBackup)
+        .filter(ImportBackup.user_id == user.id)
+        .order_by(ImportBackup.created_at.desc())
+        .all()
+    )
+    result = []
+    for b in backups:
+        data = json.loads(b.data_json)
+        result.append(BackupOut(
+            id=b.id,
+            created_at=b.created_at.isoformat(),
+            grant_count=len(data.get("grants", [])),
+            price_count=len(data.get("prices", [])),
+            loan_count=len(data.get("loans", [])),
+        ))
+    return result
+
+
+@router.post("/import/backups/{backup_id}/restore", status_code=200)
+def restore_import_backup(
+    backup_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    backup = db.query(ImportBackup).filter(
+        ImportBackup.id == backup_id, ImportBackup.user_id == user.id
+    ).first()
+    if not backup:
+        raise HTTPException(status_code=404, detail="Backup not found")
+
+    data = json.loads(backup.data_json)
+    grants = data.get("grants", [])
+    prices = data.get("prices", [])
+    loans = data.get("loans", [])
+
+    if grants:
+        db.query(Grant).filter(Grant.user_id == user.id).delete()
+    if prices:
+        db.query(Price).filter(Price.user_id == user.id).delete()
+    if loans:
+        db.query(Sale).filter(Sale.user_id == user.id, Sale.loan_id.isnot(None)).delete()
+        db.query(Loan).filter(Loan.user_id == user.id).delete()
+
+    for g in grants:
+        db.add(Grant(
+            user_id=user.id, year=g["year"], type=g["type"],
+            shares=g["shares"], price=g["price"],
+            vest_start=_to_date(g["vest_start"]), periods=g["periods"],
+            exercise_date=_to_date(g["exercise_date"]), dp_shares=g.get("dp_shares", 0),
+        ))
+    for p in prices:
+        db.add(Price(user_id=user.id, effective_date=_to_date(p["effective_date"]), price=p["price"]))
+    for ln in loans:
+        db.add(Loan(
+            user_id=user.id, grant_year=ln["grant_year"], grant_type=ln["grant_type"],
+            loan_type=ln["loan_type"], loan_year=ln["loan_year"],
+            amount=ln["amount"], interest_rate=ln["interest_rate"],
+            due_date=_to_date(ln["due_date"]), loan_number=ln.get("loan_number", ""),
+        ))
+
+    db.commit()
+    return {
+        "restored_grants": len(grants),
+        "restored_prices": len(prices),
+        "restored_loans": len(loans),
     }
 
 

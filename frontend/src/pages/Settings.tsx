@@ -401,6 +401,9 @@ export default function Settings() {
                   <option value="lifo">LIFO — newest lots first (lowest cap gains for rising stock)</option>
                   <option value="same_tranche">Same tranche — sell shares from the matching grant only</option>
                 </select>
+                <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+                  The IRS may require a consistent lot selection method election at the time of sale. Consult a tax advisor before changing this.
+                </p>
               </label>
               <label className="block">
                 <span className="text-xs text-gray-500 dark:text-gray-400">LT Holding Threshold (days)</span>

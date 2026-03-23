@@ -16,7 +16,7 @@ class User(Base):
     encrypted_key: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_login: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    is_admin: Mapped[bool] = mapped_column(Integer, default=0, server_default="0")
+    is_admin: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     last_notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     grants: Mapped[list["Grant"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -161,6 +161,17 @@ class TaxSettings(Base):
     dp_min_cap: Mapped[float] = mapped_column(Float, nullable=False, default=20000.0)
 
     user: Mapped["User"] = relationship(back_populates="tax_settings")
+
+
+class ImportBackup(Base):
+    """Snapshot of user data taken immediately before an import, for recovery."""
+    __tablename__ = "import_backups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    # JSON snapshot: {"grants": [...], "prices": [...], "loans": [...]}
+    data_json: Mapped[str] = mapped_column(String, nullable=False)
 
 
 class BlockedEmail(Base):

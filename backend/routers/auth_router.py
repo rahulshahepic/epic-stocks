@@ -56,7 +56,7 @@ def google_login(body: GoogleAuthRequest, db: Session = Depends(get_db)):
         user.picture = picture
         db.commit()
 
-    user.is_admin = user.email.lower() in get_admin_emails()
+    user.is_admin = int(user.email.lower() in get_admin_emails())
     user.last_login = datetime.now(timezone.utc)
     db.commit()
 
@@ -82,7 +82,7 @@ if os.getenv("E2E_TEST") == "1":
             db.commit()
             db.refresh(user)
 
-        user.is_admin = user.email.lower() in get_admin_emails()
+        user.is_admin = int(user.email.lower() in get_admin_emails())
         user.last_login = datetime.now(timezone.utc)
         db.commit()
 

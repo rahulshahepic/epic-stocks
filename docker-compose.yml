@@ -1,10 +1,25 @@
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: vesting
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   app:
     build: .
-    volumes:
-      - ./data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
     environment:
-      - DATABASE_URL=sqlite:///data/vesting.db
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-changeme}@db:5432/vesting
       - JWT_SECRET=${JWT_SECRET}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - ENCRYPTION_MASTER_KEY=${ENCRYPTION_MASTER_KEY}
@@ -15,6 +30,8 @@ services:
       - VAPID_CLAIMS_EMAIL=${VAPID_CLAIMS_EMAIL:-}
       - RESEND_API_KEY=${RESEND_API_KEY:-}
       - RESEND_FROM=${RESEND_FROM:-}
+    volumes:
+      - ./data:/app/data  # sqlite migration source + sentinel file
     expose:
       - "8000"
 
@@ -32,4 +49,5 @@ services:
       - app
 
 volumes:
+  pg_data:
   caddy_data:

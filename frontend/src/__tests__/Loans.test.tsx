@@ -17,6 +17,13 @@ const MOCK_LOANS = [
   },
 ]
 
+const MOCK_SALES = [
+  {
+    id: 10, loan_id: 1, date: '2025-06-01', shares: 1000,
+    price_per_share: 5.0, notes: null,
+  },
+]
+
 beforeEach(() => {
   localStorage.setItem('auth_token', 'test-token')
   vi.restoreAllMocks()
@@ -26,6 +33,9 @@ function mockApi() {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url
     const method = init?.method ?? 'GET'
+    if (url.includes('/api/sales') && method === 'GET') {
+      return new Response(JSON.stringify(MOCK_SALES), { status: 200 })
+    }
     if (url.includes('/api/loans') && method === 'GET') {
       return new Response(JSON.stringify(MOCK_LOANS), { status: 200 })
     }
@@ -58,7 +68,22 @@ describe('Loans', () => {
     })
     expect(screen.getByText('Interest')).toBeInTheDocument()
     expect(screen.getByText('Tax')).toBeInTheDocument()
+    // L-001 is now in the drill-in card, not the main table
+    expect(screen.queryByText('L-001')).not.toBeInTheDocument()
+  })
+
+  it('expands drill-in card showing loan number and sale details', async () => {
+    mockApi()
+    renderLoans()
+    await waitFor(() => {
+      expect(screen.getByText('✓ linked')).toBeInTheDocument()
+    })
+    await userEvent.click(screen.getByText('✓ linked'))
     expect(screen.getByText('L-001')).toBeInTheDocument()
+    expect(screen.getByText('2025-06-01')).toBeInTheDocument()
+    // clicking again collapses
+    await userEvent.click(screen.getByText('✓ linked'))
+    expect(screen.queryByText('L-001')).not.toBeInTheDocument()
   })
 
   it('opens add loan form', async () => {

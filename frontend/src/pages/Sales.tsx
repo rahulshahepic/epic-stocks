@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { api, ConflictError } from '../api.ts'
 import type { SaleEntry, TaxBreakdown, TaxSettings } from '../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
@@ -262,6 +262,14 @@ export default function Sales() {
   const [breakdowns, setBreakdowns] = useState<Map<number, TaxBreakdown>>(new Map())
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [loadingTaxIds, setLoadingTaxIds] = useState<Set<number>>(new Set())
+  // Fetch all tax breakdowns in one request when sales load
+  useEffect(() => {
+    if (!sales) return
+    api.getAllSaleTaxes()
+      .then(all => setBreakdowns(new Map(Object.entries(all).map(([k, v]) => [Number(k), v]))))
+      .catch(() => {})
+  }, [sales])
+
   useDataSync('sales', reload)
 
   function resetForm() {

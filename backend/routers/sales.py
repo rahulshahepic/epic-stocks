@@ -98,6 +98,83 @@ def _check_cash_out_allowed(user: User, sale_date, db: Session):
         )
 
 
+# --- Bulk tax computation (one DB round-trip for all sales) ---
+
+@router.get("/tax")
+def get_all_sale_taxes(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Return {sale_id: TaxBreakdown} for every sale in one shot."""
+    sales = db.query(Sale).filter(Sale.user_id == user.id).order_by(Sale.date).all()
+    if not sales:
+        db.close()
+        return {}
+
+    timeline = _build_timeline(user, db)
+    ts = _get_or_create_tax_settings(user, db)
+
+    # Build loan_id -> (grant_year, grant_type) for same-tranche resolution
+    loan_map: dict[int, tuple] = {}
+    if ts.lot_selection_method == 'same_tranche':
+        from models import Loan as LoanModel
+        for ln in db.query(LoanModel).filter(LoanModel.user_id == user.id).all():
+            loan_map[ln.id] = (ln.grant_year, ln.grant_type)
+
+    lot_order = 'fifo' if ts.lot_selection_method == 'fifo' else 'lifo'
+
+    # Snapshot per-sale rate overrides while session is open
+    sale_data = []
+    for s in sales:
+        sale_data.append({
+            "id": s.id,
+            "date": s.date,
+            "shares": s.shares,
+            "price_per_share": s.price_per_share,
+            "loan_id": s.loan_id,
+            "ts_dict": {
+                "federal_income_rate": s.federal_income_rate if s.federal_income_rate is not None else ts.federal_income_rate,
+                "federal_lt_cg_rate": s.federal_lt_cg_rate if s.federal_lt_cg_rate is not None else ts.federal_lt_cg_rate,
+                "federal_st_cg_rate": s.federal_st_cg_rate if s.federal_st_cg_rate is not None else ts.federal_st_cg_rate,
+                "niit_rate": s.niit_rate if s.niit_rate is not None else ts.niit_rate,
+                "state_income_rate": s.state_income_rate if s.state_income_rate is not None else ts.state_income_rate,
+                "state_lt_cg_rate": s.state_lt_cg_rate if s.state_lt_cg_rate is not None else ts.state_lt_cg_rate,
+                "state_st_cg_rate": s.state_st_cg_rate if s.state_st_cg_rate is not None else ts.state_st_cg_rate,
+                "lt_holding_days": s.lt_holding_days if s.lt_holding_days is not None else ts.lt_holding_days,
+            },
+        })
+
+    db.close()  # release connection before CPU work
+
+    result = {}
+    # Process chronologically, injecting each sale into the timeline so later
+    # sales see correct remaining lots (same logic as _annotate_sale_taxes).
+    import bisect
+    sort_key = lambda e: (
+        e["date"].date() if isinstance(e["date"], datetime) else e["date"],
+        0 if e.get("event_type") == "Vesting" else 1,
+    )
+    sorted_tl = sorted(timeline, key=sort_key)
+    sort_keys = [sort_key(e) for e in sorted_tl]
+
+    for s in sale_data:
+        gy, gt = (loan_map.get(s["loan_id"]) or (None, None)) if s["loan_id"] and ts.lot_selection_method == 'same_tranche' else (None, None)
+        breakdown = compute_sale_tax(sorted_tl, {"date": s["date"], "shares": s["shares"], "price_per_share": s["price_per_share"]}, s["ts_dict"], lot_order=lot_order, grant_year=gy, grant_type=gt)
+        result[s["id"]] = breakdown
+
+        # Insert this sale into the sorted timeline for subsequent iterations
+        sentinel = {
+            "date": datetime.combine(s["date"], datetime.min.time()),
+            "event_type": "Sale",
+            "vested_shares": -s["shares"],
+            "grant_price": None,
+            "share_price": 0.0,
+        }
+        key = sort_key(sentinel)
+        idx = bisect.bisect_right(sort_keys, key)
+        sorted_tl.insert(idx, sentinel)
+        sort_keys.insert(idx, key)
+
+    return result
+
+
 # --- Sales CRUD ---
 
 @router.get("", response_model=list[SaleOut])

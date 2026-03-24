@@ -76,16 +76,15 @@ jobs:
             # Start all services
             docker compose up -d
 
-      - name: Wait for health check
-        run: |
-          echo "Waiting for https://${{ vars.DOMAIN }}/api/health..."
-          for i in $(seq 1 24); do
-            if curl -fsS https://${{ vars.DOMAIN }}/api/health | grep -q '"ok"'; then
-              echo "Health check passed."
-              exit 0
-            fi
-            echo "  attempt $i/24 failed, waiting 5s..."
-            sleep 5
-          done
-          echo "ERROR: health check did not pass after 120s."
-          exit 1
+            # Health check from the VPS itself
+            echo "Waiting for http://localhost/api/health..."
+            for i in $(seq 1 24); do
+              if curl -fsS http://localhost/api/health | grep -q '"ok"'; then
+                echo "Health check passed."
+                exit 0
+              fi
+              echo "  attempt $i/24 failed, waiting 5s..."
+              sleep 5
+            done
+            echo "ERROR: health check did not pass after 120s."
+            exit 1

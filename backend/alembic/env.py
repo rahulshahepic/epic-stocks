@@ -1,7 +1,7 @@
 import os
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool, text
+from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 
@@ -48,14 +48,21 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
+    url = config.get_main_option("sqlalchemy.url", "")
+    # Set lock_timeout at connection time (PostgreSQL only) so DDL migrations
+    # fail fast instead of hanging indefinitely if a table lock is unavailable.
+    extra = (
+        {"connect_args": {"options": "-c lock_timeout=10s"}}
+        if url.startswith("postgresql")
+        else {}
+    )
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        **extra,
     )
     with connectable.connect() as connection:
-        # Fail fast rather than hang if a table lock can't be acquired
-        connection.execute(text("SET lock_timeout = '10s'"))
         context.configure(
             connection=connection,
             target_metadata=target_metadata,

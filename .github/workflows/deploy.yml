@@ -64,47 +64,28 @@ jobs:
             git reset --hard origin/main
             docker compose build
 
-            # --- Step 1: stop the app so its DB connections are fully released ---
+            # Stop the app so its DB connections are fully released before migration
             docker compose stop app
 
-            # --- Step 2: run migrations in isolation before the app starts ---
-            # Full output is visible here; any lock/error surfaces immediately.
+            # Run migrations in isolation — full output visible in deploy log
             echo "Running database migrations..."
             docker compose run --rm --no-deps app \
               python -m alembic -c /app/alembic.ini upgrade head
             echo "Migrations complete."
 
-            # --- Step 3: start all services ---
+            # Start all services
             docker compose up -d
 
-            # Poll /api/health for up to 120s via the app container directly
-            # (Caddy redirects HTTP→HTTPS so we can't use localhost:80)
-            echo "Waiting for /api/health..."
-            for i in $(seq 1 24); do
-              if docker compose exec -T app curl -fsS http://localhost:8000/api/health | grep -q '"ok"'; then
-                echo "Health check passed."
-                exit 0
-              fi
-              echo "  attempt $i/24 failed, waiting 5s..."
-              sleep 5
-            done
-
-            echo "ERROR: /api/health did not return ok after 120s."
-            echo ""
-            echo "=== docker compose ps ==="
-            docker compose ps
-            echo ""
-            echo "=== app logs ==="
-            docker compose logs app --tail=60
-            echo ""
-            echo "=== recent commits ==="
-            git log --oneline -5
-            echo ""
-            echo "MANUAL ROLLBACK INSTRUCTIONS:"
-            echo "  1. Check migration state:"
-            echo "     docker compose exec db psql -U postgres -d vesting -c 'SELECT version_num FROM alembic_version;'"
-            echo "  2. If no schema migration ran, roll back code:"
-            echo "     git checkout <previous-sha> && docker compose build && docker compose up -d"
-            echo "  3. If a schema migration ran, manually revert the migration before rolling back code."
-            echo "     Rolling back code after a migration without reverting Alembic is unsafe."
-            exit 1
+      - name: Wait for health check
+        run: |
+          echo "Waiting for https://${{ vars.DOMAIN }}/api/health..."
+          for i in $(seq 1 24); do
+            if curl -fsS https://${{ vars.DOMAIN }}/api/health | grep -q '"ok"'; then
+              echo "Health check passed."
+              exit 0
+            fi
+            echo "  attempt $i/24 failed, waiting 5s..."
+            sleep 5
+          done
+          echo "ERROR: health check did not pass after 120s."
+          exit 1

@@ -1,5 +1,5 @@
 from datetime import datetime, date, timezone
-from sqlalchemy import Integer, String, Float, BigInteger, Date, DateTime, ForeignKey
+from sqlalchemy import Integer, String, Float, BigInteger, Date, DateTime, ForeignKey, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
 from crypto import EncryptedFloat, EncryptedInt, EncryptedString
@@ -42,6 +42,7 @@ class Grant(Base):
     periods: Mapped[int] = mapped_column(Integer, nullable=False)
     exercise_date: Mapped[date] = mapped_column(Date, nullable=False)
     dp_shares: Mapped[int] = mapped_column(EncryptedInt, default=0)
+    election_83b: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
 
     user: Mapped["User"] = relationship(back_populates="grants")

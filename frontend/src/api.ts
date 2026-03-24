@@ -110,6 +110,8 @@ export interface TimelineEvent {
   estimated_tax?: number | null
   st_shares?: number | null
   sale_id?: number | null
+  // 83(b) election (bonus/free grants with price=0 who elected 83b at grant time)
+  election_83b?: boolean
 }
 
 export interface GrantEntry {
@@ -123,6 +125,7 @@ export interface GrantEntry {
   periods: number
   exercise_date: string
   dp_shares: number
+  election_83b: boolean
 }
 
 export interface PriceEntry {
@@ -207,7 +210,7 @@ export const api = {
 
   addBonus: (data: {
     year: number; shares: number; price?: number; vest_start: string;
-    periods: number; exercise_date: string;
+    periods: number; exercise_date: string; election_83b?: boolean;
   }) => post<GrantEntry>('/api/flows/add-bonus', data),
 
   annualPrice: (data: { effective_date: string; price: number }) =>

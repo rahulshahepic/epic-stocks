@@ -24,6 +24,8 @@ def _user_source_data(user: User, db: Session):
         "dp_shares": g.dp_shares or 0,
     } for g in grants_db]
 
+    election_83b_map = {(g.year, g.type): bool(g.election_83b) for g in grants_db}
+
     prices = [{"date": datetime.combine(p.effective_date, datetime.min.time()), "price": p.price} for p in prices_db]
 
     loans = [{
@@ -35,7 +37,7 @@ def _user_source_data(user: User, db: Session):
     } for ln in loans_db]
 
     initial_price = prices[0]["price"] if prices else 0
-    return grants, prices, loans, loans_db, initial_price
+    return grants, prices, loans, loans_db, initial_price, election_83b_map
 
 
 def _serialize_event(e):
@@ -257,7 +259,7 @@ def _annotate_sale_taxes(enriched: list, timeline: list, ts_dict: dict) -> None:
 
 @router.get("/events")
 def get_events(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    grants, prices, loans, loans_db, initial_price = _user_source_data(user, db)
+    grants, prices, loans, loans_db, initial_price, election_83b_map = _user_source_data(user, db)
     if not grants and not prices:
         return []
     timeline = get_timeline(user.id, grants, prices, loans, initial_price)
@@ -266,6 +268,11 @@ def get_events(user: User = Depends(get_current_user), db: Session = Depends(get
     sales = db.query(Sale).filter(Sale.user_id == user.id).all()
 
     enriched = _enrich_timeline(timeline, loans_db, loan_payments, sales)
+
+    # Annotate vesting events with election_83b flag from their grant
+    for e in enriched:
+        if e["event_type"] == "Vesting":
+            e["election_83b"] = election_83b_map.get((e.get("grant_year"), e.get("grant_type")), False)
 
     ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
     if ts_row:
@@ -286,7 +293,7 @@ def get_events(user: User = Depends(get_current_user), db: Session = Depends(get
 
 @router.get("/dashboard")
 def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    grants, prices, loans, loans_db, initial_price = _user_source_data(user, db)
+    grants, prices, loans, loans_db, initial_price, _election_83b_map = _user_source_data(user, db)
 
     today = date.today()
     total_tax_paid = sum(

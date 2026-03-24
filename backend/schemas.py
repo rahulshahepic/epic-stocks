@@ -24,6 +24,7 @@ class GrantCreate(BaseModel):
     periods: int
     exercise_date: date
     dp_shares: int = 0
+    election_83b: bool = False
 
     @field_validator("type")
     @classmethod
@@ -69,6 +70,7 @@ class GrantUpdate(BaseModel):
     periods: int | None = None
     exercise_date: date | None = None
     dp_shares: int | None = None
+    election_83b: bool | None = None
     version: int | None = None
 
     @field_validator("type")

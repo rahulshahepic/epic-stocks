@@ -168,6 +168,15 @@ git clone <repo-url> .
 
 Secrets are managed via GitHub Actions secrets — the deploy workflow writes `.env` automatically on every push to `main`. Never create `.env` on the VPS manually.
 
+### Deploy Safety
+
+The deploy workflow includes two safeguards against silent failures:
+
+1. **Caddy config validation** — a `caddy-validate` job runs before deploy, catching any Caddyfile syntax errors introduced by new Caddy versions (`caddy:2` is intentionally unpinned so CI catches breaking changes before they reach prod).
+2. **Post-deploy health polling** — after `docker compose up -d`, the deploy script polls `http://localhost/api/health` for up to 60 seconds. If the app doesn't respond, it prints `docker compose ps`, recent logs, recent commits, and manual rollback instructions, then exits 1. No auto-rollback — Alembic runs migrations on startup, so reverting code after a schema migration requires manual review.
+
+For external uptime monitoring (SMS/email alert within 5 min of downtime), see **[SECURITY_HARDENING.md §4](SECURITY_HARDENING.md)**.
+
 ## Development
 
 ### Running Tests

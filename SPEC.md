@@ -515,7 +515,7 @@ asyncio_mode = "auto"
 
 ### GitHub Actions
 
-> CI snippets below are illustrative. The actual workflows also run `pip-audit` and `npm audit --audit-level=high`, and E2E tests use `./e2e.sh` rather than manually starting servers.
+> CI snippets below are illustrative. The actual workflows also run `pip-audit` and `npm audit --audit-level=high`, E2E tests use `./e2e.sh` rather than manually starting servers, and both workflows include a `caddy-validate` job (runs `caddy validate --config /etc/caddy/Caddyfile` using the unpinned `caddy:2` image — intentionally unpinned so CI catches breaking Caddy version upgrades before they reach prod). The deploy job depends on `caddy-validate` via `needs:`, uses `git fetch + git reset --hard` instead of `git pull`, and polls `/api/health` for 60s post-deploy, printing diagnostics and exiting 1 on failure.
 
 #### `.github/workflows/test.yml` — runs on every push and PR
 ```yaml

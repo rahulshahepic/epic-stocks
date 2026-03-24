@@ -104,3 +104,50 @@ Port 22 is not behind Cloudflare (Cloudflare only proxies HTTP/S). The critical 
 |------|--------|
 | SSH key added, GitHub Actions deploys via key | ✅ Done |
 | Password authentication disabled | ⚠️ Pending |
+
+---
+
+## 4. Uptime Monitoring (Infrastructure — not in this repo)
+
+> This must be configured by whoever operates the deployment. Without it, a broken deploy can go undetected until manually noticed.
+
+The reference deployment experienced a silent outage when `caddy:2` pulled a new version with a breaking Caddyfile syntax change. CI now validates the Caddyfile before every deploy (see `.github/workflows/test.yml`), and the deploy job polls `/api/health` after startup (see `.github/workflows/deploy.yml`). External uptime monitoring provides the final safety net for issues that slip through.
+
+### Option A: UptimeRobot (free tier)
+
+1. Create an account at [uptimerobot.com](https://uptimerobot.com)
+2. Add a new **HTTP(S)** monitor:
+   - **URL:** `https://<your-domain>/api/health`
+   - **Monitoring interval:** 5 minutes
+   - **Alert condition:** response body does not contain `"ok"` OR HTTP status is not 200
+3. Add an alert contact (email and/or SMS) — free tier supports email alerts
+4. Verify the monitor shows "Up" and test by temporarily returning a non-200 from health check
+
+### Option B: Better Uptime (free tier)
+
+1. Create an account at [betteruptime.com](https://betteruptime.com)
+2. Add a **HTTP** monitor for `https://<your-domain>/api/health`
+3. Set check frequency to 3 minutes (free tier minimum)
+4. Configure on-call escalation with SMS + email
+
+### Option C: Cloudflare Health Checks (paid plans)
+
+1. In Cloudflare dashboard → **Traffic → Health Checks**
+2. Create a health check:
+   - **URL:** `https://<your-domain>/api/health`
+   - **Type:** HTTP
+   - **Interval:** 60s (minimum on paid plans)
+   - **Expected response:** body contains `ok`
+3. Attach a notification policy to send email/webhook on failure
+
+### Goal
+
+Alert within **5 minutes** of downtime. All three options above achieve this on free or low-cost plans.
+
+### Reference deployment status
+
+| Step | Status |
+|------|--------|
+| Caddy config validated in CI before every deploy | ✅ Done |
+| Deploy polls `/api/health` and fails loudly on outage | ✅ Done |
+| External uptime monitor (UptimeRobot / Better Uptime / CF) | ⚠️ Pending |

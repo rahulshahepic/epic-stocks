@@ -26,6 +26,18 @@ jobs:
       - run: cd frontend && npm audit --audit-level=high
       - run: cd frontend && npm run test
 
+  caddy-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Caddyfile
+        run: |
+          docker run --rm \
+            -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            -e TRUSTED_PROXY_IPS=127.0.0.1/32 \
+            -e DOMAIN=localhost \
+            caddy:2 caddy validate --config /etc/caddy/Caddyfile
+
   e2e:
     runs-on: ubuntu-latest
     needs: [backend, frontend]

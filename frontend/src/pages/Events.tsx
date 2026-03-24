@@ -4,7 +4,7 @@ import type { TimelineEvent, TaxBreakdown, TaxSettings } from '../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { TaxCard } from './Sales.tsx'
 
-const EVENT_TYPES = ['Exercise', 'Down payment exchange', 'Vesting', 'Share Price', 'Loan Payoff', 'Early Loan Payment', 'Sale']
+const EVENT_TYPES = ['Exercise', 'Down payment exchange', 'Vesting', 'Share Price', 'Loan Payoff', 'Early Loan Payment', 'Sale', 'Liquidation (projected)']
 
 const TYPE_COLORS: Record<string, string> = {
   'Exercise': 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
@@ -14,6 +14,7 @@ const TYPE_COLORS: Record<string, string> = {
   'Loan Payoff': 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
   'Early Loan Payment': 'bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300',
   'Sale': 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
+  'Liquidation (projected)': 'bg-gray-100 text-gray-500 dark:bg-gray-800/60 dark:text-gray-400',
 }
 
 function fmt$(n: number) {
@@ -206,17 +207,20 @@ export default function Events() {
 
               return (
                 <>
-                  <tr key={i} className="bg-white dark:bg-gray-900">
+                  <tr key={i} className={e.is_projected ? 'bg-gray-50 opacity-75 dark:bg-gray-900/50' : 'bg-white dark:bg-gray-900'}>
                     <td className="whitespace-nowrap px-3 py-2 text-gray-700 dark:text-gray-300">{e.date}</td>
                     <td className="px-3 py-2">
-                      <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${TYPE_COLORS[e.event_type] ?? ''}`}>
-                        {e.event_type}
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${TYPE_COLORS[e.event_type] ?? ''} ${e.is_projected ? 'ring-1 ring-dashed ring-gray-400 dark:ring-gray-600' : ''}`}>
+                        {e.is_projected ? 'Liquidation' : e.event_type}
                       </span>
+                      {e.is_projected && (
+                        <span className="ml-1 text-[9px] uppercase tracking-wide text-gray-400 dark:text-gray-500">projected</span>
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-gray-500 dark:text-gray-400">
                       {e.grant_year ? `${e.grant_year} ${e.grant_type}` : '—'}
                     </td>
-                    <td className={`px-3 py-2 text-right ${e.event_type === 'Sale' ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300'}`}>
+                    <td className={`px-3 py-2 text-right ${(e.event_type === 'Sale' || e.is_projected) ? 'text-red-600 opacity-70 dark:text-red-400' : 'text-gray-700 dark:text-gray-300'}`}>
                       {e.event_type === 'Early Loan Payment'
                         ? (e.amount != null ? fmt$(e.amount) : '—')
                         : fmtNum(e.vested_shares ?? e.granted_shares)}
@@ -238,12 +242,16 @@ export default function Events() {
                               {e.status === 'covered' ? '✓' : '!'}
                             </span>
                           </span>
-                        : e.event_type === 'Sale' && e.gross_proceeds != null
-                        ? <span className="text-green-600 dark:text-green-400">{fmt$(e.gross_proceeds)}</span>
+                        : (e.event_type === 'Sale' || e.is_projected) && e.gross_proceeds != null
+                        ? <span className={e.is_projected ? 'text-green-600 opacity-70 dark:text-green-400' : 'text-green-600 dark:text-green-400'}>{fmt$(e.gross_proceeds)}</span>
                         : e.total_cap_gains ? fmt$(e.total_cap_gains) : '—'}
                     </td>
                     <td className="px-3 py-2 text-right">
-                      {e.event_type === 'Sale' && saleId != null ? (
+                      {e.is_projected && e.estimated_tax != null ? (
+                        <span className="text-orange-400 opacity-70 dark:text-orange-500">
+                          ~{fmt$(e.estimated_tax)}
+                        </span>
+                      ) : e.event_type === 'Sale' && saleId != null ? (
                         <button
                           onClick={() => toggleSaleTax(saleId)}
                           className="inline-flex items-center gap-1"

@@ -27,6 +27,7 @@ class User(Base):
     sales: Mapped[list["Sale"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     loan_payments: Mapped[list["LoanPayment"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     tax_settings: Mapped["TaxSettings | None"] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
+    horizon_settings: Mapped["HorizonSettings | None"] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
 
 
 class Grant(Base):
@@ -162,6 +163,16 @@ class TaxSettings(Base):
     dp_min_cap: Mapped[float] = mapped_column(Float, nullable=False, default=20000.0)
 
     user: Mapped["User"] = relationship(back_populates="tax_settings")
+
+
+class HorizonSettings(Base):
+    __tablename__ = "horizon_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, unique=True, index=True)
+    horizon_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    user: Mapped["User"] = relationship(back_populates="horizon_settings")
 
 
 class ImportBackup(Base):

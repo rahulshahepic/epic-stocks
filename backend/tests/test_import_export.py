@@ -97,9 +97,15 @@ def test_import_events_match_known_values(client):
             headers=auth_header(token),
         )
     events = client.get("/api/events", headers=auth_header(token)).json()
-    assert len(events) == 89
-    last = events[-1]
-    assert last["cum_shares"] == 558500
+    real_events = [e for e in events if not e.get("is_projected")]
+    assert len(real_events) == 89
+    assert real_events[-1]["cum_shares"] == 558500
+    # Projected liquidation event is injected at the end
+    projected = [e for e in events if e.get("is_projected")]
+    assert len(projected) == 1
+    assert projected[0]["event_type"] == "Liquidation (projected)"
+    assert projected[0]["cum_shares"] == 0
+    assert projected[0]["gross_proceeds"] > 0
 
 
 def test_import_rejects_non_excel(client):

@@ -1,7 +1,7 @@
 import os
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, pool, text
 
 from alembic import context
 
@@ -54,6 +54,8 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
+        # Fail fast rather than hang if a table lock can't be acquired
+        connection.execute(text("SET lock_timeout = '10s'"))
         context.configure(
             connection=connection,
             target_metadata=target_metadata,

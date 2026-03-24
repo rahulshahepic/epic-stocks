@@ -83,7 +83,15 @@ function fmtNum(n: number) {
   return n.toLocaleString('en-US')
 }
 
-function TaxCard({ breakdown }: { breakdown: TaxBreakdown }) {
+function PencilIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
+      <path d="M2.695 14.763l-1.262 3.154a.5.5 0 00.65.65l3.155-1.262a4 4 0 001.343-.885L17.5 5.5a2.121 2.121 0 00-3-3L3.58 13.42a4 4 0 00-.885 1.343z" />
+    </svg>
+  )
+}
+
+export function TaxCard({ breakdown }: { breakdown: TaxBreakdown }) {
   const hasLT = breakdown.lt_shares > 0
   const hasST = breakdown.st_shares > 0
   const hasUnvested = breakdown.unvested_shares > 0
@@ -223,8 +231,11 @@ export default function Sales() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [conflict, setConflict] = useState(false)
-  const [breakdown, setBreakdown] = useState<TaxBreakdown | null>(null)
-  const [loadingTax, setLoadingTax] = useState(false)
+
+  // Per-row tax state: cached breakdowns and expanded/loading sets
+  const [breakdowns, setBreakdowns] = useState<Map<number, TaxBreakdown>>(new Map())
+  const [expanded, setExpanded] = useState<Set<number>>(new Set())
+  const [loadingTaxIds, setLoadingTaxIds] = useState<Set<number>>(new Set())
 
   useDataSync('sales', reload)
 
@@ -235,7 +246,6 @@ export default function Sales() {
     setEditVersion(1)
     setError('')
     setConflict(false)
-    setBreakdown(null)
   }
 
   function openAdd() {
@@ -253,14 +263,36 @@ export default function Sales() {
     setEditVersion(version)
     setError('')
     setConflict(false)
-    setBreakdown(null)
     setMode('edit')
+  }
+
+  async function toggleTax(id: number) {
+    // If already loaded, just toggle visibility
+    if (breakdowns.has(id)) {
+      setExpanded(prev => {
+        const next = new Set(prev)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        return next
+      })
+      return
+    }
+    // Load then expand
+    setLoadingTaxIds(prev => new Set(prev).add(id))
+    try {
+      const tax = await api.getSaleTax(id)
+      setBreakdowns(prev => new Map(prev).set(id, tax))
+      setExpanded(prev => new Set(prev).add(id))
+    } catch {
+      // silently ignore — cell stays as "—"
+    } finally {
+      setLoadingTaxIds(prev => { const next = new Set(prev); next.delete(id); return next })
+    }
   }
 
   async function handleSave() {
     setSaving(true)
     setError('')
-    setBreakdown(null)
     try {
       let saved: SaleEntry
       const payload = { ...form, ...taxRates }
@@ -275,14 +307,8 @@ export default function Sales() {
       reload()
       setMode('list')
       resetForm()
-
-      setLoadingTax(true)
-      try {
-        const tax = await api.getSaleTax(saved.id)
-        setBreakdown(tax)
-      } finally {
-        setLoadingTax(false)
-      }
+      // Auto-load and expand the saved row's tax breakdown
+      toggleTax(saved.id)
     } catch (e: unknown) {
       if (e instanceof ConflictError) {
         setConflict(true)
@@ -298,19 +324,11 @@ export default function Sales() {
     if (!confirm('Delete this sale?')) return
     await api.deleteSale(id)
     broadcastChange('sales')
+    setBreakdowns(prev => { const next = new Map(prev); next.delete(id); return next })
+    setExpanded(prev => { const next = new Set(prev); next.delete(id); return next })
     reload()
-  }
-
-  async function handleViewTax(id: number) {
-    setLoadingTax(true)
-    try {
-      const tax = await api.getSaleTax(id)
-      setBreakdown(tax)
-    } catch {
-      setError('Failed to load tax breakdown')
-    } finally {
-      setLoadingTax(false)
-    }
+    setMode('list')
+    resetForm()
   }
 
   if (loading) return <p className="p-6 text-center text-sm text-gray-400">Loading...</p>
@@ -349,14 +367,22 @@ export default function Sales() {
           onChange={setTaxRates}
           onReset={() => setTaxRates(ratesFromDefaults(taxSettings))}
         />
-        <div className="flex gap-2 pt-2">
+        <div className="flex items-center justify-between pt-2">
           <button
             onClick={handleSave}
             disabled={saving}
             className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
           >
-            {saving ? 'Saving...' : 'Save & Show Tax'}
+            {saving ? 'Saving...' : 'Save'}
           </button>
+          {mode === 'edit' && editId != null && (
+            <button
+              onClick={() => handleDelete(editId)}
+              className="text-xs text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+            >
+              Delete sale
+            </button>
+          )}
         </div>
       </div>
     )
@@ -371,9 +397,6 @@ export default function Sales() {
         </button>
       </div>
 
-      {loadingTax && <p className="text-xs text-gray-400">Computing tax breakdown...</p>}
-      {breakdown && !loadingTax && <TaxCard breakdown={breakdown} />}
-
       <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
         <table className="w-full text-left text-xs">
           <thead className="bg-gray-50 dark:bg-gray-800">
@@ -383,38 +406,82 @@ export default function Sales() {
               <th className="px-3 py-2 text-right">Shares</th>
               <th className="px-3 py-2 text-right">Price/Share</th>
               <th className="px-3 py-2 text-right">Gross Proceeds</th>
-              <th className="px-3 py-2">Notes</th>
+              <th className="px-3 py-2 text-right">Tax</th>
               <th className="px-3 py-2"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-            {sales.map(s => (
-              <tr key={s.id} className="bg-white dark:bg-gray-900">
-                <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{s.date}</td>
-                <td className="px-3 py-2">
-                  {s.loan_id != null ? (
-                    <span className="inline-block rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-medium text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300">
-                      Payoff
-                    </span>
-                  ) : (
-                    <span className="inline-block rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">
-                      Cash Out
-                    </span>
+            {sales.map(s => {
+              const bd = breakdowns.get(s.id)
+              const isExpanded = expanded.has(s.id)
+              const isLoading = loadingTaxIds.has(s.id)
+              const hasST = bd && bd.st_shares > 0
+              return (
+                <>
+                  <tr key={s.id} className="bg-white dark:bg-gray-900">
+                    <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{s.date}</td>
+                    <td className="px-3 py-2">
+                      {s.loan_id != null ? (
+                        <span className="inline-block rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-medium text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300">
+                          Payoff
+                        </span>
+                      ) : (
+                        <span className="inline-block rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">
+                          Cash Out
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtNum(s.shares)}</td>
+                    <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtUSD(s.price_per_share)}</td>
+                    <td className="px-3 py-2 text-right font-medium text-gray-900 dark:text-gray-100">
+                      {fmtUSD(s.shares * s.price_per_share)}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <button
+                        onClick={() => toggleTax(s.id)}
+                        className="inline-flex items-center gap-1 text-right"
+                      >
+                        {isLoading ? (
+                          <span className="text-gray-400">...</span>
+                        ) : bd ? (
+                          <>
+                            {hasST && (
+                              <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                                ST
+                              </span>
+                            )}
+                            <span className={`font-medium underline decoration-dotted ${hasST ? 'text-amber-700 dark:text-amber-400' : 'text-gray-900 dark:text-gray-100'}`}>
+                              {fmtUSD(bd.estimated_tax)}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-gray-400 underline decoration-dotted">—</span>
+                        )}
+                      </button>
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <button
+                        onClick={() => openEdit(s)}
+                        className="text-indigo-400 hover:text-indigo-600 dark:text-indigo-400 dark:hover:text-indigo-300"
+                        aria-label="Edit sale"
+                      >
+                        <PencilIcon />
+                      </button>
+                    </td>
+                  </tr>
+                  {isExpanded && bd && (
+                    <tr key={`${s.id}-tax`} className="bg-white dark:bg-gray-900">
+                      <td colSpan={7} className="px-3 pb-3 pt-0">
+                        {s.notes && (
+                          <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">Note: {s.notes}</p>
+                        )}
+                        <TaxCard breakdown={bd} />
+                      </td>
+                    </tr>
                   )}
-                </td>
-                <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtNum(s.shares)}</td>
-                <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtUSD(s.price_per_share)}</td>
-                <td className="px-3 py-2 text-right font-medium text-gray-900 dark:text-gray-100">
-                  {fmtUSD(s.shares * s.price_per_share)}
-                </td>
-                <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{s.notes || '—'}</td>
-                <td className="px-3 py-2 text-right">
-                  <button onClick={() => handleViewTax(s.id)} className="mr-2 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300">Tax</button>
-                  <button onClick={() => openEdit(s)} className="mr-2 text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300">Edit</button>
-                  <button onClick={() => handleDelete(s.id)} className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300">Delete</button>
-                </td>
-              </tr>
-            ))}
+                </>
+              )
+            })}
             {sales.length === 0 && (
               <tr><td colSpan={7} className="px-3 py-6 text-center text-gray-400">No sales recorded yet</td></tr>
             )}

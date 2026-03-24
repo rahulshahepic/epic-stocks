@@ -35,19 +35,32 @@ const MOCK_TAX = {
   net_proceeds: 2098.02,
 }
 
+const MOCK_TAX_ST = {
+  ...MOCK_TAX,
+  lt_shares: 0,
+  lt_gain: 0,
+  lt_tax: 0,
+  st_shares: 100,
+  st_gain: 1550.0,
+  st_rate: 0.4845,
+  st_tax: 750.98,
+  estimated_tax: 750.98,
+  net_proceeds: 1799.02,
+}
+
 beforeEach(() => {
   localStorage.setItem('auth_token', 'test-token')
   vi.restoreAllMocks()
 })
 
-function mockApi(opts: { failFetch?: boolean } = {}) {
+function mockApi(opts: { failFetch?: boolean; stcg?: boolean } = {}) {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     if (opts.failFetch) throw new Error('fail')
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url
     const method = init?.method ?? 'GET'
 
     if (url.match(/\/api\/sales\/\d+\/tax/) && method === 'GET') {
-      return new Response(JSON.stringify(MOCK_TAX), { status: 200 })
+      return new Response(JSON.stringify(opts.stcg ? MOCK_TAX_ST : MOCK_TAX), { status: 200 })
     }
     if (url.endsWith('/api/sales') && method === 'GET') {
       return new Response(JSON.stringify(MOCK_SALES), { status: 200 })
@@ -84,7 +97,6 @@ describe('Sales', () => {
     await waitFor(() => {
       expect(screen.getByText('2 sales')).toBeInTheDocument()
     })
-    expect(screen.getByText('Q2 sale')).toBeInTheDocument()
     expect(screen.getByText('2023-06-01')).toBeInTheDocument()
   })
 
@@ -103,15 +115,23 @@ describe('Sales', () => {
     await waitFor(() => expect(screen.getByText('+ Sale')).toBeInTheDocument())
     await userEvent.click(screen.getByText('+ Sale'))
     expect(screen.getByText('Record Sale')).toBeInTheDocument()
-    expect(screen.getByText('Save & Show Tax')).toBeInTheDocument()
+    expect(screen.getByText('Save')).toBeInTheDocument()
   })
 
-  it('opens edit form', async () => {
+  it('opens edit form via pencil icon', async () => {
     mockApi()
     renderSales()
-    await waitFor(() => expect(screen.getAllByText('Edit')).toHaveLength(2))
-    await userEvent.click(screen.getAllByText('Edit')[0])
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Edit sale' })).toHaveLength(2))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Edit sale' })[0])
     expect(screen.getByText('Edit Sale')).toBeInTheDocument()
+  })
+
+  it('edit form shows delete sale button', async () => {
+    mockApi()
+    renderSales()
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Edit sale' })).toHaveLength(2))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Edit sale' })[0])
+    expect(screen.getByText('Delete sale')).toBeInTheDocument()
   })
 
   it('cancel returns to list', async () => {
@@ -123,16 +143,37 @@ describe('Sales', () => {
     expect(screen.getByText('Sales')).toBeInTheDocument()
   })
 
-  it('shows tax breakdown when Tax button clicked', async () => {
+  it('shows Tax column header', async () => {
     mockApi()
     renderSales()
-    await waitFor(() => expect(screen.getAllByText('Tax')).toHaveLength(2))
-    await userEvent.click(screen.getAllByText('Tax')[0])
+    await waitFor(() => expect(screen.getByText('2 sales')).toBeInTheDocument())
+    expect(screen.getByText('Tax')).toBeInTheDocument()
+  })
+
+  it('tapping tax cell loads and shows inline breakdown', async () => {
+    mockApi()
+    renderSales()
+    // Tax cells start as "—" (tappable dashes)
+    await waitFor(() => expect(screen.getAllByText('—')).not.toHaveLength(0))
+    // Click the first "—" tax cell button
+    const taxButtons = screen.getAllByRole('button').filter(b => b.textContent === '—')
+    await userEvent.click(taxButtons[0])
     await waitFor(() => {
       expect(screen.getByText('Estimated Tax Breakdown')).toBeInTheDocument()
     })
     expect(screen.getByText(/Gross proceeds/)).toBeInTheDocument()
     expect(screen.getByText(/Estimated total tax/)).toBeInTheDocument()
+  })
+
+  it('shows ST badge when sale has short-term gains', async () => {
+    mockApi({ stcg: true })
+    renderSales()
+    await waitFor(() => expect(screen.getAllByText('—')).not.toHaveLength(0))
+    const taxButtons = screen.getAllByRole('button').filter(b => b.textContent === '—')
+    await userEvent.click(taxButtons[0])
+    await waitFor(() => {
+      expect(screen.getByText('ST')).toBeInTheDocument()
+    })
   })
 
   it('shows error on fetch failure', async () => {

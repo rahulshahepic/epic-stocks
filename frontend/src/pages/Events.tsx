@@ -253,9 +253,10 @@ export default function Events() {
                       ) : hasVestingTax ? (
                         <button
                           onClick={() => toggleVestingTax(i)}
-                          className="text-orange-600 underline decoration-dotted dark:text-orange-400"
                         >
-                          {fmt$(estTaxForVesting(e, ts))}
+                          <span className="text-orange-600 underline decoration-dotted dark:text-orange-400">
+                            {fmt$(estTaxForVesting(e, ts))}
+                          </span>
                         </button>
                       ) : e.event_type === 'Share Price' ? (
                         <span className="text-xs text-gray-400 dark:text-gray-600">—*</span>

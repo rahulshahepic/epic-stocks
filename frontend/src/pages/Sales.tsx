@@ -322,6 +322,15 @@ export default function Sales() {
       // Clear cached breakdown so it re-fetches with updated rates
       fetchStarted.current.delete(saved.id)
       setBreakdowns(prev => { const next = new Map(prev); next.delete(saved.id); return next })
+      // Eagerly fetch and auto-expand the saved sale's breakdown
+      fetchStarted.current.add(saved.id)
+      try {
+        const tax = await api.getSaleTax(saved.id)
+        setBreakdowns(prev => new Map(prev).set(saved.id, tax))
+        setExpanded(prev => new Set(prev).add(saved.id))
+      } catch {
+        // silently ignore — breakdown won't auto-expand
+      }
       reload()
       setMode('list')
       resetForm()

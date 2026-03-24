@@ -333,31 +333,34 @@ export default function Loans() {
                     <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{(l.interest_rate * 100).toFixed(2)}%</td>
                     <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{l.due_date}</td>
                     <td className="px-3 py-2">
-                      {hasSale ? (
-                        <button
-                          onClick={() => setExpandedLoanId(isExpanded ? null : l.id)}
-                          className="text-[10px] text-green-600 underline decoration-dotted dark:text-green-400"
-                        >
-                          ✓ linked
-                        </button>
-                      ) : (
-                        <span className="text-[10px] text-gray-400">none</span>
-                      )}
+                      <button
+                        onClick={() => setExpandedLoanId(isExpanded ? null : l.id)}
+                        className={`text-[10px] underline decoration-dotted ${hasSale ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'}`}
+                      >
+                        {hasSale ? '✓ linked' : 'none'}
+                      </button>
                     </td>
                     <td className="px-3 py-2 text-right">
                       <button onClick={() => openEdit(l)} className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300">Edit</button>
                     </td>
                   </tr>
-                  {isExpanded && linkedSale && (
-                    <tr key={`${l.id}-sale`} className="bg-white dark:bg-gray-900">
+                  {isExpanded && (
+                    <tr key={`${l.id}-detail`} className="bg-white dark:bg-gray-900">
                       <td colSpan={7} className="px-3 pb-3 pt-0">
                         <div className="rounded-md bg-gray-50 p-3 dark:bg-gray-800">
                           <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                            <div><span className="text-gray-400 dark:text-gray-500">Sale date</span> <span className="ml-1 font-medium text-gray-700 dark:text-gray-200">{linkedSale.date}</span></div>
-                            <div><span className="text-gray-400 dark:text-gray-500">Shares</span> <span className="ml-1 font-medium text-gray-700 dark:text-gray-200">{linkedSale.shares.toLocaleString('en-US')}</span></div>
-                            <div><span className="text-gray-400 dark:text-gray-500">Price</span> <span className="ml-1 font-medium text-gray-700 dark:text-gray-200">{linkedSale.price_per_share.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 })}</span></div>
-                            <div><span className="text-gray-400 dark:text-gray-500">Gross</span> <span className="ml-1 font-medium text-gray-700 dark:text-gray-200">{fmt$(linkedSale.shares * linkedSale.price_per_share)}</span></div>
                             {l.loan_number && <div className="col-span-2"><span className="text-gray-400 dark:text-gray-500">Loan #</span> <span className="ml-1 font-medium text-gray-700 dark:text-gray-200">{l.loan_number}</span></div>}
+                            {linkedSale && (
+                              <>
+                                <div><span className="text-gray-400 dark:text-gray-500">Sale date</span> <span className="ml-1 font-medium text-gray-700 dark:text-gray-200">{linkedSale.date}</span></div>
+                                <div><span className="text-gray-400 dark:text-gray-500">Shares</span> <span className="ml-1 font-medium text-gray-700 dark:text-gray-200">{linkedSale.shares.toLocaleString('en-US')}</span></div>
+                                <div><span className="text-gray-400 dark:text-gray-500">Price</span> <span className="ml-1 font-medium text-gray-700 dark:text-gray-200">{linkedSale.price_per_share.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 })}</span></div>
+                                <div><span className="text-gray-400 dark:text-gray-500">Gross</span> <span className="ml-1 font-medium text-gray-700 dark:text-gray-200">{fmt$(linkedSale.shares * linkedSale.price_per_share)}</span></div>
+                              </>
+                            )}
+                            {!l.loan_number && !linkedSale && (
+                              <div className="col-span-2 text-gray-400">No additional details</div>
+                            )}
                           </div>
                         </div>
                       </td>

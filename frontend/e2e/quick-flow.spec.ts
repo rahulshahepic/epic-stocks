@@ -48,11 +48,11 @@ test.describe('Quick flow: purchase grant + loan', () => {
     // Verify grant appears in table
     await expect(page.getByText('1 grants')).toBeVisible({ timeout: 10000 })
 
-    // Verify loan appears in Loans table
+    // Verify loan appears in Loans table; loan # is in the drill-in card
     await navigateTo(page, 'Loans')
     await expect(page.getByText('1 loans')).toBeVisible()
-    // loan number is in the drill-in card — expand it first
-    await page.getByText('✓ loan').click()
+    // auto-payoff sale was created (price exists) → expand via ✓ linked badge
+    await page.getByText('\u2713 linked').click()
     await expect(page.getByText('123456')).toBeVisible()
 
     // Verify events are generated

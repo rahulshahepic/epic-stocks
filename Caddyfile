@@ -1,6 +1,6 @@
 {
     servers {
-        trusted_proxies static {env.CLOUDFLARE_IPS}
+        trusted_proxies static {env.TRUSTED_PROXY_IPS}
     }
 }
 

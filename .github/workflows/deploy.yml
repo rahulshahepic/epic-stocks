@@ -20,7 +20,7 @@ jobs:
             JWT_SECRET=${{ secrets.JWT_SECRET }}
             GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }}
             DOMAIN=${{ vars.DOMAIN }}
-            APP_URL=${{ vars.APP_URL }}
+            APP_URL=https://${{ vars.DOMAIN }}
             ENCRYPTION_MASTER_KEY=${{ secrets.ENCRYPTION_MASTER_KEY }}
             PRIVACY_URL=${{ secrets.PRIVACY_URL }}
             ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}

@@ -43,9 +43,7 @@ const WI_TAX_DEFAULTS: TaxSettings = {
 
 function estTaxForVesting(e: TimelineEvent, ts: TaxSettings): number {
   const incomeRate = ts.federal_income_rate + ts.state_income_rate
-  const ltCgRate = ts.federal_lt_cg_rate + ts.niit_rate + ts.state_lt_cg_rate
-  return (e.income > 0 ? e.income * incomeRate : 0)
-       + (e.vesting_cap_gains > 0 ? e.vesting_cap_gains * ltCgRate : 0)
+  return e.income * incomeRate
 }
 
 function TaxRow({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
@@ -59,10 +57,7 @@ function TaxRow({ label, value, bold }: { label: string; value: string; bold?: b
 
 function VestingTaxCard({ e, ts }: { e: TimelineEvent; ts: TaxSettings }) {
   const incomeRate = ts.federal_income_rate + ts.state_income_rate
-  const ltCgRate = ts.federal_lt_cg_rate + ts.niit_rate + ts.state_lt_cg_rate
-  const incomeTax = e.income > 0 ? e.income * incomeRate : 0
-  const cgTax = e.vesting_cap_gains > 0 ? e.vesting_cap_gains * ltCgRate : 0
-  const totalTax = incomeTax + cgTax
+  const totalTax = e.income * incomeRate
   const sharesToCover = e.share_price > 0 ? Math.ceil(totalTax / e.share_price) : 0
   const isFuture = e.date > TODAY
 
@@ -70,18 +65,10 @@ function VestingTaxCard({ e, ts }: { e: TimelineEvent; ts: TaxSettings }) {
     <div className="rounded-lg border border-orange-200 bg-orange-50 p-4 text-xs dark:border-orange-800 dark:bg-orange-900/20">
       <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">Estimated Tax</h3>
       <div className="space-y-1">
-        {e.income > 0 && (
-          <TaxRow
-            label={`Ordinary income × ${fmtPct(incomeRate)}`}
-            value={`${fmt$(e.income)} → ${fmt$(incomeTax)}`}
-          />
-        )}
-        {e.vesting_cap_gains > 0 && (
-          <TaxRow
-            label={`LT cap gains × ${fmtPct(ltCgRate)}`}
-            value={`${fmt$(e.vesting_cap_gains)} → ${fmt$(cgTax)}`}
-          />
-        )}
+        <TaxRow
+          label={`Ordinary income × ${fmtPct(incomeRate)}`}
+          value={`${fmt$(e.income)} → ${fmt$(totalTax)}`}
+        />
         <div className="my-2 border-t border-orange-200 dark:border-orange-700" />
         <TaxRow label="Estimated total tax" value={fmt$(totalTax)} bold />
         {isFuture && sharesToCover > 0 && (
@@ -184,7 +171,7 @@ export default function Events() {
               const isVestingExpanded = expandedVesting.has(i)
               const isLoadingSale = saleId != null && loadingTaxIds.has(saleId)
               const hasST = (e.st_shares ?? 0) > 0
-              const hasVestingTax = e.event_type === 'Vesting' && (e.income > 0 || e.vesting_cap_gains > 0)
+              const hasVestingTax = e.event_type === 'Vesting' && e.income > 0
 
               return (
                 <>

@@ -29,23 +29,6 @@ async def lifespan(app):
         from pathlib import Path
         from alembic.config import Config
         from alembic import command as alembic_command
-        from sqlalchemy import text as _sa_text
-        # Terminate stale idle-in-transaction sessions before DDL migrations.
-        # These can hold ACCESS EXCLUSIVE locks that block ALTER TABLE indefinitely.
-        try:
-            with database.engine.connect() as _conn:
-                result = _conn.execute(_sa_text(
-                    "SELECT count(pg_terminate_backend(pid)) FROM pg_stat_activity"
-                    " WHERE state = 'idle in transaction'"
-                    " AND state_change < NOW() - INTERVAL '10 seconds'"
-                    " AND pid != pg_backend_pid()"
-                ))
-                _conn.commit()
-                n = result.scalar() or 0
-                if n:
-                    logger.warning("Terminated %d stale idle-in-transaction session(s) before migration", n)
-        except Exception as _e:
-            logger.warning("Pre-migration session cleanup failed (non-fatal): %s", _e)
         cfg = Config(Path(__file__).parent / "alembic.ini")
         alembic_command.upgrade(cfg, "head")
         # One-time migration from SQLite if data/vesting.db exists and PG is empty

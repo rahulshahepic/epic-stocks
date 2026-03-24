@@ -77,10 +77,11 @@ jobs:
             # --- Step 3: start all services ---
             docker compose up -d
 
-            # Poll /api/health for up to 120s
+            # Poll /api/health for up to 120s via the app container directly
+            # (Caddy redirects HTTP→HTTPS so we can't use localhost:80)
             echo "Waiting for /api/health..."
             for i in $(seq 1 24); do
-              if curl -fsS http://localhost/api/health | grep -q '"ok"'; then
+              if docker compose exec -T app curl -fsS http://localhost:8000/api/health | grep -q '"ok"'; then
                 echo "Health check passed."
                 exit 0
               fi

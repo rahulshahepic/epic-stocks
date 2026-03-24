@@ -65,6 +65,7 @@ export default function Grants() {
   const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
 
   const [mode, setMode] = useState<Mode>('list')
+  const [expandedGrantId, setExpandedGrantId] = useState<number | null>(null)
   const [form, setForm] = useState<GrantForm>(empty)
   const [editId, setEditId] = useState<number | null>(null)
   const [editVersion, setEditVersion] = useState(1)
@@ -466,36 +467,64 @@ export default function Grants() {
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
             {grants.map(g => {
               const loan = loans?.find(l => l.grant_year === g.year && l.grant_type === g.type && l.loan_type === 'Purchase')
-              const hasSale = loan ? sales?.some(s => s.loan_id === loan.id) : false
+              const linkedSale = loan ? sales?.find(s => s.loan_id === loan.id) : undefined
+              const hasSale = !!linkedSale
+              const isExpanded = expandedGrantId === g.id
               return (
-                <tr key={g.id} className="bg-white dark:bg-gray-900">
-                  <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{g.year}</td>
-                  <td className="px-3 py-2">
-                    <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${g.type === 'Purchase' ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'}`}>
-                      {g.type}
-                    </span>
-                    {g.election_83b && (
-                      <span className="ml-1 inline-block rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-medium text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">83(b)</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtNum(g.shares)}</td>
-                  <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtPrice(g.price)}</td>
-                  <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{g.vest_start}</td>
-                  <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{g.periods}</td>
-                  <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{g.exercise_date}</td>
-                  <td className="px-3 py-2">
-                    {loan ? (
-                      <span className={`text-[10px] ${hasSale ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                        {hasSale ? '✓ loan+sale' : '✓ loan'}
+                <>
+                  <tr key={g.id} className="bg-white dark:bg-gray-900">
+                    <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{g.year}</td>
+                    <td className="px-3 py-2">
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${g.type === 'Purchase' ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'}`}>
+                        {g.type}
                       </span>
-                    ) : (
-                      <span className="text-[10px] text-gray-400">—</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <button onClick={() => openEdit(g)} className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300">Edit</button>
-                  </td>
-                </tr>
+                      {g.election_83b && (
+                        <span className="ml-1 inline-block rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-medium text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">83(b)</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtNum(g.shares)}</td>
+                    <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtPrice(g.price)}</td>
+                    <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{g.vest_start}</td>
+                    <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{g.periods}</td>
+                    <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{g.exercise_date}</td>
+                    <td className="px-3 py-2">
+                      {loan ? (
+                        <button
+                          onClick={() => setExpandedGrantId(isExpanded ? null : g.id)}
+                          className={`text-[10px] underline decoration-dotted ${hasSale ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}
+                        >
+                          {hasSale ? '✓ loan+sale' : '✓ loan'}
+                        </button>
+                      ) : (
+                        <span className="text-[10px] text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <button onClick={() => openEdit(g)} className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300">Edit</button>
+                    </td>
+                  </tr>
+                  {isExpanded && loan && (
+                    <tr key={`${g.id}-loan`} className="bg-white dark:bg-gray-900">
+                      <td colSpan={9} className="px-3 pb-3 pt-0">
+                        <div className="rounded-md bg-gray-50 p-3 dark:bg-gray-800">
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                            <div><span className="text-gray-400 dark:text-gray-500">Amount</span> <span className="ml-1 font-medium text-gray-700 dark:text-gray-200">{fmtPrice(loan.amount)}</span></div>
+                            <div><span className="text-gray-400 dark:text-gray-500">Rate</span> <span className="ml-1 font-medium text-gray-700 dark:text-gray-200">{(loan.interest_rate * 100).toFixed(2)}%</span></div>
+                            <div><span className="text-gray-400 dark:text-gray-500">Due</span> <span className="ml-1 font-medium text-gray-700 dark:text-gray-200">{loan.due_date}</span></div>
+                            <div><span className="text-gray-400 dark:text-gray-500">Loan #</span> <span className="ml-1 font-medium text-gray-700 dark:text-gray-200">{loan.loan_number ?? '—'}</span></div>
+                          </div>
+                          {linkedSale ? (
+                            <p className="mt-2 text-[10px] text-green-600 dark:text-green-400">
+                              ✓ Payoff sale {linkedSale.date} · {fmtNum(linkedSale.shares)} shares @ {fmtPrice(linkedSale.price_per_share)}
+                            </p>
+                          ) : (
+                            <p className="mt-2 text-[10px] text-amber-600 dark:text-amber-400">No payoff sale linked</p>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </>
               )
             })}
             {grants.length === 0 && (

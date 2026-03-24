@@ -281,17 +281,22 @@ def get_events(user: User = Depends(get_current_user), db: Session = Depends(get
             e["election_83b"] = election_83b_map.get((e.get("grant_year"), e.get("grant_type")), False)
 
     ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
-    if ts_row:
-        ts_dict = {
-            "federal_income_rate": ts_row.federal_income_rate,
-            "federal_lt_cg_rate": ts_row.federal_lt_cg_rate,
-            "federal_st_cg_rate": ts_row.federal_st_cg_rate,
-            "niit_rate": ts_row.niit_rate,
-            "state_income_rate": ts_row.state_income_rate,
-            "state_lt_cg_rate": ts_row.state_lt_cg_rate,
-            "state_st_cg_rate": ts_row.state_st_cg_rate,
-            "lt_holding_days": ts_row.lt_holding_days,
-        }
+    ts_dict = {
+        "federal_income_rate": ts_row.federal_income_rate,
+        "federal_lt_cg_rate": ts_row.federal_lt_cg_rate,
+        "federal_st_cg_rate": ts_row.federal_st_cg_rate,
+        "niit_rate": ts_row.niit_rate,
+        "state_income_rate": ts_row.state_income_rate,
+        "state_lt_cg_rate": ts_row.state_lt_cg_rate,
+        "state_st_cg_rate": ts_row.state_st_cg_rate,
+        "lt_holding_days": ts_row.lt_holding_days,
+    } if ts_row else None
+
+    # All DB reads are done — release the connection back to the pool before
+    # CPU-heavy computation so we don't starve concurrent requests.
+    db.close()
+
+    if ts_dict:
         _annotate_sale_taxes(enriched, timeline, ts_dict)
 
     return [_serialize_event(e) for e in enriched]
@@ -326,37 +331,16 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
 
     # Add estimated tax from Sale events (FIFO, chronological order)
     ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
-    if ts_row and sales_db:
-        ts_dict = {
-            "federal_income_rate": ts_row.federal_income_rate,
-            "federal_lt_cg_rate": ts_row.federal_lt_cg_rate,
-            "federal_st_cg_rate": ts_row.federal_st_cg_rate,
-            "niit_rate": ts_row.niit_rate,
-            "state_income_rate": ts_row.state_income_rate,
-            "state_lt_cg_rate": ts_row.state_lt_cg_rate,
-            "state_st_cg_rate": ts_row.state_st_cg_rate,
-            "lt_holding_days": ts_row.lt_holding_days,
-        }
-        prior: list[dict] = []
-        for s in sorted(sales_db, key=lambda x: x.date):
-            if s.date > today:
-                continue
-            fifo_tl = list(timeline)
-            for ps in prior:
-                fifo_tl.append({
-                    "date": datetime.combine(ps["date"], datetime.min.time()),
-                    "event_type": "Sale",
-                    "vested_shares": -ps["shares"],
-                    "grant_price": None,
-                    "share_price": 0.0,
-                })
-            fifo_tl.sort(key=lambda x: (
-                x["date"].date() if isinstance(x["date"], datetime) else x["date"],
-                0 if x.get("event_type") == "Vesting" else 1,
-            ))
-            result = compute_sale_tax(fifo_tl, {"date": s.date, "shares": s.shares, "price_per_share": s.price_per_share}, ts_dict)
-            total_tax_paid += result["estimated_tax"]
-            prior.append({"date": s.date, "shares": s.shares})
+    ts_dict_dash = {
+        "federal_income_rate": ts_row.federal_income_rate,
+        "federal_lt_cg_rate": ts_row.federal_lt_cg_rate,
+        "federal_st_cg_rate": ts_row.federal_st_cg_rate,
+        "niit_rate": ts_row.niit_rate,
+        "state_income_rate": ts_row.state_income_rate,
+        "state_lt_cg_rate": ts_row.state_lt_cg_rate,
+        "state_st_cg_rate": ts_row.state_st_cg_rate,
+        "lt_holding_days": ts_row.lt_holding_days,
+    } if ts_row else None
 
     # Build loan payment data for the loan payment chart
     loan_payments_db = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).all()
@@ -364,6 +348,29 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
     for lp in loan_payments_db:
         payments_by_loan[lp.loan_id] = payments_by_loan.get(lp.loan_id, 0.0) + lp.amount
     covered_loan_ids = {s.loan_id for s in sales_db if s.loan_id is not None}
+
+    # All DB reads are done — release the connection before CPU-heavy computation.
+    db.close()
+
+    if ts_dict_dash and sales_db:
+        sorted_tl_dash = sorted(timeline, key=_sort_key)
+        sort_keys_dash: list[tuple] = [_sort_key(e) for e in sorted_tl_dash]
+        for s in sorted(sales_db, key=lambda x: x.date):
+            if s.date > today:
+                continue
+            result = compute_sale_tax(sorted_tl_dash, {"date": s.date, "shares": s.shares, "price_per_share": s.price_per_share}, ts_dict_dash)
+            total_tax_paid += result["estimated_tax"]
+            sentinel = {
+                "date": datetime.combine(s.date, datetime.min.time()),
+                "event_type": "Sale",
+                "vested_shares": -s.shares,
+                "grant_price": None,
+                "share_price": 0.0,
+            }
+            key = _sort_key(sentinel)
+            idx = bisect.bisect_right(sort_keys_dash, key)
+            sorted_tl_dash.insert(idx, sentinel)
+            sort_keys_dash.insert(idx, key)
 
     # Loan payment by year: payoff_sale vs cash_in
     loan_payment_by_year: dict[str, dict] = {}

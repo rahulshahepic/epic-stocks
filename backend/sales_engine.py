@@ -24,11 +24,15 @@ def build_fifo_lots(
     """
     Build a lot queue from timeline events up to as_of date.
 
-    Each lot item: [vest_date, shares_remaining, basis_price, grant_year, grant_type]
+    Each lot item: [vest_date, shares_remaining, basis_price, grant_year, grant_type, hold_start_date]
 
     basis_price:
       - Purchase grants (grant_price > 0): original purchase price (no step-up at vest).
       - Income/RSU grants (grant_price = 0/None): FMV at vest (basis after income recognition).
+
+    hold_start_date: date used for LT/ST holding period calculation.
+      - Purchase grants (grant_price > 0): exercise date (employee bought shares at grant time).
+      - RSU/income grants (grant_price = 0/None): vesting date (shares received at vest).
 
     order: 'fifo' (oldest first) or 'lifo' (newest first). Loan repayments and other
     reductions are applied oldest-first. Down payment exchanges consume lowest-cost-basis
@@ -37,7 +41,16 @@ def build_fifo_lots(
     grant_year / grant_type: when both provided, only lots from that grant are returned
     (same-tranche selection). Falls back gracefully if no matching lots exist.
     """
-    lots: deque = deque()  # [vest_date, shares_remaining, basis_price, grant_year, grant_type]
+    lots: deque = deque()  # [vest_date, shares_remaining, basis_price, grant_year, grant_type, hold_start_date]
+
+    # Pre-scan for exercise dates on Purchase grants (grant_price > 0).
+    # For these grants the employee bought shares at exercise; the holding period
+    # clock starts then, not at vesting (mirrors 83(b) restricted-stock treatment).
+    exercise_dates: dict = {}
+    for e in timeline_events:
+        if e.get("event_type") == "Exercise" and (e.get("grant_price") or 0) > 0:
+            key = (e.get("grant_year"), e.get("grant_type"))
+            exercise_dates[key] = _to_date(e["date"])
 
     for e in timeline_events:
         edate = _to_date(e["date"])
@@ -48,7 +61,10 @@ def build_fifo_lots(
 
         if e["event_type"] == "Vesting" and vs > 0:
             basis = e.get("grant_price") or e.get("share_price", 0.0)
-            lots.append([edate, vs, basis, e.get("grant_year"), e.get("grant_type")])
+            gy = e.get("grant_year")
+            gt = e.get("grant_type")
+            hold_start = exercise_dates.get((gy, gt), edate)
+            lots.append([edate, vs, basis, gy, gt, hold_start])
         elif vs < 0:
             to_reduce = abs(vs)
             if e["event_type"] == "Down payment exchange":
@@ -115,8 +131,9 @@ def compute_grossup_shares(lots: deque, cash_due: float, price: float, sale_date
     for lot in lots:
         if remaining <= 0:
             break
-        vest_date, lot_shares, basis = lot[0], lot[1], lot[2]
-        hold_days = (sale_date - _to_date(vest_date)).days
+        lot_shares, basis = lot[1], lot[2]
+        hold_start = lot[5] if len(lot) > 5 else lot[0]
+        hold_days = (sale_date - _to_date(hold_start)).days
         rate = lt_rate if hold_days >= lt_days else st_rate
         # net received per share after paying cap gains tax on the gain portion
         net_per_share = price - rate * max(0.0, price - basis)
@@ -176,9 +193,11 @@ def compute_sale_tax(timeline_events: list, sale: dict, tax_settings: dict,
     working_lots = deque(lots)
     while remaining > 0 and working_lots:
         lot_date, lot_shares, lot_basis = working_lots[0][0], working_lots[0][1], working_lots[0][2]
+        lot_hold_start = working_lots[0][5] if len(working_lots[0]) > 5 else lot_date
         consumed = min(lot_shares, remaining)
         lots_consumed.append({
             "vest_date": lot_date,
+            "hold_start_date": lot_hold_start,
             "shares": consumed,
             "basis_price": lot_basis,
         })
@@ -195,7 +214,7 @@ def compute_sale_tax(timeline_events: list, sale: dict, tax_settings: dict,
     st_basis = 0.0
 
     for lot in lots_consumed:
-        hold_days = (sale_date - lot["vest_date"]).days
+        hold_days = (sale_date - lot["hold_start_date"]).days
         lot_cost = round(lot["shares"] * lot["basis_price"], 2)
         if hold_days >= lt_days:
             lt_shares += lot["shares"]

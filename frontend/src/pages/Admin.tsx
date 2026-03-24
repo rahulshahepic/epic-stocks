@@ -36,7 +36,7 @@ function Sparkline({ data, dataKey, color, formatter }: {
         <YAxis domain={['auto', 'auto']} hide />
         <Tooltip
           contentStyle={{ fontSize: 10, padding: '2px 6px' }}
-          labelFormatter={(label) => new Date(label as string).toLocaleString()}
+          labelFormatter={(label) => new Date(label as string).toLocaleString('en-GB', { timeZone: 'UTC', hour12: false }) + ' UTC'}
           formatter={(v) => [formatter ? formatter(v as number) : String(v), '']}
         />
         <Line
@@ -182,7 +182,8 @@ export default function Admin() {
 
   function formatDate(iso: string | null) {
     if (!iso) return 'Never'
-    return new Date(iso).toLocaleDateString()
+    const d = new Date(iso)
+    return d.toLocaleDateString('en-CA', { timeZone: 'UTC' }) + ' UTC'
   }
 
   if (error && !stats) {
@@ -500,7 +501,7 @@ export default function Admin() {
                   <p className="mt-0.5 truncate text-gray-700 dark:text-gray-300">{e.error_message}</p>
                 </div>
                 <span className="ml-2 shrink-0 text-gray-400 dark:text-gray-500">
-                  {new Date(e.timestamp).toLocaleString()}
+                  {new Date(e.timestamp).toLocaleString('en-GB', { timeZone: 'UTC', hour12: false })} UTC
                 </span>
               </div>
               {expandedError === e.id && e.traceback && (

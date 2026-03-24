@@ -63,6 +63,18 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             docker compose build
+
+            # --- Step 1: stop the app so its DB connections are fully released ---
+            docker compose stop app
+
+            # --- Step 2: run migrations in isolation before the app starts ---
+            # Full output is visible here; any lock/error surfaces immediately.
+            echo "Running database migrations..."
+            docker compose run --rm --no-deps app \
+              python -m alembic -c /app/alembic.ini upgrade head
+            echo "Migrations complete."
+
+            # --- Step 3: start all services ---
             docker compose up -d
 
             # Poll /api/health for up to 120s
@@ -72,7 +84,7 @@ jobs:
                 echo "Health check passed."
                 exit 0
               fi
-              echo "  attempt $i/12 failed, waiting 5s..."
+              echo "  attempt $i/24 failed, waiting 5s..."
               sleep 5
             done
 
@@ -81,8 +93,8 @@ jobs:
             echo "=== docker compose ps ==="
             docker compose ps
             echo ""
-            echo "=== docker compose logs (last 40 lines) ==="
-            docker compose logs --tail=40
+            echo "=== app logs ==="
+            docker compose logs app --tail=60
             echo ""
             echo "=== recent commits ==="
             git log --oneline -5

@@ -193,6 +193,8 @@ def compute_sale_tax(timeline_events: list, sale: dict, tax_settings: dict,
     working_lots = deque(lots)
     while remaining > 0 and working_lots:
         lot_date, lot_shares, lot_basis = working_lots[0][0], working_lots[0][1], working_lots[0][2]
+        lot_gy = working_lots[0][3] if len(working_lots[0]) > 3 else None
+        lot_gt = working_lots[0][4] if len(working_lots[0]) > 4 else None
         lot_hold_start = working_lots[0][5] if len(working_lots[0]) > 5 else lot_date
         consumed = min(lot_shares, remaining)
         lots_consumed.append({
@@ -200,6 +202,8 @@ def compute_sale_tax(timeline_events: list, sale: dict, tax_settings: dict,
             "hold_start_date": lot_hold_start,
             "shares": consumed,
             "basis_price": lot_basis,
+            "grant_year": lot_gy,
+            "grant_type": lot_gt,
         })
         remaining -= consumed
         if consumed < lot_shares:
@@ -207,21 +211,42 @@ def compute_sale_tax(timeline_events: list, sale: dict, tax_settings: dict,
         else:
             working_lots.popleft()
 
-    # Classify each consumed lot as LT or ST
+    # Classify each consumed lot as LT or ST, and aggregate per grant
     lt_shares = 0
     st_shares = 0
     lt_basis = 0.0
     st_basis = 0.0
+    grant_map: dict = {}  # (grant_year, grant_type) -> {"shares", "lt_shares", "st_shares"}
 
     for lot in lots_consumed:
         hold_days = (sale_date - lot["hold_start_date"]).days
         lot_cost = round(lot["shares"] * lot["basis_price"], 2)
-        if hold_days >= lt_days:
+        is_lt = hold_days >= lt_days
+        if is_lt:
             lt_shares += lot["shares"]
             lt_basis += lot_cost
         else:
             st_shares += lot["shares"]
             st_basis += lot_cost
+        key = (lot.get("grant_year"), lot.get("grant_type"))
+        if key not in grant_map:
+            grant_map[key] = {"shares": 0, "lt_shares": 0, "st_shares": 0}
+        grant_map[key]["shares"] += lot["shares"]
+        if is_lt:
+            grant_map[key]["lt_shares"] += lot["shares"]
+        else:
+            grant_map[key]["st_shares"] += lot["shares"]
+
+    lots_out = [
+        {
+            "grant_year": k[0],
+            "grant_type": k[1],
+            "shares": v["shares"],
+            "lt_shares": v["lt_shares"],
+            "st_shares": v["st_shares"],
+        }
+        for k, v in grant_map.items()
+    ]
 
     vested_cost_basis = round(lt_basis + st_basis, 2)
 
@@ -261,4 +286,5 @@ def compute_sale_tax(timeline_events: list, sale: dict, tax_settings: dict,
         "unvested_tax": unvested_tax,
         "estimated_tax": estimated_tax,
         "net_proceeds": net_proceeds,
+        "lots": lots_out,
     }

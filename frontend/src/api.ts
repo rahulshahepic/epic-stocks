@@ -384,6 +384,14 @@ export interface TaxSettings {
   dp_min_cap: number
 }
 
+export interface LotSummary {
+  grant_year: number | null
+  grant_type: string | null
+  shares: number
+  lt_shares: number
+  st_shares: number
+}
+
 export interface TaxBreakdown {
   gross_proceeds: number
   cost_basis: number
@@ -402,4 +410,5 @@ export interface TaxBreakdown {
   unvested_tax: number
   estimated_tax: number
   net_proceeds: number
+  lots: LotSummary[]
 }

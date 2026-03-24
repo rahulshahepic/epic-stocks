@@ -372,6 +372,14 @@ class TaxSettingsUpdate(BaseModel):
     dp_min_percent: float | None = None
     dp_min_cap: float | None = None
 
+class LotSummary(BaseModel):
+    grant_year: int | None
+    grant_type: str | None
+    shares: int
+    lt_shares: int
+    st_shares: int
+
+
 class TaxBreakdown(BaseModel):
     gross_proceeds: float
     cost_basis: float
@@ -390,6 +398,7 @@ class TaxBreakdown(BaseModel):
     unvested_tax: float
     estimated_tax: float
     net_proceeds: float
+    lots: list[LotSummary] = []
 
 
 # Push Subscription

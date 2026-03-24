@@ -1,3 +1,9 @@
+{
+    servers {
+        trusted_proxies static {env.TRUSTED_PROXY_IPS}
+    }
+}
+
 {$DOMAIN:localhost} {
     # Hashed assets — cache forever
     @hashed path /assets/*

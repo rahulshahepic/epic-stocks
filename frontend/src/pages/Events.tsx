@@ -189,14 +189,14 @@ export default function Events() {
                           )}
                         </button>
                       ) : e.event_type === 'Vesting' && (e.income > 0 || e.vesting_cap_gains > 0) ? (
-                        <div className="text-orange-600 dark:text-orange-400">
-                          <div>{fmt$(estTaxForVesting(e, ts))}</div>
+                        <span className="text-orange-600 dark:text-orange-400">
+                          {fmt$(estTaxForVesting(e, ts))}
                           {e.date > TODAY && e.share_price > 0 && (
-                            <div className="text-[10px] text-gray-400">
-                              sell ≈{Math.ceil(estTaxForVesting(e, ts) / e.share_price)} shares to cover
-                            </div>
+                            <span className="block text-[10px] text-gray-400">
+                              sell ≈{Math.ceil(estTaxForVesting(e, ts) / e.share_price)} to cover
+                            </span>
                           )}
-                        </div>
+                        </span>
                       ) : e.event_type === 'Share Price' ? (
                         <span className="text-xs text-gray-400 dark:text-gray-600">—*</span>
                       ) : '—'}

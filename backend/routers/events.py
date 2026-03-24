@@ -1,3 +1,4 @@
+import bisect
 from datetime import date, datetime
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -223,38 +224,43 @@ def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales:
     return enriched
 
 
+def _sort_key(e: dict) -> tuple:
+    d = e["date"]
+    return (d.date() if isinstance(d, datetime) else d, 0 if e.get("event_type") == "Vesting" else 1)
+
+
 def _annotate_sale_taxes(enriched: list, timeline: list, ts_dict: dict) -> None:
     """
     Compute estimated_tax for each Sale event in place, in chronological order.
     Prior sales are injected as negative vested_shares so FIFO lots are consumed correctly.
     """
-    prior_sales: list[dict] = []
+    # Sort once; insert prior-sale sentinel entries incrementally via bisect.
+    sorted_tl = sorted(timeline, key=_sort_key)
+    sort_keys: list[tuple] = [_sort_key(e) for e in sorted_tl]
+
     for e in enriched:
         if e.get("event_type") != "Sale":
             continue
-        fifo_tl = list(timeline)
-        for ps in prior_sales:
-            fifo_tl.append({
-                "date": datetime.combine(ps["date"], datetime.min.time())
-                        if not isinstance(ps["date"], datetime) else ps["date"],
-                "event_type": "Sale",
-                "vested_shares": -ps["shares"],
-                "grant_price": None,
-                "share_price": 0.0,
-            })
-        fifo_tl.sort(key=lambda x: (
-            x["date"].date() if isinstance(x["date"], datetime) else x["date"],
-            0 if x.get("event_type") == "Vesting" else 1,
-        ))
         sale_date = e["date"]
         if isinstance(sale_date, datetime):
             sale_date = sale_date.date()
         shares = abs(e.get("vested_shares") or 0)
         price_per_share = round(e["gross_proceeds"] / shares, 10) if shares else 0.0
-        result = compute_sale_tax(fifo_tl, {"date": sale_date, "shares": shares, "price_per_share": price_per_share}, ts_dict)
+        result = compute_sale_tax(sorted_tl, {"date": sale_date, "shares": shares, "price_per_share": price_per_share}, ts_dict)
         e["estimated_tax"] = result["estimated_tax"]
         e["st_shares"] = result["st_shares"]
-        prior_sales.append({"date": sale_date, "shares": shares})
+        # Append prior-sale entry in sorted order for the next iteration.
+        sentinel = {
+            "date": datetime.combine(sale_date, datetime.min.time()),
+            "event_type": "Sale",
+            "vested_shares": -shares,
+            "grant_price": None,
+            "share_price": 0.0,
+        }
+        key = _sort_key(sentinel)
+        idx = bisect.bisect_right(sort_keys, key)
+        sorted_tl.insert(idx, sentinel)
+        sort_keys.insert(idx, key)
 
 
 @router.get("/events")

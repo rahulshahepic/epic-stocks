@@ -150,13 +150,13 @@ describe('Sales', () => {
     expect(screen.getByText('Tax')).toBeInTheDocument()
   })
 
-  it('tapping tax cell loads and shows inline breakdown', async () => {
+  it('tax amounts load eagerly and clicking expands breakdown', async () => {
     mockApi()
     renderSales()
-    // Tax cells start as "—" (tappable dashes)
-    await waitFor(() => expect(screen.getAllByText('—')).not.toHaveLength(0))
-    // Click the first "—" tax cell button
-    const taxButtons = screen.getAllByRole('button').filter(b => b.textContent === '—')
+    // Tax amounts should appear without any click
+    await waitFor(() => expect(screen.getAllByText('$451.98')).not.toHaveLength(0))
+    // Click the first tax cell to expand the full breakdown
+    const taxButtons = screen.getAllByRole('button').filter(b => b.textContent?.includes('$451.98'))
     await userEvent.click(taxButtons[0])
     await waitFor(() => {
       expect(screen.getByText('Estimated Tax Breakdown')).toBeInTheDocument()
@@ -168,11 +168,8 @@ describe('Sales', () => {
   it('shows ST badge when sale has short-term gains', async () => {
     mockApi({ stcg: true })
     renderSales()
-    await waitFor(() => expect(screen.getAllByText('—')).not.toHaveLength(0))
-    const taxButtons = screen.getAllByRole('button').filter(b => b.textContent === '—')
-    await userEvent.click(taxButtons[0])
     await waitFor(() => {
-      expect(screen.getByText('ST')).toBeInTheDocument()
+      expect(screen.getAllByText('ST')).not.toHaveLength(0)
     })
   })
 

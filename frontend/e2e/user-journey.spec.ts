@@ -62,8 +62,9 @@ test.describe('Sales journey', () => {
     await navigateTo(page, 'Sales')
     await expect(page.getByText('1 sales')).toBeVisible()
 
-    // Tax cell starts as "—" — tap it to load the breakdown
-    const taxCellButton = page.locator('td button').filter({ hasText: '—' }).first()
+    // Wait for any eager-loading state to resolve, then tap the tax cell
+    await expect(page.locator('td button').filter({ hasText: '...' })).toHaveCount(0, { timeout: 5000 })
+    const taxCellButton = page.locator('td button').filter({ hasText: /\$[\d,.]|—/ }).first()
     await taxCellButton.click()
     await expect(page.getByText('Estimated Tax Breakdown')).toBeVisible({ timeout: 5000 })
     await expect(page.getByText('Gross proceeds').first()).toBeVisible()

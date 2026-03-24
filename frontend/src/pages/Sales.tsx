@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ConflictError } from '../api.ts'
 import type { SaleEntry, TaxBreakdown, TaxSettings } from '../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
@@ -236,6 +236,21 @@ export default function Sales() {
   const [breakdowns, setBreakdowns] = useState<Map<number, TaxBreakdown>>(new Map())
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [loadingTaxIds, setLoadingTaxIds] = useState<Set<number>>(new Set())
+  const fetchStarted = useRef(new Set<number>())
+
+  // Eagerly fetch all tax breakdowns when sales load
+  useEffect(() => {
+    if (!sales) return
+    sales.forEach(s => {
+      if (fetchStarted.current.has(s.id)) return
+      fetchStarted.current.add(s.id)
+      setLoadingTaxIds(prev => new Set(prev).add(s.id))
+      api.getSaleTax(s.id)
+        .then(tax => setBreakdowns(prev => new Map(prev).set(s.id, tax)))
+        .catch(() => {})
+        .finally(() => setLoadingTaxIds(prev => { const next = new Set(prev); next.delete(s.id); return next }))
+    })
+  }, [sales])
 
   useDataSync('sales', reload)
 
@@ -304,11 +319,21 @@ export default function Sales() {
         return
       }
       broadcastChange('sales')
+      // Clear cached breakdown so it re-fetches with updated rates
+      fetchStarted.current.delete(saved.id)
+      setBreakdowns(prev => { const next = new Map(prev); next.delete(saved.id); return next })
+      // Eagerly fetch and auto-expand the saved sale's breakdown
+      fetchStarted.current.add(saved.id)
+      try {
+        const tax = await api.getSaleTax(saved.id)
+        setBreakdowns(prev => new Map(prev).set(saved.id, tax))
+        setExpanded(prev => new Set(prev).add(saved.id))
+      } catch {
+        // silently ignore — breakdown won't auto-expand
+      }
       reload()
       setMode('list')
       resetForm()
-      // Auto-load and expand the saved row's tax breakdown
-      toggleTax(saved.id)
     } catch (e: unknown) {
       if (e instanceof ConflictError) {
         setConflict(true)
@@ -324,6 +349,7 @@ export default function Sales() {
     if (!confirm('Delete this sale?')) return
     await api.deleteSale(id)
     broadcastChange('sales')
+    fetchStarted.current.delete(id)
     setBreakdowns(prev => { const next = new Map(prev); next.delete(id); return next })
     setExpanded(prev => { const next = new Set(prev); next.delete(id); return next })
     reload()

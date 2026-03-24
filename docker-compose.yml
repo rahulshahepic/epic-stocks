@@ -42,6 +42,7 @@ services:
       - "443:443"
     environment:
       - DOMAIN=${DOMAIN:-localhost}
+      - CLOUDFLARE_IPS=${CLOUDFLARE_IPS:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data

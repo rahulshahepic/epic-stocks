@@ -229,10 +229,13 @@ def _sort_key(e: dict) -> tuple:
     return (d.date() if isinstance(d, datetime) else d, 0 if e.get("event_type") == "Vesting" else 1)
 
 
-def _annotate_sale_taxes(enriched: list, timeline: list, ts_dict: dict) -> None:
+def _annotate_sale_taxes(enriched: list, timeline: list, ts_dict: dict,
+                          lot_order: str = 'lifo',
+                          sale_overrides: dict | None = None,
+                          sale_loan_map: dict | None = None) -> None:
     """
     Compute estimated_tax for each Sale event in place, in chronological order.
-    Prior sales are injected as negative vested_shares so FIFO lots are consumed correctly.
+    Prior sales are injected as negative vested_shares so lots are consumed correctly.
     """
     # Sort once; insert prior-sale sentinel entries incrementally via bisect.
     sorted_tl = sorted(timeline, key=_sort_key)
@@ -246,7 +249,10 @@ def _annotate_sale_taxes(enriched: list, timeline: list, ts_dict: dict) -> None:
             sale_date = sale_date.date()
         shares = abs(e.get("vested_shares") or 0)
         price_per_share = round(e["gross_proceeds"] / shares, 10) if shares else 0.0
-        result = compute_sale_tax(sorted_tl, {"date": sale_date, "shares": shares, "price_per_share": price_per_share}, ts_dict)
+        sale_id = e.get("sale_id")
+        effective_ts = (sale_overrides or {}).get(sale_id, ts_dict) if sale_id else ts_dict
+        gy, gt = ((sale_loan_map or {}).get(sale_id) or (None, None)) if sale_id else (None, None)
+        result = compute_sale_tax(sorted_tl, {"date": sale_date, "shares": shares, "price_per_share": price_per_share}, effective_ts, lot_order=lot_order, grant_year=gy, grant_type=gt)
         e["estimated_tax"] = result["estimated_tax"]
         e["st_shares"] = result["st_shares"]
         # Append prior-sale entry in sorted order for the next iteration.
@@ -292,12 +298,31 @@ def get_events(user: User = Depends(get_current_user), db: Session = Depends(get
         "lt_holding_days": ts_row.lt_holding_days,
     } if ts_row else None
 
+    lot_order = 'fifo' if ts_row and ts_row.lot_selection_method == 'fifo' else 'lifo'
+    sale_overrides: dict = {}
+    sale_loan_map: dict = {}
+    if ts_row:
+        loan_id_to_grant = {ln.id: (ln.grant_year, ln.grant_type) for ln in loans_db}
+        for s in sales:
+            sale_overrides[s.id] = {
+                "federal_income_rate": s.federal_income_rate if s.federal_income_rate is not None else ts_row.federal_income_rate,
+                "federal_lt_cg_rate": s.federal_lt_cg_rate if s.federal_lt_cg_rate is not None else ts_row.federal_lt_cg_rate,
+                "federal_st_cg_rate": s.federal_st_cg_rate if s.federal_st_cg_rate is not None else ts_row.federal_st_cg_rate,
+                "niit_rate": s.niit_rate if s.niit_rate is not None else ts_row.niit_rate,
+                "state_income_rate": s.state_income_rate if s.state_income_rate is not None else ts_row.state_income_rate,
+                "state_lt_cg_rate": s.state_lt_cg_rate if s.state_lt_cg_rate is not None else ts_row.state_lt_cg_rate,
+                "state_st_cg_rate": s.state_st_cg_rate if s.state_st_cg_rate is not None else ts_row.state_st_cg_rate,
+                "lt_holding_days": s.lt_holding_days if s.lt_holding_days is not None else ts_row.lt_holding_days,
+            }
+            if s.loan_id and ts_row.lot_selection_method == 'same_tranche':
+                sale_loan_map[s.id] = loan_id_to_grant.get(s.loan_id, (None, None))
+
     # All DB reads are done — release the connection back to the pool before
     # CPU-heavy computation so we don't starve concurrent requests.
     db.close()
 
     if ts_dict:
-        _annotate_sale_taxes(enriched, timeline, ts_dict)
+        _annotate_sale_taxes(enriched, timeline, ts_dict, lot_order=lot_order, sale_overrides=sale_overrides, sale_loan_map=sale_loan_map)
 
     return [_serialize_event(e) for e in enriched]
 

@@ -73,18 +73,5 @@ jobs:
               python -m alembic -c /app/alembic.ini upgrade head
             echo "Migrations complete."
 
-            # Start all services
-            docker compose up -d
-
-            # Health check directly against the app container (bypasses Caddy)
-            echo "Waiting for app to be healthy..."
-            for i in $(seq 1 24); do
-              if docker compose exec -T app curl -fsS http://localhost:8000/api/health | grep -q '"ok"'; then
-                echo "Health check passed."
-                exit 0
-              fi
-              echo "  attempt $i/24 failed, waiting 5s..."
-              sleep 5
-            done
-            echo "ERROR: health check did not pass after 120s."
-            exit 1
+            # Start all services and wait for healthchecks to pass
+            docker compose up -d --wait --wait-timeout 120

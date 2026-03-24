@@ -12,13 +12,6 @@ Equity vesting tracker PWA. See SPEC.md for full requirements.
 - **Encryption is per-user.** When `ENCRYPTION_MASTER_KEY` is set, `backend/crypto.py` handles AES-256-GCM column-level encryption via SQLAlchemy TypeDecorators. Transparent to routers and core.py.
 - **Admin access is dynamic.** Set via `ADMIN_EMAIL` env var (semicolon-delimited). `is_admin` flag is set on every login — no persistent admin designation. Admin endpoints in `backend/routers/admin.py` never expose financial data.
 
-## Tech Stack
-- Backend: Python 3.12, FastAPI, PostgreSQL, SQLAlchemy, Alembic
-- Frontend: React, TypeScript, Vite, Tailwind CSS, Recharts
-- Deploy: Docker Compose + Caddy (auto-HTTPS), Cloudflare in front for DDoS/rate limiting
-- Auth: Google Sign-In (OAuth 2.0) → backend JWT session tokens (24hr expiry, no refresh tokens)
-- Email: Resend API (`RESEND_API_KEY` env var)
-
 ## Build Order
 Follow the order in SPEC.md. Build backend first, then frontend. **Every step must include tests before moving on.** Ask before making architectural decisions.
 
@@ -30,11 +23,6 @@ Follow the order in SPEC.md. Build backend first, then frontend. **Every step mu
 - **Always run `npx tsc -b --noEmit` before committing frontend changes.** The dev server skips type-checking; CI catches it.
 - **Run E2E tests via `./e2e.sh` from the repo root.** This script handles type-checking, starting a fresh backend + Vite server, waiting for both to be healthy, and cleanup. Do not manually spin up servers and run Playwright separately.
 - Known-good values for core logic validation: 89 events, final cum_shares=558500, cum_income=$144,325, cum_cap_gains=$1,224,195. (cum_shares was 269843 before Loan Payoff refactor; was 571500 before fixture dp_shares updated from -2000 to -15000.)
-
-## CI/CD
-- GitHub Actions runs tests on every push and PR.
-- Deploy to VPS via SSH on push to main (after tests pass).
-- See SPEC.md for full workflow definitions.
 
 ## Code Style
 - Python: minimal comments, concise, no unnecessary abstractions
@@ -62,8 +50,18 @@ Follow the order in SPEC.md. Build backend first, then frontend. **Every step mu
 - **What to capture:** The spec captures dashboard (light/dark × mobile/desktop) and admin (light/dark × mobile). Add new test cases to the spec when adding new pages.
 - **README:** After capturing, update `README.md` to reference any new screenshot files.
 
-## Deployment Notes
-- Caddy serves hashed assets (`/assets/*`) with immutable cache headers. `index.html`, `sw.js`, and `manifest.json` use `no-cache` for instant updates.
-- The service worker (`frontend/public/sw.js`) uses `skipWaiting` + `clients.claim` and network-first navigation for cache busting.
-- See PLAN.md for the full feature roadmap (encryption, admin, sales, notifications — most now implemented).
-- See SECURITY_HARDENING.md for what's in the app vs. what requires hosting environment setup.
+## Remaining Work
+
+| Item | Notes |
+|------|-------|
+| **SSH: disable password auth** | Two lines in `sshd_config` + reload. See OPERATIONS.md §3. |
+| **External uptime monitoring** | Configure UptimeRobot / Better Uptime / Cloudflare Health Checks for `/api/health`. Goal: SMS/email alert within 5 min. See OPERATIONS.md §5. |
+| **Database backups** | Automated `pg_dump` off-site (S3/B2). Verify restore procedure. See OPERATIONS.md §6. |
+| **Audit logging** | Log admin actions, failed auth attempts, data deletions to a DB table. Show in admin dashboard. |
+| **DAST scanner in CI** | Add OWASP ZAP to GitHub Actions — scans the running app for vulnerabilities on every PR. |
+| **Migration script** | Convert existing plaintext databases when enabling `ENCRYPTION_MASTER_KEY` for the first time. |
+| **PDF loan statement import** | OCR or structured template for importing loan data directly from Epic's PDF statements. Stretch goal. |
+
+**Decided against:**
+- JWT refresh tokens — 24hr access tokens + seamless Google re-auth is sufficient
+- Client-side (zero-knowledge) encryption — would break server-side event computation, Excel export, and push notifications

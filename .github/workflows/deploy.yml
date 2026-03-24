@@ -4,7 +4,20 @@ on:
     branches: [main]
   workflow_dispatch:
 jobs:
+  caddy-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Caddyfile
+        run: |
+          docker run --rm \
+            -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            -e TRUSTED_PROXY_IPS=127.0.0.1/32 \
+            -e DOMAIN=localhost \
+            caddy:2 caddy validate --config /etc/caddy/Caddyfile
+
   deploy:
+    needs: [caddy-validate]
     runs-on: ubuntu-latest
     steps:
       - name: Deploy to VPS
@@ -47,6 +60,38 @@ jobs:
               sysctl -w vm.swappiness=10
             fi
 
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
             docker compose build
             docker compose up -d
+
+            # Poll /api/health for up to 60s
+            echo "Waiting for /api/health..."
+            for i in $(seq 1 12); do
+              if curl -fsS http://localhost/api/health | grep -q '"ok"'; then
+                echo "Health check passed."
+                exit 0
+              fi
+              echo "  attempt $i/12 failed, waiting 5s..."
+              sleep 5
+            done
+
+            echo "ERROR: /api/health did not return ok after 60s."
+            echo ""
+            echo "=== docker compose ps ==="
+            docker compose ps
+            echo ""
+            echo "=== docker compose logs (last 40 lines) ==="
+            docker compose logs --tail=40
+            echo ""
+            echo "=== recent commits ==="
+            git log --oneline -5
+            echo ""
+            echo "MANUAL ROLLBACK INSTRUCTIONS:"
+            echo "  1. Check migration state:"
+            echo "     docker compose exec db psql -U postgres -d vesting -c 'SELECT version_num FROM alembic_version;'"
+            echo "  2. If no schema migration ran, roll back code:"
+            echo "     git checkout <previous-sha> && docker compose build && docker compose up -d"
+            echo "  3. If a schema migration ran, manually revert the migration before rolling back code."
+            echo "     Rolling back code after a migration without reverting Alembic is unsafe."
+            exit 1

@@ -9,23 +9,24 @@ jobs:
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.VPS_HOST }}
+          host: ${{ vars.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             cd /opt/epic-stocks
 
-            # Write .env from GitHub Secrets (VPS never stores secrets manually)
+            # Write .env from GitHub Secrets/Vars (VPS never stores secrets manually)
             cat > .env <<'ENVEOF'
             JWT_SECRET=${{ secrets.JWT_SECRET }}
-            GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
-            DOMAIN=${{ secrets.DOMAIN }}
+            GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }}
+            DOMAIN=${{ vars.DOMAIN }}
+            APP_URL=${{ vars.APP_URL }}
             ENCRYPTION_MASTER_KEY=${{ secrets.ENCRYPTION_MASTER_KEY }}
             PRIVACY_URL=${{ secrets.PRIVACY_URL }}
             ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
-            VAPID_PUBLIC_KEY=${{ secrets.VAPID_PUBLIC_KEY }}
+            VAPID_PUBLIC_KEY=${{ vars.VAPID_PUBLIC_KEY }}
             VAPID_PRIVATE_KEY=${{ secrets.VAPID_PRIVATE_KEY }}
-            VAPID_CLAIMS_EMAIL=${{ secrets.VAPID_CLAIMS_EMAIL }}
+            VAPID_CLAIMS_EMAIL=${{ vars.VAPID_CLAIMS_EMAIL }}
             RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
             RESEND_FROM=${{ secrets.RESEND_FROM }}
             POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}

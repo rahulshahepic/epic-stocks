@@ -402,21 +402,31 @@ export default function Grants() {
           </>
         )}
 
-        <div className="flex gap-2 pt-2">
-          <button
-            onClick={() => handleSave(false)}
-            disabled={saving}
-            className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-          >
-            {saving ? 'Saving...' : 'Save'}
-          </button>
-          {mode !== 'edit' && (
+        <div className="flex items-center justify-between pt-2">
+          <div className="flex gap-2">
             <button
-              onClick={() => handleSave(true)}
+              onClick={() => handleSave(false)}
               disabled={saving}
-              className="rounded-md bg-indigo-100 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60 disabled:opacity-50"
+              className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
             >
-              Save & Add Another
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+            {mode !== 'edit' && (
+              <button
+                onClick={() => handleSave(true)}
+                disabled={saving}
+                className="rounded-md bg-indigo-100 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60 disabled:opacity-50"
+              >
+                Save & Add Another
+              </button>
+            )}
+          </div>
+          {mode === 'edit' && editId != null && (
+            <button
+              onClick={() => handleDelete(editId)}
+              className="text-xs text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+            >
+              Delete grant
             </button>
           )}
         </div>
@@ -449,7 +459,6 @@ export default function Grants() {
               <th className="px-3 py-2">Vest Start</th>
               <th className="px-3 py-2 text-right">Periods</th>
               <th className="px-3 py-2">Exercise</th>
-              <th className="px-3 py-2 text-right" title="Down Payment Shares">Down Pmt</th>
               <th className="px-3 py-2">Loan</th>
               <th className="px-3 py-2"></th>
             </tr>
@@ -474,7 +483,6 @@ export default function Grants() {
                   <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{g.vest_start}</td>
                   <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{g.periods}</td>
                   <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{g.exercise_date}</td>
-                  <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{g.dp_shares ? fmtNum(g.dp_shares) : '—'}</td>
                   <td className="px-3 py-2">
                     {loan ? (
                       <span className={`text-[10px] ${hasSale ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
@@ -485,14 +493,13 @@ export default function Grants() {
                     )}
                   </td>
                   <td className="px-3 py-2 text-right">
-                    <button onClick={() => openEdit(g)} className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 mr-2">Edit</button>
-                    <button onClick={() => handleDelete(g.id)} className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300">Delete</button>
+                    <button onClick={() => openEdit(g)} className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300">Edit</button>
                   </td>
                 </tr>
               )
             })}
             {grants.length === 0 && (
-              <tr><td colSpan={10} className="px-3 py-6 text-center text-gray-400">No grants yet</td></tr>
+              <tr><td colSpan={9} className="px-3 py-6 text-center text-gray-400">No grants yet</td></tr>
             )}
           </tbody>
         </table>

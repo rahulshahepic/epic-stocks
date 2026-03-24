@@ -59,6 +59,10 @@ function mockApi(opts: { failFetch?: boolean; stcg?: boolean } = {}) {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url
     const method = init?.method ?? 'GET'
 
+    if (url.endsWith('/api/sales/tax') && method === 'GET') {
+      const tax = opts.stcg ? MOCK_TAX_ST : MOCK_TAX
+      return new Response(JSON.stringify({ 1: tax, 2: tax }), { status: 200 })
+    }
     if (url.match(/\/api\/sales\/\d+\/tax/) && method === 'GET') {
       return new Response(JSON.stringify(opts.stcg ? MOCK_TAX_ST : MOCK_TAX), { status: 200 })
     }

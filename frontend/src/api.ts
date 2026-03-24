@@ -244,6 +244,7 @@ export const api = {
   updateSale: (id: number, data: Partial<Omit<SaleEntry, 'id'>>) => put<SaleEntry>(`/api/sales/${id}`, data),
   deleteSale: (id: number) => del(`/api/sales/${id}`),
   getSaleTax: (id: number) => apiFetch<TaxBreakdown>(`/api/sales/${id}/tax`),
+  getAllSaleTaxes: () => apiFetch<Record<number, TaxBreakdown>>('/api/sales/tax'),
 
   // Tax Settings
   getTaxSettings: () => apiFetch<TaxSettings>('/api/tax-settings'),

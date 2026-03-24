@@ -24,6 +24,10 @@ function fmtPrice(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+function fmtPct(r: number) {
+  return (r * 100).toFixed(2) + '%'
+}
+
 function fmtNum(n: number | null) {
   return n != null ? n.toLocaleString('en-US') : '—'
 }
@@ -44,6 +48,50 @@ function estTaxForVesting(e: TimelineEvent, ts: TaxSettings): number {
        + (e.vesting_cap_gains > 0 ? e.vesting_cap_gains * ltCgRate : 0)
 }
 
+function TaxRow({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
+  return (
+    <div className={`flex justify-between gap-4 ${bold ? 'font-semibold text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400'}`}>
+      <span>{label}</span>
+      <span className="tabular-nums">{value}</span>
+    </div>
+  )
+}
+
+function VestingTaxCard({ e, ts }: { e: TimelineEvent; ts: TaxSettings }) {
+  const incomeRate = ts.federal_income_rate + ts.state_income_rate
+  const ltCgRate = ts.federal_lt_cg_rate + ts.niit_rate + ts.state_lt_cg_rate
+  const incomeTax = e.income > 0 ? e.income * incomeRate : 0
+  const cgTax = e.vesting_cap_gains > 0 ? e.vesting_cap_gains * ltCgRate : 0
+  const totalTax = incomeTax + cgTax
+  const sharesToCover = e.share_price > 0 ? Math.ceil(totalTax / e.share_price) : 0
+  const isFuture = e.date > TODAY
+
+  return (
+    <div className="rounded-lg border border-orange-200 bg-orange-50 p-4 text-xs dark:border-orange-800 dark:bg-orange-900/20">
+      <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">Estimated Tax</h3>
+      <div className="space-y-1">
+        {e.income > 0 && (
+          <TaxRow
+            label={`Ordinary income × ${fmtPct(incomeRate)}`}
+            value={`${fmt$(e.income)} → ${fmt$(incomeTax)}`}
+          />
+        )}
+        {e.vesting_cap_gains > 0 && (
+          <TaxRow
+            label={`LT cap gains × ${fmtPct(ltCgRate)}`}
+            value={`${fmt$(e.vesting_cap_gains)} → ${fmt$(cgTax)}`}
+          />
+        )}
+        <div className="my-2 border-t border-orange-200 dark:border-orange-700" />
+        <TaxRow label="Estimated total tax" value={fmt$(totalTax)} bold />
+        {isFuture && sharesToCover > 0 && (
+          <TaxRow label="Sell to cover" value={`≈ ${sharesToCover.toLocaleString()} shares`} />
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function Events() {
   const fetchEvents = useCallback(() => api.getEvents(), [])
   const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
@@ -53,14 +101,26 @@ export default function Events() {
 
   // Per-sale-row inline TaxCard state
   const [breakdowns, setBreakdowns] = useState<Map<number, TaxBreakdown>>(new Map())
-  const [expanded, setExpanded] = useState<Set<number>>(new Set())
+  const [expandedSales, setExpandedSales] = useState<Set<number>>(new Set())
   const [loadingTaxIds, setLoadingTaxIds] = useState<Set<number>>(new Set())
+
+  // Per-vesting-row expansion state (keyed by row index in filtered list)
+  const [expandedVesting, setExpandedVesting] = useState<Set<number>>(new Set())
 
   const ts = taxSettings ?? WI_TAX_DEFAULTS
 
+  function toggleVestingTax(idx: number) {
+    setExpandedVesting(prev => {
+      const next = new Set(prev)
+      if (next.has(idx)) next.delete(idx)
+      else next.add(idx)
+      return next
+    })
+  }
+
   async function toggleSaleTax(saleId: number) {
     if (breakdowns.has(saleId)) {
-      setExpanded(prev => {
+      setExpandedSales(prev => {
         const next = new Set(prev)
         if (next.has(saleId)) next.delete(saleId)
         else next.add(saleId)
@@ -72,7 +132,7 @@ export default function Events() {
     try {
       const tax = await api.getSaleTax(saleId)
       setBreakdowns(prev => new Map(prev).set(saleId, tax))
-      setExpanded(prev => new Set(prev).add(saleId))
+      setExpandedSales(prev => new Set(prev).add(saleId))
     } catch {
       // silently ignore
     } finally {
@@ -120,9 +180,11 @@ export default function Events() {
             {filtered.map((e, i) => {
               const saleId = e.sale_id ?? null
               const bd = saleId != null ? breakdowns.get(saleId) : undefined
-              const isExpanded = saleId != null && expanded.has(saleId)
+              const isSaleExpanded = saleId != null && expandedSales.has(saleId)
+              const isVestingExpanded = expandedVesting.has(i)
               const isLoadingSale = saleId != null && loadingTaxIds.has(saleId)
               const hasST = (e.st_shares ?? 0) > 0
+              const hasVestingTax = e.event_type === 'Vesting' && (e.income > 0 || e.vesting_cap_gains > 0)
 
               return (
                 <>
@@ -188,25 +250,30 @@ export default function Events() {
                             </>
                           )}
                         </button>
-                      ) : e.event_type === 'Vesting' && (e.income > 0 || e.vesting_cap_gains > 0) ? (
-                        <span className="text-orange-600 dark:text-orange-400">
+                      ) : hasVestingTax ? (
+                        <button
+                          onClick={() => toggleVestingTax(i)}
+                          className="text-orange-600 underline decoration-dotted dark:text-orange-400"
+                        >
                           {fmt$(estTaxForVesting(e, ts))}
-                          {e.date > TODAY && e.share_price > 0 && (
-                            <span className="block text-[10px] text-gray-400">
-                              sell ≈{Math.ceil(estTaxForVesting(e, ts) / e.share_price)} to cover
-                            </span>
-                          )}
-                        </span>
+                        </button>
                       ) : e.event_type === 'Share Price' ? (
                         <span className="text-xs text-gray-400 dark:text-gray-600">—*</span>
                       ) : '—'}
                     </td>
                     <td className="px-3 py-2 text-right font-medium text-gray-900 dark:text-gray-100">{fmtNum(e.cum_shares)}</td>
                   </tr>
-                  {isExpanded && bd && (
+                  {isSaleExpanded && bd && (
                     <tr key={`sale-tax-${saleId}`} className="bg-white dark:bg-gray-900">
                       <td colSpan={9} className="px-3 pb-3 pt-0">
                         <TaxCard breakdown={bd} />
+                      </td>
+                    </tr>
+                  )}
+                  {isVestingExpanded && hasVestingTax && (
+                    <tr key={`vesting-tax-${i}`} className="bg-white dark:bg-gray-900">
+                      <td colSpan={9} className="px-3 pb-3 pt-0">
+                        <VestingTaxCard e={e} ts={ts} />
                       </td>
                     </tr>
                   )}

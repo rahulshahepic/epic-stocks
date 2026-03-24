@@ -76,10 +76,10 @@ jobs:
             # Start all services
             docker compose up -d
 
-            # Health check from the VPS itself
-            echo "Waiting for http://localhost/api/health..."
+            # Health check directly against the app container (bypasses Caddy)
+            echo "Waiting for app to be healthy..."
             for i in $(seq 1 24); do
-              if curl -fsS http://localhost/api/health | grep -q '"ok"'; then
+              if docker compose exec -T app curl -fsS http://localhost:8000/api/health | grep -q '"ok"'; then
                 echo "Health check passed."
                 exit 0
               fi

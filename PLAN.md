@@ -501,7 +501,6 @@ Add to `_migrate_schema()` in `main.py`:
 | Item | Notes |
 |------|-------|
 | **SSH: disable password auth** | Two lines in `sshd_config` + reload. See SECURITY_HARDENING.md §3. |
-| **External uptime monitoring** | Configure UptimeRobot / Better Uptime / Cloudflare Health Checks for `/api/health`. Goal: SMS/email alert within 5 min. See SECURITY_HARDENING.md §4. CI-side hardening (Caddy validation + post-deploy health polling) is ✅ done. |
 | **Audit logging** | Log admin actions, failed auth attempts, data deletions to a DB table. Show in admin dashboard. |
 | **DAST scanner in CI** | Add OWASP ZAP to GitHub Actions — scans the running app for vulnerabilities on every PR. |
 | **Migration script** | Convert existing plaintext databases when enabling `ENCRYPTION_MASTER_KEY` for the first time. |

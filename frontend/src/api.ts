@@ -108,6 +108,8 @@ export interface TimelineEvent {
   // Sale event fields
   gross_proceeds?: number | null
   estimated_tax?: number | null
+  st_shares?: number | null
+  sale_id?: number | null
 }
 
 export interface GrantEntry {

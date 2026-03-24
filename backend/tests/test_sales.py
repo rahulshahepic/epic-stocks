@@ -188,6 +188,62 @@ def test_fifo_st_classification():
     assert abs(result["st_rate"] - 0.4845) < 0.0001
 
 
+def test_purchase_grant_holding_period_starts_at_exercise():
+    """Purchase grants (grant_price > 0) use exercise date for LT/ST clock, not vest date.
+    Without this, shares vested recently from an old purchase look short-term even though
+    the employee has held them (and taken price risk) since the exercise date.
+    """
+    exercise_date = date(2018, 12, 31)
+    vest_date = date(2026, 6, 15)   # vested recently — would be ST without fix
+    sale_date = date(2027, 7, 15)   # 395 days after vest, but 8+ years after exercise
+
+    exercise_event = {
+        "date": exercise_date,
+        "event_type": "Exercise",
+        "grant_year": 2018,
+        "grant_type": "Purchase",
+        "grant_price": 1.5,
+        "vested_shares": None,
+    }
+    vesting_event = {
+        "date": vest_date,
+        "event_type": "Vesting",
+        "grant_year": 2018,
+        "grant_type": "Purchase",
+        "grant_price": 1.5,
+        "share_price": 6.59,
+        "vested_shares": 5000,
+    }
+    events = [exercise_event, vesting_event]
+    sale = {"date": sale_date, "shares": 5000, "price_per_share": 6.59}
+    result = compute_sale_tax(events, sale, WI_DEFAULTS)
+    # Clock starts at exercise (2018-12-31), so hold period >> 365 days → LTCG
+    assert result["lt_shares"] == 5000
+    assert result["st_shares"] == 0
+
+
+def test_rsu_grant_holding_period_starts_at_vest():
+    """RSU/income grants (grant_price = 0) still use vest date for LT/ST clock."""
+    vest_date = date(2026, 6, 15)
+    sale_date = date(2027, 7, 15)   # 395 days after vest → LT
+    events = [_make_vesting_event(vest_date, 100, 6.59, grant_price=0.0)]
+    sale = {"date": sale_date, "shares": 100, "price_per_share": 6.59}
+    result = compute_sale_tax(events, sale, WI_DEFAULTS)
+    assert result["lt_shares"] == 100
+    assert result["st_shares"] == 0
+
+
+def test_purchase_grant_without_exercise_event_falls_back_to_vest_date():
+    """If no Exercise event is in the timeline, fall back to vesting date (safe default)."""
+    vest_date = date(2026, 6, 15)
+    sale_date = date(2026, 9, 1)   # <365 days → ST (vest date used as fallback)
+    events = [_make_vesting_event(vest_date, 100, 6.59, grant_price=1.5, grant_type='Purchase')]
+    sale = {"date": sale_date, "shares": 100, "price_per_share": 6.59}
+    result = compute_sale_tax(events, sale, WI_DEFAULTS)
+    assert result["st_shares"] == 100
+    assert result["lt_shares"] == 0
+
+
 def test_fifo_mixed_lt_and_st():
     events = [
         _make_vesting_event(date(2022, 1, 1), 60, 10.0),  # LT on 2023-06-01

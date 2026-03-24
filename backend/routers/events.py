@@ -190,6 +190,7 @@ def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales:
             "cum_cap_gains": cum_cap_gains_at(sd),
             "gross_proceeds": round(s.shares * s.price_per_share, 2),
             "notes": s.notes,
+            "sale_id": s.id,
         })
 
     # Sort: date first, then by event type order
@@ -250,6 +251,7 @@ def _annotate_sale_taxes(enriched: list, timeline: list, ts_dict: dict) -> None:
         price_per_share = round(e["gross_proceeds"] / shares, 10) if shares else 0.0
         result = compute_sale_tax(fifo_tl, {"date": sale_date, "shares": shares, "price_per_share": price_per_share}, ts_dict)
         e["estimated_tax"] = result["estimated_tax"]
+        e["st_shares"] = result["st_shares"]
         prior_sales.append({"date": sale_date, "shares": shares})
 
 

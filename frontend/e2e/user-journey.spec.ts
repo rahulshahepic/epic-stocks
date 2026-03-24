@@ -36,13 +36,13 @@ test.describe('Sales journey', () => {
     await page.getByLabel('Shares').fill('100')
     await page.getByLabel('Price per Share').fill('25.00')
     await page.getByLabel('Notes (optional)').fill('Test sale')
-    await page.getByRole('button', { name: 'Save & Show Tax' }).click()
+    await page.getByRole('button', { name: 'Save' }).click()
 
     // Back to list with 1 sale
     await expect(page.getByText('1 sales')).toBeVisible({ timeout: 5000 })
-    await expect(page.getByText('Test sale')).toBeVisible()
+    await expect(page.getByText('2026-03-01')).toBeVisible()
 
-    // Tax breakdown should be shown
+    // Tax breakdown auto-expands after save
     await expect(page.getByText('Estimated Tax Breakdown')).toBeVisible()
     await expect(page.getByText('Gross proceeds').first()).toBeVisible()
     await expect(page.getByText('Estimated total tax').first()).toBeVisible()
@@ -51,7 +51,7 @@ test.describe('Sales journey', () => {
     await expect(page.getByText('$2,500').first()).toBeVisible()
   })
 
-  test('tax button shows breakdown for existing sale', async ({ page, request }) => {
+  test('tapping tax cell shows breakdown for existing sale', async ({ page, request }) => {
     // Create a sale via API
     const resp = await request.post('/api/sales', {
       headers: { Authorization: `Bearer ${token}` },
@@ -62,8 +62,9 @@ test.describe('Sales journey', () => {
     await navigateTo(page, 'Sales')
     await expect(page.getByText('1 sales')).toBeVisible()
 
-    // Click Tax button
-    await page.getByRole('button', { name: 'Tax' }).first().click()
+    // Tax cell starts as "—" — tap it to load the breakdown
+    const taxCellButton = page.locator('td button').filter({ hasText: '—' }).first()
+    await taxCellButton.click()
     await expect(page.getByText('Estimated Tax Breakdown')).toBeVisible({ timeout: 5000 })
     await expect(page.getByText('Gross proceeds').first()).toBeVisible()
   })
@@ -77,26 +78,28 @@ test.describe('Sales journey', () => {
     expect(resp.ok()).toBeTruthy()
 
     await navigateTo(page, 'Sales')
-    await expect(page.getByText('To delete').first()).toBeVisible()
+    await expect(page.getByText('2026-02-01')).toBeVisible()
 
-    // Edit it
-    await page.getByRole('button', { name: 'Edit' }).first().click()
+    // Edit it via pencil icon
+    await page.getByRole('button', { name: 'Edit sale' }).first().click()
     await expect(page.getByText('Edit Sale')).toBeVisible()
     await page.getByLabel('Shares').fill('250')
-    await page.getByRole('button', { name: 'Save & Show Tax' }).click()
+    await page.getByRole('button', { name: 'Save' }).click()
     await expect(page.getByText('1 sales')).toBeVisible()
 
-    // Delete it
+    // Delete via pencil → edit form → Delete sale button
     page.on('dialog', d => d.accept())
-    await page.getByRole('button', { name: 'Delete' }).first().click()
+    await page.getByRole('button', { name: 'Edit sale' }).first().click()
+    await expect(page.getByText('Edit Sale')).toBeVisible()
+    await page.getByRole('button', { name: 'Delete sale' }).click()
     await expect(page.getByText('No sales recorded yet')).toBeVisible({ timeout: 5000 })
   })
 
-  test('events page shows estimated tax for vesting events', async ({ page }) => {
+  test('events page shows tax column for vesting events', async ({ page }) => {
     await navigateTo(page, 'Events')
     await expect(page.getByText('Events Timeline')).toBeVisible()
-    // Est. Tax column header should be visible
-    await expect(page.getByText('Est. Tax').first()).toBeVisible()
+    // Tax column header should be visible
+    await expect(page.getByText('Tax').first()).toBeVisible()
     // For vesting events with income/cap gains, orange tax amount should appear
     // (The fixture has many vesting events)
     const taxCells = page.locator('span.text-orange-600, span.text-orange-400')

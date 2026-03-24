@@ -1,7 +1,8 @@
 import { useCallback, useState } from 'react'
 import { api } from '../api.ts'
-import type { TimelineEvent, TaxSettings } from '../api.ts'
+import type { TimelineEvent, TaxBreakdown, TaxSettings } from '../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
+import { TaxCard } from './Sales.tsx'
 
 const EVENT_TYPES = ['Exercise', 'Down payment exchange', 'Vesting', 'Share Price', 'Loan Payoff', 'Early Loan Payment', 'Sale']
 
@@ -50,7 +51,34 @@ export default function Events() {
   const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
   const [typeFilter, setTypeFilter] = useState<string>('')
 
+  // Per-sale-row inline TaxCard state
+  const [breakdowns, setBreakdowns] = useState<Map<number, TaxBreakdown>>(new Map())
+  const [expanded, setExpanded] = useState<Set<number>>(new Set())
+  const [loadingTaxIds, setLoadingTaxIds] = useState<Set<number>>(new Set())
+
   const ts = taxSettings ?? WI_TAX_DEFAULTS
+
+  async function toggleSaleTax(saleId: number) {
+    if (breakdowns.has(saleId)) {
+      setExpanded(prev => {
+        const next = new Set(prev)
+        if (next.has(saleId)) next.delete(saleId)
+        else next.add(saleId)
+        return next
+      })
+      return
+    }
+    setLoadingTaxIds(prev => new Set(prev).add(saleId))
+    try {
+      const tax = await api.getSaleTax(saleId)
+      setBreakdowns(prev => new Map(prev).set(saleId, tax))
+      setExpanded(prev => new Set(prev).add(saleId))
+    } catch {
+      // silently ignore
+    } finally {
+      setLoadingTaxIds(prev => { const next = new Set(prev); next.delete(saleId); return next })
+    }
+  }
 
   if (loading) return <p className="p-6 text-center text-sm text-gray-400">Loading...</p>
   if (!events) return <p className="p-6 text-center text-sm text-red-500">Failed to load events</p>
@@ -84,62 +112,111 @@ export default function Events() {
               <th className="px-3 py-2 text-right">Price</th>
               <th className="px-3 py-2 text-right">Income</th>
               <th className="px-3 py-2 text-right">Cap Gains</th>
-              <th className="px-3 py-2 text-right" title="Estimated tax due (income or cap gains events only). Price appreciation is unrealized — not a taxable event.">Est. Tax</th>
+              <th className="px-3 py-2 text-right">Tax</th>
               <th className="px-3 py-2 text-right">Cum Shares</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-            {filtered.map((e, i) => (
-              <tr key={i} className="bg-white dark:bg-gray-900">
-                <td className="whitespace-nowrap px-3 py-2 text-gray-700 dark:text-gray-300">{e.date}</td>
-                <td className="px-3 py-2">
-                  <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${TYPE_COLORS[e.event_type] ?? ''}`}>
-                    {e.event_type}
-                  </span>
-                </td>
-                <td className="whitespace-nowrap px-3 py-2 text-gray-500 dark:text-gray-400">
-                  {e.grant_year ? `${e.grant_year} ${e.grant_type}` : '—'}
-                </td>
-                <td className={`px-3 py-2 text-right ${e.event_type === 'Sale' ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300'}`}>
-                  {e.event_type === 'Early Loan Payment'
-                    ? (e.amount != null ? fmt$(e.amount) : '—')
-                    : fmtNum(e.vested_shares ?? e.granted_shares)}
-                </td>
-                <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtPrice(e.share_price)}</td>
-                <td className="px-3 py-2 text-right text-emerald-600 dark:text-emerald-400">{e.income ? fmt$(e.income) : '—'}</td>
-                <td className="px-3 py-2 text-right text-purple-600 dark:text-purple-400">
-                  {e.event_type === 'Loan Payoff' && e.cash_due != null
-                    ? <span title={e.status === 'covered' ? 'Covered by linked sale' : 'No linked sale — cash required'}>
-                        {fmt$(e.cash_due)}
-                        {' '}
-                        <span className={e.status === 'covered' ? 'text-emerald-600' : 'text-orange-500'}>
-                          {e.status === 'covered' ? '✓' : '!'}
-                        </span>
+            {filtered.map((e, i) => {
+              const saleId = e.sale_id ?? null
+              const bd = saleId != null ? breakdowns.get(saleId) : undefined
+              const isExpanded = saleId != null && expanded.has(saleId)
+              const isLoadingSale = saleId != null && loadingTaxIds.has(saleId)
+              const hasST = (e.st_shares ?? 0) > 0
+
+              return (
+                <>
+                  <tr key={i} className="bg-white dark:bg-gray-900">
+                    <td className="whitespace-nowrap px-3 py-2 text-gray-700 dark:text-gray-300">{e.date}</td>
+                    <td className="px-3 py-2">
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${TYPE_COLORS[e.event_type] ?? ''}`}>
+                        {e.event_type}
                       </span>
-                    : e.event_type === 'Sale' && e.gross_proceeds != null
-                    ? <span className="text-green-600 dark:text-green-400" title="Gross proceeds from sale">{fmt$(e.gross_proceeds)}</span>
-                    : e.total_cap_gains ? fmt$(e.total_cap_gains) : '—'}
-                </td>
-                <td className="px-3 py-2 text-right">
-                  {e.event_type === 'Vesting' && (e.income > 0 || e.vesting_cap_gains > 0) ? (
-                    <span className="text-orange-600 dark:text-orange-400" title={
-                      e.date > TODAY
-                        ? `Future vesting — sell ≈${Math.ceil(estTaxForVesting(e, ts) / e.share_price)} shares to cover`
-                        : 'Income/cap gains tax due at vesting'
-                    }>
-                      {fmt$(estTaxForVesting(e, ts))}
-                    </span>
-                  ) : e.event_type === 'Share Price' ? (
-                    <span className="text-xs text-gray-400 dark:text-gray-600" title="Price appreciation is unrealized — not a taxable event">—*</span>
-                  ) : '—'}
-                </td>
-                <td className="px-3 py-2 text-right font-medium text-gray-900 dark:text-gray-100">{fmtNum(e.cum_shares)}</td>
-              </tr>
-            ))}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-gray-500 dark:text-gray-400">
+                      {e.grant_year ? `${e.grant_year} ${e.grant_type}` : '—'}
+                    </td>
+                    <td className={`px-3 py-2 text-right ${e.event_type === 'Sale' ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300'}`}>
+                      {e.event_type === 'Early Loan Payment'
+                        ? (e.amount != null ? fmt$(e.amount) : '—')
+                        : fmtNum(e.vested_shares ?? e.granted_shares)}
+                    </td>
+                    <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtPrice(e.share_price)}</td>
+                    <td className="px-3 py-2 text-right text-emerald-600 dark:text-emerald-400">{e.income ? fmt$(e.income) : '—'}</td>
+                    <td className="px-3 py-2 text-right text-purple-600 dark:text-purple-400">
+                      {e.event_type === 'Loan Payoff' && e.cash_due != null
+                        ? <span>
+                            {fmt$(e.cash_due)}
+                            {' '}
+                            <span className={e.status === 'covered' ? 'text-emerald-600' : 'text-orange-500'}>
+                              {e.status === 'covered' ? '✓' : '!'}
+                            </span>
+                          </span>
+                        : e.event_type === 'Sale' && e.gross_proceeds != null
+                        ? <span className="text-green-600 dark:text-green-400">{fmt$(e.gross_proceeds)}</span>
+                        : e.total_cap_gains ? fmt$(e.total_cap_gains) : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {e.event_type === 'Sale' && saleId != null ? (
+                        <button
+                          onClick={() => toggleSaleTax(saleId)}
+                          className="inline-flex items-center gap-1"
+                        >
+                          {isLoadingSale ? (
+                            <span className="text-gray-400">...</span>
+                          ) : bd ? (
+                            <>
+                              {hasST && (
+                                <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                                  ST
+                                </span>
+                              )}
+                              <span className={`underline decoration-dotted ${hasST ? 'text-amber-700 dark:text-amber-400' : 'text-orange-600 dark:text-orange-400'}`}>
+                                {fmt$(bd.estimated_tax)}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              {hasST && (
+                                <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                                  ST
+                                </span>
+                              )}
+                              <span className={`underline decoration-dotted ${hasST ? 'text-amber-700 dark:text-amber-400' : 'text-orange-600 dark:text-orange-400'}`}>
+                                {e.estimated_tax != null ? fmt$(e.estimated_tax) : '—'}
+                              </span>
+                            </>
+                          )}
+                        </button>
+                      ) : e.event_type === 'Vesting' && (e.income > 0 || e.vesting_cap_gains > 0) ? (
+                        <span className="text-orange-600 dark:text-orange-400">
+                          {fmt$(estTaxForVesting(e, ts))}
+                          {e.date > TODAY && e.share_price > 0 && (
+                            <span className="block text-[10px] text-gray-400">
+                              sell ≈{Math.ceil(estTaxForVesting(e, ts) / e.share_price)} to cover
+                            </span>
+                          )}
+                        </span>
+                      ) : e.event_type === 'Share Price' ? (
+                        <span className="text-xs text-gray-400 dark:text-gray-600">—*</span>
+                      ) : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right font-medium text-gray-900 dark:text-gray-100">{fmtNum(e.cum_shares)}</td>
+                  </tr>
+                  {isExpanded && bd && (
+                    <tr key={`sale-tax-${saleId}`} className="bg-white dark:bg-gray-900">
+                      <td colSpan={9} className="px-3 pb-3 pt-0">
+                        <TaxCard breakdown={bd} />
+                      </td>
+                    </tr>
+                  )}
+                </>
+              )
+            })}
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-gray-400">{filtered.length} events &nbsp;·&nbsp; * price appreciation is unrealized — not a taxable event &nbsp;·&nbsp; hover Est. Tax for sell-to-cover share count</p>
+      <p className="text-xs text-gray-400">{filtered.length} events &nbsp;·&nbsp; * price appreciation is unrealized — not a taxable event</p>
     </div>
   )
 }

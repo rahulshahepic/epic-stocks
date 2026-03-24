@@ -43,9 +43,12 @@ const WI_TAX_DEFAULTS: TaxSettings = {
 
 function estTaxForVesting(e: TimelineEvent, ts: TaxSettings): number {
   const incomeRate = ts.federal_income_rate + ts.state_income_rate
+  return e.income * incomeRate
+}
+
+function est83bTax(e: TimelineEvent, ts: TaxSettings): number {
   const ltCgRate = ts.federal_lt_cg_rate + ts.niit_rate + ts.state_lt_cg_rate
-  return (e.income > 0 ? e.income * incomeRate : 0)
-       + (e.vesting_cap_gains > 0 ? e.vesting_cap_gains * ltCgRate : 0)
+  return e.income * ltCgRate
 }
 
 function TaxRow({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
@@ -59,10 +62,7 @@ function TaxRow({ label, value, bold }: { label: string; value: string; bold?: b
 
 function VestingTaxCard({ e, ts }: { e: TimelineEvent; ts: TaxSettings }) {
   const incomeRate = ts.federal_income_rate + ts.state_income_rate
-  const ltCgRate = ts.federal_lt_cg_rate + ts.niit_rate + ts.state_lt_cg_rate
-  const incomeTax = e.income > 0 ? e.income * incomeRate : 0
-  const cgTax = e.vesting_cap_gains > 0 ? e.vesting_cap_gains * ltCgRate : 0
-  const totalTax = incomeTax + cgTax
+  const totalTax = e.income * incomeRate
   const sharesToCover = e.share_price > 0 ? Math.ceil(totalTax / e.share_price) : 0
   const isFuture = e.date > TODAY
 
@@ -70,22 +70,39 @@ function VestingTaxCard({ e, ts }: { e: TimelineEvent; ts: TaxSettings }) {
     <div className="rounded-lg border border-orange-200 bg-orange-50 p-4 text-xs dark:border-orange-800 dark:bg-orange-900/20">
       <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">Estimated Tax</h3>
       <div className="space-y-1">
-        {e.income > 0 && (
-          <TaxRow
-            label={`Ordinary income × ${fmtPct(incomeRate)}`}
-            value={`${fmt$(e.income)} → ${fmt$(incomeTax)}`}
-          />
-        )}
-        {e.vesting_cap_gains > 0 && (
-          <TaxRow
-            label={`LT cap gains × ${fmtPct(ltCgRate)}`}
-            value={`${fmt$(e.vesting_cap_gains)} → ${fmt$(cgTax)}`}
-          />
-        )}
+        <TaxRow
+          label={`Ordinary income × ${fmtPct(incomeRate)}`}
+          value={`${fmt$(e.income)} → ${fmt$(totalTax)}`}
+        />
         <div className="my-2 border-t border-orange-200 dark:border-orange-700" />
         <TaxRow label="Estimated total tax" value={fmt$(totalTax)} bold />
         {isFuture && sharesToCover > 0 && (
           <TaxRow label="Sell to cover" value={`≈ ${sharesToCover.toLocaleString()} shares`} />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function Unrealized83bCard({ e, ts }: { e: TimelineEvent; ts: TaxSettings }) {
+  const ltCgRate = ts.federal_lt_cg_rate + ts.niit_rate + ts.state_lt_cg_rate
+  const potentialTax = e.income * ltCgRate
+  const isFuture = e.date > TODAY
+
+  return (
+    <div className="rounded-lg border border-violet-200 bg-violet-50 p-4 text-xs dark:border-violet-800 dark:bg-violet-900/20">
+      <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">83(b) Election — Unrealized Gain</h3>
+      <div className="space-y-1">
+        <TaxRow label="Unrealized gain at vesting" value={fmt$(e.income)} />
+        <TaxRow label="Cost basis (83b at $0)" value="$0" />
+        <div className="my-2 border-t border-violet-200 dark:border-violet-700" />
+        <TaxRow label="No income tax due at vesting" value="$0" />
+        <TaxRow
+          label={`Potential LT cap gains × ${fmtPct(ltCgRate)}`}
+          value={`→ ~${fmt$(potentialTax)}`}
+        />
+        {isFuture && (
+          <p className="pt-1 text-gray-400">Gain realized only upon sale — holding period starts at vesting.</p>
         )}
       </div>
     </div>
@@ -184,7 +201,8 @@ export default function Events() {
               const isVestingExpanded = expandedVesting.has(i)
               const isLoadingSale = saleId != null && loadingTaxIds.has(saleId)
               const hasST = (e.st_shares ?? 0) > 0
-              const hasVestingTax = e.event_type === 'Vesting' && (e.income > 0 || e.vesting_cap_gains > 0)
+              const is83b = e.event_type === 'Vesting' && e.income > 0 && !!e.election_83b
+              const hasVestingTax = e.event_type === 'Vesting' && e.income > 0 && !e.election_83b
 
               return (
                 <>
@@ -204,7 +222,13 @@ export default function Events() {
                         : fmtNum(e.vested_shares ?? e.granted_shares)}
                     </td>
                     <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtPrice(e.share_price)}</td>
-                    <td className="px-3 py-2 text-right text-emerald-600 dark:text-emerald-400">{e.income ? fmt$(e.income) : '—'}</td>
+                    <td className="px-3 py-2 text-right">
+                      {is83b
+                        ? <span className="text-violet-500 dark:text-violet-400">~{fmt$(e.income)}</span>
+                        : e.income
+                        ? <span className="text-emerald-600 dark:text-emerald-400">{fmt$(e.income)}</span>
+                        : '—'}
+                    </td>
                     <td className="px-3 py-2 text-right text-purple-600 dark:text-purple-400">
                       {e.event_type === 'Loan Payoff' && e.cash_due != null
                         ? <span>
@@ -250,6 +274,12 @@ export default function Events() {
                             </>
                           )}
                         </button>
+                      ) : is83b ? (
+                        <button onClick={() => toggleVestingTax(i)}>
+                          <span className="text-violet-500 underline decoration-dotted dark:text-violet-400">
+                            ~{fmt$(est83bTax(e, ts))}
+                          </span>
+                        </button>
                       ) : hasVestingTax ? (
                         <button
                           onClick={() => toggleVestingTax(i)}
@@ -275,6 +305,13 @@ export default function Events() {
                     <tr key={`vesting-tax-${i}`} className="bg-white dark:bg-gray-900">
                       <td colSpan={9} className="px-3 pb-3 pt-0">
                         <VestingTaxCard e={e} ts={ts} />
+                      </td>
+                    </tr>
+                  )}
+                  {isVestingExpanded && is83b && (
+                    <tr key={`83b-tax-${i}`} className="bg-white dark:bg-gray-900">
+                      <td colSpan={9} className="px-3 pb-3 pt-0">
+                        <Unrealized83bCard e={e} ts={ts} />
                       </td>
                     </tr>
                   )}

@@ -88,6 +88,7 @@ class AddBonusRequest(BaseModel):
     vest_start: date
     periods: int
     exercise_date: date
+    election_83b: bool = False
 
     @field_validator("year")
     @classmethod
@@ -230,6 +231,7 @@ def add_bonus(body: AddBonusRequest, user: User = Depends(get_current_user), db:
         shares=body.shares, price=body.price,
         vest_start=body.vest_start, periods=body.periods,
         exercise_date=body.exercise_date, dp_shares=0,
+        election_83b=body.election_83b,
     )
     db.add(grant)
     db.commit()

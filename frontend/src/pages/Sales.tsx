@@ -95,12 +95,38 @@ export function TaxCard({ breakdown }: { breakdown: TaxBreakdown }) {
   const hasLT = breakdown.lt_shares > 0
   const hasST = breakdown.st_shares > 0
   const hasUnvested = breakdown.unvested_shares > 0
+  const lots = breakdown.lots ?? []
   return (
     <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-xs dark:border-green-800 dark:bg-green-900/20">
       <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">Estimated Tax Breakdown</h3>
       {hasUnvested && (
         <div className="mb-3 rounded-md border border-yellow-300 bg-yellow-50 px-3 py-2 text-yellow-800 dark:border-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300">
           Warning: {fmtNum(breakdown.unvested_shares)} shares may not yet be vested and could be taxed as ordinary income.
+        </div>
+      )}
+      {lots.length > 0 && (
+        <div className="mb-3">
+          <table className="w-full">
+            <thead>
+              <tr className="text-gray-400 dark:text-gray-500">
+                <th className="pb-1 text-left font-normal">Grant</th>
+                <th className="pb-1 text-right font-normal">Shares</th>
+                <th className="pb-1 text-right font-normal">LT</th>
+                <th className="pb-1 text-right font-normal">ST</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-green-100 dark:divide-green-900/40">
+              {lots.map((lot, i) => (
+                <tr key={i} className="text-gray-700 dark:text-gray-300">
+                  <td className="py-0.5">{lot.grant_year ?? '—'} {lot.grant_type ?? ''}</td>
+                  <td className="py-0.5 text-right tabular-nums">{fmtNum(lot.shares)}</td>
+                  <td className="py-0.5 text-right tabular-nums">{lot.lt_shares > 0 ? fmtNum(lot.lt_shares) : '—'}</td>
+                  <td className="py-0.5 text-right tabular-nums">{lot.st_shares > 0 ? <span className="text-amber-700 dark:text-amber-400">{fmtNum(lot.st_shares)}</span> : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="mt-2 border-t border-green-200 dark:border-green-700" />
         </div>
       )}
       <div className="space-y-1">

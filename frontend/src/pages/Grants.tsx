@@ -18,6 +18,7 @@ const empty: GrantForm = {
   periods: 4,
   exercise_date: '',
   dp_shares: 0,
+  election_83b: false,
 }
 
 function ConflictBanner({ onReload, onDiscard }: { onReload: () => void; onDiscard: () => void }) {
@@ -192,6 +193,7 @@ export default function Grants() {
             vest_start: form.vest_start,
             periods: form.periods,
             exercise_date: form.exercise_date,
+            election_83b: form.election_83b || undefined,
           })
         }
       } else if (mode === 'edit' && editId != null) {
@@ -351,6 +353,19 @@ export default function Grants() {
               />
             </label>
           )}
+          {form.type !== 'Purchase' && (
+            <label className="col-span-2 flex items-start gap-2 pt-1">
+              <input
+                type="checkbox"
+                checked={!!form.election_83b}
+                onChange={e => setForm(f => ({ ...f, election_83b: e.target.checked }))}
+                className="mt-0.5 rounded border-gray-300 dark:border-gray-600"
+              />
+              <span className="text-xs text-gray-600 dark:text-gray-400">
+                Filed 83(b) election — income recognized at grant time; vesting gains are unrealized cap gains
+              </span>
+            </label>
+          )}
         </div>
 
         {showLoanSection && (
@@ -450,6 +465,9 @@ export default function Grants() {
                     <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${g.type === 'Purchase' ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'}`}>
                       {g.type}
                     </span>
+                    {g.election_83b && (
+                      <span className="ml-1 inline-block rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-medium text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">83(b)</span>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtNum(g.shares)}</td>
                   <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtPrice(g.price)}</td>

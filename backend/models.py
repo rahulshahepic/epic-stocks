@@ -62,6 +62,7 @@ class Loan(Base):
     interest_rate: Mapped[float] = mapped_column(EncryptedFloat, nullable=False)
     due_date: Mapped[date] = mapped_column(Date, nullable=False)
     loan_number: Mapped[str] = mapped_column(EncryptedString, nullable=True)
+    refinances_loan_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("loans.id"), nullable=True)
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
 
     user: Mapped["User"] = relationship(back_populates="loans")

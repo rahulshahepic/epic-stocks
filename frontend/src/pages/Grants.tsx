@@ -223,6 +223,7 @@ export default function Grants() {
               interest_rate: loanRate,
               due_date: loanDueDate,
               loan_number: loanNumber || null,
+              refinances_loan_id: null,
             }, false)
             loanId = newLoan.id
             broadcastChange('loans')

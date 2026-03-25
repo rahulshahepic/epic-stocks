@@ -170,6 +170,14 @@ def create_loan(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if body.refinances_loan_id is not None:
+        ref = db.query(Loan).filter(Loan.id == body.refinances_loan_id, Loan.user_id == user.id).first()
+        if not ref:
+            raise HTTPException(status_code=400, detail="refinances_loan_id references a loan that does not exist or belongs to another user")
+        # Remove any auto-generated payoff sale for the old loan — it never happened
+        old_payoff_sale = db.query(Sale).filter(Sale.loan_id == body.refinances_loan_id, Sale.user_id == user.id).first()
+        if old_payoff_sale:
+            db.delete(old_payoff_sale)
     loan = Loan(**body.model_dump(), user_id=user.id)
     db.add(loan)
     db.commit()
@@ -229,6 +237,17 @@ def update_loan(
     loan = db.query(Loan).filter(Loan.id == loan_id, Loan.user_id == user.id).first()
     if not loan:
         raise HTTPException(status_code=404, detail="Loan not found")
+    if body.refinances_loan_id is not None:
+        ref = db.query(Loan).filter(Loan.id == body.refinances_loan_id, Loan.user_id == user.id).first()
+        if not ref:
+            raise HTTPException(status_code=400, detail="refinances_loan_id references a loan that does not exist or belongs to another user")
+        if body.refinances_loan_id == loan_id:
+            raise HTTPException(status_code=400, detail="A loan cannot refinance itself")
+        # Remove auto-generated payoff sale for the old loan if this is a new refinance link
+        if loan.refinances_loan_id != body.refinances_loan_id:
+            old_payoff_sale = db.query(Sale).filter(Sale.loan_id == body.refinances_loan_id, Sale.user_id == user.id).first()
+            if old_payoff_sale:
+                db.delete(old_payoff_sale)
     submitted_version = body.version
     if submitted_version is not None and loan.version != submitted_version:
         return JSONResponse(

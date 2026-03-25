@@ -897,7 +897,7 @@ export default function Dashboard() {
           </p>
           {config?.epic_onboarding_url && (
             <p className="mt-2 text-xs text-indigo-600 dark:text-indigo-400">
-              On Epic's campus?{' '}
+              On Epic's network?{' '}
               <a
                 href={config.epic_onboarding_url}
                 target="_blank"

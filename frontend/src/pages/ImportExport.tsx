@@ -200,7 +200,7 @@ export default function ImportExport() {
         </div>
         {config?.epic_onboarding_url && (
           <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-            On Epic's campus?{' '}
+            On Epic's network?{' '}
             <a
               href={config.epic_onboarding_url}
               target="_blank"

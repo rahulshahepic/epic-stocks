@@ -21,9 +21,11 @@ const empty: LoanForm = {
   refinances_loan_id: null,
 }
 
-function loanLabel(l: LoanEntry) {
+function loanLabel(l: LoanEntry, refinancedIds?: Set<number>) {
   const num = l.loan_number ? ` #${l.loan_number}` : ''
-  return `${l.grant_year} ${l.grant_type} ${l.loan_type}${num} – ${l.due_date}`
+  const rate = `${(l.interest_rate * 100).toFixed(2)}%`
+  const refinanced = refinancedIds?.has(l.id) ? ' [refinanced]' : ''
+  return `${l.grant_year} ${l.grant_type} ${l.loan_type}${num} – ${rate} – ${l.due_date}${refinanced}`
 }
 
 function ConflictBanner({ onReload, onDiscard }: { onReload: () => void; onDiscard: () => void }) {
@@ -240,12 +242,14 @@ export default function Loans() {
               className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
             >
               <option value="">— None —</option>
-              {(loans ?? [])
-                .filter(l => l.id !== editId)
-                .map(l => (
-                  <option key={l.id} value={l.id}>{loanLabel(l)}</option>
-                ))
-              }
+              {(() => {
+                const refinancedIds = new Set((loans ?? []).map(o => o.refinances_loan_id).filter((id): id is number => id !== null))
+                return (loans ?? [])
+                  .filter(l => l.id !== editId)
+                  .map(l => (
+                    <option key={l.id} value={l.id}>{loanLabel(l, refinancedIds)}</option>
+                  ))
+              })()}
             </select>
             {form.refinances_loan_id && (
               <p className="mt-1 text-[10px] text-amber-600 dark:text-amber-400">

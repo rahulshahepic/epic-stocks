@@ -453,7 +453,7 @@ def download_template():
     _body_cell(ws_loans, 2, 6, 5000.00, "\\$#,##0.00")
     _body_cell(ws_loans, 2, 7, 0.05, "0.00%")
     _body_cell(ws_loans, 2, 8, date(2025, 3, 15), "mm/dd/yyyy")
-    for col, note in [(3, "Purchase or Bonus"), (4, "Interest, Tax, Principal, or Purchase"),
+    for col, note in [(3, "Purchase or Bonus"), (4, "Interest, Tax, or Purchase"),
                       (7, "decimal, e.g. 0.05 = 5%")]:
         ws_loans.cell(row=1, column=col).comment = Comment(note, "Template")
 

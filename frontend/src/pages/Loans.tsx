@@ -50,7 +50,7 @@ function fmt$(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 }
 
-const LOAN_TYPES = ['Interest', 'Tax', 'Principal', 'Purchase']
+const LOAN_TYPES = ['Interest', 'Tax', 'Purchase']
 
 export default function Loans() {
   const fetchLoans = useCallback(() => api.getLoans(), [])
@@ -334,6 +334,7 @@ export default function Loans() {
           <thead className="bg-gray-50 dark:bg-gray-800">
             <tr className="text-gray-500 dark:text-gray-400">
               <th className="px-3 py-2">Grant</th>
+              <th className="px-3 py-2 text-right">Loan Yr</th>
               <th className="px-3 py-2">Type</th>
               <th className="px-3 py-2 text-right">Amount</th>
               <th className="px-3 py-2 text-right">Rate</th>
@@ -359,6 +360,7 @@ export default function Loans() {
                         </span>
                       )}
                     </td>
+                    <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{l.loan_year}</td>
                     <td className="px-3 py-2">
                       <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
                         l.loan_type === 'Interest' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' :

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.ts'
 import { useConfig } from '../hooks/useConfig.ts'
@@ -28,6 +28,7 @@ export default function Login() {
   const btnRef = useRef<HTMLDivElement>(null)
   const config = useConfig()
   const clientId = config?.google_client_id ?? null
+  const [gsiError, setGsiError] = useState<string | null>(null)
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -39,26 +40,47 @@ export default function Login() {
     if (!clientId || !btnRef.current) return
 
     const init = () => {
-      window.google?.accounts.id.initialize({
-        client_id: clientId,
-        callback: async (response) => { await login(response.credential) },
-      })
-      if (btnRef.current) {
-        window.google?.accounts.id.renderButton(btnRef.current, {
-          theme: 'outline',
-          size: 'large',
-          width: 300,
+      if (!window.google) {
+        setGsiError('Google Sign-In failed to load. Check your network connection or disable ad blockers.')
+        return
+      }
+      try {
+        window.google.accounts.id.initialize({
+          client_id: clientId,
+          callback: async (response) => { await login(response.credential) },
         })
+        if (btnRef.current) {
+          window.google.accounts.id.renderButton(btnRef.current, {
+            theme: 'outline',
+            size: 'large',
+            width: 300,
+          })
+        }
+      } catch (e) {
+        setGsiError(`Google Sign-In init failed: ${e instanceof Error ? e.message : String(e)}`)
       }
     }
 
-    // GSI script is loaded in index.html; it may still be loading on first paint
     if (window.google) {
       init()
-    } else {
-      window.addEventListener('load', init, { once: true })
-      return () => window.removeEventListener('load', init)
+      return
     }
+
+    // The GSI script is in index.html (async). Listen to the script element's own
+    // load/error events — more reliable than window load, which doesn't wait for async scripts.
+    const scriptEl = document.querySelector<HTMLScriptElement>('script[src*="accounts.google.com/gsi"]')
+    if (scriptEl) {
+      scriptEl.addEventListener('load', init, { once: true })
+      scriptEl.addEventListener('error', () => {
+        setGsiError('Failed to load Google Sign-In script. Check your network or ad blocker.')
+      }, { once: true })
+      return () => {
+        scriptEl.removeEventListener('load', init)
+      }
+    }
+
+    // Script element not found — GSI was never added to the page
+    setGsiError('Google Sign-In script not found. This is a configuration error.')
   }, [clientId, login])
 
   return (
@@ -71,9 +93,9 @@ export default function Login() {
           Sign in to manage your equity compensation
         </p>
 
-        {error && (
+        {(error || gsiError) && (
           <p className="mb-4 rounded bg-red-50 p-2 text-sm text-red-600 dark:bg-red-900/30 dark:text-red-400">
-            {error}
+            {error ?? gsiError}
           </p>
         )}
 
@@ -81,14 +103,12 @@ export default function Login() {
           <p className="text-sm text-gray-400">Signing in...</p>
         ) : clientId === null ? (
           <p className="text-sm text-gray-400">Loading...</p>
-        ) : (
-          <div ref={btnRef} className="flex justify-center" />
-        )}
-
-        {clientId === '' && (
-          <p className="mt-4 text-xs text-gray-400 dark:text-gray-500">
-            Google Client ID not configured. Set GOOGLE_CLIENT_ID on the server.
+        ) : clientId === '' ? (
+          <p className="text-sm text-red-500">
+            Server is missing GOOGLE_CLIENT_ID — sign-in is not configured.
           </p>
+        ) : gsiError ? null : (
+          <div ref={btnRef} className="flex justify-center" />
         )}
 
         <div className="mt-8 rounded-lg border border-gray-200 bg-white p-4 text-left dark:border-gray-800 dark:bg-gray-900">

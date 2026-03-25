@@ -27,7 +27,7 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 |-------|------|
 | ![Sales Light Mobile](screenshots/sales-light-mobile.png) | ![Sales Dark Mobile](screenshots/sales-dark-mobile.png) |
 
-### Settings (Tax Rates, Lot Selection & Down Payment)
+### Settings (Tax Rates, Lot Selection, Down Payment & Exit Planning)
 
 | Light | Dark |
 |-------|------|
@@ -54,16 +54,18 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 3. **Add your data** — two options:
    - **Import from Excel** — go to **Import**, download the **Sample** (pre-filled with fake data and explanatory cell comments) to see what the format looks like, then fill in your real data and upload. Click "What do the columns mean?" for a plain-English guide to every field.
    - **Add manually** — go to **Grants** and add grants one by one. Then add any **Loans** and their annual interest loans. For bonus/free grants where you filed an **83(b) election**, tick the "Filed 83(b) election" checkbox — vesting events will show unrealized cap gains instead of ordinary income.
-4. **View the Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, interest, tax paid, cash received, next event). Use the **As of** date picker to time-travel. **Today** snaps to the current date; **End** jumps to your last vesting/price date.
-5. **View Events** — the full computed timeline of vesting, exercise, loan payoff, and sale events.
-6. **Record a sale** — go to **Sales**, add a sale. The lot selection method (LIFO/FIFO/same-tranche) and tax rates are set in **Settings → Tax Rates**. For a loan payoff sale, link it to a loan and the share count is auto-sized to cover the full payoff after tax.
-7. **Set up notifications** — go to **Settings → Notifications**. Enable push (browser) or email, then choose timing: day-of, 3 days before, or 1 week before your events. Hit **Send test** to confirm push is working.
-8. **Export your data** — go to **Import/Export → Download Vesting.xlsx** to get a full export at any time.
+4. **View the Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, interest, tax paid, cash received, next event). Use the **As of** date picker to time-travel. **Today** snaps to the current date; **Last event** jumps to your final vesting date; **Exit date** appears when you've configured one (see Settings → Exit Planning) and jumps to your projected liquidation date — showing 0 shares, 0 principal, and net cash.
+5. **View Events** — the full computed timeline of vesting, exercise, loan payoff, and sale events. A **Liquidation (projected)** event is automatically appended at your exit date. Tap it to see the calculation breakdown (shares × price → gross proceeds → est. tax → net). Events after the exit date are dimmed with a "beyond exit horizon" separator.
+6. **Configure your exit date** — go to **Settings → Exit Planning** to set a specific date. The projected liquidation uses shares and price as of that date (even if it's before your last vesting event). Defaults to your last vesting date if not set.
+7. **Record a sale** — go to **Sales**, add a sale. The lot selection method (LIFO/FIFO/same-tranche) and tax rates are set in **Settings → Tax Rates**. For a loan payoff sale, link it to a loan and the share count is auto-sized to cover the full payoff after tax.
+8. **Set up notifications** — go to **Settings → Notifications**. Enable push (browser) or email, then choose timing: day-of, 3 days before, or 1 week before your events. Hit **Send test** to confirm push is working.
+9. **Export your data** — go to **Import/Export → Download Vesting.xlsx** to get a full export at any time.
 
 ## Features
 
-- **Event Timeline** — computed on the fly from grants, prices, and loans. Never stored. Shows income, capital gains, share price, and cumulative totals.
-- **Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, total interest, tax paid, cash received, next event) with an "As of" date picker + interactive charts including an Interest Over Time chart with guaranteed vs. projected interest-on-interest layers. Empty state shows getting-started prompts for new users.
+- **Event Timeline** — computed on the fly from grants, prices, and loans. Never stored. Shows income, capital gains, share price, and cumulative totals. A **Liquidation (projected)** event is auto-injected at the exit date: tap it to see a breakdown (shares × price → gross proceeds → est. tax → net). Events after the exit date are dimmed with a "beyond exit horizon" separator so it's clear they won't occur if you liquidate.
+- **Exit Planning** — set an exit date in Settings → Exit Planning to project a full liquidation at any point, even before your last vesting event. The projection uses only the shares and price available as of that date. Dashboard quick buttons update to include an **Exit date** shortcut; card values at the exit date correctly show 0 shares, 0 loan principal, and net cash (gross proceeds − loans − tax).
+- **Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, total interest, tax paid, cash received, next event) with an **As of** date picker and quick buttons: **Today**, **Last event** (final vesting date), and **Exit date** (when configured). Interactive charts include an Interest Over Time chart with guaranteed vs. projected interest-on-interest layers. Empty state shows getting-started prompts for new users.
 - **Stock Sales** — record share sales with configurable lot selection (LIFO/FIFO/same-tranche), LT/ST capital gains split, and Wisconsin tax calculator. Payoff sales can be linked to loans and auto-sized to cover the cash due after tax (gross-up calculation). Use "Regen payoff sales" on the Loans page to recompute all future payoff sale share counts after changing lot selection.
 - **CRUD Management** — full create/read/update/delete for Grants, Loans, Prices, and Sales.
 - **Quick Flows** — convenience endpoints: "New Purchase" (grant + loan with optional stock down payment), "Annual Price", "Add Bonus".
@@ -259,6 +261,7 @@ epic-stocks/
 │   │   ├── loans.py         # Loan CRUD + bulk
 │   │   ├── prices.py        # Price CRUD
 │   │   ├── events.py        # Computed timeline + dashboard
+│   │   ├── horizon.py       # Exit date settings (projected liquidation)
 │   │   ├── flows.py         # Quick flows (new purchase, bonus, price)
 │   │   ├── import_export.py # Excel import/export + template
 │   │   ├── sales.py         # Sales CRUD + tax breakdown
@@ -323,6 +326,7 @@ All endpoints require `Authorization: Bearer <jwt>` except auth, health, config,
 | GET | `/api/import/template` | Download empty Excel template |
 | GET | `/api/import/sample` | Download sample Excel file pre-filled with fake data and cell comments |
 | GET | `/api/export/excel` | Download Vesting.xlsx with all data |
+| GET/PUT | `/api/horizon-settings` | Get/set exit date for projected liquidation |
 | POST/DELETE | `/api/push/subscribe` | Subscribe/unsubscribe push notifications |
 | GET | `/api/push/status` | Check push subscription status |
 | POST | `/api/push/test` | Send a test push notification to the current user's subscriptions |

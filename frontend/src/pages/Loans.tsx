@@ -18,6 +18,12 @@ const empty: LoanForm = {
   interest_rate: 0,
   due_date: '',
   loan_number: null,
+  refinances_loan_id: null,
+}
+
+function loanLabel(l: LoanEntry) {
+  const num = l.loan_number ? ` #${l.loan_number}` : ''
+  return `${l.grant_year} ${l.grant_type} ${l.loan_type}${num} – ${l.due_date}`
 }
 
 function ConflictBanner({ onReload, onDiscard }: { onReload: () => void; onDiscard: () => void }) {
@@ -85,7 +91,7 @@ export default function Loans() {
   }
 
   function openEdit(l: LoanEntry) {
-    const { id, version, ...rest } = l
+    const { id, version, ...rest } = l  // eslint-disable-line @typescript-eslint/no-unused-vars
     setForm(rest)
     setEditId(id)
     setEditVersion(version)
@@ -226,6 +232,27 @@ export default function Loans() {
           <Field label="Interest Rate (%)" type="number" step="0.01" value={+(form.interest_rate * 100).toFixed(4)} onChange={v => setForm(f => ({ ...f, interest_rate: +v / 100 }))} />
           <Field label="Due Date" type="date" value={form.due_date} onChange={v => setForm(f => ({ ...f, due_date: v }))} />
           <Field label="Loan Number" type="text" value={form.loan_number ?? ''} onChange={v => setForm(f => ({ ...f, loan_number: v || null }))} />
+          <label className="col-span-2 block">
+            <span className="text-xs text-gray-500 dark:text-gray-400">Refinances loan (optional)</span>
+            <select
+              value={form.refinances_loan_id ?? ''}
+              onChange={e => setForm(f => ({ ...f, refinances_loan_id: e.target.value ? +e.target.value : null }))}
+              className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+            >
+              <option value="">— None —</option>
+              {(loans ?? [])
+                .filter(l => l.id !== editId)
+                .map(l => (
+                  <option key={l.id} value={l.id}>{loanLabel(l)}</option>
+                ))
+              }
+            </select>
+            {form.refinances_loan_id && (
+              <p className="mt-1 text-[10px] text-amber-600 dark:text-amber-400">
+                The old loan's payoff event will show as "Refinanced" with $0 cash due. Its auto-generated sale will be removed.
+              </p>
+            )}
+          </label>
         </div>
 
         <div className="space-y-3">
@@ -316,10 +343,18 @@ export default function Loans() {
               const linkedSale = sales?.find(s => s.loan_id === l.id)
               const hasSale = !!linkedSale
               const isExpanded = expandedLoanId === l.id
+              const refinancedByLoan = loans.find(other => other.refinances_loan_id === l.id)
               return (
                 <>
                   <tr key={l.id} className="bg-white dark:bg-gray-900">
-                    <td className="whitespace-nowrap px-3 py-2 text-gray-700 dark:text-gray-300">{l.grant_year} {l.grant_type}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-gray-700 dark:text-gray-300">
+                      {l.grant_year} {l.grant_type}
+                      {refinancedByLoan && (
+                        <span className="ml-1.5 inline-block rounded-full bg-gray-100 px-1.5 py-0.5 text-[9px] font-medium text-gray-400 dark:bg-gray-700 dark:text-gray-500" title={`Refinanced by ${loanLabel(refinancedByLoan)}`}>
+                          Refinanced
+                        </span>
+                      )}
+                    </td>
                     <td className="px-3 py-2">
                       <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
                         l.loan_type === 'Interest' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' :

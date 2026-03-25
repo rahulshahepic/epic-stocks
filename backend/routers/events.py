@@ -76,21 +76,35 @@ def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales:
     # Set of loan_ids covered by a linked sale
     covered_loan_ids = {s.loan_id for s in sales if s.loan_id is not None}
 
+    # Set of loan_ids that were refinanced by another loan (their payoff events become "Refinanced")
+    refinanced_loan_ids: set[int] = {ln.refinances_loan_id for ln in loans_db if ln.refinances_loan_id is not None}
+
     enriched = []
     for e in timeline:
         if e["event_type"] == "Loan Payoff" and e.get("source"):
             idx = e["source"].get("index", -1)
             if 0 <= idx < len(loans_db):
                 loan = loans_db[idx]
-                early_paid = payments_by_loan.get(loan.id, 0.0)
-                cash_due = round(max(0.0, loan.amount - early_paid), 2)
-                enriched.append({
-                    **e,
-                    "loan_db_id": loan.id,
-                    "cash_due": cash_due,
-                    "covered_by_sale": loan.id in covered_loan_ids,
-                    "status": "covered" if loan.id in covered_loan_ids else "planned",
-                })
+                if loan.id in refinanced_loan_ids:
+                    enriched.append({
+                        **e,
+                        "event_type": "Refinanced",
+                        "loan_db_id": loan.id,
+                        "cash_due": 0.0,
+                        "covered_by_sale": False,
+                        "status": "refinanced",
+                        "refinanced": True,
+                    })
+                else:
+                    early_paid = payments_by_loan.get(loan.id, 0.0)
+                    cash_due = round(max(0.0, loan.amount - early_paid), 2)
+                    enriched.append({
+                        **e,
+                        "loan_db_id": loan.id,
+                        "cash_due": cash_due,
+                        "covered_by_sale": loan.id in covered_loan_ids,
+                        "status": "covered" if loan.id in covered_loan_ids else "planned",
+                    })
             else:
                 enriched.append(e)
         else:
@@ -213,7 +227,7 @@ def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales:
     # Sort: date first, then by event type order
     _TYPE_ORDER = {
         "Share Price": 0, "Exercise": 1, "Down payment exchange": 2,
-        "Vesting": 3, "Loan Payoff": 4, "Early Loan Payment": 5, "Sale": 6,
+        "Vesting": 3, "Loan Payoff": 4, "Refinanced": 4, "Early Loan Payment": 5, "Sale": 6,
     }
 
     def sort_key(e):

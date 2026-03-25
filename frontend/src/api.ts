@@ -100,7 +100,7 @@ export interface TimelineEvent {
   loan_db_id?: number | null
   cash_due?: number | null
   covered_by_sale?: boolean
-  status?: 'covered' | 'planned'
+  status?: 'covered' | 'planned' | 'refinanced'
   // Early Loan Payment fields
   loan_id?: number | null
   amount?: number | null
@@ -114,6 +114,8 @@ export interface TimelineEvent {
   election_83b?: boolean
   // Projected liquidation
   is_projected?: boolean
+  // Refinanced loan payoff
+  refinanced?: boolean
 }
 
 export interface GrantEntry {
@@ -148,6 +150,7 @@ export interface LoanEntry {
   interest_rate: number
   due_date: string
   loan_number: string | null
+  refinances_loan_id: number | null
 }
 
 // --- API ---

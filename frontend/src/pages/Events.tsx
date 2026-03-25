@@ -5,7 +5,7 @@ import { useApiData } from '../hooks/useApiData.ts'
 import { TaxCard } from './Sales.tsx'
 import React from 'react'
 
-const EVENT_TYPES = ['Exercise', 'Down payment exchange', 'Vesting', 'Share Price', 'Loan Payoff', 'Early Loan Payment', 'Sale', 'Liquidation (projected)']
+const EVENT_TYPES = ['Exercise', 'Down payment exchange', 'Vesting', 'Share Price', 'Loan Payoff', 'Refinanced', 'Early Loan Payment', 'Sale', 'Liquidation (projected)']
 
 const TYPE_COLORS: Record<string, string> = {
   'Exercise': 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
@@ -13,6 +13,7 @@ const TYPE_COLORS: Record<string, string> = {
   'Vesting': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
   'Share Price': 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
   'Loan Payoff': 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
+  'Refinanced': 'bg-gray-100 text-gray-400 dark:bg-gray-800/60 dark:text-gray-500',
   'Early Loan Payment': 'bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300',
   'Sale': 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
   'Liquidation (projected)': 'bg-gray-100 text-gray-500 dark:bg-gray-800/60 dark:text-gray-400',
@@ -238,6 +239,8 @@ export default function Events() {
                         ? 'cursor-pointer bg-gray-50 opacity-75 dark:bg-gray-900/50'
                         : isPastHorizon
                         ? 'bg-white opacity-40 dark:bg-gray-900'
+                        : e.event_type === 'Refinanced'
+                        ? 'bg-white opacity-50 dark:bg-gray-900'
                         : 'bg-white dark:bg-gray-900',
                     ].join(' ')}
                     onClick={e.is_projected ? () => setExpandedLiq(p => !p) : undefined}

@@ -124,6 +124,7 @@ class LoanCreate(BaseModel):
     interest_rate: float
     due_date: date
     loan_number: str | None = None
+    refinances_loan_id: int | None = None
 
     @field_validator("grant_type")
     @classmethod
@@ -169,6 +170,7 @@ class LoanUpdate(BaseModel):
     interest_rate: float | None = None
     due_date: date | None = None
     loan_number: str | None = None
+    refinances_loan_id: int | None = None
     version: int | None = None
 
     @field_validator("grant_type")
@@ -209,6 +211,7 @@ class LoanUpdate(BaseModel):
 class LoanOut(LoanCreate):
     id: int
     version: int = 1
+    refinances_loan_id: int | None = None
     model_config = {"from_attributes": True}
 
 

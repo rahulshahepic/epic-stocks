@@ -7,6 +7,7 @@ import { api } from '../api.ts'
 import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, TaxSettings, SaleEntry, HorizonSettings } from '../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { useDark } from '../hooks/useDark.ts'
+import { useConfig } from '../hooks/useConfig.ts'
 
 function fmt$(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
@@ -710,6 +711,7 @@ export default function Dashboard() {
   const { data: loans } = useApiData<LoanEntry[]>(fetchLoans)
   const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
   const { data: sales } = useApiData<SaleEntry[]>(fetchSales)
+  const config = useConfig()
   const { data: horizonSettings } = useApiData<HorizonSettings>(fetchHorizon)
   const c = useChartColors()
   const [rangeInterest, setRangeInterest] = useState<DateRange>({ mode: 'all', start: '', end: '' })
@@ -893,6 +895,20 @@ export default function Dashboard() {
           <p className="mt-4 text-xs text-indigo-600 dark:text-indigo-400">
             You'll also need at least one share price (go to <a href="/prices" className="underline">Prices</a>) before events will appear.
           </p>
+          {config?.epic_onboarding_url && (
+            <p className="mt-2 text-xs text-indigo-600 dark:text-indigo-400">
+              On Epic's network?{' '}
+              <a
+                href={config.epic_onboarding_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+              >
+                Use this pre-filled template
+              </a>
+              {' '}with your grant and loan data already filled in.
+            </p>
+          )}
         </div>
       </div>
     )

@@ -5,6 +5,7 @@ interface AppConfig {
   privacy_url: string
   vapid_public_key: string
   email_notifications_available: boolean
+  epic_onboarding_url: string
 }
 
 let cached: AppConfig | null = null
@@ -26,11 +27,12 @@ export function useConfig() {
           privacy_url: data.privacy_url || '',
           vapid_public_key: data.vapid_public_key || '',
           email_notifications_available: !!data.email_notifications_available,
+          epic_onboarding_url: data.epic_onboarding_url || '',
         }
         setConfig(cached)
       })
       .catch(() => {
-        cached = { google_client_id: '', privacy_url: '', vapid_public_key: '', email_notifications_available: false }
+        cached = { google_client_id: '', privacy_url: '', vapid_public_key: '', email_notifications_available: false, epic_onboarding_url: '' }
         setConfig(cached)
       })
   }, [])

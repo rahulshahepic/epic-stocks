@@ -57,7 +57,7 @@ Follow the order in SPEC.md. Build backend first, then frontend. **Every step mu
 ## Remaining Work
 
 | Item | Notes |
-|------|-------|
+|------|---------|
 | **SSH: disable password auth** | Two lines in `sshd_config` + reload. See OPERATIONS.md §3. |
 | **External uptime monitoring** | Configure UptimeRobot / Better Uptime / Cloudflare Health Checks for `/api/health`. Goal: SMS/email alert within 5 min. See OPERATIONS.md §5. |
 | **Database backups** | Automated `pg_dump` off-site (S3/B2). Verify restore procedure. See OPERATIONS.md §6. |

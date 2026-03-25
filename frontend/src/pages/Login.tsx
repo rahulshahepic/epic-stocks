@@ -71,8 +71,19 @@ export default function Login() {
     const existing = document.querySelector<HTMLScriptElement>('script[src="https://accounts.google.com/gsi/client"]')
     if (existing) {
       existing.addEventListener('load', init, { once: true })
-      existing.addEventListener('error', () => {
-        setGsiError('Google Sign-In failed to load. Check your network or disable ad blockers.')
+      existing.addEventListener('error', async () => {
+        let msg: string
+        if (!navigator.onLine) {
+          msg = 'Google Sign-In blocked: device is offline.'
+        } else {
+          try {
+            await fetch('https://accounts.google.com/', { mode: 'no-cors', cache: 'no-store' })
+            msg = 'Google Sign-In script blocked (network is reachable). Likely cause: Content Security Policy or browser ad blocker.'
+          } catch {
+            msg = 'Google Sign-In script blocked (network cannot reach accounts.google.com). Likely cause: VPN, DNS filter, or firewall.'
+          }
+        }
+        setGsiError(msg)
       }, { once: true })
       return
     }
@@ -85,8 +96,23 @@ export default function Login() {
     script.src = 'https://accounts.google.com/gsi/client'
     script.async = true
     script.onload = init
-    script.onerror = () => {
-      setGsiError('Google Sign-In failed to load. Check your network or disable ad blockers.')
+    script.onerror = async () => {
+      // Browser hides cross-origin script load error details. Probe to distinguish causes.
+      let msg: string
+      if (!navigator.onLine) {
+        msg = 'Google Sign-In blocked: device is offline.'
+      } else {
+        try {
+          // mode:no-cors: succeeds if network reaches Google (even with CORS restrictions).
+          // If this succeeds but the script failed, it's CSP script-src or an ad blocker
+          // intercepting at the extension/browser level rather than the network level.
+          await fetch('https://accounts.google.com/', { mode: 'no-cors', cache: 'no-store' })
+          msg = 'Google Sign-In script blocked (network is reachable). Likely cause: Content Security Policy header or browser ad blocker blocking accounts.google.com.'
+        } catch {
+          msg = 'Google Sign-In script blocked (network cannot reach accounts.google.com). Likely cause: VPN, DNS filter (Pi-hole etc.), firewall, or ISP blocking.'
+        }
+      }
+      setGsiError(msg)
     }
     document.head.appendChild(script)
   }, [clientId, login])

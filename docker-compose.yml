@@ -50,7 +50,7 @@ services:
       - DOMAIN=${DOMAIN:-localhost}
       - TRUSTED_PROXY_IPS=${TRUSTED_PROXY_IPS:-}
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./caddy:/etc/caddy
       - caddy_data:/data
     depends_on:
       - app

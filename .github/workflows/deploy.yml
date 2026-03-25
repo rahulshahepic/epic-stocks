@@ -77,5 +77,6 @@ jobs:
             docker compose up -d --wait --wait-timeout 120
 
             # Reload Caddy config without dropping connections (bind-mounted Caddyfile
-            # is not picked up automatically by docker compose up)
-            docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
+            # is not picked up automatically by docker compose up).
+            # -T disables TTY allocation so this works in non-interactive SSH sessions.
+            docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile

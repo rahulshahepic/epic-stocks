@@ -41,7 +41,7 @@ export default function Login() {
 
     const init = () => {
       if (!window.google) {
-        setGsiError('Google Sign-In failed to load. Check your network connection or disable ad blockers.')
+        setGsiError('Google Sign-In library unavailable after loading. Try refreshing.')
         return
       }
       try {
@@ -57,30 +57,38 @@ export default function Login() {
           })
         }
       } catch (e) {
-        setGsiError(`Google Sign-In init failed: ${e instanceof Error ? e.message : String(e)}`)
+        setGsiError(`Google Sign-In error: ${e instanceof Error ? e.message : String(e)}`)
       }
     }
 
+    // Already loaded (e.g. component remount) — call directly
     if (window.google) {
       init()
       return
     }
 
-    // The GSI script is in index.html (async). Listen to the script element's own
-    // load/error events — more reliable than window load, which doesn't wait for async scripts.
-    const scriptEl = document.querySelector<HTMLScriptElement>('script[src*="accounts.google.com/gsi"]')
-    if (scriptEl) {
-      scriptEl.addEventListener('load', init, { once: true })
-      scriptEl.addEventListener('error', () => {
-        setGsiError('Failed to load Google Sign-In script. Check your network or ad blocker.')
+    // Script may already be in the DOM from a prior render cycle
+    const existing = document.querySelector<HTMLScriptElement>('script[src="https://accounts.google.com/gsi/client"]')
+    if (existing) {
+      existing.addEventListener('load', init, { once: true })
+      existing.addEventListener('error', () => {
+        setGsiError('Google Sign-In failed to load. Check your network or disable ad blockers.')
       }, { once: true })
-      return () => {
-        scriptEl.removeEventListener('load', init)
-      }
+      return
     }
 
-    // Script element not found — GSI was never added to the page
-    setGsiError('Google Sign-In script not found. This is a configuration error.')
+    // First load — inject script with handlers set before appending,
+    // so no load/error event can fire before we're listening.
+    // Intentionally no cleanup: removing the script would cause a re-injection
+    // race on remount and lose window.google.
+    const script = document.createElement('script')
+    script.src = 'https://accounts.google.com/gsi/client'
+    script.async = true
+    script.onload = init
+    script.onerror = () => {
+      setGsiError('Google Sign-In failed to load. Check your network or disable ad blockers.')
+    }
+    document.head.appendChild(script)
   }, [clientId, login])
 
   return (

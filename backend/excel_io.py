@@ -16,6 +16,7 @@ def read_grants_from_excel(ws):
         yr = ws.cell(row=i, column=1).value
         if yr is None:
             break
+        v83b = ws.cell(row=i, column=9).value
         grants.append({
             'year': int(yr),
             'type': ws.cell(row=i, column=2).value,
@@ -25,6 +26,7 @@ def read_grants_from_excel(ws):
             'periods': int(ws.cell(row=i, column=6).value),
             'exercise_date': ws.cell(row=i, column=7).value,
             'dp_shares': int(ws.cell(row=i, column=8).value or 0),
+            'election_83b': bool(v83b) if v83b is not None else False,
         })
     return grants
 
@@ -46,6 +48,7 @@ def read_loans_from_excel(ws):
         amt = ws.cell(row=i, column=6).value
         if amt is None:
             break
+        ref = ws.cell(row=i, column=9).value
         loans.append({
             'loan_number': ws.cell(row=i, column=1).value,
             'grant_yr': ws.cell(row=i, column=2).value,
@@ -55,8 +58,41 @@ def read_loans_from_excel(ws):
             'amount': float(amt),
             'interest_rate': float(ws.cell(row=i, column=7).value),
             'due': ws.cell(row=i, column=8).value,
+            'refinances_loan_number': str(ref).strip() if ref is not None else None,
         })
     return loans
+
+
+def read_loan_payments_from_excel(ws):
+    payments = []
+    for i in range(2, 1000):
+        loan_num = ws.cell(row=i, column=1).value
+        if loan_num is None:
+            break
+        payments.append({
+            'loan_number': str(loan_num).strip(),
+            'date': ws.cell(row=i, column=2).value,
+            'amount': float(ws.cell(row=i, column=3).value),
+            'notes': str(ws.cell(row=i, column=4).value or ''),
+        })
+    return payments
+
+
+def read_sales_from_excel(ws):
+    sales = []
+    for i in range(2, 1000):
+        d = ws.cell(row=i, column=1).value
+        if d is None:
+            break
+        loan_num = ws.cell(row=i, column=5).value
+        sales.append({
+            'date': d,
+            'shares': int(ws.cell(row=i, column=2).value),
+            'price': float(ws.cell(row=i, column=3).value),
+            'notes': str(ws.cell(row=i, column=4).value or ''),
+            'loan_number': str(loan_num).strip() if loan_num is not None else None,
+        })
+    return sales
 
 
 def read_all_from_excel(filepath):

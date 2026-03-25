@@ -10,9 +10,10 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import User, Grant, Loan, Price, Sale, ImportBackup
+from models import User, Grant, Loan, Price, Sale, LoanPayment, ImportBackup
 from auth import get_current_user
-from excel_io import read_grants_from_excel, read_prices_from_excel, read_loans_from_excel, write_events_to_excel
+from excel_io import (read_grants_from_excel, read_prices_from_excel, read_loans_from_excel,
+                      read_loan_payments_from_excel, read_sales_from_excel, write_events_to_excel)
 from timeline_cache import get_timeline
 from schemas import LOAN_TYPES
 
@@ -106,6 +107,43 @@ def _validate_loan(ln: dict, row: int) -> list[str]:
     return errors
 
 
+def _validate_loan_payment(lp: dict, row: int) -> list[str]:
+    errors = []
+    if not str(lp.get("loan_number") or "").strip():
+        errors.append(f"Row {row}: Loan # is required")
+    d = lp.get("date")
+    if d is None:
+        errors.append(f"Row {row}: date is required")
+    else:
+        try:
+            _to_date(d)
+        except Exception:
+            errors.append(f"Row {row}: date is not a valid date")
+    amt = lp.get("amount")
+    if not isinstance(amt, (int, float)) or float(amt) <= 0:
+        errors.append(f"Row {row}: amount must be positive")
+    return errors
+
+
+def _validate_sale(s: dict, row: int) -> list[str]:
+    errors = []
+    d = s.get("date")
+    if d is None:
+        errors.append(f"Row {row}: date is required")
+    else:
+        try:
+            _to_date(d)
+        except Exception:
+            errors.append(f"Row {row}: date is not a valid date")
+    shares = s.get("shares")
+    if not isinstance(shares, (int, float)) or int(shares) <= 0:
+        errors.append(f"Row {row}: shares must be positive")
+    price = s.get("price")
+    if not isinstance(price, (int, float)) or float(price) <= 0:
+        errors.append(f"Row {row}: price must be positive")
+    return errors
+
+
 def _validate_price(p: dict, row: int) -> list[str]:
     errors = []
     d = p.get("date")
@@ -160,27 +198,36 @@ def import_excel(
     grants_raw = []
     prices_raw = []
     loans_raw = []
+    loan_payments_raw = []
+    sales_raw = []
     has_schedule = "schedule" in sheet_names
     has_prices = "prices" in sheet_names
     has_loans = "loans" in sheet_names
+    has_loan_payments = "loanpayments" in sheet_names
+    has_sales = "sales" in sheet_names
 
-    if not has_schedule and not has_prices and not has_loans:
+    if not any([has_schedule, has_prices, has_loans, has_loan_payments, has_sales]):
         wb.close()
         raise HTTPException(
             status_code=400,
-            detail="No recognized sheets found. Expected one or more of: Schedule, Prices, Loans"
+            detail="No recognized sheets found. Expected one or more of: Schedule, Prices, Loans, LoanPayments, Sales"
         )
+
+    def _ws(name):
+        idx = [s.lower() for s in wb.sheetnames].index(name)
+        return wb[wb.sheetnames[idx]]
 
     try:
         if has_schedule:
-            ws_name = wb.sheetnames[[s.lower() for s in wb.sheetnames].index("schedule")]
-            grants_raw = read_grants_from_excel(wb[ws_name])
+            grants_raw = read_grants_from_excel(_ws("schedule"))
         if has_prices:
-            ws_name = wb.sheetnames[[s.lower() for s in wb.sheetnames].index("prices")]
-            prices_raw = read_prices_from_excel(wb[ws_name])
+            prices_raw = read_prices_from_excel(_ws("prices"))
         if has_loans:
-            ws_name = wb.sheetnames[[s.lower() for s in wb.sheetnames].index("loans")]
-            loans_raw = read_loans_from_excel(wb[ws_name])
+            loans_raw = read_loans_from_excel(_ws("loans"))
+        if has_loan_payments:
+            loan_payments_raw = read_loan_payments_from_excel(_ws("loanpayments"))
+        if has_sales:
+            sales_raw = read_sales_from_excel(_ws("sales"))
     except Exception as e:
         wb.close()
         raise HTTPException(status_code=400, detail=f"Failed to parse Excel file: {e}")
@@ -195,6 +242,10 @@ def import_excel(
         all_errors.extend(_validate_price(p, i + 2))
     for i, ln in enumerate(loans_raw):
         all_errors.extend(_validate_loan(ln, i + 2))
+    for i, lp in enumerate(loan_payments_raw):
+        all_errors.extend(_validate_loan_payment(lp, i + 2))
+    for i, s in enumerate(sales_raw):
+        all_errors.extend(_validate_sale(s, i + 2))
 
     # Check for duplicate (year, type) within the imported grants
     seen_grants: set[tuple] = set()
@@ -208,15 +259,17 @@ def import_excel(
         raise HTTPException(status_code=400, detail="Validation errors:\n" + "\n".join(all_errors))
 
     # Snapshot current data before wiping (keep last 3 backups per user)
-    _save_import_backup(user.id, has_schedule, has_prices, has_loans, db)
+    _save_import_backup(user.id, has_schedule, has_prices, has_loans, has_loan_payments, has_sales, db)
 
-    # Only wipe data types that were in the uploaded file
+    # Wipe in FK-safe order: sales → loan_payments → loans → grants/prices
+    if has_sales or has_loans:
+        db.query(Sale).filter(Sale.user_id == user.id).delete()
+    if has_loan_payments or has_loans:
+        db.query(LoanPayment).filter(LoanPayment.user_id == user.id).delete()
+    if has_loans:
+        db.query(Loan).filter(Loan.user_id == user.id).delete()
     if has_schedule:
         db.query(Grant).filter(Grant.user_id == user.id).delete()
-    if has_loans:
-        # Remove loan-linked payoff sales first to avoid orphaned loan_id references
-        db.query(Sale).filter(Sale.user_id == user.id, Sale.loan_id.isnot(None)).delete()
-        db.query(Loan).filter(Loan.user_id == user.id).delete()
     if has_prices:
         db.query(Price).filter(Price.user_id == user.id).delete()
 
@@ -231,6 +284,7 @@ def import_excel(
             periods=g["periods"],
             exercise_date=_to_date(g["exercise_date"]),
             dp_shares=g.get("dp_shares", 0),
+            election_83b=g.get("election_83b", False),
         ))
 
     for p in prices_raw:
@@ -240,8 +294,10 @@ def import_excel(
             price=p["price"],
         ))
 
+    # Insert loans without refinances_loan_id first, then resolve in a second pass
+    inserted_loans: list[tuple[dict, Loan]] = []
     for ln in loans_raw:
-        db.add(Loan(
+        loan_obj = Loan(
             user_id=user.id,
             grant_year=_to_year(ln["grant_yr"]),
             grant_type=ln["grant_type"],
@@ -251,12 +307,68 @@ def import_excel(
             interest_rate=ln["interest_rate"],
             due_date=_to_date(ln["due"]),
             loan_number=str(ln.get("loan_number") or ""),
-        ))
+        )
+        db.add(loan_obj)
+        inserted_loans.append((ln, loan_obj))
+
+    db.flush()  # assign IDs so we can build the loan_number → id map
+
+    # Second pass: resolve refinances_loan_id by loan_number
+    loan_num_to_id: dict[str, int] = {}
+    for _, loan_obj in inserted_loans:
+        num = (loan_obj.loan_number or "").strip()
+        if num and num not in loan_num_to_id:
+            loan_num_to_id[num] = loan_obj.id
+    # Also include any pre-existing loans not being replaced
+    if not has_loans:
+        existing = db.query(Loan).filter(Loan.user_id == user.id).all()
+        for ln in existing:
+            num = (ln.loan_number or "").strip()
+            if num and num not in loan_num_to_id:
+                loan_num_to_id[num] = ln.id
+
+    for ln_raw, loan_obj in inserted_loans:
+        ref_num = str(ln_raw.get("refinances_loan_number") or "").strip()
+        if ref_num and ref_num in loan_num_to_id:
+            loan_obj.refinances_loan_id = loan_num_to_id[ref_num]
 
     db.commit()
 
+    # Insert loan payments (loan_num_to_id already built above)
+    payments_created = 0
+    for lp in loan_payments_raw:
+        num = str(lp.get("loan_number") or "").strip()
+        lid = loan_num_to_id.get(num)
+        if lid:
+            db.add(LoanPayment(
+                user_id=user.id,
+                loan_id=lid,
+                date=_to_date(lp["date"]),
+                amount=lp["amount"],
+                notes=lp.get("notes") or "",
+            ))
+            payments_created += 1
+
+    # Insert sales (skip auto-generate if Sales sheet provided)
+    sales_created = 0
+    for s in sales_raw:
+        loan_num = str(s.get("loan_number") or "").strip()
+        lid = loan_num_to_id.get(loan_num) if loan_num else None
+        db.add(Sale(
+            user_id=user.id,
+            date=_to_date(s["date"]),
+            shares=s["shares"],
+            price_per_share=s["price"],
+            notes=s.get("notes") or "",
+            loan_id=lid,
+        ))
+        sales_created += 1
+
+    if payments_created or sales_created:
+        db.commit()
+
     payoff_sales_created = 0
-    if has_loans and generate_payoff_sales:
+    if has_loans and not has_sales and generate_payoff_sales:
         from routers.loans import _compute_payoff_sale
         new_loans = db.query(Loan).filter(Loan.user_id == user.id).all()
         for ln in new_loans:
@@ -277,12 +389,18 @@ def import_excel(
         if payoff_sales_created:
             db.commit()
 
+    sheets = [
+        ("Schedule", has_schedule), ("Prices", has_prices), ("Loans", has_loans),
+        ("LoanPayments", has_loan_payments), ("Sales", has_sales),
+    ]
     return {
         "grants": len(grants_raw),
         "prices": len(prices_raw),
         "loans": len(loans_raw),
+        "loan_payments": payments_created,
+        "sales": sales_created,
         "payoff_sales": payoff_sales_created,
-        "sheets_imported": [s for s, present in [("Schedule", has_schedule), ("Prices", has_prices), ("Loans", has_loans)] if present],
+        "sheets_imported": [s for s, present in sheets if present],
     }
 
 
@@ -290,35 +408,58 @@ def import_excel(
 # BACKUP HELPERS & ENDPOINTS
 # ============================================================
 
-def _save_import_backup(user_id: int, has_schedule: bool, has_prices: bool, has_loans: bool, db: Session):
+def _save_import_backup(user_id: int, has_schedule: bool, has_prices: bool, has_loans: bool,
+                        has_loan_payments: bool, has_sales: bool, db: Session):
     """Snapshot the affected data types before an import overwrites them."""
     grants = []
     prices = []
     loans = []
+    loan_payments = []
+    sales = []
     if has_schedule:
         for g in db.query(Grant).filter(Grant.user_id == user_id).all():
             grants.append({
                 "year": g.year, "type": g.type, "shares": g.shares, "price": g.price,
                 "vest_start": str(g.vest_start), "periods": g.periods,
                 "exercise_date": str(g.exercise_date), "dp_shares": g.dp_shares or 0,
+                "election_83b": bool(g.election_83b),
             })
     if has_prices:
         for p in db.query(Price).filter(Price.user_id == user_id).all():
             prices.append({"effective_date": str(p.effective_date), "price": p.price})
     if has_loans:
-        for ln in db.query(Loan).filter(Loan.user_id == user_id).all():
+        all_loans = db.query(Loan).filter(Loan.user_id == user_id).all()
+        loan_id_to_num = {ln.id: ln.loan_number or "" for ln in all_loans}
+        for ln in all_loans:
             loans.append({
                 "grant_year": ln.grant_year, "grant_type": ln.grant_type,
                 "loan_type": ln.loan_type, "loan_year": ln.loan_year,
                 "amount": ln.amount, "interest_rate": ln.interest_rate,
                 "due_date": str(ln.due_date), "loan_number": ln.loan_number or "",
+                "refinances_loan_number": loan_id_to_num.get(ln.refinances_loan_id, "") if ln.refinances_loan_id else "",
+            })
+    if has_loans or has_loan_payments:
+        for lp in db.query(LoanPayment).filter(LoanPayment.user_id == user_id).all():
+            all_loans_for_num = db.query(Loan).filter(Loan.id == lp.loan_id).first()
+            loan_payments.append({
+                "loan_number": all_loans_for_num.loan_number if all_loans_for_num else "",
+                "date": str(lp.date), "amount": lp.amount, "notes": lp.notes or "",
+            })
+    if has_loans or has_sales:
+        all_loans_map = {ln.id: ln.loan_number for ln in db.query(Loan).filter(Loan.user_id == user_id).all()}
+        for s in db.query(Sale).filter(Sale.user_id == user_id).all():
+            sales.append({
+                "date": str(s.date), "shares": s.shares, "price": s.price_per_share,
+                "notes": s.notes or "",
+                "loan_number": all_loans_map.get(s.loan_id, "") if s.loan_id else "",
             })
 
-    if not grants and not prices and not loans:
+    if not grants and not prices and not loans and not loan_payments and not sales:
         return  # Nothing to back up
 
     db.add(ImportBackup(user_id=user_id, data_json=json.dumps(
-        {"grants": grants, "prices": prices, "loans": loans}
+        {"grants": grants, "prices": prices, "loans": loans,
+         "loan_payments": loan_payments, "sales": sales}
     )))
     db.flush()  # ensure new backup is visible in the trimming query
     # Trim to last _MAX_BACKUPS_PER_USER
@@ -338,6 +479,8 @@ class BackupOut(BaseModel):
     grant_count: int
     price_count: int
     loan_count: int
+    loan_payment_count: int = 0
+    sale_count: int = 0
 
 
 @router.get("/import/backups", response_model=list[BackupOut])
@@ -357,6 +500,8 @@ def list_import_backups(user: User = Depends(get_current_user), db: Session = De
             grant_count=len(data.get("grants", [])),
             price_count=len(data.get("prices", [])),
             loan_count=len(data.get("loans", [])),
+            loan_payment_count=len(data.get("loan_payments", [])),
+            sale_count=len(data.get("sales", [])),
         ))
     return result
 
@@ -377,14 +522,20 @@ def restore_import_backup(
     grants = data.get("grants", [])
     prices = data.get("prices", [])
     loans = data.get("loans", [])
+    loan_payments = data.get("loan_payments", [])
+    sales = data.get("sales", [])
 
+    # Wipe in FK-safe order
+    if loans or sales:
+        db.query(Sale).filter(Sale.user_id == user.id).delete()
+    if loans or loan_payments:
+        db.query(LoanPayment).filter(LoanPayment.user_id == user.id).delete()
+    if loans:
+        db.query(Loan).filter(Loan.user_id == user.id).delete()
     if grants:
         db.query(Grant).filter(Grant.user_id == user.id).delete()
     if prices:
         db.query(Price).filter(Price.user_id == user.id).delete()
-    if loans:
-        db.query(Sale).filter(Sale.user_id == user.id, Sale.loan_id.isnot(None)).delete()
-        db.query(Loan).filter(Loan.user_id == user.id).delete()
 
     for g in grants:
         db.add(Grant(
@@ -392,15 +543,53 @@ def restore_import_backup(
             shares=g["shares"], price=g["price"],
             vest_start=_to_date(g["vest_start"]), periods=g["periods"],
             exercise_date=_to_date(g["exercise_date"]), dp_shares=g.get("dp_shares", 0),
+            election_83b=g.get("election_83b", False),
         ))
     for p in prices:
         db.add(Price(user_id=user.id, effective_date=_to_date(p["effective_date"]), price=p["price"]))
+
+    inserted_loans: list[tuple[dict, Loan]] = []
     for ln in loans:
-        db.add(Loan(
+        loan_obj = Loan(
             user_id=user.id, grant_year=ln["grant_year"], grant_type=ln["grant_type"],
             loan_type=ln["loan_type"], loan_year=ln["loan_year"],
             amount=ln["amount"], interest_rate=ln["interest_rate"],
             due_date=_to_date(ln["due_date"]), loan_number=ln.get("loan_number", ""),
+        )
+        db.add(loan_obj)
+        inserted_loans.append((ln, loan_obj))
+
+    db.flush()
+
+    loan_num_to_id: dict[str, int] = {}
+    for _, loan_obj in inserted_loans:
+        num = (loan_obj.loan_number or "").strip()
+        if num and num not in loan_num_to_id:
+            loan_num_to_id[num] = loan_obj.id
+
+    for ln_raw, loan_obj in inserted_loans:
+        ref_num = str(ln_raw.get("refinances_loan_number") or "").strip()
+        if ref_num and ref_num in loan_num_to_id:
+            loan_obj.refinances_loan_id = loan_num_to_id[ref_num]
+
+    db.commit()
+
+    for lp in loan_payments:
+        num = str(lp.get("loan_number") or "").strip()
+        lid = loan_num_to_id.get(num)
+        if lid:
+            db.add(LoanPayment(
+                user_id=user.id, loan_id=lid,
+                date=_to_date(lp["date"]), amount=lp["amount"], notes=lp.get("notes") or "",
+            ))
+
+    for s in sales:
+        loan_num = str(s.get("loan_number") or "").strip()
+        lid = loan_num_to_id.get(loan_num) if loan_num else None
+        db.add(Sale(
+            user_id=user.id, date=_to_date(s["date"]),
+            shares=s["shares"], price_per_share=s["price"],
+            notes=s.get("notes") or "", loan_id=lid,
         ))
 
     db.commit()
@@ -408,6 +597,8 @@ def restore_import_backup(
         "restored_grants": len(grants),
         "restored_prices": len(prices),
         "restored_loans": len(loans),
+        "restored_loan_payments": len(loan_payments),
+        "restored_sales": len(sales),
     }
 
 
@@ -423,10 +614,8 @@ def download_template():
     # Schedule sheet
     ws = wb.active
     ws.title = "Schedule"
-    sched_headers = ["Year", "Type", "Shares", "Price", "Vest Start", "Periods",
-                     "Exercise Date", "DP Shares"]
-    _write_headers(ws, sched_headers)
-    # Example row
+    _write_headers(ws, ["Year", "Type", "Shares", "Price", "Vest Start", "Periods",
+                        "Exercise Date", "DP Shares", "83(b)"])
     _body_cell(ws, 2, 1, 2020)
     _body_cell(ws, 2, 2, "Purchase")
     _body_cell(ws, 2, 3, 10000)
@@ -435,16 +624,16 @@ def download_template():
     _body_cell(ws, 2, 6, 5)
     _body_cell(ws, 2, 7, date(2030, 3, 15), "mm/dd/yyyy")
     _body_cell(ws, 2, 8, 0)
-    # Add hints as cell comments on headers (avoids extra rows that break import)
+    _body_cell(ws, 2, 9, False)
     for col, note in [(1, "e.g. 2020"), (2, "Purchase or Bonus"), (3, "# of shares"),
-                      (4, "$ per share"), (5, "mm/dd/yyyy"), (6, "# vesting periods")]:
+                      (4, "$ per share"), (5, "mm/dd/yyyy"), (6, "# vesting periods"),
+                      (9, "TRUE if an 83(b) election was filed for this grant, else FALSE")]:
         ws.cell(row=1, column=col).comment = Comment(note, "Template")
 
     # Loans sheet
     ws_loans = wb.create_sheet("Loans")
-    loan_headers = ["Loan #", "Grant Year", "Grant Type", "Loan Type", "Loan Year",
-                    "Amount", "Rate", "Due Date"]
-    _write_headers(ws_loans, loan_headers)
+    _write_headers(ws_loans, ["Loan #", "Grant Year", "Grant Type", "Loan Type", "Loan Year",
+                               "Amount", "Rate", "Due Date", "Refinances Loan #"])
     _body_cell(ws_loans, 2, 1, "L001")
     _body_cell(ws_loans, 2, 2, 2020)
     _body_cell(ws_loans, 2, 3, "Purchase")
@@ -454,8 +643,19 @@ def download_template():
     _body_cell(ws_loans, 2, 7, 0.05, "0.00%")
     _body_cell(ws_loans, 2, 8, date(2025, 3, 15), "mm/dd/yyyy")
     for col, note in [(3, "Purchase or Bonus"), (4, "Interest, Tax, or Purchase"),
-                      (7, "decimal, e.g. 0.05 = 5%")]:
+                      (7, "decimal, e.g. 0.05 = 5%"),
+                      (9, "Loan # of the loan this one refinances (leave blank if none)")]:
         ws_loans.cell(row=1, column=col).comment = Comment(note, "Template")
+
+    # LoanPayments sheet
+    ws_lp = wb.create_sheet("LoanPayments")
+    _write_headers(ws_lp, ["Loan #", "Date", "Amount", "Notes"])
+    _body_cell(ws_lp, 2, 1, "L001")
+    _body_cell(ws_lp, 2, 2, date(2024, 6, 1), "mm/dd/yyyy")
+    _body_cell(ws_lp, 2, 3, 1000.00, "\\$#,##0.00")
+    _body_cell(ws_lp, 2, 4, "")
+    ws_lp.cell(row=1, column=1).comment = Comment("Loan # from the Loans sheet", "Template")
+    ws_lp.cell(row=1, column=3).comment = Comment("Cash amount paid early against this loan", "Template")
 
     # Prices sheet
     ws_prices = wb.create_sheet("Prices")
@@ -463,6 +663,18 @@ def download_template():
     _body_cell(ws_prices, 2, 1, date(2020, 1, 1), "mm/dd/yyyy")
     _body_cell(ws_prices, 2, 2, 5.00, "\\$#,##0.00")
     ws_prices.cell(row=1, column=1).comment = Comment("One row per annual price update", "Template")
+
+    # Sales sheet
+    ws_sales_t = wb.create_sheet("Sales")
+    _write_headers(ws_sales_t, ["Date", "Shares", "Price", "Notes", "Loan #"])
+    _body_cell(ws_sales_t, 2, 1, date(2025, 3, 15), "mm/dd/yyyy")
+    _body_cell(ws_sales_t, 2, 2, 500, "#,##0")
+    _body_cell(ws_sales_t, 2, 3, 5.00, "\\$#,##0.00")
+    _body_cell(ws_sales_t, 2, 4, "")
+    _body_cell(ws_sales_t, 2, 5, None)
+    ws_sales_t.cell(row=1, column=5).comment = Comment(
+        "Loan # from the Loans sheet — fill in if this sale was to cover a loan payoff", "Template"
+    )
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -632,10 +844,12 @@ def download_sample():
 # ============================================================
 
 _SCHED_HEADERS = ["Year", "Type", "Shares", "Price", "Vest Start", "Periods",
-                   "Exercise Date", "DP Shares"]
+                   "Exercise Date", "DP Shares", "83(b)"]
 _LOAN_HEADERS = ["Loan #", "Grant Year", "Grant Type", "Loan Type", "Loan Year",
-                  "Amount", "Rate", "Due Date"]
+                  "Amount", "Rate", "Due Date", "Refinances Loan #"]
 _PRICE_HEADERS = ["Date", "Price"]
+_LOAN_PAYMENT_HEADERS = ["Loan #", "Date", "Amount", "Notes"]
+_SALE_HEADERS = ["Date", "Shares", "Price", "Notes", "Loan #"]
 _EVENT_HEADERS = ["Date", "Grant Year", "Grant Type", "Event Type",
                   "Granted Shares", "Grant Price", "Exercise Price",
                   "Vested Shares", "Cum Shares", "Price Increase",
@@ -672,6 +886,11 @@ def export_excel(
     grants_db = db.query(Grant).filter(Grant.user_id == user.id).order_by(Grant.year).all()
     loans_db = db.query(Loan).filter(Loan.user_id == user.id).order_by(Loan.due_date).all()
     prices_db = db.query(Price).filter(Price.user_id == user.id).order_by(Price.effective_date).all()
+    payments_db = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).order_by(LoanPayment.date).all()
+    sales_db = db.query(Sale).filter(Sale.user_id == user.id).order_by(Sale.date).all()
+
+    # Build loan_id → loan_number lookup for export
+    loan_id_to_num = {ln.id: ln.loan_number or "" for ln in loans_db}
 
     wb = openpyxl.Workbook()
 
@@ -688,6 +907,7 @@ def export_excel(
         _body_cell(ws_sched, i, 6, g.periods)
         _body_cell(ws_sched, i, 7, g.exercise_date, "mm/dd/yyyy")
         _body_cell(ws_sched, i, 8, g.dp_shares, "#,##0")
+        _body_cell(ws_sched, i, 9, bool(g.election_83b))
 
     # -- Loans sheet --
     ws_loans = wb.create_sheet("Loans")
@@ -701,6 +921,28 @@ def export_excel(
         _body_cell(ws_loans, i, 6, ln.amount, "\\$#,##0.00")
         _body_cell(ws_loans, i, 7, ln.interest_rate, "0.00%")
         _body_cell(ws_loans, i, 8, ln.due_date, "mm/dd/yyyy")
+        ref_num = loan_id_to_num.get(ln.refinances_loan_id, "") if ln.refinances_loan_id else ""
+        _body_cell(ws_loans, i, 9, ref_num or None)
+
+    # -- LoanPayments sheet --
+    ws_payments = wb.create_sheet("LoanPayments")
+    _write_headers(ws_payments, _LOAN_PAYMENT_HEADERS)
+    for i, lp in enumerate(payments_db, 2):
+        _body_cell(ws_payments, i, 1, loan_id_to_num.get(lp.loan_id, ""))
+        _body_cell(ws_payments, i, 2, lp.date, "mm/dd/yyyy")
+        _body_cell(ws_payments, i, 3, lp.amount, "\\$#,##0.00")
+        _body_cell(ws_payments, i, 4, lp.notes or "")
+
+    # -- Sales sheet --
+    ws_sales = wb.create_sheet("Sales")
+    _write_headers(ws_sales, _SALE_HEADERS)
+    for i, s in enumerate(sales_db, 2):
+        _body_cell(ws_sales, i, 1, s.date, "mm/dd/yyyy")
+        _body_cell(ws_sales, i, 2, s.shares, "#,##0")
+        _body_cell(ws_sales, i, 3, s.price_per_share, "\\$#,##0.00")
+        _body_cell(ws_sales, i, 4, s.notes or "")
+        loan_num = loan_id_to_num.get(s.loan_id, "") if s.loan_id else ""
+        _body_cell(ws_sales, i, 5, loan_num or None)
 
     # -- Prices sheet --
     ws_prices = wb.create_sheet("Prices")

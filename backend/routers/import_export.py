@@ -701,7 +701,7 @@ def download_sample():
     # ---- Schedule sheet ----
     ws = wb.active
     ws.title = "Schedule"
-    _write_headers(ws, ["Year", "Type", "Shares", "Price", "Vest Start", "Periods", "Exercise Date", "DP Shares"])
+    _write_headers(ws, ["Year", "Type", "Shares", "Price", "Vest Start", "Periods", "Exercise Date", "DP Shares", "83(b)"])
 
     # Header comments
     header_comments = [
@@ -714,20 +714,21 @@ def download_sample():
         (7, "Date by which options must be exercised. For RSU/Bonus grants use Dec 31 of the grant year."),
         (8, "Down-payment shares used to buy this grant (from purchase confirmation). "
             "Negative means Epic returned shares to you. 0 if none."),
+        (9, "TRUE if you filed an 83(b) election within 30 days of this grant. FALSE (or blank) otherwise."),
     ]
     for col, note in header_comments:
         ws.cell(row=1, column=col).comment = Comment(note, "Sample")
 
     sched_rows = [
-        (2020, "Purchase", 50000, 1.85, date(2022, 6, 15), 5, date(2020, 12, 31), 0),
-        (2020, "Bonus",    5000,  0.00, date(2022, 6, 15), 4, date(2020, 12, 31), 0),
-        (2021, "Purchase", 80000, 2.20, date(2023, 9, 30), 5, date(2021, 12, 31), 0),
-        (2022, "Purchase", 100000, 2.75, date(2024, 9, 30), 4, date(2022, 12, 31), 0),
-        (2022, "Bonus",    20000, 0.00, date(2027, 9, 30), 1, date(2022, 12, 31), 0),
-        (2023, "Purchase", 120000, 3.10, date(2025, 9, 30), 4, date(2023, 12, 31), 0),
-        (2024, "Purchase", 150000, 3.60, date(2026, 9, 30), 4, date(2024, 12, 31), -15000),
+        (2020, "Purchase", 50000, 1.85, date(2022, 6, 15), 5, date(2020, 12, 31), 0,     False),
+        (2020, "Bonus",    5000,  0.00, date(2022, 6, 15), 4, date(2020, 12, 31), 0,     False),
+        (2021, "Purchase", 80000, 2.20, date(2023, 9, 30), 5, date(2021, 12, 31), 0,     False),
+        (2022, "Purchase", 100000, 2.75, date(2024, 9, 30), 4, date(2022, 12, 31), 0,    False),
+        (2022, "Bonus",    20000, 0.00, date(2027, 9, 30), 1, date(2022, 12, 31), 0,     False),
+        (2023, "Purchase", 120000, 3.10, date(2025, 9, 30), 4, date(2023, 12, 31), 0,    False),
+        (2024, "Purchase", 150000, 3.60, date(2026, 9, 30), 4, date(2024, 12, 31), -15000, False),
     ]
-    fmts = [None, None, "#,##0", "\\$#,##0.00", "mm/dd/yyyy", None, "mm/dd/yyyy", "#,##0"]
+    fmts = [None, None, "#,##0", "\\$#,##0.00", "mm/dd/yyyy", None, "mm/dd/yyyy", "#,##0", None]
     for r, row_data in enumerate(sched_rows, 2):
         for c, (val, fmt) in enumerate(zip(row_data, fmts), 1):
             _body_cell(ws, r, c, val, fmt)
@@ -754,7 +755,7 @@ def download_sample():
     # ---- Loans sheet ----
     ws_loans = wb.create_sheet("Loans")
     _write_headers(ws_loans, ["Loan #", "Grant Year", "Grant Type", "Loan Type", "Loan Year",
-                               "Amount", "Rate", "Due Date"])
+                               "Amount", "Rate", "Due Date", "Refinances Loan #"])
 
     loan_header_comments = [
         (1, "Loan number from your Epic statement (e.g. 002001). Used to match payoff sales."),
@@ -766,21 +767,23 @@ def download_sample():
         (6, "Principal amount of the loan in dollars."),
         (7, "Annual interest rate as a decimal (e.g. 0.0095 = 0.95%)."),
         (8, "Loan due date — when you must repay it."),
+        (9, "Loan # of the older loan this one replaced via refinance. Leave blank if this is not a refinance. "
+            "When set, the older loan's payoff event shows as 'Refinanced' with $0 cash due."),
     ]
     for col, note in loan_header_comments:
         ws_loans.cell(row=1, column=col).comment = Comment(note, "Sample")
 
     loan_rows = [
-        ("002001", 2020, "Purchase", "Purchase",  2020, 92500.00,  0.0095, date(2029, 7, 15)),
-        ("002002", 2020, "Purchase", "Interest",  2022,   850.00,  0.0200, date(2029, 7, 15)),
-        ("002003", 2020, "Purchase", "Interest",  2023,  1100.00,  0.0350, date(2029, 7, 15)),
-        ("003001", 2021, "Purchase", "Purchase",  2021, 176000.00, 0.0095, date(2030, 7, 15)),
-        ("003002", 2021, "Purchase", "Interest",  2023,  1620.00,  0.0350, date(2030, 7, 15)),
-        ("004001", 2022, "Purchase", "Purchase",  2022, 275000.00, 0.0200, date(2031, 6, 30)),
-        ("005001", 2023, "Purchase", "Purchase",  2023, 372000.00, 0.0350, date(2032, 6, 30)),
-        ("006001", 2024, "Purchase", "Purchase",  2024, 540000.00, 0.0400, date(2033, 6, 30)),
+        ("002001", 2020, "Purchase", "Purchase",  2020, 92500.00,  0.0095, date(2029, 7, 15), None),
+        ("002002", 2020, "Purchase", "Interest",  2022,   850.00,  0.0200, date(2029, 7, 15), None),
+        ("002003", 2020, "Purchase", "Interest",  2023,  1100.00,  0.0350, date(2029, 7, 15), None),
+        ("003001", 2021, "Purchase", "Purchase",  2021, 176000.00, 0.0095, date(2030, 7, 15), None),
+        ("003002", 2021, "Purchase", "Interest",  2023,  1620.00,  0.0350, date(2030, 7, 15), None),
+        ("004001", 2022, "Purchase", "Purchase",  2022, 275000.00, 0.0200, date(2031, 6, 30), None),
+        ("005001", 2023, "Purchase", "Purchase",  2023, 372000.00, 0.0350, date(2032, 6, 30), None),
+        ("006001", 2024, "Purchase", "Purchase",  2024, 540000.00, 0.0400, date(2033, 6, 30), None),
     ]
-    loan_fmts = [None, None, None, None, None, "\\$#,##0.00", "0.00%", "mm/dd/yyyy"]
+    loan_fmts = [None, None, None, None, None, "\\$#,##0.00", "0.00%", "mm/dd/yyyy", None]
     for r, row_data in enumerate(loan_rows, 2):
         for c, (val, fmt) in enumerate(zip(row_data, loan_fmts), 1):
             _body_cell(ws_loans, r, c, val, fmt)
@@ -794,6 +797,7 @@ def download_sample():
         (6, "$92,500 = principal loan amount"),
         (7, "0.0095 = 0.95% annual interest rate"),
         (8, "Due July 15, 2029"),
+        (9, "Leave blank — this loan is not a refinance of another loan"),
     ]
     for col, note in loan_first_notes:
         ws_loans.cell(row=2, column=col).comment = Comment(note, "Sample")

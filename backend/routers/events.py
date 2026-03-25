@@ -278,6 +278,9 @@ def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales:
                 "notes": "Projected full liquidation",
                 "is_projected": True,
             })
+            # Re-sort so the projected event sits in its correct chronological
+            # position (it may be before future vesting/loan events).
+            enriched.sort(key=sort_key)
 
     return enriched
 

@@ -11,6 +11,7 @@ const COLUMN_GUIDE = {
     { col: 'periods', desc: 'Number of vesting periods (usually 8 for a standard 4-year quarterly schedule).' },
     { col: 'exercise_date', desc: 'Date by which options must be exercised. Leave blank for RSUs.' },
     { col: 'dp_shares', desc: 'Down-payment shares used to purchase this grant. Find on your purchase confirmation; enter as a positive number.' },
+    { col: '83(b)', desc: 'TRUE if you filed an 83(b) election within 30 days of this grant. FALSE or blank otherwise.' },
   ],
   Loans: [
     { col: 'grant_year', desc: 'Year of the grant this loan is associated with.' },
@@ -21,10 +22,24 @@ const COLUMN_GUIDE = {
     { col: 'interest_rate', desc: 'Annual interest rate as a decimal (e.g. 0.05 for 5%).' },
     { col: 'due_date', desc: 'Loan due date (YYYY-MM-DD).' },
     { col: 'loan_number', desc: 'Loan number from your Epic statement. Used to match loans to payoff sales.' },
+    { col: 'refinances_loan_number', desc: 'Loan # of the older loan this one replaced via refinance. Leave blank if not a refinance. When set, the older loan\'s payoff event shows as "Refinanced" with $0 cash due.' },
+  ],
+  LoanPayments: [
+    { col: 'loan_number', desc: 'Loan # of the loan this payment applies to (must match a Loan # in the Loans sheet).' },
+    { col: 'date', desc: 'Date the payment was made (YYYY-MM-DD).' },
+    { col: 'amount', desc: 'Cash amount paid. Reduces the remaining balance shown on the loan\'s payoff event.' },
+    { col: 'notes', desc: 'Optional notes (e.g. payment reference number).' },
   ],
   Prices: [
     { col: 'effective_date', desc: 'Date the price takes effect (YYYY-MM-DD). Usually March 1 each year when Epic announces the share price.' },
     { col: 'price', desc: 'Share price in dollars.' },
+  ],
+  Sales: [
+    { col: 'date', desc: 'Date of the sale (YYYY-MM-DD).' },
+    { col: 'shares', desc: 'Number of shares sold.' },
+    { col: 'price', desc: 'Sale price per share in dollars.' },
+    { col: 'notes', desc: 'Optional notes.' },
+    { col: 'loan_number', desc: 'Loan # this sale was made to cover (optional). When set, the loan\'s payoff event is marked as covered.' },
   ],
 }
 

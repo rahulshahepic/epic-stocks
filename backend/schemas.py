@@ -2,7 +2,7 @@ from datetime import date
 from typing import Optional
 from pydantic import BaseModel, field_validator
 
-LOAN_TYPES = {"Interest", "Tax", "Principal", "Purchase"}
+LOAN_TYPES = {"Interest", "Tax", "Purchase"}
 
 
 # Auth

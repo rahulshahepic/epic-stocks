@@ -45,6 +45,7 @@ jobs:
             RESEND_FROM=${{ secrets.RESEND_FROM }}
             POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
             TRUSTED_PROXY_IPS=${{ vars.TRUSTED_PROXY_IPS }}
+            EPIC_ONBOARDING_URL=${{ vars.EPIC_ONBOARDING_URL }}
             ENVEOF
             # Remove leading whitespace from heredoc
             sed -i 's/^[[:space:]]*//' .env

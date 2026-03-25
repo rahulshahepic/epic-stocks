@@ -75,3 +75,7 @@ jobs:
 
             # Start all services and wait for healthchecks to pass
             docker compose up -d --wait --wait-timeout 120
+
+            # Reload Caddy config without dropping connections (bind-mounted Caddyfile
+            # is not picked up automatically by docker compose up)
+            docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile

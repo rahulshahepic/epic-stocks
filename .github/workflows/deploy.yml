@@ -11,7 +11,7 @@ jobs:
       - name: Validate Caddyfile
         run: |
           docker run --rm \
-            -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            -v "$PWD/caddy:/etc/caddy:ro" \
             -e TRUSTED_PROXY_IPS=127.0.0.1/32 \
             -e DOMAIN=localhost \
             caddy:2 caddy validate --config /etc/caddy/Caddyfile
@@ -76,5 +76,6 @@ jobs:
             # Start all services and wait for healthchecks to pass
             docker compose up -d --wait --wait-timeout 120
 
-            # Restart Caddy to pick up the updated bind-mounted Caddyfile.
-            docker compose restart caddy
+            # Graceful config reload — directory mount means git reset --hard
+            # doesn't break the inode, so caddy reload correctly picks up changes.
+            docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile

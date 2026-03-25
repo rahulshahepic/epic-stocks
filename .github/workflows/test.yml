@@ -33,7 +33,7 @@ jobs:
       - name: Validate Caddyfile
         run: |
           docker run --rm \
-            -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            -v "$PWD/caddy:/etc/caddy:ro" \
             -e TRUSTED_PROXY_IPS=127.0.0.1/32 \
             -e DOMAIN=localhost \
             caddy:2 caddy validate --config /etc/caddy/Caddyfile

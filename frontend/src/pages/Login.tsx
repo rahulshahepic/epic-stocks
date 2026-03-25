@@ -38,15 +38,10 @@ export default function Login() {
   useEffect(() => {
     if (!clientId || !btnRef.current) return
 
-    const script = document.createElement('script')
-    script.src = 'https://accounts.google.com/gsi/client'
-    script.async = true
-    script.onload = () => {
+    const init = () => {
       window.google?.accounts.id.initialize({
         client_id: clientId,
-        callback: async (response) => {
-          await login(response.credential)
-        },
+        callback: async (response) => { await login(response.credential) },
       })
       if (btnRef.current) {
         window.google?.accounts.id.renderButton(btnRef.current, {
@@ -56,8 +51,14 @@ export default function Login() {
         })
       }
     }
-    document.head.appendChild(script)
-    return () => { script.remove() }
+
+    // GSI script is loaded in index.html; it may still be loading on first paint
+    if (window.google) {
+      init()
+    } else {
+      window.addEventListener('load', init, { once: true })
+      return () => window.removeEventListener('load', init)
+    }
   }, [clientId, login])
 
   return (

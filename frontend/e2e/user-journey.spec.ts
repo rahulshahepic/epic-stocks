@@ -148,11 +148,11 @@ test.describe('Full user journey', () => {
     const sharesCard = page.locator('text=Total Shares').locator('..')
     await expect(sharesCard).toBeVisible()
 
-    // Navigate to Events and verify event count (spec: 89 events)
+    // Navigate to Events and verify event count (spec: 89 real events + 1 projected liquidation = 90)
     await navigateTo(page, 'Events')
     await expect(page.getByText('Events Timeline')).toBeVisible()
     const typeSelect = page.locator('select')
-    await expect(typeSelect).toContainText('All types (89)')
+    await expect(typeSelect).toContainText('All types (90)')
 
     // Navigate to Prices and add a new price
     await navigateTo(page, 'Prices')
@@ -168,10 +168,10 @@ test.describe('Full user journey', () => {
     // Back to list with 9 prices
     await expect(page.getByText('9 price entries')).toBeVisible()
 
-    // Events should now have one more (Share Price event)
+    // Events should now have one more (Share Price event): 90 real + 1 projected = 91
     await navigateTo(page, 'Events')
     const updatedSelect = page.locator('select')
-    await expect(updatedSelect).toContainText('All types (90)')
+    await expect(updatedSelect).toContainText('All types (91)')
 
     // Export should work
     await navigateTo(page, 'Import')

@@ -4,7 +4,7 @@ import { usePush } from '../hooks/usePush.ts'
 import { useAuth } from '../hooks/useAuth.ts'
 import { useTheme } from '../contexts/ThemeContext.tsx'
 import { api } from '../api.ts'
-import type { TaxSettings } from '../api.ts'
+import type { TaxSettings, HorizonSettings } from '../api.ts'
 import type { Theme } from '../contexts/ThemeContext.tsx'
 
 export default function Settings() {
@@ -29,6 +29,11 @@ export default function Settings() {
   const [taxForm, setTaxForm] = useState<TaxSettings | null>(null)
   const [taxSaving, setTaxSaving] = useState(false)
 
+  const [horizonSettings, setHorizonSettings] = useState<HorizonSettings | null>(null)
+  const [editingHorizon, setEditingHorizon] = useState(false)
+  const [horizonForm, setHorizonForm] = useState<HorizonSettings>({ horizon_date: null })
+  const [horizonSaving, setHorizonSaving] = useState(false)
+
   const WI_DEFAULTS: TaxSettings = {
     federal_income_rate: 0.37,
     federal_lt_cg_rate: 0.20,
@@ -51,7 +56,15 @@ export default function Settings() {
     } catch { /* ignore */ }
   }, [])
 
+  const loadHorizonSettings = useCallback(async () => {
+    try {
+      const hs = await api.getHorizonSettings()
+      setHorizonSettings(hs)
+    } catch { /* ignore */ }
+  }, [])
+
   useEffect(() => { loadTaxSettings() }, [loadTaxSettings])
+  useEffect(() => { loadHorizonSettings() }, [loadHorizonSettings])
 
   const loadEmailPref = useCallback(async () => {
     try {
@@ -438,6 +451,84 @@ export default function Settings() {
               </button>
               <button
                 onClick={() => setEditingTax(false)}
+                className="rounded-md px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* Retirement Planning */}
+      <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Retirement Planning</h3>
+          {!editingHorizon && (
+            <button
+              onClick={() => { setHorizonForm({ horizon_date: horizonSettings?.horizon_date ?? null }); setEditingHorizon(true) }}
+              className="text-xs text-indigo-600 hover:text-indigo-800 dark:text-indigo-400"
+            >Edit</button>
+          )}
+        </div>
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          Set a horizon date to see a projected liquidation event in your timeline. Defaults to your last vesting date.
+        </p>
+
+        {!editingHorizon && (
+          <dl className="mt-3 text-xs">
+            <div className="flex justify-between">
+              <dt className="text-gray-500 dark:text-gray-400">Horizon date</dt>
+              <dd className="font-medium text-gray-700 dark:text-gray-300">
+                {horizonSettings?.horizon_date ?? 'Last vesting date (auto)'}
+              </dd>
+            </div>
+          </dl>
+        )}
+
+        {editingHorizon && (
+          <div className="mt-3 space-y-3">
+            <label className="block">
+              <span className="text-xs text-gray-500 dark:text-gray-400">Horizon date</span>
+              <input
+                type="date"
+                value={horizonForm.horizon_date ?? ''}
+                onChange={e => setHorizonForm({ horizon_date: e.target.value || null })}
+                className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+              />
+            </label>
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  setHorizonSaving(true)
+                  try {
+                    const updated = await api.updateHorizonSettings(horizonForm)
+                    setHorizonSettings(updated)
+                    setEditingHorizon(false)
+                  } catch { /* ignore */ } finally { setHorizonSaving(false) }
+                }}
+                disabled={horizonSaving}
+                className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {horizonSaving ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                onClick={async () => {
+                  setHorizonSaving(true)
+                  try {
+                    const updated = await api.updateHorizonSettings({ horizon_date: null })
+                    setHorizonSettings(updated)
+                    setHorizonForm({ horizon_date: null })
+                    setEditingHorizon(false)
+                  } catch { /* ignore */ } finally { setHorizonSaving(false) }
+                }}
+                disabled={horizonSaving}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
+              >
+                Use last vesting date
+              </button>
+              <button
+                onClick={() => setEditingHorizon(false)}
                 className="rounded-md px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
               >
                 Cancel

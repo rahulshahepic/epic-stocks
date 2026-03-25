@@ -112,6 +112,8 @@ export interface TimelineEvent {
   sale_id?: number | null
   // 83(b) election (bonus/free grants with price=0 who elected 83b at grant time)
   election_83b?: boolean
+  // Projected liquidation
+  is_projected?: boolean
 }
 
 export interface GrantEntry {
@@ -250,6 +252,10 @@ export const api = {
   getTaxSettings: () => apiFetch<TaxSettings>('/api/tax-settings'),
   updateTaxSettings: (data: Partial<TaxSettings>) => put<TaxSettings>('/api/tax-settings', data),
 
+  // Horizon Settings
+  getHorizonSettings: () => apiFetch<HorizonSettings>('/api/horizon-settings'),
+  updateHorizonSettings: (data: Partial<HorizonSettings>) => put<HorizonSettings>('/api/horizon-settings', data),
+
   // Admin
   adminStats: () => apiFetch<AdminStats>('/api/admin/stats'),
   adminUsers: (q = '', limit = 10, offset = 0) =>
@@ -386,6 +392,10 @@ export interface TaxSettings {
   prefer_stock_dp: boolean
   dp_min_percent: number
   dp_min_cap: number
+}
+
+export interface HorizonSettings {
+  horizon_date: string | null
 }
 
 export interface LotSummary {

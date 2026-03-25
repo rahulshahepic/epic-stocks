@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import User, Grant, Loan, Price, LoanPayment, Sale, TaxSettings
+from models import User, Grant, Loan, Price, LoanPayment, Sale, TaxSettings, HorizonSettings
 from auth import get_current_user
 from timeline_cache import get_timeline
 from sales_engine import compute_sale_tax
@@ -49,7 +49,21 @@ def _serialize_event(e):
     }
 
 
-def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales: list) -> list:
+def _last_vesting_date(timeline: list):
+    """Return the date of the last Vesting event, or None if none exist."""
+    last = None
+    for e in timeline:
+        if e.get("event_type") == "Vesting":
+            d = e["date"]
+            if isinstance(d, datetime):
+                d = d.date()
+            if last is None or d > last:
+                last = d
+    return last
+
+
+def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales: list,
+                     horizon_date=None) -> list:
     """
     Enrich Loan Payoff events with cash_due / covered_by_sale.
     Inject Early Loan Payment events for user-recorded LoanPayments.
@@ -221,6 +235,43 @@ def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales:
         else:
             e["cum_shares"] = e["cum_shares"] - cumulative_sold
 
+    # Inject virtual Liquidation (projected) event at horizon_date
+    if horizon_date is not None:
+        liq_price = 0.0
+        remaining_shares = 0
+        last_cum_income = 0.0
+        last_cum_cap_gains = 0.0
+        for ev in enriched:
+            p = ev.get("share_price", 0.0)
+            if p:
+                liq_price = p
+            remaining_shares = ev.get("cum_shares", remaining_shares)
+            last_cum_income = ev.get("cum_income", last_cum_income)
+            last_cum_cap_gains = ev.get("cum_cap_gains", last_cum_cap_gains)
+        if remaining_shares > 0 and liq_price > 0:
+            enriched.append({
+                "date": datetime.combine(horizon_date, datetime.min.time()),
+                "event_type": "Liquidation (projected)",
+                "grant_year": None,
+                "grant_type": None,
+                "granted_shares": None,
+                "grant_price": None,
+                "exercise_price": None,
+                "vested_shares": -remaining_shares,
+                "price_increase": 0.0,
+                "share_price": liq_price,
+                "cum_shares": 0,
+                "income": 0.0,
+                "cum_income": last_cum_income,
+                "vesting_cap_gains": 0.0,
+                "price_cap_gains": 0.0,
+                "total_cap_gains": 0.0,
+                "cum_cap_gains": last_cum_cap_gains,
+                "gross_proceeds": round(remaining_shares * liq_price, 2),
+                "notes": "Projected full liquidation",
+                "is_projected": True,
+            })
+
     return enriched
 
 
@@ -268,6 +319,21 @@ def _annotate_sale_taxes(enriched: list, timeline: list, ts_dict: dict,
         sorted_tl.insert(idx, sentinel)
         sort_keys.insert(idx, key)
 
+    # Annotate the projected liquidation event (if present)
+    for e in enriched:
+        if e.get("event_type") != "Liquidation (projected)":
+            continue
+        liq_date = e["date"]
+        if isinstance(liq_date, datetime):
+            liq_date = liq_date.date()
+        shares = abs(e.get("vested_shares") or 0)
+        if shares == 0:
+            continue
+        price_per_share = round(e["gross_proceeds"] / shares, 10)
+        result = compute_sale_tax(sorted_tl, {"date": liq_date, "shares": shares, "price_per_share": price_per_share}, ts_dict, lot_order=lot_order)
+        e["estimated_tax"] = result["estimated_tax"]
+        e["st_shares"] = result["st_shares"]
+
 
 @router.get("/events")
 def get_events(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -279,7 +345,10 @@ def get_events(user: User = Depends(get_current_user), db: Session = Depends(get
     loan_payments = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).order_by(LoanPayment.date).all()
     sales = db.query(Sale).filter(Sale.user_id == user.id).all()
 
-    enriched = _enrich_timeline(timeline, loans_db, loan_payments, sales)
+    hs_row = db.query(HorizonSettings).filter(HorizonSettings.user_id == user.id).first()
+    horizon_date = (hs_row.horizon_date if hs_row and hs_row.horizon_date else None) or _last_vesting_date(timeline)
+
+    enriched = _enrich_timeline(timeline, loans_db, loan_payments, sales, horizon_date=horizon_date)
 
     # Annotate vesting events with election_83b flag from their grant
     for e in enriched:

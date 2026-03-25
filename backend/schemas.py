@@ -374,6 +374,13 @@ class TaxSettingsUpdate(BaseModel):
     dp_min_percent: float | None = None
     dp_min_cap: float | None = None
 
+class HorizonSettingsRead(BaseModel):
+    horizon_date: date | None = None
+    model_config = {"from_attributes": True}
+
+class HorizonSettingsUpdate(BaseModel):
+    horizon_date: date | None = None
+
 class LotSummary(BaseModel):
     grant_year: int | None
     grant_type: str | None

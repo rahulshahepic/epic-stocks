@@ -11,7 +11,7 @@ from starlette.responses import FileResponse
 import database
 
 logger = logging.getLogger(__name__)
-from routers import auth_router, grants, loans, prices, events, flows, import_export, push, admin, notifications, sales
+from routers import auth_router, grants, loans, prices, events, flows, import_export, push, admin, notifications, sales, horizon
 from auth import get_current_user
 from crypto import encryption_enabled, decrypt_user_key, set_current_key
 from database import get_db
@@ -250,6 +250,7 @@ _fastapi_app.include_router(notifications.router)
 _fastapi_app.include_router(sales.router)
 _fastapi_app.include_router(sales.tax_router)
 _fastapi_app.include_router(loans.lp_router)
+_fastapi_app.include_router(horizon.router)
 
 
 @_fastapi_app.get("/api/health")

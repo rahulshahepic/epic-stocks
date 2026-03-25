@@ -47,7 +47,7 @@ describe('Login page', () => {
     mockConfig('')
     renderLogin()
     await waitFor(() => {
-      expect(screen.getByText(/google client id not configured/i)).toBeInTheDocument()
+      expect(screen.getByText(/GOOGLE_CLIENT_ID/)).toBeInTheDocument()
     })
   })
 

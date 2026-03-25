@@ -913,49 +913,37 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       {/* Date selector for card values */}
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-900">
-        <span className="text-xs font-medium text-gray-500 dark:text-gray-400">As of</span>
-        <input
-          type="date"
-          value={cardDate}
-          max={maxDate}
-          onChange={e => setCardDate(e.target.value)}
-          className="h-7 rounded border border-gray-300 bg-white px-2 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
-        />
-        <button
-          onClick={() => setCardDate(TODAY)}
-          className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
-            cardDate === TODAY
-              ? 'bg-indigo-600 text-white'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
-          }`}
-        >
-          Today
-        </button>
-        <button
-          onClick={() => setCardDate(lastRealEventDate)}
-          title="Jump to the date of your last vesting event"
-          className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
-            cardDate === lastRealEventDate
-              ? 'bg-indigo-600 text-white'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
-          }`}
-        >
-          Last event
-        </button>
-        {showExitButton && exitDate && (
-          <button
-            onClick={() => setCardDate(exitDate)}
-            title="Jump to your configured exit / liquidation date"
-            className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
-              cardDate === exitDate
-                ? 'bg-indigo-600 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
-            }`}
-          >
-            Exit date
-          </button>
-        )}
+      <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-900">
+        <div className="flex items-center gap-2">
+          <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400">As of</span>
+          <input
+            type="date"
+            value={cardDate}
+            max={maxDate}
+            onChange={e => setCardDate(e.target.value)}
+            className="h-7 flex-1 rounded border border-gray-300 bg-white px-2 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+          />
+        </div>
+        <div className="mt-1.5 flex items-center gap-1.5">
+          {([
+            { label: 'Today', date: TODAY },
+            { label: 'Last event', date: lastRealEventDate, title: 'Jump to your last vesting event' },
+            ...(showExitButton && exitDate ? [{ label: 'Exit date', date: exitDate, title: 'Jump to your configured exit date' }] : []),
+          ] as { label: string; date: string; title?: string }[]).map(({ label, date, title }) => (
+            <button
+              key={label}
+              onClick={() => setCardDate(date)}
+              title={title}
+              className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
+                cardDate === date
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">

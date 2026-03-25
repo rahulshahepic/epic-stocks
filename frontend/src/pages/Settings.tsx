@@ -460,10 +460,10 @@ export default function Settings() {
         )}
       </section>
 
-      {/* Retirement Planning */}
+      {/* Exit Planning */}
       <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Retirement Planning</h3>
+          <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Exit Planning</h3>
           {!editingHorizon && (
             <button
               onClick={() => { setHorizonForm({ horizon_date: horizonSettings?.horizon_date ?? null }); setEditingHorizon(true) }}
@@ -472,13 +472,13 @@ export default function Settings() {
           )}
         </div>
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          Set a horizon date to see a projected liquidation event in your timeline. Defaults to your last vesting date.
+          Set an exit date to project a full liquidation in your timeline. Defaults to your last vesting date if not set.
         </p>
 
         {!editingHorizon && (
           <dl className="mt-3 text-xs">
             <div className="flex justify-between">
-              <dt className="text-gray-500 dark:text-gray-400">Horizon date</dt>
+              <dt className="text-gray-500 dark:text-gray-400">Exit date</dt>
               <dd className="font-medium text-gray-700 dark:text-gray-300">
                 {horizonSettings?.horizon_date ?? 'Last vesting date (auto)'}
               </dd>
@@ -489,7 +489,7 @@ export default function Settings() {
         {editingHorizon && (
           <div className="mt-3 space-y-3">
             <label className="block">
-              <span className="text-xs text-gray-500 dark:text-gray-400">Horizon date</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">Exit date</span>
               <input
                 type="date"
                 value={horizonForm.horizon_date ?? ''}

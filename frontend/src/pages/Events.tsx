@@ -3,6 +3,7 @@ import { api } from '../api.ts'
 import type { TimelineEvent, TaxBreakdown, TaxSettings } from '../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { TaxCard } from './Sales.tsx'
+import React from 'react'
 
 const EVENT_TYPES = ['Exercise', 'Down payment exchange', 'Vesting', 'Share Price', 'Loan Payoff', 'Early Loan Payment', 'Sale', 'Liquidation (projected)']
 
@@ -85,6 +86,25 @@ function VestingTaxCard({ e, ts }: { e: TimelineEvent; ts: TaxSettings }) {
   )
 }
 
+function LiqDetailCard({ e }: { e: TimelineEvent }) {
+  const shares = Math.abs(e.vested_shares ?? 0)
+  const gross = e.gross_proceeds ?? 0
+  const tax = e.estimated_tax ?? 0
+  const net = Math.max(0, gross - tax)
+  return (
+    <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-xs dark:border-gray-700 dark:bg-gray-800">
+      <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">Projected Liquidation</h3>
+      <div className="space-y-1">
+        <TaxRow label={`${fmtNum(shares)} shares × ${fmtPrice(e.share_price)}`} value={fmt$(gross)} />
+        <TaxRow label="Est. tax on sale" value={`−${fmt$(tax)}`} />
+        <div className="my-2 border-t border-gray-200 dark:border-gray-600" />
+        <TaxRow label="Net after tax" value={fmt$(net)} bold />
+        <p className="pt-1 text-gray-400">Outstanding loan principal is also settled from proceeds — see Dashboard for net cash.</p>
+      </div>
+    </div>
+  )
+}
+
 function Unrealized83bCard({ e, ts }: { e: TimelineEvent; ts: TaxSettings }) {
   const ltCgRate = ts.federal_lt_cg_rate + ts.niit_rate + ts.state_lt_cg_rate
   const potentialTax = e.income * ltCgRate
@@ -124,6 +144,7 @@ export default function Events() {
 
   // Per-vesting-row expansion state (keyed by row index in filtered list)
   const [expandedVesting, setExpandedVesting] = useState<Set<number>>(new Set())
+  const [expandedLiq, setExpandedLiq] = useState(false)
 
   const ts = taxSettings ?? WI_TAX_DEFAULTS
 
@@ -162,6 +183,8 @@ export default function Events() {
   if (!events) return <p className="p-6 text-center text-sm text-red-500">Failed to load events</p>
 
   const filtered = typeFilter ? events.filter(e => e.event_type === typeFilter) : events
+  // Index of the projected liquidation event in the filtered list (for separator placement)
+  const liqIdx = filtered.findIndex(e => e.is_projected)
 
   return (
     <div className="space-y-4">
@@ -204,17 +227,30 @@ export default function Events() {
               const hasST = (e.st_shares ?? 0) > 0
               const is83b = e.event_type === 'Vesting' && e.income > 0 && !!e.election_83b
               const hasVestingTax = e.event_type === 'Vesting' && e.income > 0 && !e.election_83b
+              // Events after the projected liquidation are beyond the exit horizon
+              const isPastHorizon = liqIdx >= 0 && !e.is_projected && i > liqIdx
 
               return (
-                <>
-                  <tr key={i} className={e.is_projected ? 'bg-gray-50 opacity-75 dark:bg-gray-900/50' : 'bg-white dark:bg-gray-900'}>
+                <React.Fragment key={i}>
+                  <tr
+                    className={[
+                      e.is_projected
+                        ? 'cursor-pointer bg-gray-50 opacity-75 dark:bg-gray-900/50'
+                        : isPastHorizon
+                        ? 'bg-white opacity-40 dark:bg-gray-900'
+                        : 'bg-white dark:bg-gray-900',
+                    ].join(' ')}
+                    onClick={e.is_projected ? () => setExpandedLiq(p => !p) : undefined}
+                  >
                     <td className="whitespace-nowrap px-3 py-2 text-gray-700 dark:text-gray-300">{e.date}</td>
                     <td className="px-3 py-2">
                       <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${TYPE_COLORS[e.event_type] ?? ''} ${e.is_projected ? 'ring-1 ring-dashed ring-gray-400 dark:ring-gray-600' : ''}`}>
                         {e.is_projected ? 'Liquidation' : e.event_type}
                       </span>
                       {e.is_projected && (
-                        <span className="ml-1 text-[9px] uppercase tracking-wide text-gray-400 dark:text-gray-500">projected</span>
+                        <span className="ml-1 text-[9px] uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                          projected {expandedLiq ? '▲' : '▼'}
+                        </span>
                       )}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-gray-500 dark:text-gray-400">
@@ -278,9 +314,7 @@ export default function Events() {
                           </span>
                         </button>
                       ) : hasVestingTax ? (
-                        <button
-                          onClick={() => toggleVestingTax(i)}
-                        >
+                        <button onClick={() => toggleVestingTax(i)}>
                           <span className="text-orange-600 underline decoration-dotted dark:text-orange-400">
                             {fmt$(estTaxForVesting(e, ts))}
                           </span>
@@ -292,27 +326,43 @@ export default function Events() {
                     <td className="px-3 py-2 text-right font-medium text-gray-900 dark:text-gray-100">{fmtNum(e.cum_shares)}</td>
                   </tr>
                   {isSaleExpanded && bd && (
-                    <tr key={`sale-tax-${saleId}`} className="bg-white dark:bg-gray-900">
+                    <tr className="bg-white dark:bg-gray-900">
                       <td colSpan={9} className="px-3 pb-3 pt-0">
                         <TaxCard breakdown={bd} />
                       </td>
                     </tr>
                   )}
                   {isVestingExpanded && hasVestingTax && (
-                    <tr key={`vesting-tax-${i}`} className="bg-white dark:bg-gray-900">
+                    <tr className="bg-white dark:bg-gray-900">
                       <td colSpan={9} className="px-3 pb-3 pt-0">
                         <VestingTaxCard e={e} ts={ts} />
                       </td>
                     </tr>
                   )}
                   {isVestingExpanded && is83b && (
-                    <tr key={`83b-tax-${i}`} className="bg-white dark:bg-gray-900">
+                    <tr className="bg-white dark:bg-gray-900">
                       <td colSpan={9} className="px-3 pb-3 pt-0">
                         <Unrealized83bCard e={e} ts={ts} />
                       </td>
                     </tr>
                   )}
-                </>
+                  {e.is_projected && expandedLiq && (
+                    <tr className="bg-gray-50 dark:bg-gray-900/50">
+                      <td colSpan={9} className="px-3 pb-3 pt-0">
+                        <LiqDetailCard e={e} />
+                      </td>
+                    </tr>
+                  )}
+                  {i === liqIdx && liqIdx >= 0 && liqIdx < filtered.length - 1 && !typeFilter && (
+                    <tr>
+                      <td colSpan={9} className="py-0">
+                        <div className="border-t-2 border-dashed border-gray-300 py-1 text-center text-[10px] italic text-gray-400 dark:border-gray-600 dark:text-gray-500">
+                          beyond exit horizon — events below won't occur if you liquidate above
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               )
             })}
           </tbody>

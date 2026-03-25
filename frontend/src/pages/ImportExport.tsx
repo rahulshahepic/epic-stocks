@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { getToken } from '../api.ts'
+import { useConfig } from '../hooks/useConfig.ts'
 
 const COLUMN_GUIDE = {
   Schedule: [
@@ -54,6 +55,7 @@ interface ImportResult {
 }
 
 export default function ImportExport() {
+  const config = useConfig()
   const [status, setStatus] = useState<Status>('idle')
   const [result, setResult] = useState<ImportResult | null>(null)
   const [error, setError] = useState('')
@@ -196,6 +198,20 @@ export default function ImportExport() {
             {showGuide ? 'Hide column guide' : 'What do the columns mean?'}
           </button>
         </div>
+        {config?.epic_onboarding_url && (
+          <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+            On Epic's campus?{' '}
+            <a
+              href={config.epic_onboarding_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium text-indigo-600 underline hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
+            >
+              Use this pre-filled template
+            </a>
+            {' '}with your grant and loan data already filled in.
+          </p>
+        )}
 
         {showGuide && (
           <div className="mt-4 space-y-4">

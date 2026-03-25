@@ -12,6 +12,10 @@ Equity vesting tracker PWA. See SPEC.md for full requirements.
 - **Encryption is per-user.** When `ENCRYPTION_MASTER_KEY` is set, `backend/crypto.py` handles AES-256-GCM column-level encryption via SQLAlchemy TypeDecorators. Transparent to routers and core.py.
 - **Admin access is dynamic.** Set via `ADMIN_EMAIL` env var (semicolon-delimited). `is_admin` flag is set on every login — no persistent admin designation. Admin endpoints in `backend/routers/admin.py` never expose financial data.
 
+## Deployment Rules
+- **Never fix production by running commands manually on the server.** Manual fixes get overridden by the next deploy and leave the repo out of sync with reality. Every fix must go through code → PR → merge → deploy.
+- **The deploy script is the source of truth.** If something needs to happen on the server, it must be in `.github/workflows/deploy.yml`. If you find yourself saying "just run X on the server," stop and put X in the deploy script instead.
+
 ## Build Order
 Follow the order in SPEC.md. Build backend first, then frontend. **Every step must include tests before moving on.** Ask before making architectural decisions.
 

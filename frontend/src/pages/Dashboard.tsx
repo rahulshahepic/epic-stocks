@@ -4,7 +4,7 @@ import {
   XAxis, YAxis, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts'
 import { api } from '../api.ts'
-import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, TaxSettings, SaleEntry } from '../api.ts'
+import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, TaxSettings, SaleEntry, HorizonSettings } from '../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { useDark } from '../hooks/useDark.ts'
 
@@ -702,6 +702,7 @@ export default function Dashboard() {
   const fetchLoans = useCallback(() => api.getLoans(), [])
   const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
   const fetchSales = useCallback(() => api.getSales(), [])
+  const fetchHorizon = useCallback(() => api.getHorizonSettings(), [])
 
   const { data: dash, loading: dashLoading } = useApiData<DashboardData>(fetchDashboard)
   const { data: events } = useApiData<TimelineEvent[]>(fetchEvents)
@@ -709,6 +710,7 @@ export default function Dashboard() {
   const { data: loans } = useApiData<LoanEntry[]>(fetchLoans)
   const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
   const { data: sales } = useApiData<SaleEntry[]>(fetchSales)
+  const { data: horizonSettings } = useApiData<HorizonSettings>(fetchHorizon)
   const c = useChartColors()
   const [rangeInterest, setRangeInterest] = useState<DateRange>({ mode: 'all', start: '', end: '' })
   const [rangeLoan, setRangeLoan] = useState<DateRange>({ mode: 'all', start: '', end: '' })
@@ -752,9 +754,31 @@ export default function Dashboard() {
     return last
   }, [events, prices])
 
+  // Date of the last real (non-projected) event
+  const lastRealEventDate = useMemo(() => {
+    if (!events?.length) return TODAY
+    const real = events.filter(e => !e.is_projected)
+    return real.length ? real[real.length - 1].date : TODAY
+  }, [events])
+
+  // Projected liquidation event (if any)
+  const projectedLiqEvent = useMemo(
+    () => events?.find(e => e.event_type === 'Liquidation (projected)') ?? null,
+    [events]
+  )
+  const projectedLiqDate = projectedLiqEvent?.date ?? null
+
+  // Explicit exit date (only when user has set one and it differs from last real event)
+  const exitDate = horizonSettings?.horizon_date ?? null
+  const showExitButton = exitDate !== null && exitDate !== lastRealEventDate
+
   // Card values computed from local data as of cardDate
   const cardValues = useMemo(() => {
     if (!events || !loans) return null
+
+    // Whether the projected liquidation has occurred by cardDate
+    const liqOccurred = projectedLiqDate !== null && cardDate >= projectedLiqDate
+
     // Last event at or before cardDate
     let lastEvent: TimelineEvent | null = null
     for (const e of events) {
@@ -766,15 +790,37 @@ export default function Dashboard() {
     for (const e of events) {
       if (e.date > cardDate) { nextEvent = { date: e.date, event_type: e.event_type }; break }
     }
+
     const taxPaid =
       loans.filter(l => l.loan_type === 'Tax' && l.loan_year <= parseInt(cardDate.slice(0, 4), 10))
         .reduce((sum, l) => sum + l.amount, 0)
       + events.filter(e => e.event_type === 'Sale' && e.date <= cardDate)
-        .reduce((sum, e) => sum + (e.estimated_tax ?? 0), 0)
-    const cashReceived = sales
+          .reduce((sum, e) => sum + (e.estimated_tax ?? 0), 0)
+      + (liqOccurred ? (projectedLiqEvent?.estimated_tax ?? 0) : 0)
+
+    // Outstanding loan principal just before (or at) the liq date, ignoring the virtual liq sale
+    const outstandingPrincipal = (() => {
+      const refDate = liqOccurred && projectedLiqDate ? projectedLiqDate : cardDate
+      const refYear = parseInt(refDate.slice(0, 4), 10)
+      const settledIds = new Set(
+        (sales ?? []).filter(s => s.loan_id !== null && s.date <= refDate).map(s => s.loan_id)
+      )
+      const earlyPaidByLoan = new Map<number, number>()
+      events.filter(e => e.event_type === 'Early Loan Payment' && e.date <= refDate && e.loan_id != null)
+        .forEach(e => { earlyPaidByLoan.set(e.loan_id!, (earlyPaidByLoan.get(e.loan_id!) ?? 0) + (e.amount ?? 0)) })
+      return loans
+        .filter(l => l.loan_year <= refYear && !settledIds.has(l.id))
+        .reduce((sum, l) => sum + Math.max(0, l.amount - (earlyPaidByLoan.get(l.id) ?? 0)), 0)
+    })()
+
+    const cashReceived = (sales
       ? sales.filter(s => s.loan_id === null && s.date <= cardDate)
           .reduce((sum, s) => sum + s.shares * s.price_per_share, 0)
-      : null
+      : 0)
+      + (liqOccurred && projectedLiqEvent
+          ? Math.max(0, (projectedLiqEvent.gross_proceeds ?? 0) - outstandingPrincipal - (projectedLiqEvent.estimated_tax ?? 0))
+          : 0)
+
     return {
       current_price: lastEvent?.share_price ?? 0,
       total_shares: lastEvent?.cum_shares ?? 0,
@@ -784,11 +830,9 @@ export default function Dashboard() {
         const cardYear = parseInt(cardDate.slice(0, 4), 10)
         const purchaseLoans = loans.filter(l => l.loan_type === 'Purchase')
         const interestLoans = loans.filter(l => l.loan_type === 'Interest')
-        // Existing interest loans up to cardYear
         let total = interestLoans
           .filter(l => l.loan_year <= cardYear)
           .reduce((sum, l) => sum + l.amount, 0)
-        // Projected interest from purchase loans for years not yet in DB, up to cardYear
         for (const p of purchaseLoans) {
           const dueYear = new Date(p.due_date + 'T00:00:00').getFullYear()
           for (let yr = p.loan_year + 1; yr <= Math.min(cardYear, dueYear); yr++) {
@@ -800,25 +844,13 @@ export default function Dashboard() {
         }
         return total
       })(),
-      total_loan_principal: (() => {
-        const cardYear = parseInt(cardDate.slice(0, 4), 10)
-        // Loans settled by a linked payoff Sale on or before cardDate
-        const settledIds = new Set(
-          (sales ?? []).filter(s => s.loan_id !== null && s.date <= cardDate).map(s => s.loan_id)
-        )
-        // Early payments made before cardDate against unsettled loans
-        const earlyPaidByLoan = new Map<number, number>()
-        events.filter(e => e.event_type === 'Early Loan Payment' && e.date <= cardDate && e.loan_id != null)
-          .forEach(e => { earlyPaidByLoan.set(e.loan_id!, (earlyPaidByLoan.get(e.loan_id!) ?? 0) + (e.amount ?? 0)) })
-        return loans
-          .filter(l => l.loan_year <= cardYear && !settledIds.has(l.id))
-          .reduce((sum, l) => sum + Math.max(0, l.amount - (earlyPaidByLoan.get(l.id) ?? 0)), 0)
-      })(),
+      // After projected liquidation, all loans are paid off from proceeds
+      total_loan_principal: liqOccurred ? 0 : outstandingPrincipal,
       total_tax_paid: taxPaid,
-      cash_received: cashReceived ?? 0,
+      cash_received: cashReceived,
       next_event: nextEvent,
     }
-  }, [events, loans, sales, cardDate])
+  }, [events, loans, sales, cardDate, projectedLiqDate, projectedLiqEvent])
 
   if (dashLoading) {
     return <p className="p-6 text-center text-sm text-gray-400">Loading...</p>
@@ -901,16 +933,29 @@ export default function Dashboard() {
           Today
         </button>
         <button
-          onClick={() => setCardDate(maxDate)}
-          title="Jump to the date of your last vesting event or price entry"
+          onClick={() => setCardDate(lastRealEventDate)}
+          title="Jump to the date of your last vesting event"
           className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
-            cardDate === maxDate
+            cardDate === lastRealEventDate
               ? 'bg-indigo-600 text-white'
               : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
           }`}
         >
-          End
+          Last event
         </button>
+        {showExitButton && exitDate && (
+          <button
+            onClick={() => setCardDate(exitDate)}
+            title="Jump to your configured exit / liquidation date"
+            className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
+              cardDate === exitDate
+                ? 'bg-indigo-600 text-white'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+            }`}
+          >
+            Exit date
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">

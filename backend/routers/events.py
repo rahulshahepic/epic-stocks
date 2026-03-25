@@ -235,13 +235,20 @@ def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales:
         else:
             e["cum_shares"] = e["cum_shares"] - cumulative_sold
 
-    # Inject virtual Liquidation (projected) event at horizon_date
+    # Inject virtual Liquidation (projected) event at horizon_date.
+    # Only scan events at or before horizon_date so an early exit date correctly
+    # uses shares/price as of that date rather than the full vesting schedule.
     if horizon_date is not None:
         liq_price = 0.0
         remaining_shares = 0
         last_cum_income = 0.0
         last_cum_cap_gains = 0.0
         for ev in enriched:
+            edate = ev["date"]
+            if isinstance(edate, datetime):
+                edate = edate.date()
+            if edate > horizon_date:
+                break
             p = ev.get("share_price", 0.0)
             if p:
                 liq_price = p

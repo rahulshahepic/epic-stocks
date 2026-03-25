@@ -17,6 +17,12 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 | **Mobile** | ![Dashboard Light Mobile](screenshots/dashboard-light-mobile.png) | ![Dashboard Dark Mobile](screenshots/dashboard-dark-mobile.png) |
 | **Desktop** | ![Dashboard Light Desktop](screenshots/dashboard-light-desktop.png) | ![Dashboard Dark Desktop](screenshots/dashboard-dark-desktop.png) |
 
+### Events Timeline
+
+| Light | Dark |
+|-------|------|
+| ![Events Light Mobile](screenshots/events-light-mobile.png) | ![Events Dark Mobile](screenshots/events-dark-mobile.png) |
+
 ### Import / Export (Template + Upload + Download)
 
 ![Import Export](screenshots/import-export-mobile.png)

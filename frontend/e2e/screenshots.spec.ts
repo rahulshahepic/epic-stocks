@@ -62,6 +62,22 @@ test.describe('Screenshots', () => {
     await page.screenshot({ path: `${OUT}/admin-dark-mobile.png`, fullPage: true })
   })
 
+  test('events page - light - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    await page.click('text=Events')
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: `${OUT}/events-light-mobile.png`, fullPage: true })
+  })
+
+  test('events page - dark - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'dark')
+    await page.click('text=Events')
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: `${OUT}/events-dark-mobile.png`, fullPage: true })
+  })
+
   test('import-export page - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     await page.click('text=Import')

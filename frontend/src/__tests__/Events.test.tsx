@@ -69,8 +69,12 @@ describe('Events', () => {
       expect(screen.getByText(/^2 events/)).toBeInTheDocument()
     })
 
-    const select = screen.getByRole('combobox')
-    await userEvent.selectOptions(select, 'Vesting')
+    // Open the multi-select dropdown
+    await userEvent.click(screen.getByRole('button', { name: /All types/i }))
+
+    // Click the Vesting checkbox
+    const vestingCheckbox = screen.getByRole('checkbox', { name: /Vesting/i })
+    await userEvent.click(vestingCheckbox)
 
     expect(screen.getByText(/^1 events/)).toBeInTheDocument()
     expect(screen.getByText('2021-03-01')).toBeInTheDocument()

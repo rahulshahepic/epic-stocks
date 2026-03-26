@@ -42,8 +42,7 @@ test.describe('Multi-user isolation', () => {
 
     // Verify User A sees events
     await navigateTo(page, 'Events')
-    const selectA = page.locator('select')
-    await expect(selectA).not.toContainText('All types (0)')
+    await expect(page.getByRole('button', { name: /All types/i })).not.toContainText('All types (0)')
 
     // Switch to User B
     await loginAs(page, tokenB)

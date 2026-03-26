@@ -879,43 +879,45 @@ export default function Dashboard() {
           <p className="mt-1 text-sm text-indigo-700 dark:text-indigo-300">
             Your dashboard is empty — here are a few ways to get started:
           </p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <a
-              href="/import"
-              className="flex flex-col rounded-lg border border-indigo-300 bg-white p-4 hover:border-indigo-500 hover:shadow-sm dark:border-indigo-700 dark:bg-gray-900 dark:hover:border-indigo-500"
-            >
-              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Import from Excel</span>
-              <span className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Download the sample file to see exactly what to fill in (with explanations), then upload your real data.
-              </span>
-            </a>
-            <a
-              href="/grants"
-              className="flex flex-col rounded-lg border border-indigo-300 bg-white p-4 hover:border-indigo-500 hover:shadow-sm dark:border-indigo-700 dark:bg-gray-900 dark:hover:border-indigo-500"
-            >
-              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Add a grant manually</span>
-              <span className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Enter your grant details one by one — no spreadsheet needed.
-              </span>
-            </a>
-          </div>
-          <p className="mt-4 text-xs text-indigo-600 dark:text-indigo-400">
-            You'll also need at least one share price (go to <a href="/prices" className="underline">Prices</a>) before events will appear.
-          </p>
-          {config?.epic_onboarding_url && (
-            <p className="mt-2 text-xs text-indigo-600 dark:text-indigo-400">
-              On Epic's network?{' '}
+          <div className="mt-4 space-y-3">
+            {config?.epic_onboarding_url && (
               <a
                 href={config.epic_onboarding_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="underline"
+                className="flex flex-col rounded-lg border-2 border-indigo-400 bg-white p-5 hover:border-indigo-600 hover:shadow-md dark:border-indigo-500 dark:bg-gray-900 dark:hover:border-indigo-400"
               >
-                Use this pre-filled template
+                <span className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">On Epic's network? Start here →</span>
+                <span className="mt-1 text-sm font-medium text-gray-900 dark:text-gray-100">Download your pre-filled template</span>
+                <span className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Your grant and loan structure is already filled in. Download, review, and import it on the Import page.
+                </span>
               </a>
-              {' '}with your grant and loan data already filled in.
-            </p>
-          )}
+            )}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <a
+                href="/import"
+                className="flex flex-col rounded-lg border border-indigo-300 bg-white p-4 hover:border-indigo-500 hover:shadow-sm dark:border-indigo-700 dark:bg-gray-900 dark:hover:border-indigo-500"
+              >
+                <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Import from Excel</span>
+                <span className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Download the sample file to see exactly what to fill in (with explanations), then upload your real data.
+                </span>
+              </a>
+              <a
+                href="/grants"
+                className="flex flex-col rounded-lg border border-indigo-300 bg-white p-4 hover:border-indigo-500 hover:shadow-sm dark:border-indigo-700 dark:bg-gray-900 dark:hover:border-indigo-500"
+              >
+                <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Add a grant manually</span>
+                <span className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Enter your grant details one by one — no spreadsheet needed.
+                </span>
+              </a>
+            </div>
+          </div>
+          <p className="mt-4 text-xs text-indigo-600 dark:text-indigo-400">
+            You'll also need at least one share price (go to <a href="/prices" className="underline">Prices</a>) before events will appear.
+          </p>
         </div>
       </div>
     )

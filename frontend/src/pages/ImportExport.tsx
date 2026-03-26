@@ -174,11 +174,23 @@ export default function ImportExport() {
       {/* Template Section */}
       <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
         <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Get Started</h3>
-        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          Download a sample filled with fake data to see what the format looks like — each cell has a comment explaining what it means.
-          Or download a blank template to fill in yourself.
+        {config?.epic_onboarding_url && (
+          <a
+            href={config.epic_onboarding_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 flex flex-col rounded-lg border-2 border-indigo-400 bg-indigo-50 p-4 hover:border-indigo-600 hover:shadow-md dark:border-indigo-500 dark:bg-indigo-950/40 dark:hover:border-indigo-400"
+          >
+            <span className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">On Epic's network? Start here →</span>
+            <span className="mt-1 text-xs text-indigo-600 dark:text-indigo-400">
+              Download your pre-filled template — grant and loan structure already filled in. Then upload it below.
+            </span>
+          </a>
+        )}
+        <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+          Or download a generic sample (filled with fake data) to see the format, or a blank template to fill in yourself.
         </p>
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-2 flex flex-wrap gap-2">
           <button
             onClick={handleSampleDownload}
             className="rounded-md bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60"
@@ -198,20 +210,6 @@ export default function ImportExport() {
             {showGuide ? 'Hide column guide' : 'What do the columns mean?'}
           </button>
         </div>
-        {config?.epic_onboarding_url && (
-          <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-            On Epic's network?{' '}
-            <a
-              href={config.epic_onboarding_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-medium text-indigo-600 underline hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
-            >
-              Use this pre-filled template
-            </a>
-            {' '}with your grant and loan data already filled in.
-          </p>
-        )}
 
         {showGuide && (
           <div className="mt-4 space-y-4">

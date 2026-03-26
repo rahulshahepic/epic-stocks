@@ -60,19 +60,22 @@ test.describe('Quick flow: purchase grant + loan', () => {
     await expect(page.getByText('Events Timeline')).toBeVisible()
 
     // Should have events: 1 Exercise + 4 Vesting + 1 Loan Payoff + 1 Sale + 1 Liquidation (projected) = 8 events
-    const typeSelect = page.locator('select')
-    await expect(typeSelect).toContainText('All types (8)')
+    const filterBtn = page.getByRole('button', { name: /All types/i })
+    await expect(filterBtn).toContainText('All types (8)')
 
     // Filter to Exercise
-    await typeSelect.selectOption('Exercise')
+    await filterBtn.click()
+    await page.getByRole('checkbox', { name: /^Exercise/ }).click()
     await expect(page.getByText('1 events')).toBeVisible()
 
-    // Filter to Vesting
-    await typeSelect.selectOption('Vesting')
+    // Filter to Vesting (clear Exercise first, then select Vesting)
+    await page.getByRole('checkbox', { name: /^Exercise/ }).click()
+    await page.getByRole('checkbox', { name: /^Vesting/ }).click()
     await expect(page.getByText('4 events')).toBeVisible()
 
     // Filter to Loan Payoff
-    await typeSelect.selectOption('Loan Payoff')
+    await page.getByRole('checkbox', { name: /^Vesting/ }).click()
+    await page.getByRole('checkbox', { name: /^Loan Payoff/ }).click()
     await expect(page.getByText('1 events')).toBeVisible()
   })
 
@@ -104,7 +107,6 @@ test.describe('Quick flow: purchase grant + loan', () => {
 
     // Verify events: 1 Exercise + 2 Vesting + 1 Liquidation (projected) = 4
     await navigateTo(page, 'Events')
-    const typeSelect = page.locator('select')
-    await expect(typeSelect).toContainText('All types (4)')
+    await expect(page.getByRole('button', { name: /All types \(4\)/i })).toBeVisible()
   })
 })

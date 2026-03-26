@@ -490,9 +490,12 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
             sorted_tl_dash.insert(idx, sentinel)
             sort_keys_dash.insert(idx, key)
 
-    # Loan payment by year: payoff_sale vs cash_in
+    # Loan payment by year: payoff_sale vs cash_in (skip refinanced loans — they show as $0 events)
+    refinanced_loan_ids_dash: set[int] = {ln.refinances_loan_id for ln in loans_db if ln.refinances_loan_id is not None}
     loan_payment_by_year: dict[str, dict] = {}
-    for i, ln in enumerate(loans_db):
+    for ln in loans_db:
+        if ln.id in refinanced_loan_ids_dash:
+            continue
         year = str(ln.due_date.year)
         early_paid = payments_by_loan.get(ln.id, 0.0)
         cash_due = max(0.0, ln.amount - early_paid)

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api.ts'
 import type { TimelineEvent, TaxBreakdown, TaxSettings } from '../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
@@ -136,7 +136,29 @@ export default function Events() {
   const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
   const { data: events, loading } = useApiData<TimelineEvent[]>(fetchEvents)
   const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
-  const [typeFilter, setTypeFilter] = useState<string>('')
+  const [typeFilter, setTypeFilter] = useState<Set<string>>(new Set())
+  const [typeDropdownOpen, setTypeDropdownOpen] = useState(false)
+  const typeDropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!typeDropdownOpen) return
+    function handleClick(e: MouseEvent) {
+      if (typeDropdownRef.current && !typeDropdownRef.current.contains(e.target as Node)) {
+        setTypeDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [typeDropdownOpen])
+
+  function toggleType(t: string) {
+    setTypeFilter(prev => {
+      const next = new Set(prev)
+      if (next.has(t)) next.delete(t)
+      else next.add(t)
+      return next
+    })
+  }
 
   // Per-sale-row inline TaxCard state
   const [breakdowns, setBreakdowns] = useState<Map<number, TaxBreakdown>>(new Map())
@@ -183,7 +205,7 @@ export default function Events() {
   if (loading) return <p className="p-6 text-center text-sm text-gray-400">Loading...</p>
   if (!events) return <p className="p-6 text-center text-sm text-red-500">Failed to load events</p>
 
-  const filtered = typeFilter ? events.filter(e => e.event_type === typeFilter) : events
+  const filtered = typeFilter.size > 0 ? events.filter(e => typeFilter.has(e.event_type)) : events
   // Index of the projected liquidation event in the filtered list (for separator placement)
   const liqIdx = filtered.findIndex(e => e.is_projected)
 
@@ -191,16 +213,42 @@ export default function Events() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Events Timeline</h2>
-        <select
-          value={typeFilter}
-          onChange={e => setTypeFilter(e.target.value)}
-          className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
-        >
-          <option value="">All types ({events.length})</option>
-          {EVENT_TYPES.map(t => (
-            <option key={t} value={t}>{t} ({events.filter(e => e.event_type === t).length})</option>
-          ))}
-        </select>
+        <div className="relative" ref={typeDropdownRef}>
+          <button
+            onClick={() => setTypeDropdownOpen(p => !p)}
+            className="flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+          >
+            {typeFilter.size === 0
+              ? `All types (${events.length})`
+              : typeFilter.size === 1
+              ? `${[...typeFilter][0]} (${filtered.length})`
+              : `${typeFilter.size} types (${filtered.length})`}
+            <span className="text-gray-400">{typeDropdownOpen ? '▲' : '▼'}</span>
+          </button>
+          {typeDropdownOpen && (
+            <div className="absolute right-0 z-10 mt-1 w-56 rounded-md border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800">
+              <button
+                onClick={() => { setTypeFilter(new Set()); setTypeDropdownOpen(false) }}
+                className="w-full px-3 py-1.5 text-left text-xs text-gray-500 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-700"
+              >
+                Clear selection
+              </button>
+              <div className="my-1 border-t border-gray-100 dark:border-gray-700" />
+              {EVENT_TYPES.map(t => (
+                <label key={t} className="flex cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={typeFilter.has(t)}
+                    onChange={() => toggleType(t)}
+                    className="h-3.5 w-3.5 accent-blue-600"
+                  />
+                  <span className="flex-1 text-xs text-gray-700 dark:text-gray-200">{t}</span>
+                  <span className="text-[10px] text-gray-400">{events.filter(e => e.event_type === t).length}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
@@ -356,7 +404,7 @@ export default function Events() {
                       </td>
                     </tr>
                   )}
-                  {i === liqIdx && liqIdx >= 0 && liqIdx < filtered.length - 1 && !typeFilter && (
+                  {i === liqIdx && liqIdx >= 0 && liqIdx < filtered.length - 1 && typeFilter.size === 0 && (
                     <tr>
                       <td colSpan={9} className="py-0">
                         <div className="border-t-2 border-dashed border-gray-300 py-1 text-center text-[10px] italic text-gray-400 dark:border-gray-600 dark:text-gray-500">

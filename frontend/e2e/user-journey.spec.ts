@@ -151,8 +151,7 @@ test.describe('Full user journey', () => {
     // Navigate to Events and verify event count (spec: 89 real events + 1 projected liquidation = 90)
     await navigateTo(page, 'Events')
     await expect(page.getByText('Events Timeline')).toBeVisible()
-    const typeSelect = page.locator('select')
-    await expect(typeSelect).toContainText('All types (90)')
+    await expect(page.getByRole('button', { name: /All types \(90\)/i })).toBeVisible()
 
     // Navigate to Prices and add a new price
     await navigateTo(page, 'Prices')
@@ -170,8 +169,7 @@ test.describe('Full user journey', () => {
 
     // Events should now have one more (Share Price event): 90 real + 1 projected = 91
     await navigateTo(page, 'Events')
-    const updatedSelect = page.locator('select')
-    await expect(updatedSelect).toContainText('All types (91)')
+    await expect(page.getByRole('button', { name: /All types \(91\)/i })).toBeVisible()
 
     // Export should work
     await navigateTo(page, 'Import')

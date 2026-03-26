@@ -837,11 +837,18 @@ export default function Dashboard() {
           .reduce((sum, l) => sum + l.amount, 0)
         for (const p of purchaseLoans) {
           const dueYear = new Date(p.due_date + 'T00:00:00').getFullYear()
+          const relatedInterestLoans = interestLoans.filter(
+            l => l.grant_year === p.grant_year && l.grant_type === p.grant_type
+          )
           for (let yr = p.loan_year + 1; yr <= Math.min(cardYear, dueYear); yr++) {
-            const exists = interestLoans.some(
-              l => l.grant_year === p.grant_year && l.grant_type === p.grant_type && l.loan_year === yr
-            )
-            if (!exists) total += p.amount * p.interest_rate
+            const exists = relatedInterestLoans.some(l => l.loan_year === yr)
+            if (!exists) {
+              total += p.amount * p.interest_rate
+              // Also project interest accruing on outstanding interest loans for this year
+              for (const il of relatedInterestLoans) {
+                if (il.loan_year < yr) total += il.amount * il.interest_rate
+              }
+            }
           }
         }
         return total

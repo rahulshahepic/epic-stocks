@@ -807,11 +807,12 @@ export default function Dashboard() {
       const settledIds = new Set(
         (sales ?? []).filter(s => s.loan_id !== null && s.date <= refDate).map(s => s.loan_id)
       )
+      const refinancedIds = new Set(loans.map(l => l.refinances_loan_id).filter((id): id is number => id !== null))
       const earlyPaidByLoan = new Map<number, number>()
       events.filter(e => e.event_type === 'Early Loan Payment' && e.date <= refDate && e.loan_id != null)
         .forEach(e => { earlyPaidByLoan.set(e.loan_id!, (earlyPaidByLoan.get(e.loan_id!) ?? 0) + (e.amount ?? 0)) })
       return loans
-        .filter(l => l.loan_year <= refYear && !settledIds.has(l.id))
+        .filter(l => l.loan_year <= refYear && !settledIds.has(l.id) && !refinancedIds.has(l.id))
         .reduce((sum, l) => sum + Math.max(0, l.amount - (earlyPaidByLoan.get(l.id) ?? 0)), 0)
     })()
 

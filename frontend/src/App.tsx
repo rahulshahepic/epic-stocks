@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { getToken, api } from './api.ts'
 import Layout from './components/Layout.tsx'
 import { ToastProvider } from './components/Toast.tsx'
@@ -15,11 +15,13 @@ import ImportExport from './pages/ImportExport.tsx'
 import Settings from './pages/Settings.tsx'
 import Admin from './pages/Admin.tsx'
 import Sales from './pages/Sales.tsx'
+import { useMe } from './hooks/useMe.ts'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   return getToken() ? <>{children}</> : <Navigate to="/login" replace />
 }
 
+// Full-screen overlay for regular users — blocks all interaction.
 function MaintenanceOverlay() {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-50 dark:bg-gray-950">
@@ -34,6 +36,26 @@ function MaintenanceOverlay() {
       </div>
     </div>
   )
+}
+
+// Non-blocking banner for admins — lets them reach the admin panel to end maintenance.
+function MaintenanceBanner() {
+  return (
+    <div className="fixed inset-x-0 top-0 z-50 flex items-center justify-center gap-3 bg-amber-400 px-4 py-2 text-sm font-medium text-amber-950">
+      <span className="h-2 w-2 animate-pulse rounded-full bg-amber-800" />
+      Maintenance mode is active — financial data is unavailable to users.
+    </div>
+  )
+}
+
+function MaintenanceGate({ maintenance }: { maintenance: boolean }) {
+  const location = useLocation()
+  const me = useMe()
+
+  if (!maintenance) return null
+  // Admins on /admin see a non-blocking banner so they can still toggle maintenance off
+  if (me?.is_admin && location.pathname === '/admin') return <MaintenanceBanner />
+  return <MaintenanceOverlay />
 }
 
 export default function App() {
@@ -73,7 +95,7 @@ export default function App() {
     <ThemeProvider>
     <BrowserRouter>
       <ToastProvider>
-        {maintenance && <MaintenanceOverlay />}
+        <MaintenanceGate maintenance={maintenance} />
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />

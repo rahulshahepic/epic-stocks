@@ -69,8 +69,8 @@ def _fetch_jwks(jwks_uri: str) -> dict:
 class OIDCProviderConfig:
     name: str
     client_id: str
-    client_secret: str
     discovery_url: str
+    client_secret: str = ""
     label: str = ""
     scopes: list[str] = field(default_factory=lambda: ["openid", "email", "profile"])
     subject_claim: str = "sub"
@@ -101,14 +101,16 @@ class OIDCProvider:
         return self._oidc()["authorization_endpoint"] + "?" + urlencode(params)
 
     def exchange_code(self, code: str, code_verifier: str, redirect_uri: str) -> UserIdentity:
-        resp = httpx.post(self._oidc()["token_endpoint"], data={
+        payload: dict = {
             "code": code,
             "client_id": self.config.client_id,
-            "client_secret": self.config.client_secret,
             "redirect_uri": redirect_uri,
             "grant_type": "authorization_code",
             "code_verifier": code_verifier,
-        }, timeout=10)
+        }
+        if self.config.client_secret:
+            payload["client_secret"] = self.config.client_secret
+        resp = httpx.post(self._oidc()["token_endpoint"], data=payload, timeout=10)
         if resp.status_code != 200:
             raise ValueError(f"Token exchange failed: {resp.text}")
         id_token = resp.json().get("id_token")

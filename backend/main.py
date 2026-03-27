@@ -140,15 +140,19 @@ def _start_metrics_sampler():
     return asyncio.ensure_future(_loop())
 
 
-# API routes that are always accessible, even during maintenance.
-# Everything else under /api/ is blocked with 503.
-_MAINT_ALLOWED_EXACT = frozenset({"/api/health", "/api/status", "/api/config", "/api/me"})
+# API routes that are always accessible during maintenance (all HTTP methods).
+_MAINT_ALLOWED_EXACT = frozenset({"/api/health", "/api/status", "/api/config"})
 _MAINT_ALLOWED_PREFIX = ("/api/auth/", "/api/admin/", "/api/push/", "/api/notifications/")
+# GET /api/me is needed for nav (profile info, is_admin flag).
+# Mutating methods on /api/me (DELETE = account deletion) must be blocked —
+# account deletion cascades into encrypted financial tables.
+_MAINT_ALLOWED_GET_EXACT = frozenset({"/api/me"})
 
 
 class MaintenanceMiddleware:
     """Block financial API routes while the maintenance sentinel file is present.
 
+    Enforcement is at the ASGI layer — all methods blocked, not just GET.
     The sentinel is set by key rotation and admin-toggled downtime.
     It is distinct from the Caddy full_maintenance sentinel (deploy-time full
     lockdown when the app container itself is stopped).
@@ -161,9 +165,11 @@ class MaintenanceMiddleware:
         if scope["type"] == "http" and _MAINTENANCE_SENTINEL.exists():
             path = scope.get("path", "")
             if path.startswith("/api/"):
+                method = scope.get("method", "GET")
                 allowed = (
                     path in _MAINT_ALLOWED_EXACT
                     or path.startswith(_MAINT_ALLOWED_PREFIX)
+                    or (path in _MAINT_ALLOWED_GET_EXACT and method == "GET")
                 )
                 if not allowed:
                     response = JSONResponse(

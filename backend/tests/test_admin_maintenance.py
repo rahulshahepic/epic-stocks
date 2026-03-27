@@ -147,8 +147,26 @@ def test_middleware_blocks_financial_routes_during_maintenance(client, sentinel_
     sentinel_path.touch()
     for path in ["/api/grants", "/api/loans", "/api/prices", "/api/events", "/api/sales"]:
         resp = client.get(path, headers=auth_header(token))
-        assert resp.status_code == 503, f"{path} should be blocked"
+        assert resp.status_code == 503, f"GET {path} should be blocked"
         assert "no-store" in resp.headers.get("cache-control", "")
+
+
+def test_middleware_blocks_mutating_methods_during_maintenance(client, sentinel_path):
+    """POST/PUT/DELETE on financial routes are blocked — not just GET."""
+    token = register_user(client, "mutate@example.com")
+    sentinel_path.touch()
+    assert client.post("/api/grants", json={}, headers=auth_header(token)).status_code == 503
+    assert client.delete("/api/grants/1", headers=auth_header(token)).status_code == 503
+    assert client.post("/api/sales", json={}, headers=auth_header(token)).status_code == 503
+
+
+def test_middleware_blocks_delete_me_during_maintenance(client, sentinel_path):
+    """DELETE /api/me (account deletion) is blocked — cascades into encrypted tables."""
+    token = register_user(client, "selfdelete@example.com")
+    sentinel_path.touch()
+    assert client.delete("/api/me", headers=auth_header(token)).status_code == 503
+    # GET /api/me must still work (needed for nav/auth checks)
+    assert client.get("/api/me", headers=auth_header(token)).status_code == 200
 
 
 def test_middleware_allows_auth_and_admin_during_maintenance(client, sentinel_path):

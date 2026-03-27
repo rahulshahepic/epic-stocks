@@ -121,7 +121,7 @@ Before anything touches the server, a Docker container runs `caddy validate` aga
 
 Connects to the VPS via SSH (key stored in GitHub Actions secrets) and:
 
-1. Writes `.env` from GitHub Secrets/Vars — the VPS never stores secrets manually
+1. Generates any missing server-side secrets (JWT, encryption key, VAPID keys, Postgres password) into `/opt/epic-stocks/.secrets/`, then writes `.env` from those files plus GitHub Secrets/Vars
 2. Creates a 2 GB swapfile if one doesn't exist (idempotent)
 3. `git fetch origin main && git reset --hard origin/main` — always matches the repo exactly; no local drift
 4. `docker compose build && docker compose up -d`
@@ -142,21 +142,34 @@ No automatic rollback. Because Alembic migrations run on startup, reverting code
 
 ### GitHub Actions secrets and variables required
 
+These are the only values that need to be set in GitHub. Cryptographic secrets (JWT, encryption key, VAPID keys, Postgres password) are generated on the server on first deploy and never stored in GitHub.
+
 | Name | Type | Description |
 |------|------|-------------|
 | `VPS_SSH_KEY` | Secret | Private SSH key for the deploy user |
-| `JWT_SECRET` | Secret | Random 32+ byte string for JWT signing |
-| `POSTGRES_PASSWORD` | Secret | PostgreSQL password |
+| `VPS_USER` | Secret | SSH username on the VPS |
 | `ADMIN_EMAIL` | Secret | Semicolon-delimited admin email(s) |
-| `VAPID_PRIVATE_KEY` | Secret | VAPID private key for push notifications |
 | `RESEND_API_KEY` | Secret | Resend email API key |
 | `RESEND_FROM` | Secret | Sender address for transactional email |
-| `VPS_USER` | Secret | SSH username on the VPS |
 | `VPS_HOST` | Variable | VPS hostname or IP |
 | `GOOGLE_CLIENT_ID` | Variable | Google OAuth client ID |
 | `DOMAIN` | Variable | Your domain name |
-| `VAPID_PUBLIC_KEY` | Variable | VAPID public key |
 | `TRUSTED_PROXY_IPS` | Variable | Cloudflare IP ranges for real-IP forwarding |
+| `EPIC_ONBOARDING_URL` | Variable | (optional) pre-filled onboarding template URL |
+
+### Server-generated secrets
+
+The following are generated once on first deploy, written to `/opt/epic-stocks/.secrets/` (mode 700, files mode 600), and read from there on every subsequent deploy. They never appear in GitHub.
+
+| File | Description |
+|------|-------------|
+| `jwt_secret` | 32-byte hex string for JWT signing |
+| `encryption_master_key` | 32-byte hex string for AES-256-GCM column encryption |
+| `postgres_password` | 32-byte hex string for the PostgreSQL superuser |
+| `vapid_private_key` | P-256 EC private key for Web Push |
+| `vapid_public_key` | Corresponding P-256 public key (served to browsers) |
+
+On transition from a prior setup, the deploy script seeds these files from the existing `.env` before generating fresh values, so no data loss occurs.
 
 ### Reference deployment status
 
@@ -165,8 +178,8 @@ No automatic rollback. Because Alembic migrations run on startup, reverting code
 | Step | Status |
 |------|--------|
 | Caddy config validated in CI before every deploy | ✅ Done |
-| `.env` written from GitHub secrets on every deploy | ✅ Done |
-| Encryption master key auto-generated on-disk, never in GitHub | ✅ Done |
+| Server-generated secrets persisted in `.secrets/`, not GitHub | ✅ Done |
+| `.env` written from server secrets + GitHub vars on every deploy | ✅ Done |
 | Deploy polls `/api/health` and fails loudly on outage | ✅ Done |
 | Swapfile created automatically if missing | ✅ Done |
 
@@ -217,22 +230,34 @@ Alert within **5 minutes** of downtime. All three options above achieve this on 
 
 ---
 
-## 6. Database Backups (Infrastructure — not in this repo)
+## 6. Backups (Infrastructure — not in this repo)
 
-> Not yet configured. This section is a placeholder for the backup strategy.
+### Strategy: Hetzner server snapshots
 
-The application data lives in a PostgreSQL container. Key considerations:
+The reference deployment uses **Hetzner automated backups** (daily, 7-day retention). A snapshot captures the entire server — disk image, Docker volumes (`pg_data`, `caddy_data`), and the `/opt/epic-stocks/.secrets/` directory containing the server-generated cryptographic keys.
 
-- **What to back up:** the `vesting` database (grants, loans, prices, users, error_logs, push subscriptions)
-- **Application-level snapshots** are already created automatically before each Excel import (last 3 kept per user, restorable via the API) — these are not a substitute for database-level backups
-- **Suggested approach:** daily `pg_dump` piped to an off-site location (S3, Backblaze B2, or similar), retained for 30 days
+This is the primary backup and key-recovery mechanism. Because the secrets files and the database live on the same server, a snapshot always contains them together and in a consistent state. Restoring a snapshot to a new Hetzner server and running the deploy is sufficient for full recovery.
 
-### To-do
+> **Application-level snapshots** are also created automatically before each Excel import (last 3 kept per user, restorable via the API). These are not a substitute for server backups.
 
-- [ ] Set up automated `pg_dump` (cron or systemd timer on the VPS)
-- [ ] Ship dumps off-site automatically
-- [ ] Verify restore procedure (test restore to a throwaway container monthly)
-- [ ] Document RTO/RPO targets
+### Steps
+
+1. In the Hetzner Cloud Console, select the server → **Backups** → enable automatic backups
+2. Hetzner retains the last 7 daily backups automatically (billed at ~20% of server cost)
+3. Before any major change (schema migrations, infrastructure changes), take a **manual snapshot** from the console as an additional restore point
+
+### Restore procedure
+
+1. In Hetzner Console → **Snapshots / Backups** → select the backup → **Rebuild** (creates new server from snapshot) or restore in place
+2. SSH in and run the deploy: `git push origin main` triggers CI which re-deploys from the now-running server state
+3. Verify: `curl https://<domain>/api/health`
+
+### Reference deployment status
+
+| Step | Status |
+|------|--------|
+| Hetzner automated backups enabled | ⚠️ Pending |
+| Pre-migration manual snapshot habit | ⚠️ Pending |
 
 ---
 

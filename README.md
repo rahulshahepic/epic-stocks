@@ -134,20 +134,19 @@ cp .env.example .env
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `JWT_SECRET` | Yes | Random secret for signing JWT tokens |
+| `JWT_SECRET` | Yes (local dev) | Random secret for signing JWT tokens. **Auto-generated on production deploy.** |
 | `GOOGLE_CLIENT_ID` | Yes | From [Google Cloud Console](https://console.cloud.google.com/apis/credentials) |
-| `DATABASE_URL` | Yes (prod) | PostgreSQL DSN, e.g. `postgresql://postgres:pass@localhost:5432/vesting`. Docker Compose sets this automatically. |
-| `POSTGRES_PASSWORD` | Yes (prod) | Password for the `postgres` user in the Docker Compose `db` service |
+| `DATABASE_URL` | Yes (prod) | PostgreSQL DSN. Docker Compose sets this automatically from `POSTGRES_PASSWORD`. |
+| `POSTGRES_PASSWORD` | Yes (local dev) | Password for the `postgres` user. **Auto-generated on production deploy.** |
+| `ENCRYPTION_MASTER_KEY` | No | Enables per-user AES-256-GCM encryption. **Auto-generated on production deploy.** |
 | `ADMIN_EMAIL` | No | Semicolon-delimited email(s) granted admin access on login |
-| `VAPID_PUBLIC_KEY` | No | Required for push notifications |
-| `VAPID_PRIVATE_KEY` | No | Required for push notifications |
+| `VAPID_PUBLIC_KEY` | No | Required for push notifications. **Auto-generated on production deploy.** |
+| `VAPID_PRIVATE_KEY` | No | Required for push notifications. **Auto-generated on production deploy.** |
 | `RESEND_API_KEY` | No | Enables email notifications via [Resend](https://resend.com) |
 | `RESEND_FROM` | No | Sender address for emails (e.g. `Equity Tracker <noreply@yourdomain.com>`) |
 | `APP_URL` | No | Public app URL included as a link in email notifications |
 
-> **Encryption master key** — `ENCRYPTION_MASTER_KEY` is **not** an environment variable you set. On first deploy the script generates a 256-bit key with `openssl rand -hex 32` and writes it to `./data/current_master_key` on the VPS. It lives on-disk only — never in GitHub Secrets. The app always reads the key from this file. After a key rotation the file is updated automatically; no deploy or secret change is needed.
-
-**Generating VAPID keys** (one-time, requires Node):
+For local development, generate VAPID keys with:
 ```bash
 npx web-push generate-vapid-keys
 ```

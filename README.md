@@ -55,7 +55,7 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 
 ## Getting Started (User Guide)
 
-1. **Sign in** — use any Google account. Your data is tied to that account, and you can export everything anytime.
+1. **Sign in** — click the sign-in button for your organisation's identity provider (Google, Azure AD, or any OIDC provider configured by your admin). Your data is tied to that account, and you can export everything anytime.
 2. **Add a price** — go to **Prices** and enter the current share price (Epic announces this each March). Without at least one price, no events will be computed.
 3. **Add your data** — two options:
    - **Import from Excel** — go to **Import**, download the **Sample** (pre-filled with fake data and explanatory cell comments) to see what the format looks like, then fill in your real data and upload. Click "What do the columns mean?" for a plain-English guide to every field.
@@ -78,7 +78,7 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 - **83(b) Election Support** — bonus/free grants can be flagged as having an 83(b) election filed. Vesting events for these grants show unrealized cap gains (violet `~$X`) instead of ordinary income, with a tappable card explaining the cost basis and potential LT cap gains tax at eventual sale.
 - **Down Payment Rules** — configurable minimum DP policy (percent of purchase and dollar cap). "Prefer stock DP" auto-calculates the minimum stock exchange down payment on new purchases. Default: 10% or $20,000, whichever is lower.
 - **Excel Import/Export** — bootstrap from an existing Vesting.xlsx or export current state. The Import page includes a downloadable sample file (pre-filled with fake data, with cell comments explaining every field) and a built-in column reference guide.
-- **Google Sign-In** — OAuth 2.0 authentication, automatic account creation. Any Google account works; data is tied to that account.
+- **OIDC Sign-In** — provider-agnostic PKCE flow works with any standards-compliant IdP (Google, Azure Entra ID, etc.). Multiple providers can be enabled simultaneously — the login page shows one button per provider. Automatic account creation; data is tied to the account.
 - **Admin Dashboard** — user management, aggregate stats, email blocking, and system health monitoring (CPU, RAM, DB size sparklines with 24h/72h/7d/30d windows, per-table DB size breakdown). Admin cannot see financial data.
 - **Push & Email Notifications** — configurable advance timing: day-of, 3 days before, or 1 week before each event. Per-user opt-in for each channel independently. Includes a "Send test" button to confirm push is working.
 - **Per-User Encryption** — AES-256-GCM column-level encryption. The master key is auto-generated on first deploy and stored on-disk; it never passes through GitHub Secrets. Each user gets a unique key. Admins can rotate the master key live from the admin panel with automatic rollback on failure.
@@ -92,7 +92,7 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 |-------|-----------|
 | Backend | Python 3.12, FastAPI, SQLAlchemy, PostgreSQL (Alembic migrations) |
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS 4, Recharts |
-| Auth | Google Sign-In (OAuth 2.0) → backend JWT session tokens |
+| Auth | OIDC PKCE (any provider) → backend JWT session tokens |
 | Deploy | Docker Compose + Caddy (auto-HTTPS) + Cloudflare (DDoS protection) |
 | Tests | pytest (backend), Vitest + RTL (frontend), Playwright (E2E) |
 
@@ -102,7 +102,7 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 
 - Python 3.12+
 - Node.js 20+
-- A Google OAuth Client ID ([create one here](https://console.cloud.google.com/apis/credentials))
+- At least one OIDC provider configured in `OIDC_PROVIDERS` (see [Environment Variables](#environment-variables))
 
 ### Backend
 
@@ -135,15 +135,21 @@ cp .env.example .env
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `JWT_SECRET` | Yes (local dev) | Random secret for signing JWT tokens. **Auto-generated on production deploy.** |
-| `GOOGLE_CLIENT_ID` | Yes | From [Google Cloud Console](https://console.cloud.google.com/apis/credentials) |
+| `OIDC_PROVIDERS` | Yes | JSON array of OIDC provider configs — see `.env.example` for format. Supports Google, Azure Entra ID, or any OIDC-compliant IdP. Multiple providers show as separate sign-in buttons. |
 | `DATABASE_URL` | Yes (prod) | PostgreSQL DSN. Docker Compose sets this automatically from `POSTGRES_PASSWORD`. |
 | `POSTGRES_PASSWORD` | Yes (local dev) | Password for the `postgres` user. **Auto-generated on production deploy.** |
 | `ENCRYPTION_MASTER_KEY` | No | Enables per-user AES-256-GCM encryption. **Auto-generated on production deploy.** |
 | `ADMIN_EMAIL` | No | Semicolon-delimited email(s) granted admin access on login |
 | `VAPID_PUBLIC_KEY` | No | Required for push notifications. **Auto-generated on production deploy.** |
 | `VAPID_PRIVATE_KEY` | No | Required for push notifications. **Auto-generated on production deploy.** |
+| `EMAIL_PROVIDER` | No | `resend` (default) or `smtp` |
 | `RESEND_API_KEY` | No | Enables email notifications via [Resend](https://resend.com) |
 | `RESEND_FROM` | No | Sender address for emails (e.g. `Equity Tracker <noreply@yourdomain.com>`) |
+| `SMTP_HOST` | No | SMTP server hostname (when `EMAIL_PROVIDER=smtp`) |
+| `SMTP_PORT` | No | SMTP port, default 587 |
+| `SMTP_USER` | No | SMTP username |
+| `SMTP_PASSWORD` | No | SMTP password |
+| `SMTP_FROM` | No | Sender address for SMTP emails |
 | `APP_URL` | No | Public app URL included as a link in email notifications |
 | `COMMIT_SHA` | No | Git commit SHA injected at Docker build time. Displayed as a 7-char short hash at the bottom of the Admin and Settings pages so testers can confirm which build is running. **Set automatically by the deploy workflow.** |
 
@@ -152,39 +158,44 @@ For local development, generate VAPID keys with:
 npx web-push generate-vapid-keys
 ```
 
-The frontend fetches the Google Client ID from the backend at `/api/config` — no separate frontend env var needed.
+The login page fetches available sign-in providers from the backend at `GET /api/auth/providers` — no frontend env vars needed.
 
 ## Production Deployment
 
-### Docker Compose
+### Multi-App Caddy (shared infrastructure)
+
+This app uses a shared Caddy reverse proxy. The infra compose file manages Caddy and the shared `proxy` Docker network; each app manages itself.
+
+**One-time server setup** (once per VPS):
 
 ```bash
-cp .env.example .env   # fill in secrets
-docker compose up -d
+cd /opt/infra
+git clone <repo-url> .
+docker compose -f infra/docker-compose.infra.yml up -d
 ```
 
-This starts the FastAPI app + Caddy reverse proxy with auto-HTTPS.
+This starts Caddy and creates the `proxy` network. Each deployed app writes a `caddy/app.caddy` snippet into the shared `caddy_config` volume and reloads Caddy — handled automatically by the deploy workflow.
 
-### Manual VPS Setup
+### Manual VPS Setup (per app)
 
 ```bash
-# One-time setup on the VPS
+# One-time setup on the VPS (per app)
 curl -fsSL https://get.docker.com | sh
 mkdir -p /opt/epic-stocks/data
 cd /opt/epic-stocks
 git clone <repo-url> .
 ```
 
-Secrets are managed via GitHub Actions secrets — the deploy workflow writes `.env` automatically on every push to `main`. Never create `.env` on the VPS manually.
+Set `OIDC_PROVIDERS`, `DOMAIN`, and other secrets as GitHub Actions variables/secrets — the deploy workflow writes `.env` automatically on every push to `main`. Never create `.env` on the VPS manually.
 
 ### Deploy Safety
 
 The deploy workflow includes two safeguards against silent failures:
 
-1. **Caddy config validation** — a `caddy-validate` job runs before deploy, catching any Caddyfile syntax errors introduced by new Caddy versions (`caddy:2` is intentionally unpinned so CI catches breaking changes before they reach prod).
+1. **Caddy snippet validation** — a `caddy-validate` CI job wraps `caddy/app.caddy` in a minimal Caddyfile and validates it before deploy, catching syntax errors before they reach prod.
 2. **Post-deploy health polling** — after `docker compose up -d`, the deploy script polls `http://localhost/api/health` for up to 60 seconds. If the app doesn't respond, it prints `docker compose ps`, recent logs, recent commits, and manual rollback instructions, then exits 1. No auto-rollback — Alembic runs migrations on startup, so reverting code after a schema migration requires manual review.
 
-**Downtime during deploy** — the deploy script touches `./data/full_maintenance` before stopping the app container. Caddy serves a static "Down for Maintenance" page (auto-refreshes every 20 s, `Cache-Control: no-store`) until the sentinel is removed at the end of the script. This is separate from app-managed maintenance (rotation / admin toggle), which uses `./data/maintenance` and keeps the app running.
+**Downtime during deploy** — the deploy script touches a sentinel file in the shared `appdata` Docker volume before stopping the app container. Caddy serves a static "Down for Maintenance" page (auto-refreshes every 20 s, `Cache-Control: no-store`) until the sentinel is removed at the end of the script. This is separate from app-managed maintenance (rotation / admin toggle), which uses a different sentinel and keeps the app running.
 
 For the full deploy pipeline details, uptime monitoring setup, backup strategy, and incident runbook, see **[OPERATIONS.md](OPERATIONS.md)**.
 
@@ -249,52 +260,74 @@ This spins up a temporary backend + frontend with seeded sample data, runs all P
 
 ### Project Structure
 
+The codebase is split into **scaffold** (auth, admin, crypto, notifications — reusable) and **app** (equity tracking domain logic — replaceable when forking). See [FORK_GUIDE.md](FORK_GUIDE.md) for how to fork for a different domain.
+
 ```
 epic-stocks/
 ├── backend/
-│   ├── main.py              # FastAPI app + schema migration + metrics sampler
-│   ├── core.py              # Event generation logic (frozen)
-│   ├── sales_engine.py      # FIFO cost-basis + tax + gross-up calculations
-│   ├── models.py            # SQLAlchemy models (User, Grant, Loan, Price, Sale, SystemMetric, etc.)
-│   ├── database.py          # SQLAlchemy engine setup (PostgreSQL in production, SQLite for tests)
+│   ├── main.py              # FastAPI app + router wiring + metrics sampler
+│   ├── database.py          # SQLAlchemy engine setup
+│   ├── schemas.py           # Shared Pydantic schemas
 │   ├── alembic/             # Alembic migrations (run on startup)
-│   ├── auth.py              # JWT + Google OAuth + admin checks
-│   ├── crypto.py            # Per-user AES-256-GCM encryption
-│   ├── maintenance.py       # Shared sentinel path for app-managed downtime
-│   ├── excel_io.py          # Excel read/write (openpyxl)
-│   ├── schemas.py           # Pydantic schemas
-│   ├── notifications.py     # Push + email notification logic
-│   ├── routers/
-│   │   ├── auth_router.py   # Google login, JWT issuance
-│   │   ├── grants.py        # Grant CRUD + bulk
-│   │   ├── loans.py         # Loan CRUD + bulk
-│   │   ├── prices.py        # Price CRUD
-│   │   ├── events.py        # Computed timeline + dashboard
-│   │   ├── horizon.py       # Exit date settings (projected liquidation)
-│   │   ├── flows.py         # Quick flows (new purchase, bonus, price)
-│   │   ├── import_export.py # Excel import/export + template
-│   │   ├── sales.py         # Sales CRUD + tax breakdown
-│   │   ├── push.py          # Push notification subscriptions
-│   │   ├── notifications.py # Email notification preferences
-│   │   └── admin.py         # Admin dashboard, user mgmt, blocklist
+│   ├── scaffold/            # Reusable auth/infra layer (keep when forking)
+│   │   ├── auth.py          # JWT creation/verification + admin checks
+│   │   ├── crypto.py        # Per-user AES-256-GCM encryption
+│   │   ├── email_sender.py  # Email dispatch (delegates to providers/)
+│   │   ├── maintenance.py   # Sentinel path for app-managed downtime
+│   │   ├── models.py        # SQLAlchemy models (User, BlockedEmail, etc.)
+│   │   ├── notifications.py # Push + email notification logic
+│   │   ├── providers/
+│   │   │   ├── auth/        # OIDC provider (generic PKCE + JWKS verification)
+│   │   │   └── email/       # Email providers: Resend, SMTP
+│   │   └── routers/
+│   │       ├── auth_router.py   # OIDC PKCE endpoints + JWT issuance
+│   │       ├── admin.py         # Admin dashboard, user mgmt, blocklist
+│   │       ├── notifications.py # Email notification preferences
+│   │       └── push.py          # Push subscription management
+│   ├── app/                 # Equity tracking domain (replace when forking)
+│   │   ├── core.py          # Event generation logic (frozen)
+│   │   ├── sales_engine.py  # FIFO cost-basis + tax + gross-up calculations
+│   │   ├── excel_io.py      # Excel read/write (openpyxl)
+│   │   ├── timeline_cache.py # Memoized event computation
+│   │   └── routers/
+│   │       ├── grants.py    # Grant CRUD + bulk
+│   │       ├── loans.py     # Loan CRUD + bulk
+│   │       ├── prices.py    # Price CRUD
+│   │       ├── events.py    # Computed timeline + dashboard
+│   │       ├── horizon.py   # Exit date settings
+│   │       ├── flows.py     # Quick flows (new purchase, bonus, price)
+│   │       ├── import_export.py # Excel import/export + template
+│   │       └── sales.py     # Sales CRUD + tax breakdown
 │   └── tests/               # pytest tests
 ├── frontend/
 │   ├── src/
-│   │   ├── pages/           # Login, PrivacyPolicy (public), Dashboard, Events, Grants, Loans, Prices, etc.
-│   │   ├── components/      # Layout shell, shared UI
-│   │   ├── hooks/           # useAuth, useApiData, useDark, usePush, etc.
+│   │   ├── scaffold/        # Reusable UI layer (keep when forking)
+│   │   │   ├── pages/       # Login, AuthCallback, Admin, Settings, PrivacyPolicy
+│   │   │   ├── components/  # Layout shell, Toast
+│   │   │   ├── contexts/    # ThemeContext, MaintenanceContext
+│   │   │   └── hooks/       # useAuth, useConfig, useDark, usePush, useMe
+│   │   ├── app/             # Equity tracking UI (replace when forking)
+│   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport
+│   │   │   └── hooks/       # useApiData, useDataSync
+│   │   ├── App.tsx          # Router + layout wiring
 │   │   └── __tests__/       # Vitest tests
 │   ├── public/
 │   │   ├── sw.js            # Service worker (cache busting + push)
 │   │   └── manifest.json    # PWA manifest
 │   ├── e2e/                 # Playwright specs
 │   └── playwright.config.ts
+├── infra/
+│   ├── docker-compose.infra.yml  # Shared Caddy + proxy network (one per server)
+│   └── Caddyfile                 # Root config: imports per-app snippets
+├── caddy/
+│   ├── Caddyfile            # Per-app Caddy config (reverse proxy + cache headers)
+│   └── app.caddy            # Caddy snippet for multi-app mode
 ├── screenshots/             # Auto-generated by Playwright
 │   ├── run.sh               # Screenshot capture orchestrator
 │   └── seed.py              # Sample data seeder
-├── Caddyfile                # Reverse proxy + cache headers
 ├── Dockerfile               # Multi-stage build (frontend + backend)
-├── docker-compose.yml       # App + Caddy
+├── docker-compose.yml       # App compose (joins shared proxy network)
+├── FORK_GUIDE.md            # How to fork for a different domain
 └── test_data/
     └── fixture.xlsx         # Synthetic test fixture
 ```
@@ -305,11 +338,13 @@ All endpoints require `Authorization: Bearer <jwt>` except auth, health, status,
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/auth/google` | Exchange Google ID token for JWT |
+| GET | `/api/auth/providers` | List configured OIDC providers (name + label) |
+| GET | `/api/auth/login?provider=&code_challenge=&redirect_uri=&state=` | Start PKCE flow — returns IdP authorization URL |
+| POST | `/api/auth/callback` | Exchange PKCE code for JWT |
 | GET | `/api/me` | Current user info + is_admin flag |
 | POST | `/api/me/reset` | Reset all financial data (keeps account) |
 | DELETE | `/api/me` | Delete account and all associated data |
-| GET | `/api/config` | Client config (Google client ID, VAPID key, etc.) |
+| GET | `/api/config` | Client config (VAPID key, email availability, etc.) |
 | GET | `/api/health` | Health check (infra/uptime monitors — always 200) |
 | GET | `/api/status` | Operational status `{"maintenance": bool}` — polled by SPA |
 | GET | `/api/dashboard` | Summary cards data |
@@ -364,7 +399,7 @@ The admin system is opt-in via the `ADMIN_EMAIL` environment variable. Admins ar
 ### Accessing the Admin Dashboard
 
 1. Set `ADMIN_EMAIL` in your `.env` (semicolon-delimited for multiple admins)
-2. Log in with a matching Google account
+2. Sign in with a matching account via any configured OIDC provider
 3. Navigate to `/admin` in the app
 
 ### What Admins Can See

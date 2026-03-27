@@ -575,7 +575,7 @@ export default function Admin() {
             <div>
               <p className="text-xs font-medium text-gray-900 dark:text-gray-100">Maintenance Mode</p>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                All users see a static 503 page. Admin API remains accessible.
+                Financial data becomes unavailable; auth and admin remain accessible.
               </p>
             </div>
             <button
@@ -628,8 +628,8 @@ export default function Admin() {
             <div className="mt-3 space-y-3">
               <p className="text-xs text-gray-600 dark:text-gray-400">
                 Generates a new master key, re-wraps all user encryption keys, and saves
-                the new key to the server. Triggers a brief maintenance window automatically.
-                Run a deploy after rotation to finalize (no GitHub Secret update needed).
+                the new key to disk. Triggers a brief maintenance window automatically.
+                No deploy needed — the new key is live immediately.
               </p>
 
               {rotationLog.length > 0 && (
@@ -668,7 +668,7 @@ export default function Admin() {
                 if (lastStep === 'done') {
                   return (
                     <p className="text-xs font-medium text-green-700 dark:text-green-400">
-                      Rotation complete. Trigger a deploy (`git push`) to finalize — no GitHub Secret update needed.
+                      Rotation complete. New key is live — no deploy needed.
                     </p>
                   )
                 }

@@ -562,6 +562,6 @@ def rotate_key(admin: User = Depends(get_admin_user), db: Session = Depends(get_
             except Exception:
                 pass
         else:
-            yield sse("done", "Rotation complete. Trigger a deploy to finalize.")
+            yield sse("done", "Rotation complete. New key is live.")
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

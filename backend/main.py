@@ -321,6 +321,7 @@ def client_config():
         "google_client_id": GOOGLE_CLIENT_ID,
         "vapid_public_key": vapid_public_key,
         "email_notifications_available": email_configured(),
+        "resend_from": os.environ.get("RESEND_FROM", ""),
         "epic_onboarding_url": epic_onboarding_url,
     }
 

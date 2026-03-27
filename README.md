@@ -82,7 +82,7 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 - **Admin Dashboard** — user management, aggregate stats, email blocking, and system health monitoring (CPU, RAM, DB size sparklines with 24h/72h/7d/30d windows, per-table DB size breakdown). Admin cannot see financial data.
 - **Push & Email Notifications** — configurable advance timing: day-of, 3 days before, or 1 week before each event. Per-user opt-in for each channel independently. Includes a "Send test" button to confirm push is working.
 - **Per-User Encryption** — AES-256-GCM column-level encryption. The master key is auto-generated on first deploy and stored on-disk; it never passes through GitHub Secrets. Each user gets a unique key. Admins can rotate the master key live from the admin panel with automatic rollback on failure.
-- **Maintenance Mode** — two distinct mechanisms: (1) app-managed downtime for key rotation and admin-toggled maintenance (app stays up, financial API routes return 503, SPA and auth remain accessible, frontend shows an overlay and polls for recovery); (2) deploy-time full downtime via a Caddy sentinel file (served while the app container is stopped).
+- **Maintenance Mode** — two distinct mechanisms: (1) app-managed downtime for key rotation and admin-toggled maintenance (app stays up, financial API routes return 503, auth and admin remain accessible; an amber banner appears in the nav and financial pages show a placeholder); (2) deploy-time full downtime via a Caddy sentinel file (static 503 page while the app container is stopped).
 - **Dark/Light Mode** — auto-detects system preference, updates live.
 - **Mobile-First** — designed for 375px phone viewports.
 
@@ -393,8 +393,8 @@ The admin system is opt-in via the `ADMIN_EMAIL` environment variable. Admins ar
 | **Unblock email** | Removes an email from the blocklist, restoring login access. |
 | **View user activity** | See when each user last logged in and how many records they have. |
 | **Send test notification** | Immediately sends a push and/or email notification to any user for debugging. |
-| **Enable / disable maintenance** | Toggles app-managed downtime. Financial API routes return 503; auth and admin remain accessible. The frontend shows a maintenance overlay and polls for recovery. Use this before planned ops that affect financial data. |
-| **Rotate encryption key** | Generates a new master key, re-wraps all per-user keys, smoke-tests, persists, then clears maintenance. Snapshot of old keys is written to disk before any changes; restored automatically on failure. All admins are emailed if rotation fails. |
+| **Enable / disable maintenance** | Toggles app-managed downtime. Financial API routes return 503; auth and admin remain accessible. An amber banner appears in the nav and financial pages show a placeholder. Use this before planned ops that affect financial data. |
+| **Rotate encryption key** | Generates a new master key, re-wraps all per-user keys, smoke-tests, persists to disk, then clears maintenance. New key is live immediately — no deploy needed. Snapshot of old keys is written to disk before any changes; restored automatically on failure. All admins are emailed if rotation fails. |
 | **Restore from snapshot** | Appears in the admin panel when an interrupted rotation left a snapshot file on disk. Writes the old per-user keys back to the DB and clears maintenance — recovers from a crash without SSH access. |
 
 ### Blocked Email System

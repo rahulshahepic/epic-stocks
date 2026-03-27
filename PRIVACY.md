@@ -63,7 +63,7 @@ Both actions are self-service, immediate, and irreversible. No admin involvement
 
 ### The Site Operator
 
-The person or organization running this server has **technical access** to the server environment. If the operator has enabled column-level encryption (`ENCRYPTION_MASTER_KEY`), your financial data is encrypted per-user with AES-256-GCM before being written to the database. However, the operator holds the master key and could decrypt the data if they chose to.
+The person or organization running this server has **technical access** to the server environment. Your financial data is encrypted per-user with AES-256-GCM before being written to the database (the master key is generated automatically on the server on first deploy). However, the operator holds the master key and could decrypt the data if they chose to.
 
 **If you are uncomfortable with this, you have options:**
 

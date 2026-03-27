@@ -30,13 +30,14 @@ jobs:
           script: |
             cd ${{ vars.DEPLOY_PATH }}
 
-            # Write .env from GitHub Secrets/Vars (VPS never stores secrets manually)
+            # Write .env from GitHub Secrets/Vars (VPS never stores secrets manually).
+            # ENCRYPTION_MASTER_KEY is intentionally absent — it lives only on-disk
+            # at ./data/current_master_key and is bootstrapped below.
             cat > .env <<'ENVEOF'
             JWT_SECRET=${{ secrets.JWT_SECRET }}
             GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }}
             DOMAIN=${{ vars.DOMAIN }}
             APP_URL=https://${{ vars.DOMAIN }}
-            ENCRYPTION_MASTER_KEY=${{ secrets.ENCRYPTION_MASTER_KEY }}
             PRIVACY_URL=${{ secrets.PRIVACY_URL }}
             ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
             VAPID_PUBLIC_KEY=${{ vars.VAPID_PUBLIC_KEY }}
@@ -50,6 +51,19 @@ jobs:
             ENVEOF
             # Remove leading whitespace from heredoc
             sed -i 's/^[[:space:]]*//' .env
+
+            # Bootstrap encryption master key from on-disk file (never from GitHub).
+            # Migration path: if the file is absent but the old GitHub Secret was set,
+            # preserve it so existing encrypted data remains readable. After this deploy
+            # runs once, the ENCRYPTION_MASTER_KEY GitHub Secret can be deleted.
+            mkdir -p ./data
+            if [ ! -f ./data/current_master_key ]; then
+              if [ -n "${{ secrets.ENCRYPTION_MASTER_KEY }}" ]; then
+                echo "${{ secrets.ENCRYPTION_MASTER_KEY }}" > ./data/current_master_key
+              else
+                openssl rand -hex 32 > ./data/current_master_key
+              fi
+            fi
 
             # Ensure swapfile exists (idempotent)
             if [ ! -f /swapfile ]; then
@@ -66,6 +80,10 @@ jobs:
             git reset --hard origin/${{ github.ref_name }}
             docker compose build
 
+            # Full deploy downtime — Caddy serves the static 503 page while
+            # the app container is stopped.  ./data is bind-mounted into Caddy.
+            touch ./data/full_maintenance
+
             # Stop the app so its DB connections are fully released before migration
             docker compose stop app
 
@@ -81,3 +99,6 @@ jobs:
             # Graceful config reload — directory mount means git reset --hard
             # doesn't break the inode, so caddy reload correctly picks up changes.
             docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
+
+            # Restore full site — remove deploy downtime sentinel
+            rm -f ./data/full_maintenance

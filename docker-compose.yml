@@ -53,6 +53,7 @@ services:
     volumes:
       - ./caddy:/etc/caddy
       - caddy_data:/data
+      - ./data:/appdata:ro  # maintenance sentinel flag (read-only)
     depends_on:
       - app
 

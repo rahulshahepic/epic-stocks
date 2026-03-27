@@ -274,6 +274,47 @@ export const api = {
     post<TestNotifyResult>('/api/admin/test-notify', { user_id, title, body }),
   adminMetrics: (hours = 72) => apiFetch<SystemMetricPoint[]>(`/api/admin/metrics?hours=${hours}`),
   adminDbTables: () => apiFetch<DbTableInfo[]>('/api/admin/db-tables'),
+
+  // Operational status — no auth required, polled by App.tsx
+  status: () => apiFetch<{ maintenance: boolean }>('/api/status'),
+
+  // Maintenance + key rotation
+  adminGetMaintenance: () => apiFetch<{ active: boolean }>('/api/admin/maintenance'),
+  adminSetMaintenance: (active: boolean) =>
+    post<{ active: boolean }>('/api/admin/maintenance', { active }),
+  adminRotationStatus: () =>
+    apiFetch<{ snapshot_exists: boolean; maintenance_active: boolean }>('/api/admin/rotation-status'),
+  adminRotationRestore: () =>
+    post<{ restored: number }>('/api/admin/rotation-restore', {}),
+
+  /** Stream SSE events from the key-rotation endpoint.
+   *  Calls onEvent for each parsed event object.  Resolves when the stream ends.
+   */
+  adminRotateKey: async (onEvent: (e: RotationEvent) => void): Promise<void> => {
+    const token = getToken()
+    const resp = await fetch('/api/admin/rotate-key', {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!resp.ok || !resp.body) {
+      throw new Error(`HTTP ${resp.status}`)
+    }
+    const reader = resp.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      const lines = buf.split('\n')
+      buf = lines.pop() ?? ''
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try { onEvent(JSON.parse(line.slice(6))) } catch { /* skip malformed */ }
+        }
+      }
+    }
+  },
 }
 
 export interface AdminStats {
@@ -407,6 +448,11 @@ export interface LotSummary {
   shares: number
   lt_shares: number
   st_shares: number
+}
+
+export interface RotationEvent {
+  step: 'snapshot' | 'maintenance' | 'rotating' | 'smoke' | 'persist' | 'done' | 'rollback' | 'error'
+  msg: string
 }
 
 export interface TaxBreakdown {

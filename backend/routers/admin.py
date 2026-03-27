@@ -1,7 +1,12 @@
+import json
 import logging
 import os
+import secrets
 from collections import defaultdict
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 
 logger = logging.getLogger(__name__)
 from pydantic import BaseModel
@@ -12,8 +17,13 @@ from datetime import datetime, timedelta, timezone
 from database import get_db
 from models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, ErrorLog, EmailPreference, SystemMetric
 from auth import get_admin_user, get_admin_emails
+from maintenance import SENTINEL_PATH as _SENTINEL
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+# Snapshot file written before key rotation so the old wrapped keys survive
+# a crash mid-rotation.  Deleted on completion (success or rollback).
+_SNAPSHOT_PATH = Path(os.getenv("ROTATION_SNAPSHOT_PATH", "/app/data/rotation_snapshot.json"))
 
 # In-memory rate limiter for admin test-notify: 5 calls per hour per admin user
 _TEST_NOTIFY_LIMIT = 5
@@ -131,6 +141,8 @@ def admin_users(
 
 @router.delete("/users/{user_id}", status_code=204)
 def admin_delete_user(user_id: int, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    if _SENTINEL.exists():
+        raise HTTPException(status_code=503, detail="Cannot delete users during maintenance")
     if user_id == admin.id:
         raise HTTPException(status_code=400, detail="Cannot delete yourself")
     user = db.query(User).filter(User.id == user_id).first()
@@ -374,3 +386,182 @@ def admin_test_notify(
                 email_skipped_reason = "send failed (check server logs)"
 
     return TestNotifyResult(push_sent=push_sent, push_failed=push_failed, email_sent=email_sent, email_skipped_reason=email_skipped_reason)
+
+
+# ============================================================
+# Maintenance mode
+# ============================================================
+
+class MaintenanceStatus(BaseModel):
+    active: bool
+
+
+class MaintenanceRequest(BaseModel):
+    active: bool
+
+
+@router.get("/maintenance", response_model=MaintenanceStatus)
+def get_maintenance(admin: User = Depends(get_admin_user)):
+    return MaintenanceStatus(active=_SENTINEL.exists())
+
+
+@router.post("/maintenance", response_model=MaintenanceStatus)
+def set_maintenance(body: MaintenanceRequest, admin: User = Depends(get_admin_user)):
+    _SENTINEL.parent.mkdir(parents=True, exist_ok=True)
+    if body.active:
+        _SENTINEL.touch()
+    else:
+        _SENTINEL.unlink(missing_ok=True)
+    return MaintenanceStatus(active=_SENTINEL.exists())
+
+
+# ============================================================
+# Encryption key rotation
+# ============================================================
+
+
+class RotationStatus(BaseModel):
+    snapshot_exists: bool
+    maintenance_active: bool
+
+
+@router.get("/rotation-status", response_model=RotationStatus)
+def get_rotation_status(admin: User = Depends(get_admin_user)):
+    """Return whether an interrupted rotation snapshot exists on disk."""
+    return RotationStatus(
+        snapshot_exists=_SNAPSHOT_PATH.exists(),
+        maintenance_active=_SENTINEL.exists(),
+    )
+
+
+@router.post("/rotation-restore", status_code=200)
+def rotation_restore(admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    """Restore users.encrypted_key from the on-disk snapshot left by a crashed rotation.
+
+    Safe to call when rotation completed successfully and the snapshot file is
+    stale — the endpoint just returns 404 if no snapshot exists.
+    """
+    if not _SNAPSHOT_PATH.exists():
+        raise HTTPException(status_code=404, detail="No rotation snapshot found")
+    try:
+        raw = json.loads(_SNAPSHOT_PATH.read_text())
+        snapshot: dict[int, str] = {int(k): v for k, v in raw.items()}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Snapshot unreadable: {exc}")
+
+    for uid, enc_key in snapshot.items():
+        db.execute(
+            text("UPDATE users SET encrypted_key = :k WHERE id = :id"),
+            {"k": enc_key, "id": uid},
+        )
+    db.commit()
+
+    _SNAPSHOT_PATH.unlink(missing_ok=True)
+    _SENTINEL.unlink(missing_ok=True)
+    return {"restored": len(snapshot)}
+
+@router.post("/rotate-key")
+def rotate_key(admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    """Rotate the master encryption key.
+
+    Generates a fresh master key, re-wraps every user's per-user key, runs a
+    smoke test, and persists the new key to disk.  Streams SSE events so the
+    admin can watch progress in real time.  On any failure the DB is rolled back
+    and maintenance mode is cleared before the error event is emitted.
+    """
+    def event_stream():
+        import crypto as crypto_module
+        from rotate_master_key import encrypt_user_key as _wrap, decrypt_user_key as _unwrap
+
+        def sse(step: str, msg: str) -> str:
+            return f"data: {json.dumps({'step': step, 'msg': msg})}\n\n"
+
+        old_master = crypto_module.ENCRYPTION_MASTER_KEY
+        if not old_master:
+            yield sse("error", "Encryption is not enabled (ENCRYPTION_MASTER_KEY not set)")
+            return
+
+        # --- 1. Snapshot (persisted to disk so a crash doesn't lose it) -----
+        rows = db.execute(
+            text("SELECT id, encrypted_key FROM users WHERE encrypted_key IS NOT NULL")
+        ).fetchall()
+        snapshot: dict[int, str] = {r[0]: r[1] for r in rows}
+        _SNAPSHOT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _SNAPSHOT_PATH.write_text(json.dumps({str(k): v for k, v in snapshot.items()}))
+        yield sse("snapshot", f"Snapshotted {len(snapshot)} user key(s) to disk")
+
+        new_master = secrets.token_hex(32)
+
+        # --- 2. Enable maintenance (financial tables are encrypted; reads/writes
+        #        would fail mid-rotation — users table is not encrypted so login
+        #        still works during this window) ----------------------------
+        _SENTINEL.parent.mkdir(parents=True, exist_ok=True)
+        _SENTINEL.touch()
+        yield sse("maintenance", "Maintenance mode ON")
+
+        error_msg: str | None = None
+        try:
+            # --- 3. Re-wrap all user keys ---------------------------------
+            new_wrapped: dict[int, str] = {}
+            for uid, enc_key in snapshot.items():
+                raw = _unwrap(enc_key, old_master)
+                new_wrapped[uid] = _wrap(raw, new_master)
+
+            yield sse("rotating", f"Re-wrapped {len(new_wrapped)} user key(s)")
+
+            # Write to DB
+            for uid, new_enc in new_wrapped.items():
+                db.execute(
+                    text("UPDATE users SET encrypted_key = :k WHERE id = :id"),
+                    {"k": new_enc, "id": uid},
+                )
+            db.commit()
+
+            # --- 4. Smoke test -------------------------------------------
+            for uid, new_enc in new_wrapped.items():
+                _unwrap(new_enc, new_master)  # raises InvalidTag on failure
+
+            yield sse("smoke", "All user keys verified")
+
+            # --- 5. Persist ----------------------------------------------
+            crypto_module.update_master_key(new_master)
+            yield sse("persist", "New key saved to server")
+
+        except Exception as exc:
+            error_msg = str(exc)
+            yield sse("rollback", "Rolling back changes...")
+            try:
+                for uid, old_enc in snapshot.items():
+                    db.execute(
+                        text("UPDATE users SET encrypted_key = :k WHERE id = :id"),
+                        {"k": old_enc, "id": uid},
+                    )
+                db.commit()
+            except Exception:
+                pass
+        finally:
+            _SENTINEL.unlink(missing_ok=True)
+            _SNAPSHOT_PATH.unlink(missing_ok=True)
+
+        if error_msg:
+            yield sse("error", error_msg)
+            # Notify all admins of the failure
+            try:
+                from email_sender import send_email, email_configured, app_url
+                from auth import get_admin_emails
+                if email_configured():
+                    subject = "Key rotation failed — manual intervention may be required"
+                    body = (
+                        f"Key rotation failed with error:\n\n{error_msg}\n\n"
+                        "The database was rolled back automatically. If the app is still in "
+                        "maintenance mode, log in to the admin panel and restore from the "
+                        f"snapshot or disable maintenance manually.\n\n{app_url()}/admin"
+                    )
+                    for email in get_admin_emails():
+                        send_email(email, subject, body)
+            except Exception:
+                pass
+        else:
+            yield sse("done", "Rotation complete. Trigger a deploy to finalize.")
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")

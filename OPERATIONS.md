@@ -146,7 +146,6 @@ No automatic rollback. Because Alembic migrations run on startup, reverting code
 |------|------|-------------|
 | `VPS_SSH_KEY` | Secret | Private SSH key for the deploy user |
 | `JWT_SECRET` | Secret | Random 32+ byte string for JWT signing |
-| `ENCRYPTION_MASTER_KEY` | Secret | AES-256 master key for column encryption |
 | `POSTGRES_PASSWORD` | Secret | PostgreSQL password |
 | `ADMIN_EMAIL` | Secret | Semicolon-delimited admin email(s) |
 | `VAPID_PRIVATE_KEY` | Secret | VAPID private key for push notifications |
@@ -163,10 +162,13 @@ No automatic rollback. Because Alembic migrations run on startup, reverting code
 
 ### Reference deployment status
 
+> **Encryption master key** — `ENCRYPTION_MASTER_KEY` is **not** a GitHub secret. On first deploy the script generates a 256-bit key (`openssl rand -hex 32`) and writes it to `./data/current_master_key` on the VPS. All subsequent deploys read from that file. To rotate the key, use the **Rotate encryption key** action in the admin panel — the file is updated automatically, no deploy or secret change needed. If you previously had `ENCRYPTION_MASTER_KEY` set as a GitHub secret, the first deploy after this change will migrate it to the file and you can then delete the secret.
+
 | Step | Status |
 |------|--------|
 | Caddy config validated in CI before every deploy | ✅ Done |
 | `.env` written from GitHub secrets on every deploy | ✅ Done |
+| Encryption master key auto-generated on-disk, never in GitHub | ✅ Done |
 | Deploy polls `/api/health` and fails loudly on outage | ✅ Done |
 | Swapfile created automatically if missing | ✅ Done |
 

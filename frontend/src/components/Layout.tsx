@@ -1,6 +1,7 @@
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.ts'
 import { useMe } from '../hooks/useMe.ts'
+import { useMaintenance } from '../contexts/MaintenanceContext.tsx'
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard' },
@@ -16,10 +17,17 @@ const NAV_ITEMS = [
 export default function Layout() {
   const { logout } = useAuth()
   const me = useMe()
+  const maintenance = useMaintenance()
   const navItems = me?.is_admin ? [...NAV_ITEMS, { to: '/admin', label: 'Admin' }] : NAV_ITEMS
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-50 dark:bg-gray-950">
+      {maintenance && (
+        <div className="flex items-center justify-center gap-2 bg-amber-400 px-4 py-1.5 text-xs font-medium text-amber-950">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-amber-800" />
+          Maintenance in progress — financial data is temporarily unavailable
+        </div>
+      )}
       <header className="border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
           <span className="bg-gradient-to-r from-indigo-500 to-purple-500 bg-clip-text text-sm font-bold text-transparent">

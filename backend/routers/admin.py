@@ -1,7 +1,12 @@
+import json
 import logging
 import os
+import secrets
 from collections import defaultdict
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 
 logger = logging.getLogger(__name__)
 from pydantic import BaseModel
@@ -14,6 +19,10 @@ from models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, Err
 from auth import get_admin_user, get_admin_emails
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+# Sentinel file that Caddy watches to serve the maintenance page.
+# Configurable via env var so tests can redirect to a temp path.
+_SENTINEL = Path(os.getenv("MAINTENANCE_SENTINEL_PATH", "/app/data/maintenance"))
 
 # In-memory rate limiter for admin test-notify: 5 calls per hour per admin user
 _TEST_NOTIFY_LIMIT = 5
@@ -374,3 +383,120 @@ def admin_test_notify(
                 email_skipped_reason = "send failed (check server logs)"
 
     return TestNotifyResult(push_sent=push_sent, push_failed=push_failed, email_sent=email_sent, email_skipped_reason=email_skipped_reason)
+
+
+# ============================================================
+# Maintenance mode
+# ============================================================
+
+class MaintenanceStatus(BaseModel):
+    active: bool
+
+
+class MaintenanceRequest(BaseModel):
+    active: bool
+
+
+@router.get("/maintenance", response_model=MaintenanceStatus)
+def get_maintenance(admin: User = Depends(get_admin_user)):
+    return MaintenanceStatus(active=_SENTINEL.exists())
+
+
+@router.post("/maintenance", response_model=MaintenanceStatus)
+def set_maintenance(body: MaintenanceRequest, admin: User = Depends(get_admin_user)):
+    _SENTINEL.parent.mkdir(parents=True, exist_ok=True)
+    if body.active:
+        _SENTINEL.touch()
+    else:
+        _SENTINEL.unlink(missing_ok=True)
+    return MaintenanceStatus(active=_SENTINEL.exists())
+
+
+# ============================================================
+# Encryption key rotation
+# ============================================================
+
+@router.post("/rotate-key")
+def rotate_key(admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    """Rotate the master encryption key.
+
+    Generates a fresh master key, re-wraps every user's per-user key, runs a
+    smoke test, and persists the new key to disk.  Streams SSE events so the
+    admin can watch progress in real time.  On any failure the DB is rolled back
+    and maintenance mode is cleared before the error event is emitted.
+    """
+    def event_stream():
+        import crypto as crypto_module
+        from rotate_master_key import encrypt_user_key as _wrap, decrypt_user_key as _unwrap
+
+        def sse(step: str, msg: str) -> str:
+            return f"data: {json.dumps({'step': step, 'msg': msg})}\n\n"
+
+        old_master = crypto_module.ENCRYPTION_MASTER_KEY
+        if not old_master:
+            yield sse("error", "Encryption is not enabled (ENCRYPTION_MASTER_KEY not set)")
+            return
+
+        # --- 1. Snapshot -------------------------------------------------
+        rows = db.execute(
+            text("SELECT id, encrypted_key FROM users WHERE encrypted_key IS NOT NULL")
+        ).fetchall()
+        snapshot: dict[int, str] = {r[0]: r[1] for r in rows}
+        yield sse("snapshot", f"Snapshotted {len(snapshot)} user key(s)")
+
+        new_master = secrets.token_hex(32)
+
+        # --- 2. Enable maintenance ----------------------------------------
+        _SENTINEL.parent.mkdir(parents=True, exist_ok=True)
+        _SENTINEL.touch()
+        yield sse("maintenance", "Maintenance mode ON")
+
+        error_msg: str | None = None
+        try:
+            # --- 3. Re-wrap all user keys ---------------------------------
+            new_wrapped: dict[int, str] = {}
+            for uid, enc_key in snapshot.items():
+                raw = _unwrap(enc_key, old_master)
+                new_wrapped[uid] = _wrap(raw, new_master)
+
+            yield sse("rotating", f"Re-wrapped {len(new_wrapped)} user key(s)")
+
+            # Write to DB
+            for uid, new_enc in new_wrapped.items():
+                db.execute(
+                    text("UPDATE users SET encrypted_key = :k WHERE id = :id"),
+                    {"k": new_enc, "id": uid},
+                )
+            db.commit()
+
+            # --- 4. Smoke test -------------------------------------------
+            for uid, new_enc in new_wrapped.items():
+                _unwrap(new_enc, new_master)  # raises InvalidTag on failure
+
+            yield sse("smoke", "All user keys verified")
+
+            # --- 5. Persist ----------------------------------------------
+            crypto_module.update_master_key(new_master)
+            yield sse("persist", "New key saved to server")
+
+        except Exception as exc:
+            error_msg = str(exc)
+            yield sse("rollback", "Rolling back changes...")
+            try:
+                for uid, old_enc in snapshot.items():
+                    db.execute(
+                        text("UPDATE users SET encrypted_key = :k WHERE id = :id"),
+                        {"k": old_enc, "id": uid},
+                    )
+                db.commit()
+            except Exception:
+                pass
+        finally:
+            _SENTINEL.unlink(missing_ok=True)
+
+        if error_msg:
+            yield sse("error", error_msg)
+        else:
+            yield sse("done", "Rotation complete. Trigger a deploy to finalize.")
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")

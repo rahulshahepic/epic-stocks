@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { LineChart, Line, ResponsiveContainer, Tooltip, YAxis, XAxis } from 'recharts'
 import { api } from '../api.ts'
 import type {
   AdminStats, AdminUser, BlockedEmailEntry, ErrorLogEntry, TestNotifyResult,
-  SystemMetricPoint, DbTableInfo,
+  SystemMetricPoint, DbTableInfo, RotationEvent,
 } from '../api.ts'
 
 const NOTIFY_TEMPLATES: Record<string, { title: string; body: string }> = {
@@ -77,6 +77,15 @@ export default function Admin() {
   const [metricHours, setMetricHours] = useState(72)
   const [dbTables, setDbTables] = useState<DbTableInfo[]>([])
 
+  // Danger Zone state
+  const [maintenanceActive, setMaintenanceActive] = useState<boolean | null>(null)
+  const [maintenanceLoading, setMaintenanceLoading] = useState(false)
+  const [rotationOpen, setRotationOpen] = useState(false)
+  const [rotationConfirm, setRotationConfirm] = useState(false)
+  const [rotationRunning, setRotationRunning] = useState(false)
+  const [rotationLog, setRotationLog] = useState<RotationEvent[]>([])
+  const rotationLogRef = useRef<HTMLDivElement>(null)
+
   const loadUsers = useCallback(async (q = '') => {
     try {
       const res = await api.adminUsers(q)
@@ -104,9 +113,14 @@ export default function Admin() {
 
   const load = useCallback(async () => {
     try {
-      const [s, b] = await Promise.all([api.adminStats(), api.adminListBlocked()])
+      const [s, b, m] = await Promise.all([
+        api.adminStats(),
+        api.adminListBlocked(),
+        api.adminGetMaintenance(),
+      ])
       setStats(s)
       setBlocked(b)
+      setMaintenanceActive(m.active)
       setError('')
       loadUsers()
       loadErrors()
@@ -511,6 +525,186 @@ export default function Admin() {
               )}
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Danger Zone */}
+      <section className="rounded-lg border border-red-200 bg-white p-4 dark:border-red-900/60 dark:bg-gray-900">
+        <h3 className="text-sm font-semibold text-red-700 dark:text-red-400">⚠ Danger Zone</h3>
+
+        {/* Maintenance Mode Toggle */}
+        <div className="mt-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-gray-900 dark:text-gray-100">Maintenance Mode</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                All users see a static 503 page. Admin API remains accessible.
+              </p>
+            </div>
+            <button
+              disabled={maintenanceActive === null || maintenanceLoading}
+              onClick={async () => {
+                setMaintenanceLoading(true)
+                try {
+                  const res = await api.adminSetMaintenance(!maintenanceActive)
+                  setMaintenanceActive(res.active)
+                } catch {
+                  setError('Failed to toggle maintenance mode')
+                } finally {
+                  setMaintenanceLoading(false)
+                }
+              }}
+              className={`ml-4 shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors disabled:opacity-50 ${
+                maintenanceActive
+                  ? 'bg-green-600 hover:bg-green-700'
+                  : 'bg-red-600 hover:bg-red-700'
+              }`}
+            >
+              {maintenanceLoading
+                ? '…'
+                : maintenanceActive === null
+                ? 'Loading'
+                : maintenanceActive
+                ? 'Disable Maintenance'
+                : 'Enable Maintenance'}
+            </button>
+          </div>
+          {maintenanceActive && (
+            <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">
+              Site is currently in maintenance mode. Users see a 503 page.
+            </p>
+          )}
+        </div>
+
+        <hr className="my-4 border-red-100 dark:border-red-900/40" />
+
+        {/* Encryption Key Rotation */}
+        <div>
+          <button
+            onClick={() => { setRotationOpen(o => !o); setRotationConfirm(false) }}
+            className="text-xs font-medium text-red-700 underline-offset-2 hover:underline dark:text-red-400"
+          >
+            {rotationOpen ? 'Hide' : 'Rotate Encryption Master Key'}
+          </button>
+
+          {rotationOpen && (
+            <div className="mt-3 space-y-3">
+              <p className="text-xs text-gray-600 dark:text-gray-400">
+                Generates a new master key, re-wraps all user encryption keys, and saves
+                the new key to the server. Triggers a brief maintenance window automatically.
+                Run a deploy after rotation to finalize (no GitHub Secret update needed).
+              </p>
+
+              {rotationLog.length > 0 && (
+                <div
+                  ref={rotationLogRef}
+                  className="max-h-48 overflow-y-auto rounded-md border border-gray-200 bg-gray-50 p-2 text-xs font-mono dark:border-gray-700 dark:bg-gray-800"
+                >
+                  {rotationLog.map((e, i) => (
+                    <div
+                      key={i}
+                      className={
+                        e.step === 'error'
+                          ? 'text-red-600 dark:text-red-400'
+                          : e.step === 'rollback'
+                          ? 'text-amber-600 dark:text-amber-400'
+                          : e.step === 'done'
+                          ? 'text-green-600 dark:text-green-400 font-semibold'
+                          : 'text-gray-700 dark:text-gray-300'
+                      }
+                    >
+                      {e.step === 'done' || e.step === 'persist' || e.step === 'smoke'
+                        ? '✓ '
+                        : e.step === 'error'
+                        ? '✗ '
+                        : e.step === 'rollback'
+                        ? '↩ '
+                        : '› '}
+                      {e.msg}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {(() => {
+                const lastStep = rotationLog[rotationLog.length - 1]?.step
+                if (lastStep === 'done') {
+                  return (
+                    <p className="text-xs font-medium text-green-700 dark:text-green-400">
+                      Rotation complete. Trigger a deploy (`git push`) to finalize — no GitHub Secret update needed.
+                    </p>
+                  )
+                }
+                if (lastStep === 'error') {
+                  return (
+                    <div className="space-y-2">
+                      <p className="text-xs text-red-600 dark:text-red-400">
+                        Rotation failed — all changes were rolled back, no data was modified.
+                      </p>
+                      <button
+                        onClick={() => { setRotationLog([]); setRotationConfirm(false) }}
+                        className="rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                      >
+                        Try Again
+                      </button>
+                    </div>
+                  )
+                }
+                if (rotationRunning) return null
+                if (!rotationConfirm) {
+                  return (
+                    <button
+                      onClick={() => setRotationConfirm(true)}
+                      className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
+                    >
+                      Rotate Master Key
+                    </button>
+                  )
+                }
+                return (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-700 dark:text-gray-300">Are you sure?</span>
+                    <button
+                      onClick={async () => {
+                        setRotationConfirm(false)
+                        setRotationRunning(true)
+                        setRotationLog([])
+                        try {
+                          await api.adminRotateKey(event => {
+                            setRotationLog(prev => {
+                              const next = [...prev, event]
+                              setTimeout(() => {
+                                rotationLogRef.current?.scrollTo({ top: 999999, behavior: 'smooth' })
+                              }, 0)
+                              return next
+                            })
+                          })
+                        } catch (err) {
+                          setRotationLog(prev => [
+                            ...prev,
+                            { step: 'error', msg: err instanceof Error ? err.message : 'Unknown error' },
+                          ])
+                        } finally {
+                          setRotationRunning(false)
+                          // Refresh maintenance status (rotation clears it)
+                          api.adminGetMaintenance().then(m => setMaintenanceActive(m.active)).catch(() => {})
+                        }
+                      }}
+                      className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
+                    >
+                      Yes, Rotate
+                    </button>
+                    <button
+                      onClick={() => setRotationConfirm(false)}
+                      className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )
+              })()}
+            </div>
+          )}
         </div>
       </section>
 

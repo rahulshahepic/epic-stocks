@@ -50,6 +50,13 @@ jobs:
             # Remove leading whitespace from heredoc
             sed -i 's/^[[:space:]]*//' .env
 
+            # If a key rotation has been performed, prefer the on-disk key over
+            # the GitHub Secret so no manual Secret update is required.
+            if [ -f ./data/current_master_key ]; then
+              NEW_KEY="$(cat ./data/current_master_key)"
+              sed -i "s|^ENCRYPTION_MASTER_KEY=.*|ENCRYPTION_MASTER_KEY=${NEW_KEY}|" .env
+            fi
+
             # Ensure swapfile exists (idempotent)
             if [ ! -f /swapfile ]; then
               fallocate -l 2G /swapfile
@@ -64,6 +71,11 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             docker compose build
+
+            # Enable maintenance mode — Caddy serves the static 503 page while
+            # the app is stopped.  ./data is bind-mounted into both containers.
+            mkdir -p ./data
+            touch ./data/maintenance
 
             # Stop the app so its DB connections are fully released before migration
             docker compose stop app
@@ -80,3 +92,6 @@ jobs:
             # Graceful config reload — directory mount means git reset --hard
             # doesn't break the inode, so caddy reload correctly picks up changes.
             docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
+
+            # Disable maintenance mode — site is live again
+            rm -f ./data/maintenance

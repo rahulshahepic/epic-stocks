@@ -20,10 +20,16 @@
     header >Referrer-Policy "strict-origin-when-cross-origin"
     header >Permissions-Policy "geolocation=(), camera=(), microphone=()"
 
-    # Health check and admin API always pass through — even during maintenance.
-    # This keeps the admin panel functional when maintenance is admin-initiated
-    # and the app is still running (e.g. during key rotation).
+    # These endpoints always pass through — even during maintenance.
+    # /api/auth/* and /api/me let users log in (users table is not encrypted).
+    # /api/admin/* keeps the admin panel functional during key rotation.
     handle /api/health {
+        reverse_proxy app:8000
+    }
+    handle /api/auth/* {
+        reverse_proxy app:8000
+    }
+    handle /api/me {
         reverse_proxy app:8000
     }
     handle /api/admin/* {

@@ -444,7 +444,7 @@ export interface LotSummary {
 }
 
 export interface RotationEvent {
-  step: 'snapshot' | 'rotating' | 'smoke' | 'persist' | 'done' | 'rollback' | 'error'
+  step: 'snapshot' | 'maintenance' | 'rotating' | 'smoke' | 'persist' | 'done' | 'rollback' | 'error'
   msg: string
 }
 

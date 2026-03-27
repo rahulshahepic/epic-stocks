@@ -19,10 +19,7 @@ def _admin_env():
 
 
 def _register_admin(client):
-    from tests.conftest import _fake_google_info
-    info = _fake_google_info(ADMIN_EMAIL)
-    with patch("scaffold.routers.auth_router.verify_google_token", return_value=info):
-        resp = client.post("/api/auth/google", json={"token": "admin-token"})
+    resp = client.post("/api/auth/test-login", json={"email": ADMIN_EMAIL})
     return resp.json()["access_token"]
 
 

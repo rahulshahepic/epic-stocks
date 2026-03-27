@@ -9,8 +9,6 @@ from scaffold.models import User, BlockedEmail
 from schemas import AuthResponse
 from scaffold.auth import create_token, get_admin_emails
 from scaffold.crypto import encryption_enabled, generate_user_key, encrypt_user_key
-# verify_google_token imported here so conftest.py can patch it at this module path
-from scaffold.providers.auth.google import verify_google_token
 import logging
 
 logger = logging.getLogger(__name__)
@@ -28,10 +26,10 @@ def _notify_admin_new_user(user: User, db: Session):
         logger.exception("Failed to send admin notification for new user")
 
 
-def _upsert_user(identity, db: Session, blocked_check_email: str | None = None) -> User:
+def _upsert_user(identity, db: Session) -> User:
     """Create or update a User from a provider UserIdentity. Returns the user."""
     email = identity.email
-    check_email = (blocked_check_email or email).lower()
+    check_email = email.lower()
 
     blocked = db.query(BlockedEmail).filter(BlockedEmail.email == check_email).first()
     if blocked:
@@ -63,75 +61,51 @@ def _upsert_user(identity, db: Session, blocked_check_email: str | None = None) 
     return user
 
 
-# ── PKCE flow ──────────────────────────────────────────────────────────────────
+# ── OIDC provider list ──────────────────────────────────────────────────────────
 
-class LoginRequest(BaseModel):
-    code_challenge: str
-    redirect_uri: str
-    state: str
+@router.get("/providers")
+def list_providers():
+    """Return the list of configured OIDC providers for the login page."""
+    from scaffold.providers.auth import get_providers
+    return [{"name": p.config.name, "label": p.config.label} for p in get_providers()]
+
+
+# ── PKCE flow ───────────────────────────────────────────────────────────────────
+
+@router.get("/login")
+def login_start(provider: str, code_challenge: str, redirect_uri: str, state: str):
+    """Return the IdP authorization URL for the given provider."""
+    from scaffold.providers.auth import get_provider
+    try:
+        p = get_provider(provider)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"authorization_url": p.get_authorization_url(state, code_challenge, redirect_uri)}
 
 
 class CallbackRequest(BaseModel):
+    provider: str
     code: str
     code_verifier: str
     redirect_uri: str
 
 
-@router.get("/login")
-def login_start(code_challenge: str, redirect_uri: str, state: str):
-    """Return the IdP authorization URL. Frontend redirects the user there."""
-    from scaffold.providers.auth import get_auth_provider
-    provider = get_auth_provider()
-    url = provider.get_authorization_url(state, code_challenge, redirect_uri)
-    return {"authorization_url": url}
-
-
 @router.post("/callback", response_model=AuthResponse)
 def auth_callback(body: CallbackRequest, db: Session = Depends(get_db)):
     """Exchange PKCE authorization code for a JWT access token."""
-    from scaffold.providers.auth import get_auth_provider
+    from scaffold.providers.auth import get_provider
     from scaffold.providers.auth.base import UserIdentity
-    provider = get_auth_provider()
     try:
-        identity: UserIdentity = provider.exchange_code(body.code, body.code_verifier, body.redirect_uri)
+        p = get_provider(body.provider)
+        identity: UserIdentity = p.exchange_code(body.code, body.code_verifier, body.redirect_uri)
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
     user = _upsert_user(identity, db)
     return AuthResponse(access_token=create_token(user.id))
 
 
-# ── Legacy Google GSI flow (kept for backward compat / E2E test infrastructure) ─
-
-class GoogleAuthRequest(BaseModel):
-    token: str
-
-
-@router.post("/google", response_model=AuthResponse)
-def google_login(body: GoogleAuthRequest, db: Session = Depends(get_db)):
-    """Legacy: accepts a Google ID token from the browser-side GSI library.
-
-    New deployments should use the PKCE flow (GET /login → POST /callback).
-    This endpoint is retained so existing test infrastructure and any cached
-    clients continue to work without changes.
-    """
-    try:
-        google_info = verify_google_token(body.token)
-    except ValueError as e:
-        raise HTTPException(status_code=401, detail=str(e))
-
-    from scaffold.providers.auth.base import UserIdentity
-    identity = UserIdentity(
-        provider_sub=google_info["sub"],
-        email=google_info["email"],
-        email_verified=True,
-        name=google_info.get("name"),
-        picture=google_info.get("picture"),
-    )
-    user = _upsert_user(identity, db)
-    return AuthResponse(access_token=create_token(user.id))
-
-
-# E2E test-only endpoint: creates a user without going through any IdP
+# E2E/test-only endpoint: creates or updates a user without going through any IdP.
+# Respects all real login logic (blocked email check, admin flag, last_login).
 if os.getenv("E2E_TEST") == "1":
     class TestLoginRequest(BaseModel):
         email: str
@@ -139,19 +113,13 @@ if os.getenv("E2E_TEST") == "1":
 
     @router.post("/test-login", response_model=AuthResponse)
     def test_login(body: TestLoginRequest, db: Session = Depends(get_db)):
-        user = db.query(User).filter(User.email == body.email).first()
-        if not user:
-            enc_key = encrypt_user_key(generate_user_key()) if encryption_enabled() else None
-            user = User(
-                email=body.email, google_id=f"test-{body.email}",
-                name=body.name, encrypted_key=enc_key,
-            )
-            db.add(user)
-            db.commit()
-            db.refresh(user)
-
-        user.is_admin = int(user.email.lower() in get_admin_emails())
-        user.last_login = datetime.now(timezone.utc)
-        db.commit()
-
+        from scaffold.providers.auth.base import UserIdentity
+        identity = UserIdentity(
+            provider_sub=f"test-{body.email}",
+            email=body.email,
+            email_verified=True,
+            name=body.name,
+            picture=None,
+        )
+        user = _upsert_user(identity, db)
         return AuthResponse(access_token=create_token(user.id))

@@ -315,16 +315,11 @@ def status():
 @_fastapi_app.get("/api/config")
 def client_config():
     from scaffold.email_sender import email_configured
-    from scaffold.providers.auth import get_auth_provider
-    auth_provider_name = os.getenv("AUTH_PROVIDER", "google").lower()
-    vapid_public_key = os.environ.get("VAPID_PUBLIC_KEY", "")
-    epic_onboarding_url = os.environ.get("EPIC_ONBOARDING_URL", "")
     return {
-        "auth_provider": auth_provider_name,
-        "vapid_public_key": vapid_public_key,
+        "vapid_public_key": os.environ.get("VAPID_PUBLIC_KEY", ""),
         "email_notifications_available": email_configured(),
         "resend_from": os.environ.get("RESEND_FROM", ""),
-        "epic_onboarding_url": epic_onboarding_url,
+        "epic_onboarding_url": os.environ.get("EPIC_ONBOARDING_URL", ""),
     }
 
 

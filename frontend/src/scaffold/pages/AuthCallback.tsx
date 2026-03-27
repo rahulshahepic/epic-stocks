@@ -26,23 +26,25 @@ export default function AuthCallback() {
 
     const storedState = sessionStorage.getItem('auth_state')
     const verifier = sessionStorage.getItem('pkce_verifier')
+    const provider = sessionStorage.getItem('auth_provider')
 
     if (!state || state !== storedState) {
       setError('Invalid state — possible CSRF attempt. Please try signing in again.')
       return
     }
 
-    if (!verifier) {
-      setError('PKCE verifier missing. Please try signing in again.')
+    if (!verifier || !provider) {
+      setError('Session data missing. Please try signing in again.')
       return
     }
 
     sessionStorage.removeItem('pkce_verifier')
     sessionStorage.removeItem('auth_state')
+    sessionStorage.removeItem('auth_provider')
 
     const redirectUri = window.location.origin + '/auth/callback'
 
-    api.exchangeCode(code, verifier, redirectUri)
+    api.exchangeCode(provider, code, verifier, redirectUri)
       .then(({ access_token }) => {
         setToken(access_token)
         navigate('/', { replace: true })

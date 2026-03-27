@@ -13,11 +13,8 @@ def _admin_env():
 
 
 def _register_admin(client):
-    """Register a user whose email matches ADMIN_EMAIL."""
-    from tests.conftest import _fake_google_info
-    info = _fake_google_info(ADMIN_EMAIL)
-    with patch("scaffold.routers.auth_router.verify_google_token", return_value=info):
-        resp = client.post("/api/auth/google", json={"token": "admin-token"})
+    """Register a user whose email matches ADMIN_EMAIL via the test-login endpoint."""
+    resp = client.post("/api/auth/test-login", json={"email": ADMIN_EMAIL})
     return resp.json()["access_token"]
 
 
@@ -65,10 +62,7 @@ def test_admin_multiple_emails(client):
         assert resp.status_code == 200
 
         # Second admin email also works
-        from tests.conftest import _fake_google_info
-        info = _fake_google_info("other@admin.com")
-        with patch("scaffold.routers.auth_router.verify_google_token", return_value=info):
-            resp = client.post("/api/auth/google", json={"token": "t"})
+        resp = client.post("/api/auth/test-login", json={"email": "other@admin.com"})
         token2 = resp.json()["access_token"]
         resp = client.get("/api/admin/stats", headers=auth_header(token2))
         assert resp.status_code == 200
@@ -76,27 +70,14 @@ def test_admin_multiple_emails(client):
 
 def test_admin_revoked_on_env_change(client):
     """Removing email from ADMIN_EMAIL revokes admin on next login."""
-    # Use a fixed google ID so re-login finds existing user
-    fixed_info = {
-        "sub": "admin-google-id-fixed",
-        "email": ADMIN_EMAIL,
-        "email_verified": "true",
-        "name": "Admin",
-        "picture": "",
-        "aud": "",
-    }
     with _admin_env():
-        with patch("scaffold.routers.auth_router.verify_google_token", return_value=fixed_info):
-            resp = client.post("/api/auth/google", json={"token": "t1"})
-        token = resp.json()["access_token"]
+        token = client.post("/api/auth/test-login", json={"email": ADMIN_EMAIL}).json()["access_token"]
         resp = client.get("/api/admin/stats", headers=auth_header(token))
         assert resp.status_code == 200
 
     # Re-login with admin removed from env — should lose admin on next login
     with patch.dict(os.environ, {"ADMIN_EMAIL": ""}):
-        with patch("scaffold.routers.auth_router.verify_google_token", return_value=fixed_info):
-            resp = client.post("/api/auth/google", json={"token": "t2"})
-        token2 = resp.json()["access_token"]
+        token2 = client.post("/api/auth/test-login", json={"email": ADMIN_EMAIL}).json()["access_token"]
         resp = client.get("/api/admin/stats", headers=auth_header(token2))
         assert resp.status_code == 403
 
@@ -228,10 +209,7 @@ def test_admin_cannot_delete_admin_user(client):
     with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@example.com;admin2@example.com"}):
         admin_token = _register_admin(client)
         # Register second admin
-        from tests.conftest import _fake_google_info
-        info = _fake_google_info("admin2@example.com")
-        with patch("scaffold.routers.auth_router.verify_google_token", return_value=info):
-            resp = client.post("/api/auth/google", json={"token": "t"})
+        client.post("/api/auth/test-login", json={"email": "admin2@example.com"})
         resp = client.get("/api/admin/users", headers=auth_header(admin_token))
         admin2 = next(u for u in resp.json()["users"] if u["email"] == "admin2@example.com")
 
@@ -321,10 +299,7 @@ def test_blocked_email_prevents_login(client):
         }, headers=auth_header(admin_token))
 
         # Attempt login with blocked email
-        from tests.conftest import _fake_google_info
-        info = _fake_google_info("blocked@test.com")
-        with patch("scaffold.routers.auth_router.verify_google_token", return_value=info):
-            resp = client.post("/api/auth/google", json={"token": "fake"})
+        resp = client.post("/api/auth/test-login", json={"email": "blocked@test.com"})
         assert resp.status_code == 403
         assert "blocked" in resp.json()["detail"].lower()
 
@@ -350,10 +325,7 @@ def test_unblock_email(client):
         assert resp.status_code == 204
 
         # Should be able to login now
-        from tests.conftest import _fake_google_info
-        info = _fake_google_info("unblock@test.com")
-        with patch("scaffold.routers.auth_router.verify_google_token", return_value=info):
-            resp = client.post("/api/auth/google", json={"token": "fake"})
+        resp = client.post("/api/auth/test-login", json={"email": "unblock@test.com"})
         assert resp.status_code == 200
 
 
@@ -370,10 +342,7 @@ def test_block_normalizes_email(client):
         admin_token = _register_admin(client)
         client.post("/api/admin/blocked", json={"email": "UPPER@TEST.COM"}, headers=auth_header(admin_token))
 
-        from tests.conftest import _fake_google_info
-        info = _fake_google_info("upper@test.com")
-        with patch("scaffold.routers.auth_router.verify_google_token", return_value=info):
-            resp = client.post("/api/auth/google", json={"token": "fake"})
+        resp = client.post("/api/auth/test-login", json={"email": "upper@test.com"})
         assert resp.status_code == 403
 
 

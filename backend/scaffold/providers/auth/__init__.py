@@ -1,11 +1,10 @@
-import os
+from .oidc import OIDCProvider, get_providers
 
 
-def get_auth_provider():
-    """Return the configured auth provider instance based on AUTH_PROVIDER env var."""
-    provider = os.getenv("AUTH_PROVIDER", "google").lower()
-    if provider == "azure_entra":
-        from .azure_entra import AzureEntraAuthProvider
-        return AzureEntraAuthProvider()
-    from .google import GoogleAuthProvider
-    return GoogleAuthProvider()
+def get_provider(name: str) -> OIDCProvider:
+    """Return the provider with the given name, or raise ValueError."""
+    providers = get_providers()
+    provider = next((p for p in providers if p.config.name == name), None)
+    if not provider:
+        raise ValueError(f"Unknown auth provider: {name!r}")
+    return provider

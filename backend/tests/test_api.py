@@ -1,6 +1,5 @@
 import sys
 import os
-from unittest.mock import patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from tests.conftest import register_user, auth_header
@@ -10,33 +9,18 @@ from tests.conftest import register_user, auth_header
 # AUTH
 # ============================================================
 
-def test_google_login_creates_user(client):
+def test_login_creates_user(client):
     token = register_user(client, "a@b.com")
     assert token is not None
     assert len(token) > 0
 
 
-def test_google_login_returns_same_user(client):
-    fake_info = {
-        "sub": "fixed-google-id",
-        "email": "a@b.com",
-        "email_verified": "true",
-        "name": "Test",
-        "picture": "",
-        "aud": "",
-    }
-    with patch("scaffold.routers.auth_router.verify_google_token", return_value=fake_info):
-        resp1 = client.post("/api/auth/google", json={"token": "t1"})
-        resp2 = client.post("/api/auth/google", json={"token": "t2"})
-    # Both calls succeed — same user, new tokens
-    assert resp1.status_code == 200
-    assert resp2.status_code == 200
-
-
-def test_google_login_invalid_token(client):
-    with patch("scaffold.routers.auth_router.verify_google_token", side_effect=ValueError("Invalid Google token")):
-        resp = client.post("/api/auth/google", json={"token": "bad"})
-    assert resp.status_code == 401
+def test_login_returns_new_token_each_time(client):
+    # Same email → same user, each call returns a fresh token
+    token1 = register_user(client, "a@b.com")
+    token2 = register_user(client, "a@b.com")
+    assert token1 is not None
+    assert token2 is not None
 
 
 def test_protected_no_token(client):

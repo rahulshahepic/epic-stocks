@@ -24,17 +24,20 @@ async function generateCodeChallenge(verifier: string): Promise<string> {
 export default function Login() {
   const { isAuthenticated } = useAuth()
   const navigate = useNavigate()
-  const [loading, setLoading] = useState(false)
+  const [providers, setProviders] = useState<Array<{ name: string; label: string }>>([])
+  const [loading, setLoading] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (isAuthenticated) {
       navigate('/', { replace: true })
+      return
     }
+    api.getProviders().then(setProviders).catch(() => setProviders([]))
   }, [isAuthenticated, navigate])
 
-  async function handleSignIn() {
-    setLoading(true)
+  async function handleSignIn(providerName: string) {
+    setLoading(providerName)
     setError(null)
     try {
       const verifier = generateCodeVerifier()
@@ -43,12 +46,13 @@ export default function Login() {
 
       sessionStorage.setItem('pkce_verifier', verifier)
       sessionStorage.setItem('auth_state', state)
+      sessionStorage.setItem('auth_provider', providerName)
 
       const redirectUri = window.location.origin + '/auth/callback'
-      const { authorization_url } = await api.getLoginUrl(challenge, redirectUri, state)
+      const { authorization_url } = await api.getLoginUrl(providerName, challenge, redirectUri, state)
       window.location.href = authorization_url
     } catch (e) {
-      setLoading(false)
+      setLoading(null)
       setError(e instanceof Error ? e.message : 'Sign-in failed. Please try again.')
     }
   }
@@ -69,13 +73,21 @@ export default function Login() {
           </p>
         )}
 
-        <button
-          onClick={handleSignIn}
-          disabled={loading}
-          className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-750"
-        >
-          {loading ? 'Redirecting…' : 'Sign in'}
-        </button>
+        <div className="space-y-2">
+          {providers.map(p => (
+            <button
+              key={p.name}
+              onClick={() => handleSignIn(p.name)}
+              disabled={loading !== null}
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-750"
+            >
+              {loading === p.name ? 'Redirecting…' : `Sign in with ${p.label}`}
+            </button>
+          ))}
+          {providers.length === 0 && (
+            <p className="text-sm text-gray-400 dark:text-gray-500">No sign-in providers configured.</p>
+          )}
+        </div>
 
         <div className="mt-8 rounded-lg border border-gray-200 bg-white p-4 text-left dark:border-gray-800 dark:bg-gray-900">
           <p className="mb-2 text-xs font-medium text-gray-700 dark:text-gray-300">Your data &amp; privacy</p>

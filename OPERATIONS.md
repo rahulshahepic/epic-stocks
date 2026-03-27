@@ -161,19 +161,15 @@ These are the only values that need to be set in GitHub. Cryptographic secrets (
 
 The following are generated once on first deploy, written to `/opt/epic-stocks/.secrets/` (mode 700, files mode 600), and read from there on every subsequent deploy. They never appear in GitHub.
 
-| File | Description |
-|------|-------------|
-| `jwt_secret` | 32-byte hex string for JWT signing |
-| `encryption_master_key` | 32-byte hex string for AES-256-GCM column encryption |
-| `postgres_password` | 32-byte hex string for the PostgreSQL superuser |
-| `vapid_private_key` | P-256 EC private key for Web Push |
-| `vapid_public_key` | Corresponding P-256 public key (served to browsers) |
+| Location | Description |
+|----------|-------------|
+| `.secrets/jwt_secret` | 32-byte hex string for JWT signing |
+| `.secrets/postgres_password` | 32-byte hex string for the PostgreSQL superuser |
+| `.secrets/vapid_private_key` | P-256 EC private key for Web Push |
+| `.secrets/vapid_public_key` | Corresponding P-256 public key (served to browsers) |
+| `./data/current_master_key` | AES-256-GCM encryption master key (separate path — also updated by the key-rotation admin endpoint) |
 
-On transition from a prior setup, the deploy script seeds these files from the existing `.env` before generating fresh values, so no data loss occurs.
-
-### Reference deployment status
-
-> **Encryption master key** — `ENCRYPTION_MASTER_KEY` is **not** a GitHub secret. On first deploy the script generates a 256-bit key (`openssl rand -hex 32`) and writes it to `./data/current_master_key` on the VPS. All subsequent deploys read from that file. To rotate the key, use the **Rotate encryption key** action in the admin panel — the file is updated automatically, no deploy or secret change needed. If you previously had `ENCRYPTION_MASTER_KEY` set as a GitHub secret, the first deploy after this change will migrate it to the file and you can then delete the secret.
+On transition from a prior setup, the deploy script seeds `.secrets/` files from the existing `.env` before generating fresh values, so no data loss occurs.
 
 | Step | Status |
 |------|--------|

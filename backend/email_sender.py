@@ -19,11 +19,10 @@ def email_configured() -> bool:
 
 def send_email(to_email: str, subject: str, body_text: str, body_html: str | None = None) -> bool:
     api_key = os.getenv("RESEND_API_KEY", "")
-    if not api_key:
-        logger.warning("RESEND_API_KEY not set, skipping email")
-        return False
-
     from_email = os.getenv("RESEND_FROM", "")
+    if not api_key or not from_email:
+        logger.warning("RESEND_API_KEY or RESEND_FROM not set, skipping email")
+        return False
 
     payload = {
         "from": from_email,

@@ -1,7 +1,7 @@
 name: Deploy
 on:
   push:
-    branches: [main]
+    branches: [main, staging]
   workflow_dispatch:
 jobs:
   caddy-validate:
@@ -19,6 +19,7 @@ jobs:
   deploy:
     needs: [caddy-validate]
     runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
     steps:
       - name: Deploy to VPS
         uses: appleboy/ssh-action@v1
@@ -27,7 +28,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            cd /opt/epic-stocks
+            cd ${{ vars.DEPLOY_PATH }}
 
             # Write .env from GitHub Secrets/Vars (VPS never stores secrets manually).
             # ENCRYPTION_MASTER_KEY is intentionally absent — it lives only on-disk
@@ -75,8 +76,8 @@ jobs:
               sysctl -w vm.swappiness=10
             fi
 
-            git fetch origin main
-            git reset --hard origin/main
+            git fetch origin ${{ github.ref_name }}
+            git reset --hard origin/${{ github.ref_name }}
             docker compose build
 
             # Full deploy downtime — Caddy serves the static 503 page while

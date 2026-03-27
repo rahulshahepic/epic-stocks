@@ -349,7 +349,9 @@ def admin_test_notify(
     else:
         from email_sender import send_email, email_configured, app_url
         if not email_configured():
-            email_skipped_reason = "RESEND_API_KEY not configured"
+            import os
+            missing = [k for k in ("RESEND_API_KEY", "RESEND_FROM") if not os.getenv(k)]
+            email_skipped_reason = f"{' and '.join(missing)} not configured"
         else:
             try:
                 url = app_url()

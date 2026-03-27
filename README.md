@@ -81,7 +81,8 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 - **Google Sign-In** — OAuth 2.0 authentication, automatic account creation. Any Google account works; data is tied to that account.
 - **Admin Dashboard** — user management, aggregate stats, email blocking, and system health monitoring (CPU, RAM, DB size sparklines with 24h/72h/7d/30d windows, per-table DB size breakdown). Admin cannot see financial data.
 - **Push & Email Notifications** — configurable advance timing: day-of, 3 days before, or 1 week before each event. Per-user opt-in for each channel independently. Includes a "Send test" button to confirm push is working.
-- **Per-User Encryption** — AES-256-GCM column-level encryption when `ENCRYPTION_MASTER_KEY` is set.
+- **Per-User Encryption** — AES-256-GCM column-level encryption. The master key is auto-generated on first deploy and stored on-disk; it never passes through GitHub Secrets. Each user gets a unique key. Admins can rotate the master key live from the admin panel with automatic rollback on failure.
+- **Maintenance Mode** — two distinct mechanisms: (1) app-managed downtime for key rotation and admin-toggled maintenance (app stays up, financial API routes return 503, auth and admin remain accessible; an amber banner appears in the nav and financial pages show a placeholder); (2) deploy-time full downtime via a Caddy sentinel file (static 503 page while the app container is stopped).
 - **Dark/Light Mode** — auto-detects system preference, updates live.
 - **Mobile-First** — designed for 375px phone viewports.
 
@@ -92,7 +93,7 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 | Backend | Python 3.12, FastAPI, SQLAlchemy, PostgreSQL (Alembic migrations) |
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS 4, Recharts |
 | Auth | Google Sign-In (OAuth 2.0) → backend JWT session tokens |
-| Deploy | Docker Compose + Caddy (auto-HTTPS) + Cloudflare (DDoS/WAF) |
+| Deploy | Docker Compose + Caddy (auto-HTTPS) + Cloudflare (DDoS protection) |
 | Tests | pytest (backend), Vitest + RTL (frontend), Playwright (E2E) |
 
 ## Quick Start
@@ -133,21 +134,20 @@ cp .env.example .env
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `JWT_SECRET` | Yes | Random secret for signing JWT tokens |
+| `JWT_SECRET` | Yes (local dev) | Random secret for signing JWT tokens. **Auto-generated on production deploy.** |
 | `GOOGLE_CLIENT_ID` | Yes | From [Google Cloud Console](https://console.cloud.google.com/apis/credentials) |
-| `DATABASE_URL` | Yes (prod) | PostgreSQL DSN, e.g. `postgresql://postgres:pass@localhost:5432/vesting`. Docker Compose sets this automatically. |
-| `POSTGRES_PASSWORD` | Yes (prod) | Password for the `postgres` user in the Docker Compose `db` service |
-| `ENCRYPTION_MASTER_KEY` | No | Enables per-user AES-256-GCM encryption of all financial data |
-| `PRIVACY_URL` | No | Override the privacy policy link on the login page (defaults to the built-in `/privacy` page) |
+| `DATABASE_URL` | Yes (prod) | PostgreSQL DSN. Docker Compose sets this automatically from `POSTGRES_PASSWORD`. |
+| `POSTGRES_PASSWORD` | Yes (local dev) | Password for the `postgres` user. **Auto-generated on production deploy.** |
+| `ENCRYPTION_MASTER_KEY` | No | Enables per-user AES-256-GCM encryption. **Auto-generated on production deploy.** |
 | `ADMIN_EMAIL` | No | Semicolon-delimited email(s) granted admin access on login |
-| `VAPID_PUBLIC_KEY` | No | Required for push notifications |
-| `VAPID_PRIVATE_KEY` | No | Required for push notifications |
-| `VAPID_CLAIMS_EMAIL` | No | Contact email embedded in push requests (e.g. `mailto:admin@yourdomain.com`) |
+| `VAPID_PUBLIC_KEY` | No | Required for push notifications. **Auto-generated on production deploy.** |
+| `VAPID_PRIVATE_KEY` | No | Required for push notifications. **Auto-generated on production deploy.** |
 | `RESEND_API_KEY` | No | Enables email notifications via [Resend](https://resend.com) |
 | `RESEND_FROM` | No | Sender address for emails (e.g. `Equity Tracker <noreply@yourdomain.com>`) |
 | `APP_URL` | No | Public app URL included as a link in email notifications |
+| `COMMIT_SHA` | No | Git commit SHA injected at Docker build time. Displayed as a 7-char short hash at the bottom of the Admin and Settings pages so testers can confirm which build is running. **Set automatically by the deploy workflow.** |
 
-**Generating VAPID keys** (one-time, requires Node):
+For local development, generate VAPID keys with:
 ```bash
 npx web-push generate-vapid-keys
 ```
@@ -183,6 +183,8 @@ The deploy workflow includes two safeguards against silent failures:
 
 1. **Caddy config validation** — a `caddy-validate` job runs before deploy, catching any Caddyfile syntax errors introduced by new Caddy versions (`caddy:2` is intentionally unpinned so CI catches breaking changes before they reach prod).
 2. **Post-deploy health polling** — after `docker compose up -d`, the deploy script polls `http://localhost/api/health` for up to 60 seconds. If the app doesn't respond, it prints `docker compose ps`, recent logs, recent commits, and manual rollback instructions, then exits 1. No auto-rollback — Alembic runs migrations on startup, so reverting code after a schema migration requires manual review.
+
+**Downtime during deploy** — the deploy script touches `./data/full_maintenance` before stopping the app container. Caddy serves a static "Down for Maintenance" page (auto-refreshes every 20 s, `Cache-Control: no-store`) until the sentinel is removed at the end of the script. This is separate from app-managed maintenance (rotation / admin toggle), which uses `./data/maintenance` and keeps the app running.
 
 For the full deploy pipeline details, uptime monitoring setup, backup strategy, and incident runbook, see **[OPERATIONS.md](OPERATIONS.md)**.
 
@@ -258,6 +260,7 @@ epic-stocks/
 │   ├── alembic/             # Alembic migrations (run on startup)
 │   ├── auth.py              # JWT + Google OAuth + admin checks
 │   ├── crypto.py            # Per-user AES-256-GCM encryption
+│   ├── maintenance.py       # Shared sentinel path for app-managed downtime
 │   ├── excel_io.py          # Excel read/write (openpyxl)
 │   ├── schemas.py           # Pydantic schemas
 │   ├── notifications.py     # Push + email notification logic
@@ -298,7 +301,7 @@ epic-stocks/
 
 ## API Overview
 
-All endpoints require `Authorization: Bearer <jwt>` except auth, health, config, and import template.
+All endpoints require `Authorization: Bearer <jwt>` except auth, health, status, config, and import template.
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -307,7 +310,8 @@ All endpoints require `Authorization: Bearer <jwt>` except auth, health, config,
 | POST | `/api/me/reset` | Reset all financial data (keeps account) |
 | DELETE | `/api/me` | Delete account and all associated data |
 | GET | `/api/config` | Client config (Google client ID, VAPID key, etc.) |
-| GET | `/api/health` | Health check |
+| GET | `/api/health` | Health check (infra/uptime monitors — always 200) |
+| GET | `/api/status` | Operational status `{"maintenance": bool}` — polled by SPA |
 | GET | `/api/dashboard` | Summary cards data |
 | GET | `/api/events` | Computed event timeline |
 | GET/POST | `/api/grants` | List/create grants |
@@ -338,6 +342,10 @@ All endpoints require `Authorization: Bearer <jwt>` except auth, health, config,
 | POST | `/api/push/test` | Send a test push notification to the current user's subscriptions |
 | GET/PUT | `/api/notifications/email` | Get/set email notification preference (returns `enabled` + `advance_days`) |
 | PUT | `/api/notifications/advance-days` | Set how many days in advance to send notifications (0 = day-of, 3, or 7) |
+| GET/POST | `/api/admin/maintenance` | Get/set app-managed maintenance mode (admin only) |
+| GET | `/api/admin/rotation-status` | Whether a rotation snapshot exists on disk (admin only) |
+| POST | `/api/admin/rotate-key` | SSE stream: rotate encryption master key (admin only) |
+| POST | `/api/admin/rotation-restore` | Restore DB from on-disk snapshot after a crashed rotation (admin only) |
 | GET | `/api/admin/stats` | Aggregate stats + latest CPU/RAM snapshot (admin only) |
 | GET | `/api/admin/users?q=&limit=10&offset=0` | User list with metadata, searchable + paginated (admin only) |
 | DELETE | `/api/admin/users/{id}` | Delete user + all data (admin only) |
@@ -368,6 +376,7 @@ The admin system is opt-in via the `ADMIN_EMAIL` environment variable. Admins ar
 - **Database Tables** — per-table size breakdown showing which tables are large (PostgreSQL only). Useful for diagnosing storage growth; includes a note explaining PostgreSQL's ~7–8 MB baseline overhead.
 - Per-user metadata: email, name, created_at, last_login, record counts, admin badge
 - Searchable user list (filter by email or name) with pagination, sorted by last active
+- **Build version** — a 7-character commit SHA is shown in small muted text at the bottom of the Admin page (and the Settings page for all users), so testers can confirm exactly which build is running without needing server access
 
 ### What Admins Cannot See
 
@@ -378,11 +387,14 @@ The admin system is opt-in via the `ADMIN_EMAIL` environment variable. Admins ar
 
 | Action | Description |
 |--------|-------------|
-| **Delete user** | Permanently removes user and all their data (grants, loans, prices, subscriptions). Admin users cannot be deleted. |
+| **Delete user** | Permanently removes user and all their data. Blocked during maintenance (financial data unreadable mid-rotation). Admin users cannot be deleted. |
 | **Block email** | Prevents an email address from logging in or creating an account. Includes optional reason field. |
 | **Unblock email** | Removes an email from the blocklist, restoring login access. |
 | **View user activity** | See when each user last logged in and how many records they have. |
-| **Send test notification** | Immediately sends a push and/or email notification to any user for debugging. Uses a pre-built event template or custom title/body. Respects user preferences (push only goes to active subscriptions; email only if the user has it enabled). |
+| **Send test notification** | Immediately sends a push and/or email notification to any user for debugging. |
+| **Enable / disable maintenance** | Toggles app-managed downtime. Financial API routes return 503; auth and admin remain accessible. An amber banner appears in the nav and financial pages show a placeholder. Use this before planned ops that affect financial data. |
+| **Rotate encryption key** | Generates a new master key, re-wraps all per-user keys, smoke-tests, persists to disk, then clears maintenance. New key is live immediately — no deploy needed. Snapshot of old keys is written to disk before any changes; restored automatically on failure. All admins are emailed if rotation fails. |
+| **Restore from snapshot** | Appears in the admin panel when an interrupted rotation left a snapshot file on disk. Writes the old per-user keys back to the DB and clears maintenance — recovers from a crash without SSH access. |
 
 ### Blocked Email System
 
@@ -426,7 +438,7 @@ This application stores sensitive financial data. Please read **[PRIVACY.md](PRI
 
 Key points:
 - **Data isolation** — every API query filters by authenticated user ID. Users cannot see each other's data.
-- **Encryption at rest** — set `ENCRYPTION_MASTER_KEY` to encrypt all financial data (shares, prices, loan amounts) per-user with AES-256-GCM. Each user gets a unique key. See [PLAN.md](PLAN.md) for details.
+- **Encryption at rest** — financial data (shares, prices, loan amounts) is encrypted per-user with AES-256-GCM. The master key is auto-generated on first deploy and stored at `./data/current_master_key` on the VPS — it never appears in GitHub Secrets or CI logs. Each user gets a unique key wrapped by the master key; rotating the master key re-wraps only the key wrappers, not all the data. See [PLAN.md](PLAN.md) for details.
 - **Open source** — users can audit the code, self-host their own instance, or fork the project.
 - **Data portability** — users can export all their data to Excel at any time.
 

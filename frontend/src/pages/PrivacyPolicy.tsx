@@ -124,10 +124,10 @@ export default function PrivacyPolicy() {
             </SubSection>
             <SubSection title="The site operator">
               <P>
-                The person running this server has technical access to the server environment. If
-                column-level encryption is enabled (<code className="rounded bg-gray-100 px-1 text-xs dark:bg-gray-800">ENCRYPTION_MASTER_KEY</code>), your financial data
-                is encrypted with AES-256-GCM before being written to the database. The operator
-                holds the master key.
+                The person running this server has technical access to the server environment.
+                Your financial data is encrypted with AES-256-GCM before being written to the
+                database — each user gets a unique key, and that key is itself encrypted with a
+                master key stored only on the server. The operator holds the master key.
               </P>
               <P>
                 If you are uncomfortable with this, you can self-host your own instance — you

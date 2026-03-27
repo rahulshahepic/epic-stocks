@@ -15,7 +15,11 @@ from timeline_cache import get_timeline
 logger = logging.getLogger(__name__)
 
 VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
-VAPID_CLAIMS_EMAIL = os.getenv("VAPID_CLAIMS_EMAIL", "mailto:admin@example.com")
+
+def _vapid_claims_email() -> str:
+    raw = os.getenv("ADMIN_EMAIL", "")
+    first = next((e.strip() for e in raw.split(";") if e.strip()), "")
+    return f"mailto:{first}" if first else "mailto:admin@localhost"
 
 NOTIFY_EVENT_TYPES = {"Vesting", "Loan Repayment", "Exercise", "Sale"}
 
@@ -94,7 +98,7 @@ def send_push(subscription: PushSubscription, payload: dict) -> bool:
 
         vapid = Vapid.from_string(VAPID_PRIVATE_KEY)
         headers = vapid.sign({
-            "sub": VAPID_CLAIMS_EMAIL,
+            "sub": _vapid_claims_email(),
             "aud": _get_origin(subscription.endpoint),
         })
         resp = httpx.post(

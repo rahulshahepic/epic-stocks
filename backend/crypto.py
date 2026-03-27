@@ -9,18 +9,37 @@ When ENCRYPTION_MASTER_KEY is set:
 When ENCRYPTION_MASTER_KEY is not set:
   - No encryption, values pass through as strings
   - Existing data remains readable
+
+Key override: if /app/data/current_master_key exists (written by the key-rotation
+endpoint), it takes precedence over ENCRYPTION_MASTER_KEY so the app survives a
+container restart between rotation and the next deploy.
 """
 
 import os
 import base64
 import hashlib
 from contextvars import ContextVar
+from pathlib import Path
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from sqlalchemy import String
 from sqlalchemy.types import TypeDecorator
 
-ENCRYPTION_MASTER_KEY = os.getenv("ENCRYPTION_MASTER_KEY", "")
+# Path for the runtime key override written by the key-rotation admin endpoint.
+# Configurable via env var so tests can point it at a temp directory.
+_KEY_OVERRIDE_PATH = Path(os.getenv("KEY_OVERRIDE_PATH", "/app/data/current_master_key"))
+
+
+def _load_master_key() -> str:
+    if _KEY_OVERRIDE_PATH.exists():
+        try:
+            return _KEY_OVERRIDE_PATH.read_text().strip()
+        except OSError:
+            pass
+    return os.getenv("ENCRYPTION_MASTER_KEY", "")
+
+
+ENCRYPTION_MASTER_KEY = _load_master_key()
 
 _current_key: ContextVar[bytes | None] = ContextVar("_current_key", default=None)
 
@@ -29,6 +48,22 @@ _ENC_PREFIX = "$ENC$"
 
 def encryption_enabled() -> bool:
     return bool(ENCRYPTION_MASTER_KEY)
+
+
+def update_master_key(new_key: str) -> None:
+    """Update the in-memory master key and persist it to the override file.
+
+    Called by the key-rotation admin endpoint after successfully re-wrapping all
+    user keys.  The override file ensures the new key survives a container restart
+    before the GitHub Secret is updated and a deploy is triggered.
+    """
+    global ENCRYPTION_MASTER_KEY
+    ENCRYPTION_MASTER_KEY = new_key
+    try:
+        _KEY_OVERRIDE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _KEY_OVERRIDE_PATH.write_text(new_key)
+    except OSError:
+        pass  # best-effort; non-fatal in dev/test environments
 
 
 def _master_aesgcm() -> AESGCM:

@@ -14,7 +14,10 @@ services:
       retries: 10
 
   app:
-    build: .
+    build:
+      context: .
+      args:
+        COMMIT_SHA: ${COMMIT_SHA:-dev}
     depends_on:
       db:
         condition: service_healthy
@@ -29,11 +32,9 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - ENCRYPTION_MASTER_KEY=${ENCRYPTION_MASTER_KEY}
-      - PRIVACY_URL=${PRIVACY_URL:-}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
-      - VAPID_CLAIMS_EMAIL=${VAPID_CLAIMS_EMAIL:-}
       - RESEND_API_KEY=${RESEND_API_KEY:-}
       - RESEND_FROM=${RESEND_FROM:-}
       - EPIC_ONBOARDING_URL=${EPIC_ONBOARDING_URL:-}
@@ -53,6 +54,7 @@ services:
     volumes:
       - ./caddy:/etc/caddy
       - caddy_data:/data
+      - ./data:/appdata:ro  # maintenance sentinel flag (read-only)
     depends_on:
       - app
 

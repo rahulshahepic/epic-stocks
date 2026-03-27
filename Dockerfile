@@ -4,6 +4,8 @@ WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm ci
 COPY frontend/ ./
+ARG COMMIT_SHA=dev
+ENV VITE_COMMIT_SHA=$COMMIT_SHA
 RUN npm run build
 
 # Stage 2: Python runtime

@@ -3,6 +3,7 @@ import { getToken } from './api.ts'
 import Layout from './components/Layout.tsx'
 import { ToastProvider } from './components/Toast.tsx'
 import { ThemeProvider } from './contexts/ThemeContext.tsx'
+import { MaintenanceProvider, useMaintenance } from './contexts/MaintenanceContext.tsx'
 import Login from './pages/Login.tsx'
 import PrivacyPolicy from './pages/PrivacyPolicy.tsx'
 import Dashboard from './pages/Dashboard.tsx'
@@ -19,27 +20,47 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return getToken() ? <>{children}</> : <Navigate to="/login" replace />
 }
 
+// Wraps financial pages — shows a placeholder during maintenance instead of
+// attempting to load encrypted data that the app can't serve right now.
+function FinancialRoute({ children }: { children: React.ReactNode }) {
+  const maintenance = useMaintenance()
+  if (!maintenance) return <>{children}</>
+  return (
+    <div className="flex flex-col items-center justify-center py-24 text-center">
+      <div className="mb-4 h-3 w-3 animate-pulse rounded-full bg-amber-400" />
+      <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+        Maintenance in progress
+      </p>
+      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+        Financial data is temporarily unavailable. Check back shortly.
+      </p>
+    </div>
+  )
+}
+
 export default function App() {
   return (
     <ThemeProvider>
     <BrowserRouter>
+      <MaintenanceProvider>
       <ToastProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route element={<RequireAuth><Layout /></RequireAuth>}>
-            <Route index element={<Dashboard />} />
-            <Route path="events" element={<Events />} />
-            <Route path="grants" element={<Grants />} />
-            <Route path="sales" element={<Sales />} />
-            <Route path="loans" element={<Loans />} />
-            <Route path="prices" element={<Prices />} />
-            <Route path="import" element={<ImportExport />} />
-            <Route path="settings" element={<Settings />} />
+            <Route index element={<FinancialRoute><Dashboard /></FinancialRoute>} />
+            <Route path="events" element={<FinancialRoute><Events /></FinancialRoute>} />
+            <Route path="grants" element={<FinancialRoute><Grants /></FinancialRoute>} />
+            <Route path="sales" element={<FinancialRoute><Sales /></FinancialRoute>} />
+            <Route path="loans" element={<FinancialRoute><Loans /></FinancialRoute>} />
+            <Route path="prices" element={<FinancialRoute><Prices /></FinancialRoute>} />
+            <Route path="import" element={<FinancialRoute><ImportExport /></FinancialRoute>} />
+            <Route path="settings" element={<FinancialRoute><Settings /></FinancialRoute>} />
             <Route path="admin" element={<Admin />} />
           </Route>
         </Routes>
       </ToastProvider>
+      </MaintenanceProvider>
     </BrowserRouter>
     </ThemeProvider>
   )

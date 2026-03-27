@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import FileResponse
 import database
+from maintenance import SENTINEL_PATH as _MAINTENANCE_SENTINEL
 
 logger = logging.getLogger(__name__)
 from routers import auth_router, grants, loans, prices, events, flows, import_export, push, admin, notifications, sales, horizon
@@ -139,6 +140,52 @@ def _start_metrics_sampler():
     return asyncio.ensure_future(_loop())
 
 
+# API routes that are always accessible during maintenance (all HTTP methods).
+_MAINT_ALLOWED_EXACT = frozenset({"/api/health", "/api/status", "/api/config"})
+_MAINT_ALLOWED_PREFIX = ("/api/auth/", "/api/admin/", "/api/push/", "/api/notifications/")
+# GET /api/me is needed for nav (profile info, is_admin flag).
+# Mutating methods on /api/me (DELETE = account deletion) must be blocked —
+# account deletion cascades into encrypted financial tables.
+_MAINT_ALLOWED_GET_EXACT = frozenset({"/api/me"})
+
+
+class MaintenanceMiddleware:
+    """Block financial API routes while the maintenance sentinel file is present.
+
+    Enforcement is at the ASGI layer — all methods blocked, not just GET.
+    The sentinel is set by key rotation and admin-toggled downtime.
+    It is distinct from the Caddy full_maintenance sentinel (deploy-time full
+    lockdown when the app container itself is stopped).
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and _MAINTENANCE_SENTINEL.exists():
+            path = scope.get("path", "")
+            if path.startswith("/api/"):
+                method = scope.get("method", "GET")
+                allowed = (
+                    path in _MAINT_ALLOWED_EXACT
+                    or path.startswith(_MAINT_ALLOWED_PREFIX)
+                    or (path in _MAINT_ALLOWED_GET_EXACT and method == "GET")
+                )
+                if not allowed:
+                    response = JSONResponse(
+                        {"detail": "Service temporarily unavailable for maintenance"},
+                        status_code=503,
+                        headers={
+                            "Cache-Control": "no-store, no-cache",
+                            "CDN-Cache-Control": "no-store",
+                            "Surrogate-Control": "no-store",
+                        },
+                    )
+                    await response(scope, receive, send)
+                    return
+        await self.app(scope, receive, send)
+
+
 class EncryptionMiddleware:
     """Pure ASGI middleware that sets per-user encryption key in contextvar.
 
@@ -258,16 +305,20 @@ def health():
     return {"status": "ok"}
 
 
+@_fastapi_app.get("/api/status")
+def status():
+    """Operational status for the frontend. Always 200; check 'maintenance' field."""
+    return {"maintenance": _MAINTENANCE_SENTINEL.exists()}
+
+
 @_fastapi_app.get("/api/config")
 def client_config():
     from auth import GOOGLE_CLIENT_ID
     from email_sender import email_configured
-    privacy_url = os.environ.get("PRIVACY_URL", "")
     vapid_public_key = os.environ.get("VAPID_PUBLIC_KEY", "")
     epic_onboarding_url = os.environ.get("EPIC_ONBOARDING_URL", "")
     return {
         "google_client_id": GOOGLE_CLIENT_ID,
-        "privacy_url": privacy_url,
         "vapid_public_key": vapid_public_key,
         "email_notifications_available": email_configured(),
         "epic_onboarding_url": epic_onboarding_url,
@@ -316,5 +367,5 @@ if STATIC_DIR.is_dir():
         return FileResponse(STATIC_DIR / "index.html")
 
 
-# Wrap FastAPI app with encryption middleware
-app = EncryptionMiddleware(_fastapi_app)
+# Wrap FastAPI app: maintenance check outermost, then encryption key setup
+app = MaintenanceMiddleware(EncryptionMiddleware(_fastapi_app))

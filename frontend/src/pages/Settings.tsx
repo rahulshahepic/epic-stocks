@@ -628,6 +628,12 @@ export default function Settings() {
           </div>
         </div>
       </section>
+
+      {import.meta.env.VITE_COMMIT_SHA && import.meta.env.VITE_COMMIT_SHA !== 'dev' && (
+        <p className="text-center text-xs text-gray-400 dark:text-gray-600">
+          {import.meta.env.VITE_COMMIT_SHA.slice(0, 7)}
+        </p>
+      )}
     </div>
   )
 }

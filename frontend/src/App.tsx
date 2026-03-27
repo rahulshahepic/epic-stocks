@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
-import { getToken, api } from './api.ts'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { getToken } from './api.ts'
 import Layout from './components/Layout.tsx'
 import { ToastProvider } from './components/Toast.tsx'
 import { ThemeProvider } from './contexts/ThemeContext.tsx'
+import { MaintenanceProvider, useMaintenance } from './contexts/MaintenanceContext.tsx'
 import Login from './pages/Login.tsx'
 import PrivacyPolicy from './pages/PrivacyPolicy.tsx'
 import Dashboard from './pages/Dashboard.tsx'
@@ -15,103 +15,52 @@ import ImportExport from './pages/ImportExport.tsx'
 import Settings from './pages/Settings.tsx'
 import Admin from './pages/Admin.tsx'
 import Sales from './pages/Sales.tsx'
-import { useMe } from './hooks/useMe.ts'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   return getToken() ? <>{children}</> : <Navigate to="/login" replace />
 }
 
-// Full-screen overlay for regular users — blocks all interaction.
-function MaintenanceOverlay() {
+// Wraps financial pages — shows a placeholder during maintenance instead of
+// attempting to load encrypted data that the app can't serve right now.
+function FinancialRoute({ children }: { children: React.ReactNode }) {
+  const maintenance = useMaintenance()
+  if (!maintenance) return <>{children}</>
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-50 dark:bg-gray-950">
-      <div className="max-w-sm px-6 text-center">
-        <div className="mx-auto mb-5 h-3 w-3 animate-pulse rounded-full bg-amber-400" />
-        <h1 className="mb-2 text-lg font-semibold text-gray-900 dark:text-gray-100">
-          Maintenance in progress
-        </h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          The site will be back shortly. This page checks automatically.
-        </p>
-      </div>
+    <div className="flex flex-col items-center justify-center py-24 text-center">
+      <div className="mb-4 h-3 w-3 animate-pulse rounded-full bg-amber-400" />
+      <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+        Maintenance in progress
+      </p>
+      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+        Financial data is temporarily unavailable. Check back shortly.
+      </p>
     </div>
   )
-}
-
-// Non-blocking banner for admins — lets them reach the admin panel to end maintenance.
-function MaintenanceBanner() {
-  return (
-    <div className="fixed inset-x-0 top-0 z-50 flex items-center justify-center gap-3 bg-amber-400 px-4 py-2 text-sm font-medium text-amber-950">
-      <span className="h-2 w-2 animate-pulse rounded-full bg-amber-800" />
-      Maintenance mode is active — financial data is unavailable to users.
-    </div>
-  )
-}
-
-function MaintenanceGate({ maintenance }: { maintenance: boolean }) {
-  const location = useLocation()
-  const me = useMe()
-
-  if (!maintenance) return null
-  // Admins on /admin see a non-blocking banner so they can still toggle maintenance off
-  if (me?.is_admin && location.pathname === '/admin') return <MaintenanceBanner />
-  return <MaintenanceOverlay />
 }
 
 export default function App() {
-  const [maintenance, setMaintenance] = useState(false)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-
-    async function check() {
-      try {
-        const s = await api.status()
-        if (cancelled) return
-        if (maintenance && !s.maintenance) {
-          // Maintenance just ended — reload so all data refetches cleanly
-          window.location.reload()
-          return
-        }
-        setMaintenance(s.maintenance)
-      } catch {
-        // Network error: leave current state unchanged
-      }
-    }
-
-    check()
-
-    // Poll every 15 s normally; switches to 5 s while in maintenance
-    const delay = maintenance ? 5_000 : 15_000
-    intervalRef.current = setInterval(check, delay)
-    return () => {
-      cancelled = true
-      if (intervalRef.current) clearInterval(intervalRef.current)
-    }
-  }, [maintenance])
-
   return (
     <ThemeProvider>
     <BrowserRouter>
+      <MaintenanceProvider>
       <ToastProvider>
-        <MaintenanceGate maintenance={maintenance} />
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route element={<RequireAuth><Layout /></RequireAuth>}>
-            <Route index element={<Dashboard />} />
-            <Route path="events" element={<Events />} />
-            <Route path="grants" element={<Grants />} />
-            <Route path="sales" element={<Sales />} />
-            <Route path="loans" element={<Loans />} />
-            <Route path="prices" element={<Prices />} />
-            <Route path="import" element={<ImportExport />} />
-            <Route path="settings" element={<Settings />} />
+            <Route index element={<FinancialRoute><Dashboard /></FinancialRoute>} />
+            <Route path="events" element={<FinancialRoute><Events /></FinancialRoute>} />
+            <Route path="grants" element={<FinancialRoute><Grants /></FinancialRoute>} />
+            <Route path="sales" element={<FinancialRoute><Sales /></FinancialRoute>} />
+            <Route path="loans" element={<FinancialRoute><Loans /></FinancialRoute>} />
+            <Route path="prices" element={<FinancialRoute><Prices /></FinancialRoute>} />
+            <Route path="import" element={<FinancialRoute><ImportExport /></FinancialRoute>} />
+            <Route path="settings" element={<FinancialRoute><Settings /></FinancialRoute>} />
             <Route path="admin" element={<Admin />} />
           </Route>
         </Routes>
       </ToastProvider>
+      </MaintenanceProvider>
     </BrowserRouter>
     </ThemeProvider>
   )

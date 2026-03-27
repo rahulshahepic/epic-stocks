@@ -4,7 +4,7 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from core import (
+from app.core import (
     generate_exercise_events,
     generate_dp_events,
     generate_vesting_events,
@@ -15,7 +15,7 @@ from core import (
     compute_timeline,
     sort_events,
 )
-from excel_io import read_all_from_excel
+from app.excel_io import read_all_from_excel
 
 FIXTURE = os.path.join(os.path.dirname(__file__), "..", "..", "test_data", "fixture.xlsx")
 

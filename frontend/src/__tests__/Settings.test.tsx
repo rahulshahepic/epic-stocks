@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import { resetConfigCache } from '../hooks/useConfig.ts'
-import { ThemeProvider } from '../contexts/ThemeContext.tsx'
-import Settings from '../pages/Settings.tsx'
+import { resetConfigCache } from '../scaffold/hooks/useConfig.ts'
+import { ThemeProvider } from '../scaffold/contexts/ThemeContext.tsx'
+import Settings from '../scaffold/pages/Settings.tsx'
 
 beforeEach(() => {
   localStorage.setItem('auth_token', 'test-token')
@@ -48,7 +48,7 @@ function renderPage() {
 describe('Settings', () => {
   it('renders display, account, and tax sections', () => {
     mockFetch({
-      '/api/config': { google_client_id: '', vapid_public_key: '', email_notifications_available: false },
+      '/api/config': { auth_provider: 'google', vapid_public_key: '', email_notifications_available: false },
       '/api/push/status': { subscribed: false, subscription_count: 0 },
     })
     renderPage()
@@ -59,7 +59,7 @@ describe('Settings', () => {
 
   it('shows not supported when no serviceWorker', async () => {
     mockFetch({
-      '/api/config': { google_client_id: '', vapid_public_key: 'test-key', email_notifications_available: false },
+      '/api/config': { auth_provider: 'google', vapid_public_key: 'test-key', email_notifications_available: false },
       '/api/push/status': { subscribed: false, subscription_count: 0 },
     })
     renderPage()
@@ -71,7 +71,7 @@ describe('Settings', () => {
   it('shows not configured when no VAPID key', async () => {
     mockPushSupport()
     mockFetch({
-      '/api/config': { google_client_id: '', vapid_public_key: '', email_notifications_available: false },
+      '/api/config': { auth_provider: 'google', vapid_public_key: '', email_notifications_available: false },
       '/api/push/status': { subscribed: false, subscription_count: 0 },
     })
     renderPage()
@@ -84,7 +84,7 @@ describe('Settings', () => {
   it('shows enable button when VAPID key present and not subscribed', async () => {
     mockPushSupport()
     mockFetch({
-      '/api/config': { google_client_id: '', vapid_public_key: 'test-vapid-key', email_notifications_available: false },
+      '/api/config': { auth_provider: 'google', vapid_public_key: 'test-vapid-key', email_notifications_available: false },
       '/api/push/status': { subscribed: false, subscription_count: 0 },
     })
     renderPage()
@@ -98,7 +98,7 @@ describe('Settings', () => {
   it('shows disable button when subscribed', async () => {
     mockPushSupport()
     mockFetch({
-      '/api/config': { google_client_id: '', vapid_public_key: 'test-vapid-key', email_notifications_available: false },
+      '/api/config': { auth_provider: 'google', vapid_public_key: 'test-vapid-key', email_notifications_available: false },
       '/api/push/status': { subscribed: true, subscription_count: 1 },
     })
     renderPage()
@@ -111,7 +111,7 @@ describe('Settings', () => {
 
   it('does not show email section when SMTP not configured', async () => {
     mockFetch({
-      '/api/config': { google_client_id: '', vapid_public_key: '', email_notifications_available: false },
+      '/api/config': { auth_provider: 'google', vapid_public_key: '', email_notifications_available: false },
       '/api/push/status': { subscribed: false, subscription_count: 0 },
     })
     renderPage()
@@ -123,7 +123,7 @@ describe('Settings', () => {
 
   it('shows email section when SMTP is configured', async () => {
     mockFetch({
-      '/api/config': { google_client_id: '', vapid_public_key: '', email_notifications_available: true },
+      '/api/config': { auth_provider: 'google', vapid_public_key: '', email_notifications_available: true },
       '/api/push/status': { subscribed: false, subscription_count: 0 },
       '/api/notifications/email': { enabled: false },
     })
@@ -137,7 +137,7 @@ describe('Settings', () => {
 
   it('shows email enabled state', async () => {
     mockFetch({
-      '/api/config': { google_client_id: '', vapid_public_key: '', email_notifications_available: true },
+      '/api/config': { auth_provider: 'google', vapid_public_key: '', email_notifications_available: true },
       '/api/push/status': { subscribed: false, subscription_count: 0 },
       '/api/notifications/email': { enabled: true },
     })
@@ -151,7 +151,7 @@ describe('Settings', () => {
 
   it('sign out clears token', async () => {
     mockFetch({
-      '/api/config': { google_client_id: '', vapid_public_key: '', email_notifications_available: false },
+      '/api/config': { auth_provider: 'google', vapid_public_key: '', email_notifications_available: false },
       '/api/push/status': { subscribed: false, subscription_count: 0 },
     })
     renderPage()

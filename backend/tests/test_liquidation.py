@@ -4,7 +4,7 @@ from datetime import date
 import pytest
 
 from tests.conftest import register_user, auth_header
-from routers.events import _last_vesting_date
+from app.routers.events import _last_vesting_date
 
 
 # ============================================================

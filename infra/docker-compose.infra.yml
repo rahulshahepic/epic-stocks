@@ -1,0 +1,42 @@
+# Shared infrastructure — run this ONCE on the server before deploying any apps.
+#
+# This compose file manages:
+#   - A shared Caddy reverse proxy that all apps connect to
+#   - A shared Docker network (`proxy`) that all app containers join
+#   - A shared Caddy config volume where each app writes its own .caddy snippet
+#   - A shared appdata volume for per-app maintenance sentinel files
+#
+# Usage:
+#   docker compose -f infra/docker-compose.infra.yml up -d
+#
+# Adding a new app:
+#   1. The app's docker-compose.multiapp.yml joins the `proxy` network
+#   2. The app's deploy script writes caddy/app.caddy to the caddy_config volume
+#   3. The deploy script runs: docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+#
+# Caddy root config is managed here (not per-app). See infra/Caddyfile.
+
+services:
+  caddy:
+    image: caddy:2
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro   # root config (imports conf.d)
+      - caddy_config:/etc/caddy/conf.d         # per-app snippet files (written by deploy)
+      - caddy_data:/data                        # SSL certificates
+      - caddy_appdata:/appdata                  # maintenance sentinel files
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    name: proxy
+
+volumes:
+  caddy_config:
+  caddy_data:
+  caddy_appdata:

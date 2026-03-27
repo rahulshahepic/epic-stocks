@@ -1,20 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import Login from '../pages/Login.tsx'
-import { resetConfigCache } from '../hooks/useConfig.ts'
+import Login from '../scaffold/pages/Login.tsx'
 
 beforeEach(() => {
   localStorage.clear()
+  sessionStorage.clear()
   vi.restoreAllMocks()
-  resetConfigCache()
 })
-
-function mockConfig(clientId: string) {
-  vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-    new Response(JSON.stringify({ google_client_id: clientId }), { status: 200 })
-  )
-}
 
 function renderLogin() {
   return render(
@@ -26,46 +19,32 @@ function renderLogin() {
 
 describe('Login page', () => {
   it('renders the app title', () => {
-    mockConfig('')
     renderLogin()
     expect(screen.getByText('Equity Vesting Tracker')).toBeInTheDocument()
   })
 
   it('renders sign-in subtitle', () => {
-    mockConfig('')
     renderLogin()
     expect(screen.getByText(/sign in to manage/i)).toBeInTheDocument()
   })
 
-  it('shows loading while fetching config', () => {
-    vi.spyOn(globalThis, 'fetch').mockReturnValue(new Promise(() => {}))
+  it('shows sign-in button', () => {
     renderLogin()
-    expect(screen.getByText('Loading...')).toBeInTheDocument()
-  })
-
-  it('shows missing client ID message when not configured', async () => {
-    mockConfig('')
-    renderLogin()
-    await waitFor(() => {
-      expect(screen.getByText(/GOOGLE_CLIENT_ID/)).toBeInTheDocument()
-    })
+    expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument()
   })
 
   it('shows privacy policy link', () => {
-    mockConfig('')
     renderLogin()
     expect(screen.getByRole('link', { name: /privacy policy/i })).toBeInTheDocument()
   })
 
   it('shows data privacy blurb', () => {
-    mockConfig('')
     renderLogin()
     expect(screen.getByText(/we will never sell your data/i)).toBeInTheDocument()
   })
 
-  it('shows why google sign-in explanation', () => {
-    mockConfig('')
+  it('shows secure sign-in explanation', () => {
     renderLogin()
-    expect(screen.getByText(/why google sign-in/i)).toBeInTheDocument()
+    expect(screen.getByText(/secure sign-in/i)).toBeInTheDocument()
   })
 })

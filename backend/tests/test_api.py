@@ -25,7 +25,7 @@ def test_google_login_returns_same_user(client):
         "picture": "",
         "aud": "",
     }
-    with patch("routers.auth_router.verify_google_token", return_value=fake_info):
+    with patch("scaffold.routers.auth_router.verify_google_token", return_value=fake_info):
         resp1 = client.post("/api/auth/google", json={"token": "t1"})
         resp2 = client.post("/api/auth/google", json={"token": "t2"})
     # Both calls succeed — same user, new tokens
@@ -34,7 +34,7 @@ def test_google_login_returns_same_user(client):
 
 
 def test_google_login_invalid_token(client):
-    with patch("routers.auth_router.verify_google_token", side_effect=ValueError("Invalid Google token")):
+    with patch("scaffold.routers.auth_router.verify_google_token", side_effect=ValueError("Invalid Google token")):
         resp = client.post("/api/auth/google", json={"token": "bad"})
     assert resp.status_code == 401
 

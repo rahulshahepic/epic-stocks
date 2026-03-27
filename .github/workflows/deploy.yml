@@ -8,11 +8,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate Caddyfile
+      - name: Validate Caddyfile (single-app mode)
+        if: ${{ vars.DEPLOY_MODE != 'multiapp' }}
         run: |
           docker run --rm \
             -v "$PWD/caddy:/etc/caddy:ro" \
             -e TRUSTED_PROXY_IPS=127.0.0.1/32 \
+            -e DOMAIN=localhost \
+            caddy:2 caddy validate --config /etc/caddy/Caddyfile
+      - name: Validate app.caddy snippet (multi-app mode)
+        if: ${{ vars.DEPLOY_MODE == 'multiapp' }}
+        run: |
+          # Wrap the snippet in a minimal Caddyfile and validate it.
+          mkdir -p /tmp/caddy-validate/conf.d
+          cp caddy/app.caddy /tmp/caddy-validate/conf.d/epic-stocks.caddy
+          printf '{\n  auto_https off\n}\nimport /etc/caddy/conf.d/*.caddy\n' \
+            > /tmp/caddy-validate/Caddyfile
+          docker run --rm \
+            -v "/tmp/caddy-validate:/etc/caddy:ro" \
             -e DOMAIN=localhost \
             caddy:2 caddy validate --config /etc/caddy/Caddyfile
 
@@ -29,6 +42,16 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             cd ${{ vars.DEPLOY_PATH }}
+
+            # ── Deploy mode ────────────────────────────────────────────────────
+            # single (default): this app owns its own Caddy container.
+            # multiapp: app joins a shared proxy network; shared Caddy managed by infra.
+            DEPLOY_MODE="${{ vars.DEPLOY_MODE || 'single' }}"
+            if [ "$DEPLOY_MODE" = "multiapp" ]; then
+              COMPOSE_FILE="docker-compose.multiapp.yml"
+            else
+              COMPOSE_FILE="docker-compose.yml"
+            fi
 
             # ── Server-side secrets (generated once, persisted on disk) ──────
             # JWT, Postgres password, and VAPID keys live in .secrets/.
@@ -75,14 +98,25 @@ jobs:
             write_env() {
               cat > ${{ vars.DEPLOY_PATH }}/.env <<ENVEOF
             JWT_SECRET=${JWT_SECRET}
+            AUTH_PROVIDER=${{ vars.AUTH_PROVIDER || 'google' }}
             GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }}
+            GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
+            AZURE_TENANT_ID=${{ vars.AZURE_TENANT_ID }}
+            AZURE_CLIENT_ID=${{ vars.AZURE_CLIENT_ID }}
+            AZURE_CLIENT_SECRET=${{ secrets.AZURE_CLIENT_SECRET }}
             DOMAIN=${{ vars.DOMAIN }}
             APP_URL=https://${{ vars.DOMAIN }}
             ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
             VAPID_PUBLIC_KEY=${VAPID_PUBLIC}
             VAPID_PRIVATE_KEY=${VAPID_PRIVATE}
+            EMAIL_PROVIDER=${{ vars.EMAIL_PROVIDER || 'resend' }}
             RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
             RESEND_FROM=${{ vars.RESEND_FROM }}
+            SMTP_HOST=${{ vars.SMTP_HOST }}
+            SMTP_PORT=${{ vars.SMTP_PORT || '587' }}
+            SMTP_USER=${{ vars.SMTP_USER }}
+            SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
+            SMTP_FROM=${{ vars.SMTP_FROM }}
             POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
             TRUSTED_PROXY_IPS=${{ vars.TRUSTED_PROXY_IPS }}
             EPIC_ONBOARDING_URL=${{ vars.EPIC_ONBOARDING_URL }}
@@ -118,12 +152,12 @@ jobs:
 
             git fetch origin ${{ github.ref_name }}
             git reset --hard origin/${{ github.ref_name }}
-            docker compose build
+            docker compose -f "$COMPOSE_FILE" build
 
             # Generate VAPID keys if missing, using the built image.
             # cryptography is already in requirements.txt so no extra install needed.
             if [ -z "$VAPID_PRIVATE" ] || [ -z "$VAPID_PUBLIC" ]; then
-              VAPID_KEYS=$(docker compose run --rm --no-deps app python3 -c "import base64; from cryptography.hazmat.primitives.asymmetric.ec import generate_private_key, SECP256R1; from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat; key = generate_private_key(SECP256R1()); priv = base64.urlsafe_b64encode(key.private_numbers().private_value.to_bytes(32, 'big')).decode().rstrip('='); pub = base64.urlsafe_b64encode(key.public_key().public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)).decode().rstrip('='); print(priv, pub)")
+              VAPID_KEYS=$(docker compose -f "$COMPOSE_FILE" run --rm --no-deps app python3 -c "import base64; from cryptography.hazmat.primitives.asymmetric.ec import generate_private_key, SECP256R1; from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat; key = generate_private_key(SECP256R1()); priv = base64.urlsafe_b64encode(key.private_numbers().private_value.to_bytes(32, 'big')).decode().rstrip('='); pub = base64.urlsafe_b64encode(key.public_key().public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)).decode().rstrip('='); print(priv, pub)")
               VAPID_PRIVATE=$(echo "$VAPID_KEYS" | awk '{print $1}')
               VAPID_PUBLIC=$(echo "$VAPID_KEYS" | awk '{print $2}')
               printf '%s' "$VAPID_PRIVATE" > "$SECRETS_DIR/vapid_private_key"
@@ -132,25 +166,58 @@ jobs:
               write_env
             fi
 
+            # ── Maintenance sentinel ────────────────────────────────────────
+            # single-app: sentinel is a bind-mounted file in ./data/
+            # multiapp:   sentinel lives in the named 'appdata' volume, scoped
+            #             to this app's directory to avoid collisions.
+            set_maintenance() {
+              if [ "$DEPLOY_MODE" = "multiapp" ]; then
+                docker run --rm -v appdata:/appdata alpine \
+                  sh -c 'mkdir -p /appdata/epic-stocks && touch /appdata/epic-stocks/full_maintenance'
+              else
+                touch ./data/full_maintenance
+              fi
+            }
+            clear_maintenance() {
+              if [ "$DEPLOY_MODE" = "multiapp" ]; then
+                docker run --rm -v appdata:/appdata alpine \
+                  rm -f /appdata/epic-stocks/full_maintenance
+              else
+                rm -f ./data/full_maintenance
+              fi
+            }
+
             # Full deploy downtime — Caddy serves the static 503 page while
-            # the app container is stopped.  ./data is bind-mounted into Caddy.
-            touch ./data/full_maintenance
+            # the app container is stopped.
+            set_maintenance
 
             # Stop the app so its DB connections are fully released before migration
-            docker compose stop app
+            docker compose -f "$COMPOSE_FILE" stop app
 
             # Run migrations in isolation — full output visible in deploy log
             echo "Running database migrations..."
-            docker compose run --rm --no-deps app \
+            docker compose -f "$COMPOSE_FILE" run --rm --no-deps app \
               python -m alembic -c /app/alembic.ini upgrade head
             echo "Migrations complete."
 
             # Start all services and wait for healthchecks to pass
-            docker compose up -d --wait --wait-timeout 120
+            docker compose -f "$COMPOSE_FILE" up -d --wait --wait-timeout 120
 
-            # Graceful config reload — directory mount means git reset --hard
-            # doesn't break the inode, so caddy reload correctly picks up changes.
-            docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
+            # ── Caddy reload ────────────────────────────────────────────────
+            # single-app: Caddy is managed by this compose stack.
+            # multiapp:   write app snippet to shared caddy_config volume,
+            #             then reload the shared Caddy container.
+            if [ "$DEPLOY_MODE" = "multiapp" ]; then
+              docker run --rm \
+                -v caddy_config:/conf \
+                -v "$(pwd)/caddy:/src:ro" \
+                alpine cp /src/app.caddy /conf/epic-stocks.caddy
+              docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+            else
+              # Graceful config reload — directory mount means git reset --hard
+              # doesn't break the inode, so caddy reload correctly picks up changes.
+              docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile
+            fi
 
             # Restore full site — remove deploy downtime sentinel
-            rm -f ./data/full_maintenance
+            clear_maintenance

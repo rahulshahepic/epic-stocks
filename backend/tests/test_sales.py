@@ -6,7 +6,7 @@ from datetime import date, datetime
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from tests.conftest import register_user, auth_header
-from sales_engine import build_fifo_lots, compute_sale_tax, compute_grossup_shares
+from app.sales_engine import build_fifo_lots, compute_sale_tax, compute_grossup_shares
 from collections import deque
 
 

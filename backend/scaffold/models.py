@@ -1,0 +1,222 @@
+from datetime import datetime, date, timezone
+from sqlalchemy import Integer, String, Float, BigInteger, Date, DateTime, ForeignKey, Boolean
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from database import Base
+from scaffold.crypto import EncryptedFloat, EncryptedInt, EncryptedString
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    google_id: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String, nullable=True)
+    picture: Mapped[str] = mapped_column(String, nullable=True)
+    encrypted_key: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_login: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    is_admin: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    last_notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    grants: Mapped[list["Grant"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    loans: Mapped[list["Loan"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    prices: Mapped[list["Price"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    push_subscriptions: Mapped[list["PushSubscription"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    email_preference: Mapped["EmailPreference | None"] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
+    sales: Mapped[list["Sale"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    loan_payments: Mapped[list["LoanPayment"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    tax_settings: Mapped["TaxSettings | None"] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
+    horizon_settings: Mapped["HorizonSettings | None"] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
+
+
+class Grant(Base):
+    __tablename__ = "grants"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    type: Mapped[str] = mapped_column(String, nullable=False)
+    shares: Mapped[int] = mapped_column(EncryptedInt, nullable=False)
+    price: Mapped[float] = mapped_column(EncryptedFloat, nullable=False)
+    vest_start: Mapped[date] = mapped_column(Date, nullable=False)
+    periods: Mapped[int] = mapped_column(Integer, nullable=False)
+    exercise_date: Mapped[date] = mapped_column(Date, nullable=False)
+    dp_shares: Mapped[int] = mapped_column(EncryptedInt, default=0)
+    election_83b: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+
+    user: Mapped["User"] = relationship(back_populates="grants")
+
+
+class Loan(Base):
+    __tablename__ = "loans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    grant_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    grant_type: Mapped[str] = mapped_column(String, nullable=False)
+    loan_type: Mapped[str] = mapped_column(String, nullable=False)
+    loan_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount: Mapped[float] = mapped_column(EncryptedFloat, nullable=False)
+    interest_rate: Mapped[float] = mapped_column(EncryptedFloat, nullable=False)
+    due_date: Mapped[date] = mapped_column(Date, nullable=False)
+    loan_number: Mapped[str] = mapped_column(EncryptedString, nullable=True)
+    refinances_loan_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("loans.id"), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+
+    user: Mapped["User"] = relationship(back_populates="loans")
+
+
+class Price(Base):
+    __tablename__ = "prices"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    effective_date: Mapped[date] = mapped_column(Date, nullable=False)
+    price: Mapped[float] = mapped_column(EncryptedFloat, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+
+    user: Mapped["User"] = relationship(back_populates="prices")
+
+
+class PushSubscription(Base):
+    __tablename__ = "push_subscriptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    endpoint: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    p256dh: Mapped[str] = mapped_column(String, nullable=False)
+    auth: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    user: Mapped["User"] = relationship(back_populates="push_subscriptions")
+
+
+class EmailPreference(Base):
+    __tablename__ = "email_preferences"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, unique=True, index=True)
+    enabled: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    advance_days: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    user: Mapped["User"] = relationship(back_populates="email_preference")
+
+
+class Sale(Base):
+    __tablename__ = "sales"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+    shares: Mapped[int] = mapped_column(Integer, nullable=False)
+    price_per_share: Mapped[float] = mapped_column(EncryptedFloat, nullable=False)
+    notes: Mapped[str] = mapped_column(String, nullable=False, default="")
+    # If set, this sale was generated to cover this loan's payoff.
+    loan_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("loans.id", ondelete="SET NULL"), nullable=True, index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+    # Per-sale tax rate overrides (null = fall back to user's TaxSettings)
+    federal_income_rate: Mapped[float | None] = mapped_column(EncryptedFloat, nullable=True)
+    federal_lt_cg_rate: Mapped[float | None] = mapped_column(EncryptedFloat, nullable=True)
+    federal_st_cg_rate: Mapped[float | None] = mapped_column(EncryptedFloat, nullable=True)
+    niit_rate: Mapped[float | None] = mapped_column(EncryptedFloat, nullable=True)
+    state_income_rate: Mapped[float | None] = mapped_column(EncryptedFloat, nullable=True)
+    state_lt_cg_rate: Mapped[float | None] = mapped_column(EncryptedFloat, nullable=True)
+    state_st_cg_rate: Mapped[float | None] = mapped_column(EncryptedFloat, nullable=True)
+    lt_holding_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    user: Mapped["User"] = relationship(back_populates="sales")
+
+
+class LoanPayment(Base):
+    """User-recorded early cash payment against a loan (reduces final payoff balance)."""
+    __tablename__ = "loan_payments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    loan_id: Mapped[int] = mapped_column(Integer, ForeignKey("loans.id", ondelete="CASCADE"), nullable=False, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+    amount: Mapped[float] = mapped_column(EncryptedFloat, nullable=False)
+    notes: Mapped[str] = mapped_column(String, nullable=False, default="")
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+
+    user: Mapped["User"] = relationship(back_populates="loan_payments")
+
+
+class TaxSettings(Base):
+    __tablename__ = "tax_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, unique=True, index=True)
+    federal_income_rate: Mapped[float] = mapped_column(EncryptedFloat, nullable=False, default=0.37)
+    federal_lt_cg_rate: Mapped[float] = mapped_column(EncryptedFloat, nullable=False, default=0.20)
+    federal_st_cg_rate: Mapped[float] = mapped_column(EncryptedFloat, nullable=False, default=0.37)
+    niit_rate: Mapped[float] = mapped_column(EncryptedFloat, nullable=False, default=0.038)
+    state_income_rate: Mapped[float] = mapped_column(EncryptedFloat, nullable=False, default=0.0765)
+    state_lt_cg_rate: Mapped[float] = mapped_column(EncryptedFloat, nullable=False, default=0.0536)
+    state_st_cg_rate: Mapped[float] = mapped_column(EncryptedFloat, nullable=False, default=0.0765)
+    lt_holding_days: Mapped[int] = mapped_column(Integer, nullable=False, default=365)
+    lot_selection_method: Mapped[str] = mapped_column(String, nullable=False, default='lifo')
+    prefer_stock_dp: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    dp_min_percent: Mapped[float] = mapped_column(Float, nullable=False, default=0.10)
+    dp_min_cap: Mapped[float] = mapped_column(Float, nullable=False, default=20000.0)
+
+    user: Mapped["User"] = relationship(back_populates="tax_settings")
+
+
+class HorizonSettings(Base):
+    __tablename__ = "horizon_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, unique=True, index=True)
+    horizon_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    user: Mapped["User"] = relationship(back_populates="horizon_settings")
+
+
+class ImportBackup(Base):
+    """Snapshot of user data taken immediately before an import, for recovery."""
+    __tablename__ = "import_backups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    # JSON snapshot: {"grants": [...], "prices": [...], "loans": [...]}
+    data_json: Mapped[str] = mapped_column(String, nullable=False)
+
+
+class BlockedEmail(Base):
+    __tablename__ = "blocked_emails"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    reason: Mapped[str] = mapped_column(String, nullable=True)
+    blocked_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class ErrorLog(Base):
+    __tablename__ = "error_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    method: Mapped[str] = mapped_column(String, nullable=True)
+    path: Mapped[str] = mapped_column(String, nullable=True)
+    error_type: Mapped[str] = mapped_column(String, nullable=True)
+    error_message: Mapped[str] = mapped_column(String, nullable=True)
+    traceback: Mapped[str] = mapped_column(String, nullable=True)
+    user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class SystemMetric(Base):
+    """Periodic system health snapshot (CPU, RAM, DB size). Rolling 30-day window."""
+    __tablename__ = "system_metrics"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    cpu_percent: Mapped[float] = mapped_column(Float, nullable=False)
+    ram_used_mb: Mapped[float] = mapped_column(Float, nullable=False)
+    ram_total_mb: Mapped[float] = mapped_column(Float, nullable=False)
+    db_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    error_log_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

@@ -12,7 +12,7 @@ from sqlalchemy.pool import StaticPool
 # has its own standalone crypto helpers and does not read ENCRYPTION_MASTER_KEY.
 from tests.conftest import TEST_ENGINE, register_user, auth_header
 
-from rotate_master_key import (
+from scaffold.rotate_master_key import (
     encrypt_user_key,
     decrypt_user_key,
     encrypt_value,

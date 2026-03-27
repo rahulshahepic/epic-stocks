@@ -16,7 +16,7 @@ def _admin_env():
 def _register_admin(client):
     from tests.conftest import _fake_google_info
     info = _fake_google_info(ADMIN_EMAIL)
-    with patch("routers.auth_router.verify_google_token", return_value=info):
+    with patch("scaffold.routers.auth_router.verify_google_token", return_value=info):
         resp = client.post("/api/auth/google", json={"token": "admin-token"})
     return resp.json()["access_token"]
 
@@ -47,7 +47,7 @@ def test_metrics_requires_auth(client):
 
 
 def test_metrics_returns_correct_fields(client, db_session):
-    from models import SystemMetric
+    from scaffold.models import SystemMetric
     from datetime import datetime, timezone
 
     with _admin_env():
@@ -81,7 +81,7 @@ def test_metrics_returns_correct_fields(client, db_session):
 
 
 def test_metrics_hours_filter_excludes_old(client, db_session):
-    from models import SystemMetric
+    from scaffold.models import SystemMetric
     from datetime import datetime, timezone, timedelta
 
     with _admin_env():
@@ -104,7 +104,7 @@ def test_metrics_hours_filter_excludes_old(client, db_session):
 
 
 def test_metrics_ordered_by_timestamp(client, db_session):
-    from models import SystemMetric
+    from scaffold.models import SystemMetric
     from datetime import datetime, timezone, timedelta
 
     with _admin_env():
@@ -174,7 +174,7 @@ def test_admin_stats_includes_system_fields(client):
 
 def test_admin_stats_shows_latest_metric(client, db_session):
     """AdminStats returns values from the most recent SystemMetric row."""
-    from models import SystemMetric
+    from scaffold.models import SystemMetric
     from datetime import datetime, timezone, timedelta
 
     with _admin_env():
@@ -204,7 +204,7 @@ def test_sample_metrics_creates_row(setup_db):
     """_sample_metrics() persists a SystemMetric row."""
     import database
     from main import _sample_metrics
-    from models import SystemMetric
+    from scaffold.models import SystemMetric
 
     db = database.SessionLocal()
     try:
@@ -229,7 +229,7 @@ def test_sample_metrics_trims_error_logs(setup_db):
     """_sample_metrics() trims error_logs to at most 500 entries."""
     import database
     from main import _sample_metrics
-    from models import ErrorLog
+    from scaffold.models import ErrorLog
     from datetime import datetime, timezone, timedelta
 
     now = datetime.now(timezone.utc)
@@ -260,7 +260,7 @@ def test_sample_metrics_cleans_old_metrics(setup_db):
     """_sample_metrics() removes metric rows older than 30 days."""
     import database
     from main import _sample_metrics
-    from models import SystemMetric
+    from scaffold.models import SystemMetric
     from datetime import datetime, timezone, timedelta
 
     sentinel_cpu = -999.0  # impossible in real usage; identifies our old row

@@ -94,7 +94,7 @@ def test_delete_account_removes_all_data(client, db_session):
 
     client.delete("/api/me", headers=auth_header(token))
 
-    from models import User, Grant, Loan, Price
+    from scaffold.models import User, Grant, Loan, Price
     assert db_session.query(User).count() == 0
     assert db_session.query(Grant).count() == 0
     assert db_session.query(Loan).count() == 0

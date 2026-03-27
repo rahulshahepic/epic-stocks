@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import Prices from '../pages/Prices.tsx'
+import Prices from '../app/pages/Prices.tsx'
 
 const MOCK_PRICES = [
   { id: 1, effective_date: '2020-12-31', price: 1.99 },

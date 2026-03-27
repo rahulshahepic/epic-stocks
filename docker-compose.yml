@@ -30,14 +30,26 @@ services:
     environment:
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-changeme}@db:5432/vesting
       - JWT_SECRET=${JWT_SECRET}
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - AUTH_PROVIDER=${AUTH_PROVIDER:-google}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - AZURE_TENANT_ID=${AZURE_TENANT_ID:-}
+      - AZURE_CLIENT_ID=${AZURE_CLIENT_ID:-}
+      - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET:-}
       - ENCRYPTION_MASTER_KEY=${ENCRYPTION_MASTER_KEY}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-resend}
       - RESEND_API_KEY=${RESEND_API_KEY:-}
       - RESEND_FROM=${RESEND_FROM:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-}
       - EPIC_ONBOARDING_URL=${EPIC_ONBOARDING_URL:-}
+      - APP_URL=${APP_URL:-}
     volumes:
       - ./data:/app/data  # sqlite migration source + sentinel file
     expose:

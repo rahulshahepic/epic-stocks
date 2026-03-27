@@ -6,9 +6,6 @@ LOAN_TYPES = {"Interest", "Tax", "Purchase"}
 
 
 # Auth
-class GoogleAuthRequest(BaseModel):
-    token: str
-
 class AuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"

@@ -169,6 +169,15 @@ function del(path: string) {
 }
 
 export const api = {
+  // PKCE auth flow
+  getLoginUrl: (codeChallenge: string, redirectUri: string, state: string) => {
+    const params = new URLSearchParams({ code_challenge: codeChallenge, redirect_uri: redirectUri, state })
+    return apiFetch<{ authorization_url: string }>(`/api/auth/login?${params}`)
+  },
+  exchangeCode: (code: string, codeVerifier: string, redirectUri: string) =>
+    post<{ access_token: string }>('/api/auth/callback', { code, code_verifier: codeVerifier, redirect_uri: redirectUri }),
+
+  // Legacy Google GSI flow (retained for backward compat)
   loginGoogle: (token: string) =>
     post<{ access_token: string }>('/api/auth/google', { token }),
 

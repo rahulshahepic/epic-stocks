@@ -14,7 +14,7 @@ from sqlalchemy import text
 # ============================================================
 
 def test_generate_and_roundtrip_user_key():
-    from crypto import generate_user_key, encrypt_user_key, decrypt_user_key
+    from scaffold.crypto import generate_user_key, encrypt_user_key, decrypt_user_key
     raw = generate_user_key()
     assert len(raw) == 32
     encrypted = encrypt_user_key(raw)
@@ -24,7 +24,7 @@ def test_generate_and_roundtrip_user_key():
 
 
 def test_encrypt_decrypt_value():
-    from crypto import generate_user_key, encrypt_value, decrypt_value, _ENC_PREFIX
+    from scaffold.crypto import generate_user_key, encrypt_value, decrypt_value, _ENC_PREFIX
     key = generate_user_key()
     plaintext = "19900.0"
     ct = encrypt_value(plaintext, key)
@@ -34,7 +34,7 @@ def test_encrypt_decrypt_value():
 
 
 def test_different_nonces_produce_different_ciphertexts():
-    from crypto import generate_user_key, encrypt_value
+    from scaffold.crypto import generate_user_key, encrypt_value
     key = generate_user_key()
     ct1 = encrypt_value("100", key)
     ct2 = encrypt_value("100", key)
@@ -43,7 +43,7 @@ def test_different_nonces_produce_different_ciphertexts():
 
 def test_wrong_key_fails():
     import pytest
-    from crypto import generate_user_key, encrypt_value, decrypt_value
+    from scaffold.crypto import generate_user_key, encrypt_value, decrypt_value
     key1 = generate_user_key()
     key2 = generate_user_key()
     ct = encrypt_value("secret", key1)
@@ -52,7 +52,7 @@ def test_wrong_key_fails():
 
 
 def test_encryption_enabled():
-    from crypto import encryption_enabled
+    from scaffold.crypto import encryption_enabled
     assert encryption_enabled() is True  # Set in conftest
 
 

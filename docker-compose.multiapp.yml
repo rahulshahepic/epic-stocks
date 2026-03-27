@@ -1,0 +1,86 @@
+# Multi-app mode: app connects to the shared Caddy proxy instead of running its own.
+#
+# Prerequisites:
+#   1. Shared infra is running: docker compose -f infra/docker-compose.infra.yml up -d
+#   2. The `proxy` network exists: docker network inspect proxy
+#
+# To deploy:
+#   docker compose -f docker-compose.multiapp.yml up -d --wait
+#
+# The deploy script then registers this app with Caddy:
+#   docker run --rm -v caddy_config:/conf -v $(pwd)/caddy:/src alpine \
+#     cp /src/app.caddy /conf/epic-stocks.caddy
+#   docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: vesting
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+
+  app:
+    container_name: epic-stocks-app   # referenced by name in caddy/app.caddy
+    build:
+      context: .
+      args:
+        COMMIT_SHA: ${COMMIT_SHA:-dev}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    environment:
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-changeme}@db:5432/vesting
+      - JWT_SECRET=${JWT_SECRET}
+      - AUTH_PROVIDER=${AUTH_PROVIDER:-google}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - AZURE_TENANT_ID=${AZURE_TENANT_ID:-}
+      - AZURE_CLIENT_ID=${AZURE_CLIENT_ID:-}
+      - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET:-}
+      - ENCRYPTION_MASTER_KEY=${ENCRYPTION_MASTER_KEY}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-resend}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - RESEND_FROM=${RESEND_FROM:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+      - EPIC_ONBOARDING_URL=${EPIC_ONBOARDING_URL:-}
+      - APP_URL=${APP_URL:-}
+    volumes:
+      - ./data:/app/data           # sqlite migration source
+      - appdata:/app/appdata       # maintenance sentinel (shared with caddy via named volume)
+    expose:
+      - "8000"
+    networks:
+      - internal
+      - proxy        # connects to the shared Caddy proxy network
+
+volumes:
+  pg_data:
+  appdata:
+
+networks:
+  internal:
+  proxy:
+    external: true   # must be created by infra/docker-compose.infra.yml first

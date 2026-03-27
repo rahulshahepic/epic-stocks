@@ -85,7 +85,7 @@ def _fake_google_info(email):
 
 
 def register_user(client, email="test@example.com"):
-    with patch("routers.auth_router.verify_google_token", return_value=_fake_google_info(email)):
+    with patch("scaffold.routers.auth_router.verify_google_token", return_value=_fake_google_info(email)):
         resp = client.post("/api/auth/google", json={"token": "fake-google-token"})
     return resp.json()["access_token"]
 

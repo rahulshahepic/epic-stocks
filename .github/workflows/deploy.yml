@@ -82,7 +82,7 @@ jobs:
             VAPID_PUBLIC_KEY=${VAPID_PUBLIC}
             VAPID_PRIVATE_KEY=${VAPID_PRIVATE}
             RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
-            RESEND_FROM=${{ secrets.RESEND_FROM }}
+            RESEND_FROM=${{ vars.RESEND_FROM }}
             POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
             TRUSTED_PROXY_IPS=${{ vars.TRUSTED_PROXY_IPS }}
             EPIC_ONBOARDING_URL=${{ vars.EPIC_ONBOARDING_URL }}

@@ -121,10 +121,10 @@ Before anything touches the server, a Docker container runs `caddy validate` aga
 
 Connects to the VPS via SSH (key stored in GitHub Actions secrets) and:
 
-1. Generates any missing server-side secrets (JWT, encryption key, VAPID keys, Postgres password) into `/opt/epic-stocks/.secrets/`, then writes `.env` from those files plus GitHub Secrets/Vars
+1. Generates any missing server-side secrets (JWT, encryption key, VAPID keys, Postgres password) into `/opt/epic-stocks/.secrets/`, then writes `.env` from those files plus GitHub Secrets/Vars. Also writes `COMMIT_SHA=${{ github.sha }}` into `.env` so it is available as a Docker build arg.
 2. Creates a 2 GB swapfile if one doesn't exist (idempotent)
 3. `git fetch origin main && git reset --hard origin/main` — always matches the repo exactly; no local drift
-4. `docker compose build && docker compose up -d`
+4. `docker compose build` — passes `COMMIT_SHA` as a build arg to the frontend stage; Vite bakes it in as `VITE_COMMIT_SHA`. The resulting 7-char short hash is displayed in small text at the bottom of the Admin and Settings pages so testers can confirm which build is running. `docker compose up -d`
 5. Polls `http://localhost/api/health` every 5 seconds for up to 60 seconds
 
 **Step 3 — Health polling**

@@ -145,6 +145,7 @@ cp .env.example .env
 | `RESEND_API_KEY` | No | Enables email notifications via [Resend](https://resend.com) |
 | `RESEND_FROM` | No | Sender address for emails (e.g. `Equity Tracker <noreply@yourdomain.com>`) |
 | `APP_URL` | No | Public app URL included as a link in email notifications |
+| `COMMIT_SHA` | No | Git commit SHA injected at Docker build time. Displayed as a 7-char short hash at the bottom of the Admin and Settings pages so testers can confirm which build is running. **Set automatically by the deploy workflow.** |
 
 For local development, generate VAPID keys with:
 ```bash
@@ -375,6 +376,7 @@ The admin system is opt-in via the `ADMIN_EMAIL` environment variable. Admins ar
 - **Database Tables** — per-table size breakdown showing which tables are large (PostgreSQL only). Useful for diagnosing storage growth; includes a note explaining PostgreSQL's ~7–8 MB baseline overhead.
 - Per-user metadata: email, name, created_at, last_login, record counts, admin badge
 - Searchable user list (filter by email or name) with pagination, sorted by last active
+- **Build version** — a 7-character commit SHA is shown in small muted text at the bottom of the Admin page (and the Settings page for all users), so testers can confirm exactly which build is running without needing server access
 
 ### What Admins Cannot See
 

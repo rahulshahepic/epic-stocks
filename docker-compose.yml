@@ -14,7 +14,10 @@ services:
       retries: 10
 
   app:
-    build: .
+    build:
+      context: .
+      args:
+        COMMIT_SHA: ${COMMIT_SHA:-dev}
     depends_on:
       db:
         condition: service_healthy

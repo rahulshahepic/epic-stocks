@@ -422,6 +422,47 @@ def set_maintenance(body: MaintenanceRequest, admin: User = Depends(get_admin_us
 # Encryption key rotation
 # ============================================================
 
+
+class RotationStatus(BaseModel):
+    snapshot_exists: bool
+    maintenance_active: bool
+
+
+@router.get("/rotation-status", response_model=RotationStatus)
+def get_rotation_status(admin: User = Depends(get_admin_user)):
+    """Return whether an interrupted rotation snapshot exists on disk."""
+    return RotationStatus(
+        snapshot_exists=_SNAPSHOT_PATH.exists(),
+        maintenance_active=_SENTINEL.exists(),
+    )
+
+
+@router.post("/rotation-restore", status_code=200)
+def rotation_restore(admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    """Restore users.encrypted_key from the on-disk snapshot left by a crashed rotation.
+
+    Safe to call when rotation completed successfully and the snapshot file is
+    stale — the endpoint just returns 404 if no snapshot exists.
+    """
+    if not _SNAPSHOT_PATH.exists():
+        raise HTTPException(status_code=404, detail="No rotation snapshot found")
+    try:
+        raw = json.loads(_SNAPSHOT_PATH.read_text())
+        snapshot: dict[int, str] = {int(k): v for k, v in raw.items()}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Snapshot unreadable: {exc}")
+
+    for uid, enc_key in snapshot.items():
+        db.execute(
+            text("UPDATE users SET encrypted_key = :k WHERE id = :id"),
+            {"k": enc_key, "id": uid},
+        )
+    db.commit()
+
+    _SNAPSHOT_PATH.unlink(missing_ok=True)
+    _SENTINEL.unlink(missing_ok=True)
+    return {"restored": len(snapshot)}
+
 @router.post("/rotate-key")
 def rotate_key(admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
     """Rotate the master encryption key.

@@ -281,3 +281,86 @@ def test_rotate_key_rollback_on_decrypt_failure(client, sentinel_path, snapshot_
             text("SELECT id, encrypted_key FROM users WHERE encrypted_key IS NOT NULL")
         ).fetchall()}
     assert before == after
+
+
+# ============================================================
+# Rotation status + restore
+# ============================================================
+
+def test_rotation_status_no_snapshot(client, sentinel_path, snapshot_path):
+    """Status returns snapshot_exists=False when no snapshot file is present."""
+    with _admin_env():
+        token = _register_admin(client)
+        resp = client.get("/api/admin/rotation-status", headers=auth_header(token))
+    assert resp.status_code == 200
+    assert resp.json()["snapshot_exists"] is False
+    assert resp.json()["maintenance_active"] is False
+
+
+def test_rotation_status_with_snapshot(client, sentinel_path, snapshot_path):
+    """Status returns snapshot_exists=True when a snapshot file is present."""
+    snapshot_path.write_text('{"1": "dummykey"}')
+    with _admin_env():
+        token = _register_admin(client)
+        resp = client.get("/api/admin/rotation-status", headers=auth_header(token))
+    assert resp.json()["snapshot_exists"] is True
+
+
+def test_rotation_restore_no_snapshot_returns_404(client, sentinel_path, snapshot_path):
+    with _admin_env():
+        token = _register_admin(client)
+        resp = client.post("/api/admin/rotation-restore", headers=auth_header(token))
+    assert resp.status_code == 404
+
+
+def test_rotation_restore_recovers_keys(client, sentinel_path, snapshot_path):
+    """Restore endpoint writes snapshot keys back to DB and clears sentinel + snapshot."""
+    # Register a regular user (their key will be corrupted; admin key stays intact)
+    register_user(client, "victim2@example.com")
+
+    with _admin_env():
+        token = _register_admin(client)
+
+    # Capture only the regular user's key
+    with TEST_ENGINE.connect() as conn:
+        rows = conn.execute(
+            text("SELECT id, encrypted_key FROM users WHERE encrypted_key IS NOT NULL")
+        ).fetchall()
+    # Separate admin from regular user
+    admin_id = next(r[0] for r in rows if r[0] != rows[0][0] or True)  # all rows
+    # Get non-admin user id
+    with TEST_ENGINE.connect() as conn:
+        victim_row = conn.execute(
+            text("SELECT id, encrypted_key FROM users WHERE email = 'victim2@example.com'")
+        ).fetchone()
+    assert victim_row is not None
+    victim_id, victim_key = victim_row[0], victim_row[1]
+
+    import json as _json
+    snapshot_path.write_text(_json.dumps({str(victim_id): victim_key}))
+    sentinel_path.touch()
+
+    # Corrupt only the victim's key to simulate partial rotation
+    with TEST_ENGINE.connect() as conn:
+        # Use valid-looking but wrong base64 so it's "wrong key" not "corrupt format"
+        conn.execute(
+            text("UPDATE users SET encrypted_key = :bad WHERE id = :id"),
+            {"bad": victim_key[::-1], "id": victim_id},
+        )
+        conn.commit()
+
+    with _admin_env():
+        resp = client.post("/api/admin/rotation-restore", headers=auth_header(token))
+    assert resp.status_code == 200
+    assert resp.json()["restored"] == 1
+
+    # Snapshot and sentinel must be gone
+    assert not snapshot_path.exists()
+    assert not sentinel_path.exists()
+
+    # Victim's key must be restored
+    with TEST_ENGINE.connect() as conn:
+        restored_key = conn.execute(
+            text("SELECT encrypted_key FROM users WHERE id = :id"), {"id": victim_id}
+        ).scalar()
+    assert restored_key == victim_key

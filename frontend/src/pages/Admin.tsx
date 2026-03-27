@@ -85,6 +85,8 @@ export default function Admin() {
   const [rotationRunning, setRotationRunning] = useState(false)
   const [rotationLog, setRotationLog] = useState<RotationEvent[]>([])
   const rotationLogRef = useRef<HTMLDivElement>(null)
+  const [snapshotExists, setSnapshotExists] = useState(false)
+  const [restoring, setRestoring] = useState(false)
 
   const loadUsers = useCallback(async (q = '') => {
     try {
@@ -113,14 +115,16 @@ export default function Admin() {
 
   const load = useCallback(async () => {
     try {
-      const [s, b, m] = await Promise.all([
+      const [s, b, m, rs] = await Promise.all([
         api.adminStats(),
         api.adminListBlocked(),
         api.adminGetMaintenance(),
+        api.adminRotationStatus(),
       ])
       setStats(s)
       setBlocked(b)
       setMaintenanceActive(m.active)
+      setSnapshotExists(rs.snapshot_exists)
       setError('')
       loadUsers()
       loadErrors()
@@ -528,6 +532,39 @@ export default function Admin() {
         </div>
       </section>
 
+      {/* Interrupted rotation recovery banner */}
+      {snapshotExists && (
+        <div className="rounded-lg border border-red-400 bg-red-50 p-4 dark:border-red-600 dark:bg-red-950">
+          <p className="text-sm font-semibold text-red-800 dark:text-red-200">
+            Key rotation was interrupted
+          </p>
+          <p className="mt-1 text-xs text-red-700 dark:text-red-300">
+            A rotation snapshot exists on disk. The database may have keys wrapped with the new
+            master key while the app is still using the old one. Financial data is inaccessible
+            until you restore from the snapshot or complete the rotation.
+          </p>
+          <button
+            disabled={restoring}
+            onClick={async () => {
+              setRestoring(true)
+              try {
+                const res = await api.adminRotationRestore()
+                setSnapshotExists(false)
+                setMaintenanceActive(false)
+                alert(`Restored ${res.restored} user key(s) from snapshot. Maintenance mode cleared.`)
+              } catch (e) {
+                alert(`Restore failed: ${e instanceof Error ? e.message : String(e)}`)
+              } finally {
+                setRestoring(false)
+              }
+            }}
+            className="mt-3 rounded-md bg-red-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-800 disabled:opacity-50"
+          >
+            {restoring ? 'Restoring…' : 'Restore from snapshot'}
+          </button>
+        </div>
+      )}
+
       {/* Danger Zone */}
       <section className="rounded-lg border border-red-200 bg-white p-4 dark:border-red-900/60 dark:bg-gray-900">
         <h3 className="text-sm font-semibold text-red-700 dark:text-red-400">⚠ Danger Zone</h3>
@@ -686,8 +723,11 @@ export default function Admin() {
                           ])
                         } finally {
                           setRotationRunning(false)
-                          // Refresh maintenance status (rotation clears it)
-                          api.adminGetMaintenance().then(m => setMaintenanceActive(m.active)).catch(() => {})
+                          // Refresh maintenance + snapshot status
+                          api.adminRotationStatus().then(rs => {
+                            setMaintenanceActive(rs.maintenance_active)
+                            setSnapshotExists(rs.snapshot_exists)
+                          }).catch(() => {})
                         }
                       }}
                       className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"

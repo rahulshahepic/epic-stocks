@@ -279,6 +279,10 @@ export const api = {
   adminGetMaintenance: () => apiFetch<{ active: boolean }>('/api/admin/maintenance'),
   adminSetMaintenance: (active: boolean) =>
     post<{ active: boolean }>('/api/admin/maintenance', { active }),
+  adminRotationStatus: () =>
+    apiFetch<{ snapshot_exists: boolean; maintenance_active: boolean }>('/api/admin/rotation-status'),
+  adminRotationRestore: () =>
+    post<{ restored: number }>('/api/admin/rotation-restore', {}),
 
   /** Stream SSE events from the key-rotation endpoint.
    *  Calls onEvent for each parsed event object.  Resolves when the stream ends.

@@ -151,7 +151,6 @@ No automatic rollback. Because Alembic migrations run on startup, reverting code
 | `VAPID_PRIVATE_KEY` | Secret | VAPID private key for push notifications |
 | `RESEND_API_KEY` | Secret | Resend email API key |
 | `RESEND_FROM` | Secret | Sender address for transactional email |
-| `PRIVACY_URL` | Secret | URL to your privacy policy |
 | `VPS_USER` | Secret | SSH username on the VPS |
 | `VPS_HOST` | Variable | VPS hostname or IP |
 | `GOOGLE_CLIENT_ID` | Variable | Google OAuth client ID |

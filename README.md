@@ -138,7 +138,6 @@ cp .env.example .env
 | `GOOGLE_CLIENT_ID` | Yes | From [Google Cloud Console](https://console.cloud.google.com/apis/credentials) |
 | `DATABASE_URL` | Yes (prod) | PostgreSQL DSN, e.g. `postgresql://postgres:pass@localhost:5432/vesting`. Docker Compose sets this automatically. |
 | `POSTGRES_PASSWORD` | Yes (prod) | Password for the `postgres` user in the Docker Compose `db` service |
-| `PRIVACY_URL` | No | Override the privacy policy link on the login page (defaults to the built-in `/privacy` page) |
 | `ADMIN_EMAIL` | No | Semicolon-delimited email(s) granted admin access on login |
 | `VAPID_PUBLIC_KEY` | No | Required for push notifications |
 | `VAPID_PRIVATE_KEY` | No | Required for push notifications |

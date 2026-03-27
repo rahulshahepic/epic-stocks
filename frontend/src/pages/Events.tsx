@@ -91,16 +91,19 @@ function LiqDetailCard({ e }: { e: TimelineEvent }) {
   const shares = Math.abs(e.vested_shares ?? 0)
   const gross = e.gross_proceeds ?? 0
   const tax = e.estimated_tax ?? 0
-  const net = Math.max(0, gross - tax)
+  const loanPayoff = e.outstanding_loan_principal ?? 0
+  const net = Math.max(0, gross - tax - loanPayoff)
   return (
     <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-xs dark:border-gray-700 dark:bg-gray-800">
       <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">Projected Liquidation</h3>
       <div className="space-y-1">
         <TaxRow label={`${fmtNum(shares)} shares × ${fmtPrice(e.share_price)}`} value={fmt$(gross)} />
         <TaxRow label="Est. tax on sale" value={`−${fmt$(tax)}`} />
+        {loanPayoff > 0 && (
+          <TaxRow label="Loan principal payoff" value={`−${fmt$(loanPayoff)}`} />
+        )}
         <div className="my-2 border-t border-gray-200 dark:border-gray-600" />
-        <TaxRow label="Net after tax" value={fmt$(net)} bold />
-        <p className="pt-1 text-gray-400">Outstanding loan principal is also settled from proceeds — see Dashboard for net cash.</p>
+        <TaxRow label="Net cash" value={fmt$(net)} bold />
       </div>
     </div>
   )

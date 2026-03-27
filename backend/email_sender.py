@@ -14,7 +14,7 @@ def app_url() -> str:
 
 
 def email_configured() -> bool:
-    return bool(os.getenv("RESEND_API_KEY", ""))
+    return bool(os.getenv("RESEND_API_KEY", "")) and bool(os.getenv("RESEND_FROM", ""))
 
 
 def send_email(to_email: str, subject: str, body_text: str, body_html: str | None = None) -> bool:
@@ -23,7 +23,7 @@ def send_email(to_email: str, subject: str, body_text: str, body_html: str | Non
         logger.warning("RESEND_API_KEY not set, skipping email")
         return False
 
-    from_email = os.getenv("RESEND_FROM", "Equity Tracker <noreply@example.com>")
+    from_email = os.getenv("RESEND_FROM", "")
 
     payload = {
         "from": from_email,
@@ -44,8 +44,13 @@ def send_email(to_email: str, subject: str, body_text: str, body_html: str | Non
         resp.raise_for_status()
         return True
     except httpx.HTTPStatusError as e:
-        logger.error("Resend HTTP error %s: %s", e.response.status_code, e.response.text)
-        raise
+        detail = e.response.text
+        logger.error("Resend HTTP error %s: %s", e.response.status_code, detail)
+        raise httpx.HTTPStatusError(
+            f"{e} — Resend response: {detail}",
+            request=e.request,
+            response=e.response,
+        ) from e
     except Exception:
         logger.exception("Failed to send email to %s", to_email)
         raise

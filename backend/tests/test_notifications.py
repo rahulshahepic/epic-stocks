@@ -59,7 +59,7 @@ def test_config_no_resend(client):
 
 
 def test_config_with_resend(client):
-    with patch.dict(os.environ, {"RESEND_API_KEY": "re_test_key"}):
+    with patch.dict(os.environ, {"RESEND_API_KEY": "re_test_key", "RESEND_FROM": "noreply@test.com"}):
         resp = client.get("/api/config")
         assert resp.json()["email_notifications_available"] is True
 

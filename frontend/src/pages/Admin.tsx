@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { LineChart, Line, ResponsiveContainer, Tooltip, YAxis, XAxis } from 'recharts'
 import { api } from '../api.ts'
+import { useConfig } from '../hooks/useConfig.ts'
 import type {
   AdminStats, AdminUser, BlockedEmailEntry, ErrorLogEntry, TestNotifyResult,
   SystemMetricPoint, DbTableInfo, RotationEvent,
@@ -53,6 +54,7 @@ function Sparkline({ data, dataKey, color, formatter }: {
 }
 
 export default function Admin() {
+  const config = useConfig()
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
   const [totalUsers, setTotalUsers] = useState(0)
@@ -752,6 +754,9 @@ export default function Admin() {
         <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Test Notification</h3>
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
           Send an immediate notification to any user. Respects user preferences — push only goes to active subscriptions, email only if the user has it enabled.
+        </p>
+        <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+          Email from: {config?.resend_from || <span className="text-red-500">RESEND_FROM not set</span>}
         </p>
         <form onSubmit={handleTestNotify} className="mt-3 space-y-2">
           <select

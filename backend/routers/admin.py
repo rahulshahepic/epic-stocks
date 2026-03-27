@@ -17,12 +17,9 @@ from datetime import datetime, timedelta, timezone
 from database import get_db
 from models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, ErrorLog, EmailPreference, SystemMetric
 from auth import get_admin_user, get_admin_emails
+from maintenance import SENTINEL_PATH as _SENTINEL
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
-
-# Sentinel file that Caddy watches to serve the maintenance page.
-# Configurable via env var so tests can redirect to a temp path.
-_SENTINEL = Path(os.getenv("MAINTENANCE_SENTINEL_PATH", "/app/data/maintenance"))
 
 # Snapshot file written before key rotation so the old wrapped keys survive
 # a crash mid-rotation.  Deleted on completion (success or rollback).
@@ -548,6 +545,22 @@ def rotate_key(admin: User = Depends(get_admin_user), db: Session = Depends(get_
 
         if error_msg:
             yield sse("error", error_msg)
+            # Notify all admins of the failure
+            try:
+                from email_sender import send_email, email_configured, app_url
+                from auth import get_admin_emails
+                if email_configured():
+                    subject = "Key rotation failed — manual intervention may be required"
+                    body = (
+                        f"Key rotation failed with error:\n\n{error_msg}\n\n"
+                        "The database was rolled back automatically. If the app is still in "
+                        "maintenance mode, log in to the admin panel and restore from the "
+                        f"snapshot or disable maintenance manually.\n\n{app_url()}/admin"
+                    )
+                    for email in get_admin_emails():
+                        send_email(email, subject, body)
+            except Exception:
+                pass
         else:
             yield sse("done", "Rotation complete. Trigger a deploy to finalize.")
 

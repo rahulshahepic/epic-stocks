@@ -20,32 +20,16 @@
     header >Referrer-Policy "strict-origin-when-cross-origin"
     header >Permissions-Policy "geolocation=(), camera=(), microphone=()"
 
-    # These endpoints always pass through — even during maintenance.
-    # /api/auth/* and /api/me let users log in (users table is not encrypted).
-    # /api/admin/* keeps the admin panel functional during key rotation.
-    handle /api/health {
-        reverse_proxy app:8000
-    }
-    handle /api/auth/* {
-        reverse_proxy app:8000
-    }
-    handle /api/me {
-        reverse_proxy app:8000
-    }
-    handle /api/admin/* {
-        reverse_proxy app:8000
-    }
-
-    # Maintenance mode: when ./data/maintenance exists on the host, Caddy serves
-    # a static 503 page instead of proxying to the app.  The page auto-refreshes
-    # every 30 s so users land back on the real site once maintenance ends.
-    @maint {
+    # Deploy-time full downtime: Caddy serves a static page when the app
+    # container is stopped.  Rotation and admin-toggled maintenance are handled
+    # by the app itself (MaintenanceMiddleware) — no Caddy involvement needed.
+    @full_maint {
         file {
             root /appdata
-            try_files /maintenance
+            try_files /full_maintenance
         }
     }
-    handle @maint {
+    handle @full_maint {
         header Cache-Control "no-store, no-cache"
         header CDN-Cache-Control "no-store"
         header Surrogate-Control "no-store"
@@ -54,7 +38,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="refresh" content="30">
+  <meta http-equiv="refresh" content="20">
   <title>Down for Maintenance</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}

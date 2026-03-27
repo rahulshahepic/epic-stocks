@@ -275,6 +275,9 @@ export const api = {
   adminMetrics: (hours = 72) => apiFetch<SystemMetricPoint[]>(`/api/admin/metrics?hours=${hours}`),
   adminDbTables: () => apiFetch<DbTableInfo[]>('/api/admin/db-tables'),
 
+  // Operational status — no auth required, polled by App.tsx
+  status: () => apiFetch<{ maintenance: boolean }>('/api/status'),
+
   // Maintenance + key rotation
   adminGetMaintenance: () => apiFetch<{ active: boolean }>('/api/admin/maintenance'),
   adminSetMaintenance: (active: boolean) =>

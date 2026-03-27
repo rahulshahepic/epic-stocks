@@ -39,13 +39,21 @@ def _parse_sse(body: str) -> list[dict]:
 
 @pytest.fixture()
 def sentinel_path(tmp_path):
-    """Redirect _SENTINEL to a temp path."""
+    """Redirect maintenance sentinel to a temp path in admin, maintenance module, and main."""
     p = tmp_path / "maintenance"
     import routers.admin as admin_mod
-    orig = admin_mod._SENTINEL
+    import maintenance as maint_mod
+    import main as main_mod
+    orig_admin = admin_mod._SENTINEL
+    orig_maint = maint_mod.SENTINEL_PATH
+    orig_main = main_mod._MAINTENANCE_SENTINEL
     admin_mod._SENTINEL = p
+    maint_mod.SENTINEL_PATH = p
+    main_mod._MAINTENANCE_SENTINEL = p
     yield p
-    admin_mod._SENTINEL = orig
+    admin_mod._SENTINEL = orig_admin
+    maint_mod.SENTINEL_PATH = orig_maint
+    main_mod._MAINTENANCE_SENTINEL = orig_main
 
 
 @pytest.fixture()
@@ -118,6 +126,39 @@ def test_maintenance_non_admin_forbidden(client, sentinel_path):
     assert client.get("/api/admin/maintenance", headers=auth_header(token)).status_code == 403
     assert client.post("/api/admin/maintenance", json={"active": True},
                        headers=auth_header(token)).status_code == 403
+
+
+def test_status_not_in_maintenance(client, sentinel_path):
+    resp = client.get("/api/status")
+    assert resp.status_code == 200
+    assert resp.json()["maintenance"] is False
+
+
+def test_status_in_maintenance(client, sentinel_path):
+    sentinel_path.touch()
+    resp = client.get("/api/status")
+    assert resp.status_code == 200
+    assert resp.json()["maintenance"] is True
+
+
+def test_middleware_blocks_financial_routes_during_maintenance(client, sentinel_path):
+    """Financial API routes return 503 with no-store cache headers when sentinel is set."""
+    token = register_user(client, "blocked@example.com")
+    sentinel_path.touch()
+    for path in ["/api/grants", "/api/loans", "/api/prices", "/api/events", "/api/sales"]:
+        resp = client.get(path, headers=auth_header(token))
+        assert resp.status_code == 503, f"{path} should be blocked"
+        assert "no-store" in resp.headers.get("cache-control", "")
+
+
+def test_middleware_allows_auth_and_admin_during_maintenance(client, sentinel_path):
+    """Auth, admin, health, status, and config pass through during maintenance."""
+    sentinel_path.touch()
+    assert client.get("/api/health").status_code == 200
+    assert client.get("/api/status").status_code == 200
+    assert client.get("/api/config").status_code == 200
+    # /api/auth/* returns 422 (missing body) not 503 — proves it passes through
+    assert client.post("/api/auth/google", json={}).status_code != 503
 
 
 def test_delete_user_blocked_during_maintenance(client, sentinel_path):

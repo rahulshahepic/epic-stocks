@@ -114,6 +114,7 @@ export interface TimelineEvent {
   election_83b?: boolean
   // Projected liquidation
   is_projected?: boolean
+  outstanding_loan_principal?: number | null
   // Refinanced loan payoff
   refinanced?: boolean
 }

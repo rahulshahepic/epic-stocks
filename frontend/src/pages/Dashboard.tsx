@@ -430,6 +430,10 @@ function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices }: {
       if (e.event_type === 'Sale' && e.estimated_tax) {
         cumTaxPaid += e.estimated_tax
       }
+      // Accumulate income tax on vesting events (RSU vesting without 83b) and grant events with income
+      if (e.income > 0 && ((e.event_type === 'Vesting' && !e.election_83b) || e.event_type === 'Grant')) {
+        cumTaxPaid += e.income * incomeRate
+      }
 
       // Track future price surplus (same logic as IncomeCapGainsChart)
       if (hasFuturePrices && e.date > TODAY) {
@@ -793,12 +797,22 @@ export default function Dashboard() {
       if (e.date > cardDate) { nextEvent = { date: e.date, event_type: e.event_type }; break }
     }
 
+    const incomeRate = taxSettings
+      ? taxSettings.federal_income_rate + taxSettings.state_income_rate
+      : 0
     const taxPaid =
       loans.filter(l => l.loan_type === 'Tax' && l.loan_year <= parseInt(cardDate.slice(0, 4), 10))
         .reduce((sum, l) => sum + l.amount, 0)
       + events.filter(e => e.event_type === 'Sale' && e.date <= cardDate)
           .reduce((sum, e) => sum + (e.estimated_tax ?? 0), 0)
       + (liqOccurred ? (projectedLiqEvent?.estimated_tax ?? 0) : 0)
+      + events
+          .filter(e =>
+            e.income > 0 &&
+            e.date <= cardDate &&
+            ((e.event_type === 'Vesting' && !e.election_83b) || e.event_type === 'Grant')
+          )
+          .reduce((sum, e) => sum + e.income * incomeRate, 0)
 
     // Outstanding loan principal just before (or at) the liq date, ignoring the virtual liq sale
     const outstandingPrincipal = (() => {
@@ -860,7 +874,7 @@ export default function Dashboard() {
       cash_received: cashReceived,
       next_event: nextEvent,
     }
-  }, [events, loans, sales, cardDate, projectedLiqDate, projectedLiqEvent])
+  }, [events, loans, sales, taxSettings, cardDate, projectedLiqDate, projectedLiqEvent])
 
   if (dashLoading) {
     return <p className="p-6 text-center text-sm text-gray-400">Loading...</p>

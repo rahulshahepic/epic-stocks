@@ -417,6 +417,24 @@ def get_events(user: User = Depends(get_current_user), db: Session = Depends(get
     if ts_dict:
         _annotate_sale_taxes(enriched, timeline, ts_dict, lot_order=lot_order, sale_overrides=sale_overrides, sale_loan_map=sale_loan_map)
 
+    # Annotate the liquidation event with outstanding loan principal at that date.
+    if horizon_date is not None:
+        liq_year = horizon_date.year
+        settled_ids = {s.loan_id for s in sales if s.loan_id is not None and s.date <= horizon_date}
+        refinanced_ids = {l.refinances_loan_id for l in loans_db if l.refinances_loan_id is not None}
+        early_paid: dict[int, float] = {}
+        for lp in loan_payments:
+            if lp.date <= horizon_date:
+                early_paid[lp.loan_id] = early_paid.get(lp.loan_id, 0.0) + lp.amount
+        outstanding = sum(
+            max(0.0, l.amount - early_paid.get(l.id, 0.0))
+            for l in loans_db
+            if l.loan_year <= liq_year and l.id not in settled_ids and l.id not in refinanced_ids
+        )
+        for e in enriched:
+            if e.get("event_type") == "Liquidation (projected)":
+                e["outstanding_loan_principal"] = round(outstanding, 2)
+
     return [_serialize_event(e) for e in enriched]
 
 

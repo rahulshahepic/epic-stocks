@@ -171,13 +171,6 @@ def test_rotate_key_rewraps_all_user_keys(client, sentinel_path, key_override_pa
         assert before[uid] != after[uid], f"Key for user {uid} was not re-wrapped"
 
 
-def test_rotate_key_clears_maintenance_sentinel(client, sentinel_path, key_override_path):
-    with _admin_env():
-        token = _register_admin(client)
-        client.post("/api/admin/rotate-key", headers=auth_header(token))
-    assert not sentinel_path.exists()
-
-
 def test_rotate_key_writes_override_file(client, sentinel_path, key_override_path):
     with _admin_env():
         token = _register_admin(client)
@@ -236,9 +229,6 @@ def test_rotate_key_rollback_on_decrypt_failure(client, sentinel_path, key_overr
     assert "error" in steps
     assert "rollback" in steps
     assert "done" not in steps
-
-    # Sentinel must be cleared even after failure
-    assert not sentinel_path.exists()
 
     # Override file must NOT be written (rotation failed)
     assert not key_override_path.exists()

@@ -446,14 +446,9 @@ def rotate_key(admin: User = Depends(get_admin_user), db: Session = Depends(get_
 
         new_master = secrets.token_hex(32)
 
-        # --- 2. Enable maintenance ----------------------------------------
-        _SENTINEL.parent.mkdir(parents=True, exist_ok=True)
-        _SENTINEL.touch()
-        yield sse("maintenance", "Maintenance mode ON")
-
         error_msg: str | None = None
         try:
-            # --- 3. Re-wrap all user keys ---------------------------------
+            # --- 2. Re-wrap all user keys ---------------------------------
             new_wrapped: dict[int, str] = {}
             for uid, enc_key in snapshot.items():
                 raw = _unwrap(enc_key, old_master)
@@ -469,13 +464,13 @@ def rotate_key(admin: User = Depends(get_admin_user), db: Session = Depends(get_
                 )
             db.commit()
 
-            # --- 4. Smoke test -------------------------------------------
+            # --- 3. Smoke test -------------------------------------------
             for uid, new_enc in new_wrapped.items():
                 _unwrap(new_enc, new_master)  # raises InvalidTag on failure
 
             yield sse("smoke", "All user keys verified")
 
-            # --- 5. Persist ----------------------------------------------
+            # --- 4. Persist ----------------------------------------------
             crypto_module.update_master_key(new_master)
             yield sse("persist", "New key saved to server")
 
@@ -491,8 +486,6 @@ def rotate_key(admin: User = Depends(get_admin_user), db: Session = Depends(get_
                 db.commit()
             except Exception:
                 pass
-        finally:
-            _SENTINEL.unlink(missing_ok=True)
 
         if error_msg:
             yield sse("error", error_msg)

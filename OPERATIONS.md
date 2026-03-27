@@ -8,20 +8,17 @@ This document covers deployment, security hardening, monitoring, and incident re
 
 > This must be configured by whoever operates the deployment. Self-hosters should follow these steps.
 
-The reference deployment uses **Cloudflare** in front of Caddy. No general app-level rate limiting is implemented — Cloudflare handles it at the edge. The one exception is `POST /api/admin/test-notify`, which is capped at **5 calls per hour per admin** in the application layer regardless of deployment setup.
+The reference deployment uses **Cloudflare** in front of Caddy. Cloudflare's built-in DDoS protection handles rate limiting at the edge — no explicit WAF rules are needed. The one application-layer exception is `POST /api/admin/test-notify`, capped at **5 calls per hour per admin** regardless of deployment setup.
 
 ### Steps for self-hosters
 
 1. Add your site to Cloudflare (free tier is sufficient), update nameservers at your registrar
 2. Set SSL/TLS mode to **Full (Strict)** — Caddy provisions a Let's Encrypt cert; Cloudflare validates it end-to-end
-3. Create WAF rate-limiting rules:
-   - Block IPs hitting `/api/auth/*` more than **10 req/min**
-   - Block IPs hitting `/api/*` more than **200 req/min**
-4. Lock your VPS firewall to allow ports 80/443 **only from Cloudflare IP ranges**:
+3. Lock your VPS firewall to allow ports 80/443 **only from Cloudflare IP ranges**:
    - IPv4: https://www.cloudflare.com/ips-v4
    - IPv6: https://www.cloudflare.com/ips-v6
    - This prevents attackers from bypassing Cloudflare by hitting your origin IP directly
-5. Caddy receives real client IPs via the `CF-Connecting-IP` header — no extra app config needed
+4. Caddy receives real client IPs via the `CF-Connecting-IP` header — no extra app config needed
 
 > **Self-hosting without Cloudflare?** The app has no general request-rate limiting beyond the admin test-notify cap. Add Caddy's [`rate_limit` directive](https://caddyserver.com/docs/caddyfile/directives/rate_limit) or `slowapi` FastAPI middleware before exposing to the internet.
 
@@ -35,7 +32,6 @@ The built-in privacy page (`/privacy`, `frontend/src/pages/PrivacyPolicy.tsx`) l
 |------|--------|
 | Cloudflare active, nameservers updated | ✅ Done |
 | SSL/TLS Full (Strict) | ✅ Done |
-| WAF rate-limiting rules | ⚠️ Pending |
 | VPS firewall locked to CF IPs only | ✅ Done |
 
 ---

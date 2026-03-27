@@ -93,7 +93,7 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 | Backend | Python 3.12, FastAPI, SQLAlchemy, PostgreSQL (Alembic migrations) |
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS 4, Recharts |
 | Auth | Google Sign-In (OAuth 2.0) → backend JWT session tokens |
-| Deploy | Docker Compose + Caddy (auto-HTTPS) + Cloudflare (DDoS/WAF) |
+| Deploy | Docker Compose + Caddy (auto-HTTPS) + Cloudflare (DDoS protection) |
 | Tests | pytest (backend), Vitest + RTL (frontend), Playwright (E2E) |
 
 ## Quick Start

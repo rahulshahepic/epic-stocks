@@ -8,22 +8,23 @@ This document covers deployment, security hardening, monitoring, and incident re
 
 > This must be configured by whoever operates the deployment. Self-hosters should follow these steps.
 
-The reference deployment uses **Cloudflare** in front of Caddy. No general app-level rate limiting is implemented — Cloudflare handles it at the edge. The one exception is `POST /api/admin/test-notify`, which is capped at **5 calls per hour per admin** in the application layer regardless of deployment setup.
+The reference deployment uses **Cloudflare** in front of Caddy. Cloudflare's built-in DDoS protection handles rate limiting at the edge — no explicit WAF rules are needed. The one application-layer exception is `POST /api/admin/test-notify`, capped at **5 calls per hour per admin** regardless of deployment setup.
 
 ### Steps for self-hosters
 
 1. Add your site to Cloudflare (free tier is sufficient), update nameservers at your registrar
 2. Set SSL/TLS mode to **Full (Strict)** — Caddy provisions a Let's Encrypt cert; Cloudflare validates it end-to-end
-3. Create WAF rate-limiting rules:
-   - Block IPs hitting `/api/auth/*` more than **10 req/min**
-   - Block IPs hitting `/api/*` more than **200 req/min**
-4. Lock your VPS firewall to allow ports 80/443 **only from Cloudflare IP ranges**:
+3. Lock your VPS firewall to allow ports 80/443 **only from Cloudflare IP ranges**:
    - IPv4: https://www.cloudflare.com/ips-v4
    - IPv6: https://www.cloudflare.com/ips-v6
    - This prevents attackers from bypassing Cloudflare by hitting your origin IP directly
-5. Caddy receives real client IPs via the `CF-Connecting-IP` header — no extra app config needed
+4. Caddy receives real client IPs via the `CF-Connecting-IP` header — no extra app config needed
 
 > **Self-hosting without Cloudflare?** The app has no general request-rate limiting beyond the admin test-notify cap. Add Caddy's [`rate_limit` directive](https://caddyserver.com/docs/caddyfile/directives/rate_limit) or `slowapi` FastAPI middleware before exposing to the internet.
+
+### Privacy page for self-hosters
+
+The built-in privacy page (`/privacy`, `frontend/src/pages/PrivacyPolicy.tsx`) lists the third-party services used by the reference deployment: **Google OAuth, Hetzner, Cloudflare, Porkbun, Resend**. If you use different infrastructure, edit that file to reflect your own services before going to users.
 
 ### Reference deployment status
 
@@ -31,7 +32,6 @@ The reference deployment uses **Cloudflare** in front of Caddy. No general app-l
 |------|--------|
 | Cloudflare active, nameservers updated | ✅ Done |
 | SSL/TLS Full (Strict) | ✅ Done |
-| WAF rate-limiting rules | ✅ Done |
 | VPS firewall locked to CF IPs only | ✅ Done |
 
 ---
@@ -46,7 +46,7 @@ All responses include:
 
 | Header | Value |
 |--------|-------|
-| `Content-Security-Policy` | `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://accounts.google.com; frame-ancestors 'none'` |
+| `Content-Security-Policy` | `default-src 'self'; script-src 'self' https://accounts.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://lh3.googleusercontent.com; connect-src 'self' https://accounts.google.com; frame-src https://accounts.google.com; frame-ancestors 'none'` |
 | `X-Content-Type-Options` | `nosniff` |
 | `X-Frame-Options` | `DENY` |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |
@@ -121,7 +121,7 @@ Before anything touches the server, a Docker container runs `caddy validate` aga
 
 Connects to the VPS via SSH (key stored in GitHub Actions secrets) and:
 
-1. Writes `.env` from GitHub Secrets/Vars — the VPS never stores secrets manually
+1. Generates any missing server-side secrets (JWT, encryption key, VAPID keys, Postgres password) into `/opt/epic-stocks/.secrets/`, then writes `.env` from those files plus GitHub Secrets/Vars
 2. Creates a 2 GB swapfile if one doesn't exist (idempotent)
 3. `git fetch origin main && git reset --hard origin/main` — always matches the repo exactly; no local drift
 4. `docker compose build && docker compose up -d`
@@ -142,33 +142,40 @@ No automatic rollback. Because Alembic migrations run on startup, reverting code
 
 ### GitHub Actions secrets and variables required
 
+These are the only values that need to be set in GitHub. Cryptographic secrets (JWT, encryption key, VAPID keys, Postgres password) are generated on the server on first deploy and never stored in GitHub.
+
 | Name | Type | Description |
 |------|------|-------------|
 | `VPS_SSH_KEY` | Secret | Private SSH key for the deploy user |
-| `JWT_SECRET` | Secret | Random 32+ byte string for JWT signing |
-| `POSTGRES_PASSWORD` | Secret | PostgreSQL password |
+| `VPS_USER` | Secret | SSH username on the VPS |
 | `ADMIN_EMAIL` | Secret | Semicolon-delimited admin email(s) |
-| `VAPID_PRIVATE_KEY` | Secret | VAPID private key for push notifications |
 | `RESEND_API_KEY` | Secret | Resend email API key |
 | `RESEND_FROM` | Secret | Sender address for transactional email |
-| `PRIVACY_URL` | Secret | URL to your privacy policy |
-| `VPS_USER` | Secret | SSH username on the VPS |
 | `VPS_HOST` | Variable | VPS hostname or IP |
 | `GOOGLE_CLIENT_ID` | Variable | Google OAuth client ID |
 | `DOMAIN` | Variable | Your domain name |
-| `VAPID_PUBLIC_KEY` | Variable | VAPID public key |
-| `VAPID_CLAIMS_EMAIL` | Variable | Contact email for VAPID claims |
 | `TRUSTED_PROXY_IPS` | Variable | Cloudflare IP ranges for real-IP forwarding |
+| `EPIC_ONBOARDING_URL` | Variable | (optional) pre-filled onboarding template URL |
 
-### Reference deployment status
+### Server-generated secrets
 
-> **Encryption master key** — `ENCRYPTION_MASTER_KEY` is **not** a GitHub secret. On first deploy the script generates a 256-bit key (`openssl rand -hex 32`) and writes it to `./data/current_master_key` on the VPS. All subsequent deploys read from that file. To rotate the key, use the **Rotate encryption key** action in the admin panel — the file is updated automatically, no deploy or secret change needed. If you previously had `ENCRYPTION_MASTER_KEY` set as a GitHub secret, the first deploy after this change will migrate it to the file and you can then delete the secret.
+The following are generated once on first deploy, written to `/opt/epic-stocks/.secrets/` (mode 700, files mode 600), and read from there on every subsequent deploy. They never appear in GitHub.
+
+| Location | Description |
+|----------|-------------|
+| `.secrets/jwt_secret` | 32-byte hex string for JWT signing |
+| `.secrets/postgres_password` | 32-byte hex string for the PostgreSQL superuser |
+| `.secrets/vapid_private_key` | P-256 EC private key for Web Push |
+| `.secrets/vapid_public_key` | Corresponding P-256 public key (served to browsers) |
+| `./data/current_master_key` | AES-256-GCM encryption master key (separate path — also updated by the key-rotation admin endpoint) |
+
+On transition from a prior setup, the deploy script seeds `.secrets/` files from the existing `.env` before generating fresh values, so no data loss occurs.
 
 | Step | Status |
 |------|--------|
 | Caddy config validated in CI before every deploy | ✅ Done |
-| `.env` written from GitHub secrets on every deploy | ✅ Done |
-| Encryption master key auto-generated on-disk, never in GitHub | ✅ Done |
+| Server-generated secrets persisted in `.secrets/`, not GitHub | ✅ Done |
+| `.env` written from server secrets + GitHub vars on every deploy | ✅ Done |
 | Deploy polls `/api/health` and fails loudly on outage | ✅ Done |
 | Swapfile created automatically if missing | ✅ Done |
 
@@ -219,22 +226,34 @@ Alert within **5 minutes** of downtime. All three options above achieve this on 
 
 ---
 
-## 6. Database Backups (Infrastructure — not in this repo)
+## 6. Backups (Infrastructure — not in this repo)
 
-> Not yet configured. This section is a placeholder for the backup strategy.
+### Strategy: Hetzner server snapshots
 
-The application data lives in a PostgreSQL container. Key considerations:
+The reference deployment uses **Hetzner automated backups** (daily, 7-day retention). A snapshot captures the entire server — disk image, Docker volumes (`pg_data`, `caddy_data`), and the `/opt/epic-stocks/.secrets/` directory containing the server-generated cryptographic keys.
 
-- **What to back up:** the `vesting` database (grants, loans, prices, users, error_logs, push subscriptions)
-- **Application-level snapshots** are already created automatically before each Excel import (last 3 kept per user, restorable via the API) — these are not a substitute for database-level backups
-- **Suggested approach:** daily `pg_dump` piped to an off-site location (S3, Backblaze B2, or similar), retained for 30 days
+This is the primary backup and key-recovery mechanism. Because the secrets files and the database live on the same server, a snapshot always contains them together and in a consistent state. Restoring a snapshot to a new Hetzner server and running the deploy is sufficient for full recovery.
 
-### To-do
+> **Application-level snapshots** are also created automatically before each Excel import (last 3 kept per user, restorable via the API). These are not a substitute for server backups.
 
-- [ ] Set up automated `pg_dump` (cron or systemd timer on the VPS)
-- [ ] Ship dumps off-site automatically
-- [ ] Verify restore procedure (test restore to a throwaway container monthly)
-- [ ] Document RTO/RPO targets
+### Steps
+
+1. In the Hetzner Cloud Console, select the server → **Backups** → enable automatic backups
+2. Hetzner retains the last 7 daily backups automatically (billed at ~20% of server cost)
+3. Before any major change (schema migrations, infrastructure changes), take a **manual snapshot** from the console as an additional restore point
+
+### Restore procedure
+
+1. In Hetzner Console → **Snapshots / Backups** → select the backup → **Rebuild** (creates new server from snapshot) or restore in place
+2. SSH in and run the deploy: `git push origin main` triggers CI which re-deploys from the now-running server state
+3. Verify: `curl https://<domain>/api/health`
+
+### Reference deployment status
+
+| Step | Status |
+|------|--------|
+| Hetzner automated backups enabled | ⚠️ Pending |
+| Pre-migration manual snapshot habit | ⚠️ Pending |
 
 ---
 

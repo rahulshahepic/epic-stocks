@@ -315,12 +315,10 @@ def status():
 def client_config():
     from auth import GOOGLE_CLIENT_ID
     from email_sender import email_configured
-    privacy_url = os.environ.get("PRIVACY_URL", "")
     vapid_public_key = os.environ.get("VAPID_PUBLIC_KEY", "")
     epic_onboarding_url = os.environ.get("EPIC_ONBOARDING_URL", "")
     return {
         "google_client_id": GOOGLE_CLIENT_ID,
-        "privacy_url": privacy_url,
         "vapid_public_key": vapid_public_key,
         "email_notifications_available": email_configured(),
         "epic_onboarding_url": epic_onboarding_url,

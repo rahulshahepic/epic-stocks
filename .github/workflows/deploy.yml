@@ -30,27 +30,66 @@ jobs:
           script: |
             cd ${{ vars.DEPLOY_PATH }}
 
-            # Write .env from GitHub Secrets/Vars (VPS never stores secrets manually).
-            # ENCRYPTION_MASTER_KEY is intentionally absent — it lives only on-disk
-            # at ./data/current_master_key and is bootstrapped below.
-            cat > .env <<'ENVEOF'
-            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            # ── Server-side secrets (generated once, persisted on disk) ──────
+            # JWT, Postgres password, and VAPID keys live in .secrets/.
+            # Encryption master key is handled separately via ./data/current_master_key.
+            # Hetzner server snapshots are the backup strategy.
+            SECRETS_DIR=${{ vars.DEPLOY_PATH }}/.secrets
+            mkdir -p "$SECRETS_DIR" && chmod 700 "$SECRETS_DIR"
+
+            # If the secrets file doesn't exist yet, migrate the value from the
+            # existing .env (written by the previous deploy) so the transition is
+            # seamless. If there's no existing value either, generate fresh.
+            seed_or_gen() {
+              local f="$SECRETS_DIR/$1" env_key="$2"
+              if [ ! -f "$f" ]; then
+                existing=""
+                [ -f ${{ vars.DEPLOY_PATH }}/.env ] && \
+                  existing=$(grep "^${env_key}=" ${{ vars.DEPLOY_PATH }}/.env | cut -d= -f2-)
+                if [ -n "$existing" ]; then
+                  printf '%s' "$existing" > "$f"
+                else
+                  openssl rand -hex 32 > "$f"
+                fi
+                chmod 600 "$f"
+              fi
+              cat "$f"
+            }
+
+            # VAPID keys are an EC pair — migrate from .env on transition,
+            # or leave empty for now (generated below after docker build).
+            seed_or_migrate_vapid() {
+              local f="$SECRETS_DIR/$1" env_key="$2"
+              if [ ! -f "$f" ] && [ -f ${{ vars.DEPLOY_PATH }}/.env ]; then
+                existing=$(grep "^${env_key}=" ${{ vars.DEPLOY_PATH }}/.env | cut -d= -f2-)
+                [ -n "$existing" ] && { printf '%s' "$existing" > "$f"; chmod 600 "$f"; }
+              fi
+              [ -f "$f" ] && cat "$f" || echo ""
+            }
+
+            JWT_SECRET=$(seed_or_gen jwt_secret JWT_SECRET)
+            POSTGRES_PASSWORD=$(seed_or_gen postgres_password POSTGRES_PASSWORD)
+            VAPID_PRIVATE=$(seed_or_migrate_vapid vapid_private_key VAPID_PRIVATE_KEY)
+            VAPID_PUBLIC=$(seed_or_migrate_vapid vapid_public_key VAPID_PUBLIC_KEY)
+
+            write_env() {
+              cat > ${{ vars.DEPLOY_PATH }}/.env <<ENVEOF
+            JWT_SECRET=${JWT_SECRET}
             GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }}
             DOMAIN=${{ vars.DOMAIN }}
             APP_URL=https://${{ vars.DOMAIN }}
-            PRIVACY_URL=${{ secrets.PRIVACY_URL }}
             ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
-            VAPID_PUBLIC_KEY=${{ vars.VAPID_PUBLIC_KEY }}
-            VAPID_PRIVATE_KEY=${{ secrets.VAPID_PRIVATE_KEY }}
-            VAPID_CLAIMS_EMAIL=${{ vars.VAPID_CLAIMS_EMAIL }}
+            VAPID_PUBLIC_KEY=${VAPID_PUBLIC}
+            VAPID_PRIVATE_KEY=${VAPID_PRIVATE}
             RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
             RESEND_FROM=${{ secrets.RESEND_FROM }}
-            POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+            POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
             TRUSTED_PROXY_IPS=${{ vars.TRUSTED_PROXY_IPS }}
             EPIC_ONBOARDING_URL=${{ vars.EPIC_ONBOARDING_URL }}
             ENVEOF
-            # Remove leading whitespace from heredoc
-            sed -i 's/^[[:space:]]*//' .env
+              sed -i 's/^[[:space:]]*//' ${{ vars.DEPLOY_PATH }}/.env
+            }
+            write_env
 
             # Bootstrap encryption master key from on-disk file (never from GitHub).
             # Migration path: if the file is absent but the old GitHub Secret was set,
@@ -79,6 +118,18 @@ jobs:
             git fetch origin ${{ github.ref_name }}
             git reset --hard origin/${{ github.ref_name }}
             docker compose build
+
+            # Generate VAPID keys if missing, using the built image.
+            # cryptography is already in requirements.txt so no extra install needed.
+            if [ -z "$VAPID_PRIVATE" ] || [ -z "$VAPID_PUBLIC" ]; then
+              VAPID_KEYS=$(docker compose run --rm --no-deps app python3 -c "import base64; from cryptography.hazmat.primitives.asymmetric.ec import generate_private_key, SECP256R1; from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat; key = generate_private_key(SECP256R1()); priv = base64.urlsafe_b64encode(key.private_numbers().private_value.to_bytes(32, 'big')).decode().rstrip('='); pub = base64.urlsafe_b64encode(key.public_key().public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)).decode().rstrip('='); print(priv, pub)")
+              VAPID_PRIVATE=$(echo "$VAPID_KEYS" | awk '{print $1}')
+              VAPID_PUBLIC=$(echo "$VAPID_KEYS" | awk '{print $2}')
+              printf '%s' "$VAPID_PRIVATE" > "$SECRETS_DIR/vapid_private_key"
+              printf '%s' "$VAPID_PUBLIC" > "$SECRETS_DIR/vapid_public_key"
+              chmod 600 "$SECRETS_DIR/vapid_private_key" "$SECRETS_DIR/vapid_public_key"
+              write_env
+            fi
 
             # Full deploy downtime — Caddy serves the static 503 page while
             # the app container is stopped.  ./data is bind-mounted into Caddy.

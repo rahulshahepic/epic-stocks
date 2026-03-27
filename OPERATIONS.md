@@ -25,13 +25,17 @@ The reference deployment uses **Cloudflare** in front of Caddy. No general app-l
 
 > **Self-hosting without Cloudflare?** The app has no general request-rate limiting beyond the admin test-notify cap. Add Caddy's [`rate_limit` directive](https://caddyserver.com/docs/caddyfile/directives/rate_limit) or `slowapi` FastAPI middleware before exposing to the internet.
 
+### Privacy page for self-hosters
+
+The built-in privacy page (`/privacy`, `frontend/src/pages/PrivacyPolicy.tsx`) lists the third-party services used by the reference deployment: **Google OAuth, Hetzner, Cloudflare, Porkbun, Resend**. If you use different infrastructure, edit that file to reflect your own services before going to users.
+
 ### Reference deployment status
 
 | Step | Status |
 |------|--------|
 | Cloudflare active, nameservers updated | ✅ Done |
 | SSL/TLS Full (Strict) | ✅ Done |
-| WAF rate-limiting rules | ✅ Done |
+| WAF rate-limiting rules | ⚠️ Pending |
 | VPS firewall locked to CF IPs only | ✅ Done |
 
 ---
@@ -46,7 +50,7 @@ All responses include:
 
 | Header | Value |
 |--------|-------|
-| `Content-Security-Policy` | `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://accounts.google.com; frame-ancestors 'none'` |
+| `Content-Security-Policy` | `default-src 'self'; script-src 'self' https://accounts.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://lh3.googleusercontent.com; connect-src 'self' https://accounts.google.com; frame-src https://accounts.google.com; frame-ancestors 'none'` |
 | `X-Content-Type-Options` | `nosniff` |
 | `X-Frame-Options` | `DENY` |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |

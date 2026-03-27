@@ -24,6 +24,10 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 # Configurable via env var so tests can redirect to a temp path.
 _SENTINEL = Path(os.getenv("MAINTENANCE_SENTINEL_PATH", "/app/data/maintenance"))
 
+# Snapshot file written before key rotation so the old wrapped keys survive
+# a crash mid-rotation.  Deleted on completion (success or rollback).
+_SNAPSHOT_PATH = Path(os.getenv("ROTATION_SNAPSHOT_PATH", "/app/data/rotation_snapshot.json"))
+
 # In-memory rate limiter for admin test-notify: 5 calls per hour per admin user
 _TEST_NOTIFY_LIMIT = 5
 _test_notify_counts: dict[tuple, int] = defaultdict(int)  # (user_id, hour_utc) -> count
@@ -439,12 +443,14 @@ def rotate_key(admin: User = Depends(get_admin_user), db: Session = Depends(get_
             yield sse("error", "Encryption is not enabled (ENCRYPTION_MASTER_KEY not set)")
             return
 
-        # --- 1. Snapshot -------------------------------------------------
+        # --- 1. Snapshot (persisted to disk so a crash doesn't lose it) -----
         rows = db.execute(
             text("SELECT id, encrypted_key FROM users WHERE encrypted_key IS NOT NULL")
         ).fetchall()
         snapshot: dict[int, str] = {r[0]: r[1] for r in rows}
-        yield sse("snapshot", f"Snapshotted {len(snapshot)} user key(s)")
+        _SNAPSHOT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _SNAPSHOT_PATH.write_text(json.dumps({str(k): v for k, v in snapshot.items()}))
+        yield sse("snapshot", f"Snapshotted {len(snapshot)} user key(s) to disk")
 
         new_master = secrets.token_hex(32)
 
@@ -497,6 +503,7 @@ def rotate_key(admin: User = Depends(get_admin_user), db: Session = Depends(get_
                 pass
         finally:
             _SENTINEL.unlink(missing_ok=True)
+            _SNAPSHOT_PATH.unlink(missing_ok=True)
 
         if error_msg:
             yield sse("error", error_msg)

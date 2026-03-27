@@ -49,6 +49,17 @@ def sentinel_path(tmp_path):
 
 
 @pytest.fixture()
+def snapshot_path(tmp_path):
+    """Redirect _SNAPSHOT_PATH in admin to a temp path."""
+    p = tmp_path / "rotation_snapshot.json"
+    import routers.admin as admin_mod
+    orig = admin_mod._SNAPSHOT_PATH
+    admin_mod._SNAPSHOT_PATH = p
+    yield p
+    admin_mod._SNAPSHOT_PATH = orig
+
+
+@pytest.fixture()
 def key_override_path(tmp_path):
     """Redirect KEY_OVERRIDE_PATH in crypto to a temp path."""
     p = tmp_path / "current_master_key"
@@ -131,7 +142,7 @@ def test_rotate_key_non_admin_forbidden(client, sentinel_path):
     assert client.post("/api/admin/rotate-key", headers=auth_header(token)).status_code == 403
 
 
-def test_rotate_key_no_encryption_emits_error(client, sentinel_path, key_override_path):
+def test_rotate_key_no_encryption_emits_error(client, sentinel_path, snapshot_path, key_override_path):
     """When encryption is disabled, rotation emits an error event immediately."""
     with _admin_env():
         token = _register_admin(client)
@@ -149,7 +160,7 @@ def test_rotate_key_no_encryption_emits_error(client, sentinel_path, key_overrid
         crypto_mod.ENCRYPTION_MASTER_KEY = orig
 
 
-def test_rotate_key_emits_done_event(client, sentinel_path, key_override_path):
+def test_rotate_key_emits_done_event(client, sentinel_path, snapshot_path, key_override_path):
     with _admin_env():
         token = _register_admin(client)
         resp = client.post("/api/admin/rotate-key", headers=auth_header(token))
@@ -161,7 +172,7 @@ def test_rotate_key_emits_done_event(client, sentinel_path, key_override_path):
     assert "rollback" not in steps
 
 
-def test_rotate_key_rewraps_all_user_keys(client, sentinel_path, key_override_path):
+def test_rotate_key_rewraps_all_user_keys(client, sentinel_path, snapshot_path, key_override_path):
     with _admin_env():
         token = _register_admin(client)
 
@@ -184,14 +195,23 @@ def test_rotate_key_rewraps_all_user_keys(client, sentinel_path, key_override_pa
         assert before[uid] != after[uid], f"Key for user {uid} was not re-wrapped"
 
 
-def test_rotate_key_clears_maintenance_sentinel(client, sentinel_path, key_override_path):
+def test_rotate_key_clears_maintenance_sentinel(client, sentinel_path, snapshot_path, key_override_path):
     with _admin_env():
         token = _register_admin(client)
         client.post("/api/admin/rotate-key", headers=auth_header(token))
     assert not sentinel_path.exists()
 
 
-def test_rotate_key_writes_override_file(client, sentinel_path, key_override_path):
+def test_rotate_key_snapshot_written_and_cleaned_up(client, sentinel_path, snapshot_path, key_override_path):
+    """Snapshot file is written before rotation and deleted on success."""
+    with _admin_env():
+        token = _register_admin(client)
+        resp = client.post("/api/admin/rotate-key", headers=auth_header(token))
+    assert any(e["step"] == "done" for e in _parse_sse(resp.text))
+    assert not snapshot_path.exists()
+
+
+def test_rotate_key_writes_override_file(client, sentinel_path, snapshot_path, key_override_path):
     with _admin_env():
         token = _register_admin(client)
         resp = client.post("/api/admin/rotate-key", headers=auth_header(token))
@@ -200,7 +220,7 @@ def test_rotate_key_writes_override_file(client, sentinel_path, key_override_pat
     assert len(key_override_path.read_text().strip()) > 0
 
 
-def test_rotate_key_new_key_decrypts_user_keys(client, sentinel_path, key_override_path):
+def test_rotate_key_new_key_decrypts_user_keys(client, sentinel_path, snapshot_path, key_override_path):
     """After rotation the new master key correctly decrypts all user keys in the DB."""
     with _admin_env():
         token = _register_admin(client)
@@ -224,7 +244,7 @@ def test_rotate_key_new_key_decrypts_user_keys(client, sentinel_path, key_overri
 # Key rotation — rollback on failure
 # ============================================================
 
-def test_rotate_key_rollback_on_decrypt_failure(client, sentinel_path, key_override_path):
+def test_rotate_key_rollback_on_decrypt_failure(client, sentinel_path, snapshot_path, key_override_path):
     """If decryption fails during re-wrap, original DB keys are restored."""
     with _admin_env():
         token = _register_admin(client)
@@ -234,8 +254,6 @@ def test_rotate_key_rollback_on_decrypt_failure(client, sentinel_path, key_overr
             text("SELECT id, encrypted_key FROM users WHERE encrypted_key IS NOT NULL")
         ).fetchall()}
 
-    # Patch decrypt_user_key inside rotate_master_key so the re-wrap phase fails.
-    # The import inside event_stream() picks up the patched version.
     def boom(enc, master):
         raise Exception("Simulated decryption failure")
 
@@ -250,8 +268,9 @@ def test_rotate_key_rollback_on_decrypt_failure(client, sentinel_path, key_overr
     assert "rollback" in steps
     assert "done" not in steps
 
-    # Sentinel must be cleared even after failure
+    # Sentinel and snapshot must be cleared even after failure
     assert not sentinel_path.exists()
+    assert not snapshot_path.exists()
 
     # Override file must NOT be written (rotation failed)
     assert not key_override_path.exists()
@@ -260,6 +279,5 @@ def test_rotate_key_rollback_on_decrypt_failure(client, sentinel_path, key_overr
     with TEST_ENGINE.connect() as conn:
         after = {r[0]: r[1] for r in conn.execute(
             text("SELECT id, encrypted_key FROM users WHERE encrypted_key IS NOT NULL")
-        ).fetchall()
-        }
+        ).fetchall()}
     assert before == after

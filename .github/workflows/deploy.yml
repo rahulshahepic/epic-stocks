@@ -81,7 +81,6 @@ jobs:
             ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
             VAPID_PUBLIC_KEY=${VAPID_PUBLIC}
             VAPID_PRIVATE_KEY=${VAPID_PRIVATE}
-            VAPID_CLAIMS_EMAIL=${{ vars.VAPID_CLAIMS_EMAIL }}
             RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
             RESEND_FROM=${{ secrets.RESEND_FROM }}
             POSTGRES_PASSWORD=${POSTGRES_PASSWORD}

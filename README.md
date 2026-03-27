@@ -141,7 +141,6 @@ cp .env.example .env
 | `ADMIN_EMAIL` | No | Semicolon-delimited email(s) granted admin access on login |
 | `VAPID_PUBLIC_KEY` | No | Required for push notifications |
 | `VAPID_PRIVATE_KEY` | No | Required for push notifications |
-| `VAPID_CLAIMS_EMAIL` | No | Contact email embedded in push requests (e.g. `mailto:admin@yourdomain.com`) |
 | `RESEND_API_KEY` | No | Enables email notifications via [Resend](https://resend.com) |
 | `RESEND_FROM` | No | Sender address for emails (e.g. `Equity Tracker <noreply@yourdomain.com>`) |
 | `APP_URL` | No | Public app URL included as a link in email notifications |

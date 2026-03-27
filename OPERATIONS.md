@@ -156,7 +156,6 @@ No automatic rollback. Because Alembic migrations run on startup, reverting code
 | `GOOGLE_CLIENT_ID` | Variable | Google OAuth client ID |
 | `DOMAIN` | Variable | Your domain name |
 | `VAPID_PUBLIC_KEY` | Variable | VAPID public key |
-| `VAPID_CLAIMS_EMAIL` | Variable | Contact email for VAPID claims |
 | `TRUSTED_PROXY_IPS` | Variable | Cloudflare IP ranges for real-IP forwarding |
 
 ### Reference deployment status

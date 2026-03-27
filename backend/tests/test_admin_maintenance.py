@@ -109,6 +109,19 @@ def test_maintenance_non_admin_forbidden(client, sentinel_path):
                        headers=auth_header(token)).status_code == 403
 
 
+def test_delete_user_blocked_during_maintenance(client, sentinel_path):
+    sentinel_path.touch()
+    other_token = register_user(client, "victim@example.com")
+    # get victim's id
+    with _admin_env():
+        token = _register_admin(client)
+        users_resp = client.get("/api/admin/users", headers=auth_header(token))
+        victim_id = next(u["id"] for u in users_resp.json()["users"] if u["email"] == "victim@example.com")
+        resp = client.delete(f"/api/admin/users/{victim_id}", headers=auth_header(token))
+    assert resp.status_code == 503
+    assert sentinel_path.exists()  # sentinel untouched by the failed delete
+
+
 # ============================================================
 # Key rotation — happy path
 # ============================================================

@@ -140,6 +140,8 @@ def admin_users(
 
 @router.delete("/users/{user_id}", status_code=204)
 def admin_delete_user(user_id: int, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    if _SENTINEL.exists():
+        raise HTTPException(status_code=503, detail="Cannot delete users during maintenance")
     if user_id == admin.id:
         raise HTTPException(status_code=400, detail="Cannot delete yourself")
     user = db.query(User).filter(User.id == user_id).first()

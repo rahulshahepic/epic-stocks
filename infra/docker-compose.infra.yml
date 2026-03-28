@@ -38,5 +38,8 @@ networks:
 
 volumes:
   caddy_config:
+    name: caddy_config      # explicit name so deploy scripts can reference without project prefix
   caddy_data:
+    name: caddy_data
   caddy_appdata:
+    name: caddy_appdata

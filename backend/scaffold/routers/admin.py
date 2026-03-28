@@ -17,6 +17,7 @@ from database import get_db
 from scaffold.models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, ErrorLog, EmailPreference, SystemMetric
 from scaffold.auth import get_admin_user, get_admin_emails
 from scaffold.maintenance import is_maintenance_active, set_maintenance
+from scaffold.epic_mode import is_epic_mode, set_epic_mode
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -410,6 +411,25 @@ def get_maintenance(admin: User = Depends(get_admin_user)):
 def set_maintenance_endpoint(body: MaintenanceRequest, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
     set_maintenance(db, body.active)
     return MaintenanceStatus(active=body.active)
+
+
+class EpicModeStatus(BaseModel):
+    active: bool
+
+
+class EpicModeRequest(BaseModel):
+    active: bool
+
+
+@router.get("/epic-mode", response_model=EpicModeStatus)
+def get_epic_mode(admin: User = Depends(get_admin_user)):
+    return EpicModeStatus(active=is_epic_mode())
+
+
+@router.post("/epic-mode", response_model=EpicModeStatus)
+def set_epic_mode_endpoint(body: EpicModeRequest, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    set_epic_mode(db, body.active)
+    return EpicModeStatus(active=body.active)
 
 
 # ============================================================

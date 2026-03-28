@@ -374,6 +374,7 @@ export default function Settings() {
               <dd className="font-medium text-gray-700 dark:text-gray-300">
                 {taxSettings.lot_selection_method === 'fifo' ? 'FIFO (oldest first)' :
                  taxSettings.lot_selection_method === 'lifo' ? 'LIFO (newest first)' :
+                 taxSettings.lot_selection_method === 'epic_lifo' ? 'Epic LIFO (prefer long-term gains)' :
                  'Same tranche'}
               </dd>
             </div>
@@ -412,6 +413,7 @@ export default function Settings() {
                 >
                   <option value="fifo">FIFO — oldest lots first</option>
                   <option value="lifo">LIFO — newest lots first (lowest cap gains for rising stock)</option>
+                  <option value="epic_lifo">Epic LIFO — LIFO but prefer long-term gains (avoids STCG when possible)</option>
                   <option value="same_tranche">Same tranche — sell shares from the matching grant only</option>
                 </select>
                 <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
@@ -554,7 +556,7 @@ export default function Settings() {
         <div className="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700">
           <p className="text-xs font-medium text-red-700 dark:text-red-400">Danger Zone</p>
 
-          <div className="mt-3">
+          {!config?.epic_mode && <div className="mt-3">
             <p className="text-xs text-gray-700 dark:text-gray-300">
               <span className="font-medium">Reset data</span> — delete all your grants, loans, and prices. Your account stays active.
             </p>
@@ -589,7 +591,7 @@ export default function Settings() {
                 </button>
               </div>
             )}
-          </div>
+          </div>}
 
           <div className="mt-4 border-t border-gray-100 pt-4 dark:border-gray-800">
             <p className="text-xs text-gray-700 dark:text-gray-300">

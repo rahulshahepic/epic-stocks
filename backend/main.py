@@ -46,12 +46,14 @@ async def lifespan(app):
             logger.warning("Redis unavailable — running without L2 cache")
     task = _start_daily_scheduler()
     metrics_task = _start_metrics_sampler()
+    maintenance_task = _start_nightly_maintenance()
     yield
     from app.event_cache import close as _redis_close
     _redis_close()
     if task:
         task.cancel()
     metrics_task.cancel()
+    maintenance_task.cancel()
 
 
 def _bootstrap_system():
@@ -144,9 +146,13 @@ def _sample_metrics():
             cache_l2_key_count=ri.get("timeline_keys") if ri.get("connected") else None,
         ))
 
-        # Rolling cleanup: keep last 30 days of metrics
+        # Purge raw (non-aggregated) rows older than 30 days.
+        # Aggregated daily rows are managed separately by _aggregate_old_metrics().
         cutoff = datetime.now(timezone.utc) - timedelta(days=30)
-        db.query(SystemMetric).filter(SystemMetric.timestamp < cutoff).delete(synchronize_session=False)
+        db.query(SystemMetric).filter(
+            SystemMetric.timestamp < cutoff,
+            SystemMetric.aggregated == False,  # noqa: E712
+        ).delete(synchronize_session=False)
 
         # Trim error_logs to the most recent 500 entries
         keep_ids = [
@@ -172,6 +178,109 @@ def _sample_metrics():
         db.close()
 
 
+def _aggregate_old_metrics():
+    """Collapse raw metric rows older than 30 days into one aggregated row per UTC day.
+
+    Each completed day in the 30-day → 1-year window is reduced to a single row
+    (aggregated=True) holding daily averages/maxima.  Aggregated rows older than
+    1 year are purged.  The function is idempotent: days that already have an
+    aggregated row just have their remaining raw rows deleted.
+
+    Cache hit/miss counters are stored as cumulative process-lifetime totals and
+    have no meaningful per-day interpretation once the raw rows are gone, so they
+    are left null on aggregated rows.
+    """
+    from datetime import datetime, time, timezone, timedelta, date as date_type
+    from sqlalchemy import func, text
+    from scaffold.models import SystemMetric
+
+    db = database.SessionLocal()
+    try:
+        if not database._is_sqlite:
+            acquired = db.execute(text("SELECT pg_try_advisory_lock(333333333)")).scalar()
+            if not acquired:
+                return
+
+        now = datetime.now(timezone.utc)
+        cutoff_raw = now - timedelta(days=30)
+        cutoff_purge = now - timedelta(days=365)
+
+        # Purge aggregated rows older than 1 year
+        db.query(SystemMetric).filter(
+            SystemMetric.timestamp < cutoff_purge,
+            SystemMetric.aggregated == True,  # noqa: E712
+        ).delete(synchronize_session=False)
+
+        # Find distinct UTC days that still have raw rows in the 30-day→1-year window
+        days_q = (
+            db.query(func.date(SystemMetric.timestamp).label("day"))
+            .filter(
+                SystemMetric.timestamp < cutoff_raw,
+                SystemMetric.timestamp >= cutoff_purge,
+                SystemMetric.aggregated == False,  # noqa: E712
+            )
+            .group_by(func.date(SystemMetric.timestamp))
+            .all()
+        )
+
+        for (day,) in days_q:
+            day_date = date_type.fromisoformat(str(day))
+
+            # If an aggregated row already exists for this day, just clean up stray raw rows
+            already = db.query(SystemMetric).filter(
+                SystemMetric.aggregated == True,  # noqa: E712
+                func.date(SystemMetric.timestamp) == day,
+            ).first()
+            if already:
+                db.query(SystemMetric).filter(
+                    func.date(SystemMetric.timestamp) == day,
+                    SystemMetric.aggregated == False,  # noqa: E712
+                ).delete(synchronize_session=False)
+                continue
+
+            rows = db.query(SystemMetric).filter(
+                func.date(SystemMetric.timestamp) == day,
+                SystemMetric.aggregated == False,  # noqa: E712
+            ).all()
+            if not rows:
+                continue
+
+            n = len(rows)
+            agg_ts = datetime.combine(day_date, time(12, 0), tzinfo=timezone.utc)
+            db.add(SystemMetric(
+                timestamp=agg_ts,
+                aggregated=True,
+                cpu_percent=sum(r.cpu_percent for r in rows) / n,
+                ram_used_mb=sum(r.ram_used_mb for r in rows) / n,
+                ram_total_mb=sum(r.ram_total_mb for r in rows) / n,
+                db_size_bytes=max(r.db_size_bytes for r in rows),
+                error_log_count=max(r.error_log_count for r in rows),
+                # Cumulative cache counters are meaningless without the raw sequence
+                cache_l1_hits=None,
+                cache_l2_hits=None,
+                cache_misses=None,
+                cache_l2_key_count=None,
+            ))
+            db.flush()
+
+            db.query(SystemMetric).filter(
+                func.date(SystemMetric.timestamp) == day,
+                SystemMetric.aggregated == False,  # noqa: E712
+            ).delete(synchronize_session=False)
+
+        db.commit()
+    except Exception:
+        logger.exception("Metric aggregation failed")
+    finally:
+        if not database._is_sqlite:
+            try:
+                db.execute(text("SELECT pg_advisory_unlock(333333333)"))
+                db.commit()
+            except Exception:
+                pass
+        db.close()
+
+
 def _start_metrics_sampler():
     """Start background task that samples system metrics every 15 minutes."""
     import asyncio
@@ -180,6 +289,23 @@ def _start_metrics_sampler():
         while True:
             _sample_metrics()
             await asyncio.sleep(15 * 60)
+
+    return asyncio.ensure_future(_loop())
+
+
+def _start_nightly_maintenance():
+    """Start background task that runs metric aggregation at 03:00 UTC daily."""
+    import asyncio
+    from datetime import datetime, time, timezone, timedelta
+
+    async def _loop():
+        while True:
+            now = datetime.now(timezone.utc)
+            target = datetime.combine(now.date(), time(3, 0), tzinfo=timezone.utc)
+            if now >= target:
+                target += timedelta(days=1)
+            await asyncio.sleep((target - now).total_seconds())
+            _aggregate_old_metrics()
 
     return asyncio.ensure_future(_loop())
 

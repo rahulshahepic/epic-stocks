@@ -197,6 +197,8 @@ def create_loan(
             db.add(sale)
             db.commit()
 
+    from app.event_cache import schedule_recompute
+    schedule_recompute(user.id)
     return loan
 
 
@@ -207,6 +209,8 @@ def bulk_create_loans(items: list[LoanCreate], user: User = Depends(get_current_
     db.commit()
     for l in loans:
         db.refresh(l)
+    from app.event_cache import schedule_recompute
+    schedule_recompute(user.id)
     return loans
 
 
@@ -281,6 +285,8 @@ def update_loan(
             ))
             db.commit()
 
+    from app.event_cache import schedule_recompute
+    schedule_recompute(user.id)
     return loan
 
 
@@ -312,6 +318,8 @@ def delete_loan(loan_id: int, user: User = Depends(get_current_user), db: Sessio
         raise HTTPException(status_code=404, detail="Loan not found")
     db.delete(loan)
     db.commit()
+    from app.event_cache import schedule_recompute
+    schedule_recompute(user.id)
 
 
 # --- Loan Payments CRUD ---

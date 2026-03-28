@@ -12,6 +12,9 @@
 import { test, expect } from '@playwright/test'
 import { loginAs, navigateTo } from './helpers'
 import * as path from 'path'
+import { fileURLToPath } from 'url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const ADMIN_EMAIL = 'admin@e2e.test'
 const FIXTURE_PATH = path.resolve(__dirname, '../../test_data/fixture.xlsx')

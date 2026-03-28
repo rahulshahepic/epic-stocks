@@ -76,10 +76,13 @@ jobs:
             VAPID_PRIVATE=$(seed_or_migrate_vapid vapid_private_key VAPID_PRIVATE_KEY)
             VAPID_PUBLIC=$(seed_or_migrate_vapid vapid_public_key VAPID_PUBLIC_KEY)
 
+            ENCRYPTION_MASTER_KEY=$(cat ./data/current_master_key 2>/dev/null || echo "")
+
             write_env() {
               cat > ${{ vars.DEPLOY_PATH }}/.env <<ENVEOF
             JWT_SECRET=${JWT_SECRET}
             OIDC_PROVIDERS=${{ secrets.OIDC_PROVIDERS }}
+            ENCRYPTION_MASTER_KEY=${ENCRYPTION_MASTER_KEY}
             DOMAIN=${{ vars.DOMAIN }}
             APP_URL=https://${{ vars.DOMAIN }}
             ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}

@@ -47,7 +47,7 @@ async def lifespan(app):
 
 def _bootstrap_system():
     """Ensure system_settings seed rows and master key are initialized on every boot."""
-    from crypto import initialize_master_key
+    from scaffold.crypto import initialize_master_key
     db = database.SessionLocal()
     try:
         initialize_master_key(db)
@@ -189,7 +189,7 @@ class MaintenanceMiddleware:
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
-            from maintenance import is_maintenance_active
+            from scaffold.maintenance import is_maintenance_active
             if is_maintenance_active():
                 path = scope.get("path", "")
                 if path.startswith("/api/"):
@@ -230,7 +230,7 @@ class EncryptionMiddleware:
             auth = headers.get(b"authorization", b"").decode()
             db = database.SessionLocal()
             try:
-                from crypto import reload_master_key_if_stale
+                from scaffold.crypto import reload_master_key_if_stale
                 reload_master_key_if_stale(db)
                 if auth.startswith("Bearer "):
                     self._try_set_key(auth[7:], db)
@@ -345,7 +345,7 @@ def health():
 @_fastapi_app.get("/api/status")
 def status():
     """Operational status for the frontend. Always 200; check 'maintenance' field."""
-    from maintenance import is_maintenance_active
+    from scaffold.maintenance import is_maintenance_active
     return {"maintenance": is_maintenance_active()}
 
 

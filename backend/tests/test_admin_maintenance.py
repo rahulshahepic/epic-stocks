@@ -286,7 +286,7 @@ def test_rotate_key_snapshot_written_and_cleaned_up(client, db_session):
 
 def test_rotate_key_updates_master_key_in_db(client, db_session):
     """After rotation the new master key is stored in system_settings."""
-    import crypto as crypto_mod
+    import scaffold.crypto as crypto_mod
     old_master = crypto_mod.ENCRYPTION_MASTER_KEY
 
     with _admin_env():

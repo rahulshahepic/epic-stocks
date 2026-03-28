@@ -34,7 +34,7 @@ services:
 
 networks:
   proxy:
-    name: proxy
+    external: true   # created once via: docker network create proxy
 
 volumes:
   caddy_config:

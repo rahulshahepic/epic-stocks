@@ -311,7 +311,7 @@ epic-stocks/
 │   │   ├── models.py        # SQLAlchemy models (User, BlockedEmail, etc.)
 │   │   ├── notifications.py # Push + email notification logic
 │   │   ├── providers/
-│   │   │   ├── auth/        # OIDC provider (generic PKCE + JWKS verification)
+│   │   │   ├── auth/        # OIDC provider (generic PKCE; joserfc for JWT/JWKS verification)
 │   │   │   └── email/       # Email providers: Resend, SMTP
 │   │   └── routers/
 │   │       ├── auth_router.py   # OIDC PKCE endpoints + JWT issuance

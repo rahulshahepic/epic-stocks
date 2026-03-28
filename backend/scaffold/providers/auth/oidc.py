@@ -57,8 +57,8 @@ def _fetch_oidc_config(discovery_url: str) -> dict:
     return _oidc_config_cache[discovery_url]
 
 
-def _fetch_jwks(jwks_uri: str) -> dict:
-    if jwks_uri not in _jwks_cache:
+def _fetch_jwks(jwks_uri: str, force: bool = False) -> dict:
+    if force or jwks_uri not in _jwks_cache:
         resp = httpx.get(jwks_uri, timeout=10)
         resp.raise_for_status()
         _jwks_cache[jwks_uri] = resp.json()
@@ -127,12 +127,18 @@ class OIDCProvider:
         kid = header.get("kid")
         alg = header.get("alg", "RS256")
 
-        jwks = _fetch_jwks(self._oidc()["jwks_uri"])
-        key_data = next((k for k in jwks["keys"] if k.get("kid") == kid), None)
-        if not key_data:
-            # Fallback: first key (some providers omit kid)
-            key_data = jwks["keys"][0] if jwks.get("keys") else None
-        if not key_data:
+        # Validate alg against what the provider advertises — prevents algorithm confusion.
+        oidc = self._oidc()
+        allowed_algs = oidc.get("id_token_signing_alg_values_supported") or ["RS256"]
+        if alg not in allowed_algs:
+            raise ValueError(f"Token alg {alg!r} not in provider's allowed list: {allowed_algs}")
+
+        jwks_uri = oidc["jwks_uri"]
+        key_data = self._find_key(jwks_uri, kid, force=False)
+        if key_data is None:
+            # Unknown kid — provider may have rotated keys; retry with a fresh fetch.
+            key_data = self._find_key(jwks_uri, kid, force=True)
+        if key_data is None:
             raise ValueError(f"No matching key found (kid={kid})")
 
         message = f"{parts[0]}.{parts[1]}".encode()
@@ -147,6 +153,8 @@ class OIDCProvider:
 
         if payload.get("exp", 0) < time.time():
             raise ValueError("Token expired")
+        if payload.get("iss") != oidc.get("issuer"):
+            raise ValueError(f"Token issuer mismatch: {payload.get('iss')!r}")
         aud = payload.get("aud")
         if isinstance(aud, list):
             if self.config.client_id not in aud:
@@ -166,6 +174,14 @@ class OIDCProvider:
             name=payload.get("name"),
             picture=payload.get("picture"),
         )
+
+    @staticmethod
+    def _find_key(jwks_uri: str, kid: str | None, force: bool) -> dict | None:
+        jwks = _fetch_jwks(jwks_uri, force=force)
+        if kid:
+            return next((k for k in jwks["keys"] if k.get("kid") == kid), None)
+        # Some providers omit kid — fall back to first key.
+        return jwks["keys"][0] if jwks.get("keys") else None
 
     @staticmethod
     def _verify_rsa(key_data: dict, message: bytes, signature: bytes, alg: str):

@@ -9,7 +9,7 @@ Equity vesting tracker PWA. See SPEC.md for full requirements.
 - **backend/excel_io.py contains the Excel read/write logic.** Adapt as needed for the import/export endpoints but preserve the column mappings.
 - **test_data/fixture.xlsx is a synthetic test fixture.** Use it to validate import logic. It contains no real data.
 - **Schema migrations use Alembic.** Migrations live in `backend/alembic/versions/`. `alembic upgrade head` runs automatically in the lifespan on startup (PostgreSQL only; SQLite test environments use `create_all`). To create a new migration: `alembic revision --autogenerate -m "description"`.
-- **Encryption is per-user.** When `ENCRYPTION_MASTER_KEY` is set, `backend/scaffold/crypto.py` handles AES-256-GCM column-level encryption via SQLAlchemy TypeDecorators. Transparent to routers and core.py.
+- **Encryption is per-user.** When `KEY_ENCRYPTION_KEY` is set, `backend/scaffold/crypto.py` handles AES-256-GCM column-level encryption via SQLAlchemy TypeDecorators. Transparent to routers and core.py. Two-level hierarchy: KEK (env var, never changes) wraps the master key stored encrypted in `system_settings`; master key wraps per-user keys. `initialize_master_key()` is called from lifespan; `reload_master_key_if_stale()` is called from `EncryptionMiddleware` to auto-propagate rotations to all replicas within 5 seconds.
 - **Admin access is dynamic.** Set via `ADMIN_EMAIL` env var (semicolon-delimited). `is_admin` flag is set on every login — no persistent admin designation. Admin endpoints in `backend/scaffold/routers/admin.py` never expose financial data.
 - **OIDC_PROVIDERS format:** JSON array of provider objects. Required fields: `name`, `label`, `client_id`, `discovery_url`. Optional: `client_secret` (omit for PKCE-only clients), `scopes` (default `["openid","email","profile"]`), `subject_claim` (default `"sub"`; use `"oid"` for Azure Entra ID). Multiple providers show as separate login buttons. Redirect URI to register in IdP: `https://yourdomain.com/auth/callback`.
 
@@ -66,7 +66,7 @@ Follow the order in SPEC.md. Build backend first, then frontend. **Every step mu
 | **Database backups** | Automated `pg_dump` off-site (S3/B2). Verify restore procedure. See OPERATIONS.md §6. |
 | **Audit logging** | Log admin actions, failed auth attempts, data deletions to a DB table. Show in admin dashboard. |
 | **DAST scanner in CI** | Add OWASP ZAP to GitHub Actions — scans the running app for vulnerabilities on every PR. |
-| **Migration script** | Convert existing plaintext databases when enabling `ENCRYPTION_MASTER_KEY` for the first time. |
+| **Migration script** | Convert existing plaintext databases when enabling `KEY_ENCRYPTION_KEY` for the first time. |
 | **PDF loan statement import** | OCR or structured template for importing loan data directly from Epic's PDF statements. Stretch goal. |
 
 **Decided against:**

@@ -53,7 +53,7 @@ def test_wrong_key_fails():
 
 def test_encryption_enabled():
     from scaffold.crypto import encryption_enabled
-    assert encryption_enabled() is True  # Set in conftest
+    assert encryption_enabled() is True  # KEY_ENCRYPTION_KEY set in conftest
 
 
 # ============================================================

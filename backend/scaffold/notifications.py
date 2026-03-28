@@ -138,10 +138,20 @@ def send_daily_notifications(today: date | None = None):
     """Check all users and send push + email notifications as appropriate.
 
     Uses last_notified_at to ensure at most one notification batch per user per day.
+    In multi-replica deployments, uses a PostgreSQL advisory lock so only one
+    replica runs this job per firing.
     """
     today = today or date.today()
     db = SessionLocal()
+    lock_acquired = False
     try:
+        import database as _db_module
+        from sqlalchemy import text as _text
+        if not _db_module._is_sqlite:
+            lock_acquired = db.execute(_text("SELECT pg_try_advisory_lock(111111111)")).scalar()
+            if not lock_acquired:
+                return  # another replica is running this job
+
         # Get all users who have push subscriptions OR email notifications enabled
         push_user_ids = {row[0] for row in db.query(PushSubscription.user_id).distinct().all()}
         email_user_ids = {row[0] for row in db.query(EmailPreference.user_id).filter(EmailPreference.enabled == 1).all()}
@@ -187,6 +197,14 @@ def send_daily_notifications(today: date | None = None):
     except Exception:
         logger.exception("Error in daily notification check")
     finally:
+        # Explicitly release the advisory lock so it doesn't persist on pooled connections
+        if lock_acquired:
+            try:
+                from sqlalchemy import text as _text
+                db.execute(_text("SELECT pg_advisory_unlock(111111111)"))
+                db.commit()
+            except Exception:
+                pass
         db.close()
 
 
@@ -249,7 +267,11 @@ def check_user_milestone(db: Session):
 
 
 def send_admin_daily_digest():
-    """Send a daily system health digest to admins."""
+    """Send a daily system health digest to admins.
+
+    In multi-replica deployments, uses a PostgreSQL advisory lock so only one
+    replica sends the digest per firing.
+    """
     from scaffold.auth import get_admin_emails
     from scaffold.email_sender import send_email, email_configured
     from datetime import timedelta
@@ -262,7 +284,16 @@ def send_admin_daily_digest():
         return
 
     db = SessionLocal()
+    lock_acquired = False
     try:
+        import database as _db_module
+        from sqlalchemy import text as _text
+        if not _db_module._is_sqlite:
+            lock_acquired = db.execute(_text("SELECT pg_try_advisory_lock(333333333)")).scalar()
+            if not lock_acquired:
+                db.close()
+                return  # another replica is running this job
+
         now = datetime.now(timezone.utc)
         yesterday = now - timedelta(days=1)
 
@@ -300,4 +331,12 @@ def send_admin_daily_digest():
     except Exception:
         logger.exception("Error sending admin daily digest")
     finally:
+        # Explicitly release the advisory lock so it doesn't persist on pooled connections
+        if lock_acquired:
+            try:
+                from sqlalchemy import text as _text
+                db.execute(_text("SELECT pg_advisory_unlock(333333333)"))
+                db.commit()
+            except Exception:
+                pass
         db.close()

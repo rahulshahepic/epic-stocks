@@ -93,16 +93,20 @@ def clear_session_cookies(response) -> None:
 
 
 def _token_from_request(request: Request) -> str | None:
-    """Extract JWT. Authorization: Bearer takes precedence over session cookie.
+    """Extract JWT from session cookie (preferred) or Authorization: Bearer (fallback).
 
-    Explicit credentials (Bearer) always win over implicit ones (cookie).
-    Browser users never send Authorization headers, so they always fall through
-    to the session cookie — giving them the XSS-resistant HttpOnly cookie path.
+    Cookie-first preserves the XSS benefit: browser requests never include an
+    Authorization header, so they always use the HttpOnly session cookie that
+    JavaScript cannot read.  Bearer fallback exists only for tooling that predates
+    cookies (direct API calls, curl, etc.) and for which XSS is not a concern.
     """
+    token = request.cookies.get("session")
+    if token:
+        return token
     auth = request.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
         return auth[7:]
-    return request.cookies.get("session")
+    return None
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:

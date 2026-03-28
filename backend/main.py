@@ -234,14 +234,13 @@ class EncryptionMiddleware:
                 from scaffold.crypto import reload_master_key_if_stale
                 reload_master_key_if_stale(db)
                 token = None
-                if auth.startswith("Bearer "):
+                for part in cookie_header.split(";"):
+                    k, _, v = part.strip().partition("=")
+                    if k == "session":
+                        token = v
+                        break
+                if not token and auth.startswith("Bearer "):
                     token = auth[7:]
-                else:
-                    for part in cookie_header.split(";"):
-                        k, _, v = part.strip().partition("=")
-                        if k == "session":
-                            token = v
-                            break
                 if token:
                     self._try_set_key(token, db)
             finally:

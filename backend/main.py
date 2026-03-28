@@ -236,7 +236,7 @@ class EncryptionMiddleware:
                 token = None
                 if auth.startswith("Bearer "):
                     token = auth[7:]
-                elif cookie_header:
+                else:
                     for part in cookie_header.split(";"):
                         k, _, v = part.strip().partition("=")
                         if k == "session":

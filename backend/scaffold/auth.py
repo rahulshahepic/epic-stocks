@@ -93,14 +93,16 @@ def clear_session_cookies(response) -> None:
 
 
 def _token_from_request(request: Request) -> str | None:
-    """Extract JWT from HttpOnly session cookie, falling back to Authorization header."""
-    token = request.cookies.get("session")
-    if token:
-        return token
+    """Extract JWT. Authorization: Bearer takes precedence over session cookie.
+
+    Explicit credentials (Bearer) always win over implicit ones (cookie).
+    Browser users never send Authorization headers, so they always fall through
+    to the session cookie — giving them the XSS-resistant HttpOnly cookie path.
+    """
     auth = request.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
         return auth[7:]
-    return None
+    return request.cookies.get("session")
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:

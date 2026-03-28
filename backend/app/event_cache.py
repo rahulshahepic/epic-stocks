@@ -125,6 +125,27 @@ def schedule_recompute(user_id: int) -> None:
     threading.Thread(target=_do_recompute, args=(user_id,), daemon=True).start()
 
 
+def redis_info() -> dict:
+    if not _client:
+        return {"connected": False}
+    try:
+        mem = _client.info("memory")
+        keyspace = _client.info("keyspace")
+        timeline_keys = _client.keys("timeline:*")
+        db_info = next(iter(keyspace.values()), {}) if keyspace else {}
+        return {
+            "connected": True,
+            "timeline_keys": len(timeline_keys),
+            "total_keys": db_info.get("keys", 0),
+            "used_memory_bytes": mem.get("used_memory"),
+            "used_memory_human": mem.get("used_memory_human"),
+            "maxmemory_bytes": mem.get("maxmemory") or None,
+            "maxmemory_policy": mem.get("maxmemory_policy"),
+        }
+    except Exception as exc:
+        return {"connected": False, "error": str(exc)}
+
+
 def schedule_fan_out() -> None:
     """Trigger async recompute for all users after any price change."""
     if not _client:

@@ -238,6 +238,10 @@ class SystemMetricPoint(BaseModel):
     ram_total_mb: float
     db_size_bytes: int
     error_log_count: int
+    cache_l1_hits: int | None = None
+    cache_l2_hits: int | None = None
+    cache_misses: int | None = None
+    cache_l2_key_count: int | None = None
 
 
 @router.get("/metrics", response_model=list[SystemMetricPoint])
@@ -261,6 +265,10 @@ def admin_metrics(
             ram_total_mb=r.ram_total_mb,
             db_size_bytes=r.db_size_bytes,
             error_log_count=r.error_log_count,
+            cache_l1_hits=r.cache_l1_hits,
+            cache_l2_hits=r.cache_l2_hits,
+            cache_misses=r.cache_misses,
+            cache_l2_key_count=r.cache_l2_key_count,
         )
         for r in rows
     ]

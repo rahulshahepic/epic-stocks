@@ -19,7 +19,7 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:e2e-pass@e2e-db:5432/vesting_e2e
       JWT_SECRET: e2e-test-secret
-      GOOGLE_CLIENT_ID: placeholder
+      OIDC_PROVIDERS: "[]"
       E2E_TEST: "1"
       ADMIN_EMAIL: admin@e2e.test
     healthcheck:

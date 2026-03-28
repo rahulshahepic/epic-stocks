@@ -12,8 +12,11 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    networks:
+      - internal
 
   app:
+    container_name: epic-stocks-app   # referenced by name in caddy/app.caddy
     build:
       context: .
       args:
@@ -30,34 +33,35 @@ services:
     environment:
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-changeme}@db:5432/vesting
       - JWT_SECRET=${JWT_SECRET}
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - OIDC_PROVIDERS=${OIDC_PROVIDERS:-[]}
       - ENCRYPTION_MASTER_KEY=${ENCRYPTION_MASTER_KEY}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
+      - EMAIL_PROVIDER=${EMAIL_PROVIDER:-resend}
       - RESEND_API_KEY=${RESEND_API_KEY:-}
       - RESEND_FROM=${RESEND_FROM:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-}
       - EPIC_ONBOARDING_URL=${EPIC_ONBOARDING_URL:-}
+      - APP_URL=${APP_URL:-}
     volumes:
-      - ./data:/app/data  # sqlite migration source + sentinel file
+      - ./data:/app/data           # sqlite migration source
+      - appdata:/app/appdata       # maintenance sentinel (shared with caddy via named volume)
     expose:
       - "8000"
-
-  caddy:
-    image: caddy:2
-    ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      - DOMAIN=${DOMAIN:-localhost}
-      - TRUSTED_PROXY_IPS=${TRUSTED_PROXY_IPS:-}
-    volumes:
-      - ./caddy:/etc/caddy
-      - caddy_data:/data
-      - ./data:/appdata:ro  # maintenance sentinel flag (read-only)
-    depends_on:
-      - app
+    networks:
+      - internal
+      - proxy        # connects to the shared Caddy proxy network
 
 volumes:
   pg_data:
-  caddy_data:
+  appdata:
+
+networks:
+  internal:
+  proxy:
+    external: true   # must be created by infra/docker-compose.infra.yml first

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { ThemeProvider } from '../contexts/ThemeContext.tsx'
-import { useDark } from '../hooks/useDark.ts'
+import { ThemeProvider } from '../scaffold/contexts/ThemeContext.tsx'
+import { useDark } from '../scaffold/hooks/useDark.ts'
 
 describe('useDark', () => {
   let listeners: Array<(e: { matches: boolean }) => void>

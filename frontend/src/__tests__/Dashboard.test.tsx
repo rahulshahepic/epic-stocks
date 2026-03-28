@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import Dashboard from '../pages/Dashboard.tsx'
+import Dashboard from '../app/pages/Dashboard.tsx'
 
 const MOCK_DASHBOARD = {
   current_price: 8.5,

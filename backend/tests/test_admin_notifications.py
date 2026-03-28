@@ -19,7 +19,7 @@ def _mock_resend_post():
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.raise_for_status = MagicMock()
-    return patch("email_sender.httpx.post", return_value=mock_response)
+    return patch("scaffold.providers.email.resend.httpx.post", return_value=mock_response)
 
 
 # ============================================================
@@ -27,8 +27,8 @@ def _mock_resend_post():
 # ============================================================
 
 def test_dedup_skips_already_notified_user(client, db_session):
-    from models import User, Grant, Price, EmailPreference
-    from notifications import send_daily_notifications
+    from scaffold.models import User, Grant, Price, EmailPreference
+    from scaffold.notifications import send_daily_notifications
 
     token = register_user(client)
     user = db_session.query(User).first()
@@ -58,8 +58,8 @@ def test_dedup_skips_already_notified_user(client, db_session):
 
 
 def test_dedup_allows_next_day(client, db_session):
-    from models import User, Grant, Price, EmailPreference
-    from notifications import _already_notified_today
+    from scaffold.models import User, Grant, Price, EmailPreference
+    from scaffold.notifications import _already_notified_today
 
     token = register_user(client)
     user = db_session.query(User).first()
@@ -71,8 +71,8 @@ def test_dedup_allows_next_day(client, db_session):
 
 
 def test_dedup_none_last_notified(client, db_session):
-    from models import User
-    from notifications import _already_notified_today
+    from scaffold.models import User
+    from scaffold.notifications import _already_notified_today
 
     token = register_user(client)
     user = db_session.query(User).first()
@@ -110,8 +110,8 @@ def test_admin_no_notification_without_resend(client, db_session):
 # ============================================================
 
 def test_milestone_notification_at_10_users(client, db_session):
-    from notifications import check_user_milestone
-    from models import User
+    from scaffold.notifications import check_user_milestone
+    from scaffold.models import User
 
     for i in range(9):
         register_user(client, f"user{i}@test.com")
@@ -128,7 +128,7 @@ def test_milestone_notification_at_10_users(client, db_session):
 
 
 def test_no_milestone_at_7_users(client, db_session):
-    from notifications import check_user_milestone
+    from scaffold.notifications import check_user_milestone
 
     for i in range(7):
         register_user(client, f"u{i}@test.com")
@@ -148,7 +148,7 @@ def test_no_milestone_at_7_users(client, db_session):
 # ============================================================
 
 def test_admin_daily_digest(client, db_session):
-    from notifications import send_admin_daily_digest
+    from scaffold.notifications import send_admin_daily_digest
 
     register_user(client, "u1@test.com")
     register_user(client, "u2@test.com")
@@ -166,13 +166,13 @@ def test_admin_daily_digest(client, db_session):
 
 
 def test_admin_daily_digest_no_resend(client, db_session):
-    from notifications import send_admin_daily_digest
+    from scaffold.notifications import send_admin_daily_digest
     with patch.dict(os.environ, {"RESEND_API_KEY": ""}):
         send_admin_daily_digest()  # should not raise
 
 
 def test_admin_daily_digest_no_admins(client, db_session):
-    from notifications import send_admin_daily_digest
+    from scaffold.notifications import send_admin_daily_digest
     with patch.dict(os.environ, {"RESEND_API_KEY": "re_test_key", "ADMIN_EMAIL": ""}):
         send_admin_daily_digest()  # should not raise
 
@@ -182,7 +182,7 @@ def test_admin_daily_digest_no_admins(client, db_session):
 # ============================================================
 
 def test_last_notified_at_column_exists(client, db_session):
-    from models import User
+    from scaffold.models import User
     token = register_user(client)
     user = db_session.query(User).first()
     assert hasattr(user, "last_notified_at")

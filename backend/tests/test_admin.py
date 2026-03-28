@@ -13,11 +13,8 @@ def _admin_env():
 
 
 def _register_admin(client):
-    """Register a user whose email matches ADMIN_EMAIL."""
-    from tests.conftest import _fake_google_info
-    info = _fake_google_info(ADMIN_EMAIL)
-    with patch("routers.auth_router.verify_google_token", return_value=info):
-        resp = client.post("/api/auth/google", json={"token": "admin-token"})
+    """Register a user whose email matches ADMIN_EMAIL via the test-login endpoint."""
+    resp = client.post("/api/auth/test-login", json={"email": ADMIN_EMAIL})
     return resp.json()["access_token"]
 
 
@@ -65,10 +62,7 @@ def test_admin_multiple_emails(client):
         assert resp.status_code == 200
 
         # Second admin email also works
-        from tests.conftest import _fake_google_info
-        info = _fake_google_info("other@admin.com")
-        with patch("routers.auth_router.verify_google_token", return_value=info):
-            resp = client.post("/api/auth/google", json={"token": "t"})
+        resp = client.post("/api/auth/test-login", json={"email": "other@admin.com"})
         token2 = resp.json()["access_token"]
         resp = client.get("/api/admin/stats", headers=auth_header(token2))
         assert resp.status_code == 200
@@ -76,27 +70,14 @@ def test_admin_multiple_emails(client):
 
 def test_admin_revoked_on_env_change(client):
     """Removing email from ADMIN_EMAIL revokes admin on next login."""
-    # Use a fixed google ID so re-login finds existing user
-    fixed_info = {
-        "sub": "admin-google-id-fixed",
-        "email": ADMIN_EMAIL,
-        "email_verified": "true",
-        "name": "Admin",
-        "picture": "",
-        "aud": "",
-    }
     with _admin_env():
-        with patch("routers.auth_router.verify_google_token", return_value=fixed_info):
-            resp = client.post("/api/auth/google", json={"token": "t1"})
-        token = resp.json()["access_token"]
+        token = client.post("/api/auth/test-login", json={"email": ADMIN_EMAIL}).json()["access_token"]
         resp = client.get("/api/admin/stats", headers=auth_header(token))
         assert resp.status_code == 200
 
     # Re-login with admin removed from env — should lose admin on next login
     with patch.dict(os.environ, {"ADMIN_EMAIL": ""}):
-        with patch("routers.auth_router.verify_google_token", return_value=fixed_info):
-            resp = client.post("/api/auth/google", json={"token": "t2"})
-        token2 = resp.json()["access_token"]
+        token2 = client.post("/api/auth/test-login", json={"email": ADMIN_EMAIL}).json()["access_token"]
         resp = client.get("/api/admin/stats", headers=auth_header(token2))
         assert resp.status_code == 403
 
@@ -228,10 +209,7 @@ def test_admin_cannot_delete_admin_user(client):
     with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@example.com;admin2@example.com"}):
         admin_token = _register_admin(client)
         # Register second admin
-        from tests.conftest import _fake_google_info
-        info = _fake_google_info("admin2@example.com")
-        with patch("routers.auth_router.verify_google_token", return_value=info):
-            resp = client.post("/api/auth/google", json={"token": "t"})
+        client.post("/api/auth/test-login", json={"email": "admin2@example.com"})
         resp = client.get("/api/admin/users", headers=auth_header(admin_token))
         admin2 = next(u for u in resp.json()["users"] if u["email"] == "admin2@example.com")
 
@@ -321,10 +299,7 @@ def test_blocked_email_prevents_login(client):
         }, headers=auth_header(admin_token))
 
         # Attempt login with blocked email
-        from tests.conftest import _fake_google_info
-        info = _fake_google_info("blocked@test.com")
-        with patch("routers.auth_router.verify_google_token", return_value=info):
-            resp = client.post("/api/auth/google", json={"token": "fake"})
+        resp = client.post("/api/auth/test-login", json={"email": "blocked@test.com"})
         assert resp.status_code == 403
         assert "blocked" in resp.json()["detail"].lower()
 
@@ -350,10 +325,7 @@ def test_unblock_email(client):
         assert resp.status_code == 204
 
         # Should be able to login now
-        from tests.conftest import _fake_google_info
-        info = _fake_google_info("unblock@test.com")
-        with patch("routers.auth_router.verify_google_token", return_value=info):
-            resp = client.post("/api/auth/google", json={"token": "fake"})
+        resp = client.post("/api/auth/test-login", json={"email": "unblock@test.com"})
         assert resp.status_code == 200
 
 
@@ -370,10 +342,7 @@ def test_block_normalizes_email(client):
         admin_token = _register_admin(client)
         client.post("/api/admin/blocked", json={"email": "UPPER@TEST.COM"}, headers=auth_header(admin_token))
 
-        from tests.conftest import _fake_google_info
-        info = _fake_google_info("upper@test.com")
-        with patch("routers.auth_router.verify_google_token", return_value=info):
-            resp = client.post("/api/auth/google", json={"token": "fake"})
+        resp = client.post("/api/auth/test-login", json={"email": "upper@test.com"})
         assert resp.status_code == 403
 
 
@@ -419,9 +388,9 @@ def test_last_login_set_on_login(client):
 
 def test_test_login_sets_admin_flag(client, db_session):
     """test-login should set is_admin and last_login just like google login."""
-    from auth import create_token, get_admin_emails
-    from models import User
-    from crypto import encryption_enabled, generate_user_key, encrypt_user_key
+    from scaffold.auth import create_token, get_admin_emails
+    from scaffold.models import User
+    from scaffold.crypto import encryption_enabled, generate_user_key, encrypt_user_key
     from datetime import datetime, timezone
 
     with _admin_env():
@@ -448,9 +417,9 @@ def test_test_login_sets_admin_flag(client, db_session):
 
 def test_test_login_non_admin_flag(client, db_session):
     """test-login should NOT set is_admin for non-admin emails."""
-    from auth import create_token, get_admin_emails
-    from models import User
-    from crypto import encryption_enabled, generate_user_key, encrypt_user_key
+    from scaffold.auth import create_token, get_admin_emails
+    from scaffold.models import User
+    from scaffold.crypto import encryption_enabled, generate_user_key, encrypt_user_key
     from datetime import datetime, timezone
 
     with _admin_env():
@@ -480,14 +449,14 @@ def test_test_login_non_admin_flag(client, db_session):
 def test_admin_test_notify_push(client, db_session):
     """Admin can send a test push notification to a user."""
     from unittest.mock import MagicMock, patch as upatch
-    from models import PushSubscription
+    from scaffold.models import PushSubscription
 
     with _admin_env():
         admin_token = _register_admin(client)
         target_token = register_user(client, "target@test.com")
 
         # Give target user a push subscription
-        from auth import get_current_user as _gcu
+        from scaffold.auth import get_current_user as _gcu
         resp = client.get("/api/me", headers=auth_header(target_token))
         target_id = resp.json()["id"]
 
@@ -500,7 +469,7 @@ def test_admin_test_notify_push(client, db_session):
         db_session.add(sub)
         db_session.commit()
 
-        with upatch("notifications.send_push", return_value=True) as mock_push:
+        with upatch("scaffold.notifications.send_push", return_value=True) as mock_push:
             resp = client.post(
                 "/api/admin/test-notify",
                 json={"user_id": target_id, "title": "Hello", "body": "World"},
@@ -517,7 +486,7 @@ def test_admin_test_notify_push(client, db_session):
 def test_admin_test_notify_expired_sub_deleted(client, db_session):
     """Expired push subscription (send_push returns False) is deleted."""
     from unittest.mock import patch as upatch
-    from models import PushSubscription
+    from scaffold.models import PushSubscription
 
     with _admin_env():
         admin_token = _register_admin(client)
@@ -534,7 +503,7 @@ def test_admin_test_notify_expired_sub_deleted(client, db_session):
         db_session.add(sub)
         db_session.commit()
 
-        with upatch("notifications.send_push", return_value=False):
+        with upatch("scaffold.notifications.send_push", return_value=False):
             resp = client.post(
                 "/api/admin/test-notify",
                 json={"user_id": target_id, "title": "Hi", "body": "Test"},
@@ -598,7 +567,7 @@ def test_admin_test_notify_no_subscriptions(client):
 
 def test_admin_test_notify_rate_limited(client):
     """test-notify is rate-limited to 5 per hour per admin."""
-    from routers import admin as admin_router
+    from scaffold.routers import admin as admin_router
     # Clear the in-memory counter before test
     admin_router._test_notify_counts.clear()
 

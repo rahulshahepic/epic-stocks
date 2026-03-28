@@ -1,0 +1,494 @@
+export class ConflictError extends Error {
+  currentVersion: number
+  constructor(currentVersion: number) {
+    super('modified_elsewhere')
+    this.name = 'ConflictError'
+    this.currentVersion = currentVersion
+  }
+}
+
+const TOKEN_KEY = 'auth_token'
+
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY)
+}
+
+export function setToken(token: string) {
+  localStorage.setItem(TOKEN_KEY, token)
+}
+
+export function clearToken() {
+  localStorage.removeItem(TOKEN_KEY)
+}
+
+/** True if authenticated via HttpOnly session cookie (auth_hint) or legacy localStorage token. */
+export function isLoggedIn(): boolean {
+  if (localStorage.getItem(TOKEN_KEY)) return true
+  return document.cookie.split(';').some(c => c.trim().startsWith('auth_hint='))
+}
+
+export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getToken()
+  const headers: Record<string, string> = {
+    ...Object.fromEntries(new Headers(init?.headers).entries()),
+  }
+  if (token) {
+    // Legacy localStorage token — kept for backward compat (e.g. SCREENSHOT_TOKEN).
+    // New logins use the HttpOnly session cookie sent automatically via credentials:'include'.
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  if (init?.body && typeof init.body === 'string') {
+    headers['Content-Type'] = 'application/json'
+  }
+
+  const resp = await fetch(path, { ...init, headers, credentials: 'include' })
+
+  if (resp.status === 401) {
+    clearToken()
+    window.location.href = '/login'
+    throw new Error('Unauthorized')
+  }
+
+  if (resp.status === 409) {
+    let currentVersion = 0
+    try {
+      const body = await resp.json()
+      if (typeof body?.current_version === 'number') currentVersion = body.current_version
+    } catch { /* no json body */ }
+    throw new ConflictError(currentVersion)
+  }
+
+  if (!resp.ok) {
+    let detail = `Error ${resp.status}`
+    try {
+      const body = await resp.json()
+      if (body?.detail) detail = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)
+    } catch { /* no json body */ }
+    throw new Error(detail)
+  }
+
+  if (resp.status === 204) return undefined as T
+
+  return resp.json()
+}
+
+// --- Types ---
+
+export interface DashboardData {
+  current_price: number
+  total_shares: number
+  total_income: number
+  total_cap_gains: number
+  total_loan_principal: number
+  total_tax_paid: number
+  cash_received: number
+  loan_payment_by_year: { year: string; payoff_sale: number; cash_in: number }[]
+  next_event: { date: string; event_type: string } | null
+}
+
+export interface TimelineEvent {
+  date: string
+  grant_year: number | null
+  grant_type: string | null
+  event_type: string
+  granted_shares: number | null
+  grant_price: number | null
+  exercise_price: number | null
+  vested_shares: number | null
+  price_increase: number
+  share_price: number
+  cum_shares: number
+  income: number
+  cum_income: number
+  vesting_cap_gains: number
+  price_cap_gains: number
+  total_cap_gains: number
+  cum_cap_gains: number
+  // Loan Payoff enrichment
+  loan_db_id?: number | null
+  cash_due?: number | null
+  covered_by_sale?: boolean
+  status?: 'covered' | 'planned' | 'refinanced'
+  // Early Loan Payment fields
+  loan_id?: number | null
+  amount?: number | null
+  notes?: string | null
+  // Sale event fields
+  gross_proceeds?: number | null
+  estimated_tax?: number | null
+  st_shares?: number | null
+  sale_id?: number | null
+  // 83(b) election (bonus/free grants with price=0 who elected 83b at grant time)
+  election_83b?: boolean
+  // Projected liquidation
+  is_projected?: boolean
+  outstanding_loan_principal?: number | null
+  // Refinanced loan payoff
+  refinanced?: boolean
+}
+
+export interface GrantEntry {
+  id: number
+  version: number
+  year: number
+  type: string
+  shares: number
+  price: number
+  vest_start: string
+  periods: number
+  exercise_date: string
+  dp_shares: number
+  election_83b: boolean
+}
+
+export interface PriceEntry {
+  id: number
+  version: number
+  effective_date: string
+  price: number
+}
+
+export interface LoanEntry {
+  id: number
+  version: number
+  grant_year: number
+  grant_type: string
+  loan_type: string
+  loan_year: number
+  amount: number
+  interest_rate: number
+  due_date: string
+  loan_number: string | null
+  refinances_loan_id: number | null
+}
+
+// --- API ---
+
+function post<T>(path: string, body: object) {
+  return apiFetch<T>(path, { method: 'POST', body: JSON.stringify(body) })
+}
+
+function put<T>(path: string, body: object) {
+  return apiFetch<T>(path, { method: 'PUT', body: JSON.stringify(body) })
+}
+
+function del(path: string) {
+  return apiFetch<void>(path, { method: 'DELETE' })
+}
+
+export const api = {
+  // OIDC / PKCE auth flow
+  getProviders: () =>
+    apiFetch<Array<{ name: string; label: string }>>('/api/auth/providers'),
+  getLoginUrl: (provider: string, codeChallenge: string, redirectUri: string, state: string) => {
+    const params = new URLSearchParams({ provider, code_challenge: codeChallenge, redirect_uri: redirectUri, state })
+    return apiFetch<{ authorization_url: string }>(`/api/auth/login?${params}`)
+  },
+  exchangeCode: (provider: string, code: string, codeVerifier: string, redirectUri: string) =>
+    post<{ access_token: string }>('/api/auth/callback', { provider, code, code_verifier: codeVerifier, redirect_uri: redirectUri }),
+
+  getDashboard: () => apiFetch<DashboardData>('/api/dashboard'),
+  getEvents: () => apiFetch<TimelineEvent[]>('/api/events'),
+
+  // Grants
+  getGrants: () => apiFetch<GrantEntry[]>('/api/grants'),
+  createGrant: (data: Omit<GrantEntry, 'id' | 'version'>) => post<GrantEntry>('/api/grants', data),
+  updateGrant: (id: number, data: Partial<Omit<GrantEntry, 'id'>>) => put<GrantEntry>(`/api/grants/${id}`, data),
+  deleteGrant: (id: number) => del(`/api/grants/${id}`),
+
+  // Loans
+  getLoans: () => apiFetch<LoanEntry[]>('/api/loans'),
+  createLoan: (data: Omit<LoanEntry, 'id' | 'version'>, generatePayoffSale = true) =>
+    post<LoanEntry>(`/api/loans?generate_payoff_sale=${generatePayoffSale}`, data),
+  updateLoan: (id: number, data: Partial<Omit<LoanEntry, 'id'>>, regeneratePayoffSale = false) =>
+    put<LoanEntry>(`/api/loans/${id}?regenerate_payoff_sale=${regeneratePayoffSale}`, data),
+  deleteLoan: (id: number) => del(`/api/loans/${id}`),
+  regenerateAllPayoffSales: () => apiFetch<{ updated: number }>('/api/loans/regenerate-all-payoff-sales', { method: 'POST' }),
+  getLoanPayoffSuggestion: (loanId: number) => apiFetch<LoanPayoffSuggestion>(`/api/loans/${loanId}/payoff-sale-suggestion`),
+
+  // Loan Payments
+  getLoanPayments: (loanId?: number) =>
+    apiFetch<LoanPaymentEntry[]>(loanId != null ? `/api/loan-payments?loan_id=${loanId}` : '/api/loan-payments'),
+  createLoanPayment: (data: Omit<LoanPaymentEntry, 'id' | 'version'>) =>
+    post<LoanPaymentEntry>('/api/loan-payments', data),
+  updateLoanPayment: (id: number, data: Partial<Omit<LoanPaymentEntry, 'id'>>) =>
+    put<LoanPaymentEntry>(`/api/loan-payments/${id}`, data),
+  deleteLoanPayment: (id: number) => del(`/api/loan-payments/${id}`),
+
+  // Prices
+  getPrices: () => apiFetch<PriceEntry[]>('/api/prices'),
+  createPrice: (data: Omit<PriceEntry, 'id' | 'version'>) => post<PriceEntry>('/api/prices', data),
+  updatePrice: (id: number, data: Partial<Omit<PriceEntry, 'id'>>) => put<PriceEntry>(`/api/prices/${id}`, data),
+  deletePrice: (id: number) => del(`/api/prices/${id}`),
+
+  // Quick flows
+  newPurchase: (data: {
+    year: number; shares: number; price: number; vest_start: string;
+    periods: number; exercise_date: string; dp_shares?: number;
+    loan_amount?: number; loan_rate?: number; loan_due_date?: string; loan_number?: string;
+    generate_payoff_sale?: boolean;
+  }) => post<{ grant: GrantEntry; loan?: LoanEntry }>('/api/flows/new-purchase', data),
+
+  addBonus: (data: {
+    year: number; shares: number; price?: number; vest_start: string;
+    periods: number; exercise_date: string; election_83b?: boolean;
+  }) => post<GrantEntry>('/api/flows/add-bonus', data),
+
+  annualPrice: (data: { effective_date: string; price: number }) =>
+    post<PriceEntry>('/api/flows/annual-price', data),
+
+  // User info
+  getMe: () => apiFetch<{ id: number; email: string; name: string; is_admin: boolean }>('/api/me'),
+
+  // Push notifications
+  pushSubscribe: (subscription: PushSubscriptionJSON) =>
+    post<{ id: number; endpoint: string }>('/api/push/subscribe', subscription),
+  pushUnsubscribe: (subscription: PushSubscriptionJSON) =>
+    apiFetch<void>('/api/push/subscribe', { method: 'DELETE', body: JSON.stringify(subscription) }),
+  pushStatus: () => apiFetch<{ subscribed: boolean; subscription_count: number }>('/api/push/status'),
+  pushTest: () => post<{ sent: number }>('/api/push/test', {}),
+
+  // Email notifications
+  getEmailPref: () => apiFetch<{ enabled: boolean; advance_days: number }>('/api/notifications/email'),
+  setEmailPref: (enabled: boolean) =>
+    put<{ enabled: boolean; advance_days: number }>(`/api/notifications/email?enabled=${enabled}`, {}),
+  setAdvanceDays: (advance_days: number) =>
+    put<{ enabled: boolean; advance_days: number }>(`/api/notifications/advance-days?advance_days=${advance_days}`, {}),
+
+  // Account
+  resetMyData: () => apiFetch<void>('/api/me/reset', { method: 'POST' }),
+  deleteMyAccount: () => apiFetch<void>('/api/me', { method: 'DELETE' }),
+
+  // Sales
+  getSales: () => apiFetch<SaleEntry[]>('/api/sales'),
+  createSale: (data: Omit<SaleEntry, 'id' | 'version'>) => post<SaleEntry>('/api/sales', data),
+  updateSale: (id: number, data: Partial<Omit<SaleEntry, 'id'>>) => put<SaleEntry>(`/api/sales/${id}`, data),
+  deleteSale: (id: number) => del(`/api/sales/${id}`),
+  getSaleTax: (id: number) => apiFetch<TaxBreakdown>(`/api/sales/${id}/tax`),
+  getAllSaleTaxes: () => apiFetch<Record<number, TaxBreakdown>>('/api/sales/tax'),
+
+  // Tax Settings
+  getTaxSettings: () => apiFetch<TaxSettings>('/api/tax-settings'),
+  updateTaxSettings: (data: Partial<TaxSettings>) => put<TaxSettings>('/api/tax-settings', data),
+
+  // Horizon Settings
+  getHorizonSettings: () => apiFetch<HorizonSettings>('/api/horizon-settings'),
+  updateHorizonSettings: (data: Partial<HorizonSettings>) => put<HorizonSettings>('/api/horizon-settings', data),
+
+  // Admin
+  adminStats: () => apiFetch<AdminStats>('/api/admin/stats'),
+  adminUsers: (q = '', limit = 10, offset = 0) =>
+    apiFetch<AdminUserListResponse>(`/api/admin/users?q=${encodeURIComponent(q)}&limit=${limit}&offset=${offset}`),
+  adminDeleteUser: (id: number) => del(`/api/admin/users/${id}`),
+  adminListBlocked: () => apiFetch<BlockedEmailEntry[]>('/api/admin/blocked'),
+  adminBlockEmail: (email: string, reason: string) =>
+    post<BlockedEmailEntry>('/api/admin/blocked', { email, reason }),
+  adminUnblock: (id: number) => del(`/api/admin/blocked/${id}`),
+  adminErrors: (limit = 50) => apiFetch<ErrorLogEntry[]>(`/api/admin/errors?limit=${limit}`),
+  adminClearErrors: () => del('/api/admin/errors'),
+  adminTestNotify: (user_id: number, title: string, body: string) =>
+    post<TestNotifyResult>('/api/admin/test-notify', { user_id, title, body }),
+  adminMetrics: (hours = 72) => apiFetch<SystemMetricPoint[]>(`/api/admin/metrics?hours=${hours}`),
+  adminDbTables: () => apiFetch<DbTableInfo[]>('/api/admin/db-tables'),
+
+  // Operational status — no auth required, polled by App.tsx
+  status: () => apiFetch<{ maintenance: boolean }>('/api/status'),
+
+  // Maintenance + key rotation
+  adminGetMaintenance: () => apiFetch<{ active: boolean }>('/api/admin/maintenance'),
+  adminSetMaintenance: (active: boolean) =>
+    post<{ active: boolean }>('/api/admin/maintenance', { active }),
+  adminRotationStatus: () =>
+    apiFetch<{ snapshot_exists: boolean; maintenance_active: boolean }>('/api/admin/rotation-status'),
+  adminRotationRestore: () =>
+    post<{ restored: number }>('/api/admin/rotation-restore', {}),
+
+  /** Stream SSE events from the key-rotation endpoint.
+   *  Calls onEvent for each parsed event object.  Resolves when the stream ends.
+   */
+  adminRotateKey: async (onEvent: (e: RotationEvent) => void): Promise<void> => {
+    const token = getToken()
+    const resp = await fetch('/api/admin/rotate-key', {
+      method: 'POST',
+      credentials: 'include',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!resp.ok || !resp.body) {
+      throw new Error(`HTTP ${resp.status}`)
+    }
+    const reader = resp.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      const lines = buf.split('\n')
+      buf = lines.pop() ?? ''
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try { onEvent(JSON.parse(line.slice(6))) } catch { /* skip malformed */ }
+        }
+      }
+    }
+  },
+}
+
+export interface AdminStats {
+  total_users: number
+  active_users_30d: number
+  total_grants: number
+  total_loans: number
+  total_prices: number
+  db_size_bytes: number
+  cpu_percent: number | null
+  ram_used_mb: number | null
+  ram_total_mb: number | null
+}
+
+export interface SystemMetricPoint {
+  timestamp: string
+  cpu_percent: number
+  ram_used_mb: number
+  ram_total_mb: number
+  db_size_bytes: number
+  error_log_count: number
+}
+
+export interface DbTableInfo {
+  table_name: string
+  size_bytes: number
+  row_estimate: number
+}
+
+export interface AdminUser {
+  id: number
+  email: string
+  name: string | null
+  is_admin: boolean
+  created_at: string
+  last_login: string | null
+  grant_count: number
+  loan_count: number
+  price_count: number
+}
+
+export interface AdminUserListResponse {
+  users: AdminUser[]
+  total: number
+}
+
+export interface BlockedEmailEntry {
+  id: number
+  email: string
+  reason: string | null
+  blocked_at: string
+}
+
+export interface ErrorLogEntry {
+  id: number
+  timestamp: string
+  method: string | null
+  path: string | null
+  error_type: string | null
+  error_message: string | null
+  traceback: string | null
+  user_id: number | null
+}
+
+export interface TestNotifyResult {
+  push_sent: number
+  push_failed: number
+  email_sent: boolean
+  email_skipped_reason?: string | null
+}
+
+export interface SaleEntry {
+  id: number
+  version: number
+  date: string
+  shares: number
+  price_per_share: number
+  notes: string
+  loan_id: number | null
+  // Per-sale tax rate overrides (null = use user TaxSettings)
+  federal_income_rate?: number | null
+  federal_lt_cg_rate?: number | null
+  federal_st_cg_rate?: number | null
+  niit_rate?: number | null
+  state_income_rate?: number | null
+  state_lt_cg_rate?: number | null
+  state_st_cg_rate?: number | null
+  lt_holding_days?: number | null
+}
+
+export interface LoanPaymentEntry {
+  id: number
+  version: number
+  loan_id: number
+  date: string
+  amount: number
+  notes: string
+}
+
+export interface LoanPayoffSuggestion {
+  date: string
+  shares: number
+  price_per_share: number
+  loan_id: number
+  notes: string
+  cash_due: number
+}
+
+export interface TaxSettings {
+  federal_income_rate: number
+  federal_lt_cg_rate: number
+  federal_st_cg_rate: number
+  niit_rate: number
+  state_income_rate: number
+  state_lt_cg_rate: number
+  state_st_cg_rate: number
+  lt_holding_days: number
+  lot_selection_method: 'fifo' | 'lifo' | 'same_tranche'
+  prefer_stock_dp: boolean
+  dp_min_percent: number
+  dp_min_cap: number
+}
+
+export interface HorizonSettings {
+  horizon_date: string | null
+}
+
+export interface LotSummary {
+  grant_year: number | null
+  grant_type: string | null
+  shares: number
+  lt_shares: number
+  st_shares: number
+}
+
+export interface RotationEvent {
+  step: 'snapshot' | 'maintenance' | 'rotating' | 'smoke' | 'persist' | 'done' | 'rollback' | 'error'
+  msg: string
+}
+
+export interface TaxBreakdown {
+  gross_proceeds: number
+  cost_basis: number
+  net_gain: number
+  lt_shares: number
+  lt_gain: number
+  lt_rate: number
+  lt_tax: number
+  st_shares: number
+  st_gain: number
+  st_rate: number
+  st_tax: number
+  unvested_shares: number
+  unvested_proceeds: number
+  unvested_rate: number
+  unvested_tax: number
+  estimated_tax: number
+  net_proceeds: number
+  lots: LotSummary[]
+}

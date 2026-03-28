@@ -24,6 +24,10 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    environment:
+      - DOMAIN              # passed from the app's .env when run from the app directory
+      - TRUSTED_PROXY_IPS   # Cloudflare IP ranges for real-IP forwarding
+      - ACME_EMAIL          # Let's Encrypt notification email
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro   # root config (imports conf.d)
       - caddy_config:/etc/caddy/conf.d         # per-app snippet files (written by deploy)
@@ -34,7 +38,7 @@ services:
 
 networks:
   proxy:
-    name: proxy
+    external: true   # created once via: docker network create proxy
 
 volumes:
   caddy_config:

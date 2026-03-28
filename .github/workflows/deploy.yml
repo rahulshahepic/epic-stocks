@@ -153,6 +153,9 @@ jobs:
             # Stop the app so its DB connections are fully released before migration
             docker compose stop app
 
+            # Ensure db is up and healthy before running migrations
+            docker compose up -d --wait --wait-timeout 60 db
+
             # Run migrations in isolation — full output visible in deploy log
             echo "Running database migrations..."
             docker compose run --rm --no-deps app \
@@ -161,6 +164,9 @@ jobs:
 
             # Start all services and wait for healthchecks to pass
             docker compose up -d --wait --wait-timeout 120
+
+            # Ensure shared infra Caddy is running (idempotent — no-op if already up)
+            docker compose -f infra/docker-compose.infra.yml up -d
 
             # Write this app's Caddy snippet to the shared caddy_config volume,
             # then reload the shared Caddy container.

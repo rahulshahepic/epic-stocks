@@ -87,6 +87,8 @@ def create_grant(body: GrantCreate, user: User = Depends(get_current_user), db: 
     db.add(grant)
     db.commit()
     db.refresh(grant)
+    from app.event_cache import schedule_recompute
+    schedule_recompute(user.id)
     return grant
 
 
@@ -117,6 +119,8 @@ def bulk_create_grants(items: list[GrantCreate], user: User = Depends(get_curren
     db.commit()
     for g in grants:
         db.refresh(g)
+    from app.event_cache import schedule_recompute
+    schedule_recompute(user.id)
     return grants
 
 
@@ -160,6 +164,8 @@ def update_grant(grant_id: int, body: GrantUpdate, user: User = Depends(get_curr
     grant.version = grant.version + 1
     db.commit()
     db.refresh(grant)
+    from app.event_cache import schedule_recompute
+    schedule_recompute(user.id)
     return grant
 
 
@@ -170,3 +176,5 @@ def delete_grant(grant_id: int, user: User = Depends(get_current_user), db: Sess
         raise HTTPException(status_code=404, detail="Grant not found")
     db.delete(grant)
     db.commit()
+    from app.event_cache import schedule_recompute
+    schedule_recompute(user.id)

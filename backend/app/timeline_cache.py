@@ -20,13 +20,24 @@ def _hash(grants: list, prices: list, loans: list, initial_price: float) -> str:
 
 
 def get_timeline(user_id: int, grants: list, prices: list, loans: list, initial_price: float) -> list:
+    from app import event_cache
+
     key = _hash(grants, prices, loans, initial_price)
+
+    # L1: in-process
     cached = _cache.get(user_id)
     if cached and cached[0] == key:
-        # Return shallow copies of each event dict so callers can append, sort, or
-        # mutate fields (e.g. cum_shares in _enrich_timeline) without corrupting the cache.
         return [{**e} for e in cached[1]]
+
+    # L2: Redis (no-op when Redis is not configured)
+    redis_result = event_cache.get(user_id, key)
+    if redis_result is not None:
+        _cache[user_id] = (key, redis_result)
+        return [{**e} for e in redis_result]
+
+    # Compute
     events = generate_all_events(grants, prices, loans)
     timeline = compute_timeline(events, initial_price)
     _cache[user_id] = (key, timeline)
+    event_cache.put(user_id, key, timeline)
     return [{**e} for e in timeline]

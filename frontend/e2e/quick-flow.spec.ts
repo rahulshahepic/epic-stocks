@@ -1,13 +1,11 @@
 import { test, expect } from '@playwright/test'
-import { getTestToken, loginAs, navigateTo, resetUserData } from './helpers'
+import { loginAs, navigateTo, resetUserData } from './helpers'
 
 test.describe('Quick flow: purchase grant + loan', () => {
-  let token: string
-
-  test.beforeEach(async ({ page, request }) => {
-    token = await getTestToken(request, `quickflow-${test.info().testId}@test.com`, 'QuickFlow User')
-    await resetUserData(request, token)
-    await loginAs(page, token)
+  test.beforeEach(async ({ page }) => {
+    const email = `quickflow-${test.info().testId}@test.com`
+    await loginAs(page, email, 'QuickFlow User')
+    await resetUserData(page)
   })
 
   test('add purchase grant with loan → verify tables → verify events', async ({ page }) => {

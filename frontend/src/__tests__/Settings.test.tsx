@@ -7,7 +7,6 @@ import { ThemeProvider } from '../scaffold/contexts/ThemeContext.tsx'
 import Settings from '../scaffold/pages/Settings.tsx'
 
 beforeEach(() => {
-  localStorage.setItem('auth_token', 'test-token')
   vi.restoreAllMocks()
   resetConfigCache()
 })
@@ -149,13 +148,22 @@ describe('Settings', () => {
     })
   })
 
-  it('sign out clears token', async () => {
-    mockFetch({
-      '/api/config': { vapid_public_key: '', email_notifications_available: false },
-      '/api/push/status': { subscribed: false, subscription_count: 0 },
+  it('sign out calls logout endpoint', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = typeof input === 'string' ? input : (input as Request).url
+      if (url.includes('/api/auth/logout')) {
+        return new Response('{}', { status: 200 })
+      }
+      if (url.includes('/api/config')) {
+        return new Response(JSON.stringify({ vapid_public_key: '', email_notifications_available: false }), { status: 200 })
+      }
+      return new Response('{}', { status: 200 })
     })
     renderPage()
     await userEvent.click(screen.getByText('Sign Out'))
-    expect(localStorage.getItem('auth_token')).toBeNull()
+    expect(spy).toHaveBeenCalledWith(
+      expect.stringContaining('/api/auth/logout'),
+      expect.objectContaining({ method: 'POST', credentials: 'include' })
+    )
   })
 })

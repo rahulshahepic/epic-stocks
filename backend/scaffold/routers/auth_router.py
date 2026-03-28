@@ -1,13 +1,12 @@
 import os
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
 from scaffold.models import User, BlockedEmail
-from schemas import AuthResponse
-from scaffold.auth import create_token, get_admin_emails
+from scaffold.auth import create_token, get_admin_emails, set_session_cookies, clear_session_cookies
 from scaffold.crypto import encryption_enabled, generate_user_key, encrypt_user_key
 import logging
 
@@ -90,9 +89,9 @@ class CallbackRequest(BaseModel):
     redirect_uri: str
 
 
-@router.post("/callback", response_model=AuthResponse)
-def auth_callback(body: CallbackRequest, db: Session = Depends(get_db)):
-    """Exchange PKCE authorization code for a JWT access token."""
+@router.post("/callback")
+def auth_callback(body: CallbackRequest, response: Response, db: Session = Depends(get_db)):
+    """Exchange PKCE authorization code for a JWT; set it as an HttpOnly session cookie."""
     from scaffold.providers.auth import get_provider
     from scaffold.providers.auth.base import UserIdentity
     try:
@@ -101,7 +100,16 @@ def auth_callback(body: CallbackRequest, db: Session = Depends(get_db)):
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
     user = _upsert_user(identity, db)
-    return AuthResponse(access_token=create_token(user.id))
+    token = create_token(user.id)
+    set_session_cookies(response, token)
+    return {"ok": True}
+
+
+@router.post("/logout")
+def logout(response: Response):
+    """Clear the session cookie."""
+    clear_session_cookies(response)
+    return {"ok": True}
 
 
 # E2E/test-only endpoint: creates or updates a user without going through any IdP.
@@ -111,8 +119,9 @@ if os.getenv("E2E_TEST") == "1":
         email: str
         name: str = "Test User"
 
-    @router.post("/test-login", response_model=AuthResponse)
-    def test_login(body: TestLoginRequest, db: Session = Depends(get_db)):
+    @router.post("/test-login")
+    def test_login(body: TestLoginRequest, response: Response, db: Session = Depends(get_db)):
+        """Create/update a user and set the session cookie. No Bearer token returned."""
         from scaffold.providers.auth.base import UserIdentity
         identity = UserIdentity(
             provider_sub=f"test-{body.email}",
@@ -122,4 +131,5 @@ if os.getenv("E2E_TEST") == "1":
             picture=None,
         )
         user = _upsert_user(identity, db)
-        return AuthResponse(access_token=create_token(user.id))
+        set_session_cookies(response, create_token(user.id))
+        return {"ok": True}

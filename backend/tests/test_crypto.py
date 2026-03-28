@@ -4,7 +4,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from unittest.mock import patch
-from tests.conftest import register_user, auth_header, TEST_ENGINE
+from tests.conftest import register_user, TEST_ENGINE
 
 from sqlalchemy import text
 
@@ -62,12 +62,12 @@ def test_encryption_enabled():
 
 def test_grant_data_encrypted_at_rest(client):
     """Verify that sensitive fields are stored as encrypted strings in the DB, not plaintext."""
-    token = register_user(client, "encrypt-test@example.com")
+    register_user(client, "encrypt-test@example.com")
     client.post("/api/grants", json={
         "year": 2020, "type": "Purchase", "shares": 10000, "price": 1.99,
         "vest_start": "2021-03-01", "periods": 5,
         "exercise_date": "2020-12-31", "dp_shares": -500,
-    }, headers=auth_header(token))
+    })
 
     # Read raw DB values bypassing ORM
     with TEST_ENGINE.connect() as conn:
@@ -84,12 +84,12 @@ def test_grant_data_encrypted_at_rest(client):
 
 
 def test_loan_data_encrypted_at_rest(client):
-    token = register_user(client, "loan-enc@example.com")
+    register_user(client, "loan-enc@example.com")
     client.post("/api/loans", json={
         "grant_year": 2020, "grant_type": "Purchase", "loan_type": "Purchase",
         "loan_year": 2020, "amount": 19900.0, "interest_rate": 3.5,
         "due_date": "2025-12-31", "loan_number": "SECRET-123",
-    }, headers=auth_header(token))
+    })
 
     with TEST_ENGINE.connect() as conn:
         row = conn.execute(text("SELECT amount, interest_rate, loan_number FROM loans LIMIT 1")).fetchone()
@@ -100,10 +100,10 @@ def test_loan_data_encrypted_at_rest(client):
 
 
 def test_price_data_encrypted_at_rest(client):
-    token = register_user(client, "price-enc@example.com")
+    register_user(client, "price-enc@example.com")
     client.post("/api/prices", json={
         "effective_date": "2020-12-31", "price": 1.99,
-    }, headers=auth_header(token))
+    })
 
     with TEST_ENGINE.connect() as conn:
         row = conn.execute(text("SELECT price FROM prices LIMIT 1")).fetchone()
@@ -113,7 +113,7 @@ def test_price_data_encrypted_at_rest(client):
 
 def test_user_has_encrypted_key(client):
     """New users get an encryption key when ENCRYPTION_MASTER_KEY is set."""
-    token = register_user(client, "key-test@example.com")
+    register_user(client, "key-test@example.com")
 
     with TEST_ENGINE.connect() as conn:
         row = conn.execute(text("SELECT encrypted_key FROM users LIMIT 1")).fetchone()
@@ -122,10 +122,11 @@ def test_user_has_encrypted_key(client):
     assert len(row[0]) > 20, "encrypted_key should be a substantial base64 string"
 
 
-def test_different_users_different_keys(client):
+def test_different_users_different_keys(client, make_client):
     """Each user gets a unique encryption key."""
     register_user(client, "user1@example.com")
-    register_user(client, "user2@example.com")
+    with make_client("user2@example.com"):
+        pass
 
     with TEST_ENGINE.connect() as conn:
         rows = conn.execute(text("SELECT encrypted_key FROM users ORDER BY id")).fetchall()
@@ -136,14 +137,14 @@ def test_different_users_different_keys(client):
 
 def test_api_returns_decrypted_values(client):
     """Verify the API transparently decrypts data for the authenticated user."""
-    token = register_user(client, "decrypt-api@example.com")
+    register_user(client, "decrypt-api@example.com")
     client.post("/api/grants", json={
         "year": 2020, "type": "Purchase", "shares": 10000, "price": 1.99,
         "vest_start": "2021-03-01", "periods": 5,
         "exercise_date": "2020-12-31", "dp_shares": -500,
-    }, headers=auth_header(token))
+    })
 
-    resp = client.get("/api/grants", headers=auth_header(token))
+    resp = client.get("/api/grants")
     grant = resp.json()[0]
     assert grant["shares"] == 10000
     assert grant["price"] == 1.99

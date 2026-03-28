@@ -1,0 +1,206 @@
+name: Deploy
+on:
+  push:
+    branches: [main, staging]
+  workflow_dispatch:
+jobs:
+  caddy-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate app.caddy snippet
+        run: |
+          # Wrap the per-app snippet in a minimal Caddyfile and validate it.
+          mkdir -p /tmp/caddy-validate/conf.d
+          cp caddy/app.caddy /tmp/caddy-validate/conf.d/epic-stocks.caddy
+          printf '{\n  auto_https off\n}\nimport /etc/caddy/conf.d/*.caddy\n' \
+            > /tmp/caddy-validate/Caddyfile
+          docker run --rm \
+            -v "/tmp/caddy-validate:/etc/caddy:ro" \
+            -e DOMAIN=localhost \
+            caddy:2 caddy validate --config /etc/caddy/Caddyfile
+
+  deploy:
+    needs: [caddy-validate]
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'production' || 'staging' }}
+    steps:
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ vars.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd ${{ vars.DEPLOY_PATH }}
+
+            # ── Shared Docker network (idempotent — no-op if already exists) ──
+            docker network create proxy 2>/dev/null || true
+
+            # ── Server-side secrets (generated once, persisted on disk) ──────
+            # All secrets live in .secrets/.  None are stored in GitHub.
+            # Hetzner server snapshots are the backup strategy.
+            SECRETS_DIR=${{ vars.DEPLOY_PATH }}/.secrets
+            mkdir -p "$SECRETS_DIR" && chmod 700 "$SECRETS_DIR"
+
+            seed_or_gen() {
+              local f="$SECRETS_DIR/$1" env_key="$2"
+              if [ ! -f "$f" ]; then
+                existing=""
+                [ -f ${{ vars.DEPLOY_PATH }}/.env ] && \
+                  existing=$(grep "^${env_key}=" ${{ vars.DEPLOY_PATH }}/.env | cut -d= -f2-)
+                if [ -n "$existing" ]; then
+                  printf '%s' "$existing" > "$f"
+                else
+                  openssl rand -hex 32 > "$f"
+                fi
+                chmod 600 "$f"
+              fi
+              cat "$f"
+            }
+
+            seed_or_migrate_vapid() {
+              local f="$SECRETS_DIR/$1" env_key="$2"
+              if [ ! -f "$f" ] && [ -f ${{ vars.DEPLOY_PATH }}/.env ]; then
+                existing=$(grep "^${env_key}=" ${{ vars.DEPLOY_PATH }}/.env | cut -d= -f2-)
+                [ -n "$existing" ] && { printf '%s' "$existing" > "$f"; chmod 600 "$f"; }
+              fi
+              [ -f "$f" ] && cat "$f" || echo ""
+            }
+
+            JWT_SECRET=$(seed_or_gen jwt_secret JWT_SECRET)
+            POSTGRES_PASSWORD=$(seed_or_gen postgres_password POSTGRES_PASSWORD)
+            VAPID_PRIVATE=$(seed_or_migrate_vapid vapid_private_key VAPID_PRIVATE_KEY)
+            VAPID_PUBLIC=$(seed_or_migrate_vapid vapid_public_key VAPID_PUBLIC_KEY)
+
+            # KEY_ENCRYPTION_KEY (KEK): wraps the operational master key stored in the DB.
+            # Must be identical on every host that shares the same database.
+            # Set this GitHub Secret once (generate with: openssl rand -hex 32).
+            # Never auto-generate on the server — silent per-server generation breaks
+            # multi-server and multi-replica deployments.
+            if [ -z "${{ secrets.KEY_ENCRYPTION_KEY }}" ]; then
+              echo "ERROR: KEY_ENCRYPTION_KEY GitHub Secret is not set." >&2
+              echo "Generate one with: openssl rand -hex 32" >&2
+              echo "Then add it to GitHub → Settings → Secrets → Actions." >&2
+              exit 1
+            fi
+            KEY_ENCRYPTION_KEY="${{ secrets.KEY_ENCRYPTION_KEY }}"
+            printf '%s' "$KEY_ENCRYPTION_KEY" > "$SECRETS_DIR/key_encryption_key"
+            chmod 600 "$SECRETS_DIR/key_encryption_key"
+
+            # LEGACY_MASTER_KEY: one-time migration aid.  On first boot after this deploy
+            # the app stores the existing master key encrypted by KEY_ENCRYPTION_KEY in the
+            # DB, then ignores LEGACY_MASTER_KEY on all subsequent boots.
+            # Reads from the old current_master_key file if it exists; falls back to the
+            # deprecated GitHub Secret; empty for new installs.
+            mkdir -p ./data
+            if [ -f ./data/current_master_key ]; then
+              LEGACY_MASTER_KEY=$(cat ./data/current_master_key)
+            elif [ -n "${{ secrets.ENCRYPTION_MASTER_KEY }}" ]; then
+              LEGACY_MASTER_KEY="${{ secrets.ENCRYPTION_MASTER_KEY }}"
+            else
+              LEGACY_MASTER_KEY=""
+            fi
+
+            write_env() {
+              cat > ${{ vars.DEPLOY_PATH }}/.env <<ENVEOF
+            JWT_SECRET=${JWT_SECRET}
+            OIDC_PROVIDERS=${{ secrets.OIDC_PROVIDERS }}
+            KEY_ENCRYPTION_KEY=${KEY_ENCRYPTION_KEY}
+            LEGACY_MASTER_KEY=${LEGACY_MASTER_KEY}
+            DOMAIN=${{ vars.DOMAIN }}
+            APP_URL=https://${{ vars.DOMAIN }}
+            ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
+            VAPID_PUBLIC_KEY=${VAPID_PUBLIC}
+            VAPID_PRIVATE_KEY=${VAPID_PRIVATE}
+            EMAIL_PROVIDER=${{ vars.EMAIL_PROVIDER || 'resend' }}
+            RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+            RESEND_FROM=${{ vars.RESEND_FROM }}
+            SMTP_HOST=${{ vars.SMTP_HOST }}
+            SMTP_PORT=${{ vars.SMTP_PORT || '587' }}
+            SMTP_USER=${{ vars.SMTP_USER }}
+            SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
+            SMTP_FROM=${{ vars.SMTP_FROM }}
+            POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+            TRUSTED_PROXY_IPS=${{ vars.TRUSTED_PROXY_IPS }}
+            EPIC_ONBOARDING_URL=${{ vars.EPIC_ONBOARDING_URL }}
+            ACME_EMAIL=${{ vars.ACME_EMAIL }}
+            COMMIT_SHA=${{ github.sha }}
+            KEY_ENCRYPTION_KEY=${KEY_ENCRYPTION_KEY}
+            LEGACY_MASTER_KEY=${LEGACY_MASTER_KEY}
+            ENVEOF
+              sed -i 's/^[[:space:]]*//' ${{ vars.DEPLOY_PATH }}/.env
+            }
+            write_env
+
+            # Ensure swapfile exists (idempotent)
+            if [ ! -f /swapfile ]; then
+              fallocate -l 2G /swapfile
+              chmod 600 /swapfile
+              mkswap /swapfile
+              swapon /swapfile
+              echo '/swapfile none swap sw 0 0' >> /etc/fstab
+              echo 'vm.swappiness=10' >> /etc/sysctl.conf
+              sysctl -w vm.swappiness=10
+            fi
+
+            git fetch origin ${{ github.ref_name }}
+            git reset --hard origin/${{ github.ref_name }}
+            docker compose build
+
+            # Generate VAPID keys if missing, using the built image.
+            if [ -z "$VAPID_PRIVATE" ] || [ -z "$VAPID_PUBLIC" ]; then
+              VAPID_KEYS=$(docker compose run --rm --no-deps app python3 -c "import base64; from cryptography.hazmat.primitives.asymmetric.ec import generate_private_key, SECP256R1; from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat; key = generate_private_key(SECP256R1()); priv = base64.urlsafe_b64encode(key.private_numbers().private_value.to_bytes(32, 'big')).decode().rstrip('='); pub = base64.urlsafe_b64encode(key.public_key().public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)).decode().rstrip('='); print(priv, pub)")
+              VAPID_PRIVATE=$(echo "$VAPID_KEYS" | awk '{print $1}')
+              VAPID_PUBLIC=$(echo "$VAPID_KEYS" | awk '{print $2}')
+              printf '%s' "$VAPID_PRIVATE" > "$SECRETS_DIR/vapid_private_key"
+              printf '%s' "$VAPID_PUBLIC" > "$SECRETS_DIR/vapid_public_key"
+              chmod 600 "$SECRETS_DIR/vapid_private_key" "$SECRETS_DIR/vapid_public_key"
+              write_env
+            fi
+
+            # ── Start/update shared infra Caddy ─────────────────────────────
+            # Force-recreate so env vars (DOMAIN, ACME_EMAIL, TRUSTED_PROXY_IPS)
+            # are always current. Certs are preserved in the caddy_data volume.
+            DOMAIN=$(grep "^DOMAIN=" .env | cut -d= -f2-)
+            ACME_EMAIL=$(grep "^ACME_EMAIL=" .env | cut -d= -f2-)
+            TRUSTED_PROXY_IPS=$(grep "^TRUSTED_PROXY_IPS=" .env | cut -d= -f2-)
+            # Stop existing Caddy first to release ports 80/443 before recreating.
+            DOMAIN=$DOMAIN ACME_EMAIL=$ACME_EMAIL TRUSTED_PROXY_IPS=$TRUSTED_PROXY_IPS \
+              docker compose -f infra/docker-compose.infra.yml down --remove-orphans || true
+            DOMAIN=$DOMAIN ACME_EMAIL=$ACME_EMAIL TRUSTED_PROXY_IPS=$TRUSTED_PROXY_IPS \
+              docker compose -f infra/docker-compose.infra.yml up -d --force-recreate
+
+            # ── Deploy app ───────────────────────────────────────────────────
+            # Full deploy downtime — Caddy serves the 503 page while app is down.
+            # Uses caddy_appdata volume (same one Caddy mounts at /appdata).
+            docker run --rm -v caddy_appdata:/appdata alpine \
+              sh -c 'mkdir -p /appdata/epic-stocks && touch /appdata/epic-stocks/full_maintenance'
+
+            # Stop app to release DB connections before migration
+            docker compose stop app
+
+            # Ensure db is up and healthy before running migrations
+            docker compose up -d --wait --wait-timeout 60 db
+
+            # Run migrations in isolation
+            echo "Running database migrations..."
+            docker compose run --rm --no-deps app \
+              python -m alembic -c /app/alembic.ini upgrade head
+            echo "Migrations complete."
+
+            # Start all services and wait for healthchecks to pass
+            docker compose up -d --wait --wait-timeout 120
+
+            # ── Update Caddy routing ─────────────────────────────────────────
+            # Write this app's snippet to the shared caddy_config volume and reload.
+            docker run --rm \
+              -v caddy_config:/conf \
+              -v "$(pwd)/caddy:/src:ro" \
+              alpine cp /src/app.caddy /conf/epic-stocks.caddy
+            docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+
+            # Restore full site
+            docker run --rm -v caddy_appdata:/appdata alpine \
+              rm -f /appdata/epic-stocks/full_maintenance

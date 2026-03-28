@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 
 from database import get_db
-from scaffold.models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, ErrorLog, EmailPreference, SystemMetric
+from scaffold.models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, ErrorLog, EmailPreference, SystemMetric, TaxSettings, HorizonSettings, LoanPayment, Sale
 from scaffold.auth import get_admin_user, get_admin_emails
 from scaffold.maintenance import is_maintenance_active, set_maintenance
 from scaffold.epic_mode import is_epic_mode, set_epic_mode
@@ -151,10 +151,15 @@ def admin_delete_user(user_id: int, admin: User = Depends(get_admin_user), db: S
     if user.email.lower() in get_admin_emails():
         raise HTTPException(status_code=400, detail="Cannot delete an admin user")
     # Delete related records first to avoid loading encrypted columns with wrong key
+    db.query(Sale).filter(Sale.user_id == user_id).delete()
+    db.query(LoanPayment).filter(LoanPayment.user_id == user_id).delete()
     db.query(Grant).filter(Grant.user_id == user_id).delete()
     db.query(Loan).filter(Loan.user_id == user_id).delete()
     db.query(Price).filter(Price.user_id == user_id).delete()
     db.query(PushSubscription).filter(PushSubscription.user_id == user_id).delete()
+    db.query(EmailPreference).filter(EmailPreference.user_id == user_id).delete()
+    db.query(TaxSettings).filter(TaxSettings.user_id == user_id).delete()
+    db.query(HorizonSettings).filter(HorizonSettings.user_id == user_id).delete()
     db.query(User).filter(User.id == user_id).delete()
     db.commit()
 

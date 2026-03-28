@@ -227,7 +227,6 @@ class EncryptionMiddleware:
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http" and encryption_enabled():
             headers = dict(scope.get("headers", []))
-            auth = headers.get(b"authorization", b"").decode()
             cookie_header = headers.get(b"cookie", b"").decode()
             db = database.SessionLocal()
             try:
@@ -239,8 +238,6 @@ class EncryptionMiddleware:
                     if k == "session":
                         token = v
                         break
-                if not token and auth.startswith("Bearer "):
-                    token = auth[7:]
                 if token:
                     self._try_set_key(token, db)
             finally:

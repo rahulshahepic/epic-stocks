@@ -1,24 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { getToken, setToken, clearToken, apiFetch } from '../api.ts'
+import { apiFetch, isLoggedIn } from '../api.ts'
 
-beforeEach(() => {
-  localStorage.clear()
-})
-
-describe('token management', () => {
-  it('returns null when no token stored', () => {
-    expect(getToken()).toBeNull()
+describe('isLoggedIn', () => {
+  it('returns false when no auth_hint cookie', () => {
+    Object.defineProperty(document, 'cookie', { value: '', configurable: true })
+    expect(isLoggedIn()).toBe(false)
   })
 
-  it('stores and retrieves a token', () => {
-    setToken('abc123')
-    expect(getToken()).toBe('abc123')
-  })
-
-  it('clears token', () => {
-    setToken('abc123')
-    clearToken()
-    expect(getToken()).toBeNull()
+  it('returns true when auth_hint cookie is present', () => {
+    Object.defineProperty(document, 'cookie', { value: 'auth_hint=1', configurable: true })
+    expect(isLoggedIn()).toBe(true)
   })
 })
 
@@ -27,8 +18,7 @@ describe('apiFetch', () => {
     vi.restoreAllMocks()
   })
 
-  it('sends auth header when token exists', async () => {
-    setToken('mytoken')
+  it('sends credentials: include', async () => {
     const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ ok: true }), { status: 200 })
     )
@@ -37,10 +27,10 @@ describe('apiFetch', () => {
 
     expect(spy).toHaveBeenCalledOnce()
     const [, init] = spy.mock.calls[0]
-    expect((init?.headers as Record<string, string>)['Authorization']).toBe('Bearer mytoken')
+    expect((init as RequestInit).credentials).toBe('include')
   })
 
-  it('does not send auth header when no token', async () => {
+  it('does not send Authorization header', async () => {
     const spy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ ok: true }), { status: 200 })
     )
@@ -48,7 +38,7 @@ describe('apiFetch', () => {
     await apiFetch('/api/test')
 
     const [, init] = spy.mock.calls[0]
-    expect((init?.headers as Record<string, string>)['Authorization']).toBeUndefined()
+    expect((init?.headers as Record<string, string> | undefined)?.['Authorization']).toBeUndefined()
   })
 
   it('returns parsed JSON', async () => {
@@ -69,22 +59,12 @@ describe('apiFetch', () => {
     expect(result).toBeUndefined()
   })
 
-  it('clears token and redirects on 401', async () => {
-    setToken('expired')
+  it('throws on 401', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response('Unauthorized', { status: 401 })
     )
 
-    // Mock window.location
-    const locationSpy = vi.spyOn(window, 'location', 'get').mockReturnValue({
-      ...window.location,
-      href: '',
-    })
-
     await expect(apiFetch('/api/test')).rejects.toThrow('Unauthorized')
-    expect(getToken()).toBeNull()
-
-    locationSpy.mockRestore()
   })
 
   it('throws on non-ok status', async () => {

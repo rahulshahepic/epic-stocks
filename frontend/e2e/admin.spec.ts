@@ -2,15 +2,22 @@
  * E2E tests for admin workflows: user list, delete user, block/unblock email.
  * Requires backend started with E2E_TEST=1 and ADMIN_EMAIL=admin@e2e.test.
  */
-import { test, expect } from '@playwright/test'
-import { getTestToken, loginAs, navigateTo } from './helpers'
+import { test, expect, request as playwrightRequest } from '@playwright/test'
+import { loginAs, navigateTo } from './helpers'
 
 const ADMIN_EMAIL = 'admin@e2e.test'
+const API_BASE = process.env.E2E_API_URL ?? process.env.E2E_BASE_URL ?? 'http://localhost:5173'
+
+/** Create a user without affecting the page's session (uses an isolated API context). */
+async function createUser(email: string, name: string) {
+  const ctx = await playwrightRequest.newContext()
+  await ctx.post(`${API_BASE}/api/auth/test-login`, { data: { email, name } })
+  await ctx.dispose()
+}
 
 test.describe('Admin workflows', () => {
-  test('admin sees user list and can search', async ({ page, request }) => {
-    await getTestToken(request, 'admin-search-target@e2e.test', 'Search Target')
-
+  test('admin sees user list and can search', async ({ page }) => {
+    await createUser('admin-search-target@e2e.test', 'Search Target')
     await loginAs(page, ADMIN_EMAIL, 'Admin User')
     await navigateTo(page, 'Admin')
 
@@ -26,9 +33,8 @@ test.describe('Admin workflows', () => {
     await expect(page.getByText('admin-search-target@e2e.test').first()).not.toBeVisible()
   })
 
-  test('admin can delete a non-admin user (two-click confirm)', async ({ page, request }) => {
-    await getTestToken(request, 'admin-delete-target@e2e.test', 'Delete Target')
-
+  test('admin can delete a non-admin user (two-click confirm)', async ({ page }) => {
+    await createUser('admin-delete-target@e2e.test', 'Delete Target')
     await loginAs(page, ADMIN_EMAIL, 'Admin User')
     await navigateTo(page, 'Admin')
 

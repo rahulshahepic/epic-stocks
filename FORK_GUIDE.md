@@ -7,12 +7,11 @@ When forking to build a different app, you replace only the `app/` layer — the
 
 ```
 backend/scaffold/          auth, crypto, email, push notifications, admin
-backend/providers/         auth + email provider implementations
+backend/scaffold/providers/  auth + email provider implementations
 frontend/src/scaffold/     Login, Admin, Settings pages; Layout, Toast; hooks
 infra/                     shared Caddy config for multi-app hosting
 caddy/                     Caddyfile (single-app) and app.caddy snippet (multi-app)
-docker-compose.yml         single-app deployment
-docker-compose.multiapp.yml  multi-app deployment
+docker-compose.yml         single-app deployment (always uses shared proxy network)
 .github/workflows/deploy.yml
 ```
 
@@ -50,20 +49,46 @@ frontend/src/app/
 6. **Update `backend/scaffold/models.py`** if you need new scaffold-level models (e.g., new per-user settings). For purely app-level models, add a `backend/app/models.py` and import it in `env.py`.
 
 7. **Set environment variables** — see `.env.example`. Required at minimum:
-   - `AUTH_PROVIDER`, auth provider credentials (Google or Azure)
+   - `OIDC_PROVIDERS` (GitHub Secret) — JSON array of OIDC provider configs
    - `POSTGRES_PASSWORD`, `JWT_SECRET` (auto-generated on first deploy)
    - `DOMAIN`, `APP_URL`
 
-8. **Configure GitHub Actions** — set vars/secrets as documented in `deploy.yml`. Choose `DEPLOY_MODE=single` (default) or `DEPLOY_MODE=multiapp`.
+8. **Configure GitHub Actions** — set vars/secrets as documented in `deploy.yml`.
 
 ## Auth providers
 
-| Provider | Env vars needed |
-|----------|----------------|
-| `google` (default) | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
-| `azure_entra` | `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` |
+Set `OIDC_PROVIDERS` as a GitHub Secret containing a JSON array. It supports any OIDC-compliant IdP (Google, Azure Entra ID, Okta, etc.). Multiple providers show as separate "Sign in with X" buttons on the login page. No frontend changes needed — the PKCE flow is provider-agnostic.
 
-Set `AUTH_PROVIDER=azure_entra` in GitHub vars to switch. No frontend changes needed — the PKCE flow is provider-agnostic.
+Each provider object fields:
+- `name` — internal identifier
+- `label` — text shown on the sign-in button
+- `client_id` — from your IdP app registration
+- `client_secret` — optional; omit for PKCE-only / native-app clients
+- `discovery_url` — OIDC `.well-known/openid-configuration` URL
+- `scopes` — optional; defaults to `["openid","email","profile"]`
+- `subject_claim` — optional; defaults to `"sub"`. Use `"oid"` for Azure Entra ID
+
+Register this redirect URI in your IdP: `https://yourdomain.com/auth/callback`
+
+Example with Google and Azure:
+```json
+[
+  {
+    "name": "google",
+    "label": "Google",
+    "client_id": "YOUR_ID.apps.googleusercontent.com",
+    "client_secret": "YOUR_SECRET",
+    "discovery_url": "https://accounts.google.com/.well-known/openid-configuration"
+  },
+  {
+    "name": "azure",
+    "label": "Contoso Azure AD",
+    "client_id": "YOUR_AZURE_CLIENT_ID",
+    "discovery_url": "https://login.microsoftonline.com/YOUR_TENANT_ID/v2.0/.well-known/openid-configuration",
+    "subject_claim": "oid"
+  }
+]
+```
 
 ## Email providers
 
@@ -76,16 +101,11 @@ Set `EMAIL_PROVIDER=smtp` to switch.
 
 ## Multi-app Caddy hosting
 
-To run multiple apps on one server with a shared Caddy:
+All deployments use a shared Caddy reverse proxy by default — there is no single-app mode. `docker-compose.yml` always joins the shared `proxy` Docker network. `infra/docker-compose.infra.yml` manages the shared Caddy instance.
 
-1. On the server, start the shared infra once:
-   ```bash
-   cd infra
-   docker compose -f docker-compose.infra.yml up -d
-   ```
+The deploy script handles everything automatically on every push to `main`:
+- Creates the `proxy` Docker network if it doesn't exist
+- Force-recreates the Caddy container from `infra/docker-compose.infra.yml` with current env vars (including `ACME_EMAIL` and `TRUSTED_PROXY_IPS`)
+- Each app writes a `caddy/app.caddy` snippet to the shared `caddy_config` volume and reloads Caddy
 
-2. For each app, set `DEPLOY_MODE=multiapp` in GitHub vars.
-
-3. Deploy normally — the deploy script will write `caddy/app.caddy` to the shared `caddy_config` volume and reload Caddy.
-
-The `caddy/app.caddy` snippet uses `{$DOMAIN}` from the environment and proxies to the `epic-stocks-app` container by name on the shared `proxy` network.
+No `DEPLOY_MODE` variable or manual SSH steps are needed. The `caddy/app.caddy` snippet uses `{$DOMAIN}` from the environment and proxies to the app container on the shared `proxy` network.

@@ -104,13 +104,6 @@ def admin_stats(admin: User = Depends(get_admin_user), db: Session = Depends(get
     )
 
 
-@router.get("/cache-stats")
-def admin_cache_stats(admin: User = Depends(get_admin_user)):
-    from app.timeline_cache import get_stats
-    from app import event_cache
-    return {**get_stats(), "redis": event_cache.redis_info()}
-
-
 class UserListResponse(BaseModel):
     users: list[UserSummary]
     total: int
@@ -245,6 +238,10 @@ class SystemMetricPoint(BaseModel):
     ram_total_mb: float
     db_size_bytes: int
     error_log_count: int
+    cache_l1_hits: int | None = None
+    cache_l2_hits: int | None = None
+    cache_misses: int | None = None
+    cache_l2_key_count: int | None = None
 
 
 @router.get("/metrics", response_model=list[SystemMetricPoint])
@@ -268,6 +265,10 @@ def admin_metrics(
             ram_total_mb=r.ram_total_mb,
             db_size_bytes=r.db_size_bytes,
             error_log_count=r.error_log_count,
+            cache_l1_hits=r.cache_l1_hits,
+            cache_l2_hits=r.cache_l2_hits,
+            cache_misses=r.cache_misses,
+            cache_l2_key_count=r.cache_l2_key_count,
         )
         for r in rows
     ]

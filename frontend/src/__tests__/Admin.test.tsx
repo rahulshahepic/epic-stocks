@@ -24,7 +24,6 @@ function mockFetch(responses: Record<string, unknown>) {
     if (url.includes('/api/admin/db-tables')) return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
     if (url.includes('/api/admin/errors')) return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
     if (url.includes('/api/admin/epic-mode')) return new Response(JSON.stringify({ active: false }), { status: 200, headers: { 'Content-Type': 'application/json' } })
-    if (url.includes('/api/admin/cache-stats')) return new Response(JSON.stringify(CACHE_STATS), { status: 200, headers: { 'Content-Type': 'application/json' } })
     return new Response('{}', { status: 200 })
   })
 }
@@ -50,11 +49,6 @@ const USERS = [
 
 const USERS_RESPONSE = { users: USERS, total: 2 }
 
-const CACHE_STATS = {
-  l1_hits: 101, l2_hits: 42, misses: 11, total: 154,
-  l1_hit_rate: 0.656, l2_hit_rate: 0.273, l1_entries: 6,
-  redis: { connected: true, timeline_keys: 6, total_keys: 6, used_memory_bytes: 1024000, used_memory_human: '1000.00K', maxmemory_bytes: 134217728, maxmemory_policy: 'allkeys-lru' },
-}
 
 const METRICS = [
   { timestamp: '2026-03-23T10:00:00', cpu_percent: 30.0, ram_used_mb: 1000.0, ram_total_mb: 8192.0, db_size_bytes: 8500000, error_log_count: 0 },
@@ -269,7 +263,6 @@ describe('Admin', () => {
       if (url.includes('/api/admin/stats')) return new Response(JSON.stringify(STATS), { status: 200, headers: { 'Content-Type': 'application/json' } })
       if (url.includes('/api/admin/users')) return new Response(JSON.stringify(USERS_RESPONSE), { status: 200, headers: { 'Content-Type': 'application/json' } })
       if (url.includes('/api/admin/blocked')) return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } })
-      if (url.includes('/api/admin/cache-stats')) return new Response(JSON.stringify(CACHE_STATS), { status: 200, headers: { 'Content-Type': 'application/json' } })
       return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
     })
     renderPage()

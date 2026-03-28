@@ -38,10 +38,9 @@ jobs:
             # ── Shared Docker network (idempotent — no-op if already exists) ──
             docker network create proxy 2>/dev/null || true
 
-            # ── Server-side secrets (generated once, persisted on disk) ────────
-            # JWT and Postgres password live in .secrets/.
-            # Encryption master key lives in ./data/current_master_key.
-            # VAPID keys live in .secrets/ and are generated after docker build.
+            # ── Server-side secrets (generated once, persisted on disk) ──────
+            # All secrets live in .secrets/.  None are stored in GitHub.
+            # Hetzner server snapshots are the backup strategy.
             SECRETS_DIR=${{ vars.DEPLOY_PATH }}/.secrets
             mkdir -p "$SECRETS_DIR" && chmod 700 "$SECRETS_DIR"
 
@@ -75,25 +74,41 @@ jobs:
             VAPID_PRIVATE=$(seed_or_migrate_vapid vapid_private_key VAPID_PRIVATE_KEY)
             VAPID_PUBLIC=$(seed_or_migrate_vapid vapid_public_key VAPID_PUBLIC_KEY)
 
-            # ── Encryption master key (must happen before write_env) ─────────
-            # Stored on disk only — never in GitHub. On first deploy, migrates
-            # from the ENCRYPTION_MASTER_KEY GitHub Secret if set, else generates.
-            mkdir -p ./data
-            if [ ! -f ./data/current_master_key ]; then
-              if [ -n "${{ secrets.ENCRYPTION_MASTER_KEY }}" ]; then
-                printf '%s' "${{ secrets.ENCRYPTION_MASTER_KEY }}" > ./data/current_master_key
-              else
-                openssl rand -hex 32 > ./data/current_master_key
-              fi
-              chmod 600 ./data/current_master_key
+            # KEY_ENCRYPTION_KEY (KEK): wraps the operational master key stored in the DB.
+            # Must be identical on every host that shares the same database.
+            # Set this GitHub Secret once (generate with: openssl rand -hex 32).
+            # Never auto-generate on the server — silent per-server generation breaks
+            # multi-server and multi-replica deployments.
+            if [ -z "${{ secrets.KEY_ENCRYPTION_KEY }}" ]; then
+              echo "ERROR: KEY_ENCRYPTION_KEY GitHub Secret is not set." >&2
+              echo "Generate one with: openssl rand -hex 32" >&2
+              echo "Then add it to GitHub → Settings → Secrets → Actions." >&2
+              exit 1
             fi
-            ENCRYPTION_MASTER_KEY=$(cat ./data/current_master_key)
+            KEY_ENCRYPTION_KEY="${{ secrets.KEY_ENCRYPTION_KEY }}"
+            printf '%s' "$KEY_ENCRYPTION_KEY" > "$SECRETS_DIR/key_encryption_key"
+            chmod 600 "$SECRETS_DIR/key_encryption_key"
+
+            # LEGACY_MASTER_KEY: one-time migration aid.  On first boot after this deploy
+            # the app stores the existing master key encrypted by KEY_ENCRYPTION_KEY in the
+            # DB, then ignores LEGACY_MASTER_KEY on all subsequent boots.
+            # Reads from the old current_master_key file if it exists; falls back to the
+            # deprecated GitHub Secret; empty for new installs.
+            mkdir -p ./data
+            if [ -f ./data/current_master_key ]; then
+              LEGACY_MASTER_KEY=$(cat ./data/current_master_key)
+            elif [ -n "${{ secrets.ENCRYPTION_MASTER_KEY }}" ]; then
+              LEGACY_MASTER_KEY="${{ secrets.ENCRYPTION_MASTER_KEY }}"
+            else
+              LEGACY_MASTER_KEY=""
+            fi
 
             write_env() {
               cat > ${{ vars.DEPLOY_PATH }}/.env <<ENVEOF
             JWT_SECRET=${JWT_SECRET}
             OIDC_PROVIDERS=${{ secrets.OIDC_PROVIDERS }}
-            ENCRYPTION_MASTER_KEY=${ENCRYPTION_MASTER_KEY}
+            KEY_ENCRYPTION_KEY=${KEY_ENCRYPTION_KEY}
+            LEGACY_MASTER_KEY=${LEGACY_MASTER_KEY}
             DOMAIN=${{ vars.DOMAIN }}
             APP_URL=https://${{ vars.DOMAIN }}
             ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
@@ -112,6 +127,8 @@ jobs:
             EPIC_ONBOARDING_URL=${{ vars.EPIC_ONBOARDING_URL }}
             ACME_EMAIL=${{ vars.ACME_EMAIL }}
             COMMIT_SHA=${{ github.sha }}
+            KEY_ENCRYPTION_KEY=${KEY_ENCRYPTION_KEY}
+            LEGACY_MASTER_KEY=${LEGACY_MASTER_KEY}
             ENVEOF
               sed -i 's/^[[:space:]]*//' ${{ vars.DEPLOY_PATH }}/.env
             }

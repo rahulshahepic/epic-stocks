@@ -172,7 +172,7 @@ The following are generated once on first deploy, written to `/opt/epic-stocks/.
 | `.secrets/postgres_password` | 32-byte hex string for the PostgreSQL superuser |
 | `.secrets/vapid_private_key` | P-256 EC private key for Web Push |
 | `.secrets/vapid_public_key` | Corresponding P-256 public key (served to browsers) |
-| `./data/current_master_key` | AES-256-GCM encryption master key (separate path — also updated by the key-rotation admin endpoint) |
+| `.secrets/key_encryption_key` | KEK that wraps the operational master key stored in the database. Set once, never changes in normal operations. The operational master key itself lives in the `system_settings` DB table and can be rotated live from the admin panel without touching this file. |
 
 On transition from a prior setup, the deploy script seeds `.secrets/` files from the existing `.env` before generating fresh values, so no data loss occurs.
 

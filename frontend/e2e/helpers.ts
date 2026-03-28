@@ -17,15 +17,13 @@ export async function getTestToken(request: APIRequestContext, email: string, na
 }
 
 /**
- * Log in as a user in the browser by POSTing to test-login via page.request,
- * which shares the browser context so the Set-Cookie response is applied.
+ * Log in as a user in the browser. Navigates to the test-login-redirect endpoint
+ * which sets the HttpOnly session cookie server-side and redirects to /.
  */
 export async function loginAs(page: Page, email: string, name = 'Test User') {
-  const resp = await page.request.post(`${API_BASE}/api/auth/test-login`, {
-    data: { email, name },
-  })
-  expect(resp.ok()).toBeTruthy()
-  await page.goto(BASE_URL)
+  const params = new URLSearchParams({ email, name })
+  await page.goto(`${BASE_URL}/api/auth/test-login-redirect?${params}`)
+  await page.waitForURL('**/')
   await page.waitForLoadState('networkidle')
 }
 

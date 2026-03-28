@@ -1,23 +1,18 @@
-import { type Page, type APIRequestContext, expect } from '@playwright/test'
+import { type Page, expect } from '@playwright/test'
 
 const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:5173'
 const API_BASE = process.env.E2E_API_URL ?? BASE_URL
 
-/** Register a test user via the E2E test-login endpoint, returns JWT token */
-export async function getTestToken(request: APIRequestContext, email: string, name = 'Test User'): Promise<string> {
-  const resp = await request.post(`${API_BASE}/api/auth/test-login`, {
+/**
+ * Log in as a user. POSTs to test-login via page.request, which shares the
+ * browser context so the Set-Cookie response sets the session cookie.
+ */
+export async function loginAs(page: Page, email: string, name = 'Test User') {
+  const resp = await page.request.post(`${API_BASE}/api/auth/test-login`, {
     data: { email, name },
   })
   expect(resp.ok()).toBeTruthy()
-  const body = await resp.json()
-  return body.access_token
-}
-
-/** Set auth token in localStorage and navigate to the app */
-export async function loginAs(page: Page, token: string) {
-  await page.goto('/')
-  await page.evaluate((t: string) => localStorage.setItem('auth_token', t), token)
-  await page.goto('/')
+  await page.goto(BASE_URL)
   await page.waitForLoadState('networkidle')
 }
 
@@ -27,9 +22,7 @@ export async function navigateTo(page: Page, label: string) {
   await page.waitForLoadState('networkidle')
 }
 
-/** Reset the current user's data (grants, loans, prices) via the API */
-export async function resetUserData(request: APIRequestContext, token: string) {
-  await request.post(`${API_BASE}/api/me/reset`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
+/** Reset the current user's data via the API (uses session cookie automatically) */
+export async function resetUserData(page: Page) {
+  await page.request.post(`${API_BASE}/api/me/reset`)
 }

@@ -1,17 +1,14 @@
 import { test, expect } from '@playwright/test'
-import { getTestToken, loginAs, navigateTo, resetUserData } from './helpers'
+import { loginAs, navigateTo, resetUserData } from './helpers'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 test.describe('Sales journey', () => {
-  let token: string
-
-  test.beforeEach(async ({ page, request }) => {
-    token = await getTestToken(request, 'sales@test.com', 'Sales User')
-    await resetUserData(request, token)
-    await loginAs(page, token)
+  test.beforeEach(async ({ page }) => {
+    await loginAs(page, 'sales@test.com', 'Sales User')
+    await resetUserData(page)
     // Import fixture data so there are vesting events to sell against
     // Uncheck "generate payoff sales" so the sales list starts empty
     await navigateTo(page, 'Import')
@@ -51,10 +48,9 @@ test.describe('Sales journey', () => {
     await expect(page.getByText('$2,500').first()).toBeVisible()
   })
 
-  test('tapping tax cell shows breakdown for existing sale', async ({ page, request }) => {
-    // Create a sale via API
-    const resp = await request.post('/api/sales', {
-      headers: { Authorization: `Bearer ${token}` },
+  test('tapping tax cell shows breakdown for existing sale', async ({ page }) => {
+    // Create a sale via API (session cookie is automatic via page.request)
+    const resp = await page.request.post('/api/sales', {
       data: { date: '2026-01-15', shares: 50, price_per_share: 20.0, notes: '' },
     })
     expect(resp.ok()).toBeTruthy()
@@ -70,10 +66,9 @@ test.describe('Sales journey', () => {
     await expect(page.getByText('Gross proceeds').first()).toBeVisible()
   })
 
-  test('edit and delete sale', async ({ page, request }) => {
-    // Create a sale
-    const resp = await request.post('/api/sales', {
-      headers: { Authorization: `Bearer ${token}` },
+  test('edit and delete sale', async ({ page }) => {
+    // Create a sale via API
+    const resp = await page.request.post('/api/sales', {
       data: { date: '2026-02-01', shares: 200, price_per_share: 30.0, notes: 'To delete' },
     })
     expect(resp.ok()).toBeTruthy()
@@ -102,18 +97,14 @@ test.describe('Sales journey', () => {
     // Tax column header should be visible
     await expect(page.getByText('Tax').first()).toBeVisible()
     // For vesting events with income/cap gains, orange tax amount should appear
-    // (The fixture has many vesting events)
     const taxCells = page.locator('span.text-orange-600, span.text-orange-400')
     await expect(taxCells.first()).toBeVisible({ timeout: 5000 })
   })
 })
 
 test.describe('Full user journey', () => {
-  let token: string
-
-  test.beforeEach(async ({ page, request }) => {
-    token = await getTestToken(request, 'journey@test.com', 'Journey User')
-    await loginAs(page, token)
+  test.beforeEach(async ({ page }) => {
+    await loginAs(page, 'journey@test.com', 'Journey User')
   })
 
   test('import xlsx → dashboard → events → add price → export', async ({ page }) => {

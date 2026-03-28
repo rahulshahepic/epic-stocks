@@ -3,7 +3,7 @@ import os
 from unittest.mock import patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from tests.conftest import register_user, auth_header
+from tests.conftest import register_user
 
 ADMIN_EMAIL = "admin@example.com"
 
@@ -14,8 +14,7 @@ def _admin_env():
 
 def _register_admin(client):
     """Register a user whose email matches ADMIN_EMAIL via the test-login endpoint."""
-    resp = client.post("/api/auth/test-login", json={"email": ADMIN_EMAIL})
-    return resp.json()["access_token"]
+    client.post("/api/auth/test-login", json={"email": ADMIN_EMAIL})
 
 
 # ============================================================
@@ -25,8 +24,8 @@ def _register_admin(client):
 def test_admin_requires_admin_email(client):
     """Non-admin user gets 403 on admin endpoints."""
     with _admin_env():
-        token = register_user(client, "regular@test.com")
-        resp = client.get("/api/admin/stats", headers=auth_header(token))
+        register_user(client, "regular@test.com")
+        resp = client.get("/api/admin/stats")
         assert resp.status_code == 403
         assert "Admin access required" in resp.json()["detail"]
 
@@ -34,8 +33,8 @@ def test_admin_requires_admin_email(client):
 def test_admin_no_admin_configured(client):
     """When ADMIN_EMAIL is not set, no user gets admin flag."""
     with patch.dict(os.environ, {"ADMIN_EMAIL": ""}):
-        token = register_user(client)
-        resp = client.get("/api/admin/stats", headers=auth_header(token))
+        register_user(client)
+        resp = client.get("/api/admin/stats")
         assert resp.status_code == 403
         assert "Admin access required" in resp.json()["detail"]
 
@@ -49,54 +48,53 @@ def test_admin_requires_auth(client):
 def test_admin_access_case_insensitive(client):
     """Admin email check is case-insensitive."""
     with patch.dict(os.environ, {"ADMIN_EMAIL": "ADMIN@EXAMPLE.COM"}):
-        token = _register_admin(client)
-        resp = client.get("/api/admin/stats", headers=auth_header(token))
+        _register_admin(client)
+        resp = client.get("/api/admin/stats")
         assert resp.status_code == 200
 
 
-def test_admin_multiple_emails(client):
+def test_admin_multiple_emails(client, make_client):
     """ADMIN_EMAIL supports semicolon-delimited list."""
     with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@example.com; other@admin.com"}):
-        token = _register_admin(client)
-        resp = client.get("/api/admin/stats", headers=auth_header(token))
+        _register_admin(client)
+        resp = client.get("/api/admin/stats")
         assert resp.status_code == 200
 
         # Second admin email also works
-        resp = client.post("/api/auth/test-login", json={"email": "other@admin.com"})
-        token2 = resp.json()["access_token"]
-        resp = client.get("/api/admin/stats", headers=auth_header(token2))
-        assert resp.status_code == 200
+        with make_client("other@admin.com") as client2:
+            resp = client2.get("/api/admin/stats")
+            assert resp.status_code == 200
 
 
-def test_admin_revoked_on_env_change(client):
+def test_admin_revoked_on_env_change(client, make_client):
     """Removing email from ADMIN_EMAIL revokes admin on next login."""
     with _admin_env():
-        token = client.post("/api/auth/test-login", json={"email": ADMIN_EMAIL}).json()["access_token"]
-        resp = client.get("/api/admin/stats", headers=auth_header(token))
+        _register_admin(client)
+        resp = client.get("/api/admin/stats")
         assert resp.status_code == 200
 
     # Re-login with admin removed from env — should lose admin on next login
     with patch.dict(os.environ, {"ADMIN_EMAIL": ""}):
-        token2 = client.post("/api/auth/test-login", json={"email": ADMIN_EMAIL}).json()["access_token"]
-        resp = client.get("/api/admin/stats", headers=auth_header(token2))
-        assert resp.status_code == 403
+        with make_client(ADMIN_EMAIL) as client2:
+            resp = client2.get("/api/admin/stats")
+            assert resp.status_code == 403
 
 
 # ============================================================
 # ADMIN STATS
 # ============================================================
 
-def test_admin_stats(client):
+def test_admin_stats(client, make_client):
     with _admin_env():
-        admin_token = _register_admin(client)
+        _register_admin(client)
         # Create a regular user with some data
-        user_token = register_user(client, "user@test.com")
-        client.post("/api/grants", json={
-            "year": 2020, "type": "Purchase", "shares": 1000, "price": 2.0,
-            "vest_start": "2021-01-01", "periods": 3, "exercise_date": "2020-12-31", "dp_shares": 0,
-        }, headers=auth_header(user_token))
+        with make_client("user@test.com") as client_user:
+            client_user.post("/api/grants", json={
+                "year": 2020, "type": "Purchase", "shares": 1000, "price": 2.0,
+                "vest_start": "2021-01-01", "periods": 3, "exercise_date": "2020-12-31", "dp_shares": 0,
+            })
 
-        resp = client.get("/api/admin/stats", headers=auth_header(admin_token))
+        resp = client.get("/api/admin/stats")
         assert resp.status_code == 200
         data = resp.json()
         assert data["total_users"] == 2
@@ -107,13 +105,15 @@ def test_admin_stats(client):
 # ADMIN USER LIST
 # ============================================================
 
-def test_admin_user_list(client):
+def test_admin_user_list(client, make_client):
     with _admin_env():
-        admin_token = _register_admin(client)
-        register_user(client, "alice@test.com")
-        register_user(client, "bob@test.com")
+        _register_admin(client)
+        with make_client("alice@test.com"):
+            pass
+        with make_client("bob@test.com"):
+            pass
 
-        resp = client.get("/api/admin/users", headers=auth_header(admin_token))
+        resp = client.get("/api/admin/users")
         assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 3  # admin + alice + bob
@@ -122,19 +122,19 @@ def test_admin_user_list(client):
         assert "bob@test.com" in emails
 
 
-def test_admin_user_list_shows_counts(client):
+def test_admin_user_list_shows_counts(client, make_client):
     with _admin_env():
-        admin_token = _register_admin(client)
-        user_token = register_user(client, "user@test.com")
-        client.post("/api/grants", json={
-            "year": 2020, "type": "Purchase", "shares": 1000, "price": 2.0,
-            "vest_start": "2021-01-01", "periods": 3, "exercise_date": "2020-12-31", "dp_shares": 0,
-        }, headers=auth_header(user_token))
-        client.post("/api/prices", json={
-            "effective_date": "2021-01-01", "price": 3.0,
-        }, headers=auth_header(user_token))
+        _register_admin(client)
+        with make_client("user@test.com") as client_user:
+            client_user.post("/api/grants", json={
+                "year": 2020, "type": "Purchase", "shares": 1000, "price": 2.0,
+                "vest_start": "2021-01-01", "periods": 3, "exercise_date": "2020-12-31", "dp_shares": 0,
+            })
+            client_user.post("/api/prices", json={
+                "effective_date": "2021-01-01", "price": 3.0,
+            })
 
-        resp = client.get("/api/admin/users", headers=auth_header(admin_token))
+        resp = client.get("/api/admin/users")
         users = resp.json()["users"]
         user_entry = next(u for u in users if u["email"] == "user@test.com")
         assert user_entry["grant_count"] == 1
@@ -144,8 +144,8 @@ def test_admin_user_list_shows_counts(client):
 def test_admin_user_list_no_financial_data(client):
     """User list should NOT expose financial data — only counts."""
     with _admin_env():
-        admin_token = _register_admin(client)
-        resp = client.get("/api/admin/users", headers=auth_header(admin_token))
+        _register_admin(client)
+        resp = client.get("/api/admin/users")
         users = resp.json()["users"]
         for u in users:
             assert "shares" not in u
@@ -157,74 +157,77 @@ def test_admin_user_list_no_financial_data(client):
 # DELETE USER
 # ============================================================
 
-def test_admin_delete_user(client):
+def test_admin_delete_user(client, make_client):
     with _admin_env():
-        admin_token = _register_admin(client)
-        user_token = register_user(client, "delete-me@test.com")
+        _register_admin(client)
+        with make_client("delete-me@test.com"):
+            pass
         # Get user id
-        resp = client.get("/api/admin/users", headers=auth_header(admin_token))
+        resp = client.get("/api/admin/users")
         user_entry = next(u for u in resp.json()["users"] if u["email"] == "delete-me@test.com")
 
-        resp = client.delete(f"/api/admin/users/{user_entry['id']}", headers=auth_header(admin_token))
+        resp = client.delete(f"/api/admin/users/{user_entry['id']}")
         assert resp.status_code == 204
 
         # Verify user is gone
-        resp = client.get("/api/admin/users", headers=auth_header(admin_token))
+        resp = client.get("/api/admin/users")
         emails = {u["email"] for u in resp.json()["users"]}
         assert "delete-me@test.com" not in emails
 
 
 def test_admin_cannot_delete_self(client):
     with _admin_env():
-        admin_token = _register_admin(client)
-        resp = client.get("/api/me", headers=auth_header(admin_token))
+        _register_admin(client)
+        resp = client.get("/api/me")
         admin_id = resp.json()["id"]
 
-        resp = client.delete(f"/api/admin/users/{admin_id}", headers=auth_header(admin_token))
+        resp = client.delete(f"/api/admin/users/{admin_id}")
         assert resp.status_code == 400
         assert "Cannot delete yourself" in resp.json()["detail"]
 
 
-def test_admin_delete_cascades(client):
+def test_admin_delete_cascades(client, make_client):
     """Deleting a user removes their grants, loans, prices too."""
     with _admin_env():
-        admin_token = _register_admin(client)
-        user_token = register_user(client, "cascade@test.com")
-        client.post("/api/grants", json={
-            "year": 2020, "type": "Purchase", "shares": 1000, "price": 2.0,
-            "vest_start": "2021-01-01", "periods": 3, "exercise_date": "2020-12-31", "dp_shares": 0,
-        }, headers=auth_header(user_token))
+        _register_admin(client)
+        with make_client("cascade@test.com") as client_user:
+            client_user.post("/api/grants", json={
+                "year": 2020, "type": "Purchase", "shares": 1000, "price": 2.0,
+                "vest_start": "2021-01-01", "periods": 3, "exercise_date": "2020-12-31", "dp_shares": 0,
+            })
 
-        resp = client.get("/api/admin/users", headers=auth_header(admin_token))
+        resp = client.get("/api/admin/users")
         user_entry = next(u for u in resp.json()["users"] if u["email"] == "cascade@test.com")
-        client.delete(f"/api/admin/users/{user_entry['id']}", headers=auth_header(admin_token))
+        client.delete(f"/api/admin/users/{user_entry['id']}")
 
         # Stats should show 0 grants now (only admin user left, with no data)
-        resp = client.get("/api/admin/stats", headers=auth_header(admin_token))
+        resp = client.get("/api/admin/stats")
         assert resp.json()["total_grants"] == 0
 
 
-def test_admin_cannot_delete_admin_user(client):
+def test_admin_cannot_delete_admin_user(client, make_client):
     """Admins cannot delete other admin users."""
     with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@example.com;admin2@example.com"}):
-        admin_token = _register_admin(client)
+        _register_admin(client)
         # Register second admin
-        client.post("/api/auth/test-login", json={"email": "admin2@example.com"})
-        resp = client.get("/api/admin/users", headers=auth_header(admin_token))
+        with make_client("admin2@example.com"):
+            pass
+        resp = client.get("/api/admin/users")
         admin2 = next(u for u in resp.json()["users"] if u["email"] == "admin2@example.com")
 
-        resp = client.delete(f"/api/admin/users/{admin2['id']}", headers=auth_header(admin_token))
+        resp = client.delete(f"/api/admin/users/{admin2['id']}")
         assert resp.status_code == 400
         assert "Cannot delete an admin" in resp.json()["detail"]
 
 
-def test_admin_user_list_includes_is_admin(client):
+def test_admin_user_list_includes_is_admin(client, make_client):
     """User list includes is_admin flag."""
     with _admin_env():
-        admin_token = _register_admin(client)
-        register_user(client, "regular@test.com")
+        _register_admin(client)
+        with make_client("regular@test.com"):
+            pass
 
-        resp = client.get("/api/admin/users", headers=auth_header(admin_token))
+        resp = client.get("/api/admin/users")
         users = resp.json()["users"]
         admin_entry = next(u for u in users if u["email"] == ADMIN_EMAIL)
         assert admin_entry["is_admin"] is True
@@ -232,45 +235,50 @@ def test_admin_user_list_includes_is_admin(client):
         assert regular["is_admin"] is False
 
 
-def test_admin_user_search(client):
+def test_admin_user_search(client, make_client):
     """User list supports search by email."""
     with _admin_env():
-        admin_token = _register_admin(client)
-        register_user(client, "alice@test.com")
-        register_user(client, "bob@test.com")
+        _register_admin(client)
+        with make_client("alice@test.com"):
+            pass
+        with make_client("bob@test.com"):
+            pass
 
-        resp = client.get("/api/admin/users?q=alice", headers=auth_header(admin_token))
+        resp = client.get("/api/admin/users?q=alice")
         data = resp.json()
         assert data["total"] == 1
         assert data["users"][0]["email"] == "alice@test.com"
 
 
-def test_admin_user_pagination(client):
+def test_admin_user_pagination(client, make_client):
     """User list supports limit and offset."""
     with _admin_env():
-        admin_token = _register_admin(client)
+        _register_admin(client)
         for i in range(5):
-            register_user(client, f"user{i}@test.com")
+            with make_client(f"user{i}@test.com"):
+                pass
 
-        resp = client.get("/api/admin/users?limit=2&offset=0", headers=auth_header(admin_token))
+        resp = client.get("/api/admin/users?limit=2&offset=0")
         data = resp.json()
         assert data["total"] == 6  # admin + 5 users
         assert len(data["users"]) == 2
 
-        resp = client.get("/api/admin/users?limit=2&offset=4", headers=auth_header(admin_token))
+        resp = client.get("/api/admin/users?limit=2&offset=4")
         data = resp.json()
         assert len(data["users"]) == 2  # last 2
 
 
-def test_admin_user_sorted_by_last_login(client):
+def test_admin_user_sorted_by_last_login(client, make_client):
     """User list is sorted by last_login descending."""
     with _admin_env():
-        admin_token = _register_admin(client)
-        register_user(client, "old@test.com")
-        register_user(client, "new@test.com")
+        _register_admin(client)
+        with make_client("old@test.com"):
+            pass
+        with make_client("new@test.com"):
+            pass
 
         # All users logged in during registration; admin was first, so new@test.com is most recent
-        resp = client.get("/api/admin/users?limit=100", headers=auth_header(admin_token))
+        resp = client.get("/api/admin/users?limit=100")
         users = resp.json()["users"]
         # First user should have the most recent last_login
         logins = [u["last_login"] for u in users if u["last_login"]]
@@ -283,20 +291,20 @@ def test_admin_user_sorted_by_last_login(client):
 
 def test_block_email(client):
     with _admin_env():
-        admin_token = _register_admin(client)
+        _register_admin(client)
         resp = client.post("/api/admin/blocked", json={
             "email": "bad@evil.com", "reason": "Spam account",
-        }, headers=auth_header(admin_token))
+        })
         assert resp.status_code == 201
         assert resp.json()["email"] == "bad@evil.com"
 
 
 def test_blocked_email_prevents_login(client):
     with _admin_env():
-        admin_token = _register_admin(client)
+        _register_admin(client)
         client.post("/api/admin/blocked", json={
             "email": "blocked@test.com", "reason": "Testing",
-        }, headers=auth_header(admin_token))
+        })
 
         # Attempt login with blocked email
         resp = client.post("/api/auth/test-login", json={"email": "blocked@test.com"})
@@ -306,22 +314,22 @@ def test_blocked_email_prevents_login(client):
 
 def test_list_blocked(client):
     with _admin_env():
-        admin_token = _register_admin(client)
-        client.post("/api/admin/blocked", json={"email": "a@test.com"}, headers=auth_header(admin_token))
-        client.post("/api/admin/blocked", json={"email": "b@test.com"}, headers=auth_header(admin_token))
+        _register_admin(client)
+        client.post("/api/admin/blocked", json={"email": "a@test.com"})
+        client.post("/api/admin/blocked", json={"email": "b@test.com"})
 
-        resp = client.get("/api/admin/blocked", headers=auth_header(admin_token))
+        resp = client.get("/api/admin/blocked")
         assert resp.status_code == 200
         assert len(resp.json()) == 2
 
 
 def test_unblock_email(client):
     with _admin_env():
-        admin_token = _register_admin(client)
-        resp = client.post("/api/admin/blocked", json={"email": "unblock@test.com"}, headers=auth_header(admin_token))
+        _register_admin(client)
+        resp = client.post("/api/admin/blocked", json={"email": "unblock@test.com"})
         block_id = resp.json()["id"]
 
-        resp = client.delete(f"/api/admin/blocked/{block_id}", headers=auth_header(admin_token))
+        resp = client.delete(f"/api/admin/blocked/{block_id}")
         assert resp.status_code == 204
 
         # Should be able to login now
@@ -331,16 +339,16 @@ def test_unblock_email(client):
 
 def test_block_duplicate_email(client):
     with _admin_env():
-        admin_token = _register_admin(client)
-        client.post("/api/admin/blocked", json={"email": "dup@test.com"}, headers=auth_header(admin_token))
-        resp = client.post("/api/admin/blocked", json={"email": "dup@test.com"}, headers=auth_header(admin_token))
+        _register_admin(client)
+        client.post("/api/admin/blocked", json={"email": "dup@test.com"})
+        resp = client.post("/api/admin/blocked", json={"email": "dup@test.com"})
         assert resp.status_code == 409
 
 
 def test_block_normalizes_email(client):
     with _admin_env():
-        admin_token = _register_admin(client)
-        client.post("/api/admin/blocked", json={"email": "UPPER@TEST.COM"}, headers=auth_header(admin_token))
+        _register_admin(client)
+        client.post("/api/admin/blocked", json={"email": "UPPER@TEST.COM"})
 
         resp = client.post("/api/auth/test-login", json={"email": "upper@test.com"})
         assert resp.status_code == 403
@@ -352,8 +360,8 @@ def test_block_normalizes_email(client):
 
 def test_me_non_admin(client):
     with _admin_env():
-        token = register_user(client, "regular@test.com")
-        resp = client.get("/api/me", headers=auth_header(token))
+        register_user(client, "regular@test.com")
+        resp = client.get("/api/me")
         assert resp.status_code == 200
         data = resp.json()
         assert data["email"] == "regular@test.com"
@@ -362,8 +370,8 @@ def test_me_non_admin(client):
 
 def test_me_admin(client):
     with _admin_env():
-        token = _register_admin(client)
-        resp = client.get("/api/me", headers=auth_header(token))
+        _register_admin(client)
+        resp = client.get("/api/me")
         assert resp.status_code == 200
         assert resp.json()["is_admin"] is True
 
@@ -372,12 +380,13 @@ def test_me_admin(client):
 # LAST LOGIN
 # ============================================================
 
-def test_last_login_set_on_login(client):
+def test_last_login_set_on_login(client, make_client):
     with _admin_env():
-        admin_token = _register_admin(client)
-        register_user(client, "user@test.com")
+        _register_admin(client)
+        with make_client("user@test.com"):
+            pass
 
-        resp = client.get("/api/admin/users", headers=auth_header(admin_token))
+        resp = client.get("/api/admin/users")
         for u in resp.json()["users"]:
             assert u["last_login"] is not None
 
@@ -409,8 +418,8 @@ def test_test_login_sets_admin_flag(client, db_session):
         assert user.is_admin
         assert user.last_login is not None
 
-        token = create_token(user.id)
-        resp = client.get("/api/me", headers=auth_header(token))
+        client.post("/api/auth/test-login", json={"email": email})
+        resp = client.get("/api/me")
         assert resp.status_code == 200
         assert resp.json()["is_admin"] is True
 
@@ -436,8 +445,8 @@ def test_test_login_non_admin_flag(client, db_session):
 
         assert not user.is_admin
 
-        token = create_token(user.id)
-        resp = client.get("/api/me", headers=auth_header(token))
+        client.post("/api/auth/test-login", json={"email": email})
+        resp = client.get("/api/me")
         assert resp.status_code == 200
         assert resp.json()["is_admin"] is False
 
@@ -446,19 +455,15 @@ def test_test_login_non_admin_flag(client, db_session):
 # TEST NOTIFY
 # ============================================================
 
-def test_admin_test_notify_push(client, db_session):
+def test_admin_test_notify_push(client, db_session, make_client):
     """Admin can send a test push notification to a user."""
     from unittest.mock import MagicMock, patch as upatch
     from scaffold.models import PushSubscription
 
     with _admin_env():
-        admin_token = _register_admin(client)
-        target_token = register_user(client, "target@test.com")
-
-        # Give target user a push subscription
-        from scaffold.auth import get_current_user as _gcu
-        resp = client.get("/api/me", headers=auth_header(target_token))
-        target_id = resp.json()["id"]
+        _register_admin(client)
+        with make_client("target@test.com") as client_target:
+            target_id = client_target.get("/api/me").json()["id"]
 
         sub = PushSubscription(
             user_id=target_id,
@@ -473,7 +478,6 @@ def test_admin_test_notify_push(client, db_session):
             resp = client.post(
                 "/api/admin/test-notify",
                 json={"user_id": target_id, "title": "Hello", "body": "World"},
-                headers=auth_header(admin_token),
             )
         assert resp.status_code == 200
         data = resp.json()
@@ -483,16 +487,15 @@ def test_admin_test_notify_push(client, db_session):
         mock_push.assert_called_once()
 
 
-def test_admin_test_notify_expired_sub_deleted(client, db_session):
+def test_admin_test_notify_expired_sub_deleted(client, db_session, make_client):
     """Expired push subscription (send_push returns False) is deleted."""
     from unittest.mock import patch as upatch
     from scaffold.models import PushSubscription
 
     with _admin_env():
-        admin_token = _register_admin(client)
-        target_token = register_user(client, "expired@test.com")
-        resp = client.get("/api/me", headers=auth_header(target_token))
-        target_id = resp.json()["id"]
+        _register_admin(client)
+        with make_client("expired@test.com") as client_target:
+            target_id = client_target.get("/api/me").json()["id"]
 
         sub = PushSubscription(
             user_id=target_id,
@@ -507,7 +510,6 @@ def test_admin_test_notify_expired_sub_deleted(client, db_session):
             resp = client.post(
                 "/api/admin/test-notify",
                 json={"user_id": target_id, "title": "Hi", "body": "Test"},
-                headers=auth_header(admin_token),
             )
         assert resp.status_code == 200
         data = resp.json()
@@ -524,11 +526,10 @@ def test_admin_test_notify_expired_sub_deleted(client, db_session):
 def test_admin_test_notify_user_not_found(client):
     """Returns 404 for unknown user_id."""
     with _admin_env():
-        admin_token = _register_admin(client)
+        _register_admin(client)
         resp = client.post(
             "/api/admin/test-notify",
             json={"user_id": 999999, "title": "Hi", "body": "Test"},
-            headers=auth_header(admin_token),
         )
         assert resp.status_code == 404
 
@@ -536,27 +537,24 @@ def test_admin_test_notify_user_not_found(client):
 def test_admin_test_notify_non_admin_forbidden(client):
     """Non-admin cannot use test-notify endpoint."""
     with _admin_env():
-        token = register_user(client, "notadmin@test.com")
+        register_user(client, "notadmin@test.com")
         resp = client.post(
             "/api/admin/test-notify",
             json={"user_id": 1, "title": "Hi", "body": "Test"},
-            headers=auth_header(token),
         )
         assert resp.status_code == 403
 
 
-def test_admin_test_notify_no_subscriptions(client):
+def test_admin_test_notify_no_subscriptions(client, make_client):
     """User with no push subscriptions returns push_sent=0, no error."""
     with _admin_env():
-        admin_token = _register_admin(client)
-        target_token = register_user(client, "nosub@test.com")
-        resp = client.get("/api/me", headers=auth_header(target_token))
-        target_id = resp.json()["id"]
+        _register_admin(client)
+        with make_client("nosub@test.com") as client_target:
+            target_id = client_target.get("/api/me").json()["id"]
 
         resp = client.post(
             "/api/admin/test-notify",
             json={"user_id": target_id, "title": "Hi", "body": "Test"},
-            headers=auth_header(admin_token),
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -565,22 +563,21 @@ def test_admin_test_notify_no_subscriptions(client):
         assert data["email_sent"] is False
 
 
-def test_admin_test_notify_rate_limited(client):
+def test_admin_test_notify_rate_limited(client, make_client):
     """test-notify is rate-limited to 5 per hour per admin."""
     from scaffold.routers import admin as admin_router
     # Clear the in-memory counter before test
     admin_router._test_notify_counts.clear()
 
     with _admin_env():
-        admin_token = _register_admin(client)
-        target_token = register_user(client, "ratelimit@test.com")
-        target_id = client.get("/api/me", headers=auth_header(target_token)).json()["id"]
+        _register_admin(client)
+        with make_client("ratelimit@test.com") as client_target:
+            target_id = client_target.get("/api/me").json()["id"]
 
         for i in range(5):
             resp = client.post(
                 "/api/admin/test-notify",
                 json={"user_id": target_id, "title": "Hi", "body": "Test"},
-                headers=auth_header(admin_token),
             )
             assert resp.status_code == 200, f"Call {i+1} failed unexpectedly"
 
@@ -588,7 +585,6 @@ def test_admin_test_notify_rate_limited(client):
         resp = client.post(
             "/api/admin/test-notify",
             json={"user_id": target_id, "title": "Hi", "body": "Test"},
-            headers=auth_header(admin_token),
         )
         assert resp.status_code == 429
         assert "Rate limit" in resp.json()["detail"]

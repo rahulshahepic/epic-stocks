@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { setToken } from '../../api.ts'
 import { api } from '../../api.ts'
 
 export default function AuthCallback() {
@@ -45,8 +44,9 @@ export default function AuthCallback() {
     const redirectUri = window.location.origin + '/auth/callback'
 
     api.exchangeCode(provider, code, verifier, redirectUri)
-      .then(({ access_token }) => {
-        setToken(access_token)
+      .then(() => {
+        // The backend sets the HttpOnly session cookie in the response.
+        // No need to store anything client-side.
         navigate('/', { replace: true })
       })
       .catch(e => {

@@ -1,11 +1,11 @@
 /**
  * Capture README screenshots. Run via: ./screenshots/run.sh
- * Skipped unless SCREENSHOT_TOKEN is set.
+ * Skipped unless SCREENSHOT_EMAIL is set (requires backend running with E2E_TEST=1).
  */
 import { test, type Page } from '@playwright/test'
 
 const BASE = process.env.SCREENSHOT_BASE_URL ?? 'http://localhost:5173'
-const TOKEN = process.env.SCREENSHOT_TOKEN ?? ''
+const EMAIL = process.env.SCREENSHOT_EMAIL ?? ''
 const OUT = '../screenshots'
 
 const MOBILE = { width: 375, height: 812 }
@@ -14,8 +14,8 @@ const DESKTOP = { width: 1280, height: 800 }
 async function authedPage(page: Page, viewport: { width: number; height: number }, scheme: 'light' | 'dark') {
   await page.emulateMedia({ colorScheme: scheme })
   await page.setViewportSize(viewport)
-  await page.goto(BASE)
-  await page.evaluate((t: string) => localStorage.setItem('auth_token', t), TOKEN)
+  // Log in via test-login — sets the session cookie on the browser context.
+  await page.request.post(`${BASE}/api/auth/test-login`, { data: { email: EMAIL, name: 'Screenshot User' } })
   await page.goto(BASE)
   await page.waitForLoadState('networkidle')
   await page.waitForTimeout(1500)
@@ -23,7 +23,7 @@ async function authedPage(page: Page, viewport: { width: number; height: number 
 
 test.describe('Screenshots', () => {
   test.beforeEach(() => {
-    test.skip(!TOKEN, 'Set SCREENSHOT_TOKEN env var to run screenshot tests')
+    test.skip(!EMAIL, 'Set SCREENSHOT_EMAIL env var to run screenshot tests')
   })
 
   test('dashboard - light - mobile', async ({ page }) => {

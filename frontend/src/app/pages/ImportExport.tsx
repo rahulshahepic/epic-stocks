@@ -1,5 +1,4 @@
 import { useState, useRef } from 'react'
-import { getToken } from '../../api.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 
 const COLUMN_GUIDE = {
@@ -88,7 +87,7 @@ export default function ImportExport() {
       form.append('file', selectedFile)
       const resp = await fetch(`/api/import/excel?generate_payoff_sales=${generatePayoffSales}`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${getToken()}` },
+        credentials: 'include',
         body: form,
       })
       if (!resp.ok) {
@@ -111,9 +110,7 @@ export default function ImportExport() {
     setStatus('exporting')
     setError('')
     try {
-      const resp = await fetch('/api/export/excel', {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      })
+      const resp = await fetch('/api/export/excel', { credentials: 'include' })
       if (!resp.ok) throw new Error(`Export failed (${resp.status})`)
       const blob = await resp.blob()
       const url = URL.createObjectURL(blob)
@@ -131,9 +128,7 @@ export default function ImportExport() {
 
   async function handleTemplateDownload() {
     try {
-      const resp = await fetch('/api/import/template', {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      })
+      const resp = await fetch('/api/import/template', { credentials: 'include' })
       if (!resp.ok) throw new Error(`Download failed (${resp.status})`)
       const blob = await resp.blob()
       const url = URL.createObjectURL(blob)
@@ -150,9 +145,7 @@ export default function ImportExport() {
 
   async function handleSampleDownload() {
     try {
-      const resp = await fetch('/api/import/sample', {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      })
+      const resp = await fetch('/api/import/sample', { credentials: 'include' })
       if (!resp.ok) throw new Error(`Download failed (${resp.status})`)
       const blob = await resp.blob()
       const url = URL.createObjectURL(blob)

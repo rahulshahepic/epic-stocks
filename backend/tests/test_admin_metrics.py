@@ -4,7 +4,7 @@ import os
 from unittest.mock import patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from tests.conftest import register_user, auth_header
+from tests.conftest import register_user
 
 ADMIN_EMAIL = "admin@example.com"
 
@@ -14,8 +14,7 @@ def _admin_env():
 
 
 def _register_admin(client):
-    resp = client.post("/api/auth/test-login", json={"email": ADMIN_EMAIL})
-    return resp.json()["access_token"]
+    client.post("/api/auth/test-login", json={"email": ADMIN_EMAIL})
 
 
 # ============================================================
@@ -25,16 +24,16 @@ def _register_admin(client):
 def test_metrics_returns_list(client):
     """Metrics endpoint returns a list (may be non-empty due to startup sampler)."""
     with _admin_env():
-        admin_token = _register_admin(client)
-        resp = client.get("/api/admin/metrics", headers=auth_header(admin_token))
+        _register_admin(client)
+        resp = client.get("/api/admin/metrics")
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
 
 
 def test_metrics_requires_admin(client):
     with _admin_env():
-        token = register_user(client, "regular@test.com")
-        resp = client.get("/api/admin/metrics", headers=auth_header(token))
+        register_user(client, "regular@test.com")
+        resp = client.get("/api/admin/metrics")
         assert resp.status_code == 403
 
 
@@ -48,7 +47,7 @@ def test_metrics_returns_correct_fields(client, db_session):
     from datetime import datetime, timezone
 
     with _admin_env():
-        admin_token = _register_admin(client)
+        _register_admin(client)
 
         row = SystemMetric(
             timestamp=datetime.now(timezone.utc),
@@ -61,7 +60,7 @@ def test_metrics_returns_correct_fields(client, db_session):
         db_session.add(row)
         db_session.commit()
 
-        resp = client.get("/api/admin/metrics?hours=72", headers=auth_header(admin_token))
+        resp = client.get("/api/admin/metrics?hours=72")
         assert resp.status_code == 200
         data = resp.json()
         # At least our row should be present
@@ -82,7 +81,7 @@ def test_metrics_hours_filter_excludes_old(client, db_session):
     from datetime import datetime, timezone, timedelta
 
     with _admin_env():
-        admin_token = _register_admin(client)
+        _register_admin(client)
 
         now = datetime.now(timezone.utc)
         # Add a very old row (should be excluded)
@@ -93,7 +92,7 @@ def test_metrics_hours_filter_excludes_old(client, db_session):
         ))
         db_session.commit()
 
-        resp = client.get("/api/admin/metrics?hours=24", headers=auth_header(admin_token))
+        resp = client.get("/api/admin/metrics?hours=24")
         data = resp.json()
         # The old row (cpu=99.9) must NOT appear
         old_rows = [d for d in data if d["cpu_percent"] == 99.9]
@@ -105,7 +104,7 @@ def test_metrics_ordered_by_timestamp(client, db_session):
     from datetime import datetime, timezone, timedelta
 
     with _admin_env():
-        admin_token = _register_admin(client)
+        _register_admin(client)
 
         now = datetime.now(timezone.utc)
         for i in range(3):
@@ -117,7 +116,7 @@ def test_metrics_ordered_by_timestamp(client, db_session):
             ))
         db_session.commit()
 
-        resp = client.get("/api/admin/metrics?hours=72", headers=auth_header(admin_token))
+        resp = client.get("/api/admin/metrics?hours=72")
         data = resp.json()
         # All returned rows must be in ascending timestamp order
         timestamps = [d["timestamp"] for d in data]
@@ -131,8 +130,8 @@ def test_metrics_ordered_by_timestamp(client, db_session):
 def test_db_tables_returns_empty_for_sqlite(client):
     """SQLite environments return an empty list (no pg_tables)."""
     with _admin_env():
-        admin_token = _register_admin(client)
-        resp = client.get("/api/admin/db-tables", headers=auth_header(admin_token))
+        _register_admin(client)
+        resp = client.get("/api/admin/db-tables")
         assert resp.status_code == 200
         # Test env uses SQLite, so returns []
         assert resp.json() == []
@@ -140,8 +139,8 @@ def test_db_tables_returns_empty_for_sqlite(client):
 
 def test_db_tables_requires_admin(client):
     with _admin_env():
-        token = register_user(client, "regular2@test.com")
-        resp = client.get("/api/admin/db-tables", headers=auth_header(token))
+        register_user(client, "regular2@test.com")
+        resp = client.get("/api/admin/db-tables")
         assert resp.status_code == 403
 
 
@@ -157,8 +156,8 @@ def test_db_tables_requires_auth(client):
 def test_admin_stats_includes_system_fields(client):
     """AdminStats response includes cpu_percent, ram_used_mb, ram_total_mb."""
     with _admin_env():
-        admin_token = _register_admin(client)
-        resp = client.get("/api/admin/stats", headers=auth_header(admin_token))
+        _register_admin(client)
+        resp = client.get("/api/admin/stats")
         assert resp.status_code == 200
         data = resp.json()
         assert "cpu_percent" in data
@@ -175,7 +174,7 @@ def test_admin_stats_shows_latest_metric(client, db_session):
     from datetime import datetime, timezone, timedelta
 
     with _admin_env():
-        admin_token = _register_admin(client)
+        _register_admin(client)
 
         # Insert a row far in the future so it's always the latest
         future = datetime.now(timezone.utc) + timedelta(hours=1)
@@ -186,7 +185,7 @@ def test_admin_stats_shows_latest_metric(client, db_session):
         ))
         db_session.commit()
 
-        resp = client.get("/api/admin/stats", headers=auth_header(admin_token))
+        resp = client.get("/api/admin/stats")
         data = resp.json()
         assert data["cpu_percent"] == 77.0
         assert data["ram_used_mb"] == 5000.0

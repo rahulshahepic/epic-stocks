@@ -227,13 +227,19 @@ class EncryptionMiddleware:
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http" and encryption_enabled():
             headers = dict(scope.get("headers", []))
-            auth = headers.get(b"authorization", b"").decode()
+            cookie_header = headers.get(b"cookie", b"").decode()
             db = database.SessionLocal()
             try:
                 from scaffold.crypto import reload_master_key_if_stale
                 reload_master_key_if_stale(db)
-                if auth.startswith("Bearer "):
-                    self._try_set_key(auth[7:], db)
+                token = None
+                for part in cookie_header.split(";"):
+                    k, _, v = part.strip().partition("=")
+                    if k == "session":
+                        token = v
+                        break
+                if token:
+                    self._try_set_key(token, db)
             finally:
                 db.close()
         try:

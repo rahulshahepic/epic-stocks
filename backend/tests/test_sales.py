@@ -5,7 +5,7 @@ import math
 from datetime import date, datetime
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from tests.conftest import register_user, auth_header
+from tests.conftest import register_user
 from app.sales_engine import build_fifo_lots, compute_sale_tax, compute_grossup_shares
 from collections import deque
 
@@ -313,8 +313,8 @@ SALE_DATA = {
 
 
 def test_create_sale(client):
-    token = register_user(client)
-    resp = client.post("/api/sales", json=SALE_DATA, headers=auth_header(token))
+    register_user(client)
+    resp = client.post("/api/sales", json=SALE_DATA)
     assert resp.status_code == 201
     data = resp.json()
     assert data["shares"] == 100
@@ -323,39 +323,38 @@ def test_create_sale(client):
 
 
 def test_list_sales(client):
-    token = register_user(client)
-    client.post("/api/sales", json=SALE_DATA, headers=auth_header(token))
-    resp = client.get("/api/sales", headers=auth_header(token))
+    register_user(client)
+    client.post("/api/sales", json=SALE_DATA)
+    resp = client.get("/api/sales")
     assert resp.status_code == 200
     assert len(resp.json()) == 1
 
 
 def test_update_sale(client):
-    token = register_user(client)
-    create_resp = client.post("/api/sales", json=SALE_DATA, headers=auth_header(token))
+    register_user(client)
+    create_resp = client.post("/api/sales", json=SALE_DATA)
     sale_id = create_resp.json()["id"]
-    resp = client.put(f"/api/sales/{sale_id}", json={"shares": 200, "version": 1}, headers=auth_header(token))
+    resp = client.put(f"/api/sales/{sale_id}", json={"shares": 200, "version": 1})
     assert resp.status_code == 200
     assert resp.json()["shares"] == 200
     assert resp.json()["version"] == 2
 
 
 def test_delete_sale(client):
-    token = register_user(client)
-    create_resp = client.post("/api/sales", json=SALE_DATA, headers=auth_header(token))
+    register_user(client)
+    create_resp = client.post("/api/sales", json=SALE_DATA)
     sale_id = create_resp.json()["id"]
-    resp = client.delete(f"/api/sales/{sale_id}", headers=auth_header(token))
+    resp = client.delete(f"/api/sales/{sale_id}")
     assert resp.status_code == 204
-    list_resp = client.get("/api/sales", headers=auth_header(token))
+    list_resp = client.get("/api/sales")
     assert len(list_resp.json()) == 0
 
 
-def test_sales_user_isolation(client):
-    token1 = register_user(client, "user1@example.com")
-    token2 = register_user(client, "user2@example.com")
-    client.post("/api/sales", json=SALE_DATA, headers=auth_header(token1))
-    resp = client.get("/api/sales", headers=auth_header(token2))
-    assert resp.json() == []
+def test_sales_user_isolation(make_client):
+    with make_client("user1@example.com") as c1, make_client("user2@example.com") as c2:
+        c1.post("/api/sales", json=SALE_DATA)
+        resp = c2.get("/api/sales")
+        assert resp.json() == []
 
 
 def test_sale_requires_auth(client):
@@ -364,13 +363,13 @@ def test_sale_requires_auth(client):
 
 
 def test_sale_version_conflict(client):
-    token = register_user(client)
-    create_resp = client.post("/api/sales", json=SALE_DATA, headers=auth_header(token))
+    register_user(client)
+    create_resp = client.post("/api/sales", json=SALE_DATA)
     sale_id = create_resp.json()["id"]
     # Update once to bump version
-    client.put(f"/api/sales/{sale_id}", json={"shares": 150, "version": 1}, headers=auth_header(token))
+    client.put(f"/api/sales/{sale_id}", json={"shares": 150, "version": 1})
     # Try to update with stale version
-    resp = client.put(f"/api/sales/{sale_id}", json={"shares": 200, "version": 1}, headers=auth_header(token))
+    resp = client.put(f"/api/sales/{sale_id}", json={"shares": 200, "version": 1})
     assert resp.status_code == 409
 
 
@@ -379,8 +378,8 @@ def test_sale_version_conflict(client):
 # ============================================================
 
 def test_get_tax_settings_creates_defaults(client):
-    token = register_user(client)
-    resp = client.get("/api/tax-settings", headers=auth_header(token))
+    register_user(client)
+    resp = client.get("/api/tax-settings")
     assert resp.status_code == 200
     data = resp.json()
     assert abs(data["federal_lt_cg_rate"] - 0.20) < 0.0001
@@ -389,8 +388,8 @@ def test_get_tax_settings_creates_defaults(client):
 
 
 def test_update_tax_settings(client):
-    token = register_user(client)
-    resp = client.put("/api/tax-settings", json={"federal_lt_cg_rate": 0.15}, headers=auth_header(token))
+    register_user(client)
+    resp = client.put("/api/tax-settings", json={"federal_lt_cg_rate": 0.15})
     assert resp.status_code == 200
     assert abs(resp.json()["federal_lt_cg_rate"] - 0.15) < 0.0001
     # Other fields unchanged
@@ -398,28 +397,27 @@ def test_update_tax_settings(client):
 
 
 def test_update_prefer_stock_dp(client):
-    token = register_user(client)
-    resp = client.put("/api/tax-settings", json={"prefer_stock_dp": True}, headers=auth_header(token))
+    register_user(client)
+    resp = client.put("/api/tax-settings", json={"prefer_stock_dp": True})
     assert resp.status_code == 200
     assert resp.json()["prefer_stock_dp"] is True
-    resp = client.put("/api/tax-settings", json={"prefer_stock_dp": False}, headers=auth_header(token))
+    resp = client.put("/api/tax-settings", json={"prefer_stock_dp": False})
     assert resp.status_code == 200
     assert resp.json()["prefer_stock_dp"] is False
 
 
-def test_tax_settings_user_isolation(client):
-    token1 = register_user(client, "user1@example.com")
-    token2 = register_user(client, "user2@example.com")
-    client.put("/api/tax-settings", json={"federal_lt_cg_rate": 0.15}, headers=auth_header(token1))
-    resp = client.get("/api/tax-settings", headers=auth_header(token2))
-    assert abs(resp.json()["federal_lt_cg_rate"] - 0.20) < 0.0001
+def test_tax_settings_user_isolation(make_client):
+    with make_client("user1@example.com") as c1, make_client("user2@example.com") as c2:
+        c1.put("/api/tax-settings", json={"federal_lt_cg_rate": 0.15})
+        resp = c2.get("/api/tax-settings")
+        assert abs(resp.json()["federal_lt_cg_rate"] - 0.20) < 0.0001
 
 
 def test_get_sale_tax_empty_timeline(client):
-    token = register_user(client)
-    create_resp = client.post("/api/sales", json=SALE_DATA, headers=auth_header(token))
+    register_user(client)
+    create_resp = client.post("/api/sales", json=SALE_DATA)
     sale_id = create_resp.json()["id"]
-    resp = client.get(f"/api/sales/{sale_id}/tax", headers=auth_header(token))
+    resp = client.get(f"/api/sales/{sale_id}/tax")
     assert resp.status_code == 200
     data = resp.json()
     # No grants → all shares unvested
@@ -428,8 +426,8 @@ def test_get_sale_tax_empty_timeline(client):
 
 
 def test_sale_tax_not_found(client):
-    token = register_user(client)
-    resp = client.get("/api/sales/9999/tax", headers=auth_header(token))
+    register_user(client)
+    resp = client.get("/api/sales/9999/tax")
     assert resp.status_code == 404
 
 
@@ -535,22 +533,21 @@ LOAN_DATA = {
 }
 
 
-def _create_loan(client, token, data=None):
-    resp = client.post("/api/loans?generate_payoff_sale=false",
-                       json=data or LOAN_DATA, headers=auth_header(token))
+def _create_loan(client, data=None):
+    resp = client.post("/api/loans?generate_payoff_sale=false", json=data or LOAN_DATA)
     assert resp.status_code == 201
     return resp.json()["id"]
 
 
 def test_create_loan_payment(client):
-    token = register_user(client)
-    loan_id = _create_loan(client, token)
+    register_user(client)
+    loan_id = _create_loan(client)
     resp = client.post("/api/loan-payments", json={
         "loan_id": loan_id,
         "date": "2025-06-01",
         "amount": 500.0,
         "notes": "Early payment",
-    }, headers=auth_header(token))
+    })
     assert resp.status_code == 201
     data = resp.json()
     assert data["loan_id"] == loan_id
@@ -559,70 +556,68 @@ def test_create_loan_payment(client):
 
 
 def test_list_loan_payments_by_loan(client):
-    token = register_user(client)
-    loan_id = _create_loan(client, token)
+    register_user(client)
+    loan_id = _create_loan(client)
     client.post("/api/loan-payments", json={
         "loan_id": loan_id, "date": "2025-06-01", "amount": 500.0,
-    }, headers=auth_header(token))
-    resp = client.get(f"/api/loan-payments?loan_id={loan_id}", headers=auth_header(token))
+    })
+    resp = client.get(f"/api/loan-payments?loan_id={loan_id}")
     assert resp.status_code == 200
     assert len(resp.json()) == 1
 
 
 def test_list_loan_payments_all(client):
-    token = register_user(client)
-    loan_id = _create_loan(client, token)
+    register_user(client)
+    loan_id = _create_loan(client)
     client.post("/api/loan-payments", json={
         "loan_id": loan_id, "date": "2025-06-01", "amount": 500.0,
-    }, headers=auth_header(token))
-    resp = client.get("/api/loan-payments", headers=auth_header(token))
+    })
+    resp = client.get("/api/loan-payments")
     assert len(resp.json()) == 1
 
 
 def test_update_loan_payment(client):
-    token = register_user(client)
-    loan_id = _create_loan(client, token)
+    register_user(client)
+    loan_id = _create_loan(client)
     create_resp = client.post("/api/loan-payments", json={
         "loan_id": loan_id, "date": "2025-06-01", "amount": 500.0,
-    }, headers=auth_header(token))
+    })
     lp_id = create_resp.json()["id"]
-    resp = client.put(f"/api/loan-payments/{lp_id}", json={"amount": 750.0, "version": 1},
-                      headers=auth_header(token))
+    resp = client.put(f"/api/loan-payments/{lp_id}", json={"amount": 750.0, "version": 1})
     assert resp.status_code == 200
     assert resp.json()["amount"] == 750.0
     assert resp.json()["version"] == 2
 
 
 def test_delete_loan_payment(client):
-    token = register_user(client)
-    loan_id = _create_loan(client, token)
+    register_user(client)
+    loan_id = _create_loan(client)
     create_resp = client.post("/api/loan-payments", json={
         "loan_id": loan_id, "date": "2025-06-01", "amount": 500.0,
-    }, headers=auth_header(token))
+    })
     lp_id = create_resp.json()["id"]
-    resp = client.delete(f"/api/loan-payments/{lp_id}", headers=auth_header(token))
+    resp = client.delete(f"/api/loan-payments/{lp_id}")
     assert resp.status_code == 204
-    list_resp = client.get(f"/api/loan-payments?loan_id={loan_id}", headers=auth_header(token))
+    list_resp = client.get(f"/api/loan-payments?loan_id={loan_id}")
     assert len(list_resp.json()) == 0
 
 
 def test_loan_payment_wrong_loan_404(client):
-    token = register_user(client)
+    register_user(client)
     resp = client.post("/api/loan-payments", json={
         "loan_id": 9999, "date": "2025-06-01", "amount": 500.0,
-    }, headers=auth_header(token))
+    })
     assert resp.status_code == 404
 
 
-def test_loan_payment_user_isolation(client):
-    token1 = register_user(client, "user1@example.com")
-    token2 = register_user(client, "user2@example.com")
-    loan_id = _create_loan(client, token1)
-    # user2 cannot add payment to user1's loan
-    resp = client.post("/api/loan-payments", json={
-        "loan_id": loan_id, "date": "2025-06-01", "amount": 500.0,
-    }, headers=auth_header(token2))
-    assert resp.status_code == 404
+def test_loan_payment_user_isolation(make_client):
+    with make_client("user1@example.com") as c1, make_client("user2@example.com") as c2:
+        loan_id = _create_loan(c1)
+        # user2 cannot add payment to user1's loan
+        resp = c2.post("/api/loan-payments", json={
+            "loan_id": loan_id, "date": "2025-06-01", "amount": 500.0,
+        })
+        assert resp.status_code == 404
 
 
 # ============================================================
@@ -631,50 +626,50 @@ def test_loan_payment_user_isolation(client):
 
 def test_cash_out_blocked_by_uncovered_loan(client):
     """Cash-out sale blocked when loan due on/before sale date has no linked sale."""
-    token = register_user(client)
-    _create_loan(client, token, {**LOAN_DATA, "due_date": "2023-01-01"})
+    register_user(client)
+    _create_loan(client, {**LOAN_DATA, "due_date": "2023-01-01"})
     # Cash-out sale: no loan_id, date after loan due
     resp = client.post("/api/sales", json={
         "date": "2023-06-01", "shares": 100, "price_per_share": 10.0,
-    }, headers=auth_header(token))
+    })
     assert resp.status_code == 422
     assert "Repay loans" in resp.json()["detail"]
 
 
 def test_cash_out_allowed_when_no_loans(client):
     """Cash-out sale allowed with no outstanding loans."""
-    token = register_user(client)
+    register_user(client)
     resp = client.post("/api/sales", json={
         "date": "2023-06-01", "shares": 100, "price_per_share": 10.0,
-    }, headers=auth_header(token))
+    })
     assert resp.status_code == 201
 
 
 def test_cash_out_allowed_after_loan_covered_by_sale(client):
     """Cash-out sale allowed once loan has a linked payoff sale."""
-    token = register_user(client)
-    loan_id = _create_loan(client, token, {**LOAN_DATA, "due_date": "2023-01-01"})
+    register_user(client)
+    loan_id = _create_loan(client, {**LOAN_DATA, "due_date": "2023-01-01"})
     # Create a linked (payoff) sale for this loan
     client.post("/api/sales", json={
         "date": "2023-01-01", "shares": 50, "price_per_share": 10.0, "loan_id": loan_id,
-    }, headers=auth_header(token))
+    })
     # Now cash-out sale should succeed
     resp = client.post("/api/sales", json={
         "date": "2023-06-01", "shares": 100, "price_per_share": 10.0,
-    }, headers=auth_header(token))
+    })
     assert resp.status_code == 201
 
 
 def test_duplicate_payoff_sale_rejected(client):
     """A second sale linked to the same loan is rejected."""
-    token = register_user(client)
-    loan_id = _create_loan(client, token, {**LOAN_DATA, "due_date": "2023-01-01"})
+    register_user(client)
+    loan_id = _create_loan(client, {**LOAN_DATA, "due_date": "2023-01-01"})
     client.post("/api/sales", json={
         "date": "2023-01-01", "shares": 50, "price_per_share": 10.0, "loan_id": loan_id,
-    }, headers=auth_header(token))
+    })
     resp = client.post("/api/sales", json={
         "date": "2023-01-15", "shares": 30, "price_per_share": 10.0, "loan_id": loan_id,
-    }, headers=auth_header(token))
+    })
     assert resp.status_code == 409
 
 
@@ -684,22 +679,20 @@ def test_duplicate_payoff_sale_rejected(client):
 
 def test_create_loan_no_auto_sale_when_disabled(client):
     """POST /api/loans?generate_payoff_sale=false should NOT create a sale."""
-    token = register_user(client)
-    resp = client.post("/api/loans?generate_payoff_sale=false",
-                       json=LOAN_DATA, headers=auth_header(token))
+    register_user(client)
+    resp = client.post("/api/loans?generate_payoff_sale=false", json=LOAN_DATA)
     assert resp.status_code == 201
-    sales_resp = client.get("/api/sales", headers=auth_header(token))
+    sales_resp = client.get("/api/sales")
     assert len(sales_resp.json()) == 0
 
 
 def test_create_loan_auto_sale_skipped_without_price(client):
     """Auto-sale is skipped when no price data exists (price=0)."""
-    token = register_user(client)
+    register_user(client)
     # No price records → price=0 → auto-sale skipped
-    resp = client.post("/api/loans?generate_payoff_sale=true",
-                       json=LOAN_DATA, headers=auth_header(token))
+    resp = client.post("/api/loans?generate_payoff_sale=true", json=LOAN_DATA)
     assert resp.status_code == 201
-    sales_resp = client.get("/api/sales", headers=auth_header(token))
+    sales_resp = client.get("/api/sales")
     assert len(sales_resp.json()) == 0
 
 
@@ -707,27 +700,26 @@ def test_create_loan_auto_sale_skipped_without_price(client):
 # SALE EVENTS IN TIMELINE
 # ============================================================
 
-def _setup_grant_and_price(client, token):
+def _setup_grant_and_price(client):
     """Create a grant with 2-year vesting and a price entry."""
     client.post("/api/grants", json={
         "year": 2020, "type": "Bonus", "shares": 1000, "price": 0.0,
         "vest_start": "2021-01-01", "periods": 2, "exercise_date": "2030-01-01",
         "dp_shares": 0,
-    }, headers=auth_header(token))
-    client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 10.0},
-                headers=auth_header(token))
+    })
+    client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 10.0})
 
 
 def test_sale_appears_in_events_timeline(client):
     """A recorded sale injects a Sale event into the timeline."""
-    token = register_user(client)
-    _setup_grant_and_price(client, token)
+    register_user(client)
+    _setup_grant_and_price(client)
 
     client.post("/api/sales", json={
         "date": "2022-01-01", "shares": 200, "price_per_share": 10.0,
-    }, headers=auth_header(token))
+    })
 
-    events = client.get("/api/events", headers=auth_header(token)).json()
+    events = client.get("/api/events").json()
     sale_events = [e for e in events if e["event_type"] == "Sale"]
     assert len(sale_events) == 1
     assert sale_events[0]["vested_shares"] == -200
@@ -736,10 +728,10 @@ def test_sale_appears_in_events_timeline(client):
 
 def test_sale_decrements_cum_shares(client):
     """cum_shares must decrease after a sale event."""
-    token = register_user(client)
-    _setup_grant_and_price(client, token)
+    register_user(client)
+    _setup_grant_and_price(client)
 
-    events_before = client.get("/api/events", headers=auth_header(token)).json()
+    events_before = client.get("/api/events").json()
     # Find cum_shares at the last vesting before sale date
     vesting_2021 = next(e for e in events_before
                         if e["event_type"] == "Vesting" and e["date"] == "2021-01-01")
@@ -747,9 +739,9 @@ def test_sale_decrements_cum_shares(client):
 
     client.post("/api/sales", json={
         "date": "2022-01-01", "shares": 200, "price_per_share": 10.0,
-    }, headers=auth_header(token))
+    })
 
-    events_after = client.get("/api/events", headers=auth_header(token)).json()
+    events_after = client.get("/api/events").json()
     sale_event = next(e for e in events_after if e["event_type"] == "Sale")
     # Sale event cum_shares = shares after vesting 2 (500+500=1000) minus 200 sold
     assert sale_event["cum_shares"] == 1000 - 200
@@ -762,22 +754,22 @@ def test_sale_decrements_cum_shares(client):
 
 def test_sale_tax_accounts_for_prior_sale(client):
     """Second sale's tax computation excludes lots consumed by first sale."""
-    token = register_user(client)
-    _setup_grant_and_price(client, token)
+    register_user(client)
+    _setup_grant_and_price(client)
 
     # First sale: sell 300 shares (all from 2021-01-01 vesting lot of 500)
     sale1 = client.post("/api/sales", json={
         "date": "2022-06-01", "shares": 300, "price_per_share": 12.0,
-    }, headers=auth_header(token)).json()
+    }).json()
 
     # Second sale: sell 300 shares — only 200 remain from the 2021 lot (after first sale),
     # plus 500 from the 2022 vesting. So 200 from 2021 lot + 100 from 2022 lot.
     sale2 = client.post("/api/sales", json={
         "date": "2023-06-01", "shares": 300, "price_per_share": 15.0,
-    }, headers=auth_header(token)).json()
+    }).json()
 
-    tax1 = client.get(f"/api/sales/{sale1['id']}/tax", headers=auth_header(token)).json()
-    tax2 = client.get(f"/api/sales/{sale2['id']}/tax", headers=auth_header(token)).json()
+    tax1 = client.get(f"/api/sales/{sale1['id']}/tax").json()
+    tax2 = client.get(f"/api/sales/{sale2['id']}/tax").json()
 
     # First sale: 300 shares, all from 2021 lot (held > 1yr by 2022-06-01)
     assert tax1["lt_shares"] + tax1["st_shares"] + tax1["unvested_shares"] == 300
@@ -791,7 +783,7 @@ def test_sale_tax_accounts_for_prior_sale(client):
 
 def test_per_sale_tax_rates_stored_and_used(client):
     """Sale can store per-sale tax rates that override TaxSettings in the tax endpoint."""
-    token = register_user(client)
+    register_user(client)
     # Create sale with custom per-sale rates
     resp = client.post("/api/sales", json={
         "date": "2025-01-01",
@@ -805,7 +797,7 @@ def test_per_sale_tax_rates_stored_and_used(client):
         "state_lt_cg_rate": 0.02,
         "state_st_cg_rate": 0.05,
         "lt_holding_days": 180,
-    }, headers=auth_header(token))
+    })
     assert resp.status_code == 201
     sale = resp.json()
     assert sale["federal_lt_cg_rate"] == 0.10
@@ -814,7 +806,7 @@ def test_per_sale_tax_rates_stored_and_used(client):
     # Update should preserve and allow changing per-sale rates
     upd = client.put(f"/api/sales/{sale['id']}", json={
         "federal_lt_cg_rate": 0.15,
-    }, headers=auth_header(token)).json()
+    }).json()
     assert upd["federal_lt_cg_rate"] == 0.15
 
 
@@ -828,31 +820,29 @@ def test_payoff_sale_uses_price_at_loan_due_date_not_final_price(client):
     than the price at the loan due date, the gross-up would compute too many shares,
     causing cum_shares to go deeply negative in the chart.
     """
-    token = register_user(client)
+    register_user(client)
 
     # Grant: 1000 shares, vesting 2021-01-01 (2 periods), exercise 2030-01-01
     client.post("/api/grants", json={
         "year": 2020, "type": "Bonus", "shares": 1000, "price": 0.0,
         "vest_start": "2021-01-01", "periods": 2, "exercise_date": "2030-01-01",
         "dp_shares": 0,
-    }, headers=auth_header(token))
+    })
 
     # Price at loan due date: $10/share
-    client.post("/api/prices", json={"effective_date": "2021-01-01", "price": 10.0},
-                headers=auth_header(token))
+    client.post("/api/prices", json={"effective_date": "2021-01-01", "price": 10.0})
     # Far-future price projection: $1/share (much lower — the bug would use this)
-    client.post("/api/prices", json={"effective_date": "2030-01-01", "price": 1.0},
-                headers=auth_header(token))
+    client.post("/api/prices", json={"effective_date": "2030-01-01", "price": 1.0})
 
     # Loan of $500, due 2022-01-01 (when 500 shares are vested at $10)
     resp = client.post("/api/loans?generate_payoff_sale=true", json={
         "grant_year": 2020, "grant_type": "Bonus", "loan_type": "Purchase",
         "loan_year": 2020, "amount": 500.0, "interest_rate": 0.0,
         "due_date": "2022-01-01",
-    }, headers=auth_header(token))
+    })
     assert resp.status_code == 201
 
-    sales = client.get("/api/sales", headers=auth_header(token)).json()
+    sales = client.get("/api/sales").json()
     assert len(sales) == 1
     sale = sales[0]
 
@@ -864,7 +854,7 @@ def test_payoff_sale_uses_price_at_loan_due_date_not_final_price(client):
     assert sale["shares"] <= 100, f"Expected ≤100 shares (at $10 price), got {sale['shares']}"
 
     # Verify cum_shares never goes negative in the events timeline
-    events = client.get("/api/events", headers=auth_header(token)).json()
+    events = client.get("/api/events").json()
     for e in events:
         assert e.get("cum_shares", 0) >= 0, (
             f"cum_shares went negative ({e['cum_shares']}) at {e['date']} ({e['event_type']}). "

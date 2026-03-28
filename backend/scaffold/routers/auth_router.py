@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from scaffold.models import User, BlockedEmail
-from schemas import AuthResponse
 from scaffold.auth import create_token, get_admin_emails, set_session_cookies, clear_session_cookies
 from scaffold.crypto import encryption_enabled, generate_user_key, encrypt_user_key
 import logging
@@ -116,15 +115,13 @@ def logout(response: Response):
 # E2E/test-only endpoint: creates or updates a user without going through any IdP.
 # Respects all real login logic (blocked email check, admin flag, last_login).
 if os.getenv("E2E_TEST") == "1":
-    from fastapi.responses import RedirectResponse
-
     class TestLoginRequest(BaseModel):
         email: str
         name: str = "Test User"
 
-    @router.post("/test-login", response_model=AuthResponse)
-    def test_login(body: TestLoginRequest, db: Session = Depends(get_db)):
-        """Return a Bearer token. Does NOT set cookies — keeps pytest TestClient clean."""
+    @router.post("/test-login")
+    def test_login(body: TestLoginRequest, response: Response, db: Session = Depends(get_db)):
+        """Create/update a user and set the session cookie. No Bearer token returned."""
         from scaffold.providers.auth.base import UserIdentity
         identity = UserIdentity(
             provider_sub=f"test-{body.email}",
@@ -134,21 +131,5 @@ if os.getenv("E2E_TEST") == "1":
             picture=None,
         )
         user = _upsert_user(identity, db)
-        return AuthResponse(access_token=create_token(user.id))
-
-    @router.get("/test-login-redirect")
-    def test_login_redirect(email: str, name: str = "Test User", db: Session = Depends(get_db)):
-        """Browser-navigation login for Playwright: sets session cookie and redirects to /."""
-        from scaffold.providers.auth.base import UserIdentity
-        identity = UserIdentity(
-            provider_sub=f"test-{email}",
-            email=email,
-            email_verified=True,
-            name=name,
-            picture=None,
-        )
-        user = _upsert_user(identity, db)
-        token = create_token(user.id)
-        resp = RedirectResponse(url="/", status_code=302)
-        set_session_cookies(resp, token)
-        return resp
+        set_session_cookies(response, create_token(user.id))
+        return {"ok": True}

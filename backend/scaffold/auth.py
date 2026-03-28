@@ -93,20 +93,8 @@ def clear_session_cookies(response) -> None:
 
 
 def _token_from_request(request: Request) -> str | None:
-    """Extract JWT from session cookie (preferred) or Authorization: Bearer (fallback).
-
-    Cookie-first preserves the XSS benefit: browser requests never include an
-    Authorization header, so they always use the HttpOnly session cookie that
-    JavaScript cannot read.  Bearer fallback exists only for tooling that predates
-    cookies (direct API calls, curl, etc.) and for which XSS is not a concern.
-    """
-    token = request.cookies.get("session")
-    if token:
-        return token
-    auth = request.headers.get("Authorization", "")
-    if auth.startswith("Bearer "):
-        return auth[7:]
-    return None
+    """Extract JWT from the HttpOnly session cookie — the only supported auth mechanism."""
+    return request.cookies.get("session")
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:

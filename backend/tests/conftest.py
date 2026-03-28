@@ -1,6 +1,7 @@
 import sys
 import os
 import pytest
+from contextlib import contextmanager
 from sqlalchemy import create_engine, event as sa_event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -9,9 +10,6 @@ from starlette.testclient import TestClient
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 # Enable encryption for tests using the two-level key hierarchy.
-# KEY_ENCRYPTION_KEY is the KEK that wraps the master key stored in system_settings.
-# LEGACY_MASTER_KEY is the old single-level key value; initialize_master_key() stores
-# it as the initial master key on first boot so encrypted test data still decrypts.
 os.environ["KEY_ENCRYPTION_KEY"] = "test-kek-for-tests-do-not-use-in-prod"
 os.environ["LEGACY_MASTER_KEY"] = "test-master-key-for-encryption-tests"
 os.environ["E2E_TEST"] = "1"
@@ -72,12 +70,30 @@ def client(db_session):
     _fastapi_app.dependency_overrides.clear()
 
 
-def register_user(client, email="test@example.com"):
-    """Register a test user via the E2E test-login endpoint (no OAuth required)."""
-    resp = client.post("/api/auth/test-login", json={"email": email})
+@pytest.fixture()
+def make_client(client):
+    """
+    Factory for additional TestClient instances that share the same DB session.
+    Use in multi-user isolation tests where two separate authenticated sessions
+    are needed simultaneously.
+
+    Usage:
+        def test_isolation(client, make_client):
+            register_user(client, "a@test.com")
+            with make_client("b@test.com") as client_b:
+                resp = client_b.get("/api/grants")
+                assert resp.json() == []
+    """
+    @contextmanager
+    def _make(email, name="Test User"):
+        with TestClient(app) as c:
+            c.post("/api/auth/test-login", json={"email": email, "name": name})
+            yield c
+
+    return _make
+
+
+def register_user(client, email="test@example.com", name="Test User"):
+    """Log in as a user via the E2E test-login endpoint; sets the session cookie on client."""
+    resp = client.post("/api/auth/test-login", json={"email": email, "name": name})
     assert resp.status_code == 200, f"test-login failed: {resp.text}"
-    return resp.json()["access_token"]
-
-
-def auth_header(token):
-    return {"Authorization": f"Bearer {token}"}

@@ -37,9 +37,18 @@ async def lifespan(app):
         maybe_migrate()
     # Ensure system_settings seed rows exist and load/generate the master encryption key
     _bootstrap_system()
+    redis_url = os.getenv("REDIS_URL", "")
+    if redis_url:
+        try:
+            from app.event_cache import init as _redis_init
+            _redis_init(redis_url)
+        except Exception:
+            logger.warning("Redis unavailable — running without L2 cache")
     task = _start_daily_scheduler()
     metrics_task = _start_metrics_sampler()
     yield
+    from app.event_cache import close as _redis_close
+    _redis_close()
     if task:
         task.cancel()
     metrics_task.cancel()

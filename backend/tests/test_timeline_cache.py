@@ -72,3 +72,44 @@ def test_cache_stores_one_entry_per_user():
     prices2 = _prices() + [{"date": datetime(2022, 1, 1), "price": 30.0}]
     tc.get_timeline(1, _grants(), prices2, [], 10.0)
     assert len(tc._cache) == 1  # old entry replaced, not accumulated
+
+
+def test_redis_l2_cache_hit():
+    """Timeline served from Redis without recomputing."""
+    import json
+    from unittest.mock import MagicMock
+    import app.event_cache as ec
+
+    mock_redis = MagicMock()
+    cached_tl = [{"event_type": "Vesting", "cum_shares": 100}]
+    key = tc._hash(_grants(), _prices(), [], 10.0)
+    mock_redis.get.return_value = json.dumps(cached_tl).encode()
+
+    ec._client = mock_redis
+    tc._cache.clear()
+    try:
+        result = tc.get_timeline(1, _grants(), _prices(), [], 10.0)
+        assert result == cached_tl
+        mock_redis.get.assert_called_once_with(f"timeline:1:{key}")
+    finally:
+        ec._client = None
+        tc._cache.clear()
+
+
+def test_redis_l2_write_on_compute():
+    """After a full cache miss, the result is written to Redis."""
+    from unittest.mock import MagicMock
+    import app.event_cache as ec
+
+    mock_redis = MagicMock()
+    mock_redis.get.return_value = None
+
+    ec._client = mock_redis
+    tc._cache.clear()
+    try:
+        result = tc.get_timeline(1, _grants(), _prices(), [], 10.0)
+        assert len(result) > 0
+        mock_redis.setex.assert_called_once()
+    finally:
+        ec._client = None
+        tc._cache.clear()

@@ -137,6 +137,7 @@ cp .env.example .env
 | `JWT_SECRET` | Yes (local dev) | Random secret for signing JWT tokens. **Auto-generated on production deploy.** |
 | `OIDC_PROVIDERS` | Yes | JSON array of OIDC provider configs — see `.env.example` for format. Supports Google, Azure Entra ID, or any OIDC-compliant IdP. Multiple providers show as separate sign-in buttons. |
 | `DATABASE_URL` | Yes (prod) | PostgreSQL DSN. Docker Compose sets this automatically from `POSTGRES_PASSWORD`. |
+| `REDIS_URL` | No | Redis connection string for the timeline L2 cache (e.g. `redis://localhost:6379/0`). When set, computed event timelines are cached in Redis and pre-warmed in the background after data writes, allowing cache hits to survive process restarts and be shared across replicas. Omit for single-process deployments. |
 | `POSTGRES_PASSWORD` | Yes (local dev) | Password for the `postgres` user. **Auto-generated on production deploy.** |
 | `KEY_ENCRYPTION_KEY` | No | Enables per-user AES-256-GCM encryption. Set once, never changes. **Auto-generated on production deploy** and stored in `.secrets/key_encryption_key`. Wraps the operational master key stored in the database. |
 | `LEGACY_MASTER_KEY` | No | One-time migration aid. Set to the old `ENCRYPTION_MASTER_KEY` value on first deploy after upgrading to the two-level key hierarchy; unset it after the first successful boot. |

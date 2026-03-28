@@ -24,29 +24,22 @@ subject_claim defaults to "sub". Set to "oid" for Azure Entra ID, where the
 object ID is the stable per-user identifier across client apps.
 """
 
-import base64
 import json
 import os
-import time
 from dataclasses import dataclass, field
 from urllib.parse import urlencode
 
 import httpx
+from joserfc import jwt
+from joserfc.errors import JoseError
+from joserfc.jwk import KeySet
+from joserfc.jwt import JWTClaimsRegistry
 
 from .base import UserIdentity
 
 # Process-lifetime caches — refreshed on restart (sufficient for cert rotation windows)
 _oidc_config_cache: dict[str, dict] = {}
 _jwks_cache: dict[str, dict] = {}
-
-
-def _b64url_decode(s: str) -> bytes:
-    pad = 4 - len(s) % 4
-    return base64.urlsafe_b64decode(s + "=" * pad)
-
-
-def _b64url_to_int(s: str) -> int:
-    return int.from_bytes(_b64url_decode(s), "big")
 
 
 def _fetch_oidc_config(discovery_url: str) -> dict:
@@ -118,87 +111,44 @@ class OIDCProvider:
             raise ValueError("No id_token in token response")
         return self._verify_id_token(id_token)
 
-    def _verify_id_token(self, id_token: str) -> UserIdentity:
-        parts = id_token.split(".")
-        if len(parts) != 3:
-            raise ValueError("Malformed JWT")
-
-        header = json.loads(_b64url_decode(parts[0]))
-        kid = header.get("kid")
-        alg = header.get("alg", "RS256")
-
-        # Validate alg against what the provider advertises — prevents algorithm confusion.
+    def _verify_id_token(self, id_token: str, _force_jwks: bool = False) -> UserIdentity:
         oidc = self._oidc()
+        # Strict algorithm whitelist from the provider's metadata — prevents confusion attacks.
         allowed_algs = oidc.get("id_token_signing_alg_values_supported") or ["RS256"]
-        if alg not in allowed_algs:
-            raise ValueError(f"Token alg {alg!r} not in provider's allowed list: {allowed_algs}")
 
-        jwks_uri = oidc["jwks_uri"]
-        key_data = self._find_key(jwks_uri, kid, force=False)
-        if key_data is None:
-            # Unknown kid — provider may have rotated keys; retry with a fresh fetch.
-            key_data = self._find_key(jwks_uri, kid, force=True)
-        if key_data is None:
-            raise ValueError(f"No matching key found (kid={kid})")
+        jwks = _fetch_jwks(oidc["jwks_uri"], force=_force_jwks)
+        key_set = KeySet.import_key_set(jwks)
 
-        message = f"{parts[0]}.{parts[1]}".encode()
-        signature = _b64url_decode(parts[2])
+        try:
+            token = jwt.decode(id_token, key_set, algorithms=allowed_algs)
+        except JoseError:
+            if not _force_jwks:
+                # Unknown kid — provider may have rotated keys; retry with a fresh JWKS fetch.
+                return self._verify_id_token(id_token, _force_jwks=True)
+            raise ValueError("JWT verification failed")
 
-        if alg in ("RS256", "RS384", "RS512"):
-            self._verify_rsa(key_data, message, signature, alg)
-        else:
-            raise ValueError(f"Unsupported signing algorithm: {alg}")
+        registry = JWTClaimsRegistry(
+            iss={"essential": True, "value": oidc.get("issuer")},
+            aud={"essential": True, "value": self.config.client_id},
+            exp={"essential": True},
+        )
+        try:
+            registry.validate(token.claims)
+        except JoseError as exc:
+            raise ValueError(f"JWT claims invalid: {exc}") from exc
 
-        payload = json.loads(_b64url_decode(parts[1]))
-
-        if payload.get("exp", 0) < time.time():
-            raise ValueError("Token expired")
-        if payload.get("iss") != oidc.get("issuer"):
-            raise ValueError(f"Token issuer mismatch: {payload.get('iss')!r}")
-        aud = payload.get("aud")
-        if isinstance(aud, list):
-            if self.config.client_id not in aud:
-                raise ValueError("Token audience mismatch")
-        elif aud != self.config.client_id:
-            raise ValueError("Token audience mismatch")
-
-        sub = payload.get(self.config.subject_claim)
+        sub = token.claims.get(self.config.subject_claim)
         if not sub:
             raise ValueError(f"Missing {self.config.subject_claim!r} claim in token")
-        email = payload.get("email") or payload.get("preferred_username", "")
+        email = token.claims.get("email") or token.claims.get("preferred_username", "")
 
         return UserIdentity(
             provider_sub=sub,
             email=email,
-            email_verified=bool(payload.get("email_verified", True)),
-            name=payload.get("name"),
-            picture=payload.get("picture"),
+            email_verified=bool(token.claims.get("email_verified", True)),
+            name=token.claims.get("name"),
+            picture=token.claims.get("picture"),
         )
-
-    @staticmethod
-    def _find_key(jwks_uri: str, kid: str | None, force: bool) -> dict | None:
-        jwks = _fetch_jwks(jwks_uri, force=force)
-        if kid:
-            return next((k for k in jwks["keys"] if k.get("kid") == kid), None)
-        # Some providers omit kid — fall back to first key.
-        return jwks["keys"][0] if jwks.get("keys") else None
-
-    @staticmethod
-    def _verify_rsa(key_data: dict, message: bytes, signature: bytes, alg: str):
-        from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicNumbers
-        from cryptography.hazmat.backends import default_backend
-        from cryptography.hazmat.primitives import hashes
-        from cryptography.hazmat.primitives.asymmetric import padding as asym_padding
-
-        hash_alg = {"RS256": hashes.SHA256(), "RS384": hashes.SHA384(), "RS512": hashes.SHA512()}[alg]
-        pub_key = RSAPublicNumbers(
-            e=_b64url_to_int(key_data["e"]),
-            n=_b64url_to_int(key_data["n"]),
-        ).public_key(default_backend())
-        try:
-            pub_key.verify(signature, message, asym_padding.PKCS1v15(), hash_alg)
-        except Exception:
-            raise ValueError("Token signature verification failed")
 
 
 def get_providers() -> list[OIDCProvider]:

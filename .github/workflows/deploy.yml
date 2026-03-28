@@ -166,6 +166,9 @@ jobs:
             DOMAIN=$(grep "^DOMAIN=" .env | cut -d= -f2-)
             ACME_EMAIL=$(grep "^ACME_EMAIL=" .env | cut -d= -f2-)
             TRUSTED_PROXY_IPS=$(grep "^TRUSTED_PROXY_IPS=" .env | cut -d= -f2-)
+            # Stop existing Caddy first to release ports 80/443 before recreating.
+            DOMAIN=$DOMAIN ACME_EMAIL=$ACME_EMAIL TRUSTED_PROXY_IPS=$TRUSTED_PROXY_IPS \
+              docker compose -f infra/docker-compose.infra.yml down --remove-orphans || true
             DOMAIN=$DOMAIN ACME_EMAIL=$ACME_EMAIL TRUSTED_PROXY_IPS=$TRUSTED_PROXY_IPS \
               docker compose -f infra/docker-compose.infra.yml up -d --force-recreate
 

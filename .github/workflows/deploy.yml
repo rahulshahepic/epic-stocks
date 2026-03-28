@@ -97,7 +97,7 @@ jobs:
             SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
             SMTP_FROM=${{ vars.SMTP_FROM }}
             POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-            TRUSTED_PROXY_IPS=${{ vars.TRUSTED_PROXY_IDS }}
+            TRUSTED_PROXY_IPS=${{ vars.TRUSTED_PROXY_IPS }}
             EPIC_ONBOARDING_URL=${{ vars.EPIC_ONBOARDING_URL }}
             ACME_EMAIL=${{ vars.ACME_EMAIL }}
             COMMIT_SHA=${{ github.sha }}

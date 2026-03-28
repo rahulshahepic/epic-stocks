@@ -166,9 +166,10 @@ jobs:
             DOMAIN=$(grep "^DOMAIN=" .env | cut -d= -f2-)
             ACME_EMAIL=$(grep "^ACME_EMAIL=" .env | cut -d= -f2-)
             TRUSTED_PROXY_IPS=$(grep "^TRUSTED_PROXY_IPS=" .env | cut -d= -f2-)
-            # Stop existing Caddy first to release ports 80/443 before recreating.
-            DOMAIN=$DOMAIN ACME_EMAIL=$ACME_EMAIL TRUSTED_PROXY_IPS=$TRUSTED_PROXY_IPS \
-              docker compose -f infra/docker-compose.infra.yml down --remove-orphans || true
+            # Stop any container holding ports 80/443 before recreating Caddy.
+            # Uses docker ps filter rather than compose down so it catches containers
+            # started by any compose project or docker run invocation.
+            docker ps -q --filter publish=80 --filter publish=443 | xargs -r docker stop || true
             DOMAIN=$DOMAIN ACME_EMAIL=$ACME_EMAIL TRUSTED_PROXY_IPS=$TRUSTED_PROXY_IPS \
               docker compose -f infra/docker-compose.infra.yml up -d --force-recreate
 

@@ -5,8 +5,8 @@ import openpyxl
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from excel_io import read_all_from_excel, read_grants_from_excel, read_prices_from_excel, read_loans_from_excel
-from core import generate_all_events, compute_timeline
+from app.excel_io import read_all_from_excel, read_grants_from_excel, read_prices_from_excel, read_loans_from_excel
+from app.core import generate_all_events, compute_timeline
 
 FIXTURE = os.path.join(os.path.dirname(__file__), "..", "..", "test_data", "fixture.xlsx")
 

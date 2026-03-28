@@ -2,6 +2,8 @@ __pycache__/
 *.pyc
 data/
 *.db
+*.db-shm
+*.db-wal
 .pytest_cache/
 backend/static/
 frontend/dist/

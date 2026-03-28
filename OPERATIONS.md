@@ -24,7 +24,7 @@ The reference deployment uses **Cloudflare** in front of Caddy. Cloudflare's bui
 
 ### Privacy page for self-hosters
 
-The built-in privacy page (`/privacy`, `frontend/src/pages/PrivacyPolicy.tsx`) lists the third-party services used by the reference deployment: **Google OAuth, Hetzner, Cloudflare, Porkbun, Resend**. If you use different infrastructure, edit that file to reflect your own services before going to users.
+The built-in privacy page (`/privacy`, `frontend/src/scaffold/pages/PrivacyPolicy.tsx`) lists the third-party services used by the reference deployment: **Hetzner, Cloudflare, Porkbun, Resend**, and whichever OIDC providers are configured. If you use different infrastructure or identity providers, edit that file to reflect your own services before going to users.
 
 ### Reference deployment status
 
@@ -46,7 +46,7 @@ All responses include:
 
 | Header | Value |
 |--------|-------|
-| `Content-Security-Policy` | `default-src 'self'; script-src 'self' https://accounts.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://lh3.googleusercontent.com; connect-src 'self' https://accounts.google.com; frame-src https://accounts.google.com; frame-ancestors 'none'` |
+| `Content-Security-Policy` | `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' <OIDC-provider-origins>; frame-ancestors 'none'` — adjust `connect-src` to include your OIDC provider origins (e.g. `https://accounts.google.com`, `https://login.microsoftonline.com`). The Caddyfile sets this header; update it to match your configured providers. |
 | `X-Content-Type-Options` | `nosniff` |
 | `X-Frame-Options` | `DENY` |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |
@@ -151,11 +151,16 @@ These are the only values that need to be set in GitHub. Cryptographic secrets (
 | `ADMIN_EMAIL` | Secret | Semicolon-delimited admin email(s) |
 | `RESEND_API_KEY` | Secret | Resend email API key |
 | `RESEND_FROM` | Secret | Sender address for transactional email |
+| `OIDC_PROVIDERS` | Secret | JSON array of OIDC provider configs (see README for format) |
+| `ACME_EMAIL` | Variable | Email for Let's Encrypt certificate notifications |
 | `VPS_HOST` | Variable | VPS hostname or IP |
-| `GOOGLE_CLIENT_ID` | Variable | Google OAuth client ID |
 | `DOMAIN` | Variable | Your domain name |
 | `TRUSTED_PROXY_IPS` | Variable | Cloudflare IP ranges for real-IP forwarding |
 | `EPIC_ONBOARDING_URL` | Variable | (optional) pre-filled onboarding template URL |
+
+### Multi-app network
+
+`docker-compose.multiapp.yml` no longer exists. `docker-compose.yml` always joins the shared `proxy` Docker network. The deploy script automatically creates the `proxy` network and manages the infra Caddy container — no separate compose file or manual setup is required.
 
 ### Server-generated secrets
 

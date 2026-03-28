@@ -14,7 +14,7 @@ if config.config_file_name is not None:
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from database import Base
-import models  # noqa: F401 — registers all model classes on Base.metadata
+import scaffold.models  # noqa: F401 — registers all model classes on Base.metadata
 
 target_metadata = Base.metadata
 

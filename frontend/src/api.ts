@@ -169,8 +169,15 @@ function del(path: string) {
 }
 
 export const api = {
-  loginGoogle: (token: string) =>
-    post<{ access_token: string }>('/api/auth/google', { token }),
+  // OIDC / PKCE auth flow
+  getProviders: () =>
+    apiFetch<Array<{ name: string; label: string }>>('/api/auth/providers'),
+  getLoginUrl: (provider: string, codeChallenge: string, redirectUri: string, state: string) => {
+    const params = new URLSearchParams({ provider, code_challenge: codeChallenge, redirect_uri: redirectUri, state })
+    return apiFetch<{ authorization_url: string }>(`/api/auth/login?${params}`)
+  },
+  exchangeCode: (provider: string, code: string, codeVerifier: string, redirectUri: string) =>
+    post<{ access_token: string }>('/api/auth/callback', { provider, code, code_verifier: codeVerifier, redirect_uri: redirectUri }),
 
   getDashboard: () => apiFetch<DashboardData>('/api/dashboard'),
   getEvents: () => apiFetch<TimelineEvent[]>('/api/events'),

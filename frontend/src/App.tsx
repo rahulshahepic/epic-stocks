@@ -1,20 +1,21 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { getToken } from './api.ts'
-import Layout from './components/Layout.tsx'
-import { ToastProvider } from './components/Toast.tsx'
-import { ThemeProvider } from './contexts/ThemeContext.tsx'
-import { MaintenanceProvider, useMaintenance } from './contexts/MaintenanceContext.tsx'
-import Login from './pages/Login.tsx'
-import PrivacyPolicy from './pages/PrivacyPolicy.tsx'
-import Dashboard from './pages/Dashboard.tsx'
-import Events from './pages/Events.tsx'
-import Grants from './pages/Grants.tsx'
-import Loans from './pages/Loans.tsx'
-import Prices from './pages/Prices.tsx'
-import ImportExport from './pages/ImportExport.tsx'
-import Settings from './pages/Settings.tsx'
-import Admin from './pages/Admin.tsx'
-import Sales from './pages/Sales.tsx'
+import Layout from './scaffold/components/Layout.tsx'
+import { ToastProvider } from './scaffold/components/Toast.tsx'
+import { ThemeProvider } from './scaffold/contexts/ThemeContext.tsx'
+import { MaintenanceProvider, useMaintenance } from './scaffold/contexts/MaintenanceContext.tsx'
+import Login from './scaffold/pages/Login.tsx'
+import AuthCallback from './scaffold/pages/AuthCallback.tsx'
+import PrivacyPolicy from './scaffold/pages/PrivacyPolicy.tsx'
+import Dashboard from './app/pages/Dashboard.tsx'
+import Events from './app/pages/Events.tsx'
+import Grants from './app/pages/Grants.tsx'
+import Loans from './app/pages/Loans.tsx'
+import Prices from './app/pages/Prices.tsx'
+import ImportExport from './app/pages/ImportExport.tsx'
+import Settings from './scaffold/pages/Settings.tsx'
+import Admin from './scaffold/pages/Admin.tsx'
+import Sales from './app/pages/Sales.tsx'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   return getToken() ? <>{children}</> : <Navigate to="/login" replace />
@@ -46,6 +47,7 @@ export default function App() {
       <ToastProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route element={<RequireAuth><Layout /></RequireAuth>}>
             <Route index element={<FinancialRoute><Dashboard /></FinancialRoute>} />

@@ -19,10 +19,7 @@ def _admin_env():
 
 
 def _register_admin(client):
-    from tests.conftest import _fake_google_info
-    info = _fake_google_info(ADMIN_EMAIL)
-    with patch("routers.auth_router.verify_google_token", return_value=info):
-        resp = client.post("/api/auth/google", json={"token": "admin-token"})
+    resp = client.post("/api/auth/test-login", json={"email": ADMIN_EMAIL})
     return resp.json()["access_token"]
 
 
@@ -41,8 +38,8 @@ def _parse_sse(body: str) -> list[dict]:
 def sentinel_path(tmp_path):
     """Redirect maintenance sentinel to a temp path in admin, maintenance module, and main."""
     p = tmp_path / "maintenance"
-    import routers.admin as admin_mod
-    import maintenance as maint_mod
+    import scaffold.routers.admin as admin_mod
+    import scaffold.maintenance as maint_mod
     import main as main_mod
     orig_admin = admin_mod._SENTINEL
     orig_maint = maint_mod.SENTINEL_PATH
@@ -60,7 +57,7 @@ def sentinel_path(tmp_path):
 def snapshot_path(tmp_path):
     """Redirect _SNAPSHOT_PATH in admin to a temp path."""
     p = tmp_path / "rotation_snapshot.json"
-    import routers.admin as admin_mod
+    import scaffold.routers.admin as admin_mod
     orig = admin_mod._SNAPSHOT_PATH
     admin_mod._SNAPSHOT_PATH = p
     yield p
@@ -71,7 +68,7 @@ def snapshot_path(tmp_path):
 def key_override_path(tmp_path):
     """Redirect KEY_OVERRIDE_PATH in crypto to a temp path."""
     p = tmp_path / "current_master_key"
-    import crypto as c
+    import scaffold.crypto as c
     orig_path = c._KEY_OVERRIDE_PATH
     c._KEY_OVERRIDE_PATH = p
     yield p
@@ -205,7 +202,7 @@ def test_rotate_key_no_encryption_emits_error(client, sentinel_path, snapshot_pa
     """When encryption is disabled, rotation emits an error event immediately."""
     with _admin_env():
         token = _register_admin(client)
-    import crypto as crypto_mod
+    import scaffold.crypto as crypto_mod
     orig = crypto_mod.ENCRYPTION_MASTER_KEY
     crypto_mod.ENCRYPTION_MASTER_KEY = ""
     try:
@@ -287,7 +284,7 @@ def test_rotate_key_new_key_decrypts_user_keys(client, sentinel_path, snapshot_p
     assert any(e["step"] == "done" for e in _parse_sse(resp.text))
 
     new_master = key_override_path.read_text().strip()
-    from rotate_master_key import decrypt_user_key as _unwrap
+    from scaffold.rotate_master_key import decrypt_user_key as _unwrap
 
     with TEST_ENGINE.connect() as conn:
         rows = conn.execute(
@@ -316,7 +313,7 @@ def test_rotate_key_rollback_on_decrypt_failure(client, sentinel_path, snapshot_
     def boom(enc, master):
         raise Exception("Simulated decryption failure")
 
-    with patch("rotate_master_key.decrypt_user_key", boom):
+    with patch("scaffold.rotate_master_key.decrypt_user_key", boom):
         with _admin_env():
             resp = client.post("/api/admin/rotate-key", headers=auth_header(token))
 

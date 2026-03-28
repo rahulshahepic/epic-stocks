@@ -69,7 +69,7 @@ def test_config_with_resend(client):
 # ============================================================
 
 def test_build_event_email():
-    from email_sender import build_event_email
+    from scaffold.email_sender import build_event_email
     events = [
         {"event_type": "Vesting"},
         {"event_type": "Vesting"},
@@ -83,14 +83,14 @@ def test_build_event_email():
 
 
 def test_send_email_when_not_configured():
-    from email_sender import send_email
+    from scaffold.email_sender import send_email
     with patch.dict(os.environ, {"RESEND_API_KEY": ""}):
         result = send_email("test@test.com", "subj", "body")
         assert result is False
 
 
 def test_send_email_success():
-    from email_sender import send_email
+    from scaffold.email_sender import send_email
     with patch.dict(os.environ, {
         "RESEND_API_KEY": "re_test_key",
         "RESEND_FROM": "Equity Tracker <noreply@test.com>",
@@ -98,7 +98,7 @@ def test_send_email_success():
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.raise_for_status = MagicMock()
-        with patch("email_sender.httpx.post", return_value=mock_response) as mock_post:
+        with patch("scaffold.providers.email.resend.httpx.post", return_value=mock_response) as mock_post:
             result = send_email("test@test.com", "Test Subject", "Test Body", "<p>Test</p>")
             assert result is True
             mock_post.assert_called_once()
@@ -116,7 +116,7 @@ def test_send_email_success():
 # ============================================================
 
 def test_notification_build_payload():
-    from notifications import build_notification_payload
+    from scaffold.notifications import build_notification_payload
     assert build_notification_payload([]) is None
     payload = build_notification_payload([{"event_type": "Vesting"}])
     assert payload["title"] == "Equity Tracker"
@@ -125,8 +125,8 @@ def test_notification_build_payload():
 
 def test_sale_included_in_todays_events(client, db_session):
     """A sale dated today appears in today's events."""
-    from models import User, Sale
-    from notifications import get_todays_events_for_user
+    from scaffold.models import User, Sale
+    from scaffold.notifications import get_todays_events_for_user
     from datetime import date
 
     register_user(client)
@@ -143,8 +143,8 @@ def test_sale_included_in_todays_events(client, db_session):
 
 def test_future_sale_not_in_todays_events(client, db_session):
     """A sale dated tomorrow does not appear in today's events."""
-    from models import User, Sale
-    from notifications import get_todays_events_for_user
+    from scaffold.models import User, Sale
+    from scaffold.notifications import get_todays_events_for_user
     from datetime import date
 
     register_user(client)
@@ -158,7 +158,7 @@ def test_future_sale_not_in_todays_events(client, db_session):
 
 def test_sale_in_notification_payload():
     """Sale events are included in push/email notification payload."""
-    from notifications import build_notification_payload
+    from scaffold.notifications import build_notification_payload
     payload = build_notification_payload([
         {"event_type": "Vesting"},
         {"event_type": "Sale"},
@@ -170,7 +170,7 @@ def test_sale_in_notification_payload():
 
 def test_send_daily_notifications_with_email(client, db_session):
     """Integration: user with email pref enabled gets email for today's events."""
-    from models import User, Grant, Price, EmailPreference
+    from scaffold.models import User, Grant, Price, EmailPreference
     from datetime import date
 
     token = register_user(client)
@@ -191,7 +191,7 @@ def test_send_daily_notifications_with_email(client, db_session):
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.raise_for_status = MagicMock()
-        with patch("email_sender.httpx.post", return_value=mock_response) as mock_post:
-            from notifications import send_daily_notifications
+        with patch("scaffold.providers.email.resend.httpx.post", return_value=mock_response) as mock_post:
+            from scaffold.notifications import send_daily_notifications
             send_daily_notifications(today=date(2026, 3, 20))
             assert mock_post.call_count >= 1

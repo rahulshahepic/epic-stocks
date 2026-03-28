@@ -87,14 +87,14 @@ def test_user_isolation(client):
 # ============================================================
 
 def test_build_notification_single_event():
-    from notifications import build_notification_payload
+    from scaffold.notifications import build_notification_payload
     events = [{"event_type": "Vesting"}]
     result = build_notification_payload(events)
     assert result == {"title": "Equity Tracker", "body": "You have 1 event today: 1 Vesting"}
 
 
 def test_build_notification_multiple_events():
-    from notifications import build_notification_payload
+    from scaffold.notifications import build_notification_payload
     events = [
         {"event_type": "Vesting"},
         {"event_type": "Vesting"},
@@ -105,13 +105,13 @@ def test_build_notification_multiple_events():
 
 
 def test_build_notification_no_events():
-    from notifications import build_notification_payload
+    from scaffold.notifications import build_notification_payload
     assert build_notification_payload([]) is None
 
 
 def test_get_todays_events(db_session):
-    from models import User, Grant, Price
-    from notifications import get_todays_events_for_user
+    from scaffold.models import User, Grant, Price
+    from scaffold.notifications import get_todays_events_for_user
 
     user = User(email="test@test.com", google_id="g1", name="Test")
     db_session.add(user)
@@ -133,8 +133,8 @@ def test_get_todays_events(db_session):
 
 
 def test_get_todays_events_filters_share_price(db_session):
-    from models import User, Price
-    from notifications import get_todays_events_for_user
+    from scaffold.models import User, Price
+    from scaffold.notifications import get_todays_events_for_user
 
     user = User(email="test@test.com", google_id="g1", name="Test")
     db_session.add(user)
@@ -168,7 +168,7 @@ def test_push_test_no_subscriptions(client):
 def test_push_test_sends_notification(client):
     token = register_user(client)
     client.post("/api/push/subscribe", json=SUB_DATA, headers=auth_header(token))
-    with patch("notifications.send_push", return_value=True):
+    with patch("scaffold.notifications.send_push", return_value=True):
         resp = client.post("/api/push/test", json={}, headers=auth_header(token))
     assert resp.status_code == 200
     assert resp.json()["sent"] == 1
@@ -206,8 +206,8 @@ def test_advance_days_clamped(client):
 
 
 def test_get_events_with_advance_days(db_session):
-    from models import User, Grant, Price
-    from notifications import get_todays_events_for_user
+    from scaffold.models import User, Grant, Price
+    from scaffold.notifications import get_todays_events_for_user
     from datetime import timedelta
 
     user = User(email="adv@test.com", google_id="gadv", name="Adv")

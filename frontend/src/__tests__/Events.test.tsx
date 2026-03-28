@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import Events from '../pages/Events.tsx'
+import Events from '../app/pages/Events.tsx'
 
 const MOCK_EVENTS = [
   {

@@ -9,12 +9,13 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import FileResponse
 import database
-from maintenance import SENTINEL_PATH as _MAINTENANCE_SENTINEL
+from scaffold.maintenance import SENTINEL_PATH as _MAINTENANCE_SENTINEL
 
 logger = logging.getLogger(__name__)
-from routers import auth_router, grants, loans, prices, events, flows, import_export, push, admin, notifications, sales, horizon
-from auth import get_current_user
-from crypto import encryption_enabled, decrypt_user_key, set_current_key
+from scaffold.routers import auth_router, admin, notifications, push
+from app.routers import grants, loans, prices, events, flows, import_export, sales, horizon
+from scaffold.auth import get_current_user
+from scaffold.crypto import encryption_enabled, decrypt_user_key, set_current_key
 from database import get_db
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -33,7 +34,7 @@ async def lifespan(app):
         cfg = Config(Path(__file__).parent / "alembic.ini")
         alembic_command.upgrade(cfg, "head")
         # One-time migration from SQLite if data/vesting.db exists and PG is empty
-        from migrate_sqlite_to_pg import maybe_migrate
+        from scaffold.migrate_sqlite_to_pg import maybe_migrate
         maybe_migrate()
     task = _start_daily_scheduler()
     metrics_task = _start_metrics_sampler()
@@ -54,7 +55,7 @@ def _start_daily_scheduler():
         return None
 
     async def _daily_loop():
-        from notifications import send_daily_notifications, send_admin_daily_digest
+        from scaffold.notifications import send_daily_notifications, send_admin_daily_digest
         while True:
             now = datetime.now(timezone.utc)
             target = datetime.combine(now.date(), time(7, 0), tzinfo=timezone.utc)
@@ -78,7 +79,7 @@ def _sample_metrics():
     import psutil
     from datetime import datetime, timezone, timedelta
     from sqlalchemy import func, text
-    from models import SystemMetric, ErrorLog
+    from scaffold.models import SystemMetric, ErrorLog
 
     db = database.SessionLocal()
     try:
@@ -208,8 +209,8 @@ class EncryptionMiddleware:
             set_current_key(None)
 
     def _try_set_key(self, token: str):
-        from auth import _decode_token
-        from models import User
+        from scaffold.auth import _decode_token
+        from scaffold.models import User
         try:
             payload = _decode_token(token)
             user_id = int(payload["sub"])
@@ -233,12 +234,12 @@ def _is_admin_request(request: Request) -> bool:
         auth = request.headers.get("authorization", "")
         if not auth.startswith("Bearer "):
             return False
-        from auth import _decode_token, get_admin_emails
+        from scaffold.auth import _decode_token, get_admin_emails
         payload = _decode_token(auth[7:])
         user_id = int(payload["sub"])
         db = database.SessionLocal()
         try:
-            from models import User
+            from scaffold.models import User
             user = db.get(User, user_id)
             return bool(user and user.email.lower() in get_admin_emails())
         finally:
@@ -255,12 +256,12 @@ async def global_exception_handler(request: Request, exc: Exception):
 
     # Persist to error_logs table (best-effort)
     try:
-        from models import ErrorLog
+        from scaffold.models import ErrorLog
         auth = request.headers.get("authorization", "")
         user_id = None
         if auth.startswith("Bearer "):
             try:
-                from auth import _decode_token
+                from scaffold.auth import _decode_token
                 user_id = int(_decode_token(auth[7:])["sub"])
             except Exception:
                 pass
@@ -313,16 +314,12 @@ def status():
 
 @_fastapi_app.get("/api/config")
 def client_config():
-    from auth import GOOGLE_CLIENT_ID
-    from email_sender import email_configured
-    vapid_public_key = os.environ.get("VAPID_PUBLIC_KEY", "")
-    epic_onboarding_url = os.environ.get("EPIC_ONBOARDING_URL", "")
+    from scaffold.email_sender import email_configured
     return {
-        "google_client_id": GOOGLE_CLIENT_ID,
-        "vapid_public_key": vapid_public_key,
+        "vapid_public_key": os.environ.get("VAPID_PUBLIC_KEY", ""),
         "email_notifications_available": email_configured(),
         "resend_from": os.environ.get("RESEND_FROM", ""),
-        "epic_onboarding_url": epic_onboarding_url,
+        "epic_onboarding_url": os.environ.get("EPIC_ONBOARDING_URL", ""),
     }
 
 
@@ -334,7 +331,7 @@ def current_user_info(user=Depends(get_current_user)):
 @_fastapi_app.post("/api/me/reset", status_code=204)
 def reset_my_data(user=Depends(get_current_user), db: Session = Depends(get_db)):
     """Delete all financial data (grants, loans, prices, sales, loan payments) but keep the account."""
-    from models import Grant, Loan, LoanPayment, Price, Sale
+    from scaffold.models import Grant, Loan, LoanPayment, Price, Sale
     db.query(LoanPayment).filter(LoanPayment.user_id == user.id).delete()
     db.query(Sale).filter(Sale.user_id == user.id).delete()
     db.query(Grant).filter(Grant.user_id == user.id).delete()
@@ -346,7 +343,7 @@ def reset_my_data(user=Depends(get_current_user), db: Session = Depends(get_db))
 @_fastapi_app.delete("/api/me", status_code=204)
 def delete_my_account(user=Depends(get_current_user), db: Session = Depends(get_db)):
     """Permanently delete account and all associated data."""
-    from models import User, Grant, Loan, Price, PushSubscription, EmailPreference
+    from scaffold.models import User, Grant, Loan, Price, PushSubscription, EmailPreference
     db.query(Grant).filter(Grant.user_id == user.id).delete()
     db.query(Loan).filter(Loan.user_id == user.id).delete()
     db.query(Price).filter(Price.user_id == user.id).delete()

@@ -3,8 +3,8 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 
 from database import Base, engine, SessionLocal
-from models import User, Grant, Loan, Price, Sale
-from auth import create_token
+from scaffold.models import User, Grant, Loan, Price, Sale
+from scaffold.auth import create_token
 from datetime import date, datetime, timezone
 
 Base.metadata.create_all(bind=engine)

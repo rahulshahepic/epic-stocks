@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import Admin from '../pages/Admin.tsx'
+import Admin from '../scaffold/pages/Admin.tsx'
 
 beforeEach(() => {
   localStorage.setItem('auth_token', 'test-token')

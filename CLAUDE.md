@@ -9,8 +9,9 @@ Equity vesting tracker PWA. See SPEC.md for full requirements.
 - **backend/excel_io.py contains the Excel read/write logic.** Adapt as needed for the import/export endpoints but preserve the column mappings.
 - **test_data/fixture.xlsx is a synthetic test fixture.** Use it to validate import logic. It contains no real data.
 - **Schema migrations use Alembic.** Migrations live in `backend/alembic/versions/`. `alembic upgrade head` runs automatically in the lifespan on startup (PostgreSQL only; SQLite test environments use `create_all`). To create a new migration: `alembic revision --autogenerate -m "description"`.
-- **Encryption is per-user.** When `ENCRYPTION_MASTER_KEY` is set, `backend/crypto.py` handles AES-256-GCM column-level encryption via SQLAlchemy TypeDecorators. Transparent to routers and core.py.
-- **Admin access is dynamic.** Set via `ADMIN_EMAIL` env var (semicolon-delimited). `is_admin` flag is set on every login — no persistent admin designation. Admin endpoints in `backend/routers/admin.py` never expose financial data.
+- **Encryption is per-user.** When `ENCRYPTION_MASTER_KEY` is set, `backend/scaffold/crypto.py` handles AES-256-GCM column-level encryption via SQLAlchemy TypeDecorators. Transparent to routers and core.py.
+- **Admin access is dynamic.** Set via `ADMIN_EMAIL` env var (semicolon-delimited). `is_admin` flag is set on every login — no persistent admin designation. Admin endpoints in `backend/scaffold/routers/admin.py` never expose financial data.
+- **OIDC_PROVIDERS format:** JSON array of provider objects. Required fields: `name`, `label`, `client_id`, `discovery_url`. Optional: `client_secret` (omit for PKCE-only clients), `scopes` (default `["openid","email","profile"]`), `subject_claim` (default `"sub"`; use `"oid"` for Azure Entra ID). Multiple providers show as separate login buttons. Redirect URI to register in IdP: `https://yourdomain.com/auth/callback`.
 
 ## Deployment Rules
 - **Never fix production by running commands manually on the server.** Manual fixes get overridden by the next deploy and leave the repo out of sync with reality. Every fix must go through code → PR → merge → deploy.
@@ -40,6 +41,8 @@ Follow the order in SPEC.md. Build backend first, then frontend. **Every step mu
 - **Admin workflows** — new env vars, admin endpoints, operational procedures (e.g. notifications, user management, blocked users): update the admin/ops section of the README.
 - **Code structure** — new routers, models, services, frontend pages, or hooks added: update the architecture/code structure section of the README.
 - **Environment variables** — any new `SOME_VAR` required or optional: document it in the README env var table.
+- **Auth provider config** — any change to OIDC provider support, PKCE flow, callback URI, or how `OIDC_PROVIDERS` is parsed: update the OIDC_PROVIDERS format section in README and FORK_GUIDE.md.
+- **Deployment architecture** — any change to docker-compose topology, Caddy config, proxy network, or GitHub Actions secrets/vars: update the Production Deployment section in README and the GitHub Actions secrets table in OPERATIONS.md.
 - **What to update in README.md:**
   1. Feature description / how to use it (user perspective)
   2. Admin/ops notes if it affects deployment or server config

@@ -79,9 +79,10 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 - **Down Payment Rules** — configurable minimum DP policy (percent of purchase and dollar cap). "Prefer stock DP" auto-calculates the minimum stock exchange down payment on new purchases. Default: 10% or $20,000, whichever is lower.
 - **Excel Import/Export** — bootstrap from an existing Vesting.xlsx or export current state. The Import page includes a downloadable sample file (pre-filled with fake data, with cell comments explaining every field) and a built-in column reference guide.
 - **OIDC Sign-In** — provider-agnostic PKCE flow works with any standards-compliant IdP (Google, Azure Entra ID, etc.). Multiple providers can be enabled simultaneously — the login page shows one button per provider. Automatic account creation; data is tied to the account.
-- **Admin Dashboard** — user management, aggregate stats, email blocking, and system health monitoring (CPU, RAM, DB size sparklines with 24h/72h/7d/30d windows, per-table DB size breakdown). Admin cannot see financial data.
+- **Admin Dashboard** — user management, aggregate stats, email blocking, system health monitoring (CPU, RAM, DB size, and cache hit rate sparklines with 24h/72h/7d/30d windows), per-table DB size breakdown, and a Danger Zone for maintenance mode and Epic Mode toggles. Admin cannot see financial data.
 - **Push & Email Notifications** — configurable advance timing: day-of, 3 days before, or 1 week before each event. Per-user opt-in for each channel independently. Includes a "Send test" button to confirm push is working.
 - **Per-User Encryption** — AES-256-GCM column-level encryption. Two-level key hierarchy: `KEY_ENCRYPTION_KEY` (env var, set once, never changes) wraps an operational master key stored encrypted in the database. The master key can be rotated live from the admin panel — all replicas pick up the new key automatically within seconds, no restart required. Each user has a unique per-user key wrapped by the master key.
+- **Epic Mode** — read-only deployment mode for use with Epic's managed data pipeline. When active, grant/price/loan/import writes are blocked (403) and the UI replaces add/edit controls with a "Data provided by Epic — view only" banner. Each grant row shows a **Sell** button and each loan row shows a **Request Payoff** button so users can still take action on their own data. Toggled from Admin → Danger Zone, or hard-locked via the `EPIC_MODE=true` env var. A `POST /api/internal/cache-invalidate` webhook lets Epic's batch jobs pre-warm the Redis cache after writing.
 - **Maintenance Mode** — two distinct mechanisms: (1) app-managed downtime stored in the database — all replicas see the toggle instantly; financial API routes return 503 while auth and admin remain accessible; (2) deploy-time full downtime via a Caddy sentinel file (`./data/full_maintenance`) that serves a static 503 page while the app container is stopped.
 - **Dark/Light Mode** — auto-detects system preference, updates live.
 - **Mobile-First** — designed for 375px phone viewports.
@@ -311,8 +312,9 @@ epic-stocks/
 │   │   ├── auth.py          # JWT creation/verification + admin checks
 │   │   ├── crypto.py        # Per-user AES-256-GCM encryption
 │   │   ├── email_sender.py  # Email dispatch (delegates to providers/)
+│   │   ├── epic_mode.py     # Epic Mode state (DB-backed, 1s TTL cache, env override)
 │   │   ├── maintenance.py   # Sentinel path for app-managed downtime
-│   │   ├── models.py        # SQLAlchemy models (User, BlockedEmail, etc.)
+│   │   ├── models.py        # SQLAlchemy models (User, BlockedEmail, SystemMetric, etc.)
 │   │   ├── notifications.py # Push + email notification logic
 │   │   ├── providers/
 │   │   │   ├── auth/        # OIDC provider (generic PKCE; joserfc for JWT/JWKS verification)
@@ -326,7 +328,8 @@ epic-stocks/
 │   │   ├── core.py          # Event generation logic (frozen)
 │   │   ├── sales_engine.py  # FIFO cost-basis + tax + gross-up calculations
 │   │   ├── excel_io.py      # Excel read/write (openpyxl)
-│   │   ├── timeline_cache.py # Memoized event computation
+│   │   ├── timeline_cache.py # L1 in-process memoized event computation (content-addressed)
+│   │   ├── event_cache.py   # L2 Redis cache + background recompute + redis_info()
 │   │   └── routers/
 │   │       ├── grants.py    # Grant CRUD + bulk
 │   │       ├── loans.py     # Loan CRUD + bulk
@@ -335,7 +338,8 @@ epic-stocks/
 │   │       ├── horizon.py   # Exit date settings
 │   │       ├── flows.py     # Quick flows (new purchase, bonus, price)
 │   │       ├── import_export.py # Excel import/export + template
-│   │       └── sales.py     # Sales CRUD + tax breakdown
+│   │       ├── sales.py     # Sales CRUD + tax breakdown
+│   │       └── cache.py     # POST /api/internal/cache-invalidate webhook
 │   └── tests/               # pytest tests
 ├── frontend/
 │   ├── src/
@@ -410,6 +414,7 @@ All authenticated endpoints require a valid `session` cookie (set automatically 
 | GET | `/api/import/sample` | Download sample Excel file pre-filled with fake data and cell comments |
 | GET | `/api/export/excel` | Download Vesting.xlsx with all data |
 | GET/PUT | `/api/horizon-settings` | Get/set exit date for projected liquidation |
+| POST | `/api/internal/cache-invalidate` | Pre-warm Redis cache (Epic batch webhook; requires `Authorization: Bearer <CACHE_INVALIDATE_SECRET>`) |
 | POST/DELETE | `/api/push/subscribe` | Subscribe/unsubscribe push notifications |
 | GET | `/api/push/status` | Check push subscription status |
 | POST | `/api/push/test` | Send a test push notification to the current user's subscriptions |

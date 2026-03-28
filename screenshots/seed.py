@@ -10,7 +10,7 @@ from datetime import date, datetime, timezone
 Base.metadata.create_all(bind=engine)
 db = SessionLocal()
 
-user = User(email="demo@example.com", google_id="demo-screenshot", name="Demo User",
+user = User(email="demo@example.com", google_id="test-demo@example.com", name="Demo User",
             picture="", is_admin=True, last_login=datetime(2026, 3, 20, 10, 0, tzinfo=timezone.utc))
 db.add(user)
 db.flush()

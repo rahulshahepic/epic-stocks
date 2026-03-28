@@ -27,9 +27,13 @@ async function setEpicMode(page: import('@playwright/test').Page, active: boolea
   // Scroll to Danger Zone
   await page.getByText('Danger Zone').scrollIntoViewIfNeeded()
   const btn = page.getByRole('button', { name: active ? 'Enable Epic Mode' : 'Disable Epic Mode' })
-  if (await btn.isVisible()) {
+  // Use expect().toBeVisible() with timeout so React's async render doesn't fool us
+  try {
+    await expect(btn).toBeVisible({ timeout: 5000 })
     await btn.click()
     await page.waitForLoadState('networkidle')
+  } catch {
+    // Button not present — already in desired state
   }
 }
 

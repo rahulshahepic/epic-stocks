@@ -66,7 +66,7 @@ All responses include:
 
 ### Security test suite (`backend/tests/test_security.py`)
 
-- JWT tampering: modified payload, bad signature, expired token all rejected (via session cookie — no Bearer token)
+- JWT tampering: modified payload, bad signature, expired token all rejected (via session cookie — no Bearer token; signature verification via joserfc)
 - IDOR: user A cannot read or modify user B's data
 - File upload: oversized files and non-XLSX magic bytes rejected
 - Admin endpoints: 403 for non-admin authenticated users

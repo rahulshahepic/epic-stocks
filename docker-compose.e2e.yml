@@ -1,0 +1,40 @@
+services:
+  e2e-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: vesting_e2e
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: e2e-pass
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  e2e-app:
+    build: .
+    depends_on:
+      e2e-db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:e2e-pass@e2e-db:5432/vesting_e2e
+      JWT_SECRET: e2e-test-secret
+      OIDC_PROVIDERS: "[]"
+      E2E_TEST: "1"
+      ADMIN_EMAIL: admin@e2e.test
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/api/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  playwright:
+    build:
+      context: .
+      dockerfile: Dockerfile.e2e
+    depends_on:
+      e2e-app:
+        condition: service_healthy
+    environment:
+      E2E_BASE_URL: http://e2e-app:8000
+      E2E_API_URL: http://e2e-app:8000

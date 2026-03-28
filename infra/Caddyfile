@@ -1,0 +1,12 @@
+# Global Caddy configuration — managed by infra, not by any individual app.
+# Each app writes its own snippet to /etc/caddy/conf.d/<appname>.caddy
+# and then reloads Caddy.  No changes to this file are needed when adding apps.
+
+{
+    servers {
+        trusted_proxies static {$TRUSTED_PROXY_IPS}
+    }
+    email {$ACME_EMAIL:admin@example.com}
+}
+
+import /etc/caddy/conf.d/*.caddy

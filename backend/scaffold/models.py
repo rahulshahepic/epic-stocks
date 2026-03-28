@@ -210,11 +210,17 @@ class ErrorLog(Base):
 
 
 class SystemMetric(Base):
-    """Periodic system health snapshot (CPU, RAM, DB size). Rolling 30-day window."""
+    """Periodic system health snapshot (CPU, RAM, DB size).
+
+    Raw 15-min samples are kept for 30 days.  A nightly job then aggregates each
+    completed UTC day into a single row (aggregated=True) and deletes the raw
+    rows.  Aggregated rows are purged after 1 year.
+    """
     __tablename__ = "system_metrics"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    aggregated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     cpu_percent: Mapped[float] = mapped_column(Float, nullable=False)
     ram_used_mb: Mapped[float] = mapped_column(Float, nullable=False)
     ram_total_mb: Mapped[float] = mapped_column(Float, nullable=False)

@@ -1,5 +1,5 @@
-from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime, date
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -7,7 +7,7 @@ from database import get_db
 from scaffold.models import User, Grant, Loan, Price, Sale, TaxSettings
 from schemas import SaleCreate, SaleUpdate, SaleOut, TaxSettingsRead, TaxSettingsUpdate, TaxBreakdown
 from scaffold.auth import get_current_user
-from app.sales_engine import compute_sale_tax
+from app.sales_engine import compute_sale_tax, build_fifo_lots, compute_grossup_shares
 
 router = APIRouter(prefix="/api/sales", tags=["sales"])
 tax_router = APIRouter(prefix="/api/tax-settings", tags=["tax-settings"])
@@ -118,7 +118,7 @@ def get_all_sale_taxes(user: User = Depends(get_current_user), db: Session = Dep
         for ln in db.query(LoanModel).filter(LoanModel.user_id == user.id).all():
             loan_map[ln.id] = (ln.grant_year, ln.grant_type)
 
-    lot_order = 'fifo' if ts.lot_selection_method == 'fifo' else 'lifo'
+    lot_order = ts.lot_selection_method if ts.lot_selection_method in ('fifo', 'lifo', 'epic_lifo') else 'lifo'
 
     # Snapshot per-sale rate overrides while session is open
     sale_data = []
@@ -276,13 +276,76 @@ def get_sale_tax(sale_id: int, user: User = Depends(get_current_user), db: Sessi
         "lt_holding_days": sale.lt_holding_days if sale.lt_holding_days is not None else ts.lt_holding_days,
     }
     method = ts.lot_selection_method if ts else 'lifo'
-    lot_order = 'fifo' if method == 'fifo' else 'lifo'
+    lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'lifo'
     gy, gt = None, None
     if method == 'same_tranche' and sale.loan_id:
         linked_loan = db.query(Loan).filter(Loan.id == sale.loan_id).first()
         if linked_loan:
             gy, gt = linked_loan.grant_year, linked_loan.grant_type
     return compute_sale_tax(timeline, sale_dict, ts_dict, lot_order=lot_order, grant_year=gy, grant_type=gt)
+
+
+# --- Estimate ---
+
+@router.get("/estimate")
+def estimate_sale(
+    price_per_share: float = Query(...),
+    target_net_cash: float = Query(...),
+    loan_id: int | None = Query(default=None),
+    grant_year: int | None = Query(default=None),
+    grant_type: str | None = Query(default=None),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Stateless estimator: given a desired net cash amount, compute the gross sale
+    needed (shares, proceeds, tax). Pure read — no DB write.
+    """
+    from app.routers.loans import (
+        _build_timeline_for_user, _get_tax_settings_dict,
+        _get_lot_selection_method, WI_DEFAULTS,
+    )
+
+    ts = _get_tax_settings_dict(user, db)
+    method = _get_lot_selection_method(user, db)
+    lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'lifo'
+    lt_days = int(ts.get("lt_holding_days", 365))
+
+    # Resolve loan balance if a loan_id was provided
+    loan_balance = 0.0
+    gy, gt = grant_year, grant_type
+    if loan_id:
+        loan = db.query(Loan).filter(Loan.id == loan_id, Loan.user_id == user.id).first()
+        if loan:
+            from scaffold.models import LoanPayment
+            paid = sum(lp.amount for lp in db.query(LoanPayment).filter(LoanPayment.loan_id == loan.id).all())
+            loan_balance = round(max(0.0, loan.amount - paid), 2)
+            if method == 'same_tranche':
+                gy, gt = loan.grant_year, loan.grant_type
+
+    timeline = _build_timeline_for_user(user, db)
+    as_of = date.today()
+
+    lots = build_fifo_lots(timeline, as_of, order=lot_order,
+                           grant_year=gy, grant_type=gt, lt_holding_days=lt_days)
+    shares_needed = compute_grossup_shares(lots, target_net_cash, price_per_share, as_of, ts)
+    gross_proceeds = round(shares_needed * price_per_share, 2)
+
+    # Compute tax on the estimated sale
+    sale_dict = {"date": as_of, "shares": shares_needed, "price_per_share": price_per_share}
+    tax_result = compute_sale_tax(timeline, sale_dict, ts, lot_order=lot_order,
+                                  grant_year=gy, grant_type=gt)
+    estimated_tax = round(tax_result.get("estimated_tax", 0.0), 2)
+    net_proceeds = round(gross_proceeds - estimated_tax, 2)
+
+    return {
+        "shares_needed": shares_needed,
+        "gross_proceeds": gross_proceeds,
+        "estimated_tax": estimated_tax,
+        "net_proceeds": net_proceeds,
+        "covers_loan": net_proceeds >= loan_balance if loan_balance > 0 else None,
+        "loan_balance": loan_balance if loan_id else None,
+    }
 
 
 # --- Tax Settings ---

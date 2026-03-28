@@ -67,7 +67,7 @@ export default function Admin() {
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null)
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
-  const [notifyUserId, setNotifyUserId] = useState<number | ''>('')
+  const [notifyModal, setNotifyModal] = useState<{ userId: number; userName: string } | null>(null)
   const [notifyTemplate, setNotifyTemplate] = useState('custom')
   const [notifyTitle, setNotifyTitle] = useState(NOTIFY_TEMPLATES.custom.title)
   const [notifyBody, setNotifyBody] = useState(NOTIFY_TEMPLATES.custom.body)
@@ -82,6 +82,8 @@ export default function Admin() {
   // Danger Zone state
   const [maintenanceActive, setMaintenanceActive] = useState<boolean | null>(null)
   const [maintenanceLoading, setMaintenanceLoading] = useState(false)
+  const [epicModeActive, setEpicModeActive] = useState<boolean | null>(null)
+  const [epicModeLoading, setEpicModeLoading] = useState(false)
   const [rotationOpen, setRotationOpen] = useState(false)
   const [rotationConfirm, setRotationConfirm] = useState(false)
   const [rotationRunning, setRotationRunning] = useState(false)
@@ -117,16 +119,18 @@ export default function Admin() {
 
   const load = useCallback(async () => {
     try {
-      const [s, b, m, rs] = await Promise.all([
+      const [s, b, m, rs, em] = await Promise.all([
         api.adminStats(),
         api.adminListBlocked(),
         api.adminGetMaintenance(),
         api.adminRotationStatus(),
+        api.adminGetEpicMode(),
       ])
       setStats(s)
       setBlocked(b)
       setMaintenanceActive(m.active)
       setSnapshotExists(rs.snapshot_exists)
+      setEpicModeActive(em.active)
       setError('')
       loadUsers()
       loadErrors()
@@ -180,11 +184,11 @@ export default function Admin() {
 
   async function handleTestNotify(e: React.FormEvent) {
     e.preventDefault()
-    if (!notifyUserId) return
+    if (!notifyModal) return
     setNotifySending(true)
     setNotifyResult(null)
     try {
-      const result = await api.adminTestNotify(notifyUserId, notifyTitle, notifyBody)
+      const result = await api.adminTestNotify(notifyModal.userId, notifyTitle, notifyBody)
       setNotifyResult(result)
       loadErrors()
     } catch (err) {
@@ -192,6 +196,14 @@ export default function Admin() {
     } finally {
       setNotifySending(false)
     }
+  }
+
+  function openNotifyModal(u: AdminUser) {
+    setNotifyModal({ userId: u.id, userName: u.name ?? u.email })
+    setNotifyTemplate('custom')
+    setNotifyTitle(NOTIFY_TEMPLATES.custom.title)
+    setNotifyBody(NOTIFY_TEMPLATES.custom.body)
+    setNotifyResult(null)
   }
 
   function formatBytes(bytes: number) {
@@ -410,7 +422,7 @@ export default function Admin() {
               </div>
               <div className="ml-2 flex shrink-0 gap-1">
                 <button
-                  onClick={() => { setNotifyUserId(u.id); setNotifyResult(null) }}
+                  onClick={() => openNotifyModal(u)}
                   className="rounded px-2 py-1 text-xs font-medium text-white bg-indigo-500 hover:bg-indigo-600"
                 >
                   Notify
@@ -617,6 +629,52 @@ export default function Admin() {
 
         <hr className="my-4 border-red-100 dark:border-red-900/40" />
 
+        {/* Epic Mode Toggle */}
+        <div className="mt-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-gray-900 dark:text-gray-100">Epic Mode</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Users can view their data but cannot add or edit grants, prices, or loans.
+              </p>
+            </div>
+            <button
+              disabled={epicModeActive === null || epicModeLoading}
+              onClick={async () => {
+                setEpicModeLoading(true)
+                try {
+                  const res = await api.adminSetEpicMode(!epicModeActive)
+                  setEpicModeActive(res.active)
+                } catch {
+                  setError('Failed to toggle Epic Mode')
+                } finally {
+                  setEpicModeLoading(false)
+                }
+              }}
+              className={`ml-4 shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors disabled:opacity-50 ${
+                epicModeActive
+                  ? 'bg-green-600 hover:bg-green-700'
+                  : 'bg-indigo-600 hover:bg-indigo-700'
+              }`}
+            >
+              {epicModeLoading
+                ? '…'
+                : epicModeActive === null
+                ? 'Loading'
+                : epicModeActive
+                ? 'Disable Epic Mode'
+                : 'Enable Epic Mode'}
+            </button>
+          </div>
+          {epicModeActive && (
+            <p className="mt-1.5 text-xs text-indigo-600 dark:text-indigo-400">
+              Epic Mode is active. Grant/price/loan writes are blocked for all users.
+            </p>
+          )}
+        </div>
+
+        <hr className="my-4 border-red-100 dark:border-red-900/40" />
+
         {/* Encryption Key Rotation */}
         <div>
           <button
@@ -750,79 +808,91 @@ export default function Admin() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
-        <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Test Notification</h3>
-        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          Send an immediate notification to any user. Respects user preferences — push only goes to active subscriptions, email only if the user has it enabled.
-        </p>
-        <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-          Email from: {config?.resend_from || <span className="text-red-500">RESEND_FROM not set</span>}
-        </p>
-        <form onSubmit={handleTestNotify} className="mt-3 space-y-2">
-          <select
-            aria-label="User"
-            value={notifyUserId}
-            onChange={e => { setNotifyUserId(e.target.value === '' ? '' : +e.target.value); setNotifyResult(null) }}
-            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-          >
-            <option value="">Select a user…</option>
-            {users.map(u => (
-              <option key={u.id} value={u.id}>{u.email}{u.name ? ` (${u.name})` : ''}</option>
-            ))}
-          </select>
-          <select
-            aria-label="Template"
-            value={notifyTemplate}
-            onChange={e => {
-              const tpl = e.target.value
-              setNotifyTemplate(tpl)
-              setNotifyTitle(NOTIFY_TEMPLATES[tpl].title)
-              setNotifyBody(NOTIFY_TEMPLATES[tpl].body)
-              setNotifyResult(null)
-            }}
-            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-          >
-            <option value="custom">Custom</option>
-            <option value="vesting">Vesting event</option>
-            <option value="exercise">Exercise event</option>
-            <option value="loan_repayment">Loan Repayment event</option>
-          </select>
-          <input
-            type="text"
-            aria-label="Title"
-            value={notifyTitle}
-            onChange={e => { setNotifyTitle(e.target.value); setNotifyTemplate('custom') }}
-            placeholder="Title"
-            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-          />
-          <textarea
-            aria-label="Body"
-            value={notifyBody}
-            onChange={e => { setNotifyBody(e.target.value); setNotifyTemplate('custom') }}
-            placeholder="Body"
-            rows={2}
-            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
-          />
-          <button
-            type="submit"
-            disabled={!notifyUserId || notifySending}
-            className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-          >
-            {notifySending ? 'Sending…' : 'Send Now'}
-          </button>
-          {notifyResult && (
-            <p className="text-xs text-green-600 dark:text-green-400">
-              Push: {notifyResult.push_sent} sent{notifyResult.push_failed > 0 ? `, ${notifyResult.push_failed} expired` : ''}.{' '}
-              Email: {notifyResult.email_sent ? 'sent' : `not sent${notifyResult.email_skipped_reason ? ` — ${notifyResult.email_skipped_reason}` : ''}`}.
-            </p>
-          )}
-        </form>
-      </section>
-
       {import.meta.env.VITE_COMMIT_SHA && import.meta.env.VITE_COMMIT_SHA !== 'dev' && (
         <p className="text-center text-xs text-gray-400 dark:text-gray-600">
           {import.meta.env.VITE_COMMIT_SHA.slice(0, 7)}
         </p>
+      )}
+
+      {/* Notify Modal */}
+      {notifyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl dark:bg-gray-900">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  Notify — {notifyModal.userName}
+                </h3>
+                <p className="text-xs text-gray-400 dark:text-gray-500">
+                  Email from: {config?.resend_from || <span className="text-red-500">RESEND_FROM not set</span>}
+                </p>
+              </div>
+              <button
+                onClick={() => setNotifyModal(null)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleTestNotify} className="space-y-2">
+              <select
+                aria-label="Template"
+                value={notifyTemplate}
+                onChange={e => {
+                  const tpl = e.target.value
+                  setNotifyTemplate(tpl)
+                  setNotifyTitle(NOTIFY_TEMPLATES[tpl].title)
+                  setNotifyBody(NOTIFY_TEMPLATES[tpl].body)
+                  setNotifyResult(null)
+                }}
+                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+              >
+                <option value="custom">Custom</option>
+                <option value="vesting">Vesting event</option>
+                <option value="exercise">Exercise event</option>
+                <option value="loan_repayment">Loan Repayment event</option>
+              </select>
+              <input
+                type="text"
+                aria-label="Title"
+                value={notifyTitle}
+                onChange={e => { setNotifyTitle(e.target.value); setNotifyTemplate('custom') }}
+                placeholder="Title"
+                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+              />
+              <textarea
+                aria-label="Body"
+                value={notifyBody}
+                onChange={e => { setNotifyBody(e.target.value); setNotifyTemplate('custom') }}
+                placeholder="Body"
+                rows={2}
+                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+              />
+              <div className="flex items-center gap-2">
+                <button
+                  type="submit"
+                  disabled={notifySending}
+                  className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {notifySending ? 'Sending…' : 'Send'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNotifyModal(null)}
+                  className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+                >
+                  Close
+                </button>
+              </div>
+              {notifyResult && (
+                <p className="text-xs text-green-600 dark:text-green-400">
+                  Push: {notifyResult.push_sent} sent{notifyResult.push_failed > 0 ? `, ${notifyResult.push_failed} expired` : ''}.{' '}
+                  Email: {notifyResult.email_sent ? 'sent' : `not sent${notifyResult.email_skipped_reason ? ` — ${notifyResult.email_skipped_reason}` : ''}`}.
+                </p>
+              )}
+            </form>
+          </div>
+        </div>
       )}
     </div>
   )

@@ -138,6 +138,17 @@ User requests to sell shares of a specific tranche (grant year + type).
   must be sold (iterative gross-up: shares → gross proceeds → tax → net → check
   against X → adjust)
 
+**Two distinct sale scenarios:**
+
+- **With tax withholding:** Epic withholds a fixed percentage for taxes. The
+  gross sale must cover `loan_balance + withholding_amount`. Net to user is
+  `gross_proceeds - taxes_withheld - loan_payoff`. User has no choice on size —
+  it's determined by the obligations.
+- **Without withholding (user-directed cash target):** User specifies a desired
+  net cash amount X. App computes required gross sale iteratively:
+  `shares → gross → taxes → net → compare to X → adjust shares`. This is a
+  pure read — no write needed until the user confirms.
+
 **Tranche targeting:**
 Current sale model in `sales.py` does not enforce tranche-level lot priority or
 mandatory loan coverage. The Epic version needs a sale request that specifies

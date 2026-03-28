@@ -150,17 +150,21 @@ def admin_delete_user(user_id: int, admin: User = Depends(get_admin_user), db: S
         raise HTTPException(status_code=404, detail="User not found")
     if user.email.lower() in get_admin_emails():
         raise HTTPException(status_code=400, detail="Cannot delete an admin user")
-    # Delete related records first to avoid loading encrypted columns with wrong key
-    db.query(Sale).filter(Sale.user_id == user_id).delete()
-    db.query(LoanPayment).filter(LoanPayment.user_id == user_id).delete()
-    db.query(Grant).filter(Grant.user_id == user_id).delete()
-    db.query(Loan).filter(Loan.user_id == user_id).delete()
-    db.query(Price).filter(Price.user_id == user_id).delete()
-    db.query(PushSubscription).filter(PushSubscription.user_id == user_id).delete()
-    db.query(EmailPreference).filter(EmailPreference.user_id == user_id).delete()
-    db.query(TaxSettings).filter(TaxSettings.user_id == user_id).delete()
-    db.query(HorizonSettings).filter(HorizonSettings.user_id == user_id).delete()
-    db.query(User).filter(User.id == user_id).delete()
+    # Expunge the user object so ORM cascade logic cannot interfere with the
+    # bulk deletes below (encrypted columns would otherwise be accessed).
+    db.expunge(user)
+    # Delete related records first to avoid loading encrypted columns with wrong key.
+    # synchronize_session=False skips ORM session evaluation (safe here; we commit immediately).
+    db.query(Sale).filter(Sale.user_id == user_id).delete(synchronize_session=False)
+    db.query(LoanPayment).filter(LoanPayment.user_id == user_id).delete(synchronize_session=False)
+    db.query(Grant).filter(Grant.user_id == user_id).delete(synchronize_session=False)
+    db.query(Loan).filter(Loan.user_id == user_id).delete(synchronize_session=False)
+    db.query(Price).filter(Price.user_id == user_id).delete(synchronize_session=False)
+    db.query(PushSubscription).filter(PushSubscription.user_id == user_id).delete(synchronize_session=False)
+    db.query(EmailPreference).filter(EmailPreference.user_id == user_id).delete(synchronize_session=False)
+    db.query(TaxSettings).filter(TaxSettings.user_id == user_id).delete(synchronize_session=False)
+    db.query(HorizonSettings).filter(HorizonSettings.user_id == user_id).delete(synchronize_session=False)
+    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
     db.commit()
 
 

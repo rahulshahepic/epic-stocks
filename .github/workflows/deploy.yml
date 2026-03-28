@@ -167,8 +167,14 @@ jobs:
             ACME_EMAIL=$(grep "^ACME_EMAIL=" .env | cut -d= -f2-)
             TRUSTED_PROXY_IPS=$(grep "^TRUSTED_PROXY_IPS=" .env | cut -d= -f2-)
             # Stop existing Caddy first to release ports 80/443 before recreating.
+            # docker-proxy holds the port binding briefly after the container stops,
+            # so we poll until the port is actually free before starting the new container.
             DOMAIN=$DOMAIN ACME_EMAIL=$ACME_EMAIL TRUSTED_PROXY_IPS=$TRUSTED_PROXY_IPS \
               docker compose -f infra/docker-compose.infra.yml down --remove-orphans || true
+            for i in $(seq 1 15); do
+              docker ps -q --filter publish=80 | grep -q . || break
+              sleep 1
+            done
             DOMAIN=$DOMAIN ACME_EMAIL=$ACME_EMAIL TRUSTED_PROXY_IPS=$TRUSTED_PROXY_IPS \
               docker compose -f infra/docker-compose.infra.yml up -d --force-recreate
 

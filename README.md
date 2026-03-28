@@ -92,7 +92,7 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 |-------|-----------|
 | Backend | Python 3.12, FastAPI, SQLAlchemy, PostgreSQL (Alembic migrations) |
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS 4, Recharts |
-| Auth | OIDC PKCE (any provider) → backend JWT session tokens |
+| Auth | OIDC PKCE (any provider) → BFF session cookie (HttpOnly, XSS-safe) |
 | Deploy | Docker Compose + Caddy (auto-HTTPS) + Cloudflare (DDoS protection) |
 | Tests | pytest (backend), Vitest + RTL (frontend), Playwright (E2E) |
 
@@ -312,7 +312,7 @@ epic-stocks/
 │   │   ├── models.py        # SQLAlchemy models (User, BlockedEmail, etc.)
 │   │   ├── notifications.py # Push + email notification logic
 │   │   ├── providers/
-│   │   │   ├── auth/        # OIDC provider (generic PKCE + JWKS verification)
+│   │   │   ├── auth/        # OIDC provider (generic PKCE; joserfc for JWT/JWKS verification)
 │   │   │   └── email/       # Email providers: Resend, SMTP
 │   │   └── routers/
 │   │       ├── auth_router.py   # OIDC PKCE endpoints + JWT issuance
@@ -369,7 +369,7 @@ epic-stocks/
 
 ## API Overview
 
-All endpoints require `Authorization: Bearer <jwt>` except auth, health, status, config, and import template.
+All authenticated endpoints require a valid `session` cookie (set automatically by the browser after sign-in). There is no Bearer token — the JWT lives only in an HttpOnly cookie that JavaScript cannot read. The companion `auth_hint` cookie (readable by JS) tells the SPA whether a session exists without exposing the credential.
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -507,6 +507,7 @@ If a user has multiple events of the same type on the same day they are counted 
 This application stores sensitive financial data. Please read **[PRIVACY.md](PRIVACY.md)** before deploying for others.
 
 Key points:
+- **BFF auth / XSS protection** — the JWT is stored in an `HttpOnly; Secure; SameSite=Lax` session cookie, not in `localStorage` or a JavaScript variable. JavaScript cannot read it, so a successful XSS attack cannot exfiltrate the credential and replay it from an attacker's origin. A companion `auth_hint` cookie (not HttpOnly) lets the SPA know a session exists without exposing the token itself.
 - **Data isolation** — every API query filters by authenticated user ID. Users cannot see each other's data.
 - **Encryption at rest** — financial data (shares, prices, loan amounts) is encrypted per-user with AES-256-GCM. Two-level hierarchy: `KEY_ENCRYPTION_KEY` (env var, set once) wraps an operational master key stored encrypted in the `system_settings` DB table. Each user gets a unique key wrapped by the master key. Rotating the master key re-wraps only the per-user key wrappers — not all data — and propagates to all replicas automatically.
 - **Open source** — users can audit the code, self-host their own instance, or fork the project.

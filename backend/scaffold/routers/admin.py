@@ -104,6 +104,13 @@ def admin_stats(admin: User = Depends(get_admin_user), db: Session = Depends(get
     )
 
 
+@router.get("/cache-stats")
+def admin_cache_stats(admin: User = Depends(get_admin_user)):
+    from app.timeline_cache import get_stats
+    from app import event_cache
+    return {**get_stats(), "redis": event_cache.redis_info()}
+
+
 class UserListResponse(BaseModel):
     users: list[UserSummary]
     total: int

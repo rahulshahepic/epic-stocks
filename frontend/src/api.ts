@@ -279,6 +279,7 @@ export const api = {
     post<TestNotifyResult>('/api/admin/test-notify', { user_id, title, body }),
   adminMetrics: (hours = 72) => apiFetch<SystemMetricPoint[]>(`/api/admin/metrics?hours=${hours}`),
   adminDbTables: () => apiFetch<DbTableInfo[]>('/api/admin/db-tables'),
+  adminCacheStats: () => apiFetch<CacheStats>('/api/admin/cache-stats'),
 
   // Operational status — no auth required, polled by App.tsx
   status: () => apiFetch<{ maintenance: boolean }>('/api/status'),
@@ -334,6 +335,26 @@ export interface AdminStats {
   cpu_percent: number | null
   ram_used_mb: number | null
   ram_total_mb: number | null
+}
+
+export interface CacheStats {
+  l1_hits: number
+  l2_hits: number
+  misses: number
+  total: number
+  l1_hit_rate: number | null
+  l2_hit_rate: number | null
+  l1_entries: number
+  redis: {
+    connected: boolean
+    timeline_keys?: number
+    total_keys?: number
+    used_memory_bytes?: number
+    used_memory_human?: string
+    maxmemory_bytes?: number | null
+    maxmemory_policy?: string
+    error?: string
+  }
 }
 
 export interface SystemMetricPoint {

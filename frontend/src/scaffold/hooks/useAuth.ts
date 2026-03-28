@@ -1,28 +1,29 @@
 import { useState, useCallback, useEffect } from 'react'
-import { getToken, clearToken } from '../../api.ts'
+import { clearToken, isLoggedIn } from '../../api.ts'
 import { resetMeCache } from './useMe.ts'
 import { resetConfigCache } from './useConfig.ts'
 
 export function useAuth() {
-  const [token, setTokenState] = useState<string | null>(getToken)
+  const [authenticated, setAuthenticated] = useState<boolean>(isLoggedIn)
 
-  const isAuthenticated = token !== null
-
+  // Sync across tabs: if the legacy localStorage token changes, re-evaluate.
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
-      if (e.key === 'auth_token') setTokenState(e.newValue)
+      if (e.key === 'auth_token') setAuthenticated(isLoggedIn())
     }
     window.addEventListener('storage', onStorage)
     return () => window.removeEventListener('storage', onStorage)
   }, [])
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
     clearToken()
     resetMeCache()
     resetConfigCache()
-    setTokenState(null)
+    // Clear server-side session cookie.
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {})
+    setAuthenticated(false)
     window.location.href = '/login'
   }, [])
 
-  return { isAuthenticated, logout }
+  return { isAuthenticated: authenticated, logout }
 }

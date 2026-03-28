@@ -18,7 +18,7 @@ test.describe('Multi-user isolation', () => {
     await resetUser(request, tokenA)
     await resetUser(request, tokenB)
 
-    await loginAs(page, tokenA)
+    await loginAs(page, 'usera-isolation@test.com', 'User A')
 
     // Add a price as User A
     await navigateTo(page, 'Prices')
@@ -45,7 +45,7 @@ test.describe('Multi-user isolation', () => {
     await expect(page.getByRole('button', { name: /All types/i })).not.toContainText('All types (0)')
 
     // Switch to User B
-    await loginAs(page, tokenB)
+    await loginAs(page, 'userb-isolation@test.com', 'User B')
 
     // User B should see empty data
     await navigateTo(page, 'Grants')
@@ -66,7 +66,7 @@ test.describe('Multi-user isolation', () => {
     await expect(page.getByText('1 price entries')).toBeVisible({ timeout: 10000 })
 
     // Switch back to User A — data should be unchanged
-    await loginAs(page, tokenA)
+    await loginAs(page, 'usera-isolation@test.com', 'User A')
     await navigateTo(page, 'Prices')
     await expect(page.getByText('1 price entries')).toBeVisible({ timeout: 10000 })
 

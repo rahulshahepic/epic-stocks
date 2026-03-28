@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { getToken } from './api.ts'
+import { isLoggedIn } from './api.ts'
 import Layout from './scaffold/components/Layout.tsx'
 import { ToastProvider } from './scaffold/components/Toast.tsx'
 import { ThemeProvider } from './scaffold/contexts/ThemeContext.tsx'
@@ -18,7 +18,7 @@ import Admin from './scaffold/pages/Admin.tsx'
 import Sales from './app/pages/Sales.tsx'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  return getToken() ? <>{children}</> : <Navigate to="/login" replace />
+  return isLoggedIn() ? <>{children}</> : <Navigate to="/login" replace />
 }
 
 // Wraps financial pages — shows a placeholder during maintenance instead of

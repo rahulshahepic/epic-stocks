@@ -5,8 +5,7 @@ import json
 import base64
 import time
 from datetime import datetime, timedelta, timezone
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -15,6 +14,7 @@ from scaffold.crypto import encryption_enabled, decrypt_user_key, set_current_ke
 
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-me")
 JWT_EXPIRE_HOURS = 24
+COOKIE_MAX_AGE = JWT_EXPIRE_HOURS * 3600
 
 
 def get_admin_emails() -> set[str]:
@@ -25,7 +25,9 @@ def get_admin_emails() -> set[str]:
     return {e.strip().lower() for e in raw.split(";") if e.strip()}
 
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/callback")
+def cookie_secure() -> bool:
+    """True when running behind HTTPS (production with DOMAIN set)."""
+    return bool(os.getenv("DOMAIN"))
 
 
 def _b64url_encode(data: bytes) -> str:
@@ -61,7 +63,50 @@ def _decode_token(token: str) -> dict:
     return payload
 
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
+def set_session_cookies(response, token: str) -> None:
+    """Set the HttpOnly session cookie and a non-HttpOnly auth hint readable by JS."""
+    secure = cookie_secure()
+    response.set_cookie(
+        key="session",
+        value=token,
+        max_age=COOKIE_MAX_AGE,
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+        path="/",
+    )
+    response.set_cookie(
+        key="auth_hint",
+        value="1",
+        max_age=COOKIE_MAX_AGE,
+        httponly=False,
+        secure=secure,
+        samesite="lax",
+        path="/",
+    )
+
+
+def clear_session_cookies(response) -> None:
+    """Clear both auth cookies."""
+    response.delete_cookie(key="session", path="/", httponly=True, samesite="lax")
+    response.delete_cookie(key="auth_hint", path="/", httponly=False, samesite="lax")
+
+
+def _token_from_request(request: Request) -> str | None:
+    """Extract JWT from HttpOnly session cookie, falling back to Authorization header."""
+    token = request.cookies.get("session")
+    if token:
+        return token
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        return auth[7:]
+    return None
+
+
+def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
+    token = _token_from_request(request)
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     try:
         payload = _decode_token(token)
         user_id = int(payload["sub"])

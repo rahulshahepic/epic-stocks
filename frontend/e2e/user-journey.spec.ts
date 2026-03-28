@@ -11,7 +11,7 @@ test.describe('Sales journey', () => {
   test.beforeEach(async ({ page, request }) => {
     token = await getTestToken(request, 'sales@test.com', 'Sales User')
     await resetUserData(request, token)
-    await loginAs(page, token)
+    await loginAs(page, 'sales@test.com', 'Sales User')
     // Import fixture data so there are vesting events to sell against
     // Uncheck "generate payoff sales" so the sales list starts empty
     await navigateTo(page, 'Import')
@@ -113,7 +113,7 @@ test.describe('Full user journey', () => {
 
   test.beforeEach(async ({ page, request }) => {
     token = await getTestToken(request, 'journey@test.com', 'Journey User')
-    await loginAs(page, token)
+    await loginAs(page, 'journey@test.com', 'Journey User')
   })
 
   test('import xlsx → dashboard → events → add price → export', async ({ page }) => {

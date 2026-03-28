@@ -10,9 +10,8 @@ const ADMIN_EMAIL = 'admin@e2e.test'
 test.describe('Admin workflows', () => {
   test('admin sees user list and can search', async ({ page, request }) => {
     await getTestToken(request, 'admin-search-target@e2e.test', 'Search Target')
-    const adminToken = await getTestToken(request, ADMIN_EMAIL, 'Admin User')
 
-    await loginAs(page, adminToken)
+    await loginAs(page, ADMIN_EMAIL, 'Admin User')
     await navigateTo(page, 'Admin')
 
     // Target user should appear in the list
@@ -29,9 +28,8 @@ test.describe('Admin workflows', () => {
 
   test('admin can delete a non-admin user (two-click confirm)', async ({ page, request }) => {
     await getTestToken(request, 'admin-delete-target@e2e.test', 'Delete Target')
-    const adminToken = await getTestToken(request, ADMIN_EMAIL, 'Admin User')
 
-    await loginAs(page, adminToken)
+    await loginAs(page, ADMIN_EMAIL, 'Admin User')
     await navigateTo(page, 'Admin')
 
     // Search to isolate the target user
@@ -48,10 +46,8 @@ test.describe('Admin workflows', () => {
     await expect(page.getByText('admin-delete-target@e2e.test').first()).not.toBeVisible()
   })
 
-  test('admin can block and unblock an email address', async ({ page, request }) => {
-    const adminToken = await getTestToken(request, ADMIN_EMAIL, 'Admin User')
-
-    await loginAs(page, adminToken)
+  test('admin can block and unblock an email address', async ({ page }) => {
+    await loginAs(page, ADMIN_EMAIL, 'Admin User')
     await navigateTo(page, 'Admin')
 
     // Block an email — fill the form and click the submit button inside it
@@ -67,10 +63,8 @@ test.describe('Admin workflows', () => {
     await expect(page.getByText('e2e-blocked@example.com').first()).not.toBeVisible()
   })
 
-  test('non-admin cannot access admin dashboard', async ({ page, request }) => {
-    const userToken = await getTestToken(request, 'non-admin@e2e.test', 'Regular User')
-
-    await loginAs(page, userToken)
+  test('non-admin cannot access admin dashboard', async ({ page }) => {
+    await loginAs(page, 'non-admin@e2e.test', 'Regular User')
 
     // Admin nav link should not be visible
     await expect(page.getByRole('link', { name: 'Admin', exact: true })).not.toBeVisible()

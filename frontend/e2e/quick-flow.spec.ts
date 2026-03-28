@@ -5,9 +5,10 @@ test.describe('Quick flow: purchase grant + loan', () => {
   let token: string
 
   test.beforeEach(async ({ page, request }) => {
-    token = await getTestToken(request, `quickflow-${test.info().testId}@test.com`, 'QuickFlow User')
+    const email = `quickflow-${test.info().testId}@test.com`
+    token = await getTestToken(request, email, 'QuickFlow User')
     await resetUserData(request, token)
-    await loginAs(page, token)
+    await loginAs(page, email, 'QuickFlow User')
   })
 
   test('add purchase grant with loan → verify tables → verify events', async ({ page }) => {

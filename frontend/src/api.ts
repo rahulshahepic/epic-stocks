@@ -21,19 +21,27 @@ export function clearToken() {
   localStorage.removeItem(TOKEN_KEY)
 }
 
+/** True if authenticated via HttpOnly session cookie (auth_hint) or legacy localStorage token. */
+export function isLoggedIn(): boolean {
+  if (localStorage.getItem(TOKEN_KEY)) return true
+  return document.cookie.split(';').some(c => c.trim().startsWith('auth_hint='))
+}
+
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getToken()
   const headers: Record<string, string> = {
     ...Object.fromEntries(new Headers(init?.headers).entries()),
   }
   if (token) {
+    // Legacy localStorage token — kept for backward compat (e.g. SCREENSHOT_TOKEN).
+    // New logins use the HttpOnly session cookie sent automatically via credentials:'include'.
     headers['Authorization'] = `Bearer ${token}`
   }
   if (init?.body && typeof init.body === 'string') {
     headers['Content-Type'] = 'application/json'
   }
 
-  const resp = await fetch(path, { ...init, headers })
+  const resp = await fetch(path, { ...init, headers, credentials: 'include' })
 
   if (resp.status === 401) {
     clearToken()
@@ -302,6 +310,7 @@ export const api = {
     const token = getToken()
     const resp = await fetch('/api/admin/rotate-key', {
       method: 'POST',
+      credentials: 'include',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
     if (!resp.ok || !resp.body) {

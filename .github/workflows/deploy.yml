@@ -79,7 +79,7 @@ jobs:
             write_env() {
               cat > ${{ vars.DEPLOY_PATH }}/.env <<ENVEOF
             JWT_SECRET=${JWT_SECRET}
-            OIDC_PROVIDERS=${{ vars.OIDC_PROVIDERS }}
+            OIDC_PROVIDERS=${{ secrets.OIDC_PROVIDERS }}
             DOMAIN=${{ vars.DOMAIN }}
             APP_URL=https://${{ vars.DOMAIN }}
             ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
@@ -94,7 +94,7 @@ jobs:
             SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
             SMTP_FROM=${{ vars.SMTP_FROM }}
             POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-            TRUSTED_PROXY_IPS=${{ vars.TRUSTED_PROXY_IPS }}
+            TRUSTED_PROXY_IPS=${{ vars.TRUSTED_PROXY_IDS }}
             EPIC_ONBOARDING_URL=${{ vars.EPIC_ONBOARDING_URL }}
             COMMIT_SHA=${{ github.sha }}
             ENVEOF

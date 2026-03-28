@@ -59,6 +59,8 @@ frontend/src/app/
 
 Set `OIDC_PROVIDERS` as a GitHub Secret containing a JSON array. It supports any OIDC-compliant IdP (Google, Azure Entra ID, Okta, etc.). Multiple providers show as separate "Sign in with X" buttons on the login page. No frontend changes needed — the PKCE flow is provider-agnostic.
 
+**Session storage (BFF pattern):** After the PKCE code exchange, the backend issues a JWT stored in an `HttpOnly; Secure; SameSite=Lax` session cookie — never in `localStorage` or returned to JavaScript. Even if an XSS vulnerability existed in the app, an attacker's script cannot read the cookie and cannot replay it from another origin (`SameSite=Lax` blocks cross-site POST). A non-HttpOnly `auth_hint` cookie lets the SPA know whether a session exists without exposing the credential itself.
+
 Each provider object fields:
 - `name` — internal identifier
 - `label` — text shown on the sign-in button

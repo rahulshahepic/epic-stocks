@@ -66,10 +66,14 @@ All responses include:
 
 ### Security test suite (`backend/tests/test_security.py`)
 
-- JWT tampering: modified payload, bad signature, expired token all rejected
+- JWT tampering: modified payload, bad signature, expired token all rejected (via session cookie — no Bearer token; signature verification via joserfc)
 - IDOR: user A cannot read or modify user B's data
 - File upload: oversized files and non-XLSX magic bytes rejected
 - Admin endpoints: 403 for non-admin authenticated users
+
+### Auth / XSS posture
+
+The app uses the BFF (Backend For Frontend) session cookie pattern. The JWT never touches JavaScript: it is stored in an `HttpOnly; Secure; SameSite=Lax` cookie set by the backend at login. There is no Bearer token and no `localStorage` usage for auth. A successful XSS attack can make authenticated API calls within an active session (unavoidable with cookie auth) but cannot exfiltrate the credential for use from an external origin.
 
 ### Dependency auditing (CI)
 

@@ -108,7 +108,7 @@ def initialize_master_key(db) -> None:
     from sqlalchemy import text
 
     # Ensure seed rows exist (Alembic inserts them in production; create_all does not)
-    for key, default in [("maintenance_active", "false"), ("master_key_version", "1")]:
+    for key, default in [("maintenance_active", "false"), ("master_key_version", "1"), ("epic_mode", "false")]:
         if not db.execute(text("SELECT 1 FROM system_settings WHERE key = :k"), {"k": key}).scalar():
             db.execute(
                 text("INSERT INTO system_settings (key, value) VALUES (:k, :v)"),

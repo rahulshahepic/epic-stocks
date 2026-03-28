@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import { api } from '../../api.ts'
 import type { PriceEntry } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
+import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 
 type PriceForm = Omit<PriceEntry, 'id' | 'version'>
 type Mode = 'list' | 'add' | 'edit'
@@ -15,6 +16,9 @@ function fmt$(n: number) {
 export default function Prices() {
   const fetchPrices = useCallback(() => api.getPrices(), [])
   const { data: prices, loading, reload } = useApiData<PriceEntry[]>(fetchPrices)
+
+  const config = useConfig()
+  const epicMode = config?.epic_mode ?? false
 
   const [mode, setMode] = useState<Mode>('list')
   const [form, setForm] = useState<PriceForm>(empty)
@@ -128,10 +132,17 @@ export default function Prices() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Share Prices</h2>
-        <button onClick={openAdd} className="rounded-md bg-amber-600 px-2 py-1 text-xs font-medium text-white hover:bg-amber-700">
-          + Price
-        </button>
+        {!epicMode && (
+          <button onClick={openAdd} className="rounded-md bg-amber-600 px-2 py-1 text-xs font-medium text-white hover:bg-amber-700">
+            + Price
+          </button>
+        )}
       </div>
+      {epicMode && (
+        <p className="rounded-md bg-indigo-50 px-3 py-2 text-xs text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300">
+          Data provided by Epic — view only
+        </p>
+      )}
 
       <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
         <table className="w-full text-left text-xs">
@@ -139,7 +150,7 @@ export default function Prices() {
             <tr className="text-gray-500 dark:text-gray-400">
               <th className="px-3 py-2">Effective Date</th>
               <th className="px-3 py-2 text-right">Price</th>
-              <th className="px-3 py-2"></th>
+              {!epicMode && <th className="px-3 py-2"></th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -147,14 +158,16 @@ export default function Prices() {
               <tr key={p.id} className="bg-white dark:bg-gray-900">
                 <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{p.effective_date}</td>
                 <td className="px-3 py-2 text-right font-medium text-amber-700 dark:text-amber-400">{fmt$(p.price)}</td>
-                <td className="px-3 py-2 text-right">
-                  <button onClick={() => openEdit(p)} className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 mr-2">Edit</button>
-                  <button onClick={() => handleDelete(p.id)} className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300">Del</button>
-                </td>
+                {!epicMode && (
+                  <td className="px-3 py-2 text-right">
+                    <button onClick={() => openEdit(p)} className="mr-2 text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300">Edit</button>
+                    <button onClick={() => handleDelete(p.id)} className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300">Del</button>
+                  </td>
+                )}
               </tr>
             ))}
             {prices.length === 0 && (
-              <tr><td colSpan={3} className="px-3 py-6 text-center text-gray-400">No prices yet</td></tr>
+              <tr><td colSpan={epicMode ? 2 : 3} className="px-3 py-6 text-center text-gray-400">No prices yet</td></tr>
             )}
           </tbody>
         </table>

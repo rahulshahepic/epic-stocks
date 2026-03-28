@@ -153,6 +153,23 @@ cp .env.example .env
 | `APP_URL` | No | Public app URL included as a link in email notifications |
 | `COMMIT_SHA` | No | Git commit SHA injected at Docker build time. Displayed as a 7-char short hash at the bottom of the Admin and Settings pages so testers can confirm which build is running. **Set automatically by the deploy workflow.** |
 
+### OIDC_PROVIDERS format
+
+Set `OIDC_PROVIDERS` to a JSON array of provider objects:
+
+```bash
+OIDC_PROVIDERS='[{"name":"google","label":"Google","client_id":"YOUR_ID.apps.googleusercontent.com","client_secret":"YOUR_SECRET","discovery_url":"https://accounts.google.com/.well-known/openid-configuration"}]'
+```
+
+Each object supports:
+- `name` — internal identifier (e.g. `"google"`, `"azure"`)
+- `label` — displayed on the sign-in button (e.g. `"Google"`, `"Contoso Azure AD"`)
+- `client_id` — from your IdP's app registration
+- `client_secret` — optional; omit for PKCE-only / native-app clients
+- `discovery_url` — OIDC discovery endpoint (`.well-known/openid-configuration`)
+
+Multiple providers show as separate "Sign in with X" buttons on the login page. Redirect URI to register in your IdP: `https://yourdomain.com/auth/callback`
+
 For local development, generate VAPID keys with:
 ```bash
 npx web-push generate-vapid-keys
@@ -166,15 +183,7 @@ The login page fetches available sign-in providers from the backend at `GET /api
 
 This app uses a shared Caddy reverse proxy. The infra compose file manages Caddy and the shared `proxy` Docker network; each app manages itself.
 
-**One-time server setup** (once per VPS):
-
-```bash
-cd /opt/infra
-git clone <repo-url> .
-docker compose -f infra/docker-compose.infra.yml up -d
-```
-
-This starts Caddy and creates the `proxy` network. Each deployed app writes a `caddy/app.caddy` snippet into the shared `caddy_config` volume and reloads Caddy — handled automatically by the deploy workflow.
+The deploy script handles everything automatically on first deploy — it creates the `proxy` Docker network if it doesn't exist and starts (or updates) the infra Caddy container. No manual SSH steps are needed. Each deployed app writes a `caddy/app.caddy` snippet into the shared `caddy_config` volume and reloads Caddy, all handled by the deploy workflow.
 
 ### Manual VPS Setup (per app)
 
@@ -326,7 +335,7 @@ epic-stocks/
 │   ├── run.sh               # Screenshot capture orchestrator
 │   └── seed.py              # Sample data seeder
 ├── Dockerfile               # Multi-stage build (frontend + backend)
-├── docker-compose.yml       # App compose (joins shared proxy network)
+├── docker-compose.yml       # App compose (joins shared proxy network; always uses shared proxy network)
 ├── FORK_GUIDE.md            # How to fork for a different domain
 └── test_data/
     └── fixture.xlsx         # Synthetic test fixture

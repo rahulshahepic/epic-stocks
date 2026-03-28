@@ -151,11 +151,16 @@ These are the only values that need to be set in GitHub. Cryptographic secrets (
 | `ADMIN_EMAIL` | Secret | Semicolon-delimited admin email(s) |
 | `RESEND_API_KEY` | Secret | Resend email API key |
 | `RESEND_FROM` | Secret | Sender address for transactional email |
+| `OIDC_PROVIDERS` | Secret | JSON array of OIDC provider configs (see README for format) |
+| `ACME_EMAIL` | Variable | Email for Let's Encrypt certificate notifications |
 | `VPS_HOST` | Variable | VPS hostname or IP |
-| `GOOGLE_CLIENT_ID` | Variable | Google OAuth client ID |
 | `DOMAIN` | Variable | Your domain name |
 | `TRUSTED_PROXY_IPS` | Variable | Cloudflare IP ranges for real-IP forwarding |
 | `EPIC_ONBOARDING_URL` | Variable | (optional) pre-filled onboarding template URL |
+
+### Multi-app network
+
+`docker-compose.multiapp.yml` no longer exists. `docker-compose.yml` always joins the shared `proxy` Docker network. The deploy script automatically creates the `proxy` network and manages the infra Caddy container — no separate compose file or manual setup is required.
 
 ### Server-generated secrets
 

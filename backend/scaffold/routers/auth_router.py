@@ -89,7 +89,7 @@ class CallbackRequest(BaseModel):
     redirect_uri: str
 
 
-@router.post("/callback", response_model=AuthResponse)
+@router.post("/callback")
 def auth_callback(body: CallbackRequest, response: Response, db: Session = Depends(get_db)):
     """Exchange PKCE authorization code for a JWT; set it as an HttpOnly session cookie."""
     from scaffold.providers.auth import get_provider
@@ -102,7 +102,7 @@ def auth_callback(body: CallbackRequest, response: Response, db: Session = Depen
     user = _upsert_user(identity, db)
     token = create_token(user.id)
     set_session_cookies(response, token)
-    return AuthResponse(access_token=token)
+    return {"ok": True}
 
 
 @router.post("/logout")

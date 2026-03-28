@@ -220,6 +220,10 @@ class SystemMetric(Base):
     ram_total_mb: Mapped[float] = mapped_column(Float, nullable=False)
     db_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     error_log_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cache_l1_hits: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cache_l2_hits: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cache_misses: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cache_l2_key_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class SystemSettings(Base):

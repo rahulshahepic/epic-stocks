@@ -13,13 +13,31 @@ from app.core import generate_all_events, compute_timeline
 # user_id -> (input_hash, timeline)
 _cache: dict[int, tuple[str, list]] = {}
 
+_hits_l1 = 0
+_hits_l2 = 0
+_misses = 0
+
 
 def _hash(grants: list, prices: list, loans: list, initial_price: float) -> str:
     payload = json.dumps([grants, prices, loans, initial_price], default=str, sort_keys=True)
     return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 
+def get_stats() -> dict:
+    total = _hits_l1 + _hits_l2 + _misses
+    return {
+        "l1_hits": _hits_l1,
+        "l2_hits": _hits_l2,
+        "misses": _misses,
+        "total": total,
+        "l1_hit_rate": round(_hits_l1 / total, 4) if total else None,
+        "l2_hit_rate": round(_hits_l2 / total, 4) if total else None,
+        "l1_entries": len(_cache),
+    }
+
+
 def get_timeline(user_id: int, grants: list, prices: list, loans: list, initial_price: float) -> list:
+    global _hits_l1, _hits_l2, _misses
     from app import event_cache
 
     key = _hash(grants, prices, loans, initial_price)
@@ -27,15 +45,18 @@ def get_timeline(user_id: int, grants: list, prices: list, loans: list, initial_
     # L1: in-process
     cached = _cache.get(user_id)
     if cached and cached[0] == key:
+        _hits_l1 += 1
         return [{**e} for e in cached[1]]
 
     # L2: Redis (no-op when Redis is not configured)
     redis_result = event_cache.get(user_id, key)
     if redis_result is not None:
+        _hits_l2 += 1
         _cache[user_id] = (key, redis_result)
         return [{**e} for e in redis_result]
 
     # Compute
+    _misses += 1
     events = generate_all_events(grants, prices, loans)
     timeline = compute_timeline(events, initial_price)
     _cache[user_id] = (key, timeline)

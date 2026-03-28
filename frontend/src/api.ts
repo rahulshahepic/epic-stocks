@@ -343,6 +343,10 @@ export interface SystemMetricPoint {
   ram_total_mb: number
   db_size_bytes: number
   error_log_count: number
+  cache_l1_hits: number | null
+  cache_l2_hits: number | null
+  cache_misses: number | null
+  cache_l2_key_count: number | null
 }
 
 export interface DbTableInfo {

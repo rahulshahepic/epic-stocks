@@ -49,6 +49,7 @@ const USERS = [
 
 const USERS_RESPONSE = { users: USERS, total: 2 }
 
+
 const METRICS = [
   { timestamp: '2026-03-23T10:00:00', cpu_percent: 30.0, ram_used_mb: 1000.0, ram_total_mb: 8192.0, db_size_bytes: 8500000, error_log_count: 0 },
   { timestamp: '2026-03-23T10:15:00', cpu_percent: 42.0, ram_used_mb: 2048.0, ram_total_mb: 8192.0, db_size_bytes: 8500000, error_log_count: 2 },

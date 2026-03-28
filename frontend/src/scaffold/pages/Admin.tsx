@@ -347,6 +347,20 @@ export default function Admin() {
               formatter={v => formatBytes(v)}
             />
           </div>
+          {metrics.some(m => m.cache_l1_hits != null) && (
+            <div>
+              <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">Cache hit rate</p>
+              <Sparkline
+                data={metrics.map(m => {
+                  const total = (m.cache_l1_hits ?? 0) + (m.cache_l2_hits ?? 0) + (m.cache_misses ?? 0)
+                  return { ...m, cache_hit_rate: total > 0 ? Math.round(((m.cache_l1_hits ?? 0) + (m.cache_l2_hits ?? 0)) / total * 100) : null }
+                })}
+                dataKey={'cache_hit_rate' as keyof SystemMetricPoint}
+                color="#8b5cf6"
+                formatter={v => `${v.toFixed(0)}%`}
+              />
+            </div>
+          )}
         </div>
       </section>
 

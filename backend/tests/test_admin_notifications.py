@@ -5,7 +5,7 @@ from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from tests.conftest import register_user, auth_header
+from tests.conftest import register_user
 
 
 def _mock_resend_env():
@@ -30,7 +30,7 @@ def test_dedup_skips_already_notified_user(client, db_session):
     from scaffold.models import User, Grant, Price, EmailPreference
     from scaffold.notifications import send_daily_notifications
 
-    token = register_user(client)
+    register_user(client)
     user = db_session.query(User).first()
 
     pref = EmailPreference(user_id=user.id, enabled=True)
@@ -61,7 +61,7 @@ def test_dedup_allows_next_day(client, db_session):
     from scaffold.models import User, Grant, Price, EmailPreference
     from scaffold.notifications import _already_notified_today
 
-    token = register_user(client)
+    register_user(client)
     user = db_session.query(User).first()
     user.last_notified_at = datetime(2026, 3, 19, 12, 0, tzinfo=timezone.utc)
     db_session.commit()
@@ -74,7 +74,7 @@ def test_dedup_none_last_notified(client, db_session):
     from scaffold.models import User
     from scaffold.notifications import _already_notified_today
 
-    token = register_user(client)
+    register_user(client)
     user = db_session.query(User).first()
     assert user.last_notified_at is None
     assert _already_notified_today(user, date(2026, 3, 20)) is False
@@ -109,12 +109,13 @@ def test_admin_no_notification_without_resend(client, db_session):
 # ADMIN: milestone notifications
 # ============================================================
 
-def test_milestone_notification_at_10_users(client, db_session):
+def test_milestone_notification_at_10_users(client, db_session, make_client):
     from scaffold.notifications import check_user_milestone
     from scaffold.models import User
 
     for i in range(9):
-        register_user(client, f"user{i}@test.com")
+        with make_client(f"user{i}@test.com"):
+            pass
 
     with patch.dict(os.environ, {
         "ADMIN_EMAIL": "admin@test.com",
@@ -127,11 +128,12 @@ def test_milestone_notification_at_10_users(client, db_session):
             assert mock_post.call_count >= 1
 
 
-def test_no_milestone_at_7_users(client, db_session):
+def test_no_milestone_at_7_users(client, db_session, make_client):
     from scaffold.notifications import check_user_milestone
 
     for i in range(7):
-        register_user(client, f"u{i}@test.com")
+        with make_client(f"u{i}@test.com"):
+            pass
 
     with patch.dict(os.environ, {
         "ADMIN_EMAIL": "admin@test.com",
@@ -147,11 +149,13 @@ def test_no_milestone_at_7_users(client, db_session):
 # ADMIN: daily digest
 # ============================================================
 
-def test_admin_daily_digest(client, db_session):
+def test_admin_daily_digest(client, db_session, make_client):
     from scaffold.notifications import send_admin_daily_digest
 
-    register_user(client, "u1@test.com")
-    register_user(client, "u2@test.com")
+    with make_client("u1@test.com"):
+        pass
+    with make_client("u2@test.com"):
+        pass
 
     with patch.dict(os.environ, {
         "ADMIN_EMAIL": "admin@test.com",
@@ -183,7 +187,7 @@ def test_admin_daily_digest_no_admins(client, db_session):
 
 def test_last_notified_at_column_exists(client, db_session):
     from scaffold.models import User
-    token = register_user(client)
+    register_user(client)
     user = db_session.query(User).first()
     assert hasattr(user, "last_notified_at")
     assert user.last_notified_at is None

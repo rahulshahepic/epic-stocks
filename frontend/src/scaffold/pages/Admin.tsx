@@ -351,9 +351,15 @@ export default function Admin() {
             <div>
               <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">Cache hit rate</p>
               <Sparkline
-                data={metrics.map(m => {
-                  const total = (m.cache_l1_hits ?? 0) + (m.cache_l2_hits ?? 0) + (m.cache_misses ?? 0)
-                  return { ...m, cache_hit_rate: total > 0 ? Math.round(((m.cache_l1_hits ?? 0) + (m.cache_l2_hits ?? 0)) / total * 100) : null }
+                data={metrics.map((m, i) => {
+                  const prev = i > 0 ? metrics[i - 1] : null
+                  // Use per-interval deltas so restarts and zero-traffic points don't flatten the chart.
+                  // Negative deltas (counter reset on restart) are clamped to 0.
+                  const dl1 = Math.max(0, (m.cache_l1_hits ?? 0) - (prev?.cache_l1_hits ?? 0))
+                  const dl2 = Math.max(0, (m.cache_l2_hits ?? 0) - (prev?.cache_l2_hits ?? 0))
+                  const dm  = Math.max(0, (m.cache_misses   ?? 0) - (prev?.cache_misses   ?? 0))
+                  const total = dl1 + dl2 + dm
+                  return { ...m, cache_hit_rate: total > 0 ? Math.round((dl1 + dl2) / total * 100) : null }
                 })}
                 dataKey={'cache_hit_rate' as keyof SystemMetricPoint}
                 color="#8b5cf6"

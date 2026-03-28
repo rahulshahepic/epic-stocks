@@ -145,26 +145,26 @@ def admin_delete_user(user_id: int, admin: User = Depends(get_admin_user), db: S
         raise HTTPException(status_code=503, detail="Cannot delete users during maintenance")
     if user_id == admin.id:
         raise HTTPException(status_code=400, detail="Cannot delete yourself")
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
+    exists = db.query(User.id).filter(User.id == user_id).scalar()
+    if not exists:
         raise HTTPException(status_code=404, detail="User not found")
-    if user.email.lower() in get_admin_emails():
+    email = db.query(User.email).filter(User.id == user_id).scalar()
+    if email and email.lower() in get_admin_emails():
         raise HTTPException(status_code=400, detail="Cannot delete an admin user")
-    # Expunge the user object so ORM cascade logic cannot interfere with the
-    # bulk deletes below (encrypted columns would otherwise be accessed).
-    db.expunge(user)
-    # Delete related records first to avoid loading encrypted columns with wrong key.
-    # synchronize_session=False skips ORM session evaluation (safe here; we commit immediately).
-    db.query(Sale).filter(Sale.user_id == user_id).delete(synchronize_session=False)
-    db.query(LoanPayment).filter(LoanPayment.user_id == user_id).delete(synchronize_session=False)
-    db.query(Grant).filter(Grant.user_id == user_id).delete(synchronize_session=False)
-    db.query(Loan).filter(Loan.user_id == user_id).delete(synchronize_session=False)
-    db.query(Price).filter(Price.user_id == user_id).delete(synchronize_session=False)
-    db.query(PushSubscription).filter(PushSubscription.user_id == user_id).delete(synchronize_session=False)
-    db.query(EmailPreference).filter(EmailPreference.user_id == user_id).delete(synchronize_session=False)
-    db.query(TaxSettings).filter(TaxSettings.user_id == user_id).delete(synchronize_session=False)
-    db.query(HorizonSettings).filter(HorizonSettings.user_id == user_id).delete(synchronize_session=False)
-    db.query(User).filter(User.id == user_id).delete(synchronize_session=False)
+    # Use raw SQL to avoid any ORM session / encrypted-column complications.
+    # Deletes in FK-safe order; loans.refinances_loan_id self-FK nulled first.
+    db.execute(text("DELETE FROM sales WHERE user_id = :uid"), {"uid": user_id})
+    db.execute(text("DELETE FROM loan_payments WHERE user_id = :uid"), {"uid": user_id})
+    db.execute(text("UPDATE loans SET refinances_loan_id = NULL WHERE user_id = :uid"), {"uid": user_id})
+    db.execute(text("DELETE FROM loans WHERE user_id = :uid"), {"uid": user_id})
+    db.execute(text("DELETE FROM grants WHERE user_id = :uid"), {"uid": user_id})
+    db.execute(text("DELETE FROM prices WHERE user_id = :uid"), {"uid": user_id})
+    db.execute(text("DELETE FROM push_subscriptions WHERE user_id = :uid"), {"uid": user_id})
+    db.execute(text("DELETE FROM email_preferences WHERE user_id = :uid"), {"uid": user_id})
+    db.execute(text("DELETE FROM tax_settings WHERE user_id = :uid"), {"uid": user_id})
+    db.execute(text("DELETE FROM horizon_settings WHERE user_id = :uid"), {"uid": user_id})
+    # import_backups has ondelete=CASCADE so the next statement handles it at DB level
+    db.execute(text("DELETE FROM users WHERE id = :uid"), {"uid": user_id})
     db.commit()
 
 

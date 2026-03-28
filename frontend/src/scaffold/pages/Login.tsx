@@ -36,6 +36,17 @@ export default function Login() {
     api.getProviders().then(setProviders).catch(() => setProviders([]))
   }, [isAuthenticated, navigate])
 
+  // When the browser restores this page from bfcache (user hit Back after being
+  // redirected to the IdP), the component state is frozen with loading set to the
+  // provider name, leaving the button disabled. Reset it so the user can try again.
+  useEffect(() => {
+    const handlePageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) setLoading(null)
+    }
+    window.addEventListener('pageshow', handlePageShow)
+    return () => window.removeEventListener('pageshow', handlePageShow)
+  }, [])
+
   async function handleSignIn(providerName: string) {
     setLoading(providerName)
     setError(null)

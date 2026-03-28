@@ -3,7 +3,7 @@ from datetime import date
 
 import pytest
 
-from tests.conftest import register_user, auth_header
+from tests.conftest import register_user
 from app.routers.events import _last_vesting_date
 
 
@@ -38,22 +38,21 @@ def test_last_vesting_date_ignores_non_vesting():
 # Integration tests for projected liquidation in /api/events
 # ============================================================
 
-def _seed_data(client, headers):
+def _seed_data(client):
     """Seed a minimal grant, price, and loan for testing."""
-    client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 10.0}, headers=headers)
+    client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 10.0})
     client.post("/api/grants", json={
         "year": 2020, "type": "A", "shares": 1000, "price": 10.0,
         "vest_start": "2020-01-01", "periods": 2,
         "exercise_date": "2020-01-01", "dp_shares": 0, "election_83b": False,
-    }, headers=headers)
+    })
 
 
 def test_events_includes_projected_liquidation(client):
-    token = register_user(client)
-    headers = auth_header(token)
-    _seed_data(client, headers)
+    register_user(client)
+    _seed_data(client)
 
-    events = client.get("/api/events", headers=headers).json()
+    events = client.get("/api/events").json()
     projected = [e for e in events if e.get("is_projected")]
     assert len(projected) == 1
     p = projected[0]
@@ -64,27 +63,25 @@ def test_events_includes_projected_liquidation(client):
 
 
 def test_events_projected_uses_explicit_horizon_date(client):
-    token = register_user(client)
-    headers = auth_header(token)
-    _seed_data(client, headers)
+    register_user(client)
+    _seed_data(client)
 
-    client.put("/api/horizon-settings", json={"horizon_date": "2030-12-31"}, headers=headers)
+    client.put("/api/horizon-settings", json={"horizon_date": "2030-12-31"})
 
-    events = client.get("/api/events", headers=headers).json()
+    events = client.get("/api/events").json()
     projected = [e for e in events if e.get("is_projected")]
     assert len(projected) == 1
     assert projected[0]["date"] == "2030-12-31"
 
 
 def test_events_projected_uses_last_vesting_when_horizon_null(client):
-    token = register_user(client)
-    headers = auth_header(token)
-    _seed_data(client, headers)
+    register_user(client)
+    _seed_data(client)
 
     # Ensure horizon is null
-    client.put("/api/horizon-settings", json={"horizon_date": None}, headers=headers)
+    client.put("/api/horizon-settings", json={"horizon_date": None})
 
-    events = client.get("/api/events", headers=headers).json()
+    events = client.get("/api/events").json()
     vesting_events = [e for e in events if e["event_type"] == "Vesting"]
     projected = [e for e in events if e.get("is_projected")]
     assert len(projected) == 1
@@ -94,21 +91,19 @@ def test_events_projected_uses_last_vesting_when_horizon_null(client):
 
 
 def test_events_no_liquidation_when_no_data(client):
-    token = register_user(client)
-    headers = auth_header(token)
-    events = client.get("/api/events", headers=headers).json()
+    register_user(client)
+    events = client.get("/api/events").json()
     projected = [e for e in events if e.get("is_projected")]
     assert len(projected) == 0
 
 
 def test_events_projected_has_tax_annotation(client):
-    token = register_user(client)
-    headers = auth_header(token)
-    _seed_data(client, headers)
+    register_user(client)
+    _seed_data(client)
     # Ensure TaxSettings exist so _annotate_sale_taxes runs
-    client.get("/api/tax-settings", headers=headers)
+    client.get("/api/tax-settings")
 
-    events = client.get("/api/events", headers=headers).json()
+    events = client.get("/api/events").json()
     projected = [e for e in events if e.get("is_projected")]
     assert len(projected) == 1
     assert projected[0].get("estimated_tax") is not None
@@ -119,48 +114,44 @@ def test_events_projected_has_tax_annotation(client):
 # ============================================================
 
 def test_horizon_settings_default_null(client):
-    token = register_user(client)
-    headers = auth_header(token)
-    resp = client.get("/api/horizon-settings", headers=headers)
+    register_user(client)
+    resp = client.get("/api/horizon-settings")
     assert resp.status_code == 200
     assert resp.json()["horizon_date"] is None
 
 
 def test_horizon_settings_set_and_read(client):
-    token = register_user(client)
-    headers = auth_header(token)
-    resp = client.put("/api/horizon-settings", json={"horizon_date": "2028-06-30"}, headers=headers)
+    register_user(client)
+    resp = client.put("/api/horizon-settings", json={"horizon_date": "2028-06-30"})
     assert resp.status_code == 200
     assert resp.json()["horizon_date"] == "2028-06-30"
     # Read back
-    resp2 = client.get("/api/horizon-settings", headers=headers)
+    resp2 = client.get("/api/horizon-settings")
     assert resp2.json()["horizon_date"] == "2028-06-30"
 
 
 def test_horizon_settings_clear_to_null(client):
-    token = register_user(client)
-    headers = auth_header(token)
-    client.put("/api/horizon-settings", json={"horizon_date": "2028-06-30"}, headers=headers)
-    resp = client.put("/api/horizon-settings", json={"horizon_date": None}, headers=headers)
+    register_user(client)
+    client.put("/api/horizon-settings", json={"horizon_date": "2028-06-30"})
+    resp = client.put("/api/horizon-settings", json={"horizon_date": None})
     assert resp.json()["horizon_date"] is None
 
 
 def test_early_horizon_uses_shares_at_that_date(client):
     """An exit date before the last vesting event should liquidate only vested shares."""
-    token = register_user(client)
-    headers = auth_header(token)
+    register_user(client)
     # Two vesting periods: 500 shares vest 2020-01-01, 500 vest 2020-07-01
-    client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 10.0}, headers=headers)
+    client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 10.0})
     client.post("/api/grants", json={
         "year": 2020, "type": "A", "shares": 1000, "price": 10.0,
         "vest_start": "2020-01-01", "periods": 2,
         "exercise_date": "2020-01-01", "dp_shares": 0, "election_83b": False,
-    }, headers=headers)
+    })
 
     # Set horizon to 2020-03-01 — after first vest (500 shares) but before second (500 shares)
-    client.put("/api/horizon-settings", json={"horizon_date": "2020-03-01"}, headers=headers)
+    client.put("/api/horizon-settings", json={"horizon_date": "2020-03-01"})
 
-    events = client.get("/api/events", headers=headers).json()
+    events = client.get("/api/events").json()
     projected = [e for e in events if e.get("is_projected")]
     assert len(projected) == 1
     p = projected[0]
@@ -172,18 +163,17 @@ def test_early_horizon_uses_shares_at_that_date(client):
 
 def test_late_horizon_uses_full_shares(client):
     """An exit date after all vesting uses all shares."""
-    token = register_user(client)
-    headers = auth_header(token)
-    client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 10.0}, headers=headers)
+    register_user(client)
+    client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 10.0})
     client.post("/api/grants", json={
         "year": 2020, "type": "A", "shares": 1000, "price": 10.0,
         "vest_start": "2020-01-01", "periods": 2,
         "exercise_date": "2020-01-01", "dp_shares": 0, "election_83b": False,
-    }, headers=headers)
+    })
 
-    client.put("/api/horizon-settings", json={"horizon_date": "2025-01-01"}, headers=headers)
+    client.put("/api/horizon-settings", json={"horizon_date": "2025-01-01"})
 
-    events = client.get("/api/events", headers=headers).json()
+    events = client.get("/api/events").json()
     projected = [e for e in events if e.get("is_projected")]
     assert len(projected) == 1
     p = projected[0]

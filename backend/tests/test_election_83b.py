@@ -3,7 +3,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from tests.conftest import register_user, auth_header
+from tests.conftest import register_user
 
 PRICE_DATA = {"effective_date": "2020-01-01", "price": 10.0}
 
@@ -17,42 +17,41 @@ BONUS_BASE = {
 
 
 def test_add_bonus_without_83b(client):
-    token = register_user(client)
-    resp = client.post("/api/flows/add-bonus", json={**BONUS_BASE}, headers=auth_header(token))
+    register_user(client)
+    resp = client.post("/api/flows/add-bonus", json={**BONUS_BASE})
     assert resp.status_code == 201
     data = resp.json()
     assert data["election_83b"] is False
 
 
 def test_add_bonus_with_83b(client):
-    token = register_user(client)
-    resp = client.post("/api/flows/add-bonus", json={**BONUS_BASE, "election_83b": True}, headers=auth_header(token))
+    register_user(client)
+    resp = client.post("/api/flows/add-bonus", json={**BONUS_BASE, "election_83b": True})
     assert resp.status_code == 201
     data = resp.json()
     assert data["election_83b"] is True
 
 
 def test_update_grant_sets_83b(client):
-    token = register_user(client)
+    register_user(client)
     # Create without 83b
-    resp = client.post("/api/flows/add-bonus", json=BONUS_BASE, headers=auth_header(token))
+    resp = client.post("/api/flows/add-bonus", json=BONUS_BASE)
     grant_id = resp.json()["id"]
     version = resp.json()["version"]
 
     # Update to enable 83b
-    resp = client.put(f"/api/grants/{grant_id}", json={"election_83b": True, "version": version}, headers=auth_header(token))
+    resp = client.put(f"/api/grants/{grant_id}", json={"election_83b": True, "version": version})
     assert resp.status_code == 200
     assert resp.json()["election_83b"] is True
 
 
 def test_events_vesting_annotated_with_83b(client):
-    token = register_user(client)
-    headers = auth_header(token)
+    register_user(client)
 
-    client.post("/api/prices", json=PRICE_DATA, headers=headers)
-    client.post("/api/flows/add-bonus", json={**BONUS_BASE, "election_83b": True}, headers=headers)
+    client.post("/api/prices", json=PRICE_DATA)
+    client.post("/api/flows/add-bonus", json={**BONUS_BASE, "election_83b": True})
 
-    resp = client.get("/api/events", headers=headers)
+    resp = client.get("/api/events")
     assert resp.status_code == 200
     events = resp.json()
 
@@ -63,13 +62,12 @@ def test_events_vesting_annotated_with_83b(client):
 
 
 def test_events_vesting_no_83b_flag_when_not_set(client):
-    token = register_user(client)
-    headers = auth_header(token)
+    register_user(client)
 
-    client.post("/api/prices", json=PRICE_DATA, headers=headers)
-    client.post("/api/flows/add-bonus", json=BONUS_BASE, headers=headers)
+    client.post("/api/prices", json=PRICE_DATA)
+    client.post("/api/flows/add-bonus", json=BONUS_BASE)
 
-    resp = client.get("/api/events", headers=headers)
+    resp = client.get("/api/events")
     assert resp.status_code == 200
     events = resp.json()
 
@@ -81,13 +79,12 @@ def test_events_vesting_no_83b_flag_when_not_set(client):
 
 def test_83b_grant_still_has_income_in_core(client):
     """Core.py still computes income for price=0 grants; the 83b flag is display-only."""
-    token = register_user(client)
-    headers = auth_header(token)
+    register_user(client)
 
-    client.post("/api/prices", json=PRICE_DATA, headers=headers)
-    client.post("/api/flows/add-bonus", json={**BONUS_BASE, "election_83b": True}, headers=headers)
+    client.post("/api/prices", json=PRICE_DATA)
+    client.post("/api/flows/add-bonus", json={**BONUS_BASE, "election_83b": True})
 
-    resp = client.get("/api/events", headers=headers)
+    resp = client.get("/api/events")
     events = resp.json()
     vesting_events = [e for e in events if e["event_type"] == "Vesting"]
     # income is still populated (used as unrealized gain on frontend)
@@ -95,11 +92,10 @@ def test_83b_grant_still_has_income_in_core(client):
 
 
 def test_grant_list_returns_83b_field(client):
-    token = register_user(client)
-    headers = auth_header(token)
+    register_user(client)
 
-    client.post("/api/flows/add-bonus", json={**BONUS_BASE, "election_83b": True}, headers=headers)
-    resp = client.get("/api/grants", headers=headers)
+    client.post("/api/flows/add-bonus", json={**BONUS_BASE, "election_83b": True})
+    resp = client.get("/api/grants")
     assert resp.status_code == 200
     grants = resp.json()
     assert len(grants) == 1

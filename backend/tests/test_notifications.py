@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from tests.conftest import register_user, auth_header
+from tests.conftest import register_user
 
 
 # ============================================================
@@ -12,26 +12,26 @@ from tests.conftest import register_user, auth_header
 # ============================================================
 
 def test_email_pref_default_disabled(client):
-    token = register_user(client)
-    resp = client.get("/api/notifications/email", headers=auth_header(token))
+    register_user(client)
+    resp = client.get("/api/notifications/email")
     assert resp.status_code == 200
     assert resp.json()["enabled"] is False
 
 
 def test_email_pref_enable(client):
-    token = register_user(client)
-    resp = client.put("/api/notifications/email?enabled=true", json={}, headers=auth_header(token))
+    register_user(client)
+    resp = client.put("/api/notifications/email?enabled=true", json={})
     assert resp.status_code == 200
     assert resp.json()["enabled"] is True
     # Verify persistence
-    resp = client.get("/api/notifications/email", headers=auth_header(token))
+    resp = client.get("/api/notifications/email")
     assert resp.json()["enabled"] is True
 
 
 def test_email_pref_disable(client):
-    token = register_user(client)
-    client.put("/api/notifications/email?enabled=true", json={}, headers=auth_header(token))
-    resp = client.put("/api/notifications/email?enabled=false", json={}, headers=auth_header(token))
+    register_user(client)
+    client.put("/api/notifications/email?enabled=true", json={})
+    resp = client.put("/api/notifications/email?enabled=false", json={})
     assert resp.json()["enabled"] is False
 
 
@@ -40,12 +40,13 @@ def test_email_pref_requires_auth(client):
     assert resp.status_code == 401
 
 
-def test_email_pref_user_isolation(client):
-    token1 = register_user(client, "user1@test.com")
-    token2 = register_user(client, "user2@test.com")
-    client.put("/api/notifications/email?enabled=true", json={}, headers=auth_header(token1))
-    resp = client.get("/api/notifications/email", headers=auth_header(token2))
-    assert resp.json()["enabled"] is False
+def test_email_pref_user_isolation(client, make_client):
+    register_user(client, "user1@test.com")
+    client.put("/api/notifications/email?enabled=true", json={})
+
+    with make_client("user2@test.com") as client2:
+        resp = client2.get("/api/notifications/email")
+        assert resp.json()["enabled"] is False
 
 
 # ============================================================
@@ -173,7 +174,7 @@ def test_send_daily_notifications_with_email(client, db_session):
     from scaffold.models import User, Grant, Price, EmailPreference
     from datetime import date
 
-    token = register_user(client)
+    register_user(client)
     user = db_session.query(User).first()
     pref = EmailPreference(user_id=user.id, enabled=True)
     db_session.add(pref)

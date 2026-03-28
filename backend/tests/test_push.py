@@ -4,7 +4,7 @@ from datetime import date, datetime
 from unittest.mock import patch, MagicMock
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from tests.conftest import register_user, auth_header
+from tests.conftest import register_user
 
 
 SUB_DATA = {
@@ -21,8 +21,8 @@ SUB_DATA = {
 # ============================================================
 
 def test_subscribe(client):
-    token = register_user(client)
-    resp = client.post("/api/push/subscribe", json=SUB_DATA, headers=auth_header(token))
+    register_user(client)
+    resp = client.post("/api/push/subscribe", json=SUB_DATA)
     assert resp.status_code == 201
     data = resp.json()
     assert data["endpoint"] == SUB_DATA["endpoint"]
@@ -30,36 +30,36 @@ def test_subscribe(client):
 
 
 def test_subscribe_upserts(client):
-    token = register_user(client)
-    resp1 = client.post("/api/push/subscribe", json=SUB_DATA, headers=auth_header(token))
-    resp2 = client.post("/api/push/subscribe", json=SUB_DATA, headers=auth_header(token))
+    register_user(client)
+    resp1 = client.post("/api/push/subscribe", json=SUB_DATA)
+    resp2 = client.post("/api/push/subscribe", json=SUB_DATA)
     assert resp1.json()["id"] == resp2.json()["id"]
 
 
 def test_unsubscribe(client):
-    token = register_user(client)
-    client.post("/api/push/subscribe", json=SUB_DATA, headers=auth_header(token))
-    resp = client.request("DELETE", "/api/push/subscribe", json=SUB_DATA, headers=auth_header(token))
+    register_user(client)
+    client.post("/api/push/subscribe", json=SUB_DATA)
+    resp = client.request("DELETE", "/api/push/subscribe", json=SUB_DATA)
     assert resp.status_code == 204
 
 
 def test_unsubscribe_not_found(client):
-    token = register_user(client)
-    resp = client.request("DELETE", "/api/push/subscribe", json=SUB_DATA, headers=auth_header(token))
+    register_user(client)
+    resp = client.request("DELETE", "/api/push/subscribe", json=SUB_DATA)
     assert resp.status_code == 404
 
 
 def test_push_status_not_subscribed(client):
-    token = register_user(client)
-    resp = client.get("/api/push/status", headers=auth_header(token))
+    register_user(client)
+    resp = client.get("/api/push/status")
     assert resp.status_code == 200
     assert resp.json() == {"subscribed": False, "subscription_count": 0}
 
 
 def test_push_status_subscribed(client):
-    token = register_user(client)
-    client.post("/api/push/subscribe", json=SUB_DATA, headers=auth_header(token))
-    resp = client.get("/api/push/status", headers=auth_header(token))
+    register_user(client)
+    client.post("/api/push/subscribe", json=SUB_DATA)
+    resp = client.get("/api/push/status")
     assert resp.json() == {"subscribed": True, "subscription_count": 1}
 
 
@@ -68,18 +68,18 @@ def test_subscribe_requires_auth(client):
     assert resp.status_code == 401
 
 
-def test_user_isolation(client):
-    token1 = register_user(client, "user1@test.com")
-    token2 = register_user(client, "user2@test.com")
-    client.post("/api/push/subscribe", json=SUB_DATA, headers=auth_header(token1))
+def test_user_isolation(client, make_client):
+    register_user(client, "user1@test.com")
+    client.post("/api/push/subscribe", json=SUB_DATA)
 
-    # User2 cannot delete user1's subscription
-    resp = client.request("DELETE", "/api/push/subscribe", json=SUB_DATA, headers=auth_header(token2))
-    assert resp.status_code == 404
+    with make_client("user2@test.com") as client2:
+        # User2 cannot delete user1's subscription
+        resp = client2.request("DELETE", "/api/push/subscribe", json=SUB_DATA)
+        assert resp.status_code == 404
 
-    # User2 shows no subscriptions
-    resp = client.get("/api/push/status", headers=auth_header(token2))
-    assert resp.json()["subscribed"] is False
+        # User2 shows no subscriptions
+        resp = client2.get("/api/push/status")
+        assert resp.json()["subscribed"] is False
 
 
 # ============================================================
@@ -160,16 +160,16 @@ def test_config_includes_vapid_key(client):
 # ============================================================
 
 def test_push_test_no_subscriptions(client):
-    token = register_user(client)
-    resp = client.post("/api/push/test", json={}, headers=auth_header(token))
+    register_user(client)
+    resp = client.post("/api/push/test", json={})
     assert resp.status_code == 404
 
 
 def test_push_test_sends_notification(client):
-    token = register_user(client)
-    client.post("/api/push/subscribe", json=SUB_DATA, headers=auth_header(token))
+    register_user(client)
+    client.post("/api/push/subscribe", json=SUB_DATA)
     with patch("scaffold.notifications.send_push", return_value=True):
-        resp = client.post("/api/push/test", json={}, headers=auth_header(token))
+        resp = client.post("/api/push/test", json={})
     assert resp.status_code == 200
     assert resp.json()["sent"] == 1
 
@@ -184,24 +184,24 @@ def test_push_test_requires_auth(client):
 # ============================================================
 
 def test_advance_days_default_zero(client):
-    token = register_user(client)
-    resp = client.get("/api/notifications/email", headers=auth_header(token))
+    register_user(client)
+    resp = client.get("/api/notifications/email")
     assert resp.status_code == 200
     assert resp.json()["advance_days"] == 0
 
 
 def test_advance_days_set_and_get(client):
-    token = register_user(client)
-    resp = client.put("/api/notifications/advance-days?advance_days=7", json={}, headers=auth_header(token))
+    register_user(client)
+    resp = client.put("/api/notifications/advance-days?advance_days=7", json={})
     assert resp.status_code == 200
     assert resp.json()["advance_days"] == 7
-    resp = client.get("/api/notifications/email", headers=auth_header(token))
+    resp = client.get("/api/notifications/email")
     assert resp.json()["advance_days"] == 7
 
 
 def test_advance_days_clamped(client):
-    token = register_user(client)
-    resp = client.put("/api/notifications/advance-days?advance_days=99", json={}, headers=auth_header(token))
+    register_user(client)
+    resp = client.put("/api/notifications/advance-days?advance_days=99", json={})
     assert resp.json()["advance_days"] == 30
 
 

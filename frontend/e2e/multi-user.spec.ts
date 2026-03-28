@@ -1,24 +1,16 @@
 import { test, expect } from '@playwright/test'
-import { getTestToken, loginAs, navigateTo } from './helpers'
-
-const API_BASE = process.env.E2E_API_URL ?? process.env.E2E_BASE_URL ?? 'http://localhost:5173'
-
-async function resetUser(request: import('@playwright/test').APIRequestContext, token: string) {
-  await request.post(`${API_BASE}/api/me/reset`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-}
+import { loginAs, navigateTo, resetUserData } from './helpers'
 
 test.describe('Multi-user isolation', () => {
-  test('two users cannot see each other\'s data', async ({ page, request }) => {
-    // User A: create some data
-    const tokenA = await getTestToken(request, 'usera-isolation@test.com', 'User A')
-    const tokenB = await getTestToken(request, 'userb-isolation@test.com', 'User B')
-    // Reset both users' data to ensure a clean state on retries
-    await resetUser(request, tokenA)
-    await resetUser(request, tokenB)
+  test('two users cannot see each other\'s data', async ({ page }) => {
+    // Reset both users before starting (loginAs sets the cookie, then resetUserData uses it)
+    await loginAs(page, 'usera-isolation@test.com', 'User A')
+    await resetUserData(page)
+    await loginAs(page, 'userb-isolation@test.com', 'User B')
+    await resetUserData(page)
 
-    await loginAs(page, tokenA)
+    // Start as User A
+    await loginAs(page, 'usera-isolation@test.com', 'User A')
 
     // Add a price as User A
     await navigateTo(page, 'Prices')
@@ -45,7 +37,7 @@ test.describe('Multi-user isolation', () => {
     await expect(page.getByRole('button', { name: /All types/i })).not.toContainText('All types (0)')
 
     // Switch to User B
-    await loginAs(page, tokenB)
+    await loginAs(page, 'userb-isolation@test.com', 'User B')
 
     // User B should see empty data
     await navigateTo(page, 'Grants')
@@ -66,7 +58,7 @@ test.describe('Multi-user isolation', () => {
     await expect(page.getByText('1 price entries')).toBeVisible({ timeout: 10000 })
 
     // Switch back to User A — data should be unchanged
-    await loginAs(page, tokenA)
+    await loginAs(page, 'usera-isolation@test.com', 'User A')
     await navigateTo(page, 'Prices')
     await expect(page.getByText('1 price entries')).toBeVisible({ timeout: 10000 })
 

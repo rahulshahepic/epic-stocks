@@ -81,8 +81,8 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 - **OIDC Sign-In** — provider-agnostic PKCE flow works with any standards-compliant IdP (Google, Azure Entra ID, etc.). Multiple providers can be enabled simultaneously — the login page shows one button per provider. Automatic account creation; data is tied to the account.
 - **Admin Dashboard** — user management, aggregate stats, email blocking, and system health monitoring (CPU, RAM, DB size sparklines with 24h/72h/7d/30d windows, per-table DB size breakdown). Admin cannot see financial data.
 - **Push & Email Notifications** — configurable advance timing: day-of, 3 days before, or 1 week before each event. Per-user opt-in for each channel independently. Includes a "Send test" button to confirm push is working.
-- **Per-User Encryption** — AES-256-GCM column-level encryption. The master key is auto-generated on first deploy and stored on-disk; it never passes through GitHub Secrets. Each user gets a unique key. Admins can rotate the master key live from the admin panel with automatic rollback on failure.
-- **Maintenance Mode** — two distinct mechanisms: (1) app-managed downtime for key rotation and admin-toggled maintenance (app stays up, financial API routes return 503, auth and admin remain accessible; an amber banner appears in the nav and financial pages show a placeholder); (2) deploy-time full downtime via a Caddy sentinel file (static 503 page while the app container is stopped).
+- **Per-User Encryption** — AES-256-GCM column-level encryption. Two-level key hierarchy: `KEY_ENCRYPTION_KEY` (env var, set once, never changes) wraps an operational master key stored encrypted in the database. The master key can be rotated live from the admin panel — all replicas pick up the new key automatically within seconds, no restart required. Each user has a unique per-user key wrapped by the master key.
+- **Maintenance Mode** — two distinct mechanisms: (1) app-managed downtime stored in the database — all replicas see the toggle instantly; financial API routes return 503 while auth and admin remain accessible; (2) deploy-time full downtime via a Caddy sentinel file (`./data/full_maintenance`) that serves a static 503 page while the app container is stopped.
 - **Dark/Light Mode** — auto-detects system preference, updates live.
 - **Mobile-First** — designed for 375px phone viewports.
 
@@ -138,7 +138,8 @@ cp .env.example .env
 | `OIDC_PROVIDERS` | Yes | JSON array of OIDC provider configs — see `.env.example` for format. Supports Google, Azure Entra ID, or any OIDC-compliant IdP. Multiple providers show as separate sign-in buttons. |
 | `DATABASE_URL` | Yes (prod) | PostgreSQL DSN. Docker Compose sets this automatically from `POSTGRES_PASSWORD`. |
 | `POSTGRES_PASSWORD` | Yes (local dev) | Password for the `postgres` user. **Auto-generated on production deploy.** |
-| `ENCRYPTION_MASTER_KEY` | No | Enables per-user AES-256-GCM encryption. **Auto-generated on production deploy.** |
+| `KEY_ENCRYPTION_KEY` | No | Enables per-user AES-256-GCM encryption. Set once, never changes. **Auto-generated on production deploy** and stored in `.secrets/key_encryption_key`. Wraps the operational master key stored in the database. |
+| `LEGACY_MASTER_KEY` | No | One-time migration aid. Set to the old `ENCRYPTION_MASTER_KEY` value on first deploy after upgrading to the two-level key hierarchy; unset it after the first successful boot. |
 | `ADMIN_EMAIL` | No | Semicolon-delimited email(s) granted admin access on login |
 | `VAPID_PUBLIC_KEY` | No | Required for push notifications. **Auto-generated on production deploy.** |
 | `VAPID_PRIVATE_KEY` | No | Required for push notifications. **Auto-generated on production deploy.** |
@@ -461,8 +462,8 @@ The admin system is opt-in via the `ADMIN_EMAIL` environment variable. Admins ar
 | **View user activity** | See when each user last logged in and how many records they have. |
 | **Send test notification** | Immediately sends a push and/or email notification to any user for debugging. |
 | **Enable / disable maintenance** | Toggles app-managed downtime. Financial API routes return 503; auth and admin remain accessible. An amber banner appears in the nav and financial pages show a placeholder. Use this before planned ops that affect financial data. |
-| **Rotate encryption key** | Generates a new master key, re-wraps all per-user keys, smoke-tests, persists to disk, then clears maintenance. New key is live immediately — no deploy needed. Snapshot of old keys is written to disk before any changes; restored automatically on failure. All admins are emailed if rotation fails. |
-| **Restore from snapshot** | Appears in the admin panel when an interrupted rotation left a snapshot file on disk. Writes the old per-user keys back to the DB and clears maintenance — recovers from a crash without SSH access. |
+| **Rotate encryption key** | Generates a new master key, re-wraps all per-user keys, smoke-tests, then persists to the database and clears maintenance. New key propagates to all replicas automatically within seconds — no deploy or env var change needed. A snapshot of old keys is saved to the database before any changes; restored automatically on failure. |
+| **Restore from snapshot** | Appears in the admin panel when an interrupted rotation left a snapshot in the database. Writes the old per-user keys back and clears maintenance — recovers from a crash without SSH access. |
 
 ### Blocked Email System
 
@@ -506,11 +507,11 @@ This application stores sensitive financial data. Please read **[PRIVACY.md](PRI
 
 Key points:
 - **Data isolation** — every API query filters by authenticated user ID. Users cannot see each other's data.
-- **Encryption at rest** — financial data (shares, prices, loan amounts) is encrypted per-user with AES-256-GCM. The master key is auto-generated on first deploy and stored at `./data/current_master_key` on the VPS — it never appears in GitHub Secrets or CI logs. Each user gets a unique key wrapped by the master key; rotating the master key re-wraps only the key wrappers, not all the data. See [PLAN.md](PLAN.md) for details.
+- **Encryption at rest** — financial data (shares, prices, loan amounts) is encrypted per-user with AES-256-GCM. Two-level hierarchy: `KEY_ENCRYPTION_KEY` (env var, set once) wraps an operational master key stored encrypted in the `system_settings` DB table. Each user gets a unique key wrapped by the master key. Rotating the master key re-wraps only the per-user key wrappers — not all data — and propagates to all replicas automatically.
 - **Open source** — users can audit the code, self-host their own instance, or fork the project.
 - **Data portability** — users can export all their data to Excel at any time.
 
-If you run an instance for others: secure the database file, use HTTPS, set `ENCRYPTION_MASTER_KEY`, and keep your secrets safe. See **[OPERATIONS.md](OPERATIONS.md)** for a full checklist of what the app does automatically vs. what you need to configure in your hosting environment (Cloudflare, SSH hardening, VPS firewall, backups, runbook).
+If you run an instance for others: secure the database, use HTTPS, set `KEY_ENCRYPTION_KEY`, and keep your secrets safe. See **[OPERATIONS.md](OPERATIONS.md)** for a full checklist of what the app does automatically vs. what you need to configure in your hosting environment (Cloudflare, SSH hardening, VPS firewall, backups, runbook).
 
 ## Key Design Decisions
 

@@ -3,7 +3,6 @@ import logging
 import os
 import secrets
 from collections import defaultdict
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -17,17 +16,17 @@ from datetime import datetime, timedelta, timezone
 from database import get_db
 from scaffold.models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, ErrorLog, EmailPreference, SystemMetric
 from scaffold.auth import get_admin_user, get_admin_emails
-from scaffold.maintenance import SENTINEL_PATH as _SENTINEL
+from scaffold.maintenance import is_maintenance_active, set_maintenance
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
-# Snapshot file written before key rotation so the old wrapped keys survive
-# a crash mid-rotation.  Deleted on completion (success or rollback).
-_SNAPSHOT_PATH = Path(os.getenv("ROTATION_SNAPSHOT_PATH", "/app/data/rotation_snapshot.json"))
-
-# In-memory rate limiter for admin test-notify: 5 calls per hour per admin user
+# In-memory rate limiter for admin test-notify: 5 calls per hour per admin user.
+# Acceptable to be per-instance only (admin-only cost-control valve).
 _TEST_NOTIFY_LIMIT = 5
 _test_notify_counts: dict[tuple, int] = defaultdict(int)  # (user_id, hour_utc) -> count
+
+# Fixed advisory lock key for key rotation (PostgreSQL session-level lock).
+_ROTATION_LOCK_KEY = 1234567890
 
 
 class AdminStats(BaseModel):
@@ -141,7 +140,7 @@ def admin_users(
 
 @router.delete("/users/{user_id}", status_code=204)
 def admin_delete_user(user_id: int, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
-    if _SENTINEL.exists():
+    if is_maintenance_active():
         raise HTTPException(status_code=503, detail="Cannot delete users during maintenance")
     if user_id == admin.id:
         raise HTTPException(status_code=400, detail="Cannot delete yourself")
@@ -404,22 +403,41 @@ class MaintenanceRequest(BaseModel):
 
 @router.get("/maintenance", response_model=MaintenanceStatus)
 def get_maintenance(admin: User = Depends(get_admin_user)):
-    return MaintenanceStatus(active=_SENTINEL.exists())
+    return MaintenanceStatus(active=is_maintenance_active())
 
 
 @router.post("/maintenance", response_model=MaintenanceStatus)
-def set_maintenance(body: MaintenanceRequest, admin: User = Depends(get_admin_user)):
-    _SENTINEL.parent.mkdir(parents=True, exist_ok=True)
-    if body.active:
-        _SENTINEL.touch()
-    else:
-        _SENTINEL.unlink(missing_ok=True)
-    return MaintenanceStatus(active=_SENTINEL.exists())
+def set_maintenance_endpoint(body: MaintenanceRequest, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    set_maintenance(db, body.active)
+    return MaintenanceStatus(active=body.active)
 
 
 # ============================================================
 # Encryption key rotation
 # ============================================================
+
+def _get_snapshot(db) -> dict[int, str] | None:
+    """Read the rotation snapshot from system_settings, or return None if absent."""
+    row = db.execute(
+        text("SELECT value FROM system_settings WHERE key = 'rotation_snapshot'")
+    ).scalar()
+    if row is None:
+        return None
+    return {int(k): v for k, v in json.loads(row).items()}
+
+
+def _write_snapshot(db, snapshot: dict[int, str]) -> None:
+    value = json.dumps({str(k): v for k, v in snapshot.items()})
+    if db.execute(text("SELECT 1 FROM system_settings WHERE key = 'rotation_snapshot'")).scalar():
+        db.execute(text("UPDATE system_settings SET value = :v WHERE key = 'rotation_snapshot'"), {"v": value})
+    else:
+        db.execute(text("INSERT INTO system_settings (key, value) VALUES ('rotation_snapshot', :v)"), {"v": value})
+    db.commit()
+
+
+def _delete_snapshot(db) -> None:
+    db.execute(text("DELETE FROM system_settings WHERE key = 'rotation_snapshot'"))
+    db.commit()
 
 
 class RotationStatus(BaseModel):
@@ -428,28 +446,25 @@ class RotationStatus(BaseModel):
 
 
 @router.get("/rotation-status", response_model=RotationStatus)
-def get_rotation_status(admin: User = Depends(get_admin_user)):
-    """Return whether an interrupted rotation snapshot exists on disk."""
+def get_rotation_status(admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    """Return whether an interrupted rotation snapshot exists in the DB."""
+    snapshot = _get_snapshot(db)
     return RotationStatus(
-        snapshot_exists=_SNAPSHOT_PATH.exists(),
-        maintenance_active=_SENTINEL.exists(),
+        snapshot_exists=snapshot is not None,
+        maintenance_active=is_maintenance_active(),
     )
 
 
 @router.post("/rotation-restore", status_code=200)
 def rotation_restore(admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
-    """Restore users.encrypted_key from the on-disk snapshot left by a crashed rotation.
+    """Restore users.encrypted_key from the DB snapshot left by a crashed rotation.
 
-    Safe to call when rotation completed successfully and the snapshot file is
+    Safe to call when rotation completed successfully and the snapshot row is
     stale — the endpoint just returns 404 if no snapshot exists.
     """
-    if not _SNAPSHOT_PATH.exists():
+    snapshot = _get_snapshot(db)
+    if snapshot is None:
         raise HTTPException(status_code=404, detail="No rotation snapshot found")
-    try:
-        raw = json.loads(_SNAPSHOT_PATH.read_text())
-        snapshot: dict[int, str] = {int(k): v for k, v in raw.items()}
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Snapshot unreadable: {exc}")
 
     for uid, enc_key in snapshot.items():
         db.execute(
@@ -458,47 +473,65 @@ def rotation_restore(admin: User = Depends(get_admin_user), db: Session = Depend
         )
     db.commit()
 
-    _SNAPSHOT_PATH.unlink(missing_ok=True)
-    _SENTINEL.unlink(missing_ok=True)
+    _delete_snapshot(db)
+    set_maintenance(db, False)
     return {"restored": len(snapshot)}
+
 
 @router.post("/rotate-key")
 def rotate_key(admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
     """Rotate the master encryption key.
 
     Generates a fresh master key, re-wraps every user's per-user key, runs a
-    smoke test, and persists the new key to disk.  Streams SSE events so the
-    admin can watch progress in real time.  On any failure the DB is rolled back
-    and maintenance mode is cleared before the error event is emitted.
+    smoke test, and persists the new key to system_settings (encrypted by the
+    KEY_ENCRYPTION_KEY).  All replicas pick up the new key automatically within
+    crypto._RELOAD_TTL seconds — no restart or env-var update required.
+
+    Streams SSE events so the admin can watch progress in real time.  On any
+    failure the DB is rolled back and maintenance mode is cleared before the
+    error event is emitted.
     """
     def event_stream():
         import scaffold.crypto as crypto_module
+        import database as _db_module
         from scaffold.rotate_master_key import encrypt_user_key as _wrap, decrypt_user_key as _unwrap
 
         def sse(step: str, msg: str) -> str:
             return f"data: {json.dumps({'step': step, 'msg': msg})}\n\n"
 
-        old_master = crypto_module.ENCRYPTION_MASTER_KEY
-        if not old_master:
-            yield sse("error", "Encryption is not enabled (ENCRYPTION_MASTER_KEY not set)")
+        if not crypto_module.encryption_enabled():
+            yield sse("error", "Encryption is not enabled (KEY_ENCRYPTION_KEY not set)")
             return
+        old_master = crypto_module.ENCRYPTION_MASTER_KEY
 
-        # --- 1. Snapshot (persisted to disk so a crash doesn't lose it) -----
+        # Acquire PostgreSQL advisory lock to prevent concurrent rotations across replicas.
+        # SQLite (test environment) skips this.
+        lock_acquired = False
+        if not _db_module._is_sqlite:
+            try:
+                lock_acquired = db.execute(
+                    text("SELECT pg_try_advisory_lock(:k)"), {"k": _ROTATION_LOCK_KEY}
+                ).scalar()
+                if not lock_acquired:
+                    yield sse("error", "Another rotation is already in progress on another instance")
+                    return
+            except Exception as exc:
+                logger.warning("Advisory lock unavailable: %s", exc)
+
+        # --- 1. Snapshot (persisted to DB so a crash doesn't lose old keys) ---
         rows = db.execute(
             text("SELECT id, encrypted_key FROM users WHERE encrypted_key IS NOT NULL")
         ).fetchall()
         snapshot: dict[int, str] = {r[0]: r[1] for r in rows}
-        _SNAPSHOT_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _SNAPSHOT_PATH.write_text(json.dumps({str(k): v for k, v in snapshot.items()}))
-        yield sse("snapshot", f"Snapshotted {len(snapshot)} user key(s) to disk")
+        _write_snapshot(db, snapshot)
+        yield sse("snapshot", f"Snapshotted {len(snapshot)} user key(s) to DB")
 
         new_master = secrets.token_hex(32)
 
         # --- 2. Enable maintenance (financial tables are encrypted; reads/writes
         #        would fail mid-rotation — users table is not encrypted so login
         #        still works during this window) ----------------------------
-        _SENTINEL.parent.mkdir(parents=True, exist_ok=True)
-        _SENTINEL.touch()
+        set_maintenance(db, True)
         yield sse("maintenance", "Maintenance mode ON")
 
         error_msg: str | None = None
@@ -525,9 +558,10 @@ def rotate_key(admin: User = Depends(get_admin_user), db: Session = Depends(get_
 
             yield sse("smoke", "All user keys verified")
 
-            # --- 5. Persist ----------------------------------------------
-            crypto_module.update_master_key(new_master)
-            yield sse("persist", "New key saved to server")
+            # --- 5. Persist new master key to system_settings -------------
+            crypto_module.update_master_key(new_master, db)
+            db.commit()
+            yield sse("persist", "New key saved to DB — all replicas will reload automatically")
 
         except Exception as exc:
             error_msg = str(exc)
@@ -542,8 +576,15 @@ def rotate_key(admin: User = Depends(get_admin_user), db: Session = Depends(get_
             except Exception:
                 pass
         finally:
-            _SENTINEL.unlink(missing_ok=True)
-            _SNAPSHOT_PATH.unlink(missing_ok=True)
+            set_maintenance(db, False)
+            _delete_snapshot(db)
+            # Release the advisory lock explicitly so it doesn't persist on the pooled connection
+            if lock_acquired and not _db_module._is_sqlite:
+                try:
+                    db.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": _ROTATION_LOCK_KEY})
+                    db.commit()
+                except Exception:
+                    pass
 
         if error_msg:
             yield sse("error", error_msg)
@@ -564,6 +605,6 @@ def rotate_key(admin: User = Depends(get_admin_user), db: Session = Depends(get_
             except Exception:
                 pass
         else:
-            yield sse("done", "Rotation complete. New key is live.")
+            yield sse("done", "Rotation complete. New key is live on all replicas.")
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

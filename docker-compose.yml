@@ -34,7 +34,8 @@ services:
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-changeme}@db:5432/vesting
       - JWT_SECRET=${JWT_SECRET}
       - OIDC_PROVIDERS=${OIDC_PROVIDERS:-[]}
-      - ENCRYPTION_MASTER_KEY=${ENCRYPTION_MASTER_KEY}
+      - KEY_ENCRYPTION_KEY=${KEY_ENCRYPTION_KEY}
+      - LEGACY_MASTER_KEY=${LEGACY_MASTER_KEY:-}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
@@ -48,9 +49,6 @@ services:
       - SMTP_FROM=${SMTP_FROM:-}
       - EPIC_ONBOARDING_URL=${EPIC_ONBOARDING_URL:-}
       - APP_URL=${APP_URL:-}
-    volumes:
-      - ./data:/app/data           # sqlite migration source
-      - appdata:/app/appdata       # maintenance sentinel (shared with caddy via named volume)
     expose:
       - "8000"
     networks:

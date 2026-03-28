@@ -9,7 +9,6 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import FileResponse
 import database
-from scaffold.maintenance import SENTINEL_PATH as _MAINTENANCE_SENTINEL
 
 logger = logging.getLogger(__name__)
 from scaffold.routers import auth_router, admin, notifications, push
@@ -36,12 +35,26 @@ async def lifespan(app):
         # One-time migration from SQLite if data/vesting.db exists and PG is empty
         from scaffold.migrate_sqlite_to_pg import maybe_migrate
         maybe_migrate()
+    # Ensure system_settings seed rows exist and load/generate the master encryption key
+    _bootstrap_system()
     task = _start_daily_scheduler()
     metrics_task = _start_metrics_sampler()
     yield
     if task:
         task.cancel()
     metrics_task.cancel()
+
+
+def _bootstrap_system():
+    """Ensure system_settings seed rows and master key are initialized on every boot."""
+    from scaffold.crypto import initialize_master_key
+    db = database.SessionLocal()
+    try:
+        initialize_master_key(db)
+    except Exception:
+        logger.exception("Failed to bootstrap system settings")
+    finally:
+        db.close()
 
 
 def _start_daily_scheduler():
@@ -83,6 +96,12 @@ def _sample_metrics():
 
     db = database.SessionLocal()
     try:
+        # Advisory lock: only one replica samples metrics at a time
+        if not database._is_sqlite:
+            acquired = db.execute(text("SELECT pg_try_advisory_lock(222222222)")).scalar()
+            if not acquired:
+                return
+
         cpu = psutil.cpu_percent(interval=0.5)
         mem = psutil.virtual_memory()
 
@@ -126,6 +145,13 @@ def _sample_metrics():
     except Exception:
         pass
     finally:
+        # Explicitly release the advisory lock so it doesn't persist on pooled connections
+        if not database._is_sqlite:
+            try:
+                db.execute(text("SELECT pg_advisory_unlock(222222222)"))
+                db.commit()
+            except Exception:
+                pass
         db.close()
 
 
@@ -151,47 +177,48 @@ _MAINT_ALLOWED_GET_EXACT = frozenset({"/api/me"})
 
 
 class MaintenanceMiddleware:
-    """Block financial API routes while the maintenance sentinel file is present.
+    """Block financial API routes while maintenance mode is active in system_settings.
 
-    Enforcement is at the ASGI layer — all methods blocked, not just GET.
-    The sentinel is set by key rotation and admin-toggled downtime.
-    It is distinct from the Caddy full_maintenance sentinel (deploy-time full
-    lockdown when the app container itself is stopped).
+    Uses a 1-second TTL cache so the DB is queried at most once per second per
+    replica.  Toggling maintenance from any replica propagates to all others
+    within ~1 second automatically.
     """
 
     def __init__(self, app):
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] == "http" and _MAINTENANCE_SENTINEL.exists():
-            path = scope.get("path", "")
-            if path.startswith("/api/"):
-                method = scope.get("method", "GET")
-                allowed = (
-                    path in _MAINT_ALLOWED_EXACT
-                    or path.startswith(_MAINT_ALLOWED_PREFIX)
-                    or (path in _MAINT_ALLOWED_GET_EXACT and method == "GET")
-                )
-                if not allowed:
-                    response = JSONResponse(
-                        {"detail": "Service temporarily unavailable for maintenance"},
-                        status_code=503,
-                        headers={
-                            "Cache-Control": "no-store, no-cache",
-                            "CDN-Cache-Control": "no-store",
-                            "Surrogate-Control": "no-store",
-                        },
+        if scope["type"] == "http":
+            from scaffold.maintenance import is_maintenance_active
+            if is_maintenance_active():
+                path = scope.get("path", "")
+                if path.startswith("/api/"):
+                    method = scope.get("method", "GET")
+                    allowed = (
+                        path in _MAINT_ALLOWED_EXACT
+                        or path.startswith(_MAINT_ALLOWED_PREFIX)
+                        or (path in _MAINT_ALLOWED_GET_EXACT and method == "GET")
                     )
-                    await response(scope, receive, send)
-                    return
+                    if not allowed:
+                        response = JSONResponse(
+                            {"detail": "Service temporarily unavailable for maintenance"},
+                            status_code=503,
+                            headers={
+                                "Cache-Control": "no-store, no-cache",
+                                "CDN-Cache-Control": "no-store",
+                                "Surrogate-Control": "no-store",
+                            },
+                        )
+                        await response(scope, receive, send)
+                        return
         await self.app(scope, receive, send)
 
 
 class EncryptionMiddleware:
     """Pure ASGI middleware that sets per-user encryption key in contextvar.
 
-    Runs in the event loop context so the contextvar propagates to
-    sync endpoint functions running in threadpool workers.
+    Also calls reload_master_key_if_stale() so key rotations performed on
+    any replica propagate automatically within crypto._RELOAD_TTL seconds.
     """
 
     def __init__(self, app):
@@ -201,26 +228,35 @@ class EncryptionMiddleware:
         if scope["type"] == "http" and encryption_enabled():
             headers = dict(scope.get("headers", []))
             auth = headers.get(b"authorization", b"").decode()
-            if auth.startswith("Bearer "):
-                self._try_set_key(auth[7:])
+            db = database.SessionLocal()
+            try:
+                from scaffold.crypto import reload_master_key_if_stale
+                reload_master_key_if_stale(db)
+                if auth.startswith("Bearer "):
+                    self._try_set_key(auth[7:], db)
+            finally:
+                db.close()
         try:
             await self.app(scope, receive, send)
         finally:
             set_current_key(None)
 
-    def _try_set_key(self, token: str):
+    def _try_set_key(self, token: str, db=None):
         from scaffold.auth import _decode_token
         from scaffold.models import User
         try:
             payload = _decode_token(token)
             user_id = int(payload["sub"])
-            db = database.SessionLocal()
+            own_db = db is None
+            if own_db:
+                db = database.SessionLocal()
             try:
                 user = db.get(User, user_id)
                 if user and user.encrypted_key:
                     set_current_key(decrypt_user_key(user.encrypted_key))
             finally:
-                db.close()
+                if own_db:
+                    db.close()
         except Exception:
             pass
 
@@ -309,7 +345,8 @@ def health():
 @_fastapi_app.get("/api/status")
 def status():
     """Operational status for the frontend. Always 200; check 'maintenance' field."""
-    return {"maintenance": _MAINTENANCE_SENTINEL.exists()}
+    from scaffold.maintenance import is_maintenance_active
+    return {"maintenance": is_maintenance_active()}
 
 
 @_fastapi_app.get("/api/config")

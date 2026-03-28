@@ -8,8 +8,12 @@ from starlette.testclient import TestClient
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-# Enable encryption and test-only auth endpoint for tests
-os.environ["ENCRYPTION_MASTER_KEY"] = "test-master-key-for-encryption-tests"
+# Enable encryption for tests using the two-level key hierarchy.
+# KEY_ENCRYPTION_KEY is the KEK that wraps the master key stored in system_settings.
+# LEGACY_MASTER_KEY is the old single-level key value; initialize_master_key() stores
+# it as the initial master key on first boot so encrypted test data still decrypts.
+os.environ["KEY_ENCRYPTION_KEY"] = "test-kek-for-tests-do-not-use-in-prod"
+os.environ["LEGACY_MASTER_KEY"] = "test-master-key-for-encryption-tests"
 os.environ["E2E_TEST"] = "1"
 
 import database
@@ -32,6 +36,7 @@ TestSession = sessionmaker(bind=TEST_ENGINE, autoflush=False, autocommit=False)
 # Swap the engine so the app lifespan creates tables on the test engine
 database.engine = TEST_ENGINE
 database.SessionLocal.configure(bind=TEST_ENGINE)
+database._is_sqlite = True  # advisory locks must be skipped in test environment
 
 from main import app, _fastapi_app
 

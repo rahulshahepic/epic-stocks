@@ -220,3 +220,19 @@ class SystemMetric(Base):
     ram_total_mb: Mapped[float] = mapped_column(Float, nullable=False)
     db_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     error_log_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class SystemSettings(Base):
+    """Key-value store for shared operational state across all replicas.
+
+    Rows used by the application:
+      maintenance_active  – 'true' / 'false' (app-level maintenance toggle)
+      master_key          – KEK-encrypted operational encryption master key
+      master_key_version  – integer string, incremented on each key rotation
+      rotation_snapshot   – JSON blob {uid: encrypted_key} written before rotation
+                            for crash recovery; deleted on success or rollback
+    """
+    __tablename__ = "system_settings"
+
+    key: Mapped[str] = mapped_column(String, primary_key=True)
+    value: Mapped[str] = mapped_column(String, nullable=False)

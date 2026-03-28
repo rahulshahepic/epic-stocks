@@ -15,6 +15,18 @@ services:
     networks:
       - internal
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
   app:
     container_name: epic-stocks-app   # referenced by name in caddy/app.caddy
     build:
@@ -24,6 +36,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/health || exit 1"]
       interval: 15s
@@ -32,6 +46,7 @@ services:
       start_period: 30s
     environment:
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-changeme}@db:5432/vesting
+      - REDIS_URL=redis://redis:6379/0
       - JWT_SECRET=${JWT_SECRET}
       - OIDC_PROVIDERS=${OIDC_PROVIDERS:-[]}
       - KEY_ENCRYPTION_KEY=${KEY_ENCRYPTION_KEY}
@@ -48,6 +63,8 @@ services:
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - SMTP_FROM=${SMTP_FROM:-}
       - EPIC_ONBOARDING_URL=${EPIC_ONBOARDING_URL:-}
+      - EPIC_MODE=${EPIC_MODE:-}
+      - CACHE_INVALIDATE_SECRET=${CACHE_INVALIDATE_SECRET:-}
       - APP_URL=${APP_URL:-}
     expose:
       - "8000"

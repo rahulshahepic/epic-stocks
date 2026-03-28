@@ -151,6 +151,8 @@ cp .env.example .env
 | `SMTP_PASSWORD` | No | SMTP password |
 | `SMTP_FROM` | No | Sender address for SMTP emails |
 | `APP_URL` | No | Public app URL included as a link in email notifications |
+| `ACME_EMAIL` | No (prod) | Email address for Let's Encrypt certificate expiry notifications. Set as a GitHub Actions variable. |
+| `TRUSTED_PROXY_IPS` | No (prod) | Cloudflare IP ranges passed to Caddy for real-IP forwarding. Set as a GitHub Actions variable. |
 | `COMMIT_SHA` | No | Git commit SHA injected at Docker build time. Displayed as a 7-char short hash at the bottom of the Admin and Settings pages so testers can confirm which build is running. **Set automatically by the deploy workflow.** |
 
 ### OIDC_PROVIDERS format
@@ -167,8 +169,30 @@ Each object supports:
 - `client_id` — from your IdP's app registration
 - `client_secret` — optional; omit for PKCE-only / native-app clients
 - `discovery_url` — OIDC discovery endpoint (`.well-known/openid-configuration`)
+- `scopes` — optional; defaults to `["openid","email","profile"]`
+- `subject_claim` — optional; defaults to `"sub"`. Set to `"oid"` for Azure Entra ID
 
 Multiple providers show as separate "Sign in with X" buttons on the login page. Redirect URI to register in your IdP: `https://yourdomain.com/auth/callback`
+
+Example with Google and Azure Entra ID together:
+```json
+[
+  {
+    "name": "google",
+    "label": "Google",
+    "client_id": "YOUR_ID.apps.googleusercontent.com",
+    "client_secret": "YOUR_SECRET",
+    "discovery_url": "https://accounts.google.com/.well-known/openid-configuration"
+  },
+  {
+    "name": "azure",
+    "label": "Contoso Azure AD",
+    "client_id": "YOUR_AZURE_CLIENT_ID",
+    "discovery_url": "https://login.microsoftonline.com/YOUR_TENANT_ID/v2.0/.well-known/openid-configuration",
+    "subject_claim": "oid"
+  }
+]
+```
 
 For local development, generate VAPID keys with:
 ```bash

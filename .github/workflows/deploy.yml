@@ -99,6 +99,7 @@ jobs:
             POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
             TRUSTED_PROXY_IPS=${{ vars.TRUSTED_PROXY_IDS }}
             EPIC_ONBOARDING_URL=${{ vars.EPIC_ONBOARDING_URL }}
+            ACME_EMAIL=${{ vars.ACME_EMAIL }}
             COMMIT_SHA=${{ github.sha }}
             ENVEOF
               sed -i 's/^[[:space:]]*//' ${{ vars.DEPLOY_PATH }}/.env

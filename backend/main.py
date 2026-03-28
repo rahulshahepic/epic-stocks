@@ -128,12 +128,20 @@ def _sample_metrics():
 
         error_count = db.query(func.count(ErrorLog.id)).scalar() or 0
 
+        from app import timeline_cache, event_cache
+        cs = timeline_cache.get_stats()
+        ri = event_cache.redis_info()
+
         db.add(SystemMetric(
             cpu_percent=cpu,
             ram_used_mb=mem.used / (1024 * 1024),
             ram_total_mb=mem.total / (1024 * 1024),
             db_size_bytes=db_size,
             error_log_count=error_count,
+            cache_l1_hits=cs["l1_hits"],
+            cache_l2_hits=cs["l2_hits"],
+            cache_misses=cs["misses"],
+            cache_l2_key_count=ri.get("timeline_keys") if ri.get("connected") else None,
         ))
 
         # Rolling cleanup: keep last 30 days of metrics

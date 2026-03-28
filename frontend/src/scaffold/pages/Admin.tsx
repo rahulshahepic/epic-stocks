@@ -4,7 +4,7 @@ import { api } from '../../api.ts'
 import { useConfig } from '../hooks/useConfig.ts'
 import type {
   AdminStats, AdminUser, BlockedEmailEntry, ErrorLogEntry, TestNotifyResult,
-  SystemMetricPoint, DbTableInfo, RotationEvent, CacheStats,
+  SystemMetricPoint, DbTableInfo, RotationEvent,
 } from '../../api.ts'
 
 const NOTIFY_TEMPLATES: Record<string, { title: string; body: string }> = {
@@ -78,7 +78,6 @@ export default function Admin() {
   const [metrics, setMetrics] = useState<SystemMetricPoint[]>([])
   const [metricHours, setMetricHours] = useState(72)
   const [dbTables, setDbTables] = useState<DbTableInfo[]>([])
-  const [cacheStats, setCacheStats] = useState<CacheStats | null>(null)
 
   // Danger Zone state
   const [maintenanceActive, setMaintenanceActive] = useState<boolean | null>(null)
@@ -120,20 +119,18 @@ export default function Admin() {
 
   const load = useCallback(async () => {
     try {
-      const [s, b, m, rs, em, cs] = await Promise.all([
+      const [s, b, m, rs, em] = await Promise.all([
         api.adminStats(),
         api.adminListBlocked(),
         api.adminGetMaintenance(),
         api.adminRotationStatus(),
         api.adminGetEpicMode(),
-        api.adminCacheStats(),
       ])
       setStats(s)
       setBlocked(b)
       setMaintenanceActive(m.active)
       setSnapshotExists(rs.snapshot_exists)
       setEpicModeActive(em.active)
-      setCacheStats(cs)
       setError('')
       loadUsers()
       loadErrors()
@@ -350,51 +347,21 @@ export default function Admin() {
               formatter={v => formatBytes(v)}
             />
           </div>
+          {metrics.some(m => m.cache_l1_hits != null) && (
+            <div>
+              <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">Cache hit rate</p>
+              <Sparkline
+                data={metrics.map(m => {
+                  const total = (m.cache_l1_hits ?? 0) + (m.cache_l2_hits ?? 0) + (m.cache_misses ?? 0)
+                  return { ...m, cache_hit_rate: total > 0 ? Math.round(((m.cache_l1_hits ?? 0) + (m.cache_l2_hits ?? 0)) / total * 100) : null }
+                })}
+                dataKey={'cache_hit_rate' as keyof SystemMetricPoint}
+                color="#8b5cf6"
+                formatter={v => `${v.toFixed(0)}%`}
+              />
+            </div>
+          )}
         </div>
-      </section>
-
-      {/* Cache Stats */}
-      <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
-        <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Timeline Cache</h3>
-        {cacheStats ? (
-          <div className="mt-3 space-y-3">
-            <div className="grid grid-cols-3 gap-3 text-center">
-              {[
-                { label: 'L1 hits', value: cacheStats.l1_hits, sub: cacheStats.l1_hit_rate != null ? `${(cacheStats.l1_hit_rate * 100).toFixed(1)}%` : '—' },
-                { label: 'L2 hits', value: cacheStats.l2_hits, sub: cacheStats.l2_hit_rate != null ? `${(cacheStats.l2_hit_rate * 100).toFixed(1)}%` : '—' },
-                { label: 'Misses', value: cacheStats.misses, sub: cacheStats.total > 0 ? `${((cacheStats.misses / cacheStats.total) * 100).toFixed(1)}%` : '—' },
-              ].map(({ label, value, sub }) => (
-                <div key={label}>
-                  <span className="text-gray-500 dark:text-gray-400">{label}</span>
-                  <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">{value.toLocaleString()}</p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500">{sub} of {cacheStats.total.toLocaleString()}</p>
-                </div>
-              ))}
-            </div>
-            <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
-              <span>L1 entries: <strong className="text-gray-900 dark:text-gray-100">{cacheStats.l1_entries}</strong></span>
-              <span className="ml-auto flex items-center gap-1">
-                Redis:
-                {cacheStats.redis.connected ? (
-                  <>
-                    <span className="inline-block h-2 w-2 rounded-full bg-green-500" />
-                    <span>{cacheStats.redis.timeline_keys} keys · {cacheStats.redis.used_memory_human}</span>
-                    {cacheStats.redis.maxmemory_bytes ? (
-                      <span className="text-gray-400 dark:text-gray-500">/ {formatBytes(cacheStats.redis.maxmemory_bytes)}</span>
-                    ) : null}
-                  </>
-                ) : (
-                  <>
-                    <span className="inline-block h-2 w-2 rounded-full bg-gray-400" />
-                    <span>not connected{cacheStats.redis.error ? ` — ${cacheStats.redis.error}` : ''}</span>
-                  </>
-                )}
-              </span>
-            </div>
-          </div>
-        ) : (
-          <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">Loading…</p>
-        )}
       </section>
 
       {/* Database Breakdown */}

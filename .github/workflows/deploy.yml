@@ -160,15 +160,18 @@ jobs:
               write_env
             fi
 
+            # ── Bring app compose down before touching Caddy ────────────────
+            # Stops app + db and removes any containers orphaned by the current
+            # compose (e.g. caddy after it was moved to the infra compose file).
+            # This ensures port 80/443 is free before infra Caddy starts.
+            docker compose down --remove-orphans
+
             # ── Start/update shared infra Caddy ─────────────────────────────
             # Force-recreate so env vars (DOMAIN, ACME_EMAIL, TRUSTED_PROXY_IPS)
             # are always current. Certs are preserved in the caddy_data volume.
             DOMAIN=$(grep "^DOMAIN=" .env | cut -d= -f2-)
             ACME_EMAIL=$(grep "^ACME_EMAIL=" .env | cut -d= -f2-)
             TRUSTED_PROXY_IPS=$(grep "^TRUSTED_PROXY_IPS=" .env | cut -d= -f2-)
-            # Stop existing Caddy first to release ports 80/443 before recreating.
-            DOMAIN=$DOMAIN ACME_EMAIL=$ACME_EMAIL TRUSTED_PROXY_IPS=$TRUSTED_PROXY_IPS \
-              docker compose -f infra/docker-compose.infra.yml down --remove-orphans || true
             DOMAIN=$DOMAIN ACME_EMAIL=$ACME_EMAIL TRUSTED_PROXY_IPS=$TRUSTED_PROXY_IPS \
               docker compose -f infra/docker-compose.infra.yml up -d --force-recreate
 
@@ -177,9 +180,6 @@ jobs:
             # Uses caddy_appdata volume (same one Caddy mounts at /appdata).
             docker run --rm -v caddy_appdata:/appdata alpine \
               sh -c 'mkdir -p /appdata/epic-stocks && touch /appdata/epic-stocks/full_maintenance'
-
-            # Stop app to release DB connections before migration
-            docker compose stop app
 
             # Ensure db is up and healthy before running migrations
             docker compose up -d --wait --wait-timeout 60 db

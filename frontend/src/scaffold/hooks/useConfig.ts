@@ -5,6 +5,7 @@ interface AppConfig {
   email_notifications_available: boolean
   resend_from: string
   epic_onboarding_url: string
+  epic_mode: boolean
 }
 
 let cached: AppConfig | null = null
@@ -26,11 +27,12 @@ export function useConfig() {
           email_notifications_available: !!data.email_notifications_available,
           resend_from: data.resend_from || '',
           epic_onboarding_url: data.epic_onboarding_url || '',
+          epic_mode: !!data.epic_mode,
         }
         setConfig(cached)
       })
       .catch(() => {
-        cached = { vapid_public_key: '', email_notifications_available: false, resend_from: '', epic_onboarding_url: '' }
+        cached = { vapid_public_key: '', email_notifications_available: false, resend_from: '', epic_onboarding_url: '', epic_mode: false }
         setConfig(cached)
       })
   }, [])

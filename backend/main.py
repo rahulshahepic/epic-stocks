@@ -12,7 +12,7 @@ import database
 
 logger = logging.getLogger(__name__)
 from scaffold.routers import auth_router, admin, notifications, push
-from app.routers import grants, loans, prices, events, flows, import_export, sales, horizon
+from app.routers import grants, loans, prices, events, flows, import_export, sales, horizon, cache as cache_router
 from scaffold.auth import get_current_user
 from scaffold.crypto import encryption_enabled, decrypt_user_key, set_current_key
 from database import get_db
@@ -223,6 +223,47 @@ class MaintenanceMiddleware:
         await self.app(scope, receive, send)
 
 
+# Write methods that are blocked on epic-mode fact tables.
+_EPIC_WRITE_METHODS = frozenset({"POST", "PUT", "DELETE", "PATCH"})
+# Prefixes whose writes are blocked in epic mode (data owned by Epic's systems).
+_EPIC_BLOCKED_PREFIXES = ("/api/grants", "/api/prices", "/api/loans", "/api/import")
+# Prefixes whose writes are always allowed (user-initiated actions).
+_EPIC_ALLOWED_PREFIXES = (
+    "/api/loans/",  # sub-resources like /execute-payoff are user actions
+    "/api/internal/",
+)
+
+
+class EpicModeMiddleware:
+    """Block writes to fact tables when epic_mode is active.
+
+    Grants, prices, loans, and imports are owned by Epic's systems.
+    Sales, loan payments, tax settings, and the cache-invalidation webhook
+    remain writable regardless of epic mode.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            method = scope.get("method", "GET")
+            if method in _EPIC_WRITE_METHODS:
+                path = scope.get("path", "")
+                if path.startswith(_EPIC_BLOCKED_PREFIXES):
+                    # /api/loans/{id}/execute-payoff and /api/internal/* are user actions
+                    if not path.startswith(_EPIC_ALLOWED_PREFIXES):
+                        from scaffold.epic_mode import is_epic_mode
+                        if is_epic_mode():
+                            response = JSONResponse(
+                                {"detail": "Data is managed externally in this deployment"},
+                                status_code=403,
+                            )
+                            await response(scope, receive, send)
+                            return
+        await self.app(scope, receive, send)
+
+
 class EncryptionMiddleware:
     """Pure ASGI middleware that sets per-user encryption key in contextvar.
 
@@ -350,6 +391,7 @@ _fastapi_app.include_router(sales.router)
 _fastapi_app.include_router(sales.tax_router)
 _fastapi_app.include_router(loans.lp_router)
 _fastapi_app.include_router(horizon.router)
+_fastapi_app.include_router(cache_router.router)
 
 
 @_fastapi_app.get("/api/health")
@@ -367,11 +409,13 @@ def status():
 @_fastapi_app.get("/api/config")
 def client_config():
     from scaffold.email_sender import email_configured
+    from scaffold.epic_mode import is_epic_mode
     return {
         "vapid_public_key": os.environ.get("VAPID_PUBLIC_KEY", ""),
         "email_notifications_available": email_configured(),
         "resend_from": os.environ.get("RESEND_FROM", ""),
         "epic_onboarding_url": os.environ.get("EPIC_ONBOARDING_URL", ""),
+        "epic_mode": is_epic_mode(),
     }
 
 
@@ -417,5 +461,5 @@ if STATIC_DIR.is_dir():
         return FileResponse(STATIC_DIR / "index.html")
 
 
-# Wrap FastAPI app: maintenance check outermost, then encryption key setup
-app = MaintenanceMiddleware(EncryptionMiddleware(_fastapi_app))
+# Wrap FastAPI app: maintenance check outermost, then epic-mode guard, then encryption
+app = MaintenanceMiddleware(EpicModeMiddleware(EncryptionMiddleware(_fastapi_app)))

@@ -20,6 +20,7 @@ def build_fifo_lots(
     order: str = 'fifo',
     grant_year: int | None = None,
     grant_type: str | None = None,
+    lt_holding_days: int = 365,
 ) -> deque:
     """
     Build a lot queue from timeline events up to as_of date.
@@ -34,9 +35,12 @@ def build_fifo_lots(
       - Purchase grants (grant_price > 0): exercise date (employee bought shares at grant time).
       - RSU/income grants (grant_price = 0/None): vesting date (shares received at vest).
 
-    order: 'fifo' (oldest first) or 'lifo' (newest first). Loan repayments and other
-    reductions are applied oldest-first. Down payment exchanges consume lowest-cost-basis
-    lots first (Bonus grant lots first, then FIFO among remaining).
+    order: 'fifo' (oldest first), 'lifo' (newest first), or 'epic_lifo' (LIFO but LTCG-qualifying
+    lots consumed before STCG lots — Epic's preferred lot selection to minimise short-term gains).
+    Loan repayments and other reductions are always applied oldest-first regardless of order.
+    Down payment exchanges consume lowest-cost-basis lots first.
+
+    lt_holding_days: threshold for long-term classification; used only by 'epic_lifo'.
 
     grant_year / grant_type: when both provided, only lots from that grant are returned
     (same-tranche selection). Falls back gracefully if no matching lots exist.
@@ -94,8 +98,19 @@ def build_fifo_lots(
                         lots[0][1] -= to_reduce
                         to_reduce = 0
 
-    if order == 'lifo':
+    if order in ('lifo', 'epic_lifo'):
         lots = deque(reversed(lots))
+
+    if order == 'epic_lifo':
+        # Stable-partition: LTCG lots first, STCG lots last. Within each group,
+        # LIFO order (already reversed above) is preserved.
+        def _is_ltcg(lot):
+            hold_start = _to_date(lot[5])
+            return (as_of - hold_start).days >= lt_holding_days
+
+        ltcg = [l for l in lots if _is_ltcg(l)]
+        stcg = [l for l in lots if not _is_ltcg(l)]
+        lots = deque(ltcg + stcg)
 
     if grant_year is not None and grant_type is not None:
         # Same-tranche: sell matching lots first, then fall through to the rest
@@ -180,7 +195,8 @@ def compute_sale_tax(timeline_events: list, sale: dict, tax_settings: dict,
     state_st = float(ts.get("state_st_cg_rate", 0.0765))
 
     lots = build_fifo_lots(timeline_events, sale_date,
-                           order=lot_order, grant_year=grant_year, grant_type=grant_type)
+                           order=lot_order, grant_year=grant_year, grant_type=grant_type,
+                           lt_holding_days=lt_days)
     total_available = sum(l[1] for l in lots)
 
     # Shares sold before vesting (if user is selling more than available vested shares)

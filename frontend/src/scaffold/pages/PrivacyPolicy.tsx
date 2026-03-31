@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -27,16 +27,17 @@ function Ul({ children }: { children: React.ReactNode }) {
 }
 
 export default function PrivacyPolicy() {
+  const navigate = useNavigate()
   return (
     <div className="min-h-screen bg-gray-50 px-4 py-10 dark:bg-gray-950">
       <div className="mx-auto max-w-2xl">
         <div className="mb-6">
-          <Link
-            to="/login"
+          <button
+            onClick={() => navigate(-1)}
             className="text-sm text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400"
           >
-            ← Back to sign in
-          </Link>
+            ← Back
+          </button>
         </div>
 
         <h1 className="mb-1 text-2xl font-bold text-gray-900 dark:text-white">Privacy Policy</h1>

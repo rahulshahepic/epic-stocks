@@ -103,6 +103,14 @@ function todayIndex(data: { _date: string }[]): number | null {
   return null
 }
 
+/** Find the index of the first data point at or after exitDate. */
+function exitIndex(data: { _date: string }[], exitDate: string): number | null {
+  for (let i = 0; i < data.length; i++) {
+    if (data[i]._date >= exitDate) return i
+  }
+  return null
+}
+
 interface ChartColors {
   grid: string
   axis: string
@@ -157,7 +165,7 @@ function DetailCard({ items, onClose }: { items: { label: string; value: string 
   )
 }
 
-function SharesChart({ events, c, range, hasFuturePrices }: { events: TimelineEvent[]; c: ChartColors; range: DateRange; hasFuturePrices: boolean }) {
+function SharesChart({ events, c, range, hasFuturePrices, exitDate }: { events: TimelineEvent[]; c: ChartColors; range: DateRange; hasFuturePrices: boolean; exitDate: string | null }) {
   const [selected, setSelected] = useState<number | null>(null)
 
   const data = useMemo(() => {
@@ -182,6 +190,7 @@ function SharesChart({ events, c, range, hasFuturePrices }: { events: TimelineEv
   }, [events, range, hasFuturePrices])
 
   const tIdx = todayIndex(data)
+  const eIdx = exitDate ? exitIndex(data, exitDate) : null
   const sel = selected !== null && selected < data.length ? data[selected] : null
 
   return (
@@ -194,6 +203,7 @@ function SharesChart({ events, c, range, hasFuturePrices }: { events: TimelineEv
           <XAxis dataKey="_idx" type="number" domain={[0, Math.max(0, data.length - 1)]} ticks={numericTicks(data.length)} tickFormatter={(i: number) => data[i]?._label ?? ''} tick={{ fontSize: 10, fill: c.axis }} padding={{ right: 10 }} />
           <YAxis tick={{ fontSize: 10, fill: c.axis }} />
           {tIdx !== null && <ReferenceLine x={tIdx} stroke="#f59e0b" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
+          {eIdx !== null && <ReferenceLine x={eIdx} stroke="#4ade80" strokeDasharray="4 4" zIndex={600} label={{ value: 'Exit', fontSize: 10, fill: '#4ade80', position: 'top' }} />}
           {selected !== null && selected < data.length && (
             <ReferenceLine x={selected} stroke="#818cf8" strokeWidth={1.5} zIndex={600} />
           )}
@@ -218,7 +228,7 @@ function SharesChart({ events, c, range, hasFuturePrices }: { events: TimelineEv
   )
 }
 
-function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: TimelineEvent[]; c: ChartColors; range: DateRange; hasFuturePrices: boolean }) {
+function IncomeCapGainsChart({ events, c, range, hasFuturePrices, exitDate }: { events: TimelineEvent[]; c: ChartColors; range: DateRange; hasFuturePrices: boolean; exitDate: string | null }) {
   const [selected, setSelected] = useState<number | null>(null)
 
   const data = useMemo(() => {
@@ -258,6 +268,7 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: Ti
   }, [events, range, hasFuturePrices])
 
   const tIdx = todayIndex(data)
+  const eIdx = exitDate ? exitIndex(data, exitDate) : null
   const sel = selected !== null && selected < data.length ? data[selected] : null
 
   return (
@@ -283,6 +294,7 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: Ti
             </text>
           )}
           {tIdx !== null && <ReferenceLine x={tIdx} stroke="#f59e0b" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
+          {eIdx !== null && <ReferenceLine x={eIdx} stroke="#4ade80" strokeDasharray="4 4" zIndex={600} label={{ value: 'Exit', fontSize: 10, fill: '#4ade80', position: 'top' }} />}
           {selected !== null && selected < data.length && (
             <ReferenceLine x={selected} stroke="#8b5cf6" strokeWidth={1.5} zIndex={600} />
           )}
@@ -311,7 +323,7 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: Ti
   )
 }
 
-function PriceChart({ prices, c, range, hasFuturePrices }: { prices: PriceEntry[]; c: ChartColors; range: DateRange; hasFuturePrices: boolean }) {
+function PriceChart({ prices, c, range, hasFuturePrices, exitDate }: { prices: PriceEntry[]; c: ChartColors; range: DateRange; hasFuturePrices: boolean; exitDate: string | null }) {
   const [selected, setSelected] = useState<number | null>(null)
 
   const data = useMemo(() => {
@@ -343,6 +355,7 @@ function PriceChart({ prices, c, range, hasFuturePrices }: { prices: PriceEntry[
   }, [prices, range, hasFuturePrices])
 
   const tIdx = todayIndex(data)
+  const eIdx = exitDate ? exitIndex(data, exitDate) : null
   const sel = selected !== null && selected < data.length ? data[selected] : null
 
   return (
@@ -355,6 +368,7 @@ function PriceChart({ prices, c, range, hasFuturePrices }: { prices: PriceEntry[
           <XAxis dataKey="_idx" type="number" domain={[0, Math.max(0, data.length - 1)]} ticks={numericTicks(data.length)} tickFormatter={(i: number) => data[i]?._label ?? ''} tick={{ fontSize: 10, fill: c.axis }} padding={{ right: 10 }} />
           <YAxis tick={{ fontSize: 10, fill: c.axis }} />
           {tIdx !== null && <ReferenceLine x={tIdx} stroke="#818cf8" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#818cf8', position: 'top' }} />}
+          {eIdx !== null && <ReferenceLine x={eIdx} stroke="#4ade80" strokeDasharray="4 4" zIndex={600} label={{ value: 'Exit', fontSize: 10, fill: '#4ade80', position: 'top' }} />}
           {selected !== null && selected < data.length && (
             <ReferenceLine x={selected} stroke="#fbbf24" strokeWidth={1.5} zIndex={600} />
           )}
@@ -392,13 +406,14 @@ const WI_TAX_DEFAULTS: TaxSettings = {
   dp_min_cap: 20000,
 }
 
-function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices }: {
+function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices, exitDate }: {
   events: TimelineEvent[]
   loans: LoanEntry[]
   taxSettings: TaxSettings
   c: ChartColors
   range: DateRange
   hasFuturePrices: boolean
+  exitDate: string | null
 }) {
   const [selected, setSelected] = useState<number | null>(null)
 
@@ -475,6 +490,7 @@ function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices }: {
   }, [events, loans, taxSettings, range, hasFuturePrices])
 
   const tIdx = todayIndex(data)
+  const eIdx = exitDate ? exitIndex(data, exitDate) : null
   const sel = selected !== null && selected < data.length ? data[selected] : null
 
   return (
@@ -492,6 +508,7 @@ function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices }: {
             <tspan fill="#ef4444">&#9632;</tspan> Paid
           </text>
           {tIdx !== null && <ReferenceLine x={tIdx} stroke="#60a5fa" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#60a5fa', position: 'top' }} />}
+          {eIdx !== null && <ReferenceLine x={eIdx} stroke="#4ade80" strokeDasharray="4 4" zIndex={600} label={{ value: 'Exit', fontSize: 10, fill: '#4ade80', position: 'top' }} />}
           {selected !== null && selected < data.length && (
             <ReferenceLine x={selected} stroke="#fb923c" strokeWidth={1.5} zIndex={600} />
           )}
@@ -519,7 +536,7 @@ function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices }: {
   )
 }
 
-function InterestChart({ loans, c, range }: { loans: LoanEntry[]; c: ChartColors; range: DateRange }) {
+function InterestChart({ loans, c, range, exitDate }: { loans: LoanEntry[]; c: ChartColors; range: DateRange; exitDate: string | null }) {
   const [selected, setSelected] = useState<number | null>(null)
 
   const data = useMemo(() => {
@@ -615,6 +632,7 @@ function InterestChart({ loans, c, range }: { loans: LoanEntry[]; c: ChartColors
 
   const displayed = filterByDateRange(data, range, '_date')
   const tIdx = todayIndex(displayed)
+  const eIdx = exitDate ? exitIndex(displayed, exitDate) : null
   const sel = selected !== null && selected < displayed.length ? displayed[selected] : null
   const hasProjected = displayed.some(d => d.projected !== null && d.projected > 0)
 
@@ -632,6 +650,7 @@ function InterestChart({ loans, c, range }: { loans: LoanEntry[]; c: ChartColors
           <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(displayed.length)} />
           <YAxis tick={{ fontSize: 10, fill: c.axis }} />
           {tIdx !== null && <ReferenceLine x={displayed[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
+          {eIdx !== null && <ReferenceLine x={displayed[eIdx]._label} stroke="#4ade80" strokeDasharray="4 4" zIndex={600} label={{ value: 'Exit', fontSize: 10, fill: '#4ade80', position: 'top' }} />}
           {selected !== null && selected < displayed.length && (
             <ReferenceLine x={displayed[selected]._label} stroke="#fb7185" strokeWidth={1.5} zIndex={600} />
           )}
@@ -1008,17 +1027,17 @@ export default function Dashboard() {
       <div className="grid gap-4 md:grid-cols-2">
         {events && events.length > 0 && (
           <ChartBox title="Shares Over Time" range={range} setRange={setRange} maxDate={maxDate}>
-            <SharesChart events={events} c={c} range={range} hasFuturePrices={hasFuturePrices} />
+            <SharesChart events={events} c={c} range={range} hasFuturePrices={hasFuturePrices} exitDate={projectedLiqDate} />
           </ChartBox>
         )}
         {events && events.length > 0 && (
           <ChartBox title="Income vs Cap Gains" range={range} setRange={setRange} maxDate={maxDate}>
-            <IncomeCapGainsChart events={events} c={c} range={range} hasFuturePrices={hasFuturePrices} />
+            <IncomeCapGainsChart events={events} c={c} range={range} hasFuturePrices={hasFuturePrices} exitDate={projectedLiqDate} />
           </ChartBox>
         )}
         {prices && prices.length > 0 && (
           <ChartBox title="Share Price History" range={range} setRange={setRange} maxDate={maxDate}>
-            <PriceChart prices={prices} c={c} range={range} hasFuturePrices={hasFuturePrices} />
+            <PriceChart prices={prices} c={c} range={range} hasFuturePrices={hasFuturePrices} exitDate={projectedLiqDate} />
           </ChartBox>
         )}
         {events && events.length > 0 && loans !== undefined && (
@@ -1030,18 +1049,24 @@ export default function Dashboard() {
               c={c}
               range={range}
               hasFuturePrices={hasFuturePrices}
+              exitDate={projectedLiqDate}
             />
           </ChartBox>
         )}
         {loans && loans.some(l => l.loan_type === 'Interest' || l.loan_type === 'Purchase') && (
           <ChartBox title="Interest Over Time" range={rangeInterest} setRange={setRangeInterest} maxDate={maxDate}>
-            <InterestChart loans={loans} c={c} range={rangeInterest} />
+            <InterestChart loans={loans} c={c} range={rangeInterest} exitDate={projectedLiqDate} />
           </ChartBox>
         )}
         {dash.loan_payment_by_year && dash.loan_payment_by_year.length > 0 && (
           <LoanChart loanPaymentByYear={dash.loan_payment_by_year} c={c} range={rangeLoan} setRange={setRangeLoan} maxDate={maxDate} />
         )}
       </div>
+      {projectedLiqDate && (
+        <p className="mt-2 text-center text-xs text-gray-400 dark:text-gray-500">
+          Charts show the full event timeline — summary cards above are frozen at the exit date.
+        </p>
+      )}
     </div>
   )
 }

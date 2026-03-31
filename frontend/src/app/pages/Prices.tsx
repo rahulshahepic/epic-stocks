@@ -71,6 +71,17 @@ export default function Prices() {
     return computePreview(estimateForm)
   }, [mode, estimateForm])
 
+  const replaceCount = useMemo(() => {
+    if (mode !== 'estimate' || !prices || !estimateForm.start_date || !estimateForm.end_date) return 0
+    return prices.filter(p => p.effective_date >= estimateForm.start_date && p.effective_date <= estimateForm.end_date).length
+  }, [mode, prices, estimateForm.start_date, estimateForm.end_date])
+
+  const startDateError = useMemo(() => {
+    if (mode !== 'estimate' || !estimateForm.start_date) return ''
+    const today = new Date().toISOString().slice(0, 10)
+    return estimateForm.start_date <= today ? 'Start date must be in the future' : ''
+  }, [mode, estimateForm.start_date])
+
   function resetForm() {
     setForm(empty)
     setEditId(null)
@@ -162,7 +173,7 @@ export default function Prices() {
         {error && <p className="text-xs text-red-500">{error}</p>}
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
-            <span className="text-xs text-gray-500 dark:text-gray-400">Base Price</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">Base Price (on start date)</span>
             <input
               type="number"
               step="0.01"
@@ -187,8 +198,9 @@ export default function Prices() {
               type="date"
               value={estimateForm.start_date}
               onChange={e => setEstimateForm(f => ({ ...f, start_date: e.target.value }))}
-              className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+              className={`mt-0.5 block w-full rounded-md border px-2 py-1.5 text-xs dark:bg-gray-800 dark:text-gray-200 ${startDateError ? 'border-red-400 bg-red-50 dark:border-red-600 dark:bg-red-900/20' : 'border-gray-300 bg-white dark:border-gray-600'}`}
             />
+            {startDateError && <p className="mt-0.5 text-xs text-red-500">{startDateError}</p>}
           </label>
           <label className="block">
             <span className="text-xs text-gray-500 dark:text-gray-400">End Date</span>
@@ -215,7 +227,12 @@ export default function Prices() {
 
         {preview.length > 0 && (
           <div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{preview.length} price{preview.length !== 1 ? 's' : ''} to generate</p>
+            <div className="mb-1 flex items-center gap-2">
+              <p className="text-xs text-gray-500 dark:text-gray-400">{preview.length} price{preview.length !== 1 ? 's' : ''} to generate</p>
+              {replaceCount > 0 && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">· replaces {replaceCount} existing price{replaceCount !== 1 ? 's' : ''} in this range</p>
+              )}
+            </div>
             <div className="overflow-x-auto overflow-y-auto max-h-56 rounded-lg border border-gray-200 dark:border-gray-700">
               <table className="w-full text-left text-xs">
                 <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0">
@@ -239,7 +256,7 @@ export default function Prices() {
 
         <button
           onClick={handleGenerate}
-          disabled={saving || preview.length === 0}
+          disabled={saving || preview.length === 0 || !!startDateError}
           className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
         >
           {saving ? 'Generating...' : preview.length > 0 ? `Generate ${preview.length} Price${preview.length !== 1 ? 's' : ''}` : 'Generate'}

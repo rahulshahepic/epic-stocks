@@ -119,7 +119,7 @@ describe('Prices', () => {
     await userEvent.click(screen.getByText('% Growth'))
     expect(screen.getByText('Growth Estimator')).toBeInTheDocument()
     expect(screen.getByText('Annual Growth %')).toBeInTheDocument()
-    expect(screen.getByText('Base Price')).toBeInTheDocument()
+    expect(screen.getByText(/Base Price/)).toBeInTheDocument()
     expect(screen.getByText('Frequency')).toBeInTheDocument()
   })
 

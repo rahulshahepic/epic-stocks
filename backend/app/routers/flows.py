@@ -261,8 +261,18 @@ def annual_price(body: AnnualPriceRequest, user: User = Depends(get_current_user
 def growth_estimate(body: GrowthEstimateRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     from dateutil.relativedelta import relativedelta
 
+    today = date.today()
+    if body.start_date <= today:
+        raise HTTPException(status_code=422, detail="start_date must be in the future")
     if body.end_date <= body.start_date:
         raise HTTPException(status_code=422, detail="end_date must be after start_date")
+
+    # Replace any existing prices in the range rather than duplicating them
+    db.query(Price).filter(
+        Price.user_id == user.id,
+        Price.effective_date >= body.start_date,
+        Price.effective_date <= body.end_date,
+    ).delete(synchronize_session=False)
 
     delta_map = {
         "annual": relativedelta(years=1),

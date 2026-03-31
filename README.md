@@ -56,8 +56,9 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 ## Getting Started (User Guide)
 
 1. **Sign in** — click the sign-in button for your organisation's identity provider (Google, Azure AD, or any OIDC provider configured by your admin). Your data is tied to that account, and you can export everything anytime.
-2. **Add a price** — go to **Prices** and enter the current share price (Epic announces this each March). Without at least one price, no events will be computed.
-3. **Add your data** — two options:
+2. **Add a price** — go to **Prices** and enter the current share price (Epic announces this each March). Without at least one price, no events will be computed. Use **% Growth** to bulk-generate projected future prices based on an annual growth rate — enter a base price, start/end date, growth %, and frequency (annual/quarterly/monthly). The estimator only operates on future dates and replaces any existing projected prices in the range rather than duplicating them.
+3. **Add your data** — three options:
+   - **On Epic's campus/network** — go to **Import** and tap **"On Epic's network? Start here →"** to download a pre-filled template with your grant and loan structure already populated. Fill in any remaining fields and upload it.
    - **Import from Excel** — go to **Import**, download the **Sample** (pre-filled with fake data and explanatory cell comments) to see what the format looks like, then fill in your real data and upload. Click "What do the columns mean?" for a plain-English guide to every field.
    - **Add manually** — go to **Grants** and add grants one by one. Then add any **Loans** and their annual interest loans. For bonus/free grants where you filed an **83(b) election**, tick the "Filed 83(b) election" checkbox — vesting events will show unrealized cap gains instead of ordinary income.
 4. **View the Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, interest, tax paid, cash received, next event). Use the **As of** date picker to time-travel. **Today** snaps to the current date; **Last event** jumps to your final vesting date; **Exit date** appears when you've configured one (see Settings → Exit Planning) and jumps to your projected liquidation date — showing 0 shares, 0 principal, and net cash.
@@ -74,7 +75,8 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 - **Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, total interest, tax paid, cash received, next event) with an **As of** date picker and quick buttons: **Today**, **Last event** (final vesting date), and **Exit date** (when configured). Interactive charts include an Interest Over Time chart with guaranteed vs. projected interest-on-interest layers. Empty state shows getting-started prompts for new users.
 - **Stock Sales** — record share sales with configurable lot selection (LIFO/FIFO/same-tranche), LT/ST capital gains split, and Wisconsin tax calculator. Payoff sales can be linked to loans and auto-sized to cover the cash due after tax (gross-up calculation). Use "Regen payoff sales" on the Loans page to recompute all future payoff sale share counts after changing lot selection.
 - **CRUD Management** — full create/read/update/delete for Grants, Loans, Prices, and Sales.
-- **Quick Flows** — convenience endpoints: "New Purchase" (grant + loan with optional stock down payment), "Annual Price", "Add Bonus".
+- **Quick Flows** — convenience endpoints: "New Purchase" (grant + loan with optional stock down payment), "Annual Price", "Add Bonus", "Growth Estimate" (bulk-generates future prices from a compound annual growth rate, replacing any existing prices in the range).
+- **Growth Estimator** — on the Prices page, **% Growth** opens a form to project future share prices at a given annual rate. Choose frequency (annual/quarterly/monthly), set a start/end date (future dates only), and preview the full price table before confirming. Replaces existing projected prices in the range cleanly on each run — no duplicates.
 - **83(b) Election Support** — bonus/free grants can be flagged as having an 83(b) election filed. Vesting events for these grants show unrealized cap gains (violet `~$X`) instead of ordinary income, with a tappable card explaining the cost basis and potential LT cap gains tax at eventual sale.
 - **Down Payment Rules** — configurable minimum DP policy (percent of purchase and dollar cap). "Prefer stock DP" auto-calculates the minimum stock exchange down payment on new purchases. Default: 10% or $20,000, whichever is lower.
 - **Excel Import/Export** — bootstrap from an existing Vesting.xlsx or export current state. The Import page includes a downloadable sample file (pre-filled with fake data, with cell comments explaining every field) and a built-in column reference guide.
@@ -409,6 +411,7 @@ All authenticated endpoints require a valid `session` cookie (set automatically 
 | POST | `/api/flows/new-purchase` | Create grant + optional loan |
 | POST | `/api/flows/annual-price` | Add a price entry |
 | POST | `/api/flows/add-bonus` | Add a bonus grant |
+| POST | `/api/flows/growth-estimate` | Bulk-generate future prices from a compound growth rate; replaces existing prices in the date range |
 | POST | `/api/import/excel` | Upload Excel file to populate tables |
 | GET | `/api/import/template` | Download empty Excel template |
 | GET | `/api/import/sample` | Download sample Excel file pre-filled with fake data and cell comments |

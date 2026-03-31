@@ -530,6 +530,8 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
         edate = e["date"]
         if isinstance(edate, datetime):
             edate = edate.date()
+        elif isinstance(edate, str):
+            edate = date.fromisoformat(edate)
         if edate >= today:
             next_event = {"date": edate.isoformat(), "event_type": e["event_type"]}
             break

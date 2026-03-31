@@ -785,13 +785,16 @@ export default function Dashboard() {
     // Whether the projected liquidation has occurred by cardDate
     const liqOccurred = projectedLiqDate !== null && cardDate >= projectedLiqDate
 
-    // Last event at or before cardDate
+    // All metrics are capped at the exit date — viewing beyond it changes nothing
+    const effectiveDate = liqOccurred && projectedLiqDate ? projectedLiqDate : cardDate
+
+    // Last event at or before effectiveDate
     let lastEvent: TimelineEvent | null = null
     for (const e of events) {
-      if (e.date <= cardDate) lastEvent = e
+      if (e.date <= effectiveDate) lastEvent = e
       else break
     }
-    // Next event after cardDate
+    // Next event after cardDate (still uses cardDate so "None" shows once past exit)
     let nextEvent: { date: string; event_type: string } | null = null
     for (const e of events) {
       if (e.date > cardDate) { nextEvent = { date: e.date, event_type: e.event_type }; break }
@@ -801,22 +804,22 @@ export default function Dashboard() {
       ? taxSettings.federal_income_rate + taxSettings.state_income_rate
       : 0
     const taxPaid =
-      loans.filter(l => l.loan_type === 'Tax' && l.loan_year <= parseInt(cardDate.slice(0, 4), 10))
+      loans.filter(l => l.loan_type === 'Tax' && l.loan_year <= parseInt(effectiveDate.slice(0, 4), 10))
         .reduce((sum, l) => sum + l.amount, 0)
-      + events.filter(e => e.event_type === 'Sale' && e.date <= cardDate)
+      + events.filter(e => e.event_type === 'Sale' && e.date <= effectiveDate)
           .reduce((sum, e) => sum + (e.estimated_tax ?? 0), 0)
       + (liqOccurred ? (projectedLiqEvent?.estimated_tax ?? 0) : 0)
       + events
           .filter(e =>
             e.income > 0 &&
-            e.date <= cardDate &&
+            e.date <= effectiveDate &&
             ((e.event_type === 'Vesting' && !e.election_83b) || e.event_type === 'Grant')
           )
           .reduce((sum, e) => sum + e.income * incomeRate, 0)
 
     // Outstanding loan principal just before (or at) the liq date, ignoring the virtual liq sale
     const outstandingPrincipal = (() => {
-      const refDate = liqOccurred && projectedLiqDate ? projectedLiqDate : cardDate
+      const refDate = effectiveDate
       const refYear = parseInt(refDate.slice(0, 4), 10)
       const settledIds = new Set(
         (sales ?? []).filter(s => s.loan_id !== null && s.date <= refDate).map(s => s.loan_id)
@@ -831,7 +834,7 @@ export default function Dashboard() {
     })()
 
     const cashReceived = (sales
-      ? sales.filter(s => s.loan_id === null && s.date <= cardDate)
+      ? sales.filter(s => s.loan_id === null && s.date <= effectiveDate)
           .reduce((sum, s) => sum + s.shares * s.price_per_share, 0)
       : 0)
       + (liqOccurred && projectedLiqEvent
@@ -844,18 +847,18 @@ export default function Dashboard() {
       total_income: lastEvent?.cum_income ?? 0,
       total_cap_gains: lastEvent?.cum_cap_gains ?? 0,
       total_interest: (() => {
-        const cardYear = parseInt(cardDate.slice(0, 4), 10)
+        const effYear = parseInt(effectiveDate.slice(0, 4), 10)
         const purchaseLoans = loans.filter(l => l.loan_type === 'Purchase')
         const interestLoans = loans.filter(l => l.loan_type === 'Interest')
         let total = interestLoans
-          .filter(l => l.loan_year <= cardYear)
+          .filter(l => l.loan_year <= effYear)
           .reduce((sum, l) => sum + l.amount, 0)
         for (const p of purchaseLoans) {
           const dueYear = new Date(p.due_date + 'T00:00:00').getFullYear()
           const relatedInterestLoans = interestLoans.filter(
             l => l.grant_year === p.grant_year && l.grant_type === p.grant_type
           )
-          for (let yr = p.loan_year + 1; yr <= Math.min(cardYear, dueYear); yr++) {
+          for (let yr = p.loan_year + 1; yr <= Math.min(effYear, dueYear); yr++) {
             const exists = relatedInterestLoans.some(l => l.loan_year === yr)
             if (!exists) {
               total += p.amount * p.interest_rate

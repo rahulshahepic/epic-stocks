@@ -124,6 +124,8 @@ def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales:
         edate = e["date"]
         if isinstance(edate, datetime):
             edate = edate.date()
+        elif isinstance(edate, str):
+            edate = date.fromisoformat(edate)
         last_price = e.get("share_price", last_price)
         last_cum_shares = e.get("cum_shares", last_cum_shares)
         last_cum_income = e.get("cum_income", last_cum_income)

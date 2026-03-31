@@ -17,7 +17,7 @@ const TODAY = new Date().toISOString().slice(0, 10)
 
 function nextMarch1(): string {
   const today = new Date()
-  const march1 = new Date(today.getFullYear(), 2, 1) // month is 0-indexed
+  const march1 = new Date(today.getFullYear(), 2, 1)
   return today > march1
     ? `${today.getFullYear() + 1}-03-01`
     : `${today.getFullYear()}-03-01`
@@ -29,6 +29,10 @@ function addYears(iso: string, n: number): string {
 
 function fmt$(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
+}
+
+function daysApart(a: string, b: string): number {
+  return Math.abs(new Date(a).getTime() - new Date(b).getTime()) / 86_400_000
 }
 
 function computeGrowthPreview(
@@ -63,6 +67,7 @@ export default function Prices() {
   const [editId, setEditId] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [removeNearby, setRemoveNearby] = useState(true)
 
   const defaultFirst = nextMarch1()
   const [growthForm, setGrowthForm] = useState<GrowthForm>({
@@ -77,6 +82,7 @@ export default function Prices() {
     setForm({ effective_date: '', price: 0 })
     setEditId(null)
     setError('')
+    setRemoveNearby(true)
   }
 
   function openAdd() {
@@ -91,6 +97,14 @@ export default function Prices() {
     setMode('edit')
   }
 
+  // Estimates within 31 days of the add-form date (exact-date match handled by backend)
+  const nearbyEstimates = useMemo(() => {
+    if (!prices || !form.effective_date || mode !== 'add') return []
+    return prices.filter(
+      p => p.is_estimate && p.effective_date !== form.effective_date && daysApart(p.effective_date, form.effective_date) <= 31,
+    )
+  }, [prices, form.effective_date, mode])
+
   async function handleSave(addAnother: boolean) {
     if (epicMode && form.effective_date <= TODAY) {
       setError('Only future-dated prices can be added in Epic mode')
@@ -101,6 +115,9 @@ export default function Prices() {
     try {
       if (mode === 'add') {
         await api.annualPrice({ effective_date: form.effective_date, price: form.price })
+        if (removeNearby && nearbyEstimates.length > 0) {
+          await Promise.all(nearbyEstimates.map(p => api.deletePrice(p.id)))
+        }
       } else if (editId != null) {
         await api.updatePrice(editId, form)
       }
@@ -135,6 +152,14 @@ export default function Prices() {
     () => computeGrowthPreview(basePrice, growthForm.annual_growth_pct, growthForm.first_date, growthForm.through_date),
     [basePrice, growthForm],
   )
+
+  // Existing estimates that fall inside the growth range — will be replaced
+  const estimatesToReplace = useMemo(() => {
+    if (!prices || !growthForm.first_date || !growthForm.through_date) return []
+    return prices.filter(
+      p => p.is_estimate && p.effective_date >= growthForm.first_date && p.effective_date <= growthForm.through_date,
+    )
+  }, [prices, growthForm.first_date, growthForm.through_date])
 
   async function handleGrowthApply() {
     if (!growthForm.first_date || growthForm.first_date <= TODAY) {
@@ -207,6 +232,22 @@ export default function Prices() {
             />
           </label>
         </div>
+
+        {mode === 'add' && nearbyEstimates.length > 0 && (
+          <label className="flex cursor-pointer items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-800/40 dark:bg-amber-900/20">
+            <input
+              type="checkbox"
+              checked={removeNearby}
+              onChange={e => setRemoveNearby(e.target.checked)}
+              className="mt-0.5 shrink-0 accent-amber-600"
+            />
+            <span className="text-xs text-amber-800 dark:text-amber-300">
+              Also remove {nearbyEstimates.length} nearby estimate{nearbyEstimates.length > 1 ? 's' : ''} within 31 days:{' '}
+              {nearbyEstimates.map(p => `${p.effective_date} (${fmt$(p.price)})`).join(', ')}
+            </span>
+          </label>
+        )}
+
         <div className="flex gap-2 pt-2">
           <button
             onClick={() => handleSave(false)}
@@ -245,7 +286,6 @@ export default function Prices() {
         <p className="text-xs text-gray-500 dark:text-gray-400">
           Project future share prices as annual % growth from the current price
           {basePrice > 0 ? ` (${fmt$(basePrice)})` : ''}.
-          Existing estimates in the selected range will be replaced.
         </p>
         {growthError && <p className="text-xs text-red-500">{growthError}</p>}
         <div className="grid grid-cols-3 gap-3">
@@ -283,9 +323,26 @@ export default function Prices() {
           </label>
         </div>
 
+        {estimatesToReplace.length > 0 && (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-800/40 dark:bg-amber-900/20">
+            <p className="mb-1 text-xs font-medium text-amber-800 dark:text-amber-300">
+              Replacing {estimatesToReplace.length} existing estimate{estimatesToReplace.length > 1 ? 's' : ''}:
+            </p>
+            <ul className="space-y-0.5">
+              {estimatesToReplace.map(p => (
+                <li key={p.id} className="text-xs text-amber-700 dark:text-amber-400">
+                  {p.effective_date} — {fmt$(p.price)}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {growthPreview.length > 0 && (
           <div>
-            <p className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">Preview</p>
+            <p className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">
+              New estimates ({growthPreview.length})
+            </p>
             <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
               <table className="w-full text-left text-xs">
                 <thead className="bg-gray-50 dark:bg-gray-800">
@@ -325,7 +382,11 @@ export default function Prices() {
             disabled={growthSaving || basePrice === 0 || growthPreview.length === 0}
             className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
           >
-            {growthSaving ? 'Applying...' : `Apply ${growthPreview.length} Estimate${growthPreview.length !== 1 ? 's' : ''}`}
+            {growthSaving
+              ? 'Applying...'
+              : estimatesToReplace.length > 0
+                ? `Replace ${estimatesToReplace.length} + Add ${growthPreview.length}`
+                : `Apply ${growthPreview.length} Estimate${growthPreview.length !== 1 ? 's' : ''}`}
           </button>
         </div>
       </div>

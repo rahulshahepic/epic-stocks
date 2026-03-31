@@ -225,10 +225,6 @@ def annual_price(body: AnnualPriceRequest, user: User = Depends(get_current_user
         raise HTTPException(status_code=422, detail="Only future-dated prices can be added in Epic mode")
     price = Price(user_id=user.id, effective_date=body.effective_date, price=body.price, is_estimate=is_est)
     db.add(price)
-    db.flush()
-    if not is_est:
-        from app.routers.prices import _remove_shadowed_estimates
-        _remove_shadowed_estimates(user.id, db)
     db.commit()
     db.refresh(price)
     from app.event_cache import schedule_fan_out

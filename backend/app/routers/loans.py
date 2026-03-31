@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from scaffold.models import User, Loan, Sale, LoanPayment, Price, Grant, TaxSettings
-from schemas import LoanCreate, LoanUpdate, LoanOut, LoanPaymentCreate, LoanPaymentUpdate, LoanPaymentOut
+from schemas import LoanCreate, LoanUpdate, LoanOut, LoanPaymentCreate, LoanPaymentUpdate, LoanPaymentOut, SaleOut
 from scaffold.auth import get_current_user
 
 router = APIRouter(prefix="/api/loans", tags=["loans"])
@@ -139,10 +139,11 @@ def _compute_payoff_sale(loan: Loan, user: User, db: Session) -> dict:
 
     ts = _get_tax_settings_dict(user, db)
     method = _get_lot_selection_method(user, db)
-    lot_order = 'fifo' if method == 'fifo' else 'lifo'
+    lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'lifo'
     gy = loan.grant_year if method == 'same_tranche' else None
     gt = loan.grant_type if method == 'same_tranche' else None
-    lots = build_fifo_lots(timeline, loan.due_date, order=lot_order, grant_year=gy, grant_type=gt)
+    lt_days = int(ts.get("lt_holding_days", 365))
+    lots = build_fifo_lots(timeline, loan.due_date, order=lot_order, grant_year=gy, grant_type=gt, lt_holding_days=lt_days)
     shares = compute_grossup_shares(lots, cash_due, price, loan.due_date, ts)
 
     loan_label = loan.loan_number or f"{loan.grant_year}/{loan.loan_type}"
@@ -197,6 +198,8 @@ def create_loan(
             db.add(sale)
             db.commit()
 
+    from app.event_cache import schedule_recompute
+    schedule_recompute(user.id)
     return loan
 
 
@@ -207,6 +210,8 @@ def bulk_create_loans(items: list[LoanCreate], user: User = Depends(get_current_
     db.commit()
     for l in loans:
         db.refresh(l)
+    from app.event_cache import schedule_recompute
+    schedule_recompute(user.id)
     return loans
 
 
@@ -224,6 +229,38 @@ def get_payoff_sale_suggestion(loan_id: int, user: User = Depends(get_current_us
     if not loan:
         raise HTTPException(status_code=404, detail="Loan not found")
     return _compute_payoff_sale(loan, user, db)
+
+
+@router.post("/{loan_id}/execute-payoff", response_model=SaleOut, status_code=201)
+def execute_payoff(loan_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """
+    Execute an early loan payoff: compute the suggested sale and persist it.
+    Idempotent — if a payoff sale already exists for this loan, returns it unchanged.
+    """
+    loan = db.query(Loan).filter(Loan.id == loan_id, Loan.user_id == user.id).first()
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
+
+    existing = db.query(Sale).filter(Sale.loan_id == loan.id, Sale.user_id == user.id).first()
+    if existing:
+        return existing
+
+    suggestion = _compute_payoff_sale(loan, user, db)
+    if suggestion["shares"] <= 0 or suggestion["price_per_share"] <= 0:
+        raise HTTPException(status_code=400, detail="Loan balance is zero — no sale needed")
+
+    sale = Sale(
+        user_id=user.id,
+        date=suggestion["date"],
+        shares=suggestion["shares"],
+        price_per_share=suggestion["price_per_share"],
+        loan_id=loan.id,
+        notes=suggestion["notes"],
+    )
+    db.add(sale)
+    db.commit()
+    db.refresh(sale)
+    return sale
 
 
 @router.put("/{loan_id}", response_model=LoanOut)
@@ -281,6 +318,8 @@ def update_loan(
             ))
             db.commit()
 
+    from app.event_cache import schedule_recompute
+    schedule_recompute(user.id)
     return loan
 
 
@@ -312,6 +351,8 @@ def delete_loan(loan_id: int, user: User = Depends(get_current_user), db: Sessio
         raise HTTPException(status_code=404, detail="Loan not found")
     db.delete(loan)
     db.commit()
+    from app.event_cache import schedule_recompute
+    schedule_recompute(user.id)
 
 
 # --- Loan Payments CRUD ---

@@ -14,9 +14,10 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 
 from database import get_db
-from scaffold.models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, ErrorLog, EmailPreference, SystemMetric
+from scaffold.models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, ErrorLog, EmailPreference, SystemMetric, TaxSettings, HorizonSettings, LoanPayment, Sale
 from scaffold.auth import get_admin_user, get_admin_emails
 from scaffold.maintenance import is_maintenance_active, set_maintenance
+from scaffold.epic_mode import is_epic_mode, set_epic_mode
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -144,17 +145,26 @@ def admin_delete_user(user_id: int, admin: User = Depends(get_admin_user), db: S
         raise HTTPException(status_code=503, detail="Cannot delete users during maintenance")
     if user_id == admin.id:
         raise HTTPException(status_code=400, detail="Cannot delete yourself")
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
+    exists = db.query(User.id).filter(User.id == user_id).scalar()
+    if not exists:
         raise HTTPException(status_code=404, detail="User not found")
-    if user.email.lower() in get_admin_emails():
+    email = db.query(User.email).filter(User.id == user_id).scalar()
+    if email and email.lower() in get_admin_emails():
         raise HTTPException(status_code=400, detail="Cannot delete an admin user")
-    # Delete related records first to avoid loading encrypted columns with wrong key
-    db.query(Grant).filter(Grant.user_id == user_id).delete()
-    db.query(Loan).filter(Loan.user_id == user_id).delete()
-    db.query(Price).filter(Price.user_id == user_id).delete()
-    db.query(PushSubscription).filter(PushSubscription.user_id == user_id).delete()
-    db.query(User).filter(User.id == user_id).delete()
+    # Use raw SQL to avoid any ORM session / encrypted-column complications.
+    # Deletes in FK-safe order; loans.refinances_loan_id self-FK nulled first.
+    db.execute(text("DELETE FROM sales WHERE user_id = :uid"), {"uid": user_id})
+    db.execute(text("DELETE FROM loan_payments WHERE user_id = :uid"), {"uid": user_id})
+    db.execute(text("UPDATE loans SET refinances_loan_id = NULL WHERE user_id = :uid"), {"uid": user_id})
+    db.execute(text("DELETE FROM loans WHERE user_id = :uid"), {"uid": user_id})
+    db.execute(text("DELETE FROM grants WHERE user_id = :uid"), {"uid": user_id})
+    db.execute(text("DELETE FROM prices WHERE user_id = :uid"), {"uid": user_id})
+    db.execute(text("DELETE FROM push_subscriptions WHERE user_id = :uid"), {"uid": user_id})
+    db.execute(text("DELETE FROM email_preferences WHERE user_id = :uid"), {"uid": user_id})
+    db.execute(text("DELETE FROM tax_settings WHERE user_id = :uid"), {"uid": user_id})
+    db.execute(text("DELETE FROM horizon_settings WHERE user_id = :uid"), {"uid": user_id})
+    # import_backups has ondelete=CASCADE so the next statement handles it at DB level
+    db.execute(text("DELETE FROM users WHERE id = :uid"), {"uid": user_id})
     db.commit()
 
 
@@ -237,6 +247,10 @@ class SystemMetricPoint(BaseModel):
     ram_total_mb: float
     db_size_bytes: int
     error_log_count: int
+    cache_l1_hits: int | None = None
+    cache_l2_hits: int | None = None
+    cache_misses: int | None = None
+    cache_l2_key_count: int | None = None
 
 
 @router.get("/metrics", response_model=list[SystemMetricPoint])
@@ -260,6 +274,10 @@ def admin_metrics(
             ram_total_mb=r.ram_total_mb,
             db_size_bytes=r.db_size_bytes,
             error_log_count=r.error_log_count,
+            cache_l1_hits=r.cache_l1_hits,
+            cache_l2_hits=r.cache_l2_hits,
+            cache_misses=r.cache_misses,
+            cache_l2_key_count=r.cache_l2_key_count,
         )
         for r in rows
     ]
@@ -410,6 +428,25 @@ def get_maintenance(admin: User = Depends(get_admin_user)):
 def set_maintenance_endpoint(body: MaintenanceRequest, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
     set_maintenance(db, body.active)
     return MaintenanceStatus(active=body.active)
+
+
+class EpicModeStatus(BaseModel):
+    active: bool
+
+
+class EpicModeRequest(BaseModel):
+    active: bool
+
+
+@router.get("/epic-mode", response_model=EpicModeStatus)
+def get_epic_mode(admin: User = Depends(get_admin_user)):
+    return EpicModeStatus(active=is_epic_mode())
+
+
+@router.post("/epic-mode", response_model=EpicModeStatus)
+def set_epic_mode_endpoint(body: EpicModeRequest, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    set_epic_mode(db, body.active)
+    return EpicModeStatus(active=body.active)
 
 
 # ============================================================

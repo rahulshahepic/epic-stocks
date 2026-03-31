@@ -12,7 +12,7 @@ import database
 
 logger = logging.getLogger(__name__)
 from scaffold.routers import auth_router, admin, notifications, push
-from app.routers import grants, loans, prices, events, flows, import_export, sales, horizon
+from app.routers import grants, loans, prices, events, flows, import_export, sales, horizon, cache as cache_router
 from scaffold.auth import get_current_user
 from scaffold.crypto import encryption_enabled, decrypt_user_key, set_current_key
 from database import get_db
@@ -37,12 +37,23 @@ async def lifespan(app):
         maybe_migrate()
     # Ensure system_settings seed rows exist and load/generate the master encryption key
     _bootstrap_system()
+    redis_url = os.getenv("REDIS_URL", "")
+    if redis_url:
+        try:
+            from app.event_cache import init as _redis_init
+            _redis_init(redis_url)
+        except Exception:
+            logger.warning("Redis unavailable — running without L2 cache")
     task = _start_daily_scheduler()
     metrics_task = _start_metrics_sampler()
+    maintenance_task = _start_nightly_maintenance()
     yield
+    from app.event_cache import close as _redis_close
+    _redis_close()
     if task:
         task.cancel()
     metrics_task.cancel()
+    maintenance_task.cancel()
 
 
 def _bootstrap_system():
@@ -119,17 +130,29 @@ def _sample_metrics():
 
         error_count = db.query(func.count(ErrorLog.id)).scalar() or 0
 
+        from app import timeline_cache, event_cache
+        cs = timeline_cache.get_stats()
+        ri = event_cache.redis_info()
+
         db.add(SystemMetric(
             cpu_percent=cpu,
             ram_used_mb=mem.used / (1024 * 1024),
             ram_total_mb=mem.total / (1024 * 1024),
             db_size_bytes=db_size,
             error_log_count=error_count,
+            cache_l1_hits=cs["l1_hits"],
+            cache_l2_hits=cs["l2_hits"],
+            cache_misses=cs["misses"],
+            cache_l2_key_count=ri.get("timeline_keys") if ri.get("connected") else None,
         ))
 
-        # Rolling cleanup: keep last 30 days of metrics
+        # Purge raw (non-aggregated) rows older than 30 days.
+        # Aggregated daily rows are managed separately by _aggregate_old_metrics().
         cutoff = datetime.now(timezone.utc) - timedelta(days=30)
-        db.query(SystemMetric).filter(SystemMetric.timestamp < cutoff).delete(synchronize_session=False)
+        db.query(SystemMetric).filter(
+            SystemMetric.timestamp < cutoff,
+            SystemMetric.aggregated == False,  # noqa: E712
+        ).delete(synchronize_session=False)
 
         # Trim error_logs to the most recent 500 entries
         keep_ids = [
@@ -155,6 +178,109 @@ def _sample_metrics():
         db.close()
 
 
+def _aggregate_old_metrics():
+    """Collapse raw metric rows older than 30 days into one aggregated row per UTC day.
+
+    Each completed day in the 30-day → 1-year window is reduced to a single row
+    (aggregated=True) holding daily averages/maxima.  Aggregated rows older than
+    1 year are purged.  The function is idempotent: days that already have an
+    aggregated row just have their remaining raw rows deleted.
+
+    Cache hit/miss counters are stored as cumulative process-lifetime totals and
+    have no meaningful per-day interpretation once the raw rows are gone, so they
+    are left null on aggregated rows.
+    """
+    from datetime import datetime, time, timezone, timedelta, date as date_type
+    from sqlalchemy import func, text
+    from scaffold.models import SystemMetric
+
+    db = database.SessionLocal()
+    try:
+        if not database._is_sqlite:
+            acquired = db.execute(text("SELECT pg_try_advisory_lock(333333333)")).scalar()
+            if not acquired:
+                return
+
+        now = datetime.now(timezone.utc)
+        cutoff_raw = now - timedelta(days=30)
+        cutoff_purge = now - timedelta(days=365)
+
+        # Purge aggregated rows older than 1 year
+        db.query(SystemMetric).filter(
+            SystemMetric.timestamp < cutoff_purge,
+            SystemMetric.aggregated == True,  # noqa: E712
+        ).delete(synchronize_session=False)
+
+        # Find distinct UTC days that still have raw rows in the 30-day→1-year window
+        days_q = (
+            db.query(func.date(SystemMetric.timestamp).label("day"))
+            .filter(
+                SystemMetric.timestamp < cutoff_raw,
+                SystemMetric.timestamp >= cutoff_purge,
+                SystemMetric.aggregated == False,  # noqa: E712
+            )
+            .group_by(func.date(SystemMetric.timestamp))
+            .all()
+        )
+
+        for (day,) in days_q:
+            day_date = date_type.fromisoformat(str(day))
+
+            # If an aggregated row already exists for this day, just clean up stray raw rows
+            already = db.query(SystemMetric).filter(
+                SystemMetric.aggregated == True,  # noqa: E712
+                func.date(SystemMetric.timestamp) == day,
+            ).first()
+            if already:
+                db.query(SystemMetric).filter(
+                    func.date(SystemMetric.timestamp) == day,
+                    SystemMetric.aggregated == False,  # noqa: E712
+                ).delete(synchronize_session=False)
+                continue
+
+            rows = db.query(SystemMetric).filter(
+                func.date(SystemMetric.timestamp) == day,
+                SystemMetric.aggregated == False,  # noqa: E712
+            ).all()
+            if not rows:
+                continue
+
+            n = len(rows)
+            agg_ts = datetime.combine(day_date, time(12, 0), tzinfo=timezone.utc)
+            db.add(SystemMetric(
+                timestamp=agg_ts,
+                aggregated=True,
+                cpu_percent=sum(r.cpu_percent for r in rows) / n,
+                ram_used_mb=sum(r.ram_used_mb for r in rows) / n,
+                ram_total_mb=sum(r.ram_total_mb for r in rows) / n,
+                db_size_bytes=max(r.db_size_bytes for r in rows),
+                error_log_count=max(r.error_log_count for r in rows),
+                # Cumulative cache counters are meaningless without the raw sequence
+                cache_l1_hits=None,
+                cache_l2_hits=None,
+                cache_misses=None,
+                cache_l2_key_count=None,
+            ))
+            db.flush()
+
+            db.query(SystemMetric).filter(
+                func.date(SystemMetric.timestamp) == day,
+                SystemMetric.aggregated == False,  # noqa: E712
+            ).delete(synchronize_session=False)
+
+        db.commit()
+    except Exception:
+        logger.exception("Metric aggregation failed")
+    finally:
+        if not database._is_sqlite:
+            try:
+                db.execute(text("SELECT pg_advisory_unlock(333333333)"))
+                db.commit()
+            except Exception:
+                pass
+        db.close()
+
+
 def _start_metrics_sampler():
     """Start background task that samples system metrics every 15 minutes."""
     import asyncio
@@ -163,6 +289,23 @@ def _start_metrics_sampler():
         while True:
             _sample_metrics()
             await asyncio.sleep(15 * 60)
+
+    return asyncio.ensure_future(_loop())
+
+
+def _start_nightly_maintenance():
+    """Start background task that runs metric aggregation at 03:00 UTC daily."""
+    import asyncio
+    from datetime import datetime, time, timezone, timedelta
+
+    async def _loop():
+        while True:
+            now = datetime.now(timezone.utc)
+            target = datetime.combine(now.date(), time(3, 0), tzinfo=timezone.utc)
+            if now >= target:
+                target += timedelta(days=1)
+            await asyncio.sleep((target - now).total_seconds())
+            _aggregate_old_metrics()
 
     return asyncio.ensure_future(_loop())
 
@@ -211,6 +354,47 @@ class MaintenanceMiddleware:
                         )
                         await response(scope, receive, send)
                         return
+        await self.app(scope, receive, send)
+
+
+# Write methods that are blocked on epic-mode fact tables.
+_EPIC_WRITE_METHODS = frozenset({"POST", "PUT", "DELETE", "PATCH"})
+# Prefixes whose writes are blocked in epic mode (data owned by Epic's systems).
+_EPIC_BLOCKED_PREFIXES = ("/api/grants", "/api/prices", "/api/loans", "/api/import")
+# Prefixes whose writes are always allowed (user-initiated actions).
+_EPIC_ALLOWED_PREFIXES = (
+    "/api/loans/",  # sub-resources like /execute-payoff are user actions
+    "/api/internal/",
+)
+
+
+class EpicModeMiddleware:
+    """Block writes to fact tables when epic_mode is active.
+
+    Grants, prices, loans, and imports are owned by Epic's systems.
+    Sales, loan payments, tax settings, and the cache-invalidation webhook
+    remain writable regardless of epic mode.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            method = scope.get("method", "GET")
+            if method in _EPIC_WRITE_METHODS:
+                path = scope.get("path", "")
+                if path.startswith(_EPIC_BLOCKED_PREFIXES):
+                    # /api/loans/{id}/execute-payoff and /api/internal/* are user actions
+                    if not path.startswith(_EPIC_ALLOWED_PREFIXES):
+                        from scaffold.epic_mode import is_epic_mode
+                        if is_epic_mode():
+                            response = JSONResponse(
+                                {"detail": "Data is managed externally in this deployment"},
+                                status_code=403,
+                            )
+                            await response(scope, receive, send)
+                            return
         await self.app(scope, receive, send)
 
 
@@ -341,6 +525,7 @@ _fastapi_app.include_router(sales.router)
 _fastapi_app.include_router(sales.tax_router)
 _fastapi_app.include_router(loans.lp_router)
 _fastapi_app.include_router(horizon.router)
+_fastapi_app.include_router(cache_router.router)
 
 
 @_fastapi_app.get("/api/health")
@@ -358,11 +543,13 @@ def status():
 @_fastapi_app.get("/api/config")
 def client_config():
     from scaffold.email_sender import email_configured
+    from scaffold.epic_mode import is_epic_mode
     return {
         "vapid_public_key": os.environ.get("VAPID_PUBLIC_KEY", ""),
         "email_notifications_available": email_configured(),
         "resend_from": os.environ.get("RESEND_FROM", ""),
         "epic_onboarding_url": os.environ.get("EPIC_ONBOARDING_URL", ""),
+        "epic_mode": is_epic_mode(),
     }
 
 
@@ -408,5 +595,5 @@ if STATIC_DIR.is_dir():
         return FileResponse(STATIC_DIR / "index.html")
 
 
-# Wrap FastAPI app: maintenance check outermost, then encryption key setup
-app = MaintenanceMiddleware(EncryptionMiddleware(_fastapi_app))
+# Wrap FastAPI app: maintenance check outermost, then epic-mode guard, then encryption
+app = MaintenanceMiddleware(EpicModeMiddleware(EncryptionMiddleware(_fastapi_app)))

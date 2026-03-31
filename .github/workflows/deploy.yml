@@ -71,6 +71,7 @@ jobs:
 
             JWT_SECRET=$(seed_or_gen jwt_secret JWT_SECRET)
             POSTGRES_PASSWORD=$(seed_or_gen postgres_password POSTGRES_PASSWORD)
+            CACHE_INVALIDATE_SECRET=$(seed_or_gen cache_invalidate_secret CACHE_INVALIDATE_SECRET)
             VAPID_PRIVATE=$(seed_or_migrate_vapid vapid_private_key VAPID_PRIVATE_KEY)
             VAPID_PUBLIC=$(seed_or_migrate_vapid vapid_public_key VAPID_PUBLIC_KEY)
 
@@ -125,6 +126,8 @@ jobs:
             POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
             TRUSTED_PROXY_IPS=${{ vars.TRUSTED_PROXY_IPS }}
             EPIC_ONBOARDING_URL=${{ vars.EPIC_ONBOARDING_URL }}
+            EPIC_MODE=${{ vars.EPIC_MODE }}
+            CACHE_INVALIDATE_SECRET=${CACHE_INVALIDATE_SECRET}
             ACME_EMAIL=${{ vars.ACME_EMAIL }}
             COMMIT_SHA=${{ github.sha }}
             KEY_ENCRYPTION_KEY=${KEY_ENCRYPTION_KEY}

@@ -183,6 +183,7 @@ export const api = {
   deleteLoan: (id: number) => del(`/api/loans/${id}`),
   regenerateAllPayoffSales: () => apiFetch<{ updated: number }>('/api/loans/regenerate-all-payoff-sales', { method: 'POST' }),
   getLoanPayoffSuggestion: (loanId: number) => apiFetch<LoanPayoffSuggestion>(`/api/loans/${loanId}/payoff-sale-suggestion`),
+  executePayoff: (loanId: number) => apiFetch<SaleEntry>(`/api/loans/${loanId}/execute-payoff`, { method: 'POST' }),
 
   // Loan Payments
   getLoanPayments: (loanId?: number) =>
@@ -238,6 +239,16 @@ export const api = {
   deleteMyAccount: () => apiFetch<void>('/api/me', { method: 'DELETE' }),
 
   // Sales
+  estimateSale: (params: { price_per_share: number; target_net_cash: number; loan_id?: number; grant_year?: number; grant_type?: string }) => {
+    const q = new URLSearchParams({
+      price_per_share: String(params.price_per_share),
+      target_net_cash: String(params.target_net_cash),
+      ...(params.loan_id != null ? { loan_id: String(params.loan_id) } : {}),
+      ...(params.grant_year != null ? { grant_year: String(params.grant_year) } : {}),
+      ...(params.grant_type != null ? { grant_type: params.grant_type } : {}),
+    })
+    return apiFetch<SaleEstimate>(`/api/sales/estimate?${q}`)
+  },
   getSales: () => apiFetch<SaleEntry[]>('/api/sales'),
   createSale: (data: Omit<SaleEntry, 'id' | 'version'>) => post<SaleEntry>('/api/sales', data),
   updateSale: (id: number, data: Partial<Omit<SaleEntry, 'id'>>) => put<SaleEntry>(`/api/sales/${id}`, data),
@@ -276,6 +287,9 @@ export const api = {
   adminGetMaintenance: () => apiFetch<{ active: boolean }>('/api/admin/maintenance'),
   adminSetMaintenance: (active: boolean) =>
     post<{ active: boolean }>('/api/admin/maintenance', { active }),
+  adminGetEpicMode: () => apiFetch<{ active: boolean }>('/api/admin/epic-mode'),
+  adminSetEpicMode: (active: boolean) =>
+    post<{ active: boolean }>('/api/admin/epic-mode', { active }),
   adminRotationStatus: () =>
     apiFetch<{ snapshot_exists: boolean; maintenance_active: boolean }>('/api/admin/rotation-status'),
   adminRotationRestore: () =>
@@ -329,6 +343,10 @@ export interface SystemMetricPoint {
   ram_total_mb: number
   db_size_bytes: number
   error_log_count: number
+  cache_l1_hits: number | null
+  cache_l2_hits: number | null
+  cache_misses: number | null
+  cache_l2_key_count: number | null
 }
 
 export interface DbTableInfo {
@@ -407,6 +425,15 @@ export interface LoanPaymentEntry {
   notes: string
 }
 
+export interface SaleEstimate {
+  shares_needed: number
+  gross_proceeds: number
+  estimated_tax: number
+  net_proceeds: number
+  covers_loan: boolean | null
+  loan_balance: number | null
+}
+
 export interface LoanPayoffSuggestion {
   date: string
   shares: number
@@ -425,7 +452,7 @@ export interface TaxSettings {
   state_lt_cg_rate: number
   state_st_cg_rate: number
   lt_holding_days: number
-  lot_selection_method: 'fifo' | 'lifo' | 'same_tranche'
+  lot_selection_method: 'fifo' | 'lifo' | 'same_tranche' | 'epic_lifo'
   prefer_stock_dp: boolean
   dp_min_percent: number
   dp_min_cap: number

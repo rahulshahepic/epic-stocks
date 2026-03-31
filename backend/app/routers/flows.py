@@ -212,6 +212,8 @@ def new_purchase(body: NewPurchaseRequest, user: User = Depends(get_current_user
     if loan:
         result["loan"] = LoanOut.model_validate(loan)
 
+    from app.event_cache import schedule_recompute
+    schedule_recompute(user.id)
     return result
 
 
@@ -221,6 +223,8 @@ def annual_price(body: AnnualPriceRequest, user: User = Depends(get_current_user
     db.add(price)
     db.commit()
     db.refresh(price)
+    from app.event_cache import schedule_fan_out
+    schedule_fan_out()
     return price
 
 
@@ -236,4 +240,6 @@ def add_bonus(body: AddBonusRequest, user: User = Depends(get_current_user), db:
     db.add(grant)
     db.commit()
     db.refresh(grant)
+    from app.event_cache import schedule_recompute
+    schedule_recompute(user.id)
     return grant

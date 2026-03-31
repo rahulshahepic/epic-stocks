@@ -23,6 +23,7 @@ function mockFetch(responses: Record<string, unknown>) {
     if (url.includes('/api/admin/metrics')) return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
     if (url.includes('/api/admin/db-tables')) return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
     if (url.includes('/api/admin/errors')) return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    if (url.includes('/api/admin/epic-mode')) return new Response(JSON.stringify({ active: false }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     return new Response('{}', { status: 200 })
   })
 }
@@ -47,6 +48,7 @@ const USERS = [
 ]
 
 const USERS_RESPONSE = { users: USERS, total: 2 }
+
 
 const METRICS = [
   { timestamp: '2026-03-23T10:00:00', cpu_percent: 30.0, ram_used_mb: 1000.0, ram_total_mb: 8192.0, db_size_bytes: 8500000, error_log_count: 0 },
@@ -175,18 +177,19 @@ describe('Admin', () => {
     })
   })
 
-  it('renders test notification section', async () => {
+  it('renders test notification modal when Notify is clicked', async () => {
     mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
     renderPage()
 
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Notify' }).length).toBeGreaterThan(0))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Notify' })[0])
+
     await waitFor(() => {
-      expect(screen.getByText('Test Notification')).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Send Now' })).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Send Now' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument()
     })
   })
 
-  it('Notify button pre-selects user in test notification form', async () => {
+  it('Notify button opens modal scoped to that user', async () => {
     mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
     renderPage()
 
@@ -195,14 +198,17 @@ describe('Admin', () => {
     const notifyButtons = screen.getAllByRole('button', { name: 'Notify' })
     await userEvent.click(notifyButtons[0])
 
-    const userSelect = screen.getByRole('combobox', { name: 'User' }) as HTMLSelectElement
-    expect(userSelect.value).not.toBe('')
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Template' })).toBeInTheDocument())
+    // Modal is scoped to the user — heading shows their name
+    expect(screen.getByText(/Notify —/)).toBeInTheDocument()
   })
 
   it('selecting a template pre-fills title and body', async () => {
     mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
     renderPage()
 
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Notify' }).length).toBeGreaterThan(0))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Notify' })[0])
     await waitFor(() => expect(screen.getByRole('combobox', { name: 'Template' })).toBeInTheDocument())
 
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Template' }), 'vesting')
@@ -217,10 +223,11 @@ describe('Admin', () => {
     mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
     renderPage()
 
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Notify' }).length).toBeGreaterThan(0))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Notify' })[0])
     await waitFor(() => expect(screen.getByRole('combobox', { name: 'Template' })).toBeInTheDocument())
 
     const templateSelect = screen.getByRole('combobox', { name: 'Template' })
-    const titleInput = screen.getByRole('textbox', { name: 'Title' }) as HTMLInputElement
     const bodyInput = screen.getByRole('textbox', { name: 'Body' }) as HTMLTextAreaElement
 
     await userEvent.selectOptions(templateSelect, 'exercise')
@@ -234,6 +241,8 @@ describe('Admin', () => {
     mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
     renderPage()
 
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Notify' }).length).toBeGreaterThan(0))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Notify' })[0])
     await waitFor(() => expect(screen.getByRole('combobox', { name: 'Template' })).toBeInTheDocument())
 
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Template' }), 'vesting')
@@ -260,8 +269,10 @@ describe('Admin', () => {
 
     await waitFor(() => expect(screen.getByText('user@test.com')).toBeInTheDocument())
 
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'User' }), '2')
-    await userEvent.click(screen.getByRole('button', { name: 'Send Now' }))
+    const notifyButtons = screen.getAllByRole('button', { name: 'Notify' })
+    await userEvent.click(notifyButtons[0])
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }))
 
     await waitFor(() => {
       expect(screen.getByText(/Push: 2 sent, 1 expired/)).toBeInTheDocument()

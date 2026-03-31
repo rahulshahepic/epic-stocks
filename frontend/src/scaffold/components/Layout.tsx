@@ -2,6 +2,7 @@ import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.ts'
 import { useMe } from '../hooks/useMe.ts'
 import { useMaintenance } from '../contexts/MaintenanceContext.tsx'
+import { useConfig } from '../hooks/useConfig.ts'
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard' },
@@ -18,7 +19,10 @@ export default function Layout() {
   const { logout } = useAuth()
   const me = useMe()
   const maintenance = useMaintenance()
-  const navItems = me?.is_admin ? [...NAV_ITEMS, { to: '/admin', label: 'Admin' }] : NAV_ITEMS
+  const config = useConfig()
+  const epicMode = config?.epic_mode ?? false
+  const baseItems = epicMode ? NAV_ITEMS.filter(item => item.to !== '/import') : NAV_ITEMS
+  const navItems = me?.is_admin ? [...baseItems, { to: '/admin', label: 'Admin' }] : baseItems
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-50 dark:bg-gray-950">

@@ -16,7 +16,7 @@ test.describe('Quick flow: purchase grant + loan', () => {
     await page.getByLabel('Price per Share').fill('10.00')
     await page.getByRole('button', { name: 'Save', exact: true }).click()
     await page.waitForLoadState('networkidle')
-    await expect(page.getByText('1 price entries')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('1 price entry')).toBeVisible({ timeout: 10000 })
 
     // Navigate to Grants
     await navigateTo(page, 'Grants')
@@ -85,7 +85,7 @@ test.describe('Quick flow: purchase grant + loan', () => {
     await page.getByLabel('Price per Share').fill('10.00')
     await page.getByRole('button', { name: 'Save', exact: true }).click()
     await page.waitForLoadState('networkidle')
-    await expect(page.getByText('1 price entries')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('1 price entry')).toBeVisible({ timeout: 10000 })
 
     // Navigate to Grants and add a Bonus
     await navigateTo(page, 'Grants')

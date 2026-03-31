@@ -122,8 +122,10 @@ test.describe('Epic Mode', () => {
     await loginAs(page, userEmail, 'Epic User')
     await navigateTo(page, 'Prices')
 
-    await expect(page.getByText('Data provided by Epic — view only')).toBeVisible()
-    await expect(page.getByRole('button', { name: '+ Price' })).not.toBeVisible()
+    await expect(page.getByText('Historical data provided by Epic')).toBeVisible()
+    // + Price is visible in Epic mode (future-dated prices are allowed); + Estimate is always shown
+    await expect(page.getByRole('button', { name: '+ Price' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '+ Estimate' })).toBeVisible()
   })
 
   test('backend returns 403 for grant writes when Epic Mode is on', async ({ page }) => {

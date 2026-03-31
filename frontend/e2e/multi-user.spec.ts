@@ -15,10 +15,10 @@ test.describe('Multi-user isolation', () => {
     // Add a price as User A
     await navigateTo(page, 'Prices')
     await page.getByRole('button', { name: '+ Price' }).click()
-    await page.getByLabel('Effective Date').fill('2024-12-31')
+    await page.getByLabel('Effective Date').fill('2028-03-01')
     await page.getByLabel('Price per Share').fill('10.00')
     await page.getByRole('button', { name: 'Save', exact: true }).click()
-    await expect(page.getByText('1 price entries')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('1 price entry')).toBeVisible({ timeout: 10000 })
 
     // Add a grant as User A
     await navigateTo(page, 'Grants')
@@ -52,15 +52,15 @@ test.describe('Multi-user isolation', () => {
     // User B adds their own price
     await navigateTo(page, 'Prices')
     await page.getByRole('button', { name: '+ Price' }).click()
-    await page.getByLabel('Effective Date').fill('2025-06-01')
+    await page.getByLabel('Effective Date').fill('2028-06-01')
     await page.getByLabel('Price per Share').fill('20.00')
     await page.getByRole('button', { name: 'Save', exact: true }).click()
-    await expect(page.getByText('1 price entries')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('1 price entry')).toBeVisible({ timeout: 10000 })
 
     // Switch back to User A — data should be unchanged
     await loginAs(page, 'usera-isolation@test.com', 'User A')
     await navigateTo(page, 'Prices')
-    await expect(page.getByText('1 price entries')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('1 price entry')).toBeVisible({ timeout: 10000 })
 
     // User A's price should be $10.00, not $20.00
     await expect(page.getByText('$10.00')).toBeVisible({ timeout: 10000 })

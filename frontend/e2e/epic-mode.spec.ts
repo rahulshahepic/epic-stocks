@@ -20,21 +20,14 @@ const ADMIN_EMAIL = 'admin@e2e.test'
 const FIXTURE_PATH = path.resolve(__dirname, '../../test_data/fixture.xlsx')
 const API_BASE = process.env.E2E_API_URL ?? process.env.E2E_BASE_URL ?? 'http://localhost:5173'
 
-/** Enable or disable Epic Mode via the admin panel Danger Zone. */
+/** Enable or disable Epic Mode via the admin API directly. */
 async function setEpicMode(page: import('@playwright/test').Page, active: boolean) {
-  await loginAs(page, ADMIN_EMAIL, 'Admin User')
-  await navigateTo(page, 'Admin')
-  // Scroll to Danger Zone
-  await page.getByText('Danger Zone').scrollIntoViewIfNeeded()
-  const btn = page.getByRole('button', { name: active ? 'Enable Epic Mode' : 'Disable Epic Mode' })
-  // Use expect().toBeVisible() with timeout so React's async render doesn't fool us
-  try {
-    await expect(btn).toBeVisible({ timeout: 5000 })
-    await btn.click()
-    await page.waitForLoadState('networkidle')
-  } catch {
-    // Button not present — already in desired state
-  }
+  await page.request.post(`${API_BASE}/api/auth/test-login`, {
+    data: { email: ADMIN_EMAIL, name: 'Admin User' },
+  })
+  await page.request.post(`${API_BASE}/api/admin/epic-mode`, {
+    data: { active },
+  })
 }
 
 /** Import fixture data for a user via the API (bypasses epic-mode write guard). */

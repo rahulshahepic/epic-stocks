@@ -46,16 +46,20 @@ def _cleanup_epic_past_estimates(db: Session) -> int:
 @router.get("", response_model=list[PriceOut])
 def list_prices(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     from scaffold.epic_mode import is_epic_mode
+    # Remove estimates that are now shadowed by a real price for the same date.
+    shadow_deleted = _remove_shadowed_estimates(user.id, db)
+    # In Epic mode also remove past estimates (Epic's systems supply the real prices).
+    epic_deleted = 0
     if is_epic_mode():
-        deleted = db.query(Price).filter(
+        epic_deleted = db.query(Price).filter(
             Price.user_id == user.id,
             Price.is_estimate == True,
             Price.effective_date < date_cls.today(),
         ).delete(synchronize_session=False)
-        if deleted:
-            db.commit()
-            from app.event_cache import schedule_fan_out
-            schedule_fan_out()
+    if shadow_deleted or epic_deleted:
+        db.commit()
+        from app.event_cache import schedule_fan_out
+        schedule_fan_out()
     return db.query(Price).filter(Price.user_id == user.id).order_by(Price.effective_date).all()
 
 
@@ -64,9 +68,6 @@ def create_price(body: PriceCreate, user: User = Depends(get_current_user), db: 
     is_est = body.effective_date > date_cls.today()
     price = Price(**body.model_dump(), user_id=user.id, is_estimate=is_est)
     db.add(price)
-    db.flush()
-    if not is_est:
-        _remove_shadowed_estimates(user.id, db)
     db.commit()
     db.refresh(price)
     from app.event_cache import schedule_fan_out
@@ -98,8 +99,6 @@ def update_price(price_id: int, body: PriceUpdate, user: User = Depends(get_curr
         setattr(price, k, v)
     if "effective_date" in updates:
         price.is_estimate = price.effective_date > date_cls.today()
-        if not price.is_estimate:
-            _remove_shadowed_estimates(user.id, db)
     price.version = price.version + 1
     db.commit()
     db.refresh(price)

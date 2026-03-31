@@ -12,6 +12,15 @@ from app.sales_engine import compute_sale_tax
 router = APIRouter(prefix="/api", tags=["events"])
 
 
+def _to_date(d) -> date:
+    """Normalise event date to datetime.date — handles datetime, ISO string, or date."""
+    if isinstance(d, datetime):
+        return d.date()
+    if isinstance(d, str):
+        return date.fromisoformat(d[:10])
+    return d
+
+
 def _user_source_data(user: User, db: Session):
     grants_db = db.query(Grant).filter(Grant.user_id == user.id).order_by(Grant.year).all()
     prices_db = db.query(Price).filter(Price.user_id == user.id).order_by(Price.effective_date).all()
@@ -54,9 +63,7 @@ def _last_vesting_date(timeline: list):
     last = None
     for e in timeline:
         if e.get("event_type") == "Vesting":
-            d = e["date"]
-            if isinstance(d, datetime):
-                d = d.date()
+            d = _to_date(e["date"])
             if last is None or d > last:
                 last = d
     return last
@@ -121,9 +128,7 @@ def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales:
     date_to_cum_income: dict = {}
     date_to_cum_cap_gains: dict = {}
     for e in timeline:
-        edate = e["date"]
-        if isinstance(edate, datetime):
-            edate = edate.date()
+        edate = _to_date(e["date"])
         last_price = e.get("share_price", last_price)
         last_cum_shares = e.get("cum_shares", last_cum_shares)
         last_cum_income = e.get("cum_income", last_cum_income)
@@ -231,10 +236,7 @@ def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales:
     }
 
     def sort_key(e):
-        d = e["date"]
-        if isinstance(d, datetime):
-            d = d.date()
-        return (d, _TYPE_ORDER.get(e["event_type"], 9))
+        return (_to_date(e["date"]), _TYPE_ORDER.get(e["event_type"], 9))
 
     enriched.sort(key=sort_key)
 

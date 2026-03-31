@@ -81,6 +81,35 @@ class AnnualPriceRequest(BaseModel):
         return v
 
 
+class GrowthEstimateRequest(BaseModel):
+    base_price: float
+    start_date: date
+    end_date: date
+    annual_rate_pct: float
+    frequency: str  # 'annual' | 'quarterly' | 'monthly'
+
+    @field_validator("base_price")
+    @classmethod
+    def base_price_positive(cls, v):
+        if v <= 0:
+            raise ValueError("base_price must be positive")
+        return v
+
+    @field_validator("annual_rate_pct")
+    @classmethod
+    def rate_range(cls, v):
+        if v < -99 or v > 10000:
+            raise ValueError("annual_rate_pct out of range")
+        return v
+
+    @field_validator("frequency")
+    @classmethod
+    def valid_frequency(cls, v):
+        if v not in ("annual", "quarterly", "monthly"):
+            raise ValueError("frequency must be 'annual', 'quarterly', or 'monthly'")
+        return v
+
+
 class AddBonusRequest(BaseModel):
     year: int
     shares: int
@@ -226,6 +255,43 @@ def annual_price(body: AnnualPriceRequest, user: User = Depends(get_current_user
     from app.event_cache import schedule_fan_out
     schedule_fan_out()
     return price
+
+
+@router.post("/growth-estimate", response_model=list[PriceOut], status_code=201)
+def growth_estimate(body: GrowthEstimateRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from dateutil.relativedelta import relativedelta
+
+    if body.end_date <= body.start_date:
+        raise HTTPException(status_code=422, detail="end_date must be after start_date")
+
+    delta_map = {
+        "annual": relativedelta(years=1),
+        "quarterly": relativedelta(months=3),
+        "monthly": relativedelta(months=1),
+    }
+    delta = delta_map[body.frequency]
+    rate = body.annual_rate_pct / 100.0
+    start = body.start_date
+
+    created: list[Price] = []
+    current = start
+    while current <= body.end_date:
+        years_elapsed = (current - start).days / 365.25
+        price_val = round(body.base_price * ((1 + rate) ** years_elapsed), 2)
+        p = Price(user_id=user.id, effective_date=current, price=price_val)
+        db.add(p)
+        created.append(p)
+        current = current + delta
+
+    if not created:
+        raise HTTPException(status_code=422, detail="No dates generated in range")
+
+    db.commit()
+    for p in created:
+        db.refresh(p)
+    from app.event_cache import schedule_fan_out
+    schedule_fan_out()
+    return created
 
 
 @router.post("/add-bonus", response_model=GrantOut, status_code=201)

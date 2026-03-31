@@ -216,6 +216,9 @@ export const api = {
   annualPrice: (data: { effective_date: string; price: number }) =>
     post<PriceEntry>('/api/flows/annual-price', data),
 
+  growthEstimate: (data: { base_price: number; start_date: string; end_date: string; annual_rate_pct: number; frequency: string }) =>
+    post<PriceEntry[]>('/api/flows/growth-estimate', data),
+
   // User info
   getMe: () => apiFetch<{ id: number; email: string; name: string; is_admin: boolean }>('/api/me'),
 

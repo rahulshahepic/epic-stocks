@@ -49,7 +49,13 @@ def get(user_id: int, data_hash: str) -> Optional[list]:
         return None
     try:
         raw = _client.get(_key(user_id, data_hash))
-        return json.loads(raw) if raw else None
+        if not raw:
+            return None
+        result = json.loads(raw)
+        for e in result:
+            if isinstance(e.get("date"), str):
+                e["date"] = datetime.fromisoformat(e["date"])
+        return result
     except Exception:
         logger.debug("Redis get failed for user %s", user_id, exc_info=True)
         return None

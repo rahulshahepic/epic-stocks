@@ -219,7 +219,10 @@ def new_purchase(body: NewPurchaseRequest, user: User = Depends(get_current_user
 
 @router.post("/annual-price", response_model=PriceOut, status_code=201)
 def annual_price(body: AnnualPriceRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from scaffold.epic_mode import is_epic_mode
     is_est = body.effective_date > date_cls.today()
+    if is_epic_mode() and not is_est:
+        raise HTTPException(status_code=422, detail="Only future-dated prices can be added in Epic mode")
     price = Price(user_id=user.id, effective_date=body.effective_date, price=body.price, is_estimate=is_est)
     db.add(price)
     db.commit()

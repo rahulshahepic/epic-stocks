@@ -124,6 +124,7 @@ export interface PriceEntry {
   version: number
   effective_date: string
   price: number
+  is_estimate?: boolean
 }
 
 export interface LoanEntry {
@@ -196,9 +197,11 @@ export const api = {
 
   // Prices
   getPrices: () => apiFetch<PriceEntry[]>('/api/prices'),
-  createPrice: (data: Omit<PriceEntry, 'id' | 'version'>) => post<PriceEntry>('/api/prices', data),
-  updatePrice: (id: number, data: Partial<Omit<PriceEntry, 'id'>>) => put<PriceEntry>(`/api/prices/${id}`, data),
+  createPrice: (data: Omit<PriceEntry, 'id' | 'version' | 'is_estimate'>) => post<PriceEntry>('/api/prices', data),
+  updatePrice: (id: number, data: Partial<Omit<PriceEntry, 'id' | 'is_estimate'>>) => put<PriceEntry>(`/api/prices/${id}`, data),
   deletePrice: (id: number) => del(`/api/prices/${id}`),
+  growthPrice: (data: { annual_growth_pct: number; first_date: string; through_date: string }) =>
+    post<PriceEntry[]>('/api/flows/growth-price', data),
 
   // Quick flows
   newPurchase: (data: {

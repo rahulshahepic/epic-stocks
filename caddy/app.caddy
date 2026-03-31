@@ -30,6 +30,7 @@
         }
     }
     handle @full_maint {
+        header Content-Type "text/html; charset=utf-8"
         header Cache-Control "no-store, no-cache"
         header CDN-Cache-Control "no-store"
         header Surrogate-Control "no-store"

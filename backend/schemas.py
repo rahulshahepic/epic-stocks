@@ -239,7 +239,28 @@ class PriceUpdate(BaseModel):
 class PriceOut(PriceCreate):
     id: int
     version: int = 1
+    is_estimate: bool = False
     model_config = {"from_attributes": True}
+
+
+class GrowthPriceRequest(BaseModel):
+    annual_growth_pct: float
+    first_date: date
+    through_date: date
+
+    @field_validator("annual_growth_pct")
+    @classmethod
+    def pct_reasonable(cls, v: float) -> float:
+        if v <= 0 or v > 100:
+            raise ValueError("annual_growth_pct must be between 0 and 100")
+        return v
+
+    @field_validator("through_date")
+    @classmethod
+    def through_after_first(cls, v: date, info) -> date:
+        if "first_date" in info.data and v < info.data["first_date"]:
+            raise ValueError("through_date must be >= first_date")
+        return v
 
 
 # Sale

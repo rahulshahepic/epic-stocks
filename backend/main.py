@@ -306,6 +306,14 @@ def _start_nightly_maintenance():
                 target += timedelta(days=1)
             await asyncio.sleep((target - now).total_seconds())
             _aggregate_old_metrics()
+            try:
+                db = database.SessionLocal()
+                from app.routers.prices import _cleanup_epic_past_estimates
+                _cleanup_epic_past_estimates(db)
+            except Exception:
+                logger.warning("Nightly estimate cleanup failed", exc_info=True)
+            finally:
+                db.close()
 
     return asyncio.ensure_future(_loop())
 

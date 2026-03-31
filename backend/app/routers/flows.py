@@ -2,11 +2,11 @@ import math
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, field_validator
-from datetime import date
+from datetime import date, date as date_cls
 
 from database import get_db
 from scaffold.models import User, Grant, Loan, Price, Sale, TaxSettings
-from schemas import GrantOut, LoanOut, PriceOut
+from schemas import GrantOut, LoanOut, PriceOut, GrowthPriceRequest
 from scaffold.auth import get_current_user
 
 router = APIRouter(prefix="/api/flows", tags=["flows"])
@@ -219,13 +219,61 @@ def new_purchase(body: NewPurchaseRequest, user: User = Depends(get_current_user
 
 @router.post("/annual-price", response_model=PriceOut, status_code=201)
 def annual_price(body: AnnualPriceRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    price = Price(user_id=user.id, effective_date=body.effective_date, price=body.price)
+    from scaffold.epic_mode import is_epic_mode
+    is_est = body.effective_date > date_cls.today()
+    if is_epic_mode() and not is_est:
+        raise HTTPException(status_code=422, detail="Only future-dated prices can be added in Epic mode")
+    price = Price(user_id=user.id, effective_date=body.effective_date, price=body.price, is_estimate=is_est)
     db.add(price)
+    db.flush()
+    if not is_est:
+        from app.routers.prices import _remove_shadowed_estimates
+        _remove_shadowed_estimates(user.id, db)
     db.commit()
     db.refresh(price)
     from app.event_cache import schedule_fan_out
     schedule_fan_out()
     return price
+
+
+@router.post("/growth-price", response_model=list[PriceOut], status_code=201)
+def growth_price(body: GrowthPriceRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if body.first_date <= date_cls.today():
+        raise HTTPException(status_code=422, detail="first_date must be in the future")
+    base = (
+        db.query(Price)
+        .filter(Price.user_id == user.id, Price.is_estimate == False)
+        .order_by(Price.effective_date.desc())
+        .first()
+    )
+    if not base:
+        raise HTTPException(status_code=422, detail="No historical price found to base growth on")
+
+    # Delete existing estimates in the requested range
+    db.query(Price).filter(
+        Price.user_id == user.id,
+        Price.is_estimate == True,
+        Price.effective_date >= body.first_date,
+        Price.effective_date <= body.through_date,
+    ).delete(synchronize_session=False)
+
+    multiplier = 1 + body.annual_growth_pct / 100
+    entries: list[Price] = []
+    current_date = body.first_date
+    current_price = round(base.price * multiplier, 2)
+    while current_date <= body.through_date:
+        p = Price(user_id=user.id, effective_date=current_date, price=current_price, is_estimate=True)
+        db.add(p)
+        entries.append(p)
+        current_date = current_date.replace(year=current_date.year + 1)
+        current_price = round(current_price * multiplier, 2)
+
+    db.commit()
+    for p in entries:
+        db.refresh(p)
+    from app.event_cache import schedule_fan_out
+    schedule_fan_out()
+    return entries
 
 
 @router.post("/add-bonus", response_model=GrantOut, status_code=201)

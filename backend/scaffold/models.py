@@ -75,6 +75,7 @@ class Price(Base):
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     effective_date: Mapped[date] = mapped_column(Date, nullable=False)
     price: Mapped[float] = mapped_column(EncryptedFloat, nullable=False)
+    is_estimate: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
 
     user: Mapped["User"] = relationship(back_populates="prices")

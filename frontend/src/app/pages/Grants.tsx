@@ -68,6 +68,9 @@ export default function Grants() {
   const config = useConfig()
   const epicMode = config?.epic_mode ?? false
 
+  // IDs of loans that have been superseded by a refinance — never show these as the active loan
+  const refinancedLoanIds = new Set((loans ?? []).map(l => l.refinances_loan_id).filter((id): id is number => id !== null))
+
   const [mode, setMode] = useState<Mode>('list')
   const [expandedGrantId, setExpandedGrantId] = useState<number | null>(null)
   const [form, setForm] = useState<GrantForm>(empty)
@@ -143,7 +146,7 @@ export default function Grants() {
     setConflict(false)
 
     const existingLoan = loans?.find(
-      l => l.grant_year === g.year && l.grant_type === g.type && l.loan_type === 'Purchase'
+      l => l.grant_year === g.year && l.grant_type === g.type && l.loan_type === 'Purchase' && !refinancedLoanIds.has(l.id)
     ) ?? null
 
     if (existingLoan) {
@@ -306,7 +309,7 @@ export default function Grants() {
   }
 
   function openSellModal(g: GrantEntry) {
-    const loan = loans?.find(l => l.grant_year === g.year && l.grant_type === g.type && l.loan_type === 'Purchase')
+    const loan = loans?.find(l => l.grant_year === g.year && l.grant_type === g.type && l.loan_type === 'Purchase' && !refinancedLoanIds.has(l.id))
     setSellModal({ grantYear: g.year, grantType: g.type, loanId: loan?.id })
     setSellPrice(String(latestPrice(prices) || ''))
     setSellTargetCash(loan ? String(loan.amount) : '')
@@ -558,7 +561,7 @@ export default function Grants() {
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
             {grants.map(g => {
-              const loan = loans?.find(l => l.grant_year === g.year && l.grant_type === g.type && l.loan_type === 'Purchase')
+              const loan = loans?.find(l => l.grant_year === g.year && l.grant_type === g.type && l.loan_type === 'Purchase' && !refinancedLoanIds.has(l.id))
               const linkedSale = loan ? sales?.find(s => s.loan_id === loan.id) : undefined
               const hasSale = !!linkedSale
               const isExpanded = expandedGrantId === g.id

@@ -118,7 +118,7 @@ def get_all_sale_taxes(user: User = Depends(get_current_user), db: Session = Dep
         for ln in db.query(LoanModel).filter(LoanModel.user_id == user.id).all():
             loan_map[ln.id] = (ln.grant_year, ln.grant_type)
 
-    lot_order = ts.lot_selection_method if ts.lot_selection_method in ('fifo', 'lifo', 'epic_lifo') else 'lifo'
+    lot_order = ts.lot_selection_method if ts.lot_selection_method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
 
     # Snapshot per-sale rate overrides while session is open
     sale_data = []
@@ -280,7 +280,7 @@ def get_sale_tax(sale_id: int, user: User = Depends(get_current_user), db: Sessi
         "lt_holding_days": sale.lt_holding_days if sale.lt_holding_days is not None else ts.lt_holding_days,
     }
     method = ts.lot_selection_method if ts else 'lifo'
-    lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'lifo'
+    lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
     gy, gt = None, None
     if method == 'same_tranche' and sale.loan_id:
         linked_loan = db.query(Loan).filter(Loan.id == sale.loan_id).first()
@@ -307,7 +307,7 @@ def get_available_lots(
         raise HTTPException(status_code=422, detail="Invalid sale_date format, expected YYYY-MM-DD")
 
     method = _get_lot_selection_method(user, db)
-    lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'lifo'
+    lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
     ts = _get_tax_settings_dict(user, db)
     lt_days = int(ts.get("lt_holding_days", 365))
 
@@ -349,7 +349,7 @@ def estimate_sale(
 
     ts = _get_tax_settings_dict(user, db)
     method = _get_lot_selection_method(user, db)
-    lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'lifo'
+    lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
     lt_days = int(ts.get("lt_holding_days", 365))
 
     # Resolve loan balance if a loan_id was provided

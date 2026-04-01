@@ -139,7 +139,7 @@ def _compute_payoff_sale(loan: Loan, user: User, db: Session) -> dict:
 
     ts = _get_tax_settings_dict(user, db)
     method = _get_lot_selection_method(user, db)
-    lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'lifo'
+    lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
     gy = loan.grant_year if method == 'same_tranche' else None
     gt = loan.grant_type if method == 'same_tranche' else None
     lt_days = int(ts.get("lt_holding_days", 365))

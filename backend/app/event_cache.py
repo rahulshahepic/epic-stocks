@@ -9,6 +9,7 @@ where data_hash matches timeline_cache._hash() for the same input data.
 """
 import json
 import logging
+import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime

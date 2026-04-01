@@ -341,6 +341,8 @@ def regenerate_all_payoff_sales(user: User = Depends(get_current_user), db: Sess
         existing_sale.notes = suggestion["notes"]
         updated += 1
     db.commit()
+    from app.event_cache import schedule_recompute
+    schedule_recompute(user.id)
     return {"updated": updated}
 
 

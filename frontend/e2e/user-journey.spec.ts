@@ -27,7 +27,7 @@ test.describe('Sales journey', () => {
 
     // Add a sale — form opens in Plan Sale mode (today's date)
     await page.getByRole('button', { name: '+ Sale' }).click()
-    await expect(page.getByText('Plan Sale')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Plan Sale' })).toBeVisible()
 
     // Set a past date — title switches to Record Sale
     await page.getByLabel('Sale Date').fill('2026-03-01')

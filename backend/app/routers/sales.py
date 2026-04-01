@@ -184,6 +184,10 @@ def list_sales(user: User = Depends(get_current_user), db: Session = Depends(get
 
 @router.post("", response_model=SaleOut, status_code=201)
 def create_sale(body: SaleCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from scaffold.epic_mode import is_epic_mode
+    from datetime import date as date_type
+    if is_epic_mode() and body.loan_id is None and body.date < date_type.today():
+        raise HTTPException(status_code=422, detail="Sales cannot be backdated in Epic mode — only future planned sales are allowed")
     if body.loan_id is not None:
         # Validate loan belongs to this user
         loan = db.query(Loan).filter(Loan.id == body.loan_id, Loan.user_id == user.id).first()

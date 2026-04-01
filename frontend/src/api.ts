@@ -40,7 +40,15 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     let detail = `Error ${resp.status}`
     try {
       const body = await resp.json()
-      if (body?.detail) detail = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)
+      if (body?.detail) {
+        if (typeof body.detail === 'string') {
+          detail = body.detail
+        } else if (Array.isArray(body.detail)) {
+          detail = body.detail.map((e: { msg?: string }) => e.msg ?? JSON.stringify(e)).join('; ')
+        } else {
+          detail = JSON.stringify(body.detail)
+        }
+      }
     } catch { /* no json body */ }
     throw new Error(detail)
   }

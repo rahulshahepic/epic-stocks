@@ -40,8 +40,13 @@ def close() -> None:
         _client = None
 
 
+# Bump this whenever a logic change means the same input data should produce
+# different output. Changing it invalidates all existing Redis cache entries.
+_CACHE_VERSION = 2
+
+
 def _key(user_id: int, data_hash: str) -> str:
-    return f"timeline:{user_id}:{data_hash}"
+    return f"timeline:v{_CACHE_VERSION}:{user_id}:{data_hash}"
 
 
 def get(user_id: int, data_hash: str) -> Optional[list]:

@@ -21,14 +21,17 @@ def test_schedule_fan_out_noop_without_redis():
 
 
 def test_get_returns_cached_timeline():
+    from datetime import datetime
     mock_redis = MagicMock()
+    # Dates are stored as "YYYY-MM-DD" strings; get() must deserialize them back to datetime
     timeline = [{"event_type": "Vesting", "date": "2021-01-01"}]
     mock_redis.get.return_value = json.dumps(timeline).encode()
 
     ec._client = mock_redis
     try:
         result = ec.get(42, "hash123")
-        assert result == timeline
+        assert result[0]["event_type"] == "Vesting"
+        assert result[0]["date"] == datetime(2021, 1, 1)
         mock_redis.get.assert_called_once_with(ec._key(42, "hash123"))
     finally:
         ec._client = None

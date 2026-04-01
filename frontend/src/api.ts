@@ -258,10 +258,11 @@ export const api = {
     if (params.grant_type != null) q.set('grant_type', params.grant_type)
     return apiFetch<TrancheAllocation>(`/api/sales/tranche-allocation?${q}`)
   },
-  estimateSale: (params: { price_per_share: number; target_net_cash: number; sale_date?: string; loan_id?: number; grant_year?: number; grant_type?: string }) => {
+  estimateSale: (params: { price_per_share: number; target_net_cash?: number; shares?: number; sale_date?: string; loan_id?: number; grant_year?: number; grant_type?: string }) => {
     const q = new URLSearchParams({
       price_per_share: String(params.price_per_share),
-      target_net_cash: String(params.target_net_cash),
+      ...(params.target_net_cash != null ? { target_net_cash: String(params.target_net_cash) } : {}),
+      ...(params.shares != null ? { shares: String(params.shares) } : {}),
       ...(params.sale_date != null ? { sale_date: params.sale_date } : {}),
       ...(params.loan_id != null ? { loan_id: String(params.loan_id) } : {}),
       ...(params.grant_year != null ? { grant_year: String(params.grant_year) } : {}),

@@ -59,7 +59,11 @@ def put(user_id: int, data_hash: str, timeline: list) -> None:
     if not _client:
         return
     try:
-        _client.setex(_key(user_id, data_hash), _TTL, json.dumps(timeline, default=str))
+        def _json_default(v):
+            if isinstance(v, datetime):
+                return v.strftime("%Y-%m-%d")
+            return str(v)
+        _client.setex(_key(user_id, data_hash), _TTL, json.dumps(timeline, default=_json_default))
     except Exception:
         logger.debug("Redis put failed for user %s", user_id, exc_info=True)
 

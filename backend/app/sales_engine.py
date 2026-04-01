@@ -11,6 +11,8 @@ from datetime import date, datetime
 def _to_date(d) -> date:
     if isinstance(d, datetime):
         return d.date()
+    if isinstance(d, str):
+        return date.fromisoformat(d[:10])
     return d
 
 

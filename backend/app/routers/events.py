@@ -8,17 +8,9 @@ from scaffold.models import User, Grant, Loan, Price, LoanPayment, Sale, TaxSett
 from scaffold.auth import get_current_user
 from app.timeline_cache import get_timeline
 from app.sales_engine import compute_sale_tax
+from app.date_utils import to_date as _to_date
 
 router = APIRouter(prefix="/api", tags=["events"])
-
-
-def _to_date(d) -> date:
-    """Normalise event date to datetime.date — handles datetime, ISO string, or date."""
-    if isinstance(d, datetime):
-        return d.date()
-    if isinstance(d, str):
-        return date.fromisoformat(d[:10])
-    return d
 
 
 def _user_source_data(user: User, db: Session):

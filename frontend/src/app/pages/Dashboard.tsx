@@ -797,14 +797,16 @@ export default function Dashboard() {
   const exitDate = horizonSettings?.horizon_date ?? null
   const showExitButton = exitDate !== null && exitDate !== lastRealEventDate
 
+  // When cardDate is strictly past the projected exit, we project as-if no exit was planned
+  const ignoringExitDate = projectedLiqDate !== null && cardDate > projectedLiqDate
+
   // Card values computed from local data as of cardDate
   const cardValues = useMemo(() => {
     if (!events || !loans) return null
 
-    // Whether the projected liquidation has occurred by cardDate
-    const liqOccurred = projectedLiqDate !== null && cardDate >= projectedLiqDate
+    // Liq only "occurs" when cardDate is at (not past) the exit date; past it we ignore exit
+    const liqOccurred = projectedLiqDate !== null && cardDate >= projectedLiqDate && !ignoringExitDate
 
-    // All metrics are capped at the exit date — viewing beyond it changes nothing
     const effectiveDate = liqOccurred && projectedLiqDate ? projectedLiqDate : cardDate
 
     // Last event at or before effectiveDate
@@ -896,7 +898,7 @@ export default function Dashboard() {
       cash_received: cashReceived,
       next_event: nextEvent,
     }
-  }, [events, loans, sales, taxSettings, cardDate, projectedLiqDate, projectedLiqEvent])
+  }, [events, loans, sales, taxSettings, cardDate, projectedLiqDate, projectedLiqEvent, ignoringExitDate])
 
   if (dashLoading) {
     return <p className="p-6 text-center text-sm text-gray-400">Loading...</p>
@@ -1008,6 +1010,12 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {ignoringExitDate && (
+        <p className="rounded-md bg-amber-50 px-3 py-2 text-center text-xs text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
+          Projecting beyond your exit date — exit date not applied
+        </p>
+      )}
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Card label="Share Price" value={fmtPrice(cv.current_price)} variant="price" />
         <Card label="Total Shares" value={fmtNum(cv.total_shares)} variant="shares" />
@@ -1062,7 +1070,7 @@ export default function Dashboard() {
           <LoanChart loanPaymentByYear={dash.loan_payment_by_year} c={c} range={rangeLoan} setRange={setRangeLoan} maxDate={maxDate} />
         )}
       </div>
-      {projectedLiqDate && (
+      {projectedLiqDate && !ignoringExitDate && (
         <p className="mt-2 text-center text-xs text-gray-400 dark:text-gray-500">
           Charts show the full event timeline — summary cards above are frozen at the exit date.
         </p>

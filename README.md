@@ -53,6 +53,35 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 
 ![Privacy Policy](screenshots/privacy-light-mobile.png)
 
+## Core Concepts
+
+Understanding a few things makes the rest of the app click.
+
+### The data model
+
+There are four source tables. Everything else — every dashboard number, every event on the timeline, every tax estimate — is derived from these at request time:
+
+| Table | What it holds |
+|-------|--------------|
+| **Grants** | Your equity grants: year, type (Bonus/Purchase), share count, purchase price, vesting schedule, exercise date |
+| **Prices** | Share price history: a date and a price per share. Each entry applies forward until the next one |
+| **Loans** | Margin-style loans tied to specific grants: amount, interest rate, due date |
+| **Sales** | Recorded or planned share sales: date, shares, price per share, lot selection method |
+
+### Events are computed, not stored
+
+The app never saves vesting events, payoff events, or projected liquidation events to the database. Every time you view the dashboard or events page, the backend runs the same deterministic calculation over your grants + prices + loans. This means the timeline is always consistent with your current data — there is no "stale event" problem, and deleting a price or changing a grant date immediately recalculates everything.
+
+### Two prices are always in play
+
+The *grant price* (what you paid) is fixed at grant creation. The *share price* (market value) comes from the Prices table. The spread between them drives tax calculations:
+
+- **Bonus / RSU grants** (`grant_price = 0`) — ordinary income is recognised at each vesting date: `FMV × shares vested`. The FMV at vest becomes the cost basis for future capital gains.
+- **Purchase grants** (`grant_price > 0`) — vesting lifts the sale restriction but creates no income event. Cost basis is the purchase price. Capital gains at sale = `(sale price − grant price) × shares`.
+- **Long-term vs short-term** — a lot is long-term if it has been held ≥ 365 days (configurable in Settings → Tax Rates) from the vest date. LT gains are taxed at a lower rate than ST gains.
+
+---
+
 ## Getting Started (User Guide)
 
 1. **Sign in** — click the sign-in button for your organisation's identity provider (Google, Azure AD, or any OIDC provider configured by your admin). Your data is tied to that account, and you can export everything anytime.
@@ -60,20 +89,125 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 3. **Add your data** — two options:
    - **On Epic's campus network?** If you see the **"On Epic's network? Start here →"** button on the Import page, click it to download a pre-filled Excel template from Epic's campus portal — your grant and loan structure are already filled in. Download it, review the numbers, then upload it on the Import page. In Epic Mode your historical data is read-only (maintained by Epic's systems), but you can still add future price estimates, record sales, and configure tax settings.
    - **Import from Excel** — go to **Import**, download the **Sample** (pre-filled with fake data and explanatory cell comments) to see what the format looks like, then fill in your real data and upload. Click "What do the columns mean?" for a plain-English guide to every field.
-   - **Add manually** — go to **Grants** and add grants one by one. Then add any **Loans** and their annual interest loans. For bonus/free grants where you filed an **83(b) election**, tick the "Filed 83(b) election" checkbox — vesting events will show unrealized cap gains instead of ordinary income.
+   - **Add manually** — go to **Grants** and add grants one by one. Then add any **Loans** and their annual interest. For bonus/free grants where you filed an **83(b) election**, tick the "Filed 83(b) election" checkbox — vesting events will show unrealized cap gains instead of ordinary income.
 4. **View the Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, interest, tax paid, cash received, next event). Use the **As of** date picker to time-travel. **Today** snaps to the current date; **Last event** jumps to your final vesting date; **Exit date** appears when you've configured one (see Settings → Exit Planning) and jumps to your projected liquidation date — showing 0 shares, 0 principal, and net cash.
 5. **View Events** — the full computed timeline of vesting, exercise, loan payoff, and sale events. A **Liquidation (projected)** event is automatically appended at your exit date. Tap it to see the calculation breakdown (shares × price → gross proceeds → est. tax → net). Events after the exit date are dimmed with a "beyond exit horizon" separator.
 6. **Configure your exit date** — go to **Settings → Exit Planning** to set a specific date. The projected liquidation uses shares and price as of that date (even if it's before your last vesting event). Defaults to your last vesting date if not set.
-7. **Record a sale** — go to **Sales**, add a sale. The lot selection method (LIFO/FIFO/same-tranche) and tax rates are set in **Settings → Tax Rates**. For a loan payoff sale, link it to a loan and the share count is auto-sized to cover the full payoff after tax.
-8. **Set up notifications** — go to **Settings → Notifications**. Enable push (browser) or email, then choose timing: day-of, 3 days before, or 1 week before your events. Hit **Send test** to confirm push is working.
-9. **Export your data** — go to **Import/Export → Download Vesting.xlsx** to get a full export at any time.
+7. **Plan or record a sale** — go to **Sales** and tap **+ Sale**. See [Sales Workflow](#sales-workflow) for the full explanation of lot selection methods, the $ Target vs # Shares toggle, the tranche allocation table, and how to record actual tax paid for a past sale.
+8. **Manage loan payoffs** — each loan can have an auto-generated sale that covers the outstanding balance. See [Loan Payoff Flow](#loan-payoff-flow) for how share counts are calculated and how the Request Payoff button works in Epic Mode.
+9. **Set up notifications** — go to **Settings → Notifications**. Enable push (browser) or email, then choose timing: day-of, 3 days before, or 1 week before your events. Hit **Send test** to confirm push is working.
+10. **Export your data** — go to **Import/Export → Download Vesting.xlsx** to get a full export at any time.
+
+---
+
+## Sales Workflow
+
+| Light | Dark |
+|-------|------|
+| ![Sales Light Mobile](screenshots/sales-light-mobile.png) | ![Sales Dark Mobile](screenshots/sales-dark-mobile.png) |
+
+### Plan Sale vs Record Sale
+
+The sale form switches its title and available fields based on the date you select:
+
+- **Plan Sale** — the date is today or in the future. Shares and tax are forward-looking estimates based on the current price and projected lots. There is no "actual tax paid" field — you haven't sold yet. In Epic Mode, only future dates are allowed.
+- **Record Sale** — the date is in the past (non-Epic mode only). You're recording something that already happened. An optional **Actual tax paid** field appears so you can enter what you actually remitted — this overrides the estimate and makes the tax breakdown accurate for historical records.
+
+### $ Target vs # Shares
+
+Two ways to size a sale, selectable by the toggle at the top of the form:
+
+- **$ Target** — enter the net cash you want to receive *after tax*. The app gross-ups the share count iteratively until `after-tax proceeds ≥ target`. Useful when you need a specific dollar amount (e.g. to cover a tax bill or loan balance).
+- **# Shares** — enter shares directly. Gross proceeds, estimated tax, and net proceeds are shown as you type.
+
+Both modes are available for Plan and Record sales, in Epic Mode and non-Epic Mode.
+
+### Lot Selection Methods
+
+When you sell shares, the app needs to know which lots are consumed first. This matters for tax — lots held longer may qualify for lower long-term capital gains rates.
+
+| Method | Behavior | Best for |
+|--------|----------|---------|
+| **Epic LIFO** (default) | LIFO order within short-term lots, but all long-term lots are consumed before any short-term lot | Minimising short-term capital gains tax |
+| **LIFO** | Newest vested lots first (typically highest cost basis on rising stock) | Minimising total capital gains on rising stock |
+| **FIFO** | Oldest lots first | Maximising the proportion of LT-qualified shares |
+| **Manual** | You set the share count for each lot individually | Full control — pick exactly which lots to sell |
+
+Your default method is set in **Settings → Tax Rates → Manual Sale Lot Method** and applies to manually-initiated sales only. Loan payoff sales always use same-tranche selection (see [Loan Payoff Flow](#loan-payoff-flow)).
+
+> **Tax note:** The IRS may require you to elect a consistent lot identification method at the time of sale. Consult a tax advisor before changing this setting, especially for large or tax-sensitive sales.
+
+### Tranche Allocation Table
+
+As soon as you enter a date and a share count (or $ target), a **Lot Allocation** table appears below the form. It updates in real time and shows:
+
+- Each available lot (grant year + type, vest date)
+- Cost basis per share for that lot
+- Available shares remaining in the lot
+- How many shares will be consumed from that lot (allocated)
+- **LT** (long-term, held ≥ your configured threshold) or **ST** (short-term) badge — LT lots appear green, ST lots amber
+
+In **Manual** mode, the "Allocated" column becomes an editable number input. Type the share count you want to sell from each lot. The form prevents over-allocation and tracks total allocated shares vs. what you requested. Your manual allocation is saved with the sale.
+
+### Tax Breakdown
+
+After saving a sale, tap the tax amount in the sales list to expand a full breakdown:
+
+- Gross proceeds = shares × price
+- Ordinary income component (for Bonus/RSU lots where FMV at vest was recognised as income)
+- Short-term and long-term capital gains per lot
+- Federal income tax, federal LT/ST capital gains tax, NIIT (3.8%), state income tax, state capital gains tax
+- **Estimated total tax** and **Net proceeds**
+
+Tax rates are captured from your Settings at the time the sale is created and stored on the sale record. Changing your tax rates later does not retroactively change a saved sale's breakdown.
+
+---
+
+## Loan Payoff Flow
+
+Each loan tied to a Purchase grant can have an auto-generated payoff sale that covers the outstanding balance (principal + accrued interest through the due date) by selling just enough shares.
+
+### How the gross-up works
+
+The app finds the smallest integer share count such that the after-tax proceeds from selling those shares ≥ the outstanding balance (cash due). It only considers lots from the *originating grant* — this is called same-tranche selection and applies regardless of your default lot method setting.
+
+The payoff sale always shows a **Lot Allocation** table in the Request Payoff modal (Epic Mode) or in the sale record on the Sales page, so you can see exactly which lots from that grant are being consumed and whether they are LT or ST.
+
+### Auto-generated payoff sales
+
+When you create a loan with **Payoff loan via sale** checked (the default), a payoff sale is created automatically:
+
+- **Date** — the loan's due date
+- **Shares** — gross-up calculation at the price on or just before the due date
+- **Price** — share price at the due date
+- **Lot selection** — same-tranche (originating grant's lots only)
+- **Tax rates** — your current Settings at creation time, locked to the sale record
+
+If you later change tax rate settings or add new share prices, the stored share count will be stale. Use **Regen payoff sales** on the Loans page to recompute share counts for all future payoff sales at once (this also updates the locked tax rates to your current settings).
+
+### Request Payoff (Epic Mode)
+
+In Epic Mode, each loan row shows a **Request Payoff** button instead of an Edit button. This opens a modal that shows the full payoff picture before you commit:
+
+1. **Outstanding balance** — principal + projected interest to the due date
+2. **Shares to sell** — gross-up result (after-tax proceeds ≥ balance)
+3. **Price per share** — share price at the due date
+4. **Est. gross proceeds** — shares × price
+5. **Sale date** — the loan due date
+6. **Lot Allocation table** — shows which lots from the originating grant are consumed, with LT/ST classification
+
+Tap **Confirm Payoff** to create the payoff sale. It appears immediately in the Sales list and on the Events timeline as a "Loan Payoff Sale" event.
+
+If a payoff sale for the loan already exists (e.g. auto-created at loan setup), Confirm Payoff returns the existing sale rather than creating a duplicate.
+
+---
 
 ## Features
 
 - **Event Timeline** — computed on the fly from grants, prices, and loans. Never stored. Shows income, capital gains, share price, and cumulative totals. A **Liquidation (projected)** event is auto-injected at the exit date: tap it to see a breakdown (shares × price → gross proceeds → est. tax → net). Events after the exit date are dimmed with a "beyond exit horizon" separator so it's clear they won't occur if you liquidate.
 - **Exit Planning** — set an exit date in Settings → Exit Planning to project a full liquidation at any point, even before your last vesting event. The projection uses only the shares and price available as of that date. Dashboard quick buttons update to include an **Exit date** shortcut; card values at the exit date correctly show 0 shares, 0 loan principal, and net cash (gross proceeds − loans − tax).
 - **Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, total interest, tax paid, cash received, next event) with an **As of** date picker and quick buttons: **Today**, **Last event** (final vesting date), and **Exit date** (when configured). Interactive charts include an Interest Over Time chart with guaranteed vs. projected interest-on-interest layers. Empty state shows getting-started prompts for new users.
-- **Stock Sales** — record share sales with configurable lot selection (LIFO/FIFO/same-tranche), LT/ST capital gains split, and Wisconsin tax calculator. Payoff sales can be linked to loans and auto-sized to cover the cash due after tax (gross-up calculation). Use "Regen payoff sales" on the Loans page to recompute all future payoff sale share counts after changing lot selection.
+- **Stock Sales** — plan or record share sales with configurable lot selection (Epic LIFO/FIFO/LIFO/Manual), LT/ST capital gains split, and Wisconsin tax calculator. Choose a $ target (shares auto-computed after-tax via gross-up) or enter shares directly. A live tranche table shows lot-level allocation per vest date with LT/ST classification. Manual mode makes each lot's allocation editable. For past-date sales, enter actual tax paid to override the estimate. See [Sales Workflow](#sales-workflow) for the full explanation.
 - **CRUD Management** — full create/read/update/delete for Grants, Loans, Prices, and Sales.
 - **Quick Flows** — convenience endpoints: "New Purchase" (grant + loan with optional stock down payment), "Annual Price", "Add Bonus".
 - **83(b) Election Support** — bonus/free grants can be flagged as having an 83(b) election filed. Vesting events for these grants show unrealized cap gains (violet `~$X`) instead of ordinary income, with a tappable card explaining the cost basis and potential LT cap gains tax at eventual sale.
@@ -84,7 +218,7 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 - **Push & Email Notifications** — configurable advance timing: day-of, 3 days before, or 1 week before each event. Per-user opt-in for each channel independently. Includes a "Send test" button to confirm push is working.
 - **Per-User Encryption** — AES-256-GCM column-level encryption. Two-level key hierarchy: `KEY_ENCRYPTION_KEY` (env var, set once, never changes) wraps an operational master key stored encrypted in the database. The master key can be rotated live from the admin panel — all replicas pick up the new key automatically within seconds, no restart required. Each user has a unique per-user key wrapped by the master key.
 - **Growth Price Estimator** — project future share prices via annual % growth from the current price. Default start date is the next March 1 (matching Epic's typical price announcement cadence). Generates one price per year through a configurable end date. Estimates are visually distinguished (italic, "est." badge) and automatically removed when a real price is added for the same date. Available in Epic Mode — tap **+ Estimate** on the Prices page.
-- **Epic Mode** — read-only deployment mode for use with Epic's managed data pipeline. When active, historical grant/price/loan/import writes are blocked (403) and the UI shows a "Historical data provided by Epic — view only" notice. Future price estimates remain writable (via **+ Price** for individual future dates, or **+ Estimate** for bulk growth projections). Each grant row shows a **Sell** button and each loan row shows a **Request Payoff** button so users can still take action on their own data. Toggled from Admin → Danger Zone, or hard-locked via the `EPIC_MODE=true` env var. A `POST /api/internal/cache-invalidate` webhook lets Epic's batch jobs pre-warm the Redis cache after writing. Past estimates are automatically cleaned up nightly and on page load once their date has passed.
+- **Epic Mode** — read-only deployment mode for use with Epic's managed data pipeline. When active, historical grant/price/loan/import writes are blocked (403) and the UI shows a "Historical data provided by Epic — view only" notice. Future price estimates remain writable (via **+ Price** for individual future dates, or **+ Estimate** for bulk growth projections). Each grant row shows a **Sell** button and each loan row shows a **Request Payoff** button (with lot allocation preview) so users can still act on their data. Sales are always writable but require a future date. Toggled from Admin → Danger Zone, or hard-locked via the `EPIC_MODE=true` env var. A `POST /api/internal/cache-invalidate` webhook lets Epic's batch jobs pre-warm the Redis cache after writing. Past estimates are automatically cleaned up nightly and on page load once their date has passed. See [Loan Payoff Flow](#loan-payoff-flow) for the Request Payoff modal detail.
 - **Maintenance Mode** — two distinct mechanisms: (1) app-managed downtime stored in the database — all replicas see the toggle instantly; financial API routes return 503 while auth and admin remain accessible; (2) deploy-time full downtime via a Caddy sentinel file (`./data/full_maintenance`) that serves a static 503 page while the app container is stopped.
 - **Dark/Light Mode** — auto-detects system preference, updates live.
 - **Mobile-First** — designed for 375px phone viewports.
@@ -403,7 +537,11 @@ All authenticated endpoints require a valid `session` cookie (set automatically 
 | GET/PUT/DELETE | `/api/prices/{id}` | Get/update/delete price |
 | GET/POST | `/api/sales` | List/create sales |
 | GET/PUT/DELETE | `/api/sales/{id}` | Get/update/delete sale |
-| GET | `/api/sales/{id}/tax-breakdown` | FIFO tax breakdown for a sale |
+| GET | `/api/sales/{id}/tax` | Tax breakdown for a sale |
+| GET | `/api/sales/tax` | Bulk tax breakdown for all sales |
+| GET | `/api/sales/lots` | Available share lots grouped by cost basis |
+| GET | `/api/sales/tranche-allocation` | Lot-level allocation for a proposed sale (date, shares, method) |
+| GET | `/api/sales/estimate` | Gross-up estimate: shares needed to net a target cash amount |
 | GET | `/api/loans/{id}/payoff-sale-suggestion` | Suggested gross-up sale for a loan |
 | POST | `/api/loans/regenerate-all-payoff-sales` | Recompute all future payoff sale share counts |
 | GET/POST | `/api/loan-payments` | List/create early loan payments |
@@ -531,11 +669,7 @@ If you run an instance for others: secure the database, use HTTPS, set `KEY_ENCR
 - **Events are never stored.** They're computed per-request from the three source tables (Grants, Loans, Prices). This eliminates sync issues entirely.
 - **core.py is frozen.** The event generation logic is tested against known-good values (89 events, cum_shares=558,500, cum_income=$144,325, cum_cap_gains=$1,224,195). Don't modify it.
 - **Excel import is per-sheet, not all-or-nothing.** Only the sheets present in the uploaded file are replaced (Schedule → grants, Loans → loans + payoff sales, Prices → prices). Sheets not included in the file are left untouched. The import flow validates first, previews second, writes third — all in one transaction. A backup snapshot of the affected data is saved automatically before each import (last 3 kept per user). Restore via `GET /api/import/backups` + `POST /api/import/backups/{id}/restore`.
-- **Lot selection method is user-configurable (default: LIFO).** In Tax Settings, users choose between:
-  - **LIFO** (default) — newest vested lots sold first. For rising stock this maximises cost basis and minimises cap gains.
-  - **FIFO** — oldest lots first. Maximises LT-qualified shares when stock was purchased long ago.
-  - **Same tranche** — lots from the same grant year/type sold first (chains into LIFO for any remainder). Matches each payoff sale to its originating grant.
-  - **Note:** The IRS may require a consistent lot selection method election at time of sale. Consult a tax advisor before changing this.
+- **Lot selection method is user-configurable (default: Epic LIFO).** See [Sales Workflow → Lot Selection Methods](#lot-selection-methods) for the full comparison table. In short: Epic LIFO minimises STCG; LIFO minimises total gains on rising stock; FIFO maximises LT-qualified shares; Manual gives full control via the tranche table. Loan payoff sales always use same-tranche regardless of this setting. The IRS may require a consistent election at time of sale — consult a tax advisor before changing.
 - **Payoff sale share counts are stored, not recomputed.** When a payoff sale is auto-generated, the share count is computed via gross-up and stored. It does not automatically update if you later change lot selection. Hit "Regen payoff sales" on the Loans page to refresh all future payoff sales at once.
 - **Down payment via stock exchange is non-taxable.** The `dp_shares` field on a grant records vested shares exchanged at exercise. They reduce the loan principal and generate no income or capital gains event. Shares are consumed in lowest-cost-basis order: Bonus (RSU) lots first, then oldest Purchase lots (FIFO). This minimises the opportunity cost of the exchange by preserving higher-basis lots for future sales.
 - **Cost basis for purchase grants is the purchase price, not FMV at vest.** For grants with a purchase price (`grant_price > 0`), vesting only lifts the sale restriction — it does not create a new tax event or step up the cost basis. Capital gains are computed as `sale price − purchase price`. For income/RSU grants (`grant_price = 0`), FMV at vesting is recognised as ordinary income and becomes the cost basis.

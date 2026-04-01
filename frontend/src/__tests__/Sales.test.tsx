@@ -118,8 +118,9 @@ describe('Sales', () => {
     renderSales()
     await waitFor(() => expect(screen.getByText('+ Sale')).toBeInTheDocument())
     await userEvent.click(screen.getByText('+ Sale'))
-    expect(screen.getByText('Record Sale')).toBeInTheDocument()
-    expect(screen.getByText('Save')).toBeInTheDocument()
+    // Form opens in Plan Sale mode (today's date = future or today)
+    expect(screen.getByText('Plan Sale')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Plan sale' })).toBeInTheDocument()
   })
 
   it('opens edit form via pencil icon', async () => {

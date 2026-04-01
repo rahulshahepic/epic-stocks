@@ -1,5 +1,5 @@
 from datetime import datetime, date, timezone
-from sqlalchemy import Integer, String, Float, BigInteger, Date, DateTime, ForeignKey, Boolean
+from sqlalchemy import Integer, String, Float, BigInteger, Date, DateTime, ForeignKey, Boolean, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
 from scaffold.crypto import EncryptedFloat, EncryptedInt, EncryptedString
@@ -127,6 +127,12 @@ class Sale(Base):
     state_lt_cg_rate: Mapped[float | None] = mapped_column(EncryptedFloat, nullable=True)
     state_st_cg_rate: Mapped[float | None] = mapped_column(EncryptedFloat, nullable=True)
     lt_holding_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Manual lot allocation: [{vest_date, grant_year, grant_type, basis_price, shares}, ...]
+    lot_overrides: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Groups related sales created together (e.g. payoff + cash-out from one plan)
+    sale_plan_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # User-recorded actual tax paid; overrides estimated tax in display for past sales
+    actual_tax_paid: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="sales")
 

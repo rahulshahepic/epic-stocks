@@ -1,4 +1,5 @@
 from datetime import datetime, date
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -7,7 +8,7 @@ from database import get_db
 from scaffold.models import User, Grant, Loan, Price, Sale, TaxSettings
 from schemas import SaleCreate, SaleUpdate, SaleOut, TaxSettingsRead, TaxSettingsUpdate, TaxBreakdown
 from scaffold.auth import get_current_user
-from app.sales_engine import compute_sale_tax, build_fifo_lots, compute_grossup_shares
+from app.sales_engine import compute_sale_tax, build_fifo_lots, compute_grossup_shares, build_lots_from_overrides
 
 router = APIRouter(prefix="/api/sales", tags=["sales"])
 tax_router = APIRouter(prefix="/api/tax-settings", tags=["tax-settings"])
@@ -118,7 +119,7 @@ def get_all_sale_taxes(user: User = Depends(get_current_user), db: Session = Dep
         for ln in db.query(LoanModel).filter(LoanModel.user_id == user.id).all():
             loan_map[ln.id] = (ln.grant_year, ln.grant_type)
 
-    lot_order = ts.lot_selection_method if ts.lot_selection_method in ('fifo', 'lifo', 'epic_lifo') else 'lifo'
+    lot_order = ts.lot_selection_method if ts.lot_selection_method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
 
     # Snapshot per-sale rate overrides while session is open
     sale_data = []
@@ -129,6 +130,7 @@ def get_all_sale_taxes(user: User = Depends(get_current_user), db: Session = Dep
             "shares": s.shares,
             "price_per_share": s.price_per_share,
             "loan_id": s.loan_id,
+            "lot_overrides": s.lot_overrides,
             "ts_dict": {
                 "federal_income_rate": s.federal_income_rate if s.federal_income_rate is not None else ts.federal_income_rate,
                 "federal_lt_cg_rate": s.federal_lt_cg_rate if s.federal_lt_cg_rate is not None else ts.federal_lt_cg_rate,
@@ -156,7 +158,8 @@ def get_all_sale_taxes(user: User = Depends(get_current_user), db: Session = Dep
 
     for s in sale_data:
         gy, gt = (loan_map.get(s["loan_id"]) or (None, None)) if s["loan_id"] and ts.lot_selection_method == 'same_tranche' else (None, None)
-        breakdown = compute_sale_tax(sorted_tl, {"date": s["date"], "shares": s["shares"], "price_per_share": s["price_per_share"]}, s["ts_dict"], lot_order=lot_order, grant_year=gy, grant_type=gt)
+        prebuilt = build_lots_from_overrides(sorted_tl, s["lot_overrides"], s["date"]) if s.get("lot_overrides") else None
+        breakdown = compute_sale_tax(sorted_tl, {"date": s["date"], "shares": s["shares"], "price_per_share": s["price_per_share"]}, s["ts_dict"], lot_order=lot_order, grant_year=gy, grant_type=gt, prebuilt_lots=prebuilt)
         result[s["id"]] = breakdown
 
         # Insert this sale into the sorted timeline for subsequent iterations
@@ -184,6 +187,10 @@ def list_sales(user: User = Depends(get_current_user), db: Session = Depends(get
 
 @router.post("", response_model=SaleOut, status_code=201)
 def create_sale(body: SaleCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from scaffold.epic_mode import is_epic_mode
+    from datetime import date as date_type
+    if is_epic_mode() and body.loan_id is None and body.date < date_type.today():
+        raise HTTPException(status_code=422, detail="Sales cannot be backdated in Epic mode — only future planned sales are allowed")
     if body.loan_id is not None:
         # Validate loan belongs to this user
         loan = db.query(Loan).filter(Loan.id == body.loan_id, Loan.user_id == user.id).first()
@@ -275,22 +282,119 @@ def get_sale_tax(sale_id: int, user: User = Depends(get_current_user), db: Sessi
         "state_st_cg_rate": sale.state_st_cg_rate if sale.state_st_cg_rate is not None else ts.state_st_cg_rate,
         "lt_holding_days": sale.lt_holding_days if sale.lt_holding_days is not None else ts.lt_holding_days,
     }
-    method = ts.lot_selection_method if ts else 'lifo'
-    lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'lifo'
+    method = ts.lot_selection_method if ts else 'epic_lifo'
+    lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
     gy, gt = None, None
     if method == 'same_tranche' and sale.loan_id:
         linked_loan = db.query(Loan).filter(Loan.id == sale.loan_id).first()
         if linked_loan:
             gy, gt = linked_loan.grant_year, linked_loan.grant_type
-    return compute_sale_tax(timeline, sale_dict, ts_dict, lot_order=lot_order, grant_year=gy, grant_type=gt)
+    prebuilt = build_lots_from_overrides(timeline, sale.lot_overrides, sale.date) if sale.lot_overrides else None
+    return compute_sale_tax(timeline, sale_dict, ts_dict, lot_order=lot_order, grant_year=gy, grant_type=gt, prebuilt_lots=prebuilt)
 
 
 # --- Estimate ---
+
+@router.get("/lots")
+def get_available_lots(
+    sale_date: str = Query(...),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return available share lots as of a given date, grouped by cost basis (descending)."""
+    from app.routers.loans import _build_timeline_for_user, _get_lot_selection_method, _get_tax_settings_dict
+    from collections import defaultdict
+
+    try:
+        as_of = date.fromisoformat(sale_date)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid sale_date format, expected YYYY-MM-DD")
+
+    method = _get_lot_selection_method(user, db)
+    lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
+    ts = _get_tax_settings_dict(user, db)
+    lt_days = int(ts.get("lt_holding_days", 365))
+
+    timeline = _build_timeline_for_user(user, db)
+    lots = build_fifo_lots(timeline, as_of, order=lot_order, lt_holding_days=lt_days)
+
+    by_cost: dict[float, int] = defaultdict(int)
+    for lot in lots:
+        # lot = [vest_date, shares_remaining, basis_price, grant_year, grant_type, hold_start_date]
+        by_cost[lot[2]] += lot[1]
+
+    grouped = [
+        {"cost_basis": k, "shares": v}
+        for k, v in sorted(by_cost.items(), reverse=True)
+        if v > 0
+    ]
+    return {"lots": grouped, "total_shares": sum(g["shares"] for g in grouped)}
+
+
+@router.get("/tranche-allocation")
+def get_tranche_allocation(
+    sale_date: str = Query(...),
+    shares: int = Query(default=0),
+    method: str = Query(default='epic_lifo'),
+    grant_year: Optional[int] = Query(default=None),
+    grant_type: Optional[str] = Query(default=None),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return lot-level allocation for a proposed sale. Read-only, no DB write."""
+    from app.routers.loans import _build_timeline_for_user, _get_tax_settings_dict
+    from app.date_utils import to_date as _to_date
+
+    try:
+        as_of = date.fromisoformat(sale_date)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid sale_date format, expected YYYY-MM-DD")
+
+    lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
+    ts = _get_tax_settings_dict(user, db)
+    lt_days = int(ts.get("lt_holding_days", 365))
+
+    timeline = _build_timeline_for_user(user, db)
+    lots = build_fifo_lots(timeline, as_of, order=lot_order, lt_holding_days=lt_days,
+                           grant_year=grant_year, grant_type=grant_type)
+
+    remaining = max(0, shares)
+    lines = []
+    for lot in lots:
+        vest_date = lot[0]
+        available = lot[1]
+        basis = lot[2]
+        gy = lot[3]
+        gt = lot[4]
+        hold_start = _to_date(lot[5]) if len(lot) > 5 else _to_date(vest_date)
+        allocated = min(available, remaining)
+        remaining -= allocated
+        hold_days = (as_of - hold_start).days
+        vd = vest_date.isoformat() if hasattr(vest_date, 'isoformat') else str(vest_date)
+        hsd = hold_start.isoformat() if hasattr(hold_start, 'isoformat') else str(hold_start)
+        lines.append({
+            "vest_date": vd,
+            "grant_year": gy,
+            "grant_type": gt,
+            "basis_price": basis,
+            "available_shares": available,
+            "allocated_shares": allocated,
+            "hold_start_date": hsd,
+            "is_lt": hold_days >= lt_days,
+        })
+
+    return {
+        "lines": lines,
+        "total_available": sum(l["available_shares"] for l in lines),
+        "total_allocated": sum(l["allocated_shares"] for l in lines),
+    }
+
 
 @router.get("/estimate")
 def estimate_sale(
     price_per_share: float = Query(...),
     target_net_cash: float = Query(...),
+    sale_date: str | None = Query(default=None),
     loan_id: int | None = Query(default=None),
     grant_year: int | None = Query(default=None),
     grant_type: str | None = Query(default=None),
@@ -308,7 +412,7 @@ def estimate_sale(
 
     ts = _get_tax_settings_dict(user, db)
     method = _get_lot_selection_method(user, db)
-    lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'lifo'
+    lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
     lt_days = int(ts.get("lt_holding_days", 365))
 
     # Resolve loan balance if a loan_id was provided
@@ -324,7 +428,7 @@ def estimate_sale(
                 gy, gt = loan.grant_year, loan.grant_type
 
     timeline = _build_timeline_for_user(user, db)
-    as_of = date.today()
+    as_of = date.fromisoformat(sale_date) if sale_date else date.today()
 
     lots = build_fifo_lots(timeline, as_of, order=lot_order,
                            grant_year=gy, grant_type=gt, lt_holding_days=lt_days)

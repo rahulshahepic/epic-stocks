@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ConflictError } from '../../api.ts'
-import type { PriceEntry, SaleEntry, TaxBreakdown, TaxSettings } from '../../api.ts'
+import type { PriceEntry, SaleEntry, SaleEstimate, SaleLots, TaxBreakdown, TaxSettings } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { broadcastChange, useDataSync } from '../hooks/useDataSync.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
@@ -289,11 +289,72 @@ export default function Sales() {
 
   useDataSync('sales', reload)
 
+  // Epic mode plan-sale state
+  type InputMode = 'dollars' | 'shares'
+  const [inputMode, setInputMode] = useState<InputMode>('dollars')
+  const [dollarTarget, setDollarTarget] = useState('')
+  const [lotsData, setLotsData] = useState<SaleLots | null>(null)
+  const [lotsLoading, setLotsLoading] = useState(false)
+  const [estimate, setEstimate] = useState<SaleEstimate | null>(null)
+  const [estimateLoading, setEstimateLoading] = useState(false)
+  const estimateTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   // In Epic mode, price per share is always derived from the prices table
   useEffect(() => {
     if (!epicMode || !prices || mode === 'list') return
     setForm(f => ({ ...f, price_per_share: priceAt(f.date, prices) }))
   }, [form.date, epicMode, prices, mode])
+
+  // Load available lots when date changes (Epic mode add form only)
+  useEffect(() => {
+    if (!epicMode || mode !== 'add' || !form.date) return
+    setLotsData(null)
+    setLotsLoading(true)
+    api.getSaleLots(form.date)
+      .then(d => setLotsData(d))
+      .catch(() => setLotsData(null))
+      .finally(() => setLotsLoading(false))
+  }, [form.date, epicMode, mode])
+
+  // Live estimate — debounced 400ms, triggered by dollar target or share count change
+  useEffect(() => {
+    if (!epicMode || mode !== 'add') return
+    const price = form.price_per_share
+    if (price <= 0) { setEstimate(null); return }
+
+    let targetCash: number | null = null
+    if (inputMode === 'dollars') {
+      const v = parseFloat(dollarTarget)
+      if (!dollarTarget || isNaN(v) || v <= 0) { setEstimate(null); return }
+      targetCash = v
+    } else {
+      const s = form.shares
+      if (!s || s <= 0) { setEstimate(null); return }
+      // For shares mode: estimate by passing gross as target (gives same shares back, but surfaces tax)
+      targetCash = s * price
+    }
+
+    if (estimateTimer.current) clearTimeout(estimateTimer.current)
+    estimateTimer.current = setTimeout(async () => {
+      setEstimateLoading(true)
+      try {
+        const result = await api.estimateSale({
+          price_per_share: price,
+          target_net_cash: targetCash!,
+          sale_date: form.date,
+        })
+        setEstimate(result)
+        // In dollars mode, push the computed shares into the form
+        if (inputMode === 'dollars') {
+          setForm(f => ({ ...f, shares: result.shares_needed }))
+        }
+      } catch {
+        setEstimate(null)
+      } finally {
+        setEstimateLoading(false)
+      }
+    }, 400)
+  }, [dollarTarget, form.shares, form.price_per_share, form.date, inputMode, epicMode, mode])
 
   function resetForm() {
     setForm(emptyForm)
@@ -302,6 +363,10 @@ export default function Sales() {
     setEditVersion(1)
     setError('')
     setConflict(false)
+    setDollarTarget('')
+    setEstimate(null)
+    setLotsData(null)
+    setInputMode('dollars')
   }
 
   function openAdd() {
@@ -397,7 +462,8 @@ export default function Sales() {
   if (!sales) return <p className="p-6 text-center text-sm text-red-500">Failed to load sales</p>
 
   if (mode !== 'list') {
-    const title = mode === 'add' ? 'Record Sale' : 'Edit Sale'
+    const title = mode === 'add' ? (epicMode ? 'Plan Sale' : 'Record Sale') : 'Edit Sale'
+    const isEpicAdd = epicMode && mode === 'add'
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -416,35 +482,136 @@ export default function Sales() {
           </div>
         )}
         {error && <p className="text-xs text-red-500">{error}</p>}
+
+        {/* Date + price row — always shown */}
         <div className="grid grid-cols-2 gap-3">
           <Field label="Sale Date" type="date" value={form.date} min={epicMode ? TODAY : undefined} onChange={v => setForm(f => ({ ...f, date: v }))} />
-          <Field label="Shares" type="number" value={form.shares} onChange={v => setForm(f => ({ ...f, shares: +v }))} />
-          {epicMode ? (
-            <label className="block">
-              <span className="text-[10px] text-gray-500 dark:text-gray-400">Price per Share</span>
+          <label className="block">
+            <span className="text-xs text-gray-500 dark:text-gray-400">Price per Share</span>
+            {isEpicAdd ? (
               <div className="mt-0.5 rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300">
                 {form.price_per_share > 0 ? fmtUSD(form.price_per_share) : <span className="text-gray-400">No price for this date</span>}
               </div>
-            </label>
-          ) : (
-            <Field label="Price per Share" type="number" step="0.01" value={form.price_per_share} onChange={v => setForm(f => ({ ...f, price_per_share: +v }))} />
-          )}
-          <div className="col-span-2">
+            ) : (
+              <input type="number" step="0.01" value={form.price_per_share}
+                onChange={e => setForm(f => ({ ...f, price_per_share: +e.target.value }))}
+                className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200" />
+            )}
+          </label>
+        </div>
+
+        {/* Epic mode: available lots panel */}
+        {isEpicAdd && (
+          <div className="rounded-md border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/50">
+            <div className="border-b border-gray-200 px-3 py-1.5 dark:border-gray-700">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                Available at {form.date || '—'}
+              </span>
+            </div>
+            {lotsLoading ? (
+              <p className="px-3 py-2 text-xs text-gray-400">Loading…</p>
+            ) : !lotsData || lotsData.lots.length === 0 ? (
+              <p className="px-3 py-2 text-xs text-gray-400">No vested shares at this date</p>
+            ) : (
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-[10px] text-gray-400">
+                    <th className="px-3 py-1 text-left font-medium">Cost Basis</th>
+                    <th className="px-3 py-1 text-right font-medium">Shares</th>
+                    <th className="px-3 py-1 text-right font-medium">Value</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                  {lotsData.lots.map(lot => (
+                    <tr key={lot.cost_basis} className="text-gray-700 dark:text-gray-300">
+                      <td className="px-3 py-1">{fmtUSD(lot.cost_basis)}</td>
+                      <td className="px-3 py-1 text-right">{lot.shares.toLocaleString()}</td>
+                      <td className="px-3 py-1 text-right">{fmtUSD(lot.shares * form.price_per_share)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t border-gray-200 font-medium dark:border-gray-600">
+                    <td className="px-3 py-1 text-gray-700 dark:text-gray-200">Total</td>
+                    <td className="px-3 py-1 text-right text-gray-700 dark:text-gray-200">{lotsData.total_shares.toLocaleString()}</td>
+                    <td className="px-3 py-1 text-right text-gray-700 dark:text-gray-200">{fmtUSD(lotsData.total_shares * form.price_per_share)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            )}
+          </div>
+        )}
+
+        {/* Epic mode: $ target / shares toggle + live estimate */}
+        {isEpicAdd ? (
+          <div className="space-y-3">
+            <div className="flex gap-1 rounded-md border border-gray-200 bg-gray-50 p-0.5 dark:border-gray-700 dark:bg-gray-800">
+              {(['dollars', 'shares'] as const).map(m => (
+                <button key={m} onClick={() => { setInputMode(m); setEstimate(null) }}
+                  className={`flex-1 rounded py-1 text-xs font-medium transition-colors ${inputMode === m ? 'bg-white shadow-sm text-gray-900 dark:bg-gray-700 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400'}`}>
+                  {m === 'dollars' ? '$ Target' : '# Shares'}
+                </button>
+              ))}
+            </div>
+
+            {inputMode === 'dollars' ? (
+              <label className="block">
+                <span className="text-xs text-gray-500 dark:text-gray-400">Target net cash</span>
+                <div className="relative mt-0.5">
+                  <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-xs text-gray-400">$</span>
+                  <input type="number" step="100" min="0" value={dollarTarget}
+                    onChange={e => setDollarTarget(e.target.value)}
+                    placeholder="0"
+                    className="block w-full rounded-md border border-gray-300 bg-white pl-5 pr-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200" />
+                </div>
+              </label>
+            ) : (
+              <Field label="Shares to sell" type="number" value={form.shares}
+                onChange={v => setForm(f => ({ ...f, shares: +v }))} />
+            )}
+
+            {/* Live estimate preview */}
+            {(estimate || estimateLoading) && (
+              <div className="rounded-md border border-indigo-100 bg-indigo-50 px-3 py-2.5 dark:border-indigo-900 dark:bg-indigo-950/40">
+                {estimateLoading ? (
+                  <p className="text-xs text-indigo-400">Calculating…</p>
+                ) : estimate && (
+                  <div className="space-y-1 text-xs">
+                    <Row label="Shares to sell" value={estimate.shares_needed.toLocaleString()} />
+                    <Row label="Gross proceeds" value={fmtUSD(estimate.gross_proceeds)} />
+                    <Row label="Est. tax" value={fmtUSD(estimate.estimated_tax)} />
+                    <Row label="Net cash" value={fmtUSD(estimate.net_proceeds)} bold />
+                  </div>
+                )}
+              </div>
+            )}
+
             <Field label="Notes (optional)" type="text" value={form.notes} onChange={v => setForm(f => ({ ...f, notes: v }))} />
           </div>
-        </div>
-        <TaxRateFields
-          rates={taxRates}
-          onChange={setTaxRates}
-          onReset={() => setTaxRates(ratesFromDefaults(taxSettings))}
-        />
+        ) : (
+          /* Non-Epic mode or edit mode: original fields */
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Shares" type="number" value={form.shares} onChange={v => setForm(f => ({ ...f, shares: +v }))} />
+            <div className="col-span-2">
+              <Field label="Notes (optional)" type="text" value={form.notes} onChange={v => setForm(f => ({ ...f, notes: v }))} />
+            </div>
+          </div>
+        )}
+
+        {!isEpicAdd && (
+          <TaxRateFields
+            rates={taxRates}
+            onChange={setTaxRates}
+            onReset={() => setTaxRates(ratesFromDefaults(taxSettings))}
+          />
+        )}
         <div className="flex items-center justify-between pt-2">
           <button
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || (isEpicAdd && form.shares <= 0)}
             className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
           >
-            {saving ? 'Saving...' : 'Save'}
+            {saving ? 'Saving…' : isEpicAdd ? 'Plan sale' : 'Save'}
           </button>
           {mode === 'edit' && editId != null && (
             <button

@@ -291,10 +291,47 @@ def get_sale_tax(sale_id: int, user: User = Depends(get_current_user), db: Sessi
 
 # --- Estimate ---
 
+@router.get("/lots")
+def get_available_lots(
+    sale_date: str = Query(...),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return available share lots as of a given date, grouped by cost basis (descending)."""
+    from app.routers.loans import _build_timeline_for_user, _get_lot_selection_method, _get_tax_settings_dict
+    from collections import defaultdict
+
+    try:
+        as_of = date.fromisoformat(sale_date)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid sale_date format, expected YYYY-MM-DD")
+
+    method = _get_lot_selection_method(user, db)
+    lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'lifo'
+    ts = _get_tax_settings_dict(user, db)
+    lt_days = int(ts.get("lt_holding_days", 365))
+
+    timeline = _build_timeline_for_user(user, db)
+    lots = build_fifo_lots(timeline, as_of, order=lot_order, lt_holding_days=lt_days)
+
+    by_cost: dict[float, int] = defaultdict(int)
+    for lot in lots:
+        # lot = [vest_date, shares_remaining, basis_price, grant_year, grant_type, hold_start_date]
+        by_cost[lot[2]] += lot[1]
+
+    grouped = [
+        {"cost_basis": k, "shares": v}
+        for k, v in sorted(by_cost.items(), reverse=True)
+        if v > 0
+    ]
+    return {"lots": grouped, "total_shares": sum(g["shares"] for g in grouped)}
+
+
 @router.get("/estimate")
 def estimate_sale(
     price_per_share: float = Query(...),
     target_net_cash: float = Query(...),
+    sale_date: str | None = Query(default=None),
     loan_id: int | None = Query(default=None),
     grant_year: int | None = Query(default=None),
     grant_type: str | None = Query(default=None),
@@ -328,7 +365,7 @@ def estimate_sale(
                 gy, gt = loan.grant_year, loan.grant_type
 
     timeline = _build_timeline_for_user(user, db)
-    as_of = date.today()
+    as_of = date.fromisoformat(sale_date) if sale_date else date.today()
 
     lots = build_fifo_lots(timeline, as_of, order=lot_order,
                            grant_year=gy, grant_type=gt, lt_holding_days=lt_days)

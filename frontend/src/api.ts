@@ -250,10 +250,13 @@ export const api = {
   deleteMyAccount: () => apiFetch<void>('/api/me', { method: 'DELETE' }),
 
   // Sales
-  estimateSale: (params: { price_per_share: number; target_net_cash: number; loan_id?: number; grant_year?: number; grant_type?: string }) => {
+  getSaleLots: (sale_date: string) =>
+    apiFetch<SaleLots>(`/api/sales/lots?sale_date=${encodeURIComponent(sale_date)}`),
+  estimateSale: (params: { price_per_share: number; target_net_cash: number; sale_date?: string; loan_id?: number; grant_year?: number; grant_type?: string }) => {
     const q = new URLSearchParams({
       price_per_share: String(params.price_per_share),
       target_net_cash: String(params.target_net_cash),
+      ...(params.sale_date != null ? { sale_date: params.sale_date } : {}),
       ...(params.loan_id != null ? { loan_id: String(params.loan_id) } : {}),
       ...(params.grant_year != null ? { grant_year: String(params.grant_year) } : {}),
       ...(params.grant_type != null ? { grant_type: params.grant_type } : {}),
@@ -443,6 +446,11 @@ export interface SaleEstimate {
   net_proceeds: number
   covers_loan: boolean | null
   loan_balance: number | null
+}
+
+export interface SaleLots {
+  lots: { cost_basis: number; shares: number }[]
+  total_shares: number
 }
 
 export interface LoanPayoffSuggestion {

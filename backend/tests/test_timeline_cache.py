@@ -90,7 +90,7 @@ def test_redis_l2_cache_hit():
     try:
         result = tc.get_timeline(1, _grants(), _prices(), [], 10.0)
         assert result == cached_tl
-        mock_redis.get.assert_called_once_with(f"timeline:1:{key}")
+        mock_redis.get.assert_called_once_with(ec._key(1, key))
     finally:
         ec._client = None
         tc._cache.clear()

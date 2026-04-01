@@ -48,11 +48,6 @@ function fmtNum(n: number) {
   return n.toLocaleString('en-US')
 }
 
-function latestPrice(prices: PriceEntry[] | null | undefined): number {
-  if (!prices || prices.length === 0) return 0
-  return prices.reduce((a, b) => a.effective_date > b.effective_date ? a : b).price
-}
-
 function priceAt(date: string, prices: PriceEntry[] | null | undefined): number {
   if (!prices || prices.length === 0) return 0
   let last = 0
@@ -138,13 +133,13 @@ export default function Grants() {
 
   function openPurchase() {
     resetForm()
-    setForm({ ...empty, type: 'Purchase', price: latestPrice(prices) })
+    setForm({ ...empty, type: 'Purchase', price: priceAt(new Date().toISOString().split('T')[0], prices) })
     setMode('add')
   }
 
   function openBonus() {
     resetForm()
-    setForm({ ...empty, type: 'Bonus', price: latestPrice(prices), dp_shares: 0 })
+    setForm({ ...empty, type: 'Bonus', price: priceAt(new Date().toISOString().split('T')[0], prices), dp_shares: 0 })
     setMode('add')
   }
 
@@ -296,7 +291,7 @@ export default function Grants() {
       if (addAnother) {
         const prevType = form.type
         resetForm()
-        setForm(() => ({ ...empty, type: prevType, price: latestPrice(prices) }))
+        setForm(() => ({ ...empty, type: prevType, price: priceAt(new Date().toISOString().split('T')[0], prices) }))
       } else {
         setMode('list')
         resetForm()

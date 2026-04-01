@@ -517,6 +517,26 @@ def test_grossup_insufficient_lots_fallback():
     assert shares >= math.ceil(cash_due / price)
 
 
+def test_estimate_with_shares_param_returns_exact_gross(client):
+    """Passing shares= to /estimate returns gross = shares * price, not a gross-up."""
+    register_user(client)
+    resp = client.get("/api/sales/estimate?price_per_share=8.78&shares=1&sale_date=2029-07-15")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["shares_needed"] == 1
+    assert abs(data["gross_proceeds"] - 8.78) < 0.01
+
+
+def test_estimate_with_target_net_cash_grosses_up(client):
+    """Passing target_net_cash= still performs the gross-up (original behaviour)."""
+    register_user(client)
+    # With LT tax rates in effect, selling to net $8.78 requires >1 share
+    resp = client.get("/api/sales/estimate?price_per_share=8.78&target_net_cash=8.78&sale_date=2029-07-15")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["shares_needed"] >= 1
+    assert data["gross_proceeds"] >= 8.78
+
 
 # ============================================================
 # LOAN PAYMENT CRUD TESTS

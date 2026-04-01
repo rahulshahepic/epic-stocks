@@ -163,6 +163,13 @@ jobs:
               write_env
             fi
 
+            # ── Signal maintenance before taking the app down ────────────────
+            # Write the sentinel file first so Caddy immediately starts serving
+            # the 503 page.  Without this, there is a brief window after the app
+            # container stops (but before the file exists) where Caddy returns 502.
+            docker run --rm -v caddy_appdata:/appdata alpine \
+              sh -c 'mkdir -p /appdata/epic-stocks && touch /appdata/epic-stocks/full_maintenance'
+
             # ── Bring app compose down before touching Caddy ────────────────
             # Stops app + db and removes any containers orphaned by the current
             # compose (e.g. caddy after it was moved to the infra compose file).
@@ -172,6 +179,8 @@ jobs:
             # ── Start/update shared infra Caddy ─────────────────────────────
             # Force-recreate so env vars (DOMAIN, ACME_EMAIL, TRUSTED_PROXY_IPS)
             # are always current. Certs are preserved in the caddy_data volume.
+            # The full_maintenance sentinel (written above) persists in the volume
+            # and is visible to Caddy immediately after it restarts.
             DOMAIN=$(grep "^DOMAIN=" .env | cut -d= -f2-)
             ACME_EMAIL=$(grep "^ACME_EMAIL=" .env | cut -d= -f2-)
             TRUSTED_PROXY_IPS=$(grep "^TRUSTED_PROXY_IPS=" .env | cut -d= -f2-)
@@ -179,10 +188,6 @@ jobs:
               docker compose -f infra/docker-compose.infra.yml up -d --force-recreate
 
             # ── Deploy app ───────────────────────────────────────────────────
-            # Full deploy downtime — Caddy serves the 503 page while app is down.
-            # Uses caddy_appdata volume (same one Caddy mounts at /appdata).
-            docker run --rm -v caddy_appdata:/appdata alpine \
-              sh -c 'mkdir -p /appdata/epic-stocks && touch /appdata/epic-stocks/full_maintenance'
 
             # Ensure db is up and healthy before running migrations
             docker compose up -d --wait --wait-timeout 60 db

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../../api.ts'
 import type { TimelineEvent, TaxBreakdown, TaxSettings } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
+import { useDataSync } from '../hooks/useDataSync.ts'
 import { TaxCard } from './Sales.tsx'
 import React from 'react'
 
@@ -137,8 +138,9 @@ function Unrealized83bCard({ e, ts }: { e: TimelineEvent; ts: TaxSettings }) {
 export default function Events() {
   const fetchEvents = useCallback(() => api.getEvents(), [])
   const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
-  const { data: events, loading } = useApiData<TimelineEvent[]>(fetchEvents)
+  const { data: events, loading, reload } = useApiData<TimelineEvent[]>(fetchEvents)
   const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
+  useDataSync('sales', reload)
   const [typeFilter, setTypeFilter] = useState<Set<string>>(new Set())
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false)
   const typeDropdownRef = useRef<HTMLDivElement>(null)

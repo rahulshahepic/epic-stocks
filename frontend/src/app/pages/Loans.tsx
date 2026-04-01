@@ -73,7 +73,7 @@ export default function Loans() {
   const [payoffSaleChecked, setPayoffSaleChecked] = useState(true)
   const [saleRates, setSaleRates] = useState<TaxRates>(DEFAULT_RATES)
   const [regenerating, setRegenerating] = useState(false)
-  const [payoffModal, setPayoffModal] = useState<{ loan: LoanEntry; suggestion: LoanPayoffSuggestion | null } | null>(null)
+  const [payoffModal, setPayoffModal] = useState<{ loan: LoanEntry; suggestion: LoanPayoffSuggestion | null; existingSale: SaleEntry | null } | null>(null)
   const [payoffExecuting, setPayoffExecuting] = useState(false)
   const [payoffError, setPayoffError] = useState('')
   const [payoffTranche, setPayoffTranche] = useState<TrancheAllocation | null>(null)
@@ -203,13 +203,14 @@ export default function Loans() {
   }
 
   async function openPayoffModal(loan: LoanEntry) {
-    setPayoffModal({ loan, suggestion: null })
+    const existingSale = sales?.find(s => s.loan_id === loan.id) ?? null
+    setPayoffModal({ loan, suggestion: null, existingSale })
     setPayoffError('')
     setPayoffTranche(null)
     setPayoffTrancheLoading(true)
     try {
       const suggestion = await api.getLoanPayoffSuggestion(loan.id)
-      setPayoffModal({ loan, suggestion })
+      setPayoffModal({ loan, suggestion, existingSale })
       // Fetch same-tranche allocation using the suggestion's date and shares
       try {
         const alloc = await api.getTrancheAllocation({
@@ -231,11 +232,23 @@ export default function Loans() {
   }
 
   async function handleExecutePayoff() {
-    if (!payoffModal) return
+    if (!payoffModal?.suggestion) return
     setPayoffExecuting(true)
     setPayoffError('')
     try {
-      await api.executePayoff(payoffModal.loan.id)
+      const { suggestion, existingSale, loan } = payoffModal
+      if (existingSale) {
+        await api.updateSale(existingSale.id, {
+          date: suggestion.date,
+          shares: suggestion.shares,
+          price_per_share: suggestion.price_per_share,
+          notes: suggestion.notes,
+          loan_id: loan.id,
+          version: existingSale.version,
+        })
+      } else {
+        await api.executePayoff(loan.id)
+      }
       broadcastChange('sales')
       reloadSales()
       closePayoffModal()
@@ -485,7 +498,7 @@ export default function Loans() {
 
       {payoffModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={closePayoffModal}>
-          <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl dark:bg-gray-900" onClick={e => e.stopPropagation()}>
+          <div className="w-full max-w-sm max-h-[90vh] overflow-y-auto rounded-lg bg-white p-5 shadow-xl dark:bg-gray-900" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Request Early Payoff</h3>
               <button onClick={closePayoffModal} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">✕</button>
@@ -493,6 +506,11 @@ export default function Loans() {
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {payoffModal.loan.grant_year} {payoffModal.loan.grant_type} — {payoffModal.loan.loan_type} loan
             </p>
+            {payoffModal.existingSale && (
+              <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                Existing payoff sale on {payoffModal.existingSale.date} will be updated.
+              </p>
+            )}
 
             {!payoffModal.suggestion && !payoffError && (
               <p className="mt-4 text-center text-xs text-gray-400">Loading estimate…</p>
@@ -544,7 +562,7 @@ export default function Loans() {
                 disabled={payoffExecuting || !payoffModal.suggestion}
                 className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
               >
-                {payoffExecuting ? 'Processing…' : 'Confirm Payoff'}
+                {payoffExecuting ? 'Processing…' : payoffModal.existingSale ? 'Update Payoff Sale' : 'Confirm Payoff'}
               </button>
             </div>
           </div>

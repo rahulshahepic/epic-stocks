@@ -43,7 +43,7 @@ export default function Settings() {
     state_lt_cg_rate: 0.0536,
     state_st_cg_rate: 0.0765,
     lt_holding_days: 365,
-    lot_selection_method: 'lifo',
+    lot_selection_method: 'epic_lifo',
     prefer_stock_dp: false,
     dp_min_percent: 0.10,
     dp_min_cap: 20000,
@@ -370,12 +370,12 @@ export default function Settings() {
               <dd className="font-medium text-gray-700 dark:text-gray-300">{taxSettings.lt_holding_days}d</dd>
             </div>
             <div className="flex justify-between col-span-2">
-              <dt className="text-gray-500 dark:text-gray-400">Lot selection</dt>
+              <dt className="text-gray-500 dark:text-gray-400">Manual sale lots</dt>
               <dd className="font-medium text-gray-700 dark:text-gray-300">
                 {taxSettings.lot_selection_method === 'fifo' ? 'FIFO (oldest first)' :
                  taxSettings.lot_selection_method === 'lifo' ? 'LIFO (newest first)' :
-                 taxSettings.lot_selection_method === 'epic_lifo' ? 'Epic LIFO (prefer long-term gains)' :
-                 'Same tranche'}
+                 taxSettings.lot_selection_method === 'manual_tranche' ? 'Manual (pick lots)' :
+                 'Epic LIFO (prefer LT gains)'}
               </dd>
             </div>
           </dl>
@@ -405,18 +405,21 @@ export default function Settings() {
                 </label>
               ))}
               <label className="block col-span-2">
-                <span className="text-xs text-gray-500 dark:text-gray-400">Lot Selection Method</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">Manual Sale Lot Method</span>
                 <select
                   value={taxForm.lot_selection_method}
                   onChange={e => setTaxForm(f => f ? { ...f, lot_selection_method: e.target.value as TaxSettings['lot_selection_method'] } : f)}
                   className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
                 >
+                  <option value="epic_lifo">Epic LIFO — LIFO, prefer long-term gains (default)</option>
                   <option value="fifo">FIFO — oldest lots first</option>
-                  <option value="lifo">LIFO — newest lots first (lowest cap gains for rising stock)</option>
-                  <option value="epic_lifo">Epic LIFO — LIFO but prefer long-term gains (avoids STCG when possible)</option>
-                  <option value="same_tranche">Same tranche — sell shares from the matching grant only</option>
+                  <option value="lifo">LIFO — newest lots first</option>
+                  <option value="manual_tranche">Manual — pick lots yourself</option>
                 </select>
-                <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+                <p className="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+                  Applies to manual sales only. Loan payoff sales always use same-tranche selection.
+                </p>
+                <p className="mt-0.5 text-[11px] text-amber-600 dark:text-amber-400">
                   The IRS may require a consistent lot selection method election at the time of sale. Consult a tax advisor before changing this.
                 </p>
               </label>

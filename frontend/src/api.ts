@@ -40,7 +40,15 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     let detail = `Error ${resp.status}`
     try {
       const body = await resp.json()
-      if (body?.detail) detail = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)
+      if (body?.detail) {
+        if (typeof body.detail === 'string') {
+          detail = body.detail
+        } else if (Array.isArray(body.detail)) {
+          detail = body.detail.map((e: { msg?: string }) => e.msg ?? JSON.stringify(e)).join('; ')
+        } else {
+          detail = JSON.stringify(body.detail)
+        }
+      }
     } catch { /* no json body */ }
     throw new Error(detail)
   }
@@ -242,10 +250,19 @@ export const api = {
   deleteMyAccount: () => apiFetch<void>('/api/me', { method: 'DELETE' }),
 
   // Sales
-  estimateSale: (params: { price_per_share: number; target_net_cash: number; loan_id?: number; grant_year?: number; grant_type?: string }) => {
+  getSaleLots: (sale_date: string) =>
+    apiFetch<SaleLots>(`/api/sales/lots?sale_date=${encodeURIComponent(sale_date)}`),
+  getTrancheAllocation: (params: { sale_date: string; shares: number; method: string; grant_year?: number; grant_type?: string }) => {
+    const q = new URLSearchParams({ sale_date: params.sale_date, shares: String(params.shares), method: params.method })
+    if (params.grant_year != null) q.set('grant_year', String(params.grant_year))
+    if (params.grant_type != null) q.set('grant_type', params.grant_type)
+    return apiFetch<TrancheAllocation>(`/api/sales/tranche-allocation?${q}`)
+  },
+  estimateSale: (params: { price_per_share: number; target_net_cash: number; sale_date?: string; loan_id?: number; grant_year?: number; grant_type?: string }) => {
     const q = new URLSearchParams({
       price_per_share: String(params.price_per_share),
       target_net_cash: String(params.target_net_cash),
+      ...(params.sale_date != null ? { sale_date: params.sale_date } : {}),
       ...(params.loan_id != null ? { loan_id: String(params.loan_id) } : {}),
       ...(params.grant_year != null ? { grant_year: String(params.grant_year) } : {}),
       ...(params.grant_type != null ? { grant_type: params.grant_type } : {}),
@@ -417,6 +434,10 @@ export interface SaleEntry {
   state_lt_cg_rate?: number | null
   state_st_cg_rate?: number | null
   lt_holding_days?: number | null
+  // Lot allocation + plan grouping + actual tax
+  lot_overrides?: Array<{ vest_date: string; grant_year: number | null; grant_type: string | null; basis_price: number; shares: number }> | null
+  sale_plan_id?: number | null
+  actual_tax_paid?: number | null
 }
 
 export interface LoanPaymentEntry {
@@ -437,6 +458,11 @@ export interface SaleEstimate {
   loan_balance: number | null
 }
 
+export interface SaleLots {
+  lots: { cost_basis: number; shares: number }[]
+  total_shares: number
+}
+
 export interface LoanPayoffSuggestion {
   date: string
   shares: number
@@ -455,10 +481,27 @@ export interface TaxSettings {
   state_lt_cg_rate: number
   state_st_cg_rate: number
   lt_holding_days: number
-  lot_selection_method: 'fifo' | 'lifo' | 'same_tranche' | 'epic_lifo'
+  lot_selection_method: 'fifo' | 'lifo' | 'epic_lifo' | 'manual_tranche'
   prefer_stock_dp: boolean
   dp_min_percent: number
   dp_min_cap: number
+}
+
+export interface TrancheLine {
+  vest_date: string
+  grant_year: number | null
+  grant_type: string | null
+  basis_price: number
+  available_shares: number
+  allocated_shares: number
+  hold_start_date: string
+  is_lt: boolean
+}
+
+export interface TrancheAllocation {
+  lines: TrancheLine[]
+  total_available: number
+  total_allocated: number
 }
 
 export interface HorizonSettings {

@@ -3,8 +3,9 @@ import { api, ConflictError } from '../../api.ts'
 import type { LoanEntry, LoanPayoffSuggestion, SaleEntry, TaxSettings } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { broadcastChange, useDataSync } from '../hooks/useDataSync.ts'
-import { TaxRateFields, ratesFromDefaults, ratesFromSale, DEFAULT_RATES } from './Sales.tsx'
+import { TaxRateFields, TrancheTable, ratesFromDefaults, ratesFromSale, DEFAULT_RATES } from './Sales.tsx'
 import type { TaxRates } from './Sales.tsx'
+import type { TrancheAllocation } from '../../api.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 
 type LoanForm = Omit<LoanEntry, 'id' | 'version'>
@@ -75,6 +76,8 @@ export default function Loans() {
   const [payoffModal, setPayoffModal] = useState<{ loan: LoanEntry; suggestion: LoanPayoffSuggestion | null } | null>(null)
   const [payoffExecuting, setPayoffExecuting] = useState(false)
   const [payoffError, setPayoffError] = useState('')
+  const [payoffTranche, setPayoffTranche] = useState<TrancheAllocation | null>(null)
+  const [payoffTrancheLoading, setPayoffTrancheLoading] = useState(false)
 
   const config = useConfig()
   const epicMode = !!config?.epic_mode
@@ -194,14 +197,36 @@ export default function Loans() {
     }
   }
 
+  function closePayoffModal() {
+    setPayoffModal(null)
+    setPayoffTranche(null)
+  }
+
   async function openPayoffModal(loan: LoanEntry) {
     setPayoffModal({ loan, suggestion: null })
     setPayoffError('')
+    setPayoffTranche(null)
+    setPayoffTrancheLoading(true)
     try {
       const suggestion = await api.getLoanPayoffSuggestion(loan.id)
       setPayoffModal({ loan, suggestion })
+      // Fetch same-tranche allocation using the suggestion's date and shares
+      try {
+        const alloc = await api.getTrancheAllocation({
+          sale_date: suggestion.date,
+          shares: suggestion.shares,
+          method: 'epic_lifo',
+          grant_year: loan.grant_year,
+          grant_type: loan.grant_type,
+        })
+        setPayoffTranche(alloc)
+      } catch {
+        // tranche load is non-fatal
+      }
     } catch {
       setPayoffError('Failed to load payoff estimate')
+    } finally {
+      setPayoffTrancheLoading(false)
     }
   }
 
@@ -213,7 +238,7 @@ export default function Loans() {
       await api.executePayoff(payoffModal.loan.id)
       broadcastChange('sales')
       reloadSales()
-      setPayoffModal(null)
+      closePayoffModal()
     } catch (e: unknown) {
       setPayoffError(e instanceof Error ? e.message : 'Failed to execute payoff')
     } finally {
@@ -459,11 +484,11 @@ export default function Loans() {
       <p className="text-xs text-gray-400">{loans.length} loans</p>
 
       {payoffModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setPayoffModal(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={closePayoffModal}>
           <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl dark:bg-gray-900" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Request Early Payoff</h3>
-              <button onClick={() => setPayoffModal(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">✕</button>
+              <button onClick={closePayoffModal} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">✕</button>
             </div>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {payoffModal.loan.grant_year} {payoffModal.loan.grant_type} — {payoffModal.loan.loan_type} loan
@@ -474,34 +499,46 @@ export default function Loans() {
             )}
 
             {payoffModal.suggestion && (
-              <dl className="mt-4 space-y-2 text-xs">
-                <div className="flex justify-between">
-                  <dt className="text-gray-500 dark:text-gray-400">Outstanding balance</dt>
-                  <dd className="font-medium text-gray-900 dark:text-gray-100">{payoffModal.suggestion.cash_due.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</dd>
+              <>
+                <dl className="mt-4 space-y-2 text-xs">
+                  <div className="flex justify-between">
+                    <dt className="text-gray-500 dark:text-gray-400">Outstanding balance</dt>
+                    <dd className="font-medium text-gray-900 dark:text-gray-100">{payoffModal.suggestion.cash_due.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-gray-500 dark:text-gray-400">Shares to sell</dt>
+                    <dd className="font-medium text-gray-900 dark:text-gray-100">{payoffModal.suggestion.shares.toLocaleString('en-US')}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-gray-500 dark:text-gray-400">Price per share</dt>
+                    <dd className="font-medium text-gray-900 dark:text-gray-100">{payoffModal.suggestion.price_per_share.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 })}</dd>
+                  </div>
+                  <div className="flex justify-between border-t border-gray-100 pt-2 dark:border-gray-700">
+                    <dt className="text-gray-500 dark:text-gray-400">Est. gross proceeds</dt>
+                    <dd className="font-medium text-gray-900 dark:text-gray-100">{(payoffModal.suggestion.shares * payoffModal.suggestion.price_per_share).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-gray-500 dark:text-gray-400">Sale date</dt>
+                    <dd className="font-medium text-gray-900 dark:text-gray-100">{payoffModal.suggestion.date}</dd>
+                  </div>
+                </dl>
+                <div className="mt-3">
+                  <TrancheTable
+                    lines={payoffTranche?.lines ?? []}
+                    loading={payoffTrancheLoading && !payoffTranche}
+                    manual={false}
+                    manualAlloc={{}}
+                    onManualChange={() => {}}
+                    date={payoffModal.suggestion.date}
+                  />
                 </div>
-                <div className="flex justify-between">
-                  <dt className="text-gray-500 dark:text-gray-400">Shares to sell</dt>
-                  <dd className="font-medium text-gray-900 dark:text-gray-100">{payoffModal.suggestion.shares.toLocaleString('en-US')}</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-gray-500 dark:text-gray-400">Price per share</dt>
-                  <dd className="font-medium text-gray-900 dark:text-gray-100">{payoffModal.suggestion.price_per_share.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 })}</dd>
-                </div>
-                <div className="flex justify-between border-t border-gray-100 pt-2 dark:border-gray-700">
-                  <dt className="text-gray-500 dark:text-gray-400">Est. gross proceeds</dt>
-                  <dd className="font-medium text-gray-900 dark:text-gray-100">{(payoffModal.suggestion.shares * payoffModal.suggestion.price_per_share).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-gray-500 dark:text-gray-400">Sale date</dt>
-                  <dd className="font-medium text-gray-900 dark:text-gray-100">{payoffModal.suggestion.date}</dd>
-                </div>
-              </dl>
+              </>
             )}
 
             {payoffError && <p className="mt-3 text-xs text-red-600 dark:text-red-400">{payoffError}</p>}
 
             <div className="mt-4 flex justify-end gap-2">
-              <button onClick={() => setPayoffModal(null)} className="rounded-md px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
+              <button onClick={closePayoffModal} className="rounded-md px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
               <button
                 onClick={handleExecutePayoff}
                 disabled={payoffExecuting || !payoffModal.suggestion}

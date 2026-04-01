@@ -80,7 +80,7 @@ function buildLotOverrides(
     .filter((x): x is NonNullable<typeof x> => x !== null)
 }
 
-function TrancheTable({
+export function TrancheTable({
   lines, loading, manual, manualAlloc, onManualChange, date: saleDate,
 }: {
   lines: TrancheLine[]; loading: boolean; manual: boolean

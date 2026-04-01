@@ -53,7 +53,18 @@ def get(user_id: int, data_hash: str) -> Optional[list]:
         return None
     try:
         raw = _client.get(_key(user_id, data_hash))
-        return json.loads(raw) if raw else None
+        if not raw:
+            return None
+        timeline = json.loads(raw)
+        # Restore date strings to datetime objects (serialised as YYYY-MM-DD by put())
+        for event in timeline:
+            d = event.get("date")
+            if isinstance(d, str):
+                try:
+                    event["date"] = datetime.strptime(d, "%Y-%m-%d")
+                except ValueError:
+                    pass
+        return timeline
     except Exception:
         logger.debug("Redis get failed for user %s", user_id, exc_info=True)
         return None

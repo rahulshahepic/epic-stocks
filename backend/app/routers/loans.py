@@ -46,7 +46,16 @@ def _get_tax_settings_dict(user: User, db: Session) -> dict:
 
 def _get_lot_selection_method(user: User, db: Session) -> str:
     ts = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
-    return ts.lot_selection_method if ts else 'lifo'
+    return ts.lot_selection_method if ts else 'epic_lifo'
+
+
+def _tax_rate_fields(ts: dict) -> dict:
+    """Extract per-sale tax rate fields from a TaxSettings dict."""
+    return {k: ts[k] for k in (
+        "federal_income_rate", "federal_lt_cg_rate", "federal_st_cg_rate",
+        "niit_rate", "state_income_rate", "state_lt_cg_rate", "state_st_cg_rate",
+        "lt_holding_days",
+    )}
 
 
 def _build_timeline_for_user(user: User, db: Session) -> list:
@@ -138,12 +147,12 @@ def _compute_payoff_sale(loan: Loan, user: User, db: Session) -> dict:
     ))
 
     ts = _get_tax_settings_dict(user, db)
-    method = _get_lot_selection_method(user, db)
-    lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
-    gy = loan.grant_year if method == 'same_tranche' else None
-    gt = loan.grant_type if method == 'same_tranche' else None
     lt_days = int(ts.get("lt_holding_days", 365))
-    lots = build_fifo_lots(timeline, loan.due_date, order=lot_order, grant_year=gy, grant_type=gt, lt_holding_days=lt_days)
+    # Payoff sales always use same-tranche: shares must come from the originating grant.
+    # Within a single tranche all lots have the same schedule so lot_order is irrelevant.
+    lots = build_fifo_lots(timeline, loan.due_date, order='epic_lifo',
+                           grant_year=loan.grant_year, grant_type=loan.grant_type,
+                           lt_holding_days=lt_days)
     shares = compute_grossup_shares(lots, cash_due, price, loan.due_date, ts)
 
     loan_label = loan.loan_number or f"{loan.grant_year}/{loan.loan_type}"
@@ -187,6 +196,7 @@ def create_loan(
     if generate_payoff_sale:
         suggestion = _compute_payoff_sale(loan, user, db)
         if suggestion["shares"] > 0 and suggestion["price_per_share"] > 0:
+            ts = _get_tax_settings_dict(user, db)
             sale = Sale(
                 user_id=user.id,
                 date=suggestion["date"],
@@ -194,6 +204,7 @@ def create_loan(
                 price_per_share=suggestion["price_per_share"],
                 loan_id=loan.id,
                 notes=suggestion["notes"],
+                **_tax_rate_fields(ts),
             )
             db.add(sale)
             db.commit()
@@ -249,6 +260,7 @@ def execute_payoff(loan_id: int, user: User = Depends(get_current_user), db: Ses
     if suggestion["shares"] <= 0 or suggestion["price_per_share"] <= 0:
         raise HTTPException(status_code=400, detail="Loan balance is zero — no sale needed")
 
+    ts = _get_tax_settings_dict(user, db)
     sale = Sale(
         user_id=user.id,
         date=suggestion["date"],
@@ -256,6 +268,11 @@ def execute_payoff(loan_id: int, user: User = Depends(get_current_user), db: Ses
         price_per_share=suggestion["price_per_share"],
         loan_id=loan.id,
         notes=suggestion["notes"],
+        **{k: ts[k] for k in (
+            "federal_income_rate", "federal_lt_cg_rate", "federal_st_cg_rate",
+            "niit_rate", "state_income_rate", "state_lt_cg_rate", "state_st_cg_rate",
+            "lt_holding_days",
+        )},
     )
     db.add(sale)
     db.commit()
@@ -300,12 +317,15 @@ def update_loan(
 
     if regenerate_payoff_sale:
         suggestion = _compute_payoff_sale(loan, user, db)
+        ts = _get_tax_settings_dict(user, db)
         existing_sale = db.query(Sale).filter(Sale.loan_id == loan.id, Sale.user_id == user.id).first()
         if existing_sale:
             existing_sale.date = suggestion["date"]
             existing_sale.shares = suggestion["shares"]
             existing_sale.price_per_share = suggestion["price_per_share"]
             existing_sale.notes = suggestion["notes"]
+            for k, v in _tax_rate_fields(ts).items():
+                setattr(existing_sale, k, v)
             db.commit()
         elif suggestion["shares"] > 0 and suggestion["price_per_share"] > 0:
             db.add(Sale(
@@ -315,6 +335,7 @@ def update_loan(
                 price_per_share=suggestion["price_per_share"],
                 loan_id=loan.id,
                 notes=suggestion["notes"],
+                **_tax_rate_fields(ts),
             ))
             db.commit()
 
@@ -329,6 +350,7 @@ def regenerate_all_payoff_sales(user: User = Depends(get_current_user), db: Sess
     from datetime import date as date_type
     today = date_type.today()
     future_loans = db.query(Loan).filter(Loan.user_id == user.id, Loan.due_date >= today).all()
+    ts = _get_tax_settings_dict(user, db)
     updated = 0
     for loan in future_loans:
         existing_sale = db.query(Sale).filter(Sale.loan_id == loan.id, Sale.user_id == user.id).first()
@@ -339,6 +361,8 @@ def regenerate_all_payoff_sales(user: User = Depends(get_current_user), db: Sess
         existing_sale.shares = suggestion["shares"]
         existing_sale.price_per_share = suggestion["price_per_share"]
         existing_sale.notes = suggestion["notes"]
+        for k, v in _tax_rate_fields(ts).items():
+            setattr(existing_sale, k, v)
         updated += 1
     db.commit()
     from app.event_cache import schedule_recompute

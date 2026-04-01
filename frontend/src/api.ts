@@ -252,8 +252,10 @@ export const api = {
   // Sales
   getSaleLots: (sale_date: string) =>
     apiFetch<SaleLots>(`/api/sales/lots?sale_date=${encodeURIComponent(sale_date)}`),
-  getTrancheAllocation: (params: { sale_date: string; shares: number; method: string }) => {
+  getTrancheAllocation: (params: { sale_date: string; shares: number; method: string; grant_year?: number; grant_type?: string }) => {
     const q = new URLSearchParams({ sale_date: params.sale_date, shares: String(params.shares), method: params.method })
+    if (params.grant_year != null) q.set('grant_year', String(params.grant_year))
+    if (params.grant_type != null) q.set('grant_type', params.grant_type)
     return apiFetch<TrancheAllocation>(`/api/sales/tranche-allocation?${q}`)
   },
   estimateSale: (params: { price_per_share: number; target_net_cash: number; sale_date?: string; loan_id?: number; grant_year?: number; grant_type?: string }) => {

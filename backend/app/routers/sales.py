@@ -1,4 +1,5 @@
 from datetime import datetime, date
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -335,6 +336,8 @@ def get_tranche_allocation(
     sale_date: str = Query(...),
     shares: int = Query(default=0),
     method: str = Query(default='epic_lifo'),
+    grant_year: Optional[int] = Query(default=None),
+    grant_type: Optional[str] = Query(default=None),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -352,7 +355,8 @@ def get_tranche_allocation(
     lt_days = int(ts.get("lt_holding_days", 365))
 
     timeline = _build_timeline_for_user(user, db)
-    lots = build_fifo_lots(timeline, as_of, order=lot_order, lt_holding_days=lt_days)
+    lots = build_fifo_lots(timeline, as_of, order=lot_order, lt_holding_days=lt_days,
+                           grant_year=grant_year, grant_type=grant_type)
 
     remaining = max(0, shares)
     lines = []

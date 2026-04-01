@@ -30,7 +30,7 @@ def _to_date(val) -> date:
         return val.date()
     if isinstance(val, date):
         return val
-    return datetime.strptime(str(val), "%Y-%m-%d").date()
+    return date.fromisoformat(str(val)[:10])
 
 
 def _to_year(val) -> int:

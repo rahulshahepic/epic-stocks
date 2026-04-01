@@ -88,6 +88,8 @@ export function TrancheTable({
 }) {
   if (loading) return <p className="px-1 text-xs text-gray-400">Loading lots…</p>
   if (!lines.length) return <p className="px-1 text-xs text-gray-400">No vested shares at this date</p>
+  const displayLines = manual ? lines : lines.filter(l => l.allocated_shares > 0)
+  if (!manual && displayLines.length === 0) return null
   const totalAlloc = lines.reduce((s, l) => {
     const key = `${l.vest_date}|${l.grant_year}|${l.grant_type}`
     return s + (manual ? (manualAlloc[key] ?? l.allocated_shares) : l.allocated_shares)
@@ -110,7 +112,7 @@ export function TrancheTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-          {lines.map(line => {
+          {displayLines.map(line => {
             const key = `${line.vest_date}|${line.grant_year}|${line.grant_type}`
             const allocated = manual ? (manualAlloc[key] ?? line.allocated_shares) : line.allocated_shares
             return (
@@ -144,7 +146,7 @@ export function TrancheTable({
             )
           })}
         </tbody>
-        {lines.length > 1 && (
+        {displayLines.length > 1 && (
           <tfoot>
             <tr className="border-t border-gray-200 font-medium dark:border-gray-600">
               <td className="px-3 py-1 text-gray-700 dark:text-gray-200">Total</td>

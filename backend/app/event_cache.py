@@ -9,6 +9,7 @@ where data_hash matches timeline_cache._hash() for the same input data.
 """
 import json
 import logging
+import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -40,8 +41,11 @@ def close() -> None:
         _client = None
 
 
+_CACHE_VERSION = os.getenv("VITE_COMMIT_SHA", "dev")
+
+
 def _key(user_id: int, data_hash: str) -> str:
-    return f"timeline:{user_id}:{data_hash}"
+    return f"timeline:{_CACHE_VERSION}:{user_id}:{data_hash}"
 
 
 def get(user_id: int, data_hash: str) -> Optional[list]:
@@ -59,7 +63,11 @@ def put(user_id: int, data_hash: str, timeline: list) -> None:
     if not _client:
         return
     try:
-        _client.setex(_key(user_id, data_hash), _TTL, json.dumps(timeline, default=str))
+        def _json_default(v):
+            if isinstance(v, datetime):
+                return v.strftime("%Y-%m-%d")
+            return str(v)
+        _client.setex(_key(user_id, data_hash), _TTL, json.dumps(timeline, default=_json_default))
     except Exception:
         logger.debug("Redis put failed for user %s", user_id, exc_info=True)
 

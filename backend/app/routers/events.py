@@ -8,17 +8,9 @@ from scaffold.models import User, Grant, Loan, Price, LoanPayment, Sale, TaxSett
 from scaffold.auth import get_current_user
 from app.timeline_cache import get_timeline
 from app.sales_engine import compute_sale_tax
+from app.date_utils import to_date as _to_date
 
 router = APIRouter(prefix="/api", tags=["events"])
-
-
-def _to_date(d) -> date:
-    """Normalise event date to datetime.date — handles datetime, ISO string, or date."""
-    if isinstance(d, datetime):
-        return d.date()
-    if isinstance(d, str):
-        return date.fromisoformat(d[:10])
-    return d
 
 
 def _user_source_data(user: User, db: Session):
@@ -260,9 +252,7 @@ def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales:
         last_cum_income = 0.0
         last_cum_cap_gains = 0.0
         for ev in enriched:
-            edate = ev["date"]
-            if isinstance(edate, datetime):
-                edate = edate.date()
+            edate = _to_date(ev["date"])
             if edate > horizon_date:
                 break
             p = ev.get("share_price", 0.0)
@@ -303,7 +293,7 @@ def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales:
 
 def _sort_key(e: dict) -> tuple:
     d = e["date"]
-    return (d.date() if isinstance(d, datetime) else d, 0 if e.get("event_type") == "Vesting" else 1)
+    return (_to_date(d), 0 if e.get("event_type") == "Vesting" else 1)
 
 
 def _annotate_sale_taxes(enriched: list, timeline: list, ts_dict: dict,
@@ -321,9 +311,7 @@ def _annotate_sale_taxes(enriched: list, timeline: list, ts_dict: dict,
     for e in enriched:
         if e.get("event_type") != "Sale":
             continue
-        sale_date = e["date"]
-        if isinstance(sale_date, datetime):
-            sale_date = sale_date.date()
+        sale_date = _to_date(e["date"])
         shares = abs(e.get("vested_shares") or 0)
         price_per_share = round(e["gross_proceeds"] / shares, 10) if shares else 0.0
         sale_id = e.get("sale_id")
@@ -349,9 +337,7 @@ def _annotate_sale_taxes(enriched: list, timeline: list, ts_dict: dict,
     for e in enriched:
         if e.get("event_type") != "Liquidation (projected)":
             continue
-        liq_date = e["date"]
-        if isinstance(liq_date, datetime):
-            liq_date = liq_date.date()
+        liq_date = _to_date(e["date"])
         shares = abs(e.get("vested_shares") or 0)
         if shares == 0:
             continue
@@ -529,11 +515,7 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
     last = timeline[-1] if timeline else {}
     next_event = None
     for e in timeline:
-        edate = e["date"]
-        if isinstance(edate, datetime):
-            edate = edate.date()
-        elif isinstance(edate, str):
-            edate = date.fromisoformat(edate[:10])
+        edate = _to_date(e["date"])
         if edate >= today:
             next_event = {"date": edate.isoformat(), "event_type": e["event_type"]}
             break

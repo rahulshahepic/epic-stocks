@@ -7,11 +7,7 @@ import math
 from collections import deque
 from datetime import date, datetime
 
-
-def _to_date(d) -> date:
-    if isinstance(d, datetime):
-        return d.date()
-    return d
+from app.date_utils import to_date as _to_date
 
 
 def build_fifo_lots(

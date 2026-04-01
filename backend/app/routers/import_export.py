@@ -15,6 +15,7 @@ from scaffold.auth import get_current_user
 from app.excel_io import (read_grants_from_excel, read_prices_from_excel, read_loans_from_excel,
                       read_loan_payments_from_excel, read_sales_from_excel, write_events_to_excel)
 from app.timeline_cache import get_timeline
+from app.date_utils import to_date as _to_date
 from schemas import LOAN_TYPES
 
 import openpyxl
@@ -23,14 +24,6 @@ from openpyxl.styles import Font, PatternFill
 _MAX_BACKUPS_PER_USER = 3
 
 router = APIRouter(prefix="/api", tags=["import_export"])
-
-
-def _to_date(val) -> date:
-    if isinstance(val, datetime):
-        return val.date()
-    if isinstance(val, date):
-        return val
-    return datetime.strptime(str(val), "%Y-%m-%d").date()
 
 
 def _to_year(val) -> int:

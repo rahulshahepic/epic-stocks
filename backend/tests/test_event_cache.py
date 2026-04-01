@@ -29,7 +29,7 @@ def test_get_returns_cached_timeline():
     try:
         result = ec.get(42, "hash123")
         assert result == timeline
-        mock_redis.get.assert_called_once_with("timeline:42:hash123")
+        mock_redis.get.assert_called_once_with(ec._key(42, "hash123"))
     finally:
         ec._client = None
 
@@ -54,7 +54,7 @@ def test_put_stores_serialized_timeline():
         ec.put(42, "hash123", timeline)
         mock_redis.setex.assert_called_once()
         args = mock_redis.setex.call_args[0]
-        assert args[0] == "timeline:42:hash123"
+        assert args[0] == ec._key(42, "hash123")
         assert args[1] == ec._TTL
         assert json.loads(args[2]) == timeline
     finally:

@@ -31,7 +31,7 @@ test.describe('Sales journey', () => {
 
     // Set a past date — title switches to Record Sale
     await page.getByLabel('Sale Date').fill('2026-03-01')
-    await expect(page.getByText('Record Sale')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Record Sale' })).toBeVisible()
 
     // Switch to # Shares mode and fill shares
     await page.getByRole('button', { name: '# Shares' }).click()

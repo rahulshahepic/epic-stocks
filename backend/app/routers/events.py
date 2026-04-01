@@ -299,11 +299,13 @@ def _sort_key(e: dict) -> tuple:
 def _annotate_sale_taxes(enriched: list, timeline: list, ts_dict: dict,
                           lot_order: str = 'lifo',
                           sale_overrides: dict | None = None,
-                          sale_loan_map: dict | None = None) -> None:
+                          sale_loan_map: dict | None = None,
+                          sale_lot_overrides: dict | None = None) -> None:
     """
     Compute estimated_tax for each Sale event in place, in chronological order.
     Prior sales are injected as negative vested_shares so lots are consumed correctly.
     """
+    from app.sales_engine import build_lots_from_overrides
     # Sort once; insert prior-sale sentinel entries incrementally via bisect.
     sorted_tl = sorted(timeline, key=_sort_key)
     sort_keys: list[tuple] = [_sort_key(e) for e in sorted_tl]
@@ -317,7 +319,9 @@ def _annotate_sale_taxes(enriched: list, timeline: list, ts_dict: dict,
         sale_id = e.get("sale_id")
         effective_ts = (sale_overrides or {}).get(sale_id, ts_dict) if sale_id else ts_dict
         gy, gt = ((sale_loan_map or {}).get(sale_id) or (None, None)) if sale_id else (None, None)
-        result = compute_sale_tax(sorted_tl, {"date": sale_date, "shares": shares, "price_per_share": price_per_share}, effective_ts, lot_order=lot_order, grant_year=gy, grant_type=gt)
+        lot_ovrs = (sale_lot_overrides or {}).get(sale_id) if sale_id else None
+        prebuilt = build_lots_from_overrides(sorted_tl, lot_ovrs, sale_date) if lot_ovrs else None
+        result = compute_sale_tax(sorted_tl, {"date": sale_date, "shares": shares, "price_per_share": price_per_share}, effective_ts, lot_order=lot_order, grant_year=gy, grant_type=gt, prebuilt_lots=prebuilt)
         e["estimated_tax"] = result["estimated_tax"]
         e["st_shares"] = result["st_shares"]
         # Append prior-sale entry in sorted order for the next iteration.
@@ -379,9 +383,11 @@ def get_events(user: User = Depends(get_current_user), db: Session = Depends(get
         "lt_holding_days": ts_row.lt_holding_days,
     } if ts_row else None
 
-    lot_order = 'fifo' if ts_row and ts_row.lot_selection_method == 'fifo' else 'lifo'
+    method = ts_row.lot_selection_method if ts_row else 'epic_lifo'
+    lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
     sale_overrides: dict = {}
     sale_loan_map: dict = {}
+    sale_lot_overrides: dict = {}
     if ts_row:
         loan_id_to_grant = {ln.id: (ln.grant_year, ln.grant_type) for ln in loans_db}
         for s in sales:
@@ -395,15 +401,19 @@ def get_events(user: User = Depends(get_current_user), db: Session = Depends(get
                 "state_st_cg_rate": s.state_st_cg_rate if s.state_st_cg_rate is not None else ts_row.state_st_cg_rate,
                 "lt_holding_days": s.lt_holding_days if s.lt_holding_days is not None else ts_row.lt_holding_days,
             }
-            if s.loan_id and ts_row.lot_selection_method == 'same_tranche':
+            if s.loan_id and method == 'same_tranche':
                 sale_loan_map[s.id] = loan_id_to_grant.get(s.loan_id, (None, None))
+            if s.lot_overrides:
+                sale_lot_overrides[s.id] = s.lot_overrides
 
     # All DB reads are done — release the connection back to the pool before
     # CPU-heavy computation so we don't starve concurrent requests.
     db.close()
 
     if ts_dict:
-        _annotate_sale_taxes(enriched, timeline, ts_dict, lot_order=lot_order, sale_overrides=sale_overrides, sale_loan_map=sale_loan_map)
+        _annotate_sale_taxes(enriched, timeline, ts_dict, lot_order=lot_order,
+                             sale_overrides=sale_overrides, sale_loan_map=sale_loan_map,
+                             sale_lot_overrides=sale_lot_overrides)
 
     # Annotate the liquidation event with outstanding loan principal at that date.
     if horizon_date is not None:

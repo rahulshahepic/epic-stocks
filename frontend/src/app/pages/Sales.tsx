@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ConflictError } from '../../api.ts'
-import type { PriceEntry, SaleEntry, SaleEstimate, SaleLots, TaxBreakdown, TaxSettings } from '../../api.ts'
+import type { PriceEntry, SaleEntry, SaleEstimate, TaxBreakdown, TaxSettings, TrancheLine, TrancheAllocation } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { broadcastChange, useDataSync } from '../hooks/useDataSync.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
@@ -55,6 +55,8 @@ export function ratesFromSale(sale: SaleEntry, defaults: TaxSettings | null | un
   }
 }
 
+type SaleMethod = 'fifo' | 'lifo' | 'epic_lifo' | 'manual_tranche'
+
 type SaleForm = {
   date: string
   shares: number
@@ -63,6 +65,100 @@ type SaleForm = {
   loan_id: number | null
 }
 type Mode = 'list' | 'add' | 'edit'
+
+function buildLotOverrides(
+  lines: TrancheLine[],
+  manualAlloc: Record<string, number>,
+): Array<{ vest_date: string; grant_year: number | null; grant_type: string | null; basis_price: number; shares: number }> {
+  return lines
+    .map(line => {
+      const key = `${line.vest_date}|${line.grant_year}|${line.grant_type}`
+      const shares = manualAlloc[key] ?? line.allocated_shares
+      if (shares <= 0) return null
+      return { vest_date: line.vest_date, grant_year: line.grant_year, grant_type: line.grant_type, basis_price: line.basis_price, shares }
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null)
+}
+
+function TrancheTable({
+  lines, loading, manual, manualAlloc, onManualChange, date: saleDate,
+}: {
+  lines: TrancheLine[]; loading: boolean; manual: boolean
+  manualAlloc: Record<string, number>; onManualChange: (key: string, shares: number) => void; date: string
+}) {
+  if (loading) return <p className="px-1 text-xs text-gray-400">Loading lots…</p>
+  if (!lines.length) return <p className="px-1 text-xs text-gray-400">No vested shares at this date</p>
+  const totalAlloc = lines.reduce((s, l) => {
+    const key = `${l.vest_date}|${l.grant_year}|${l.grant_type}`
+    return s + (manual ? (manualAlloc[key] ?? l.allocated_shares) : l.allocated_shares)
+  }, 0)
+  return (
+    <div className="rounded-md border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/50">
+      <div className="border-b border-gray-200 px-3 py-1.5 dark:border-gray-700">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+          Lot Allocation{saleDate ? ` at ${saleDate}` : ''}
+        </span>
+      </div>
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-[10px] text-gray-400">
+            <th className="px-3 py-1 text-left font-medium">Grant</th>
+            <th className="px-3 py-1 text-right font-medium">Basis</th>
+            <th className="px-3 py-1 text-right font-medium">Avail</th>
+            <th className="px-3 py-1 text-right font-medium">{manual ? 'Sell ✎' : 'Allocated'}</th>
+            <th className="px-3 py-1 text-right font-medium">Type</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+          {lines.map(line => {
+            const key = `${line.vest_date}|${line.grant_year}|${line.grant_type}`
+            const allocated = manual ? (manualAlloc[key] ?? line.allocated_shares) : line.allocated_shares
+            return (
+              <tr key={key} className="text-gray-700 dark:text-gray-300">
+                <td className="px-3 py-1">
+                  <span>{line.grant_year ?? '—'} {line.grant_type ?? ''}</span>
+                  <span className="ml-1 text-[10px] text-gray-400 dark:text-gray-500">{line.vest_date}</span>
+                </td>
+                <td className="px-3 py-1 text-right tabular-nums">{fmtUSD(line.basis_price)}</td>
+                <td className="px-3 py-1 text-right tabular-nums">{fmtNum(line.available_shares)}</td>
+                <td className="px-3 py-1 text-right">
+                  {manual ? (
+                    <input
+                      type="number" min="0" max={line.available_shares}
+                      value={manualAlloc[key] ?? line.allocated_shares}
+                      onChange={e => onManualChange(key, Math.min(line.available_shares, Math.max(0, parseInt(e.target.value) || 0)))}
+                      className="w-20 rounded border border-gray-300 bg-white px-1.5 py-0.5 text-right text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                    />
+                  ) : (
+                    <span className={allocated > 0 ? 'tabular-nums font-medium' : 'text-gray-300 dark:text-gray-600'}>{fmtNum(allocated)}</span>
+                  )}
+                </td>
+                <td className="px-3 py-1 text-right">
+                  {allocated > 0 ? (
+                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${line.is_lt ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'}`}>
+                      {line.is_lt ? 'LT' : 'ST'}
+                    </span>
+                  ) : <span className="text-gray-300 dark:text-gray-600">—</span>}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+        {lines.length > 1 && (
+          <tfoot>
+            <tr className="border-t border-gray-200 font-medium dark:border-gray-600">
+              <td className="px-3 py-1 text-gray-700 dark:text-gray-200">Total</td>
+              <td />
+              <td className="px-3 py-1 text-right tabular-nums text-gray-700 dark:text-gray-200">{fmtNum(lines.reduce((s, l) => s + l.available_shares, 0))}</td>
+              <td className="px-3 py-1 text-right tabular-nums text-gray-700 dark:text-gray-200">{fmtNum(totalAlloc)}</td>
+              <td />
+            </tr>
+          </tfoot>
+        )}
+      </table>
+    </div>
+  )
+}
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
@@ -289,15 +385,22 @@ export default function Sales() {
 
   useDataSync('sales', reload)
 
-  // Epic mode plan-sale state
   type InputMode = 'dollars' | 'shares'
   const [inputMode, setInputMode] = useState<InputMode>('dollars')
   const [dollarTarget, setDollarTarget] = useState('')
-  const [lotsData, setLotsData] = useState<SaleLots | null>(null)
-  const [lotsLoading, setLotsLoading] = useState(false)
   const [estimate, setEstimate] = useState<SaleEstimate | null>(null)
   const [estimateLoading, setEstimateLoading] = useState(false)
   const estimateTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Lot selection method + tranche allocation
+  const [method, setMethod] = useState<SaleMethod>('epic_lifo')
+  const [trancheAlloc, setTrancheAlloc] = useState<TrancheAllocation | null>(null)
+  const [trancheLoading, setTrancheLoading] = useState(false)
+  const [manualAlloc, setManualAlloc] = useState<Record<string, number>>({})
+  const trancheTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Actual tax paid (recording mode only)
+  const [actualTaxPaid, setActualTaxPaid] = useState('')
 
   // In Epic mode, price per share is always derived from the prices table
   useEffect(() => {
@@ -305,20 +408,29 @@ export default function Sales() {
     setForm(f => ({ ...f, price_per_share: priceAt(f.date, prices) }))
   }, [form.date, epicMode, prices, mode])
 
-  // Load available lots when date changes (Epic mode add form only)
+  // Tranche allocation — debounced 300ms, triggered by date/shares/method
   useEffect(() => {
-    if (!epicMode || mode !== 'add' || !form.date) return
-    setLotsData(null)
-    setLotsLoading(true)
-    api.getSaleLots(form.date)
-      .then(d => setLotsData(d))
-      .catch(() => setLotsData(null))
-      .finally(() => setLotsLoading(false))
-  }, [form.date, epicMode, mode])
+    if (mode === 'list' || !form.date || form.shares <= 0) {
+      setTrancheAlloc(null)
+      return
+    }
+    if (trancheTimer.current) clearTimeout(trancheTimer.current)
+    trancheTimer.current = setTimeout(async () => {
+      setTrancheLoading(true)
+      try {
+        const result = await api.getTrancheAllocation({ sale_date: form.date, shares: form.shares, method })
+        setTrancheAlloc(result)
+      } catch {
+        setTrancheAlloc(null)
+      } finally {
+        setTrancheLoading(false)
+      }
+    }, 300)
+  }, [form.date, form.shares, method, mode])
 
-  // Live estimate — debounced 400ms, triggered by dollar target or share count change
+  // Live estimate — debounced 400ms, triggered by dollar target or share count + price change
   useEffect(() => {
-    if (!epicMode || mode !== 'add') return
+    if (mode === 'list') return
     const price = form.price_per_share
     if (price <= 0) { setEstimate(null); return }
 
@@ -330,7 +442,6 @@ export default function Sales() {
     } else {
       const s = form.shares
       if (!s || s <= 0) { setEstimate(null); return }
-      // For shares mode: estimate by passing gross as target (gives same shares back, but surfaces tax)
       targetCash = s * price
     }
 
@@ -344,7 +455,6 @@ export default function Sales() {
           sale_date: form.date,
         })
         setEstimate(result)
-        // In dollars mode, push the computed shares into the form
         if (inputMode === 'dollars') {
           setForm(f => ({ ...f, shares: result.shares_needed }))
         }
@@ -354,7 +464,7 @@ export default function Sales() {
         setEstimateLoading(false)
       }
     }, 400)
-  }, [dollarTarget, form.shares, form.price_per_share, form.date, inputMode, epicMode, mode])
+  }, [dollarTarget, form.shares, form.price_per_share, form.date, inputMode, mode])
 
   function resetForm() {
     setForm(emptyForm)
@@ -365,25 +475,49 @@ export default function Sales() {
     setConflict(false)
     setDollarTarget('')
     setEstimate(null)
-    setLotsData(null)
+    setTrancheAlloc(null)
+    setManualAlloc({})
+    setActualTaxPaid('')
     setInputMode('dollars')
   }
 
   function openAdd() {
     resetForm()
     setTaxRates(ratesFromDefaults(taxSettings))
+    const m = taxSettings?.lot_selection_method
+    setMethod(m && ['fifo', 'lifo', 'epic_lifo', 'manual_tranche'].includes(m) ? m as SaleMethod : 'epic_lifo')
     setMode('add')
   }
 
   function openEdit(s: SaleEntry) {
-    const { id, version, federal_income_rate, federal_lt_cg_rate, federal_st_cg_rate,
-            niit_rate, state_income_rate, state_lt_cg_rate, state_st_cg_rate, lt_holding_days, ...rest } = s
-    setForm(rest)
+    const {
+      id, version,
+      federal_income_rate, federal_lt_cg_rate, federal_st_cg_rate,
+      niit_rate, state_income_rate, state_lt_cg_rate, state_st_cg_rate, lt_holding_days,
+      lot_overrides, actual_tax_paid, sale_plan_id: _sp,
+      ...rest
+    } = s
+    setForm(rest as SaleForm)
     setTaxRates(ratesFromSale(s, taxSettings))
     setEditId(id)
     setEditVersion(version)
     setError('')
     setConflict(false)
+    // Determine method from lot_overrides
+    if (lot_overrides && lot_overrides.length > 0) {
+      setMethod('manual_tranche')
+      const alloc: Record<string, number> = {}
+      for (const ov of lot_overrides) {
+        alloc[`${ov.vest_date}|${ov.grant_year}|${ov.grant_type}`] = ov.shares
+      }
+      setManualAlloc(alloc)
+    } else {
+      const m = taxSettings?.lot_selection_method
+      setMethod(m && ['fifo', 'lifo', 'epic_lifo', 'manual_tranche'].includes(m) ? m as SaleMethod : 'epic_lifo')
+      setManualAlloc({})
+    }
+    setActualTaxPaid(actual_tax_paid != null ? String(actual_tax_paid) : '')
+    setInputMode('shares')
     setMode('edit')
   }
 
@@ -416,7 +550,15 @@ export default function Sales() {
     setError('')
     try {
       let saved: SaleEntry
-      const payload = { ...form, ...taxRates }
+      const lotOverrides = method === 'manual_tranche' && trancheAlloc
+        ? buildLotOverrides(trancheAlloc.lines, manualAlloc)
+        : null
+      const payload = {
+        ...form,
+        ...taxRates,
+        lot_overrides: lotOverrides,
+        actual_tax_paid: actualTaxPaid !== '' ? parseFloat(actualTaxPaid) || null : null,
+      }
       if (mode === 'add') {
         saved = await api.createSale(payload)
       } else if (mode === 'edit' && editId != null) {
@@ -462,8 +604,13 @@ export default function Sales() {
   if (!sales) return <p className="p-6 text-center text-sm text-red-500">Failed to load sales</p>
 
   if (mode !== 'list') {
-    const title = mode === 'add' ? (epicMode ? 'Plan Sale' : 'Record Sale') : 'Edit Sale'
-    const isEpicAdd = epicMode && mode === 'add'
+    const isPayoff = form.loan_id != null
+    const isRecording = !epicMode && form.date < TODAY
+    const isPlanAdd = mode === 'add' && !isRecording
+    const title = mode === 'add' ? (isRecording ? 'Record Sale' : 'Plan Sale') : 'Edit Sale'
+    const showMethodSelector = !isPayoff
+    const showTranche = (trancheAlloc !== null || trancheLoading) && form.shares > 0
+
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -483,12 +630,13 @@ export default function Sales() {
         )}
         {error && <p className="text-xs text-red-500">{error}</p>}
 
-        {/* Date + price row — always shown */}
+        {/* Date + price */}
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Sale Date" type="date" value={form.date} min={epicMode ? TODAY : undefined} onChange={v => setForm(f => ({ ...f, date: v }))} />
+          <Field label="Sale Date" type="date" value={form.date} min={epicMode ? TODAY : undefined}
+            onChange={v => setForm(f => ({ ...f, date: v }))} />
           <label className="block">
             <span className="text-xs text-gray-500 dark:text-gray-400">Price per Share</span>
-            {isEpicAdd ? (
+            {epicMode ? (
               <div className="mt-0.5 rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300">
                 {form.price_per_share > 0 ? fmtUSD(form.price_per_share) : <span className="text-gray-400">No price for this date</span>}
               </div>
@@ -500,118 +648,115 @@ export default function Sales() {
           </label>
         </div>
 
-        {/* Epic mode: available lots panel */}
-        {isEpicAdd && (
-          <div className="rounded-md border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/50">
-            <div className="border-b border-gray-200 px-3 py-1.5 dark:border-gray-700">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                Available at {form.date || '—'}
-              </span>
-            </div>
-            {lotsLoading ? (
-              <p className="px-3 py-2 text-xs text-gray-400">Loading…</p>
-            ) : !lotsData || lotsData.lots.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-gray-400">No vested shares at this date</p>
-            ) : (
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-[10px] text-gray-400">
-                    <th className="px-3 py-1 text-left font-medium">Cost Basis</th>
-                    <th className="px-3 py-1 text-right font-medium">Shares</th>
-                    <th className="px-3 py-1 text-right font-medium">Value</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                  {lotsData.lots.map(lot => (
-                    <tr key={lot.cost_basis} className="text-gray-700 dark:text-gray-300">
-                      <td className="px-3 py-1">{fmtUSD(lot.cost_basis)}</td>
-                      <td className="px-3 py-1 text-right">{lot.shares.toLocaleString()}</td>
-                      <td className="px-3 py-1 text-right">{fmtUSD(lot.shares * form.price_per_share)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t border-gray-200 font-medium dark:border-gray-600">
-                    <td className="px-3 py-1 text-gray-700 dark:text-gray-200">Total</td>
-                    <td className="px-3 py-1 text-right text-gray-700 dark:text-gray-200">{lotsData.total_shares.toLocaleString()}</td>
-                    <td className="px-3 py-1 text-right text-gray-700 dark:text-gray-200">{fmtUSD(lotsData.total_shares * form.price_per_share)}</td>
-                  </tr>
-                </tfoot>
-              </table>
-            )}
+        {/* Lot selection method */}
+        {showMethodSelector && (
+          <label className="block">
+            <span className="text-xs text-gray-500 dark:text-gray-400">Lot selection</span>
+            <select
+              value={method}
+              onChange={e => { setMethod(e.target.value as SaleMethod); setManualAlloc({}) }}
+              className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+            >
+              <option value="epic_lifo">Epic LIFO — prefer long-term gains (default)</option>
+              <option value="fifo">FIFO — oldest lots first</option>
+              <option value="lifo">LIFO — newest lots first</option>
+              <option value="manual_tranche">Manual — pick lots yourself</option>
+            </select>
+          </label>
+        )}
+
+        {/* Input mode toggle (add mode only) */}
+        {mode === 'add' && (
+          <div className="flex gap-1 rounded-md border border-gray-200 bg-gray-50 p-0.5 dark:border-gray-700 dark:bg-gray-800">
+            {(['dollars', 'shares'] as const).map(m => (
+              <button key={m} onClick={() => { setInputMode(m); setEstimate(null) }}
+                className={`flex-1 rounded py-1 text-xs font-medium transition-colors ${inputMode === m ? 'bg-white shadow-sm text-gray-900 dark:bg-gray-700 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400'}`}>
+                {m === 'dollars' ? '$ Target' : '# Shares'}
+              </button>
+            ))}
           </div>
         )}
 
-        {/* Epic mode: $ target / shares toggle + live estimate */}
-        {isEpicAdd ? (
-          <div className="space-y-3">
-            <div className="flex gap-1 rounded-md border border-gray-200 bg-gray-50 p-0.5 dark:border-gray-700 dark:bg-gray-800">
-              {(['dollars', 'shares'] as const).map(m => (
-                <button key={m} onClick={() => { setInputMode(m); setEstimate(null) }}
-                  className={`flex-1 rounded py-1 text-xs font-medium transition-colors ${inputMode === m ? 'bg-white shadow-sm text-gray-900 dark:bg-gray-700 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400'}`}>
-                  {m === 'dollars' ? '$ Target' : '# Shares'}
-                </button>
-              ))}
+        {/* Amount input */}
+        {mode === 'add' && inputMode === 'dollars' ? (
+          <label className="block">
+            <span className="text-xs text-gray-500 dark:text-gray-400">Target net cash (post-tax)</span>
+            <div className="relative mt-0.5">
+              <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-xs text-gray-400">$</span>
+              <input type="number" step="100" min="0" value={dollarTarget}
+                onChange={e => setDollarTarget(e.target.value)}
+                placeholder="0"
+                className="block w-full rounded-md border border-gray-300 bg-white pl-5 pr-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200" />
             </div>
+          </label>
+        ) : (
+          <Field label="Shares to sell" type="number" value={form.shares}
+            onChange={v => setForm(f => ({ ...f, shares: +v }))} />
+        )}
 
-            {inputMode === 'dollars' ? (
-              <label className="block">
-                <span className="text-xs text-gray-500 dark:text-gray-400">Target net cash</span>
-                <div className="relative mt-0.5">
-                  <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-xs text-gray-400">$</span>
-                  <input type="number" step="100" min="0" value={dollarTarget}
-                    onChange={e => setDollarTarget(e.target.value)}
-                    placeholder="0"
-                    className="block w-full rounded-md border border-gray-300 bg-white pl-5 pr-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200" />
-                </div>
-              </label>
-            ) : (
-              <Field label="Shares to sell" type="number" value={form.shares}
-                onChange={v => setForm(f => ({ ...f, shares: +v }))} />
-            )}
+        {/* Tranche table */}
+        {showTranche && (
+          <TrancheTable
+            lines={trancheAlloc?.lines ?? []}
+            loading={trancheLoading && !trancheAlloc}
+            manual={method === 'manual_tranche'}
+            manualAlloc={manualAlloc}
+            onManualChange={(key, shares) => setManualAlloc(prev => ({ ...prev, [key]: shares }))}
+            date={form.date}
+          />
+        )}
 
-            {/* Live estimate preview */}
-            {(estimate || estimateLoading) && (
-              <div className="rounded-md border border-indigo-100 bg-indigo-50 px-3 py-2.5 dark:border-indigo-900 dark:bg-indigo-950/40">
-                {estimateLoading ? (
-                  <p className="text-xs text-indigo-400">Calculating…</p>
-                ) : estimate && (
-                  <div className="space-y-1 text-xs">
-                    <Row label="Shares to sell" value={estimate.shares_needed.toLocaleString()} />
-                    <Row label="Gross proceeds" value={fmtUSD(estimate.gross_proceeds)} />
-                    <Row label="Est. tax" value={fmtUSD(estimate.estimated_tax)} />
-                    <Row label="Net cash" value={fmtUSD(estimate.net_proceeds)} bold />
-                  </div>
+        {/* Live estimate */}
+        {(estimate || estimateLoading) && (
+          <div className="rounded-md border border-indigo-100 bg-indigo-50 px-3 py-2.5 dark:border-indigo-900 dark:bg-indigo-950/40">
+            {estimateLoading ? (
+              <p className="text-xs text-indigo-400">Calculating…</p>
+            ) : estimate && (
+              <div className="space-y-1 text-xs">
+                {isPlanAdd && inputMode === 'dollars' && (
+                  <Row label="Shares needed" value={fmtNum(estimate.shares_needed)} />
                 )}
+                <Row label="Gross proceeds" value={fmtUSD(estimate.gross_proceeds)} />
+                <Row label="Est. tax" value={fmtUSD(estimate.estimated_tax)} />
+                <Row label="Net cash" value={fmtUSD(estimate.net_proceeds)} bold />
               </div>
             )}
-
-            <Field label="Notes (optional)" type="text" value={form.notes} onChange={v => setForm(f => ({ ...f, notes: v }))} />
-          </div>
-        ) : (
-          /* Non-Epic mode or edit mode: original fields */
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Shares" type="number" value={form.shares} onChange={v => setForm(f => ({ ...f, shares: +v }))} />
-            <div className="col-span-2">
-              <Field label="Notes (optional)" type="text" value={form.notes} onChange={v => setForm(f => ({ ...f, notes: v }))} />
-            </div>
           </div>
         )}
 
-        {!isEpicAdd && (
+        {/* Tax rates (non-epic mode) */}
+        {!epicMode && (
           <TaxRateFields
             rates={taxRates}
             onChange={setTaxRates}
             onReset={() => setTaxRates(ratesFromDefaults(taxSettings))}
           />
         )}
+
+        {/* Actual tax paid — recording only */}
+        {isRecording && (
+          <label className="block">
+            <span className="text-xs text-gray-500 dark:text-gray-400">Actual tax paid (optional — overrides estimate)</span>
+            <div className="relative mt-0.5">
+              <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-xs text-gray-400">$</span>
+              <input type="number" step="0.01" min="0" value={actualTaxPaid}
+                onChange={e => setActualTaxPaid(e.target.value)}
+                placeholder="Leave blank to use estimate"
+                className="block w-full rounded-md border border-gray-300 bg-white pl-5 pr-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200" />
+            </div>
+          </label>
+        )}
+
+        <Field label="Notes (optional)" type="text" value={form.notes}
+          onChange={v => setForm(f => ({ ...f, notes: v }))} />
+
         <div className="flex items-center justify-between pt-2">
           <button
             onClick={handleSave}
-            disabled={saving || (isEpicAdd && form.shares <= 0)}
+            disabled={saving || form.shares <= 0}
             className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
           >
-            {saving ? 'Saving…' : isEpicAdd ? 'Plan sale' : 'Save'}
+            {saving ? 'Saving…' : mode === 'add' ? (isRecording ? 'Record sale' : 'Plan sale') : 'Save'}
           </button>
           {mode === 'edit' && editId != null && (
             <button

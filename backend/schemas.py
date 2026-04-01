@@ -280,6 +280,12 @@ class SaleCreate(BaseModel):
     state_lt_cg_rate: Optional[float] = None
     state_st_cg_rate: Optional[float] = None
     lt_holding_days: Optional[int] = None
+    # Manual lot overrides: [{vest_date, grant_year, grant_type, basis_price, shares}, ...]
+    lot_overrides: Optional[list] = None
+    # Groups related sales in a plan (payoff + cash-out from one decision)
+    sale_plan_id: Optional[int] = None
+    # User-recorded actual tax paid (overrides estimated for past recorded sales)
+    actual_tax_paid: Optional[float] = None
 
     @field_validator("shares")
     @classmethod
@@ -311,6 +317,9 @@ class SaleUpdate(BaseModel):
     state_lt_cg_rate: Optional[float] = None
     state_st_cg_rate: Optional[float] = None
     lt_holding_days: Optional[int] = None
+    lot_overrides: Optional[list] = None
+    sale_plan_id: Optional[int] = None
+    actual_tax_paid: Optional[float] = None
 
     @field_validator("shares")
     @classmethod

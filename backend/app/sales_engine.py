@@ -162,10 +162,37 @@ def compute_grossup_shares(lots: deque, cash_due: float, price: float, sale_date
     return max(total_shares, math.ceil(cash_due / price))
 
 
+def build_lots_from_overrides(timeline_events: list, overrides: list, as_of: date) -> deque:
+    """
+    Build a lot deque from manual lot_overrides, looking up hold_start_date from the timeline.
+    Each override: {vest_date, grant_year, grant_type, basis_price, shares}
+    """
+    # Pre-scan for exercise dates on Purchase grants (same logic as build_fifo_lots)
+    exercise_dates: dict = {}
+    for e in timeline_events:
+        if e.get("event_type") == "Exercise" and (e.get("grant_price") or 0) > 0:
+            key = (e.get("grant_year"), e.get("grant_type"))
+            exercise_dates[key] = _to_date(e["date"])
+
+    lots: deque = deque()
+    for ov in overrides:
+        vest_date = _to_date(ov["vest_date"])
+        gy = ov.get("grant_year")
+        gt = ov.get("grant_type")
+        basis = float(ov.get("basis_price", 0.0))
+        shares = int(ov.get("shares", 0))
+        if shares <= 0:
+            continue
+        hold_start = exercise_dates.get((gy, gt), vest_date)
+        lots.append([vest_date, shares, basis, gy, gt, hold_start])
+    return lots
+
+
 def compute_sale_tax(timeline_events: list, sale: dict, tax_settings: dict,
                      lot_order: str = 'fifo',
                      grant_year: int | None = None,
-                     grant_type: str | None = None) -> dict:
+                     grant_type: str | None = None,
+                     prebuilt_lots: deque | None = None) -> dict:
     """
     Compute FIFO cost basis, LT/ST classification, and estimated tax for one sale.
 
@@ -190,9 +217,12 @@ def compute_sale_tax(timeline_events: list, sale: dict, tax_settings: dict,
     state_lt = float(ts.get("state_lt_cg_rate", 0.0536))
     state_st = float(ts.get("state_st_cg_rate", 0.0765))
 
-    lots = build_fifo_lots(timeline_events, sale_date,
-                           order=lot_order, grant_year=grant_year, grant_type=grant_type,
-                           lt_holding_days=lt_days)
+    if prebuilt_lots is not None:
+        lots = deque(lot[:] for lot in prebuilt_lots)  # copy to avoid mutation
+    else:
+        lots = build_fifo_lots(timeline_events, sale_date,
+                               order=lot_order, grant_year=grant_year, grant_type=grant_type,
+                               lt_holding_days=lt_days)
     total_available = sum(l[1] for l in lots)
 
     # Shares sold before vesting (if user is selling more than available vested shares)

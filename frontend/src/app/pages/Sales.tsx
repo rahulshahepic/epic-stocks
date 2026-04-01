@@ -437,6 +437,7 @@ export default function Sales() {
     if (price <= 0) { setEstimate(null); return }
 
     let targetCash: number | null = null
+    let exactShares: number | null = null
     if (inputMode === 'dollars') {
       const v = parseFloat(dollarTarget)
       if (!dollarTarget || isNaN(v) || v <= 0) { setEstimate(null); return }
@@ -444,7 +445,7 @@ export default function Sales() {
     } else {
       const s = form.shares
       if (!s || s <= 0) { setEstimate(null); return }
-      targetCash = s * price
+      exactShares = s
     }
 
     if (estimateTimer.current) clearTimeout(estimateTimer.current)
@@ -453,7 +454,7 @@ export default function Sales() {
       try {
         const result = await api.estimateSale({
           price_per_share: price,
-          target_net_cash: targetCash!,
+          ...(exactShares != null ? { shares: exactShares } : { target_net_cash: targetCash! }),
           sale_date: form.date,
         })
         setEstimate(result)

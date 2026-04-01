@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, ConflictError } from '../../api.ts'
-import type { SaleEntry, TaxBreakdown, TaxSettings } from '../../api.ts'
+import type { PriceEntry, SaleEntry, TaxBreakdown, TaxSettings } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { broadcastChange, useDataSync } from '../hooks/useDataSync.ts'
+import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 
 export type TaxRates = {
   federal_income_rate: number
@@ -63,12 +64,23 @@ type SaleForm = {
 }
 type Mode = 'list' | 'add' | 'edit'
 
+const TODAY = new Date().toISOString().slice(0, 10)
+
 const emptyForm: SaleForm = {
-  date: new Date().toISOString().slice(0, 10),
+  date: TODAY,
   shares: 0,
   price_per_share: 0,
   notes: '',
   loan_id: null,
+}
+
+function priceAt(date: string, prices: PriceEntry[]): number {
+  let last = 0
+  for (const p of prices) {
+    if (p.effective_date <= date) last = p.price
+    else break
+  }
+  return last
 }
 
 function fmtUSD(n: number) {
@@ -168,8 +180,8 @@ function Row({ label, value, bold }: { label: string; value: string; bold?: bool
   )
 }
 
-function Field({ label, type, value, onChange, step }: {
-  label: string; type: string; value: string | number; onChange: (v: string) => void; step?: string
+function Field({ label, type, value, onChange, step, min }: {
+  label: string; type: string; value: string | number; onChange: (v: string) => void; step?: string; min?: string
 }) {
   return (
     <label className="block">
@@ -177,6 +189,7 @@ function Field({ label, type, value, onChange, step }: {
       <input
         type={type}
         step={step}
+        min={min}
         value={value}
         onChange={e => onChange(e.target.value)}
         className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
@@ -244,10 +257,14 @@ function RateField({ label, value, onChange }: { label: string; value: number; o
 }
 
 export default function Sales() {
+  const config = useConfig()
+  const epicMode = !!config?.epic_mode
   const fetchSales = useCallback(() => api.getSales(), [])
   const { data: sales, loading, reload } = useApiData<SaleEntry[]>(fetchSales)
   const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
   const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
+  const fetchPrices = useCallback(() => api.getPrices(), [])
+  const { data: prices } = useApiData<PriceEntry[]>(fetchPrices)
 
   const [mode, setMode] = useState<Mode>('list')
   const [form, setForm] = useState<SaleForm>(emptyForm)
@@ -271,6 +288,12 @@ export default function Sales() {
   }, [sales])
 
   useDataSync('sales', reload)
+
+  // In Epic mode, price per share is always derived from the prices table
+  useEffect(() => {
+    if (!epicMode || !prices || mode === 'list') return
+    setForm(f => ({ ...f, price_per_share: priceAt(f.date, prices) }))
+  }, [form.date, epicMode, prices, mode])
 
   function resetForm() {
     setForm(emptyForm)
@@ -394,9 +417,18 @@ export default function Sales() {
         )}
         {error && <p className="text-xs text-red-500">{error}</p>}
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Sale Date" type="date" value={form.date} onChange={v => setForm(f => ({ ...f, date: v }))} />
+          <Field label="Sale Date" type="date" value={form.date} min={epicMode ? TODAY : undefined} onChange={v => setForm(f => ({ ...f, date: v }))} />
           <Field label="Shares" type="number" value={form.shares} onChange={v => setForm(f => ({ ...f, shares: +v }))} />
-          <Field label="Price per Share" type="number" step="0.01" value={form.price_per_share} onChange={v => setForm(f => ({ ...f, price_per_share: +v }))} />
+          {epicMode ? (
+            <label className="block">
+              <span className="text-[10px] text-gray-500 dark:text-gray-400">Price per Share</span>
+              <div className="mt-0.5 rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                {form.price_per_share > 0 ? fmtUSD(form.price_per_share) : <span className="text-gray-400">No price for this date</span>}
+              </div>
+            </label>
+          ) : (
+            <Field label="Price per Share" type="number" step="0.01" value={form.price_per_share} onChange={v => setForm(f => ({ ...f, price_per_share: +v }))} />
+          )}
           <div className="col-span-2">
             <Field label="Notes (optional)" type="text" value={form.notes} onChange={v => setForm(f => ({ ...f, notes: v }))} />
           </div>

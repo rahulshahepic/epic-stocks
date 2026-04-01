@@ -53,6 +53,16 @@ function latestPrice(prices: PriceEntry[] | null | undefined): number {
   return prices.reduce((a, b) => a.effective_date > b.effective_date ? a : b).price
 }
 
+function priceAt(date: string, prices: PriceEntry[] | null | undefined): number {
+  if (!prices || prices.length === 0) return 0
+  let last = 0
+  for (const p of [...prices].sort((a, b) => a.effective_date.localeCompare(b.effective_date))) {
+    if (p.effective_date <= date) last = p.price
+    else break
+  }
+  return last
+}
+
 export default function Grants() {
   const fetchGrants = useCallback(() => api.getGrants(), [])
   const { data: grants, loading, reload } = useApiData<GrantEntry[]>(fetchGrants)
@@ -86,6 +96,7 @@ export default function Grants() {
     grantType: string
     loanId?: number
   } | null>(null)
+  const [sellDate, setSellDate] = useState('')
   const [sellPrice, setSellPrice] = useState('')
   const [sellTargetCash, setSellTargetCash] = useState('')
   const [sellEstimate, setSellEstimate] = useState<SaleEstimate | null>(null)
@@ -310,8 +321,10 @@ export default function Grants() {
 
   function openSellModal(g: GrantEntry) {
     const loan = loans?.find(l => l.grant_year === g.year && l.grant_type === g.type && l.loan_type === 'Purchase' && !refinancedLoanIds.has(l.id))
+    const today = new Date().toISOString().split('T')[0]
     setSellModal({ grantYear: g.year, grantType: g.type, loanId: loan?.id })
-    setSellPrice(String(latestPrice(prices) || ''))
+    setSellDate(today)
+    setSellPrice(String(priceAt(today, prices) || ''))
     setSellTargetCash(loan ? String(loan.amount) : '')
     setSellEstimate(null)
     setSellError('')
@@ -323,6 +336,12 @@ export default function Grants() {
     setSellEstimate(null)
     setSellError('')
   }
+
+  // When sale date changes, update price to the rate in effect on that date
+  useEffect(() => {
+    if (!sellModal || !sellDate) return
+    setSellPrice(String(priceAt(sellDate, prices) || ''))
+  }, [sellDate]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -337,6 +356,7 @@ export default function Grants() {
         const est = await api.estimateSale({
           price_per_share: price,
           target_net_cash: cash,
+          sale_date: sellDate || undefined,
           loan_id: sellModal.loanId,
           grant_year: sellModal.grantYear,
           grant_type: sellModal.grantType,
@@ -348,7 +368,7 @@ export default function Grants() {
         setSellEstimateLoading(false)
       }
     }, 300)
-  }, [sellPrice, sellTargetCash, sellModal])
+  }, [sellPrice, sellTargetCash, sellModal, sellDate])
 
   async function handleSell() {
     if (!sellModal || !sellEstimate) return
@@ -356,7 +376,7 @@ export default function Grants() {
     setSellError('')
     try {
       await api.createSale({
-        date: new Date().toISOString().split('T')[0],
+        date: sellDate || new Date().toISOString().split('T')[0],
         shares: sellEstimate.shares_needed,
         price_per_share: parseFloat(sellPrice),
         notes: `Sale — ${sellModal.grantType} ${sellModal.grantYear}`,
@@ -646,6 +666,15 @@ export default function Grants() {
             </div>
 
             <div className="space-y-3">
+              <label className="block">
+                <span className="text-xs text-gray-500 dark:text-gray-400">Sale Date</span>
+                <input
+                  type="date"
+                  value={sellDate}
+                  onChange={e => setSellDate(e.target.value)}
+                  className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                />
+              </label>
               <label className="block">
                 <span className="text-xs text-gray-500 dark:text-gray-400">Target Net Cash ($)</span>
                 <input

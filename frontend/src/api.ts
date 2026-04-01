@@ -252,6 +252,10 @@ export const api = {
   // Sales
   getSaleLots: (sale_date: string) =>
     apiFetch<SaleLots>(`/api/sales/lots?sale_date=${encodeURIComponent(sale_date)}`),
+  getTrancheAllocation: (params: { sale_date: string; shares: number; method: string }) => {
+    const q = new URLSearchParams({ sale_date: params.sale_date, shares: String(params.shares), method: params.method })
+    return apiFetch<TrancheAllocation>(`/api/sales/tranche-allocation?${q}`)
+  },
   estimateSale: (params: { price_per_share: number; target_net_cash: number; sale_date?: string; loan_id?: number; grant_year?: number; grant_type?: string }) => {
     const q = new URLSearchParams({
       price_per_share: String(params.price_per_share),
@@ -428,6 +432,10 @@ export interface SaleEntry {
   state_lt_cg_rate?: number | null
   state_st_cg_rate?: number | null
   lt_holding_days?: number | null
+  // Lot allocation + plan grouping + actual tax
+  lot_overrides?: Array<{ vest_date: string; grant_year: number | null; grant_type: string | null; basis_price: number; shares: number }> | null
+  sale_plan_id?: number | null
+  actual_tax_paid?: number | null
 }
 
 export interface LoanPaymentEntry {
@@ -471,10 +479,27 @@ export interface TaxSettings {
   state_lt_cg_rate: number
   state_st_cg_rate: number
   lt_holding_days: number
-  lot_selection_method: 'fifo' | 'lifo' | 'same_tranche' | 'epic_lifo'
+  lot_selection_method: 'fifo' | 'lifo' | 'epic_lifo' | 'manual_tranche'
   prefer_stock_dp: boolean
   dp_min_percent: number
   dp_min_cap: number
+}
+
+export interface TrancheLine {
+  vest_date: string
+  grant_year: number | null
+  grant_type: string | null
+  basis_price: number
+  available_shares: number
+  allocated_shares: number
+  hold_start_date: string
+  is_lt: boolean
+}
+
+export interface TrancheAllocation {
+  lines: TrancheLine[]
+  total_available: number
+  total_allocated: number
 }
 
 export interface HorizonSettings {

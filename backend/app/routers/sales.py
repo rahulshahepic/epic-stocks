@@ -393,7 +393,8 @@ def get_tranche_allocation(
 @router.get("/estimate")
 def estimate_sale(
     price_per_share: float = Query(...),
-    target_net_cash: float = Query(...),
+    target_net_cash: float | None = Query(default=None),
+    shares: int | None = Query(default=None),
     sale_date: str | None = Query(default=None),
     loan_id: int | None = Query(default=None),
     grant_year: int | None = Query(default=None),
@@ -402,8 +403,9 @@ def estimate_sale(
     db: Session = Depends(get_db),
 ):
     """
-    Stateless estimator: given a desired net cash amount, compute the gross sale
-    needed (shares, proceeds, tax). Pure read — no DB write.
+    Stateless estimator: compute proceeds and tax for a sale.
+    Provide either `shares` (exact share count) or `target_net_cash` (gross-up to cover net amount).
+    Pure read — no DB write.
     """
     from app.routers.loans import (
         _build_timeline_for_user, _get_tax_settings_dict,
@@ -432,7 +434,10 @@ def estimate_sale(
 
     lots = build_fifo_lots(timeline, as_of, order=lot_order,
                            grant_year=gy, grant_type=gt, lt_holding_days=lt_days)
-    shares_needed = compute_grossup_shares(lots, target_net_cash, price_per_share, as_of, ts)
+    if shares is not None:
+        shares_needed = shares
+    else:
+        shares_needed = compute_grossup_shares(lots, target_net_cash or 0.0, price_per_share, as_of, ts)
     gross_proceeds = round(shares_needed * price_per_share, 2)
 
     # Compute tax on the estimated sale

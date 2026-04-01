@@ -246,7 +246,7 @@ def test_epic_mode_blocks_loan_create(client, db_session):
 
 
 def test_epic_mode_allows_sale_writes(client, db_session):
-    """POST /api/sales should succeed even in epic_mode."""
+    """POST /api/sales should succeed even in epic_mode (future dates allowed)."""
     register_user(client, "salesok@example.com")
     # Seed data before enabling epic mode
     client.post("/api/grants", json={
@@ -257,8 +257,10 @@ def test_epic_mode_allows_sale_writes(client, db_session):
     client.post("/api/prices", json={"effective_date": "2024-01-01", "price": 50.0})
     _set_epic_mode(db_session, True)
 
+    from datetime import timedelta
+    future_date = (date.today() + timedelta(days=90)).isoformat()
     resp = client.post("/api/sales", json={
-        "date": "2024-06-01",
+        "date": future_date,
         "shares": 10,
         "price_per_share": 50.0,
     })

@@ -25,15 +25,20 @@ test.describe('Sales journey', () => {
     await navigateTo(page, 'Sales')
     await expect(page.getByText('No sales recorded yet')).toBeVisible()
 
-    // Add a sale
+    // Add a sale — form opens in Plan Sale mode (today's date)
     await page.getByRole('button', { name: '+ Sale' }).click()
+    await expect(page.getByText('Plan Sale')).toBeVisible()
+
+    // Set a past date — title switches to Record Sale
+    await page.getByLabel('Sale Date').fill('2026-03-01')
     await expect(page.getByText('Record Sale')).toBeVisible()
 
-    await page.getByLabel('Sale Date').fill('2026-03-01')
-    await page.getByLabel('Shares').fill('100')
+    // Switch to # Shares mode and fill shares
+    await page.getByRole('button', { name: '# Shares' }).click()
+    await page.getByLabel('Shares to sell').fill('100')
     await page.getByLabel('Price per Share').fill('25.00')
     await page.getByLabel('Notes (optional)').fill('Test sale')
-    await page.getByRole('button', { name: 'Save' }).click()
+    await page.getByRole('button', { name: 'Record sale' }).click()
 
     // Back to list with 1 sale
     await expect(page.getByText('1 sales')).toBeVisible({ timeout: 5000 })
@@ -79,7 +84,7 @@ test.describe('Sales journey', () => {
     // Edit it via pencil icon
     await page.getByRole('button', { name: 'Edit sale' }).first().click()
     await expect(page.getByText('Edit Sale')).toBeVisible()
-    await page.getByLabel('Shares').fill('250')
+    await page.getByLabel('Shares to sell').fill('250')
     await page.getByRole('button', { name: 'Save' }).click()
     await expect(page.getByText('1 sales')).toBeVisible()
 

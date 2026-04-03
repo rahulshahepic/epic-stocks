@@ -68,6 +68,8 @@ export interface DashboardData {
   total_loan_principal: number
   total_tax_paid: number
   cash_received: number
+  interest_deduction_total?: number
+  tax_savings_from_deduction?: number
   loan_payment_by_year: { year: string; payoff_sale: number; cash_in: number }[]
   next_event: { date: string; event_type: string } | null
 }
@@ -111,6 +113,12 @@ export interface TimelineEvent {
   outstanding_loan_principal?: number | null
   // Refinanced loan payoff
   refinanced?: boolean
+  // Investment interest deduction (when enabled in settings)
+  interest_deduction_applied?: number
+  interest_deduction_on_stcg?: number
+  interest_deduction_on_ltcg?: number
+  adjusted_total_cap_gains?: number
+  adjusted_cum_cap_gains?: number
 }
 
 export interface GrantEntry {
@@ -486,6 +494,7 @@ export interface TaxSettings {
   prefer_stock_dp: boolean
   dp_min_percent: number
   dp_min_cap: number
+  deduct_investment_interest: boolean
 }
 
 export interface TrancheLine {

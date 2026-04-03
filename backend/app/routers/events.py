@@ -351,6 +351,66 @@ def _annotate_sale_taxes(enriched: list, timeline: list, ts_dict: dict,
         e["st_shares"] = result["st_shares"]
 
 
+def _apply_interest_deduction(enriched: list, loans_db: list) -> None:
+    """
+    Annotate cap-gains events with an investment-interest deduction offset.
+
+    IRS Form 4952: investment interest paid (loan_type='Interest') is deductible
+    against net investment income including capital gains in the year the interest
+    is *due* (not when it accrues).  Interest due 1/1/YEAR is deductible in YEAR.
+
+    Strategy: apply available deduction first to vesting_cap_gains (STCG proxy),
+    then to price_cap_gains (LTCG proxy).  Unused deduction carries forward
+    indefinitely.  Modifies events in-place; adds fields:
+      interest_deduction_applied      - amount used by this event
+      interest_deduction_on_stcg      - portion applied to vesting CG
+      interest_deduction_on_ltcg      - portion applied to price CG
+      adjusted_total_cap_gains        - total_cap_gains net of deduction
+      adjusted_cum_cap_gains          - running cumulative CG net of all deductions
+    """
+    # Build interest-deductible pool per year, keyed by due_date.year
+    interest_by_year: dict[int, float] = {}
+    for loan in loans_db:
+        if loan.loan_type == 'Interest':
+            y = loan.due_date.year
+            interest_by_year[y] = interest_by_year.get(y, 0.0) + loan.amount
+
+    sorted_years = sorted(interest_by_year.keys())
+    year_idx = 0
+    available = 0.0   # running deductible pool (carry-forward + loaded)
+    cum_deduction = 0.0
+
+    for event in enriched:
+        raw_date = event.get('date', '')
+        event_year = int(raw_date[:4]) if isinstance(raw_date, str) else raw_date.year
+
+        # Load all interest whose deductible year is <= this event's year
+        while year_idx < len(sorted_years) and sorted_years[year_idx] <= event_year:
+            available += interest_by_year[sorted_years[year_idx]]
+            year_idx += 1
+
+        stcg = max(0.0, event.get('vesting_cap_gains', 0.0))
+        ltcg = max(0.0, event.get('price_cap_gains', 0.0))
+
+        ded_stcg = 0.0
+        ded_ltcg = 0.0
+
+        if available > 0 and (stcg + ltcg) > 0:
+            ded_stcg = min(available, stcg)
+            available -= ded_stcg
+            ded_ltcg = min(available, ltcg)
+            available -= ded_ltcg
+
+        ded_total = ded_stcg + ded_ltcg
+        cum_deduction += ded_total
+
+        event['interest_deduction_applied'] = round(ded_total, 2)
+        event['interest_deduction_on_stcg'] = round(ded_stcg, 2)
+        event['interest_deduction_on_ltcg'] = round(ded_ltcg, 2)
+        event['adjusted_total_cap_gains'] = round(event.get('total_cap_gains', 0.0) - ded_total, 2)
+        event['adjusted_cum_cap_gains'] = round(event.get('cum_cap_gains', 0.0) - cum_deduction, 2)
+
+
 @router.get("/events")
 def get_events(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     grants, prices, loans, loans_db, initial_price, election_83b_map = _user_source_data(user, db)
@@ -414,6 +474,9 @@ def get_events(user: User = Depends(get_current_user), db: Session = Depends(get
         _annotate_sale_taxes(enriched, timeline, ts_dict, lot_order=lot_order,
                              sale_overrides=sale_overrides, sale_loan_map=sale_loan_map,
                              sale_lot_overrides=sale_lot_overrides)
+
+    if ts_row and ts_row.deduct_investment_interest:
+        _apply_interest_deduction(enriched, loans_db)
 
     # Annotate the liquidation event with outstanding loan principal at that date.
     if horizon_date is not None:
@@ -530,14 +593,46 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
             next_event = {"date": edate.isoformat(), "event_type": e["event_type"]}
             break
 
+    # Investment interest deduction — adjust total_cap_gains and estimate tax savings
+    interest_deduction_total = 0.0
+    tax_savings_from_deduction = 0.0
+    if ts_row and ts_row.deduct_investment_interest:
+        # Compute deduction on raw timeline events (same algorithm as _apply_interest_deduction)
+        interest_by_year_d: dict[int, float] = {}
+        for loan in loans_db:
+            if loan.loan_type == 'Interest':
+                y = loan.due_date.year
+                interest_by_year_d[y] = interest_by_year_d.get(y, 0.0) + loan.amount
+        sorted_years_d = sorted(interest_by_year_d.keys())
+        year_idx_d = 0
+        available_d = 0.0
+        stcg_rate = (ts_row.federal_st_cg_rate + ts_row.niit_rate + ts_row.state_st_cg_rate) if ts_row else 0.0
+        ltcg_rate = (ts_row.federal_lt_cg_rate + ts_row.niit_rate + ts_row.state_lt_cg_rate) if ts_row else 0.0
+        for ev in timeline:
+            ev_year = int(ev['date'].year) if hasattr(ev['date'], 'year') else int(str(ev['date'])[:4])
+            while year_idx_d < len(sorted_years_d) and sorted_years_d[year_idx_d] <= ev_year:
+                available_d += interest_by_year_d[sorted_years_d[year_idx_d]]
+                year_idx_d += 1
+            stcg = max(0.0, ev.get('vesting_cap_gains', 0.0))
+            ltcg = max(0.0, ev.get('price_cap_gains', 0.0))
+            if available_d > 0 and (stcg + ltcg) > 0:
+                ded_s = min(available_d, stcg)
+                available_d -= ded_s
+                ded_l = min(available_d, ltcg)
+                available_d -= ded_l
+                interest_deduction_total += ded_s + ded_l
+                tax_savings_from_deduction += ded_s * stcg_rate + ded_l * ltcg_rate
+
     return {
         "current_price": last.get("share_price", initial_price),
         "total_shares": last.get("cum_shares", 0),
         "total_income": last.get("cum_income", 0),
-        "total_cap_gains": last.get("cum_cap_gains", 0),
+        "total_cap_gains": round(last.get("cum_cap_gains", 0) - interest_deduction_total, 2),
         "total_loan_principal": sum(ln["amount"] for ln in loans),
         "total_tax_paid": total_tax_paid,
-        "cash_received": cash_received,
+        "cash_received": round(cash_received + tax_savings_from_deduction, 2),
+        "interest_deduction_total": round(interest_deduction_total, 2),
+        "tax_savings_from_deduction": round(tax_savings_from_deduction, 2),
         "loan_payment_by_year": sorted(loan_payment_by_year.values(), key=lambda x: x["year"]),
         "next_event": next_event,
     }

@@ -47,6 +47,7 @@ export default function Settings() {
     prefer_stock_dp: false,
     dp_min_percent: 0.10,
     dp_min_cap: 20000,
+    deduct_investment_interest: false,
   }
 
   const loadTaxSettings = useCallback(async () => {
@@ -378,6 +379,12 @@ export default function Settings() {
                  'Epic LIFO (prefer LT gains)'}
               </dd>
             </div>
+            <div className="flex justify-between col-span-2 border-t border-gray-100 pt-2 dark:border-gray-800">
+              <dt className="text-gray-500 dark:text-gray-400">Investment interest deduction</dt>
+              <dd className="font-medium text-gray-700 dark:text-gray-300">
+                {taxSettings.deduct_investment_interest ? 'Enabled' : 'Disabled'}
+              </dd>
+            </div>
           </dl>
         )}
 
@@ -431,6 +438,30 @@ export default function Settings() {
                   onChange={e => setTaxForm(f => f ? { ...f, lt_holding_days: +e.target.value } : f)}
                   className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
                 />
+              </label>
+              <label className="block col-span-2 cursor-pointer rounded-md border border-gray-200 p-3 dark:border-gray-700">
+                <div className="flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    checked={taxForm.deduct_investment_interest}
+                    onChange={e => setTaxForm(f => f ? { ...f, deduct_investment_interest: e.target.checked } : f)}
+                    className="mt-0.5 rounded border-gray-300 dark:border-gray-600"
+                  />
+                  <div>
+                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                      Estimate investment interest deduction (Form 4952)
+                    </span>
+                    <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                      Investment interest (interest on loans used to buy investments) can be deducted
+                      against investment income. You may elect to treat net capital gains as investment
+                      income, which reduces your CG tax — at the cost of those gains being taxed as
+                      ordinary income instead of at capital gains rates. This estimate applies your
+                      recorded interest payments first to short-term gains, then long-term gains, and
+                      carries any unused deduction forward. Interest due 1/1/YEAR is deductible against
+                      that year's investment income. Consult a tax advisor; this is an estimate only.
+                    </p>
+                  </div>
+                </div>
               </label>
             </div>
             <div className="flex gap-2">

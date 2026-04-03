@@ -624,7 +624,7 @@ def download_template():
     _body_cell(ws, 2, 9, False)
     _body_cell(ws, 3, 1, 2020)
     _body_cell(ws, 3, 2, "Catch-Up")
-    _body_cell(ws, 3, 3, 0)
+    _body_cell(ws, 3, 3, 1000)
     _body_cell(ws, 3, 4, 0.00, "\\$#,##0.00")
     _body_cell(ws, 3, 5, date(2021, 9, 30), "mm/dd/yyyy")
     _body_cell(ws, 3, 6, 5)

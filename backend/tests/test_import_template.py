@@ -188,8 +188,10 @@ def test_template_fill_and_import(client):
     assert resp.status_code == 200
     wb = openpyxl.load_workbook(io.BytesIO(resp.content))
 
-    # --- Schedule: overwrite example row with real data ---
+    # --- Schedule: overwrite example rows with real data (clear all example rows first) ---
     ws = wb["Schedule"]
+    for col in range(1, 10):
+        ws.cell(row=3, column=col).value = None  # clear Catch-Up example row
     ws.cell(row=2, column=1).value = 2022
     ws.cell(row=2, column=2).value = "Purchase"
     ws.cell(row=2, column=3).value = 8000

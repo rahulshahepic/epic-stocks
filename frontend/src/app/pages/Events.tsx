@@ -43,6 +43,7 @@ const WI_TAX_DEFAULTS: TaxSettings = {
   niit_rate: 0.038, state_income_rate: 0.0765, state_lt_cg_rate: 0.0536,
   state_st_cg_rate: 0.0765, lt_holding_days: 365, lot_selection_method: 'lifo',
   prefer_stock_dp: false, dp_min_percent: 0.10, dp_min_cap: 20000,
+  deduct_investment_interest: false,
 }
 
 function estTaxForVesting(e: TimelineEvent, ts: TaxSettings): number {
@@ -135,6 +136,37 @@ function Unrealized83bCard({ e, ts }: { e: TimelineEvent; ts: TaxSettings }) {
   )
 }
 
+function InterestDeductionCard({ e }: { e: TimelineEvent }) {
+  const stcgDed = e.interest_deduction_on_stcg ?? 0
+  const ltcgDed = e.interest_deduction_on_ltcg ?? 0
+  const total = e.interest_deduction_applied ?? 0
+  return (
+    <div className="rounded-lg border border-purple-200 bg-purple-50 p-3 text-xs dark:border-purple-800 dark:bg-purple-900/20">
+      <h3 className="mb-2 text-xs font-semibold text-purple-900 dark:text-purple-200">Investment Interest Deduction Applied</h3>
+      <div className="space-y-1">
+        {stcgDed > 0 && (
+          <TaxRow label="Offset against short-term gains" value={`−${fmt$(stcgDed)}`} />
+        )}
+        {ltcgDed > 0 && (
+          <TaxRow label="Offset against long-term gains" value={`−${fmt$(ltcgDed)}`} />
+        )}
+        <div className="my-1.5 border-t border-purple-200 dark:border-purple-700" />
+        <TaxRow label="Total deduction used this event" value={fmt$(total)} bold />
+        {e.adjusted_total_cap_gains != null && (
+          <TaxRow
+            label={`Reported cap gains (${fmt$(e.total_cap_gains)} − ${fmt$(total)})`}
+            value={fmt$(e.adjusted_total_cap_gains)}
+          />
+        )}
+      </div>
+      <p className="mt-2 text-[10px] text-purple-600 dark:text-purple-400">
+        Form 4952 estimate — interest paid on investment loans is deducted here.
+        Unused deduction carries forward to future years.
+      </p>
+    </div>
+  )
+}
+
 export default function Events() {
   const fetchEvents = useCallback(() => api.getEvents(), [])
   const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
@@ -213,6 +245,7 @@ export default function Events() {
   const filtered = typeFilter.size > 0 ? events.filter(e => typeFilter.has(e.event_type)) : events
   // Index of the projected liquidation event in the filtered list (for separator placement)
   const liqIdx = filtered.findIndex(e => e.is_projected)
+  const hasInterestDeduction = events.some(e => (e.interest_deduction_applied ?? 0) > 0)
 
   return (
     <div className="space-y-4">
@@ -266,7 +299,7 @@ export default function Events() {
               <th className="px-3 py-2 text-right">Shares</th>
               <th className="px-3 py-2 text-right">Price</th>
               <th className="px-3 py-2 text-right">Income</th>
-              <th className="px-3 py-2 text-right">Cap Gains</th>
+              <th className="px-3 py-2 text-right">{hasInterestDeduction ? 'Cap Gains (adj.)' : 'Cap Gains'}</th>
               <th className="px-3 py-2 text-right">Tax</th>
               <th className="px-3 py-2 text-right">Cum Shares</th>
             </tr>
@@ -336,6 +369,11 @@ export default function Events() {
                           </span>
                         : (e.event_type === 'Sale' || e.is_projected) && e.gross_proceeds != null
                         ? <span className={e.is_projected ? 'text-green-600 opacity-70 dark:text-green-400' : 'text-green-600 dark:text-green-400'}>{fmt$(e.gross_proceeds)}</span>
+                        : e.adjusted_total_cap_gains != null && e.adjusted_total_cap_gains !== e.total_cap_gains
+                        ? <span title={`Gross: ${fmt$(e.total_cap_gains)} − ${fmt$(e.interest_deduction_applied ?? 0)} interest ded.`}>
+                            {fmt$(e.adjusted_total_cap_gains)}
+                            <span className="ml-1 text-[9px] text-purple-400 dark:text-purple-500">adj.</span>
+                          </span>
                         : e.total_cap_gains ? fmt$(e.total_cap_gains) : '—'}
                     </td>
                     <td className="px-3 py-2 text-right">
@@ -406,6 +444,14 @@ export default function Events() {
                     <tr className="bg-gray-50 dark:bg-gray-900/50">
                       <td colSpan={9} className="px-3 pb-3 pt-0">
                         <LiqDetailCard e={e} />
+                      </td>
+                    </tr>
+                  )}
+                  {(isVestingExpanded || (e.event_type === 'Share Price' && (e.interest_deduction_applied ?? 0) > 0))
+                    && (e.interest_deduction_applied ?? 0) > 0 && (
+                    <tr className="bg-white dark:bg-gray-900">
+                      <td colSpan={9} className="px-3 pb-3 pt-0">
+                        <InterestDeductionCard e={e} />
                       </td>
                     </tr>
                   )}

@@ -500,7 +500,7 @@ export default function Grants() {
                 onChange={e => setCatchUpChecked(e.target.checked)}
                 className="rounded border-gray-300 dark:border-gray-600"
               />
-              <span>Includes Catch-Up shares ($0 cost basis, vests as income)</span>
+              <span>Includes Catch-Up shares (zero-basis, vests as ordinary income)</span>
             </label>
             {catchUpChecked && (
               <div className="pl-5">

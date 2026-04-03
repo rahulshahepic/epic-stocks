@@ -622,10 +622,22 @@ def download_template():
     _body_cell(ws, 2, 7, date(2030, 3, 15), "mm/dd/yyyy")
     _body_cell(ws, 2, 8, 0)
     _body_cell(ws, 2, 9, False)
-    for col, note in [(1, "e.g. 2020"), (2, "Purchase or Bonus"), (3, "# of shares"),
-                      (4, "$ per share"), (5, "mm/dd/yyyy"), (6, "# vesting periods"),
+    _body_cell(ws, 3, 1, 2020)
+    _body_cell(ws, 3, 2, "Catch-Up")
+    _body_cell(ws, 3, 3, 0)
+    _body_cell(ws, 3, 4, 0.00, "\\$#,##0.00")
+    _body_cell(ws, 3, 5, date(2021, 9, 30), "mm/dd/yyyy")
+    _body_cell(ws, 3, 6, 5)
+    _body_cell(ws, 3, 7, date(2020, 12, 31), "mm/dd/yyyy")
+    _body_cell(ws, 3, 8, 0)
+    _body_cell(ws, 3, 9, False)
+    for col, note in [(1, "e.g. 2020"), (2, "Purchase, Bonus, or Catch-Up"), (3, "# of shares"),
+                      (4, "$ per share (0 for Catch-Up/Bonus)"), (5, "mm/dd/yyyy"), (6, "# vesting periods"),
                       (9, "TRUE if an 83(b) election was filed for this grant, else FALSE")]:
         ws.cell(row=1, column=col).comment = Comment(note, "Template")
+    ws.cell(row=3, column=2).comment = Comment(
+        "Catch-Up = $0 cost basis; shares vest as ordinary income", "Template"
+    )
 
     # Loans sheet
     ws_loans = wb.create_sheet("Loans")
@@ -719,7 +731,9 @@ def download_sample():
     sched_rows = [
         (2020, "Purchase", 50000, 1.85, date(2022, 6, 15), 5, date(2020, 12, 31), 0,     False),
         (2020, "Bonus",    5000,  0.00, date(2022, 6, 15), 4, date(2020, 12, 31), 0,     False),
+        (2020, "Catch-Up", 3000, 0.00, date(2021, 9, 30), 5, date(2020, 12, 31), 0,     False),
         (2021, "Purchase", 80000, 2.20, date(2023, 9, 30), 5, date(2021, 12, 31), 0,     False),
+        (2021, "Catch-Up", 3000, 0.00, date(2022, 9, 20), 5, date(2021, 12, 31), 0,     False),
         (2022, "Purchase", 100000, 2.75, date(2024, 9, 30), 4, date(2022, 12, 31), 0,    False),
         (2022, "Bonus",    20000, 0.00, date(2027, 9, 30), 1, date(2022, 12, 31), 0,     False),
         (2023, "Purchase", 120000, 3.10, date(2025, 9, 30), 4, date(2023, 12, 31), 0,    False),
@@ -743,6 +757,15 @@ def download_sample():
     ]
     for col, note in first_row_notes:
         ws.cell(row=2, column=col).comment = Comment(note, "Sample")
+
+    # Catch-Up row notes (rows 4 and 6 = 2020 and 2021 catch-up)
+    for catch_up_row in [4, 6]:
+        ws.cell(row=catch_up_row, column=2).comment = Comment(
+            "Catch-Up = $0 cost basis; all vested shares are taxed as ordinary income (no capital gains component)", "Sample"
+        )
+        ws.cell(row=catch_up_row, column=4).comment = Comment(
+            "$0 cost basis — the full share value at vest time is ordinary income", "Sample"
+        )
 
     # DP Shares note on the row that uses it
     ws.cell(row=len(sched_rows) + 1, column=8).comment = Comment(

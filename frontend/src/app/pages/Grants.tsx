@@ -111,6 +111,10 @@ export default function Grants() {
   const [editLoanId, setEditLoanId] = useState<number | null>(null)
   const [editLoanVersion, setEditLoanVersion] = useState(1)
 
+  // Catch-up shares (add mode only)
+  const [catchUpChecked, setCatchUpChecked] = useState(false)
+  const [catchUpShares, setCatchUpShares] = useState(0)
+
   // Payoff sale
   const [payoffSaleChecked, setPayoffSaleChecked] = useState(true)
   const [saleRates, setSaleRates] = useState<TaxRates>(DEFAULT_RATES)
@@ -127,6 +131,8 @@ export default function Grants() {
     setEditLoanVersion(1)
     setPayoffSaleChecked(true)
     setSaleRates(ratesFromDefaults(taxSettings))
+    setCatchUpChecked(false)
+    setCatchUpShares(0)
     setError('')
     setConflict(false)
   }
@@ -222,6 +228,19 @@ export default function Grants() {
             periods: form.periods,
             exercise_date: form.exercise_date,
             election_83b: form.election_83b || undefined,
+          })
+        }
+        if (catchUpChecked && catchUpShares > 0) {
+          await api.createGrant({
+            year: form.year,
+            type: 'Catch-Up',
+            shares: catchUpShares,
+            price: 0,
+            vest_start: form.vest_start,
+            periods: form.periods,
+            exercise_date: form.exercise_date,
+            dp_shares: 0,
+            election_83b: false,
           })
         }
       } else if (mode === 'edit' && editId != null) {
@@ -471,6 +490,25 @@ export default function Grants() {
             </label>
           )}
         </div>
+
+        {mode === 'add' && (
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+              <input
+                type="checkbox"
+                checked={catchUpChecked}
+                onChange={e => setCatchUpChecked(e.target.checked)}
+                className="rounded border-gray-300 dark:border-gray-600"
+              />
+              <span>Includes Catch-Up shares ($0 cost basis, vests as income)</span>
+            </label>
+            {catchUpChecked && (
+              <div className="pl-5">
+                <Field label="Catch-Up Shares" type="number" value={catchUpShares} onChange={v => setCatchUpShares(+v)} />
+              </div>
+            )}
+          </div>
+        )}
 
         {showLoanSection && (
           <>

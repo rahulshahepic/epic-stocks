@@ -38,10 +38,22 @@ def _compute_scenario(
         if e.get("event_type") in ("Sale", "Liquidation (projected)")
     ]
     total_tax = sum(e.get("estimated_tax") or 0.0 for e in sale_events)
+    # _apply_interest_deduction annotates events but doesn't update estimated_tax.
+    # Compute the tax savings from the deduction fields and subtract here.
+    deduction_savings = 0.0
+    if deduct_interest:
+        stcg_rate = ts_dict["federal_st_cg_rate"] + ts_dict["niit_rate"] + ts_dict["state_st_cg_rate"]
+        ltcg_rate = ts_dict["federal_lt_cg_rate"] + ts_dict["niit_rate"] + ts_dict["state_lt_cg_rate"]
+        deduction_savings = sum(
+            e.get("interest_deduction_on_stcg", 0.0) * stcg_rate +
+            e.get("interest_deduction_on_ltcg", 0.0) * ltcg_rate
+            for e in enriched
+        )
+        total_tax -= deduction_savings
     net_cash = sum(
         (e.get("gross_proceeds") or 0.0) - (e.get("estimated_tax") or 0.0)
         for e in sale_events
-    )
+    ) + deduction_savings
     return total_tax, net_cash
 
 

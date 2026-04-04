@@ -4,7 +4,7 @@ import { api } from '../../api.ts'
 import { useConfig } from '../hooks/useConfig.ts'
 import type {
   AdminStats, AdminUser, BlockedEmailEntry, ErrorLogEntry, TestNotifyResult,
-  SystemMetricPoint, DbTableInfo, RotationEvent,
+  SystemMetricPoint, DbTableInfo, RotationEvent, TipsReport,
 } from '../../api.ts'
 
 const NOTIFY_TEMPLATES: Record<string, { title: string; body: string }> = {
@@ -78,12 +78,15 @@ export default function Admin() {
   const [metrics, setMetrics] = useState<SystemMetricPoint[]>([])
   const [metricHours, setMetricHours] = useState(72)
   const [dbTables, setDbTables] = useState<DbTableInfo[]>([])
+  const [tipsReport, setTipsReport] = useState<TipsReport | null>(null)
 
   // Danger Zone state
   const [maintenanceActive, setMaintenanceActive] = useState<boolean | null>(null)
   const [maintenanceLoading, setMaintenanceLoading] = useState(false)
   const [epicModeActive, setEpicModeActive] = useState<boolean | null>(null)
   const [epicModeLoading, setEpicModeLoading] = useState(false)
+  const [flexiblePayoffActive, setFlexiblePayoffActive] = useState<boolean | null>(null)
+  const [flexiblePayoffLoading, setFlexiblePayoffLoading] = useState(false)
   const [rotationOpen, setRotationOpen] = useState(false)
   const [rotationConfirm, setRotationConfirm] = useState(false)
   const [rotationRunning, setRotationRunning] = useState(false)
@@ -119,18 +122,22 @@ export default function Admin() {
 
   const load = useCallback(async () => {
     try {
-      const [s, b, m, rs, em] = await Promise.all([
+      const [s, b, m, rs, em, fp, tr] = await Promise.all([
         api.adminStats(),
         api.adminListBlocked(),
         api.adminGetMaintenance(),
         api.adminRotationStatus(),
         api.adminGetEpicMode(),
+        api.adminGetFlexiblePayoff(),
+        api.adminTipsReport(),
       ])
       setStats(s)
       setBlocked(b)
       setMaintenanceActive(m.active)
       setSnapshotExists(rs.snapshot_exists)
       setEpicModeActive(em.active)
+      setFlexiblePayoffActive(fp.active)
+      setTipsReport(tr)
       setError('')
       loadUsers()
       loadErrors()
@@ -266,6 +273,34 @@ export default function Admin() {
               <span className="text-gray-500 dark:text-slate-400">DB Size</span>
               <p className="text-lg font-semibold text-gray-900 dark:text-slate-100">{formatBytes(stats.db_size_bytes)}</p>
             </div>
+          </div>
+        </section>
+      )}
+
+      {/* Smart Tips Report */}
+      {tipsReport && typeof tipsReport.total_estimated_savings === 'number' && tipsReport.unique_users_accepted > 0 && (
+        <section className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <h3 className="text-sm font-medium text-gray-900 dark:text-slate-100">Smart Tips</h3>
+          <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+            <div>
+              <span className="text-gray-500 dark:text-slate-400">Users accepted</span>
+              <p className="text-lg font-semibold text-gray-900 dark:text-slate-100">{tipsReport.unique_users_accepted}</p>
+            </div>
+            <div>
+              <span className="text-gray-500 dark:text-slate-400">Est. total savings</span>
+              <p className="text-lg font-semibold text-gray-900 dark:text-slate-100">
+                {tipsReport.total_estimated_savings.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
+              </p>
+            </div>
+            {tipsReport.by_type.map(t => (
+              <div key={t.type}>
+                <span className="text-gray-500 dark:text-slate-400 capitalize">{t.type.replace('_', ' ')}</span>
+                <p className="text-lg font-semibold text-gray-900 dark:text-slate-100">{t.unique_users}</p>
+                <p className="text-xs text-gray-500 dark:text-slate-400">
+                  {t.total_savings.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })} saved
+                </p>
+              </div>
+            ))}
           </div>
         </section>
       )}
@@ -691,6 +726,48 @@ export default function Admin() {
               Epic Mode is active. Grant/price/loan writes are blocked for all users.
             </p>
           )}
+        </div>
+
+        <hr className="my-4 border-red-100 dark:border-red-900/40" />
+
+        {/* Flexible Loan Payoff Methods */}
+        <div className="mt-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-gray-900 dark:text-slate-100">Flexible Loan Payoff Methods</p>
+              <p className="text-xs text-gray-500 dark:text-slate-400">
+                When enabled, users with sufficient stock coverage can choose Epic LIFO, LIFO, FIFO, or manual lot
+                selection for payoff sales instead of the default same-tranche method.
+              </p>
+            </div>
+            <button
+              disabled={flexiblePayoffActive === null || flexiblePayoffLoading}
+              onClick={async () => {
+                setFlexiblePayoffLoading(true)
+                try {
+                  const res = await api.adminSetFlexiblePayoff(!flexiblePayoffActive)
+                  setFlexiblePayoffActive(res.active)
+                } catch {
+                  setError('Failed to toggle flexible payoff')
+                } finally {
+                  setFlexiblePayoffLoading(false)
+                }
+              }}
+              className={`ml-4 shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors disabled:opacity-50 ${
+                flexiblePayoffActive
+                  ? 'bg-green-600 hover:bg-green-700'
+                  : 'bg-rose-700 hover:bg-rose-800'
+              }`}
+            >
+              {flexiblePayoffLoading
+                ? '…'
+                : flexiblePayoffActive === null
+                ? 'Loading'
+                : flexiblePayoffActive
+                ? 'Disable'
+                : 'Enable'}
+            </button>
+          </div>
         </div>
 
         <hr className="my-4 border-red-100 dark:border-red-900/40" />

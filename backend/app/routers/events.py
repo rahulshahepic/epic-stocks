@@ -324,18 +324,24 @@ def _annotate_sale_taxes(enriched: list, timeline: list, ts_dict: dict,
         result = compute_sale_tax(sorted_tl, {"date": sale_date, "shares": shares, "price_per_share": price_per_share}, effective_ts, lot_order=lot_order, grant_year=gy, grant_type=gt, prebuilt_lots=prebuilt)
         e["estimated_tax"] = result["estimated_tax"]
         e["st_shares"] = result["st_shares"]
-        # Append prior-sale entry in sorted order for the next iteration.
-        sentinel = {
-            "date": datetime.combine(sale_date, datetime.min.time()),
-            "event_type": "Sale",
-            "vested_shares": -shares,
-            "grant_price": None,
-            "share_price": 0.0,
-        }
-        key = _sort_key(sentinel)
-        idx = bisect.bisect_right(sort_keys, key)
-        sorted_tl.insert(idx, sentinel)
-        sort_keys.insert(idx, key)
+        # Inject per-lot sentinels so subsequent build_fifo_lots calls consume exactly
+        # the lots this sale used (matching lot_order), not just the oldest lots.
+        for lot in result.get("lots_consumed", []):
+            sentinel = {
+                "date": datetime.combine(sale_date, datetime.min.time()),
+                "event_type": "Prior Sale Lot",
+                "target_vest_date": lot["vest_date"],
+                "target_grant_year": lot["grant_year"],
+                "target_grant_type": lot["grant_type"],
+                "shares_consumed": lot["shares"],
+                "vested_shares": 0,
+                "grant_price": None,
+                "share_price": 0.0,
+            }
+            key = _sort_key(sentinel)
+            idx = bisect.bisect_right(sort_keys, key)
+            sorted_tl.insert(idx, sentinel)
+            sort_keys.insert(idx, key)
 
     # Annotate the projected liquidation event (if present)
     for e in enriched:

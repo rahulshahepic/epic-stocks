@@ -8,6 +8,7 @@ import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, TaxSettings, 
 import { useApiData } from '../hooks/useApiData.ts'
 import { useDark } from '../../scaffold/hooks/useDark.ts'
 import OnboardingWizard from '../components/OnboardingWizard.tsx'
+import TipCarousel from '../components/TipCarousel.tsx'
 
 function fmt$(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
@@ -427,6 +428,8 @@ const WI_TAX_DEFAULTS: TaxSettings = {
   state_st_cg_rate: 0.0765,
   lt_holding_days: 365,
   lot_selection_method: 'lifo',
+  loan_payoff_method: 'epic_lifo',
+  flexible_payoff_enabled: false,
   prefer_stock_dp: false,
   dp_min_percent: 0.10,
   dp_min_cap: 20000,
@@ -1021,6 +1024,8 @@ export default function Dashboard() {
           Projecting beyond your exit date — exit date not applied
         </p>
       )}
+
+      <TipCarousel onApply={reloadEvents} />
 
       {/* (F) aria-live so screen readers announce summary updates when cardDate changes */}
       <div aria-live="polite" aria-atomic="true" className="grid grid-cols-2 gap-3 sm:grid-cols-3">

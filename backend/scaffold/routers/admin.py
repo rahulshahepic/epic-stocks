@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 
 from database import get_db
-from scaffold.models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, ErrorLog, EmailPreference, SystemMetric, TaxSettings, HorizonSettings, LoanPayment, Sale
+from scaffold.models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, ErrorLog, EmailPreference, SystemMetric, TaxSettings, HorizonSettings, LoanPayment, Sale, TipAcceptance
 from scaffold.auth import get_admin_user, get_admin_emails
 from scaffold.maintenance import is_maintenance_active, set_maintenance
 from scaffold.epic_mode import is_epic_mode, set_epic_mode
@@ -447,6 +447,70 @@ def get_epic_mode(admin: User = Depends(get_admin_user)):
 def set_epic_mode_endpoint(body: EpicModeRequest, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
     set_epic_mode(db, body.active)
     return EpicModeStatus(active=body.active)
+
+
+# ============================================================
+# Flexible loan payoff methods
+# ============================================================
+
+class FlexiblePayoffStatus(BaseModel):
+    active: bool
+
+
+class FlexiblePayoffRequest(BaseModel):
+    active: bool
+
+
+@router.get("/flexible-payoff", response_model=FlexiblePayoffStatus)
+def get_flexible_payoff(admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    row = db.execute(text("SELECT value FROM system_settings WHERE key = 'flexible_payoff_enabled'")).scalar()
+    return FlexiblePayoffStatus(active=(row == "true"))
+
+
+@router.post("/flexible-payoff", response_model=FlexiblePayoffStatus)
+def set_flexible_payoff(body: FlexiblePayoffRequest, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    db.execute(
+        text("UPDATE system_settings SET value = :v WHERE key = 'flexible_payoff_enabled'"),
+        {"v": "true" if body.active else "false"},
+    )
+    db.commit()
+    return FlexiblePayoffStatus(active=body.active)
+
+
+class TipTypeReport(BaseModel):
+    type: str
+    unique_users: int
+    total_savings: float
+
+
+class TipsReport(BaseModel):
+    unique_users_accepted: int
+    total_estimated_savings: float
+    by_type: list[TipTypeReport]
+
+
+@router.get("/tips-report", response_model=TipsReport)
+def get_tips_report(admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    rows = (
+        db.query(
+            TipAcceptance.tip_type,
+            func.count(func.distinct(TipAcceptance.user_id)).label("unique_users"),
+            func.sum(TipAcceptance.savings_estimate).label("total_savings"),
+        )
+        .group_by(TipAcceptance.tip_type)
+        .all()
+    )
+    by_type = [
+        TipTypeReport(type=r.tip_type, unique_users=r.unique_users, total_savings=round(r.total_savings or 0.0, 2))
+        for r in rows
+    ]
+    unique_users_accepted = db.query(func.count(func.distinct(TipAcceptance.user_id))).scalar() or 0
+    total_savings = sum(r.total_savings for r in by_type)
+    return TipsReport(
+        unique_users_accepted=unique_users_accepted,
+        total_estimated_savings=round(total_savings, 2),
+        by_type=by_type,
+    )
 
 
 # ============================================================

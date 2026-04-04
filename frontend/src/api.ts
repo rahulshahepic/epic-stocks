@@ -157,6 +157,14 @@ export interface LoanEntry {
   refinances_loan_id: number | null
 }
 
+export interface SmartTip {
+  type: 'exit_date' | 'deduction' | 'method'
+  title: string
+  description: string
+  savings: number
+  apply: Record<string, unknown>
+}
+
 // --- API ---
 
 function post<T>(path: string, body: object) {
@@ -293,6 +301,11 @@ export const api = {
   getHorizonSettings: () => apiFetch<HorizonSettings>('/api/horizon-settings'),
   updateHorizonSettings: (data: Partial<HorizonSettings>) => put<HorizonSettings>('/api/horizon-settings', data),
 
+  // Smart Tips
+  getTips: () => apiFetch<SmartTip[]>('/api/tips'),
+  recordTipAcceptance: (tip_type: string, savings_estimate: number) =>
+    post<void>('/api/tips/accept', { tip_type, savings_estimate }),
+
   // Admin
   adminStats: () => apiFetch<AdminStats>('/api/admin/stats'),
   adminUsers: (q = '', limit = 10, offset = 0) =>
@@ -308,6 +321,7 @@ export const api = {
     post<TestNotifyResult>('/api/admin/test-notify', { user_id, title, body }),
   adminMetrics: (hours = 72) => apiFetch<SystemMetricPoint[]>(`/api/admin/metrics?hours=${hours}`),
   adminDbTables: () => apiFetch<DbTableInfo[]>('/api/admin/db-tables'),
+  adminTipsReport: () => apiFetch<TipsReport>('/api/admin/tips-report'),
 
   // Operational status — no auth required, polled by App.tsx
   status: () => apiFetch<{ maintenance: boolean }>('/api/status'),
@@ -319,6 +333,9 @@ export const api = {
   adminGetEpicMode: () => apiFetch<{ active: boolean }>('/api/admin/epic-mode'),
   adminSetEpicMode: (active: boolean) =>
     post<{ active: boolean }>('/api/admin/epic-mode', { active }),
+  adminGetFlexiblePayoff: () => apiFetch<{ active: boolean }>('/api/admin/flexible-payoff'),
+  adminSetFlexiblePayoff: (active: boolean) =>
+    post<{ active: boolean }>('/api/admin/flexible-payoff', { active }),
   adminRotationStatus: () =>
     apiFetch<{ snapshot_exists: boolean; maintenance_active: boolean }>('/api/admin/rotation-status'),
   adminRotationRestore: () =>
@@ -351,6 +368,18 @@ export const api = {
       }
     }
   },
+}
+
+export interface TipTypeReport {
+  type: string
+  unique_users: number
+  total_savings: number
+}
+
+export interface TipsReport {
+  unique_users_accepted: number
+  total_estimated_savings: number
+  by_type: TipTypeReport[]
 }
 
 export interface AdminStats {
@@ -491,6 +520,8 @@ export interface TaxSettings {
   state_st_cg_rate: number
   lt_holding_days: number
   lot_selection_method: 'fifo' | 'lifo' | 'epic_lifo' | 'manual_tranche'
+  loan_payoff_method: 'epic_lifo' | 'same_tranche' | 'lifo' | 'fifo'
+  flexible_payoff_enabled: boolean
   prefer_stock_dp: boolean
   dp_min_percent: number
   dp_min_cap: number

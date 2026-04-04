@@ -248,6 +248,7 @@ Investment interest is interest paid on loans used to buy investments. Under IRS
 - **Down Payment Rules** — configurable minimum DP policy (percent of purchase and dollar cap). "Prefer stock DP" auto-calculates the minimum stock exchange down payment on new purchases. Default: 10% or $20,000, whichever is lower.
 - **Excel Import/Export** — bootstrap from an existing Vesting.xlsx or export current state. The Import page includes a downloadable sample file (pre-filled with fake data, with cell comments explaining every field) and a built-in column reference guide.
 - **OIDC Sign-In** — provider-agnostic PKCE flow works with any standards-compliant IdP (Google, Azure Entra ID, etc.). Multiple providers can be enabled simultaneously — the login page shows one button per provider. Automatic account creation; data is tied to the account.
+- **Smart Tips** — the dashboard automatically analyzes your settings and surfaces up to 3 actionable tips in a carousel above the summary cards: (1) **Exit date** — if extending your projected exit date by 1–3 months saves ≥$1,000 in taxes by letting shares cross the long-term threshold, the smallest qualifying extension is suggested; (2) **Investment interest deduction** — if enabling Form 4952 deduction would save ≥$500; (3) **Lot selection method** — if switching to FIFO/LIFO/Epic LIFO saves ≥$1,000 vs. your current method (manual lot selection is not analyzed). Each tip shows estimated savings and an **Apply** button that updates the relevant setting in one tap and refreshes the dashboard. Tips can also be dismissed for the session. Acceptance is recorded for admin reporting.
 - **Admin Dashboard** — user management, aggregate stats, email blocking, system health monitoring (CPU, RAM, DB size, and cache hit rate sparklines with 24h/72h/7d/30d windows), per-table DB size breakdown, and a Danger Zone for maintenance mode and Epic Mode toggles. Admin cannot see financial data.
 - **Push & Email Notifications** — configurable advance timing: day-of, 3 days before, or 1 week before each event. Per-user opt-in for each channel independently. Includes a "Send test" button to confirm push is working.
 - **Per-User Encryption** — AES-256-GCM column-level encryption. Two-level key hierarchy: `KEY_ENCRYPTION_KEY` (env var, set once, never changes) wraps an operational master key stored encrypted in the database. The master key can be rotated live from the admin panel — all replicas pick up the new key automatically within seconds, no restart required. Each user has a unique per-user key wrapped by the master key.
@@ -509,6 +510,7 @@ epic-stocks/
 │   │       ├── flows.py     # Quick flows (new purchase, bonus, price)
 │   │       ├── import_export.py # Excel import/export + template
 │   │       ├── sales.py     # Sales CRUD + tax breakdown
+│   │       ├── tips.py      # Smart Tips: scenario tax comparisons + acceptance recording
 │   │       └── cache.py     # POST /api/internal/cache-invalidate webhook
 │   └── tests/               # pytest tests
 ├── frontend/
@@ -520,6 +522,7 @@ epic-stocks/
 │   │   │   └── hooks/       # useAuth, useConfig, useDark, usePush, useMe
 │   │   ├── app/             # Equity tracking UI (replace when forking)
 │   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport
+│   │   │   ├── components/  # OnboardingWizard, TipCarousel
 │   │   │   └── hooks/       # useApiData, useDataSync
 │   │   ├── App.tsx          # Router + layout wiring
 │   │   └── __tests__/       # Vitest tests
@@ -627,6 +630,7 @@ The admin system is opt-in via the `ADMIN_EMAIL` environment variable. Admins ar
 - Database storage usage
 - **System Health** — current CPU %, RAM %, and DB size with sparkline charts (24h/72h/7d/30d windows). Sampled every 15 minutes; 30-day rolling retention.
 - **Database Tables** — per-table size breakdown showing which tables are large (PostgreSQL only). Useful for diagnosing storage growth; includes a note explaining PostgreSQL's ~7–8 MB baseline overhead.
+- **Smart Tips Report** — aggregate-only view of tip acceptance: total unique users who accepted any tip, total estimated savings, and per-type breakdown (exit date / deduction / method). No individual user financial data is exposed.
 - Per-user metadata: email, name, created_at, last_login, record counts, admin badge
 - Searchable user list (filter by email or name) with pagination, sorted by last active
 - **Build version** — a 7-character commit SHA is shown in small muted text at the bottom of the Admin page (and the Settings page for all users), so testers can confirm exactly which build is running without needing server access

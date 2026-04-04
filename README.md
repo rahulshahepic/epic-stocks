@@ -39,6 +39,8 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 |-------|------|
 | ![Settings Light](screenshots/settings-light-mobile.png) | ![Settings Dark](screenshots/settings-dark-mobile.png) |
 
+Settings → Tax Rates also includes an **investment interest deduction** toggle (see [Investment Interest Deduction](#investment-interest-deduction) below).
+
 ### Admin Dashboard
 
 | Light | Dark |
@@ -90,7 +92,7 @@ The *grant price* (what you paid) is fixed at grant creation. The *share price* 
    - **On Epic's campus network?** If you see the **"On Epic's network? Start here →"** button on the Import page, click it to download a pre-filled Excel template from Epic's campus portal — your grant and loan structure are already filled in. Download it, review the numbers, then upload it on the Import page. In Epic Mode your historical data is read-only (maintained by Epic's systems), but you can still add future price estimates, record sales, and configure tax settings.
    - **Import from Excel** — go to **Import**, download the **Sample** (pre-filled with fake data and explanatory cell comments) to see what the format looks like, then fill in your real data and upload. Click "What do the columns mean?" for a plain-English guide to every field.
    - **Add manually** — go to **Grants** and add grants one by one. Then add any **Loans** and their annual interest. For bonus/free grants where you filed an **83(b) election**, tick the "Filed 83(b) election" checkbox — vesting events will show unrealized cap gains instead of ordinary income.
-4. **View the Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, interest, tax paid, cash received, next event). Use the **As of** date picker to time-travel. **Today** snaps to the current date; **Last event** jumps to your final vesting date; **Exit date** appears when you've configured one (see Settings → Exit Planning) and jumps to your projected liquidation date — showing 0 shares, 0 principal, and net cash.
+4. **View the Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, interest, tax paid, cash received, next event). Use the **As of** date picker to time-travel. **Today** snaps to the current date; **Last event** jumps to your final vesting date; **Exit date** appears when you've configured one (see Settings → Exit Planning) and jumps to your projected liquidation date — showing 0 shares, 0 principal, and net cash. If you enable the investment interest deduction in Settings, the cap gains and cash cards reflect the estimated benefit — see [Investment Interest Deduction](#investment-interest-deduction).
 5. **View Events** — the full computed timeline of vesting, exercise, loan payoff, and sale events. A **Liquidation (projected)** event is automatically appended at your exit date. Tap it to see the calculation breakdown (shares × price → gross proceeds → est. tax → net). Events after the exit date are dimmed with a "beyond exit horizon" separator.
 6. **Configure your exit date** — go to **Settings → Exit Planning** to set a specific date. The projected liquidation uses shares and price as of that date (even if it's before your last vesting event). Defaults to your last vesting date if not set.
 7. **Plan or record a sale** — go to **Sales** and tap **+ Sale**. See [Sales Workflow](#sales-workflow) for the full explanation of lot selection methods, the $ Target vs # Shares toggle, the tranche allocation table, and how to record actual tax paid for a past sale.
@@ -202,6 +204,37 @@ If a payoff sale for the loan already exists (e.g. auto-created at loan setup), 
 
 ---
 
+## Investment Interest Deduction
+
+Enable this in **Settings → Tax Rates → "Estimate investment interest deduction (Form 4952)"**.
+
+Investment interest is interest paid on loans used to buy investments. Under IRS Form 4952 you can elect to deduct it against *net investment income* — and you may elect to treat net capital gains as investment income for this purpose. The trade-off: gains treated as investment income lose their preferential cap-gains rate and are taxed as ordinary income instead. For large-enough interest amounts the tax saving from reducing the gain can outweigh the rate difference; this estimate helps you model that.
+
+**How the estimate works:**
+
+- **Interest timing** — an interest loan with `due_date = 1/1/YEAR` is deductible in YEAR (e.g. 2024 interest due 1/1/2025 → deductible in 2025).
+- **Application order** — the deductible pool is applied first to short-term gains (vesting cap gains), then long-term gains (price cap gains). This minimises tax since STCG is taxed at a higher rate.
+- **Carry-forward** — any unused deduction in a given year carries forward indefinitely and is applied in the next year that has eligible cap gains.
+- **Tax savings** — the tax you avoid by reducing capital gains is added to your estimated cash received.
+
+**What changes on the dashboard when enabled:**
+
+- "Total Cap Gains" card relabels to **"Cap Gains (after int. ded.)"** and shows the reduced amount.
+- "Cash Received" card relabels to **"Cash (incl. int. ded. savings)"** and includes the estimated tax savings (deduction × your configured CG rates).
+- The Income vs Cap Gains chart curve drops where deductions are applied.
+- The Estimated Tax Liability chart reflects the lower taxable cap gains.
+- A purple banner shows the total deduction applied and links back to Settings.
+
+**What changes on the Events timeline when enabled:**
+
+- The "Cap Gains" column header changes to **"Cap Gains (adj.)"**.
+- Events where a deduction is applied show the adjusted value with an "adj." badge and a tooltip showing the gross amount.
+- Expanding a vesting or price event shows an **InterestDeductionCard** with the STCG/LTCG split and how much of the available interest pool was consumed.
+
+> This is an estimate only. Consult a tax advisor before making decisions based on it. The deduction requires filing Form 4952; electing to treat capital gains as investment income means those gains lose their preferential rate. Whether this is beneficial depends on your specific situation.
+
+---
+
 ## Features
 
 - **Event Timeline** — computed on the fly from grants, prices, and loans. Never stored. Shows income, capital gains, share price, and cumulative totals. A **Liquidation (projected)** event is auto-injected at the exit date: tap it to see a breakdown (shares × price → gross proceeds → est. tax → net). Events after the exit date are dimmed with a "beyond exit horizon" separator so it's clear they won't occur if you liquidate.
@@ -211,6 +244,7 @@ If a payoff sale for the loan already exists (e.g. auto-created at loan setup), 
 - **CRUD Management** — full create/read/update/delete for Grants, Loans, Prices, and Sales.
 - **Quick Flows** — convenience endpoints: "New Purchase" (grant + loan with optional stock down payment), "Annual Price", "Add Bonus".
 - **83(b) Election Support** — bonus/free grants can be flagged as having an 83(b) election filed. Vesting events for these grants show unrealized cap gains (violet `~$X`) instead of ordinary income, with a tappable card explaining the cost basis and potential LT cap gains tax at eventual sale.
+- **Investment Interest Deduction Estimator** — optional Form 4952 estimate in Settings → Tax Rates. Applies recorded interest payments against cap gains (STCG first, then LTCG) with indefinite carry-forward. Reduces the cap gains card and chart; adds estimated tax savings to the cash card. Per-event deduction detail shown inline in the Events table. See [Investment Interest Deduction](#investment-interest-deduction).
 - **Down Payment Rules** — configurable minimum DP policy (percent of purchase and dollar cap). "Prefer stock DP" auto-calculates the minimum stock exchange down payment on new purchases. Default: 10% or $20,000, whichever is lower.
 - **Excel Import/Export** — bootstrap from an existing Vesting.xlsx or export current state. The Import page includes a downloadable sample file (pre-filled with fake data, with cell comments explaining every field) and a built-in column reference guide.
 - **OIDC Sign-In** — provider-agnostic PKCE flow works with any standards-compliant IdP (Google, Azure Entra ID, etc.). Multiple providers can be enabled simultaneously — the login page shows one button per provider. Automatic account creation; data is tied to the account.

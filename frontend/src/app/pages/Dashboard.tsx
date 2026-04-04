@@ -890,8 +890,6 @@ export default function Dashboard() {
       taxSavings += (e.interest_deduction_on_stcg ?? 0) * stcgRate
         + (e.interest_deduction_on_ltcg ?? 0) * ltcgRate
     }
-    const adjustedCashReceived = cashReceived + taxSavings
-
     return {
       current_price: lastEvent?.share_price ?? 0,
       total_shares: lastEvent?.cum_shares ?? 0,
@@ -924,8 +922,8 @@ export default function Dashboard() {
       })(),
       // After projected liquidation, all loans are paid off from proceeds
       total_loan_principal: liqOccurred ? 0 : outstandingPrincipal,
-      total_tax_paid: taxPaid,
-      cash_received: adjustedCashReceived,
+      total_tax_paid: taxPaid - taxSavings,
+      cash_received: cashReceived,
       interest_deduction_total: interestDeductionTotal,
       next_event: nextEvent,
     }
@@ -1056,8 +1054,8 @@ export default function Dashboard() {
         <Card label={hasInterestDeduction ? 'Cap Gains (after int. ded.)' : 'Total Cap Gains'} value={fmt$(cv.total_cap_gains)} variant="gains" />
         <Card label="Loan Principal" value={fmt$(cv.total_loan_principal)} variant="loans" />
         <Card label="Total Interest" value={fmt$(cv.total_interest)} variant="interest" />
-        <Card label="Tax Paid" value={fmt$(cv.total_tax_paid)} variant="tax" />
-        <Card label={hasInterestDeduction ? 'Cash (incl. int. ded. savings)' : 'Cash Received'} value={fmt$(cv.cash_received)} variant="cash" />
+        <Card label={hasInterestDeduction ? 'Tax Paid (after int. ded.)' : 'Tax Paid'} value={fmt$(cv.total_tax_paid)} variant="tax" />
+        <Card label="Cash Received" value={fmt$(cv.cash_received)} variant="cash" />
         <Card
           label="Next Event"
           value={cv.next_event ? `${cv.next_event.date} — ${cv.next_event.event_type}` : 'None'}
@@ -1067,7 +1065,7 @@ export default function Dashboard() {
       {hasInterestDeduction && (
         <p className="rounded-md bg-purple-50 px-3 py-2 text-center text-xs text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">
           Investment interest deduction applied: {fmt$(cv.interest_deduction_total ?? 0)} offset against cap gains
-          — cap gains reduced and estimated tax savings added to cash.
+          — cap gains and estimated tax bill reduced.
           Enable/disable in Settings → Tax Rates.
         </p>
       )}

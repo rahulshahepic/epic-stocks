@@ -6,7 +6,7 @@ test.describe('Onboarding wizard', () => {
     const email = `onboarding-${test.info().testId}@test.com`
     await loginAs(page, email, 'Onboarding User')
     await resetUserData(page)
-    await page.goto('http://localhost:5173')
+    await page.reload()
     await page.waitForLoadState('networkidle')
   })
 

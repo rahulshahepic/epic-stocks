@@ -218,17 +218,19 @@ def test_dashboard_no_deduction_when_disabled(client):
     assert abs(dash["total_cap_gains"] - last["cum_cap_gains"]) < 1.0
 
 
-def test_dashboard_deduction_reduces_cap_gains(client):
-    """Dashboard total_cap_gains should decrease when deduction is enabled."""
+def test_dashboard_deduction_does_not_change_cap_gains(client):
+    """Cap gains represent what you made — the deduction changes tax/cash, not gains."""
     _setup_basic(client)
 
-    # Get baseline without deduction
     dash_before = client.get("/api/dashboard").json()
-
     client.put("/api/tax-settings", json=TAX_SETTINGS_WITH_DEDUCTION)
     dash_after = client.get("/api/dashboard").json()
 
-    assert dash_after["total_cap_gains"] < dash_before["total_cap_gains"]
+    # Cap gains unchanged — deduction is a tax concept, not a gains concept
+    assert abs(dash_after["total_cap_gains"] - dash_before["total_cap_gains"]) < 1.0
+    # Tax and cash move instead
+    assert dash_after["total_tax_paid"] < dash_before["total_tax_paid"]
+    assert dash_after["cash_received"] >= dash_before["cash_received"]
     assert dash_after["interest_deduction_total"] > 0
     assert dash_after["tax_savings_from_deduction"] > 0
 

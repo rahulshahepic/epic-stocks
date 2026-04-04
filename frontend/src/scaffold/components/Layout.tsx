@@ -1,4 +1,5 @@
-import { Link, NavLink, Outlet } from 'react-router-dom'
+import { useEffect, useRef } from 'react'
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.ts'
 import { useMe } from '../hooks/useMe.ts'
 import { useMaintenance } from '../contexts/MaintenanceContext.tsx'
@@ -24,28 +25,42 @@ export default function Layout() {
   const baseItems = epicMode ? NAV_ITEMS.filter(item => item.to !== '/import') : NAV_ITEMS
   const navItems = me?.is_admin ? [...baseItems, { to: '/admin', label: 'Admin' }] : baseItems
 
+  // (B) Focus management on route changes
+  const location = useLocation()
+  const mainRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    mainRef.current?.focus()
+  }, [location.pathname])
+
   return (
-    <div className="flex min-h-screen flex-col bg-gray-50 dark:bg-gray-950">
+    <div className="flex min-h-screen flex-col bg-stone-50 dark:bg-slate-950">
+      {/* (A) Skip-navigation link */}
+      <a href="#main-content" className="skip-nav">
+        Skip to main content
+      </a>
+
       {maintenance && (
         <div className="flex items-center justify-center gap-2 bg-amber-400 px-4 py-1.5 text-xs font-medium text-amber-950">
           <span className="h-2 w-2 animate-pulse rounded-full bg-amber-800" />
           Maintenance in progress — financial data is temporarily unavailable
         </div>
       )}
-      <header className="border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+
+      <header className="border-b border-stone-200 bg-white dark:border-slate-800 dark:bg-slate-900">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-          <span className="bg-gradient-to-r from-indigo-500 to-purple-500 bg-clip-text text-sm font-bold text-transparent">
+          <span className="text-sm font-bold text-rose-700 dark:text-rose-400">
             Equity Tracker
           </span>
           <button
             onClick={logout}
-            className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            aria-label="Sign out of your account"
+            className="text-xs text-stone-500 hover:text-stone-700 dark:text-slate-400 dark:hover:text-slate-200"
           >
             Sign Out
           </button>
         </div>
 
-        <nav className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-4 pb-2">
+        <nav aria-label="Main navigation" className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-4 pb-2">
           {navItems.map(({ to, label }) => (
             <NavLink
               key={to}
@@ -54,8 +69,8 @@ export default function Layout() {
               className={({ isActive }) =>
                 `whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                   isActive
-                    ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300'
-                    : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200'
+                    ? 'bg-rose-700 text-white dark:bg-rose-600 dark:text-white'
+                    : 'text-stone-500 hover:bg-stone-100 hover:text-stone-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'
                 }`
               }
             >
@@ -65,14 +80,19 @@ export default function Layout() {
         </nav>
       </header>
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
+      <main
+        id="main-content"
+        ref={mainRef}
+        tabIndex={-1}
+        className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 outline-none"
+      >
         <Outlet />
       </main>
 
-      <footer className="border-t border-gray-200 py-4 text-center text-xs text-gray-400 dark:border-gray-800 dark:text-gray-500">
+      <footer className="border-t border-stone-200 py-4 text-center text-xs text-stone-400 dark:border-slate-800 dark:text-slate-500">
         <Link
           to="/privacy"
-          className="underline hover:text-gray-600 dark:hover:text-gray-300"
+          className="underline hover:text-stone-600 dark:hover:text-slate-300"
         >
           Privacy Policy
         </Link>

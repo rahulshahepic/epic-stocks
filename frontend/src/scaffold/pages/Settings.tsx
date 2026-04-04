@@ -114,23 +114,25 @@ export default function Settings() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Settings</h2>
+      <h2 className="text-lg font-semibold text-stone-900 dark:text-slate-100">Settings</h2>
 
       {/* Display Settings */}
-      <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
-        <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Display</h3>
-        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+      <section className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <h3 className="text-sm font-medium text-stone-900 dark:text-slate-100">Display</h3>
+        <p className="mt-1 text-xs text-stone-500 dark:text-slate-400">
           Choose your preferred color scheme.
         </p>
-        <div className="mt-3 inline-flex rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="mt-3 inline-flex rounded-md border border-stone-200 dark:border-slate-700 overflow-hidden">
           {THEME_OPTIONS.map(({ value, label }) => (
             <button
               key={value}
               onClick={() => setTheme(value)}
+              aria-pressed={theme === value}
+              aria-label={`${label} theme`}
               className={`px-4 py-1.5 text-xs font-medium transition-colors ${
                 theme === value
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+                  ? 'bg-rose-700 text-white'
+                  : 'bg-white text-stone-600 hover:bg-stone-50 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'
               }`}
             >
               {label}
@@ -141,25 +143,25 @@ export default function Settings() {
 
       {/* Notifications */}
       {(!!config?.vapid_public_key || supported || config?.email_notifications_available) && (
-        <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
-          <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Notifications</h3>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+        <section className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <h3 className="text-sm font-medium text-stone-900 dark:text-slate-100">Notifications</h3>
+          <p className="mt-1 text-xs text-stone-500 dark:text-slate-400">
             Get notified when you have vesting, exercise, or loan repayment events.
           </p>
 
           <div className="mt-3 space-y-3">
             {/* Push */}
             {!supported && config?.vapid_public_key ? (
-              <p className="text-xs text-gray-400 dark:text-gray-500">
+              <p className="text-xs text-stone-400 dark:text-slate-500">
                 Push notifications are not supported in this browser.
               </p>
             ) : supported && !config?.vapid_public_key ? (
-              <p className="text-xs text-gray-400 dark:text-gray-500">
+              <p className="text-xs text-stone-400 dark:text-slate-500">
                 Push notifications are not configured on this server.
               </p>
             ) : supported && config?.vapid_public_key ? (
               <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-700 dark:text-gray-300">Push notifications</span>
+                <span className="text-xs text-stone-700 dark:text-slate-300">Push notifications</span>
                 <div className="flex items-center gap-2">
                   {subscribed && (
                     <span className="text-xs text-green-600 dark:text-green-400">Enabled</span>
@@ -168,7 +170,7 @@ export default function Settings() {
                     onClick={subscribed ? unsubscribe : subscribe}
                     disabled={loading}
                     className={`rounded-md px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50 ${
-                      subscribed ? 'bg-gray-500 hover:bg-gray-600' : 'bg-indigo-600 hover:bg-indigo-700'
+                      subscribed ? 'bg-gray-500 hover:bg-gray-600' : 'bg-rose-700 hover:bg-rose-800'
                     }`}
                   >
                     {loading ? 'Loading...' : subscribed ? 'Disable' : 'Enable'}
@@ -180,7 +182,7 @@ export default function Settings() {
             {/* Email */}
             {config?.email_notifications_available && (
               <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-700 dark:text-gray-300">Email notifications</span>
+                <span className="text-xs text-stone-700 dark:text-slate-300">Email notifications</span>
                 <div className="flex items-center gap-2">
                   {emailEnabled && (
                     <span className="text-xs text-green-600 dark:text-green-400">Enabled</span>
@@ -189,7 +191,7 @@ export default function Settings() {
                     onClick={toggleEmail}
                     disabled={emailLoading}
                     className={`rounded-md px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50 ${
-                      emailEnabled ? 'bg-gray-500 hover:bg-gray-600' : 'bg-indigo-600 hover:bg-indigo-700'
+                      emailEnabled ? 'bg-gray-500 hover:bg-gray-600' : 'bg-rose-700 hover:bg-rose-800'
                     }`}
                   >
                     {emailLoading ? 'Loading...' : emailEnabled ? 'Disable' : 'Enable'}
@@ -200,16 +202,17 @@ export default function Settings() {
 
             {/* Advance timing — shown when any notification is active */}
             {(subscribed || emailEnabled) && (
-              <div className="flex items-center justify-between border-t border-gray-100 pt-3 dark:border-gray-800">
+              <div className="flex items-center justify-between border-t border-stone-100 pt-3 dark:border-slate-800">
                 <div>
-                  <span className="text-xs text-gray-700 dark:text-gray-300">Notify me</span>
-                  <p className="text-[11px] text-gray-400 dark:text-gray-500">When to send the notification</p>
+                  <span className="text-xs text-stone-700 dark:text-slate-300">Notify me</span>
+                  <p className="text-[11px] text-stone-400 dark:text-slate-500">When to send the notification</p>
                 </div>
                 <select
+                  aria-label="Notification timing"
                   value={advanceDays}
                   disabled={advanceDaysLoading}
                   onChange={e => changeAdvanceDays(Number(e.target.value))}
-                  className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                  className="rounded-md border border-stone-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
                 >
                   <option value={0}>Day of event</option>
                   <option value={7}>1 week before</option>
@@ -220,54 +223,52 @@ export default function Settings() {
 
             {/* Test push button */}
             {subscribed && (
-              <div className="flex items-center justify-between border-t border-gray-100 pt-3 dark:border-gray-800">
+              <div className="flex items-center justify-between border-t border-stone-100 pt-3 dark:border-slate-800">
                 <div>
-                  <span className="text-xs text-gray-700 dark:text-gray-300">Test push</span>
-                  <p className="text-[11px] text-gray-400 dark:text-gray-500">Confirm notifications are working</p>
+                  <span className="text-xs text-stone-700 dark:text-slate-300">Test push</span>
+                  <p className="text-[11px] text-stone-400 dark:text-slate-500">Confirm notifications are working</p>
                 </div>
                 <button
                   onClick={sendTestPush}
                   disabled={pushTestLoading}
-                  className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                  className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                 >
                   {pushTestLoading ? 'Sending...' : 'Send test'}
                 </button>
               </div>
             )}
 
-            {pushTestResult && (
-              <p className="text-xs text-gray-500 dark:text-gray-400">{pushTestResult}</p>
-            )}
+            <p aria-live="polite" className="text-xs text-stone-500 dark:text-slate-400">{pushTestResult ?? ''}</p>
           </div>
         </section>
       )}
 
       {/* Down Payment Settings */}
-      <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+      <section className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Down Payment</h3>
+          <h3 className="text-sm font-medium text-stone-900 dark:text-slate-100">Down Payment</h3>
           {!editingDp && (
             <button
               onClick={() => { setTaxForm(taxSettings ? { ...taxSettings } : { ...WI_DEFAULTS }); setEditingDp(true) }}
-              className="text-xs text-indigo-600 hover:text-indigo-800 dark:text-indigo-400"
+              className="text-xs text-rose-700 hover:text-rose-800 dark:text-rose-400"
             >Edit</button>
           )}
         </div>
-        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+        <p className="mt-1 text-xs text-stone-500 dark:text-slate-400">
           Controls how down payment shares are calculated when adding a new purchase.
         </p>
 
         {taxSettings && !editingDp && (
           <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
             <div className="flex justify-between col-span-2">
-              <dt className="text-gray-500 dark:text-gray-400">Prefer stock for DP</dt>
-              <dd className="font-medium text-gray-700 dark:text-gray-300">
+              <dt className="text-stone-500 dark:text-slate-400">Prefer stock for DP</dt>
+              <dd className="font-medium text-stone-700 dark:text-slate-300">
                 {taxSettings.prefer_stock_dp ? 'Yes — auto-calculate DP shares' : 'No — manual'}
               </dd>
             </div>
             <div className="flex justify-between col-span-2">
-              <dt className="text-gray-500 dark:text-gray-400">Min DP rule</dt>
-              <dd className="font-medium text-gray-700 dark:text-gray-300">
+              <dt className="text-stone-500 dark:text-slate-400">Min DP rule</dt>
+              <dd className="font-medium text-stone-700 dark:text-slate-300">
                 {taxSettings.dp_min_percent > 0 || taxSettings.dp_min_cap > 0
                   ? `min(${(taxSettings.dp_min_percent * 100).toFixed(0)}%, $${taxSettings.dp_min_cap.toLocaleString()})`
                   : 'None'}
@@ -284,28 +285,28 @@ export default function Settings() {
                   type="checkbox"
                   checked={taxForm.prefer_stock_dp}
                   onChange={e => setTaxForm(f => f ? { ...f, prefer_stock_dp: e.target.checked } : f)}
-                  className="rounded border-gray-300 dark:border-gray-600"
+                  className="rounded border-gray-300 dark:border-slate-600"
                 />
-                <span className="text-xs text-gray-700 dark:text-gray-300">
+                <span className="text-xs text-stone-700 dark:text-slate-300">
                   Prefer stock for down payment — auto-calculate DP shares on new purchases
                 </span>
               </label>
               <label className="block">
-                <span className="text-xs text-gray-500 dark:text-gray-400">Min DP % of purchase</span>
+                <span className="text-xs text-stone-500 dark:text-slate-400">Min DP % of purchase</span>
                 <input
                   type="number" step="0.1" min="0" max="100"
                   value={+(taxForm.dp_min_percent * 100).toFixed(2)}
                   onChange={e => setTaxForm(f => f ? { ...f, dp_min_percent: +e.target.value / 100 } : f)}
-                  className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                  className="mt-0.5 block w-full rounded-md border border-stone-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
                 />
               </label>
               <label className="block">
-                <span className="text-xs text-gray-500 dark:text-gray-400">Min DP cap ($)</span>
+                <span className="text-xs text-stone-500 dark:text-slate-400">Min DP cap ($)</span>
                 <input
                   type="number" step="1000" min="0"
                   value={taxForm.dp_min_cap}
                   onChange={e => setTaxForm(f => f ? { ...f, dp_min_cap: +e.target.value } : f)}
-                  className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                  className="mt-0.5 block w-full rounded-md border border-stone-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
                 />
               </label>
             </div>
@@ -320,13 +321,13 @@ export default function Settings() {
                   } catch { /* ignore */ } finally { setTaxSaving(false) }
                 }}
                 disabled={taxSaving}
-                className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                className="rounded-md bg-rose-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-800 disabled:opacity-50"
               >
                 {taxSaving ? 'Saving...' : 'Save'}
               </button>
               <button
                 onClick={() => setEditingDp(false)}
-                className="rounded-md px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                className="rounded-md px-3 py-1.5 text-xs text-stone-500 hover:text-stone-700 dark:hover:text-slate-300"
               >
                 Cancel
               </button>
@@ -336,17 +337,17 @@ export default function Settings() {
       </section>
 
       {/* Tax Rates */}
-      <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+      <section className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Tax Rates</h3>
+          <h3 className="text-sm font-medium text-stone-900 dark:text-slate-100">Tax Rates</h3>
           {!editingTax && (
             <button
               onClick={() => { setTaxForm(taxSettings ? { ...taxSettings } : { ...WI_DEFAULTS }); setEditingTax(true) }}
-              className="text-xs text-indigo-600 hover:text-indigo-800 dark:text-indigo-400"
+              className="text-xs text-rose-700 hover:text-rose-800 dark:text-rose-400"
             >Edit</button>
           )}
         </div>
-        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+        <p className="mt-1 text-xs text-stone-500 dark:text-slate-400">
           Wisconsin defaults. Used to estimate tax on share sales. 30% exclusion on qualifying LT gains is baked into state LT rate.
         </p>
 
@@ -362,26 +363,26 @@ export default function Settings() {
               ['State ST CG', taxSettings.state_st_cg_rate],
             ].map(([label, val]) => (
               <div key={label as string} className="flex justify-between">
-                <dt className="text-gray-500 dark:text-gray-400">{label}</dt>
-                <dd className="font-medium text-gray-700 dark:text-gray-300">{((val as number) * 100).toFixed(2)}%</dd>
+                <dt className="text-stone-500 dark:text-slate-400">{label}</dt>
+                <dd className="font-medium text-stone-700 dark:text-slate-300">{((val as number) * 100).toFixed(2)}%</dd>
               </div>
             ))}
             <div className="flex justify-between">
-              <dt className="text-gray-500 dark:text-gray-400">LT Threshold</dt>
-              <dd className="font-medium text-gray-700 dark:text-gray-300">{taxSettings.lt_holding_days}d</dd>
+              <dt className="text-stone-500 dark:text-slate-400">LT Threshold</dt>
+              <dd className="font-medium text-stone-700 dark:text-slate-300">{taxSettings.lt_holding_days}d</dd>
             </div>
             <div className="flex justify-between col-span-2">
-              <dt className="text-gray-500 dark:text-gray-400">Manual sale lots</dt>
-              <dd className="font-medium text-gray-700 dark:text-gray-300">
+              <dt className="text-stone-500 dark:text-slate-400">Manual sale lots</dt>
+              <dd className="font-medium text-stone-700 dark:text-slate-300">
                 {taxSettings.lot_selection_method === 'fifo' ? 'FIFO (oldest first)' :
                  taxSettings.lot_selection_method === 'lifo' ? 'LIFO (newest first)' :
                  taxSettings.lot_selection_method === 'manual_tranche' ? 'Manual (pick lots)' :
                  'Epic LIFO (prefer LT gains)'}
               </dd>
             </div>
-            <div className="flex justify-between col-span-2 border-t border-gray-100 pt-2 dark:border-gray-800">
-              <dt className="text-gray-500 dark:text-gray-400">Investment interest deduction</dt>
-              <dd className="font-medium text-gray-700 dark:text-gray-300">
+            <div className="flex justify-between col-span-2 border-t border-stone-100 pt-2 dark:border-slate-800">
+              <dt className="text-stone-500 dark:text-slate-400">Investment interest deduction</dt>
+              <dd className="font-medium text-stone-700 dark:text-slate-300">
                 {taxSettings.deduct_investment_interest ? 'Enabled' : 'Disabled'}
               </dd>
             </div>
@@ -401,29 +402,29 @@ export default function Settings() {
                 ['State ST CG Rate', 'state_st_cg_rate'],
               ] as [string, keyof TaxSettings][]).map(([label, key]) => (
                 <label key={key} className="block">
-                  <span className="text-xs text-gray-500 dark:text-gray-400">{label}</span>
+                  <span className="text-xs text-stone-500 dark:text-slate-400">{label}</span>
                   <input
                     type="number"
                     step="0.0001"
                     value={taxForm[key] as number}
                     onChange={e => setTaxForm(f => f ? { ...f, [key]: +e.target.value } : f)}
-                    className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                    className="mt-0.5 block w-full rounded-md border border-stone-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
                   />
                 </label>
               ))}
               <label className="block col-span-2">
-                <span className="text-xs text-gray-500 dark:text-gray-400">Manual Sale Lot Method</span>
+                <span className="text-xs text-stone-500 dark:text-slate-400">Manual Sale Lot Method</span>
                 <select
                   value={taxForm.lot_selection_method}
                   onChange={e => setTaxForm(f => f ? { ...f, lot_selection_method: e.target.value as TaxSettings['lot_selection_method'] } : f)}
-                  className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                  className="mt-0.5 block w-full rounded-md border border-stone-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
                 >
                   <option value="epic_lifo">Epic LIFO — LIFO, prefer long-term gains (default)</option>
                   <option value="fifo">FIFO — oldest lots first</option>
                   <option value="lifo">LIFO — newest lots first</option>
                   <option value="manual_tranche">Manual — pick lots yourself</option>
                 </select>
-                <p className="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+                <p className="mt-1 text-[11px] text-stone-400 dark:text-slate-500">
                   Applies to manual sales only. Loan payoff sales always use same-tranche selection.
                 </p>
                 <p className="mt-0.5 text-[11px] text-amber-600 dark:text-amber-400">
@@ -431,27 +432,27 @@ export default function Settings() {
                 </p>
               </label>
               <label className="block">
-                <span className="text-xs text-gray-500 dark:text-gray-400">LT Holding Threshold (days)</span>
+                <span className="text-xs text-stone-500 dark:text-slate-400">LT Holding Threshold (days)</span>
                 <input
                   type="number"
                   value={taxForm.lt_holding_days}
                   onChange={e => setTaxForm(f => f ? { ...f, lt_holding_days: +e.target.value } : f)}
-                  className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                  className="mt-0.5 block w-full rounded-md border border-stone-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
                 />
               </label>
-              <label className="block col-span-2 cursor-pointer rounded-md border border-gray-200 p-3 dark:border-gray-700">
+              <label className="block col-span-2 cursor-pointer rounded-md border border-gray-200 p-3 dark:border-slate-700">
                 <div className="flex items-start gap-2">
                   <input
                     type="checkbox"
                     checked={taxForm.deduct_investment_interest}
                     onChange={e => setTaxForm(f => f ? { ...f, deduct_investment_interest: e.target.checked } : f)}
-                    className="mt-0.5 rounded border-gray-300 dark:border-gray-600"
+                    className="mt-0.5 rounded border-gray-300 dark:border-slate-600"
                   />
                   <div>
-                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                    <span className="text-xs font-medium text-stone-700 dark:text-slate-300">
                       Estimate investment interest deduction (Form 4952)
                     </span>
-                    <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                    <p className="mt-1 text-[11px] text-stone-500 dark:text-slate-400">
                       Investment interest (interest on loans used to buy investments) can be deducted
                       against investment income. You may elect to treat net capital gains as investment
                       income, which reduces your CG tax — at the cost of those gains being taxed as
@@ -475,19 +476,19 @@ export default function Settings() {
                   } catch { /* ignore */ } finally { setTaxSaving(false) }
                 }}
                 disabled={taxSaving}
-                className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                className="rounded-md bg-rose-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-800 disabled:opacity-50"
               >
                 {taxSaving ? 'Saving...' : 'Save'}
               </button>
               <button
                 onClick={() => { setTaxForm({ ...WI_DEFAULTS }) }}
-                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-stone-600 hover:bg-stone-50 dark:border-slate-600 dark:text-slate-400 dark:hover:bg-slate-800"
               >
                 Reset to WI Defaults
               </button>
               <button
                 onClick={() => setEditingTax(false)}
-                className="rounded-md px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                className="rounded-md px-3 py-1.5 text-xs text-stone-500 hover:text-stone-700 dark:hover:text-slate-300"
               >
                 Cancel
               </button>
@@ -497,25 +498,25 @@ export default function Settings() {
       </section>
 
       {/* Exit Planning */}
-      <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+      <section className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Exit Planning</h3>
+          <h3 className="text-sm font-medium text-stone-900 dark:text-slate-100">Exit Planning</h3>
           {!editingHorizon && (
             <button
               onClick={() => { setHorizonForm({ horizon_date: horizonSettings?.horizon_date ?? null }); setEditingHorizon(true) }}
-              className="text-xs text-indigo-600 hover:text-indigo-800 dark:text-indigo-400"
+              className="text-xs text-rose-700 hover:text-rose-800 dark:text-rose-400"
             >Edit</button>
           )}
         </div>
-        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+        <p className="mt-1 text-xs text-stone-500 dark:text-slate-400">
           Set an exit date to project a full liquidation in your timeline. Defaults to your last vesting date if not set.
         </p>
 
         {!editingHorizon && (
           <dl className="mt-3 text-xs">
             <div className="flex justify-between">
-              <dt className="text-gray-500 dark:text-gray-400">Exit date</dt>
-              <dd className="font-medium text-gray-700 dark:text-gray-300">
+              <dt className="text-stone-500 dark:text-slate-400">Exit date</dt>
+              <dd className="font-medium text-stone-700 dark:text-slate-300">
                 {horizonSettings?.horizon_date ?? 'Last vesting date (auto)'}
               </dd>
             </div>
@@ -525,12 +526,12 @@ export default function Settings() {
         {editingHorizon && (
           <div className="mt-3 space-y-3">
             <label className="block">
-              <span className="text-xs text-gray-500 dark:text-gray-400">Exit date</span>
+              <span className="text-xs text-stone-500 dark:text-slate-400">Exit date</span>
               <input
                 type="date"
                 value={horizonForm.horizon_date ?? ''}
                 onChange={e => setHorizonForm({ horizon_date: e.target.value || null })}
-                className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                className="mt-0.5 block w-full rounded-md border border-stone-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
               />
             </label>
             <div className="flex gap-2">
@@ -544,7 +545,7 @@ export default function Settings() {
                   } catch { /* ignore */ } finally { setHorizonSaving(false) }
                 }}
                 disabled={horizonSaving}
-                className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                className="rounded-md bg-rose-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-800 disabled:opacity-50"
               >
                 {horizonSaving ? 'Saving...' : 'Save'}
               </button>
@@ -559,13 +560,13 @@ export default function Settings() {
                   } catch { /* ignore */ } finally { setHorizonSaving(false) }
                 }}
                 disabled={horizonSaving}
-                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-stone-600 hover:bg-stone-50 dark:border-slate-600 dark:text-slate-400 dark:hover:bg-slate-800"
               >
                 Use last vesting date
               </button>
               <button
                 onClick={() => setEditingHorizon(false)}
-                className="rounded-md px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                className="rounded-md px-3 py-1.5 text-xs text-stone-500 hover:text-stone-700 dark:hover:text-slate-300"
               >
                 Cancel
               </button>
@@ -575,9 +576,9 @@ export default function Settings() {
       </section>
 
       {/* Account Management */}
-      <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
-        <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Account</h3>
-        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+      <section className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <h3 className="text-sm font-medium text-stone-900 dark:text-slate-100">Account</h3>
+        <p className="mt-1 text-xs text-stone-500 dark:text-slate-400">
           Signed in with Google. All your data is stored securely on the server.
         </p>
         <button
@@ -587,11 +588,11 @@ export default function Settings() {
           Sign Out
         </button>
 
-        <div className="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700">
+        <div className="mt-4 border-t border-stone-200 pt-4 dark:border-slate-700">
           <p className="text-xs font-medium text-red-700 dark:text-red-400">Danger Zone</p>
 
           {!config?.epic_mode && <div className="mt-3">
-            <p className="text-xs text-gray-700 dark:text-gray-300">
+            <p className="text-xs text-stone-700 dark:text-slate-300">
               <span className="font-medium">Reset data</span> — delete all your grants, loans, and prices. Your account stays active.
             </p>
             {!resetConfirm ? (
@@ -619,7 +620,7 @@ export default function Settings() {
                 </button>
                 <button
                   onClick={() => setResetConfirm(false)}
-                  className="rounded-md px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                  className="rounded-md px-3 py-1.5 text-xs text-stone-500 hover:text-stone-700 dark:hover:text-slate-300"
                 >
                   Cancel
                 </button>
@@ -627,8 +628,8 @@ export default function Settings() {
             )}
           </div>}
 
-          <div className="mt-4 border-t border-gray-100 pt-4 dark:border-gray-800">
-            <p className="text-xs text-gray-700 dark:text-gray-300">
+          <div className="mt-4 border-t border-stone-100 pt-4 dark:border-slate-800">
+            <p className="text-xs text-stone-700 dark:text-slate-300">
               <span className="font-medium">Delete account</span> — permanently remove your account and all associated data. This cannot be undone.
             </p>
             {!deleteConfirm ? (
@@ -655,7 +656,7 @@ export default function Settings() {
                 </button>
                 <button
                   onClick={() => setDeleteConfirm(false)}
-                  className="rounded-md px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                  className="rounded-md px-3 py-1.5 text-xs text-stone-500 hover:text-stone-700 dark:hover:text-slate-300"
                 >
                   Cancel
                 </button>
@@ -666,7 +667,7 @@ export default function Settings() {
       </section>
 
       {import.meta.env.VITE_COMMIT_SHA && import.meta.env.VITE_COMMIT_SHA !== 'dev' && (
-        <p className="text-center text-xs text-gray-400 dark:text-gray-600">
+        <p className="text-center text-xs text-gray-400 dark:text-slate-600">
           {import.meta.env.VITE_COMMIT_SHA.slice(0, 7)}
         </p>
       )}

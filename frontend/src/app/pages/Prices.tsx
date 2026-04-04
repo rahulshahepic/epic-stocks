@@ -196,10 +196,10 @@ export default function Prices() {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">{title}</h2>
           <button
             onClick={() => { setMode('list'); resetForm() }}
-            className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-slate-300"
           >
             Cancel
           </button>
@@ -212,23 +212,23 @@ export default function Prices() {
         {error && <p className="text-xs text-red-500">{error}</p>}
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
-            <span className="text-xs text-gray-500 dark:text-gray-400">Effective Date</span>
+            <span className="text-xs text-gray-500 dark:text-slate-400">Effective Date</span>
             <input
               type="date"
               value={form.effective_date}
               min={epicMode ? new Date(Date.now() + 86400000).toISOString().slice(0, 10) : undefined}
               onChange={e => setForm(f => ({ ...f, effective_date: e.target.value }))}
-              className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+              className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
             />
           </label>
           <label className="block">
-            <span className="text-xs text-gray-500 dark:text-gray-400">Price per Share</span>
+            <span className="text-xs text-gray-500 dark:text-slate-400">Price per Share</span>
             <input
               type="number"
               step="0.01"
               value={form.price}
               onChange={e => setForm(f => ({ ...f, price: +e.target.value }))}
-              className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+              className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
             />
           </label>
         </div>
@@ -275,22 +275,22 @@ export default function Prices() {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Growth Estimator</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Growth Estimator</h2>
           <button
             onClick={() => { setMode('list'); setGrowthError('') }}
-            className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-slate-300"
           >
             Cancel
           </button>
         </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400">
+        <p className="text-xs text-gray-500 dark:text-slate-400">
           Project future share prices as annual % growth from the current price
           {basePrice > 0 ? ` (${fmt$(basePrice)})` : ''}.
         </p>
         {growthError && <p className="text-xs text-red-500">{growthError}</p>}
         <div className="grid grid-cols-3 gap-3">
           <label className="block">
-            <span className="text-xs text-gray-500 dark:text-gray-400">Annual Growth %</span>
+            <span className="text-xs text-gray-500 dark:text-slate-400">Annual Growth %</span>
             <input
               type="number"
               step="0.1"
@@ -298,27 +298,27 @@ export default function Prices() {
               max="100"
               value={growthForm.annual_growth_pct}
               onChange={e => setGrowthForm(f => ({ ...f, annual_growth_pct: +e.target.value }))}
-              className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+              className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
             />
           </label>
           <label className="block">
-            <span className="text-xs text-gray-500 dark:text-gray-400">First Price Date</span>
+            <span className="text-xs text-gray-500 dark:text-slate-400">First Price Date</span>
             <input
               type="date"
               value={growthForm.first_date}
               min={new Date(Date.now() + 86400000).toISOString().slice(0, 10)}
               onChange={e => setGrowthForm(f => ({ ...f, first_date: e.target.value }))}
-              className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+              className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
             />
           </label>
           <label className="block">
-            <span className="text-xs text-gray-500 dark:text-gray-400">Through Date</span>
+            <span className="text-xs text-gray-500 dark:text-slate-400">Through Date</span>
             <input
               type="date"
               value={growthForm.through_date}
               min={growthForm.first_date}
               onChange={e => setGrowthForm(f => ({ ...f, through_date: e.target.value }))}
-              className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+              className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
             />
           </label>
         </div>
@@ -340,13 +340,13 @@ export default function Prices() {
 
         {growthPreview.length > 0 && (
           <div>
-            <p className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">
+            <p className="mb-1 text-xs font-medium text-gray-500 dark:text-slate-400">
               New estimates ({growthPreview.length})
             </p>
-            <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+            <div className="overflow-x-auto rounded-lg border border-stone-200 dark:border-slate-700">
               <table className="w-full text-left text-xs">
-                <thead className="bg-gray-50 dark:bg-gray-800">
-                  <tr className="text-gray-500 dark:text-gray-400">
+                <thead className="bg-stone-50 dark:bg-slate-800">
+                  <tr className="text-gray-500 dark:text-slate-400">
                     <th className="px-3 py-2">Date</th>
                     <th className="px-3 py-2 text-right">Projected Price</th>
                     <th className="px-3 py-2 text-right">Change</th>
@@ -357,8 +357,8 @@ export default function Prices() {
                     const prev = i === 0 ? basePrice : growthPreview[i - 1].price
                     const change = row.price - prev
                     return (
-                      <tr key={row.date} className="bg-white dark:bg-gray-900">
-                        <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{row.date}</td>
+                      <tr key={row.date} className="bg-white dark:bg-slate-900">
+                        <td className="px-3 py-2 text-gray-600 dark:text-slate-400">{row.date}</td>
                         <td className="px-3 py-2 text-right font-medium text-amber-600 dark:text-amber-400">{fmt$(row.price)}</td>
                         <td className="px-3 py-2 text-right text-emerald-600 dark:text-emerald-400">+{fmt$(change)}</td>
                       </tr>
@@ -380,7 +380,7 @@ export default function Prices() {
           <button
             onClick={handleGrowthApply}
             disabled={growthSaving || basePrice === 0 || growthPreview.length === 0}
-            className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+            className="rounded-md bg-rose-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-800 disabled:opacity-50"
           >
             {growthSaving
               ? 'Applying...'
@@ -398,7 +398,7 @@ export default function Prices() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Share Prices</h2>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Share Prices</h2>
         <div className="flex gap-2">
           <button
             onClick={openAdd}
@@ -408,22 +408,22 @@ export default function Prices() {
           </button>
           <button
             onClick={() => { setGrowthError(''); setMode('growth') }}
-            className="rounded-md bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-700"
+            className="rounded-md bg-rose-700 px-2 py-1 text-xs font-medium text-white hover:bg-rose-800"
           >
             + Estimate
           </button>
         </div>
       </div>
       {epicMode && (
-        <p className="rounded-md bg-indigo-50 px-3 py-2 text-xs text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300">
+        <p className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:bg-indigo-900/20 dark:text-rose-300">
           Historical data provided by Epic — view only. You can add future price estimates.
         </p>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+      <div className="overflow-x-auto rounded-lg border border-stone-200 dark:border-slate-700">
         <table className="w-full text-left text-xs">
-          <thead className="bg-gray-50 dark:bg-gray-800">
-            <tr className="text-gray-500 dark:text-gray-400">
+          <thead className="bg-stone-50 dark:bg-slate-800">
+            <tr className="text-gray-500 dark:text-slate-400">
               <th className="px-3 py-2">Effective Date</th>
               <th className="px-3 py-2 text-right">Price</th>
               <th className="px-3 py-2"></th>
@@ -434,8 +434,8 @@ export default function Prices() {
               const isEst = p.is_estimate ?? false
               const canEdit = !epicMode || isEst
               return (
-                <tr key={p.id} className={`bg-white dark:bg-gray-900 ${isEst ? 'opacity-70' : ''}`}>
-                  <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
+                <tr key={p.id} className={`bg-white dark:bg-slate-900 ${isEst ? 'opacity-70' : ''}`}>
+                  <td className="px-3 py-2 text-gray-700 dark:text-slate-300">
                     {p.effective_date}
                     {isEst && (
                       <span className="ml-1.5 rounded bg-amber-100 px-1 py-0.5 text-[10px] italic text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
@@ -443,13 +443,13 @@ export default function Prices() {
                       </span>
                     )}
                   </td>
-                  <td className={`px-3 py-2 text-right font-medium ${isEst ? 'italic text-amber-500 dark:text-amber-500' : 'text-amber-700 dark:text-amber-400'}`}>
+                  <td className={`px-3 py-2 text-right font-medium ${isEst ? 'italic text-amber-700 dark:text-amber-400' : 'text-amber-700 dark:text-amber-400'}`}>
                     {fmt$(p.price)}
                   </td>
                   <td className="px-3 py-2 text-right">
                     {canEdit && (
                       <>
-                        <button onClick={() => openEdit(p)} className="mr-2 text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300">Edit</button>
+                        <button onClick={() => openEdit(p)} className="mr-2 text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Edit</button>
                         <button onClick={() => handleDelete(p.id)} className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300">Del</button>
                       </>
                     )}

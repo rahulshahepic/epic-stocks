@@ -458,6 +458,54 @@ def _apply_interest_deduction(enriched: list, loans_db: list) -> None:
         event['adjusted_cum_cap_gains'] = round(event.get('cum_cap_gains', 0.0) - cum_deduction, 2)
 
 
+@router.get("/preview-deduction")
+def preview_deduction(
+    enabled: bool = Query(..., description="Whether to apply investment interest deduction"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Compute investment interest deduction impact without saving the setting."""
+    grants, prices, loans, loans_db, initial_price, _ = _user_source_data(user, db)
+    if not grants and not prices:
+        return None
+    ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
+    if not ts_row:
+        return None
+    db.close()
+
+    interest_deduction_total = 0.0
+    tax_savings_from_deduction = 0.0
+    if enabled:
+        timeline = get_timeline(user.id, grants, prices, loans, initial_price)
+        pool_d = _build_interest_pool(loans_db)
+        stcg_rate = ts_row.federal_st_cg_rate + ts_row.niit_rate + ts_row.state_st_cg_rate
+        ltcg_rate = ts_row.federal_lt_cg_rate + ts_row.niit_rate + ts_row.state_lt_cg_rate
+        sorted_years_d = sorted(pool_d.keys())
+        year_idx_d = 0
+        available_d = 0.0
+        for ev in timeline:
+            if ev.get('event_type') not in _TAXABLE_EVENT_TYPES:
+                continue
+            ev_year = int(ev['date'].year) if hasattr(ev['date'], 'year') else int(str(ev['date'])[:4])
+            while year_idx_d < len(sorted_years_d) and sorted_years_d[year_idx_d] <= ev_year:
+                available_d += pool_d[sorted_years_d[year_idx_d]]
+                year_idx_d += 1
+            stcg = max(0.0, ev.get('vesting_cap_gains', 0.0))
+            ltcg = max(0.0, ev.get('price_cap_gains', 0.0))
+            if available_d > 0 and (stcg + ltcg) > 0:
+                ded_s = min(available_d, stcg)
+                available_d -= ded_s
+                ded_l = min(available_d, ltcg)
+                available_d -= ded_l
+                interest_deduction_total += ded_s + ded_l
+                tax_savings_from_deduction += ded_s * stcg_rate + ded_l * ltcg_rate
+
+    return {
+        "interest_deduction_total": round(interest_deduction_total, 2),
+        "tax_savings_from_deduction": round(tax_savings_from_deduction, 2),
+    }
+
+
 @router.get("/preview-exit")
 def preview_exit(
     date: str = Query(..., description="ISO date to preview as exit date"),

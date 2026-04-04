@@ -89,7 +89,7 @@ export default function Layout() {
         <Outlet />
       </main>
 
-      <footer className="border-t border-stone-200 py-4 text-center text-xs text-stone-400 dark:border-slate-800 dark:text-slate-500">
+      <footer className="border-t border-stone-200 py-4 text-center text-xs text-stone-500 dark:border-slate-800 dark:text-slate-400">
         <Link
           to="/privacy"
           className="underline hover:text-stone-600 dark:hover:text-slate-300"

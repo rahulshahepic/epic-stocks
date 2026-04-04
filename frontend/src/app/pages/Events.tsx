@@ -15,7 +15,7 @@ const TYPE_COLORS: Record<string, string> = {
   'Vesting': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
   'Share Price': 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
   'Loan Payoff': 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
-  'Refinanced': 'bg-gray-100 text-gray-400 dark:bg-slate-800/60 dark:text-slate-500',
+  'Refinanced': 'bg-gray-100 text-stone-500 dark:bg-slate-800/60 dark:text-slate-400',
   'Early Loan Payment': 'bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300',
   'Sale': 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
   'Liquidation (projected)': 'bg-gray-100 text-gray-500 dark:bg-slate-800/60 dark:text-slate-400',
@@ -130,7 +130,7 @@ function Unrealized83bCard({ e, ts }: { e: TimelineEvent; ts: TaxSettings }) {
           value={`→ ~${fmt$(potentialTax)}`}
         />
         {isFuture && (
-          <p className="pt-1 text-gray-400">Gain realized only upon sale — holding period starts at vesting.</p>
+          <p className="pt-1 text-stone-500">Gain realized only upon sale — holding period starts at vesting.</p>
         )}
       </div>
     </div>
@@ -271,7 +271,7 @@ export default function Events() {
     }
   }
 
-  if (loading) return <p className="p-6 text-center text-sm text-gray-400">Loading...</p>
+  if (loading) return <p className="p-6 text-center text-sm text-stone-500">Loading...</p>
   if (!events) return <p className="p-6 text-center text-sm text-red-500">Failed to load events</p>
 
   const filtered = typeFilter.size > 0 ? events.filter(e => typeFilter.has(e.event_type)) : events
@@ -295,7 +295,7 @@ export default function Events() {
               : typeFilter.size === 1
               ? `${[...typeFilter][0]} (${filtered.length})`
               : `${typeFilter.size} types (${filtered.length})`}
-            <span className="text-gray-400">{typeDropdownOpen ? '▲' : '▼'}</span>
+            <span className="text-stone-500">{typeDropdownOpen ? '▲' : '▼'}</span>
           </button>
           {typeDropdownOpen && (
             <div className="absolute right-0 z-10 mt-1 w-56 rounded-md border border-stone-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-800">
@@ -315,7 +315,7 @@ export default function Events() {
                     className="h-3.5 w-3.5 accent-blue-600"
                   />
                   <span className="flex-1 text-xs text-gray-700 dark:text-slate-200">{t}</span>
-                  <span className="text-[10px] text-gray-400">{events.filter(e => e.event_type === t).length}</span>
+                  <span className="text-[10px] text-stone-500">{events.filter(e => e.event_type === t).length}</span>
                 </label>
               ))}
             </div>
@@ -376,7 +376,7 @@ export default function Events() {
                         {e.is_projected ? 'Liquidation' : e.event_type}
                       </span>
                       {e.is_projected && (
-                        <span className="ml-1 text-[9px] uppercase tracking-wide text-gray-400 dark:text-slate-500">
+                        <span className="ml-1 text-[9px] uppercase tracking-wide text-stone-500 dark:text-slate-400">
                           projected {expandedLiq ? '▲' : '▼'}
                         </span>
                       )}
@@ -428,7 +428,7 @@ export default function Events() {
                           className="inline-flex items-center gap-1"
                         >
                           {isLoadingSale ? (
-                            <span className="text-gray-400">...</span>
+                            <span className="text-stone-500">...</span>
                           ) : (
                             <>
                               {hasST && (
@@ -455,7 +455,7 @@ export default function Events() {
                           </span>
                         </button>
                       ) : e.event_type === 'Share Price' ? (
-                        <span className="text-xs text-gray-400 dark:text-slate-600">—*</span>
+                        <span className="text-xs text-stone-500 dark:text-slate-600">—*</span>
                       ) : '—'}
                     </td>
                     <td className="px-3 py-2 text-right font-medium text-gray-900 dark:text-slate-100">{fmtNum(e.cum_shares)}</td>
@@ -499,7 +499,7 @@ export default function Events() {
                   {i === liqIdx && liqIdx >= 0 && liqIdx < filtered.length - 1 && typeFilter.size === 0 && (
                     <tr>
                       <td colSpan={9} className="py-0">
-                        <div className="border-t-2 border-dashed border-gray-300 py-1 text-center text-[10px] italic text-gray-400 dark:border-slate-600 dark:text-slate-500">
+                        <div className="border-t-2 border-dashed border-gray-300 py-1 text-center text-[10px] italic text-stone-500 dark:border-slate-600 dark:text-slate-400">
                           beyond exit horizon — events below won't occur if you liquidate above
                         </div>
                       </td>
@@ -511,7 +511,7 @@ export default function Events() {
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-gray-400">{filtered.length} events &nbsp;·&nbsp; * price appreciation is unrealized — not a taxable event</p>
+      <p className="text-xs text-stone-500">{filtered.length} events &nbsp;·&nbsp; * price appreciation is unrealized — not a taxable event</p>
     </div>
   )
 }

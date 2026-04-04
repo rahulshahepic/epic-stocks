@@ -187,7 +187,7 @@ export default function Prices() {
     }
   }
 
-  if (loading) return <p className="p-6 text-center text-sm text-gray-400">Loading...</p>
+  if (loading) return <p className="p-6 text-center text-sm text-stone-500">Loading...</p>
   if (!prices) return <p className="p-6 text-center text-sm text-red-500">Failed to load prices</p>
 
   // ── Add / Edit form ───────────────────────────────────────────────────────
@@ -459,13 +459,13 @@ export default function Prices() {
             })}
             {prices.length === 0 && (
               <tr>
-                <td colSpan={3} className="px-3 py-6 text-center text-gray-400">No prices yet</td>
+                <td colSpan={3} className="px-3 py-6 text-center text-stone-500">No prices yet</td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-gray-400">
+      <p className="text-xs text-stone-500">
         {prices.length} price entr{prices.length === 1 ? 'y' : 'ies'}
         {estimateCount > 0 && ` (${estimateCount} estimated)`}
       </p>

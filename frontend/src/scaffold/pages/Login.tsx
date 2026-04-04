@@ -96,7 +96,7 @@ export default function Login() {
             </button>
           ))}
           {providers.length === 0 && (
-            <p className="text-sm text-stone-400 dark:text-slate-500">No sign-in providers configured.</p>
+            <p className="text-sm text-stone-500 dark:text-slate-400">No sign-in providers configured.</p>
           )}
         </div>
 
@@ -118,7 +118,7 @@ export default function Login() {
           </ul>
         </div>
 
-        <p className="mt-4 text-xs text-stone-400 dark:text-slate-500">
+        <p className="mt-4 text-xs text-stone-500 dark:text-slate-400">
           By using this site, you agree to our{' '}
           <Link
             to="/privacy"

@@ -259,7 +259,7 @@ export default function Loans() {
     }
   }
 
-  if (loading) return <p className="p-6 text-center text-sm text-gray-400">Loading...</p>
+  if (loading) return <p className="p-6 text-center text-sm text-stone-500">Loading...</p>
   if (!loans) return <p className="p-6 text-center text-sm text-red-500">Failed to load loans</p>
 
   if (mode !== 'list') {
@@ -430,7 +430,7 @@ export default function Loans() {
                     <td className="whitespace-nowrap px-3 py-2 text-gray-700 dark:text-slate-300">
                       {l.grant_year} {l.grant_type}
                       {refinancedByLoan && (
-                        <span className="ml-1.5 inline-block rounded-full bg-gray-100 px-1.5 py-0.5 text-[9px] font-medium text-gray-400 dark:bg-slate-700 dark:text-slate-500" title={`Refinanced by ${loanLabel(refinancedByLoan)}`}>
+                        <span className="ml-1.5 inline-block rounded-full bg-gray-100 px-1.5 py-0.5 text-[9px] font-medium text-stone-500 dark:bg-slate-700 dark:text-slate-400" title={`Refinanced by ${loanLabel(refinancedByLoan)}`}>
                           Refinanced
                         </span>
                       )}
@@ -451,7 +451,7 @@ export default function Loans() {
                     <td className="px-3 py-2">
                       <button
                         onClick={() => setExpandedLoanId(isExpanded ? null : l.id)}
-                        className={`text-[10px] underline decoration-dotted ${hasSale ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-slate-500'}`}
+                        className={`text-[10px] underline decoration-dotted ${hasSale ? 'text-green-600 dark:text-green-400' : 'text-stone-500 dark:text-slate-400'}`}
                       >
                         {hasSale ? '✓ linked' : 'none'}
                       </button>
@@ -468,17 +468,17 @@ export default function Loans() {
                       <td colSpan={7} className="px-3 pb-3 pt-0">
                         <div className="rounded-md bg-stone-50 p-3 dark:bg-slate-800">
                           <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                            {l.loan_number && <div className="col-span-2"><span className="text-gray-400 dark:text-slate-500">Loan #</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{l.loan_number}</span></div>}
+                            {l.loan_number && <div className="col-span-2"><span className="text-stone-500 dark:text-slate-400">Loan #</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{l.loan_number}</span></div>}
                             {linkedSale && (
                               <>
-                                <div><span className="text-gray-400 dark:text-slate-500">Sale date</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{linkedSale.date}</span></div>
-                                <div><span className="text-gray-400 dark:text-slate-500">Shares</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{linkedSale.shares.toLocaleString('en-US')}</span></div>
-                                <div><span className="text-gray-400 dark:text-slate-500">Price</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{linkedSale.price_per_share.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 })}</span></div>
-                                <div><span className="text-gray-400 dark:text-slate-500">Gross</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{fmt$(linkedSale.shares * linkedSale.price_per_share)}</span></div>
+                                <div><span className="text-stone-500 dark:text-slate-400">Sale date</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{linkedSale.date}</span></div>
+                                <div><span className="text-stone-500 dark:text-slate-400">Shares</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{linkedSale.shares.toLocaleString('en-US')}</span></div>
+                                <div><span className="text-stone-500 dark:text-slate-400">Price</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{linkedSale.price_per_share.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 })}</span></div>
+                                <div><span className="text-stone-500 dark:text-slate-400">Gross</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{fmt$(linkedSale.shares * linkedSale.price_per_share)}</span></div>
                               </>
                             )}
                             {!l.loan_number && !linkedSale && (
-                              <div className="col-span-2 text-gray-400">No additional details</div>
+                              <div className="col-span-2 text-stone-500">No additional details</div>
                             )}
                           </div>
                         </div>
@@ -489,19 +489,19 @@ export default function Loans() {
               )
             })}
             {loans.length === 0 && (
-              <tr><td colSpan={7} className="px-3 py-6 text-center text-gray-400">No loans yet</td></tr>
+              <tr><td colSpan={7} className="px-3 py-6 text-center text-stone-500">No loans yet</td></tr>
             )}
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-gray-400">{loans.length} loans</p>
+      <p className="text-xs text-stone-500">{loans.length} loans</p>
 
       {payoffModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={closePayoffModal}>
           <div className="w-full max-w-sm max-h-[90vh] overflow-y-auto rounded-lg bg-white p-5 shadow-xl dark:bg-slate-900" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Request Early Payoff</h3>
-              <button onClick={closePayoffModal} aria-label="Close dialog" className="text-gray-400 hover:text-gray-600 dark:hover:text-slate-300">✕</button>
+              <button onClick={closePayoffModal} aria-label="Close dialog" className="text-stone-500 hover:text-gray-600 dark:hover:text-slate-300">✕</button>
             </div>
             <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
               {payoffModal.loan.grant_year} {payoffModal.loan.grant_type} — {payoffModal.loan.loan_type} loan
@@ -513,7 +513,7 @@ export default function Loans() {
             )}
 
             {!payoffModal.suggestion && !payoffError && (
-              <p className="mt-4 text-center text-xs text-gray-400">Loading estimate…</p>
+              <p className="mt-4 text-center text-xs text-stone-500">Loading estimate…</p>
             )}
 
             {payoffModal.suggestion && (

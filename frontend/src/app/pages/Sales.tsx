@@ -86,8 +86,8 @@ export function TrancheTable({
   lines: TrancheLine[]; loading: boolean; manual: boolean
   manualAlloc: Record<string, number>; onManualChange: (key: string, shares: number) => void; date: string
 }) {
-  if (loading) return <p className="px-1 text-xs text-gray-400">Loading lots…</p>
-  if (!lines.length) return <p className="px-1 text-xs text-gray-400">No vested shares at this date</p>
+  if (loading) return <p className="px-1 text-xs text-stone-500">Loading lots…</p>
+  if (!lines.length) return <p className="px-1 text-xs text-stone-500">No vested shares at this date</p>
   const displayLines = manual ? lines : lines.filter(l => l.allocated_shares > 0)
   if (!manual && displayLines.length === 0) return null
   const totalAlloc = lines.reduce((s, l) => {
@@ -103,7 +103,7 @@ export function TrancheTable({
       </div>
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-[10px] text-gray-400">
+          <tr className="text-[10px] text-stone-500">
             <th className="px-3 py-1 text-left font-medium">Grant</th>
             <th className="px-3 py-1 text-right font-medium">Basis</th>
             <th className="px-3 py-1 text-right font-medium">Avail</th>
@@ -119,7 +119,7 @@ export function TrancheTable({
               <tr key={key} className="text-gray-700 dark:text-slate-300">
                 <td className="px-3 py-1">
                   <span>{line.grant_year ?? '—'} {line.grant_type ?? ''}</span>
-                  <span className="ml-1 text-[10px] text-gray-400 dark:text-slate-500">{line.vest_date}</span>
+                  <span className="ml-1 text-[10px] text-stone-500 dark:text-slate-400">{line.vest_date}</span>
                 </td>
                 <td className="px-3 py-1 text-right tabular-nums">{fmtUSD(line.basis_price)}</td>
                 <td className="px-3 py-1 text-right tabular-nums">{fmtNum(line.available_shares)}</td>
@@ -218,7 +218,7 @@ export function TaxCard({ breakdown }: { breakdown: TaxBreakdown }) {
         <div className="mb-3">
           <table className="w-full">
             <thead>
-              <tr className="text-gray-400 dark:text-slate-500">
+              <tr className="text-stone-500 dark:text-slate-400">
                 <th className="pb-1 text-left font-normal">Grant</th>
                 <th className="pb-1 text-right font-normal">Shares</th>
                 <th className="pb-1 text-right font-normal">LT</th>
@@ -348,7 +348,7 @@ function RateField({ label, value, onChange }: { label: string; value: number; o
           onChange={e => onChange(String(parseFloat(e.target.value) / 100))}
           className="block w-full rounded-md border border-gray-300 bg-white py-1 pl-1.5 pr-4 text-[11px] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
         />
-        <span className="pointer-events-none absolute inset-y-0 right-1 flex items-center text-[10px] text-gray-400">%</span>
+        <span className="pointer-events-none absolute inset-y-0 right-1 flex items-center text-[10px] text-stone-500">%</span>
       </div>
     </label>
   )
@@ -603,7 +603,7 @@ export default function Sales() {
     resetForm()
   }
 
-  if (loading) return <p className="p-6 text-center text-sm text-gray-400">Loading...</p>
+  if (loading) return <p className="p-6 text-center text-sm text-stone-500">Loading...</p>
   if (!sales) return <p className="p-6 text-center text-sm text-red-500">Failed to load sales</p>
 
   if (mode !== 'list') {
@@ -641,7 +641,7 @@ export default function Sales() {
             <span className="text-xs text-gray-500 dark:text-slate-400">Price per Share</span>
             {epicMode ? (
               <div className="mt-0.5 rounded-md border border-stone-200 bg-stone-50 px-2 py-1.5 text-xs text-gray-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300">
-                {form.price_per_share > 0 ? fmtUSD(form.price_per_share) : <span className="text-gray-400">No price for this date</span>}
+                {form.price_per_share > 0 ? fmtUSD(form.price_per_share) : <span className="text-stone-500">No price for this date</span>}
               </div>
             ) : (
               <input type="number" step="0.01" value={form.price_per_share}
@@ -685,7 +685,7 @@ export default function Sales() {
           <label className="block">
             <span className="text-xs text-gray-500 dark:text-slate-400">Target net cash (post-tax)</span>
             <div className="relative mt-0.5">
-              <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-xs text-gray-400">$</span>
+              <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-xs text-stone-500">$</span>
               <input type="number" step="100" min="0" value={dollarTarget}
                 onChange={e => setDollarTarget(e.target.value)}
                 placeholder="0"
@@ -741,7 +741,7 @@ export default function Sales() {
           <label className="block">
             <span className="text-xs text-gray-500 dark:text-slate-400">Actual tax paid (optional — overrides estimate)</span>
             <div className="relative mt-0.5">
-              <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-xs text-gray-400">$</span>
+              <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-xs text-stone-500">$</span>
               <input type="number" step="0.01" min="0" value={actualTaxPaid}
                 onChange={e => setActualTaxPaid(e.target.value)}
                 placeholder="Leave blank to use estimate"
@@ -830,7 +830,7 @@ export default function Sales() {
                         className="inline-flex items-center gap-1 text-right"
                       >
                         {isLoading ? (
-                          <span className="text-gray-400">...</span>
+                          <span className="text-stone-500">...</span>
                         ) : bd ? (
                           <>
                             {hasST && (
@@ -843,7 +843,7 @@ export default function Sales() {
                             </span>
                           </>
                         ) : (
-                          <span className="text-gray-400 underline decoration-dotted">—</span>
+                          <span className="text-stone-500 underline decoration-dotted">—</span>
                         )}
                       </button>
                     </td>
@@ -871,12 +871,12 @@ export default function Sales() {
               )
             })}
             {sales.length === 0 && (
-              <tr><td colSpan={7} className="px-3 py-6 text-center text-gray-400">No sales recorded yet</td></tr>
+              <tr><td colSpan={7} className="px-3 py-6 text-center text-stone-500">No sales recorded yet</td></tr>
             )}
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-gray-400">{sales.length} sales</p>
+      <p className="text-xs text-stone-500">{sales.length} sales</p>
     </div>
   )
 }

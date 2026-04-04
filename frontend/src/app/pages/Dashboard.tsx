@@ -781,6 +781,43 @@ export default function Dashboard() {
     return localStorage.getItem('dashboard_cardDate') ?? TODAY
   })
   const [savingExit, setSavingExit] = useState(false)
+  const [pendingExitDate, setPendingExitDate] = useState<string>(exitDate ?? '')
+
+  // Keep pending input in sync when server data reloads (e.g. after applying a tip)
+  useEffect(() => {
+    setPendingExitDate(exitDate ?? '')
+  }, [exitDate])
+
+  const pendingExitChanged = pendingExitDate !== (exitDate ?? '')
+
+  // Local cash-out estimate for the pending exit date — approximate, shown before committing
+  const estimatedExitCashOut = useMemo(() => {
+    if (!pendingExitDate || !events || !loans) return null
+    let cumShares = 0, cumCapGains = 0
+    for (const e of events) {
+      if (e.date <= pendingExitDate) { cumShares = e.cum_shares; cumCapGains = e.cum_cap_gains }
+      else break
+    }
+    let price = 0
+    if (prices) {
+      for (const p of prices) {
+        if (p.effective_date <= pendingExitDate) price = p.price
+        else break
+      }
+    }
+    if (!price || !cumShares) return null
+    const gross = cumShares * price
+    const year = parseInt(pendingExitDate.slice(0, 4), 10)
+    const refinancedIds = new Set(loans.map(l => l.refinances_loan_id).filter((id): id is number => id !== null))
+    const principal = loans
+      .filter(l => l.loan_year <= year && !refinancedIds.has(l.id))
+      .reduce((sum, l) => sum + l.amount, 0)
+    const ltcgRate = taxSettings
+      ? taxSettings.federal_lt_cg_rate + taxSettings.niit_rate + taxSettings.state_lt_cg_rate
+      : 0
+    const taxEst = cumCapGains * ltcgRate
+    return { gross, principal, taxEst, net: Math.max(0, gross - principal - taxEst) }
+  }, [pendingExitDate, events, prices, loans, taxSettings])
 
   async function applyExitDate(date: string | null) {
     setSavingExit(true)
@@ -1013,24 +1050,57 @@ export default function Dashboard() {
           <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-slate-400">Exit</span>
           <input
             type="date"
-            value={exitDate ?? ''}
+            value={pendingExitDate}
             disabled={savingExit}
-            onChange={e => applyExitDate(e.target.value || null)}
+            onChange={e => setPendingExitDate(e.target.value)}
             className="h-7 flex-1 rounded border border-gray-300 bg-white px-2 text-xs text-gray-700 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
           />
-          {exitDate ? (
+          {!pendingExitChanged && exitDate && (
             <button
-              onClick={() => applyExitDate(null)}
-              disabled={savingExit}
+              onClick={() => setPendingExitDate('')}
               title="Clear exit date"
-              className="shrink-0 text-sm leading-none text-gray-400 hover:text-gray-600 disabled:opacity-50 dark:text-slate-500 dark:hover:text-slate-300"
+              className="shrink-0 text-sm leading-none text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300"
             >
               ×
             </button>
-          ) : (
+          )}
+          {!pendingExitChanged && !exitDate && (
             <span className="shrink-0 text-xs text-gray-400 dark:text-slate-500">not set</span>
           )}
         </div>
+        {pendingExitChanged && (
+          <div className="mt-2 rounded-md bg-stone-50 px-3 py-2 dark:bg-slate-800/60">
+            {pendingExitDate && estimatedExitCashOut ? (
+              <p className="text-xs text-gray-600 dark:text-slate-400">
+                Est. cash out:{' '}
+                <span className="font-semibold text-gray-900 dark:text-slate-100">{fmt$(estimatedExitCashOut.net)}</span>
+                <span className="ml-1 text-gray-400 dark:text-slate-500">
+                  (gross {fmt$(estimatedExitCashOut.gross)}, loans {fmt$(estimatedExitCashOut.principal)}, ~tax {fmt$(estimatedExitCashOut.taxEst)})
+                </span>
+              </p>
+            ) : pendingExitDate ? (
+              <p className="text-xs text-gray-400 dark:text-slate-500">No price data for this date — apply to see exact figures</p>
+            ) : (
+              <p className="text-xs text-gray-500 dark:text-slate-400">This will remove your exit scenario</p>
+            )}
+            <div className="mt-1.5 flex items-center gap-2">
+              <button
+                onClick={() => applyExitDate(pendingExitDate || null)}
+                disabled={savingExit}
+                className="rounded bg-rose-700 px-3 py-1 text-xs font-medium text-white hover:bg-rose-800 disabled:opacity-60"
+              >
+                {savingExit ? 'Saving…' : 'Apply'}
+              </button>
+              <button
+                onClick={() => setPendingExitDate(exitDate ?? '')}
+                disabled={savingExit}
+                className="text-xs text-gray-500 hover:text-gray-700 disabled:opacity-50 dark:text-slate-400 dark:hover:text-slate-200"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
         <div className="mt-1.5 flex items-center gap-1.5">
           {([
             { label: 'Today', date: TODAY },

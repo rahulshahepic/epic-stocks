@@ -2,6 +2,7 @@ from datetime import datetime, date
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -112,14 +113,19 @@ def get_all_sale_taxes(user: User = Depends(get_current_user), db: Session = Dep
     timeline = _build_timeline(user, db)
     ts = _get_or_create_tax_settings(user, db)
 
-    # Build loan_id -> (grant_year, grant_type) for same-tranche resolution
+    flexible_row = db.execute(text("SELECT value FROM system_settings WHERE key = 'flexible_payoff_enabled'")).scalar()
+    flexible_enabled = (flexible_row == "true")
+    payoff_method = getattr(ts, 'loan_payoff_method', 'same_tranche') if flexible_enabled else 'same_tranche'
+    manual_method = ts.lot_selection_method
+
+    # Build loan_id -> (grant_year, grant_type) for any same-tranche resolution
     loan_map: dict[int, tuple] = {}
-    if ts.lot_selection_method == 'same_tranche':
+    if manual_method == 'same_tranche' or payoff_method not in ('fifo', 'lifo', 'epic_lifo'):
         from scaffold.models import Loan as LoanModel
         for ln in db.query(LoanModel).filter(LoanModel.user_id == user.id).all():
             loan_map[ln.id] = (ln.grant_year, ln.grant_type)
 
-    lot_order = ts.lot_selection_method if ts.lot_selection_method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
+    lot_order = manual_method if manual_method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
 
     # Snapshot per-sale rate overrides while session is open
     sale_data = []
@@ -157,9 +163,16 @@ def get_all_sale_taxes(user: User = Depends(get_current_user), db: Session = Dep
     sort_keys = [sort_key(e) for e in sorted_tl]
 
     for s in sale_data:
-        gy, gt = (loan_map.get(s["loan_id"]) or (None, None)) if s["loan_id"] and ts.lot_selection_method == 'same_tranche' else (None, None)
+        if s["loan_id"]:
+            # Payoff sale — use loan_payoff_method
+            p_lot_order = payoff_method if payoff_method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
+            gy, gt = (loan_map.get(s["loan_id"]) or (None, None)) if payoff_method not in ('fifo', 'lifo', 'epic_lifo') else (None, None)
+        else:
+            # Manual sale — use lot_selection_method
+            p_lot_order = lot_order
+            gy, gt = (loan_map.get(s["loan_id"]) or (None, None)) if s["loan_id"] and manual_method == 'same_tranche' else (None, None)
         prebuilt = build_lots_from_overrides(sorted_tl, s["lot_overrides"], s["date"]) if s.get("lot_overrides") else None
-        breakdown = compute_sale_tax(sorted_tl, {"date": s["date"], "shares": s["shares"], "price_per_share": s["price_per_share"]}, s["ts_dict"], lot_order=lot_order, grant_year=gy, grant_type=gt, prebuilt_lots=prebuilt)
+        breakdown = compute_sale_tax(sorted_tl, {"date": s["date"], "shares": s["shares"], "price_per_share": s["price_per_share"]}, s["ts_dict"], lot_order=p_lot_order, grant_year=gy, grant_type=gt, prebuilt_lots=prebuilt)
         result[s["id"]] = breakdown
 
         # Insert this sale into the sorted timeline for subsequent iterations
@@ -282,13 +295,22 @@ def get_sale_tax(sale_id: int, user: User = Depends(get_current_user), db: Sessi
         "state_st_cg_rate": sale.state_st_cg_rate if sale.state_st_cg_rate is not None else ts.state_st_cg_rate,
         "lt_holding_days": sale.lt_holding_days if sale.lt_holding_days is not None else ts.lt_holding_days,
     }
-    method = ts.lot_selection_method if ts else 'epic_lifo'
-    lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
     gy, gt = None, None
-    if method == 'same_tranche' and sale.loan_id:
-        linked_loan = db.query(Loan).filter(Loan.id == sale.loan_id).first()
-        if linked_loan:
-            gy, gt = linked_loan.grant_year, linked_loan.grant_type
+    if sale.loan_id:
+        # Payoff sale — use loan_payoff_method when flexible is enabled, else same_tranche
+        flexible = db.execute(text("SELECT value FROM system_settings WHERE key = 'flexible_payoff_enabled'")).scalar()
+        if flexible == "true" and ts:
+            method = getattr(ts, 'loan_payoff_method', 'same_tranche')
+        else:
+            method = 'same_tranche'
+        lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
+        if method not in ('fifo', 'lifo', 'epic_lifo'):  # same_tranche
+            linked_loan = db.query(Loan).filter(Loan.id == sale.loan_id).first()
+            if linked_loan:
+                gy, gt = linked_loan.grant_year, linked_loan.grant_type
+    else:
+        method = ts.lot_selection_method if ts else 'epic_lifo'
+        lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
     prebuilt = build_lots_from_overrides(timeline, sale.lot_overrides, sale.date) if sale.lot_overrides else None
     return compute_sale_tax(timeline, sale_dict, ts_dict, lot_order=lot_order, grant_year=gy, grant_type=gt, prebuilt_lots=prebuilt)
 
@@ -461,7 +483,11 @@ def estimate_sale(
 
 @tax_router.get("", response_model=TaxSettingsRead)
 def get_tax_settings(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return _get_or_create_tax_settings(user, db)
+    ts = _get_or_create_tax_settings(user, db)
+    result = TaxSettingsRead.model_validate(ts)
+    flexible = db.execute(text("SELECT value FROM system_settings WHERE key = 'flexible_payoff_enabled'")).scalar()
+    result.flexible_payoff_enabled = (flexible == "true")
+    return result
 
 
 @tax_router.put("", response_model=TaxSettingsRead)

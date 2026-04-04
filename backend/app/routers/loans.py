@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -86,6 +87,44 @@ def _build_timeline_for_user(user: User, db: Session) -> list:
     return get_timeline(user.id, grants, prices, loans, initial_price)
 
 
+def _is_flexible_payoff_enabled(db: Session) -> bool:
+    row = db.execute(text("SELECT value FROM system_settings WHERE key = 'flexible_payoff_enabled'")).scalar()
+    return row == "true"
+
+
+def _has_sufficient_coverage(user: User, loan: Loan, db: Session, timeline: list, price: float, cash_due: float) -> bool:
+    """
+    Returns True if vested_shares*price + sum(unvested_shares_i * grant_price_i) >= cash_due.
+    timeline must already be augmented with prior sales (same as used by _compute_payoff_sale).
+    """
+    from app.sales_engine import build_fifo_lots
+
+    lots = build_fifo_lots(timeline, loan.due_date, order='fifo')
+    vested_coverage = sum(lot[1] for lot in lots) * price
+
+    grants_db = db.query(Grant).filter(Grant.user_id == user.id).all()
+    vested_by_grant: dict = {}
+    for e in timeline:
+        edate = e.get("date")
+        if edate is None:
+            continue
+        if isinstance(edate, datetime):
+            edate = edate.date()
+        if edate > loan.due_date:
+            break
+        if e.get("event_type") == "Vesting" and (e.get("vested_shares") or 0) > 0:
+            key = (e.get("grant_year"), e.get("grant_type"))
+            vested_by_grant[key] = vested_by_grant.get(key, 0) + e["vested_shares"]
+
+    unvested_coverage = 0.0
+    for g in grants_db:
+        vested = vested_by_grant.get((g.year, g.type), 0)
+        unvested = max(0, g.shares - (g.dp_shares or 0) - vested)
+        unvested_coverage += unvested * (g.price or 0.0)
+
+    return (vested_coverage + unvested_coverage) >= cash_due
+
+
 def _price_at_date(timeline: list, as_of) -> float:
     """Return the share price from the timeline at or just before as_of date."""
     if isinstance(as_of, datetime):
@@ -148,11 +187,24 @@ def _compute_payoff_sale(loan: Loan, user: User, db: Session) -> dict:
 
     ts = _get_tax_settings_dict(user, db)
     lt_days = int(ts.get("lt_holding_days", 365))
-    # Payoff sales always use same-tranche: shares must come from the originating grant.
-    # Within a single tranche all lots have the same schedule so lot_order is irrelevant.
-    lots = build_fifo_lots(timeline, loan.due_date, order='epic_lifo',
-                           grant_year=loan.grant_year, grant_type=loan.grant_type,
-                           lt_holding_days=lt_days)
+
+    # Determine lot selection method for this payoff.
+    # Default is same-tranche; flexible methods are available when admin has enabled the setting
+    # and the user has sufficient total stock coverage (vested at price + unvested at cost basis).
+    payoff_method = 'same_tranche'
+    ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
+    if ts_row and _is_flexible_payoff_enabled(db):
+        user_method = ts_row.loan_payoff_method
+        if user_method != 'same_tranche' and _has_sufficient_coverage(user, loan, db, timeline, price, cash_due):
+            payoff_method = user_method
+
+    if payoff_method == 'same_tranche':
+        lots = build_fifo_lots(timeline, loan.due_date, order='epic_lifo',
+                               grant_year=loan.grant_year, grant_type=loan.grant_type,
+                               lt_holding_days=lt_days)
+    else:
+        order = payoff_method if payoff_method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
+        lots = build_fifo_lots(timeline, loan.due_date, order=order, lt_holding_days=lt_days)
     shares = compute_grossup_shares(lots, cash_due, price, loan.due_date, ts)
 
     loan_label = loan.loan_number or f"{loan.grant_year}/{loan.loan_type}"

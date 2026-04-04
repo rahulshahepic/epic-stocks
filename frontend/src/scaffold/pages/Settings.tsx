@@ -44,6 +44,8 @@ export default function Settings() {
     state_st_cg_rate: 0.0765,
     lt_holding_days: 365,
     lot_selection_method: 'epic_lifo',
+    loan_payoff_method: 'epic_lifo',
+    flexible_payoff_enabled: false,
     prefer_stock_dp: false,
     dp_min_percent: 0.10,
     dp_min_cap: 20000,
@@ -425,12 +427,30 @@ export default function Settings() {
                   <option value="manual_tranche">Manual — pick lots yourself</option>
                 </select>
                 <p className="mt-1 text-[11px] text-stone-600 dark:text-slate-400">
-                  Applies to manual sales only. Loan payoff sales always use same-tranche selection.
+                  Applies to manual sales only.{taxSettings?.flexible_payoff_enabled ? ' See Loan Payoff Lot Method below for payoff sales.' : ' Loan payoff sales use same-tranche selection by default.'}
                 </p>
                 <p className="mt-0.5 text-[11px] text-amber-700 dark:text-amber-300">
                   The IRS may require a consistent lot selection method election at the time of sale. Consult a tax advisor before changing this.
                 </p>
               </label>
+              {taxSettings?.flexible_payoff_enabled && (
+                <label className="block col-span-2">
+                  <span className="text-xs text-stone-600 dark:text-slate-400">Loan Payoff Lot Method</span>
+                  <select
+                    value={taxForm.loan_payoff_method}
+                    onChange={e => setTaxForm(f => f ? { ...f, loan_payoff_method: e.target.value as TaxSettings['loan_payoff_method'] } : f)}
+                    className="mt-0.5 block w-full rounded-md border border-stone-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+                  >
+                    <option value="epic_lifo">Epic LIFO — LIFO, prefer long-term gains (default)</option>
+                    <option value="lifo">LIFO — newest lots first</option>
+                    <option value="fifo">FIFO — oldest lots first</option>
+                    <option value="same_tranche">Same Tranche — shares from originating grant only</option>
+                  </select>
+                  <p className="mt-1 text-[11px] text-stone-600 dark:text-slate-400">
+                    Applies to loan payoff sales when you have sufficient stock coverage (vested value + unvested cost basis ≥ loan balance). Falls back to same-tranche if coverage is insufficient.
+                  </p>
+                </label>
+              )}
               <label className="block">
                 <span className="text-xs text-stone-600 dark:text-slate-400">LT Holding Threshold (days)</span>
                 <input

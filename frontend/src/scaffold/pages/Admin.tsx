@@ -84,6 +84,8 @@ export default function Admin() {
   const [maintenanceLoading, setMaintenanceLoading] = useState(false)
   const [epicModeActive, setEpicModeActive] = useState<boolean | null>(null)
   const [epicModeLoading, setEpicModeLoading] = useState(false)
+  const [flexiblePayoffActive, setFlexiblePayoffActive] = useState<boolean | null>(null)
+  const [flexiblePayoffLoading, setFlexiblePayoffLoading] = useState(false)
   const [rotationOpen, setRotationOpen] = useState(false)
   const [rotationConfirm, setRotationConfirm] = useState(false)
   const [rotationRunning, setRotationRunning] = useState(false)
@@ -119,18 +121,20 @@ export default function Admin() {
 
   const load = useCallback(async () => {
     try {
-      const [s, b, m, rs, em] = await Promise.all([
+      const [s, b, m, rs, em, fp] = await Promise.all([
         api.adminStats(),
         api.adminListBlocked(),
         api.adminGetMaintenance(),
         api.adminRotationStatus(),
         api.adminGetEpicMode(),
+        api.adminGetFlexiblePayoff(),
       ])
       setStats(s)
       setBlocked(b)
       setMaintenanceActive(m.active)
       setSnapshotExists(rs.snapshot_exists)
       setEpicModeActive(em.active)
+      setFlexiblePayoffActive(fp.active)
       setError('')
       loadUsers()
       loadErrors()
@@ -691,6 +695,48 @@ export default function Admin() {
               Epic Mode is active. Grant/price/loan writes are blocked for all users.
             </p>
           )}
+        </div>
+
+        <hr className="my-4 border-red-100 dark:border-red-900/40" />
+
+        {/* Flexible Loan Payoff Methods */}
+        <div className="mt-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-gray-900 dark:text-slate-100">Flexible Loan Payoff Methods</p>
+              <p className="text-xs text-gray-500 dark:text-slate-400">
+                When enabled, users with sufficient stock coverage can choose Epic LIFO, LIFO, FIFO, or manual lot
+                selection for payoff sales instead of the default same-tranche method.
+              </p>
+            </div>
+            <button
+              disabled={flexiblePayoffActive === null || flexiblePayoffLoading}
+              onClick={async () => {
+                setFlexiblePayoffLoading(true)
+                try {
+                  const res = await api.adminSetFlexiblePayoff(!flexiblePayoffActive)
+                  setFlexiblePayoffActive(res.active)
+                } catch {
+                  setError('Failed to toggle flexible payoff')
+                } finally {
+                  setFlexiblePayoffLoading(false)
+                }
+              }}
+              className={`ml-4 shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors disabled:opacity-50 ${
+                flexiblePayoffActive
+                  ? 'bg-green-600 hover:bg-green-700'
+                  : 'bg-rose-700 hover:bg-rose-800'
+              }`}
+            >
+              {flexiblePayoffLoading
+                ? '…'
+                : flexiblePayoffActive === null
+                ? 'Loading'
+                : flexiblePayoffActive
+                ? 'Disable'
+                : 'Enable'}
+            </button>
+          </div>
         </div>
 
         <hr className="my-4 border-red-100 dark:border-red-900/40" />

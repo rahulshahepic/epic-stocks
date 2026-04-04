@@ -43,6 +43,7 @@ const WI_TAX_DEFAULTS: TaxSettings = {
   federal_income_rate: 0.37, federal_lt_cg_rate: 0.20, federal_st_cg_rate: 0.37,
   niit_rate: 0.038, state_income_rate: 0.0765, state_lt_cg_rate: 0.0536,
   state_st_cg_rate: 0.0765, lt_holding_days: 365, lot_selection_method: 'lifo',
+  loan_payoff_method: 'epic_lifo', flexible_payoff_enabled: false,
   prefer_stock_dp: false, dp_min_percent: 0.10, dp_min_cap: 20000,
   deduct_investment_interest: false,
 }

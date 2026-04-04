@@ -152,11 +152,11 @@ export default function Settings() {
           <div className="mt-3 space-y-3">
             {/* Push */}
             {!supported && config?.vapid_public_key ? (
-              <p className="text-xs text-stone-400 dark:text-slate-500">
+              <p className="text-xs text-stone-500 dark:text-slate-400">
                 Push notifications are not supported in this browser.
               </p>
             ) : supported && !config?.vapid_public_key ? (
-              <p className="text-xs text-stone-400 dark:text-slate-500">
+              <p className="text-xs text-stone-500 dark:text-slate-400">
                 Push notifications are not configured on this server.
               </p>
             ) : supported && config?.vapid_public_key ? (
@@ -205,7 +205,7 @@ export default function Settings() {
               <div className="flex items-center justify-between border-t border-stone-100 pt-3 dark:border-slate-800">
                 <div>
                   <span className="text-xs text-stone-700 dark:text-slate-300">Notify me</span>
-                  <p className="text-[11px] text-stone-400 dark:text-slate-500">When to send the notification</p>
+                  <p className="text-[11px] text-stone-500 dark:text-slate-400">When to send the notification</p>
                 </div>
                 <select
                   aria-label="Notification timing"
@@ -226,7 +226,7 @@ export default function Settings() {
               <div className="flex items-center justify-between border-t border-stone-100 pt-3 dark:border-slate-800">
                 <div>
                   <span className="text-xs text-stone-700 dark:text-slate-300">Test push</span>
-                  <p className="text-[11px] text-stone-400 dark:text-slate-500">Confirm notifications are working</p>
+                  <p className="text-[11px] text-stone-500 dark:text-slate-400">Confirm notifications are working</p>
                 </div>
                 <button
                   onClick={sendTestPush}
@@ -424,7 +424,7 @@ export default function Settings() {
                   <option value="lifo">LIFO — newest lots first</option>
                   <option value="manual_tranche">Manual — pick lots yourself</option>
                 </select>
-                <p className="mt-1 text-[11px] text-stone-400 dark:text-slate-500">
+                <p className="mt-1 text-[11px] text-stone-500 dark:text-slate-400">
                   Applies to manual sales only. Loan payoff sales always use same-tranche selection.
                 </p>
                 <p className="mt-0.5 text-[11px] text-amber-600 dark:text-amber-400">
@@ -667,7 +667,7 @@ export default function Settings() {
       </section>
 
       {import.meta.env.VITE_COMMIT_SHA && import.meta.env.VITE_COMMIT_SHA !== 'dev' && (
-        <p className="text-center text-xs text-gray-400 dark:text-slate-600">
+        <p className="text-center text-xs text-stone-500 dark:text-slate-600">
           {import.meta.env.VITE_COMMIT_SHA.slice(0, 7)}
         </p>
       )}

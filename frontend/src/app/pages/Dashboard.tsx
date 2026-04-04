@@ -1194,45 +1194,50 @@ export default function Dashboard() {
           variant="event"
         />
       </div>
-      {showDeductionCard && (
-        <div className={`rounded-md px-3 py-2 text-xs ${savedDeduction ? 'bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300' : 'bg-stone-100 text-stone-600 dark:bg-slate-800 dark:text-slate-400'}`}>
-          {!pendingDeductionChanged ? (
-            <div className="flex items-center justify-between gap-2">
-              <span>
-                {savedDeduction
-                  ? <>Investment interest deduction applied: <span className="font-semibold">{fmt$(cv.interest_deduction_total ?? 0)}</span> deducted — tax reduced, cash increased.</>
-                  : <>Investment interest deduction not applied.</>
-                }
-              </span>
+      {showDeductionCard && (() => {
+        const displayEnabled = pendingDeduction ?? savedDeduction
+        const previewSavings = pendingDeductionChanged
+          ? (deductionPreview === 'loading' ? null : deductionPreview?.tax_savings_from_deduction ?? null)
+          : null
+        return (
+          <div className="rounded-md bg-stone-100 px-3 py-2.5 text-xs dark:bg-slate-800">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <span className="font-medium text-stone-700 dark:text-slate-300">Itemize investment interest deduction</span>
+                <div className="mt-0.5 text-stone-500 dark:text-slate-400">
+                  {!pendingDeductionChanged ? (
+                    displayEnabled
+                      ? <>{fmt$(cv.interest_deduction_total ?? 0)} deducted — reduces tax, increases cash</>
+                      : <>Not applied — toggle to estimate impact</>
+                  ) : deductionPreview === 'loading' ? (
+                    <>Calculating…</>
+                  ) : previewSavings !== null ? (
+                    displayEnabled
+                      ? <>Est. <span className="font-semibold text-green-700 dark:text-green-400">+{fmt$(previewSavings)}</span> more cash if applied</>
+                      : <>Est. <span className="font-semibold text-red-600 dark:text-red-400">−{fmt$(dash.tax_savings_from_deduction ?? previewSavings)}</span> cash if removed</>
+                  ) : (
+                    <>No preview available</>
+                  )}
+                </div>
+              </div>
               <button
-                onClick={() => setPendingDeduction(!savedDeduction)}
-                className={`shrink-0 rounded px-2 py-1 font-medium text-white ${savedDeduction ? 'bg-purple-700 hover:bg-purple-800 dark:bg-purple-600 dark:hover:bg-purple-700' : 'bg-stone-500 hover:bg-stone-600 dark:bg-slate-600 dark:hover:bg-slate-500'}`}
+                role="switch"
+                aria-checked={displayEnabled}
+                onClick={() => setPendingDeduction(!displayEnabled)}
+                disabled={savingDeduction}
+                className={`relative shrink-0 h-6 w-11 rounded-full transition-colors focus:outline-none disabled:opacity-50 ${displayEnabled ? 'bg-purple-600 dark:bg-purple-500' : 'bg-stone-300 dark:bg-slate-600'}`}
               >
-                {savedDeduction ? 'Try without' : 'Try it'}
+                <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${displayEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
               </button>
             </div>
-          ) : (
-            <div>
-              <div className="mb-1.5">
-                {deductionPreview === 'loading' ? (
-                  <span className="text-stone-400 dark:text-slate-500">Calculating…</span>
-                ) : deductionPreview ? (
-                  pendingDeduction ? (
-                    <>With deduction: <span className="font-semibold">{fmt$(deductionPreview.interest_deduction_total)}</span> deducted · est. <span className="font-semibold text-green-700 dark:text-green-400">+{fmt$(deductionPreview.tax_savings_from_deduction)}</span> in cash</>
-                  ) : (
-                    <>Without deduction: est. <span className="font-semibold text-red-600 dark:text-red-400">−{fmt$(dash.tax_savings_from_deduction ?? deductionPreview.tax_savings_from_deduction)}</span> in cash</>
-                  )
-                ) : (
-                  <span className="text-stone-400 dark:text-slate-500">No data available</span>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
+            {pendingDeductionChanged && (
+              <div className="mt-2 flex items-center gap-2 border-t border-stone-200 pt-2 dark:border-slate-700">
                 <button
                   onClick={() => applyDeduction(pendingDeduction!)}
                   disabled={savingDeduction || deductionPreview === 'loading'}
                   className="rounded bg-rose-700 px-3 py-1 font-medium text-white hover:bg-rose-800 disabled:opacity-60"
                 >
-                  {savingDeduction ? 'Saving…' : pendingDeduction ? 'Apply — enable' : 'Apply — disable'}
+                  {savingDeduction ? 'Saving…' : 'Apply'}
                 </button>
                 <button
                   onClick={() => setPendingDeduction(null)}
@@ -1242,10 +1247,10 @@ export default function Dashboard() {
                   Cancel
                 </button>
               </div>
-            </div>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        )
+      })()}
 
       <div className="grid gap-4 md:grid-cols-2">
         {events && events.length > 0 && (

@@ -256,6 +256,62 @@ def test_fifo_mixed_lt_and_st():
     assert result["unvested_shares"] == 0
 
 
+def test_fifo_purchase_grant_sorts_before_later_rsu():
+    """
+    FIFO should use hold_start_date (acquisition date) as the sort key, not vest_date.
+
+    Scenario: a Purchase grant exercised in 2018 vests a tranche in 2022. An RSU grant
+    vests in 2021. Under vest_date FIFO the RSU lot (2021) sorts before the Purchase lot
+    (2022), causing the RSU (STCG) to be consumed first at a mid-2022 sale even though
+    the Purchase lot was acquired 4 years earlier.
+
+    Under hold_start FIFO the Purchase lot (hold_start=2018) sorts first, so the LTCG
+    Purchase lot is consumed and only the RSU STCG lot remains.
+    """
+    exercise_date = date(2018, 1, 1)
+    purchase_vest = date(2022, 3, 1)   # vests late, but held since 2018 → LTCG
+    rsu_vest = date(2021, 6, 1)        # vested before purchase tranche, hold_start=vest → STCG at sale
+
+    exercise_event = {
+        "date": exercise_date,
+        "event_type": "Exercise",
+        "grant_year": 2018,
+        "grant_type": "Purchase",
+        "grant_price": 2.0,
+        "vested_shares": None,
+    }
+    purchase_vesting = {
+        "date": purchase_vest,
+        "event_type": "Vesting",
+        "grant_year": 2018,
+        "grant_type": "Purchase",
+        "grant_price": 2.0,
+        "share_price": 5.0,
+        "vested_shares": 100,
+        "grant_type": "Purchase",
+    }
+    rsu_vesting = {
+        "date": rsu_vest,
+        "event_type": "Vesting",
+        "grant_year": 2021,
+        "grant_type": "Income",
+        "grant_price": 0.0,
+        "share_price": 4.0,
+        "vested_shares": 100,
+    }
+    events = [exercise_event, rsu_vesting, purchase_vesting]
+
+    # Sale on 2022-09-01: Purchase lot held since 2018 = LTCG; RSU held since 2021-06 = STCG
+    sale_date = date(2022, 9, 1)
+    sale = {"date": sale_date, "shares": 100, "price_per_share": 6.0}
+    result = compute_sale_tax(events, sale, WI_DEFAULTS, lot_order='fifo')
+
+    # FIFO by hold_start_date: Purchase (2018) before RSU (2021).
+    # 100 Purchase shares consumed (LTCG) → 0 ST shares.
+    assert result["lt_shares"] == 100, f"Expected 100 LTCG shares, got lt={result['lt_shares']} st={result['st_shares']}"
+    assert result["st_shares"] == 0
+
+
 def test_unvested_shares_detection():
     events = [_make_vesting_event(date(2022, 1, 1), 50, 10.0)]
     sale = {"date": date(2022, 6, 1), "shares": 80, "price_per_share": 20.0}

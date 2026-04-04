@@ -865,16 +865,23 @@ export default function Dashboard() {
         .reduce((sum, l) => sum + Math.max(0, l.amount - (earlyPaidByLoan.get(l.id) ?? 0)), 0)
     })()
 
+    // Map sale_id -> estimated_tax from timeline events so we can subtract it below
+    const saleTaxBySaleId = new Map<number, number>()
+    for (const e of events) {
+      if (e.event_type === 'Sale' && e.sale_id != null && e.estimated_tax != null) {
+        saleTaxBySaleId.set(e.sale_id, e.estimated_tax)
+      }
+    }
+
     const cashReceived = (sales
       ? sales.filter(s => s.loan_id === null && s.date <= effectiveDate)
-          .reduce((sum, s) => sum + s.shares * s.price_per_share, 0)
+          .reduce((sum, s) => sum + s.shares * s.price_per_share - (saleTaxBySaleId.get(s.id) ?? 0), 0)
       : 0)
       + (liqOccurred && projectedLiqEvent
           ? Math.max(0, (projectedLiqEvent.gross_proceeds ?? 0) - outstandingPrincipal - (projectedLiqEvent.estimated_tax ?? 0))
           : 0)
 
-    // Interest deduction: use adjusted_cum_cap_gains from last event if available,
-    // and add tax savings to cash received.
+    // Interest deduction: use adjusted_cum_cap_gains from last event if available.
     const adjCumCg = lastEvent?.adjusted_cum_cap_gains ?? lastEvent?.cum_cap_gains ?? 0
     const stcgRate = taxSettings
       ? taxSettings.federal_st_cg_rate + taxSettings.niit_rate + taxSettings.state_st_cg_rate

@@ -164,7 +164,7 @@ export default function Settings() {
                 <span className="text-xs text-stone-700 dark:text-slate-300">Push notifications</span>
                 <div className="flex items-center gap-2">
                   {subscribed && (
-                    <span className="text-xs text-green-600 dark:text-green-400">Enabled</span>
+                    <span className="text-xs text-green-700 dark:text-green-300">Enabled</span>
                   )}
                   <button
                     onClick={subscribed ? unsubscribe : subscribe}
@@ -185,7 +185,7 @@ export default function Settings() {
                 <span className="text-xs text-stone-700 dark:text-slate-300">Email notifications</span>
                 <div className="flex items-center gap-2">
                   {emailEnabled && (
-                    <span className="text-xs text-green-600 dark:text-green-400">Enabled</span>
+                    <span className="text-xs text-green-700 dark:text-green-300">Enabled</span>
                   )}
                   <button
                     onClick={toggleEmail}
@@ -427,7 +427,7 @@ export default function Settings() {
                 <p className="mt-1 text-[11px] text-stone-500 dark:text-slate-400">
                   Applies to manual sales only. Loan payoff sales always use same-tranche selection.
                 </p>
-                <p className="mt-0.5 text-[11px] text-amber-600 dark:text-amber-400">
+                <p className="mt-0.5 text-[11px] text-amber-700 dark:text-amber-300">
                   The IRS may require a consistent lot selection method election at the time of sale. Consult a tax advisor before changing this.
                 </p>
               </label>
@@ -667,7 +667,7 @@ export default function Settings() {
       </section>
 
       {import.meta.env.VITE_COMMIT_SHA && import.meta.env.VITE_COMMIT_SHA !== 'dev' && (
-        <p className="text-center text-xs text-stone-500 dark:text-slate-600">
+        <p className="text-center text-xs text-stone-500 dark:text-slate-400">
           {import.meta.env.VITE_COMMIT_SHA.slice(0, 7)}
         </p>
       )}

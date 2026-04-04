@@ -324,7 +324,7 @@ export default function Loans() {
               })()}
             </select>
             {form.refinances_loan_id && (
-              <p className="mt-1 text-[10px] text-amber-600 dark:text-amber-400">
+              <p className="mt-1 text-[10px] text-amber-700 dark:text-amber-300">
                 The old loan's payoff event will show as "Refinanced" with $0 cash due. Its auto-generated sale will be removed.
               </p>
             )}
@@ -404,7 +404,7 @@ export default function Loans() {
         }
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-stone-200 dark:border-slate-700">
+      <div tabIndex={0} className="overflow-x-auto rounded-lg border border-stone-200 dark:border-slate-700">
         <table className="w-full text-left text-xs">
           <thead className="bg-stone-50 dark:bg-slate-800">
             <tr className="text-gray-500 dark:text-slate-400">
@@ -451,7 +451,7 @@ export default function Loans() {
                     <td className="px-3 py-2">
                       <button
                         onClick={() => setExpandedLoanId(isExpanded ? null : l.id)}
-                        className={`text-[10px] underline decoration-dotted ${hasSale ? 'text-green-600 dark:text-green-400' : 'text-stone-500 dark:text-slate-400'}`}
+                        className={`text-[10px] underline decoration-dotted ${hasSale ? 'text-green-700 dark:text-green-300' : 'text-stone-500 dark:text-slate-400'}`}
                       >
                         {hasSale ? '✓ linked' : 'none'}
                       </button>
@@ -507,7 +507,7 @@ export default function Loans() {
               {payoffModal.loan.grant_year} {payoffModal.loan.grant_type} — {payoffModal.loan.loan_type} loan
             </p>
             {payoffModal.existingSale && (
-              <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+              <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
                 Existing payoff sale on {payoffModal.existingSale.date} will be updated.
               </p>
             )}

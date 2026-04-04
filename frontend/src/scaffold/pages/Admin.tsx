@@ -379,7 +379,7 @@ export default function Admin() {
           </p>
         ) : (
           <>
-            <div className="mt-3 overflow-x-auto">
+            <div tabIndex={0} className="mt-3 overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-gray-100 text-left text-gray-500 dark:border-slate-700 dark:text-slate-400">
@@ -641,7 +641,7 @@ export default function Admin() {
             </button>
           </div>
           {maintenanceActive && (
-            <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">
+            <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-300">
               Site is currently in maintenance mode. Users see a 503 page.
             </p>
           )}
@@ -724,9 +724,9 @@ export default function Admin() {
                         e.step === 'error'
                           ? 'text-red-600 dark:text-red-400'
                           : e.step === 'rollback'
-                          ? 'text-amber-600 dark:text-amber-400'
+                          ? 'text-amber-700 dark:text-amber-300'
                           : e.step === 'done'
-                          ? 'text-green-600 dark:text-green-400 font-semibold'
+                          ? 'text-green-700 dark:text-green-300 font-semibold'
                           : 'text-gray-700 dark:text-slate-300'
                       }
                     >
@@ -747,7 +747,7 @@ export default function Admin() {
                 const lastStep = rotationLog[rotationLog.length - 1]?.step
                 if (lastStep === 'done') {
                   return (
-                    <p className="text-xs font-medium text-green-700 dark:text-green-400">
+                    <p className="text-xs font-medium text-green-700 dark:text-green-300">
                       Rotation complete. New key is live — no deploy needed.
                     </p>
                   )
@@ -829,7 +829,7 @@ export default function Admin() {
       </section>
 
       {import.meta.env.VITE_COMMIT_SHA && import.meta.env.VITE_COMMIT_SHA !== 'dev' && (
-        <p className="text-center text-xs text-stone-500 dark:text-slate-600">
+        <p className="text-center text-xs text-stone-500 dark:text-slate-400">
           {import.meta.env.VITE_COMMIT_SHA.slice(0, 7)}
         </p>
       )}
@@ -906,7 +906,7 @@ export default function Admin() {
                 </button>
               </div>
               {notifyResult && (
-                <p className="text-xs text-green-600 dark:text-green-400">
+                <p className="text-xs text-green-700 dark:text-green-300">
                   Push: {notifyResult.push_sent} sent{notifyResult.push_failed > 0 ? `, ${notifyResult.push_failed} expired` : ''}.{' '}
                   Email: {notifyResult.email_sent ? 'sent' : `not sent${notifyResult.email_skipped_reason ? ` — ${notifyResult.email_skipped_reason}` : ''}`}.
                 </p>

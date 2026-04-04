@@ -160,7 +160,7 @@ function InterestDeductionCard({ e }: { e: TimelineEvent }) {
           />
         )}
       </div>
-      <p className="mt-2 text-[10px] text-purple-600 dark:text-purple-400">
+      <p className="mt-2 text-[10px] text-purple-600 dark:text-purple-700">
         Form 4952 estimate — interest paid on investment loans is deducted here.
         Unused deduction carries forward to future years.
       </p>
@@ -323,7 +323,7 @@ export default function Events() {
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-stone-200 dark:border-slate-700">
+      <div tabIndex={0} className="overflow-x-auto rounded-lg border border-stone-200 dark:border-slate-700">
         <table className="w-full text-left text-xs">
           <thead className="bg-stone-50 dark:bg-slate-800">
             <tr className="text-gray-500 dark:text-slate-400">
@@ -392,32 +392,32 @@ export default function Events() {
                     <td className="px-3 py-2 text-right text-gray-700 dark:text-slate-300">{fmtPrice(e.share_price)}</td>
                     <td className="px-3 py-2 text-right">
                       {is83b
-                        ? <span className="text-violet-500 dark:text-violet-400">~{fmt$(e.income)}</span>
+                        ? <span className="text-violet-700 dark:text-violet-300">~{fmt$(e.income)}</span>
                         : e.income
-                        ? <span className="text-emerald-600 dark:text-emerald-400">{fmt$(e.income)}</span>
+                        ? <span className="text-emerald-700 dark:text-emerald-300">{fmt$(e.income)}</span>
                         : '—'}
                     </td>
-                    <td className="px-3 py-2 text-right text-purple-600 dark:text-purple-400">
+                    <td className="px-3 py-2 text-right text-purple-600 dark:text-purple-700">
                       {e.event_type === 'Loan Payoff' && e.cash_due != null
                         ? <span>
                             {fmt$(e.cash_due)}
                             {' '}
-                            <span className={e.status === 'covered' ? 'text-emerald-600' : 'text-orange-500'}>
+                            <span className={e.status === 'covered' ? 'text-emerald-700' : 'text-orange-700'}>
                               {e.status === 'covered' ? '✓' : '!'}
                             </span>
                           </span>
                         : (e.event_type === 'Sale' || e.is_projected) && e.gross_proceeds != null
-                        ? <span className={e.is_projected ? 'text-green-600 opacity-70 dark:text-green-400' : 'text-green-600 dark:text-green-400'}>{fmt$(e.gross_proceeds)}</span>
+                        ? <span className={e.is_projected ? 'text-green-700 opacity-70 dark:text-green-300' : 'text-green-700 dark:text-green-300'}>{fmt$(e.gross_proceeds)}</span>
                         : e.adjusted_total_cap_gains != null && e.adjusted_total_cap_gains !== e.total_cap_gains
                         ? <span title={`Gross: ${fmt$(e.total_cap_gains)} − ${fmt$(e.interest_deduction_applied ?? 0)} interest ded.`}>
                             {fmt$(e.adjusted_total_cap_gains)}
-                            <span className="ml-1 text-[9px] text-purple-400 dark:text-purple-500">adj.</span>
+                            <span className="ml-1 text-[9px] text-purple-700 dark:text-purple-500">adj.</span>
                           </span>
                         : e.total_cap_gains ? fmt$(e.total_cap_gains) : '—'}
                     </td>
                     <td className="px-3 py-2 text-right">
                       {e.is_projected && e.estimated_tax != null ? (
-                        <span className="text-orange-400 opacity-70 dark:text-orange-500">
+                        <span className="text-orange-700 opacity-70 dark:text-orange-700">
                           ~{fmt$(e.estimated_tax)}
                         </span>
                       ) : e.event_type === 'Sale' && saleId != null ? (
@@ -436,7 +436,7 @@ export default function Events() {
                                   ST
                                 </span>
                               )}
-                              <span className={`underline decoration-dotted ${hasST ? 'text-amber-700 dark:text-amber-400' : 'text-orange-600 dark:text-orange-400'}`}>
+                              <span className={`underline decoration-dotted ${hasST ? 'text-amber-700 dark:text-amber-300' : 'text-orange-700 dark:text-orange-300'}`}>
                                 {e.estimated_tax != null ? fmt$(e.estimated_tax) : '—'}
                               </span>
                             </>
@@ -444,18 +444,18 @@ export default function Events() {
                         </button>
                       ) : is83b ? (
                         <button onClick={() => toggleVestingTax(i)}>
-                          <span className="text-violet-500 underline decoration-dotted dark:text-violet-400">
+                          <span className="text-violet-700 underline decoration-dotted dark:text-violet-300">
                             ~{fmt$(est83bTax(e, ts))}
                           </span>
                         </button>
                       ) : hasVestingTax ? (
                         <button onClick={() => toggleVestingTax(i)}>
-                          <span className="text-orange-600 underline decoration-dotted dark:text-orange-400">
+                          <span className="text-orange-700 underline decoration-dotted dark:text-orange-300">
                             {fmt$(estTaxForVesting(e, ts))}
                           </span>
                         </button>
                       ) : e.event_type === 'Share Price' ? (
-                        <span className="text-xs text-stone-500 dark:text-slate-600">—*</span>
+                        <span className="text-xs text-stone-500 dark:text-slate-400">—*</span>
                       ) : '—'}
                     </td>
                     <td className="px-3 py-2 text-right font-medium text-gray-900 dark:text-slate-100">{fmtNum(e.cum_shares)}</td>

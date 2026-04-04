@@ -132,7 +132,7 @@ export function TrancheTable({
                       className="w-20 rounded border border-gray-300 bg-white px-1.5 py-0.5 text-right text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
                     />
                   ) : (
-                    <span className={allocated > 0 ? 'tabular-nums font-medium' : 'text-gray-300 dark:text-slate-600'}>{fmtNum(allocated)}</span>
+                    <span className={allocated > 0 ? 'tabular-nums font-medium' : 'text-gray-300 dark:text-slate-400'}>{fmtNum(allocated)}</span>
                   )}
                 </td>
                 <td className="px-3 py-1 text-right">
@@ -140,7 +140,7 @@ export function TrancheTable({
                     <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${line.is_lt ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'}`}>
                       {line.is_lt ? 'LT' : 'ST'}
                     </span>
-                  ) : <span className="text-gray-300 dark:text-slate-600">—</span>}
+                  ) : <span className="text-gray-300 dark:text-slate-400">—</span>}
                 </td>
               </tr>
             )
@@ -231,7 +231,7 @@ export function TaxCard({ breakdown }: { breakdown: TaxBreakdown }) {
                   <td className="py-0.5">{lot.grant_year ?? '—'} {lot.grant_type ?? ''}</td>
                   <td className="py-0.5 text-right tabular-nums">{fmtNum(lot.shares)}</td>
                   <td className="py-0.5 text-right tabular-nums">{lot.lt_shares > 0 ? fmtNum(lot.lt_shares) : '—'}</td>
-                  <td className="py-0.5 text-right tabular-nums">{lot.st_shares > 0 ? <span className="text-amber-700 dark:text-amber-400">{fmtNum(lot.st_shares)}</span> : '—'}</td>
+                  <td className="py-0.5 text-right tabular-nums">{lot.st_shares > 0 ? <span className="text-amber-700 dark:text-amber-300">{fmtNum(lot.st_shares)}</span> : '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -783,7 +783,7 @@ export default function Sales() {
         </button>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-stone-200 dark:border-slate-700">
+      <div tabIndex={0} className="overflow-x-auto rounded-lg border border-stone-200 dark:border-slate-700">
         <table className="w-full text-left text-xs">
           <thead className="bg-stone-50 dark:bg-slate-800">
             <tr className="text-gray-500 dark:text-slate-400">
@@ -838,7 +838,7 @@ export default function Sales() {
                                 ST
                               </span>
                             )}
-                            <span className={`font-medium underline decoration-dotted ${hasST ? 'text-amber-700 dark:text-amber-400' : 'text-gray-900 dark:text-slate-100'}`}>
+                            <span className={`font-medium underline decoration-dotted ${hasST ? 'text-amber-700 dark:text-amber-300' : 'text-gray-900 dark:text-slate-100'}`}>
                               {fmtUSD(bd.estimated_tax)}
                             </span>
                           </>

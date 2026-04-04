@@ -34,7 +34,7 @@ function StepIndicator({ step }: { step: Step }) {
                 ? 'bg-rose-50 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400'
                 : active
                   ? 'bg-rose-700 text-white'
-                  : 'bg-gray-100 text-stone-500 dark:bg-slate-800 dark:text-slate-600'
+                  : 'bg-gray-100 text-stone-500 dark:bg-slate-800 dark:text-slate-400'
             }`}>
               <span>{num}</span>
               <span className="hidden sm:inline">{labels[i]}</span>
@@ -199,7 +199,7 @@ export default function OnboardingWizard({ onComplete }: { onComplete: () => voi
                 onClick={() => setGrantType(t)}
                 className={`rounded-md px-3 py-1 text-xs font-medium ${
                   grantType === t
-                    ? t === 'Purchase' ? 'bg-rose-700 text-white' : 'bg-emerald-600 text-white'
+                    ? t === 'Purchase' ? 'bg-rose-700 text-white' : 'bg-emerald-700 text-white'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'
                 }`}
               >
@@ -312,7 +312,7 @@ export default function OnboardingWizard({ onComplete }: { onComplete: () => voi
             {priceForm.effective_date ? ', a share price,' : ''}
             {' '}and configured your tax rates. Your events timeline is now computing.
           </p>
-          <div className="mt-4 space-y-1 text-xs text-emerald-700 dark:text-emerald-400">
+          <div className="mt-4 space-y-1 text-xs text-emerald-700 dark:text-emerald-300">
             <p>✓ {grantType} grant — {grantForm.year}, {grantForm.shares.toLocaleString()} shares</p>
             {priceForm.effective_date && (
               <p>✓ Share price — {priceForm.effective_date}: ${priceForm.price.toFixed(2)}</p>
@@ -321,7 +321,7 @@ export default function OnboardingWizard({ onComplete }: { onComplete: () => voi
           </div>
           <button
             onClick={onComplete}
-            className="mt-5 rounded-md bg-emerald-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-emerald-700"
+            className="mt-5 rounded-md bg-emerald-700 px-4 py-1.5 text-xs font-medium text-white hover:bg-emerald-800"
           >
             View dashboard →
           </button>

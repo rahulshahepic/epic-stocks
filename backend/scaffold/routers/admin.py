@@ -450,6 +450,34 @@ def set_epic_mode_endpoint(body: EpicModeRequest, admin: User = Depends(get_admi
 
 
 # ============================================================
+# Flexible loan payoff methods
+# ============================================================
+
+class FlexiblePayoffStatus(BaseModel):
+    active: bool
+
+
+class FlexiblePayoffRequest(BaseModel):
+    active: bool
+
+
+@router.get("/flexible-payoff", response_model=FlexiblePayoffStatus)
+def get_flexible_payoff(admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    row = db.execute(text("SELECT value FROM system_settings WHERE key = 'flexible_payoff_enabled'")).scalar()
+    return FlexiblePayoffStatus(active=(row == "true"))
+
+
+@router.post("/flexible-payoff", response_model=FlexiblePayoffStatus)
+def set_flexible_payoff(body: FlexiblePayoffRequest, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    db.execute(
+        text("UPDATE system_settings SET value = :v WHERE key = 'flexible_payoff_enabled'"),
+        {"v": "true" if body.active else "false"},
+    )
+    db.commit()
+    return FlexiblePayoffStatus(active=body.active)
+
+
+# ============================================================
 # Encryption key rotation
 # ============================================================
 

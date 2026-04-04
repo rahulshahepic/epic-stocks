@@ -515,7 +515,10 @@ export default function Sales() {
       }
       setManualAlloc(alloc)
     } else {
-      const m = taxSettings?.lot_selection_method
+      const isPayoffSale = (rest as SaleForm).loan_id != null
+      const m = isPayoffSale && taxSettings?.flexible_payoff_enabled
+        ? taxSettings?.loan_payoff_method
+        : taxSettings?.lot_selection_method
       setMethod(m && ['fifo', 'lifo', 'epic_lifo', 'manual_tranche'].includes(m) ? m as SaleMethod : 'epic_lifo')
       setManualAlloc({})
     }
@@ -611,7 +614,7 @@ export default function Sales() {
     const isRecording = !epicMode && form.date < TODAY
     const isPlanAdd = mode === 'add' && !isRecording
     const title = mode === 'add' ? (isRecording ? 'Record Sale' : 'Plan Sale') : 'Edit Sale'
-    const showMethodSelector = !isPayoff
+    const showMethodSelector = !isPayoff || (isPayoff && taxSettings?.flexible_payoff_enabled === true)
     const showTranche = (trancheAlloc !== null || trancheLoading) && form.shares > 0
 
     return (
@@ -665,6 +668,11 @@ export default function Sales() {
               <option value="lifo">LIFO — newest lots first</option>
               <option value="manual_tranche">Manual — pick lots yourself</option>
             </select>
+            {isPayoff && (
+              <p className="mt-1 text-[11px] text-stone-500 dark:text-slate-400">
+                Payoff sale — if you have insufficient stock coverage the system will use same-tranche regardless.
+              </p>
+            )}
           </label>
         )}
 

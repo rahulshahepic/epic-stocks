@@ -427,6 +427,8 @@ const WI_TAX_DEFAULTS: TaxSettings = {
   state_st_cg_rate: 0.0765,
   lt_holding_days: 365,
   lot_selection_method: 'lifo',
+  loan_payoff_method: 'epic_lifo',
+  flexible_payoff_enabled: false,
   prefer_stock_dp: false,
   dp_min_percent: 0.10,
   dp_min_cap: 20000,

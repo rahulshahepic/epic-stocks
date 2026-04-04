@@ -300,6 +300,7 @@ export const api = {
   // Horizon Settings
   getHorizonSettings: () => apiFetch<HorizonSettings>('/api/horizon-settings'),
   updateHorizonSettings: (data: Partial<HorizonSettings>) => put<HorizonSettings>('/api/horizon-settings', data),
+  previewExit: (date: string) => apiFetch<ExitPreview | null>(`/api/preview-exit?date=${encodeURIComponent(date)}`),
 
   // Smart Tips
   getTips: () => apiFetch<SmartTip[]>('/api/tips'),
@@ -547,6 +548,16 @@ export interface TrancheAllocation {
 
 export interface HorizonSettings {
   horizon_date: string | null
+}
+
+export interface ExitPreview {
+  date: string
+  gross_proceeds: number
+  outstanding_loan_principal: number
+  estimated_tax: number
+  net_cash: number
+  shares: number
+  share_price: number
 }
 
 export interface LotSummary {

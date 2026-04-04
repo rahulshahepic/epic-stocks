@@ -179,3 +179,65 @@ def test_late_horizon_uses_full_shares(client):
     p = projected[0]
     # All 1000 shares vested; gross_proceeds = 1000 * 10 = 10000
     assert p["gross_proceeds"] == pytest.approx(10000.0)
+
+
+# ============================================================
+# Preview exit endpoint
+# ============================================================
+
+def test_preview_exit_returns_liquidation_figures(client):
+    register_user(client)
+    _seed_data(client)
+
+    resp = client.get("/api/preview-exit?date=2025-06-01")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data is not None
+    assert data["date"] == "2025-06-01"
+    assert data["gross_proceeds"] == pytest.approx(10000.0)  # 1000 shares × $10
+    assert data["net_cash"] == pytest.approx(data["gross_proceeds"] - data["outstanding_loan_principal"] - data["estimated_tax"])
+    assert "shares" in data
+    assert "share_price" in data
+
+
+def test_preview_exit_does_not_save_horizon(client):
+    register_user(client)
+    _seed_data(client)
+    client.put("/api/horizon-settings", json={"horizon_date": "2030-01-01"})
+
+    client.get("/api/preview-exit?date=2025-06-01")
+
+    # Saved horizon date must be unchanged
+    saved = client.get("/api/horizon-settings").json()
+    assert saved["horizon_date"] == "2030-01-01"
+
+
+def test_preview_exit_early_date_uses_partial_shares(client):
+    register_user(client)
+    # Two periods: 500 vest 2020-01-01, 500 vest 2020-07-01
+    client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 10.0})
+    client.post("/api/grants", json={
+        "year": 2020, "type": "A", "shares": 1000, "price": 10.0,
+        "vest_start": "2020-01-01", "periods": 2,
+        "exercise_date": "2020-01-01", "dp_shares": 0, "election_83b": False,
+    })
+
+    resp = client.get("/api/preview-exit?date=2020-03-01")
+    assert resp.status_code == 200
+    data = resp.json()
+    # Only 500 shares vested by 2020-03-01
+    assert data["gross_proceeds"] == pytest.approx(5000.0)
+    assert data["shares"] == 500
+
+
+def test_preview_exit_no_data_returns_none(client):
+    register_user(client)
+    resp = client.get("/api/preview-exit?date=2025-06-01")
+    assert resp.status_code == 200
+    assert resp.json() is None
+
+
+def test_preview_exit_invalid_date_returns_422(client):
+    register_user(client)
+    resp = client.get("/api/preview-exit?date=not-a-date")
+    assert resp.status_code == 422

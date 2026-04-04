@@ -4,7 +4,7 @@ import {
   XAxis, YAxis, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts'
 import { api } from '../../api.ts'
-import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, TaxSettings, SaleEntry, HorizonSettings } from '../../api.ts'
+import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, TaxSettings, SaleEntry, HorizonSettings, ExitPreview } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { useDark } from '../../scaffold/hooks/useDark.ts'
 import OnboardingWizard from '../components/OnboardingWizard.tsx'
@@ -767,6 +767,7 @@ export default function Dashboard() {
   const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
   const { data: sales } = useApiData<SaleEntry[]>(fetchSales)
   const { data: horizonSettings, reload: reloadHorizon } = useApiData<HorizonSettings>(fetchHorizon)
+  const exitDate = horizonSettings?.horizon_date ?? null
   const c = useChartColors()
   const [rangeInterest, setRangeInterest] = useState<DateRange>({ mode: 'all', start: '', end: '' })
   const [rangeLoan, setRangeLoan] = useState<DateRange>({ mode: 'all', start: '', end: '' })
@@ -781,6 +782,30 @@ export default function Dashboard() {
     return localStorage.getItem('dashboard_cardDate') ?? TODAY
   })
   const [savingExit, setSavingExit] = useState(false)
+  const [pendingExitDate, setPendingExitDate] = useState<string>('')
+
+  // Keep pending input in sync when server data reloads (e.g. after applying a tip)
+  useEffect(() => {
+    setPendingExitDate(exitDate ?? '')
+  }, [exitDate])
+
+  const pendingExitChanged = pendingExitDate !== (exitDate ?? '')
+
+  const [exitPreview, setExitPreview] = useState<ExitPreview | null | 'loading'>(null)
+
+  useEffect(() => {
+    if (!pendingExitChanged || !pendingExitDate) {
+      setExitPreview(null)
+      return
+    }
+    setExitPreview('loading')
+    const timer = setTimeout(() => {
+      api.previewExit(pendingExitDate)
+        .then(result => setExitPreview(result))
+        .catch(() => setExitPreview(null))
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [pendingExitChanged, pendingExitDate])
 
   async function applyExitDate(date: string | null) {
     setSavingExit(true)
@@ -837,7 +862,6 @@ export default function Dashboard() {
   const projectedLiqDate = projectedLiqEvent?.date ?? null
 
   // Explicit exit date (only when user has set one and it differs from last real event)
-  const exitDate = horizonSettings?.horizon_date ?? null
   const showExitButton = exitDate !== null && exitDate !== lastRealEventDate
 
   // When cardDate is strictly past the projected exit, we project as-if no exit was planned
@@ -1013,24 +1037,59 @@ export default function Dashboard() {
           <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-slate-400">Exit</span>
           <input
             type="date"
-            value={exitDate ?? ''}
+            value={pendingExitDate}
             disabled={savingExit}
-            onChange={e => applyExitDate(e.target.value || null)}
+            onChange={e => setPendingExitDate(e.target.value)}
             className="h-7 flex-1 rounded border border-gray-300 bg-white px-2 text-xs text-gray-700 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
           />
-          {exitDate ? (
+          {!pendingExitChanged && exitDate && (
             <button
-              onClick={() => applyExitDate(null)}
-              disabled={savingExit}
+              onClick={() => setPendingExitDate('')}
               title="Clear exit date"
-              className="shrink-0 text-sm leading-none text-gray-400 hover:text-gray-600 disabled:opacity-50 dark:text-slate-500 dark:hover:text-slate-300"
+              className="shrink-0 text-sm leading-none text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300"
             >
               ×
             </button>
-          ) : (
+          )}
+          {!pendingExitChanged && !exitDate && (
             <span className="shrink-0 text-xs text-gray-400 dark:text-slate-500">not set</span>
           )}
         </div>
+        {pendingExitChanged && (
+          <div className="mt-2 rounded-md bg-stone-50 px-3 py-2 dark:bg-slate-800/60">
+            {!pendingExitDate ? (
+              <p className="text-xs text-gray-500 dark:text-slate-400">This will remove your exit scenario</p>
+            ) : exitPreview === 'loading' ? (
+              <p className="text-xs text-gray-400 dark:text-slate-500">Calculating…</p>
+            ) : exitPreview ? (
+              <p className="text-xs text-gray-600 dark:text-slate-400">
+                Cash out:{' '}
+                <span className="font-semibold text-gray-900 dark:text-slate-100">{fmt$(exitPreview.net_cash)}</span>
+                <span className="ml-1 text-gray-400 dark:text-slate-500">
+                  (gross {fmt$(exitPreview.gross_proceeds)}, loans {fmt$(exitPreview.outstanding_loan_principal)}, tax {fmt$(exitPreview.estimated_tax)})
+                </span>
+              </p>
+            ) : (
+              <p className="text-xs text-gray-400 dark:text-slate-500">No price data for this date</p>
+            )}
+            <div className="mt-1.5 flex items-center gap-2">
+              <button
+                onClick={() => applyExitDate(pendingExitDate || null)}
+                disabled={savingExit}
+                className="rounded bg-rose-700 px-3 py-1 text-xs font-medium text-white hover:bg-rose-800 disabled:opacity-60"
+              >
+                {savingExit ? 'Saving…' : 'Apply'}
+              </button>
+              <button
+                onClick={() => setPendingExitDate(exitDate ?? '')}
+                disabled={savingExit}
+                className="text-xs text-gray-500 hover:text-gray-700 disabled:opacity-50 dark:text-slate-400 dark:hover:text-slate-200"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
         <div className="mt-1.5 flex items-center gap-1.5">
           {([
             { label: 'Today', date: TODAY },
@@ -1050,16 +1109,6 @@ export default function Dashboard() {
               {label}
             </button>
           ))}
-          {cardDate !== exitDate && (
-            <button
-              onClick={() => applyExitDate(cardDate)}
-              disabled={savingExit}
-              title="Use this date as your exit scenario"
-              className="rounded px-2 py-1 text-xs font-medium transition-colors bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
-            >
-              {savingExit ? '…' : exitDate ? 'Try here as exit' : 'Set exit here'}
-            </button>
-          )}
         </div>
       </div>
 

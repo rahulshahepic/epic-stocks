@@ -4,7 +4,7 @@ import {
   XAxis, YAxis, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts'
 import { api } from '../../api.ts'
-import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, TaxSettings, SaleEntry, HorizonSettings, ExitPreview } from '../../api.ts'
+import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, TaxSettings, SaleEntry, HorizonSettings, ExitPreview, DeductionPreview } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { useDark } from '../../scaffold/hooks/useDark.ts'
 import OnboardingWizard from '../components/OnboardingWizard.tsx'
@@ -760,11 +760,11 @@ export default function Dashboard() {
   const fetchSales = useCallback(() => api.getSales(), [])
   const fetchHorizon = useCallback(() => api.getHorizonSettings(), [])
 
-  const { data: dash, loading: dashLoading } = useApiData<DashboardData>(fetchDashboard)
+  const { data: dash, loading: dashLoading, reload: reloadDash } = useApiData<DashboardData>(fetchDashboard)
   const { data: events, reload: reloadEvents } = useApiData<TimelineEvent[]>(fetchEvents)
   const { data: prices } = useApiData<PriceEntry[]>(fetchPrices)
   const { data: loans } = useApiData<LoanEntry[]>(fetchLoans)
-  const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
+  const { data: taxSettings, reload: reloadTaxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
   const { data: sales } = useApiData<SaleEntry[]>(fetchSales)
   const { data: horizonSettings, reload: reloadHorizon } = useApiData<HorizonSettings>(fetchHorizon)
   const exitDate = horizonSettings?.horizon_date ?? null
@@ -817,6 +817,43 @@ export default function Dashboard() {
       setExitEditOpen(false)
     } finally {
       setSavingExit(false)
+    }
+  }
+
+  // Investment interest deduction preview
+  const [pendingDeduction, setPendingDeduction] = useState<boolean | null>(null)
+  const [deductionPreview, setDeductionPreview] = useState<DeductionPreview | null | 'loading'>(null)
+  const [savingDeduction, setSavingDeduction] = useState(false)
+
+  // Reset pending when saved setting reloads
+  useEffect(() => { setPendingDeduction(null) }, [taxSettings])
+
+  const savedDeduction = taxSettings?.deduct_investment_interest ?? false
+  const pendingDeductionChanged = pendingDeduction !== null && pendingDeduction !== savedDeduction
+
+  useEffect(() => {
+    if (!pendingDeductionChanged || pendingDeduction === null) {
+      setDeductionPreview(null)
+      return
+    }
+    setDeductionPreview('loading')
+    const timer = setTimeout(() => {
+      api.previewDeduction(pendingDeduction)
+        .then(result => setDeductionPreview(result))
+        .catch(() => setDeductionPreview(null))
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [pendingDeductionChanged, pendingDeduction])
+
+  async function applyDeduction(enabled: boolean) {
+    setSavingDeduction(true)
+    try {
+      await api.updateTaxSettings({ deduct_investment_interest: enabled })
+      reloadDash()
+      reloadEvents()
+      reloadTaxSettings()
+    } finally {
+      setSavingDeduction(false)
     }
   }
 
@@ -1020,6 +1057,8 @@ export default function Dashboard() {
     total_interest: 0,
   }
   const hasInterestDeduction = (cv.interest_deduction_total ?? 0) > 0
+  const hasInterestLoans = loans?.some(l => l.loan_type === 'Interest' || l.loan_type === 'Purchase') ?? false
+  const showDeductionCard = hasInterestDeduction || hasInterestLoans
 
   return (
     <div className="space-y-6">
@@ -1155,11 +1194,57 @@ export default function Dashboard() {
           variant="event"
         />
       </div>
-      {hasInterestDeduction && (
-        <p className="rounded-md bg-purple-50 px-3 py-2 text-center text-xs text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">
-          Investment interest deduction applied: {fmt$(cv.interest_deduction_total ?? 0)} — estimated tax reduced, cash received increased.
-          Enable/disable in Settings → Tax Rates.
-        </p>
+      {showDeductionCard && (
+        <div className={`rounded-md px-3 py-2 text-xs ${savedDeduction ? 'bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300' : 'bg-stone-100 text-stone-600 dark:bg-slate-800 dark:text-slate-400'}`}>
+          {!pendingDeductionChanged ? (
+            <div className="flex items-center justify-between gap-2">
+              <span>
+                {savedDeduction
+                  ? <>Investment interest deduction applied: <span className="font-semibold">{fmt$(cv.interest_deduction_total ?? 0)}</span> deducted — tax reduced, cash increased.</>
+                  : <>Investment interest deduction not applied.</>
+                }
+              </span>
+              <button
+                onClick={() => setPendingDeduction(!savedDeduction)}
+                className={`shrink-0 rounded px-2 py-1 font-medium text-white ${savedDeduction ? 'bg-purple-700 hover:bg-purple-800 dark:bg-purple-600 dark:hover:bg-purple-700' : 'bg-stone-500 hover:bg-stone-600 dark:bg-slate-600 dark:hover:bg-slate-500'}`}
+              >
+                {savedDeduction ? 'Try without' : 'Try it'}
+              </button>
+            </div>
+          ) : (
+            <div>
+              <div className="mb-1.5">
+                {deductionPreview === 'loading' ? (
+                  <span className="text-stone-400 dark:text-slate-500">Calculating…</span>
+                ) : deductionPreview ? (
+                  pendingDeduction ? (
+                    <>With deduction: <span className="font-semibold">{fmt$(deductionPreview.interest_deduction_total)}</span> deducted · est. <span className="font-semibold text-green-700 dark:text-green-400">+{fmt$(deductionPreview.tax_savings_from_deduction)}</span> in cash</>
+                  ) : (
+                    <>Without deduction: est. <span className="font-semibold text-red-600 dark:text-red-400">−{fmt$(dash.tax_savings_from_deduction ?? deductionPreview.tax_savings_from_deduction)}</span> in cash</>
+                  )
+                ) : (
+                  <span className="text-stone-400 dark:text-slate-500">No data available</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => applyDeduction(pendingDeduction!)}
+                  disabled={savingDeduction || deductionPreview === 'loading'}
+                  className="rounded bg-rose-700 px-3 py-1 font-medium text-white hover:bg-rose-800 disabled:opacity-60"
+                >
+                  {savingDeduction ? 'Saving…' : pendingDeduction ? 'Apply — enable' : 'Apply — disable'}
+                </button>
+                <button
+                  onClick={() => setPendingDeduction(null)}
+                  disabled={savingDeduction}
+                  className="text-stone-500 hover:text-stone-700 disabled:opacity-50 dark:text-slate-400 dark:hover:text-slate-200"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       <div className="grid gap-4 md:grid-cols-2">

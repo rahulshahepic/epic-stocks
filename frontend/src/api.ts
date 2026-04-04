@@ -301,6 +301,7 @@ export const api = {
   getHorizonSettings: () => apiFetch<HorizonSettings>('/api/horizon-settings'),
   updateHorizonSettings: (data: Partial<HorizonSettings>) => put<HorizonSettings>('/api/horizon-settings', data),
   previewExit: (date: string) => apiFetch<ExitPreview | null>(`/api/preview-exit?date=${encodeURIComponent(date)}`),
+  previewDeduction: (enabled: boolean) => apiFetch<DeductionPreview | null>(`/api/preview-deduction?enabled=${enabled}`),
 
   // Smart Tips
   getTips: () => apiFetch<SmartTip[]>('/api/tips'),
@@ -548,6 +549,11 @@ export interface TrancheAllocation {
 
 export interface HorizonSettings {
   horizon_date: string | null
+}
+
+export interface DeductionPreview {
+  interest_deduction_total: number
+  tax_savings_from_deduction: number
 }
 
 export interface ExitPreview {

@@ -225,19 +225,12 @@ function SharesChart({ events, c, range, hasFuturePrices, exitDate }: { events: 
           ]}
         />
       )}
-      {/* (D) Screen-reader summary table */}
-      <table className="sr-only" aria-label="Cumulative shares data">
-        <thead><tr><th>Date</th><th>Cumulative Shares</th><th>Event</th></tr></thead>
-        <tbody>
-          {data.filter((_, i) => i % Math.max(1, Math.floor(data.length / 20)) === 0).map(d => (
-            <tr key={d._idx}>
-              <td>{fmtFullDate(d._date)}</td>
-              <td>{fmtNum(d._event.cum_shares)}</td>
-              <td>{d._event.event_type}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {/* (D) Screen-reader chart description */}
+      {data.length > 0 && (
+        <p className="sr-only">
+          Cumulative shares chart: {data.length} data points from {fmtFullDate(data[0]._date)} to {fmtFullDate(data[data.length - 1]._date)}.
+        </p>
+      )}
     </>
   )
 }
@@ -339,19 +332,12 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices, exitDate }: { 
           ]}
         />
       )}
-      {/* (D) Screen-reader summary table */}
-      <table className="sr-only" aria-label="Cumulative income and capital gains data">
-        <thead><tr><th>Date</th><th>Cumulative Income</th><th>Cumulative Cap Gains</th></tr></thead>
-        <tbody>
-          {data.filter((_, i) => i % Math.max(1, Math.floor(data.length / 20)) === 0).map(d => (
-            <tr key={d._idx}>
-              <td>{fmtFullDate(d._date)}</td>
-              <td>{fmt$(d._event.cum_income)}</td>
-              <td>{fmt$(d._event.cum_cap_gains)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {/* (D) Screen-reader chart description */}
+      {data.length > 0 && (
+        <p className="sr-only">
+          Income and capital gains chart: {data.length} data points from {fmtFullDate(data[0]._date)} to {fmtFullDate(data[data.length - 1]._date)}.
+        </p>
+      )}
     </>
   )
 }
@@ -420,15 +406,13 @@ function PriceChart({ prices, c, range, hasFuturePrices, exitDate }: { prices: P
           ]}
         />
       )}
-      {/* (D) Screen-reader summary table */}
-      <table className="sr-only" aria-label="Share price history">
-        <thead><tr><th>Date</th><th>Price</th></tr></thead>
-        <tbody>
-          {data.map(d => (
-            <tr key={d._idx}><td>{fmtFullDate(d._date)}</td><td>{fmtPrice(d._price)}</td></tr>
-          ))}
-        </tbody>
-      </table>
+      {/* (D) Screen-reader chart description */}
+      {data.length > 0 && (
+        <p className="sr-only">
+          Share price history: {data.length} entries from {fmtFullDate(data[0]._date)} to {fmtFullDate(data[data.length - 1]._date)}.
+          Most recent price: {fmtPrice(data[data.length - 1]._price)}.
+        </p>
+      )}
     </>
   )
 }

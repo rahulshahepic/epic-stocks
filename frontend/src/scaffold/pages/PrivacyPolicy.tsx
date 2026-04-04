@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="mb-8">
-      <h2 className="mb-3 text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
+      <h2 className="mb-3 text-lg font-semibold text-stone-900 dark:text-slate-100">{title}</h2>
       {children}
     </section>
   )
@@ -12,48 +12,48 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function SubSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="mb-4">
-      <h3 className="mb-2 font-medium text-gray-800 dark:text-gray-200">{title}</h3>
+      <h3 className="mb-2 font-medium text-stone-800 dark:text-slate-200">{title}</h3>
       {children}
     </div>
   )
 }
 
 function P({ children }: { children: React.ReactNode }) {
-  return <p className="mb-3 text-sm leading-relaxed text-gray-700 dark:text-gray-300">{children}</p>
+  return <p className="mb-3 text-sm leading-relaxed text-stone-700 dark:text-slate-300">{children}</p>
 }
 
 function Ul({ children }: { children: React.ReactNode }) {
-  return <ul className="mb-3 list-disc space-y-1 pl-5 text-sm text-gray-700 dark:text-gray-300">{children}</ul>
+  return <ul className="mb-3 list-disc space-y-1 pl-5 text-sm text-stone-700 dark:text-slate-300">{children}</ul>
 }
 
 export default function PrivacyPolicy() {
   const navigate = useNavigate()
   return (
-    <div className="min-h-screen bg-gray-50 px-4 py-10 dark:bg-gray-950">
+    <div className="min-h-screen bg-stone-50 px-4 py-10 dark:bg-slate-950">
       <div className="mx-auto max-w-2xl">
         <div className="mb-6">
           <button
             onClick={() => navigate(-1)}
-            className="text-sm text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400"
+            className="text-sm text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300"
           >
             ← Back
           </button>
         </div>
 
-        <h1 className="mb-1 text-2xl font-bold text-gray-900 dark:text-white">Privacy Policy</h1>
-        <p className="mb-8 text-xs text-gray-500 dark:text-gray-400">Last updated: 2026-03-21</p>
+        <h1 className="mb-1 text-2xl font-bold text-stone-900 dark:text-white">Privacy Policy</h1>
+        <p className="mb-8 text-xs text-stone-600 dark:text-slate-400">Last updated: 2026-03-21</p>
 
-        <div className="rounded-lg bg-white p-6 shadow-sm dark:bg-gray-900 md:p-8">
+        <div className="rounded-lg bg-white p-6 shadow-sm dark:bg-slate-900 md:p-8">
           <P>
             Equity Vesting Tracker ("Epic Stocks") is open-source software. This policy explains what
             data the application collects, how it's stored, and who can access it.
           </P>
 
-          <div className="mb-6 rounded-md border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-800 dark:bg-indigo-950/50">
-            <p className="text-sm font-medium text-indigo-800 dark:text-indigo-300">
+          <div className="mb-6 rounded-md border border-rose-200 bg-rose-50 p-4 dark:border-rose-900/60 dark:bg-rose-950/30">
+            <p className="text-sm font-medium text-rose-800 dark:text-rose-300">
               Your data is never sold. Ever.
             </p>
-            <p className="mt-1 text-sm text-indigo-700 dark:text-indigo-400">
+            <p className="mt-1 text-sm text-rose-700 dark:text-rose-400">
               We do not sell, rent, or trade your personal or financial data to any third party for
               any purpose, commercial or otherwise.
             </p>
@@ -162,7 +162,7 @@ export default function PrivacyPolicy() {
           <Section title="Changes to This Policy">
             <P>
               This policy may be updated as the application evolves. Changes will be reflected here
-              and in the <code className="rounded bg-gray-100 px-1 text-xs dark:bg-gray-800">PRIVACY.md</code> file in the repository with an updated date.
+              and in the <code className="rounded bg-stone-100 px-1 text-xs dark:bg-slate-800">PRIVACY.md</code> file in the repository with an updated date.
             </P>
           </Section>
 

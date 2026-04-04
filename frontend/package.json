@@ -20,6 +20,7 @@
     "tailwindcss": "^4.2.2"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.1",
     "@eslint/js": "^9.39.4",
     "@playwright/test": "^1.56.1",
     "@testing-library/jest-dom": "^6.9.1",

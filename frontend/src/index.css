@@ -1,11 +1,51 @@
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ── Animations ─────────────────────────────────────────── */
 @keyframes slide-up {
   from { opacity: 0; transform: translateY(1rem); }
-  to { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: translateY(0); }
 }
-
 .animate-slide-up {
   animation: slide-up 0.2s ease-out;
+}
+
+/* ── Focus ring (accessibility) ─────────────────────────── */
+:focus-visible {
+  outline: 2px solid #be123c;
+  outline-offset: 2px;
+}
+.dark :focus-visible {
+  outline-color: #fb7185;
+}
+
+/* ── Skip-nav link (accessibility) ──────────────────────── */
+.skip-nav {
+  position: absolute;
+  top: -9999px;
+  left: 1rem;
+  z-index: 9999;
+  padding: 0.5rem 1rem;
+  background: #be123c;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 0 0 0.375rem 0.375rem;
+  text-decoration: none;
+}
+.skip-nav:focus {
+  top: 0;
+}
+
+/* ── Screen-reader only ──────────────────────────────────── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
 }

@@ -124,6 +124,27 @@ def test_notification_build_payload():
     assert "1 event" in payload["body"]
 
 
+def test_notification_payload_data_url():
+    """build_notification_payload includes data.url with date and types when date is given."""
+    from datetime import date
+    from scaffold.notifications import build_notification_payload
+    events = [{"event_type": "Vesting"}, {"event_type": "Exercise"}]
+    target = date(2026, 3, 20)
+    payload = build_notification_payload(events, target_date=target)
+    assert payload is not None
+    assert "data" in payload
+    assert payload["data"]["url"].startswith("/events?date=2026-03-20")
+    assert "Exercise" in payload["data"]["url"]
+    assert "Vesting" in payload["data"]["url"]
+
+
+def test_notification_payload_no_data_without_date():
+    """build_notification_payload omits data key when no date is provided."""
+    from scaffold.notifications import build_notification_payload
+    payload = build_notification_payload([{"event_type": "Vesting"}])
+    assert "data" not in payload
+
+
 def test_sale_included_in_todays_events(client, db_session):
     """A sale dated today appears in today's events."""
     from scaffold.models import User, Sale

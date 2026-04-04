@@ -78,14 +78,18 @@ def get_todays_events_for_user(user: User, db: Session, today: date | None = Non
     return todays
 
 
-def build_notification_payload(events: list[dict]) -> dict | None:
+def build_notification_payload(events: list[dict], target_date: date | None = None) -> dict | None:
     if not events:
         return None
     counts = Counter(e["event_type"] for e in events)
     total = sum(counts.values())
     parts = [f"{count} {etype}" for etype, count in sorted(counts.items())]
     body = f"You have {total} event{'s' if total != 1 else ''} today: {', '.join(parts)}"
-    return {"title": "Equity Tracker", "body": body}
+    payload: dict = {"title": "Equity Tracker", "body": body}
+    if target_date is not None:
+        url = f"/events?date={target_date.isoformat()}&types={','.join(sorted(counts.keys()))}"
+        payload["data"] = {"url": url}
+    return payload
 
 
 def send_push(subscription: PushSubscription, payload: dict) -> bool:
@@ -170,13 +174,14 @@ def send_daily_notifications(today: date | None = None):
                 continue
 
             advance_days = all_prefs.get(user.id, 0)
+            target_date = today + timedelta(days=advance_days)
             events = get_todays_events_for_user(user, db, today, advance_days=advance_days)
             if not events:
                 continue
 
             # Push notifications
             if user.id in push_user_ids:
-                payload = build_notification_payload(events)
+                payload = build_notification_payload(events, target_date=target_date)
                 if payload:
                     subs = db.query(PushSubscription).filter(PushSubscription.user_id == user.id).all()
                     for sub in subs:

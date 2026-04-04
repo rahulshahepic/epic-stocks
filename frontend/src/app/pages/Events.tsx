@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { api } from '../../api.ts'
 import type { TimelineEvent, TaxBreakdown, TaxSettings } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
@@ -168,12 +169,19 @@ function InterestDeductionCard({ e }: { e: TimelineEvent }) {
 }
 
 export default function Events() {
+  const [searchParams] = useSearchParams()
   const fetchEvents = useCallback(() => api.getEvents(), [])
   const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
   const { data: events, loading, reload } = useApiData<TimelineEvent[]>(fetchEvents)
   const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
   useDataSync('sales', reload)
-  const [typeFilter, setTypeFilter] = useState<Set<string>>(new Set())
+  const initialTypes = searchParams.get('types')?.split(',').filter(Boolean) ?? []
+  const [typeFilter, setTypeFilter] = useState<Set<string>>(
+    initialTypes.length ? new Set(initialTypes) : new Set()
+  )
+  const highlightDate = searchParams.get('date') ?? null
+  const [highlightedRows, setHighlightedRows] = useState<Set<number>>(new Set())
+  const highlightRefs = useRef<Map<number, HTMLTableRowElement>>(new Map())
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false)
   const typeDropdownRef = useRef<HTMLDivElement>(null)
 
@@ -187,6 +195,30 @@ export default function Events() {
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [typeDropdownOpen])
+
+  useEffect(() => {
+    if (!highlightDate || !events) return
+    // Find indices in the filtered list that match the target date
+    // We re-derive filtered here just to find indices; the actual filtered is computed below in render
+    const matchingIndices = new Set<number>()
+    const tempFiltered = typeFilter.size > 0 ? events.filter(e => typeFilter.has(e.event_type)) : events
+    tempFiltered.forEach((e, i) => {
+      if (typeof e.date === 'string' && e.date.startsWith(highlightDate)) {
+        matchingIndices.add(i)
+      }
+    })
+    if (matchingIndices.size === 0) return
+    setHighlightedRows(matchingIndices)
+    // Scroll to first matching row after render
+    const firstIdx = Math.min(...matchingIndices)
+    requestAnimationFrame(() => {
+      const el = highlightRefs.current.get(firstIdx)
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+    // Remove highlight after 2 seconds
+    const timer = setTimeout(() => setHighlightedRows(new Set()), 2000)
+    return () => clearTimeout(timer)
+  }, [highlightDate, events]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function toggleType(t: string) {
     setTypeFilter(prev => {
@@ -320,6 +352,10 @@ export default function Events() {
               return (
                 <React.Fragment key={i}>
                   <tr
+                    ref={(el) => {
+                      if (el) highlightRefs.current.set(i, el)
+                      else highlightRefs.current.delete(i)
+                    }}
                     className={[
                       e.is_projected
                         ? 'cursor-pointer bg-gray-50 opacity-75 dark:bg-gray-900/50'
@@ -328,6 +364,7 @@ export default function Events() {
                         : e.event_type === 'Refinanced'
                         ? 'bg-white opacity-50 dark:bg-gray-900'
                         : 'bg-white dark:bg-gray-900',
+                      highlightedRows.has(i) ? 'ring-2 ring-inset ring-blue-400 animate-pulse' : '',
                     ].join(' ')}
                     onClick={e.is_projected ? () => setExpandedLiq(p => !p) : undefined}
                   >

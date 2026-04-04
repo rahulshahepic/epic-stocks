@@ -382,6 +382,17 @@ export default function Settings() {
                  'Epic LIFO (prefer LT gains)'}
               </dd>
             </div>
+            {taxSettings.flexible_payoff_enabled && (
+              <div className="flex justify-between col-span-2">
+                <dt className="text-stone-600 dark:text-slate-400">Loan payoff lots</dt>
+                <dd className="font-medium text-stone-700 dark:text-slate-300">
+                  {taxSettings.loan_payoff_method === 'fifo' ? 'FIFO (oldest first)' :
+                   taxSettings.loan_payoff_method === 'lifo' ? 'LIFO (newest first)' :
+                   taxSettings.loan_payoff_method === 'same_tranche' ? 'Same Tranche' :
+                   'Epic LIFO (prefer LT gains)'}
+                </dd>
+              </div>
+            )}
             <div className="flex justify-between col-span-2 border-t border-stone-100 pt-2 dark:border-slate-800">
               <dt className="text-stone-600 dark:text-slate-400">Investment interest deduction</dt>
               <dd className="font-medium text-stone-700 dark:text-slate-300">

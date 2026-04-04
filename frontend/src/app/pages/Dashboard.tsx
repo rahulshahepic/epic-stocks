@@ -780,6 +780,18 @@ export default function Dashboard() {
   const [cardDate, setCardDate] = useState<string>(() => {
     return localStorage.getItem('dashboard_cardDate') ?? TODAY
   })
+  const [savingExit, setSavingExit] = useState(false)
+
+  async function applyExitDate(date: string | null) {
+    setSavingExit(true)
+    try {
+      await api.updateHorizonSettings({ horizon_date: date })
+      reloadEvents()
+      reloadHorizon()
+    } finally {
+      setSavingExit(false)
+    }
+  }
 
   useEffect(() => {
     localStorage.setItem('dashboard_range', JSON.stringify(range))
@@ -997,11 +1009,33 @@ export default function Dashboard() {
             className="h-7 flex-1 rounded border border-gray-300 bg-white px-2 text-xs text-gray-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
           />
         </div>
+        <div className="mt-2 flex items-center gap-2 border-t border-stone-100 pt-2 dark:border-slate-700/50">
+          <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-slate-400">Exit</span>
+          <input
+            type="date"
+            value={exitDate ?? ''}
+            disabled={savingExit}
+            onChange={e => applyExitDate(e.target.value || null)}
+            className="h-7 flex-1 rounded border border-gray-300 bg-white px-2 text-xs text-gray-700 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+          />
+          {exitDate ? (
+            <button
+              onClick={() => applyExitDate(null)}
+              disabled={savingExit}
+              title="Clear exit date"
+              className="shrink-0 text-sm leading-none text-gray-400 hover:text-gray-600 disabled:opacity-50 dark:text-slate-500 dark:hover:text-slate-300"
+            >
+              ×
+            </button>
+          ) : (
+            <span className="shrink-0 text-xs text-gray-400 dark:text-slate-500">not set</span>
+          )}
+        </div>
         <div className="mt-1.5 flex items-center gap-1.5">
           {([
             { label: 'Today', date: TODAY },
             { label: 'Last event', date: lastRealEventDate, title: 'Jump to your last vesting event' },
-            ...(showExitButton && exitDate ? [{ label: 'Exit date', date: exitDate, title: 'Jump to your configured exit date' }] : []),
+            ...(showExitButton && exitDate ? [{ label: 'Jump to exit', date: exitDate, title: 'Jump to your configured exit date' }] : []),
           ] as { label: string; date: string; title?: string }[]).map(({ label, date, title }) => (
             <button
               key={label}
@@ -1016,13 +1050,30 @@ export default function Dashboard() {
               {label}
             </button>
           ))}
+          {cardDate !== exitDate && (
+            <button
+              onClick={() => applyExitDate(cardDate)}
+              disabled={savingExit}
+              title="Use this date as your exit scenario"
+              className="rounded px-2 py-1 text-xs font-medium transition-colors bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
+            >
+              {savingExit ? '…' : exitDate ? 'Try here as exit' : 'Set exit here'}
+            </button>
+          )}
         </div>
       </div>
 
       {ignoringExitDate && (
-        <p className="rounded-md bg-amber-50 px-3 py-2 text-center text-xs text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
-          Projecting beyond your exit date — exit date not applied
-        </p>
+        <div className="flex items-center justify-between gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+          <span>Browsing past your exit date ({exitDate}) — exit not applied</span>
+          <button
+            onClick={() => applyExitDate(cardDate)}
+            disabled={savingExit}
+            className="shrink-0 rounded bg-amber-700 px-2 py-1 font-medium text-white hover:bg-amber-800 disabled:opacity-60 dark:bg-amber-600 dark:hover:bg-amber-700"
+          >
+            Move exit here
+          </button>
+        </div>
       )}
 
       <TipCarousel onApply={() => { reloadEvents(); reloadHorizon() }} />

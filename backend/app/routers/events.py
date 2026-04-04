@@ -351,55 +351,96 @@ def _annotate_sale_taxes(enriched: list, timeline: list, ts_dict: dict,
         e["st_shares"] = result["st_shares"]
 
 
+def _build_interest_pool(loans_db: list) -> dict[int, float]:
+    """
+    Build the deductible investment-interest pool keyed by deductible year.
+
+    Matches the Total Interest card logic:
+    - Recorded Interest loans: deductible in due_date.year
+    - Projected for any year without a recorded loan: principal × rate
+      + compounding on existing interest loans for that grant.
+      Projected interest accrues in year yr → deductible in yr+1.
+    """
+    from collections import defaultdict
+    purchase_loans = [l for l in loans_db if l.loan_type == 'Purchase']
+    interest_loans  = [l for l in loans_db if l.loan_type == 'Interest']
+
+    # Index: (grant_year, grant_type) -> {loan_year: Loan}
+    interest_by_grant: dict = defaultdict(dict)
+    for il in interest_loans:
+        interest_by_grant[(il.grant_year, il.grant_type)][il.loan_year] = il
+
+    pool: dict[int, float] = {}
+
+    # Recorded interest loans — deductible in due_date.year
+    for il in interest_loans:
+        pool[il.due_date.year] = pool.get(il.due_date.year, 0.0) + il.amount
+
+    # Projected interest for years without a recorded loan
+    for p in purchase_loans:
+        due_year = p.due_date.year
+        recorded = interest_by_grant[(p.grant_year, p.grant_type)]
+        for yr in range(p.loan_year + 1, due_year + 1):
+            if yr in recorded:
+                continue
+            projected = p.amount * p.interest_rate
+            for il_yr, il in recorded.items():
+                if il_yr < yr:
+                    projected += il.amount * il.interest_rate
+            deductible_yr = yr + 1
+            pool[deductible_yr] = pool.get(deductible_yr, 0.0) + projected
+
+    return pool
+
+
+# Event types where capital gains are actually realized and taxed.
+# Share Price events are mark-to-market (unrealized) — no deduction consumed there.
+_TAXABLE_EVENT_TYPES = frozenset({'Vesting', 'Sale', 'Liquidation (projected)'})
+
+
 def _apply_interest_deduction(enriched: list, loans_db: list) -> None:
     """
-    Annotate cap-gains events with an investment-interest deduction offset.
+    Annotate realized-cap-gains events with an investment-interest deduction offset.
 
-    IRS Form 4952: investment interest paid (loan_type='Interest') is deductible
-    against net investment income including capital gains in the year the interest
-    is *due* (not when it accrues).  Interest due 1/1/YEAR is deductible in YEAR.
+    IRS Form 4952: investment interest paid is deductible against net investment
+    income in the year the interest is due.  Only applied at taxable events
+    (Vesting, Sale, Liquidation) — not at unrealized Share Price changes.
 
-    Strategy: apply available deduction first to vesting_cap_gains (STCG proxy),
-    then to price_cap_gains (LTCG proxy).  Unused deduction carries forward
-    indefinitely.  Modifies events in-place; adds fields:
+    Uses full projected interest (matching Total Interest card): recorded Interest
+    loans where they exist, projected principal×rate for gaps, with carry-forward.
+
+    Modifies events in-place; adds fields:
       interest_deduction_applied      - amount used by this event
       interest_deduction_on_stcg      - portion applied to vesting CG
       interest_deduction_on_ltcg      - portion applied to price CG
       adjusted_total_cap_gains        - total_cap_gains net of deduction
       adjusted_cum_cap_gains          - running cumulative CG net of all deductions
     """
-    # Build interest-deductible pool per year, keyed by due_date.year
-    interest_by_year: dict[int, float] = {}
-    for loan in loans_db:
-        if loan.loan_type == 'Interest':
-            y = loan.due_date.year
-            interest_by_year[y] = interest_by_year.get(y, 0.0) + loan.amount
-
-    sorted_years = sorted(interest_by_year.keys())
+    pool = _build_interest_pool(loans_db)
+    sorted_years = sorted(pool.keys())
     year_idx = 0
-    available = 0.0   # running deductible pool (carry-forward + loaded)
+    available = 0.0
     cum_deduction = 0.0
 
     for event in enriched:
         raw_date = event.get('date', '')
         event_year = int(raw_date[:4]) if isinstance(raw_date, str) else raw_date.year
 
-        # Load all interest whose deductible year is <= this event's year
         while year_idx < len(sorted_years) and sorted_years[year_idx] <= event_year:
-            available += interest_by_year[sorted_years[year_idx]]
+            available += pool[sorted_years[year_idx]]
             year_idx += 1
-
-        stcg = max(0.0, event.get('vesting_cap_gains', 0.0))
-        ltcg = max(0.0, event.get('price_cap_gains', 0.0))
 
         ded_stcg = 0.0
         ded_ltcg = 0.0
 
-        if available > 0 and (stcg + ltcg) > 0:
-            ded_stcg = min(available, stcg)
-            available -= ded_stcg
-            ded_ltcg = min(available, ltcg)
-            available -= ded_ltcg
+        if event.get('event_type') in _TAXABLE_EVENT_TYPES:
+            stcg = max(0.0, event.get('vesting_cap_gains', 0.0))
+            ltcg = max(0.0, event.get('price_cap_gains', 0.0))
+            if available > 0 and (stcg + ltcg) > 0:
+                ded_stcg = min(available, stcg)
+                available -= ded_stcg
+                ded_ltcg = min(available, ltcg)
+                available -= ded_ltcg
 
         ded_total = ded_stcg + ded_ltcg
         cum_deduction += ded_total
@@ -597,21 +638,18 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
     interest_deduction_total = 0.0
     tax_savings_from_deduction = 0.0
     if ts_row and ts_row.deduct_investment_interest:
-        # Compute deduction on raw timeline events (same algorithm as _apply_interest_deduction)
-        interest_by_year_d: dict[int, float] = {}
-        for loan in loans_db:
-            if loan.loan_type == 'Interest':
-                y = loan.due_date.year
-                interest_by_year_d[y] = interest_by_year_d.get(y, 0.0) + loan.amount
-        sorted_years_d = sorted(interest_by_year_d.keys())
+        pool_d = _build_interest_pool(loans_db)
+        sorted_years_d = sorted(pool_d.keys())
         year_idx_d = 0
         available_d = 0.0
-        stcg_rate = (ts_row.federal_st_cg_rate + ts_row.niit_rate + ts_row.state_st_cg_rate) if ts_row else 0.0
-        ltcg_rate = (ts_row.federal_lt_cg_rate + ts_row.niit_rate + ts_row.state_lt_cg_rate) if ts_row else 0.0
+        stcg_rate = ts_row.federal_st_cg_rate + ts_row.niit_rate + ts_row.state_st_cg_rate
+        ltcg_rate = ts_row.federal_lt_cg_rate + ts_row.niit_rate + ts_row.state_lt_cg_rate
         for ev in timeline:
+            if ev.get('event_type') not in _TAXABLE_EVENT_TYPES:
+                continue
             ev_year = int(ev['date'].year) if hasattr(ev['date'], 'year') else int(str(ev['date'])[:4])
             while year_idx_d < len(sorted_years_d) and sorted_years_d[year_idx_d] <= ev_year:
-                available_d += interest_by_year_d[sorted_years_d[year_idx_d]]
+                available_d += pool_d[sorted_years_d[year_idx_d]]
                 year_idx_d += 1
             stcg = max(0.0, ev.get('vesting_cap_gains', 0.0))
             ltcg = max(0.0, ev.get('price_cap_gains', 0.0))

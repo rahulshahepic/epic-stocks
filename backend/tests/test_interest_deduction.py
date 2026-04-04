@@ -123,7 +123,7 @@ def test_events_deduction_fields_when_enabled(client):
 
 
 def test_events_deduction_reduces_cap_gains(client):
-    """Interest deduction should reduce cap gains on price-gain events."""
+    """Interest deduction should reduce cap gains only at Vesting/Sale events, not Share Price."""
     _setup_basic(client)
     client.put("/api/tax-settings", json=TAX_SETTINGS_WITH_DEDUCTION)
 
@@ -131,29 +131,36 @@ def test_events_deduction_reduces_cap_gains(client):
     assert resp.status_code == 200
     events = resp.json()
 
-    # Find the Share Price event (price rise from $10 to $20 in 2022)
-    price_events = [e for e in events if e["event_type"] == "Share Price" and e["date"].startswith("2022")]
-    assert price_events, "Expected a Share Price event in 2022"
+    # Share Price events must never have deduction applied (unrealized gains)
+    for e in events:
+        if e["event_type"] == "Share Price":
+            assert e.get("interest_deduction_applied", 0) == 0, \
+                f"Share Price event {e['date']} should not have deduction applied"
 
-    price_evt = price_events[0]
-    # The INTEREST_LOAN_2021 has due_date 2022-01-01, so $3000 is deductible in 2022
-    # The price_cap_gains = $10 * 1000 shares held at that point = up to $10000
-    # Vesting events before 2022 might have some vesting_cap_gains
-    assert price_evt["interest_deduction_applied"] > 0
-    assert price_evt["adjusted_total_cap_gains"] < price_evt["total_cap_gains"]
+    # At least one Vesting event with vesting_cap_gains > 0 should have deduction applied.
+    # PRICE_RISE is 2022-06-01; vesting events after that date will have cap gains.
+    vesting_with_cg = [
+        e for e in events
+        if e["event_type"] == "Vesting" and e.get("vesting_cap_gains", 0) > 0
+    ]
+    if vesting_with_cg:
+        # The total deduction applied across all vesting events must be > 0
+        total_ded = sum(e.get("interest_deduction_applied", 0) for e in vesting_with_cg)
+        assert total_ded > 0
+        # Each event with deduction: adjusted_total_cap_gains < total_cap_gains
+        for e in vesting_with_cg:
+            if e.get("interest_deduction_applied", 0) > 0:
+                assert e["adjusted_total_cap_gains"] < e["total_cap_gains"]
 
 
 def test_events_deduction_carry_forward(client):
-    """Unused deduction in year X should carry forward to year X+1."""
+    """Unused deduction in year X should carry forward and be applied at later Vesting events."""
     register_user(client)
-    # Set up a grant that ONLY has price cap gains in 2023 (not 2022)
-    # so 2022 interest goes unused and carries forward
     client.post("/api/grants", json=GRANT)
     client.post("/api/prices", json=PRICE_INITIAL)
-    # No price change in 2022; price change in 2023
+    # No price change in 2022; price change in mid-2023 so vesting events in 2024 have cap gains
     client.post("/api/prices", json={"effective_date": "2023-03-01", "price": 20.0})
-    # Interest of $3000 due 1/1/2022 (deductible in 2022), but no 2022 cap gains
-    # And interest of $4000 due 1/1/2023 (deductible in 2023)
+    # $3000 deductible 2022, $4000 deductible 2023 — total $7000 available by 2023
     client.post("/api/loans?generate_payoff_sale=false", json=INTEREST_LOAN_2021)
     client.post("/api/loans?generate_payoff_sale=false", json=INTEREST_LOAN_2022)
     client.put("/api/tax-settings", json=TAX_SETTINGS_WITH_DEDUCTION)
@@ -162,20 +169,22 @@ def test_events_deduction_carry_forward(client):
     assert resp.status_code == 200
     events = resp.json()
 
-    # Find the 2023 Share Price event
-    price_2023 = [e for e in events if e["event_type"] == "Share Price" and e["date"].startswith("2023")]
-    assert price_2023
-    evt = price_2023[0]
+    # Share Price events must still have zero deduction
+    for e in events:
+        if e["event_type"] == "Share Price":
+            assert e.get("interest_deduction_applied", 0) == 0
 
-    # 2022 interest ($3000) carried forward + 2023 interest ($4000) = $7000 available
-    # Price cap gains = $10 * shares_held — so at least $7000 should be deducted (if enough CG)
-    price_cg = evt.get("price_cap_gains", 0)
-    if price_cg >= 7000:
-        # Full $7000 should be deducted
-        assert abs(evt["interest_deduction_applied"] - 7000.0) < 1.0
-    else:
-        # Entire price CG offset by deduction (all available)
-        assert evt["interest_deduction_applied"] == pytest.approx(price_cg, abs=1)
+    # Total deduction applied across all Vesting events should be
+    # min(total_deductible_pool, total_vesting_cap_gains)
+    total_pool = 3000.0 + 4000.0  # INTEREST_LOAN_2021 + INTEREST_LOAN_2022
+    vesting_cg_total = sum(
+        e.get("vesting_cap_gains", 0) for e in events if e["event_type"] == "Vesting"
+    )
+    expected_deduction = min(total_pool, vesting_cg_total)
+    actual_deduction = sum(
+        e.get("interest_deduction_applied", 0) for e in events if e["event_type"] == "Vesting"
+    )
+    assert abs(actual_deduction - expected_deduction) < 1.0
 
 
 def test_events_adjusted_cum_cap_gains_monotone(client):

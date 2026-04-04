@@ -781,7 +781,7 @@ export default function Dashboard() {
     return localStorage.getItem('dashboard_cardDate') ?? TODAY
   })
   const [savingExit, setSavingExit] = useState(false)
-  const [pendingExitDate, setPendingExitDate] = useState<string>(exitDate ?? '')
+  const [pendingExitDate, setPendingExitDate] = useState<string>('')
 
   // Keep pending input in sync when server data reloads (e.g. after applying a tip)
   useEffect(() => {

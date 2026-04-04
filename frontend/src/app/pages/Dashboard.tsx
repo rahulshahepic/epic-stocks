@@ -1050,16 +1050,6 @@ export default function Dashboard() {
               {label}
             </button>
           ))}
-          {cardDate !== exitDate && (
-            <button
-              onClick={() => applyExitDate(cardDate)}
-              disabled={savingExit}
-              title="Use this date as your exit scenario"
-              className="rounded px-2 py-1 text-xs font-medium transition-colors bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
-            >
-              {savingExit ? '…' : exitDate ? 'Try here as exit' : 'Set exit here'}
-            </button>
-          )}
         </div>
       </div>
 

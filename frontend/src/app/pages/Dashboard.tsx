@@ -256,8 +256,7 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices, exitDate }: { 
           }
         }
       }
-      // Use adjusted_cum_cap_gains when interest deduction is applied
-      const cumCg = e.adjusted_cum_cap_gains ?? e.cum_cap_gains
+      const cumCg = e.cum_cap_gains
       return {
         _idx: i,
         _date: e.date,
@@ -287,14 +286,14 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices, exitDate }: { 
           {hasFuturePrices && (
             <text x="50%" y={16} textAnchor="middle" fontSize={10} fill={c.axis}>
               <tspan fill="#10b981">&#9632;</tspan> Income{'  '}
-              <tspan fill="#8b5cf6">&#9632;</tspan> {hasDeduction ? 'Cap Gains (adj.)' : 'Cap Gains'}{'  '}
+              <tspan fill="#8b5cf6">&#9632;</tspan> {'Cap Gains'}{'  '}
               <tspan fill="#6ee7b7">&#9632;</tspan>/<tspan fill="#c4b5fd">&#9632;</tspan> Projected
             </text>
           )}
           {!hasFuturePrices && (
             <text x="50%" y={16} textAnchor="middle" fontSize={10} fill={c.axis}>
               <tspan fill="#10b981">&#9632;</tspan> Income{'  '}
-              <tspan fill="#8b5cf6">&#9632;</tspan> {hasDeduction ? 'Cap Gains (adj.)' : 'Cap Gains'}
+              <tspan fill="#8b5cf6">&#9632;</tspan> {'Cap Gains'}
             </text>
           )}
           {tIdx !== null && <ReferenceLine x={tIdx} stroke="#f59e0b" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
@@ -319,7 +318,7 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices, exitDate }: { 
           items={[
             { label: '', value: fmtFullDate(sel._date) },
             { label: 'income', value: fmt$(sel._event.cum_income) },
-            { label: hasDeduction ? 'adj. cap gains' : 'cap gains', value: fmt$(sel._event.adjusted_cum_cap_gains ?? sel._event.cum_cap_gains) },
+            { label: 'cap gains', value: fmt$(sel._event.cum_cap_gains) },
             ...(hasDeduction && (sel._event.interest_deduction_applied ?? 0) > 0
               ? [{ label: 'interest deducted this event', value: fmt$(sel._event.interest_deduction_applied!) }]
               : []),
@@ -473,8 +472,7 @@ function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices, exitD
         }
       }
 
-      // Use adjusted_cum_cap_gains when investment interest deduction is active
-      const effectiveCumCg = e.adjusted_cum_cap_gains ?? e.cum_cap_gains
+      const effectiveCumCg = e.cum_cap_gains
 
       // "Sure" tax = tax on base income + base vesting cap gains (no price surplus)
       const taxSure = Math.round(
@@ -881,8 +879,7 @@ export default function Dashboard() {
           ? Math.max(0, (projectedLiqEvent.gross_proceeds ?? 0) - outstandingPrincipal - (projectedLiqEvent.estimated_tax ?? 0))
           : 0)
 
-    // Interest deduction: use adjusted_cum_cap_gains from last event if available.
-    const adjCumCg = lastEvent?.adjusted_cum_cap_gains ?? lastEvent?.cum_cap_gains ?? 0
+    const adjCumCg = lastEvent?.cum_cap_gains ?? 0
     const stcgRate = taxSettings
       ? taxSettings.federal_st_cg_rate + taxSettings.niit_rate + taxSettings.state_st_cg_rate
       : 0
@@ -930,7 +927,7 @@ export default function Dashboard() {
       // After projected liquidation, all loans are paid off from proceeds
       total_loan_principal: liqOccurred ? 0 : outstandingPrincipal,
       total_tax_paid: taxPaid - taxSavings,
-      cash_received: cashReceived,
+      cash_received: cashReceived + taxSavings,
       interest_deduction_total: interestDeductionTotal,
       next_event: nextEvent,
     }
@@ -1058,7 +1055,7 @@ export default function Dashboard() {
         <Card label="Share Price" value={fmtPrice(cv.current_price)} variant="price" />
         <Card label="Total Shares" value={fmtNum(cv.total_shares)} variant="shares" />
         <Card label="Total Income" value={fmt$(cv.total_income)} variant="income" />
-        <Card label={hasInterestDeduction ? 'Cap Gains (after int. ded.)' : 'Total Cap Gains'} value={fmt$(cv.total_cap_gains)} variant="gains" />
+        <Card label="Total Cap Gains" value={fmt$(cv.total_cap_gains)} variant="gains" />
         <Card label="Loan Principal" value={fmt$(cv.total_loan_principal)} variant="loans" />
         <Card label="Total Interest" value={fmt$(cv.total_interest)} variant="interest" />
         <Card label={hasInterestDeduction ? 'Tax Paid (after int. ded.)' : 'Tax Paid'} value={fmt$(cv.total_tax_paid)} variant="tax" />
@@ -1071,8 +1068,7 @@ export default function Dashboard() {
       </div>
       {hasInterestDeduction && (
         <p className="rounded-md bg-purple-50 px-3 py-2 text-center text-xs text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">
-          Investment interest deduction applied: {fmt$(cv.interest_deduction_total ?? 0)} offset against cap gains
-          — cap gains and estimated tax bill reduced.
+          Investment interest deduction applied: {fmt$(cv.interest_deduction_total ?? 0)} — estimated tax reduced, cash received increased.
           Enable/disable in Settings → Tax Rates.
         </p>
       )}

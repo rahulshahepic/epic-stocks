@@ -28,7 +28,7 @@ function Sparkline({ data, dataKey, color, formatter }: {
   formatter?: (v: number) => string
 }) {
   if (data.length === 0) {
-    return <div className="flex h-16 items-center justify-center text-xs text-stone-500 dark:text-slate-400">collecting…</div>
+    return <div className="flex h-16 items-center justify-center text-xs text-stone-600 dark:text-slate-400">collecting…</div>
   }
   return (
     <ResponsiveContainer width="100%" height={64}>
@@ -306,7 +306,7 @@ export default function Admin() {
                 {ramPercent != null ? `${ramPercent}%` : '—'}
               </p>
               {stats.ram_used_mb != null && stats.ram_total_mb != null && (
-                <p className="text-stone-500 dark:text-slate-400">
+                <p className="text-stone-600 dark:text-slate-400">
                   {(stats.ram_used_mb / 1024).toFixed(1)} / {(stats.ram_total_mb / 1024).toFixed(1)} GB
                 </p>
               )}
@@ -374,7 +374,7 @@ export default function Admin() {
       <section className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
         <h3 className="text-sm font-medium text-gray-900 dark:text-slate-100">Database Tables</h3>
         {dbTables.length === 0 ? (
-          <p className="mt-3 text-xs text-stone-500 dark:text-slate-400">
+          <p className="mt-3 text-xs text-stone-600 dark:text-slate-400">
             Table breakdown is only available on PostgreSQL.
           </p>
         ) : (
@@ -401,7 +401,7 @@ export default function Admin() {
                 </tbody>
               </table>
             </div>
-            <p className="mt-2 text-xs text-stone-500 dark:text-slate-400">
+            <p className="mt-2 text-xs text-stone-600 dark:text-slate-400">
               PostgreSQL baseline (~7–8 MB) is included in DB size — system catalogs, template databases, and WAL overhead.
               Row counts are pg_class estimates; they may lag until after a VACUUM ANALYZE.
             </p>
@@ -436,7 +436,7 @@ export default function Admin() {
                 <p className="text-gray-500 dark:text-slate-400">
                   {u.name ?? 'No name'} · Joined {formatDate(u.created_at)} · Last login {formatDate(u.last_login)}
                 </p>
-                <p className="text-stone-500 dark:text-slate-400">
+                <p className="text-stone-600 dark:text-slate-400">
                   {u.grant_count} grants · {u.loan_count} loans · {u.price_count} prices
                 </p>
               </div>
@@ -461,7 +461,7 @@ export default function Admin() {
             </div>
           ))}
           {users.length === 0 && (
-            <p className="text-xs text-stone-500 dark:text-slate-400">
+            <p className="text-xs text-stone-600 dark:text-slate-400">
               {search ? 'No users match your search.' : 'No users.'}
             </p>
           )}
@@ -500,7 +500,7 @@ export default function Admin() {
               <div key={b.id} className="flex items-center justify-between rounded-md border border-gray-100 p-2 text-xs dark:border-slate-700">
                 <div>
                   <span className="font-medium text-gray-900 dark:text-slate-100">{b.email}</span>
-                  {b.reason && <span className="ml-2 text-stone-500">({b.reason})</span>}
+                  {b.reason && <span className="ml-2 text-stone-600">({b.reason})</span>}
                 </div>
                 <button onClick={() => handleUnblock(b.id)} className="rounded px-2 py-1 text-xs text-rose-700 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-900/30">
                   Unblock
@@ -511,7 +511,7 @@ export default function Admin() {
         )}
 
         {blocked.length === 0 && (
-          <p className="mt-3 text-xs text-stone-500 dark:text-slate-400">No blocked emails.</p>
+          <p className="mt-3 text-xs text-stone-600 dark:text-slate-400">No blocked emails.</p>
         )}
       </section>
 
@@ -531,7 +531,7 @@ export default function Admin() {
           )}
         </div>
         {errorLogs.length === 0 && (
-          <p className="mt-3 text-xs text-stone-500 dark:text-slate-400">No errors logged.</p>
+          <p className="mt-3 text-xs text-stone-600 dark:text-slate-400">No errors logged.</p>
         )}
         <div className="mt-3 space-y-2">
           {errorLogs.map(e => (
@@ -548,11 +548,11 @@ export default function Admin() {
                     {e.method} {e.path}
                   </span>
                   {e.user_id && (
-                    <span className="ml-2 text-stone-500 dark:text-slate-400">uid:{e.user_id}</span>
+                    <span className="ml-2 text-stone-600 dark:text-slate-400">uid:{e.user_id}</span>
                   )}
                   <p className="mt-0.5 truncate text-gray-700 dark:text-slate-300">{e.error_message}</p>
                 </div>
-                <span className="ml-2 shrink-0 text-stone-500 dark:text-slate-400">
+                <span className="ml-2 shrink-0 text-stone-600 dark:text-slate-400">
                   {new Date(e.timestamp).toLocaleString('en-GB', { timeZone: 'UTC', hour12: false })} UTC
                 </span>
               </div>
@@ -829,7 +829,7 @@ export default function Admin() {
       </section>
 
       {import.meta.env.VITE_COMMIT_SHA && import.meta.env.VITE_COMMIT_SHA !== 'dev' && (
-        <p className="text-center text-xs text-stone-500 dark:text-slate-400">
+        <p className="text-center text-xs text-stone-600 dark:text-slate-400">
           {import.meta.env.VITE_COMMIT_SHA.slice(0, 7)}
         </p>
       )}
@@ -843,14 +843,14 @@ export default function Admin() {
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">
                   Notify — {notifyModal.userName}
                 </h3>
-                <p className="text-xs text-stone-500 dark:text-slate-400">
+                <p className="text-xs text-stone-600 dark:text-slate-400">
                   Email from: {config?.resend_from || <span className="text-red-500">RESEND_FROM not set</span>}
                 </p>
               </div>
               <button
                 onClick={() => setNotifyModal(null)}
                 aria-label="Close dialog"
-                className="text-stone-500 hover:text-gray-600 dark:hover:text-slate-300"
+                className="text-stone-600 hover:text-gray-600 dark:hover:text-slate-300"
               >
                 ✕
               </button>

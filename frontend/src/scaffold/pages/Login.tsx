@@ -74,7 +74,7 @@ export default function Login() {
         <h1 className="mb-2 text-2xl font-bold text-rose-700 dark:text-rose-400">
           Equity Vesting Tracker
         </h1>
-        <p className="mb-8 text-sm text-stone-500 dark:text-slate-400">
+        <p className="mb-8 text-sm text-stone-600 dark:text-slate-400">
           Sign in to manage your equity compensation
         </p>
 
@@ -96,13 +96,13 @@ export default function Login() {
             </button>
           ))}
           {providers.length === 0 && (
-            <p className="text-sm text-stone-500 dark:text-slate-400">No sign-in providers configured.</p>
+            <p className="text-sm text-stone-600 dark:text-slate-400">No sign-in providers configured.</p>
           )}
         </div>
 
         <div className="mt-8 rounded-lg border border-stone-200 bg-white p-4 text-left dark:border-slate-800 dark:bg-slate-900">
           <p className="mb-2 text-xs font-medium text-stone-700 dark:text-slate-300">Your data &amp; privacy</p>
-          <ul className="space-y-1.5 text-xs text-stone-500 dark:text-slate-400">
+          <ul className="space-y-1.5 text-xs text-stone-600 dark:text-slate-400">
             <li>
               <span className="font-medium text-stone-600 dark:text-slate-300">Secure sign-in.</span>{' '}
               We never handle your password — your identity provider verifies you and shares only your name and email with us.
@@ -118,7 +118,7 @@ export default function Login() {
           </ul>
         </div>
 
-        <p className="mt-4 text-xs text-stone-500 dark:text-slate-400">
+        <p className="mt-4 text-xs text-stone-600 dark:text-slate-400">
           By using this site, you agree to our{' '}
           <Link
             to="/privacy"

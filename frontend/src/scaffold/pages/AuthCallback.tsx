@@ -76,7 +76,7 @@ export default function AuthCallback() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-stone-50 px-4 dark:bg-slate-950">
       <div className="w-full max-w-sm text-center">
         <div className="mb-4 h-3 w-3 mx-auto animate-pulse rounded-full bg-rose-500" />
-        <p className="text-sm text-stone-500 dark:text-slate-400">Completing sign-in…</p>
+        <p className="text-sm text-stone-600 dark:text-slate-400">Completing sign-in…</p>
       </div>
     </div>
   )

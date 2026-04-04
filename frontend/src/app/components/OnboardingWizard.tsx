@@ -34,7 +34,7 @@ function StepIndicator({ step }: { step: Step }) {
                 ? 'bg-rose-50 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400'
                 : active
                   ? 'bg-rose-700 text-white'
-                  : 'bg-gray-100 text-stone-500 dark:bg-slate-800 dark:text-slate-400'
+                  : 'bg-gray-100 text-stone-600 dark:bg-slate-800 dark:text-slate-400'
             }`}>
               <span>{num}</span>
               <span className="hidden sm:inline">{labels[i]}</span>
@@ -42,7 +42,7 @@ function StepIndicator({ step }: { step: Step }) {
           </div>
         )
       })}
-      <span className="ml-auto shrink-0 text-[11px] text-stone-500">Step {current} of {total}</span>
+      <span className="ml-auto shrink-0 text-[11px] text-stone-600">Step {current} of {total}</span>
     </div>
   )
 }

@@ -252,7 +252,7 @@ export default function Prices() {
           <button
             onClick={() => handleSave(false)}
             disabled={saving}
-            className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+            className="rounded-md bg-amber-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-900 disabled:opacity-50"
           >
             {saving ? 'Saving...' : 'Save'}
           </button>
@@ -402,7 +402,7 @@ export default function Prices() {
         <div className="flex gap-2">
           <button
             onClick={openAdd}
-            className="rounded-md bg-amber-600 px-2 py-1 text-xs font-medium text-white hover:bg-amber-700"
+            className="rounded-md bg-amber-800 px-2 py-1 text-xs font-medium text-white hover:bg-amber-900"
           >
             + Price
           </button>

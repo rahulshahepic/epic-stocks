@@ -57,6 +57,23 @@ def build_fifo_lots(
         if edate > as_of:
             break
 
+        if e["event_type"] == "Prior Sale Lot":
+            # Precisely remove specific lot shares consumed by a prior sale (preserves
+            # correct lot identity across multi-sale sequences regardless of lot_order).
+            target_date = _to_date(e["target_vest_date"])
+            target_gy = e["target_grant_year"]
+            target_gt = e["target_grant_type"]
+            to_remove = int(e["shares_consumed"])
+            for lot in lots:
+                if _to_date(lot[0]) == target_date and lot[3] == target_gy and lot[4] == target_gt:
+                    consumed = min(lot[1], to_remove)
+                    lot[1] -= consumed
+                    to_remove -= consumed
+                    if to_remove == 0:
+                        break
+            lots = deque(l for l in lots if l[1] > 0)
+            continue
+
         vs = e.get("vested_shares") or 0
 
         if e["event_type"] == "Vesting" and vs > 0:
@@ -329,4 +346,5 @@ def compute_sale_tax(timeline_events: list, sale: dict, tax_settings: dict,
         "estimated_tax": estimated_tax,
         "net_proceeds": net_proceeds,
         "lots": lots_out,
+        "lots_consumed": lots_consumed,
     }

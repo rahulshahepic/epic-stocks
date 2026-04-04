@@ -231,6 +231,8 @@ function SharesChart({ events, c, range, hasFuturePrices, exitDate }: { events: 
 function IncomeCapGainsChart({ events, c, range, hasFuturePrices, exitDate }: { events: TimelineEvent[]; c: ChartColors; range: DateRange; hasFuturePrices: boolean; exitDate: string | null }) {
   const [selected, setSelected] = useState<number | null>(null)
 
+  const hasDeduction = events.some(e => (e.interest_deduction_applied ?? 0) > 0)
+
   const data = useMemo(() => {
     const filtered = filterByDateRange(events, range, 'date')
     // Track the portion of income and cap gains attributable solely to future price changes.
@@ -254,13 +256,14 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices, exitDate }: { 
           }
         }
       }
+      const cumCg = e.cum_cap_gains
       return {
         _idx: i,
         _date: e.date,
         _label: fmtDate(e.date),
         _event: e,
         income: e.cum_income - cumSurplusIncome,
-        gains: e.cum_cap_gains - cumSurplusCg,
+        gains: cumCg - cumSurplusCg,
         projExtraIncome: hasFuturePrices && cumSurplusIncome > 0 ? cumSurplusIncome : null as number | null,
         projExtra: hasFuturePrices && cumSurplusCg > 0 ? cumSurplusCg : null as number | null,
       }
@@ -283,14 +286,14 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices, exitDate }: { 
           {hasFuturePrices && (
             <text x="50%" y={16} textAnchor="middle" fontSize={10} fill={c.axis}>
               <tspan fill="#10b981">&#9632;</tspan> Income{'  '}
-              <tspan fill="#8b5cf6">&#9632;</tspan> Cap Gains{'  '}
+              <tspan fill="#8b5cf6">&#9632;</tspan> {'Cap Gains'}{'  '}
               <tspan fill="#6ee7b7">&#9632;</tspan>/<tspan fill="#c4b5fd">&#9632;</tspan> Projected
             </text>
           )}
           {!hasFuturePrices && (
             <text x="50%" y={16} textAnchor="middle" fontSize={10} fill={c.axis}>
               <tspan fill="#10b981">&#9632;</tspan> Income{'  '}
-              <tspan fill="#8b5cf6">&#9632;</tspan> Cap Gains
+              <tspan fill="#8b5cf6">&#9632;</tspan> {'Cap Gains'}
             </text>
           )}
           {tIdx !== null && <ReferenceLine x={tIdx} stroke="#f59e0b" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
@@ -316,6 +319,9 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices, exitDate }: { 
             { label: '', value: fmtFullDate(sel._date) },
             { label: 'income', value: fmt$(sel._event.cum_income) },
             { label: 'cap gains', value: fmt$(sel._event.cum_cap_gains) },
+            ...(hasDeduction && (sel._event.interest_deduction_applied ?? 0) > 0
+              ? [{ label: 'interest deducted this event', value: fmt$(sel._event.interest_deduction_applied!) }]
+              : []),
           ]}
         />
       )}
@@ -404,6 +410,7 @@ const WI_TAX_DEFAULTS: TaxSettings = {
   prefer_stock_dp: false,
   dp_min_percent: 0.10,
   dp_min_cap: 20000,
+  deduct_investment_interest: false,
 }
 
 function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices, exitDate }: {
@@ -465,10 +472,12 @@ function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices, exitD
         }
       }
 
+      const effectiveCumCg = e.cum_cap_gains
+
       // "Sure" tax = tax on base income + base vesting cap gains (no price surplus)
       const taxSure = Math.round(
         (e.cum_income - cumSurplusIncome) * incomeRate +
-        (e.cum_cap_gains - cumSurplusCg) * ltCgRate
+        (effectiveCumCg - cumSurplusCg) * ltCgRate
       )
 
       // "Half" tax = tax on price-driven surplus (uncertain - depends on future price)
@@ -854,19 +863,42 @@ export default function Dashboard() {
         .reduce((sum, l) => sum + Math.max(0, l.amount - (earlyPaidByLoan.get(l.id) ?? 0)), 0)
     })()
 
+    // Map sale_id -> estimated_tax from timeline events so we can subtract it below
+    const saleTaxBySaleId = new Map<number, number>()
+    for (const e of events) {
+      if (e.event_type === 'Sale' && e.sale_id != null && e.estimated_tax != null) {
+        saleTaxBySaleId.set(e.sale_id, e.estimated_tax)
+      }
+    }
+
     const cashReceived = (sales
       ? sales.filter(s => s.loan_id === null && s.date <= effectiveDate)
-          .reduce((sum, s) => sum + s.shares * s.price_per_share, 0)
+          .reduce((sum, s) => sum + s.shares * s.price_per_share - (saleTaxBySaleId.get(s.id) ?? 0), 0)
       : 0)
       + (liqOccurred && projectedLiqEvent
           ? Math.max(0, (projectedLiqEvent.gross_proceeds ?? 0) - outstandingPrincipal - (projectedLiqEvent.estimated_tax ?? 0))
           : 0)
 
+    const adjCumCg = lastEvent?.cum_cap_gains ?? 0
+    const stcgRate = taxSettings
+      ? taxSettings.federal_st_cg_rate + taxSettings.niit_rate + taxSettings.state_st_cg_rate
+      : 0
+    const ltcgRate = taxSettings
+      ? taxSettings.federal_lt_cg_rate + taxSettings.niit_rate + taxSettings.state_lt_cg_rate
+      : 0
+    let interestDeductionTotal = 0
+    let taxSavings = 0
+    for (const e of events) {
+      if (e.date > effectiveDate) break
+      interestDeductionTotal += e.interest_deduction_applied ?? 0
+      taxSavings += (e.interest_deduction_on_stcg ?? 0) * stcgRate
+        + (e.interest_deduction_on_ltcg ?? 0) * ltcgRate
+    }
     return {
       current_price: lastEvent?.share_price ?? 0,
       total_shares: lastEvent?.cum_shares ?? 0,
       total_income: lastEvent?.cum_income ?? 0,
-      total_cap_gains: lastEvent?.cum_cap_gains ?? 0,
+      total_cap_gains: adjCumCg,
       total_interest: (() => {
         const effYear = parseInt(effectiveDate.slice(0, 4), 10)
         const purchaseLoans = loans.filter(l => l.loan_type === 'Purchase')
@@ -894,11 +926,12 @@ export default function Dashboard() {
       })(),
       // After projected liquidation, all loans are paid off from proceeds
       total_loan_principal: liqOccurred ? 0 : outstandingPrincipal,
-      total_tax_paid: taxPaid,
-      cash_received: cashReceived,
+      total_tax_paid: taxPaid - taxSavings,
+      cash_received: cashReceived + taxSavings,
+      interest_deduction_total: interestDeductionTotal,
       next_event: nextEvent,
     }
-  }, [events, loans, sales, taxSettings, cardDate, projectedLiqDate, projectedLiqEvent, ignoringExitDate])
+  }, [events, loans, sales, taxSettings, dash, cardDate, projectedLiqDate, projectedLiqEvent, ignoringExitDate])
 
   if (dashLoading) {
     return <p className="p-6 text-center text-sm text-gray-400">Loading...</p>
@@ -970,9 +1003,11 @@ export default function Dashboard() {
     total_loan_principal: dash.total_loan_principal,
     total_tax_paid: dash.total_tax_paid ?? 0,
     cash_received: dash.cash_received ?? 0,
+    interest_deduction_total: dash.interest_deduction_total ?? 0,
     next_event: dash.next_event,
     total_interest: 0,
   }
+  const hasInterestDeduction = (cv.interest_deduction_total ?? 0) > 0
 
   return (
     <div className="space-y-6">
@@ -1023,7 +1058,7 @@ export default function Dashboard() {
         <Card label="Total Cap Gains" value={fmt$(cv.total_cap_gains)} variant="gains" />
         <Card label="Loan Principal" value={fmt$(cv.total_loan_principal)} variant="loans" />
         <Card label="Total Interest" value={fmt$(cv.total_interest)} variant="interest" />
-        <Card label="Tax Paid" value={fmt$(cv.total_tax_paid)} variant="tax" />
+        <Card label={hasInterestDeduction ? 'Tax Paid (after int. ded.)' : 'Tax Paid'} value={fmt$(cv.total_tax_paid)} variant="tax" />
         <Card label="Cash Received" value={fmt$(cv.cash_received)} variant="cash" />
         <Card
           label="Next Event"
@@ -1031,6 +1066,12 @@ export default function Dashboard() {
           variant="event"
         />
       </div>
+      {hasInterestDeduction && (
+        <p className="rounded-md bg-purple-50 px-3 py-2 text-center text-xs text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">
+          Investment interest deduction applied: {fmt$(cv.interest_deduction_total ?? 0)} — estimated tax reduced, cash received increased.
+          Enable/disable in Settings → Tax Rates.
+        </p>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2">
         {events && events.length > 0 && (

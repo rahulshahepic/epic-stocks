@@ -330,7 +330,7 @@ export default function Prices() {
             </p>
             <ul className="space-y-0.5">
               {estimatesToReplace.map(p => (
-                <li key={p.id} className="text-xs text-amber-700 dark:text-amber-400">
+                <li key={p.id} className="text-xs text-amber-700 dark:text-amber-300">
                   {p.effective_date} — {fmt$(p.price)}
                 </li>
               ))}
@@ -343,7 +343,7 @@ export default function Prices() {
             <p className="mb-1 text-xs font-medium text-gray-500 dark:text-slate-400">
               New estimates ({growthPreview.length})
             </p>
-            <div className="overflow-x-auto rounded-lg border border-stone-200 dark:border-slate-700">
+            <div tabIndex={0} className="overflow-x-auto rounded-lg border border-stone-200 dark:border-slate-700">
               <table className="w-full text-left text-xs">
                 <thead className="bg-stone-50 dark:bg-slate-800">
                   <tr className="text-gray-500 dark:text-slate-400">
@@ -359,8 +359,8 @@ export default function Prices() {
                     return (
                       <tr key={row.date} className="bg-white dark:bg-slate-900">
                         <td className="px-3 py-2 text-gray-600 dark:text-slate-400">{row.date}</td>
-                        <td className="px-3 py-2 text-right font-medium text-amber-600 dark:text-amber-400">{fmt$(row.price)}</td>
-                        <td className="px-3 py-2 text-right text-emerald-600 dark:text-emerald-400">+{fmt$(change)}</td>
+                        <td className="px-3 py-2 text-right font-medium text-amber-700 dark:text-amber-300">{fmt$(row.price)}</td>
+                        <td className="px-3 py-2 text-right text-emerald-700 dark:text-emerald-300">+{fmt$(change)}</td>
                       </tr>
                     )
                   })}
@@ -420,7 +420,7 @@ export default function Prices() {
         </p>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-stone-200 dark:border-slate-700">
+      <div tabIndex={0} className="overflow-x-auto rounded-lg border border-stone-200 dark:border-slate-700">
         <table className="w-full text-left text-xs">
           <thead className="bg-stone-50 dark:bg-slate-800">
             <tr className="text-gray-500 dark:text-slate-400">
@@ -438,12 +438,12 @@ export default function Prices() {
                   <td className="px-3 py-2 text-gray-700 dark:text-slate-300">
                     {p.effective_date}
                     {isEst && (
-                      <span className="ml-1.5 rounded bg-amber-100 px-1 py-0.5 text-[10px] italic text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
+                      <span className="ml-1.5 rounded bg-amber-100 px-1 py-0.5 text-[10px] italic text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
                         est.
                       </span>
                     )}
                   </td>
-                  <td className={`px-3 py-2 text-right font-medium ${isEst ? 'italic text-amber-700 dark:text-amber-400' : 'text-amber-700 dark:text-amber-400'}`}>
+                  <td className={`px-3 py-2 text-right font-medium ${isEst ? 'italic text-amber-700 dark:text-amber-300' : 'text-amber-700 dark:text-amber-300'}`}>
                     {fmt$(p.price)}
                   </td>
                   <td className="px-3 py-2 text-right">

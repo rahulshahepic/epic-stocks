@@ -445,7 +445,7 @@ export default function Grants() {
             <button
               type="button"
               onClick={() => setForm(f => ({ ...f, type: 'Bonus', dp_shares: 0 }))}
-              className={`rounded-md px-3 py-1 text-xs font-medium ${form.type === 'Bonus' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'}`}
+              className={`rounded-md px-3 py-1 text-xs font-medium ${form.type === 'Bonus' ? 'bg-emerald-700 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'}`}
             >
               Bonus
             </button>
@@ -585,7 +585,7 @@ export default function Grants() {
             <button onClick={openPurchase} className="rounded-md bg-rose-700 px-2 py-1 text-xs font-medium text-white hover:bg-rose-800">
               + Purchase
             </button>
-            <button onClick={openBonus} className="rounded-md bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-700">
+            <button onClick={openBonus} className="rounded-md bg-emerald-700 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-800">
               + Bonus
             </button>
           </div>
@@ -597,7 +597,7 @@ export default function Grants() {
         </p>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-stone-200 dark:border-slate-700">
+      <div tabIndex={0} className="overflow-x-auto rounded-lg border border-stone-200 dark:border-slate-700">
         <table className="w-full text-left text-xs">
           <thead className="bg-stone-50 dark:bg-slate-800">
             <tr className="text-gray-500 dark:text-slate-400">
@@ -639,7 +639,7 @@ export default function Grants() {
                       {loan ? (
                         <button
                           onClick={() => setExpandedGrantId(isExpanded ? null : g.id)}
-                          className={`text-[10px] underline decoration-dotted ${hasSale ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}
+                          className={`text-[10px] underline decoration-dotted ${hasSale ? 'text-green-700 dark:text-green-300' : 'text-amber-700 dark:text-amber-300'}`}
                         >
                           {hasSale ? '✓ loan+sale' : '✓ loan'}
                         </button>
@@ -649,7 +649,7 @@ export default function Grants() {
                     </td>
                     <td className="px-3 py-2 text-right">
                       {epicMode ? (
-                        <button onClick={() => openSellModal(g)} className="text-emerald-600 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300">Sell</button>
+                        <button onClick={() => openSellModal(g)} className="text-emerald-700 hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-300">Sell</button>
                       ) : (
                         <button onClick={() => openEdit(g)} className="text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Edit</button>
                       )}
@@ -666,11 +666,11 @@ export default function Grants() {
                             <div><span className="text-stone-500 dark:text-slate-400">Loan #</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{loan.loan_number ?? '—'}</span></div>
                           </div>
                           {linkedSale ? (
-                            <p className="mt-2 text-[10px] text-green-600 dark:text-green-400">
+                            <p className="mt-2 text-[10px] text-green-700 dark:text-green-300">
                               ✓ Payoff sale {linkedSale.date} · {fmtNum(linkedSale.shares)} shares @ {fmtPrice(linkedSale.price_per_share)}
                             </p>
                           ) : (
-                            <p className="mt-2 text-[10px] text-amber-600 dark:text-amber-400">No payoff sale linked</p>
+                            <p className="mt-2 text-[10px] text-amber-700 dark:text-amber-300">No payoff sale linked</p>
                           )}
                         </div>
                       </td>
@@ -745,13 +745,13 @@ export default function Grants() {
                     <span className="text-gray-500 dark:text-slate-400">Est. tax</span>
                     <span className="text-right font-medium text-red-600 dark:text-red-400">{fmtPrice(sellEstimate.estimated_tax)}</span>
                     <span className="text-gray-500 dark:text-slate-400">Net proceeds</span>
-                    <span className="text-right font-medium text-emerald-600 dark:text-emerald-400">{fmtPrice(sellEstimate.net_proceeds)}</span>
+                    <span className="text-right font-medium text-emerald-700 dark:text-emerald-300">{fmtPrice(sellEstimate.net_proceeds)}</span>
                     {sellEstimate.loan_balance != null && (
                       <>
                         <span className="text-gray-500 dark:text-slate-400">Loan balance</span>
                         <span className="text-right font-medium text-gray-800 dark:text-slate-200">{fmtPrice(sellEstimate.loan_balance)}</span>
                         <span className="text-gray-500 dark:text-slate-400">Covers loan</span>
-                        <span className={`text-right font-medium ${sellEstimate.covers_loan ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                        <span className={`text-right font-medium ${sellEstimate.covers_loan ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-600 dark:text-red-400'}`}>
                           {sellEstimate.covers_loan ? 'Yes' : 'No'}
                         </span>
                       </>
@@ -769,7 +769,7 @@ export default function Grants() {
                 <button
                   onClick={handleSell}
                   disabled={!sellEstimate || sellSubmitting}
-                  className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                  className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
                 >
                   {sellSubmitting ? 'Creating sale...' : 'Confirm Sale'}
                 </button>

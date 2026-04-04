@@ -767,6 +767,7 @@ export default function Dashboard() {
   const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
   const { data: sales } = useApiData<SaleEntry[]>(fetchSales)
   const { data: horizonSettings, reload: reloadHorizon } = useApiData<HorizonSettings>(fetchHorizon)
+  const exitDate = horizonSettings?.horizon_date ?? null
   const c = useChartColors()
   const [rangeInterest, setRangeInterest] = useState<DateRange>({ mode: 'all', start: '', end: '' })
   const [rangeLoan, setRangeLoan] = useState<DateRange>({ mode: 'all', start: '', end: '' })
@@ -861,7 +862,6 @@ export default function Dashboard() {
   const projectedLiqDate = projectedLiqEvent?.date ?? null
 
   // Explicit exit date (only when user has set one and it differs from last real event)
-  const exitDate = horizonSettings?.horizon_date ?? null
   const showExitButton = exitDate !== null && exitDate !== lastRealEventDate
 
   // When cardDate is strictly past the projected exit, we project as-if no exit was planned

@@ -1,6 +1,6 @@
 import bisect
 from datetime import date, datetime
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -456,6 +456,76 @@ def _apply_interest_deduction(enriched: list, loans_db: list) -> None:
         event['interest_deduction_on_ltcg'] = round(ded_ltcg, 2)
         event['adjusted_total_cap_gains'] = round(event.get('total_cap_gains', 0.0) - ded_total, 2)
         event['adjusted_cum_cap_gains'] = round(event.get('cum_cap_gains', 0.0) - cum_deduction, 2)
+
+
+@router.get("/preview-exit")
+def preview_exit(
+    date: str = Query(..., description="ISO date to preview as exit date"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Compute projected liquidation figures for a given exit date without saving it."""
+    from datetime import date as date_type
+    try:
+        preview_date = date_type.fromisoformat(date)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid date format")
+
+    grants, prices, loans, loans_db, initial_price, _ = _user_source_data(user, db)
+    if not grants and not prices:
+        return None
+
+    timeline = get_timeline(user.id, grants, prices, loans, initial_price)
+    loan_payments = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).order_by(LoanPayment.date).all()
+    sales = db.query(Sale).filter(Sale.user_id == user.id).all()
+    ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
+    ts_dict = {
+        "federal_income_rate": ts_row.federal_income_rate,
+        "federal_lt_cg_rate": ts_row.federal_lt_cg_rate,
+        "federal_st_cg_rate": ts_row.federal_st_cg_rate,
+        "niit_rate": ts_row.niit_rate,
+        "state_income_rate": ts_row.state_income_rate,
+        "state_lt_cg_rate": ts_row.state_lt_cg_rate,
+        "state_st_cg_rate": ts_row.state_st_cg_rate,
+        "lt_holding_days": ts_row.lt_holding_days,
+    } if ts_row else None
+    method = ts_row.lot_selection_method if ts_row else 'epic_lifo'
+    lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
+    db.close()
+
+    enriched = _enrich_timeline(timeline, loans_db, loan_payments, sales, horizon_date=preview_date)
+    if ts_dict:
+        _annotate_sale_taxes(enriched, timeline, ts_dict, lot_order=lot_order)
+
+    liq = next((e for e in enriched if e.get("event_type") == "Liquidation (projected)"), None)
+    if not liq:
+        return None
+
+    liq_year = preview_date.year
+    settled_ids = {s.loan_id for s in sales if s.loan_id is not None and s.date <= preview_date}
+    refinanced_ids = {l.refinances_loan_id for l in loans_db if l.refinances_loan_id is not None}
+    early_paid: dict[int, float] = {}
+    for lp in loan_payments:
+        if lp.date <= preview_date:
+            early_paid[lp.loan_id] = early_paid.get(lp.loan_id, 0.0) + lp.amount
+    outstanding = sum(
+        max(0.0, l.amount - early_paid.get(l.id, 0.0))
+        for l in loans_db
+        if l.loan_year <= liq_year and l.id not in settled_ids and l.id not in refinanced_ids
+    )
+
+    gross = liq.get("gross_proceeds") or 0.0
+    tax = liq.get("estimated_tax") or 0.0
+    net = max(0.0, gross - outstanding - tax)
+    return {
+        "date": preview_date.isoformat(),
+        "gross_proceeds": round(gross, 2),
+        "outstanding_loan_principal": round(outstanding, 2),
+        "estimated_tax": round(tax, 2),
+        "net_cash": round(net, 2),
+        "shares": abs(liq.get("vested_shares") or 0),
+        "share_price": liq.get("share_price") or 0.0,
+    }
 
 
 @router.get("/events")

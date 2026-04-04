@@ -4,7 +4,7 @@ import {
   XAxis, YAxis, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts'
 import { api } from '../../api.ts'
-import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, TaxSettings, SaleEntry, HorizonSettings } from '../../api.ts'
+import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, TaxSettings, SaleEntry, HorizonSettings, ExitPreview } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { useDark } from '../../scaffold/hooks/useDark.ts'
 import OnboardingWizard from '../components/OnboardingWizard.tsx'
@@ -790,34 +790,21 @@ export default function Dashboard() {
 
   const pendingExitChanged = pendingExitDate !== (exitDate ?? '')
 
-  // Local cash-out estimate for the pending exit date — approximate, shown before committing
-  const estimatedExitCashOut = useMemo(() => {
-    if (!pendingExitDate || !events || !loans) return null
-    let cumShares = 0, cumCapGains = 0
-    for (const e of events) {
-      if (e.date <= pendingExitDate) { cumShares = e.cum_shares; cumCapGains = e.cum_cap_gains }
-      else break
+  const [exitPreview, setExitPreview] = useState<ExitPreview | null | 'loading'>(null)
+
+  useEffect(() => {
+    if (!pendingExitChanged || !pendingExitDate) {
+      setExitPreview(null)
+      return
     }
-    let price = 0
-    if (prices) {
-      for (const p of prices) {
-        if (p.effective_date <= pendingExitDate) price = p.price
-        else break
-      }
-    }
-    if (!price || !cumShares) return null
-    const gross = cumShares * price
-    const year = parseInt(pendingExitDate.slice(0, 4), 10)
-    const refinancedIds = new Set(loans.map(l => l.refinances_loan_id).filter((id): id is number => id !== null))
-    const principal = loans
-      .filter(l => l.loan_year <= year && !refinancedIds.has(l.id))
-      .reduce((sum, l) => sum + l.amount, 0)
-    const ltcgRate = taxSettings
-      ? taxSettings.federal_lt_cg_rate + taxSettings.niit_rate + taxSettings.state_lt_cg_rate
-      : 0
-    const taxEst = cumCapGains * ltcgRate
-    return { gross, principal, taxEst, net: Math.max(0, gross - principal - taxEst) }
-  }, [pendingExitDate, events, prices, loans, taxSettings])
+    setExitPreview('loading')
+    const timer = setTimeout(() => {
+      api.previewExit(pendingExitDate)
+        .then(result => setExitPreview(result))
+        .catch(() => setExitPreview(null))
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [pendingExitChanged, pendingExitDate])
 
   async function applyExitDate(date: string | null) {
     setSavingExit(true)
@@ -1070,18 +1057,20 @@ export default function Dashboard() {
         </div>
         {pendingExitChanged && (
           <div className="mt-2 rounded-md bg-stone-50 px-3 py-2 dark:bg-slate-800/60">
-            {pendingExitDate && estimatedExitCashOut ? (
+            {!pendingExitDate ? (
+              <p className="text-xs text-gray-500 dark:text-slate-400">This will remove your exit scenario</p>
+            ) : exitPreview === 'loading' ? (
+              <p className="text-xs text-gray-400 dark:text-slate-500">Calculating…</p>
+            ) : exitPreview ? (
               <p className="text-xs text-gray-600 dark:text-slate-400">
-                Est. cash out:{' '}
-                <span className="font-semibold text-gray-900 dark:text-slate-100">{fmt$(estimatedExitCashOut.net)}</span>
+                Cash out:{' '}
+                <span className="font-semibold text-gray-900 dark:text-slate-100">{fmt$(exitPreview.net_cash)}</span>
                 <span className="ml-1 text-gray-400 dark:text-slate-500">
-                  (gross {fmt$(estimatedExitCashOut.gross)}, loans {fmt$(estimatedExitCashOut.principal)}, ~tax {fmt$(estimatedExitCashOut.taxEst)})
+                  (gross {fmt$(exitPreview.gross_proceeds)}, loans {fmt$(exitPreview.outstanding_loan_principal)}, tax {fmt$(exitPreview.estimated_tax)})
                 </span>
               </p>
-            ) : pendingExitDate ? (
-              <p className="text-xs text-gray-400 dark:text-slate-500">No price data for this date — apply to see exact figures</p>
             ) : (
-              <p className="text-xs text-gray-500 dark:text-slate-400">This will remove your exit scenario</p>
+              <p className="text-xs text-gray-400 dark:text-slate-500">No price data for this date</p>
             )}
             <div className="mt-1.5 flex items-center gap-2">
               <button

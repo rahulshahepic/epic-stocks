@@ -319,6 +319,9 @@ export const api = {
   adminGetEpicMode: () => apiFetch<{ active: boolean }>('/api/admin/epic-mode'),
   adminSetEpicMode: (active: boolean) =>
     post<{ active: boolean }>('/api/admin/epic-mode', { active }),
+  adminGetFlexiblePayoff: () => apiFetch<{ active: boolean }>('/api/admin/flexible-payoff'),
+  adminSetFlexiblePayoff: (active: boolean) =>
+    post<{ active: boolean }>('/api/admin/flexible-payoff', { active }),
   adminRotationStatus: () =>
     apiFetch<{ snapshot_exists: boolean; maintenance_active: boolean }>('/api/admin/rotation-status'),
   adminRotationRestore: () =>
@@ -491,6 +494,8 @@ export interface TaxSettings {
   state_st_cg_rate: number
   lt_holding_days: number
   lot_selection_method: 'fifo' | 'lifo' | 'epic_lifo' | 'manual_tranche'
+  loan_payoff_method: 'epic_lifo' | 'same_tranche' | 'lifo' | 'fifo'
+  flexible_payoff_enabled: boolean
   prefer_stock_dp: boolean
   dp_min_percent: number
   dp_min_cap: number

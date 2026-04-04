@@ -550,12 +550,13 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
         if ln["loan_type"] == "Tax" and ln["loan_year"] <= today.year
     )
 
-    # Cash received from cash-out sales (no loan_id)
+    # Cash received from cash-out sales (no loan_id) — taxes subtracted after sale loop below
     sales_db = db.query(Sale).filter(Sale.user_id == user.id).all()
-    cash_received = round(sum(
+    cash_received_gross = sum(
         s.shares * s.price_per_share for s in sales_db
         if s.loan_id is None and s.date <= today
-    ), 2)
+    )
+    cash_sale_taxes = 0.0
 
     if not grants and not prices:
         return {
@@ -598,6 +599,8 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
                 continue
             result = compute_sale_tax(sorted_tl_dash, {"date": s.date, "shares": s.shares, "price_per_share": s.price_per_share}, ts_dict_dash)
             total_tax_paid += result["estimated_tax"]
+            if s.loan_id is None:
+                cash_sale_taxes += result["estimated_tax"]
             sentinel = {
                 "date": datetime.combine(s.date, datetime.min.time()),
                 "event_type": "Sale",
@@ -668,7 +671,7 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
         "total_cap_gains": round(last.get("cum_cap_gains", 0) - interest_deduction_total, 2),
         "total_loan_principal": sum(ln["amount"] for ln in loans),
         "total_tax_paid": round(total_tax_paid - tax_savings_from_deduction, 2),
-        "cash_received": cash_received,
+        "cash_received": round(cash_received_gross - cash_sale_taxes, 2),
         "interest_deduction_total": round(interest_deduction_total, 2),
         "tax_savings_from_deduction": round(tax_savings_from_deduction, 2),
         "loan_payment_by_year": sorted(loan_payment_by_year.values(), key=lambda x: x["year"]),

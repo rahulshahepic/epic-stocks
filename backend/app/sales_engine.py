@@ -111,7 +111,14 @@ def build_fifo_lots(
                         lots[0][1] -= to_reduce
                         to_reduce = 0
 
-    if order in ('lifo', 'epic_lifo'):
+    # FIFO = "first acquired" not "first vested".  For Purchase grants, hold_start
+    # (exercise date) predates vest_date by years, so lots built in vest_date timeline
+    # order are not in acquisition order.  Re-sort by (hold_start, vest_date) so that
+    # Purchase lots exercised in 2018 sort before RSU lots that vested in 2021, even if
+    # those Purchase tranches have a later vest_date.
+    if order == 'fifo':
+        lots = deque(sorted(lots, key=lambda l: (_to_date(l[5]), _to_date(l[0]))))
+    elif order in ('lifo', 'epic_lifo'):
         lots = deque(reversed(lots))
 
     if order == 'epic_lifo':

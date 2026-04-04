@@ -12,7 +12,7 @@ import database
 
 logger = logging.getLogger(__name__)
 from scaffold.routers import auth_router, admin, notifications, push
-from app.routers import grants, loans, prices, events, flows, import_export, sales, horizon, cache as cache_router
+from app.routers import grants, loans, prices, events, flows, import_export, sales, horizon, cache as cache_router, tips
 from scaffold.auth import get_current_user
 from scaffold.crypto import encryption_enabled, decrypt_user_key, set_current_key
 from database import get_db
@@ -534,6 +534,7 @@ _fastapi_app.include_router(sales.tax_router)
 _fastapi_app.include_router(loans.lp_router)
 _fastapi_app.include_router(horizon.router)
 _fastapi_app.include_router(cache_router.router)
+_fastapi_app.include_router(tips.router)
 
 
 @_fastapi_app.get("/api/health")

@@ -1,5 +1,5 @@
 from datetime import datetime, date, timezone
-from sqlalchemy import Integer, String, Float, BigInteger, Date, DateTime, ForeignKey, Boolean, JSON
+from sqlalchemy import Integer, String, Float, BigInteger, Date, DateTime, ForeignKey, Boolean, JSON, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
 from scaffold.crypto import EncryptedFloat, EncryptedInt, EncryptedString
@@ -239,6 +239,19 @@ class SystemMetric(Base):
     cache_l2_hits: Mapped[int | None] = mapped_column(Integer, nullable=True)
     cache_misses: Mapped[int | None] = mapped_column(Integer, nullable=True)
     cache_l2_key_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class TipAcceptance(Base):
+    __tablename__ = "tip_acceptances"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    tip_type: Mapped[str] = mapped_column(String, nullable=False)
+    savings_estimate: Mapped[float] = mapped_column(Float, nullable=False)
+    accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    __table_args__ = (
+        UniqueConstraint('user_id', 'tip_type', name='uq_tip_acceptance_user_type'),
+    )
 
 
 class SystemSettings(Base):

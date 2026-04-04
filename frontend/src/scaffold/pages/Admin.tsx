@@ -278,7 +278,7 @@ export default function Admin() {
       )}
 
       {/* Smart Tips Report */}
-      {tipsReport && (
+      {tipsReport && typeof tipsReport.total_estimated_savings === 'number' && tipsReport.unique_users_accepted > 0 && (
         <section className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
           <h3 className="text-sm font-medium text-gray-900 dark:text-slate-100">Smart Tips</h3>
           <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">

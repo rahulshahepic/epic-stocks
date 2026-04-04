@@ -24,6 +24,7 @@ function mockFetch(responses: Record<string, unknown>) {
     if (url.includes('/api/admin/db-tables')) return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
     if (url.includes('/api/admin/errors')) return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
     if (url.includes('/api/admin/epic-mode')) return new Response(JSON.stringify({ active: false }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    if (url.includes('/api/admin/tips-report')) return new Response(JSON.stringify({ unique_users_accepted: 0, total_estimated_savings: 0, by_type: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     return new Response('{}', { status: 200 })
   })
 }
@@ -414,6 +415,51 @@ describe('Admin', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/PostgreSQL baseline/)).toBeInTheDocument()
+    })
+  })
+
+  // ============================================================
+  // SMART TIPS REPORT SECTION
+  // ============================================================
+
+  it('renders Smart Tips section when tips data is present', async () => {
+    const TIPS_REPORT = {
+      unique_users_accepted: 7,
+      total_estimated_savings: 42500,
+      by_type: [
+        { type: 'exit_date', unique_users: 3, total_savings: 18000 },
+        { type: 'deduction', unique_users: 2, total_savings: 9500 },
+        { type: 'method', unique_users: 2, total_savings: 15000 },
+      ],
+    }
+    mockFetch({
+      '/api/admin/stats': STATS,
+      '/api/admin/users': USERS_RESPONSE,
+      '/api/admin/blocked': [],
+      '/api/admin/tips-report': TIPS_REPORT,
+    })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Smart Tips')).toBeInTheDocument()
+      expect(screen.getByText('7')).toBeInTheDocument()             // unique_users_accepted
+      expect(screen.getByText('$42,500')).toBeInTheDocument()       // total_estimated_savings
+      expect(screen.getByText('exit date')).toBeInTheDocument()     // type label
+      expect(screen.getByText('$18,000 saved')).toBeInTheDocument() // per-type savings
+    })
+  })
+
+  it('hides Smart Tips section when no tips have been accepted', async () => {
+    mockFetch({
+      '/api/admin/stats': STATS,
+      '/api/admin/users': USERS_RESPONSE,
+      '/api/admin/blocked': [],
+      '/api/admin/tips-report': { unique_users_accepted: 0, total_estimated_savings: 0, by_type: [] },
+    })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.queryByText('Smart Tips')).not.toBeInTheDocument()
     })
   })
 })

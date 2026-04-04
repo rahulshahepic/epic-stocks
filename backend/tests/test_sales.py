@@ -880,3 +880,125 @@ def test_payoff_sale_uses_price_at_loan_due_date_not_final_price(client):
             f"cum_shares went negative ({e['cum_shares']}) at {e['date']} ({e['event_type']}). "
             "Payoff sale share count computed with wrong (far-future) price."
         )
+
+
+# ============================================================
+# PRIOR SALE LOT SENTINEL TESTS (lot-tracking fix)
+# ============================================================
+
+def test_prior_sale_lot_removes_specific_lot():
+    """'Prior Sale Lot' sentinel removes the targeted lot, not just the oldest."""
+    events = [
+        _make_vesting_event(date(2022, 1, 1), 1000, 5.0),   # Lot 1 (old, LTCG)
+        _make_vesting_event(date(2024, 1, 1), 1000, 40.0),  # Lot 2 (new, STCG → later LTCG)
+        # Sentinel: prior LIFO sale consumed Lot 2 (the newer/STCG lot)
+        {
+            "date": date(2024, 7, 1),
+            "event_type": "Prior Sale Lot",
+            "target_vest_date": date(2024, 1, 1),
+            "target_grant_year": None,
+            "target_grant_type": None,
+            "shares_consumed": 1000,
+            "vested_shares": 0,
+            "grant_price": None,
+            "share_price": 0.0,
+        },
+    ]
+    lots = build_fifo_lots(events, date(2025, 1, 1))
+    # Only Lot 1 (old, low-basis) should remain — Lot 2 was consumed by the prior sale
+    assert len(lots) == 1
+    assert lots[0][2] == 5.0   # basis of Lot 1
+    assert lots[0][1] == 1000
+
+
+def test_prior_sale_lot_partial_removal():
+    """'Prior Sale Lot' sentinel handles partial lot removal correctly."""
+    events = [
+        _make_vesting_event(date(2023, 1, 1), 1000, 20.0),
+        {
+            "date": date(2024, 1, 1),
+            "event_type": "Prior Sale Lot",
+            "target_vest_date": date(2023, 1, 1),
+            "target_grant_year": None,
+            "target_grant_type": None,
+            "shares_consumed": 400,
+            "vested_shares": 0,
+            "grant_price": None,
+            "share_price": 0.0,
+        },
+    ]
+    lots = build_fifo_lots(events, date(2025, 1, 1))
+    assert len(lots) == 1
+    assert lots[0][1] == 600
+    assert lots[0][2] == 20.0
+
+
+def test_lifo_multi_sale_lot_tracking():
+    """
+    Regression: with two sales using LIFO, the second sale must see the lots
+    that actually remain after the first sale (old low-basis lots), not the
+    lots the old FIFO-sentinel approach would have left (new high-basis lots).
+
+    Setup:
+      Lot 1: vest 2022-01-01, basis $5  (LTCG at both sales)
+      Lot 2: vest 2024-01-01, basis $40 (STCG at Sale 1, LTCG by Sale 2)
+
+    LIFO at Sale 1 (2024-07-01 @ $50): consumes Lot 2 (newest).
+      gain = 1000 × ($50 - $40) = $10k STCG   → tax ≈ $4,845
+
+    After Sale 1, only Lot 1 remains (basis $5).
+    Sale 2 (2025-07-01 @ $30): should consume Lot 1.
+      gain = 1000 × ($30 - $5)  = $25k LTCG   → tax ≈ $7,290
+
+    Old sentinel bug: would have left Lot 2 "available" for Sale 2 and
+    shown $0 tax (loss on Lot 2), making LIFO appear falsely cheaper.
+    """
+    from app.routers.events import _annotate_sale_taxes, _sort_key
+    from datetime import datetime as dt
+
+    vesting_tl = [
+        {**_make_vesting_event(date(2022, 1, 1), 1000, 5.0),
+         "grant_year": None, "grant_type": None},
+        {**_make_vesting_event(date(2024, 1, 1), 1000, 40.0),
+         "grant_year": None, "grant_type": None},
+    ]
+    # Add fields compute_timeline would normally provide
+    for e in vesting_tl:
+        e.setdefault("grant_year", None)
+        e.setdefault("grant_type", None)
+
+    enriched = [
+        {
+            "date": dt.combine(date(2024, 7, 1), dt.min.time()),
+            "event_type": "Sale",
+            "vested_shares": -1000,
+            "gross_proceeds": 1000 * 50.0,
+            "share_price": 50.0,
+            "sale_id": 1,
+        },
+        {
+            "date": dt.combine(date(2025, 7, 1), dt.min.time()),
+            "event_type": "Sale",
+            "vested_shares": -1000,
+            "gross_proceeds": 1000 * 30.0,
+            "share_price": 30.0,
+            "sale_id": 2,
+        },
+    ]
+
+    _annotate_sale_taxes(enriched, vesting_tl, WI_DEFAULTS, lot_order='lifo')
+
+    sale1_tax = enriched[0]["estimated_tax"]
+    sale2_tax = enriched[1]["estimated_tax"]
+
+    # Sale 1: 1000 shares STCG (basis $40, price $50 → $10k gain)
+    # ST rate = 0.37 + 0.038 + 0.0765 = 0.4845 → tax ≈ $4,845
+    assert abs(sale1_tax - 4845.0) < 10, f"Sale 1 tax wrong: {sale1_tax}"
+
+    # Sale 2: 1000 shares LTCG (basis $5, price $30 → $25k gain)
+    # LT rate = 0.20 + 0.038 + 0.0536 = 0.2916 → tax ≈ $7,290
+    assert sale2_tax > 5000, (
+        f"Sale 2 tax suspiciously low ({sale2_tax}): sentinel bug may have left "
+        "high-basis Lot 2 available instead of low-basis Lot 1."
+    )
+    assert abs(sale2_tax - 7290.0) < 10, f"Sale 2 tax wrong: {sale2_tax}"

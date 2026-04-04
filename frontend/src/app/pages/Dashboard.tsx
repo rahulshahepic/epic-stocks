@@ -766,7 +766,7 @@ export default function Dashboard() {
   const { data: loans } = useApiData<LoanEntry[]>(fetchLoans)
   const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
   const { data: sales } = useApiData<SaleEntry[]>(fetchSales)
-  const { data: horizonSettings } = useApiData<HorizonSettings>(fetchHorizon)
+  const { data: horizonSettings, reload: reloadHorizon } = useApiData<HorizonSettings>(fetchHorizon)
   const c = useChartColors()
   const [rangeInterest, setRangeInterest] = useState<DateRange>({ mode: 'all', start: '', end: '' })
   const [rangeLoan, setRangeLoan] = useState<DateRange>({ mode: 'all', start: '', end: '' })
@@ -1025,7 +1025,7 @@ export default function Dashboard() {
         </p>
       )}
 
-      <TipCarousel onApply={reloadEvents} />
+      <TipCarousel onApply={() => { reloadEvents(); reloadHorizon() }} />
 
       {/* (F) aria-live so screen readers announce summary updates when cardDate changes */}
       <div aria-live="polite" aria-atomic="true" className="grid grid-cols-2 gap-3 sm:grid-cols-3">

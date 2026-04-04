@@ -8,6 +8,7 @@ import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, TaxSettings, 
 import { useApiData } from '../hooks/useApiData.ts'
 import { useDark } from '../../scaffold/hooks/useDark.ts'
 import OnboardingWizard from '../components/OnboardingWizard.tsx'
+import TipCarousel from '../components/TipCarousel.tsx'
 
 function fmt$(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
@@ -1023,6 +1024,8 @@ export default function Dashboard() {
           Projecting beyond your exit date — exit date not applied
         </p>
       )}
+
+      <TipCarousel onApply={reloadEvents} />
 
       {/* (F) aria-live so screen readers announce summary updates when cardDate changes */}
       <div aria-live="polite" aria-atomic="true" className="grid grid-cols-2 gap-3 sm:grid-cols-3">

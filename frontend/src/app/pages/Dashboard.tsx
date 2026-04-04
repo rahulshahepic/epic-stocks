@@ -84,7 +84,7 @@ function RangeControls({ range, setRange, maxDate }: { range: DateRange; setRang
         onChange={e => setRange({ mode: 'custom', start: e.target.value, end: range.end || maxDate })}
         className="h-6 rounded border border-gray-300 bg-white px-1 text-xs text-gray-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
       />
-      <span className="text-xs text-stone-500">–</span>
+      <span className="text-xs text-stone-600">–</span>
       <input
         type="date"
         aria-label="Range end date"
@@ -160,7 +160,7 @@ function DetailCard({ items, onClose }: { items: { label: string; value: string 
             </span>
           ))}
         </div>
-        <button onClick={onClose} aria-label="Close detail panel" className="ml-2 shrink-0 text-xs text-stone-500 hover:text-gray-600 dark:hover:text-slate-300">&times;</button>
+        <button onClick={onClose} aria-label="Close detail panel" className="ml-2 shrink-0 text-xs text-stone-600 hover:text-gray-600 dark:hover:text-slate-300">&times;</button>
       </div>
     </div>
   )
@@ -953,7 +953,7 @@ export default function Dashboard() {
   }, [events, loans, sales, taxSettings, dash, cardDate, projectedLiqDate, projectedLiqEvent, ignoringExitDate])
 
   if (dashLoading) {
-    return <p className="p-6 text-center text-sm text-stone-500">Loading...</p>
+    return <p className="p-6 text-center text-sm text-stone-600">Loading...</p>
   }
 
   if (!dash) {
@@ -1084,7 +1084,7 @@ export default function Dashboard() {
         )}
       </div>
       {projectedLiqDate && !ignoringExitDate && (
-        <p className="mt-2 text-center text-xs text-stone-500 dark:text-slate-400">
+        <p className="mt-2 text-center text-xs text-stone-600 dark:text-slate-400">
           Charts show the full event timeline — summary cards above are frozen at the exit date.
         </p>
       )}

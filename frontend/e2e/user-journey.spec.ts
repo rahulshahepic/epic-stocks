@@ -102,7 +102,7 @@ test.describe('Sales journey', () => {
     // Tax column header should be visible
     await expect(page.getByText('Tax').first()).toBeVisible()
     // For vesting events with income/cap gains, orange tax amount should appear
-    const taxCells = page.locator('span.text-orange-600, span.text-orange-400')
+    const taxCells = page.locator('span.text-orange-700')
     await expect(taxCells.first()).toBeVisible({ timeout: 5000 })
   })
 })

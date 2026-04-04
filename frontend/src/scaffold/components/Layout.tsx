@@ -54,7 +54,7 @@ export default function Layout() {
           <button
             onClick={logout}
             aria-label="Sign out of your account"
-            className="text-xs text-stone-500 hover:text-stone-700 dark:text-slate-400 dark:hover:text-slate-200"
+            className="text-xs text-stone-600 hover:text-stone-800 dark:text-slate-400 dark:hover:text-slate-200"
           >
             Sign Out
           </button>
@@ -70,7 +70,7 @@ export default function Layout() {
                 `whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                   isActive
                     ? 'bg-rose-700 text-white dark:bg-rose-600 dark:text-white'
-                    : 'text-stone-500 hover:bg-stone-100 hover:text-stone-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'
+                    : 'text-stone-600 hover:bg-stone-100 hover:text-stone-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'
                 }`
               }
             >
@@ -89,7 +89,7 @@ export default function Layout() {
         <Outlet />
       </main>
 
-      <footer className="border-t border-stone-200 py-4 text-center text-xs text-stone-500 dark:border-slate-800 dark:text-slate-400">
+      <footer className="border-t border-stone-200 py-4 text-center text-xs text-stone-600 dark:border-slate-800 dark:text-slate-400">
         <Link
           to="/privacy"
           className="underline hover:text-stone-600 dark:hover:text-slate-300"

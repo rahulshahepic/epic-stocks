@@ -119,7 +119,7 @@ export default function Settings() {
       {/* Display Settings */}
       <section className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
         <h3 className="text-sm font-medium text-stone-900 dark:text-slate-100">Display</h3>
-        <p className="mt-1 text-xs text-stone-500 dark:text-slate-400">
+        <p className="mt-1 text-xs text-stone-600 dark:text-slate-400">
           Choose your preferred color scheme.
         </p>
         <div className="mt-3 inline-flex rounded-md border border-stone-200 dark:border-slate-700 overflow-hidden">
@@ -145,18 +145,18 @@ export default function Settings() {
       {(!!config?.vapid_public_key || supported || config?.email_notifications_available) && (
         <section className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
           <h3 className="text-sm font-medium text-stone-900 dark:text-slate-100">Notifications</h3>
-          <p className="mt-1 text-xs text-stone-500 dark:text-slate-400">
+          <p className="mt-1 text-xs text-stone-600 dark:text-slate-400">
             Get notified when you have vesting, exercise, or loan repayment events.
           </p>
 
           <div className="mt-3 space-y-3">
             {/* Push */}
             {!supported && config?.vapid_public_key ? (
-              <p className="text-xs text-stone-500 dark:text-slate-400">
+              <p className="text-xs text-stone-600 dark:text-slate-400">
                 Push notifications are not supported in this browser.
               </p>
             ) : supported && !config?.vapid_public_key ? (
-              <p className="text-xs text-stone-500 dark:text-slate-400">
+              <p className="text-xs text-stone-600 dark:text-slate-400">
                 Push notifications are not configured on this server.
               </p>
             ) : supported && config?.vapid_public_key ? (
@@ -205,7 +205,7 @@ export default function Settings() {
               <div className="flex items-center justify-between border-t border-stone-100 pt-3 dark:border-slate-800">
                 <div>
                   <span className="text-xs text-stone-700 dark:text-slate-300">Notify me</span>
-                  <p className="text-[11px] text-stone-500 dark:text-slate-400">When to send the notification</p>
+                  <p className="text-[11px] text-stone-600 dark:text-slate-400">When to send the notification</p>
                 </div>
                 <select
                   aria-label="Notification timing"
@@ -226,7 +226,7 @@ export default function Settings() {
               <div className="flex items-center justify-between border-t border-stone-100 pt-3 dark:border-slate-800">
                 <div>
                   <span className="text-xs text-stone-700 dark:text-slate-300">Test push</span>
-                  <p className="text-[11px] text-stone-500 dark:text-slate-400">Confirm notifications are working</p>
+                  <p className="text-[11px] text-stone-600 dark:text-slate-400">Confirm notifications are working</p>
                 </div>
                 <button
                   onClick={sendTestPush}
@@ -238,7 +238,7 @@ export default function Settings() {
               </div>
             )}
 
-            <p aria-live="polite" className="text-xs text-stone-500 dark:text-slate-400">{pushTestResult ?? ''}</p>
+            <p aria-live="polite" className="text-xs text-stone-600 dark:text-slate-400">{pushTestResult ?? ''}</p>
           </div>
         </section>
       )}
@@ -254,20 +254,20 @@ export default function Settings() {
             >Edit</button>
           )}
         </div>
-        <p className="mt-1 text-xs text-stone-500 dark:text-slate-400">
+        <p className="mt-1 text-xs text-stone-600 dark:text-slate-400">
           Controls how down payment shares are calculated when adding a new purchase.
         </p>
 
         {taxSettings && !editingDp && (
           <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
             <div className="flex justify-between col-span-2">
-              <dt className="text-stone-500 dark:text-slate-400">Prefer stock for DP</dt>
+              <dt className="text-stone-600 dark:text-slate-400">Prefer stock for DP</dt>
               <dd className="font-medium text-stone-700 dark:text-slate-300">
                 {taxSettings.prefer_stock_dp ? 'Yes — auto-calculate DP shares' : 'No — manual'}
               </dd>
             </div>
             <div className="flex justify-between col-span-2">
-              <dt className="text-stone-500 dark:text-slate-400">Min DP rule</dt>
+              <dt className="text-stone-600 dark:text-slate-400">Min DP rule</dt>
               <dd className="font-medium text-stone-700 dark:text-slate-300">
                 {taxSettings.dp_min_percent > 0 || taxSettings.dp_min_cap > 0
                   ? `min(${(taxSettings.dp_min_percent * 100).toFixed(0)}%, $${taxSettings.dp_min_cap.toLocaleString()})`
@@ -292,7 +292,7 @@ export default function Settings() {
                 </span>
               </label>
               <label className="block">
-                <span className="text-xs text-stone-500 dark:text-slate-400">Min DP % of purchase</span>
+                <span className="text-xs text-stone-600 dark:text-slate-400">Min DP % of purchase</span>
                 <input
                   type="number" step="0.1" min="0" max="100"
                   value={+(taxForm.dp_min_percent * 100).toFixed(2)}
@@ -301,7 +301,7 @@ export default function Settings() {
                 />
               </label>
               <label className="block">
-                <span className="text-xs text-stone-500 dark:text-slate-400">Min DP cap ($)</span>
+                <span className="text-xs text-stone-600 dark:text-slate-400">Min DP cap ($)</span>
                 <input
                   type="number" step="1000" min="0"
                   value={taxForm.dp_min_cap}
@@ -327,7 +327,7 @@ export default function Settings() {
               </button>
               <button
                 onClick={() => setEditingDp(false)}
-                className="rounded-md px-3 py-1.5 text-xs text-stone-500 hover:text-stone-700 dark:hover:text-slate-300"
+                className="rounded-md px-3 py-1.5 text-xs text-stone-600 hover:text-stone-700 dark:hover:text-slate-300"
               >
                 Cancel
               </button>
@@ -347,7 +347,7 @@ export default function Settings() {
             >Edit</button>
           )}
         </div>
-        <p className="mt-1 text-xs text-stone-500 dark:text-slate-400">
+        <p className="mt-1 text-xs text-stone-600 dark:text-slate-400">
           Wisconsin defaults. Used to estimate tax on share sales. 30% exclusion on qualifying LT gains is baked into state LT rate.
         </p>
 
@@ -363,16 +363,16 @@ export default function Settings() {
               ['State ST CG', taxSettings.state_st_cg_rate],
             ].map(([label, val]) => (
               <div key={label as string} className="flex justify-between">
-                <dt className="text-stone-500 dark:text-slate-400">{label}</dt>
+                <dt className="text-stone-600 dark:text-slate-400">{label}</dt>
                 <dd className="font-medium text-stone-700 dark:text-slate-300">{((val as number) * 100).toFixed(2)}%</dd>
               </div>
             ))}
             <div className="flex justify-between">
-              <dt className="text-stone-500 dark:text-slate-400">LT Threshold</dt>
+              <dt className="text-stone-600 dark:text-slate-400">LT Threshold</dt>
               <dd className="font-medium text-stone-700 dark:text-slate-300">{taxSettings.lt_holding_days}d</dd>
             </div>
             <div className="flex justify-between col-span-2">
-              <dt className="text-stone-500 dark:text-slate-400">Manual sale lots</dt>
+              <dt className="text-stone-600 dark:text-slate-400">Manual sale lots</dt>
               <dd className="font-medium text-stone-700 dark:text-slate-300">
                 {taxSettings.lot_selection_method === 'fifo' ? 'FIFO (oldest first)' :
                  taxSettings.lot_selection_method === 'lifo' ? 'LIFO (newest first)' :
@@ -381,7 +381,7 @@ export default function Settings() {
               </dd>
             </div>
             <div className="flex justify-between col-span-2 border-t border-stone-100 pt-2 dark:border-slate-800">
-              <dt className="text-stone-500 dark:text-slate-400">Investment interest deduction</dt>
+              <dt className="text-stone-600 dark:text-slate-400">Investment interest deduction</dt>
               <dd className="font-medium text-stone-700 dark:text-slate-300">
                 {taxSettings.deduct_investment_interest ? 'Enabled' : 'Disabled'}
               </dd>
@@ -402,7 +402,7 @@ export default function Settings() {
                 ['State ST CG Rate', 'state_st_cg_rate'],
               ] as [string, keyof TaxSettings][]).map(([label, key]) => (
                 <label key={key} className="block">
-                  <span className="text-xs text-stone-500 dark:text-slate-400">{label}</span>
+                  <span className="text-xs text-stone-600 dark:text-slate-400">{label}</span>
                   <input
                     type="number"
                     step="0.0001"
@@ -413,7 +413,7 @@ export default function Settings() {
                 </label>
               ))}
               <label className="block col-span-2">
-                <span className="text-xs text-stone-500 dark:text-slate-400">Manual Sale Lot Method</span>
+                <span className="text-xs text-stone-600 dark:text-slate-400">Manual Sale Lot Method</span>
                 <select
                   value={taxForm.lot_selection_method}
                   onChange={e => setTaxForm(f => f ? { ...f, lot_selection_method: e.target.value as TaxSettings['lot_selection_method'] } : f)}
@@ -424,7 +424,7 @@ export default function Settings() {
                   <option value="lifo">LIFO — newest lots first</option>
                   <option value="manual_tranche">Manual — pick lots yourself</option>
                 </select>
-                <p className="mt-1 text-[11px] text-stone-500 dark:text-slate-400">
+                <p className="mt-1 text-[11px] text-stone-600 dark:text-slate-400">
                   Applies to manual sales only. Loan payoff sales always use same-tranche selection.
                 </p>
                 <p className="mt-0.5 text-[11px] text-amber-700 dark:text-amber-300">
@@ -432,7 +432,7 @@ export default function Settings() {
                 </p>
               </label>
               <label className="block">
-                <span className="text-xs text-stone-500 dark:text-slate-400">LT Holding Threshold (days)</span>
+                <span className="text-xs text-stone-600 dark:text-slate-400">LT Holding Threshold (days)</span>
                 <input
                   type="number"
                   value={taxForm.lt_holding_days}
@@ -452,7 +452,7 @@ export default function Settings() {
                     <span className="text-xs font-medium text-stone-700 dark:text-slate-300">
                       Estimate investment interest deduction (Form 4952)
                     </span>
-                    <p className="mt-1 text-[11px] text-stone-500 dark:text-slate-400">
+                    <p className="mt-1 text-[11px] text-stone-600 dark:text-slate-400">
                       Investment interest (interest on loans used to buy investments) can be deducted
                       against investment income. You may elect to treat net capital gains as investment
                       income, which reduces your CG tax — at the cost of those gains being taxed as
@@ -488,7 +488,7 @@ export default function Settings() {
               </button>
               <button
                 onClick={() => setEditingTax(false)}
-                className="rounded-md px-3 py-1.5 text-xs text-stone-500 hover:text-stone-700 dark:hover:text-slate-300"
+                className="rounded-md px-3 py-1.5 text-xs text-stone-600 hover:text-stone-700 dark:hover:text-slate-300"
               >
                 Cancel
               </button>
@@ -508,14 +508,14 @@ export default function Settings() {
             >Edit</button>
           )}
         </div>
-        <p className="mt-1 text-xs text-stone-500 dark:text-slate-400">
+        <p className="mt-1 text-xs text-stone-600 dark:text-slate-400">
           Set an exit date to project a full liquidation in your timeline. Defaults to your last vesting date if not set.
         </p>
 
         {!editingHorizon && (
           <dl className="mt-3 text-xs">
             <div className="flex justify-between">
-              <dt className="text-stone-500 dark:text-slate-400">Exit date</dt>
+              <dt className="text-stone-600 dark:text-slate-400">Exit date</dt>
               <dd className="font-medium text-stone-700 dark:text-slate-300">
                 {horizonSettings?.horizon_date ?? 'Last vesting date (auto)'}
               </dd>
@@ -526,7 +526,7 @@ export default function Settings() {
         {editingHorizon && (
           <div className="mt-3 space-y-3">
             <label className="block">
-              <span className="text-xs text-stone-500 dark:text-slate-400">Exit date</span>
+              <span className="text-xs text-stone-600 dark:text-slate-400">Exit date</span>
               <input
                 type="date"
                 value={horizonForm.horizon_date ?? ''}
@@ -566,7 +566,7 @@ export default function Settings() {
               </button>
               <button
                 onClick={() => setEditingHorizon(false)}
-                className="rounded-md px-3 py-1.5 text-xs text-stone-500 hover:text-stone-700 dark:hover:text-slate-300"
+                className="rounded-md px-3 py-1.5 text-xs text-stone-600 hover:text-stone-700 dark:hover:text-slate-300"
               >
                 Cancel
               </button>
@@ -578,7 +578,7 @@ export default function Settings() {
       {/* Account Management */}
       <section className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
         <h3 className="text-sm font-medium text-stone-900 dark:text-slate-100">Account</h3>
-        <p className="mt-1 text-xs text-stone-500 dark:text-slate-400">
+        <p className="mt-1 text-xs text-stone-600 dark:text-slate-400">
           Signed in with Google. All your data is stored securely on the server.
         </p>
         <button
@@ -620,7 +620,7 @@ export default function Settings() {
                 </button>
                 <button
                   onClick={() => setResetConfirm(false)}
-                  className="rounded-md px-3 py-1.5 text-xs text-stone-500 hover:text-stone-700 dark:hover:text-slate-300"
+                  className="rounded-md px-3 py-1.5 text-xs text-stone-600 hover:text-stone-700 dark:hover:text-slate-300"
                 >
                   Cancel
                 </button>
@@ -656,7 +656,7 @@ export default function Settings() {
                 </button>
                 <button
                   onClick={() => setDeleteConfirm(false)}
-                  className="rounded-md px-3 py-1.5 text-xs text-stone-500 hover:text-stone-700 dark:hover:text-slate-300"
+                  className="rounded-md px-3 py-1.5 text-xs text-stone-600 hover:text-stone-700 dark:hover:text-slate-300"
                 >
                   Cancel
                 </button>
@@ -667,7 +667,7 @@ export default function Settings() {
       </section>
 
       {import.meta.env.VITE_COMMIT_SHA && import.meta.env.VITE_COMMIT_SHA !== 'dev' && (
-        <p className="text-center text-xs text-stone-500 dark:text-slate-400">
+        <p className="text-center text-xs text-stone-600 dark:text-slate-400">
           {import.meta.env.VITE_COMMIT_SHA.slice(0, 7)}
         </p>
       )}

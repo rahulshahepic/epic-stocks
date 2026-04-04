@@ -41,7 +41,7 @@ export default function PrivacyPolicy() {
         </div>
 
         <h1 className="mb-1 text-2xl font-bold text-stone-900 dark:text-white">Privacy Policy</h1>
-        <p className="mb-8 text-xs text-stone-500 dark:text-slate-400">Last updated: 2026-03-21</p>
+        <p className="mb-8 text-xs text-stone-600 dark:text-slate-400">Last updated: 2026-03-21</p>
 
         <div className="rounded-lg bg-white p-6 shadow-sm dark:bg-slate-900 md:p-8">
           <P>

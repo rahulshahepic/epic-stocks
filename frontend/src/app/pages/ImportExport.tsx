@@ -247,9 +247,9 @@ export default function ImportExport() {
             />
             <span>
               <span className="font-medium">Generate payoff sales for loans</span>
-              <span className="ml-1 text-stone-500">(recommended)</span>
+              <span className="ml-1 text-stone-600">(recommended)</span>
               <br />
-              <span className="text-stone-500 dark:text-slate-400">For each loan, automatically creates a stock sale sized to cover the payoff after capital gains tax. Only applies when the file includes a Loans sheet.</span>
+              <span className="text-stone-600 dark:text-slate-400">For each loan, automatically creates a stock sale sized to cover the payoff after capital gains tax. Only applies when the file includes a Loans sheet.</span>
             </span>
           </label>
         </div>

@@ -408,7 +408,7 @@ export default function Grants() {
     }
   }
 
-  if (loading) return <p className="p-6 text-center text-sm text-stone-500">Loading...</p>
+  if (loading) return <p className="p-6 text-center text-sm text-stone-600">Loading...</p>
   if (!grants) return <p className="p-6 text-center text-sm text-red-500">Failed to load grants</p>
 
   const showLoanSection = form.type === 'Purchase'
@@ -467,7 +467,7 @@ export default function Grants() {
           {form.type === 'Purchase' && (
             <label className="block">
               <span className="text-xs text-gray-500 dark:text-slate-400">Down Payment Shares</span>
-              <p className="text-[10px] text-stone-500 dark:text-slate-400">Bonus shares used first, then oldest (non-taxable exchange)</p>
+              <p className="text-[10px] text-stone-600 dark:text-slate-400">Bonus shares used first, then oldest (non-taxable exchange)</p>
               <input
                 type="number"
                 value={form.dp_shares}
@@ -644,7 +644,7 @@ export default function Grants() {
                           {hasSale ? '✓ loan+sale' : '✓ loan'}
                         </button>
                       ) : (
-                        <span className="text-[10px] text-stone-500">—</span>
+                        <span className="text-[10px] text-stone-600">—</span>
                       )}
                     </td>
                     <td className="px-3 py-2 text-right">
@@ -660,10 +660,10 @@ export default function Grants() {
                       <td colSpan={9} className="px-3 pb-3 pt-0">
                         <div className="rounded-md bg-stone-50 p-3 dark:bg-slate-800">
                           <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                            <div><span className="text-stone-500 dark:text-slate-400">Amount</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{fmtPrice(loan.amount)}</span></div>
-                            <div><span className="text-stone-500 dark:text-slate-400">Rate</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{(loan.interest_rate * 100).toFixed(2)}%</span></div>
-                            <div><span className="text-stone-500 dark:text-slate-400">Due</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{loan.due_date}</span></div>
-                            <div><span className="text-stone-500 dark:text-slate-400">Loan #</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{loan.loan_number ?? '—'}</span></div>
+                            <div><span className="text-stone-600 dark:text-slate-400">Amount</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{fmtPrice(loan.amount)}</span></div>
+                            <div><span className="text-stone-600 dark:text-slate-400">Rate</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{(loan.interest_rate * 100).toFixed(2)}%</span></div>
+                            <div><span className="text-stone-600 dark:text-slate-400">Due</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{loan.due_date}</span></div>
+                            <div><span className="text-stone-600 dark:text-slate-400">Loan #</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{loan.loan_number ?? '—'}</span></div>
                           </div>
                           {linkedSale ? (
                             <p className="mt-2 text-[10px] text-green-700 dark:text-green-300">
@@ -680,12 +680,12 @@ export default function Grants() {
               )
             })}
             {grants.length === 0 && (
-              <tr><td colSpan={9} className="px-3 py-6 text-center text-stone-500">No grants yet</td></tr>
+              <tr><td colSpan={9} className="px-3 py-6 text-center text-stone-600">No grants yet</td></tr>
             )}
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-stone-500">{grants.length} grants</p>
+      <p className="text-xs text-stone-600">{grants.length} grants</p>
 
       {/* Sell Shares Modal */}
       {sellModal && (
@@ -695,7 +695,7 @@ export default function Grants() {
               <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">
                 Sell Shares — {sellModal.grantType} {sellModal.grantYear}
               </h3>
-              <button onClick={closeSellModal} aria-label="Close dialog" className="text-stone-500 hover:text-gray-600 dark:hover:text-slate-300">✕</button>
+              <button onClick={closeSellModal} aria-label="Close dialog" className="text-stone-600 hover:text-gray-600 dark:hover:text-slate-300">✕</button>
             </div>
 
             <div className="space-y-3">
@@ -732,7 +732,7 @@ export default function Grants() {
               </label>
 
               {sellEstimateLoading && (
-                <p className="text-center text-xs text-stone-500">Estimating...</p>
+                <p className="text-center text-xs text-stone-600">Estimating...</p>
               )}
 
               {sellEstimate && !sellEstimateLoading && (

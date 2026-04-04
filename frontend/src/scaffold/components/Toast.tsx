@@ -41,15 +41,20 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const colors: Record<ToastType, string> = {
-    error: 'bg-red-600 dark:bg-red-700',
-    success: 'bg-emerald-600 dark:bg-emerald-700',
-    info: 'bg-indigo-600 dark:bg-indigo-700',
+    error:   'bg-rose-700 dark:bg-rose-600',
+    success: 'bg-emerald-700 dark:bg-emerald-600',
+    info:    'bg-sky-600 dark:bg-sky-500',
   }
 
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
-      <div className="fixed bottom-4 left-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
+      {/* (F) aria-live region so screen readers announce toasts */}
+      <div
+        aria-live="polite"
+        aria-atomic="false"
+        className="fixed bottom-4 left-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"
+      >
         {toasts.map((t) => (
           <div
             key={t.id}

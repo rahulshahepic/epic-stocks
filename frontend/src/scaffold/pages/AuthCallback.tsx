@@ -56,14 +56,14 @@ export default function AuthCallback() {
 
   if (error) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 dark:bg-gray-950">
+      <div className="flex min-h-screen flex-col items-center justify-center bg-stone-50 px-4 dark:bg-slate-950">
         <div className="w-full max-w-sm text-center">
-          <p className="mb-4 rounded bg-red-50 p-3 text-sm text-red-600 dark:bg-red-900/30 dark:text-red-400">
+          <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-400">
             {error}
           </p>
           <a
             href="/login"
-            className="text-sm text-indigo-600 underline hover:text-indigo-800 dark:text-indigo-400"
+            className="text-sm text-rose-700 underline hover:text-rose-800 dark:text-rose-400"
           >
             Back to sign-in
           </a>
@@ -73,10 +73,10 @@ export default function AuthCallback() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 dark:bg-gray-950">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-stone-50 px-4 dark:bg-slate-950">
       <div className="w-full max-w-sm text-center">
-        <div className="mb-4 h-3 w-3 mx-auto animate-pulse rounded-full bg-indigo-400" />
-        <p className="text-sm text-gray-500 dark:text-gray-400">Completing sign-in…</p>
+        <div className="mb-4 h-3 w-3 mx-auto animate-pulse rounded-full bg-rose-500" />
+        <p className="text-sm text-stone-500 dark:text-slate-400">Completing sign-in…</p>
       </div>
     </div>
   )

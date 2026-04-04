@@ -28,13 +28,13 @@ function StepIndicator({ step }: { step: Step }) {
         const active = num === current
         return (
           <div key={s} className="flex items-center gap-1.5">
-            {i > 0 && <div className={`h-px w-4 shrink-0 ${done ? 'bg-indigo-400' : 'bg-gray-200 dark:bg-gray-700'}`} />}
+            {i > 0 && <div className={`h-px w-4 shrink-0 ${done ? 'bg-rose-500' : 'bg-gray-200 dark:bg-slate-700'}`} />}
             <div className={`flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
               done
-                ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-400'
+                ? 'bg-rose-50 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400'
                 : active
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-600'
+                  ? 'bg-rose-700 text-white'
+                  : 'bg-gray-100 text-gray-400 dark:bg-slate-800 dark:text-slate-600'
             }`}>
               <span>{num}</span>
               <span className="hidden sm:inline">{labels[i]}</span>
@@ -55,14 +55,14 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="text-xs text-gray-500 dark:text-gray-400">{label}</span>
+      <span className="text-xs text-gray-500 dark:text-slate-400">{label}</span>
       <input
         type={type}
         step={step}
         min={min}
         value={value}
         onChange={e => onChange(e.target.value)}
-        className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+        className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
       />
     </label>
   )
@@ -157,29 +157,29 @@ export default function OnboardingWizard({ onComplete }: { onComplete: () => voi
       <StepIndicator step={step} />
 
       {step === 'welcome' && (
-        <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-6 dark:border-indigo-800 dark:bg-indigo-950/40">
+        <div className="rounded-lg border border-rose-200 bg-rose-50 p-6 dark:border-rose-800 dark:bg-rose-950/30">
           <h2 className="text-base font-semibold text-indigo-900 dark:text-indigo-200">
             Let's set up your equity tracker.
           </h2>
-          <p className="mt-1 text-sm text-indigo-700 dark:text-indigo-300">
+          <p className="mt-1 text-sm text-rose-700 dark:text-rose-300">
             How would you like to get started?
           </p>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <button
               onClick={() => navigate('/import')}
-              className="flex flex-col rounded-lg border-2 border-indigo-400 bg-white p-4 text-left hover:border-indigo-600 hover:shadow-md dark:border-indigo-500 dark:bg-gray-900 dark:hover:border-indigo-400"
+              className="flex flex-col rounded-lg border-2 border-rose-400 bg-white p-4 text-left hover:border-rose-600 hover:shadow-md dark:border-rose-500 dark:bg-slate-900 dark:hover:border-rose-400"
             >
-              <span className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">Import Excel</span>
-              <span className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              <span className="text-sm font-semibold text-rose-700 dark:text-rose-300">Import Excel</span>
+              <span className="mt-1 text-xs text-gray-500 dark:text-slate-400">
                 Upload a spreadsheet with your grant and loan data.
               </span>
             </button>
             <button
               onClick={() => setStep('grant')}
-              className="flex flex-col rounded-lg border-2 border-gray-200 bg-white p-4 text-left hover:border-indigo-400 hover:shadow-md dark:border-gray-700 dark:bg-gray-900 dark:hover:border-indigo-500"
+              className="flex flex-col rounded-lg border-2 border-stone-200 bg-white p-4 text-left hover:border-rose-400 hover:shadow-md dark:border-slate-700 dark:bg-slate-900 dark:hover:border-rose-500"
             >
-              <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Enter manually</span>
-              <span className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              <span className="text-sm font-semibold text-gray-900 dark:text-slate-100">Enter manually</span>
+              <span className="mt-1 text-xs text-gray-500 dark:text-slate-400">
                 Add your first grant and share price step by step.
               </span>
             </button>
@@ -189,7 +189,7 @@ export default function OnboardingWizard({ onComplete }: { onComplete: () => voi
 
       {step === 'grant' && (
         <div className="space-y-4">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Add your first grant</h2>
+          <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Add your first grant</h2>
           {error && <p className="text-xs text-red-500">{error}</p>}
           <div className="flex gap-2">
             {(['Purchase', 'Bonus'] as GrantType[]).map(t => (
@@ -199,8 +199,8 @@ export default function OnboardingWizard({ onComplete }: { onComplete: () => voi
                 onClick={() => setGrantType(t)}
                 className={`rounded-md px-3 py-1 text-xs font-medium ${
                   grantType === t
-                    ? t === 'Purchase' ? 'bg-indigo-600 text-white' : 'bg-emerald-600 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+                    ? t === 'Purchase' ? 'bg-rose-700 text-white' : 'bg-emerald-600 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'
                 }`}
               >
                 {t}
@@ -224,7 +224,7 @@ export default function OnboardingWizard({ onComplete }: { onComplete: () => voi
             <button
               onClick={saveGrant}
               disabled={saving}
-              className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+              className="rounded-md bg-rose-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-800 disabled:opacity-50"
             >
               {saving ? 'Saving...' : 'Next →'}
             </button>
@@ -234,8 +234,8 @@ export default function OnboardingWizard({ onComplete }: { onComplete: () => voi
 
       {step === 'price' && (
         <div className="space-y-4">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Add share prices</h2>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Add share prices</h2>
+          <p className="text-xs text-gray-500 dark:text-slate-400">
             Add at least one price so events can be computed. You can add more on the Prices page later.
           </p>
           {error && <p className="text-xs text-red-500">{error}</p>}
@@ -258,13 +258,13 @@ export default function OnboardingWizard({ onComplete }: { onComplete: () => voi
             <button
               onClick={savePrice}
               disabled={saving}
-              className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+              className="rounded-md bg-rose-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-800 disabled:opacity-50"
             >
               {saving ? 'Saving...' : 'Next →'}
             </button>
             <button
               onClick={() => setStep('tax')}
-              className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700"
+              className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
             >
               Skip
             </button>
@@ -274,8 +274,8 @@ export default function OnboardingWizard({ onComplete }: { onComplete: () => voi
 
       {step === 'tax' && (
         <div className="space-y-4">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Set tax rates</h2>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Set tax rates</h2>
+          <p className="text-xs text-gray-500 dark:text-slate-400">
             Pre-filled with Wisconsin defaults. You can update these on the Settings page anytime.
           </p>
           {error && <p className="text-xs text-red-500">{error}</p>}
@@ -288,13 +288,13 @@ export default function OnboardingWizard({ onComplete }: { onComplete: () => voi
             <button
               onClick={saveTax}
               disabled={saving}
-              className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+              className="rounded-md bg-rose-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-800 disabled:opacity-50"
             >
               {saving ? 'Saving...' : 'Next →'}
             </button>
             <button
               onClick={() => setStep('done')}
-              className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700"
+              className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
             >
               Skip
             </button>

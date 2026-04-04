@@ -68,10 +68,11 @@ function RangeControls({ range, setRange, maxDate }: { range: DateRange; setRang
     <div className="flex items-center gap-1.5">
       <button
         onClick={() => setRange({ mode: 'all', start: '', end: '' })}
+        aria-pressed={isAll}
         className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
           isAll
-            ? 'bg-indigo-600 text-white'
-            : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+            ? 'bg-rose-700 text-white'
+            : 'bg-stone-100 text-stone-600 hover:bg-stone-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'
         }`}
       >
         All
@@ -81,7 +82,7 @@ function RangeControls({ range, setRange, maxDate }: { range: DateRange; setRang
         aria-label="Range start date"
         value={range.mode === 'custom' ? range.start : ''}
         onChange={e => setRange({ mode: 'custom', start: e.target.value, end: range.end || maxDate })}
-        className="h-6 rounded border border-gray-300 bg-white px-1 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+        className="h-6 rounded border border-gray-300 bg-white px-1 text-xs text-gray-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
       />
       <span className="text-xs text-gray-400">–</span>
       <input
@@ -89,7 +90,7 @@ function RangeControls({ range, setRange, maxDate }: { range: DateRange; setRang
         aria-label="Range end date"
         value={range.mode === 'custom' ? range.end : ''}
         onChange={e => setRange({ mode: 'custom', start: range.start || '0000-01-01', end: e.target.value })}
-        className="h-6 rounded border border-gray-300 bg-white px-1 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+        className="h-6 rounded border border-gray-300 bg-white px-1 text-xs text-gray-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
       />
     </div>
   )
@@ -121,13 +122,13 @@ interface ChartColors {
 function useChartColors(): ChartColors {
   const dark = useDark()
   return dark
-    ? { grid: '#374151', axis: '#9ca3af', tooltipBg: '#1f2937', tooltipText: '#f3f4f6' }
-    : { grid: '#e5e7eb', axis: '#6b7280', tooltipBg: '#ffffff', tooltipText: '#111827' }
+    ? { grid: '#1e293b', axis: '#94a3b8', tooltipBg: '#0f172a', tooltipText: '#f1f5f9' }
+    : { grid: '#e7e5e4', axis: '#78716c', tooltipBg: '#ffffff', tooltipText: '#1c1917' }
 }
 
 const CARD_STYLES: Record<string, { bg: string; border: string; label: string }> = {
   price:  { bg: 'bg-amber-50 dark:bg-amber-950/40', border: 'border-amber-200 dark:border-amber-800', label: 'text-amber-700 dark:text-amber-400' },
-  shares: { bg: 'bg-indigo-50 dark:bg-indigo-950/40', border: 'border-indigo-200 dark:border-indigo-800', label: 'text-indigo-700 dark:text-indigo-400' },
+  shares: { bg: 'bg-rose-50 dark:bg-rose-950/30', border: 'border-rose-200 dark:border-rose-800', label: 'text-rose-700 dark:text-rose-400' },
   income: { bg: 'bg-emerald-50 dark:bg-emerald-950/40', border: 'border-emerald-200 dark:border-emerald-800', label: 'text-emerald-700 dark:text-emerald-400' },
   gains:  { bg: 'bg-purple-50 dark:bg-purple-950/40', border: 'border-purple-200 dark:border-purple-800', label: 'text-purple-700 dark:text-purple-400' },
   loans:  { bg: 'bg-red-50 dark:bg-red-950/40', border: 'border-red-200 dark:border-red-800', label: 'text-red-700 dark:text-red-400' },
@@ -142,7 +143,7 @@ function Card({ label, value, variant }: { label: string; value: string; variant
   return (
     <div className={`rounded-lg border p-4 ${s.bg} ${s.border}`}>
       <p className={`text-xs font-medium uppercase ${s.label}`}>{label}</p>
-      <p className="mt-1 text-xl font-semibold text-gray-900 dark:text-gray-100">{value}</p>
+      <p className="mt-1 text-xl font-semibold text-gray-900 dark:text-slate-100">{value}</p>
     </div>
   )
 }
@@ -150,16 +151,16 @@ function Card({ label, value, variant }: { label: string; value: string; variant
 /** Detail card shown below a chart when user clicks a data point */
 function DetailCard({ items, onClose }: { items: { label: string; value: string }[]; onClose: () => void }) {
   return (
-    <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800">
+    <div className="mt-2 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800">
       <div className="flex items-start justify-between">
         <div className="flex flex-wrap gap-x-4 gap-y-0.5">
           {items.map(({ label, value }) => (
-            <span key={label} className="text-xs text-gray-600 dark:text-gray-400">
-              <span className="font-medium text-gray-900 dark:text-gray-200">{value}</span>{' '}{label}
+            <span key={label} className="text-xs text-gray-600 dark:text-slate-400">
+              <span className="font-medium text-gray-900 dark:text-slate-200">{value}</span>{' '}{label}
             </span>
           ))}
         </div>
-        <button onClick={onClose} className="ml-2 shrink-0 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">&times;</button>
+        <button onClick={onClose} aria-label="Close detail panel" className="ml-2 shrink-0 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-slate-300">&times;</button>
       </div>
     </div>
   )
@@ -205,11 +206,11 @@ function SharesChart({ events, c, range, hasFuturePrices, exitDate }: { events: 
           {tIdx !== null && <ReferenceLine x={tIdx} stroke="#f59e0b" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
           {eIdx !== null && <ReferenceLine x={eIdx} stroke="#4ade80" strokeDasharray="4 4" zIndex={600} label={{ value: 'Exit', fontSize: 10, fill: '#4ade80', position: 'top' }} />}
           {selected !== null && selected < data.length && (
-            <ReferenceLine x={selected} stroke="#818cf8" strokeWidth={1.5} zIndex={600} />
+            <ReferenceLine x={selected} stroke="#e11d48" strokeWidth={1.5} zIndex={600} />
           )}
-          <Line type="monotone" dataKey="shares" stroke="#818cf8" strokeWidth={2} dot={false} name="Shares" connectNulls={false} />
+          <Line type="monotone" dataKey="shares" stroke="#e11d48" strokeWidth={2} dot={false} name="Shares" connectNulls={false} />
           {hasFuturePrices && (
-            <Line type="monotone" dataKey="projected" stroke="#818cf8" strokeWidth={2} dot={false} name="Projected" strokeDasharray="6 3" opacity={0.5} connectNulls={false} />
+            <Line type="monotone" dataKey="projected" stroke="#e11d48" strokeWidth={2} dot={false} name="Projected" strokeDasharray="6 3" opacity={0.5} connectNulls={false} />
           )}
         </LineChart>
       </ResponsiveContainer>
@@ -224,6 +225,19 @@ function SharesChart({ events, c, range, hasFuturePrices, exitDate }: { events: 
           ]}
         />
       )}
+      {/* (D) Screen-reader summary table */}
+      <table className="sr-only" aria-label="Cumulative shares data">
+        <thead><tr><th>Date</th><th>Cumulative Shares</th><th>Event</th></tr></thead>
+        <tbody>
+          {data.filter((_, i) => i % Math.max(1, Math.floor(data.length / 20)) === 0).map(d => (
+            <tr key={d._idx}>
+              <td>{fmtFullDate(d._date)}</td>
+              <td>{fmtNum(d._event.cum_shares)}</td>
+              <td>{d._event.event_type}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </>
   )
 }
@@ -325,6 +339,19 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices, exitDate }: { 
           ]}
         />
       )}
+      {/* (D) Screen-reader summary table */}
+      <table className="sr-only" aria-label="Cumulative income and capital gains data">
+        <thead><tr><th>Date</th><th>Cumulative Income</th><th>Cumulative Cap Gains</th></tr></thead>
+        <tbody>
+          {data.filter((_, i) => i % Math.max(1, Math.floor(data.length / 20)) === 0).map(d => (
+            <tr key={d._idx}>
+              <td>{fmtFullDate(d._date)}</td>
+              <td>{fmt$(d._event.cum_income)}</td>
+              <td>{fmt$(d._event.cum_cap_gains)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </>
   )
 }
@@ -373,7 +400,7 @@ function PriceChart({ prices, c, range, hasFuturePrices, exitDate }: { prices: P
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
           <XAxis dataKey="_idx" type="number" domain={[0, Math.max(0, data.length - 1)]} ticks={numericTicks(data.length)} tickFormatter={(i: number) => data[i]?._label ?? ''} tick={{ fontSize: 10, fill: c.axis }} padding={{ right: 10 }} />
           <YAxis tick={{ fontSize: 10, fill: c.axis }} />
-          {tIdx !== null && <ReferenceLine x={tIdx} stroke="#818cf8" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#818cf8', position: 'top' }} />}
+          {tIdx !== null && <ReferenceLine x={tIdx} stroke="#e11d48" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#e11d48', position: 'top' }} />}
           {eIdx !== null && <ReferenceLine x={eIdx} stroke="#4ade80" strokeDasharray="4 4" zIndex={600} label={{ value: 'Exit', fontSize: 10, fill: '#4ade80', position: 'top' }} />}
           {selected !== null && selected < data.length && (
             <ReferenceLine x={selected} stroke="#fbbf24" strokeWidth={1.5} zIndex={600} />
@@ -393,6 +420,15 @@ function PriceChart({ prices, c, range, hasFuturePrices, exitDate }: { prices: P
           ]}
         />
       )}
+      {/* (D) Screen-reader summary table */}
+      <table className="sr-only" aria-label="Share price history">
+        <thead><tr><th>Date</th><th>Price</th></tr></thead>
+        <tbody>
+          {data.map(d => (
+            <tr key={d._idx}><td>{fmtFullDate(d._date)}</td><td>{fmtPrice(d._price)}</td></tr>
+          ))}
+        </tbody>
+      </table>
     </>
   )
 }
@@ -718,9 +754,9 @@ function ChartBox({ title, children, range, setRange, maxDate }: {
   range?: DateRange; setRange?: (r: DateRange) => void; maxDate?: string
 }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+    <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">{title}</h3>
+        <h3 className="text-sm font-medium text-gray-700 dark:text-slate-300">{title}</h3>
         {range && setRange && <RangeControls range={range} setRange={setRange} maxDate={maxDate ?? '2099-12-31'} />}
       </div>
       {children}
@@ -963,15 +999,15 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       {/* Date selector for card values */}
-      <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-900">
+      <div className="rounded-lg border border-stone-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
         <div className="flex items-center gap-2">
-          <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400">As of</span>
+          <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-slate-400">As of</span>
           <input
             type="date"
             value={cardDate}
             max={maxDate}
             onChange={e => setCardDate(e.target.value)}
-            className="h-7 flex-1 rounded border border-gray-300 bg-white px-2 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+            className="h-7 flex-1 rounded border border-gray-300 bg-white px-2 text-xs text-gray-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
           />
         </div>
         <div className="mt-1.5 flex items-center gap-1.5">
@@ -986,8 +1022,8 @@ export default function Dashboard() {
               title={title}
               className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
                 cardDate === date
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+                  ? 'bg-rose-700 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'
               }`}
             >
               {label}
@@ -1002,7 +1038,8 @@ export default function Dashboard() {
         </p>
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      {/* (F) aria-live so screen readers announce summary updates when cardDate changes */}
+      <div aria-live="polite" aria-atomic="true" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Card label="Share Price" value={fmtPrice(cv.current_price)} variant="price" />
         <Card label="Total Shares" value={fmtNum(cv.total_shares)} variant="shares" />
         <Card label="Total Income" value={fmt$(cv.total_income)} variant="income" />
@@ -1063,7 +1100,7 @@ export default function Dashboard() {
         )}
       </div>
       {projectedLiqDate && !ignoringExitDate && (
-        <p className="mt-2 text-center text-xs text-gray-400 dark:text-gray-500">
+        <p className="mt-2 text-center text-xs text-gray-400 dark:text-slate-500">
           Charts show the full event timeline — summary cards above are frozen at the exit date.
         </p>
       )}

@@ -19,6 +19,44 @@ _THRESHOLD_DEDUCTION = 500.0
 _THRESHOLD_METHOD = 1000.0
 
 
+def _compute_scenario(
+    grants, prices, loans, loans_db, initial_price,
+    loan_payments, sales,
+    ts_dict: dict,
+    lot_order: str,
+    horizon_date,
+    deduct_interest: bool,
+) -> tuple[float, float]:
+    """Return (total_tax, net_cash) for Sale/Liquidation events in the scenario."""
+    timeline = compute_timeline(generate_all_events(grants, prices, loans), initial_price)
+    enriched = _enrich_timeline(timeline, loans_db, loan_payments, sales, horizon_date=horizon_date)
+    _annotate_sale_taxes(enriched, timeline, ts_dict, lot_order=lot_order)
+    if deduct_interest:
+        _apply_interest_deduction(enriched, loans_db)
+    sale_events = [
+        e for e in enriched
+        if e.get("event_type") in ("Sale", "Liquidation (projected)")
+    ]
+    total_tax = sum(e.get("estimated_tax") or 0.0 for e in sale_events)
+    # _apply_interest_deduction annotates events but doesn't update estimated_tax.
+    # Compute the tax savings from the deduction fields and subtract here.
+    deduction_savings = 0.0
+    if deduct_interest:
+        stcg_rate = ts_dict["federal_st_cg_rate"] + ts_dict["niit_rate"] + ts_dict["state_st_cg_rate"]
+        ltcg_rate = ts_dict["federal_lt_cg_rate"] + ts_dict["niit_rate"] + ts_dict["state_lt_cg_rate"]
+        deduction_savings = sum(
+            e.get("interest_deduction_on_stcg", 0.0) * stcg_rate +
+            e.get("interest_deduction_on_ltcg", 0.0) * ltcg_rate
+            for e in enriched
+        )
+        total_tax -= deduction_savings
+    net_cash = sum(
+        (e.get("gross_proceeds") or 0.0) - (e.get("estimated_tax") or 0.0)
+        for e in sale_events
+    ) + deduction_savings
+    return total_tax, net_cash
+
+
 def _compute_scenario_tax(
     grants, prices, loans, loans_db, initial_price,
     loan_payments, sales,
@@ -27,16 +65,11 @@ def _compute_scenario_tax(
     horizon_date,
     deduct_interest: bool,
 ) -> float:
-    timeline = compute_timeline(generate_all_events(grants, prices, loans), initial_price)
-    enriched = _enrich_timeline(timeline, loans_db, loan_payments, sales, horizon_date=horizon_date)
-    _annotate_sale_taxes(enriched, timeline, ts_dict, lot_order=lot_order)
-    if deduct_interest:
-        _apply_interest_deduction(enriched, loans_db)
-    return sum(
-        e.get("estimated_tax") or 0.0
-        for e in enriched
-        if e.get("event_type") in ("Sale", "Liquidation (projected)")
+    tax, _ = _compute_scenario(
+        grants, prices, loans, loans_db, initial_price,
+        loan_payments, sales, ts_dict, lot_order, horizon_date, deduct_interest,
     )
+    return tax
 
 
 @router.get("")
@@ -78,33 +111,35 @@ def get_tips(user: User = Depends(get_current_user), db: Session = Depends(get_d
     if current_horizon is None:
         return []
 
-    baseline = _compute_scenario_tax(
+    baseline_tax, baseline_net_cash = _compute_scenario(
         grants, prices, loans, loans_db, initial_price,
         loan_payments, sales,
         ts_dict, current_lot, current_horizon, current_deduct,
     )
+    baseline = baseline_tax  # used by tips 2 & 3
 
     tips = []
 
     # --- Tip 1: Exit date extension ---
+    # Fire when net cash (proceeds − taxes) improves, not just when taxes drop.
+    # A higher exit price raises both proceeds and taxes; what matters is the net.
     for days in [30, 60, 90]:
         new_horizon = current_horizon + timedelta(days=days)
-        new_tax = _compute_scenario_tax(
+        _, new_net_cash = _compute_scenario(
             grants, prices, loans, loans_db, initial_price,
             loan_payments, sales,
             ts_dict, current_lot, new_horizon, current_deduct,
         )
-        savings = round(baseline - new_tax, 2)
-        if savings >= _THRESHOLD_EXIT:
+        gain = round(new_net_cash - baseline_net_cash, 2)
+        if gain >= _THRESHOLD_EXIT:
             tips.append({
                 "type": "exit_date",
                 "title": f"Push your exit date back {days} days",
                 "description": (
                     f"Moving your projected exit date to {new_horizon.strftime('%b %d, %Y')} "
-                    f"could save ~${savings:,.0f} in taxes by letting more shares qualify "
-                    f"for long-term capital gains rates."
+                    f"could put ~${gain:,.0f} more in your pocket after taxes."
                 ),
-                "savings": savings,
+                "savings": gain,
                 "apply": {"horizon_date": new_horizon.isoformat()},
             })
             break  # smallest improvement that clears threshold

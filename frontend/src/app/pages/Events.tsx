@@ -287,7 +287,7 @@ export default function Events() {
           <button
             onClick={() => setTypeDropdownOpen(p => !p)}
             aria-expanded={typeDropdownOpen}
-            aria-label="Filter by event type"
+            aria-haspopup="listbox"
             className="flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
           >
             {typeFilter.size === 0

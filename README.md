@@ -39,7 +39,7 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 |-------|------|
 | ![Settings Light](screenshots/settings-light-mobile.png) | ![Settings Dark](screenshots/settings-dark-mobile.png) |
 
-Settings → Tax Rates also includes an **investment interest deduction** toggle (see [Investment Interest Deduction](#investment-interest-deduction) below).
+Settings → Tax Rates includes lot selection method, loan payoff method, and all rate fields. The **investment interest deduction** toggle lives on the Dashboard for quick access (see [Investment Interest Deduction](#investment-interest-deduction) below).
 
 ### Admin Dashboard
 
@@ -92,9 +92,9 @@ The *grant price* (what you paid) is fixed at grant creation. The *share price* 
    - **On Epic's campus network?** If you see the **"On Epic's network? Start here →"** button on the Import page, click it to download a pre-filled Excel template from Epic's campus portal — your grant and loan structure are already filled in. Download it, review the numbers, then upload it on the Import page. In Epic Mode your historical data is read-only (maintained by Epic's systems), but you can still add future price estimates, record sales, and configure tax settings.
    - **Import from Excel** — go to **Import**, download the **Sample** (pre-filled with fake data and explanatory cell comments) to see what the format looks like, then fill in your real data and upload. Click "What do the columns mean?" for a plain-English guide to every field.
    - **Add manually** — go to **Grants** and add grants one by one. Then add any **Loans** and their annual interest. For bonus/free grants where you filed an **83(b) election**, tick the "Filed 83(b) election" checkbox — vesting events will show unrealized cap gains instead of ordinary income.
-4. **View the Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, interest, tax paid, cash received, next event). Use the **As of** date picker to time-travel. **Today** snaps to the current date; **Last event** jumps to your final vesting date; **Exit date** appears when you've configured one (see Settings → Exit Planning) and jumps to your projected liquidation date — showing 0 shares, 0 principal, and net cash. If you enable the investment interest deduction in Settings, the cap gains and cash cards reflect the estimated benefit — see [Investment Interest Deduction](#investment-interest-deduction).
+4. **View the Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, interest, tax paid, cash received, next event). Use the **As of** date picker to time-travel. **Today** snaps to the current date; **Last event** jumps to your final vesting date; **Exit date** appears when you've set one and jumps to your projected liquidation date — showing 0 shares, 0 principal, and net cash. The **investment interest deduction** toggle is on the dashboard: flip it to preview the tax impact before applying — see [Investment Interest Deduction](#investment-interest-deduction).
 5. **View Events** — the full computed timeline of vesting, exercise, loan payoff, and sale events. A **Liquidation (projected)** event is automatically appended at your exit date. Tap it to see the calculation breakdown (shares × price → gross proceeds → est. tax → net). Events after the exit date are dimmed with a "beyond exit horizon" separator.
-6. **Configure your exit date** — go to **Settings → Exit Planning** to set a specific date. The projected liquidation uses shares and price as of that date (even if it's before your last vesting event). Defaults to your last vesting date if not set.
+6. **Configure your exit date** — set it directly on the Dashboard. A date input with live preview shows projected net cash (gross proceeds − loans − tax) before you apply. The projected liquidation uses shares and price as of that date, even if it's before your last vesting event. Defaults to your last vesting date if not set.
 7. **Plan or record a sale** — go to **Sales** and tap **+ Sale**. See [Sales Workflow](#sales-workflow) for the full explanation of lot selection methods, the $ Target vs # Shares toggle, the tranche allocation table, and how to record actual tax paid for a past sale.
 8. **Manage loan payoffs** — each loan can have an auto-generated sale that covers the outstanding balance. See [Loan Payoff Flow](#loan-payoff-flow) for how share counts are calculated and how the Request Payoff button works in Epic Mode.
 9. **Set up notifications** — go to **Settings → Notifications**. Enable push (browser) or email, then choose timing: day-of, 3 days before, or 1 week before your events. Hit **Send test** to confirm push is working.
@@ -206,7 +206,7 @@ If a payoff sale for the loan already exists (e.g. auto-created at loan setup), 
 
 ## Investment Interest Deduction
 
-Enable this in **Settings → Tax Rates → "Estimate investment interest deduction (Form 4952)"**.
+Toggle this directly on the **Dashboard** — flip the switch to preview the estimated tax impact before applying. The setting can also be changed in **Settings → Tax Rates**.
 
 Investment interest is interest paid on loans used to buy investments. Under IRS Form 4952 you can elect to deduct it against *net investment income* — and you may elect to treat net capital gains as investment income for this purpose. The trade-off: gains treated as investment income lose their preferential cap-gains rate and are taxed as ordinary income instead. For large-enough interest amounts the tax saving from reducing the gain can outweigh the rate difference; this estimate helps you model that.
 
@@ -223,7 +223,7 @@ Investment interest is interest paid on loans used to buy investments. Under IRS
 - "Cash Received" card relabels to **"Cash (incl. int. ded. savings)"** and includes the estimated tax savings (deduction × your configured CG rates).
 - The Income vs Cap Gains chart curve drops where deductions are applied.
 - The Estimated Tax Liability chart reflects the lower taxable cap gains.
-- A purple banner shows the total deduction applied and links back to Settings.
+- An inline card on the dashboard shows the total deduction applied with a toggle to preview enabling/disabling before committing.
 
 **What changes on the Events timeline when enabled:**
 
@@ -238,7 +238,7 @@ Investment interest is interest paid on loans used to buy investments. Under IRS
 ## Features
 
 - **Event Timeline** — computed on the fly from grants, prices, and loans. Never stored. Shows income, capital gains, share price, and cumulative totals. A **Liquidation (projected)** event is auto-injected at the exit date: tap it to see a breakdown (shares × price → gross proceeds → est. tax → net). Events after the exit date are dimmed with a "beyond exit horizon" separator so it's clear they won't occur if you liquidate.
-- **Exit Planning** — set an exit date in Settings → Exit Planning to project a full liquidation at any point, even before your last vesting event. The projection uses only the shares and price available as of that date. Dashboard quick buttons update to include an **Exit date** shortcut; card values at the exit date correctly show 0 shares, 0 loan principal, and net cash (gross proceeds − loans − tax).
+- **Exit Planning** — set an exit date directly on the Dashboard with a live preview of projected net cash before applying. Projects a full liquidation at any point, even before your last vesting event. Dashboard quick buttons include an **Exit date** shortcut; card values at the exit date show 0 shares, 0 loan principal, and net cash (gross proceeds − loans − tax).
 - **Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, total interest, tax paid, cash received, next event) with an **As of** date picker and quick buttons: **Today**, **Last event** (final vesting date), and **Exit date** (when configured). Interactive charts include an Interest Over Time chart with guaranteed vs. projected interest-on-interest layers. Empty state shows getting-started prompts for new users.
 - **Stock Sales** — plan or record share sales with configurable lot selection (Epic LIFO/FIFO/LIFO/Manual), LT/ST capital gains split, and Wisconsin tax calculator. Choose a $ target (shares auto-computed after-tax via gross-up) or enter shares directly. A live tranche table shows lot-level allocation per vest date with LT/ST classification. Manual mode makes each lot's allocation editable. For past-date sales, enter actual tax paid to override the estimate. See [Sales Workflow](#sales-workflow) for the full explanation.
 - **CRUD Management** — full create/read/update/delete for Grants, Loans, Prices, and Sales.

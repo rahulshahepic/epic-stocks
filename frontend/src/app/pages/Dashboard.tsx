@@ -1176,6 +1176,8 @@ export default function Dashboard() {
         </div>
       )}
 
+      <TipCarousel filter={['exit_date']} onApply={() => { reloadEvents(); reloadHorizon(); reloadTaxSettings() }} />
+
       {/* (F) aria-live so screen readers announce summary updates when cardDate changes */}
       <div aria-live="polite" aria-atomic="true" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Card label="Share Price" value={fmtPrice(cv.current_price)} variant="price" />
@@ -1192,7 +1194,7 @@ export default function Dashboard() {
           variant="event"
         />
       </div>
-      <TipCarousel onApply={() => { reloadEvents(); reloadHorizon(); reloadTaxSettings() }} />
+      <TipCarousel filter={['deduction', 'method']} onApply={() => { reloadEvents(); reloadHorizon(); reloadTaxSettings() }} />
 
       {showDeductionCard && (() => {
         const displayEnabled = pendingDeduction ?? savedDeduction

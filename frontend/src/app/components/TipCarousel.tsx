@@ -15,9 +15,10 @@ const TIP_ICONS: Record<SmartTip['type'], string> = {
 
 interface Props {
   onApply: () => void
+  filter?: SmartTip['type'][]
 }
 
-export default function TipCarousel({ onApply }: Props) {
+export default function TipCarousel({ onApply, filter }: Props) {
   const fetcher = useCallback(() => api.getTips(), [])
   const { data: allTips, loading } = useApiData(fetcher)
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
@@ -26,7 +27,7 @@ export default function TipCarousel({ onApply }: Props) {
 
   if (loading || !allTips) return null
 
-  const tips = allTips.filter(t => !dismissed.has(t.type))
+  const tips = allTips.filter(t => !dismissed.has(t.type) && (!filter || filter.includes(t.type)))
   if (tips.length === 0) return null
 
   const tip = tips[Math.min(index, tips.length - 1)]

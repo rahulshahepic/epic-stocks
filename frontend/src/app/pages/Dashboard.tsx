@@ -1176,7 +1176,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      <TipCarousel onApply={() => { reloadEvents(); reloadHorizon() }} />
+      <TipCarousel onApply={() => { reloadEvents(); reloadHorizon(); reloadTaxSettings() }} />
 
       {/* (F) aria-live so screen readers announce summary updates when cardDate changes */}
       <div aria-live="polite" aria-atomic="true" className="grid grid-cols-2 gap-3 sm:grid-cols-3">

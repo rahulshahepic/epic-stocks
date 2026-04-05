@@ -4,7 +4,7 @@ import {
   XAxis, YAxis, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts'
 import { api } from '../../api.ts'
-import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, TaxSettings, SaleEntry, HorizonSettings, ExitPreview } from '../../api.ts'
+import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, TaxSettings, SaleEntry, HorizonSettings, ExitPreview, DeductionPreview } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { useDark } from '../../scaffold/hooks/useDark.ts'
 import OnboardingWizard from '../components/OnboardingWizard.tsx'
@@ -760,11 +760,11 @@ export default function Dashboard() {
   const fetchSales = useCallback(() => api.getSales(), [])
   const fetchHorizon = useCallback(() => api.getHorizonSettings(), [])
 
-  const { data: dash, loading: dashLoading } = useApiData<DashboardData>(fetchDashboard)
+  const { data: dash, loading: dashLoading, reload: reloadDash } = useApiData<DashboardData>(fetchDashboard)
   const { data: events, reload: reloadEvents } = useApiData<TimelineEvent[]>(fetchEvents)
   const { data: prices } = useApiData<PriceEntry[]>(fetchPrices)
   const { data: loans } = useApiData<LoanEntry[]>(fetchLoans)
-  const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
+  const { data: taxSettings, reload: reloadTaxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
   const { data: sales } = useApiData<SaleEntry[]>(fetchSales)
   const { data: horizonSettings, reload: reloadHorizon } = useApiData<HorizonSettings>(fetchHorizon)
   const exitDate = horizonSettings?.horizon_date ?? null
@@ -817,6 +817,43 @@ export default function Dashboard() {
       setExitEditOpen(false)
     } finally {
       setSavingExit(false)
+    }
+  }
+
+  // Investment interest deduction preview
+  const [pendingDeduction, setPendingDeduction] = useState<boolean | null>(null)
+  const [deductionPreview, setDeductionPreview] = useState<DeductionPreview | null | 'loading'>(null)
+  const [savingDeduction, setSavingDeduction] = useState(false)
+
+  // Reset pending when saved setting reloads
+  useEffect(() => { setPendingDeduction(null) }, [taxSettings])
+
+  const savedDeduction = taxSettings?.deduct_investment_interest ?? false
+  const pendingDeductionChanged = pendingDeduction !== null && pendingDeduction !== savedDeduction
+
+  useEffect(() => {
+    if (!pendingDeductionChanged || pendingDeduction === null) {
+      setDeductionPreview(null)
+      return
+    }
+    setDeductionPreview('loading')
+    const timer = setTimeout(() => {
+      api.previewDeduction(pendingDeduction)
+        .then(result => setDeductionPreview(result))
+        .catch(() => setDeductionPreview(null))
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [pendingDeductionChanged, pendingDeduction])
+
+  async function applyDeduction(enabled: boolean) {
+    setSavingDeduction(true)
+    try {
+      await api.updateTaxSettings({ deduct_investment_interest: enabled })
+      reloadDash()
+      reloadEvents()
+      reloadTaxSettings()
+    } finally {
+      setSavingDeduction(false)
     }
   }
 
@@ -1020,6 +1057,8 @@ export default function Dashboard() {
     total_interest: 0,
   }
   const hasInterestDeduction = (cv.interest_deduction_total ?? 0) > 0
+  const hasInterestLoans = loans?.some(l => l.loan_type === 'Interest' || l.loan_type === 'Purchase') ?? false
+  const showDeductionCard = hasInterestDeduction || hasInterestLoans
 
   return (
     <div className="space-y-6">
@@ -1137,7 +1176,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      <TipCarousel onApply={() => { reloadEvents(); reloadHorizon() }} />
+      <TipCarousel onApply={() => { reloadDash(); reloadEvents(); reloadHorizon(); reloadTaxSettings() }} />
 
       {/* (F) aria-live so screen readers announce summary updates when cardDate changes */}
       <div aria-live="polite" aria-atomic="true" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -1155,12 +1194,53 @@ export default function Dashboard() {
           variant="event"
         />
       </div>
-      {hasInterestDeduction && (
-        <p className="rounded-md bg-purple-50 px-3 py-2 text-center text-xs text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">
-          Investment interest deduction applied: {fmt$(cv.interest_deduction_total ?? 0)} — estimated tax reduced, cash received increased.
-          Enable/disable in Settings → Tax Rates.
-        </p>
-      )}
+      {showDeductionCard && (() => {
+        const displayEnabled = pendingDeduction ?? savedDeduction
+        const currentSavings = dash.tax_savings_from_deduction ?? 0
+        const previewSavings = pendingDeductionChanged
+          ? (deductionPreview === 'loading' ? null : deductionPreview?.tax_savings_from_deduction ?? null)
+          : null
+        const delta = pendingDeductionChanged
+          ? (deductionPreview === 'loading' ? '…' : previewSavings !== null
+              ? (displayEnabled ? `+${fmt$(previewSavings)}` : `−${fmt$(currentSavings)}`)
+              : null)
+          : (displayEnabled ? fmt$(currentSavings) : null)
+        return (
+          <div className="flex items-center gap-3 rounded-md bg-stone-100 px-3 py-2 text-xs dark:bg-slate-800">
+            <span className="text-stone-500 dark:text-slate-400">Interest deduction</span>
+            <span className={`flex-1 font-semibold tabular-nums ${pendingDeductionChanged ? (displayEnabled ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400') : 'text-stone-700 dark:text-slate-300'}`}>
+              {delta ?? '—'}
+            </span>
+            {pendingDeductionChanged && (
+              <>
+                <button
+                  onClick={() => applyDeduction(pendingDeduction!)}
+                  disabled={savingDeduction || deductionPreview === 'loading'}
+                  className="rounded bg-rose-700 px-2.5 py-1 font-medium text-white hover:bg-rose-800 disabled:opacity-60"
+                >
+                  {savingDeduction ? '…' : 'Apply'}
+                </button>
+                <button
+                  onClick={() => setPendingDeduction(null)}
+                  disabled={savingDeduction}
+                  className="text-stone-400 hover:text-stone-600 disabled:opacity-50 dark:text-slate-500 dark:hover:text-slate-300"
+                >
+                  ✕
+                </button>
+              </>
+            )}
+            <button
+              role="switch"
+              aria-checked={displayEnabled}
+              onClick={() => setPendingDeduction(!displayEnabled)}
+              disabled={savingDeduction}
+              className={`relative shrink-0 h-6 w-11 rounded-full transition-colors focus:outline-none disabled:opacity-50 ${displayEnabled ? 'bg-purple-600 dark:bg-purple-500' : 'bg-stone-300 dark:bg-slate-600'}`}
+            >
+              <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${displayEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+            </button>
+          </div>
+        )
+      })()}
 
       <div className="grid gap-4 md:grid-cols-2">
         {events && events.length > 0 && (

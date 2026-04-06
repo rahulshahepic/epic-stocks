@@ -113,8 +113,8 @@ test.describe('Full user journey', () => {
   })
 
   test('import xlsx → dashboard → events → add price → export', async ({ page }) => {
-    // Verify dashboard loads (empty state)
-    await expect(page.getByText('Share Price').first()).toBeVisible()
+    // Verify dashboard loads (empty state shows wizard)
+    await expect(page.getByText("Let's set up your equity tracker.")).toBeVisible()
 
     // Navigate to Import page
     await navigateTo(page, 'Import')

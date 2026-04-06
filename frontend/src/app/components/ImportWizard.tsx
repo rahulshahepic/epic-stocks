@@ -259,7 +259,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
       vest_start: draft.vest_start,
       periods: parseInt(draft.periods) || 0,
       exercise_date: draft.exercise_date,
-      dp_shares: parseInt(draft.dp_shares) || 0,
+      dp_shares: -(Math.abs(parseInt(draft.dp_shares) || 0)),
       election_83b: false,
       loans: wizLoans,
     }
@@ -594,6 +594,39 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
               hint="usually 12/31"
               onChange={v => setGrantDraft(d => ({ ...d, exercise_date: v }))} />
           </div>
+
+          {grantDraft.type === 'Purchase' && (
+            <div className="rounded-md border border-stone-200 p-3 dark:border-slate-700">
+              <label className="flex items-start gap-2 text-xs text-gray-600 dark:text-slate-400">
+                <input
+                  type="checkbox"
+                  checked={parseInt(grantDraft.dp_shares) > 0}
+                  onChange={e => setGrantDraft(d => ({ ...d, dp_shares: e.target.checked ? '' : '0' }))}
+                  className="mt-0.5 rounded"
+                />
+                <span>
+                  <span className="font-medium text-gray-800 dark:text-slate-200">Used shares as a down payment</span>
+                  <span className="ml-1 text-stone-500">(stock DP)</span>
+                  <br />
+                  <span className="text-stone-500 dark:text-slate-500">
+                    You exchanged previously vested shares at exercise to reduce the loan amount. Check your purchase confirmation.
+                  </span>
+                </span>
+              </label>
+              {parseInt(grantDraft.dp_shares) > 0 || grantDraft.dp_shares === '' ? (
+                <div className="mt-2 w-40">
+                  <Field
+                    label="Shares exchanged"
+                    type="number"
+                    min="1"
+                    value={grantDraft.dp_shares}
+                    onChange={v => setGrantDraft(d => ({ ...d, dp_shares: v }))}
+                    hint="from your confirmation"
+                  />
+                </div>
+              ) : null}
+            </div>
+          )}
 
           <div className="flex gap-2 pt-1">
             <NextBtn onClick={afterGrantDetails} />

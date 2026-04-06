@@ -34,7 +34,7 @@ test.describe('Onboarding wizard', () => {
 
     // Fill grant form
     await page.getByLabel('Grant year').fill('2024')
-    await page.getByLabel('Shares').fill('10000')
+    await page.getByLabel('Shares', { exact: true }).fill('10000')
     await page.getByLabel('Cost basis ($/share)').fill('5.00')
     await page.getByLabel('Vest start').fill('2025-03-01')
     await page.getByLabel('Vesting periods').fill('4')

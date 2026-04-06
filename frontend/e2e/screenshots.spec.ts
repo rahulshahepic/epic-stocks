@@ -172,18 +172,26 @@ test.describe('Screenshots', () => {
   })
 
   test('wizard - welcome - light - mobile', async ({ page }) => {
-    // Fresh user with no data → shows ImportWizard on dashboard
+    // /wizard always shows the wizard (isPage=true) regardless of existing data
     await authedPage(page, MOBILE, 'light')
+    await page.goto(`${BASE}/wizard`)
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(500)
     await page.screenshot({ path: `${OUT}/wizard-welcome-light-mobile.png`, fullPage: true })
   })
 
   test('wizard - welcome - dark - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'dark')
+    await page.goto(`${BASE}/wizard`)
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(500)
     await page.screenshot({ path: `${OUT}/wizard-welcome-dark-mobile.png`, fullPage: true })
   })
 
   test('wizard - grant entry - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
+    await page.goto(`${BASE}/wizard`)
+    await page.waitForLoadState('networkidle')
     // Navigate through: "Start from scratch" → prices → grant entry
     await page.click('text=Start from scratch')
     await page.waitForTimeout(300)
@@ -194,7 +202,6 @@ test.describe('Screenshots', () => {
 
   test('wizard page - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
-    // Import existing fixture data so we can access /wizard as the re-run page
     await page.goto(`${BASE}/wizard`)
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)

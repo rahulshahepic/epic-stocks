@@ -4,6 +4,18 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 
 ## Screenshots
 
+### Setup Wizard
+
+New users are greeted by the guided setup wizard (shown when no grants exist). It walks through prices → grants (all types) → purchase loans + refinances → tax loans per vesting year → review → submit. An optional structure file upload pre-fills prices and vesting schedule so you only need to enter share counts.
+
+| Welcome | Grant Entry |
+|---------|-------------|
+| ![Wizard Welcome Light](screenshots/wizard-welcome-light-mobile.png) | ![Wizard Grant Entry](screenshots/wizard-grant-entry-light-mobile.png) |
+
+| Dark | Re-run from Import page |
+|------|------------------------|
+| ![Wizard Welcome Dark](screenshots/wizard-welcome-dark-mobile.png) | ![Wizard Page](screenshots/wizard-page-light-mobile.png) |
+
 ### Import Flow
 
 | Upload | Confirm | Success |

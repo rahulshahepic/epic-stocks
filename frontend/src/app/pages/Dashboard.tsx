@@ -7,7 +7,7 @@ import { api } from '../../api.ts'
 import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, TaxSettings, SaleEntry, HorizonSettings, ExitPreview, DeductionPreview } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { useDark } from '../../scaffold/hooks/useDark.ts'
-import OnboardingWizard from '../components/OnboardingWizard.tsx'
+import ImportWizard from '../components/ImportWizard.tsx'
 import TipCarousel from '../components/TipCarousel.tsx'
 
 function fmt$(n: number) {
@@ -1041,7 +1041,7 @@ export default function Dashboard() {
   const isEmpty = !events || events.length === 0
 
   if (isEmpty) {
-    return <OnboardingWizard onComplete={reloadEvents} />
+    return <ImportWizard onComplete={reloadEvents} />
   }
 
   const cv = cardValues ?? {

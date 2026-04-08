@@ -171,6 +171,43 @@ test.describe('Screenshots', () => {
     await page.request.post(`${BASE}/api/admin/epic-mode`, { data: { active: false } })
   })
 
+  test('wizard - welcome - light - mobile', async ({ page }) => {
+    // /wizard always shows the wizard (isPage=true) regardless of existing data
+    await authedPage(page, MOBILE, 'light')
+    await page.goto(`${BASE}/wizard`)
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: `${OUT}/wizard-welcome-light-mobile.png`, fullPage: true })
+  })
+
+  test('wizard - welcome - dark - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'dark')
+    await page.goto(`${BASE}/wizard`)
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: `${OUT}/wizard-welcome-dark-mobile.png`, fullPage: true })
+  })
+
+  test('wizard - grant entry - light - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    await page.goto(`${BASE}/wizard`)
+    await page.waitForLoadState('networkidle')
+    // Navigate through: "Start from scratch" → prices → grant entry
+    await page.click('text=Start from scratch')
+    await page.waitForTimeout(300)
+    await page.click('text=Next: Add grants')
+    await page.waitForTimeout(300)
+    await page.screenshot({ path: `${OUT}/wizard-grant-entry-light-mobile.png`, fullPage: true })
+  })
+
+  test('wizard page - light - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    await page.goto(`${BASE}/wizard`)
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: `${OUT}/wizard-page-light-mobile.png`, fullPage: true })
+  })
+
   test('loans - epic mode - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     await page.request.post(`${BASE}/api/admin/epic-mode`, { data: { active: true } })

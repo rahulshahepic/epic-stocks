@@ -32,7 +32,7 @@ function ConflictBanner({ onReload, onDiscard }: { onReload: () => void; onDisca
         <button onClick={onReload} className="rounded-md bg-yellow-600 px-2 py-1 text-xs font-medium text-white hover:bg-yellow-700">
           Reload latest
         </button>
-        <button onClick={onDiscard} className="rounded-md bg-gray-200 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600">
+        <button onClick={onDiscard} className="rounded-md bg-gray-200 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-300 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-gray-600">
           Discard my changes
         </button>
       </div>
@@ -111,6 +111,10 @@ export default function Grants() {
   const [editLoanId, setEditLoanId] = useState<number | null>(null)
   const [editLoanVersion, setEditLoanVersion] = useState(1)
 
+  // Catch-up shares (add mode only)
+  const [catchUpChecked, setCatchUpChecked] = useState(false)
+  const [catchUpShares, setCatchUpShares] = useState(0)
+
   // Payoff sale
   const [payoffSaleChecked, setPayoffSaleChecked] = useState(true)
   const [saleRates, setSaleRates] = useState<TaxRates>(DEFAULT_RATES)
@@ -127,6 +131,8 @@ export default function Grants() {
     setEditLoanVersion(1)
     setPayoffSaleChecked(true)
     setSaleRates(ratesFromDefaults(taxSettings))
+    setCatchUpChecked(false)
+    setCatchUpShares(0)
     setError('')
     setConflict(false)
   }
@@ -222,6 +228,19 @@ export default function Grants() {
             periods: form.periods,
             exercise_date: form.exercise_date,
             election_83b: form.election_83b || undefined,
+          })
+        }
+        if (catchUpChecked && catchUpShares > 0) {
+          await api.createGrant({
+            year: form.year,
+            type: 'Catch-Up',
+            shares: catchUpShares,
+            price: 0,
+            vest_start: form.vest_start,
+            periods: form.periods,
+            exercise_date: form.exercise_date,
+            dp_shares: 0,
+            election_83b: false,
           })
         }
       } else if (mode === 'edit' && editId != null) {
@@ -389,7 +408,7 @@ export default function Grants() {
     }
   }
 
-  if (loading) return <p className="p-6 text-center text-sm text-gray-400">Loading...</p>
+  if (loading) return <p className="p-6 text-center text-sm text-stone-600">Loading...</p>
   if (!grants) return <p className="p-6 text-center text-sm text-red-500">Failed to load grants</p>
 
   const showLoanSection = form.type === 'Purchase'
@@ -402,8 +421,8 @@ export default function Grants() {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
-          <button onClick={() => { setMode('list'); resetForm() }} className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">{title}</h2>
+          <button onClick={() => { setMode('list'); resetForm() }} className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-slate-300">Cancel</button>
         </div>
         {conflict && (
           <ConflictBanner
@@ -419,14 +438,14 @@ export default function Grants() {
             <button
               type="button"
               onClick={() => setForm(f => ({ ...f, type: 'Purchase', dp_shares: f.dp_shares }))}
-              className={`rounded-md px-3 py-1 text-xs font-medium ${form.type === 'Purchase' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'}`}
+              className={`rounded-md px-3 py-1 text-xs font-medium ${form.type === 'Purchase' ? 'bg-rose-700 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'}`}
             >
               Purchase
             </button>
             <button
               type="button"
               onClick={() => setForm(f => ({ ...f, type: 'Bonus', dp_shares: 0 }))}
-              className={`rounded-md px-3 py-1 text-xs font-medium ${form.type === 'Bonus' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'}`}
+              className={`rounded-md px-3 py-1 text-xs font-medium ${form.type === 'Bonus' ? 'bg-emerald-700 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'}`}
             >
               Bonus
             </button>
@@ -447,13 +466,13 @@ export default function Grants() {
           <Field label="Exercise Date" type="date" value={form.exercise_date} onChange={v => setForm(f => ({ ...f, exercise_date: v }))} />
           {form.type === 'Purchase' && (
             <label className="block">
-              <span className="text-xs text-gray-500 dark:text-gray-400">Down Payment Shares</span>
-              <p className="text-[10px] text-gray-400 dark:text-gray-500">Bonus shares used first, then oldest (non-taxable exchange)</p>
+              <span className="text-xs text-gray-500 dark:text-slate-400">Down Payment Shares</span>
+              <p className="text-[10px] text-stone-600 dark:text-slate-400">Bonus shares used first, then oldest (non-taxable exchange)</p>
               <input
                 type="number"
                 value={form.dp_shares}
                 onChange={e => setForm(f => ({ ...f, dp_shares: +e.target.value }))}
-                className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
               />
             </label>
           )}
@@ -463,18 +482,37 @@ export default function Grants() {
                 type="checkbox"
                 checked={!!form.election_83b}
                 onChange={e => setForm(f => ({ ...f, election_83b: e.target.checked }))}
-                className="mt-0.5 rounded border-gray-300 dark:border-gray-600"
+                className="mt-0.5 rounded border-gray-300 dark:border-slate-600"
               />
-              <span className="text-xs text-gray-600 dark:text-gray-400">
+              <span className="text-xs text-gray-600 dark:text-slate-400">
                 Filed 83(b) election — income recognized at grant time; vesting gains are unrealized cap gains
               </span>
             </label>
           )}
         </div>
 
+        {mode === 'add' && (
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-slate-400">
+              <input
+                type="checkbox"
+                checked={catchUpChecked}
+                onChange={e => setCatchUpChecked(e.target.checked)}
+                className="rounded border-gray-300 dark:border-slate-600"
+              />
+              <span>Includes Catch-Up shares (zero-basis, vests as ordinary income)</span>
+            </label>
+            {catchUpChecked && (
+              <div className="pl-5">
+                <Field label="Catch-Up Shares" type="number" value={catchUpShares} onChange={v => setCatchUpShares(+v)} />
+              </div>
+            )}
+          </div>
+        )}
+
         {showLoanSection && (
           <>
-            <h3 className="pt-1 text-sm font-medium text-gray-700 dark:text-gray-300">
+            <h3 className="pt-1 text-sm font-medium text-gray-700 dark:text-slate-300">
               {mode === 'edit' && editLoanId != null ? 'Purchase Loan' : mode === 'edit' ? 'Add Loan' : 'Optional Loan'}
             </h3>
             <div className="grid grid-cols-2 gap-3">
@@ -485,12 +523,12 @@ export default function Grants() {
             </div>
             {loanAmount > 0 && (
               <div className="space-y-3">
-                <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-slate-400">
                   <input
                     type="checkbox"
                     checked={payoffSaleChecked}
                     onChange={e => setPayoffSaleChecked(e.target.checked)}
-                    className="rounded border-gray-300 dark:border-gray-600"
+                    className="rounded border-gray-300 dark:border-slate-600"
                   />
                   <span>Payoff loan via sale</span>
                 </label>
@@ -511,7 +549,7 @@ export default function Grants() {
             <button
               onClick={() => handleSave(false)}
               disabled={saving}
-              className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+              className="rounded-md bg-rose-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-800 disabled:opacity-50"
             >
               {saving ? 'Saving...' : 'Save'}
             </button>
@@ -519,7 +557,7 @@ export default function Grants() {
               <button
                 onClick={() => handleSave(true)}
                 disabled={saving}
-                className="rounded-md bg-indigo-100 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60 disabled:opacity-50"
+                className="rounded-md bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-indigo-200 dark:bg-rose-900/40 dark:text-rose-300 dark:hover:bg-rose-900/50 disabled:opacity-50"
               >
                 Save & Add Another
               </button>
@@ -541,28 +579,28 @@ export default function Grants() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Grants</h2>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Grants</h2>
         {!epicMode && (
           <div className="flex gap-2">
-            <button onClick={openPurchase} className="rounded-md bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-700">
+            <button onClick={openPurchase} className="rounded-md bg-rose-700 px-2 py-1 text-xs font-medium text-white hover:bg-rose-800">
               + Purchase
             </button>
-            <button onClick={openBonus} className="rounded-md bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-700">
+            <button onClick={openBonus} className="rounded-md bg-emerald-700 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-800">
               + Bonus
             </button>
           </div>
         )}
       </div>
       {epicMode && (
-        <p className="rounded-md bg-indigo-50 px-3 py-2 text-xs text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300">
+        <p className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:bg-indigo-900/20 dark:text-rose-300">
           Data provided by Epic — view only
         </p>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+      <div tabIndex={0} className="overflow-x-auto rounded-lg border border-stone-200 dark:border-slate-700">
         <table className="w-full text-left text-xs">
-          <thead className="bg-gray-50 dark:bg-gray-800">
-            <tr className="text-gray-500 dark:text-gray-400">
+          <thead className="bg-stone-50 dark:bg-slate-800">
+            <tr className="text-gray-500 dark:text-slate-400">
               <th className="px-3 py-2">Year</th>
               <th className="px-3 py-2">Type</th>
               <th className="px-3 py-2 text-right">Shares</th>
@@ -582,57 +620,57 @@ export default function Grants() {
               const isExpanded = expandedGrantId === g.id
               return (
                 <>
-                  <tr key={g.id} className="bg-white dark:bg-gray-900">
-                    <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{g.year}</td>
+                  <tr key={g.id} className="bg-white dark:bg-slate-900">
+                    <td className="px-3 py-2 text-gray-700 dark:text-slate-300">{g.year}</td>
                     <td className="px-3 py-2">
-                      <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${g.type === 'Purchase' ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'}`}>
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${g.type === 'Purchase' ? 'bg-rose-50 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'}`}>
                         {g.type}
                       </span>
                       {g.election_83b && (
                         <span className="ml-1 inline-block rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-medium text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">83(b)</span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtNum(g.shares)}</td>
-                    <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtPrice(g.price)}</td>
-                    <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{g.vest_start}</td>
-                    <td className="px-3 py-2 text-right text-gray-500 dark:text-gray-400">{g.periods}</td>
-                    <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{g.exercise_date}</td>
+                    <td className="px-3 py-2 text-right text-gray-700 dark:text-slate-300">{fmtNum(g.shares)}</td>
+                    <td className="px-3 py-2 text-right text-gray-700 dark:text-slate-300">{fmtPrice(g.price)}</td>
+                    <td className="px-3 py-2 text-gray-500 dark:text-slate-400">{g.vest_start}</td>
+                    <td className="px-3 py-2 text-right text-gray-500 dark:text-slate-400">{g.periods}</td>
+                    <td className="px-3 py-2 text-gray-500 dark:text-slate-400">{g.exercise_date}</td>
                     <td className="px-3 py-2">
                       {loan ? (
                         <button
                           onClick={() => setExpandedGrantId(isExpanded ? null : g.id)}
-                          className={`text-[10px] underline decoration-dotted ${hasSale ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}
+                          className={`text-[10px] underline decoration-dotted ${hasSale ? 'text-green-700 dark:text-green-300' : 'text-amber-700 dark:text-amber-300'}`}
                         >
                           {hasSale ? '✓ loan+sale' : '✓ loan'}
                         </button>
                       ) : (
-                        <span className="text-[10px] text-gray-400">—</span>
+                        <span className="text-[10px] text-stone-600">—</span>
                       )}
                     </td>
                     <td className="px-3 py-2 text-right">
                       {epicMode ? (
-                        <button onClick={() => openSellModal(g)} className="text-emerald-600 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300">Sell</button>
+                        <button onClick={() => openSellModal(g)} className="text-emerald-700 hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-300">Sell</button>
                       ) : (
-                        <button onClick={() => openEdit(g)} className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300">Edit</button>
+                        <button onClick={() => openEdit(g)} className="text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Edit</button>
                       )}
                     </td>
                   </tr>
                   {isExpanded && loan && (
-                    <tr key={`${g.id}-loan`} className="bg-white dark:bg-gray-900">
+                    <tr key={`${g.id}-loan`} className="bg-white dark:bg-slate-900">
                       <td colSpan={9} className="px-3 pb-3 pt-0">
-                        <div className="rounded-md bg-gray-50 p-3 dark:bg-gray-800">
+                        <div className="rounded-md bg-stone-50 p-3 dark:bg-slate-800">
                           <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                            <div><span className="text-gray-400 dark:text-gray-500">Amount</span> <span className="ml-1 font-medium text-gray-700 dark:text-gray-200">{fmtPrice(loan.amount)}</span></div>
-                            <div><span className="text-gray-400 dark:text-gray-500">Rate</span> <span className="ml-1 font-medium text-gray-700 dark:text-gray-200">{(loan.interest_rate * 100).toFixed(2)}%</span></div>
-                            <div><span className="text-gray-400 dark:text-gray-500">Due</span> <span className="ml-1 font-medium text-gray-700 dark:text-gray-200">{loan.due_date}</span></div>
-                            <div><span className="text-gray-400 dark:text-gray-500">Loan #</span> <span className="ml-1 font-medium text-gray-700 dark:text-gray-200">{loan.loan_number ?? '—'}</span></div>
+                            <div><span className="text-stone-600 dark:text-slate-400">Amount</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{fmtPrice(loan.amount)}</span></div>
+                            <div><span className="text-stone-600 dark:text-slate-400">Rate</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{(loan.interest_rate * 100).toFixed(2)}%</span></div>
+                            <div><span className="text-stone-600 dark:text-slate-400">Due</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{loan.due_date}</span></div>
+                            <div><span className="text-stone-600 dark:text-slate-400">Loan #</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{loan.loan_number ?? '—'}</span></div>
                           </div>
                           {linkedSale ? (
-                            <p className="mt-2 text-[10px] text-green-600 dark:text-green-400">
+                            <p className="mt-2 text-[10px] text-green-700 dark:text-green-300">
                               ✓ Payoff sale {linkedSale.date} · {fmtNum(linkedSale.shares)} shares @ {fmtPrice(linkedSale.price_per_share)}
                             </p>
                           ) : (
-                            <p className="mt-2 text-[10px] text-amber-600 dark:text-amber-400">No payoff sale linked</p>
+                            <p className="mt-2 text-[10px] text-amber-700 dark:text-amber-300">No payoff sale linked</p>
                           )}
                         </div>
                       </td>
@@ -642,78 +680,78 @@ export default function Grants() {
               )
             })}
             {grants.length === 0 && (
-              <tr><td colSpan={9} className="px-3 py-6 text-center text-gray-400">No grants yet</td></tr>
+              <tr><td colSpan={9} className="px-3 py-6 text-center text-stone-600">No grants yet</td></tr>
             )}
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-gray-400">{grants.length} grants</p>
+      <p className="text-xs text-stone-600">{grants.length} grants</p>
 
       {/* Sell Shares Modal */}
       {sellModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl dark:bg-gray-900">
+          <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl dark:bg-slate-900">
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">
                 Sell Shares — {sellModal.grantType} {sellModal.grantYear}
               </h3>
-              <button onClick={closeSellModal} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">✕</button>
+              <button onClick={closeSellModal} aria-label="Close dialog" className="text-stone-600 hover:text-gray-600 dark:hover:text-slate-300">✕</button>
             </div>
 
             <div className="space-y-3">
               <label className="block">
-                <span className="text-xs text-gray-500 dark:text-gray-400">Sale Date</span>
+                <span className="text-xs text-gray-500 dark:text-slate-400">Sale Date</span>
                 <input
                   type="date"
                   value={sellDate}
                   onChange={e => setSellDate(e.target.value)}
-                  className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                  className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
                 />
               </label>
               <label className="block">
-                <span className="text-xs text-gray-500 dark:text-gray-400">Target Net Cash ($)</span>
+                <span className="text-xs text-gray-500 dark:text-slate-400">Target Net Cash ($)</span>
                 <input
                   type="number"
                   step="0.01"
                   value={sellTargetCash}
                   onChange={e => setSellTargetCash(e.target.value)}
-                  className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                  className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
                   placeholder="e.g. 50000"
                 />
               </label>
               <label className="block">
-                <span className="text-xs text-gray-500 dark:text-gray-400">Price per Share ($)</span>
+                <span className="text-xs text-gray-500 dark:text-slate-400">Price per Share ($)</span>
                 <input
                   type="number"
                   step="0.01"
                   value={sellPrice}
                   onChange={e => setSellPrice(e.target.value)}
-                  className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                  className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
                   placeholder="e.g. 125.00"
                 />
               </label>
 
               {sellEstimateLoading && (
-                <p className="text-center text-xs text-gray-400">Estimating...</p>
+                <p className="text-center text-xs text-stone-600">Estimating...</p>
               )}
 
               {sellEstimate && !sellEstimateLoading && (
-                <div className="rounded-md bg-gray-50 p-3 text-xs dark:bg-gray-800">
+                <div className="rounded-md bg-stone-50 p-3 text-xs dark:bg-slate-800">
                   <div className="grid grid-cols-2 gap-y-1.5">
-                    <span className="text-gray-500 dark:text-gray-400">Shares needed</span>
-                    <span className="text-right font-medium text-gray-800 dark:text-gray-200">{fmtNum(sellEstimate.shares_needed)}</span>
-                    <span className="text-gray-500 dark:text-gray-400">Gross proceeds</span>
-                    <span className="text-right font-medium text-gray-800 dark:text-gray-200">{fmtPrice(sellEstimate.gross_proceeds)}</span>
-                    <span className="text-gray-500 dark:text-gray-400">Est. tax</span>
+                    <span className="text-gray-500 dark:text-slate-400">Shares needed</span>
+                    <span className="text-right font-medium text-gray-800 dark:text-slate-200">{fmtNum(sellEstimate.shares_needed)}</span>
+                    <span className="text-gray-500 dark:text-slate-400">Gross proceeds</span>
+                    <span className="text-right font-medium text-gray-800 dark:text-slate-200">{fmtPrice(sellEstimate.gross_proceeds)}</span>
+                    <span className="text-gray-500 dark:text-slate-400">Est. tax</span>
                     <span className="text-right font-medium text-red-600 dark:text-red-400">{fmtPrice(sellEstimate.estimated_tax)}</span>
-                    <span className="text-gray-500 dark:text-gray-400">Net proceeds</span>
-                    <span className="text-right font-medium text-emerald-600 dark:text-emerald-400">{fmtPrice(sellEstimate.net_proceeds)}</span>
+                    <span className="text-gray-500 dark:text-slate-400">Net proceeds</span>
+                    <span className="text-right font-medium text-emerald-700 dark:text-emerald-300">{fmtPrice(sellEstimate.net_proceeds)}</span>
                     {sellEstimate.loan_balance != null && (
                       <>
-                        <span className="text-gray-500 dark:text-gray-400">Loan balance</span>
-                        <span className="text-right font-medium text-gray-800 dark:text-gray-200">{fmtPrice(sellEstimate.loan_balance)}</span>
-                        <span className="text-gray-500 dark:text-gray-400">Covers loan</span>
-                        <span className={`text-right font-medium ${sellEstimate.covers_loan ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                        <span className="text-gray-500 dark:text-slate-400">Loan balance</span>
+                        <span className="text-right font-medium text-gray-800 dark:text-slate-200">{fmtPrice(sellEstimate.loan_balance)}</span>
+                        <span className="text-gray-500 dark:text-slate-400">Covers loan</span>
+                        <span className={`text-right font-medium ${sellEstimate.covers_loan ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-600 dark:text-red-400'}`}>
                           {sellEstimate.covers_loan ? 'Yes' : 'No'}
                         </span>
                       </>
@@ -725,13 +763,13 @@ export default function Grants() {
               {sellError && <p className="text-xs text-red-500">{sellError}</p>}
 
               <div className="flex justify-end gap-2 pt-1">
-                <button onClick={closeSellModal} className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600">
+                <button onClick={closeSellModal} className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-gray-600">
                   Cancel
                 </button>
                 <button
                   onClick={handleSell}
                   disabled={!sellEstimate || sellSubmitting}
-                  className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                  className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
                 >
                   {sellSubmitting ? 'Creating sale...' : 'Confirm Sale'}
                 </button>
@@ -749,13 +787,13 @@ function Field({ label, type, value, onChange, step }: {
 }) {
   return (
     <label className="block">
-      <span className="text-xs text-gray-500 dark:text-gray-400">{label}</span>
+      <span className="text-xs text-gray-500 dark:text-slate-400">{label}</span>
       <input
         type={type}
         step={step}
         value={value}
         onChange={e => onChange(e.target.value)}
-        className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+        className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
       />
     </label>
   )

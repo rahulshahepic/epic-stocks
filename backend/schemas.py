@@ -385,9 +385,12 @@ class TaxSettingsRead(BaseModel):
     state_st_cg_rate: float
     lt_holding_days: int
     lot_selection_method: str = 'lifo'
+    loan_payoff_method: str = 'epic_lifo'
+    flexible_payoff_enabled: bool = False  # virtual field; populated from system_settings by the endpoint
     prefer_stock_dp: bool = False
     dp_min_percent: float = 0.10
     dp_min_cap: float = 20000.0
+    deduct_investment_interest: bool = False
     model_config = {"from_attributes": True}
 
 class TaxSettingsUpdate(BaseModel):
@@ -400,9 +403,11 @@ class TaxSettingsUpdate(BaseModel):
     state_st_cg_rate: float | None = None
     lt_holding_days: int | None = None
     lot_selection_method: str | None = None
+    loan_payoff_method: str | None = None
     prefer_stock_dp: bool | None = None
     dp_min_percent: float | None = None
     dp_min_cap: float | None = None
+    deduct_investment_interest: bool | None = None
 
 class HorizonSettingsRead(BaseModel):
     horizon_date: date | None = None

@@ -13,6 +13,7 @@ import Grants from './app/pages/Grants.tsx'
 import Loans from './app/pages/Loans.tsx'
 import Prices from './app/pages/Prices.tsx'
 import ImportExport from './app/pages/ImportExport.tsx'
+import ImportWizard from './app/components/ImportWizard.tsx'
 import Settings from './scaffold/pages/Settings.tsx'
 import Admin from './scaffold/pages/Admin.tsx'
 import Sales from './app/pages/Sales.tsx'
@@ -29,10 +30,10 @@ function FinancialRoute({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex flex-col items-center justify-center py-24 text-center">
       <div className="mb-4 h-3 w-3 animate-pulse rounded-full bg-amber-400" />
-      <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+      <p className="text-sm font-semibold text-gray-700 dark:text-slate-300">
         Maintenance in progress
       </p>
-      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+      <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
         Financial data is temporarily unavailable. Check back shortly.
       </p>
     </div>
@@ -57,6 +58,7 @@ export default function App() {
             <Route path="loans" element={<FinancialRoute><Loans /></FinancialRoute>} />
             <Route path="prices" element={<FinancialRoute><Prices /></FinancialRoute>} />
             <Route path="import" element={<FinancialRoute><ImportExport /></FinancialRoute>} />
+            <Route path="wizard" element={<FinancialRoute><div className="p-4"><ImportWizard isPage /></div></FinancialRoute>} />
             <Route path="settings" element={<FinancialRoute><Settings /></FinancialRoute>} />
             <Route path="admin" element={<Admin />} />
           </Route>

@@ -32,8 +32,8 @@ function mockApi() {
   )
 }
 
-function renderEvents() {
-  return render(<MemoryRouter><Events /></MemoryRouter>)
+function renderEvents(initialPath = '/') {
+  return render(<MemoryRouter initialEntries={[initialPath]}><Events /></MemoryRouter>)
 }
 
 describe('Events', () => {
@@ -87,5 +87,25 @@ describe('Events', () => {
     await waitFor(() => {
       expect(screen.getByText('Failed to load events')).toBeInTheDocument()
     })
+  })
+
+  it('pre-filters by types URL param', async () => {
+    mockApi()
+    renderEvents('/?types=Vesting,Exercise')
+    await waitFor(() => {
+      expect(screen.getByText('2021-03-01')).toBeInTheDocument()
+    })
+    // Both types selected → filter button should show count of 2 types
+    expect(screen.getByRole('button', { name: /2 types/i })).toBeInTheDocument()
+  })
+
+  it('pre-filters to single type from URL param', async () => {
+    mockApi()
+    renderEvents('/?types=Vesting')
+    await waitFor(() => {
+      expect(screen.getByText('2021-03-01')).toBeInTheDocument()
+    })
+    // Only Vesting selected — Exercise row should be hidden
+    expect(screen.queryByText('2021-06-01')).not.toBeInTheDocument()
   })
 })

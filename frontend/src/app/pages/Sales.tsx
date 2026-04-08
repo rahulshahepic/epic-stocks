@@ -86,8 +86,8 @@ export function TrancheTable({
   lines: TrancheLine[]; loading: boolean; manual: boolean
   manualAlloc: Record<string, number>; onManualChange: (key: string, shares: number) => void; date: string
 }) {
-  if (loading) return <p className="px-1 text-xs text-gray-400">Loading lots…</p>
-  if (!lines.length) return <p className="px-1 text-xs text-gray-400">No vested shares at this date</p>
+  if (loading) return <p className="px-1 text-xs text-stone-600">Loading lots…</p>
+  if (!lines.length) return <p className="px-1 text-xs text-stone-600">No vested shares at this date</p>
   const displayLines = manual ? lines : lines.filter(l => l.allocated_shares > 0)
   if (!manual && displayLines.length === 0) return null
   const totalAlloc = lines.reduce((s, l) => {
@@ -95,15 +95,15 @@ export function TrancheTable({
     return s + (manual ? (manualAlloc[key] ?? l.allocated_shares) : l.allocated_shares)
   }, 0)
   return (
-    <div className="rounded-md border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/50">
-      <div className="border-b border-gray-200 px-3 py-1.5 dark:border-gray-700">
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+    <div className="rounded-md border border-stone-200 bg-stone-50 dark:border-slate-700 dark:bg-slate-800/50">
+      <div className="border-b border-gray-200 px-3 py-1.5 dark:border-slate-700">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">
           Lot Allocation{saleDate ? ` at ${saleDate}` : ''}
         </span>
       </div>
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-[10px] text-gray-400">
+          <tr className="text-[10px] text-stone-600">
             <th className="px-3 py-1 text-left font-medium">Grant</th>
             <th className="px-3 py-1 text-right font-medium">Basis</th>
             <th className="px-3 py-1 text-right font-medium">Avail</th>
@@ -116,10 +116,10 @@ export function TrancheTable({
             const key = `${line.vest_date}|${line.grant_year}|${line.grant_type}`
             const allocated = manual ? (manualAlloc[key] ?? line.allocated_shares) : line.allocated_shares
             return (
-              <tr key={key} className="text-gray-700 dark:text-gray-300">
+              <tr key={key} className="text-gray-700 dark:text-slate-300">
                 <td className="px-3 py-1">
                   <span>{line.grant_year ?? '—'} {line.grant_type ?? ''}</span>
-                  <span className="ml-1 text-[10px] text-gray-400 dark:text-gray-500">{line.vest_date}</span>
+                  <span className="ml-1 text-[10px] text-stone-600 dark:text-slate-400">{line.vest_date}</span>
                 </td>
                 <td className="px-3 py-1 text-right tabular-nums">{fmtUSD(line.basis_price)}</td>
                 <td className="px-3 py-1 text-right tabular-nums">{fmtNum(line.available_shares)}</td>
@@ -129,10 +129,10 @@ export function TrancheTable({
                       type="number" min="0" max={line.available_shares}
                       value={manualAlloc[key] ?? line.allocated_shares}
                       onChange={e => onManualChange(key, Math.min(line.available_shares, Math.max(0, parseInt(e.target.value) || 0)))}
-                      className="w-20 rounded border border-gray-300 bg-white px-1.5 py-0.5 text-right text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                      className="w-20 rounded border border-gray-300 bg-white px-1.5 py-0.5 text-right text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
                     />
                   ) : (
-                    <span className={allocated > 0 ? 'tabular-nums font-medium' : 'text-gray-300 dark:text-gray-600'}>{fmtNum(allocated)}</span>
+                    <span className={allocated > 0 ? 'tabular-nums font-medium' : 'text-gray-300 dark:text-slate-400'}>{fmtNum(allocated)}</span>
                   )}
                 </td>
                 <td className="px-3 py-1 text-right">
@@ -140,7 +140,7 @@ export function TrancheTable({
                     <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${line.is_lt ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'}`}>
                       {line.is_lt ? 'LT' : 'ST'}
                     </span>
-                  ) : <span className="text-gray-300 dark:text-gray-600">—</span>}
+                  ) : <span className="text-gray-300 dark:text-slate-400">—</span>}
                 </td>
               </tr>
             )
@@ -148,11 +148,11 @@ export function TrancheTable({
         </tbody>
         {displayLines.length > 1 && (
           <tfoot>
-            <tr className="border-t border-gray-200 font-medium dark:border-gray-600">
-              <td className="px-3 py-1 text-gray-700 dark:text-gray-200">Total</td>
+            <tr className="border-t border-gray-200 font-medium dark:border-slate-600">
+              <td className="px-3 py-1 text-gray-700 dark:text-slate-200">Total</td>
               <td />
-              <td className="px-3 py-1 text-right tabular-nums text-gray-700 dark:text-gray-200">{fmtNum(lines.reduce((s, l) => s + l.available_shares, 0))}</td>
-              <td className="px-3 py-1 text-right tabular-nums text-gray-700 dark:text-gray-200">{fmtNum(totalAlloc)}</td>
+              <td className="px-3 py-1 text-right tabular-nums text-gray-700 dark:text-slate-200">{fmtNum(lines.reduce((s, l) => s + l.available_shares, 0))}</td>
+              <td className="px-3 py-1 text-right tabular-nums text-gray-700 dark:text-slate-200">{fmtNum(totalAlloc)}</td>
               <td />
             </tr>
           </tfoot>
@@ -208,7 +208,7 @@ export function TaxCard({ breakdown }: { breakdown: TaxBreakdown }) {
   const lots = breakdown.lots ?? []
   return (
     <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-xs dark:border-green-800 dark:bg-green-900/20">
-      <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">Estimated Tax Breakdown</h3>
+      <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-slate-100">Estimated Tax Breakdown</h3>
       {hasUnvested && (
         <div className="mb-3 rounded-md border border-yellow-300 bg-yellow-50 px-3 py-2 text-yellow-800 dark:border-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300">
           Warning: {fmtNum(breakdown.unvested_shares)} shares may not yet be vested and could be taxed as ordinary income.
@@ -218,7 +218,7 @@ export function TaxCard({ breakdown }: { breakdown: TaxBreakdown }) {
         <div className="mb-3">
           <table className="w-full">
             <thead>
-              <tr className="text-gray-400 dark:text-gray-500">
+              <tr className="text-stone-600 dark:text-slate-400">
                 <th className="pb-1 text-left font-normal">Grant</th>
                 <th className="pb-1 text-right font-normal">Shares</th>
                 <th className="pb-1 text-right font-normal">LT</th>
@@ -227,11 +227,11 @@ export function TaxCard({ breakdown }: { breakdown: TaxBreakdown }) {
             </thead>
             <tbody className="divide-y divide-green-100 dark:divide-green-900/40">
               {lots.map((lot, i) => (
-                <tr key={i} className="text-gray-700 dark:text-gray-300">
+                <tr key={i} className="text-gray-700 dark:text-slate-300">
                   <td className="py-0.5">{lot.grant_year ?? '—'} {lot.grant_type ?? ''}</td>
                   <td className="py-0.5 text-right tabular-nums">{fmtNum(lot.shares)}</td>
                   <td className="py-0.5 text-right tabular-nums">{lot.lt_shares > 0 ? fmtNum(lot.lt_shares) : '—'}</td>
-                  <td className="py-0.5 text-right tabular-nums">{lot.st_shares > 0 ? <span className="text-amber-700 dark:text-amber-400">{fmtNum(lot.st_shares)}</span> : '—'}</td>
+                  <td className="py-0.5 text-right tabular-nums">{lot.st_shares > 0 ? <span className="text-amber-700 dark:text-amber-300">{fmtNum(lot.st_shares)}</span> : '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -271,7 +271,7 @@ export function TaxCard({ breakdown }: { breakdown: TaxBreakdown }) {
 
 function Row({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
   return (
-    <div className={`flex justify-between gap-4 ${bold ? 'font-semibold text-gray-900 dark:text-gray-100' : 'text-gray-600 dark:text-gray-400'}`}>
+    <div className={`flex justify-between gap-4 ${bold ? 'font-semibold text-gray-900 dark:text-slate-100' : 'text-gray-600 dark:text-slate-400'}`}>
       <span>{label}</span>
       <span className="tabular-nums">{value}</span>
     </div>
@@ -283,14 +283,14 @@ function Field({ label, type, value, onChange, step, min }: {
 }) {
   return (
     <label className="block">
-      <span className="text-xs text-gray-500 dark:text-gray-400">{label}</span>
+      <span className="text-xs text-gray-500 dark:text-slate-400">{label}</span>
       <input
         type={type}
         step={step}
         min={min}
         value={value}
         onChange={e => onChange(e.target.value)}
-        className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+        className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
       />
     </label>
   )
@@ -307,9 +307,9 @@ export function TaxRateFields({ rates, onChange, onReset }: {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Tax rates for this sale</span>
+        <span className="text-xs font-medium text-gray-600 dark:text-slate-400">Tax rates for this sale</span>
         {onReset && (
-          <button type="button" onClick={onReset} className="text-[10px] text-indigo-500 hover:text-indigo-700 dark:text-indigo-400">
+          <button type="button" onClick={onReset} className="text-[10px] text-rose-600 hover:text-rose-700 dark:text-rose-400">
             Reset to defaults
           </button>
         )}
@@ -323,12 +323,12 @@ export function TaxRateFields({ rates, onChange, onReset }: {
         <RateField label="State LT" value={rates.state_lt_cg_rate} onChange={v => set('state_lt_cg_rate', v)} />
         <RateField label="State ST" value={rates.state_st_cg_rate} onChange={v => set('state_st_cg_rate', v)} />
         <label className="block">
-          <span className="text-[10px] text-gray-500 dark:text-gray-400">LT Hold Days</span>
+          <span className="text-[10px] text-gray-500 dark:text-slate-400">LT Hold Days</span>
           <input
             type="number"
             value={rates.lt_holding_days}
             onChange={e => set('lt_holding_days', e.target.value)}
-            className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-1.5 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+            className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-1.5 py-1 text-[11px] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
           />
         </label>
       </div>
@@ -339,16 +339,16 @@ export function TaxRateFields({ rates, onChange, onReset }: {
 function RateField({ label, value, onChange }: { label: string; value: number; onChange: (v: string) => void }) {
   return (
     <label className="block">
-      <span className="text-[10px] text-gray-500 dark:text-gray-400">{label}</span>
+      <span className="text-[10px] text-gray-500 dark:text-slate-400">{label}</span>
       <div className="relative mt-0.5">
         <input
           type="number"
           step="0.001"
           value={(value * 100).toFixed(2)}
           onChange={e => onChange(String(parseFloat(e.target.value) / 100))}
-          className="block w-full rounded-md border border-gray-300 bg-white py-1 pl-1.5 pr-4 text-[11px] dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+          className="block w-full rounded-md border border-gray-300 bg-white py-1 pl-1.5 pr-4 text-[11px] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
         />
-        <span className="pointer-events-none absolute inset-y-0 right-1 flex items-center text-[10px] text-gray-400">%</span>
+        <span className="pointer-events-none absolute inset-y-0 right-1 flex items-center text-[10px] text-stone-600">%</span>
       </div>
     </label>
   )
@@ -515,7 +515,10 @@ export default function Sales() {
       }
       setManualAlloc(alloc)
     } else {
-      const m = taxSettings?.lot_selection_method
+      const isPayoffSale = (rest as SaleForm).loan_id != null
+      const m = isPayoffSale && taxSettings?.flexible_payoff_enabled
+        ? taxSettings?.loan_payoff_method
+        : taxSettings?.lot_selection_method
       setMethod(m && ['fifo', 'lifo', 'epic_lifo', 'manual_tranche'].includes(m) ? m as SaleMethod : 'epic_lifo')
       setManualAlloc({})
     }
@@ -603,7 +606,7 @@ export default function Sales() {
     resetForm()
   }
 
-  if (loading) return <p className="p-6 text-center text-sm text-gray-400">Loading...</p>
+  if (loading) return <p className="p-6 text-center text-sm text-stone-600">Loading...</p>
   if (!sales) return <p className="p-6 text-center text-sm text-red-500">Failed to load sales</p>
 
   if (mode !== 'list') {
@@ -611,14 +614,14 @@ export default function Sales() {
     const isRecording = !epicMode && form.date < TODAY
     const isPlanAdd = mode === 'add' && !isRecording
     const title = mode === 'add' ? (isRecording ? 'Record Sale' : 'Plan Sale') : 'Edit Sale'
-    const showMethodSelector = !isPayoff
+    const showMethodSelector = !isPayoff || (isPayoff && taxSettings?.flexible_payoff_enabled === true)
     const showTranche = (trancheAlloc !== null || trancheLoading) && form.shares > 0
 
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
-          <button onClick={() => { setMode('list'); resetForm() }} className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">{title}</h2>
+          <button onClick={() => { setMode('list'); resetForm() }} className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-slate-300">Cancel</button>
         </div>
         {conflict && (
           <div className="rounded-md border border-yellow-300 bg-yellow-50 p-3 dark:border-yellow-700 dark:bg-yellow-900/20">
@@ -627,7 +630,7 @@ export default function Sales() {
             </p>
             <div className="mt-2 flex gap-2">
               <button onClick={() => { reload(); setMode('list'); resetForm() }} className="rounded-md bg-yellow-600 px-2 py-1 text-xs font-medium text-white hover:bg-yellow-700">Reload latest</button>
-              <button onClick={() => { setMode('list'); resetForm() }} className="rounded-md bg-gray-200 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300">Discard</button>
+              <button onClick={() => { setMode('list'); resetForm() }} className="rounded-md bg-gray-200 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-300 dark:bg-slate-700 dark:text-slate-300">Discard</button>
             </div>
           </div>
         )}
@@ -638,15 +641,15 @@ export default function Sales() {
           <Field label="Sale Date" type="date" value={form.date} min={epicMode ? TODAY : undefined}
             onChange={v => setForm(f => ({ ...f, date: v }))} />
           <label className="block">
-            <span className="text-xs text-gray-500 dark:text-gray-400">Price per Share</span>
+            <span className="text-xs text-gray-500 dark:text-slate-400">Price per Share</span>
             {epicMode ? (
-              <div className="mt-0.5 rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                {form.price_per_share > 0 ? fmtUSD(form.price_per_share) : <span className="text-gray-400">No price for this date</span>}
+              <div className="mt-0.5 rounded-md border border-stone-200 bg-stone-50 px-2 py-1.5 text-xs text-gray-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                {form.price_per_share > 0 ? fmtUSD(form.price_per_share) : <span className="text-stone-600">No price for this date</span>}
               </div>
             ) : (
               <input type="number" step="0.01" value={form.price_per_share}
                 onChange={e => setForm(f => ({ ...f, price_per_share: +e.target.value }))}
-                className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200" />
+                className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200" />
             )}
           </label>
         </div>
@@ -654,26 +657,31 @@ export default function Sales() {
         {/* Lot selection method */}
         {showMethodSelector && (
           <label className="block">
-            <span className="text-xs text-gray-500 dark:text-gray-400">Lot selection</span>
+            <span className="text-xs text-gray-500 dark:text-slate-400">Lot selection</span>
             <select
               value={method}
               onChange={e => { setMethod(e.target.value as SaleMethod); setManualAlloc({}) }}
-              className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+              className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
             >
               <option value="epic_lifo">Epic LIFO — prefer long-term gains (default)</option>
               <option value="fifo">FIFO — oldest lots first</option>
               <option value="lifo">LIFO — newest lots first</option>
               <option value="manual_tranche">Manual — pick lots yourself</option>
             </select>
+            {isPayoff && (
+              <p className="mt-1 text-[11px] text-stone-500 dark:text-slate-400">
+                Payoff sale — if you have insufficient stock coverage the system will use same-tranche regardless.
+              </p>
+            )}
           </label>
         )}
 
         {/* Input mode toggle (add mode only) */}
         {mode === 'add' && (
-          <div className="flex gap-1 rounded-md border border-gray-200 bg-gray-50 p-0.5 dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex gap-1 rounded-md border border-stone-200 bg-stone-50 p-0.5 dark:border-slate-700 dark:bg-slate-800">
             {(['dollars', 'shares'] as const).map(m => (
               <button key={m} onClick={() => { setInputMode(m); setEstimate(null) }}
-                className={`flex-1 rounded py-1 text-xs font-medium transition-colors ${inputMode === m ? 'bg-white shadow-sm text-gray-900 dark:bg-gray-700 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400'}`}>
+                className={`flex-1 rounded py-1 text-xs font-medium transition-colors ${inputMode === m ? 'bg-white shadow-sm text-gray-900 dark:bg-slate-700 dark:text-slate-100' : 'text-gray-500 dark:text-slate-400'}`}>
                 {m === 'dollars' ? '$ Target' : '# Shares'}
               </button>
             ))}
@@ -683,13 +691,13 @@ export default function Sales() {
         {/* Amount input */}
         {mode === 'add' && inputMode === 'dollars' ? (
           <label className="block">
-            <span className="text-xs text-gray-500 dark:text-gray-400">Target net cash (post-tax)</span>
+            <span className="text-xs text-gray-500 dark:text-slate-400">Target net cash (post-tax)</span>
             <div className="relative mt-0.5">
-              <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-xs text-gray-400">$</span>
+              <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-xs text-stone-600">$</span>
               <input type="number" step="100" min="0" value={dollarTarget}
                 onChange={e => setDollarTarget(e.target.value)}
                 placeholder="0"
-                className="block w-full rounded-md border border-gray-300 bg-white pl-5 pr-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200" />
+                className="block w-full rounded-md border border-gray-300 bg-white pl-5 pr-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200" />
             </div>
           </label>
         ) : (
@@ -711,9 +719,9 @@ export default function Sales() {
 
         {/* Live estimate */}
         {(estimate || estimateLoading) && (
-          <div className="rounded-md border border-indigo-100 bg-indigo-50 px-3 py-2.5 dark:border-indigo-900 dark:bg-indigo-950/40">
+          <div className="rounded-md border border-indigo-100 bg-rose-50 px-3 py-2.5 dark:border-indigo-900 dark:bg-rose-950/30">
             {estimateLoading ? (
-              <p className="text-xs text-indigo-400">Calculating…</p>
+              <p className="text-xs text-rose-400">Calculating…</p>
             ) : estimate && (
               <div className="space-y-1 text-xs">
                 {isPlanAdd && inputMode === 'dollars' && (
@@ -739,13 +747,13 @@ export default function Sales() {
         {/* Actual tax paid — recording only */}
         {isRecording && (
           <label className="block">
-            <span className="text-xs text-gray-500 dark:text-gray-400">Actual tax paid (optional — overrides estimate)</span>
+            <span className="text-xs text-gray-500 dark:text-slate-400">Actual tax paid (optional — overrides estimate)</span>
             <div className="relative mt-0.5">
-              <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-xs text-gray-400">$</span>
+              <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-xs text-stone-600">$</span>
               <input type="number" step="0.01" min="0" value={actualTaxPaid}
                 onChange={e => setActualTaxPaid(e.target.value)}
                 placeholder="Leave blank to use estimate"
-                className="block w-full rounded-md border border-gray-300 bg-white pl-5 pr-2 py-1.5 text-xs dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200" />
+                className="block w-full rounded-md border border-gray-300 bg-white pl-5 pr-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200" />
             </div>
           </label>
         )}
@@ -757,7 +765,7 @@ export default function Sales() {
           <button
             onClick={handleSave}
             disabled={saving || form.shares <= 0}
-            className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+            className="rounded-md bg-rose-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-800 disabled:opacity-50"
           >
             {saving ? 'Saving…' : mode === 'add' ? (isRecording ? 'Record sale' : 'Plan sale') : 'Save'}
           </button>
@@ -777,16 +785,16 @@ export default function Sales() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Sales</h2>
-        <button onClick={openAdd} className="rounded-md bg-indigo-600 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-700">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Sales</h2>
+        <button onClick={openAdd} className="rounded-md bg-rose-700 px-2 py-1 text-xs font-medium text-white hover:bg-rose-800">
           + Sale
         </button>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+      <div tabIndex={0} className="overflow-x-auto rounded-lg border border-stone-200 dark:border-slate-700">
         <table className="w-full text-left text-xs">
-          <thead className="bg-gray-50 dark:bg-gray-800">
-            <tr className="text-gray-500 dark:text-gray-400">
+          <thead className="bg-stone-50 dark:bg-slate-800">
+            <tr className="text-gray-500 dark:text-slate-400">
               <th className="px-3 py-2">Date</th>
               <th className="px-3 py-2">Type</th>
               <th className="px-3 py-2 text-right">Shares</th>
@@ -804,11 +812,11 @@ export default function Sales() {
               const hasST = bd && bd.st_shares > 0
               return (
                 <>
-                  <tr key={s.id} className="bg-white dark:bg-gray-900">
-                    <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{s.date}</td>
+                  <tr key={s.id} className="bg-white dark:bg-slate-900">
+                    <td className="px-3 py-2 text-gray-700 dark:text-slate-300">{s.date}</td>
                     <td className="px-3 py-2">
                       {s.loan_id != null ? (
-                        <span className="inline-block rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-medium text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300">
+                        <span className="inline-block rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-medium text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">
                           Payoff
                         </span>
                       ) : (
@@ -817,18 +825,20 @@ export default function Sales() {
                         </span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtNum(s.shares)}</td>
-                    <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{fmtUSD(s.price_per_share)}</td>
-                    <td className="px-3 py-2 text-right font-medium text-gray-900 dark:text-gray-100">
+                    <td className="px-3 py-2 text-right text-gray-700 dark:text-slate-300">{fmtNum(s.shares)}</td>
+                    <td className="px-3 py-2 text-right text-gray-700 dark:text-slate-300">{fmtUSD(s.price_per_share)}</td>
+                    <td className="px-3 py-2 text-right font-medium text-gray-900 dark:text-slate-100">
                       {fmtUSD(s.shares * s.price_per_share)}
                     </td>
                     <td className="px-3 py-2 text-right">
                       <button
                         onClick={() => toggleTax(s.id)}
+                        aria-expanded={isExpanded}
+                        aria-label={`${isExpanded ? 'Hide' : 'Show'} tax breakdown`}
                         className="inline-flex items-center gap-1 text-right"
                       >
                         {isLoading ? (
-                          <span className="text-gray-400">...</span>
+                          <span className="text-stone-600">...</span>
                         ) : bd ? (
                           <>
                             {hasST && (
@@ -836,19 +846,19 @@ export default function Sales() {
                                 ST
                               </span>
                             )}
-                            <span className={`font-medium underline decoration-dotted ${hasST ? 'text-amber-700 dark:text-amber-400' : 'text-gray-900 dark:text-gray-100'}`}>
+                            <span className={`font-medium underline decoration-dotted ${hasST ? 'text-amber-700 dark:text-amber-300' : 'text-gray-900 dark:text-slate-100'}`}>
                               {fmtUSD(bd.estimated_tax)}
                             </span>
                           </>
                         ) : (
-                          <span className="text-gray-400 underline decoration-dotted">—</span>
+                          <span className="text-stone-600 underline decoration-dotted">—</span>
                         )}
                       </button>
                     </td>
                     <td className="px-3 py-2 text-right">
                       <button
                         onClick={() => openEdit(s)}
-                        className="text-indigo-400 hover:text-indigo-600 dark:text-indigo-400 dark:hover:text-indigo-300"
+                        className="text-rose-400 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300"
                         aria-label="Edit sale"
                       >
                         <PencilIcon />
@@ -856,10 +866,10 @@ export default function Sales() {
                     </td>
                   </tr>
                   {isExpanded && bd && (
-                    <tr key={`${s.id}-tax`} className="bg-white dark:bg-gray-900">
+                    <tr key={`${s.id}-tax`} className="bg-white dark:bg-slate-900">
                       <td colSpan={7} className="px-3 pb-3 pt-0">
                         {s.notes && (
-                          <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">Note: {s.notes}</p>
+                          <p className="mb-2 text-xs text-gray-500 dark:text-slate-400">Note: {s.notes}</p>
                         )}
                         <TaxCard breakdown={bd} />
                       </td>
@@ -869,12 +879,12 @@ export default function Sales() {
               )
             })}
             {sales.length === 0 && (
-              <tr><td colSpan={7} className="px-3 py-6 text-center text-gray-400">No sales recorded yet</td></tr>
+              <tr><td colSpan={7} className="px-3 py-6 text-center text-stone-600">No sales recorded yet</td></tr>
             )}
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-gray-400">{sales.length} sales</p>
+      <p className="text-xs text-stone-600">{sales.length} sales</p>
     </div>
   )
 }

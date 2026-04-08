@@ -102,7 +102,7 @@ test.describe('Sales journey', () => {
     // Tax column header should be visible
     await expect(page.getByText('Tax').first()).toBeVisible()
     // For vesting events with income/cap gains, orange tax amount should appear
-    const taxCells = page.locator('span.text-orange-600, span.text-orange-400')
+    const taxCells = page.locator('span.text-orange-700')
     await expect(taxCells.first()).toBeVisible({ timeout: 5000 })
   })
 })
@@ -113,8 +113,8 @@ test.describe('Full user journey', () => {
   })
 
   test('import xlsx → dashboard → events → add price → export', async ({ page }) => {
-    // Verify dashboard loads (empty state)
-    await expect(page.getByText('Share Price').first()).toBeVisible()
+    // Verify dashboard loads (empty state shows wizard)
+    await expect(page.getByText("Let's set up your equity tracker.")).toBeVisible()
 
     // Navigate to Import page
     await navigateTo(page, 'Import')

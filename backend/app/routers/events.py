@@ -1,6 +1,6 @@
 import bisect
 from datetime import date, datetime
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -324,18 +324,24 @@ def _annotate_sale_taxes(enriched: list, timeline: list, ts_dict: dict,
         result = compute_sale_tax(sorted_tl, {"date": sale_date, "shares": shares, "price_per_share": price_per_share}, effective_ts, lot_order=lot_order, grant_year=gy, grant_type=gt, prebuilt_lots=prebuilt)
         e["estimated_tax"] = result["estimated_tax"]
         e["st_shares"] = result["st_shares"]
-        # Append prior-sale entry in sorted order for the next iteration.
-        sentinel = {
-            "date": datetime.combine(sale_date, datetime.min.time()),
-            "event_type": "Sale",
-            "vested_shares": -shares,
-            "grant_price": None,
-            "share_price": 0.0,
-        }
-        key = _sort_key(sentinel)
-        idx = bisect.bisect_right(sort_keys, key)
-        sorted_tl.insert(idx, sentinel)
-        sort_keys.insert(idx, key)
+        # Inject per-lot sentinels so subsequent build_fifo_lots calls consume exactly
+        # the lots this sale used (matching lot_order), not just the oldest lots.
+        for lot in result.get("lots_consumed", []):
+            sentinel = {
+                "date": datetime.combine(sale_date, datetime.min.time()),
+                "event_type": "Prior Sale Lot",
+                "target_vest_date": lot["vest_date"],
+                "target_grant_year": lot["grant_year"],
+                "target_grant_type": lot["grant_type"],
+                "shares_consumed": lot["shares"],
+                "vested_shares": 0,
+                "grant_price": None,
+                "share_price": 0.0,
+            }
+            key = _sort_key(sentinel)
+            idx = bisect.bisect_right(sort_keys, key)
+            sorted_tl.insert(idx, sentinel)
+            sort_keys.insert(idx, key)
 
     # Annotate the projected liquidation event (if present)
     for e in enriched:
@@ -349,6 +355,225 @@ def _annotate_sale_taxes(enriched: list, timeline: list, ts_dict: dict,
         result = compute_sale_tax(sorted_tl, {"date": liq_date, "shares": shares, "price_per_share": price_per_share}, ts_dict, lot_order=lot_order)
         e["estimated_tax"] = result["estimated_tax"]
         e["st_shares"] = result["st_shares"]
+
+
+def _build_interest_pool(loans_db: list) -> dict[int, float]:
+    """
+    Build the deductible investment-interest pool keyed by deductible year.
+
+    Matches the Total Interest card logic:
+    - Recorded Interest loans: deductible in due_date.year
+    - Projected for any year without a recorded loan: principal × rate
+      + compounding on existing interest loans for that grant.
+      Projected interest accrues in year yr → deductible in yr+1.
+    """
+    from collections import defaultdict
+    purchase_loans = [l for l in loans_db if l.loan_type == 'Purchase']
+    interest_loans  = [l for l in loans_db if l.loan_type == 'Interest']
+
+    # Index: (grant_year, grant_type) -> {loan_year: Loan}
+    interest_by_grant: dict = defaultdict(dict)
+    for il in interest_loans:
+        interest_by_grant[(il.grant_year, il.grant_type)][il.loan_year] = il
+
+    pool: dict[int, float] = {}
+
+    # Recorded interest loans — deductible in due_date.year
+    for il in interest_loans:
+        pool[il.due_date.year] = pool.get(il.due_date.year, 0.0) + il.amount
+
+    # Projected interest for years without a recorded loan
+    for p in purchase_loans:
+        due_year = p.due_date.year
+        recorded = interest_by_grant[(p.grant_year, p.grant_type)]
+        for yr in range(p.loan_year + 1, due_year + 1):
+            if yr in recorded:
+                continue
+            projected = p.amount * p.interest_rate
+            for il_yr, il in recorded.items():
+                if il_yr < yr:
+                    projected += il.amount * il.interest_rate
+            deductible_yr = yr + 1
+            pool[deductible_yr] = pool.get(deductible_yr, 0.0) + projected
+
+    return pool
+
+
+# Event types where capital gains are actually realized and taxed.
+# Share Price events are mark-to-market (unrealized) — no deduction consumed there.
+_TAXABLE_EVENT_TYPES = frozenset({'Vesting', 'Sale', 'Liquidation (projected)'})
+
+
+def _apply_interest_deduction(enriched: list, loans_db: list) -> None:
+    """
+    Annotate realized-cap-gains events with an investment-interest deduction offset.
+
+    IRS Form 4952: investment interest paid is deductible against net investment
+    income in the year the interest is due.  Only applied at taxable events
+    (Vesting, Sale, Liquidation) — not at unrealized Share Price changes.
+
+    Uses full projected interest (matching Total Interest card): recorded Interest
+    loans where they exist, projected principal×rate for gaps, with carry-forward.
+
+    Modifies events in-place; adds fields:
+      interest_deduction_applied      - amount used by this event
+      interest_deduction_on_stcg      - portion applied to vesting CG
+      interest_deduction_on_ltcg      - portion applied to price CG
+      adjusted_total_cap_gains        - total_cap_gains net of deduction
+      adjusted_cum_cap_gains          - running cumulative CG net of all deductions
+    """
+    pool = _build_interest_pool(loans_db)
+    sorted_years = sorted(pool.keys())
+    year_idx = 0
+    available = 0.0
+    cum_deduction = 0.0
+
+    for event in enriched:
+        raw_date = event.get('date', '')
+        event_year = int(raw_date[:4]) if isinstance(raw_date, str) else raw_date.year
+
+        while year_idx < len(sorted_years) and sorted_years[year_idx] <= event_year:
+            available += pool[sorted_years[year_idx]]
+            year_idx += 1
+
+        ded_stcg = 0.0
+        ded_ltcg = 0.0
+
+        if event.get('event_type') in _TAXABLE_EVENT_TYPES:
+            stcg = max(0.0, event.get('vesting_cap_gains', 0.0))
+            ltcg = max(0.0, event.get('price_cap_gains', 0.0))
+            if available > 0 and (stcg + ltcg) > 0:
+                ded_stcg = min(available, stcg)
+                available -= ded_stcg
+                ded_ltcg = min(available, ltcg)
+                available -= ded_ltcg
+
+        ded_total = ded_stcg + ded_ltcg
+        cum_deduction += ded_total
+
+        event['interest_deduction_applied'] = round(ded_total, 2)
+        event['interest_deduction_on_stcg'] = round(ded_stcg, 2)
+        event['interest_deduction_on_ltcg'] = round(ded_ltcg, 2)
+        event['adjusted_total_cap_gains'] = round(event.get('total_cap_gains', 0.0) - ded_total, 2)
+        event['adjusted_cum_cap_gains'] = round(event.get('cum_cap_gains', 0.0) - cum_deduction, 2)
+
+
+@router.get("/preview-deduction")
+def preview_deduction(
+    enabled: bool = Query(..., description="Whether to apply investment interest deduction"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Compute investment interest deduction impact without saving the setting."""
+    grants, prices, loans, loans_db, initial_price, _ = _user_source_data(user, db)
+    if not grants and not prices:
+        return None
+    ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
+    if not ts_row:
+        return None
+    db.close()
+
+    interest_deduction_total = 0.0
+    tax_savings_from_deduction = 0.0
+    if enabled:
+        timeline = get_timeline(user.id, grants, prices, loans, initial_price)
+        pool_d = _build_interest_pool(loans_db)
+        stcg_rate = ts_row.federal_st_cg_rate + ts_row.niit_rate + ts_row.state_st_cg_rate
+        ltcg_rate = ts_row.federal_lt_cg_rate + ts_row.niit_rate + ts_row.state_lt_cg_rate
+        sorted_years_d = sorted(pool_d.keys())
+        year_idx_d = 0
+        available_d = 0.0
+        for ev in timeline:
+            if ev.get('event_type') not in _TAXABLE_EVENT_TYPES:
+                continue
+            ev_year = int(ev['date'].year) if hasattr(ev['date'], 'year') else int(str(ev['date'])[:4])
+            while year_idx_d < len(sorted_years_d) and sorted_years_d[year_idx_d] <= ev_year:
+                available_d += pool_d[sorted_years_d[year_idx_d]]
+                year_idx_d += 1
+            stcg = max(0.0, ev.get('vesting_cap_gains', 0.0))
+            ltcg = max(0.0, ev.get('price_cap_gains', 0.0))
+            if available_d > 0 and (stcg + ltcg) > 0:
+                ded_s = min(available_d, stcg)
+                available_d -= ded_s
+                ded_l = min(available_d, ltcg)
+                available_d -= ded_l
+                interest_deduction_total += ded_s + ded_l
+                tax_savings_from_deduction += ded_s * stcg_rate + ded_l * ltcg_rate
+
+    return {
+        "interest_deduction_total": round(interest_deduction_total, 2),
+        "tax_savings_from_deduction": round(tax_savings_from_deduction, 2),
+    }
+
+
+@router.get("/preview-exit")
+def preview_exit(
+    date: str = Query(..., description="ISO date to preview as exit date"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Compute projected liquidation figures for a given exit date without saving it."""
+    from datetime import date as date_type
+    try:
+        preview_date = date_type.fromisoformat(date)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid date format")
+
+    grants, prices, loans, loans_db, initial_price, _ = _user_source_data(user, db)
+    if not grants and not prices:
+        return None
+
+    timeline = get_timeline(user.id, grants, prices, loans, initial_price)
+    loan_payments = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).order_by(LoanPayment.date).all()
+    sales = db.query(Sale).filter(Sale.user_id == user.id).all()
+    ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
+    ts_dict = {
+        "federal_income_rate": ts_row.federal_income_rate,
+        "federal_lt_cg_rate": ts_row.federal_lt_cg_rate,
+        "federal_st_cg_rate": ts_row.federal_st_cg_rate,
+        "niit_rate": ts_row.niit_rate,
+        "state_income_rate": ts_row.state_income_rate,
+        "state_lt_cg_rate": ts_row.state_lt_cg_rate,
+        "state_st_cg_rate": ts_row.state_st_cg_rate,
+        "lt_holding_days": ts_row.lt_holding_days,
+    } if ts_row else None
+    method = ts_row.lot_selection_method if ts_row else 'epic_lifo'
+    lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
+    db.close()
+
+    enriched = _enrich_timeline(timeline, loans_db, loan_payments, sales, horizon_date=preview_date)
+    if ts_dict:
+        _annotate_sale_taxes(enriched, timeline, ts_dict, lot_order=lot_order)
+
+    liq = next((e for e in enriched if e.get("event_type") == "Liquidation (projected)"), None)
+    if not liq:
+        return None
+
+    liq_year = preview_date.year
+    settled_ids = {s.loan_id for s in sales if s.loan_id is not None and s.date <= preview_date}
+    refinanced_ids = {l.refinances_loan_id for l in loans_db if l.refinances_loan_id is not None}
+    early_paid: dict[int, float] = {}
+    for lp in loan_payments:
+        if lp.date <= preview_date:
+            early_paid[lp.loan_id] = early_paid.get(lp.loan_id, 0.0) + lp.amount
+    outstanding = sum(
+        max(0.0, l.amount - early_paid.get(l.id, 0.0))
+        for l in loans_db
+        if l.loan_year <= liq_year and l.id not in settled_ids and l.id not in refinanced_ids
+    )
+
+    gross = liq.get("gross_proceeds") or 0.0
+    tax = liq.get("estimated_tax") or 0.0
+    net = max(0.0, gross - outstanding - tax)
+    return {
+        "date": preview_date.isoformat(),
+        "gross_proceeds": round(gross, 2),
+        "outstanding_loan_principal": round(outstanding, 2),
+        "estimated_tax": round(tax, 2),
+        "net_cash": round(net, 2),
+        "shares": abs(liq.get("vested_shares") or 0),
+        "share_price": liq.get("share_price") or 0.0,
+    }
 
 
 @router.get("/events")
@@ -415,6 +640,9 @@ def get_events(user: User = Depends(get_current_user), db: Session = Depends(get
                              sale_overrides=sale_overrides, sale_loan_map=sale_loan_map,
                              sale_lot_overrides=sale_lot_overrides)
 
+    if ts_row and ts_row.deduct_investment_interest:
+        _apply_interest_deduction(enriched, loans_db)
+
     # Annotate the liquidation event with outstanding loan principal at that date.
     if horizon_date is not None:
         liq_year = horizon_date.year
@@ -446,12 +674,13 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
         if ln["loan_type"] == "Tax" and ln["loan_year"] <= today.year
     )
 
-    # Cash received from cash-out sales (no loan_id)
+    # Cash received from cash-out sales (no loan_id) — taxes subtracted after sale loop below
     sales_db = db.query(Sale).filter(Sale.user_id == user.id).all()
-    cash_received = round(sum(
+    cash_received_gross = sum(
         s.shares * s.price_per_share for s in sales_db
         if s.loan_id is None and s.date <= today
-    ), 2)
+    )
+    cash_sale_taxes = 0.0
 
     if not grants and not prices:
         return {
@@ -494,6 +723,8 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
                 continue
             result = compute_sale_tax(sorted_tl_dash, {"date": s.date, "shares": s.shares, "price_per_share": s.price_per_share}, ts_dict_dash)
             total_tax_paid += result["estimated_tax"]
+            if s.loan_id is None:
+                cash_sale_taxes += result["estimated_tax"]
             sentinel = {
                 "date": datetime.combine(s.date, datetime.min.time()),
                 "event_type": "Sale",
@@ -530,14 +761,43 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
             next_event = {"date": edate.isoformat(), "event_type": e["event_type"]}
             break
 
+    # Investment interest deduction — adjust total_cap_gains and estimate tax savings
+    interest_deduction_total = 0.0
+    tax_savings_from_deduction = 0.0
+    if ts_row and ts_row.deduct_investment_interest:
+        pool_d = _build_interest_pool(loans_db)
+        sorted_years_d = sorted(pool_d.keys())
+        year_idx_d = 0
+        available_d = 0.0
+        stcg_rate = ts_row.federal_st_cg_rate + ts_row.niit_rate + ts_row.state_st_cg_rate
+        ltcg_rate = ts_row.federal_lt_cg_rate + ts_row.niit_rate + ts_row.state_lt_cg_rate
+        for ev in timeline:
+            if ev.get('event_type') not in _TAXABLE_EVENT_TYPES:
+                continue
+            ev_year = int(ev['date'].year) if hasattr(ev['date'], 'year') else int(str(ev['date'])[:4])
+            while year_idx_d < len(sorted_years_d) and sorted_years_d[year_idx_d] <= ev_year:
+                available_d += pool_d[sorted_years_d[year_idx_d]]
+                year_idx_d += 1
+            stcg = max(0.0, ev.get('vesting_cap_gains', 0.0))
+            ltcg = max(0.0, ev.get('price_cap_gains', 0.0))
+            if available_d > 0 and (stcg + ltcg) > 0:
+                ded_s = min(available_d, stcg)
+                available_d -= ded_s
+                ded_l = min(available_d, ltcg)
+                available_d -= ded_l
+                interest_deduction_total += ded_s + ded_l
+                tax_savings_from_deduction += ded_s * stcg_rate + ded_l * ltcg_rate
+
     return {
         "current_price": last.get("share_price", initial_price),
         "total_shares": last.get("cum_shares", 0),
         "total_income": last.get("cum_income", 0),
-        "total_cap_gains": last.get("cum_cap_gains", 0),
+        "total_cap_gains": round(last.get("cum_cap_gains", 0), 2),
         "total_loan_principal": sum(ln["amount"] for ln in loans),
-        "total_tax_paid": total_tax_paid,
-        "cash_received": cash_received,
+        "total_tax_paid": round(total_tax_paid - tax_savings_from_deduction, 2),
+        "cash_received": round(cash_received_gross - cash_sale_taxes + tax_savings_from_deduction, 2),
+        "interest_deduction_total": round(interest_deduction_total, 2),
+        "tax_savings_from_deduction": round(tax_savings_from_deduction, 2),
         "loan_payment_by_year": sorted(loan_payment_by_year.values(), key=lambda x: x["year"]),
         "next_event": next_event,
     }

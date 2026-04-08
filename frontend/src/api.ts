@@ -68,6 +68,8 @@ export interface DashboardData {
   total_loan_principal: number
   total_tax_paid: number
   cash_received: number
+  interest_deduction_total?: number
+  tax_savings_from_deduction?: number
   loan_payment_by_year: { year: string; payoff_sale: number; cash_in: number }[]
   next_event: { date: string; event_type: string } | null
 }
@@ -111,6 +113,12 @@ export interface TimelineEvent {
   outstanding_loan_principal?: number | null
   // Refinanced loan payoff
   refinanced?: boolean
+  // Investment interest deduction (when enabled in settings)
+  interest_deduction_applied?: number
+  interest_deduction_on_stcg?: number
+  interest_deduction_on_ltcg?: number
+  adjusted_total_cap_gains?: number
+  adjusted_cum_cap_gains?: number
 }
 
 export interface GrantEntry {
@@ -147,6 +155,14 @@ export interface LoanEntry {
   due_date: string
   loan_number: string | null
   refinances_loan_id: number | null
+}
+
+export interface SmartTip {
+  type: 'exit_date' | 'deduction' | 'method'
+  title: string
+  description: string
+  savings: number
+  apply: Record<string, unknown>
 }
 
 // --- API ---
@@ -284,6 +300,22 @@ export const api = {
   // Horizon Settings
   getHorizonSettings: () => apiFetch<HorizonSettings>('/api/horizon-settings'),
   updateHorizonSettings: (data: Partial<HorizonSettings>) => put<HorizonSettings>('/api/horizon-settings', data),
+  previewExit: (date: string) => apiFetch<ExitPreview | null>(`/api/preview-exit?date=${encodeURIComponent(date)}`),
+  previewDeduction: (enabled: boolean) => apiFetch<DeductionPreview | null>(`/api/preview-deduction?enabled=${enabled}`),
+
+  // Wizard
+  wizardParseFile: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return apiFetch<WizardParseResult>('/api/wizard/parse-file', { method: 'POST', body: form })
+  },
+  wizardSubmit: (data: WizardSubmitPayload) =>
+    post<WizardSubmitResult>('/api/wizard/submit', data),
+
+  // Smart Tips
+  getTips: () => apiFetch<SmartTip[]>('/api/tips'),
+  recordTipAcceptance: (tip_type: string, savings_estimate: number) =>
+    post<void>('/api/tips/accept', { tip_type, savings_estimate }),
 
   // Admin
   adminStats: () => apiFetch<AdminStats>('/api/admin/stats'),
@@ -300,6 +332,7 @@ export const api = {
     post<TestNotifyResult>('/api/admin/test-notify', { user_id, title, body }),
   adminMetrics: (hours = 72) => apiFetch<SystemMetricPoint[]>(`/api/admin/metrics?hours=${hours}`),
   adminDbTables: () => apiFetch<DbTableInfo[]>('/api/admin/db-tables'),
+  adminTipsReport: () => apiFetch<TipsReport>('/api/admin/tips-report'),
 
   // Operational status — no auth required, polled by App.tsx
   status: () => apiFetch<{ maintenance: boolean }>('/api/status'),
@@ -311,6 +344,9 @@ export const api = {
   adminGetEpicMode: () => apiFetch<{ active: boolean }>('/api/admin/epic-mode'),
   adminSetEpicMode: (active: boolean) =>
     post<{ active: boolean }>('/api/admin/epic-mode', { active }),
+  adminGetFlexiblePayoff: () => apiFetch<{ active: boolean }>('/api/admin/flexible-payoff'),
+  adminSetFlexiblePayoff: (active: boolean) =>
+    post<{ active: boolean }>('/api/admin/flexible-payoff', { active }),
   adminRotationStatus: () =>
     apiFetch<{ snapshot_exists: boolean; maintenance_active: boolean }>('/api/admin/rotation-status'),
   adminRotationRestore: () =>
@@ -343,6 +379,18 @@ export const api = {
       }
     }
   },
+}
+
+export interface TipTypeReport {
+  type: string
+  unique_users: number
+  total_savings: number
+}
+
+export interface TipsReport {
+  unique_users_accepted: number
+  total_estimated_savings: number
+  by_type: TipTypeReport[]
 }
 
 export interface AdminStats {
@@ -483,9 +531,12 @@ export interface TaxSettings {
   state_st_cg_rate: number
   lt_holding_days: number
   lot_selection_method: 'fifo' | 'lifo' | 'epic_lifo' | 'manual_tranche'
+  loan_payoff_method: 'epic_lifo' | 'same_tranche' | 'lifo' | 'fifo'
+  flexible_payoff_enabled: boolean
   prefer_stock_dp: boolean
   dp_min_percent: number
   dp_min_cap: number
+  deduct_investment_interest: boolean
 }
 
 export interface TrancheLine {
@@ -509,12 +560,84 @@ export interface HorizonSettings {
   horizon_date: string | null
 }
 
+export interface DeductionPreview {
+  interest_deduction_total: number
+  tax_savings_from_deduction: number
+}
+
+export interface ExitPreview {
+  date: string
+  gross_proceeds: number
+  outstanding_loan_principal: number
+  estimated_tax: number
+  net_cash: number
+  shares: number
+  share_price: number
+}
+
 export interface LotSummary {
   grant_year: number | null
   grant_type: string | null
   shares: number
   lt_shares: number
   st_shares: number
+}
+
+// Wizard types
+export interface WizardGrantTemplate {
+  year: number | null
+  type: string | null
+  periods: number | null
+  vest_start: string | null
+  exercise_date: string | null
+  price: number | null
+}
+
+export interface WizardPriceTemplate {
+  effective_date: string
+  price: number | null
+}
+
+export interface WizardParseResult {
+  grants: WizardGrantTemplate[]
+  prices: WizardPriceTemplate[]
+}
+
+export interface WizardLoan {
+  loan_number: string
+  loan_type: 'Purchase' | 'Tax' | 'Interest'
+  loan_year: number
+  amount: number
+  interest_rate: number
+  due_date: string
+  refinances_loan_number: string
+}
+
+export interface WizardGrant {
+  year: number
+  type: string
+  shares: number
+  price: number
+  vest_start: string
+  periods: number
+  exercise_date: string
+  dp_shares: number
+  election_83b: boolean
+  loans: WizardLoan[]
+}
+
+export interface WizardSubmitPayload {
+  grants: WizardGrant[]
+  prices: { effective_date: string; price: number }[]
+  clear_existing?: boolean
+  generate_payoff_sales?: boolean
+}
+
+export interface WizardSubmitResult {
+  grants: number
+  loans: number
+  prices: number
+  payoff_sales: number
 }
 
 export interface RotationEvent {

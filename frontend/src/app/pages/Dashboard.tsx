@@ -4,10 +4,11 @@ import {
   XAxis, YAxis, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts'
 import { api } from '../../api.ts'
-import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, TaxSettings, SaleEntry, HorizonSettings } from '../../api.ts'
+import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, TaxSettings, SaleEntry, HorizonSettings, ExitPreview, DeductionPreview } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { useDark } from '../../scaffold/hooks/useDark.ts'
-import { useConfig } from '../../scaffold/hooks/useConfig.ts'
+import ImportWizard from '../components/ImportWizard.tsx'
+import TipCarousel from '../components/TipCarousel.tsx'
 
 function fmt$(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
@@ -68,10 +69,11 @@ function RangeControls({ range, setRange, maxDate }: { range: DateRange; setRang
     <div className="flex items-center gap-1.5">
       <button
         onClick={() => setRange({ mode: 'all', start: '', end: '' })}
+        aria-pressed={isAll}
         className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
           isAll
-            ? 'bg-indigo-600 text-white'
-            : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+            ? 'bg-rose-700 text-white'
+            : 'bg-stone-100 text-stone-600 hover:bg-stone-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'
         }`}
       >
         All
@@ -81,15 +83,15 @@ function RangeControls({ range, setRange, maxDate }: { range: DateRange; setRang
         aria-label="Range start date"
         value={range.mode === 'custom' ? range.start : ''}
         onChange={e => setRange({ mode: 'custom', start: e.target.value, end: range.end || maxDate })}
-        className="h-6 rounded border border-gray-300 bg-white px-1 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+        className="h-6 rounded border border-gray-300 bg-white px-1 text-xs text-gray-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
       />
-      <span className="text-xs text-gray-400">–</span>
+      <span className="text-xs text-stone-600">–</span>
       <input
         type="date"
         aria-label="Range end date"
         value={range.mode === 'custom' ? range.end : ''}
         onChange={e => setRange({ mode: 'custom', start: range.start || '0000-01-01', end: e.target.value })}
-        className="h-6 rounded border border-gray-300 bg-white px-1 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+        className="h-6 rounded border border-gray-300 bg-white px-1 text-xs text-gray-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
       />
     </div>
   )
@@ -121,20 +123,20 @@ interface ChartColors {
 function useChartColors(): ChartColors {
   const dark = useDark()
   return dark
-    ? { grid: '#374151', axis: '#9ca3af', tooltipBg: '#1f2937', tooltipText: '#f3f4f6' }
-    : { grid: '#e5e7eb', axis: '#6b7280', tooltipBg: '#ffffff', tooltipText: '#111827' }
+    ? { grid: '#1e293b', axis: '#94a3b8', tooltipBg: '#0f172a', tooltipText: '#f1f5f9' }
+    : { grid: '#e7e5e4', axis: '#78716c', tooltipBg: '#ffffff', tooltipText: '#1c1917' }
 }
 
 const CARD_STYLES: Record<string, { bg: string; border: string; label: string }> = {
-  price:  { bg: 'bg-amber-50 dark:bg-amber-950/40', border: 'border-amber-200 dark:border-amber-800', label: 'text-amber-700 dark:text-amber-400' },
-  shares: { bg: 'bg-indigo-50 dark:bg-indigo-950/40', border: 'border-indigo-200 dark:border-indigo-800', label: 'text-indigo-700 dark:text-indigo-400' },
-  income: { bg: 'bg-emerald-50 dark:bg-emerald-950/40', border: 'border-emerald-200 dark:border-emerald-800', label: 'text-emerald-700 dark:text-emerald-400' },
-  gains:  { bg: 'bg-purple-50 dark:bg-purple-950/40', border: 'border-purple-200 dark:border-purple-800', label: 'text-purple-700 dark:text-purple-400' },
+  price:  { bg: 'bg-amber-50 dark:bg-amber-950/40', border: 'border-amber-200 dark:border-amber-800', label: 'text-amber-700 dark:text-amber-300' },
+  shares: { bg: 'bg-rose-50 dark:bg-rose-950/30', border: 'border-rose-200 dark:border-rose-800', label: 'text-rose-700 dark:text-rose-400' },
+  income: { bg: 'bg-emerald-50 dark:bg-emerald-950/40', border: 'border-emerald-200 dark:border-emerald-800', label: 'text-emerald-700 dark:text-emerald-300' },
+  gains:  { bg: 'bg-purple-50 dark:bg-purple-950/40', border: 'border-purple-200 dark:border-purple-800', label: 'text-purple-700 dark:text-purple-700' },
   loans:  { bg: 'bg-red-50 dark:bg-red-950/40', border: 'border-red-200 dark:border-red-800', label: 'text-red-700 dark:text-red-400' },
   interest: { bg: 'bg-rose-50 dark:bg-rose-950/40', border: 'border-rose-200 dark:border-rose-800', label: 'text-rose-700 dark:text-rose-400' },
   event:  { bg: 'bg-sky-50 dark:bg-sky-950/40', border: 'border-sky-200 dark:border-sky-800', label: 'text-sky-700 dark:text-sky-400' },
-  tax:    { bg: 'bg-orange-50 dark:bg-orange-950/40', border: 'border-orange-200 dark:border-orange-800', label: 'text-orange-700 dark:text-orange-400' },
-  cash:   { bg: 'bg-green-50 dark:bg-green-950/40', border: 'border-green-200 dark:border-green-800', label: 'text-green-700 dark:text-green-400' },
+  tax:    { bg: 'bg-orange-50 dark:bg-orange-950/40', border: 'border-orange-200 dark:border-orange-800', label: 'text-orange-700 dark:text-orange-300' },
+  cash:   { bg: 'bg-green-50 dark:bg-green-950/40', border: 'border-green-200 dark:border-green-800', label: 'text-green-700 dark:text-green-300' },
 }
 
 function Card({ label, value, variant }: { label: string; value: string; variant: string }) {
@@ -142,7 +144,7 @@ function Card({ label, value, variant }: { label: string; value: string; variant
   return (
     <div className={`rounded-lg border p-4 ${s.bg} ${s.border}`}>
       <p className={`text-xs font-medium uppercase ${s.label}`}>{label}</p>
-      <p className="mt-1 text-xl font-semibold text-gray-900 dark:text-gray-100">{value}</p>
+      <p className="mt-1 text-xl font-semibold text-gray-900 dark:text-slate-100">{value}</p>
     </div>
   )
 }
@@ -150,16 +152,16 @@ function Card({ label, value, variant }: { label: string; value: string; variant
 /** Detail card shown below a chart when user clicks a data point */
 function DetailCard({ items, onClose }: { items: { label: string; value: string }[]; onClose: () => void }) {
   return (
-    <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800">
+    <div className="mt-2 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800">
       <div className="flex items-start justify-between">
         <div className="flex flex-wrap gap-x-4 gap-y-0.5">
           {items.map(({ label, value }) => (
-            <span key={label} className="text-xs text-gray-600 dark:text-gray-400">
-              <span className="font-medium text-gray-900 dark:text-gray-200">{value}</span>{' '}{label}
+            <span key={label} className="text-xs text-gray-600 dark:text-slate-400">
+              <span className="font-medium text-gray-900 dark:text-slate-200">{value}</span>{' '}{label}
             </span>
           ))}
         </div>
-        <button onClick={onClose} className="ml-2 shrink-0 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">&times;</button>
+        <button onClick={onClose} aria-label="Close detail panel" className="ml-2 shrink-0 text-xs text-stone-600 hover:text-gray-600 dark:hover:text-slate-300">&times;</button>
       </div>
     </div>
   )
@@ -205,11 +207,11 @@ function SharesChart({ events, c, range, hasFuturePrices, exitDate }: { events: 
           {tIdx !== null && <ReferenceLine x={tIdx} stroke="#f59e0b" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
           {eIdx !== null && <ReferenceLine x={eIdx} stroke="#4ade80" strokeDasharray="4 4" zIndex={600} label={{ value: 'Exit', fontSize: 10, fill: '#4ade80', position: 'top' }} />}
           {selected !== null && selected < data.length && (
-            <ReferenceLine x={selected} stroke="#818cf8" strokeWidth={1.5} zIndex={600} />
+            <ReferenceLine x={selected} stroke="#e11d48" strokeWidth={1.5} zIndex={600} />
           )}
-          <Line type="monotone" dataKey="shares" stroke="#818cf8" strokeWidth={2} dot={false} name="Shares" connectNulls={false} />
+          <Line type="monotone" dataKey="shares" stroke="#e11d48" strokeWidth={2} dot={false} name="Shares" connectNulls={false} />
           {hasFuturePrices && (
-            <Line type="monotone" dataKey="projected" stroke="#818cf8" strokeWidth={2} dot={false} name="Projected" strokeDasharray="6 3" opacity={0.5} connectNulls={false} />
+            <Line type="monotone" dataKey="projected" stroke="#e11d48" strokeWidth={2} dot={false} name="Projected" strokeDasharray="6 3" opacity={0.5} connectNulls={false} />
           )}
         </LineChart>
       </ResponsiveContainer>
@@ -224,12 +226,20 @@ function SharesChart({ events, c, range, hasFuturePrices, exitDate }: { events: 
           ]}
         />
       )}
+      {/* (D) Screen-reader chart description */}
+      {data.length > 0 && (
+        <p className="sr-only">
+          Cumulative shares chart: {data.length} data points from {fmtFullDate(data[0]._date)} to {fmtFullDate(data[data.length - 1]._date)}.
+        </p>
+      )}
     </>
   )
 }
 
 function IncomeCapGainsChart({ events, c, range, hasFuturePrices, exitDate }: { events: TimelineEvent[]; c: ChartColors; range: DateRange; hasFuturePrices: boolean; exitDate: string | null }) {
   const [selected, setSelected] = useState<number | null>(null)
+
+  const hasDeduction = events.some(e => (e.interest_deduction_applied ?? 0) > 0)
 
   const data = useMemo(() => {
     const filtered = filterByDateRange(events, range, 'date')
@@ -254,13 +264,14 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices, exitDate }: { 
           }
         }
       }
+      const cumCg = e.cum_cap_gains
       return {
         _idx: i,
         _date: e.date,
         _label: fmtDate(e.date),
         _event: e,
         income: e.cum_income - cumSurplusIncome,
-        gains: e.cum_cap_gains - cumSurplusCg,
+        gains: cumCg - cumSurplusCg,
         projExtraIncome: hasFuturePrices && cumSurplusIncome > 0 ? cumSurplusIncome : null as number | null,
         projExtra: hasFuturePrices && cumSurplusCg > 0 ? cumSurplusCg : null as number | null,
       }
@@ -283,14 +294,14 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices, exitDate }: { 
           {hasFuturePrices && (
             <text x="50%" y={16} textAnchor="middle" fontSize={10} fill={c.axis}>
               <tspan fill="#10b981">&#9632;</tspan> Income{'  '}
-              <tspan fill="#8b5cf6">&#9632;</tspan> Cap Gains{'  '}
+              <tspan fill="#8b5cf6">&#9632;</tspan> {'Cap Gains'}{'  '}
               <tspan fill="#6ee7b7">&#9632;</tspan>/<tspan fill="#c4b5fd">&#9632;</tspan> Projected
             </text>
           )}
           {!hasFuturePrices && (
             <text x="50%" y={16} textAnchor="middle" fontSize={10} fill={c.axis}>
               <tspan fill="#10b981">&#9632;</tspan> Income{'  '}
-              <tspan fill="#8b5cf6">&#9632;</tspan> Cap Gains
+              <tspan fill="#8b5cf6">&#9632;</tspan> {'Cap Gains'}
             </text>
           )}
           {tIdx !== null && <ReferenceLine x={tIdx} stroke="#f59e0b" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
@@ -316,8 +327,17 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices, exitDate }: { 
             { label: '', value: fmtFullDate(sel._date) },
             { label: 'income', value: fmt$(sel._event.cum_income) },
             { label: 'cap gains', value: fmt$(sel._event.cum_cap_gains) },
+            ...(hasDeduction && (sel._event.interest_deduction_applied ?? 0) > 0
+              ? [{ label: 'interest deducted this event', value: fmt$(sel._event.interest_deduction_applied!) }]
+              : []),
           ]}
         />
+      )}
+      {/* (D) Screen-reader chart description */}
+      {data.length > 0 && (
+        <p className="sr-only">
+          Income and capital gains chart: {data.length} data points from {fmtFullDate(data[0]._date)} to {fmtFullDate(data[data.length - 1]._date)}.
+        </p>
       )}
     </>
   )
@@ -367,7 +387,7 @@ function PriceChart({ prices, c, range, hasFuturePrices, exitDate }: { prices: P
           <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
           <XAxis dataKey="_idx" type="number" domain={[0, Math.max(0, data.length - 1)]} ticks={numericTicks(data.length)} tickFormatter={(i: number) => data[i]?._label ?? ''} tick={{ fontSize: 10, fill: c.axis }} padding={{ right: 10 }} />
           <YAxis tick={{ fontSize: 10, fill: c.axis }} />
-          {tIdx !== null && <ReferenceLine x={tIdx} stroke="#818cf8" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#818cf8', position: 'top' }} />}
+          {tIdx !== null && <ReferenceLine x={tIdx} stroke="#e11d48" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#e11d48', position: 'top' }} />}
           {eIdx !== null && <ReferenceLine x={eIdx} stroke="#4ade80" strokeDasharray="4 4" zIndex={600} label={{ value: 'Exit', fontSize: 10, fill: '#4ade80', position: 'top' }} />}
           {selected !== null && selected < data.length && (
             <ReferenceLine x={selected} stroke="#fbbf24" strokeWidth={1.5} zIndex={600} />
@@ -387,6 +407,13 @@ function PriceChart({ prices, c, range, hasFuturePrices, exitDate }: { prices: P
           ]}
         />
       )}
+      {/* (D) Screen-reader chart description */}
+      {data.length > 0 && (
+        <p className="sr-only">
+          Share price history: {data.length} entries from {fmtFullDate(data[0]._date)} to {fmtFullDate(data[data.length - 1]._date)}.
+          Most recent price: {fmtPrice(data[data.length - 1]._price)}.
+        </p>
+      )}
     </>
   )
 }
@@ -401,9 +428,12 @@ const WI_TAX_DEFAULTS: TaxSettings = {
   state_st_cg_rate: 0.0765,
   lt_holding_days: 365,
   lot_selection_method: 'lifo',
+  loan_payoff_method: 'epic_lifo',
+  flexible_payoff_enabled: false,
   prefer_stock_dp: false,
   dp_min_percent: 0.10,
   dp_min_cap: 20000,
+  deduct_investment_interest: false,
 }
 
 function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices, exitDate }: {
@@ -465,10 +495,12 @@ function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices, exitD
         }
       }
 
+      const effectiveCumCg = e.cum_cap_gains
+
       // "Sure" tax = tax on base income + base vesting cap gains (no price surplus)
       const taxSure = Math.round(
         (e.cum_income - cumSurplusIncome) * incomeRate +
-        (e.cum_cap_gains - cumSurplusCg) * ltCgRate
+        (effectiveCumCg - cumSurplusCg) * ltCgRate
       )
 
       // "Half" tax = tax on price-driven surplus (uncertain - depends on future price)
@@ -709,9 +741,9 @@ function ChartBox({ title, children, range, setRange, maxDate }: {
   range?: DateRange; setRange?: (r: DateRange) => void; maxDate?: string
 }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+    <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">{title}</h3>
+        <h3 className="text-sm font-medium text-gray-700 dark:text-slate-300">{title}</h3>
         {range && setRange && <RangeControls range={range} setRange={setRange} maxDate={maxDate ?? '2099-12-31'} />}
       </div>
       {children}
@@ -728,14 +760,14 @@ export default function Dashboard() {
   const fetchSales = useCallback(() => api.getSales(), [])
   const fetchHorizon = useCallback(() => api.getHorizonSettings(), [])
 
-  const { data: dash, loading: dashLoading } = useApiData<DashboardData>(fetchDashboard)
-  const { data: events } = useApiData<TimelineEvent[]>(fetchEvents)
+  const { data: dash, loading: dashLoading, reload: reloadDash } = useApiData<DashboardData>(fetchDashboard)
+  const { data: events, reload: reloadEvents } = useApiData<TimelineEvent[]>(fetchEvents)
   const { data: prices } = useApiData<PriceEntry[]>(fetchPrices)
   const { data: loans } = useApiData<LoanEntry[]>(fetchLoans)
-  const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
+  const { data: taxSettings, reload: reloadTaxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
   const { data: sales } = useApiData<SaleEntry[]>(fetchSales)
-  const config = useConfig()
-  const { data: horizonSettings } = useApiData<HorizonSettings>(fetchHorizon)
+  const { data: horizonSettings, reload: reloadHorizon } = useApiData<HorizonSettings>(fetchHorizon)
+  const exitDate = horizonSettings?.horizon_date ?? null
   const c = useChartColors()
   const [rangeInterest, setRangeInterest] = useState<DateRange>({ mode: 'all', start: '', end: '' })
   const [rangeLoan, setRangeLoan] = useState<DateRange>({ mode: 'all', start: '', end: '' })
@@ -749,6 +781,81 @@ export default function Dashboard() {
   const [cardDate, setCardDate] = useState<string>(() => {
     return localStorage.getItem('dashboard_cardDate') ?? TODAY
   })
+  const [savingExit, setSavingExit] = useState(false)
+  const [exitEditOpen, setExitEditOpen] = useState(false)
+  const [pendingExitDate, setPendingExitDate] = useState<string>('')
+
+  // Keep pending input in sync when server data reloads (e.g. after applying a tip)
+  useEffect(() => {
+    setPendingExitDate(exitDate ?? '')
+  }, [exitDate])
+
+  const pendingExitChanged = pendingExitDate !== (exitDate ?? '')
+
+  const [exitPreview, setExitPreview] = useState<ExitPreview | null | 'loading'>(null)
+
+  useEffect(() => {
+    if (!pendingExitChanged || !pendingExitDate) {
+      setExitPreview(null)
+      return
+    }
+    setExitPreview('loading')
+    const timer = setTimeout(() => {
+      api.previewExit(pendingExitDate)
+        .then(result => setExitPreview(result))
+        .catch(() => setExitPreview(null))
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [pendingExitChanged, pendingExitDate])
+
+  async function applyExitDate(date: string | null) {
+    setSavingExit(true)
+    try {
+      await api.updateHorizonSettings({ horizon_date: date })
+      reloadEvents()
+      reloadHorizon()
+      setExitEditOpen(false)
+    } finally {
+      setSavingExit(false)
+    }
+  }
+
+  // Investment interest deduction preview
+  const [pendingDeduction, setPendingDeduction] = useState<boolean | null>(null)
+  const [deductionPreview, setDeductionPreview] = useState<DeductionPreview | null | 'loading'>(null)
+  const [savingDeduction, setSavingDeduction] = useState(false)
+
+  // Reset pending when saved setting reloads
+  useEffect(() => { setPendingDeduction(null) }, [taxSettings])
+
+  const savedDeduction = taxSettings?.deduct_investment_interest ?? false
+  const pendingDeductionChanged = pendingDeduction !== null && pendingDeduction !== savedDeduction
+
+  useEffect(() => {
+    if (!pendingDeductionChanged || pendingDeduction === null) {
+      setDeductionPreview(null)
+      return
+    }
+    setDeductionPreview('loading')
+    const timer = setTimeout(() => {
+      api.previewDeduction(pendingDeduction)
+        .then(result => setDeductionPreview(result))
+        .catch(() => setDeductionPreview(null))
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [pendingDeductionChanged, pendingDeduction])
+
+  async function applyDeduction(enabled: boolean) {
+    setSavingDeduction(true)
+    try {
+      await api.updateTaxSettings({ deduct_investment_interest: enabled })
+      reloadDash()
+      reloadEvents()
+      reloadTaxSettings()
+    } finally {
+      setSavingDeduction(false)
+    }
+  }
 
   useEffect(() => {
     localStorage.setItem('dashboard_range', JSON.stringify(range))
@@ -794,7 +901,6 @@ export default function Dashboard() {
   const projectedLiqDate = projectedLiqEvent?.date ?? null
 
   // Explicit exit date (only when user has set one and it differs from last real event)
-  const exitDate = horizonSettings?.horizon_date ?? null
   const showExitButton = exitDate !== null && exitDate !== lastRealEventDate
 
   // When cardDate is strictly past the projected exit, we project as-if no exit was planned
@@ -854,19 +960,42 @@ export default function Dashboard() {
         .reduce((sum, l) => sum + Math.max(0, l.amount - (earlyPaidByLoan.get(l.id) ?? 0)), 0)
     })()
 
+    // Map sale_id -> estimated_tax from timeline events so we can subtract it below
+    const saleTaxBySaleId = new Map<number, number>()
+    for (const e of events) {
+      if (e.event_type === 'Sale' && e.sale_id != null && e.estimated_tax != null) {
+        saleTaxBySaleId.set(e.sale_id, e.estimated_tax)
+      }
+    }
+
     const cashReceived = (sales
       ? sales.filter(s => s.loan_id === null && s.date <= effectiveDate)
-          .reduce((sum, s) => sum + s.shares * s.price_per_share, 0)
+          .reduce((sum, s) => sum + s.shares * s.price_per_share - (saleTaxBySaleId.get(s.id) ?? 0), 0)
       : 0)
       + (liqOccurred && projectedLiqEvent
           ? Math.max(0, (projectedLiqEvent.gross_proceeds ?? 0) - outstandingPrincipal - (projectedLiqEvent.estimated_tax ?? 0))
           : 0)
 
+    const adjCumCg = lastEvent?.cum_cap_gains ?? 0
+    const stcgRate = taxSettings
+      ? taxSettings.federal_st_cg_rate + taxSettings.niit_rate + taxSettings.state_st_cg_rate
+      : 0
+    const ltcgRate = taxSettings
+      ? taxSettings.federal_lt_cg_rate + taxSettings.niit_rate + taxSettings.state_lt_cg_rate
+      : 0
+    let interestDeductionTotal = 0
+    let taxSavings = 0
+    for (const e of events) {
+      if (e.date > effectiveDate) break
+      interestDeductionTotal += e.interest_deduction_applied ?? 0
+      taxSavings += (e.interest_deduction_on_stcg ?? 0) * stcgRate
+        + (e.interest_deduction_on_ltcg ?? 0) * ltcgRate
+    }
     return {
       current_price: lastEvent?.share_price ?? 0,
       total_shares: lastEvent?.cum_shares ?? 0,
       total_income: lastEvent?.cum_income ?? 0,
-      total_cap_gains: lastEvent?.cum_cap_gains ?? 0,
+      total_cap_gains: adjCumCg,
       total_interest: (() => {
         const effYear = parseInt(effectiveDate.slice(0, 4), 10)
         const purchaseLoans = loans.filter(l => l.loan_type === 'Purchase')
@@ -894,14 +1023,15 @@ export default function Dashboard() {
       })(),
       // After projected liquidation, all loans are paid off from proceeds
       total_loan_principal: liqOccurred ? 0 : outstandingPrincipal,
-      total_tax_paid: taxPaid,
-      cash_received: cashReceived,
+      total_tax_paid: taxPaid - taxSavings,
+      cash_received: cashReceived + taxSavings,
+      interest_deduction_total: interestDeductionTotal,
       next_event: nextEvent,
     }
-  }, [events, loans, sales, taxSettings, cardDate, projectedLiqDate, projectedLiqEvent, ignoringExitDate])
+  }, [events, loans, sales, taxSettings, dash, cardDate, projectedLiqDate, projectedLiqEvent, ignoringExitDate])
 
   if (dashLoading) {
-    return <p className="p-6 text-center text-sm text-gray-400">Loading...</p>
+    return <p className="p-6 text-center text-sm text-stone-600">Loading...</p>
   }
 
   if (!dash) {
@@ -911,55 +1041,7 @@ export default function Dashboard() {
   const isEmpty = !events || events.length === 0
 
   if (isEmpty) {
-    return (
-      <div className="space-y-6">
-        <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-6 dark:border-indigo-800 dark:bg-indigo-950/40">
-          <h2 className="text-base font-semibold text-indigo-900 dark:text-indigo-200">Welcome! Let's get your data in.</h2>
-          <p className="mt-1 text-sm text-indigo-700 dark:text-indigo-300">
-            Your dashboard is empty — here are a few ways to get started:
-          </p>
-          <div className="mt-4 space-y-3">
-            {config?.epic_onboarding_url && (
-              <a
-                href={config.epic_onboarding_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex flex-col rounded-lg border-2 border-indigo-400 bg-white p-5 hover:border-indigo-600 hover:shadow-md dark:border-indigo-500 dark:bg-gray-900 dark:hover:border-indigo-400"
-              >
-                <span className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">On Epic's network? Start here →</span>
-                <span className="mt-1 text-sm font-medium text-gray-900 dark:text-gray-100">Download your pre-filled template</span>
-                <span className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Your grant and loan structure is already filled in. Download, review, and import it on the Import page.
-                </span>
-              </a>
-            )}
-            <div className="grid gap-3 sm:grid-cols-2">
-              <a
-                href="/import"
-                className="flex flex-col rounded-lg border border-indigo-300 bg-white p-4 hover:border-indigo-500 hover:shadow-sm dark:border-indigo-700 dark:bg-gray-900 dark:hover:border-indigo-500"
-              >
-                <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Import from Excel</span>
-                <span className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Download the sample file to see exactly what to fill in (with explanations), then upload your real data.
-                </span>
-              </a>
-              <a
-                href="/grants"
-                className="flex flex-col rounded-lg border border-indigo-300 bg-white p-4 hover:border-indigo-500 hover:shadow-sm dark:border-indigo-700 dark:bg-gray-900 dark:hover:border-indigo-500"
-              >
-                <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Add a grant manually</span>
-                <span className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Enter your grant details one by one — no spreadsheet needed.
-                </span>
-              </a>
-            </div>
-          </div>
-          <p className="mt-4 text-xs text-indigo-600 dark:text-indigo-400">
-            You'll also need at least one share price (go to <a href="/prices" className="underline">Prices</a>) before events will appear.
-          </p>
-        </div>
-      </div>
-    )
+    return <ImportWizard onComplete={reloadEvents} />
   }
 
   const cv = cardValues ?? {
@@ -970,29 +1052,34 @@ export default function Dashboard() {
     total_loan_principal: dash.total_loan_principal,
     total_tax_paid: dash.total_tax_paid ?? 0,
     cash_received: dash.cash_received ?? 0,
+    interest_deduction_total: dash.interest_deduction_total ?? 0,
     next_event: dash.next_event,
     total_interest: 0,
   }
+  const hasInterestDeduction = (cv.interest_deduction_total ?? 0) > 0
+  const hasInterestLoans = loans?.some(l => l.loan_type === 'Interest' || l.loan_type === 'Purchase') ?? false
+  const showDeductionCard = hasInterestDeduction || hasInterestLoans
 
   return (
     <div className="space-y-6">
       {/* Date selector for card values */}
-      <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-900">
+      <div className="rounded-lg border border-stone-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
         <div className="flex items-center gap-2">
-          <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400">As of</span>
+          <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-slate-400">As of</span>
           <input
             type="date"
             value={cardDate}
             max={maxDate}
             onChange={e => setCardDate(e.target.value)}
-            className="h-7 flex-1 rounded border border-gray-300 bg-white px-2 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+            className="h-7 flex-1 rounded border border-gray-300 bg-white px-2 text-xs text-gray-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
           />
         </div>
-        <div className="mt-1.5 flex items-center gap-1.5">
+        <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+          <span className="shrink-0 text-xs text-gray-400 dark:text-slate-500">Jump to:</span>
           {([
             { label: 'Today', date: TODAY },
             { label: 'Last event', date: lastRealEventDate, title: 'Jump to your last vesting event' },
-            ...(showExitButton && exitDate ? [{ label: 'Exit date', date: exitDate, title: 'Jump to your configured exit date' }] : []),
+            ...(showExitButton && exitDate ? [{ label: 'Exit', date: exitDate, title: 'Jump to your configured exit date' }] : []),
           ] as { label: string; date: string; title?: string }[]).map(({ label, date, title }) => (
             <button
               key={label}
@@ -1000,30 +1087,106 @@ export default function Dashboard() {
               title={title}
               className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
                 cardDate === date
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+                  ? 'bg-rose-700 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'
               }`}
             >
               {label}
             </button>
           ))}
+          <button
+            onClick={() => {
+              setPendingExitDate(exitDate ?? '')
+              setExitEditOpen(o => !o)
+            }}
+            className="ml-auto text-xs text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300"
+          >
+            {exitDate ? (exitEditOpen ? '▲ exit date' : '▼ exit date') : '+ set exit date'}
+          </button>
         </div>
+        {exitEditOpen && (
+          <div className="mt-2 border-t border-stone-100 pt-2 dark:border-slate-700/50">
+            <div className="flex items-center gap-2">
+              <span className="shrink-0 text-xs font-medium text-gray-500 dark:text-slate-400">Exit date</span>
+              <input
+                type="date"
+                value={pendingExitDate}
+                disabled={savingExit}
+                onChange={e => setPendingExitDate(e.target.value)}
+                className="h-7 flex-1 rounded border border-gray-300 bg-white px-2 text-xs text-gray-700 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+              />
+              {!pendingExitChanged && exitDate && (
+                <button
+                  onClick={() => setPendingExitDate('')}
+                  title="Clear exit date"
+                  className="shrink-0 text-sm leading-none text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+            {pendingExitChanged && (
+              <div className="mt-2 rounded-md bg-stone-50 px-3 py-2 dark:bg-slate-800/60">
+                {!pendingExitDate ? (
+                  <p className="text-xs text-gray-500 dark:text-slate-400">This will remove your exit scenario</p>
+                ) : exitPreview === 'loading' ? (
+                  <p className="text-xs text-gray-400 dark:text-slate-500">Calculating…</p>
+                ) : exitPreview ? (
+                  <p className="text-xs text-gray-600 dark:text-slate-400">
+                    Cash out:{' '}
+                    <span className="font-semibold text-gray-900 dark:text-slate-100">{fmt$(exitPreview.net_cash)}</span>
+                    <span className="ml-1 text-gray-400 dark:text-slate-500">
+                      (gross {fmt$(exitPreview.gross_proceeds)}, loans {fmt$(exitPreview.outstanding_loan_principal)}, tax {fmt$(exitPreview.estimated_tax)})
+                    </span>
+                  </p>
+                ) : (
+                  <p className="text-xs text-gray-400 dark:text-slate-500">No price data for this date</p>
+                )}
+                <div className="mt-1.5 flex items-center gap-2">
+                  <button
+                    onClick={() => applyExitDate(pendingExitDate || null)}
+                    disabled={savingExit}
+                    className="rounded bg-rose-700 px-3 py-1 text-xs font-medium text-white hover:bg-rose-800 disabled:opacity-60"
+                  >
+                    {savingExit ? 'Saving…' : 'Apply'}
+                  </button>
+                  <button
+                    onClick={() => { setPendingExitDate(exitDate ?? ''); setExitEditOpen(false) }}
+                    disabled={savingExit}
+                    className="text-xs text-gray-500 hover:text-gray-700 disabled:opacity-50 dark:text-slate-400 dark:hover:text-slate-200"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {ignoringExitDate && (
-        <p className="rounded-md bg-amber-50 px-3 py-2 text-center text-xs text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
-          Projecting beyond your exit date — exit date not applied
-        </p>
+        <div className="flex items-center justify-between gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+          <span>Browsing past your exit date ({exitDate}) — exit not applied</span>
+          <button
+            onClick={() => { setPendingExitDate(cardDate); setExitEditOpen(true) }}
+            className="shrink-0 rounded bg-amber-700 px-2 py-1 font-medium text-white hover:bg-amber-800 dark:bg-amber-600 dark:hover:bg-amber-700"
+          >
+            Move exit here
+          </button>
+        </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <TipCarousel onApply={() => { reloadDash(); reloadEvents(); reloadHorizon(); reloadTaxSettings() }} />
+
+      {/* (F) aria-live so screen readers announce summary updates when cardDate changes */}
+      <div aria-live="polite" aria-atomic="true" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Card label="Share Price" value={fmtPrice(cv.current_price)} variant="price" />
         <Card label="Total Shares" value={fmtNum(cv.total_shares)} variant="shares" />
         <Card label="Total Income" value={fmt$(cv.total_income)} variant="income" />
         <Card label="Total Cap Gains" value={fmt$(cv.total_cap_gains)} variant="gains" />
         <Card label="Loan Principal" value={fmt$(cv.total_loan_principal)} variant="loans" />
         <Card label="Total Interest" value={fmt$(cv.total_interest)} variant="interest" />
-        <Card label="Tax Paid" value={fmt$(cv.total_tax_paid)} variant="tax" />
+        <Card label={hasInterestDeduction ? 'Tax Paid (after int. ded.)' : 'Tax Paid'} value={fmt$(cv.total_tax_paid)} variant="tax" />
         <Card label="Cash Received" value={fmt$(cv.cash_received)} variant="cash" />
         <Card
           label="Next Event"
@@ -1031,6 +1194,53 @@ export default function Dashboard() {
           variant="event"
         />
       </div>
+      {showDeductionCard && (() => {
+        const displayEnabled = pendingDeduction ?? savedDeduction
+        const currentSavings = dash.tax_savings_from_deduction ?? 0
+        const previewSavings = pendingDeductionChanged
+          ? (deductionPreview === 'loading' ? null : deductionPreview?.tax_savings_from_deduction ?? null)
+          : null
+        const delta = pendingDeductionChanged
+          ? (deductionPreview === 'loading' ? '…' : previewSavings !== null
+              ? (displayEnabled ? `+${fmt$(previewSavings)}` : `−${fmt$(currentSavings)}`)
+              : null)
+          : (displayEnabled ? fmt$(currentSavings) : null)
+        return (
+          <div className="flex items-center gap-3 rounded-md bg-stone-100 px-3 py-2 text-xs dark:bg-slate-800">
+            <span className="text-stone-500 dark:text-slate-400">Interest deduction</span>
+            <span className={`flex-1 font-semibold tabular-nums ${pendingDeductionChanged ? (displayEnabled ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400') : 'text-stone-700 dark:text-slate-300'}`}>
+              {delta ?? '—'}
+            </span>
+            {pendingDeductionChanged && (
+              <>
+                <button
+                  onClick={() => applyDeduction(pendingDeduction!)}
+                  disabled={savingDeduction || deductionPreview === 'loading'}
+                  className="rounded bg-rose-700 px-2.5 py-1 font-medium text-white hover:bg-rose-800 disabled:opacity-60"
+                >
+                  {savingDeduction ? '…' : 'Apply'}
+                </button>
+                <button
+                  onClick={() => setPendingDeduction(null)}
+                  disabled={savingDeduction}
+                  className="text-stone-400 hover:text-stone-600 disabled:opacity-50 dark:text-slate-500 dark:hover:text-slate-300"
+                >
+                  ✕
+                </button>
+              </>
+            )}
+            <button
+              role="switch"
+              aria-checked={displayEnabled}
+              onClick={() => setPendingDeduction(!displayEnabled)}
+              disabled={savingDeduction}
+              className={`relative shrink-0 h-6 w-11 rounded-full transition-colors focus:outline-none disabled:opacity-50 ${displayEnabled ? 'bg-purple-600 dark:bg-purple-500' : 'bg-stone-300 dark:bg-slate-600'}`}
+            >
+              <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${displayEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+            </button>
+          </div>
+        )
+      })()}
 
       <div className="grid gap-4 md:grid-cols-2">
         {events && events.length > 0 && (
@@ -1071,7 +1281,7 @@ export default function Dashboard() {
         )}
       </div>
       {projectedLiqDate && !ignoringExitDate && (
-        <p className="mt-2 text-center text-xs text-gray-400 dark:text-gray-500">
+        <p className="mt-2 text-center text-xs text-stone-600 dark:text-slate-400">
           Charts show the full event timeline — summary cards above are frozen at the exit date.
         </p>
       )}

@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 
 const COLUMN_GUIDE = {
@@ -55,6 +56,7 @@ interface ImportResult {
 
 export default function ImportExport() {
   const config = useConfig()
+  const navigate = useNavigate()
   const [status, setStatus] = useState<Status>('idle')
   const [result, setResult] = useState<ImportResult | null>(null)
   const [error, setError] = useState('')
@@ -162,43 +164,43 @@ export default function ImportExport() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Import / Export</h2>
+      <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Import / Export</h2>
 
       {/* Template Section */}
-      <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
-        <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Get Started</h3>
+      <section className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <h3 className="text-sm font-medium text-gray-900 dark:text-slate-100">Get Started</h3>
         {config?.epic_onboarding_url && (
           <a
             href={config.epic_onboarding_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-3 flex flex-col rounded-lg border-2 border-indigo-400 bg-indigo-50 p-4 hover:border-indigo-600 hover:shadow-md dark:border-indigo-500 dark:bg-indigo-950/40 dark:hover:border-indigo-400"
+            className="mt-3 flex flex-col rounded-lg border-2 border-rose-400 bg-rose-50 p-4 hover:border-rose-600 hover:shadow-md dark:border-rose-500 dark:bg-rose-950/30 dark:hover:border-rose-400"
           >
-            <span className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">On Epic's network? Start here →</span>
-            <span className="mt-1 text-xs text-indigo-600 dark:text-indigo-400">
+            <span className="text-sm font-semibold text-rose-700 dark:text-rose-300">On Epic's network? Start here →</span>
+            <span className="mt-1 text-xs text-rose-700 dark:text-rose-400">
               Download your pre-filled template — grant and loan structure already filled in. Then upload it below.
             </span>
           </a>
         )}
-        <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+        <p className="mt-3 text-xs text-gray-500 dark:text-slate-400">
           Or download a generic sample (filled with fake data) to see the format, or a blank template to fill in yourself.
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
           <button
             onClick={handleSampleDownload}
-            className="rounded-md bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60"
+            className="rounded-md bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50 dark:bg-rose-900/40 dark:text-rose-300 dark:hover:bg-rose-900/50"
           >
             Download Sample (with fake data)
           </button>
           <button
             onClick={handleTemplateDownload}
-            className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
           >
             Download Blank Template
           </button>
           <button
             onClick={() => setShowGuide(v => !v)}
-            className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
           >
             {showGuide ? 'Hide column guide' : 'What do the columns mean?'}
           </button>
@@ -208,12 +210,12 @@ export default function ImportExport() {
           <div className="mt-4 space-y-4">
             {(Object.entries(COLUMN_GUIDE) as [string, { col: string; desc: string }[]][]).map(([sheet, cols]) => (
               <div key={sheet}>
-                <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">{sheet} sheet</p>
+                <p className="text-xs font-semibold text-gray-700 dark:text-slate-300">{sheet} sheet</p>
                 <dl className="mt-1 divide-y divide-gray-100 dark:divide-gray-800">
                   {cols.map(({ col, desc }) => (
                     <div key={col} className="flex gap-2 py-1.5">
-                      <dt className="w-32 shrink-0 font-mono text-xs text-indigo-600 dark:text-indigo-400">{col}</dt>
-                      <dd className="text-xs text-gray-500 dark:text-gray-400">{desc}</dd>
+                      <dt className="w-32 shrink-0 font-mono text-xs text-rose-700 dark:text-rose-400">{col}</dt>
+                      <dd className="text-xs text-gray-500 dark:text-slate-400">{desc}</dd>
                     </div>
                   ))}
                 </dl>
@@ -224,32 +226,36 @@ export default function ImportExport() {
       </section>
 
       {/* Import Section */}
-      <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
-        <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Import from Excel</h3>
-        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+      <section className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <h3 className="text-sm font-medium text-gray-900 dark:text-slate-100">Import from Excel</h3>
+        <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
           Upload a .xlsx file with Schedule, Loans, and/or Prices sheets. Only sheets present in your file will be processed — others are left unchanged.
         </p>
 
         <div className="mt-3 space-y-3">
+          <label htmlFor="import-file" className="block text-xs font-medium text-gray-700 dark:text-slate-300">
+            Excel file (.xlsx)
+          </label>
           <input
+            id="import-file"
             ref={fileRef}
             type="file"
             accept=".xlsx,.xls"
             onChange={handleFileSelect}
-            className="block w-full text-xs text-gray-500 file:mr-3 file:rounded-md file:border-0 file:bg-indigo-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-indigo-700 hover:file:bg-indigo-100 dark:text-gray-400 dark:file:bg-indigo-900/40 dark:file:text-indigo-300"
+            className="block w-full text-xs text-gray-500 file:mr-3 file:rounded-md file:border-0 file:bg-rose-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-rose-700 hover:file:bg-rose-50 dark:text-slate-400 dark:file:bg-rose-900/40 dark:file:text-rose-300"
           />
-          <label className="flex items-start gap-2 text-xs text-gray-600 dark:text-gray-400">
+          <label className="flex items-start gap-2 text-xs text-gray-600 dark:text-slate-400">
             <input
               type="checkbox"
               checked={generatePayoffSales}
               onChange={e => setGeneratePayoffSales(e.target.checked)}
-              className="mt-0.5 rounded border-gray-300 dark:border-gray-600"
+              className="mt-0.5 rounded border-gray-300 dark:border-slate-600"
             />
             <span>
               <span className="font-medium">Generate payoff sales for loans</span>
-              <span className="ml-1 text-gray-400">(recommended)</span>
+              <span className="ml-1 text-stone-600">(recommended)</span>
               <br />
-              <span className="text-gray-400 dark:text-gray-500">For each loan, automatically creates a stock sale sized to cover the payoff after capital gains tax. Only applies when the file includes a Loans sheet.</span>
+              <span className="text-stone-600 dark:text-slate-400">For each loan, automatically creates a stock sale sized to cover the payoff after capital gains tax. Only applies when the file includes a Loans sheet.</span>
             </span>
           </label>
         </div>
@@ -268,7 +274,7 @@ export default function ImportExport() {
               </button>
               <button
                 onClick={cancelImport}
-                className="rounded-md bg-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+                className="rounded-md bg-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-300 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-gray-600"
               >
                 Cancel
               </button>
@@ -296,16 +302,30 @@ export default function ImportExport() {
         )}
       </section>
 
+      {/* Setup Wizard */}
+      <section className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <h3 className="text-sm font-medium text-gray-900 dark:text-slate-100">Setup Wizard</h3>
+        <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+          Step-by-step guided setup — enter grants, loans, and prices one at a time. Clears all existing data and starts fresh.
+        </p>
+        <button
+          onClick={() => navigate('/wizard')}
+          className="mt-3 rounded-md bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100 dark:bg-rose-900/40 dark:text-rose-300 dark:hover:bg-rose-900/50"
+        >
+          Open Setup Wizard →
+        </button>
+      </section>
+
       {/* Export Section */}
-      <section className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
-        <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">Export to Excel</h3>
-        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+      <section className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <h3 className="text-sm font-medium text-gray-900 dark:text-slate-100">Export to Excel</h3>
+        <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
           Download your data as a Vesting.xlsx file with Schedule, Loans, Prices, and Events sheets.
         </p>
         <button
           onClick={handleExport}
           disabled={status === 'exporting'}
-          className="mt-3 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+          className="mt-3 rounded-md bg-rose-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-800 disabled:opacity-50"
         >
           {status === 'exporting' ? 'Exporting...' : 'Download Vesting.xlsx'}
         </button>

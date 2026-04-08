@@ -4,6 +4,24 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 
 ## Screenshots
 
+### Setup Wizard
+
+New users are greeted by the guided setup wizard (shown when no grants exist). The welcome screen offers three paths:
+
+- **Use grant schedule** (primary) — Epic's company-wide grant structure is pre-filled (vest dates, periods, exercise dates, default purchase prices). You only enter your share counts, annual market prices, and loan details.
+- **Upload structure file** — upload a structure file (Excel) to pre-fill grants and prices; you fill in share counts.
+- **Start from scratch** — enter everything manually, one grant at a time.
+
+The **Use grant schedule** flow walks through: intro screen → grants table (Purchase / Catch-up / Bonus sections with pre-filled rows) → annual prices table (pre-populated with Jan 1 dates for 2018–2025; enter price from Epic stocks SharePoint) → optional tax rates → done. Catch-up grants default to included for years ≤ 2021. The 2020 Bonus has an A/B/C vesting schedule selector (matching your grant agreement).
+
+| Welcome | Grants Table |
+|---------|-------------|
+| ![Wizard Welcome Light](screenshots/wizard-welcome-light-mobile.png) | ![Wizard Grant Entry](screenshots/wizard-grant-entry-light-mobile.png) |
+
+| Dark | Re-run from Import page |
+|------|------------------------|
+| ![Wizard Welcome Dark](screenshots/wizard-welcome-dark-mobile.png) | ![Wizard Page](screenshots/wizard-page-light-mobile.png) |
+
 ### Import Flow
 
 | Upload | Confirm | Success |
@@ -38,6 +56,8 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 | Light | Dark |
 |-------|------|
 | ![Settings Light](screenshots/settings-light-mobile.png) | ![Settings Dark](screenshots/settings-dark-mobile.png) |
+
+Settings → Tax Rates includes lot selection method, loan payoff method, and all rate fields. The **investment interest deduction** toggle lives on the Dashboard for quick access (see [Investment Interest Deduction](#investment-interest-deduction) below).
 
 ### Admin Dashboard
 
@@ -86,13 +106,15 @@ The *grant price* (what you paid) is fixed at grant creation. The *share price* 
 
 1. **Sign in** — click the sign-in button for your organisation's identity provider (Google, Azure AD, or any OIDC provider configured by your admin). Your data is tied to that account, and you can export everything anytime.
 2. **Add a price** — go to **Prices** and enter the current share price (Epic announces this each March). Without at least one price, no events will be computed. Use **+ Estimate** to project future prices as an annual % growth rate — useful for modeling expected increases before they're announced. Estimates appear in italics with an "est." badge and are auto-removed when Epic adds the real price for that date.
-3. **Add your data** — two options:
+3. **Add your data** — the guided setup wizard appears automatically when you have no grants. Three options:
+   - **Use grant schedule** (recommended for Epic employees) — Epic's grant structure is pre-filled. Enter your share counts, annual market prices from Epic stocks SharePoint, and loan interest rates from your DocuSign or Shareworks statements. The wizard covers Purchase, Catch-up, and Bonus grants (including the 2020 bonus A/B/C schedule selector). Catch-up grants are included by default for years ≤ 2021.
+   - **Upload structure file** — upload an Excel structure file to pre-fill grants and prices, then confirm share counts.
+   - **Start from scratch** — manually enter prices, then add grants one at a time (all types supported). After grants, enter any Purchase loan details.
    - **On Epic's campus network?** If you see the **"On Epic's network? Start here →"** button on the Import page, click it to download a pre-filled Excel template from Epic's campus portal — your grant and loan structure are already filled in. Download it, review the numbers, then upload it on the Import page. In Epic Mode your historical data is read-only (maintained by Epic's systems), but you can still add future price estimates, record sales, and configure tax settings.
    - **Import from Excel** — go to **Import**, download the **Sample** (pre-filled with fake data and explanatory cell comments) to see what the format looks like, then fill in your real data and upload. Click "What do the columns mean?" for a plain-English guide to every field.
-   - **Add manually** — go to **Grants** and add grants one by one. Then add any **Loans** and their annual interest. For bonus/free grants where you filed an **83(b) election**, tick the "Filed 83(b) election" checkbox — vesting events will show unrealized cap gains instead of ordinary income.
-4. **View the Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, interest, tax paid, cash received, next event). Use the **As of** date picker to time-travel. **Today** snaps to the current date; **Last event** jumps to your final vesting date; **Exit date** appears when you've configured one (see Settings → Exit Planning) and jumps to your projected liquidation date — showing 0 shares, 0 principal, and net cash.
+4. **View the Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, interest, tax paid, cash received, next event). Use the **As of** date picker to time-travel. **Today** snaps to the current date; **Last event** jumps to your final vesting date; **Exit date** appears when you've set one and jumps to your projected liquidation date — showing 0 shares, 0 principal, and net cash. The **investment interest deduction** toggle is on the dashboard: flip it to preview the tax impact before applying — see [Investment Interest Deduction](#investment-interest-deduction).
 5. **View Events** — the full computed timeline of vesting, exercise, loan payoff, and sale events. A **Liquidation (projected)** event is automatically appended at your exit date. Tap it to see the calculation breakdown (shares × price → gross proceeds → est. tax → net). Events after the exit date are dimmed with a "beyond exit horizon" separator.
-6. **Configure your exit date** — go to **Settings → Exit Planning** to set a specific date. The projected liquidation uses shares and price as of that date (even if it's before your last vesting event). Defaults to your last vesting date if not set.
+6. **Configure your exit date** — set it directly on the Dashboard. A date input with live preview shows projected net cash (gross proceeds − loans − tax) before you apply. The projected liquidation uses shares and price as of that date, even if it's before your last vesting event. Defaults to your last vesting date if not set.
 7. **Plan or record a sale** — go to **Sales** and tap **+ Sale**. See [Sales Workflow](#sales-workflow) for the full explanation of lot selection methods, the $ Target vs # Shares toggle, the tranche allocation table, and how to record actual tax paid for a past sale.
 8. **Manage loan payoffs** — each loan can have an auto-generated sale that covers the outstanding balance. See [Loan Payoff Flow](#loan-payoff-flow) for how share counts are calculated and how the Request Payoff button works in Epic Mode.
 9. **Set up notifications** — go to **Settings → Notifications**. Enable push (browser) or email, then choose timing: day-of, 3 days before, or 1 week before your events. Hit **Send test** to confirm push is working.
@@ -202,18 +224,51 @@ If a payoff sale for the loan already exists (e.g. auto-created at loan setup), 
 
 ---
 
+## Investment Interest Deduction
+
+Toggle this directly on the **Dashboard** — flip the switch to preview the estimated tax impact before applying. The setting can also be changed in **Settings → Tax Rates**.
+
+Investment interest is interest paid on loans used to buy investments. Under IRS Form 4952 you can elect to deduct it against *net investment income* — and you may elect to treat net capital gains as investment income for this purpose. The trade-off: gains treated as investment income lose their preferential cap-gains rate and are taxed as ordinary income instead. For large-enough interest amounts the tax saving from reducing the gain can outweigh the rate difference; this estimate helps you model that.
+
+**How the estimate works:**
+
+- **Interest timing** — an interest loan with `due_date = 1/1/YEAR` is deductible in YEAR (e.g. 2024 interest due 1/1/2025 → deductible in 2025).
+- **Application order** — the deductible pool is applied first to short-term gains (vesting cap gains), then long-term gains (price cap gains). This minimises tax since STCG is taxed at a higher rate.
+- **Carry-forward** — any unused deduction in a given year carries forward indefinitely and is applied in the next year that has eligible cap gains.
+- **Tax savings** — the tax you avoid by reducing capital gains is added to your estimated cash received.
+
+**What changes on the dashboard when enabled:**
+
+- "Total Cap Gains" card relabels to **"Cap Gains (after int. ded.)"** and shows the reduced amount.
+- "Cash Received" card relabels to **"Cash (incl. int. ded. savings)"** and includes the estimated tax savings (deduction × your configured CG rates).
+- The Income vs Cap Gains chart curve drops where deductions are applied.
+- The Estimated Tax Liability chart reflects the lower taxable cap gains.
+- An inline card on the dashboard shows the total deduction applied with a toggle to preview enabling/disabling before committing.
+
+**What changes on the Events timeline when enabled:**
+
+- The "Cap Gains" column header changes to **"Cap Gains (adj.)"**.
+- Events where a deduction is applied show the adjusted value with an "adj." badge and a tooltip showing the gross amount.
+- Expanding a vesting or price event shows an **InterestDeductionCard** with the STCG/LTCG split and how much of the available interest pool was consumed.
+
+> This is an estimate only. Consult a tax advisor before making decisions based on it. The deduction requires filing Form 4952; electing to treat capital gains as investment income means those gains lose their preferential rate. Whether this is beneficial depends on your specific situation.
+
+---
+
 ## Features
 
 - **Event Timeline** — computed on the fly from grants, prices, and loans. Never stored. Shows income, capital gains, share price, and cumulative totals. A **Liquidation (projected)** event is auto-injected at the exit date: tap it to see a breakdown (shares × price → gross proceeds → est. tax → net). Events after the exit date are dimmed with a "beyond exit horizon" separator so it's clear they won't occur if you liquidate.
-- **Exit Planning** — set an exit date in Settings → Exit Planning to project a full liquidation at any point, even before your last vesting event. The projection uses only the shares and price available as of that date. Dashboard quick buttons update to include an **Exit date** shortcut; card values at the exit date correctly show 0 shares, 0 loan principal, and net cash (gross proceeds − loans − tax).
+- **Exit Planning** — set an exit date directly on the Dashboard with a live preview of projected net cash before applying. Projects a full liquidation at any point, even before your last vesting event. Dashboard quick buttons include an **Exit date** shortcut; card values at the exit date show 0 shares, 0 loan principal, and net cash (gross proceeds − loans − tax).
 - **Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, total interest, tax paid, cash received, next event) with an **As of** date picker and quick buttons: **Today**, **Last event** (final vesting date), and **Exit date** (when configured). Interactive charts include an Interest Over Time chart with guaranteed vs. projected interest-on-interest layers. Empty state shows getting-started prompts for new users.
 - **Stock Sales** — plan or record share sales with configurable lot selection (Epic LIFO/FIFO/LIFO/Manual), LT/ST capital gains split, and Wisconsin tax calculator. Choose a $ target (shares auto-computed after-tax via gross-up) or enter shares directly. A live tranche table shows lot-level allocation per vest date with LT/ST classification. Manual mode makes each lot's allocation editable. For past-date sales, enter actual tax paid to override the estimate. See [Sales Workflow](#sales-workflow) for the full explanation.
 - **CRUD Management** — full create/read/update/delete for Grants, Loans, Prices, and Sales.
 - **Quick Flows** — convenience endpoints: "New Purchase" (grant + loan with optional stock down payment), "Annual Price", "Add Bonus".
 - **83(b) Election Support** — bonus/free grants can be flagged as having an 83(b) election filed. Vesting events for these grants show unrealized cap gains (violet `~$X`) instead of ordinary income, with a tappable card explaining the cost basis and potential LT cap gains tax at eventual sale.
+- **Investment Interest Deduction Estimator** — optional Form 4952 estimate in Settings → Tax Rates. Applies recorded interest payments against cap gains (STCG first, then LTCG) with indefinite carry-forward. Reduces the cap gains card and chart; adds estimated tax savings to the cash card. Per-event deduction detail shown inline in the Events table. See [Investment Interest Deduction](#investment-interest-deduction).
 - **Down Payment Rules** — configurable minimum DP policy (percent of purchase and dollar cap). "Prefer stock DP" auto-calculates the minimum stock exchange down payment on new purchases. Default: 10% or $20,000, whichever is lower.
 - **Excel Import/Export** — bootstrap from an existing Vesting.xlsx or export current state. The Import page includes a downloadable sample file (pre-filled with fake data, with cell comments explaining every field) and a built-in column reference guide.
 - **OIDC Sign-In** — provider-agnostic PKCE flow works with any standards-compliant IdP (Google, Azure Entra ID, etc.). Multiple providers can be enabled simultaneously — the login page shows one button per provider. Automatic account creation; data is tied to the account.
+- **Smart Tips** — the dashboard automatically analyzes your settings and surfaces up to 3 actionable tips in a carousel above the summary cards: (1) **Exit date** — if extending your projected exit date by 1–3 months saves ≥$1,000 in taxes by letting shares cross the long-term threshold, the smallest qualifying extension is suggested; (2) **Investment interest deduction** — if enabling Form 4952 deduction would save ≥$500; (3) **Lot selection method** — if switching to FIFO/LIFO/Epic LIFO saves ≥$1,000 vs. your current method (manual lot selection is not analyzed). Each tip shows estimated savings and an **Apply** button that updates the relevant setting in one tap and refreshes the dashboard. Tips can also be dismissed for the session. Acceptance is recorded for admin reporting.
 - **Admin Dashboard** — user management, aggregate stats, email blocking, system health monitoring (CPU, RAM, DB size, and cache hit rate sparklines with 24h/72h/7d/30d windows), per-table DB size breakdown, and a Danger Zone for maintenance mode and Epic Mode toggles. Admin cannot see financial data.
 - **Push & Email Notifications** — configurable advance timing: day-of, 3 days before, or 1 week before each event. Per-user opt-in for each channel independently. Includes a "Send test" button to confirm push is working.
 - **Per-User Encryption** — AES-256-GCM column-level encryption. Two-level key hierarchy: `KEY_ENCRYPTION_KEY` (env var, set once, never changes) wraps an operational master key stored encrypted in the database. The master key can be rotated live from the admin panel — all replicas pick up the new key automatically within seconds, no restart required. Each user has a unique per-user key wrapped by the master key.
@@ -475,6 +530,7 @@ epic-stocks/
 │   │       ├── flows.py     # Quick flows (new purchase, bonus, price)
 │   │       ├── import_export.py # Excel import/export + template
 │   │       ├── sales.py     # Sales CRUD + tax breakdown
+│   │       ├── tips.py      # Smart Tips: scenario tax comparisons + acceptance recording
 │   │       └── cache.py     # POST /api/internal/cache-invalidate webhook
 │   └── tests/               # pytest tests
 ├── frontend/
@@ -486,6 +542,7 @@ epic-stocks/
 │   │   │   └── hooks/       # useAuth, useConfig, useDark, usePush, useMe
 │   │   ├── app/             # Equity tracking UI (replace when forking)
 │   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport
+│   │   │   ├── components/  # ImportWizard (onboarding + import), TipCarousel
 │   │   │   └── hooks/       # useApiData, useDataSync
 │   │   ├── App.tsx          # Router + layout wiring
 │   │   └── __tests__/       # Vitest tests
@@ -593,6 +650,7 @@ The admin system is opt-in via the `ADMIN_EMAIL` environment variable. Admins ar
 - Database storage usage
 - **System Health** — current CPU %, RAM %, and DB size with sparkline charts (24h/72h/7d/30d windows). Sampled every 15 minutes; 30-day rolling retention.
 - **Database Tables** — per-table size breakdown showing which tables are large (PostgreSQL only). Useful for diagnosing storage growth; includes a note explaining PostgreSQL's ~7–8 MB baseline overhead.
+- **Smart Tips Report** — aggregate-only view of tip acceptance: total unique users who accepted any tip, total estimated savings, and per-type breakdown (exit date / deduction / method). No individual user financial data is exposed.
 - Per-user metadata: email, name, created_at, last_login, record counts, admin badge
 - Searchable user list (filter by email or name) with pagination, sorted by last active
 - **Build version** — a 7-character commit SHA is shown in small muted text at the bottom of the Admin page (and the Settings page for all users), so testers can confirm exactly which build is running without needing server access

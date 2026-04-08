@@ -42,10 +42,11 @@ function renderWizard(onComplete = vi.fn()) {
 }
 
 describe('ImportWizard', () => {
-  it('renders welcome screen with two path options', () => {
+  it('renders welcome screen with three path options', () => {
     mockApi()
     renderWizard()
     expect(screen.getByText("Let's set up your equity tracker.")).toBeInTheDocument()
+    expect(screen.getByText(/Use grant schedule/i)).toBeInTheDocument()
     expect(screen.getByText(/Upload structure file/i)).toBeInTheDocument()
     expect(screen.getByText(/Start from scratch/i)).toBeInTheDocument()
   })
@@ -209,6 +210,81 @@ describe('ImportWizard', () => {
     await user.click(screen.getByRole('button', { name: /Submit →/i }))
     await waitFor(() => screen.getByText('Setup complete!'))
 
+    await user.click(screen.getByRole('button', { name: /View dashboard/i }))
+    expect(onComplete).toHaveBeenCalledOnce()
+  })
+
+  it('Use grant schedule shows what-you-need screen', async () => {
+    mockApi()
+    const user = userEvent.setup()
+    renderWizard()
+    await user.click(screen.getByRole('button', { name: /Use grant schedule/i }))
+    expect(screen.getByText("What you'll need")).toBeInTheDocument()
+    expect(screen.getByText(/Epic stocks SharePoint/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/DocuSign or Shareworks/i).length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('schedule intro goes to grants table', async () => {
+    mockApi()
+    const user = userEvent.setup()
+    renderWizard()
+    await user.click(screen.getByRole('button', { name: /Use grant schedule/i }))
+    await user.click(screen.getByRole('button', { name: /Let's go/i }))
+    expect(screen.getByText('Your grants')).toBeInTheDocument()
+    expect(screen.getByText('Purchase grants')).toBeInTheDocument()
+    expect(screen.getByText('Catch-up grants')).toBeInTheDocument()
+  })
+
+  it('schedule grants table shows pre-filled purchase years', async () => {
+    mockApi()
+    const user = userEvent.setup()
+    renderWizard()
+    await user.click(screen.getByRole('button', { name: /Use grant schedule/i }))
+    await user.click(screen.getByRole('button', { name: /Let's go/i }))
+    // 2018–2025 purchase years should be present
+    expect(screen.getByText('2018')).toBeInTheDocument()
+    expect(screen.getByText('2020')).toBeInTheDocument()
+    expect(screen.getByText('2025')).toBeInTheDocument()
+  })
+
+  it('schedule grants table shows 2020 bonus with A/B/C selector', async () => {
+    mockApi()
+    const user = userEvent.setup()
+    renderWizard()
+    await user.click(screen.getByRole('button', { name: /Use grant schedule/i }))
+    await user.click(screen.getByRole('button', { name: /Let's go/i }))
+    expect(screen.getByText('Bonus & Free grants')).toBeInTheDocument()
+    // The vesting schedule label text is split across elements
+    expect(screen.getByText(/Vesting schedule/i)).toBeInTheDocument()
+    // A, B, C schedule buttons
+    const scheduleButtons = screen.getAllByRole('button', { name: /^[ABC]$/ })
+    expect(scheduleButtons.length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('schedule path navigates grants → prices → tax', async () => {
+    mockApi()
+    const user = userEvent.setup()
+    renderWizard()
+    await user.click(screen.getByRole('button', { name: /Use grant schedule/i }))
+    await user.click(screen.getByRole('button', { name: /Let's go/i }))
+    await user.click(screen.getByRole('button', { name: /Next: Enter prices/i }))
+    expect(screen.getByText('Annual share prices')).toBeInTheDocument()
+    expect(screen.getByText(/Epic stocks SharePoint/i)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Next: Tax rates/i }))
+    expect(screen.getByText('Tax rates')).toBeInTheDocument()
+  })
+
+  it('schedule path submits and shows done screen', async () => {
+    mockApi()
+    const onComplete = vi.fn()
+    const user = userEvent.setup()
+    renderWizard(onComplete)
+    await user.click(screen.getByRole('button', { name: /Use grant schedule/i }))
+    await user.click(screen.getByRole('button', { name: /Let's go/i }))
+    await user.click(screen.getByRole('button', { name: /Next: Enter prices/i }))
+    await user.click(screen.getByRole('button', { name: /Next: Tax rates/i }))
+    await user.click(screen.getByRole('button', { name: /Skip/i }))
+    await waitFor(() => screen.getByText('Setup complete!'))
     await user.click(screen.getByRole('button', { name: /View dashboard/i }))
     expect(onComplete).toHaveBeenCalledOnce()
   })

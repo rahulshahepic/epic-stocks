@@ -303,6 +303,15 @@ export const api = {
   previewExit: (date: string) => apiFetch<ExitPreview | null>(`/api/preview-exit?date=${encodeURIComponent(date)}`),
   previewDeduction: (enabled: boolean) => apiFetch<DeductionPreview | null>(`/api/preview-deduction?enabled=${enabled}`),
 
+  // Wizard
+  wizardParseFile: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return apiFetch<WizardParseResult>('/api/wizard/parse-file', { method: 'POST', body: form })
+  },
+  wizardSubmit: (data: WizardSubmitPayload) =>
+    post<WizardSubmitResult>('/api/wizard/submit', data),
+
   // Smart Tips
   getTips: () => apiFetch<SmartTip[]>('/api/tips'),
   recordTipAcceptance: (tip_type: string, savings_estimate: number) =>
@@ -572,6 +581,63 @@ export interface LotSummary {
   shares: number
   lt_shares: number
   st_shares: number
+}
+
+// Wizard types
+export interface WizardGrantTemplate {
+  year: number | null
+  type: string | null
+  periods: number | null
+  vest_start: string | null
+  exercise_date: string | null
+  price: number | null
+}
+
+export interface WizardPriceTemplate {
+  effective_date: string
+  price: number | null
+}
+
+export interface WizardParseResult {
+  grants: WizardGrantTemplate[]
+  prices: WizardPriceTemplate[]
+}
+
+export interface WizardLoan {
+  loan_number: string
+  loan_type: 'Purchase' | 'Tax' | 'Interest'
+  loan_year: number
+  amount: number
+  interest_rate: number
+  due_date: string
+  refinances_loan_number: string
+}
+
+export interface WizardGrant {
+  year: number
+  type: string
+  shares: number
+  price: number
+  vest_start: string
+  periods: number
+  exercise_date: string
+  dp_shares: number
+  election_83b: boolean
+  loans: WizardLoan[]
+}
+
+export interface WizardSubmitPayload {
+  grants: WizardGrant[]
+  prices: { effective_date: string; price: number }[]
+  clear_existing?: boolean
+  generate_payoff_sales?: boolean
+}
+
+export interface WizardSubmitResult {
+  grants: number
+  loans: number
+  prices: number
+  payoff_sales: number
 }
 
 export interface RotationEvent {

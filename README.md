@@ -4,6 +4,24 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 
 ## Screenshots
 
+### Setup Wizard
+
+New users are greeted by the guided setup wizard (shown when no grants exist). The welcome screen offers three paths:
+
+- **Use grant schedule** (primary) — Epic's company-wide grant structure is pre-filled (vest dates, periods, exercise dates, default purchase prices). You only enter your share counts, annual market prices, and loan details.
+- **Upload structure file** — upload a structure file (Excel) to pre-fill grants and prices; you fill in share counts.
+- **Start from scratch** — enter everything manually, one grant at a time.
+
+The **Use grant schedule** flow walks through: intro screen → grants table (Purchase / Catch-up / Bonus sections with pre-filled rows) → annual prices table (pre-populated with Jan 1 dates for 2018–2025; enter price from Epic stocks SharePoint) → optional tax rates → done. Catch-up grants default to included for years ≤ 2021. The 2020 Bonus has an A/B/C vesting schedule selector (matching your grant agreement).
+
+| Welcome | Grants Table |
+|---------|-------------|
+| ![Wizard Welcome Light](screenshots/wizard-welcome-light-mobile.png) | ![Wizard Grant Entry](screenshots/wizard-grant-entry-light-mobile.png) |
+
+| Dark | Re-run from Import page |
+|------|------------------------|
+| ![Wizard Welcome Dark](screenshots/wizard-welcome-dark-mobile.png) | ![Wizard Page](screenshots/wizard-page-light-mobile.png) |
+
 ### Import Flow
 
 | Upload | Confirm | Success |
@@ -88,10 +106,12 @@ The *grant price* (what you paid) is fixed at grant creation. The *share price* 
 
 1. **Sign in** — click the sign-in button for your organisation's identity provider (Google, Azure AD, or any OIDC provider configured by your admin). Your data is tied to that account, and you can export everything anytime.
 2. **Add a price** — go to **Prices** and enter the current share price (Epic announces this each March). Without at least one price, no events will be computed. Use **+ Estimate** to project future prices as an annual % growth rate — useful for modeling expected increases before they're announced. Estimates appear in italics with an "est." badge and are auto-removed when Epic adds the real price for that date.
-3. **Add your data** — two options:
+3. **Add your data** — the guided setup wizard appears automatically when you have no grants. Three options:
+   - **Use grant schedule** (recommended for Epic employees) — Epic's grant structure is pre-filled. Enter your share counts, annual market prices from Epic stocks SharePoint, and loan interest rates from your DocuSign or Shareworks statements. The wizard covers Purchase, Catch-up, and Bonus grants (including the 2020 bonus A/B/C schedule selector). Catch-up grants are included by default for years ≤ 2021.
+   - **Upload structure file** — upload an Excel structure file to pre-fill grants and prices, then confirm share counts.
+   - **Start from scratch** — manually enter prices, then add grants one at a time (all types supported). After grants, enter any Purchase loan details.
    - **On Epic's campus network?** If you see the **"On Epic's network? Start here →"** button on the Import page, click it to download a pre-filled Excel template from Epic's campus portal — your grant and loan structure are already filled in. Download it, review the numbers, then upload it on the Import page. In Epic Mode your historical data is read-only (maintained by Epic's systems), but you can still add future price estimates, record sales, and configure tax settings.
    - **Import from Excel** — go to **Import**, download the **Sample** (pre-filled with fake data and explanatory cell comments) to see what the format looks like, then fill in your real data and upload. Click "What do the columns mean?" for a plain-English guide to every field.
-   - **Add manually** — go to **Grants** and add grants one by one. Then add any **Loans** and their annual interest. For bonus/free grants where you filed an **83(b) election**, tick the "Filed 83(b) election" checkbox — vesting events will show unrealized cap gains instead of ordinary income.
 4. **View the Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, interest, tax paid, cash received, next event). Use the **As of** date picker to time-travel. **Today** snaps to the current date; **Last event** jumps to your final vesting date; **Exit date** appears when you've set one and jumps to your projected liquidation date — showing 0 shares, 0 principal, and net cash. The **investment interest deduction** toggle is on the dashboard: flip it to preview the tax impact before applying — see [Investment Interest Deduction](#investment-interest-deduction).
 5. **View Events** — the full computed timeline of vesting, exercise, loan payoff, and sale events. A **Liquidation (projected)** event is automatically appended at your exit date. Tap it to see the calculation breakdown (shares × price → gross proceeds → est. tax → net). Events after the exit date are dimmed with a "beyond exit horizon" separator.
 6. **Configure your exit date** — set it directly on the Dashboard. A date input with live preview shows projected net cash (gross proceeds − loans − tax) before you apply. The projected liquidation uses shares and price as of that date, even if it's before your last vesting event. Defaults to your last vesting date if not set.
@@ -522,7 +542,7 @@ epic-stocks/
 │   │   │   └── hooks/       # useAuth, useConfig, useDark, usePush, useMe
 │   │   ├── app/             # Equity tracking UI (replace when forking)
 │   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport
-│   │   │   ├── components/  # OnboardingWizard, TipCarousel
+│   │   │   ├── components/  # ImportWizard (onboarding + import), TipCarousel
 │   │   │   └── hooks/       # useApiData, useDataSync
 │   │   ├── App.tsx          # Router + layout wiring
 │   │   └── __tests__/       # Vitest tests

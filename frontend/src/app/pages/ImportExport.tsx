@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 
 const COLUMN_GUIDE = {
@@ -55,6 +56,7 @@ interface ImportResult {
 
 export default function ImportExport() {
   const config = useConfig()
+  const navigate = useNavigate()
   const [status, setStatus] = useState<Status>('idle')
   const [result, setResult] = useState<ImportResult | null>(null)
   const [error, setError] = useState('')
@@ -298,6 +300,20 @@ export default function ImportExport() {
             <p className="whitespace-pre-wrap text-xs text-red-600 dark:text-red-400">{error}</p>
           </div>
         )}
+      </section>
+
+      {/* Setup Wizard */}
+      <section className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <h3 className="text-sm font-medium text-gray-900 dark:text-slate-100">Setup Wizard</h3>
+        <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+          Step-by-step guided setup — enter grants, loans, and prices one at a time. Clears all existing data and starts fresh.
+        </p>
+        <button
+          onClick={() => navigate('/wizard')}
+          className="mt-3 rounded-md bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100 dark:bg-rose-900/40 dark:text-rose-300 dark:hover:bg-rose-900/50"
+        >
+          Open Setup Wizard →
+        </button>
       </section>
 
       {/* Export Section */}

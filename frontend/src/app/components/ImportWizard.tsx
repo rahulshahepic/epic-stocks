@@ -3,8 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../../api.ts'
 import type { WizardGrant, WizardLoan, WizardGrantTemplate, TaxSettings } from '../../api.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
-import { TaxRateFields, ratesFromDefaults, DEFAULT_RATES } from '../pages/Sales.tsx'
-import type { TaxRates } from '../pages/Sales.tsx'
 import { useApiData } from '../hooks/useApiData.ts'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -55,17 +53,17 @@ type Screen =
   | 'welcome'
   | 'upload'
   | 'prices'
-  | 'grant_entry'     // enter shares (+ maybe other fields) for current grant draft
-  | 'purchase_loan'   // "did you take a loan?" + form
-  | 'loan_refinance'  // "was this refinanced?" + form
-  | 'tax_loans'       // tax loans per vesting year (for pre-tax RSU-type)
-  | 'more_grants'     // "add another grant year?"
+  | 'grant_entry'       // enter shares (+ maybe other fields) for current grant draft
+  | 'purchase_loan'     // "did you take a loan?" + form
+  | 'loan_refinance'    // "was this refinanced?" + form
+  | 'tax_loans'         // tax loans per vesting year (for pre-tax RSU-type)
+  | 'more_grants'       // "add another grant year?"
   | 'review'
   | 'done'
   | 'schedule_intro'
+  | 'schedule_prices'   // prices entered BEFORE grants so they can pre-fill cost basis
   | 'schedule_grants'
-  | 'schedule_prices'
-  | 'schedule_tax'
+  | 'schedule_settings' // user preference questions (replaces old tax-rate step)
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -167,7 +165,7 @@ const EPIC_GRANT_SCHEDULE: KnownGrant[] = [
 ]
 
 const LOAN_TERM_YEARS = 10
-const PRICE_YEARS = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
+const PRICE_YEARS = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
 
 interface PurchaseGrantRow {
   year: number; vest_start: string; periods: number; exercise_date: string
@@ -333,10 +331,10 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
   const [purchaseRows, setPurchaseRows] = useState<PurchaseGrantRow[]>(initPurchaseRows)
   const [catchUpRows, setCatchUpRows]   = useState<CatchUpRow[]>(initCatchUpRows)
   const [bonusRows, setBonusRows]       = useState<BonusGrantRow[]>(initBonusRows)
-  const [taxRates, setTaxRates]         = useState<TaxRates>(DEFAULT_RATES)
+  const [deductInterest, setDeductInterest] = useState(false)
   const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
   const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
-  useEffect(() => { if (taxSettings) setTaxRates(ratesFromDefaults(taxSettings)) }, [taxSettings])
+  useEffect(() => { if (taxSettings) setDeductInterest(taxSettings.deduct_investment_interest) }, [taxSettings])
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -518,12 +516,12 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
     }))
   }
 
-  async function handleScheduleSubmit(saveTax = false) {
+  async function handleScheduleSubmit(saveSettings = false) {
     setSubmitting(true)
     setSubmitError('')
     try {
-      if (saveTax) {
-        try { await api.updateTaxSettings(taxRates) } catch { /* non-fatal */ }
+      if (saveSettings) {
+        try { await api.updateTaxSettings({ deduct_investment_interest: deductInterest }) } catch { /* non-fatal */ }
       }
       const grants: WizardGrant[] = [
         ...purchaseRows
@@ -601,53 +599,49 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
               {isPage ? 'Setup Wizard' : "Let's set up your equity tracker."}
             </h2>
             <p className="mt-1 text-sm text-rose-700 dark:text-rose-300">
-              I'll guide you through entering your grants, prices, and loans step by step.
+              Choose how you'd like to get started.
             </p>
-
-            {config?.epic_onboarding_url && (
-              <a
-                href={config.epic_onboarding_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-4 flex flex-col rounded-lg border-2 border-rose-400 bg-white p-3 hover:border-rose-600 dark:border-rose-500 dark:bg-slate-900"
-              >
-                <span className="text-xs font-semibold text-rose-700 dark:text-rose-300">On Epic's network? Download your structure file first →</span>
-                <span className="mt-0.5 text-[11px] text-gray-500 dark:text-slate-400">
-                  Pre-fills prices and vesting schedule. Upload it on the next step.
-                </span>
-              </a>
-            )}
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3">
+            {/* Option 1: Guided wizard — recommended */}
             <button
               type="button"
               onClick={enterScheduleMode}
               className="flex flex-col rounded-lg border-2 border-rose-400 bg-white p-4 text-left hover:border-rose-600 hover:shadow-md dark:border-rose-500 dark:bg-slate-900"
             >
-              <span className="text-sm font-semibold text-rose-700 dark:text-rose-300">Use grant schedule</span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-rose-700 dark:text-rose-300">Setup Wizard</span>
+                <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-rose-700 dark:bg-rose-900/50 dark:text-rose-300">
+                  Recommended
+                </span>
+              </div>
               <span className="mt-1 text-xs text-gray-500 dark:text-slate-400">
-                We know Epic's grant structure — just enter your shares and prices.
+                We know Epic's grant schedule — enter your prices first, then just fill in your shares and loan details grant by grant.
               </span>
             </button>
+
+            {/* Option 2: Import from file */}
             <button
               type="button"
               onClick={() => push('upload')}
               className="flex flex-col rounded-lg border-2 border-stone-200 bg-white p-4 text-left hover:border-rose-400 hover:shadow-md dark:border-slate-700 dark:bg-slate-900"
             >
-              <span className="text-sm font-semibold text-gray-900 dark:text-slate-100">Upload structure file</span>
+              <span className="text-sm font-semibold text-gray-900 dark:text-slate-100">Import from file</span>
               <span className="mt-1 text-xs text-gray-500 dark:text-slate-400">
-                Pre-fills prices and vesting schedule from Excel.
+                Upload an Excel structure file to pre-fill your schedule.
               </span>
             </button>
+
+            {/* Option 3: Manual entry */}
             <button
               type="button"
               onClick={() => { setTemplates([]); setPrices([{ effective_date: '', price: '' }]); push('prices') }}
               className="flex flex-col rounded-lg border-2 border-stone-200 bg-white p-4 text-left hover:border-rose-400 hover:shadow-md dark:border-slate-700 dark:bg-slate-900"
             >
-              <span className="text-sm font-semibold text-gray-900 dark:text-slate-100">Start from scratch</span>
+              <span className="text-sm font-semibold text-gray-900 dark:text-slate-100">Manual entry</span>
               <span className="mt-1 text-xs text-gray-500 dark:text-slate-400">
-                Enter everything manually — prices, grants, loans.
+                Enter everything yourself — prices, grants, loans.
               </span>
             </button>
           </div>
@@ -665,10 +659,24 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
       {screen === 'upload' && (
         <div className="space-y-4">
           <BackBtn onClick={back} />
-          <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Upload your structure file</h2>
+          <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Import from file</h2>
           <p className="text-xs text-gray-500 dark:text-slate-400">
             Upload an Excel file with a Schedule and/or Prices sheet. Missing share counts and amounts are fine — you'll fill those in next.
           </p>
+
+          {config?.epic_onboarding_url && (
+            <a
+              href={config.epic_onboarding_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex flex-col rounded-lg border-2 border-rose-200 bg-rose-50 p-3 hover:border-rose-400 dark:border-rose-800 dark:bg-rose-950/30"
+            >
+              <span className="text-xs font-semibold text-rose-700 dark:text-rose-300">On Epic's network? Download your pre-filled structure file →</span>
+              <span className="mt-0.5 text-[11px] text-gray-500 dark:text-slate-400">
+                Pre-fills your vesting schedule. Upload it below.
+              </span>
+            </a>
+          )}
           {uploadError && <p className="text-xs text-red-500">{uploadError}</p>}
           <input
             ref={fileRef}
@@ -1165,7 +1173,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
               <span className="text-gray-500 dark:text-slate-500">Loan statement or DocuSign</span>
             </div>
           </div>
-          <NextBtn label="Let's go →" onClick={() => push('schedule_grants')} />
+          <NextBtn label="Let's go →" onClick={() => push('schedule_prices')} />
         </div>
       )}
 
@@ -1174,90 +1182,90 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
         <div className="space-y-5">
           <BackBtn onClick={back} />
           <div>
-            <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Your grants</h2>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Step 2 of 2 — Your grants</h2>
             <p className="mt-0.5 text-xs text-gray-500 dark:text-slate-400">
-              Check each year you participated. All fields are pre-filled — override anything that differs.
+              Check each year you participated. Vesting dates and periods are pre-filled — just enter your shares, confirm the cost basis, and add loan details.
             </p>
           </div>
 
-          {/* Purchase grants */}
+          {/* Purchase grants (catch-up shown inline where applicable) */}
           <div className="space-y-2">
             <p className="text-xs font-semibold text-gray-700 dark:text-slate-300">Purchase grants</p>
-            {purchaseRows.map((row, i) => (
-              <div key={row.year} className="rounded-md border border-stone-200 dark:border-slate-700">
-                <label className="flex cursor-pointer items-center gap-3 p-3">
-                  <input
-                    type="checkbox"
-                    checked={row.participated}
-                    onChange={e => setPurchaseField(i, { participated: e.target.checked })}
-                    className="rounded"
-                  />
-                  <span className="text-sm font-medium text-gray-800 dark:text-slate-200">{row.year}</span>
-                  <span className="text-[11px] text-gray-400 dark:text-slate-500">
-                    exercised {row.exercise_date} · {row.periods} vesting periods
-                  </span>
-                </label>
-                {row.participated && (
-                  <div className="border-t border-stone-100 p-3 space-y-3 dark:border-slate-800">
-                    <div className="grid grid-cols-2 gap-3">
-                      <Field label="Purchase price ($/share)" type="number" step="0.01"
-                        value={row.purchase_price}
-                        onChange={v => setPurchaseField(i, { purchase_price: v }, true)} />
-                      <Field label="Shares" type="number" value={row.shares}
-                        onChange={v => setPurchaseField(i, { shares: v }, true)} />
-                      <Field label="DP shares" type="number" value={row.dp_shares}
-                        onChange={v => setPurchaseField(i, { dp_shares: v })}
-                        hint="shares exchanged at exercise" />
-                    </div>
-                    <details>
-                      <summary className="cursor-pointer text-xs font-medium text-rose-700 hover:text-rose-800 dark:text-rose-400 list-none">
-                        Loan details ›
-                      </summary>
-                      <div className="mt-2 grid grid-cols-2 gap-3">
-                        <Field label="DP cash paid ($)" type="number" step="0.01" value={row.dp_cash}
-                          onChange={v => setPurchaseField(i, { dp_cash: v }, true)} placeholder="0" />
-                        <Field label="Loan amount ($)" type="number" step="0.01" value={row.loan_amount}
-                          onChange={v => setPurchaseField(i, { loan_amount: v })} />
-                        <Field label="Interest rate" type="number" step="0.0001" value={row.interest_rate}
-                          onChange={v => setPurchaseField(i, { interest_rate: v })}
-                          placeholder="e.g. 0.0178" hint="from loan statement" />
-                        <Field label="Due date" type="date" value={row.loan_due_date}
-                          onChange={v => setPurchaseField(i, { loan_due_date: v })} />
+            {purchaseRows.map((row, i) => {
+              const catchUpIdx = catchUpRows.findIndex(c => c.year === row.year)
+              const catchUp = catchUpIdx >= 0 ? catchUpRows[catchUpIdx] : null
+              return (
+                <div key={row.year} className="rounded-md border border-stone-200 dark:border-slate-700">
+                  <label className="flex cursor-pointer items-center gap-3 p-3">
+                    <input
+                      type="checkbox"
+                      checked={row.participated}
+                      onChange={e => setPurchaseField(i, { participated: e.target.checked })}
+                      className="rounded"
+                    />
+                    <span className="text-sm font-medium text-gray-800 dark:text-slate-200">{row.year}</span>
+                    <span className="text-[11px] text-gray-400 dark:text-slate-500">
+                      exercised {row.exercise_date} · vests {row.vest_start} · {row.periods} periods
+                    </span>
+                  </label>
+                  {row.participated && (
+                    <div className="border-t border-stone-100 p-3 space-y-3 dark:border-slate-800">
+                      {/* Purchase fields */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <Field label="Purchase price ($/share)" type="number" step="0.01"
+                          value={row.purchase_price}
+                          onChange={v => setPurchaseField(i, { purchase_price: v }, true)} />
+                        <Field label="Shares" type="number" value={row.shares}
+                          onChange={v => setPurchaseField(i, { shares: v }, true)} />
+                        <Field label="DP shares" type="number" value={row.dp_shares}
+                          onChange={v => setPurchaseField(i, { dp_shares: v })}
+                          hint="shares exchanged at exercise" />
                       </div>
-                    </details>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* Catch-up grants */}
-          <div className="space-y-2">
-            <p className="text-xs font-semibold text-gray-700 dark:text-slate-300">
-              Catch-up grants <span className="font-normal text-gray-400">(2018–2021 only)</span>
-            </p>
-            {catchUpRows.map((row, i) => (
-              <div key={row.year} className="rounded-md border border-stone-200 dark:border-slate-700">
-                <label className="flex cursor-pointer items-center gap-3 p-3">
-                  <input
-                    type="checkbox"
-                    checked={row.included}
-                    onChange={e => setCatchUpField(i, { included: e.target.checked })}
-                    className="rounded"
-                  />
-                  <span className="text-sm font-medium text-gray-800 dark:text-slate-200">{row.year} Catch-Up</span>
-                  <span className="text-[11px] text-gray-400 dark:text-slate-500">zero cost basis</span>
-                </label>
-                {row.included && (
-                  <div className="border-t border-stone-100 p-3 dark:border-slate-800">
-                    <div className="w-40">
-                      <Field label="Shares" type="number" value={row.shares}
-                        onChange={v => setCatchUpField(i, { shares: v })} />
+                      {/* Loan details */}
+                      <details>
+                        <summary className="cursor-pointer text-xs font-medium text-rose-700 hover:text-rose-800 dark:text-rose-400 list-none">
+                          Loan details ›
+                        </summary>
+                        <div className="mt-2 grid grid-cols-2 gap-3">
+                          <Field label="DP cash paid ($)" type="number" step="0.01" value={row.dp_cash}
+                            onChange={v => setPurchaseField(i, { dp_cash: v }, true)} placeholder="0" />
+                          <Field label="Loan amount ($)" type="number" step="0.01" value={row.loan_amount}
+                            onChange={v => setPurchaseField(i, { loan_amount: v })} />
+                          <Field label="Interest rate" type="number" step="0.0001" value={row.interest_rate}
+                            onChange={v => setPurchaseField(i, { interest_rate: v })}
+                            placeholder="e.g. 0.0178" hint="from loan statement" />
+                          <Field label="Due date" type="date" value={row.loan_due_date}
+                            onChange={v => setPurchaseField(i, { loan_due_date: v })} />
+                        </div>
+                      </details>
+                      {/* Inline catch-up grant for this year (2018–2021) */}
+                      {catchUp && (
+                        <div className="rounded-md border border-sky-200 bg-sky-50 p-3 dark:border-sky-800 dark:bg-sky-950/30">
+                          <label className="flex cursor-pointer items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={catchUp.included}
+                              onChange={e => setCatchUpField(catchUpIdx, { included: e.target.checked })}
+                              className="rounded"
+                            />
+                            <span className="text-xs font-medium text-sky-800 dark:text-sky-300">{row.year} Catch-Up grant</span>
+                            <span className="text-[11px] text-sky-600 dark:text-sky-500">
+                              zero cost basis · vests {catchUp.vest_start} · {catchUp.periods} periods
+                            </span>
+                          </label>
+                          {catchUp.included && (
+                            <div className="mt-2 w-40">
+                              <Field label="Catch-up shares" type="number" value={catchUp.shares}
+                                onChange={v => setCatchUpField(catchUpIdx, { shares: v })} />
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
-              </div>
-            ))}
+                  )}
+                </div>
+              )
+            })}
           </div>
 
           {/* Bonus / Free grants */}
@@ -1316,7 +1324,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             </button>
           </div>
 
-          <NextBtn label="Next: Enter prices →" onClick={() => push('schedule_prices')} />
+          <NextBtn label="Next: Preferences →" onClick={() => push('schedule_settings')} />
         </div>
       )}
 
@@ -1325,9 +1333,9 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
         <div className="space-y-4">
           <BackBtn onClick={back} />
           <div>
-            <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Annual share prices</h2>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Step 1 of 2 — Annual share prices</h2>
             <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
-              Enter the price per share from each annual Epic announcement. Find these on the Epic stocks SharePoint.
+              Enter the price per share from each annual Epic announcement. Find these on the Epic stocks SharePoint. These will be used to pre-fill cost basis in your grants.
             </p>
           </div>
           <div className="space-y-2">
@@ -1363,24 +1371,50 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
           >
             + Add price
           </button>
-          <NextBtn label="Next: Tax rates →" onClick={() => push('schedule_tax')} />
+          <NextBtn label="Next: Enter grants →" onClick={() => {
+            // Pre-fill purchase price for each row from the price entered for that exercise year
+            setPurchaseRows(rows => rows.map(r => {
+              if (r.purchase_price) return r
+              const exerciseYear = new Date(r.exercise_date + 'T00:00:00').getFullYear()
+              const match = prices.find(p => p.price && new Date(p.effective_date + 'T00:00:00').getFullYear() === exerciseYear)
+              return match ? { ...r, purchase_price: match.price } : r
+            }))
+            push('schedule_grants')
+          }} />
         </div>
       )}
 
-      {/* ── Schedule: Tax rates ── */}
-      {screen === 'schedule_tax' && (
-        <div className="space-y-4">
+      {/* ── Schedule: Preferences ── */}
+      {screen === 'schedule_settings' && (
+        <div className="space-y-5">
           <BackBtn onClick={back} />
-          <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Tax rates</h2>
-          <p className="text-xs text-gray-500 dark:text-slate-400">
-            Pre-filled with Wisconsin defaults. You can update these on the Settings page anytime.
-          </p>
+          <div>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">A couple quick questions</h2>
+            <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+              These affect how gains and deductions are calculated. You can change them on the Settings page anytime.
+            </p>
+          </div>
           {submitError && <p className="text-xs text-red-500">{submitError}</p>}
-          <TaxRateFields
-            rates={taxRates}
-            onChange={setTaxRates}
-            onReset={() => { if (taxSettings) setTaxRates(ratesFromDefaults(taxSettings)) }}
-          />
+
+          <div className="rounded-md border border-stone-200 p-4 space-y-1 dark:border-slate-700">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={deductInterest}
+                onChange={e => setDeductInterest(e.target.checked)}
+                className="mt-0.5 rounded"
+              />
+              <div>
+                <p className="text-sm font-medium text-gray-800 dark:text-slate-200">
+                  Deduct investment interest expense
+                </p>
+                <p className="mt-0.5 text-xs text-gray-500 dark:text-slate-400">
+                  Check this if you itemize deductions and claim loan interest against investment income (IRS Form 4952). Most people leave this unchecked.
+                </p>
+              </div>
+            </label>
+          </div>
+
           <div className="flex gap-2 pt-1">
             <NextBtn label="Save & submit →" saving={submitting} onClick={() => handleScheduleSubmit(true)} />
             <button

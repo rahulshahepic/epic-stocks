@@ -4,7 +4,7 @@
 Equity vesting tracker PWA. See SPEC.md for full requirements.
 
 ## Key Rules
-- **NEVER commit real Epic share prices to this repo.** Epic share prices (purchase prices, annual market prices, or any per-share dollar values from Epic's internal communications or SharePoint) are confidential company financial data. They must never appear in source code, test fixtures, comments, or any committed file. The onboarding wizard must NOT pre-fill or default any price fields — all price fields must start blank and be entered by the user at runtime.
+- **NEVER commit real Epic share prices to this repo.** Epic share prices (purchase prices, annual market prices, or any per-share dollar values from Epic's internal communications or SharePoint) are confidential company financial data. They must never appear in source code, test fixtures, comments, or any committed file. All price fields must start blank — never hard-code or default any price values. The wizard may use prices the user has already typed in earlier steps (e.g. pre-filling cost basis from the prices table), but no real price values may be embedded in code.
 - **backend/core.py is frozen.** Do not modify the core event generation logic. It is tested and verified. If you need to change event computation behavior, discuss first.
 - **Events are never stored in the database.** They are computed on the fly from Grants + Loans + Prices via core.py.
 - **backend/excel_io.py contains the Excel read/write logic.** Adapt as needed for the import/export endpoints but preserve the column mappings.

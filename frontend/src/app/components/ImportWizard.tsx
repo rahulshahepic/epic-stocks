@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../../api.ts'
-import type { WizardGrant, WizardLoan, WizardGrantTemplate, TaxSettings } from '../../api.ts'
+import type { WizardGrant, WizardLoan, WizardGrantTemplate, TaxSettings, WizardPreviewResult, WizardPreviewGrant, WizardPreviewPrice } from '../../api.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 
@@ -327,6 +327,12 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
 
+  // Preview / diff state
+  const [previewData, setPreviewData] = useState<WizardPreviewResult | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [preserveGrantIds, setPreserveGrantIds] = useState<Set<number>>(new Set())
+  const [preservePriceIds, setPreservePriceIds] = useState<Set<number>>(new Set())
+
   // ── Schedule path state ────────────────────────────────────────────────────
   const [purchaseRows, setPurchaseRows] = useState<PurchaseGrantRow[]>(initPurchaseRows)
   const [catchUpRows, setCatchUpRows]   = useState<CatchUpRow[]>(initCatchUpRows)
@@ -454,7 +460,30 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
     }
   }
 
-  // ── Submit ────────────────────────────────────────────────────────────────────
+  // ── Submit / Preview ──────────────────────────────────────────────────────────
+
+  function buildPricesPayload() {
+    return prices
+      .filter(p => p.effective_date && p.price !== '')
+      .map(p => ({ effective_date: p.effective_date, price: parseFloat(p.price) }))
+  }
+
+  async function navigateToReview(grantsPayload: WizardGrant[]) {
+    const pricesPayload = buildPricesPayload()
+    setPreviewData(null)
+    setPreserveGrantIds(new Set())
+    setPreservePriceIds(new Set())
+    push('review')
+    setPreviewLoading(true)
+    try {
+      const preview = await api.wizardPreview({ grants: grantsPayload, prices: pricesPayload })
+      setPreviewData(preview)
+    } catch {
+      // Non-fatal: review screen shows without diff
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
 
   async function handleSubmit() {
     setSubmitting(true)
@@ -462,11 +491,11 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
     try {
       await api.wizardSubmit({
         grants: completedGrants,
-        prices: prices
-          .filter(p => p.effective_date && p.price !== '')
-          .map(p => ({ effective_date: p.effective_date, price: parseFloat(p.price) })),
-        clear_existing: true,
+        prices: buildPricesPayload(),
+        clear_existing: false,
         generate_payoff_sales: true,
+        preserve_grant_ids: Array.from(preserveGrantIds),
+        preserve_price_ids: Array.from(preservePriceIds),
       })
       push('done')
     } catch (e: unknown) {
@@ -516,7 +545,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
     }))
   }
 
-  async function handleScheduleSubmit(saveSettings = false) {
+  async function handleScheduleReview(saveSettings = false) {
     setSubmitting(true)
     setSubmitError('')
     try {
@@ -561,15 +590,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
           })),
       ]
       setCompletedGrants(grants)
-      await api.wizardSubmit({
-        grants,
-        prices: prices
-          .filter(p => p.effective_date && p.price !== '')
-          .map(p => ({ effective_date: p.effective_date, price: parseFloat(p.price) })),
-        clear_existing: true,
-        generate_payoff_sales: true,
-      })
-      push('done')
+      await navigateToReview(grants)
     } catch (e: unknown) {
       setSubmitError(e instanceof Error ? e.message : 'Submit failed')
     } finally {
@@ -1091,7 +1112,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             </button>
             <button
               type="button"
-              onClick={() => push('review')}
+              onClick={() => navigateToReview(completedGrants)}
               className="rounded-md bg-gray-100 px-4 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-400"
             >
               No, review &amp; submit
@@ -1107,17 +1128,40 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
           <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Review</h2>
           {submitError && <p className="text-xs text-red-500">{submitError}</p>}
 
+          {previewLoading && (
+            <p className="text-xs text-gray-400 dark:text-slate-500">Comparing with existing data…</p>
+          )}
+
           {/* Prices */}
           <div className="rounded-md border border-stone-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
             <p className="text-xs font-medium text-gray-700 dark:text-slate-300">
               Prices ({prices.filter(p => p.effective_date && p.price !== '').length})
             </p>
             <div className="mt-1.5 space-y-0.5">
-              {prices.filter(p => p.effective_date && p.price !== '').map((p, i) => (
-                <p key={i} className="text-xs text-gray-500 dark:text-slate-400">
-                  {fmtDate(p.effective_date)} — ${parseFloat(p.price).toFixed(2)}
-                </p>
-              ))}
+              {previewData
+                ? previewData.prices
+                    .filter((p: WizardPreviewPrice) => p.status !== 'removed')
+                    .map((p: WizardPreviewPrice, i: number) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <p className="text-xs text-gray-500 dark:text-slate-400">
+                          {fmtDate(p.effective_date)} — ${p.price?.toFixed(2)}
+                        </p>
+                        {p.status === 'added' && (
+                          <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/40 dark:text-green-400">new</span>
+                        )}
+                        {p.status === 'updated' && (
+                          <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
+                            was ${p.old_price?.toFixed(2)}
+                          </span>
+                        )}
+                      </div>
+                    ))
+                : prices.filter(p => p.effective_date && p.price !== '').map((p, i) => (
+                    <p key={i} className="text-xs text-gray-500 dark:text-slate-400">
+                      {fmtDate(p.effective_date)} — ${parseFloat(p.price).toFixed(2)}
+                    </p>
+                  ))
+              }
             </div>
           </div>
 
@@ -1127,19 +1171,89 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
               Grants ({completedGrants.length})
             </p>
             <div className="mt-1.5 space-y-1.5">
-              {completedGrants.map((g, i) => (
-                <div key={i} className="text-xs">
-                  <p className="font-medium text-gray-800 dark:text-slate-200">
-                    {g.year} {g.type} — {g.shares.toLocaleString()} shares
-                    {g.loans.length > 0 && ` · ${g.loans.length} loan${g.loans.length !== 1 ? 's' : ''}`}
-                  </p>
-                  <p className="text-gray-400 dark:text-slate-500">
-                    {g.periods} periods from {fmtDate(g.vest_start)}
-                  </p>
-                </div>
-              ))}
+              {previewData
+                ? previewData.grants
+                    .filter((g: WizardPreviewGrant) => g.status !== 'removed')
+                    .map((g: WizardPreviewGrant, i: number) => (
+                      <div key={i} className="flex items-start gap-2 text-xs">
+                        <div>
+                          <p className="font-medium text-gray-800 dark:text-slate-200">
+                            {g.year} {g.type} — {g.shares?.toLocaleString()} shares
+                            {g.loans > 0 && ` · ${g.loans} loan${g.loans !== 1 ? 's' : ''}`}
+                          </p>
+                          {g.status === 'updated' && g.old_shares !== g.shares && (
+                            <p className="text-amber-600 dark:text-amber-400">was {g.old_shares?.toLocaleString()} shares</p>
+                          )}
+                        </div>
+                        {g.status === 'added' && (
+                          <span className="mt-0.5 shrink-0 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/40 dark:text-green-400">new</span>
+                        )}
+                      </div>
+                    ))
+                : completedGrants.map((g, i) => (
+                    <div key={i} className="text-xs">
+                      <p className="font-medium text-gray-800 dark:text-slate-200">
+                        {g.year} {g.type} — {g.shares.toLocaleString()} shares
+                        {g.loans.length > 0 && ` · ${g.loans.length} loan${g.loans.length !== 1 ? 's' : ''}`}
+                      </p>
+                      <p className="text-gray-400 dark:text-slate-500">
+                        {g.periods} periods from {fmtDate(g.vest_start)}
+                      </p>
+                    </div>
+                  ))
+              }
             </div>
           </div>
+
+          {/* Will be removed */}
+          {previewData && (() => {
+            const removedGrants = previewData.grants.filter((g: WizardPreviewGrant) => g.status === 'removed')
+            const removedPrices = previewData.prices.filter((p: WizardPreviewPrice) => p.status === 'removed')
+            if (removedGrants.length === 0 && removedPrices.length === 0) return null
+            return (
+              <div className="rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-950/30">
+                <p className="text-xs font-medium text-red-700 dark:text-red-400">
+                  Not in your wizard — will be removed
+                </p>
+                <p className="mt-0.5 text-[11px] text-red-600 dark:text-red-500">
+                  Uncheck to keep.
+                </p>
+                <div className="mt-2 space-y-1.5">
+                  {removedGrants.map((g: WizardPreviewGrant) => (
+                    <label key={`g-${g.id}`} className="flex items-center gap-2 text-xs text-red-700 dark:text-red-400">
+                      <input
+                        type="checkbox"
+                        checked={!preserveGrantIds.has(g.id!)}
+                        onChange={e => setPreserveGrantIds(prev => {
+                          const next = new Set(prev)
+                          if (e.target.checked) { next.delete(g.id!) } else { next.add(g.id!) }
+                          return next
+                        })}
+                        className="rounded border-red-300"
+                      />
+                      {g.year} {g.type} — {g.old_shares?.toLocaleString()} shares
+                      {g.old_loans ? `, ${g.old_loans} loan${g.old_loans !== 1 ? 's' : ''}` : ''}
+                    </label>
+                  ))}
+                  {removedPrices.map((p: WizardPreviewPrice) => (
+                    <label key={`p-${p.id}`} className="flex items-center gap-2 text-xs text-red-700 dark:text-red-400">
+                      <input
+                        type="checkbox"
+                        checked={!preservePriceIds.has(p.id!)}
+                        onChange={e => setPreservePriceIds(prev => {
+                          const next = new Set(prev)
+                          if (e.target.checked) { next.delete(p.id!) } else { next.add(p.id!) }
+                          return next
+                        })}
+                        className="rounded border-red-300"
+                      />
+                      Price {fmtDate(p.effective_date)} — ${p.old_price?.toFixed(2)}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )
+          })()}
 
           <NextBtn
             label="Submit →"
@@ -1416,11 +1530,11 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
           </div>
 
           <div className="flex gap-2 pt-1">
-            <NextBtn label="Save & submit →" saving={submitting} onClick={() => handleScheduleSubmit(true)} />
+            <NextBtn label="Save & review →" saving={submitting} onClick={() => handleScheduleReview(true)} />
             <button
               type="button"
               disabled={submitting}
-              onClick={() => handleScheduleSubmit(false)}
+              onClick={() => handleScheduleReview(false)}
               className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
             >
               Skip

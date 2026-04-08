@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../../api.ts'
-import type { WizardGrant, WizardLoan, WizardGrantTemplate, TaxSettings, WizardPreviewResult, WizardPreviewGrant, WizardPreviewPrice } from '../../api.ts'
+import type { WizardGrant, WizardLoan, WizardGrantTemplate, TaxSettings, GrantEntry, PriceEntry, LoanEntry } from '../../api.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 
@@ -173,6 +173,7 @@ interface PurchaseGrantRow {
   purchase_price: string
   shares: string; dp_shares: string; dp_cash: string
   loan_amount: string; loan_due_date: string; interest_rate: string
+  existing_purchase_loan_number: string  // loan_number from DB, used for merge matching
 }
 
 interface CatchUpRow {
@@ -201,6 +202,7 @@ function initPurchaseRows(): PurchaseGrantRow[] {
     purchase_price: '',
     shares: '', dp_shares: '0', dp_cash: '',
     loan_amount: '', loan_due_date: addYearsToDate(g.exercise_date, LOAN_TERM_YEARS), interest_rate: '',
+    existing_purchase_loan_number: '',
   }))
 }
 
@@ -327,11 +329,12 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
 
-  // Preview / diff state
-  const [previewData, setPreviewData] = useState<WizardPreviewResult | null>(null)
-  const [previewLoading, setPreviewLoading] = useState(false)
-  const [preserveGrantIds, setPreserveGrantIds] = useState<Set<number>>(new Set())
-  const [preservePriceIds, setPreservePriceIds] = useState<Set<number>>(new Set())
+  // Orphaned existing data (populated when entering schedule mode)
+  const [orphanPrices, setOrphanPrices] = useState<PriceEntry[]>([])
+  const [orphanGrants, setOrphanGrants] = useState<GrantEntry[]>([])
+  const [preserveOrphanPriceIds, setPreserveOrphanPriceIds] = useState<Set<number>>(new Set())
+  const [preserveOrphanGrantIds, setPreserveOrphanGrantIds] = useState<Set<number>>(new Set())
+  const [scheduleLoading, setScheduleLoading] = useState(false)
 
   // ── Schedule path state ────────────────────────────────────────────────────
   const [purchaseRows, setPurchaseRows] = useState<PurchaseGrantRow[]>(initPurchaseRows)
@@ -468,23 +471,6 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
       .map(p => ({ effective_date: p.effective_date, price: parseFloat(p.price) }))
   }
 
-  async function navigateToReview(grantsPayload: WizardGrant[]) {
-    const pricesPayload = buildPricesPayload()
-    setPreviewData(null)
-    setPreserveGrantIds(new Set())
-    setPreservePriceIds(new Set())
-    push('review')
-    setPreviewLoading(true)
-    try {
-      const preview = await api.wizardPreview({ grants: grantsPayload, prices: pricesPayload })
-      setPreviewData(preview)
-    } catch {
-      // Non-fatal: review screen shows without diff
-    } finally {
-      setPreviewLoading(false)
-    }
-  }
-
   async function handleSubmit() {
     setSubmitting(true)
     setSubmitError('')
@@ -494,8 +480,8 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
         prices: buildPricesPayload(),
         clear_existing: false,
         generate_payoff_sales: true,
-        preserve_grant_ids: Array.from(preserveGrantIds),
-        preserve_price_ids: Array.from(preservePriceIds),
+        preserve_grant_ids: Array.from(preserveOrphanGrantIds),
+        preserve_price_ids: Array.from(preserveOrphanPriceIds),
       })
       push('done')
     } catch (e: unknown) {
@@ -507,12 +493,109 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
 
   // ── Schedule path helpers ─────────────────────────────────────────────────
 
-  function enterScheduleMode() {
-    setPurchaseRows(initPurchaseRows())
-    setCatchUpRows(initCatchUpRows())
-    setBonusRows(initBonusRows())
-    setPrices(PRICE_YEARS.map(y => ({ effective_date: `${y}-01-01`, price: '' })))
-    push('schedule_intro')
+  async function enterScheduleMode() {
+    setScheduleLoading(true)
+    try {
+      const [existingPrices, existingGrants, existingLoans] = await Promise.all([
+        api.getPrices(), api.getGrants(), api.getLoans(),
+      ])
+
+      // Match prices by year of effective_date; orphan anything outside PRICE_YEARS
+      const priceByYear = new Map<number, PriceEntry>()
+      const newOrphanPrices: PriceEntry[] = []
+      for (const p of existingPrices) {
+        const year = parseInt(p.effective_date.slice(0, 4))
+        if (PRICE_YEARS.includes(year)) {
+          if (!priceByYear.has(year)) priceByYear.set(year, p)
+        } else {
+          newOrphanPrices.push(p)
+        }
+      }
+
+      // Match grants and loans by (year, type)
+      const grantByKey = new Map<string, GrantEntry>()
+      for (const g of existingGrants) grantByKey.set(`${g.year}-${g.type}`, g)
+      const loansByKey = new Map<string, LoanEntry[]>()
+      for (const l of existingLoans) {
+        const key = `${l.grant_year}-${l.grant_type}`
+        if (!loansByKey.has(key)) loansByKey.set(key, [])
+        loansByKey.get(key)!.push(l)
+      }
+
+      // Orphaned grants: not in the known schedule at all
+      const scheduleKeys = new Set(EPIC_GRANT_SCHEDULE.map(g => `${g.year}-${g.type}`))
+      const newOrphanGrants = existingGrants.filter(g => !scheduleKeys.has(`${g.year}-${g.type}`))
+
+      // Pre-populate purchase rows
+      const newPurchaseRows: PurchaseGrantRow[] = EPIC_GRANT_SCHEDULE
+        .filter(g => g.type === 'Purchase')
+        .map(g => {
+          const existing = grantByKey.get(`${g.year}-Purchase`)
+          const loans = loansByKey.get(`${g.year}-Purchase`) ?? []
+          const purchaseLoan = loans.find(l => l.loan_type === 'Purchase')
+          return {
+            year: g.year, vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
+            participated: existing != null,
+            purchase_price: existing ? String(existing.price) : '',
+            shares: existing ? String(existing.shares) : '',
+            dp_shares: existing ? String(Math.abs(existing.dp_shares)) : '0',
+            dp_cash: '',
+            loan_amount: purchaseLoan ? String(purchaseLoan.amount) : '',
+            loan_due_date: purchaseLoan ? purchaseLoan.due_date : addYearsToDate(g.exercise_date, LOAN_TERM_YEARS),
+            interest_rate: purchaseLoan ? String(purchaseLoan.interest_rate) : '',
+            existing_purchase_loan_number: purchaseLoan?.loan_number ?? '',
+          }
+        })
+
+      // Pre-populate catch-up rows
+      const newCatchUpRows: CatchUpRow[] = EPIC_GRANT_SCHEDULE
+        .filter(g => g.type === 'Purchase' && g.defaultCatchUp)
+        .map(g => {
+          const existing = grantByKey.get(`${g.year}-Catch-Up`)
+          return {
+            year: g.year, vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
+            included: existing != null,
+            shares: existing ? String(existing.shares) : '',
+          }
+        })
+
+      // Pre-populate bonus/free rows
+      const newBonusRows: BonusGrantRow[] = EPIC_GRANT_SCHEDULE
+        .filter(g => g.type === 'Bonus' || g.type === 'Free')
+        .map(g => {
+          const existing = grantByKey.get(`${g.year}-${g.type}`)
+          return {
+            year: g.year, type: g.type as 'Bonus' | 'Free',
+            purchase_price: existing ? String(existing.price) : (g.type === 'Free' ? '0' : ''),
+            shares: existing ? String(existing.shares) : '',
+            isBonus2020: g.year === 2020 && g.type === 'Bonus', schedule: 'C' as BonusSchedule,
+            vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
+          }
+        })
+
+      setPurchaseRows(newPurchaseRows)
+      setCatchUpRows(newCatchUpRows)
+      setBonusRows(newBonusRows)
+      setPrices(PRICE_YEARS.map(y => ({
+        effective_date: `${y}-01-01`,
+        price: priceByYear.has(y) ? String(priceByYear.get(y)!.price) : '',
+      })))
+      setOrphanPrices(newOrphanPrices)
+      setOrphanGrants(newOrphanGrants)
+      setPreserveOrphanPriceIds(new Set())
+      setPreserveOrphanGrantIds(new Set())
+    } catch {
+      // Fall back to blank rows if fetch fails
+      setPurchaseRows(initPurchaseRows())
+      setCatchUpRows(initCatchUpRows())
+      setBonusRows(initBonusRows())
+      setPrices(PRICE_YEARS.map(y => ({ effective_date: `${y}-01-01`, price: '' })))
+      setOrphanPrices([])
+      setOrphanGrants([])
+    } finally {
+      setScheduleLoading(false)
+      push('schedule_intro')
+    }
   }
 
   function recalcLoan(rows: PurchaseGrantRow[], i: number, patch: Partial<PurchaseGrantRow>): PurchaseGrantRow[] {
@@ -563,7 +646,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             dp_shares: -(Math.abs(parseInt(r.dp_shares) || 0)),
             election_83b: false,
             loans: [{
-              loan_number: `wiz-${r.year}-0`,
+              loan_number: r.existing_purchase_loan_number || `wiz-${r.year}-0`,
               loan_type: 'Purchase' as const, loan_year: r.year,
               amount: parseFloat(r.loan_amount) || Math.max(0, (parseInt(r.shares) || 0) * (parseFloat(r.purchase_price) || 0) - (parseFloat(r.dp_cash) || 0)),
               interest_rate: parseFloat(r.interest_rate) || 0,
@@ -590,7 +673,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
           })),
       ]
       setCompletedGrants(grants)
-      await navigateToReview(grants)
+      push('review')
     } catch (e: unknown) {
       setSubmitError(e instanceof Error ? e.message : 'Submit failed')
     } finally {
@@ -629,13 +712,18 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             <button
               type="button"
               onClick={enterScheduleMode}
-              className="flex flex-col rounded-lg border-2 border-rose-400 bg-white p-4 text-left hover:border-rose-600 hover:shadow-md dark:border-rose-500 dark:bg-slate-900"
+              disabled={scheduleLoading}
+              className="flex flex-col rounded-lg border-2 border-rose-400 bg-white p-4 text-left hover:border-rose-600 hover:shadow-md disabled:opacity-60 dark:border-rose-500 dark:bg-slate-900"
             >
               <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-rose-700 dark:text-rose-300">Setup Wizard</span>
-                <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-rose-700 dark:bg-rose-900/50 dark:text-rose-300">
-                  Recommended
+                <span className="text-sm font-semibold text-rose-700 dark:text-rose-300">
+                  {scheduleLoading ? 'Loading your data…' : 'Setup Wizard'}
                 </span>
+                {!scheduleLoading && (
+                  <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-rose-700 dark:bg-rose-900/50 dark:text-rose-300">
+                    Recommended
+                  </span>
+                )}
               </div>
               <span className="mt-1 text-xs text-gray-500 dark:text-slate-400">
                 We know Epic's grant schedule — enter your prices first, then just fill in your shares and loan details grant by grant.
@@ -1112,7 +1200,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             </button>
             <button
               type="button"
-              onClick={() => navigateToReview(completedGrants)}
+              onClick={() => push('review')}
               className="rounded-md bg-gray-100 px-4 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-400"
             >
               No, review &amp; submit
@@ -1128,40 +1216,17 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
           <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Review</h2>
           {submitError && <p className="text-xs text-red-500">{submitError}</p>}
 
-          {previewLoading && (
-            <p className="text-xs text-gray-400 dark:text-slate-500">Comparing with existing data…</p>
-          )}
-
           {/* Prices */}
           <div className="rounded-md border border-stone-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
             <p className="text-xs font-medium text-gray-700 dark:text-slate-300">
               Prices ({prices.filter(p => p.effective_date && p.price !== '').length})
             </p>
             <div className="mt-1.5 space-y-0.5">
-              {previewData
-                ? previewData.prices
-                    .filter((p: WizardPreviewPrice) => p.status !== 'removed')
-                    .map((p: WizardPreviewPrice, i: number) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <p className="text-xs text-gray-500 dark:text-slate-400">
-                          {fmtDate(p.effective_date)} — ${p.price?.toFixed(2)}
-                        </p>
-                        {p.status === 'added' && (
-                          <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/40 dark:text-green-400">new</span>
-                        )}
-                        {p.status === 'updated' && (
-                          <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
-                            was ${p.old_price?.toFixed(2)}
-                          </span>
-                        )}
-                      </div>
-                    ))
-                : prices.filter(p => p.effective_date && p.price !== '').map((p, i) => (
-                    <p key={i} className="text-xs text-gray-500 dark:text-slate-400">
-                      {fmtDate(p.effective_date)} — ${parseFloat(p.price).toFixed(2)}
-                    </p>
-                  ))
-              }
+              {prices.filter(p => p.effective_date && p.price !== '').map((p, i) => (
+                <p key={i} className="text-xs text-gray-500 dark:text-slate-400">
+                  {fmtDate(p.effective_date)} — ${parseFloat(p.price).toFixed(2)}
+                </p>
+              ))}
             </div>
           </div>
 
@@ -1171,87 +1236,32 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
               Grants ({completedGrants.length})
             </p>
             <div className="mt-1.5 space-y-1.5">
-              {previewData
-                ? previewData.grants
-                    .filter((g: WizardPreviewGrant) => g.status !== 'removed')
-                    .map((g: WizardPreviewGrant, i: number) => (
-                      <div key={i} className="flex items-start gap-2 text-xs">
-                        <div>
-                          <p className="font-medium text-gray-800 dark:text-slate-200">
-                            {g.year} {g.type} — {g.shares?.toLocaleString()} shares
-                            {g.loans > 0 && ` · ${g.loans} loan${g.loans !== 1 ? 's' : ''}`}
-                          </p>
-                          {g.status === 'updated' && g.old_shares !== g.shares && (
-                            <p className="text-amber-600 dark:text-amber-400">was {g.old_shares?.toLocaleString()} shares</p>
-                          )}
-                        </div>
-                        {g.status === 'added' && (
-                          <span className="mt-0.5 shrink-0 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/40 dark:text-green-400">new</span>
-                        )}
-                      </div>
-                    ))
-                : completedGrants.map((g, i) => (
-                    <div key={i} className="text-xs">
-                      <p className="font-medium text-gray-800 dark:text-slate-200">
-                        {g.year} {g.type} — {g.shares.toLocaleString()} shares
-                        {g.loans.length > 0 && ` · ${g.loans.length} loan${g.loans.length !== 1 ? 's' : ''}`}
-                      </p>
-                      <p className="text-gray-400 dark:text-slate-500">
-                        {g.periods} periods from {fmtDate(g.vest_start)}
-                      </p>
-                    </div>
-                  ))
-              }
+              {completedGrants.map((g, i) => (
+                <div key={i} className="text-xs">
+                  <p className="font-medium text-gray-800 dark:text-slate-200">
+                    {g.year} {g.type} — {g.shares.toLocaleString()} shares
+                    {g.loans.length > 0 && ` · ${g.loans.length} loan${g.loans.length !== 1 ? 's' : ''}`}
+                  </p>
+                  <p className="text-gray-400 dark:text-slate-500">
+                    {g.periods} periods from {fmtDate(g.vest_start)}
+                  </p>
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Will be removed */}
-          {previewData && (() => {
-            const removedGrants = previewData.grants.filter((g: WizardPreviewGrant) => g.status === 'removed')
-            const removedPrices = previewData.prices.filter((p: WizardPreviewPrice) => p.status === 'removed')
-            if (removedGrants.length === 0 && removedPrices.length === 0) return null
+          {/* Summary of orphans being removed */}
+          {(() => {
+            const removingPrices = orphanPrices.filter(p => !preserveOrphanPriceIds.has(p.id))
+            const removingGrants = orphanGrants.filter(g => !preserveOrphanGrantIds.has(g.id))
+            if (removingPrices.length === 0 && removingGrants.length === 0) return null
             return (
-              <div className="rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-950/30">
-                <p className="text-xs font-medium text-red-700 dark:text-red-400">
-                  Not in your wizard — will be removed
-                </p>
-                <p className="mt-0.5 text-[11px] text-red-600 dark:text-red-500">
-                  Uncheck to keep.
-                </p>
-                <div className="mt-2 space-y-1.5">
-                  {removedGrants.map((g: WizardPreviewGrant) => (
-                    <label key={`g-${g.id}`} className="flex items-center gap-2 text-xs text-red-700 dark:text-red-400">
-                      <input
-                        type="checkbox"
-                        checked={!preserveGrantIds.has(g.id!)}
-                        onChange={e => setPreserveGrantIds(prev => {
-                          const next = new Set(prev)
-                          if (e.target.checked) { next.delete(g.id!) } else { next.add(g.id!) }
-                          return next
-                        })}
-                        className="rounded border-red-300"
-                      />
-                      {g.year} {g.type} — {g.old_shares?.toLocaleString()} shares
-                      {g.old_loans ? `, ${g.old_loans} loan${g.old_loans !== 1 ? 's' : ''}` : ''}
-                    </label>
-                  ))}
-                  {removedPrices.map((p: WizardPreviewPrice) => (
-                    <label key={`p-${p.id}`} className="flex items-center gap-2 text-xs text-red-700 dark:text-red-400">
-                      <input
-                        type="checkbox"
-                        checked={!preservePriceIds.has(p.id!)}
-                        onChange={e => setPreservePriceIds(prev => {
-                          const next = new Set(prev)
-                          if (e.target.checked) { next.delete(p.id!) } else { next.add(p.id!) }
-                          return next
-                        })}
-                        className="rounded border-red-300"
-                      />
-                      Price {fmtDate(p.effective_date)} — ${p.old_price?.toFixed(2)}
-                    </label>
-                  ))}
-                </div>
-              </div>
+              <p className="text-[11px] text-red-600 dark:text-red-400">
+                {[
+                  removingGrants.length > 0 && `${removingGrants.length} grant${removingGrants.length !== 1 ? 's' : ''}`,
+                  removingPrices.length > 0 && `${removingPrices.length} price${removingPrices.length !== 1 ? 's' : ''}`,
+                ].filter(Boolean).join(' and ')} will be removed (as marked on previous screens).
+              </p>
             )
           })()}
 
@@ -1438,6 +1448,32 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             </button>
           </div>
 
+          {orphanGrants.length > 0 && (
+            <div className="rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-950/30">
+              <p className="text-xs font-medium text-red-700 dark:text-red-400">
+                Existing grants not in Epic's schedule — will be removed
+              </p>
+              <p className="mt-0.5 text-[11px] text-red-600 dark:text-red-500">Uncheck to keep.</p>
+              <div className="mt-2 space-y-1">
+                {orphanGrants.map(g => (
+                  <label key={g.id} className="flex items-center gap-2 text-xs text-red-700 dark:text-red-400">
+                    <input
+                      type="checkbox"
+                      checked={!preserveOrphanGrantIds.has(g.id)}
+                      onChange={e => setPreserveOrphanGrantIds(prev => {
+                        const next = new Set(prev)
+                        if (e.target.checked) { next.delete(g.id) } else { next.add(g.id) }
+                        return next
+                      })}
+                      className="rounded border-red-300"
+                    />
+                    {g.year} {g.type} — {g.shares.toLocaleString()} shares
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
           <NextBtn label="Next: Preferences →" onClick={() => push('schedule_settings')} />
         </div>
       )}
@@ -1485,6 +1521,32 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
           >
             + Add price
           </button>
+          {orphanPrices.length > 0 && (
+            <div className="rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-950/30">
+              <p className="text-xs font-medium text-red-700 dark:text-red-400">
+                Existing prices not covered above — will be removed
+              </p>
+              <p className="mt-0.5 text-[11px] text-red-600 dark:text-red-500">Uncheck to keep.</p>
+              <div className="mt-2 space-y-1">
+                {orphanPrices.map(p => (
+                  <label key={p.id} className="flex items-center gap-2 text-xs text-red-700 dark:text-red-400">
+                    <input
+                      type="checkbox"
+                      checked={!preserveOrphanPriceIds.has(p.id)}
+                      onChange={e => setPreserveOrphanPriceIds(prev => {
+                        const next = new Set(prev)
+                        if (e.target.checked) { next.delete(p.id) } else { next.add(p.id) }
+                        return next
+                      })}
+                      className="rounded border-red-300"
+                    />
+                    {fmtDate(p.effective_date)} — ${p.price.toFixed(2)}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
           <NextBtn label="Next: Enter grants →" onClick={() => {
             // Pre-fill purchase price for each row from the price entered for that exercise year
             setPurchaseRows(rows => rows.map(r => {

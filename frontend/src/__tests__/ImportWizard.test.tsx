@@ -29,6 +29,15 @@ function mockApi() {
     if (url.includes('/api/config')) {
       return new Response(JSON.stringify({ epic_onboarding_url: '', epic_mode: false, email_notifications_available: false, vapid_public_key: '', resend_from: '' }), { status: 200 })
     }
+    if (url.includes('/api/tax-settings')) {
+      return new Response(JSON.stringify({
+        federal_income_rate: 0.37, federal_lt_cg_rate: 0.20, federal_st_cg_rate: 0.37,
+        niit_rate: 0.038, state_income_rate: 0.0765, state_lt_cg_rate: 0.0765, state_st_cg_rate: 0.0765,
+        lt_holding_days: 365, lot_selection_method: 'epic_lifo', loan_payoff_method: 'epic_lifo',
+        flexible_payoff_enabled: false, prefer_stock_dp: false, dp_min_percent: 0, dp_min_cap: 0,
+        deduct_investment_interest: false,
+      }), { status: 200 })
+    }
     return new Response('Not found', { status: 404 })
   })
 }
@@ -46,16 +55,16 @@ describe('ImportWizard', () => {
     mockApi()
     renderWizard()
     expect(screen.getByText("Let's set up your equity tracker.")).toBeInTheDocument()
-    expect(screen.getByText(/Use grant schedule/i)).toBeInTheDocument()
-    expect(screen.getByText(/Upload structure file/i)).toBeInTheDocument()
-    expect(screen.getByText(/Start from scratch/i)).toBeInTheDocument()
+    expect(screen.getByText(/Setup Wizard/i)).toBeInTheDocument()
+    expect(screen.getByText(/Import from file/i)).toBeInTheDocument()
+    expect(screen.getByText(/Manual entry/i)).toBeInTheDocument()
   })
 
-  it('Start from scratch goes to prices screen', async () => {
+  it('Manual entry goes to prices screen', async () => {
     mockApi()
     const user = userEvent.setup()
     renderWizard()
-    await user.click(screen.getByRole('button', { name: /Start from scratch/i }))
+    await user.click(screen.getByRole('button', { name: /Manual entry/i }))
     expect(screen.getByText('Share price history')).toBeInTheDocument()
   })
 
@@ -63,7 +72,7 @@ describe('ImportWizard', () => {
     mockApi()
     const user = userEvent.setup()
     renderWizard()
-    await user.click(screen.getByRole('button', { name: /Start from scratch/i }))
+    await user.click(screen.getByRole('button', { name: /Manual entry/i }))
     expect(screen.getByRole('button', { name: /\+ Add price/i })).toBeInTheDocument()
   })
 
@@ -71,7 +80,7 @@ describe('ImportWizard', () => {
     mockApi()
     const user = userEvent.setup()
     renderWizard()
-    await user.click(screen.getByRole('button', { name: /Start from scratch/i }))
+    await user.click(screen.getByRole('button', { name: /Manual entry/i }))
 
     // Initially one row (no remove button)
     expect(screen.queryByText('✕')).not.toBeInTheDocument()
@@ -90,7 +99,7 @@ describe('ImportWizard', () => {
     mockApi()
     const user = userEvent.setup()
     renderWizard()
-    await user.click(screen.getByRole('button', { name: /Start from scratch/i }))
+    await user.click(screen.getByRole('button', { name: /Manual entry/i }))
     await user.click(screen.getByRole('button', { name: /Next: Add grants/i }))
     expect(screen.getByText('Add a grant')).toBeInTheDocument()
   })
@@ -99,7 +108,7 @@ describe('ImportWizard', () => {
     mockApi()
     const user = userEvent.setup()
     renderWizard()
-    await user.click(screen.getByRole('button', { name: /Start from scratch/i }))
+    await user.click(screen.getByRole('button', { name: /Manual entry/i }))
     await user.click(screen.getByRole('button', { name: /Next: Add grants/i }))
     expect(screen.getByRole('button', { name: 'Purchase' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Catch-Up' })).toBeInTheDocument()
@@ -111,7 +120,7 @@ describe('ImportWizard', () => {
     mockApi()
     const user = userEvent.setup()
     renderWizard()
-    await user.click(screen.getByRole('button', { name: /Start from scratch/i }))
+    await user.click(screen.getByRole('button', { name: /Manual entry/i }))
     await user.click(screen.getByRole('button', { name: /Next: Add grants/i }))
     // Purchase is default — click Next
     await user.click(screen.getByRole('button', { name: /Next →/i }))
@@ -124,7 +133,7 @@ describe('ImportWizard', () => {
     mockApi()
     const user = userEvent.setup()
     renderWizard()
-    await user.click(screen.getByRole('button', { name: /Start from scratch/i }))
+    await user.click(screen.getByRole('button', { name: /Manual entry/i }))
     await user.click(screen.getByRole('button', { name: /Next: Add grants/i }))
 
     // Switch to Catch-Up
@@ -142,7 +151,7 @@ describe('ImportWizard', () => {
     mockApi()
     const user = userEvent.setup()
     renderWizard()
-    await user.click(screen.getByRole('button', { name: /Start from scratch/i }))
+    await user.click(screen.getByRole('button', { name: /Manual entry/i }))
     await user.click(screen.getByRole('button', { name: /Next: Add grants/i }))
     await user.click(screen.getByRole('button', { name: /Next →/i }))
 
@@ -159,7 +168,7 @@ describe('ImportWizard', () => {
     mockApi()
     const user = userEvent.setup()
     renderWizard()
-    await user.click(screen.getByRole('button', { name: /Start from scratch/i }))
+    await user.click(screen.getByRole('button', { name: /Manual entry/i }))
     await user.click(screen.getByRole('button', { name: /Next: Add grants/i }))
     await user.click(screen.getByRole('button', { name: /Next →/i }))
     await waitFor(() => screen.getByText(/Did you take out a loan/i))
@@ -178,7 +187,7 @@ describe('ImportWizard', () => {
     renderWizard(onComplete)
 
     // Navigate to review
-    await user.click(screen.getByRole('button', { name: /Start from scratch/i }))
+    await user.click(screen.getByRole('button', { name: /Manual entry/i }))
     await user.click(screen.getByRole('button', { name: /Next: Add grants/i }))
     await user.click(screen.getByRole('button', { name: /Next →/i }))
     await waitFor(() => screen.getByText(/Did you take out a loan/i))
@@ -199,7 +208,7 @@ describe('ImportWizard', () => {
     const user = userEvent.setup()
     renderWizard(onComplete)
 
-    await user.click(screen.getByRole('button', { name: /Start from scratch/i }))
+    await user.click(screen.getByRole('button', { name: /Manual entry/i }))
     await user.click(screen.getByRole('button', { name: /Next: Add grants/i }))
     await user.click(screen.getByRole('button', { name: /Next →/i }))
     await waitFor(() => screen.getByText(/Did you take out a loan/i))
@@ -214,33 +223,37 @@ describe('ImportWizard', () => {
     expect(onComplete).toHaveBeenCalledOnce()
   })
 
-  it('Use grant schedule shows what-you-need screen', async () => {
+  it('Setup Wizard shows what-you-need screen', async () => {
     mockApi()
     const user = userEvent.setup()
     renderWizard()
-    await user.click(screen.getByRole('button', { name: /Use grant schedule/i }))
+    await user.click(screen.getByRole('button', { name: /Setup Wizard/i }))
     expect(screen.getByText("What you'll need")).toBeInTheDocument()
     expect(screen.getByText(/Epic stocks SharePoint/i)).toBeInTheDocument()
     expect(screen.getAllByText(/DocuSign or Shareworks/i).length).toBeGreaterThanOrEqual(1)
   })
 
-  it('schedule intro goes to grants table', async () => {
+  it('schedule intro goes to prices then grants table', async () => {
     mockApi()
     const user = userEvent.setup()
     renderWizard()
-    await user.click(screen.getByRole('button', { name: /Use grant schedule/i }))
+    await user.click(screen.getByRole('button', { name: /Setup Wizard/i }))
     await user.click(screen.getByRole('button', { name: /Let's go/i }))
-    expect(screen.getByText('Your grants')).toBeInTheDocument()
+    // Now on prices screen
+    expect(screen.getByText(/Annual share prices/i)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Next: Enter grants/i }))
+    // Now on grants screen
+    expect(screen.getByText(/Your grants/i)).toBeInTheDocument()
     expect(screen.getByText('Purchase grants')).toBeInTheDocument()
-    expect(screen.getByText('Catch-up grants')).toBeInTheDocument()
   })
 
   it('schedule grants table shows pre-filled purchase years', async () => {
     mockApi()
     const user = userEvent.setup()
     renderWizard()
-    await user.click(screen.getByRole('button', { name: /Use grant schedule/i }))
+    await user.click(screen.getByRole('button', { name: /Setup Wizard/i }))
     await user.click(screen.getByRole('button', { name: /Let's go/i }))
+    await user.click(screen.getByRole('button', { name: /Next: Enter grants/i }))
     // 2018–2025 purchase years should be present
     expect(screen.getByText('2018')).toBeInTheDocument()
     expect(screen.getByText('2020')).toBeInTheDocument()
@@ -251,8 +264,9 @@ describe('ImportWizard', () => {
     mockApi()
     const user = userEvent.setup()
     renderWizard()
-    await user.click(screen.getByRole('button', { name: /Use grant schedule/i }))
+    await user.click(screen.getByRole('button', { name: /Setup Wizard/i }))
     await user.click(screen.getByRole('button', { name: /Let's go/i }))
+    await user.click(screen.getByRole('button', { name: /Next: Enter grants/i }))
     expect(screen.getByText('Bonus & Free grants')).toBeInTheDocument()
     // The vesting schedule label text is split across elements
     expect(screen.getByText(/Vesting schedule/i)).toBeInTheDocument()
@@ -261,17 +275,17 @@ describe('ImportWizard', () => {
     expect(scheduleButtons.length).toBeGreaterThanOrEqual(3)
   })
 
-  it('schedule path navigates grants → prices → tax', async () => {
+  it('schedule path navigates prices → grants → preferences', async () => {
     mockApi()
     const user = userEvent.setup()
     renderWizard()
-    await user.click(screen.getByRole('button', { name: /Use grant schedule/i }))
+    await user.click(screen.getByRole('button', { name: /Setup Wizard/i }))
     await user.click(screen.getByRole('button', { name: /Let's go/i }))
-    await user.click(screen.getByRole('button', { name: /Next: Enter prices/i }))
-    expect(screen.getByText('Annual share prices')).toBeInTheDocument()
-    expect(screen.getByText(/Epic stocks SharePoint/i)).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /Next: Tax rates/i }))
-    expect(screen.getByText('Tax rates')).toBeInTheDocument()
+    expect(screen.getByText(/Annual share prices/i)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Next: Enter grants/i }))
+    expect(screen.getByText(/Your grants/i)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Next: Preferences/i }))
+    expect(screen.getByText(/A couple quick questions/i)).toBeInTheDocument()
   })
 
   it('schedule path submits and shows done screen', async () => {
@@ -279,22 +293,22 @@ describe('ImportWizard', () => {
     const onComplete = vi.fn()
     const user = userEvent.setup()
     renderWizard(onComplete)
-    await user.click(screen.getByRole('button', { name: /Use grant schedule/i }))
+    await user.click(screen.getByRole('button', { name: /Setup Wizard/i }))
     await user.click(screen.getByRole('button', { name: /Let's go/i }))
-    await user.click(screen.getByRole('button', { name: /Next: Enter prices/i }))
-    await user.click(screen.getByRole('button', { name: /Next: Tax rates/i }))
+    await user.click(screen.getByRole('button', { name: /Next: Enter grants/i }))
+    await user.click(screen.getByRole('button', { name: /Next: Preferences/i }))
     await user.click(screen.getByRole('button', { name: /Skip/i }))
     await waitFor(() => screen.getByText('Setup complete!'))
     await user.click(screen.getByRole('button', { name: /View dashboard/i }))
     expect(onComplete).toHaveBeenCalledOnce()
   })
 
-  it('Upload structure file path shows file input', async () => {
+  it('Import from file path shows file input', async () => {
     mockApi()
     const user = userEvent.setup()
     renderWizard()
-    await user.click(screen.getByRole('button', { name: /Upload structure file/i }))
-    expect(screen.getByText('Upload your structure file')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Import from file/i }))
+    expect(screen.getByText('Import from file')).toBeInTheDocument()
     expect(screen.getByText(/Skip — enter manually/i)).toBeInTheDocument()
   })
 
@@ -302,7 +316,7 @@ describe('ImportWizard', () => {
     mockApi()
     const user = userEvent.setup()
     renderWizard()
-    await user.click(screen.getByRole('button', { name: /Start from scratch/i }))
+    await user.click(screen.getByRole('button', { name: /Manual entry/i }))
     expect(screen.getByText('Share price history')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /← Back/i }))
     expect(screen.getByText("Let's set up your equity tracker.")).toBeInTheDocument()

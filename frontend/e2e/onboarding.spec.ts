@@ -12,18 +12,18 @@ test.describe('Onboarding wizard', () => {
 
   test('new user sees wizard instead of empty state links', async ({ page }) => {
     await expect(page.getByText("Let's set up your equity tracker.")).toBeVisible()
-    await expect(page.getByRole('button', { name: /Upload structure file/i })).toBeVisible()
-    await expect(page.getByRole('button', { name: /Start from scratch/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Import from file/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Manual entry/i })).toBeVisible()
   })
 
-  test('Upload structure file path shows upload screen', async ({ page }) => {
-    await page.getByRole('button', { name: /Upload structure file/i }).click()
-    await expect(page.getByText('Upload your structure file')).toBeVisible()
+  test('Import from file path shows upload screen', async ({ page }) => {
+    await page.getByRole('button', { name: /Import from file/i }).click()
+    await expect(page.getByText('Import from file')).toBeVisible()
   })
 
   test('manual flow: add grant → review → done → dashboard', async ({ page }) => {
     // Welcome → choose manual
-    await page.getByRole('button', { name: /Start from scratch/i }).click()
+    await page.getByRole('button', { name: /Manual entry/i }).click()
     await expect(page.getByText('Share price history')).toBeVisible()
 
     // Proceed past prices step without adding any
@@ -64,7 +64,7 @@ test.describe('Onboarding wizard', () => {
   })
 
   test('manual flow: proceed from prices step', async ({ page }) => {
-    await page.getByRole('button', { name: /Start from scratch/i }).click()
+    await page.getByRole('button', { name: /Manual entry/i }).click()
 
     // Prices step has "Next: Add grants" button
     await expect(page.getByText('Share price history')).toBeVisible()

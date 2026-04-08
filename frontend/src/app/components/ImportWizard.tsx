@@ -1,8 +1,11 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../../api.ts'
-import type { WizardGrant, WizardLoan, WizardGrantTemplate } from '../../api.ts'
+import type { WizardGrant, WizardLoan, WizardGrantTemplate, TaxSettings } from '../../api.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
+import { TaxRateFields, ratesFromDefaults, DEFAULT_RATES } from '../pages/Sales.tsx'
+import type { TaxRates } from '../pages/Sales.tsx'
+import { useApiData } from '../hooks/useApiData.ts'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -59,6 +62,10 @@ type Screen =
   | 'more_grants'     // "add another grant year?"
   | 'review'
   | 'done'
+  | 'schedule_intro'
+  | 'schedule_grants'
+  | 'schedule_prices'
+  | 'schedule_tax'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -118,6 +125,102 @@ function vestingYears(draft: GrantDraft): string[] {
 function fmtDate(d: string) {
   if (!d) return ''
   return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+// ── Epic Grant Schedule ───────────────────────────────────────────────────────
+
+interface KnownGrant {
+  year: number
+  type: 'Purchase' | 'Bonus' | 'Free'
+  defaultPrice: number
+  vest_start: string
+  periods: number
+  exercise_date: string
+  defaultCatchUp: boolean
+}
+
+type BonusSchedule = 'A' | 'B' | 'C'
+
+const BONUS_SCHEDULES: Record<BonusSchedule, { periods: number }> = {
+  A: { periods: 2 },
+  B: { periods: 3 },
+  C: { periods: 4 },
+}
+
+// Company-wide grant structure. All values are defaults — user can override any field.
+// Purchase prices are the same for all employees in a given year.
+// Annual market prices (for gain calculations) are NOT hardcoded — user enters them in Step 2.
+const EPIC_GRANT_SCHEDULE: KnownGrant[] = [
+  { year: 2018, type: 'Purchase', defaultPrice: 0, vest_start: '2020-06-15', periods: 6, exercise_date: '2018-12-31', defaultCatchUp: true },
+  { year: 2019, type: 'Purchase', defaultPrice: 0, vest_start: '2021-06-15', periods: 6, exercise_date: '2019-12-31', defaultCatchUp: true },
+  { year: 2020, type: 'Purchase', defaultPrice: 0, vest_start: '2021-09-30', periods: 5, exercise_date: '2020-12-31', defaultCatchUp: true },
+  { year: 2020, type: 'Bonus',    defaultPrice: 0,    vest_start: '2021-09-30', periods: 4, exercise_date: '2020-12-31', defaultCatchUp: false },
+  { year: 2021, type: 'Purchase', defaultPrice: 0, vest_start: '2021-09-30', periods: 5, exercise_date: '2021-12-31', defaultCatchUp: true },
+  { year: 2021, type: 'Bonus',    defaultPrice: 0, vest_start: '2022-09-30', periods: 3, exercise_date: '2021-12-31', defaultCatchUp: false },
+  { year: 2022, type: 'Purchase', defaultPrice: 0, vest_start: '2022-09-30', periods: 4, exercise_date: '2022-12-31', defaultCatchUp: false },
+  { year: 2022, type: 'Free',     defaultPrice: 0,    vest_start: '2027-09-30', periods: 1, exercise_date: '2022-12-31', defaultCatchUp: false },
+  { year: 2023, type: 'Purchase', defaultPrice: 0, vest_start: '2023-09-30', periods: 4, exercise_date: '2023-12-31', defaultCatchUp: false },
+  { year: 2023, type: 'Bonus',    defaultPrice: 0, vest_start: '2024-09-30', periods: 3, exercise_date: '2023-12-31', defaultCatchUp: false },
+  { year: 2024, type: 'Purchase', defaultPrice: 0, vest_start: '2024-09-30', periods: 4, exercise_date: '2024-12-31', defaultCatchUp: false },
+  { year: 2024, type: 'Bonus',    defaultPrice: 0, vest_start: '2025-09-30', periods: 3, exercise_date: '2024-12-31', defaultCatchUp: false },
+  { year: 2025, type: 'Purchase', defaultPrice: 0, vest_start: '2025-09-30', periods: 4, exercise_date: '2025-12-31', defaultCatchUp: false },
+  { year: 2025, type: 'Bonus',    defaultPrice: 0, vest_start: '2026-09-30', periods: 3, exercise_date: '2025-12-31', defaultCatchUp: false },
+]
+
+const LOAN_TERM_YEARS = 10
+const PRICE_YEARS = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
+
+interface PurchaseGrantRow {
+  year: number; vest_start: string; periods: number; exercise_date: string
+  participated: boolean
+  purchase_price: string
+  shares: string; dp_shares: string; dp_cash: string
+  loan_amount: string; loan_due_date: string; interest_rate: string
+}
+
+interface CatchUpRow {
+  year: number; vest_start: string; periods: number; exercise_date: string
+  included: boolean; shares: string
+}
+
+interface BonusGrantRow {
+  year: number; type: 'Bonus' | 'Free'
+  purchase_price: string; shares: string
+  isBonus2020: boolean; schedule: BonusSchedule
+  vest_start: string; periods: number; exercise_date: string
+}
+
+function addYearsToDate(dateStr: string, years: number): string {
+  if (!dateStr) return ''
+  const d = new Date(dateStr + 'T00:00:00')
+  d.setFullYear(d.getFullYear() + years)
+  return d.toISOString().slice(0, 10)
+}
+
+function initPurchaseRows(): PurchaseGrantRow[] {
+  return EPIC_GRANT_SCHEDULE.filter(g => g.type === 'Purchase').map(g => ({
+    year: g.year, vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
+    participated: false,
+    purchase_price: String(g.defaultPrice),
+    shares: '', dp_shares: '0', dp_cash: '',
+    loan_amount: '', loan_due_date: addYearsToDate(g.exercise_date, LOAN_TERM_YEARS), interest_rate: '',
+  }))
+}
+
+function initCatchUpRows(): CatchUpRow[] {
+  return EPIC_GRANT_SCHEDULE.filter(g => g.type === 'Purchase' && g.defaultCatchUp).map(g => ({
+    year: g.year, vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
+    included: true, shares: '',
+  }))
+}
+
+function initBonusRows(): BonusGrantRow[] {
+  return EPIC_GRANT_SCHEDULE.filter(g => g.type === 'Bonus' || g.type === 'Free').map(g => ({
+    year: g.year, type: g.type as 'Bonus' | 'Free',
+    purchase_price: String(g.defaultPrice), shares: '',
+    isBonus2020: g.year === 2020 && g.type === 'Bonus', schedule: 'C' as BonusSchedule,
+    vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
+  }))
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -226,6 +329,15 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
   const [uploadError, setUploadError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
+
+  // ── Schedule path state ────────────────────────────────────────────────────
+  const [purchaseRows, setPurchaseRows] = useState<PurchaseGrantRow[]>(initPurchaseRows)
+  const [catchUpRows, setCatchUpRows]   = useState<CatchUpRow[]>(initCatchUpRows)
+  const [bonusRows, setBonusRows]       = useState<BonusGrantRow[]>(initBonusRows)
+  const [taxRates, setTaxRates]         = useState<TaxRates>(DEFAULT_RATES)
+  const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
+  const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
+  useEffect(() => { if (taxSettings) setTaxRates(ratesFromDefaults(taxSettings)) }, [taxSettings])
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -367,6 +479,107 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
     }
   }
 
+  // ── Schedule path helpers ─────────────────────────────────────────────────
+
+  function enterScheduleMode() {
+    setPurchaseRows(initPurchaseRows())
+    setCatchUpRows(initCatchUpRows())
+    setBonusRows(initBonusRows())
+    setPrices(PRICE_YEARS.map(y => ({ effective_date: `${y}-01-01`, price: '' })))
+    push('schedule_intro')
+  }
+
+  function recalcLoan(rows: PurchaseGrantRow[], i: number, patch: Partial<PurchaseGrantRow>): PurchaseGrantRow[] {
+    return rows.map((r, j) => {
+      if (j !== i) return r
+      const updated = { ...r, ...patch }
+      const p = parseFloat(updated.purchase_price) || 0
+      const s = parseInt(updated.shares) || 0
+      const dp = parseFloat(updated.dp_cash) || 0
+      return { ...updated, loan_amount: Math.max(0, p * s - dp).toFixed(2) }
+    })
+  }
+
+  function setPurchaseField(i: number, patch: Partial<PurchaseGrantRow>, recalc = false) {
+    setPurchaseRows(rows => recalc ? recalcLoan(rows, i, patch) : rows.map((r, j) => j === i ? { ...r, ...patch } : r))
+  }
+
+  function setCatchUpField(i: number, patch: Partial<CatchUpRow>) {
+    setCatchUpRows(rows => rows.map((r, j) => j === i ? { ...r, ...patch } : r))
+  }
+
+  function setBonusField(i: number, patch: Partial<BonusGrantRow>) {
+    setBonusRows(rows => rows.map((r, j) => {
+      if (j !== i) return r
+      const updated = { ...r, ...patch }
+      if ('schedule' in patch && r.isBonus2020) {
+        updated.periods = BONUS_SCHEDULES[updated.schedule].periods
+      }
+      return updated
+    }))
+  }
+
+  async function handleScheduleSubmit(saveTax = false) {
+    setSubmitting(true)
+    setSubmitError('')
+    try {
+      if (saveTax) {
+        try { await api.updateTaxSettings(taxRates) } catch { /* non-fatal */ }
+      }
+      const grants: WizardGrant[] = [
+        ...purchaseRows
+          .filter(r => r.participated && parseInt(r.shares) > 0)
+          .map(r => ({
+            year: r.year, type: 'Purchase' as const,
+            shares: parseInt(r.shares) || 0,
+            price: parseFloat(r.purchase_price) || 0,
+            vest_start: r.vest_start, periods: r.periods, exercise_date: r.exercise_date,
+            dp_shares: -(Math.abs(parseInt(r.dp_shares) || 0)),
+            election_83b: false,
+            loans: [{
+              loan_number: `wiz-${r.year}-0`,
+              loan_type: 'Purchase' as const, loan_year: r.year,
+              amount: parseFloat(r.loan_amount) || Math.max(0, (parseInt(r.shares) || 0) * (parseFloat(r.purchase_price) || 0) - (parseFloat(r.dp_cash) || 0)),
+              interest_rate: parseFloat(r.interest_rate) || 0,
+              due_date: r.loan_due_date,
+              refinances_loan_number: '',
+            }] as WizardLoan[],
+          })),
+        ...catchUpRows
+          .filter(r => r.included && parseInt(r.shares) > 0)
+          .map(r => ({
+            year: r.year, type: 'Catch-Up' as const,
+            shares: parseInt(r.shares) || 0, price: 0,
+            vest_start: r.vest_start, periods: r.periods, exercise_date: r.exercise_date,
+            dp_shares: 0, election_83b: false, loans: [] as WizardLoan[],
+          })),
+        ...bonusRows
+          .filter(r => parseInt(r.shares) > 0)
+          .map(r => ({
+            year: r.year, type: r.type as 'Bonus' | 'Free',
+            shares: parseInt(r.shares) || 0,
+            price: parseFloat(r.purchase_price) || 0,
+            vest_start: r.vest_start, periods: r.periods, exercise_date: r.exercise_date,
+            dp_shares: 0, election_83b: false, loans: [] as WizardLoan[],
+          })),
+      ]
+      setCompletedGrants(grants)
+      await api.wizardSubmit({
+        grants,
+        prices: prices
+          .filter(p => p.effective_date && p.price !== '')
+          .map(p => ({ effective_date: p.effective_date, price: parseFloat(p.price) })),
+        clear_existing: true,
+        generate_payoff_sales: true,
+      })
+      push('done')
+    } catch (e: unknown) {
+      setSubmitError(e instanceof Error ? e.message : 'Submit failed')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   function handleComplete() {
     if (onComplete) {
       onComplete()
@@ -407,20 +620,30 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             )}
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-3">
             <button
               type="button"
-              onClick={() => push('upload')}
+              onClick={enterScheduleMode}
               className="flex flex-col rounded-lg border-2 border-rose-400 bg-white p-4 text-left hover:border-rose-600 hover:shadow-md dark:border-rose-500 dark:bg-slate-900"
             >
-              <span className="text-sm font-semibold text-rose-700 dark:text-rose-300">Upload structure file</span>
+              <span className="text-sm font-semibold text-rose-700 dark:text-rose-300">Use grant schedule</span>
               <span className="mt-1 text-xs text-gray-500 dark:text-slate-400">
-                Pre-fills prices and vesting schedule. You just fill in your share counts.
+                We know Epic's grant structure — just enter your shares and prices.
               </span>
             </button>
             <button
               type="button"
-              onClick={() => { setTemplates([]); push('prices') }}
+              onClick={() => push('upload')}
+              className="flex flex-col rounded-lg border-2 border-stone-200 bg-white p-4 text-left hover:border-rose-400 hover:shadow-md dark:border-slate-700 dark:bg-slate-900"
+            >
+              <span className="text-sm font-semibold text-gray-900 dark:text-slate-100">Upload structure file</span>
+              <span className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                Pre-fills prices and vesting schedule from Excel.
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setTemplates([]); setPrices([{ effective_date: '', price: '' }]); push('prices') }}
               className="flex flex-col rounded-lg border-2 border-stone-200 bg-white p-4 text-left hover:border-rose-400 hover:shadow-md dark:border-slate-700 dark:bg-slate-900"
             >
               <span className="text-sm font-semibold text-gray-900 dark:text-slate-100">Start from scratch</span>
@@ -916,6 +1139,260 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             saving={submitting}
             onClick={handleSubmit}
           />
+        </div>
+      )}
+
+      {/* ── Schedule: Intro ── */}
+      {screen === 'schedule_intro' && (
+        <div className="space-y-5">
+          <BackBtn onClick={back} />
+          <div>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">What you'll need</h2>
+            <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+              We know Epic's grant schedule — years, vesting dates, and purchase prices. We just need the numbers specific to you.
+            </p>
+          </div>
+          <div className="rounded-md border border-stone-200 p-3 dark:border-slate-700">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+              <span className="font-medium text-gray-700 dark:text-slate-300">What you'll enter</span>
+              <span className="font-medium text-gray-700 dark:text-slate-300">Where to find it</span>
+              <span className="text-gray-600 dark:text-slate-400">Annual share prices</span>
+              <span className="text-gray-500 dark:text-slate-500">Epic stocks SharePoint</span>
+              <span className="text-gray-600 dark:text-slate-400">Shares purchased / DP shares</span>
+              <span className="text-gray-500 dark:text-slate-500">DocuSign or Shareworks</span>
+              <span className="text-gray-600 dark:text-slate-400">Catch-up / bonus shares</span>
+              <span className="text-gray-500 dark:text-slate-500">DocuSign or Shareworks</span>
+              <span className="text-gray-600 dark:text-slate-400">Loan interest rate</span>
+              <span className="text-gray-500 dark:text-slate-500">Loan statement or DocuSign</span>
+            </div>
+          </div>
+          <NextBtn label="Let's go →" onClick={() => push('schedule_grants')} />
+        </div>
+      )}
+
+      {/* ── Schedule: Grants table ── */}
+      {screen === 'schedule_grants' && (
+        <div className="space-y-5">
+          <BackBtn onClick={back} />
+          <div>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Your grants</h2>
+            <p className="mt-0.5 text-xs text-gray-500 dark:text-slate-400">
+              Check each year you participated. All fields are pre-filled — override anything that differs.
+            </p>
+          </div>
+
+          {/* Purchase grants */}
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-gray-700 dark:text-slate-300">Purchase grants</p>
+            {purchaseRows.map((row, i) => (
+              <div key={row.year} className="rounded-md border border-stone-200 dark:border-slate-700">
+                <label className="flex cursor-pointer items-center gap-3 p-3">
+                  <input
+                    type="checkbox"
+                    checked={row.participated}
+                    onChange={e => setPurchaseField(i, { participated: e.target.checked })}
+                    className="rounded"
+                  />
+                  <span className="text-sm font-medium text-gray-800 dark:text-slate-200">{row.year}</span>
+                  <span className="text-[11px] text-gray-400 dark:text-slate-500">
+                    exercised {row.exercise_date} · {row.periods} vesting periods
+                  </span>
+                </label>
+                {row.participated && (
+                  <div className="border-t border-stone-100 p-3 space-y-3 dark:border-slate-800">
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Purchase price ($/share)" type="number" step="0.01"
+                        value={row.purchase_price}
+                        onChange={v => setPurchaseField(i, { purchase_price: v }, true)} />
+                      <Field label="Shares" type="number" value={row.shares}
+                        onChange={v => setPurchaseField(i, { shares: v }, true)} />
+                      <Field label="DP shares" type="number" value={row.dp_shares}
+                        onChange={v => setPurchaseField(i, { dp_shares: v })}
+                        hint="shares exchanged at exercise" />
+                    </div>
+                    <details>
+                      <summary className="cursor-pointer text-xs font-medium text-rose-700 hover:text-rose-800 dark:text-rose-400 list-none">
+                        Loan details ›
+                      </summary>
+                      <div className="mt-2 grid grid-cols-2 gap-3">
+                        <Field label="DP cash paid ($)" type="number" step="0.01" value={row.dp_cash}
+                          onChange={v => setPurchaseField(i, { dp_cash: v }, true)} placeholder="0" />
+                        <Field label="Loan amount ($)" type="number" step="0.01" value={row.loan_amount}
+                          onChange={v => setPurchaseField(i, { loan_amount: v })} />
+                        <Field label="Interest rate" type="number" step="0.0001" value={row.interest_rate}
+                          onChange={v => setPurchaseField(i, { interest_rate: v })}
+                          placeholder="e.g. 0.0178" hint="from loan statement" />
+                        <Field label="Due date" type="date" value={row.loan_due_date}
+                          onChange={v => setPurchaseField(i, { loan_due_date: v })} />
+                      </div>
+                    </details>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Catch-up grants */}
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-gray-700 dark:text-slate-300">
+              Catch-up grants <span className="font-normal text-gray-400">(2018–2021 only)</span>
+            </p>
+            {catchUpRows.map((row, i) => (
+              <div key={row.year} className="rounded-md border border-stone-200 dark:border-slate-700">
+                <label className="flex cursor-pointer items-center gap-3 p-3">
+                  <input
+                    type="checkbox"
+                    checked={row.included}
+                    onChange={e => setCatchUpField(i, { included: e.target.checked })}
+                    className="rounded"
+                  />
+                  <span className="text-sm font-medium text-gray-800 dark:text-slate-200">{row.year} Catch-Up</span>
+                  <span className="text-[11px] text-gray-400 dark:text-slate-500">zero cost basis</span>
+                </label>
+                {row.included && (
+                  <div className="border-t border-stone-100 p-3 dark:border-slate-800">
+                    <div className="w-40">
+                      <Field label="Shares" type="number" value={row.shares}
+                        onChange={v => setCatchUpField(i, { shares: v })} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Bonus / Free grants */}
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-gray-700 dark:text-slate-300">Bonus &amp; Free grants</p>
+            <p className="text-[11px] text-gray-400 dark:text-slate-500">Leave shares blank for years you didn't receive a bonus.</p>
+            {bonusRows.map((row, i) => (
+              <div key={`${row.year}-${row.type}`} className="rounded-md border border-stone-200 p-3 dark:border-slate-700 space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${GRANT_COLORS[row.type]}`}>{row.year} {row.type}</span>
+                  {row.type !== 'Free' && <span className="text-[11px] text-gray-400 dark:text-slate-500">{row.periods} periods from {fmtDate(row.vest_start)}</span>}
+                  {row.type === 'Free' && <span className="text-[11px] text-gray-400 dark:text-slate-500">vests {fmtDate(row.vest_start)}</span>}
+                </div>
+                {row.isBonus2020 && (
+                  <div>
+                    <p className="text-xs text-gray-500 dark:text-slate-400 mb-1">
+                      Vesting schedule — <span className="italic">check which you initialed in your 2020 bonus agreement</span>
+                    </p>
+                    <div className="flex gap-1.5">
+                      {(['A', 'B', 'C'] as BonusSchedule[]).map(s => (
+                        <button key={s} type="button"
+                          onClick={() => setBonusField(i, { schedule: s })}
+                          className={`rounded-md px-3 py-1 text-xs font-medium ${row.schedule === s ? 'bg-emerald-700 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-400'}`}
+                        >
+                          {s}
+                        </button>
+                      ))}
+                      <span className="ml-1 text-[11px] text-gray-400 self-center">
+                        {row.schedule === 'A' ? '2 periods (50%/50%)' : row.schedule === 'B' ? '3 periods (34%/33%/33%)' : '4 periods (25% each)'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Shares" type="number" value={row.shares}
+                    onChange={v => setBonusField(i, { shares: v })} />
+                  {row.type !== 'Free' && (
+                    <Field label="Cost basis ($/share)" type="number" step="0.01" value={row.purchase_price}
+                      onChange={v => setBonusField(i, { purchase_price: v })}
+                      hint={row.year === 2020 ? 'usually $0' : 'usually = annual price'} />
+                  )}
+                </div>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => setBonusRows(rows => [...rows, {
+                year: new Date().getFullYear(), type: 'Bonus',
+                purchase_price: '', shares: '',
+                isBonus2020: false, schedule: 'C',
+                vest_start: '', periods: 3, exercise_date: '',
+              }])}
+              className="text-xs font-medium text-emerald-700 hover:text-emerald-800 dark:text-emerald-400"
+            >
+              + Add bonus grant
+            </button>
+          </div>
+
+          <NextBtn label="Next: Enter prices →" onClick={() => push('schedule_prices')} />
+        </div>
+      )}
+
+      {/* ── Schedule: Prices table ── */}
+      {screen === 'schedule_prices' && (
+        <div className="space-y-4">
+          <BackBtn onClick={back} />
+          <div>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Annual share prices</h2>
+            <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+              Enter the price per share from each annual Epic announcement. Find these on the Epic stocks SharePoint.
+            </p>
+          </div>
+          <div className="space-y-2">
+            {prices.map((p, i) => (
+              <div key={i} className="flex items-end gap-2">
+                <div className="flex-1">
+                  <Field
+                    label={i === 0 ? 'Date' : ''}
+                    type="date" value={p.effective_date}
+                    onChange={v => setPrices(prev => prev.map((x, j) => j === i ? { ...x, effective_date: v } : x))}
+                  />
+                </div>
+                <div className="w-28">
+                  <Field
+                    label={i === 0 ? 'Price ($)' : ''}
+                    type="number" step="0.01" value={p.price}
+                    onChange={v => setPrices(prev => prev.map((x, j) => j === i ? { ...x, price: v } : x))}
+                    placeholder="0.00"
+                  />
+                </div>
+                {prices.length > 1 && (
+                  <button type="button"
+                    onClick={() => setPrices(prev => prev.filter((_, j) => j !== i))}
+                    className="mb-0.5 text-xs text-gray-400 hover:text-red-500"
+                  >✕</button>
+                )}
+              </div>
+            ))}
+          </div>
+          <button type="button"
+            onClick={() => setPrices(prev => [...prev, { effective_date: '', price: '' }])}
+            className="text-xs font-medium text-rose-700 hover:text-rose-800 dark:text-rose-400"
+          >
+            + Add price
+          </button>
+          <NextBtn label="Next: Tax rates →" onClick={() => push('schedule_tax')} />
+        </div>
+      )}
+
+      {/* ── Schedule: Tax rates ── */}
+      {screen === 'schedule_tax' && (
+        <div className="space-y-4">
+          <BackBtn onClick={back} />
+          <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Tax rates</h2>
+          <p className="text-xs text-gray-500 dark:text-slate-400">
+            Pre-filled with Wisconsin defaults. You can update these on the Settings page anytime.
+          </p>
+          {submitError && <p className="text-xs text-red-500">{submitError}</p>}
+          <TaxRateFields
+            rates={taxRates}
+            onChange={setTaxRates}
+            onReset={() => { if (taxSettings) setTaxRates(ratesFromDefaults(taxSettings)) }}
+          />
+          <div className="flex gap-2 pt-1">
+            <NextBtn label="Save & submit →" saving={submitting} onClick={() => handleScheduleSubmit(true)} />
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => handleScheduleSubmit(false)}
+              className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
+            >
+              Skip
+            </button>
+          </div>
         </div>
       )}
 

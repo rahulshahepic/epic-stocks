@@ -148,17 +148,16 @@ const BONUS_SCHEDULES: Record<BonusSchedule, { periods: number }> = {
 }
 
 // Company-wide grant structure. All values are defaults — user can override any field.
-// Purchase prices are the same for all employees in a given year.
-// Annual market prices (for gain calculations) are NOT hardcoded — user enters them in Step 2.
+// Purchase prices are NOT included here — user enters them from the Epic stocks SharePoint.
 const EPIC_GRANT_SCHEDULE: KnownGrant[] = [
   { year: 2018, type: 'Purchase', defaultPrice: 0, vest_start: '2020-06-15', periods: 6, exercise_date: '2018-12-31', defaultCatchUp: true },
   { year: 2019, type: 'Purchase', defaultPrice: 0, vest_start: '2021-06-15', periods: 6, exercise_date: '2019-12-31', defaultCatchUp: true },
   { year: 2020, type: 'Purchase', defaultPrice: 0, vest_start: '2021-09-30', periods: 5, exercise_date: '2020-12-31', defaultCatchUp: true },
-  { year: 2020, type: 'Bonus',    defaultPrice: 0,    vest_start: '2021-09-30', periods: 4, exercise_date: '2020-12-31', defaultCatchUp: false },
+  { year: 2020, type: 'Bonus',    defaultPrice: 0, vest_start: '2021-09-30', periods: 4, exercise_date: '2020-12-31', defaultCatchUp: false },
   { year: 2021, type: 'Purchase', defaultPrice: 0, vest_start: '2021-09-30', periods: 5, exercise_date: '2021-12-31', defaultCatchUp: true },
   { year: 2021, type: 'Bonus',    defaultPrice: 0, vest_start: '2022-09-30', periods: 3, exercise_date: '2021-12-31', defaultCatchUp: false },
   { year: 2022, type: 'Purchase', defaultPrice: 0, vest_start: '2022-09-30', periods: 4, exercise_date: '2022-12-31', defaultCatchUp: false },
-  { year: 2022, type: 'Free',     defaultPrice: 0,    vest_start: '2027-09-30', periods: 1, exercise_date: '2022-12-31', defaultCatchUp: false },
+  { year: 2022, type: 'Free',     defaultPrice: 0, vest_start: '2027-09-30', periods: 1, exercise_date: '2022-12-31', defaultCatchUp: false },
   { year: 2023, type: 'Purchase', defaultPrice: 0, vest_start: '2023-09-30', periods: 4, exercise_date: '2023-12-31', defaultCatchUp: false },
   { year: 2023, type: 'Bonus',    defaultPrice: 0, vest_start: '2024-09-30', periods: 3, exercise_date: '2023-12-31', defaultCatchUp: false },
   { year: 2024, type: 'Purchase', defaultPrice: 0, vest_start: '2024-09-30', periods: 4, exercise_date: '2024-12-31', defaultCatchUp: false },
@@ -201,7 +200,7 @@ function initPurchaseRows(): PurchaseGrantRow[] {
   return EPIC_GRANT_SCHEDULE.filter(g => g.type === 'Purchase').map(g => ({
     year: g.year, vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
     participated: false,
-    purchase_price: String(g.defaultPrice),
+    purchase_price: '',
     shares: '', dp_shares: '0', dp_cash: '',
     loan_amount: '', loan_due_date: addYearsToDate(g.exercise_date, LOAN_TERM_YEARS), interest_rate: '',
   }))
@@ -217,7 +216,7 @@ function initCatchUpRows(): CatchUpRow[] {
 function initBonusRows(): BonusGrantRow[] {
   return EPIC_GRANT_SCHEDULE.filter(g => g.type === 'Bonus' || g.type === 'Free').map(g => ({
     year: g.year, type: g.type as 'Bonus' | 'Free',
-    purchase_price: String(g.defaultPrice), shares: '',
+    purchase_price: g.type === 'Free' ? '0' : '', shares: '',
     isBonus2020: g.year === 2020 && g.type === 'Bonus', schedule: 'C' as BonusSchedule,
     vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
   }))

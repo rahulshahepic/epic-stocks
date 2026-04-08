@@ -150,7 +150,6 @@ const BONUS_SCHEDULES: Record<BonusSchedule, { periods: number }> = {
 // Company-wide grant structure. All values are defaults — user can override any field.
 // Purchase prices are the same for all employees in a given year.
 // Annual market prices (for gain calculations) are NOT hardcoded — user enters them in Step 2.
-// TODO: confirm vest_start for 2022 Free and 2023–2025 Bonus rows before shipping.
 const EPIC_GRANT_SCHEDULE: KnownGrant[] = [
   { year: 2018, type: 'Purchase', defaultPrice: 1.99, vest_start: '2020-06-15', periods: 6, exercise_date: '2018-12-31', defaultCatchUp: true },
   { year: 2019, type: 'Purchase', defaultPrice: 2.27, vest_start: '2021-06-15', periods: 6, exercise_date: '2019-12-31', defaultCatchUp: true },

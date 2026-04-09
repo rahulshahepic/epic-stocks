@@ -207,6 +207,7 @@ export default function ImportExport() {
         )}
 
         <div className="mt-3 space-y-3">
+          <label htmlFor="import-file" className="sr-only">Upload Excel file (.xlsx)</label>
           <input
             id="import-file"
             ref={fileRef}

@@ -757,8 +757,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
 
           {isPage && (
             <p className="text-xs text-gray-400 dark:text-slate-500">
-              This wizard clears your existing data and starts fresh.
-              Use the <button type="button" onClick={() => navigate('/import')} className="underline">Import page</button> to append or update specific sheets.
+              If you already have data, the wizard pre-loads it on each screen. Any unmatched existing records will be shown before you can choose to keep or remove them — nothing is deleted until the final step.
             </p>
           )}
         </div>

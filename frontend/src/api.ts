@@ -309,6 +309,8 @@ export const api = {
     form.append('file', file)
     return apiFetch<WizardParseResult>('/api/wizard/parse-file', { method: 'POST', body: form })
   },
+  wizardPreview: (data: WizardSubmitPayload) =>
+    post<WizardPreviewResult>('/api/wizard/preview', data),
   wizardSubmit: (data: WizardSubmitPayload) =>
     post<WizardSubmitResult>('/api/wizard/submit', data),
 
@@ -631,6 +633,8 @@ export interface WizardSubmitPayload {
   prices: { effective_date: string; price: number }[]
   clear_existing?: boolean
   generate_payoff_sales?: boolean
+  preserve_grant_ids?: number[]
+  preserve_price_ids?: number[]
 }
 
 export interface WizardSubmitResult {
@@ -638,6 +642,30 @@ export interface WizardSubmitResult {
   loans: number
   prices: number
   payoff_sales: number
+}
+
+export interface WizardPreviewGrant {
+  year: number
+  type: string
+  status: 'added' | 'updated' | 'removed' | 'unchanged'
+  id: number | null
+  shares: number | null
+  old_shares: number | null
+  loans: number
+  old_loans: number | null
+}
+
+export interface WizardPreviewPrice {
+  effective_date: string
+  status: 'added' | 'updated' | 'removed' | 'unchanged'
+  id: number | null
+  price: number | null
+  old_price: number | null
+}
+
+export interface WizardPreviewResult {
+  grants: WizardPreviewGrant[]
+  prices: WizardPreviewPrice[]
 }
 
 export interface RotationEvent {

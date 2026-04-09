@@ -110,6 +110,7 @@ test.describe('Sales journey', () => {
 test.describe('Full user journey', () => {
   test.beforeEach(async ({ page }) => {
     await loginAs(page, 'journey@test.com', 'Journey User')
+    await resetUserData(page)
   })
 
   test('import xlsx → dashboard → events → add price → export', async ({ page }) => {
@@ -170,7 +171,7 @@ test.describe('Full user journey', () => {
     // Export should work
     await navigateTo(page, 'Import')
     const downloadPromise = page.waitForEvent('download')
-    await page.getByRole('button', { name: 'Download Vesting.xlsx' }).click()
+    await page.getByRole('button', { name: 'Export to Excel' }).click()
     const download = await downloadPromise
     expect(download.suggestedFilename()).toBe('Vesting.xlsx')
   })

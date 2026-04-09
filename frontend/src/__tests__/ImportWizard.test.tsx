@@ -26,6 +26,15 @@ function mockApi() {
     if (url.includes('/api/wizard/submit') && method === 'POST') {
       return new Response(JSON.stringify({ grants: 1, loans: 0, prices: 1, payoff_sales: 0 }), { status: 201 })
     }
+    if (url.includes('/api/prices') && method === 'GET') {
+      return new Response(JSON.stringify([]), { status: 200 })
+    }
+    if (url.includes('/api/grants') && method === 'GET') {
+      return new Response(JSON.stringify([]), { status: 200 })
+    }
+    if (url.includes('/api/loans') && method === 'GET') {
+      return new Response(JSON.stringify([]), { status: 200 })
+    }
     if (url.includes('/api/config')) {
       return new Response(JSON.stringify({ epic_onboarding_url: '', epic_mode: false, email_notifications_available: false, vapid_public_key: '', resend_from: '' }), { status: 200 })
     }
@@ -294,10 +303,14 @@ describe('ImportWizard', () => {
     const user = userEvent.setup()
     renderWizard(onComplete)
     await user.click(screen.getByRole('button', { name: /Setup Wizard/i }))
+    await waitFor(() => screen.getByRole('button', { name: /Let's go/i }))
     await user.click(screen.getByRole('button', { name: /Let's go/i }))
     await user.click(screen.getByRole('button', { name: /Next: Enter grants/i }))
     await user.click(screen.getByRole('button', { name: /Next: Preferences/i }))
     await user.click(screen.getByRole('button', { name: /Skip/i }))
+    // Schedule path goes to review before done
+    await waitFor(() => screen.getByText('Review'))
+    await user.click(screen.getByRole('button', { name: /Submit →/i }))
     await waitFor(() => screen.getByText('Setup complete!'))
     await user.click(screen.getByRole('button', { name: /View dashboard/i }))
     expect(onComplete).toHaveBeenCalledOnce()

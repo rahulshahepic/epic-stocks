@@ -17,9 +17,9 @@ describe('ImportExport', () => {
   it('renders all sections including template', () => {
     renderPage()
     expect(screen.getByText('Import / Export')).toBeInTheDocument()
-    expect(screen.getByText('Get Started')).toBeInTheDocument()
+    expect(screen.getByText('Setup Wizard')).toBeInTheDocument()
     expect(screen.getByText('Download Blank Template')).toBeInTheDocument()
-    expect(screen.getByText('Download Sample (with fake data)')).toBeInTheDocument()
+    expect(screen.getByText('Download Sample (fake data)')).toBeInTheDocument()
     expect(screen.getByText('Import from Excel')).toBeInTheDocument()
     expect(screen.getByText('Export to Excel')).toBeInTheDocument()
   })
@@ -110,7 +110,7 @@ describe('ImportExport', () => {
     globalThis.URL.revokeObjectURL = revokeObjectURL
 
     renderPage()
-    await userEvent.click(screen.getByText('Download Sample (with fake data)'))
+    await userEvent.click(screen.getByText('Download Sample (fake data)'))
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith('/api/import/sample', expect.any(Object))
@@ -132,7 +132,7 @@ describe('ImportExport', () => {
     globalThis.URL.revokeObjectURL = revokeObjectURL
 
     renderPage()
-    await userEvent.click(screen.getByText('Download Vesting.xlsx'))
+    await userEvent.click(screen.getByText('Export to Excel'))
 
     await waitFor(() => {
       expect(createObjectURL).toHaveBeenCalled()
@@ -145,7 +145,7 @@ describe('ImportExport', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockResponse)
 
     renderPage()
-    await userEvent.click(screen.getByText('Download Vesting.xlsx'))
+    await userEvent.click(screen.getByText('Export to Excel'))
 
     await waitFor(() => {
       expect(screen.getByText('Export failed (500)')).toBeInTheDocument()

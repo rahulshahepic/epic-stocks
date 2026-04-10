@@ -391,6 +391,8 @@ class TaxSettingsRead(BaseModel):
     dp_min_percent: float = 0.10
     dp_min_cap: float = 20000.0
     deduct_investment_interest: bool = False
+    deduction_excluded_years: list[int] | None = None
+    taxable_years: list[int] = []  # virtual field; populated by the endpoint
     model_config = {"from_attributes": True}
 
 class TaxSettingsUpdate(BaseModel):
@@ -408,6 +410,7 @@ class TaxSettingsUpdate(BaseModel):
     dp_min_percent: float | None = None
     dp_min_cap: float | None = None
     deduct_investment_interest: bool | None = None
+    deduction_excluded_years: list[int] | None = None
 
 class HorizonSettingsRead(BaseModel):
     horizon_date: date | None = None

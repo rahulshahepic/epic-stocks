@@ -50,6 +50,8 @@ export default function Settings() {
     dp_min_percent: 0.10,
     dp_min_cap: 20000,
     deduct_investment_interest: false,
+    deduction_excluded_years: null,
+    taxable_years: [],
   }
 
   const loadTaxSettings = useCallback(async () => {
@@ -396,7 +398,11 @@ export default function Settings() {
             <div className="flex justify-between col-span-2 border-t border-stone-100 pt-2 dark:border-slate-800">
               <dt className="text-stone-600 dark:text-slate-400">Investment interest deduction</dt>
               <dd className="font-medium text-stone-700 dark:text-slate-300">
-                {taxSettings.deduct_investment_interest ? 'Enabled' : 'Disabled'}
+                {taxSettings.deduct_investment_interest
+                  ? (taxSettings.deduction_excluded_years?.length
+                    ? `Enabled (excl. ${taxSettings.deduction_excluded_years.sort((a, b) => a - b).join(', ')})`
+                    : 'Enabled (all years)')
+                  : 'Disabled'}
               </dd>
             </div>
           </dl>
@@ -471,8 +477,8 @@ export default function Settings() {
                   className="mt-0.5 block w-full rounded-md border border-stone-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
                 />
               </label>
-              <label className="block col-span-2 cursor-pointer rounded-md border border-gray-200 p-3 dark:border-slate-700">
-                <div className="flex items-start gap-2">
+              <div className="col-span-2 rounded-md border border-gray-200 p-3 dark:border-slate-700">
+                <label className="flex items-start gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={taxForm.deduct_investment_interest}
@@ -484,17 +490,49 @@ export default function Settings() {
                       Estimate investment interest deduction (Form 4952)
                     </span>
                     <p className="mt-1 text-[11px] text-stone-600 dark:text-slate-400">
-                      Investment interest (interest on loans used to buy investments) can be deducted
-                      against investment income. You may elect to treat net capital gains as investment
-                      income, which reduces your CG tax — at the cost of those gains being taxed as
-                      ordinary income instead of at capital gains rates. This estimate applies your
-                      recorded interest payments first to short-term gains, then long-term gains, and
-                      carries any unused deduction forward. Interest due 1/1/YEAR is deductible against
-                      that year's investment income. Consult a tax advisor; this is an estimate only.
+                      If you itemize deductions, your loan interest may be deductible against
+                      capital gains. Only applies to years where you itemize — not years you take the
+                      standard deduction. Consult a tax advisor; this is an estimate only.
                     </p>
                   </div>
-                </div>
-              </label>
+                </label>
+                {taxForm.deduct_investment_interest && taxSettings && taxSettings.taxable_years.length > 0 && (
+                  <details className="mt-2 ml-6">
+                    <summary className="cursor-pointer text-[11px] font-medium text-rose-700 dark:text-rose-400">
+                      Customize by year
+                    </summary>
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                      {taxSettings.taxable_years.map(yr => {
+                        const excluded = taxForm.deduction_excluded_years ?? []
+                        const isIncluded = !excluded.includes(yr)
+                        return (
+                          <label key={yr} className="flex items-center gap-1.5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={isIncluded}
+                              onChange={e => {
+                                setTaxForm(f => {
+                                  if (!f) return f
+                                  const prev = f.deduction_excluded_years ?? []
+                                  const next = e.target.checked
+                                    ? prev.filter(y => y !== yr)
+                                    : [...prev, yr].sort((a, b) => a - b)
+                                  return { ...f, deduction_excluded_years: next.length ? next : null }
+                                })
+                              }}
+                              className="rounded border-gray-300 dark:border-slate-600"
+                            />
+                            <span className="text-xs text-stone-700 dark:text-slate-300">{yr}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                    <p className="mt-1.5 text-[10px] text-stone-500 dark:text-slate-500">
+                      Uncheck years where you took the standard deduction.
+                    </p>
+                  </details>
+                )}
+              </div>
             </div>
             <div className="flex gap-2">
               <button

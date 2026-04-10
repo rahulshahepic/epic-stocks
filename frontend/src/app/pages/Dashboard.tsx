@@ -434,6 +434,8 @@ const WI_TAX_DEFAULTS: TaxSettings = {
   dp_min_percent: 0.10,
   dp_min_cap: 20000,
   deduct_investment_interest: false,
+  deduction_excluded_years: null,
+  taxable_years: [],
 }
 
 function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices, exitDate }: {

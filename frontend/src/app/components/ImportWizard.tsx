@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../../api.ts'
 import type { WizardGrant, WizardLoan, WizardGrantTemplate, TaxSettings, GrantEntry, PriceEntry, LoanEntry } from '../../api.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
@@ -175,6 +175,7 @@ interface PurchaseGrantRow {
   shares: string; dp_shares: string; dp_cash: string
   loan_amount: string; loan_due_date: string; interest_rate: string
   existing_purchase_loan_number: string  // loan_number from DB, used for merge matching
+  existing_refinance_loans: LoanEntry[]  // refinance loans loaded from DB, passed through on submit
 }
 
 interface CatchUpRow {
@@ -204,6 +205,7 @@ function initPurchaseRows(): PurchaseGrantRow[] {
     shares: '', dp_shares: '0', dp_cash: '',
     loan_amount: '', loan_due_date: addYearsToDate(g.exercise_date, LOAN_TERM_YEARS), interest_rate: '',
     existing_purchase_loan_number: '',
+    existing_refinance_loans: [],
   }))
 }
 
@@ -300,6 +302,7 @@ function NextBtn({ onClick, disabled, label = 'Next →', saving }: { onClick: (
 
 export default function ImportWizard({ onComplete, isPage = false }: { onComplete?: () => void; isPage?: boolean }) {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const config = useConfig()
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -345,6 +348,16 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
   const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
   const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
   useEffect(() => { if (taxSettings) setDeductInterest(taxSettings.deduct_investment_interest) }, [taxSettings])
+
+  // Auto-enter schedule mode when navigated with ?mode=schedule (from Import page)
+  const autoScheduleTriggered = useRef(false)
+  useEffect(() => {
+    if (searchParams.get('mode') === 'schedule' && !autoScheduleTriggered.current) {
+      autoScheduleTriggered.current = true
+      enterScheduleMode()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -517,10 +530,12 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
       const grantByKey = new Map<string, GrantEntry>()
       for (const g of existingGrants) grantByKey.set(`${g.year}-${g.type}`, g)
       const loansByKey = new Map<string, LoanEntry[]>()
+      const loanById = new Map<number, LoanEntry>()
       for (const l of existingLoans) {
         const key = `${l.grant_year}-${l.grant_type}`
         if (!loansByKey.has(key)) loansByKey.set(key, [])
         loansByKey.get(key)!.push(l)
+        loanById.set(l.id, l)
       }
 
       // Orphaned grants: not in the known schedule at all.
@@ -539,7 +554,8 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
         .map(g => {
           const existing = grantByKey.get(`${g.year}-Purchase`)
           const loans = loansByKey.get(`${g.year}-Purchase`) ?? []
-          const purchaseLoan = loans.find(l => l.loan_type === 'Purchase')
+          const purchaseLoan = loans.find(l => l.loan_type === 'Purchase' && !l.refinances_loan_id)
+          const refinanceLoans = loans.filter(l => l.refinances_loan_id != null)
           return {
             year: g.year, vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
             participated: existing != null,
@@ -551,6 +567,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             loan_due_date: purchaseLoan ? purchaseLoan.due_date : addYearsToDate(g.exercise_date, LOAN_TERM_YEARS),
             interest_rate: purchaseLoan ? String(purchaseLoan.interest_rate) : '',
             existing_purchase_loan_number: purchaseLoan?.loan_number ?? '',
+            existing_refinance_loans: refinanceLoans,
           }
         })
 
@@ -652,14 +669,26 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             vest_start: r.vest_start, periods: r.periods, exercise_date: r.exercise_date,
             dp_shares: -(Math.abs(parseInt(r.dp_shares) || 0)),
             election_83b: false,
-            loans: [{
-              loan_number: r.existing_purchase_loan_number || `wiz-${r.year}-0`,
-              loan_type: 'Purchase' as const, loan_year: r.year,
-              amount: parseFloat(r.loan_amount) || Math.max(0, (parseInt(r.shares) || 0) * (parseFloat(r.purchase_price) || 0) - (parseFloat(r.dp_cash) || 0)),
-              interest_rate: parseFloat(r.interest_rate) || 0,
-              due_date: r.loan_due_date,
-              refinances_loan_number: '',
-            }] as WizardLoan[],
+            loans: [
+              {
+                loan_number: r.existing_purchase_loan_number || `wiz-${r.year}-0`,
+                loan_type: 'Purchase' as const, loan_year: r.year,
+                amount: parseFloat(r.loan_amount) || Math.max(0, (parseInt(r.shares) || 0) * (parseFloat(r.purchase_price) || 0) - (parseFloat(r.dp_cash) || 0)),
+                interest_rate: parseFloat(r.interest_rate) || 0,
+                due_date: r.loan_due_date,
+                refinances_loan_number: '',
+              },
+              // Pass through existing refinance loans so they aren't deleted by the merge
+              ...r.existing_refinance_loans.map(rl => ({
+                loan_number: rl.loan_number ?? '',
+                loan_type: rl.loan_type as 'Purchase' | 'Tax' | 'Interest',
+                loan_year: rl.loan_year,
+                amount: rl.amount,
+                interest_rate: rl.interest_rate,
+                due_date: rl.due_date,
+                refinances_loan_number: r.existing_purchase_loan_number || '',
+              })),
+            ] as WizardLoan[],
           })),
         ...catchUpRows
           .filter(r => r.included && parseInt(r.shares) > 0)
@@ -1370,6 +1399,19 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
                             onChange={v => setPurchaseField(i, { loan_due_date: v })} />
                         </div>
                       </details>
+                      {/* Existing refinance loans — read-only indicator */}
+                      {row.existing_refinance_loans.length > 0 && (
+                        <div className="rounded-md border border-violet-200 bg-violet-50 p-2 dark:border-violet-800 dark:bg-violet-950/30">
+                          <p className="text-[11px] font-medium text-violet-700 dark:text-violet-400">
+                            {row.existing_refinance_loans.length} refinance loan{row.existing_refinance_loans.length !== 1 ? 's' : ''} will be preserved
+                          </p>
+                          {row.existing_refinance_loans.map((rl, j) => (
+                            <p key={j} className="text-[11px] text-violet-600 dark:text-violet-500">
+                              {rl.loan_number ? `#${rl.loan_number}` : 'Refinance'} — ${rl.amount.toLocaleString()} · {(rl.interest_rate * 100).toFixed(2)}% · due {rl.due_date}
+                            </p>
+                          ))}
+                        </div>
+                      )}
                       {/* Inline catch-up grant for this year (2018–2021) */}
                       {catchUp && (
                         <div className="rounded-md border border-sky-200 bg-sky-50 p-3 dark:border-sky-800 dark:bg-sky-950/30">

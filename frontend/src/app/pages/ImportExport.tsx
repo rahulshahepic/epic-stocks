@@ -171,7 +171,7 @@ export default function ImportExport() {
       {/* Setup Wizard — primary recommended action */}
       <button
         type="button"
-        onClick={() => navigate('/wizard')}
+        onClick={() => navigate('/wizard?mode=schedule')}
         className="flex w-full flex-col rounded-lg border-2 border-rose-400 bg-white p-4 text-left hover:border-rose-600 hover:shadow-md dark:border-rose-500 dark:bg-slate-900"
       >
         <div className="flex items-center gap-2">

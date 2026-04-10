@@ -26,6 +26,15 @@ function mockApi() {
     if (url.includes('/api/wizard/submit') && method === 'POST') {
       return new Response(JSON.stringify({ grants: 1, loans: 0, prices: 1, payoff_sales: 0 }), { status: 201 })
     }
+    if (url.includes('/api/prices') && method === 'GET') {
+      return new Response(JSON.stringify([]), { status: 200 })
+    }
+    if (url.includes('/api/grants') && method === 'GET') {
+      return new Response(JSON.stringify([]), { status: 200 })
+    }
+    if (url.includes('/api/loans') && method === 'GET') {
+      return new Response(JSON.stringify([]), { status: 200 })
+    }
     if (url.includes('/api/config')) {
       return new Response(JSON.stringify({ epic_onboarding_url: '', epic_mode: false, email_notifications_available: false, vapid_public_key: '', resend_from: '' }), { status: 200 })
     }
@@ -294,10 +303,14 @@ describe('ImportWizard', () => {
     const user = userEvent.setup()
     renderWizard(onComplete)
     await user.click(screen.getByRole('button', { name: /Setup Wizard/i }))
+    await waitFor(() => screen.getByRole('button', { name: /Let's go/i }))
     await user.click(screen.getByRole('button', { name: /Let's go/i }))
     await user.click(screen.getByRole('button', { name: /Next: Enter grants/i }))
     await user.click(screen.getByRole('button', { name: /Next: Preferences/i }))
     await user.click(screen.getByRole('button', { name: /Skip/i }))
+    // Schedule path goes to review before done
+    await waitFor(() => screen.getByText('Review'))
+    await user.click(screen.getByRole('button', { name: /Submit →/i }))
     await waitFor(() => screen.getByText('Setup complete!'))
     await user.click(screen.getByRole('button', { name: /View dashboard/i }))
     expect(onComplete).toHaveBeenCalledOnce()
@@ -320,5 +333,94 @@ describe('ImportWizard', () => {
     expect(screen.getByText('Share price history')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /← Back/i }))
     expect(screen.getByText("Let's set up your equity tracker.")).toBeInTheDocument()
+  })
+
+  it('schedule grants table shows 2022 Bonus in the bonus section', async () => {
+    mockApi()
+    const user = userEvent.setup()
+    renderWizard()
+    await user.click(screen.getByRole('button', { name: /Setup Wizard/i }))
+    await user.click(screen.getByRole('button', { name: /Let's go/i }))
+    await user.click(screen.getByRole('button', { name: /Next: Enter grants/i }))
+    // 2022 Bonus should appear in the Bonus & Free section (not the purchase section)
+    const bonusSection = screen.getByText('Bonus & Free grants').closest('div')!
+    // Look for a "2022 Bonus" badge within that section
+    expect(bonusSection.querySelector('.bg-emerald-700')).not.toBeNull()
+  })
+
+  it('2022 Free grant is NOT shown in the Bonus & Free section', async () => {
+    mockApi()
+    const user = userEvent.setup()
+    renderWizard()
+    await user.click(screen.getByRole('button', { name: /Setup Wizard/i }))
+    await user.click(screen.getByRole('button', { name: /Let's go/i }))
+    await user.click(screen.getByRole('button', { name: /Next: Enter grants/i }))
+    // The Bonus & Free section should not contain a standalone "2022 Free" badge
+    const bonusSection = screen.getByText('Bonus & Free grants').closest('div')!
+    const amberBadges = Array.from(bonusSection.querySelectorAll('.bg-amber-600'))
+    // None of the amber badges in the bonus section should contain "2022 Free"
+    expect(amberBadges.some(el => el.textContent === '2022 Free')).toBe(false)
+  })
+
+  it('2022 Free grant appears inline when 2022 Purchase is checked', async () => {
+    mockApi()
+    const user = userEvent.setup()
+    renderWizard()
+    await user.click(screen.getByRole('button', { name: /Setup Wizard/i }))
+    await user.click(screen.getByRole('button', { name: /Let's go/i }))
+    await user.click(screen.getByRole('button', { name: /Next: Enter grants/i }))
+    // Find the 2022 purchase checkbox and check it
+    const checkboxes = screen.getAllByRole('checkbox')
+    // The checkboxes correspond to purchase years in order (2018, 2019, ..., 2022, ...)
+    // Find by label text context
+    const purchaseSection = screen.getByText('Purchase grants').closest('div')!
+    const yearLabels = purchaseSection.querySelectorAll('label span.text-sm')
+    const idx2022 = Array.from(yearLabels).findIndex(el => el.textContent === '2022')
+    expect(idx2022).toBeGreaterThanOrEqual(0)
+    const checkbox2022 = purchaseSection.querySelectorAll('input[type="checkbox"]')[idx2022]
+    await user.click(checkbox2022 as HTMLElement)
+    // Now "2022 Free grant" label should be visible
+    expect(screen.getByText('2022 Free grant')).toBeInTheDocument()
+  })
+
+  it('catch-up grants from DB are not shown as orphans when re-running wizard', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : (input as Request).url
+      const method = (init?.method ?? 'GET').toUpperCase()
+      if (url.includes('/api/prices') && method === 'GET') {
+        return new Response(JSON.stringify([]), { status: 200 })
+      }
+      if (url.includes('/api/grants') && method === 'GET') {
+        return new Response(JSON.stringify([
+          { id: 1, year: 2020, type: 'Catch-Up', shares: 100, price: 0, vest_start: '2021-09-30', periods: 5, exercise_date: '2020-12-31', dp_shares: 0, election_83b: false },
+          { id: 2, year: 2021, type: 'Catch-Up', shares: 200, price: 0, vest_start: '2021-09-30', periods: 5, exercise_date: '2021-12-31', dp_shares: 0, election_83b: false },
+        ]), { status: 200 })
+      }
+      if (url.includes('/api/loans') && method === 'GET') {
+        return new Response(JSON.stringify([]), { status: 200 })
+      }
+      if (url.includes('/api/config')) {
+        return new Response(JSON.stringify({ epic_onboarding_url: '', epic_mode: false, email_notifications_available: false, vapid_public_key: '', resend_from: '' }), { status: 200 })
+      }
+      if (url.includes('/api/tax-settings')) {
+        return new Response(JSON.stringify({
+          federal_income_rate: 0.37, federal_lt_cg_rate: 0.20, federal_st_cg_rate: 0.37,
+          niit_rate: 0.038, state_income_rate: 0.0765, state_lt_cg_rate: 0.0765, state_st_cg_rate: 0.0765,
+          lt_holding_days: 365, lot_selection_method: 'epic_lifo', loan_payoff_method: 'epic_lifo',
+          flexible_payoff_enabled: false, prefer_stock_dp: false, dp_min_percent: 0, dp_min_cap: 0,
+          deduct_investment_interest: false,
+        }), { status: 200 })
+      }
+      return new Response('Not found', { status: 404 })
+    })
+    const user = userEvent.setup()
+    renderWizard()
+    await user.click(screen.getByRole('button', { name: /Setup Wizard/i }))
+    // Should load without showing catch-up grants as orphans to be deleted
+    await waitFor(() => screen.getByRole('button', { name: /Let's go/i }))
+    await user.click(screen.getByRole('button', { name: /Let's go/i }))
+    await user.click(screen.getByRole('button', { name: /Next: Enter grants/i }))
+    // No red "will be removed" warning should appear for catch-up grants
+    expect(screen.queryByText(/Existing grants not in Epic's schedule/i)).not.toBeInTheDocument()
   })
 })

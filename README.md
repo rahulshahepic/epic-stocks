@@ -6,13 +6,13 @@ A multi-user PWA for tracking equity compensation: grants, vesting schedules, st
 
 ### Setup Wizard
 
-New users are greeted by the guided setup wizard (shown when no grants exist). The welcome screen offers three paths:
+New users are greeted by the guided setup wizard (shown when no grants exist, and accessible any time from the Import page). The welcome screen offers three paths:
 
-- **Use grant schedule** (primary) — Epic's company-wide grant structure is pre-filled (vest dates, periods, exercise dates, default purchase prices). You only enter your share counts, annual market prices, and loan details.
-- **Upload structure file** — upload a structure file (Excel) to pre-fill grants and prices; you fill in share counts.
-- **Start from scratch** — enter everything manually, one grant at a time.
+- **Setup Wizard** (recommended) — Epic's company-wide grant structure is pre-filled (vest dates, periods, exercise dates). You enter your share counts, annual market prices, and loan details grant by grant. When you already have data, the wizard pre-loads your existing records on each screen and lets you update them — any unmatched existing records are shown at the bottom with the option to keep or remove them. No data is deleted until you confirm at the end.
+- **Import from file** — upload an Excel structure file to pre-fill the wizard with your grants and prices; you confirm or adjust share counts.
+- **Manual entry** — enter everything yourself — prices, grants, and loans one at a time.
 
-The **Use grant schedule** flow walks through: intro screen → grants table (Purchase / Catch-up / Bonus sections with pre-filled rows) → annual prices table (pre-populated with Jan 1 dates for 2018–2025; enter price from Epic stocks SharePoint) → optional tax rates → done. Catch-up grants default to included for years ≤ 2021. The 2020 Bonus has an A/B/C vesting schedule selector (matching your grant agreement).
+The **Setup Wizard** flow walks through: intro screen → annual prices table (pre-populated with Jan 1 dates; enter price from Epic stocks SharePoint) → grants table (Purchase / Catch-up / Bonus sections with pre-filled rows) → preferences → done. Catch-up grants default to included for years ≤ 2021. The 2020 Bonus has an A/B/C vesting schedule selector (matching your grant agreement).
 
 | Welcome | Grants Table |
 |---------|-------------|
@@ -21,12 +21,6 @@ The **Use grant schedule** flow walks through: intro screen → grants table (Pu
 | Dark | Re-run from Import page |
 |------|------------------------|
 | ![Wizard Welcome Dark](screenshots/wizard-welcome-dark-mobile.png) | ![Wizard Page](screenshots/wizard-page-light-mobile.png) |
-
-### Import Flow
-
-| Upload | Confirm | Success |
-|--------|---------|---------|
-| ![Import Page](screenshots/01-import-page.png) | ![Import Confirm](screenshots/02-import-confirm.png) | ![Import Success](screenshots/03-import-success.png) |
 
 ### Dashboard
 
@@ -41,7 +35,9 @@ The **Use grant schedule** flow walks through: intro screen → grants table (Pu
 |-------|------|
 | ![Events Light Mobile](screenshots/events-light-mobile.png) | ![Events Dark Mobile](screenshots/events-dark-mobile.png) |
 
-### Import / Export (Template + Upload + Download)
+### Import / Export
+
+Card-based layout: Setup Wizard (rose/recommended), Import from Excel (with optional Epic pre-fill link), Export to Excel, and a collapsible column guide.
 
 ![Import Export](screenshots/import-export-mobile.png)
 
@@ -58,6 +54,16 @@ The **Use grant schedule** flow walks through: intro screen → grants table (Pu
 | ![Settings Light](screenshots/settings-light-mobile.png) | ![Settings Dark](screenshots/settings-dark-mobile.png) |
 
 Settings → Tax Rates includes lot selection method, loan payoff method, and all rate fields. The **investment interest deduction** toggle lives on the Dashboard for quick access (see [Investment Interest Deduction](#investment-interest-deduction) below).
+
+### Epic Mode (Read-Only Grants & Loans)
+
+| Grants Light | Grants Dark |
+|-------|------|
+| ![Grants Epic Mode Light](screenshots/grants-epic-mode-light-mobile.png) | ![Grants Epic Mode Dark](screenshots/grants-epic-mode-dark-mobile.png) |
+
+| Loans Light |
+|-------|
+| ![Loans Epic Mode Light](screenshots/loans-epic-mode-light-mobile.png) |
 
 ### Admin Dashboard
 
@@ -106,12 +112,12 @@ The *grant price* (what you paid) is fixed at grant creation. The *share price* 
 
 1. **Sign in** — click the sign-in button for your organisation's identity provider (Google, Azure AD, or any OIDC provider configured by your admin). Your data is tied to that account, and you can export everything anytime.
 2. **Add a price** — go to **Prices** and enter the current share price (Epic announces this each March). Without at least one price, no events will be computed. Use **+ Estimate** to project future prices as an annual % growth rate — useful for modeling expected increases before they're announced. Estimates appear in italics with an "est." badge and are auto-removed when Epic adds the real price for that date.
-3. **Add your data** — the guided setup wizard appears automatically when you have no grants. Three options:
-   - **Use grant schedule** (recommended for Epic employees) — Epic's grant structure is pre-filled. Enter your share counts, annual market prices from Epic stocks SharePoint, and loan interest rates from your DocuSign or Shareworks statements. The wizard covers Purchase, Catch-up, and Bonus grants (including the 2020 bonus A/B/C schedule selector). Catch-up grants are included by default for years ≤ 2021.
-   - **Upload structure file** — upload an Excel structure file to pre-fill grants and prices, then confirm share counts.
-   - **Start from scratch** — manually enter prices, then add grants one at a time (all types supported). After grants, enter any Purchase loan details.
-   - **On Epic's campus network?** If you see the **"On Epic's network? Start here →"** button on the Import page, click it to download a pre-filled Excel template from Epic's campus portal — your grant and loan structure are already filled in. Download it, review the numbers, then upload it on the Import page. In Epic Mode your historical data is read-only (maintained by Epic's systems), but you can still add future price estimates, record sales, and configure tax settings.
-   - **Import from Excel** — go to **Import**, download the **Sample** (pre-filled with fake data and explanatory cell comments) to see what the format looks like, then fill in your real data and upload. Click "What do the columns mean?" for a plain-English guide to every field.
+3. **Add your data** — the guided setup wizard appears automatically when you have no grants, and is always accessible from the Import page. Three options:
+   - **Setup Wizard** (recommended for Epic employees) — Epic's grant structure is pre-filled. Enter your share counts, annual market prices from Epic stocks SharePoint, and loan interest rates from your DocuSign or Shareworks statements. The wizard covers Purchase, Catch-up, and Bonus grants (including the 2020 bonus A/B/C schedule selector). Catch-up grants are included by default for years ≤ 2021. If you already have data, the wizard pre-loads it on each screen — any unmatched existing records appear at the bottom so you can choose to keep or remove them. No changes are written until you confirm at the final step.
+   - **Import from file** — upload an Excel structure file to pre-fill the wizard with grants and prices, then confirm or adjust share counts.
+   - **Manual entry** — enter prices first, then add grants one at a time (all types supported). After grants, enter any Purchase loan details.
+   - **On Epic's campus network?** If you see the **"On Epic's network? Download your pre-filled file first →"** link in the Import card, click it to download a pre-filled Excel file from Epic's campus portal — your grant and loan structure are already filled in. Download it, then upload it on the Import page. In Epic Mode your historical data is read-only (maintained by Epic's systems), but you can still add future price estimates, record sales, and configure tax settings.
+   - **Import from Excel** — go to **Import**, download the **Sample** (pre-filled with fake data and explanatory cell comments) to see what the format looks like, then fill in your real data and upload. Click **Column guide** for a plain-English guide to every field.
 4. **View the Dashboard** — summary cards (share price, total shares, income, cap gains, loan principal, interest, tax paid, cash received, next event). Use the **As of** date picker to time-travel. **Today** snaps to the current date; **Last event** jumps to your final vesting date; **Exit date** appears when you've set one and jumps to your projected liquidation date — showing 0 shares, 0 principal, and net cash. The **investment interest deduction** toggle is on the dashboard: flip it to preview the tax impact before applying — see [Investment Interest Deduction](#investment-interest-deduction).
 5. **View Events** — the full computed timeline of vesting, exercise, loan payoff, and sale events. A **Liquidation (projected)** event is automatically appended at your exit date. Tap it to see the calculation breakdown (shares × price → gross proceeds → est. tax → net). Events after the exit date are dimmed with a "beyond exit horizon" separator.
 6. **Configure your exit date** — set it directly on the Dashboard. A date input with live preview shows projected net cash (gross proceeds − loans − tax) before you apply. The projected liquidation uses shares and price as of that date, even if it's before your last vesting event. Defaults to your last vesting date if not set.
@@ -266,7 +272,8 @@ Investment interest is interest paid on loans used to buy investments. Under IRS
 - **83(b) Election Support** — bonus/free grants can be flagged as having an 83(b) election filed. Vesting events for these grants show unrealized cap gains (violet `~$X`) instead of ordinary income, with a tappable card explaining the cost basis and potential LT cap gains tax at eventual sale.
 - **Investment Interest Deduction Estimator** — optional Form 4952 estimate in Settings → Tax Rates. Applies recorded interest payments against cap gains (STCG first, then LTCG) with indefinite carry-forward. Reduces the cap gains card and chart; adds estimated tax savings to the cash card. Per-event deduction detail shown inline in the Events table. See [Investment Interest Deduction](#investment-interest-deduction).
 - **Down Payment Rules** — configurable minimum DP policy (percent of purchase and dollar cap). "Prefer stock DP" auto-calculates the minimum stock exchange down payment on new purchases. Default: 10% or $20,000, whichever is lower.
-- **Excel Import/Export** — bootstrap from an existing Vesting.xlsx or export current state. The Import page includes a downloadable sample file (pre-filled with fake data, with cell comments explaining every field) and a built-in column reference guide.
+- **Excel Import/Export** — bootstrap from an existing Vesting.xlsx or export current state. The Import page uses a card-based layout: Setup Wizard (rose card, always recommended), Import from Excel (with optional Epic network pre-fill link), Export to Excel, and a collapsible column guide. The sample file is pre-filled with fake data and explanatory cell comments; the column guide explains every field inline.
+- **Setup Wizard (non-destructive)** — when re-run by a user who already has data, each screen pre-loads matching existing DB records, so prices and grants are updated in place. Any existing records that don't match the wizard's schedule appear at the bottom of their respective screens with a checkbox — uncheck to keep them, leave checked to remove. No changes are written until the final confirmation step.
 - **OIDC Sign-In** — provider-agnostic PKCE flow works with any standards-compliant IdP (Google, Azure Entra ID, etc.). Multiple providers can be enabled simultaneously — the login page shows one button per provider. Automatic account creation; data is tied to the account.
 - **Smart Tips** — the dashboard automatically analyzes your settings and surfaces up to 3 actionable tips in a carousel above the summary cards: (1) **Exit date** — if extending your projected exit date by 1–3 months saves ≥$1,000 in taxes by letting shares cross the long-term threshold, the smallest qualifying extension is suggested; (2) **Investment interest deduction** — if enabling Form 4952 deduction would save ≥$500; (3) **Lot selection method** — if switching to FIFO/LIFO/Epic LIFO saves ≥$1,000 vs. your current method (manual lot selection is not analyzed). Each tip shows estimated savings and an **Apply** button that updates the relevant setting in one tap and refreshes the dashboard. Tips can also be dismissed for the session. Acceptance is recorded for admin reporting.
 - **Admin Dashboard** — user management, aggregate stats, email blocking, system health monitoring (CPU, RAM, DB size, and cache hit rate sparklines with 24h/72h/7d/30d windows), per-table DB size breakdown, and a Danger Zone for maintenance mode and Epic Mode toggles. Admin cannot see financial data.
@@ -429,6 +436,10 @@ The deploy workflow includes two safeguards against silent failures:
 
 For the full deploy pipeline details, uptime monitoring setup, backup strategy, and incident runbook, see **[OPERATIONS.md](OPERATIONS.md)**.
 
+### Branch Strategy
+
+PRs to `main` must originate from the `staging` branch — enforced by `.github/workflows/branch-check.yml`. The CI test suite (`.github/workflows/test.yml`) runs on every push to `main` and `staging`, and on every PR. It includes backend tests (pytest + pip-audit), frontend tests (vitest + npm audit), Caddy config validation, and E2E tests (Playwright).
+
 ## Development
 
 ### Running Tests
@@ -505,6 +516,7 @@ epic-stocks/
 │   │   ├── email_sender.py  # Email dispatch (delegates to providers/)
 │   │   ├── epic_mode.py     # Epic Mode state (DB-backed, 1s TTL cache, env override)
 │   │   ├── maintenance.py   # Sentinel path for app-managed downtime
+│   │   ├── migrate_sqlite_to_pg.py # One-time SQLite→PostgreSQL data migration
 │   │   ├── models.py        # SQLAlchemy models (User, BlockedEmail, SystemMetric, etc.)
 │   │   ├── notifications.py # Push + email notification logic
 │   │   ├── providers/
@@ -531,6 +543,7 @@ epic-stocks/
 │   │       ├── import_export.py # Excel import/export + template
 │   │       ├── sales.py     # Sales CRUD + tax breakdown
 │   │       ├── tips.py      # Smart Tips: scenario tax comparisons + acceptance recording
+│   │       ├── wizard.py    # Setup Wizard: parse-file, preview (dry-run diff), submit (merge)
 │   │       └── cache.py     # POST /api/internal/cache-invalidate webhook
 │   └── tests/               # pytest tests
 ├── frontend/
@@ -560,8 +573,15 @@ epic-stocks/
 ├── screenshots/             # Auto-generated by Playwright
 │   ├── run.sh               # Screenshot capture orchestrator
 │   └── seed.py              # Sample data seeder
+├── .env.example             # Environment variable template
+├── .github/workflows/
+│   ├── deploy.yml           # Deploy to VPS on push to main
+│   ├── test.yml             # CI: pytest, vitest, pip-audit, npm audit, Caddy validate, E2E
+│   └── branch-check.yml    # Enforce PRs to main come from staging
 ├── Dockerfile               # Multi-stage build (frontend + backend)
-├── docker-compose.yml       # App compose (joins shared proxy network; always uses shared proxy network)
+├── Dockerfile.e2e           # E2E test container (Playwright + chromium)
+├── docker-compose.yml       # App compose (joins shared proxy network)
+├── docker-compose.e2e.yml   # E2E test compose (isolated DB + app + playwright)
 ├── FORK_GUIDE.md            # How to fork for a different domain
 └── test_data/
     └── fixture.xlsx         # Synthetic test fixture
@@ -576,6 +596,7 @@ All authenticated endpoints require a valid `session` cookie (set automatically 
 | GET | `/api/auth/providers` | List configured OIDC providers (name + label) |
 | GET | `/api/auth/login?provider=&code_challenge=&redirect_uri=&state=` | Start PKCE flow — returns IdP authorization URL |
 | POST | `/api/auth/callback` | Exchange PKCE code for JWT |
+| POST | `/api/auth/logout` | Clear session cookie |
 | GET | `/api/me` | Current user info + is_admin flag |
 | POST | `/api/me/reset` | Reset all financial data (keeps account) |
 | DELETE | `/api/me` | Delete account and all associated data |
@@ -584,6 +605,8 @@ All authenticated endpoints require a valid `session` cookie (set automatically 
 | GET | `/api/status` | Operational status `{"maintenance": bool}` — polled by SPA |
 | GET | `/api/dashboard` | Summary cards data |
 | GET | `/api/events` | Computed event timeline |
+| GET | `/api/preview-deduction?enabled=` | Preview investment interest deduction impact without saving |
+| GET | `/api/preview-exit?date=` | Preview exit date impact without saving |
 | GET/POST | `/api/grants` | List/create grants |
 | GET/PUT/DELETE | `/api/grants/{id}` | Get/update/delete grant |
 | POST | `/api/grants/bulk` | Bulk create grants |
@@ -600,6 +623,7 @@ All authenticated endpoints require a valid `session` cookie (set automatically 
 | GET | `/api/sales/tranche-allocation` | Lot-level allocation for a proposed sale (date, shares, method) |
 | GET | `/api/sales/estimate` | Gross-up estimate: shares needed to net a target cash amount |
 | GET | `/api/loans/{id}/payoff-sale-suggestion` | Suggested gross-up sale for a loan |
+| POST | `/api/loans/{id}/execute-payoff` | Execute loan payoff — creates a sale (Epic Mode) |
 | POST | `/api/loans/regenerate-all-payoff-sales` | Recompute all future payoff sale share counts |
 | GET/POST | `/api/loan-payments` | List/create early loan payments |
 | PUT/DELETE | `/api/loan-payments/{id}` | Update/delete a loan payment |
@@ -610,7 +634,15 @@ All authenticated endpoints require a valid `session` cookie (set automatically 
 | POST | `/api/import/excel` | Upload Excel file to populate tables |
 | GET | `/api/import/template` | Download empty Excel template |
 | GET | `/api/import/sample` | Download sample Excel file pre-filled with fake data and cell comments |
+| GET | `/api/import/backups` | List import backup snapshots (last 3 per user) |
+| POST | `/api/import/backups/{id}/restore` | Restore data from a backup snapshot |
 | GET | `/api/export/excel` | Download Vesting.xlsx with all data |
+| POST | `/api/wizard/parse-file` | Parse an uploaded Excel structure file for wizard pre-fill (tolerant of missing values) |
+| POST | `/api/wizard/preview` | Dry-run diff: compare wizard payload against existing DB data — returns added/updated/removed/unchanged status per record, no changes written |
+| POST | `/api/wizard/submit` | Apply wizard data — merge mode by default: upserts grants by (year, type), prices by date, loans by loan number; deletes unmatched records not in the preserve list |
+| GET/PUT | `/api/tax-settings` | Get/set tax rate configuration and lot selection preferences |
+| GET | `/api/tips` | Smart tips: scenario-based tax savings recommendations |
+| POST | `/api/tips/accept` | Record acceptance of a tip recommendation |
 | GET/PUT | `/api/horizon-settings` | Get/set exit date for projected liquidation |
 | POST | `/api/internal/cache-invalidate` | Pre-warm Redis cache (Epic batch webhook; requires `Authorization: Bearer <CACHE_INVALIDATE_SECRET>`) |
 | POST/DELETE | `/api/push/subscribe` | Subscribe/unsubscribe push notifications |
@@ -632,6 +664,9 @@ All authenticated endpoints require a valid `session` cookie (set automatically 
 | DELETE | `/api/admin/errors` | Clear error log (admin only) |
 | GET | `/api/admin/metrics?hours=72` | Time-series CPU/RAM/DB metrics history (admin only) |
 | GET | `/api/admin/db-tables` | Per-table DB size breakdown (PostgreSQL only, admin only) |
+| GET/POST | `/api/admin/epic-mode` | Get/set Epic Mode read-only state (admin only) |
+| GET/POST | `/api/admin/flexible-payoff` | Get/set flexible loan payoff method (admin only) |
+| GET | `/api/admin/tips-report` | Aggregate tip acceptance report (admin only) |
 
 ## Admin Workflows
 
@@ -669,6 +704,8 @@ The admin system is opt-in via the `ADMIN_EMAIL` environment variable. Admins ar
 | **Unblock email** | Removes an email from the blocklist, restoring login access. |
 | **View user activity** | See when each user last logged in and how many records they have. |
 | **Send test notification** | Immediately sends a push and/or email notification to any user for debugging. |
+| **Toggle Epic Mode** | Enable/disable read-only mode for Epic's managed data pipeline. When active, historical data writes are blocked (403). Toggled from Admin → Danger Zone, or hard-locked via `EPIC_MODE=true` env var. |
+| **Toggle Flexible Payoff** | Enable/disable flexible loan payoff method selection. When enabled, users can choose their preferred lot selection method for loan payoff sales. |
 | **Enable / disable maintenance** | Toggles app-managed downtime. Financial API routes return 503; auth and admin remain accessible. An amber banner appears in the nav and financial pages show a placeholder. Use this before planned ops that affect financial data. |
 | **Rotate encryption key** | Generates a new master key, re-wraps all per-user keys, smoke-tests, then persists to the database and clears maintenance. New key propagates to all replicas automatically within seconds — no deploy or env var change needed. A snapshot of old keys is saved to the database before any changes; restored automatically on failure. |
 | **Restore from snapshot** | Appears in the admin panel when an interrupted rotation left a snapshot in the database. Writes the old per-user keys back and clears maintenance — recovers from a crash without SSH access. |
@@ -725,6 +762,7 @@ If you run an instance for others: secure the database, use HTTPS, set `KEY_ENCR
 ## Key Design Decisions
 
 - **Events are never stored.** They're computed per-request from the three source tables (Grants, Loans, Prices). This eliminates sync issues entirely.
+- **The wizard uses merge mode, not nuke mode.** When submitting wizard data, grants are upserted by natural key (year + type) and prices by effective date — existing records that match are updated in place, not replaced. Records that don't appear in the wizard payload are deleted unless their ID appears in the `preserve_grant_ids` / `preserve_price_ids` lists passed by the frontend. Auto-generated payoff sales (loan_id IS NOT NULL) are deleted and regenerated; manually-entered sales (loan_id IS NULL) are never touched. Loan matching uses loan_number when available, falling back to (type, year).
 - **core.py is frozen.** The event generation logic is tested against known-good values (89 events, cum_shares=558,500, cum_income=$144,325, cum_cap_gains=$1,224,195). Don't modify it.
 - **Excel import is per-sheet, not all-or-nothing.** Only the sheets present in the uploaded file are replaced (Schedule → grants, Loans → loans + payoff sales, Prices → prices). Sheets not included in the file are left untouched. The import flow validates first, previews second, writes third — all in one transaction. A backup snapshot of the affected data is saved automatically before each import (last 3 kept per user). Restore via `GET /api/import/backups` + `POST /api/import/backups/{id}/restore`.
 - **Lot selection method is user-configurable (default: Epic LIFO).** See [Sales Workflow → Lot Selection Methods](#lot-selection-methods) for the full comparison table. In short: Epic LIFO minimises STCG; LIFO minimises total gains on rising stock; FIFO maximises LT-qualified shares; Manual gives full control via the tranche table. Loan payoff sales always use same-tranche regardless of this setting. The IRS may require a consistent election at time of sale — consult a tax advisor before changing.

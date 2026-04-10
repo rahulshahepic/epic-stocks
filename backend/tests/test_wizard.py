@@ -327,3 +327,143 @@ def test_submit_requires_auth(client):
     """Unauthenticated submit is rejected."""
     resp = client.post("/api/wizard/submit", json=MINIMAL_PAYLOAD)
     assert resp.status_code in (401, 403)
+
+
+# ── preview ───────────────────────────────────────────────────────────────────
+
+def test_preview_empty_db_shows_all_added(client):
+    """Preview with no existing data marks everything as 'added'."""
+    register_user(client)
+    resp = client.post("/api/wizard/preview", json=MINIMAL_PAYLOAD)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert all(g["status"] == "added" for g in data["grants"])
+    assert all(p["status"] == "added" for p in data["prices"])
+
+
+def test_preview_matching_data_shows_unchanged(client):
+    """Preview with identical existing data marks everything 'unchanged'."""
+    register_user(client)
+    client.post("/api/wizard/submit", json=MINIMAL_PAYLOAD)
+
+    resp = client.post("/api/wizard/preview", json=MINIMAL_PAYLOAD)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert all(g["status"] == "unchanged" for g in data["grants"])
+    assert all(p["status"] == "unchanged" for p in data["prices"])
+
+
+def test_preview_changed_shares_shows_updated(client):
+    """Preview with different share count marks grant as 'updated'."""
+    register_user(client)
+    client.post("/api/wizard/submit", json=MINIMAL_PAYLOAD)
+
+    modified = {**MINIMAL_PAYLOAD, "grants": [{**MINIMAL_PAYLOAD["grants"][0], "shares": 9999}]}
+    resp = client.post("/api/wizard/preview", json=modified)
+    assert resp.status_code == 200
+    grants = resp.json()["grants"]
+    assert grants[0]["status"] == "updated"
+    assert grants[0]["shares"] == 9999
+    assert grants[0]["old_shares"] == 1000
+
+
+def test_preview_orphan_shows_removed(client):
+    """Existing grant not in wizard payload is marked 'removed'."""
+    register_user(client)
+    # Submit two grants
+    two_grant_payload = {
+        "prices": MINIMAL_PAYLOAD["prices"],
+        "grants": [
+            MINIMAL_PAYLOAD["grants"][0],
+            {**MINIMAL_PAYLOAD["grants"][0], "year": 2022, "type": "Bonus"},
+        ],
+    }
+    client.post("/api/wizard/submit", json=two_grant_payload)
+
+    # Preview with only the first grant
+    resp = client.post("/api/wizard/preview", json=MINIMAL_PAYLOAD)
+    assert resp.status_code == 200
+    grants = resp.json()["grants"]
+    statuses = {(g["year"], g["type"]): g["status"] for g in grants}
+    assert statuses[(2021, "Purchase")] == "unchanged"
+    assert statuses[(2022, "Bonus")] == "removed"
+
+
+def test_preview_requires_auth(client):
+    """Unauthenticated preview is rejected."""
+    resp = client.post("/api/wizard/preview", json=MINIMAL_PAYLOAD)
+    assert resp.status_code in (401, 403)
+
+
+# ── merge mode (clear_existing=False) ────────────────────────────────────────
+
+def test_merge_updates_existing_grant(client):
+    """Merge mode updates share count on an existing grant without deleting others."""
+    register_user(client)
+    client.post("/api/wizard/submit", json=MINIMAL_PAYLOAD)
+
+    modified = {**MINIMAL_PAYLOAD, "clear_existing": False, "grants": [{**MINIMAL_PAYLOAD["grants"][0], "shares": 2000}]}
+    resp = client.post("/api/wizard/submit", json=modified)
+    assert resp.status_code == 201
+
+    grants = client.get("/api/grants").json()
+    assert len(grants) == 1
+    assert grants[0]["shares"] == 2000
+
+
+def test_merge_deletes_orphaned_grant(client):
+    """Merge mode removes existing grants not in the wizard payload."""
+    register_user(client)
+    two_grant_payload = {
+        "prices": MINIMAL_PAYLOAD["prices"],
+        "grants": [
+            MINIMAL_PAYLOAD["grants"][0],
+            {**MINIMAL_PAYLOAD["grants"][0], "year": 2022, "type": "Bonus"},
+        ],
+    }
+    client.post("/api/wizard/submit", json=two_grant_payload)
+    assert len(client.get("/api/grants").json()) == 2
+
+    # Re-submit with only the 2021 grant
+    resp = client.post("/api/wizard/submit", json={**MINIMAL_PAYLOAD, "clear_existing": False})
+    assert resp.status_code == 201
+    assert len(client.get("/api/grants").json()) == 1
+
+
+def test_merge_preserves_grant_by_id(client):
+    """preserve_grant_ids keeps an orphaned grant alive."""
+    register_user(client)
+    two_grant_payload = {
+        "prices": MINIMAL_PAYLOAD["prices"],
+        "grants": [
+            MINIMAL_PAYLOAD["grants"][0],
+            {**MINIMAL_PAYLOAD["grants"][0], "year": 2022, "type": "Bonus"},
+        ],
+    }
+    client.post("/api/wizard/submit", json=two_grant_payload)
+    grants = client.get("/api/grants").json()
+    bonus_id = next(g["id"] for g in grants if g["year"] == 2022)
+
+    # Re-submit with only 2021 grant but preserve the 2022 Bonus
+    resp = client.post("/api/wizard/submit", json={
+        **MINIMAL_PAYLOAD,
+        "clear_existing": False,
+        "preserve_grant_ids": [bonus_id],
+    })
+    assert resp.status_code == 201
+    assert len(client.get("/api/grants").json()) == 2
+
+
+def test_merge_keeps_manual_sales(client):
+    """Merge mode does not delete user-created sales (only payoff sales)."""
+    register_user(client)
+    client.post("/api/wizard/submit", json=MINIMAL_PAYLOAD)
+    # Add a manual sale (no loan_id)
+    client.post("/api/sales", json={"date": "2023-01-01", "shares": 10, "price_per_share": 3.00, "notes": "manual"})
+    sales_before = client.get("/api/sales").json()
+    manual_sale = next(s for s in sales_before if s["notes"] == "manual")
+
+    resp = client.post("/api/wizard/submit", json={**MINIMAL_PAYLOAD, "clear_existing": False})
+    assert resp.status_code == 201
+    sales_after = client.get("/api/sales").json()
+    assert any(s["id"] == manual_sale["id"] for s in sales_after)

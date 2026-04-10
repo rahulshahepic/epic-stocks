@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../../api.ts'
-import type { WizardGrant, WizardLoan, WizardGrantTemplate, TaxSettings } from '../../api.ts'
+import type { WizardGrant, WizardLoan, WizardGrantTemplate, TaxSettings, GrantEntry, PriceEntry, LoanEntry } from '../../api.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 
@@ -155,6 +155,7 @@ const EPIC_GRANT_SCHEDULE: KnownGrant[] = [
   { year: 2021, type: 'Purchase', defaultPrice: 0, vest_start: '2021-09-30', periods: 5, exercise_date: '2021-12-31', defaultCatchUp: true },
   { year: 2021, type: 'Bonus',    defaultPrice: 0, vest_start: '2022-09-30', periods: 3, exercise_date: '2021-12-31', defaultCatchUp: false },
   { year: 2022, type: 'Purchase', defaultPrice: 0, vest_start: '2022-09-30', periods: 4, exercise_date: '2022-12-31', defaultCatchUp: false },
+  { year: 2022, type: 'Bonus',    defaultPrice: 0, vest_start: '2023-09-30', periods: 3, exercise_date: '2022-12-31', defaultCatchUp: false },
   { year: 2022, type: 'Free',     defaultPrice: 0, vest_start: '2027-09-30', periods: 1, exercise_date: '2022-12-31', defaultCatchUp: false },
   { year: 2023, type: 'Purchase', defaultPrice: 0, vest_start: '2023-09-30', periods: 4, exercise_date: '2023-12-31', defaultCatchUp: false },
   { year: 2023, type: 'Bonus',    defaultPrice: 0, vest_start: '2024-09-30', periods: 3, exercise_date: '2023-12-31', defaultCatchUp: false },
@@ -173,6 +174,8 @@ interface PurchaseGrantRow {
   purchase_price: string
   shares: string; dp_shares: string; dp_cash: string
   loan_amount: string; loan_due_date: string; interest_rate: string
+  existing_purchase_loan_number: string  // loan_number from DB, used for merge matching
+  existing_refinance_loans: LoanEntry[]  // refinance loans loaded from DB, passed through on submit
 }
 
 interface CatchUpRow {
@@ -201,6 +204,8 @@ function initPurchaseRows(): PurchaseGrantRow[] {
     purchase_price: '',
     shares: '', dp_shares: '0', dp_cash: '',
     loan_amount: '', loan_due_date: addYearsToDate(g.exercise_date, LOAN_TERM_YEARS), interest_rate: '',
+    existing_purchase_loan_number: '',
+    existing_refinance_loans: [],
   }))
 }
 
@@ -297,6 +302,7 @@ function NextBtn({ onClick, disabled, label = 'Next →', saving }: { onClick: (
 
 export default function ImportWizard({ onComplete, isPage = false }: { onComplete?: () => void; isPage?: boolean }) {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const config = useConfig()
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -327,6 +333,13 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
 
+  // Orphaned existing data (populated when entering schedule mode)
+  const [orphanPrices, setOrphanPrices] = useState<PriceEntry[]>([])
+  const [orphanGrants, setOrphanGrants] = useState<GrantEntry[]>([])
+  const [preserveOrphanPriceIds, setPreserveOrphanPriceIds] = useState<Set<number>>(new Set())
+  const [preserveOrphanGrantIds, setPreserveOrphanGrantIds] = useState<Set<number>>(new Set())
+  const [scheduleLoading, setScheduleLoading] = useState(false)
+
   // ── Schedule path state ────────────────────────────────────────────────────
   const [purchaseRows, setPurchaseRows] = useState<PurchaseGrantRow[]>(initPurchaseRows)
   const [catchUpRows, setCatchUpRows]   = useState<CatchUpRow[]>(initCatchUpRows)
@@ -335,6 +348,16 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
   const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
   const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
   useEffect(() => { if (taxSettings) setDeductInterest(taxSettings.deduct_investment_interest) }, [taxSettings])
+
+  // Auto-enter schedule mode when navigated with ?mode=schedule (from Import page)
+  const autoScheduleTriggered = useRef(false)
+  useEffect(() => {
+    if (searchParams.get('mode') === 'schedule' && !autoScheduleTriggered.current) {
+      autoScheduleTriggered.current = true
+      enterScheduleMode()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -454,7 +477,13 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
     }
   }
 
-  // ── Submit ────────────────────────────────────────────────────────────────────
+  // ── Submit / Preview ──────────────────────────────────────────────────────────
+
+  function buildPricesPayload() {
+    return prices
+      .filter(p => p.effective_date && p.price !== '')
+      .map(p => ({ effective_date: p.effective_date, price: parseFloat(p.price) }))
+  }
 
   async function handleSubmit() {
     setSubmitting(true)
@@ -462,11 +491,11 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
     try {
       await api.wizardSubmit({
         grants: completedGrants,
-        prices: prices
-          .filter(p => p.effective_date && p.price !== '')
-          .map(p => ({ effective_date: p.effective_date, price: parseFloat(p.price) })),
-        clear_existing: true,
+        prices: buildPricesPayload(),
+        clear_existing: false,
         generate_payoff_sales: true,
+        preserve_grant_ids: Array.from(preserveOrphanGrantIds),
+        preserve_price_ids: Array.from(preserveOrphanPriceIds),
       })
       push('done')
     } catch (e: unknown) {
@@ -478,12 +507,119 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
 
   // ── Schedule path helpers ─────────────────────────────────────────────────
 
-  function enterScheduleMode() {
-    setPurchaseRows(initPurchaseRows())
-    setCatchUpRows(initCatchUpRows())
-    setBonusRows(initBonusRows())
-    setPrices(PRICE_YEARS.map(y => ({ effective_date: `${y}-01-01`, price: '' })))
-    push('schedule_intro')
+  async function enterScheduleMode() {
+    setScheduleLoading(true)
+    try {
+      const [existingPrices, existingGrants, existingLoans] = await Promise.all([
+        api.getPrices(), api.getGrants(), api.getLoans(),
+      ])
+
+      // Match prices by year of effective_date; orphan anything outside PRICE_YEARS
+      const priceByYear = new Map<number, PriceEntry>()
+      const newOrphanPrices: PriceEntry[] = []
+      for (const p of existingPrices) {
+        const year = parseInt(p.effective_date.slice(0, 4))
+        if (PRICE_YEARS.includes(year)) {
+          if (!priceByYear.has(year)) priceByYear.set(year, p)
+        } else {
+          newOrphanPrices.push(p)
+        }
+      }
+
+      // Match grants and loans by (year, type)
+      const grantByKey = new Map<string, GrantEntry>()
+      for (const g of existingGrants) grantByKey.set(`${g.year}-${g.type}`, g)
+      const loansByKey = new Map<string, LoanEntry[]>()
+      const loanById = new Map<number, LoanEntry>()
+      for (const l of existingLoans) {
+        const key = `${l.grant_year}-${l.grant_type}`
+        if (!loansByKey.has(key)) loansByKey.set(key, [])
+        loansByKey.get(key)!.push(l)
+        loanById.set(l.id, l)
+      }
+
+      // Orphaned grants: not in the known schedule at all.
+      // Catch-Up grants are stored as type "Catch-Up" in the DB but don't appear as a
+      // separate entry in EPIC_GRANT_SCHEDULE (they piggyback on the Purchase entry via
+      // defaultCatchUp). Explicitly add them so they aren't treated as orphans.
+      const scheduleKeys = new Set([
+        ...EPIC_GRANT_SCHEDULE.map(g => `${g.year}-${g.type}`),
+        ...EPIC_GRANT_SCHEDULE.filter(g => g.defaultCatchUp).map(g => `${g.year}-Catch-Up`),
+      ])
+      const newOrphanGrants = existingGrants.filter(g => !scheduleKeys.has(`${g.year}-${g.type}`))
+
+      // Pre-populate purchase rows
+      const newPurchaseRows: PurchaseGrantRow[] = EPIC_GRANT_SCHEDULE
+        .filter(g => g.type === 'Purchase')
+        .map(g => {
+          const existing = grantByKey.get(`${g.year}-Purchase`)
+          const loans = loansByKey.get(`${g.year}-Purchase`) ?? []
+          const purchaseLoan = loans.find(l => l.loan_type === 'Purchase' && !l.refinances_loan_id)
+          const refinanceLoans = loans.filter(l => l.refinances_loan_id != null)
+          return {
+            year: g.year, vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
+            participated: existing != null,
+            purchase_price: existing ? String(existing.price) : '',
+            shares: existing ? String(existing.shares) : '',
+            dp_shares: existing ? String(Math.abs(existing.dp_shares)) : '0',
+            dp_cash: '',
+            loan_amount: purchaseLoan ? String(purchaseLoan.amount) : '',
+            loan_due_date: purchaseLoan ? purchaseLoan.due_date : addYearsToDate(g.exercise_date, LOAN_TERM_YEARS),
+            interest_rate: purchaseLoan ? String(purchaseLoan.interest_rate) : '',
+            existing_purchase_loan_number: purchaseLoan?.loan_number ?? '',
+            existing_refinance_loans: refinanceLoans,
+          }
+        })
+
+      // Pre-populate catch-up rows
+      const newCatchUpRows: CatchUpRow[] = EPIC_GRANT_SCHEDULE
+        .filter(g => g.type === 'Purchase' && g.defaultCatchUp)
+        .map(g => {
+          const existing = grantByKey.get(`${g.year}-Catch-Up`)
+          return {
+            year: g.year, vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
+            included: existing != null,
+            shares: existing ? String(existing.shares) : '',
+          }
+        })
+
+      // Pre-populate bonus/free rows
+      const newBonusRows: BonusGrantRow[] = EPIC_GRANT_SCHEDULE
+        .filter(g => g.type === 'Bonus' || g.type === 'Free')
+        .map(g => {
+          const existing = grantByKey.get(`${g.year}-${g.type}`)
+          return {
+            year: g.year, type: g.type as 'Bonus' | 'Free',
+            purchase_price: existing ? String(existing.price) : (g.type === 'Free' ? '0' : ''),
+            shares: existing ? String(existing.shares) : '',
+            isBonus2020: g.year === 2020 && g.type === 'Bonus', schedule: 'C' as BonusSchedule,
+            vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
+          }
+        })
+
+      setPurchaseRows(newPurchaseRows)
+      setCatchUpRows(newCatchUpRows)
+      setBonusRows(newBonusRows)
+      setPrices(PRICE_YEARS.map(y => ({
+        effective_date: `${y}-01-01`,
+        price: priceByYear.has(y) ? String(priceByYear.get(y)!.price) : '',
+      })))
+      setOrphanPrices(newOrphanPrices)
+      setOrphanGrants(newOrphanGrants)
+      setPreserveOrphanPriceIds(new Set())
+      setPreserveOrphanGrantIds(new Set())
+    } catch {
+      // Fall back to blank rows if fetch fails
+      setPurchaseRows(initPurchaseRows())
+      setCatchUpRows(initCatchUpRows())
+      setBonusRows(initBonusRows())
+      setPrices(PRICE_YEARS.map(y => ({ effective_date: `${y}-01-01`, price: '' })))
+      setOrphanPrices([])
+      setOrphanGrants([])
+    } finally {
+      setScheduleLoading(false)
+      push('schedule_intro')
+    }
   }
 
   function recalcLoan(rows: PurchaseGrantRow[], i: number, patch: Partial<PurchaseGrantRow>): PurchaseGrantRow[] {
@@ -516,7 +652,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
     }))
   }
 
-  async function handleScheduleSubmit(saveSettings = false) {
+  async function handleScheduleReview(saveSettings = false) {
     setSubmitting(true)
     setSubmitError('')
     try {
@@ -533,14 +669,26 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             vest_start: r.vest_start, periods: r.periods, exercise_date: r.exercise_date,
             dp_shares: -(Math.abs(parseInt(r.dp_shares) || 0)),
             election_83b: false,
-            loans: [{
-              loan_number: `wiz-${r.year}-0`,
-              loan_type: 'Purchase' as const, loan_year: r.year,
-              amount: parseFloat(r.loan_amount) || Math.max(0, (parseInt(r.shares) || 0) * (parseFloat(r.purchase_price) || 0) - (parseFloat(r.dp_cash) || 0)),
-              interest_rate: parseFloat(r.interest_rate) || 0,
-              due_date: r.loan_due_date,
-              refinances_loan_number: '',
-            }] as WizardLoan[],
+            loans: [
+              {
+                loan_number: r.existing_purchase_loan_number || `wiz-${r.year}-0`,
+                loan_type: 'Purchase' as const, loan_year: r.year,
+                amount: parseFloat(r.loan_amount) || Math.max(0, (parseInt(r.shares) || 0) * (parseFloat(r.purchase_price) || 0) - (parseFloat(r.dp_cash) || 0)),
+                interest_rate: parseFloat(r.interest_rate) || 0,
+                due_date: r.loan_due_date,
+                refinances_loan_number: '',
+              },
+              // Pass through existing refinance loans so they aren't deleted by the merge
+              ...r.existing_refinance_loans.map(rl => ({
+                loan_number: rl.loan_number ?? '',
+                loan_type: rl.loan_type as 'Purchase' | 'Tax' | 'Interest',
+                loan_year: rl.loan_year,
+                amount: rl.amount,
+                interest_rate: rl.interest_rate,
+                due_date: rl.due_date,
+                refinances_loan_number: r.existing_purchase_loan_number || '',
+              })),
+            ] as WizardLoan[],
           })),
         ...catchUpRows
           .filter(r => r.included && parseInt(r.shares) > 0)
@@ -561,15 +709,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
           })),
       ]
       setCompletedGrants(grants)
-      await api.wizardSubmit({
-        grants,
-        prices: prices
-          .filter(p => p.effective_date && p.price !== '')
-          .map(p => ({ effective_date: p.effective_date, price: parseFloat(p.price) })),
-        clear_existing: true,
-        generate_payoff_sales: true,
-      })
-      push('done')
+      push('review')
     } catch (e: unknown) {
       setSubmitError(e instanceof Error ? e.message : 'Submit failed')
     } finally {
@@ -608,13 +748,18 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             <button
               type="button"
               onClick={enterScheduleMode}
-              className="flex flex-col rounded-lg border-2 border-rose-400 bg-white p-4 text-left hover:border-rose-600 hover:shadow-md dark:border-rose-500 dark:bg-slate-900"
+              disabled={scheduleLoading}
+              className="flex flex-col rounded-lg border-2 border-rose-400 bg-white p-4 text-left hover:border-rose-600 hover:shadow-md disabled:opacity-60 dark:border-rose-500 dark:bg-slate-900"
             >
               <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-rose-700 dark:text-rose-300">Setup Wizard</span>
-                <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-rose-700 dark:bg-rose-900/50 dark:text-rose-300">
-                  Recommended
+                <span className="text-sm font-semibold text-rose-700 dark:text-rose-300">
+                  {scheduleLoading ? 'Loading your data…' : 'Setup Wizard'}
                 </span>
+                {!scheduleLoading && (
+                  <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-rose-700 dark:bg-rose-900/50 dark:text-rose-300">
+                    Recommended
+                  </span>
+                )}
               </div>
               <span className="mt-1 text-xs text-gray-500 dark:text-slate-400">
                 We know Epic's grant schedule — enter your prices first, then just fill in your shares and loan details grant by grant.
@@ -648,8 +793,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
 
           {isPage && (
             <p className="text-xs text-gray-400 dark:text-slate-500">
-              This wizard clears your existing data and starts fresh.
-              Use the <button type="button" onClick={() => navigate('/import')} className="underline">Import page</button> to append or update specific sheets.
+              If you already have data, the wizard pre-loads it on each screen. Any unmatched existing records will be shown before you can choose to keep or remove them — nothing is deleted until the final step.
             </p>
           )}
         </div>
@@ -1141,6 +1285,21 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             </div>
           </div>
 
+          {/* Summary of orphans being removed */}
+          {(() => {
+            const removingPrices = orphanPrices.filter(p => !preserveOrphanPriceIds.has(p.id))
+            const removingGrants = orphanGrants.filter(g => !preserveOrphanGrantIds.has(g.id))
+            if (removingPrices.length === 0 && removingGrants.length === 0) return null
+            return (
+              <p className="text-[11px] text-red-600 dark:text-red-400">
+                {[
+                  removingGrants.length > 0 && `${removingGrants.length} grant${removingGrants.length !== 1 ? 's' : ''}`,
+                  removingPrices.length > 0 && `${removingPrices.length} price${removingPrices.length !== 1 ? 's' : ''}`,
+                ].filter(Boolean).join(' and ')} will be removed (as marked on previous screens).
+              </p>
+            )
+          })()}
+
           <NextBtn
             label="Submit →"
             saving={submitting}
@@ -1188,12 +1347,14 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             </p>
           </div>
 
-          {/* Purchase grants (catch-up shown inline where applicable) */}
+          {/* Purchase grants (catch-up and free shown inline where applicable) */}
           <div className="space-y-2">
             <p className="text-xs font-semibold text-gray-700 dark:text-slate-300">Purchase grants</p>
             {purchaseRows.map((row, i) => {
               const catchUpIdx = catchUpRows.findIndex(c => c.year === row.year)
               const catchUp = catchUpIdx >= 0 ? catchUpRows[catchUpIdx] : null
+              const freeIdx = bonusRows.findIndex(b => b.year === row.year && b.type === 'Free')
+              const freeGrant = freeIdx >= 0 ? bonusRows[freeIdx] : null
               return (
                 <div key={row.year} className="rounded-md border border-stone-200 dark:border-slate-700">
                   <label className="flex cursor-pointer items-center gap-3 p-3">
@@ -1238,6 +1399,19 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
                             onChange={v => setPurchaseField(i, { loan_due_date: v })} />
                         </div>
                       </details>
+                      {/* Existing refinance loans — read-only indicator */}
+                      {row.existing_refinance_loans.length > 0 && (
+                        <div className="rounded-md border border-violet-200 bg-violet-50 p-2 dark:border-violet-800 dark:bg-violet-950/30">
+                          <p className="text-[11px] font-medium text-violet-700 dark:text-violet-400">
+                            {row.existing_refinance_loans.length} refinance loan{row.existing_refinance_loans.length !== 1 ? 's' : ''} will be preserved
+                          </p>
+                          {row.existing_refinance_loans.map((rl, j) => (
+                            <p key={j} className="text-[11px] text-violet-600 dark:text-violet-500">
+                              {rl.loan_number ? `#${rl.loan_number}` : 'Refinance'} — ${rl.amount.toLocaleString()} · {(rl.interest_rate * 100).toFixed(2)}% · due {rl.due_date}
+                            </p>
+                          ))}
+                        </div>
+                      )}
                       {/* Inline catch-up grant for this year (2018–2021) */}
                       {catchUp && (
                         <div className="rounded-md border border-sky-200 bg-sky-50 p-3 dark:border-sky-800 dark:bg-sky-950/30">
@@ -1261,6 +1435,21 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
                           )}
                         </div>
                       )}
+                      {/* Inline free grant for this year (e.g. 2022 Free) */}
+                      {freeGrant && (
+                        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-amber-800 dark:text-amber-300">{row.year} Free grant</span>
+                            <span className="text-[11px] text-amber-600 dark:text-amber-500">
+                              zero cost basis · vests {fmtDate(freeGrant.vest_start)} · {freeGrant.periods} period{freeGrant.periods !== 1 ? 's' : ''}
+                            </span>
+                          </div>
+                          <div className="mt-2 w-40">
+                            <Field label="Free shares" type="number" value={freeGrant.shares}
+                              onChange={v => setBonusField(freeIdx, { shares: v })} />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1268,11 +1457,14 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             })}
           </div>
 
-          {/* Bonus / Free grants */}
+          {/* Bonus / Free grants — Free grants with a matching purchase year are shown inline above */}
           <div className="space-y-2">
             <p className="text-xs font-semibold text-gray-700 dark:text-slate-300">Bonus &amp; Free grants</p>
             <p className="text-[11px] text-gray-400 dark:text-slate-500">Leave shares blank for years you didn't receive a bonus.</p>
-            {bonusRows.map((row, i) => (
+            {bonusRows.map((row, i) => {
+              // Free grants that have a matching purchase year are rendered inline above
+              if (row.type === 'Free' && purchaseRows.some(p => p.year === row.year)) return null
+              return (
               <div key={`${row.year}-${row.type}`} className="rounded-md border border-stone-200 p-3 dark:border-slate-700 space-y-3">
                 <div className="flex items-center gap-2">
                   <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${GRANT_COLORS[row.type]}`}>{row.year} {row.type}</span>
@@ -1309,7 +1501,8 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
                   )}
                 </div>
               </div>
-            ))}
+              )
+            })}
             <button
               type="button"
               onClick={() => setBonusRows(rows => [...rows, {
@@ -1323,6 +1516,32 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
               + Add bonus grant
             </button>
           </div>
+
+          {orphanGrants.length > 0 && (
+            <div className="rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-950/30">
+              <p className="text-xs font-medium text-red-700 dark:text-red-400">
+                Existing grants not in Epic's schedule — will be removed
+              </p>
+              <p className="mt-0.5 text-[11px] text-red-600 dark:text-red-500">Uncheck to keep.</p>
+              <div className="mt-2 space-y-1">
+                {orphanGrants.map(g => (
+                  <label key={g.id} className="flex items-center gap-2 text-xs text-red-700 dark:text-red-400">
+                    <input
+                      type="checkbox"
+                      checked={!preserveOrphanGrantIds.has(g.id)}
+                      onChange={e => setPreserveOrphanGrantIds(prev => {
+                        const next = new Set(prev)
+                        if (e.target.checked) { next.delete(g.id) } else { next.add(g.id) }
+                        return next
+                      })}
+                      className="rounded border-red-300"
+                    />
+                    {g.year} {g.type} — {g.shares.toLocaleString()} shares
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
 
           <NextBtn label="Next: Preferences →" onClick={() => push('schedule_settings')} />
         </div>
@@ -1371,6 +1590,32 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
           >
             + Add price
           </button>
+          {orphanPrices.length > 0 && (
+            <div className="rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-950/30">
+              <p className="text-xs font-medium text-red-700 dark:text-red-400">
+                Existing prices not covered above — will be removed
+              </p>
+              <p className="mt-0.5 text-[11px] text-red-600 dark:text-red-500">Uncheck to keep.</p>
+              <div className="mt-2 space-y-1">
+                {orphanPrices.map(p => (
+                  <label key={p.id} className="flex items-center gap-2 text-xs text-red-700 dark:text-red-400">
+                    <input
+                      type="checkbox"
+                      checked={!preserveOrphanPriceIds.has(p.id)}
+                      onChange={e => setPreserveOrphanPriceIds(prev => {
+                        const next = new Set(prev)
+                        if (e.target.checked) { next.delete(p.id) } else { next.add(p.id) }
+                        return next
+                      })}
+                      className="rounded border-red-300"
+                    />
+                    {fmtDate(p.effective_date)} — ${p.price.toFixed(2)}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
           <NextBtn label="Next: Enter grants →" onClick={() => {
             // Pre-fill purchase price for each row from the price entered for that exercise year
             setPurchaseRows(rows => rows.map(r => {
@@ -1416,11 +1661,11 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
           </div>
 
           <div className="flex gap-2 pt-1">
-            <NextBtn label="Save & submit →" saving={submitting} onClick={() => handleScheduleSubmit(true)} />
+            <NextBtn label="Save & review →" saving={submitting} onClick={() => handleScheduleReview(true)} />
             <button
               type="button"
               disabled={submitting}
-              onClick={() => handleScheduleSubmit(false)}
+              onClick={() => handleScheduleReview(false)}
               className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
             >
               Skip

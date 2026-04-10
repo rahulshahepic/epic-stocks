@@ -10,16 +10,16 @@ Equity Vesting Tracker ("Epic Stocks") is open-source software that you or your 
 
 ## What We Collect
 
-### Account Information (from Google Sign-In)
+### Account Information (from your identity provider)
 
-When you sign in with Google, the application receives and stores:
+When you sign in via your identity provider (Google, Azure Entra ID, or any OIDC-compliant provider configured by your admin), the application receives and stores:
 
 - **Email address** — used as your unique identifier
 - **Display name** — shown in the UI
-- **Profile picture URL** — shown in the UI
-- **Google subject ID** — a stable identifier used to link your Google account
+- **Profile picture URL** — shown in the UI (if provided by your identity provider)
+- **Subject ID** — a stable identifier used to link your identity provider account
 
-We do **not** receive or store your Google password, contacts, calendar, or any other Google data.
+We do **not** receive or store your password, contacts, calendar, or any other data from your identity provider.
 
 ### Financial Data (entered by you)
 
@@ -35,18 +35,18 @@ The application computes an event timeline (vesting events, income, capital gain
 
 ### What We Don't Collect
 
-- Passwords (authentication is handled entirely by Google)
+- Passwords (authentication is handled entirely by your identity provider via OIDC)
 - Analytics or usage tracking
 - Cookies beyond the authentication session token
 - Data from other users
-- Any data from your Google account beyond the profile fields listed above
+- Any data from your identity provider beyond the profile fields listed above
 
 ## How Your Data Is Isolated
 
 - Every database query filters by your authenticated user ID
 - You can only read, modify, or delete your own data through the API
 - There are no API endpoints that expose one user's data to another user
-- The source code is open for you to verify this: every router in `backend/routers/` filters by `user_id`
+- The source code is open for you to verify this: every router in `backend/app/routers/` and `backend/scaffold/routers/` filters by `user_id`
 
 ## Who Can Access Your Data
 
@@ -79,7 +79,7 @@ Other users of the same instance **cannot** access your data. The API enforces s
 
 The site operator uses the following third-party infrastructure. Your data may pass through or be processed by these services:
 
-- **Google OAuth** — to verify your identity during sign-in. Google receives your Google account credentials; the application only receives your profile fields (email, name, profile picture, subject ID).
+- **Your OIDC identity provider** (e.g. Google, Azure Entra ID) — to verify your identity during sign-in. Your provider receives your credentials; the application only receives your profile fields (email, name, profile picture, subject ID).
 - **Hetzner** — the VPS hosting provider. The application and database run on Hetzner hardware. Hetzner has physical and administrative access to the server environment.
 - **Cloudflare** — used for DDoS protection and DNS. HTTPS traffic passes through Cloudflare's network, which means Cloudflare can observe (but does not decrypt, under standard configuration) the metadata of your requests.
 - **Porkbun** — domain registrar. Porkbun manages the domain name; they have no access to your application data.
@@ -104,11 +104,11 @@ You can export all your data at any time using the Excel export feature. The exp
 
 If you run an instance of this application for others, you should:
 
-1. **Secure the database file** — restrict filesystem access to the SQLite database
+1. **Secure the database** — restrict access to your PostgreSQL instance (or SQLite file in development). Use strong credentials and network-level isolation.
 2. **Use HTTPS** — the included Caddy configuration handles this automatically
 3. **Keep the JWT_SECRET secret** — if compromised, attackers can forge authentication tokens
-4. **Communicate your own policies** — let your users know who has server access and how you handle backups
-5. **Consider database encryption** — use full-disk encryption or SQLite encryption extensions for additional protection
+4. **Set `KEY_ENCRYPTION_KEY`** — enables per-user AES-256-GCM column-level encryption of financial data at rest. Auto-generated on production deploy.
+5. **Communicate your own policies** — let your users know who has server access and how you handle backups
 
 ## Understanding the Risks
 

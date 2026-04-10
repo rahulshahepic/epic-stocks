@@ -22,7 +22,8 @@ backend/app/
   core.py              — domain event computation (frozen in this repo)
   sales_engine.py      — FIFO cost basis
   excel_io.py          — Excel import/export
-  timeline_cache.py    — memoization
+  timeline_cache.py    — L1 in-process memoization
+  event_cache.py       — L2 Redis cache + background recompute
   routers/             — domain API endpoints
 
 frontend/src/app/

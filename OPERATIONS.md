@@ -52,7 +52,7 @@ All responses include:
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |
 | `Permissions-Policy` | `geolocation=(), camera=(), microphone=()` |
 
-### File upload hardening (`backend/routers/import_export.py`)
+### File upload hardening (`backend/app/routers/import_export.py`)
 
 - Reject files larger than **5 MB** before parsing
 - Validate **XLSX magic bytes** (`PK\x03\x04`) before passing to openpyxl
@@ -77,9 +77,13 @@ The app uses the BFF (Backend For Frontend) session cookie pattern. The JWT neve
 
 ### Dependency auditing (CI)
 
-`.github/workflows/test.yml` runs on every push and PR:
+`.github/workflows/test.yml` runs on every push to `main`/`staging` and on every PR:
 - `pip-audit` on Python dependencies
 - `npm audit --audit-level=high` on frontend dependencies
+- `caddy validate` against the Caddyfile (catches syntax errors before deploy)
+- E2E tests via Playwright (depends on backend + frontend passing)
+
+`.github/workflows/branch-check.yml` enforces that PRs to `main` must originate from the `staging` branch.
 
 ---
 

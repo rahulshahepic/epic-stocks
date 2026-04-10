@@ -155,6 +155,7 @@ const EPIC_GRANT_SCHEDULE: KnownGrant[] = [
   { year: 2021, type: 'Purchase', defaultPrice: 0, vest_start: '2021-09-30', periods: 5, exercise_date: '2021-12-31', defaultCatchUp: true },
   { year: 2021, type: 'Bonus',    defaultPrice: 0, vest_start: '2022-09-30', periods: 3, exercise_date: '2021-12-31', defaultCatchUp: false },
   { year: 2022, type: 'Purchase', defaultPrice: 0, vest_start: '2022-09-30', periods: 4, exercise_date: '2022-12-31', defaultCatchUp: false },
+  { year: 2022, type: 'Bonus',    defaultPrice: 0, vest_start: '2023-09-30', periods: 3, exercise_date: '2022-12-31', defaultCatchUp: false },
   { year: 2022, type: 'Free',     defaultPrice: 0, vest_start: '2027-09-30', periods: 1, exercise_date: '2022-12-31', defaultCatchUp: false },
   { year: 2023, type: 'Purchase', defaultPrice: 0, vest_start: '2023-09-30', periods: 4, exercise_date: '2023-12-31', defaultCatchUp: false },
   { year: 2023, type: 'Bonus',    defaultPrice: 0, vest_start: '2024-09-30', periods: 3, exercise_date: '2023-12-31', defaultCatchUp: false },
@@ -522,8 +523,14 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
         loansByKey.get(key)!.push(l)
       }
 
-      // Orphaned grants: not in the known schedule at all
-      const scheduleKeys = new Set(EPIC_GRANT_SCHEDULE.map(g => `${g.year}-${g.type}`))
+      // Orphaned grants: not in the known schedule at all.
+      // Catch-Up grants are stored as type "Catch-Up" in the DB but don't appear as a
+      // separate entry in EPIC_GRANT_SCHEDULE (they piggyback on the Purchase entry via
+      // defaultCatchUp). Explicitly add them so they aren't treated as orphans.
+      const scheduleKeys = new Set([
+        ...EPIC_GRANT_SCHEDULE.map(g => `${g.year}-${g.type}`),
+        ...EPIC_GRANT_SCHEDULE.filter(g => g.defaultCatchUp).map(g => `${g.year}-Catch-Up`),
+      ])
       const newOrphanGrants = existingGrants.filter(g => !scheduleKeys.has(`${g.year}-${g.type}`))
 
       // Pre-populate purchase rows
@@ -1311,12 +1318,14 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             </p>
           </div>
 
-          {/* Purchase grants (catch-up shown inline where applicable) */}
+          {/* Purchase grants (catch-up and free shown inline where applicable) */}
           <div className="space-y-2">
             <p className="text-xs font-semibold text-gray-700 dark:text-slate-300">Purchase grants</p>
             {purchaseRows.map((row, i) => {
               const catchUpIdx = catchUpRows.findIndex(c => c.year === row.year)
               const catchUp = catchUpIdx >= 0 ? catchUpRows[catchUpIdx] : null
+              const freeIdx = bonusRows.findIndex(b => b.year === row.year && b.type === 'Free')
+              const freeGrant = freeIdx >= 0 ? bonusRows[freeIdx] : null
               return (
                 <div key={row.year} className="rounded-md border border-stone-200 dark:border-slate-700">
                   <label className="flex cursor-pointer items-center gap-3 p-3">
@@ -1384,6 +1393,21 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
                           )}
                         </div>
                       )}
+                      {/* Inline free grant for this year (e.g. 2022 Free) */}
+                      {freeGrant && (
+                        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-amber-800 dark:text-amber-300">{row.year} Free grant</span>
+                            <span className="text-[11px] text-amber-600 dark:text-amber-500">
+                              zero cost basis · vests {fmtDate(freeGrant.vest_start)} · {freeGrant.periods} period{freeGrant.periods !== 1 ? 's' : ''}
+                            </span>
+                          </div>
+                          <div className="mt-2 w-40">
+                            <Field label="Free shares" type="number" value={freeGrant.shares}
+                              onChange={v => setBonusField(freeIdx, { shares: v })} />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1391,11 +1415,14 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             })}
           </div>
 
-          {/* Bonus / Free grants */}
+          {/* Bonus / Free grants — Free grants with a matching purchase year are shown inline above */}
           <div className="space-y-2">
             <p className="text-xs font-semibold text-gray-700 dark:text-slate-300">Bonus &amp; Free grants</p>
             <p className="text-[11px] text-gray-400 dark:text-slate-500">Leave shares blank for years you didn't receive a bonus.</p>
-            {bonusRows.map((row, i) => (
+            {bonusRows.map((row, i) => {
+              // Free grants that have a matching purchase year are rendered inline above
+              if (row.type === 'Free' && purchaseRows.some(p => p.year === row.year)) return null
+              return (
               <div key={`${row.year}-${row.type}`} className="rounded-md border border-stone-200 p-3 dark:border-slate-700 space-y-3">
                 <div className="flex items-center gap-2">
                   <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${GRANT_COLORS[row.type]}`}>{row.year} {row.type}</span>
@@ -1432,7 +1459,8 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
                   )}
                 </div>
               </div>
-            ))}
+              )
+            })}
             <button
               type="button"
               onClick={() => setBonusRows(rows => [...rows, {

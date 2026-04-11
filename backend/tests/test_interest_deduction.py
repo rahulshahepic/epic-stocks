@@ -304,6 +304,7 @@ def test_events_deduction_skips_excluded_years(client):
     assert total_ded_all > 0, "Deduction should be applied when no years excluded"
 
     # Now exclude 2022 — vesting events in 2022 should get zero deduction
+    # AND interest due in 2022 is forfeited (not carried forward)
     client.put("/api/tax-settings", json={
         **TAX_SETTINGS_WITH_DEDUCTION,
         "deduction_excluded_years": [2022],
@@ -315,9 +316,10 @@ def test_events_deduction_skips_excluded_years(client):
             assert e.get("interest_deduction_applied", 0) == 0, \
                 f"Event in excluded year 2022 should have zero deduction: {e['date']}"
 
-    # Total deduction with exclusion should be <= total without (carry-forward still works)
+    # Total deduction should decrease: excluded year's interest is forfeited
     total_ded_excl = sum(e.get("interest_deduction_applied", 0) for e in events_excl)
-    assert total_ded_excl <= total_ded_all + 0.01
+    assert total_ded_excl < total_ded_all, \
+        f"Excluding a year should reduce total deduction ({total_ded_excl} vs {total_ded_all})"
 
 
 def test_dashboard_respects_excluded_years(client):
@@ -334,4 +336,34 @@ def test_dashboard_respects_excluded_years(client):
         "deduction_excluded_years": [2021, 2022, 2023, 2024],
     })
     dash_excl = client.get("/api/dashboard").json()
-    assert dash_excl["interest_deduction_total"] <= dash_all["interest_deduction_total"]
+    assert dash_excl["interest_deduction_total"] < dash_all["interest_deduction_total"], \
+        "Excluding years should reduce deduction total (interest is forfeited)"
+
+
+def test_excluded_year_interest_is_forfeited(client):
+    """Interest due in an excluded year should be forfeited, not carried forward."""
+    _setup_basic(client)
+    # INTEREST_LOAN_2021 → $3000 deductible in 2022
+    # INTEREST_LOAN_2022 → $4000 deductible in 2023
+    # With no exclusions, total pool = $7000
+
+    # Enable with all years included
+    client.put("/api/tax-settings", json=TAX_SETTINGS_WITH_DEDUCTION)
+    events_all = client.get("/api/events").json()
+    total_all = sum(e.get("interest_deduction_applied", 0) for e in events_all)
+
+    # Exclude 2022 — the $3000 due in 2022 is forfeited, only $4000 (from 2023) remains
+    client.put("/api/tax-settings", json={
+        **TAX_SETTINGS_WITH_DEDUCTION,
+        "deduction_excluded_years": [2022],
+    })
+    events_excl = client.get("/api/events").json()
+    total_excl = sum(e.get("interest_deduction_applied", 0) for e in events_excl)
+
+    # The $3000 from 2022 is forfeited — total should drop, not just shift
+    assert total_excl < total_all, \
+        f"Forfeited interest should reduce total deduction: all={total_all}, excl={total_excl}"
+    # The remaining pool ($4000 from 2023) is less than the original ($7000),
+    # so the deduction can't be the same as the all-years case
+    assert total_excl <= 4000.0, \
+        f"Only $4000 of interest should remain after forfeiting 2022: excl={total_excl}"

@@ -278,30 +278,34 @@ export default function Admin() {
       )}
 
       {/* Smart Tips Report */}
-      {tipsReport && typeof tipsReport.total_estimated_savings === 'number' && tipsReport.unique_users_accepted > 0 && (
+      {tipsReport && (
         <section className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
           <h3 className="text-sm font-medium text-gray-900 dark:text-slate-100">Smart Tips</h3>
-          <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
-            <div>
-              <span className="text-gray-500 dark:text-slate-400">Users accepted</span>
-              <p className="text-lg font-semibold text-gray-900 dark:text-slate-100">{tipsReport.unique_users_accepted}</p>
-            </div>
-            <div>
-              <span className="text-gray-500 dark:text-slate-400">Est. total savings</span>
-              <p className="text-lg font-semibold text-gray-900 dark:text-slate-100">
-                {tipsReport.total_estimated_savings.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
-              </p>
-            </div>
-            {tipsReport.by_type.map(t => (
-              <div key={t.type}>
-                <span className="text-gray-500 dark:text-slate-400 capitalize">{t.type.replace('_', ' ')}</span>
-                <p className="text-lg font-semibold text-gray-900 dark:text-slate-100">{t.unique_users}</p>
-                <p className="text-xs text-gray-500 dark:text-slate-400">
-                  {t.total_savings.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })} saved
+          {tipsReport.unique_users_accepted > 0 ? (
+            <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+              <div>
+                <span className="text-gray-500 dark:text-slate-400">Users accepted</span>
+                <p className="text-lg font-semibold text-gray-900 dark:text-slate-100">{tipsReport.unique_users_accepted}</p>
+              </div>
+              <div>
+                <span className="text-gray-500 dark:text-slate-400">Est. total savings</span>
+                <p className="text-lg font-semibold text-gray-900 dark:text-slate-100">
+                  {(tipsReport.total_estimated_savings ?? 0).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
                 </p>
               </div>
-            ))}
-          </div>
+              {tipsReport.by_type.map(t => (
+                <div key={t.type}>
+                  <span className="text-gray-500 dark:text-slate-400 capitalize">{t.type.replace('_', ' ')}</span>
+                  <p className="text-lg font-semibold text-gray-900 dark:text-slate-100">{t.unique_users}</p>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">
+                    {t.total_savings.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })} saved
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-3 text-xs text-gray-500 dark:text-slate-400">No tips accepted yet.</p>
+          )}
         </section>
       )}
 

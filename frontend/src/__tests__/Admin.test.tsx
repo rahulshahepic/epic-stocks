@@ -449,7 +449,7 @@ describe('Admin', () => {
     })
   })
 
-  it('hides Smart Tips section when no tips have been accepted', async () => {
+  it('shows empty state when no tips have been accepted', async () => {
     mockFetch({
       '/api/admin/stats': STATS,
       '/api/admin/users': USERS_RESPONSE,
@@ -459,7 +459,8 @@ describe('Admin', () => {
     renderPage()
 
     await waitFor(() => {
-      expect(screen.queryByText('Smart Tips')).not.toBeInTheDocument()
+      expect(screen.getByText('Smart Tips')).toBeInTheDocument()
+      expect(screen.getByText('No tips accepted yet.')).toBeInTheDocument()
     })
   })
 })

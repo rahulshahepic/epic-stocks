@@ -158,13 +158,16 @@ def get_tips(user: User = Depends(get_current_user), db: Session = Depends(get_d
         timeline_for_tip = compute_timeline(generate_all_events(grants, prices, loans), initial_price)
         enriched_for_tip = _enrich_timeline(timeline_for_tip, loans_db, loan_payments, sales, horizon_date=current_horizon)
         _annotate_sale_taxes(enriched_for_tip, timeline_for_tip, ts_dict, lot_order=current_lot)
-        # Determine past years to exclude (before this year)
-        all_event_years = set()
-        for e in enriched_for_tip:
-            raw = e.get('date', '')
-            yr = int(raw[:4]) if isinstance(raw, str) else raw.year
-            all_event_years.add(yr)
-        past_years = sorted(y for y in all_event_years if y < this_year)
+        # Determine past years from grant vest schedules (matches taxable_years)
+        vest_years: set[int] = set()
+        for g in grants:
+            vs = g.get('vest_start')
+            periods = g.get('periods', 0)
+            if vs and periods:
+                start_yr = vs.year if hasattr(vs, 'year') else int(str(vs)[:4])
+                for i in range(periods):
+                    vest_years.add(start_yr + i)
+        past_years = sorted(y for y in vest_years if y < this_year)
         excl_set = set(past_years)
         # Apply deduction only to non-excluded (current + future) years
         _apply_interest_deduction(enriched_for_tip, loans_db, excluded_years=excl_set)

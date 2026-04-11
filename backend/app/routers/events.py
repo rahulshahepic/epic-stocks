@@ -416,8 +416,8 @@ def _apply_interest_deduction(enriched: list, loans_db: list, excluded_years: se
     loans where they exist, projected principal×rate for gaps, with carry-forward.
 
     excluded_years: if provided, events in these years are skipped (no deduction
-    consumed or applied).  Interest from those years still enters the pool for
-    carry-forward into non-excluded years.
+    consumed or applied).  Interest due in excluded years is forfeited — if you
+    didn't itemize that year, you can't carry that interest forward.
 
     Modifies events in-place; adds fields:
       interest_deduction_applied      - amount used by this event
@@ -438,7 +438,9 @@ def _apply_interest_deduction(enriched: list, loans_db: list, excluded_years: se
         event_year = int(raw_date[:4]) if isinstance(raw_date, str) else raw_date.year
 
         while year_idx < len(sorted_years) and sorted_years[year_idx] <= event_year:
-            available += pool[sorted_years[year_idx]]
+            yr = sorted_years[year_idx]
+            if yr not in excl:
+                available += pool[yr]
             year_idx += 1
 
         ded_stcg = 0.0
@@ -506,7 +508,9 @@ def preview_deduction(
                 continue
             ev_year = int(ev['date'].year) if hasattr(ev['date'], 'year') else int(str(ev['date'])[:4])
             while year_idx_d < len(sorted_years_d) and sorted_years_d[year_idx_d] <= ev_year:
-                available_d += pool_d[sorted_years_d[year_idx_d]]
+                yr_d = sorted_years_d[year_idx_d]
+                if yr_d not in excl:
+                    available_d += pool_d[yr_d]
                 year_idx_d += 1
             if ev_year in excl:
                 continue
@@ -798,7 +802,9 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
                 continue
             ev_year = int(ev['date'].year) if hasattr(ev['date'], 'year') else int(str(ev['date'])[:4])
             while year_idx_d < len(sorted_years_d) and sorted_years_d[year_idx_d] <= ev_year:
-                available_d += pool_d[sorted_years_d[year_idx_d]]
+                yr_d = sorted_years_d[year_idx_d]
+                if yr_d not in excl_d:
+                    available_d += pool_d[yr_d]
                 year_idx_d += 1
             if ev_year in excl_d:
                 continue

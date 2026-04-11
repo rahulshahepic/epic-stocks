@@ -258,3 +258,80 @@ def test_dashboard_no_deduction_fields_when_disabled(client):
     # When deduction disabled, these fields should be 0 (or absent — we default to 0)
     assert dash.get("interest_deduction_total", 0) == 0
     assert dash.get("tax_savings_from_deduction", 0) == 0
+
+
+# ----- Per-year excluded years -----
+
+def test_deduction_excluded_years_default_null(client):
+    """deduction_excluded_years defaults to null."""
+    register_user(client)
+    resp = client.get("/api/tax-settings")
+    assert resp.status_code == 200
+    assert resp.json()["deduction_excluded_years"] is None
+
+
+def test_update_deduction_excluded_years(client):
+    """Can set and clear deduction_excluded_years."""
+    register_user(client)
+    resp = client.put("/api/tax-settings", json={"deduction_excluded_years": [2021, 2022]})
+    assert resp.status_code == 200
+    assert resp.json()["deduction_excluded_years"] == [2021, 2022]
+    # Clear back to null
+    resp2 = client.put("/api/tax-settings", json={"deduction_excluded_years": None})
+    assert resp2.status_code == 200
+    assert resp2.json()["deduction_excluded_years"] is None
+
+
+def test_taxable_years_returned(client):
+    """GET /api/tax-settings should return taxable_years derived from grants."""
+    _setup_basic(client)
+    resp = client.get("/api/tax-settings")
+    data = resp.json()
+    assert "taxable_years" in data
+    assert isinstance(data["taxable_years"], list)
+    assert len(data["taxable_years"]) > 0
+
+
+def test_events_deduction_skips_excluded_years(client):
+    """When excluded_years contains a year, no deduction should be applied to events in that year."""
+    _setup_basic(client)
+    # Enable deduction for all years first
+    client.put("/api/tax-settings", json=TAX_SETTINGS_WITH_DEDUCTION)
+
+    resp_all = client.get("/api/events")
+    events_all = resp_all.json()
+    total_ded_all = sum(e.get("interest_deduction_applied", 0) for e in events_all)
+    assert total_ded_all > 0, "Deduction should be applied when no years excluded"
+
+    # Now exclude 2022 — vesting events in 2022 should get zero deduction
+    client.put("/api/tax-settings", json={
+        **TAX_SETTINGS_WITH_DEDUCTION,
+        "deduction_excluded_years": [2022],
+    })
+    resp_excl = client.get("/api/events")
+    events_excl = resp_excl.json()
+    for e in events_excl:
+        if e.get("event_type") == "Vesting" and e["date"][:4] == "2022":
+            assert e.get("interest_deduction_applied", 0) == 0, \
+                f"Event in excluded year 2022 should have zero deduction: {e['date']}"
+
+    # Total deduction with exclusion should be <= total without (carry-forward still works)
+    total_ded_excl = sum(e.get("interest_deduction_applied", 0) for e in events_excl)
+    assert total_ded_excl <= total_ded_all + 0.01
+
+
+def test_dashboard_respects_excluded_years(client):
+    """Dashboard deduction totals should decrease when years are excluded."""
+    _setup_basic(client)
+    client.put("/api/tax-settings", json=TAX_SETTINGS_WITH_DEDUCTION)
+
+    dash_all = client.get("/api/dashboard").json()
+    assert dash_all["interest_deduction_total"] > 0
+
+    # Exclude all vesting years — deduction total should drop
+    client.put("/api/tax-settings", json={
+        **TAX_SETTINGS_WITH_DEDUCTION,
+        "deduction_excluded_years": [2021, 2022, 2023, 2024],
+    })
+    dash_excl = client.get("/api/dashboard").json()
+    assert dash_excl["interest_deduction_total"] <= dash_all["interest_deduction_total"]

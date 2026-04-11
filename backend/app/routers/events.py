@@ -404,7 +404,7 @@ def _build_interest_pool(loans_db: list) -> dict[int, float]:
 _TAXABLE_EVENT_TYPES = frozenset({'Vesting', 'Sale', 'Liquidation (projected)'})
 
 
-def _apply_interest_deduction(enriched: list, loans_db: list) -> None:
+def _apply_interest_deduction(enriched: list, loans_db: list, excluded_years: set[int] | None = None) -> None:
     """
     Annotate realized-cap-gains events with an investment-interest deduction offset.
 
@@ -414,6 +414,10 @@ def _apply_interest_deduction(enriched: list, loans_db: list) -> None:
 
     Uses full projected interest (matching Total Interest card): recorded Interest
     loans where they exist, projected principal×rate for gaps, with carry-forward.
+
+    excluded_years: if provided, events in these years are skipped (no deduction
+    consumed or applied).  Interest from those years still enters the pool for
+    carry-forward into non-excluded years.
 
     Modifies events in-place; adds fields:
       interest_deduction_applied      - amount used by this event
@@ -427,6 +431,7 @@ def _apply_interest_deduction(enriched: list, loans_db: list) -> None:
     year_idx = 0
     available = 0.0
     cum_deduction = 0.0
+    excl = excluded_years or set()
 
     for event in enriched:
         raw_date = event.get('date', '')
@@ -439,7 +444,7 @@ def _apply_interest_deduction(enriched: list, loans_db: list) -> None:
         ded_stcg = 0.0
         ded_ltcg = 0.0
 
-        if event.get('event_type') in _TAXABLE_EVENT_TYPES:
+        if event.get('event_type') in _TAXABLE_EVENT_TYPES and event_year not in excl:
             stcg = max(0.0, event.get('vesting_cap_gains', 0.0))
             ltcg = max(0.0, event.get('price_cap_gains', 0.0))
             if available > 0 and (stcg + ltcg) > 0:
@@ -473,6 +478,7 @@ def preview_deduction(
         return None
     db.close()
 
+    excl = set(ts_row.deduction_excluded_years or [])
     interest_deduction_total = 0.0
     tax_savings_from_deduction = 0.0
     if enabled:
@@ -490,6 +496,8 @@ def preview_deduction(
             while year_idx_d < len(sorted_years_d) and sorted_years_d[year_idx_d] <= ev_year:
                 available_d += pool_d[sorted_years_d[year_idx_d]]
                 year_idx_d += 1
+            if ev_year in excl:
+                continue
             stcg = max(0.0, ev.get('vesting_cap_gains', 0.0))
             ltcg = max(0.0, ev.get('price_cap_gains', 0.0))
             if available_d > 0 and (stcg + ltcg) > 0:
@@ -641,7 +649,8 @@ def get_events(user: User = Depends(get_current_user), db: Session = Depends(get
                              sale_lot_overrides=sale_lot_overrides)
 
     if ts_row and ts_row.deduct_investment_interest:
-        _apply_interest_deduction(enriched, loans_db)
+        excl = set(ts_row.deduction_excluded_years or [])
+        _apply_interest_deduction(enriched, loans_db, excluded_years=excl)
 
     # Annotate the liquidation event with outstanding loan principal at that date.
     if horizon_date is not None:
@@ -765,6 +774,7 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
     interest_deduction_total = 0.0
     tax_savings_from_deduction = 0.0
     if ts_row and ts_row.deduct_investment_interest:
+        excl_d = set(ts_row.deduction_excluded_years or [])
         pool_d = _build_interest_pool(loans_db)
         sorted_years_d = sorted(pool_d.keys())
         year_idx_d = 0
@@ -778,6 +788,8 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
             while year_idx_d < len(sorted_years_d) and sorted_years_d[year_idx_d] <= ev_year:
                 available_d += pool_d[sorted_years_d[year_idx_d]]
                 year_idx_d += 1
+            if ev_year in excl_d:
+                continue
             stcg = max(0.0, ev.get('vesting_cap_gains', 0.0))
             ltcg = max(0.0, ev.get('price_cap_gains', 0.0))
             if available_d > 0 and (stcg + ltcg) > 0:

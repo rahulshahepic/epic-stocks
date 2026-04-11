@@ -1654,7 +1654,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
                   Deduct investment interest expense
                 </p>
                 <p className="mt-0.5 text-xs text-gray-500 dark:text-slate-400">
-                  Check this if you itemize deductions and claim loan interest against investment income (IRS Form 4952). Most people leave this unchecked.
+                  Check this if you itemize deductions (not standard) and want to claim loan interest against investment income (IRS Form 4952). You can customize which years on the Settings page. Most people leave this unchecked.
                 </p>
               </div>
             </label>

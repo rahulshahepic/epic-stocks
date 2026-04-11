@@ -539,6 +539,8 @@ export interface TaxSettings {
   dp_min_percent: number
   dp_min_cap: number
   deduct_investment_interest: boolean
+  deduction_excluded_years: number[] | null
+  taxable_years: number[]
 }
 
 export interface TrancheLine {

@@ -301,7 +301,8 @@ export const api = {
   getHorizonSettings: () => apiFetch<HorizonSettings>('/api/horizon-settings'),
   updateHorizonSettings: (data: Partial<HorizonSettings>) => put<HorizonSettings>('/api/horizon-settings', data),
   previewExit: (date: string) => apiFetch<ExitPreview | null>(`/api/preview-exit?date=${encodeURIComponent(date)}`),
-  previewDeduction: (enabled: boolean) => apiFetch<DeductionPreview | null>(`/api/preview-deduction?enabled=${enabled}`),
+  previewDeduction: (enabled: boolean, excludePast = false) =>
+    apiFetch<DeductionPreview | null>(`/api/preview-deduction?enabled=${enabled}${excludePast ? '&exclude_past=true' : ''}`),
 
   // Wizard
   wizardParseFile: (file: File) => {

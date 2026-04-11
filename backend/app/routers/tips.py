@@ -9,7 +9,8 @@ from scaffold.auth import get_current_user
 from app.core import generate_all_events, compute_timeline
 from app.routers.events import (
     _user_source_data, _enrich_timeline, _annotate_sale_taxes,
-    _apply_interest_deduction, _last_vesting_date,
+    _apply_interest_deduction, _last_vesting_date, _build_interest_pool,
+    _TAXABLE_EVENT_TYPES,
 )
 
 router = APIRouter(prefix="/api/tips", tags=["tips"])
@@ -26,13 +27,14 @@ def _compute_scenario(
     lot_order: str,
     horizon_date,
     deduct_interest: bool,
+    excluded_years: set[int] | None = None,
 ) -> tuple[float, float]:
     """Return (total_tax, net_cash) for Sale/Liquidation events in the scenario."""
     timeline = compute_timeline(generate_all_events(grants, prices, loans), initial_price)
     enriched = _enrich_timeline(timeline, loans_db, loan_payments, sales, horizon_date=horizon_date)
     _annotate_sale_taxes(enriched, timeline, ts_dict, lot_order=lot_order)
     if deduct_interest:
-        _apply_interest_deduction(enriched, loans_db)
+        _apply_interest_deduction(enriched, loans_db, excluded_years=excluded_years)
     sale_events = [
         e for e in enriched
         if e.get("event_type") in ("Sale", "Liquidation (projected)")
@@ -64,10 +66,12 @@ def _compute_scenario_tax(
     lot_order: str,
     horizon_date,
     deduct_interest: bool,
+    excluded_years: set[int] | None = None,
 ) -> float:
     tax, _ = _compute_scenario(
         grants, prices, loans, loans_db, initial_price,
         loan_payments, sales, ts_dict, lot_order, horizon_date, deduct_interest,
+        excluded_years=excluded_years,
     )
     return tax
 
@@ -102,6 +106,7 @@ def get_tips(user: User = Depends(get_current_user), db: Session = Depends(get_d
     if current_lot not in ('fifo', 'lifo', 'epic_lifo'):
         current_lot = 'epic_lifo'
     current_deduct = bool(ts_row.deduct_investment_interest)
+    current_excl = set(ts_row.deduction_excluded_years or [])
 
     # Determine current horizon_date (same logic as events endpoint)
     base_timeline = compute_timeline(generate_all_events(grants, prices, loans), initial_price)
@@ -115,6 +120,7 @@ def get_tips(user: User = Depends(get_current_user), db: Session = Depends(get_d
         grants, prices, loans, loans_db, initial_price,
         loan_payments, sales,
         ts_dict, current_lot, current_horizon, current_deduct,
+        excluded_years=current_excl,
     )
     baseline = baseline_tax  # used by tips 2 & 3
 
@@ -129,6 +135,7 @@ def get_tips(user: User = Depends(get_current_user), db: Session = Depends(get_d
             grants, prices, loans, loans_db, initial_price,
             loan_payments, sales,
             ts_dict, current_lot, new_horizon, current_deduct,
+            excluded_years=current_excl,
         )
         gain = round(new_net_cash - baseline_net_cash, 2)
         if gain >= _THRESHOLD_EXIT:
@@ -144,25 +151,48 @@ def get_tips(user: User = Depends(get_current_user), db: Session = Depends(get_d
             })
             break  # smallest improvement that clears threshold
 
-    # --- Tip 2: Investment interest deduction ---
+    # --- Tip 2: Investment interest deduction (going forward) ---
     if not current_deduct:
-        new_tax = _compute_scenario_tax(
-            grants, prices, loans, loans_db, initial_price,
-            loan_payments, sales,
-            ts_dict, current_lot, current_horizon, True,
-        )
-        savings = round(baseline - new_tax, 2)
+        this_year = date.today().year
+        # Compute savings from deduction applied only to current + future years
+        timeline_for_tip = compute_timeline(generate_all_events(grants, prices, loans), initial_price)
+        enriched_for_tip = _enrich_timeline(timeline_for_tip, loans_db, loan_payments, sales, horizon_date=current_horizon)
+        _annotate_sale_taxes(enriched_for_tip, timeline_for_tip, ts_dict, lot_order=current_lot)
+        # Determine past years from grant vest schedules (matches taxable_years)
+        vest_years: set[int] = set()
+        for g in grants:
+            vs = g.get('vest_start')
+            periods = g.get('periods', 0)
+            if vs and periods:
+                start_yr = vs.year if hasattr(vs, 'year') else int(str(vs)[:4])
+                for i in range(periods):
+                    vest_years.add(start_yr + i)
+        past_years = sorted(y for y in vest_years if y < this_year)
+        excl_set = set(past_years)
+        # Apply deduction only to non-excluded (current + future) years
+        _apply_interest_deduction(enriched_for_tip, loans_db, excluded_years=excl_set)
+        stcg_rate = ts_dict["federal_st_cg_rate"] + ts_dict["niit_rate"] + ts_dict["state_st_cg_rate"]
+        ltcg_rate = ts_dict["federal_lt_cg_rate"] + ts_dict["niit_rate"] + ts_dict["state_lt_cg_rate"]
+        savings = round(sum(
+            e.get("interest_deduction_on_stcg", 0.0) * stcg_rate +
+            e.get("interest_deduction_on_ltcg", 0.0) * ltcg_rate
+            for e in enriched_for_tip
+        ), 2)
         if savings >= _THRESHOLD_DEDUCTION:
             tips.append({
                 "type": "deduction",
-                "title": "Enable the investment interest deduction",
+                "title": "Itemize to deduct investment interest",
                 "description": (
-                    f"Your loan interest may be deductible against capital gains (IRS Form 4952), "
-                    f"potentially saving ~${savings:,.0f}. Note: this covers investment interest only — "
-                    f"consider your full itemized deductions vs. the standard deduction."
+                    f"If you itemize deductions going forward, your loan interest may be "
+                    f"deductible against capital gains (IRS Form 4952), potentially saving "
+                    f"~${savings:,.0f} from {this_year} onward. This only applies to years "
+                    f"where you itemize — not years you take the standard deduction."
                 ),
                 "savings": savings,
-                "apply": {"deduct_investment_interest": True},
+                "apply": {
+                    "deduct_investment_interest": True,
+                    "deduction_excluded_years": past_years,
+                },
             })
 
     # --- Tip 3: Lot selection method ---
@@ -175,6 +205,7 @@ def get_tips(user: User = Depends(get_current_user), db: Session = Depends(get_d
             grants, prices, loans, loans_db, initial_price,
             loan_payments, sales,
             ts_dict, lot_method, current_horizon, current_deduct,
+            excluded_years=current_excl,
         )
         savings = round(baseline - new_tax, 2)
         if savings > best_savings:

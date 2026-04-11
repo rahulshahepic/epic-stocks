@@ -171,6 +171,7 @@ class TaxSettings(Base):
     dp_min_percent: Mapped[float] = mapped_column(Float, nullable=False, default=0.10)
     dp_min_cap: Mapped[float] = mapped_column(Float, nullable=False, default=20000.0)
     deduct_investment_interest: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    deduction_excluded_years: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
 
     user: Mapped["User"] = relationship(back_populates="tax_settings")
 

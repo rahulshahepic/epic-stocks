@@ -487,6 +487,15 @@ def get_tax_settings(user: User = Depends(get_current_user), db: Session = Depen
     result = TaxSettingsRead.model_validate(ts)
     flexible = db.execute(text("SELECT value FROM system_settings WHERE key = 'flexible_payoff_enabled'")).scalar()
     result.flexible_payoff_enabled = (flexible == "true")
+    # Compute taxable years from grants so the frontend can show per-year toggles
+    grants = db.query(Grant).filter(Grant.user_id == user.id).all()
+    years: set[int] = set()
+    for g in grants:
+        if g.vest_start and g.periods:
+            for i in range(g.periods):
+                vest_year = g.vest_start.year + i
+                years.add(vest_year)
+    result.taxable_years = sorted(years)
     return result
 
 

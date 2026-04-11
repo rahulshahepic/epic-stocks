@@ -434,6 +434,8 @@ const WI_TAX_DEFAULTS: TaxSettings = {
   dp_min_percent: 0.10,
   dp_min_cap: 20000,
   deduct_investment_interest: false,
+  deduction_excluded_years: null,
+  taxable_years: [],
 }
 
 function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices, exitDate }: {
@@ -831,6 +833,10 @@ export default function Dashboard() {
   const savedDeduction = taxSettings?.deduct_investment_interest ?? false
   const pendingDeductionChanged = pendingDeduction !== null && pendingDeduction !== savedDeduction
 
+  // When toggling on for the first time (no existing exclusions), tell the
+  // preview to auto-exclude past years so the number matches what Apply will do.
+  const shouldExcludePast = pendingDeduction === true && !savedDeduction && !taxSettings?.deduction_excluded_years?.length
+
   useEffect(() => {
     if (!pendingDeductionChanged || pendingDeduction === null) {
       setDeductionPreview(null)
@@ -838,17 +844,27 @@ export default function Dashboard() {
     }
     setDeductionPreview('loading')
     const timer = setTimeout(() => {
-      api.previewDeduction(pendingDeduction)
+      api.previewDeduction(pendingDeduction, shouldExcludePast)
         .then(result => setDeductionPreview(result))
         .catch(() => setDeductionPreview(null))
     }, 400)
     return () => clearTimeout(timer)
-  }, [pendingDeductionChanged, pendingDeduction])
+  }, [pendingDeductionChanged, pendingDeduction, shouldExcludePast])
 
   async function applyDeduction(enabled: boolean) {
     setSavingDeduction(true)
     try {
-      await api.updateTaxSettings({ deduct_investment_interest: enabled })
+      const update: Partial<TaxSettings> = { deduct_investment_interest: enabled }
+      // When first enabling and no year customization exists yet,
+      // auto-exclude past years (you can't retroactively itemize)
+      if (enabled && taxSettings && !taxSettings.deduction_excluded_years?.length) {
+        const thisYear = new Date().getFullYear()
+        const pastYears = (taxSettings.taxable_years ?? []).filter(y => y < thisYear)
+        if (pastYears.length > 0) {
+          update.deduction_excluded_years = pastYears
+        }
+      }
+      await api.updateTaxSettings(update)
       reloadDash()
       reloadEvents()
       reloadTaxSettings()
@@ -1205,39 +1221,52 @@ export default function Dashboard() {
               ? (displayEnabled ? `+${fmt$(previewSavings)}` : `−${fmt$(currentSavings)}`)
               : null)
           : (displayEnabled ? fmt$(currentSavings) : null)
+        const excludedYears = taxSettings?.deduction_excluded_years ?? []
         return (
-          <div className="flex items-center gap-3 rounded-md bg-stone-100 px-3 py-2 text-xs dark:bg-slate-800">
-            <span className="text-stone-500 dark:text-slate-400">Interest deduction</span>
-            <span className={`flex-1 font-semibold tabular-nums ${pendingDeductionChanged ? (displayEnabled ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400') : 'text-stone-700 dark:text-slate-300'}`}>
-              {delta ?? '—'}
-            </span>
-            {pendingDeductionChanged && (
-              <>
-                <button
-                  onClick={() => applyDeduction(pendingDeduction!)}
-                  disabled={savingDeduction || deductionPreview === 'loading'}
-                  className="rounded bg-rose-700 px-2.5 py-1 font-medium text-white hover:bg-rose-800 disabled:opacity-60"
-                >
-                  {savingDeduction ? '…' : 'Apply'}
-                </button>
-                <button
-                  onClick={() => setPendingDeduction(null)}
-                  disabled={savingDeduction}
-                  className="text-stone-400 hover:text-stone-600 disabled:opacity-50 dark:text-slate-500 dark:hover:text-slate-300"
-                >
-                  ✕
-                </button>
-              </>
+          <div className="rounded-md bg-stone-100 px-3 py-2 text-xs dark:bg-slate-800">
+            <div className="flex items-center gap-3">
+              <span className="text-stone-500 dark:text-slate-400">Interest deduction</span>
+              <span className={`flex-1 font-semibold tabular-nums ${pendingDeductionChanged ? (displayEnabled ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400') : 'text-stone-700 dark:text-slate-300'}`}>
+                {delta ?? '—'}
+              </span>
+              {pendingDeductionChanged && (
+                <>
+                  <button
+                    onClick={() => applyDeduction(pendingDeduction!)}
+                    disabled={savingDeduction || deductionPreview === 'loading'}
+                    className="rounded bg-rose-700 px-2.5 py-1 font-medium text-white hover:bg-rose-800 disabled:opacity-60"
+                  >
+                    {savingDeduction ? '…' : 'Apply'}
+                  </button>
+                  <button
+                    onClick={() => setPendingDeduction(null)}
+                    disabled={savingDeduction}
+                    className="text-stone-400 hover:text-stone-600 disabled:opacity-50 dark:text-slate-500 dark:hover:text-slate-300"
+                  >
+                    ✕
+                  </button>
+                </>
+              )}
+              <button
+                role="switch"
+                aria-checked={displayEnabled}
+                onClick={() => setPendingDeduction(!displayEnabled)}
+                disabled={savingDeduction}
+                className={`relative shrink-0 h-6 w-11 rounded-full transition-colors focus:outline-none disabled:opacity-50 ${displayEnabled ? 'bg-purple-600 dark:bg-purple-500' : 'bg-stone-300 dark:bg-slate-600'}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${displayEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+              </button>
+            </div>
+            {savedDeduction && !pendingDeductionChanged && (
+              <p className="mt-1 text-[10px] text-stone-400 dark:text-slate-500">
+                {excludedYears.length > 0
+                  ? `Excluded: ${[...excludedYears].sort((a, b) => a - b).join(', ')}. `
+                  : 'Applied to all years. '}
+                <a href="/settings" className="underline hover:text-stone-600 dark:hover:text-slate-300">
+                  Customize years
+                </a>
+              </p>
             )}
-            <button
-              role="switch"
-              aria-checked={displayEnabled}
-              onClick={() => setPendingDeduction(!displayEnabled)}
-              disabled={savingDeduction}
-              className={`relative shrink-0 h-6 w-11 rounded-full transition-colors focus:outline-none disabled:opacity-50 ${displayEnabled ? 'bg-purple-600 dark:bg-purple-500' : 'bg-stone-300 dark:bg-slate-600'}`}
-            >
-              <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${displayEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
-            </button>
           </div>
         )
       })()}

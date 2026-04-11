@@ -466,6 +466,7 @@ def _apply_interest_deduction(enriched: list, loans_db: list, excluded_years: se
 @router.get("/preview-deduction")
 def preview_deduction(
     enabled: bool = Query(..., description="Whether to apply investment interest deduction"),
+    exclude_past: bool = Query(False, description="Auto-exclude years before the current year"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -479,6 +480,17 @@ def preview_deduction(
     db.close()
 
     excl = set(ts_row.deduction_excluded_years or [])
+    if exclude_past and not excl:
+        this_year = date.today().year
+        vest_years: set[int] = set()
+        for g in grants:
+            vs = g.get('vest_start')
+            periods = g.get('periods', 0)
+            if vs and periods:
+                start_year = vs.year if hasattr(vs, 'year') else int(str(vs)[:4])
+                for i in range(periods):
+                    vest_years.add(start_year + i)
+        excl = {y for y in vest_years if y < this_year}
     interest_deduction_total = 0.0
     tax_savings_from_deduction = 0.0
     if enabled:

@@ -586,8 +586,29 @@ def preview_exit(
         if l.loan_year <= liq_year and l.id not in settled_ids and l.id not in refinanced_ids
     )
 
-    gross = liq.get("gross_proceeds") or 0.0
+    gross_vested = liq.get("gross_proceeds") or 0.0
     tax = liq.get("estimated_tax") or 0.0
+
+    # Unvested shares sell at cost basis (grant price) — add their proceeds.
+    from dateutil.relativedelta import relativedelta
+    unvested_cost = 0.0
+    for g in grants:
+        tp = g['periods']
+        if tp <= 0:
+            continue
+        total = g['shares']
+        base = total // tp
+        rem = total % tp
+        vs = g['vest_start']
+        vested = 0
+        for p in range(tp):
+            if (vs + relativedelta(years=p)).date() <= preview_date:
+                vested += base + (1 if p < rem else 0)
+        unvested = total - vested
+        if unvested > 0 and (g['price'] or 0) > 0:
+            unvested_cost += unvested * g['price']
+
+    gross = gross_vested + unvested_cost
     net = max(0.0, gross - outstanding - tax)
     return {
         "date": preview_date.isoformat(),

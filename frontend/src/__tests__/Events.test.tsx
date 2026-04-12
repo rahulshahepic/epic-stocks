@@ -47,9 +47,9 @@ describe('Events', () => {
     mockApi()
     renderEvents()
     await waitFor(() => {
-      expect(screen.getAllByText('2021-03-01').length).toBeGreaterThan(0)
+      expect(screen.getByText('2021-03-01')).toBeInTheDocument()
     })
-    expect(screen.getAllByText('2021-06-01').length).toBeGreaterThan(0)
+    expect(screen.getByText('2021-06-01')).toBeInTheDocument()
     expect(screen.getByText(/^2 events/)).toBeInTheDocument()
   })
 
@@ -57,9 +57,9 @@ describe('Events', () => {
     mockApi()
     renderEvents()
     await waitFor(() => {
-      expect(screen.getAllByText('Vesting').length).toBeGreaterThan(0)
+      expect(screen.getByText('Vesting')).toBeInTheDocument()
     })
-    expect(screen.getAllByText('Exercise').length).toBeGreaterThan(0)
+    expect(screen.getByText('Exercise')).toBeInTheDocument()
   })
 
   it('filters by event type', async () => {
@@ -77,7 +77,7 @@ describe('Events', () => {
     await userEvent.click(vestingCheckbox)
 
     expect(screen.getByText(/^1 events/)).toBeInTheDocument()
-    expect(screen.getAllByText('2021-03-01').length).toBeGreaterThan(0)
+    expect(screen.getByText('2021-03-01')).toBeInTheDocument()
     expect(screen.queryByText('2021-06-01')).not.toBeInTheDocument()
   })
 
@@ -93,7 +93,7 @@ describe('Events', () => {
     mockApi()
     renderEvents('/?types=Vesting,Exercise')
     await waitFor(() => {
-      expect(screen.getAllByText('2021-03-01').length).toBeGreaterThan(0)
+      expect(screen.getByText('2021-03-01')).toBeInTheDocument()
     })
     // Both types selected → filter button should show count of 2 types
     expect(screen.getByRole('button', { name: /2 types/i })).toBeInTheDocument()
@@ -103,7 +103,7 @@ describe('Events', () => {
     mockApi()
     renderEvents('/?types=Vesting')
     await waitFor(() => {
-      expect(screen.getAllByText('2021-03-01').length).toBeGreaterThan(0)
+      expect(screen.getByText('2021-03-01')).toBeInTheDocument()
     })
     // Only Vesting selected — Exercise row should be hidden
     expect(screen.queryByText('2021-06-01')).not.toBeInTheDocument()

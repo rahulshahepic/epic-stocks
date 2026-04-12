@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useIsMobile } from '../hooks/useIsMobile.ts'
 import { api, ConflictError } from '../../api.ts'
 import type { GrantEntry, LoanEntry, PriceEntry, SaleEntry, TaxSettings, SaleEstimate } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
@@ -72,6 +73,7 @@ export default function Grants() {
 
   const config = useConfig()
   const epicMode = config?.epic_mode ?? false
+  const isMobile = useIsMobile()
 
   // IDs of loans that have been superseded by a refinance — never show these as the active loan
   const refinancedLoanIds = new Set((loans ?? []).map(l => l.refinances_loan_id).filter((id): id is number => id !== null))
@@ -598,7 +600,7 @@ export default function Grants() {
       )}
 
       {/* Mobile card layout */}
-      <div className="space-y-2 sm:hidden">
+      {isMobile ? <div className="space-y-2">
         {grants.map(g => {
           const loan = loans?.find(l => l.grant_year === g.year && l.grant_type === g.type && l.loan_type === 'Purchase' && !refinancedLoanIds.has(l.id))
           const linkedSale = loan ? sales?.find(s => s.loan_id === loan.id) : undefined
@@ -666,13 +668,8 @@ export default function Grants() {
             </div>
           )
         })}
-        {grants.length === 0 && (
-          <p className="px-3 py-6 text-center text-xs text-stone-600">No grants yet</p>
-        )}
-      </div>
-
-      {/* Desktop table layout */}
-      <div tabIndex={0} className="hidden overflow-x-auto rounded-lg border border-stone-200 sm:block dark:border-slate-700">
+      </div> : /* Desktop table layout */
+      <div tabIndex={0} className="overflow-x-auto rounded-lg border border-stone-200 dark:border-slate-700">
         <table className="w-full text-left text-xs">
           <thead className="bg-stone-50 dark:bg-slate-800">
             <tr className="text-gray-500 dark:text-slate-400">
@@ -754,12 +751,12 @@ export default function Grants() {
                 </>
               )
             })}
-            {grants.length === 0 && (
-              <tr><td colSpan={9} className="px-3 py-6 text-center text-stone-600">No grants yet</td></tr>
-            )}
           </tbody>
         </table>
-      </div>
+      </div>}
+      {grants.length === 0 && (
+        <p className="px-3 py-6 text-center text-xs text-stone-600">No grants yet</p>
+      )}
       <p className="text-xs text-stone-600">{grants.length} grants</p>
 
       {/* Sell Shares Modal */}

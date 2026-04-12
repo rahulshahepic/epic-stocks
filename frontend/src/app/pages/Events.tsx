@@ -4,6 +4,7 @@ import { api } from '../../api.ts'
 import type { TimelineEvent, TaxBreakdown, TaxSettings } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { useDataSync } from '../hooks/useDataSync.ts'
+import { useIsMobile } from '../hooks/useIsMobile.ts'
 import { TaxCard } from './Sales.tsx'
 import React from 'react'
 
@@ -262,8 +263,8 @@ export default function Events() {
   )
   const highlightDate = searchParams.get('date') ?? null
   const [highlightedRows, setHighlightedRows] = useState<Set<number>>(new Set())
+  const isMobile = useIsMobile()
   const highlightRefs = useRef<Map<number, HTMLElement>>(new Map())
-  const mobileHighlightRefs = useRef<Map<number, HTMLElement>>(new Map())
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false)
   const typeDropdownRef = useRef<HTMLDivElement>(null)
 
@@ -294,9 +295,7 @@ export default function Events() {
     // Scroll to first matching row after render
     const firstIdx = Math.min(...matchingIndices)
     requestAnimationFrame(() => {
-      const mobileEl = mobileHighlightRefs.current.get(firstIdx)
-      const desktopEl = highlightRefs.current.get(firstIdx)
-      const el = (mobileEl && mobileEl.offsetParent !== null) ? mobileEl : desktopEl
+      const el = highlightRefs.current.get(firstIdx)
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
     })
     // Remove highlight after 2 seconds
@@ -409,7 +408,7 @@ export default function Events() {
       </div>
 
       {/* Mobile card layout */}
-      <div className="space-y-2 sm:hidden">
+      {isMobile ? <div className="space-y-2">
         {filtered.map((e, i) => {
           const saleId = e.sale_id ?? null
           const bd = saleId != null ? breakdowns.get(saleId) : undefined
@@ -469,7 +468,7 @@ export default function Events() {
           return (
             <React.Fragment key={i}>
               <div
-                ref={(el) => { if (el) mobileHighlightRefs.current.set(i, el); else mobileHighlightRefs.current.delete(i) }}
+                ref={(el) => { if (el) highlightRefs.current.set(i, el); else highlightRefs.current.delete(i) }}
                 className={[
                   'rounded-lg border border-stone-200 p-3 text-xs dark:border-slate-700',
                   e.is_projected ? 'bg-stone-50 opacity-75 dark:bg-slate-900/50' : isPastHorizon ? 'bg-white opacity-40 dark:bg-slate-900' : e.event_type === 'Refinanced' ? 'bg-white opacity-50 dark:bg-slate-900' : 'bg-white dark:bg-slate-900',
@@ -497,6 +496,17 @@ export default function Events() {
                     </span>
                   )}
                 </div>
+                {/* Collapsed: tax indicator for quick reference */}
+                {!isMobileExpanded && hasVestingTax && (
+                  <div className="mt-0.5 text-right">
+                    <span className="text-[10px] text-orange-700 dark:text-orange-300">Tax {fmt$(estTaxForVesting(e, ts))}</span>
+                  </div>
+                )}
+                {!isMobileExpanded && is83b && (
+                  <div className="mt-0.5 text-right">
+                    <span className="text-[10px] text-violet-700 dark:text-violet-300">Tax ~{fmt$(est83bTax(e, ts))}</span>
+                  </div>
+                )}
                 {/* Expanded secondary fields */}
                 {isMobileExpanded && (
                   <div className="mt-2 space-y-1 border-t border-stone-100 pt-2 dark:border-slate-700">
@@ -546,10 +556,8 @@ export default function Events() {
             </React.Fragment>
           )
         })}
-      </div>
-
-      {/* Desktop table layout */}
-      <div tabIndex={0} className="hidden overflow-x-auto rounded-lg border border-stone-200 sm:block dark:border-slate-700">
+      </div> : /* Desktop table layout */
+      <div tabIndex={0} className="overflow-x-auto rounded-lg border border-stone-200 dark:border-slate-700">
         <table className="w-full text-left text-xs">
           <thead className="bg-stone-50 dark:bg-slate-800">
             <tr className="text-gray-500 dark:text-slate-400">
@@ -736,7 +744,7 @@ export default function Events() {
             })}
           </tbody>
         </table>
-      </div>
+      </div>}
       <p className="text-xs text-stone-600">{filtered.length} events &nbsp;·&nbsp; * price appreciation is unrealized — not a taxable event</p>
     </div>
   )

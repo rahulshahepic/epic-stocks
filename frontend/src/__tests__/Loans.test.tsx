@@ -66,8 +66,8 @@ describe('Loans', () => {
     await waitFor(() => {
       expect(screen.getByText('2 loans')).toBeInTheDocument()
     })
-    expect(screen.getAllByText('Interest').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Tax').length).toBeGreaterThan(0)
+    expect(screen.getByText('Interest')).toBeInTheDocument()
+    expect(screen.getByText('Tax')).toBeInTheDocument()
     // L-001 is now in the drill-in card, not the main table
     expect(screen.queryByText('L-001')).not.toBeInTheDocument()
   })
@@ -76,16 +76,13 @@ describe('Loans', () => {
     mockApi()
     renderLoans()
     await waitFor(() => {
-      // Mobile card button has arrow suffix, desktop button is plain text
-      expect(screen.getAllByText(/✓ linked/).length).toBeGreaterThan(0)
+      expect(screen.getByText('✓ linked')).toBeInTheDocument()
     })
-    // Click the desktop button (exact match without arrow)
-    const linkedButtons = screen.getAllByText(/✓ linked/)
-    await userEvent.click(linkedButtons[0])
-    expect(screen.getAllByText('L-001').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('2025-06-01').length).toBeGreaterThan(0)
+    await userEvent.click(screen.getByText('✓ linked'))
+    expect(screen.getByText('L-001')).toBeInTheDocument()
+    expect(screen.getByText('2025-06-01')).toBeInTheDocument()
     // clicking again collapses
-    await userEvent.click(screen.getAllByText(/✓ linked/)[0])
+    await userEvent.click(screen.getByText('✓ linked'))
     expect(screen.queryByText('L-001')).not.toBeInTheDocument()
   })
 
@@ -104,7 +101,7 @@ describe('Loans', () => {
     mockApi()
     renderLoans()
     await waitFor(() => {
-      expect(screen.getAllByText('Edit')).toHaveLength(4) // 2 loans × 2 views (mobile + desktop)
+      expect(screen.getAllByText('Edit')).toHaveLength(2)
     })
     await userEvent.click(screen.getAllByText('Edit')[0])
     expect(screen.getByText('Edit Loan')).toBeInTheDocument()

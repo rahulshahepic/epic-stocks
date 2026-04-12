@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { useIsMobile } from '../hooks/useIsMobile.ts'
 import { api, ConflictError } from '../../api.ts'
 import type { LoanEntry, LoanPayoffSuggestion, SaleEntry, TaxSettings } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
@@ -81,6 +82,7 @@ export default function Loans() {
 
   const config = useConfig()
   const epicMode = !!config?.epic_mode
+  const isMobile = useIsMobile()
 
   useDataSync('loans', reload)
   useDataSync('sales', reloadSales)
@@ -405,7 +407,7 @@ export default function Loans() {
       </div>
 
       {/* Mobile card layout */}
-      <div className="space-y-2 sm:hidden">
+      {isMobile ? <div className="space-y-2">
         {loans.map(l => {
           const linkedSale = sales?.find(s => s.loan_id === l.id)
           const hasSale = !!linkedSale
@@ -429,7 +431,7 @@ export default function Loans() {
                   )}
                 </div>
                 {epicMode
-                  ? <button onClick={() => openPayoffModal(l)} className="text-xs font-medium text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Payoff</button>
+                  ? <button onClick={() => openPayoffModal(l)} className="text-xs font-medium text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Request Payoff</button>
                   : <button onClick={() => openEdit(l)} className="text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Edit</button>
                 }
               </div>
@@ -469,13 +471,8 @@ export default function Loans() {
             </div>
           )
         })}
-        {loans.length === 0 && (
-          <p className="px-3 py-6 text-center text-xs text-stone-600">No loans yet</p>
-        )}
-      </div>
-
-      {/* Desktop table layout */}
-      <div tabIndex={0} className="hidden overflow-x-auto rounded-lg border border-stone-200 sm:block dark:border-slate-700">
+      </div> : /* Desktop table layout */
+      <div tabIndex={0} className="overflow-x-auto rounded-lg border border-stone-200 dark:border-slate-700">
         <table className="w-full text-left text-xs">
           <thead className="bg-stone-50 dark:bg-slate-800">
             <tr className="text-gray-500 dark:text-slate-400">
@@ -559,12 +556,12 @@ export default function Loans() {
                 </>
               )
             })}
-            {loans.length === 0 && (
-              <tr><td colSpan={7} className="px-3 py-6 text-center text-stone-600">No loans yet</td></tr>
-            )}
           </tbody>
         </table>
-      </div>
+      </div>}
+      {loans.length === 0 && (
+        <p className="px-3 py-6 text-center text-xs text-stone-600">No loans yet</p>
+      )}
       <p className="text-xs text-stone-600">{loans.length} loans</p>
 
       {payoffModal && (

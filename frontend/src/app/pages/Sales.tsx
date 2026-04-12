@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useIsMobile } from '../hooks/useIsMobile.ts'
 import { api, ConflictError } from '../../api.ts'
 import type { PriceEntry, SaleEntry, SaleEstimate, TaxBreakdown, TaxSettings, TrancheLine, TrancheAllocation } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
@@ -357,6 +358,7 @@ function RateField({ label, value, onChange }: { label: string; value: number; o
 export default function Sales() {
   const config = useConfig()
   const epicMode = !!config?.epic_mode
+  const isMobile = useIsMobile()
   const fetchSales = useCallback(() => api.getSales(), [])
   const { data: sales, loading, reload } = useApiData<SaleEntry[]>(fetchSales)
   const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
@@ -792,7 +794,7 @@ export default function Sales() {
       </div>
 
       {/* Mobile card layout */}
-      <div className="space-y-2 sm:hidden">
+      {isMobile ? <div className="space-y-2">
         {sales.map(s => {
           const bd = breakdowns.get(s.id)
           const isExpanded = expanded.has(s.id)
@@ -854,13 +856,8 @@ export default function Sales() {
             </div>
           )
         })}
-        {sales.length === 0 && (
-          <p className="px-3 py-6 text-center text-xs text-stone-600">No sales recorded yet</p>
-        )}
-      </div>
-
-      {/* Desktop table layout */}
-      <div tabIndex={0} className="hidden overflow-x-auto rounded-lg border border-stone-200 sm:block dark:border-slate-700">
+      </div> : /* Desktop table layout */
+      <div tabIndex={0} className="overflow-x-auto rounded-lg border border-stone-200 dark:border-slate-700">
         <table className="w-full text-left text-xs">
           <thead className="bg-stone-50 dark:bg-slate-800">
             <tr className="text-gray-500 dark:text-slate-400">
@@ -947,12 +944,12 @@ export default function Sales() {
                 </>
               )
             })}
-            {sales.length === 0 && (
-              <tr><td colSpan={7} className="px-3 py-6 text-center text-stone-600">No sales recorded yet</td></tr>
-            )}
           </tbody>
         </table>
-      </div>
+      </div>}
+      {sales.length === 0 && (
+        <p className="px-3 py-6 text-center text-xs text-stone-600">No sales recorded yet</p>
+      )}
       <p className="text-xs text-stone-600">{sales.length} sales</p>
     </div>
   )

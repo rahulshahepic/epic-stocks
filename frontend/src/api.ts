@@ -146,6 +146,7 @@ export interface ExitSummary {
   income_tax: number
   deduction_savings: number
   deduction_years: number[]
+  deduction_excluded_years: number[]
   net_cash: number
 }
 

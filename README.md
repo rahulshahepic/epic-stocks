@@ -55,6 +55,18 @@ Card-based layout: Setup Wizard (rose/recommended), Import from Excel (with opti
 
 Settings → Tax Rates includes lot selection method, loan payoff method, and all rate fields. The **investment interest deduction** toggle lives on the Dashboard for quick access (see [Investment Interest Deduction](#investment-interest-deduction) below).
 
+### Sharing (Email Invitations)
+
+| Sharing Settings Light | Sharing Settings Dark |
+|-------|------|
+| ![Sharing Light](screenshots/settings-sharing-light-mobile.png) | ![Sharing Dark](screenshots/settings-sharing-dark-mobile.png) |
+
+| Invite Landing |
+|-------|
+| ![Invite Landing](screenshots/invite-landing-light-mobile.png) |
+
+Invite others by email to view your data read-only. The Settings page shows sent/received invitations, and an invite code entry field. The invite landing page guides recipients through sign-in (any provider — doesn't need to match the invitation email). An account switcher in the header lets you switch between your data and accounts shared with you.
+
 ### Epic Mode (Read-Only Grants & Loans)
 
 | Grants Light | Grants Dark |

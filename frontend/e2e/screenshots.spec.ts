@@ -210,24 +210,23 @@ test.describe('Screenshots', () => {
 
   test('settings sharing section - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
-    // Create a pending invitation so the sharing section has content
-    await page.request.post(`${BASE}/api/sharing/invite`, { data: { email: 'advisor@example.com' } })
     await page.click('text=Settings')
     await page.waitForLoadState('networkidle')
-    await page.waitForTimeout(500)
-    // Scroll to the Sharing section
-    const sharingSection = page.locator('text=People I\u2019ve shared with')
-    if (await sharingSection.isVisible()) {
-      await sharingSection.scrollIntoViewIfNeeded()
-      await page.waitForTimeout(300)
-    }
+    await page.waitForTimeout(800)
     await page.screenshot({ path: `${OUT}/settings-sharing-light-mobile.png`, fullPage: true })
+  })
+
+  test('settings sharing section - dark - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'dark')
+    await page.click('text=Settings')
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(800)
+    await page.screenshot({ path: `${OUT}/settings-sharing-dark-mobile.png`, fullPage: true })
   })
 
   test('invite landing page - light - mobile', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'light' })
     await page.setViewportSize(MOBILE)
-    // Visit the invite page with an invalid token — shows the error state
     await page.goto(`${BASE}/invite?code=XXXX-YYYY`)
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(800)

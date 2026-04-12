@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
-from scaffold.models import User, Grant, Loan, Price, Sale, LoanPayment, ImportBackup
+from scaffold.models import User, Grant, Loan, Price, Sale, LoanPayment, ImportBackup, TaxSettings
 from scaffold.auth import get_current_user
 from app.excel_io import (read_grants_from_excel, read_prices_from_excel, read_loans_from_excel,
                       read_loan_payments_from_excel, read_sales_from_excel, write_events_to_excel)
@@ -1023,4 +1023,292 @@ def export_excel(
         io.BytesIO(content),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=Vesting.xlsx"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Holdings report — nicely formatted Excel for financial/estate planners
+# ---------------------------------------------------------------------------
+
+_TITLE_FONT = Font(name="Arial", size=14, bold=True)
+_SUBTITLE_FONT = Font(name="Arial", size=10, italic=True, color="FF666666")
+_SECTION_FONT = Font(name="Arial", size=11, bold=True)
+_SECTION_FILL = PatternFill("solid", fgColor="FFE2E0F0")
+_REPORT_HEADER_FILL = PatternFill("solid", fgColor="FF4472C4")
+_REPORT_HEADER_FONT = Font(name="Arial", size=10, bold=True, color="FFFFFFFF")
+
+
+def _report_header(ws, row, headers):
+    for i, h in enumerate(headers, 1):
+        c = ws.cell(row=row, column=i, value=h)
+        c.fill = _REPORT_HEADER_FILL
+        c.font = _REPORT_HEADER_FONT
+
+
+def _report_cell(ws, row, col, val, fmt=None):
+    c = ws.cell(row=row, column=col, value=val)
+    c.font = _BODY_FONT
+    c.fill = _ALT_FILL if row % 2 == 0 else _WHITE_FILL
+    if fmt:
+        c.number_format = fmt
+    return c
+
+
+@router.get("/export/holdings-report")
+def export_holdings_report(
+    as_of: str = Query(..., description="Date in YYYY-MM-DD format"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Generate a formatted holdings report Excel for a given date."""
+    from dateutil.relativedelta import relativedelta
+    from openpyxl.utils import get_column_letter
+    from openpyxl.styles import Alignment, Border, Side
+
+    try:
+        as_of_date = _to_date(as_of)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid date format, use YYYY-MM-DD")
+
+    as_of_year = as_of_date.year
+
+    grants_db = db.query(Grant).filter(Grant.user_id == user.id).order_by(Grant.year).all()
+    loans_db = db.query(Loan).filter(Loan.user_id == user.id).order_by(Loan.due_date).all()
+    prices_db = db.query(Price).filter(Price.user_id == user.id).order_by(Price.effective_date).all()
+    sales_db = db.query(Sale).filter(Sale.user_id == user.id).order_by(Sale.date).all()
+    payments_db = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).all()
+    ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
+
+    income_rate = (ts_row.federal_income_rate + ts_row.state_income_rate) if ts_row else 0
+
+    # Build timeline for income/cap gains
+    grants_dicts = [{
+        "year": g.year, "type": g.type, "shares": g.shares, "price": g.price,
+        "vest_start": datetime.combine(g.vest_start, datetime.min.time()),
+        "periods": g.periods,
+        "exercise_date": datetime.combine(g.exercise_date, datetime.min.time()),
+        "dp_shares": g.dp_shares or 0,
+    } for g in grants_db]
+    prices_dicts = [{"date": datetime.combine(p.effective_date, datetime.min.time()), "price": p.price} for p in prices_db]
+    loans_dicts = [{
+        "grant_yr": ln.grant_year, "grant_type": ln.grant_type,
+        "loan_type": ln.loan_type, "loan_year": ln.loan_year,
+        "amount": ln.amount, "interest_rate": ln.interest_rate,
+        "due": datetime.combine(ln.due_date, datetime.min.time()),
+        "loan_number": ln.loan_number,
+    } for ln in loans_db]
+
+    initial_price = prices_dicts[0]["price"] if prices_dicts else 0
+    timeline = get_timeline(user.id, grants_dicts, prices_dicts, loans_dicts, initial_price) if grants_dicts else []
+
+    # Current share price as of date
+    current_price = 0.0
+    as_of_str = as_of_date.isoformat()
+    for ev in timeline:
+        ev_date = ev["date"]
+        if isinstance(ev_date, datetime):
+            ev_date = ev_date.date()
+        if ev_date <= as_of_date:
+            current_price = ev.get("share_price", current_price)
+
+    # Settled / refinanced loan IDs
+    settled_ids = set()
+    for s in sales_db:
+        if s.loan_id and s.date <= as_of_date:
+            settled_ids.add(s.loan_id)
+    refinanced_ids = {ln.refinances_loan_id for ln in loans_db if ln.refinances_loan_id}
+
+    early_paid = {}
+    for lp in payments_db:
+        if lp.date <= as_of_date:
+            early_paid[lp.loan_id] = early_paid.get(lp.loan_id, 0) + lp.amount
+
+    thin_border = Border(
+        bottom=Side(style="thin", color="FFD0D0D0"),
+    )
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Holdings Report"
+
+    # --- Title block ---
+    ws.cell(row=1, column=1, value="Equity Holdings Report").font = _TITLE_FONT
+    ws.cell(row=2, column=1, value=f"As of {as_of_date.strftime('%B %d, %Y')}").font = _SUBTITLE_FONT
+    ws.cell(row=3, column=1,
+            value=f"Generated {datetime.now().strftime('%B %d, %Y at %I:%M %p')}. "
+                  "This report is for informational purposes. Consult your tax advisor before making financial decisions."
+            ).font = Font(name="Arial", size=9, italic=True, color="FF999999")
+    ws.cell(row=4, column=1, value=f"Share Price: {current_price:.2f}").font = Font(name="Arial", size=10, bold=True)
+
+    # --- SECTION 1: Holdings by Grant ---
+    row = 6
+    ws.cell(row=row, column=1, value="HOLDINGS BY GRANT").font = _SECTION_FONT
+    for col in range(1, 9):
+        ws.cell(row=row, column=col).fill = _SECTION_FILL
+    row += 1
+
+    holdings_headers = ["Grant", "Exercise Date", "Cost Basis/Share", "Vested Shares",
+                        "Unvested Shares", "Vested Value", "Est. Taxes Paid", "Outstanding Loans"]
+    _report_header(ws, row, holdings_headers)
+    row += 1
+
+    totals = {"vested": 0, "unvested": 0, "value": 0.0, "tax": 0.0, "loan": 0.0}
+
+    for g in grants_db:
+        # Compute vested from schedule
+        vested = 0
+        if g.periods > 0:
+            base = g.shares // g.periods
+            rem = g.shares % g.periods
+            for p in range(g.periods):
+                vd = (datetime.combine(g.vest_start, datetime.min.time()) + relativedelta(years=p)).date()
+                if vd <= as_of_date:
+                    vested += base + (1 if p < rem else 0)
+        unvested = g.shares - vested
+        vested_value = vested * current_price
+
+        # Outstanding loans for this grant
+        grant_loans = [ln for ln in loans_db
+                       if ln.grant_year == g.year and ln.grant_type == g.type
+                       and ln.loan_year <= as_of_year
+                       and ln.id not in settled_ids and ln.id not in refinanced_ids]
+        total_loan = sum(max(0, ln.amount - early_paid.get(ln.id, 0)) for ln in grant_loans)
+
+        # Taxes: tax loans + income tax on vesting
+        tax_loans = sum(ln.amount for ln in loans_db
+                        if ln.loan_type == "Tax" and ln.grant_year == g.year
+                        and ln.grant_type == g.type and ln.loan_year <= as_of_year)
+        vesting_income_tax = 0.0
+        for ev in timeline:
+            ev_date = ev["date"]
+            if isinstance(ev_date, datetime):
+                ev_date = ev_date.date()
+            if ev_date > as_of_date:
+                break
+            if (ev.get("grant_year") == g.year and ev.get("grant_type") == g.type
+                    and ev.get("income", 0) > 0 and ev.get("event_type") == "Vesting"
+                    and not ev.get("election_83b")):
+                vesting_income_tax += ev["income"] * income_rate
+        total_tax = tax_loans + vesting_income_tax
+
+        _report_cell(ws, row, 1, f"{g.year} {g.type}")
+        _report_cell(ws, row, 2, g.exercise_date, "mm/dd/yyyy")
+        _report_cell(ws, row, 3, g.price, "\\$#,##0.00")
+        _report_cell(ws, row, 4, vested, "#,##0")
+        _report_cell(ws, row, 5, unvested, "#,##0")
+        _report_cell(ws, row, 6, round(vested_value, 2), "\\$#,##0")
+        _report_cell(ws, row, 7, round(total_tax, 2), "\\$#,##0")
+        _report_cell(ws, row, 8, round(total_loan, 2), "\\$#,##0")
+
+        totals["vested"] += vested
+        totals["unvested"] += unvested
+        totals["value"] += vested_value
+        totals["tax"] += total_tax
+        totals["loan"] += total_loan
+        row += 1
+
+    # Totals row
+    for col in range(1, 9):
+        ws.cell(row=row, column=col).border = Border(top=Side(style="thin", color="FF4472C4"))
+    ws.cell(row=row, column=1, value="TOTAL").font = Font(name="Arial", size=10, bold=True)
+    ws.cell(row=row, column=4, value=totals["vested"]).font = Font(name="Arial", size=10, bold=True)
+    ws.cell(row=row, column=4).number_format = "#,##0"
+    ws.cell(row=row, column=5, value=totals["unvested"]).font = Font(name="Arial", size=10, bold=True)
+    ws.cell(row=row, column=5).number_format = "#,##0"
+    ws.cell(row=row, column=6, value=round(totals["value"], 2)).font = Font(name="Arial", size=10, bold=True)
+    ws.cell(row=row, column=6).number_format = "\\$#,##0"
+    ws.cell(row=row, column=7, value=round(totals["tax"], 2)).font = Font(name="Arial", size=10, bold=True)
+    ws.cell(row=row, column=7).number_format = "\\$#,##0"
+    ws.cell(row=row, column=8, value=round(totals["loan"], 2)).font = Font(name="Arial", size=10, bold=True)
+    ws.cell(row=row, column=8).number_format = "\\$#,##0"
+    row += 2
+
+    # --- SECTION 2: Active Loans ---
+    ws.cell(row=row, column=1, value="ACTIVE LOANS").font = _SECTION_FONT
+    for col in range(1, 7):
+        ws.cell(row=row, column=col).fill = _SECTION_FILL
+    row += 1
+
+    loan_headers = ["Grant", "Loan Type", "Start Year", "Due Date", "Balance", "Interest Rate"]
+    _report_header(ws, row, loan_headers)
+    row += 1
+
+    total_balance = 0.0
+    active_loans = [ln for ln in loans_db
+                    if ln.loan_year <= as_of_year
+                    and ln.id not in settled_ids
+                    and ln.id not in refinanced_ids]
+    for ln in active_loans:
+        balance = max(0, ln.amount - early_paid.get(ln.id, 0))
+        if balance <= 0:
+            continue
+        _report_cell(ws, row, 1, f"{ln.grant_year} {ln.grant_type}")
+        _report_cell(ws, row, 2, ln.loan_type)
+        _report_cell(ws, row, 3, ln.loan_year)
+        _report_cell(ws, row, 4, ln.due_date, "mm/dd/yyyy")
+        _report_cell(ws, row, 5, round(balance, 2), "\\$#,##0.00")
+        _report_cell(ws, row, 6, ln.interest_rate, "0.00%")
+        total_balance += balance
+        row += 1
+
+    # Loans total
+    for col in range(1, 7):
+        ws.cell(row=row, column=col).border = Border(top=Side(style="thin", color="FF4472C4"))
+    ws.cell(row=row, column=1, value="TOTAL").font = Font(name="Arial", size=10, bold=True)
+    ws.cell(row=row, column=5, value=round(total_balance, 2)).font = Font(name="Arial", size=10, bold=True)
+    ws.cell(row=row, column=5).number_format = "\\$#,##0.00"
+    row += 2
+
+    # --- SECTION 3: Summary ---
+    ws.cell(row=row, column=1, value="SUMMARY").font = _SECTION_FONT
+    for col in range(1, 4):
+        ws.cell(row=row, column=col).fill = _SECTION_FILL
+    row += 1
+
+    # Compute summary from timeline
+    cum_income = 0.0
+    cum_cap_gains = 0.0
+    for ev in timeline:
+        ev_date = ev["date"]
+        if isinstance(ev_date, datetime):
+            ev_date = ev_date.date()
+        if ev_date > as_of_date:
+            break
+        cum_income = ev.get("cum_income", cum_income)
+        cum_cap_gains = ev.get("cum_cap_gains", cum_cap_gains)
+
+    summary_items = [
+        ("Share Price", current_price, "\\$#,##0.00"),
+        ("Total Vested Shares", totals["vested"], "#,##0"),
+        ("Total Unvested Shares", totals["unvested"], "#,##0"),
+        ("Total Vested Value", round(totals["value"], 2), "\\$#,##0"),
+        ("Cumulative W-2 Income", round(cum_income, 2), "\\$#,##0"),
+        ("Cumulative Capital Gains", round(cum_cap_gains, 2), "\\$#,##0"),
+        ("Total Estimated Taxes Paid", round(totals["tax"], 2), "\\$#,##0"),
+        ("Total Outstanding Loans", round(total_balance, 2), "\\$#,##0"),
+    ]
+    for label, val, fmt in summary_items:
+        ws.cell(row=row, column=1, value=label).font = _BODY_FONT
+        c = ws.cell(row=row, column=2, value=val)
+        c.font = Font(name="Arial", size=10, bold=True)
+        c.number_format = fmt
+        row += 1
+
+    # --- Column widths ---
+    col_widths = [22, 16, 16, 16, 16, 16, 18, 18]
+    for i, w in enumerate(col_widths, 1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+
+    # Freeze title rows
+    ws.freeze_panes = "A6"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    content = buf.getvalue()
+
+    filename = f"Holdings_Report_{as_of}.xlsx"
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )

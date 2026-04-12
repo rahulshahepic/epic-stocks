@@ -30,6 +30,8 @@ class TestInviteCRUD:
         assert data["invitee_email"] == "bob@test.com"
         assert data["status"] == "pending"
         assert len(data["short_code"].replace("-", "")) == 8
+        # email_sent is False in test env (no email provider configured)
+        assert data["email_sent"] is False
 
     def test_cannot_invite_self(self, client):
         register_user(client, "alice@test.com")

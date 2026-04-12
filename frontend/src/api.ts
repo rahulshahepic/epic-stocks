@@ -772,6 +772,7 @@ export interface InvitationEntry {
   last_viewed_at: string | null
   invitee_account_email: string | null
   invitee_name: string | null
+  email_sent?: boolean
 }
 
 export interface AcceptInviteResult {

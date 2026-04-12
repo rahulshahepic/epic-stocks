@@ -769,9 +769,13 @@ function SharingSection() {
     if (!inviteEmail.trim()) return
     setSending(true); setError(''); setSuccess('')
     try {
-      await api.sendInvite(inviteEmail.trim())
+      const result = await api.sendInvite(inviteEmail.trim())
       setInviteEmail('')
-      setSuccess('Invitation sent!')
+      if (result.email_sent) {
+        setSuccess('Invitation sent! They\'ll receive an email with a link and code.')
+      } else {
+        setSuccess(`Email could not be sent. Share this code with them instead: ${result.short_code}`)
+      }
       loadSent()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send invitation')
@@ -866,8 +870,13 @@ function SharingSection() {
                     <span className="ml-1 text-stone-500 dark:text-slate-400">(signed in as {inv.invitee_account_email})</span>
                   )}
                   {inv.invitee_name && <span className="ml-1 text-stone-500 dark:text-slate-400">— {inv.invitee_name}</span>}
-                  <div className="mt-0.5 flex items-center gap-2">
+                  <div className="mt-0.5 flex flex-wrap items-center gap-2">
                     {statusBadge(inv.status)}
+                    {inv.status === 'pending' && (
+                      <span className="font-mono text-stone-500 dark:text-slate-400" title="Share this code manually if they didn't get the email">
+                        code: {inv.short_code}
+                      </span>
+                    )}
                     {inv.last_viewed_at && (
                       <span className="text-stone-400 dark:text-slate-500">
                         last viewed {new Date(inv.last_viewed_at).toLocaleDateString()}

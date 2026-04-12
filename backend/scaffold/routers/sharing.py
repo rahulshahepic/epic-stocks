@@ -131,10 +131,11 @@ def send_invite(
     db.commit()
     db.refresh(inv)
 
-    _send_invitation_email(inv, user)
-    _notify_inviter_status(user, inv, "sent")
+    email_sent = _send_invitation_email(inv, user)
 
-    return _serialize_invitation(inv, db)
+    result = _serialize_invitation(inv, db)
+    result["email_sent"] = email_sent
+    return result
 
 
 @router.get("/sent")
@@ -169,8 +170,10 @@ def resend_invite(
     inv.last_sent_at = now
     db.commit()
 
-    _send_invitation_email(inv, user)
-    return _serialize_invitation(inv, db)
+    email_sent = _send_invitation_email(inv, user)
+    result = _serialize_invitation(inv, db)
+    result["email_sent"] = email_sent
+    return result
 
 
 @router.delete("/invite/{invitation_id}", status_code=204)
@@ -513,21 +516,22 @@ def _serialize_invitation(inv: Invitation, db: Session) -> dict:
     }
 
 
-def _send_invitation_email(inv: Invitation, inviter: User):
-    """Send the invitation email (best-effort)."""
+def _send_invitation_email(inv: Invitation, inviter: User) -> bool:
+    """Send the invitation email (best-effort). Returns True if sent."""
     try:
         from scaffold.email_sender import send_email, email_configured, build_invitation_email
         if not email_configured():
             logger.info("Email not configured, skipping invitation email")
-            return
+            return False
         subject, text, html = build_invitation_email(
             inviter_name=inviter.name or inviter.email,
             token=inv.token,
             short_code=_format_short_code(inv.short_code),
         )
-        send_email(inv.invitee_email, subject, text, html)
+        return send_email(inv.invitee_email, subject, text, html)
     except Exception:
         logger.exception("Failed to send invitation email to %s", inv.invitee_email)
+        return False
 
 
 def _notify_inviter_accepted(inv: Invitation, db: Session):

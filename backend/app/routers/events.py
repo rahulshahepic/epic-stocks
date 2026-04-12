@@ -580,11 +580,28 @@ def preview_exit(
     for lp in loan_payments:
         if lp.date <= preview_date:
             early_paid[lp.loan_id] = early_paid.get(lp.loan_id, 0.0) + lp.amount
-    outstanding = sum(
-        max(0.0, l.amount - early_paid.get(l.id, 0.0))
-        for l in loans_db
-        if l.loan_year <= liq_year and l.id not in settled_ids and l.id not in refinanced_ids
-    )
+
+    # Pro-rate Purchase/Interest loans by vested fraction — at exit, unvested
+    # shares are forfeited and their loan portions forgiven.
+    from dateutil.relativedelta import relativedelta
+    vested_frac: dict[tuple, float] = {}
+    for g in grants:
+        tp = g['periods']
+        if tp <= 0:
+            vested_frac[(g['year'], g['type'])] = 1.0
+            continue
+        vs = g['vest_start']
+        n = sum(1 for p in range(tp) if (vs + relativedelta(years=p)).date() <= preview_date)
+        vested_frac[(g['year'], g['type'])] = n / tp
+
+    outstanding = 0.0
+    for l in loans_db:
+        if l.loan_year > liq_year or l.id in settled_ids or l.id in refinanced_ids:
+            continue
+        base = max(0.0, l.amount - early_paid.get(l.id, 0.0))
+        if l.loan_type in ('Purchase', 'Interest'):
+            base *= vested_frac.get((l.grant_year, l.grant_type), 1.0)
+        outstanding += base
 
     gross = liq.get("gross_proceeds") or 0.0
     tax = liq.get("estimated_tax") or 0.0

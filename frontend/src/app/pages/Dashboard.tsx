@@ -4,7 +4,7 @@ import {
   XAxis, YAxis, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts'
 import { api } from '../../api.ts'
-import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, TaxSettings, SaleEntry, HorizonSettings, ExitPreview, DeductionPreview } from '../../api.ts'
+import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, GrantEntry, TaxSettings, SaleEntry, HorizonSettings, ExitPreview, DeductionPreview } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { useDark } from '../../scaffold/hooks/useDark.ts'
 import ImportWizard from '../components/ImportWizard.tsx'
@@ -758,6 +758,7 @@ export default function Dashboard() {
   const fetchEvents = useCallback(() => api.getEvents(), [])
   const fetchPrices = useCallback(() => api.getPrices(), [])
   const fetchLoans = useCallback(() => api.getLoans(), [])
+  const fetchGrants = useCallback(() => api.getGrants(), [])
   const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
   const fetchSales = useCallback(() => api.getSales(), [])
   const fetchHorizon = useCallback(() => api.getHorizonSettings(), [])
@@ -766,6 +767,7 @@ export default function Dashboard() {
   const { data: events, reload: reloadEvents } = useApiData<TimelineEvent[]>(fetchEvents)
   const { data: prices } = useApiData<PriceEntry[]>(fetchPrices)
   const { data: loans } = useApiData<LoanEntry[]>(fetchLoans)
+  const { data: grantsData } = useApiData<GrantEntry[]>(fetchGrants)
   const { data: taxSettings, reload: reloadTaxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
   const { data: sales } = useApiData<SaleEntry[]>(fetchSales)
   const { data: horizonSettings, reload: reloadHorizon } = useApiData<HorizonSettings>(fetchHorizon)
@@ -960,7 +962,9 @@ export default function Dashboard() {
           )
           .reduce((sum, e) => sum + e.income * incomeRate, 0)
 
-    // Outstanding loan principal just before (or at) the liq date, ignoring the virtual liq sale
+    // Outstanding loan principal just before (or at) the liq date, ignoring the virtual liq sale.
+    // Purchase/Interest loans are pro-rated by vested fraction — at exit, unvested
+    // shares are forfeited and their loan portions forgiven.
     const outstandingPrincipal = (() => {
       const refDate = effectiveDate
       const refYear = parseInt(refDate.slice(0, 4), 10)
@@ -971,9 +975,31 @@ export default function Dashboard() {
       const earlyPaidByLoan = new Map<number, number>()
       events.filter(e => e.event_type === 'Early Loan Payment' && e.date <= refDate && e.loan_id != null)
         .forEach(e => { earlyPaidByLoan.set(e.loan_id!, (earlyPaidByLoan.get(e.loan_id!) ?? 0) + (e.amount ?? 0)) })
+      // Compute vested fraction per grant for pro-rating
+      const vestedFrac = new Map<string, number>()
+      if (grantsData) {
+        for (const g of grantsData) {
+          const key = `${g.year}|${g.type}`
+          if (g.periods <= 0) { vestedFrac.set(key, 1.0); continue }
+          const vs = new Date(g.vest_start + 'T00:00:00')
+          let n = 0
+          for (let p = 0; p < g.periods; p++) {
+            const vestDate = new Date(vs)
+            vestDate.setFullYear(vestDate.getFullYear() + p)
+            if (vestDate.toISOString().slice(0, 10) <= refDate) n++
+          }
+          vestedFrac.set(key, n / g.periods)
+        }
+      }
       return loans
         .filter(l => l.loan_year <= refYear && !settledIds.has(l.id) && !refinancedIds.has(l.id))
-        .reduce((sum, l) => sum + Math.max(0, l.amount - (earlyPaidByLoan.get(l.id) ?? 0)), 0)
+        .reduce((sum, l) => {
+          let base = Math.max(0, l.amount - (earlyPaidByLoan.get(l.id) ?? 0))
+          if (l.loan_type === 'Purchase' || l.loan_type === 'Interest') {
+            base *= vestedFrac.get(`${l.grant_year}|${l.grant_type}`) ?? 1.0
+          }
+          return sum + base
+        }, 0)
     })()
 
     // Map sale_id -> estimated_tax from timeline events so we can subtract it below
@@ -1060,7 +1086,7 @@ export default function Dashboard() {
       interest_deduction_total: interestDeductionTotal,
       next_event: nextEvent,
     }
-  }, [events, loans, sales, taxSettings, dash, cardDate, projectedLiqDate, projectedLiqEvent, ignoringExitDate])
+  }, [events, loans, grantsData, sales, taxSettings, dash, cardDate, projectedLiqDate, projectedLiqEvent, ignoringExitDate])
 
   if (dashLoading) {
     return <p className="p-6 text-center text-sm text-stone-600">Loading...</p>

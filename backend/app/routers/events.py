@@ -703,9 +703,29 @@ def get_events(user: User = Depends(get_current_user), db: Session = Depends(get
             for l in loans_db
             if l.loan_year <= liq_year and l.id not in settled_ids and l.id not in refinanced_ids
         )
+        # Unvested shares sell at cost basis (grant price) — compute their proceeds.
+        from dateutil.relativedelta import relativedelta
+        unvested_cost = 0.0
+        for g in grants:
+            tp = g['periods']
+            if tp <= 0:
+                continue
+            total = g['shares']
+            base = total // tp
+            rem = total % tp
+            vs = g['vest_start']
+            vested = 0
+            for p in range(tp):
+                if (vs + relativedelta(years=p)).date() <= horizon_date:
+                    vested += base + (1 if p < rem else 0)
+            unvested = total - vested
+            if unvested > 0 and (g['price'] or 0) > 0:
+                unvested_cost += unvested * g['price']
+
         for e in enriched:
             if e.get("event_type") == "Liquidation (projected)":
                 e["outstanding_loan_principal"] = round(outstanding, 2)
+                e["unvested_cost_proceeds"] = round(unvested_cost, 2)
 
     return [_serialize_event(e) for e in enriched]
 

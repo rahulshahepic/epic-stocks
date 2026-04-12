@@ -96,14 +96,18 @@ function VestingTaxCard({ e, ts }: { e: TimelineEvent; ts: TaxSettings }) {
 function LiqDetailCard({ e }: { e: TimelineEvent }) {
   const shares = Math.abs(e.vested_shares ?? 0)
   const gross = e.gross_proceeds ?? 0
+  const unvestedCost = e.unvested_cost_proceeds ?? 0
   const tax = e.estimated_tax ?? 0
   const loanPayoff = e.outstanding_loan_principal ?? 0
-  const net = Math.max(0, gross - tax - loanPayoff)
+  const net = Math.max(0, gross + unvestedCost - tax - loanPayoff)
   return (
     <div className="rounded-lg border border-stone-200 bg-stone-50 p-4 text-xs dark:border-slate-700 dark:bg-slate-800">
       <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-slate-100">Projected Liquidation</h3>
       <div className="space-y-1">
         <TaxRow label={`${fmtNum(shares)} shares × ${fmtPrice(e.share_price)}`} value={fmt$(gross)} />
+        {unvestedCost > 0 && (
+          <TaxRow label="Unvested shares at cost basis" value={fmt$(unvestedCost)} />
+        )}
         <TaxRow label="Est. tax on sale" value={`−${fmt$(tax)}`} />
         {loanPayoff > 0 && (
           <TaxRow label="Loan principal payoff" value={`−${fmt$(loanPayoff)}`} />

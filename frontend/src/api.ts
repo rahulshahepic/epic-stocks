@@ -111,6 +111,7 @@ export interface TimelineEvent {
   // Projected liquidation
   is_projected?: boolean
   outstanding_loan_principal?: number | null
+  unvested_cost_proceeds?: number | null
   // Refinanced loan payoff
   refinanced?: boolean
   // Investment interest deduction (when enabled in settings)

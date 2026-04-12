@@ -1080,6 +1080,7 @@ export default function Dashboard() {
       total_tax_paid: taxPaid - taxSavings,
       cash_received: cashReceived + taxSavings,
       interest_deduction_total: interestDeductionTotal,
+      tax_savings_from_deduction: taxSavings,
       next_event: nextEvent,
     }
   }, [events, loans, grantsData, sales, taxSettings, dash, cardDate, projectedLiqDate, projectedLiqEvent, ignoringExitDate])
@@ -1107,6 +1108,7 @@ export default function Dashboard() {
     total_tax_paid: dash.total_tax_paid ?? 0,
     cash_received: dash.cash_received ?? 0,
     interest_deduction_total: dash.interest_deduction_total ?? 0,
+    tax_savings_from_deduction: dash.tax_savings_from_deduction ?? 0,
     next_event: dash.next_event,
     total_interest: 0,
   }
@@ -1250,7 +1252,7 @@ export default function Dashboard() {
       </div>
       {showDeductionCard && (() => {
         const displayEnabled = pendingDeduction ?? savedDeduction
-        const currentSavings = dash.tax_savings_from_deduction ?? 0
+        const currentSavings = cardValues?.tax_savings_from_deduction ?? dash.tax_savings_from_deduction ?? 0
         const previewSavings = pendingDeductionChanged
           ? (deductionPreview === 'loading' ? null : deductionPreview?.tax_savings_from_deduction ?? null)
           : null

@@ -167,10 +167,21 @@ function LiqDetailCard({ e }: { e: TimelineEvent }) {
       )}
 
       {/* Deduction section */}
-      {hasDeduction && (
+      {(hasDeduction || s.deduction_excluded_years.length > 0) && (
         <div className="mt-3 space-y-1">
           <p className="text-[10px] font-medium uppercase tracking-wider text-stone-400 dark:text-slate-500">Interest Deduction</p>
-          <TaxRow label={`Tax savings${yearsLabel ? ` (${yearsLabel})` : ''}`} value={`+${fmt$(s.deduction_savings)}`} />
+          {hasDeduction && (
+            <TaxRow label={`Tax savings${yearsLabel ? ` (${yearsLabel})` : ''}`} value={`+${fmt$(s.deduction_savings)}`} />
+          )}
+          {s.deduction_excluded_years.length > 0 && (
+            <p className="text-[10px] text-stone-400 dark:text-slate-500">
+              {s.deduction_excluded_years.length <= 5
+                ? `Not applied to ${s.deduction_excluded_years.join(', ')}.`
+                : `Not applied to ${s.deduction_excluded_years.length} years (${s.deduction_excluded_years[0]}–${s.deduction_excluded_years[s.deduction_excluded_years.length - 1]}).`
+              }
+              {' '}<a href="/settings" className="underline hover:text-stone-600 dark:hover:text-slate-300">Customize</a>
+            </p>
+          )}
         </div>
       )}
 

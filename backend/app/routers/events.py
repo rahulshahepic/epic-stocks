@@ -187,6 +187,7 @@ def _build_exit_summary(enriched, grants, loans_db, loan_payments, sales_db,
         "income_tax": income_tax,
         "deduction_savings": deduction_savings,
         "deduction_years": deduction_years,
+        "deduction_excluded_years": sorted(excluded_years) if deduction_enabled and excluded_years else [],
         "net_cash": net_cash,
     }
 
@@ -491,11 +492,12 @@ def _build_interest_pool(loans_db: list) -> dict[int, float]:
     """
     Build the deductible investment-interest pool keyed by deductible year.
 
-    Matches the Total Interest card logic:
-    - Recorded Interest loans: deductible in due_date.year
+    Interest accruing in year Y is deductible in year Y+1:
+    - Recorded Interest loans: deductible in loan_year + 1 (the year after
+      the interest accrued, regardless of the loan's due_date which may
+      match the parent purchase loan's far-future maturity).
     - Projected for any year without a recorded loan: principal × rate
       + compounding on existing interest loans for that grant.
-      Projected interest accrues in year yr → deductible in yr+1.
     """
     from collections import defaultdict
     purchase_loans = [l for l in loans_db if l.loan_type == 'Purchase']
@@ -508,9 +510,10 @@ def _build_interest_pool(loans_db: list) -> dict[int, float]:
 
     pool: dict[int, float] = {}
 
-    # Recorded interest loans — deductible in due_date.year
+    # Recorded interest loans — deductible the year after they accrued
     for il in interest_loans:
-        pool[il.due_date.year] = pool.get(il.due_date.year, 0.0) + il.amount
+        deductible_yr = il.loan_year + 1
+        pool[deductible_yr] = pool.get(deductible_yr, 0.0) + il.amount
 
     # Projected interest for years without a recorded loan
     for p in purchase_loans:

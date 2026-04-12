@@ -528,7 +528,8 @@ epic-stocks/
 │   │       ├── auth_router.py   # OIDC PKCE endpoints + JWT issuance
 │   │       ├── admin.py         # Admin dashboard, user mgmt, blocklist
 │   │       ├── notifications.py # Email notification preferences
-│   │       └── push.py          # Push subscription management
+│   │       ├── push.py          # Push subscription management
+│   │       └── sharing.py       # Email invitations + shared data viewing
 │   ├── app/                 # Equity tracking domain (replace when forking)
 │   │   ├── core.py          # Event generation logic (frozen)
 │   │   ├── sales_engine.py  # FIFO cost-basis + tax + gross-up calculations
@@ -551,9 +552,9 @@ epic-stocks/
 ├── frontend/
 │   ├── src/
 │   │   ├── scaffold/        # Reusable UI layer (keep when forking)
-│   │   │   ├── pages/       # Login, AuthCallback, Admin, Settings, PrivacyPolicy
+│   │   │   ├── pages/       # Login, AuthCallback, Admin, Settings, PrivacyPolicy, InviteLanding
 │   │   │   ├── components/  # Layout shell, Toast
-│   │   │   ├── contexts/    # ThemeContext, MaintenanceContext
+│   │   │   ├── contexts/    # ThemeContext, MaintenanceContext, ViewingContext
 │   │   │   └── hooks/       # useAuth, useConfig, useDark, usePush, useMe
 │   │   ├── app/             # Equity tracking UI (replace when forking)
 │   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport
@@ -653,6 +654,26 @@ All authenticated endpoints require a valid `session` cookie (set automatically 
 | POST | `/api/push/test` | Send a test push notification to the current user's subscriptions |
 | GET/PUT | `/api/notifications/email` | Get/set email notification preference (returns `enabled` + `advance_days`) |
 | PUT | `/api/notifications/advance-days` | Set how many days in advance to send notifications (0 = day-of, 3, or 7) |
+| **Sharing** | | |
+| GET | `/api/sharing/invite-info?token=&code=` | Validate invitation token/code — returns inviter name (no auth required) |
+| POST | `/api/sharing/invite` | Send an invitation email `{"email": "..."}` |
+| GET | `/api/sharing/sent` | List invitations the current user has sent |
+| POST | `/api/sharing/invite/{id}/resend` | Resend an expiring invitation (resets 7-day timer) |
+| DELETE | `/api/sharing/invite/{id}` | Revoke a sent invitation |
+| POST | `/api/sharing/accept` | Accept invitation `{"token": "..."}` or `{"code": "..."}` |
+| GET | `/api/sharing/received` | List accepted invitations (accounts shared with me) |
+| POST | `/api/sharing/decline/{id}` | Decline a pending invitation |
+| DELETE | `/api/sharing/access/{id}` | Remove my access to someone's data (invitee side) |
+| PUT | `/api/sharing/access/{id}/notify` | Toggle per-inviter notifications `{"enabled": bool}` |
+| GET | `/api/sharing/view/{id}/dashboard` | Shared user's dashboard (read-only) |
+| GET | `/api/sharing/view/{id}/events` | Shared user's event timeline (read-only, no exit_summary) |
+| GET | `/api/sharing/view/{id}/grants` | Shared user's grants (read-only) |
+| GET | `/api/sharing/view/{id}/loans` | Shared user's loans (read-only) |
+| GET | `/api/sharing/view/{id}/prices` | Shared user's prices (read-only) |
+| GET | `/api/sharing/view/{id}/sales` | Shared user's sales (read-only) |
+| GET | `/api/sharing/view/{id}/sales/{sale_id}/tax` | Tax breakdown for a shared user's sale |
+| GET | `/api/sharing/view/{id}/export/excel` | Download shared user's data as Excel |
+| **Admin** | | |
 | GET/POST | `/api/admin/maintenance` | Get/set app-managed maintenance mode (admin only) |
 | GET | `/api/admin/rotation-status` | Whether a rotation snapshot exists on disk (admin only) |
 | POST | `/api/admin/rotate-key` | SSE stream: rotate encryption master key (admin only) |

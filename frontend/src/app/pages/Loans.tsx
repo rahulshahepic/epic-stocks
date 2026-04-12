@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { useIsMobile } from '../hooks/useIsMobile.ts'
 import { api, ConflictError } from '../../api.ts'
 import type { LoanEntry, LoanPayoffSuggestion, SaleEntry, TaxSettings } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
@@ -81,6 +82,7 @@ export default function Loans() {
 
   const config = useConfig()
   const epicMode = !!config?.epic_mode
+  const isMobile = useIsMobile()
 
   useDataSync('loans', reload)
   useDataSync('sales', reloadSales)
@@ -404,6 +406,72 @@ export default function Loans() {
         }
       </div>
 
+      {/* Mobile card layout */}
+      {isMobile ? <div className="space-y-2">
+        {loans.map(l => {
+          const linkedSale = sales?.find(s => s.loan_id === l.id)
+          const hasSale = !!linkedSale
+          const isExpanded = expandedLoanId === l.id
+          const refinancedByLoan = loans.find(other => other.refinances_loan_id === l.id)
+          return (
+            <div key={l.id} className="rounded-lg border border-stone-200 bg-white p-3 text-xs dark:border-slate-700 dark:bg-slate-900">
+              {/* Line 1: Grant + Type + Action */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-gray-700 dark:text-slate-300">{l.grant_year} {l.grant_type}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                    l.loan_type === 'Interest' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' :
+                    l.loan_type === 'Tax' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300' :
+                    'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
+                  }`}>
+                    {l.loan_type}
+                  </span>
+                  {refinancedByLoan && (
+                    <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[9px] font-medium text-stone-600 dark:bg-slate-700 dark:text-slate-400">Refinanced</span>
+                  )}
+                </div>
+                {epicMode
+                  ? <button onClick={() => openPayoffModal(l)} className="text-xs font-medium text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Request Payoff</button>
+                  : <button onClick={() => openEdit(l)} className="text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Edit</button>
+                }
+              </div>
+              {/* Line 2: Amount + Rate */}
+              <div className="mt-1 text-gray-700 dark:text-slate-300">
+                <span className="tabular-nums">{fmt$(l.amount)}</span> @ <span className="tabular-nums">{(l.interest_rate * 100).toFixed(2)}%</span>
+              </div>
+              {/* Line 3: Due + Sale + Expand */}
+              <div className="mt-1 flex items-center justify-between text-gray-500 dark:text-slate-400">
+                <span>Due: {l.due_date} <span className="text-gray-400 dark:text-slate-500">&middot;</span> Yr: {l.loan_year}</span>
+                <button
+                  onClick={() => setExpandedLoanId(isExpanded ? null : l.id)}
+                  className={`text-[10px] underline decoration-dotted ${hasSale ? 'text-green-700 dark:text-green-300' : 'text-stone-600 dark:text-slate-400'}`}
+                >
+                  {hasSale ? '\u2713 linked' : 'none'} {isExpanded ? '\u25B2' : '\u25BC'}
+                </button>
+              </div>
+              {/* Expanded detail */}
+              {isExpanded && (
+                <div className="mt-2 rounded-md bg-stone-50 p-3 dark:bg-slate-800">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                    {l.loan_number && <div className="col-span-2"><span className="text-stone-600 dark:text-slate-400">Loan #</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{l.loan_number}</span></div>}
+                    {linkedSale && (
+                      <>
+                        <div><span className="text-stone-600 dark:text-slate-400">Sale date</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{linkedSale.date}</span></div>
+                        <div><span className="text-stone-600 dark:text-slate-400">Shares</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{linkedSale.shares.toLocaleString('en-US')}</span></div>
+                        <div><span className="text-stone-600 dark:text-slate-400">Price</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{linkedSale.price_per_share.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 })}</span></div>
+                        <div><span className="text-stone-600 dark:text-slate-400">Gross</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{fmt$(linkedSale.shares * linkedSale.price_per_share)}</span></div>
+                      </>
+                    )}
+                    {!l.loan_number && !linkedSale && (
+                      <div className="col-span-2 text-stone-600">No additional details</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div> : /* Desktop table layout */
       <div tabIndex={0} className="overflow-x-auto rounded-lg border border-stone-200 dark:border-slate-700">
         <table className="w-full text-left text-xs">
           <thead className="bg-stone-50 dark:bg-slate-800">
@@ -453,7 +521,7 @@ export default function Loans() {
                         onClick={() => setExpandedLoanId(isExpanded ? null : l.id)}
                         className={`text-[10px] underline decoration-dotted ${hasSale ? 'text-green-700 dark:text-green-300' : 'text-stone-600 dark:text-slate-400'}`}
                       >
-                        {hasSale ? '✓ linked' : 'none'}
+                        {hasSale ? '\u2713 linked' : 'none'}
                       </button>
                     </td>
                     <td className="px-3 py-2 text-right">
@@ -488,12 +556,12 @@ export default function Loans() {
                 </>
               )
             })}
-            {loans.length === 0 && (
-              <tr><td colSpan={7} className="px-3 py-6 text-center text-stone-600">No loans yet</td></tr>
-            )}
           </tbody>
         </table>
-      </div>
+      </div>}
+      {loans.length === 0 && (
+        <p className="px-3 py-6 text-center text-xs text-stone-600">No loans yet</p>
+      )}
       <p className="text-xs text-stone-600">{loans.length} loans</p>
 
       {payoffModal && (

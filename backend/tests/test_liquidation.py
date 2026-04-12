@@ -225,8 +225,8 @@ def test_preview_exit_early_date_uses_partial_shares(client):
     resp = client.get("/api/preview-exit?date=2020-03-01")
     assert resp.status_code == 200
     data = resp.json()
-    # Only 500 shares vested by 2020-03-01
-    assert data["gross_proceeds"] == pytest.approx(5000.0)
+    # 500 vested at market ($10) + 500 unvested at cost basis ($10) = 10000
+    assert data["gross_proceeds"] == pytest.approx(10000.0)
     assert data["shares"] == 500
 
 

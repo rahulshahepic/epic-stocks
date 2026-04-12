@@ -61,6 +61,137 @@ def _last_vesting_date(timeline: list):
     return last
 
 
+def _compute_outstanding_principal(loans_db, loan_payments, sales, as_of_date) -> float:
+    """Outstanding loan principal as of a date, excluding settled/refinanced loans."""
+    year = as_of_date.year
+    settled_ids = {s.loan_id for s in sales if s.loan_id is not None and s.date <= as_of_date}
+    refinanced_ids = {l.refinances_loan_id for l in loans_db if l.refinances_loan_id is not None}
+    early_paid: dict[int, float] = {}
+    for lp in loan_payments:
+        if lp.date <= as_of_date:
+            early_paid[lp.loan_id] = early_paid.get(lp.loan_id, 0.0) + lp.amount
+    return sum(
+        max(0.0, l.amount - early_paid.get(l.id, 0.0))
+        for l in loans_db
+        if l.loan_year <= year and l.id not in settled_ids and l.id not in refinanced_ids
+    )
+
+
+def _compute_unvested_cost(grants, as_of_date) -> float:
+    """Proceeds from selling unvested shares at cost basis (grant price)."""
+    from dateutil.relativedelta import relativedelta
+    total_cost = 0.0
+    for g in grants:
+        tp = g['periods']
+        if tp <= 0:
+            continue
+        total = g['shares']
+        base = total // tp
+        rem = total % tp
+        vs = g['vest_start']
+        vested = 0
+        for p in range(tp):
+            if (vs + relativedelta(years=p)).date() <= as_of_date:
+                vested += base + (1 if p < rem else 0)
+        unvested = total - vested
+        if unvested > 0 and (g['price'] or 0) > 0:
+            total_cost += unvested * g['price']
+    return total_cost
+
+
+def _build_exit_summary(enriched, grants, loans_db, loan_payments, sales_db,
+                        horizon_date, ts_dict, deduction_enabled, excluded_years) -> dict:
+    """Build a comprehensive exit breakdown for the liquidation detail card."""
+    liq = next((e for e in enriched if e.get("event_type") == "Liquidation (projected)"), None)
+    if not liq:
+        return {}
+
+    vested_shares = abs(liq.get("vested_shares") or 0)
+    share_price = liq.get("share_price") or 0.0
+    gross_vested = liq.get("gross_proceeds") or 0.0
+    unvested_cost = round(_compute_unvested_cost(grants, horizon_date), 2)
+    liq_tax = liq.get("estimated_tax") or 0.0
+    outstanding = round(_compute_outstanding_principal(loans_db, loan_payments, sales_db, horizon_date), 2)
+
+    # Per-sale breakdown from enriched events
+    loan_amount_by_id = {l.id: l.amount for l in loans_db}
+    early_paid_by_loan: dict[int, float] = {}
+    for lp in loan_payments:
+        early_paid_by_loan[lp.loan_id] = early_paid_by_loan.get(lp.loan_id, 0.0) + lp.amount
+    sale_db_by_id = {s.id: s for s in sales_db}
+    prior_sales = []
+    for e in enriched:
+        if e.get("event_type") != "Sale":
+            continue
+        edate = _to_date(e["date"])
+        if edate > horizon_date:
+            continue
+        sid = e.get("sale_id")
+        s = sale_db_by_id.get(sid) if sid else None
+        proceeds = e.get("gross_proceeds") or 0.0
+        tax = e.get("estimated_tax") or 0.0
+        loan_payoff = 0.0
+        if s and s.loan_id is not None:
+            loan_payoff = max(0.0, loan_amount_by_id.get(s.loan_id, 0) - early_paid_by_loan.get(s.loan_id, 0.0))
+        prior_sales.append({
+            "date": edate.isoformat(),
+            "shares": abs(e.get("vested_shares") or 0),
+            "price_per_share": round(proceeds / abs(e.get("vested_shares") or 1), 2),
+            "proceeds": round(proceeds, 2),
+            "estimated_tax": round(tax, 2),
+            "loan_payoff": round(loan_payoff, 2),
+            "net": round(proceeds - tax - loan_payoff, 2),
+        })
+    prior_sales_net = round(sum(s["net"] for s in prior_sales), 2)
+
+    # Income tax from vesting events (Tax loans cover income tax at exercise)
+    income_tax = round(sum(
+        e.get("income", 0.0) * (ts_dict["federal_income_rate"] + ts_dict["state_income_rate"])
+        for e in enriched
+        if e.get("event_type") == "Vesting" and _to_date(e["date"]) <= horizon_date
+    ), 2) if ts_dict else 0.0
+
+    # Interest deduction savings and applied years
+    deduction_savings = 0.0
+    deduction_years: list[int] = []
+    if deduction_enabled:
+        stcg_rate = ts_dict["federal_st_cg_rate"] + ts_dict["niit_rate"] + ts_dict["state_st_cg_rate"]
+        ltcg_rate = ts_dict["federal_lt_cg_rate"] + ts_dict["niit_rate"] + ts_dict["state_lt_cg_rate"]
+        years_seen: set[int] = set()
+        for e in enriched:
+            if _to_date(e["date"]) > horizon_date:
+                break
+            ded = e.get("interest_deduction_applied", 0.0)
+            if ded > 0:
+                deduction_savings += (
+                    e.get("interest_deduction_on_stcg", 0.0) * stcg_rate +
+                    e.get("interest_deduction_on_ltcg", 0.0) * ltcg_rate
+                )
+                edate = _to_date(e["date"])
+                years_seen.add(edate.year)
+        deduction_savings = round(deduction_savings, 2)
+        deduction_years = sorted(years_seen)
+
+    liq_net = round(max(0.0, gross_vested + unvested_cost - liq_tax - outstanding), 2)
+    net_cash = round(prior_sales_net + liq_net + deduction_savings, 2)
+
+    return {
+        "vested_shares": vested_shares,
+        "share_price": share_price,
+        "gross_vested": round(gross_vested, 2),
+        "unvested_cost_proceeds": unvested_cost,
+        "liquidation_tax": round(liq_tax, 2),
+        "outstanding_principal": outstanding,
+        "prior_sales": prior_sales,
+        "prior_sales_net": prior_sales_net,
+        "income_tax": income_tax,
+        "deduction_savings": deduction_savings,
+        "deduction_years": deduction_years,
+        "deduction_excluded_years": sorted(excluded_years) if deduction_enabled and excluded_years else [],
+        "net_cash": net_cash,
+    }
+
+
 def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales: list,
                      horizon_date=None) -> list:
     """
@@ -361,11 +492,12 @@ def _build_interest_pool(loans_db: list) -> dict[int, float]:
     """
     Build the deductible investment-interest pool keyed by deductible year.
 
-    Matches the Total Interest card logic:
-    - Recorded Interest loans: deductible in due_date.year
+    Interest accruing in year Y is deductible in year Y+1:
+    - Recorded Interest loans: deductible in loan_year + 1 (the year after
+      the interest accrued, regardless of the loan's due_date which may
+      match the parent purchase loan's far-future maturity).
     - Projected for any year without a recorded loan: principal × rate
       + compounding on existing interest loans for that grant.
-      Projected interest accrues in year yr → deductible in yr+1.
     """
     from collections import defaultdict
     purchase_loans = [l for l in loans_db if l.loan_type == 'Purchase']
@@ -378,9 +510,10 @@ def _build_interest_pool(loans_db: list) -> dict[int, float]:
 
     pool: dict[int, float] = {}
 
-    # Recorded interest loans — deductible in due_date.year
+    # Recorded interest loans — deductible the year after they accrued
     for il in interest_loans:
-        pool[il.due_date.year] = pool.get(il.due_date.year, 0.0) + il.amount
+        deductible_yr = il.loan_year + 1
+        pool[deductible_yr] = pool.get(deductible_yr, 0.0) + il.amount
 
     # Projected interest for years without a recorded loan
     for p in purchase_loans:
@@ -573,26 +706,16 @@ def preview_exit(
     if not liq:
         return None
 
-    liq_year = preview_date.year
-    settled_ids = {s.loan_id for s in sales if s.loan_id is not None and s.date <= preview_date}
-    refinanced_ids = {l.refinances_loan_id for l in loans_db if l.refinances_loan_id is not None}
-    early_paid: dict[int, float] = {}
-    for lp in loan_payments:
-        if lp.date <= preview_date:
-            early_paid[lp.loan_id] = early_paid.get(lp.loan_id, 0.0) + lp.amount
-    outstanding = sum(
-        max(0.0, l.amount - early_paid.get(l.id, 0.0))
-        for l in loans_db
-        if l.loan_year <= liq_year and l.id not in settled_ids and l.id not in refinanced_ids
-    )
-
-    gross = liq.get("gross_proceeds") or 0.0
+    outstanding = round(_compute_outstanding_principal(loans_db, loan_payments, sales, preview_date), 2)
+    unvested_cost = round(_compute_unvested_cost(grants, preview_date), 2)
+    gross_vested = liq.get("gross_proceeds") or 0.0
     tax = liq.get("estimated_tax") or 0.0
+    gross = gross_vested + unvested_cost
     net = max(0.0, gross - outstanding - tax)
     return {
         "date": preview_date.isoformat(),
         "gross_proceeds": round(gross, 2),
-        "outstanding_loan_principal": round(outstanding, 2),
+        "outstanding_loan_principal": outstanding,
         "estimated_tax": round(tax, 2),
         "net_cash": round(net, 2),
         "shares": abs(liq.get("vested_shares") or 0),
@@ -668,23 +791,20 @@ def get_events(user: User = Depends(get_current_user), db: Session = Depends(get
         excl = set(ts_row.deduction_excluded_years or [])
         _apply_interest_deduction(enriched, loans_db, excluded_years=excl)
 
-    # Annotate the liquidation event with outstanding loan principal at that date.
+    # Build comprehensive exit summary and annotate the liquidation event.
     if horizon_date is not None:
-        liq_year = horizon_date.year
-        settled_ids = {s.loan_id for s in sales if s.loan_id is not None and s.date <= horizon_date}
-        refinanced_ids = {l.refinances_loan_id for l in loans_db if l.refinances_loan_id is not None}
-        early_paid: dict[int, float] = {}
-        for lp in loan_payments:
-            if lp.date <= horizon_date:
-                early_paid[lp.loan_id] = early_paid.get(lp.loan_id, 0.0) + lp.amount
-        outstanding = sum(
-            max(0.0, l.amount - early_paid.get(l.id, 0.0))
-            for l in loans_db
-            if l.loan_year <= liq_year and l.id not in settled_ids and l.id not in refinanced_ids
+        deduction_enabled = bool(ts_row and ts_row.deduct_investment_interest)
+        excl_years = set(ts_row.deduction_excluded_years or []) if ts_row else set()
+        summary = _build_exit_summary(
+            enriched, grants, loans_db, loan_payments, sales,
+            horizon_date, ts_dict, deduction_enabled, excl_years,
         )
-        for e in enriched:
-            if e.get("event_type") == "Liquidation (projected)":
-                e["outstanding_loan_principal"] = round(outstanding, 2)
+        if summary:
+            for e in enriched:
+                if e.get("event_type") == "Liquidation (projected)":
+                    e["outstanding_loan_principal"] = summary["outstanding_principal"]
+                    e["unvested_cost_proceeds"] = summary["unvested_cost_proceeds"]
+                    e["exit_summary"] = summary
 
     return [_serialize_event(e) for e in enriched]
 
@@ -699,13 +819,23 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
         if ln["loan_type"] == "Tax" and ln["loan_year"] <= today.year
     )
 
-    # Cash received from cash-out sales (no loan_id) — taxes subtracted after sale loop below
     sales_db = db.query(Sale).filter(Sale.user_id == user.id).all()
+    # Build loan amount + early payment maps for cash received calculation
+    loan_payments_db = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).all()
+    payments_by_loan: dict[int, float] = {}
+    for lp in loan_payments_db:
+        payments_by_loan[lp.loan_id] = payments_by_loan.get(lp.loan_id, 0.0) + lp.amount
+    loan_amount_by_id = {ln.id: ln.amount for ln in loans_db}
+    # Cash received = all sale proceeds minus loan amounts covered by payoff sales
     cash_received_gross = sum(
-        s.shares * s.price_per_share for s in sales_db
-        if s.loan_id is None and s.date <= today
+        s.shares * s.price_per_share - (
+            max(0, loan_amount_by_id.get(s.loan_id, 0) - payments_by_loan.get(s.loan_id, 0))
+            if s.loan_id is not None else 0
+        )
+        for s in sales_db
+        if s.date <= today
     )
-    cash_sale_taxes = 0.0
+    sale_taxes = 0.0
 
     if not grants and not prices:
         return {
@@ -730,11 +860,6 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
         "lt_holding_days": ts_row.lt_holding_days,
     } if ts_row else None
 
-    # Build loan payment data for the loan payment chart
-    loan_payments_db = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).all()
-    payments_by_loan: dict[int, float] = {}
-    for lp in loan_payments_db:
-        payments_by_loan[lp.loan_id] = payments_by_loan.get(lp.loan_id, 0.0) + lp.amount
     covered_loan_ids = {s.loan_id for s in sales_db if s.loan_id is not None}
 
     # All DB reads are done — release the connection before CPU-heavy computation.
@@ -748,8 +873,7 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
                 continue
             result = compute_sale_tax(sorted_tl_dash, {"date": s.date, "shares": s.shares, "price_per_share": s.price_per_share}, ts_dict_dash)
             total_tax_paid += result["estimated_tax"]
-            if s.loan_id is None:
-                cash_sale_taxes += result["estimated_tax"]
+            sale_taxes += result["estimated_tax"]
             sentinel = {
                 "date": datetime.combine(s.date, datetime.min.time()),
                 "event_type": "Sale",
@@ -825,7 +949,7 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
         "total_cap_gains": round(last.get("cum_cap_gains", 0), 2),
         "total_loan_principal": sum(ln["amount"] for ln in loans),
         "total_tax_paid": round(total_tax_paid - tax_savings_from_deduction, 2),
-        "cash_received": round(cash_received_gross - cash_sale_taxes + tax_savings_from_deduction, 2),
+        "cash_received": round(cash_received_gross - sale_taxes + tax_savings_from_deduction, 2),
         "interest_deduction_total": round(interest_deduction_total, 2),
         "tax_savings_from_deduction": round(tax_savings_from_deduction, 2),
         "loan_payment_by_year": sorted(loan_payment_by_year.values(), key=lambda x: x["year"]),

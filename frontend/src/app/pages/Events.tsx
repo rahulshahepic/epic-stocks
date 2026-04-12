@@ -4,6 +4,7 @@ import { api } from '../../api.ts'
 import type { TimelineEvent, TaxBreakdown, TaxSettings } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { useDataSync } from '../hooks/useDataSync.ts'
+import { useIsMobile } from '../hooks/useIsMobile.ts'
 import { TaxCard } from './Sales.tsx'
 import React from 'react'
 
@@ -94,22 +95,100 @@ function VestingTaxCard({ e, ts }: { e: TimelineEvent; ts: TaxSettings }) {
 }
 
 function LiqDetailCard({ e }: { e: TimelineEvent }) {
-  const shares = Math.abs(e.vested_shares ?? 0)
-  const gross = e.gross_proceeds ?? 0
-  const tax = e.estimated_tax ?? 0
-  const loanPayoff = e.outstanding_loan_principal ?? 0
-  const net = Math.max(0, gross - tax - loanPayoff)
+  const s = e.exit_summary
+  if (!s) {
+    // Fallback for events without exit_summary (shouldn't happen)
+    const shares = Math.abs(e.vested_shares ?? 0)
+    const gross = e.gross_proceeds ?? 0
+    const tax = e.estimated_tax ?? 0
+    const net = Math.max(0, gross - tax)
+    return (
+      <div className="rounded-lg border border-stone-200 bg-stone-50 p-4 text-xs dark:border-slate-700 dark:bg-slate-800">
+        <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-slate-100">Projected Liquidation</h3>
+        <div className="space-y-1">
+          <TaxRow label={`${fmtNum(shares)} shares × ${fmtPrice(e.share_price)}`} value={fmt$(gross)} />
+          <TaxRow label="Est. tax on sale" value={`−${fmt$(tax)}`} />
+          <div className="my-2 border-t border-stone-200 dark:border-slate-600" />
+          <TaxRow label="Net cash" value={fmt$(net)} bold />
+        </div>
+      </div>
+    )
+  }
+
+  const hasSales = s.prior_sales.length > 0
+  const hasDeduction = s.deduction_savings > 0
+  const liqNet = Math.max(0, s.gross_vested + s.unvested_cost_proceeds - s.liquidation_tax - s.outstanding_principal)
+  const yearsLabel = s.deduction_years.length > 0
+    ? s.deduction_years.length === 1
+      ? String(s.deduction_years[0])
+      : `${s.deduction_years[0]}–${s.deduction_years[s.deduction_years.length - 1]}`
+    : ''
+
   return (
     <div className="rounded-lg border border-stone-200 bg-stone-50 p-4 text-xs dark:border-slate-700 dark:bg-slate-800">
-      <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-slate-100">Projected Liquidation</h3>
+      <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-slate-100">Exit Breakdown</h3>
+
+      {/* Liquidation section */}
       <div className="space-y-1">
-        <TaxRow label={`${fmtNum(shares)} shares × ${fmtPrice(e.share_price)}`} value={fmt$(gross)} />
-        <TaxRow label="Est. tax on sale" value={`−${fmt$(tax)}`} />
-        {loanPayoff > 0 && (
-          <TaxRow label="Loan principal payoff" value={`−${fmt$(loanPayoff)}`} />
+        <p className="text-[10px] font-medium uppercase tracking-wider text-stone-400 dark:text-slate-500">Liquidation Sale</p>
+        <TaxRow label={`${fmtNum(s.vested_shares)} vested × ${fmtPrice(s.share_price)}`} value={fmt$(s.gross_vested)} />
+        {s.unvested_cost_proceeds > 0 && (
+          <TaxRow label="Unvested at cost basis" value={fmt$(s.unvested_cost_proceeds)} />
         )}
-        <div className="my-2 border-t border-stone-200 dark:border-slate-600" />
-        <TaxRow label="Net cash" value={fmt$(net)} bold />
+        <TaxRow label="Est. tax on liquidation" value={`−${fmt$(s.liquidation_tax)}`} />
+        {s.outstanding_principal > 0 && (
+          <TaxRow label="Loan principal payoff" value={`−${fmt$(s.outstanding_principal)}`} />
+        )}
+        <div className="my-1.5 border-t border-stone-200 dark:border-slate-600" />
+        <TaxRow label="Net from liquidation" value={fmt$(liqNet)} bold />
+      </div>
+
+      {/* Prior sales section */}
+      {hasSales && (
+        <div className="mt-3 space-y-1">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-stone-400 dark:text-slate-500">
+            Prior Sales ({s.prior_sales.length})
+          </p>
+          {s.prior_sales.map((sale, i) => (
+            <div key={i} className="space-y-0.5">
+              <TaxRow
+                label={`${sale.date}  ${fmtNum(sale.shares)} sh × ${fmtPrice(sale.price_per_share)}`}
+                value={fmt$(sale.net)}
+              />
+              <p className="pl-2 text-[10px] text-stone-400 dark:text-slate-500">
+                {fmt$(sale.proceeds)} proceeds
+                {sale.estimated_tax > 0 ? ` − ${fmt$(sale.estimated_tax)} tax` : ''}
+                {sale.loan_payoff > 0 ? ` − ${fmt$(sale.loan_payoff)} loan` : ''}
+              </p>
+            </div>
+          ))}
+          <div className="my-1.5 border-t border-stone-200 dark:border-slate-600" />
+          <TaxRow label="Net from prior sales" value={fmt$(s.prior_sales_net)} bold />
+        </div>
+      )}
+
+      {/* Deduction section */}
+      {(hasDeduction || s.deduction_excluded_years.length > 0) && (
+        <div className="mt-3 space-y-1">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-stone-400 dark:text-slate-500">Interest Deduction</p>
+          {hasDeduction && (
+            <TaxRow label={`Tax savings${yearsLabel ? ` (${yearsLabel})` : ''}`} value={`+${fmt$(s.deduction_savings)}`} />
+          )}
+          {s.deduction_excluded_years.length > 0 && (
+            <p className="text-[10px] text-stone-400 dark:text-slate-500">
+              {s.deduction_excluded_years.length <= 5
+                ? `Not applied to ${s.deduction_excluded_years.join(', ')}.`
+                : `Not applied to ${s.deduction_excluded_years.length} years (${s.deduction_excluded_years[0]}–${s.deduction_excluded_years[s.deduction_excluded_years.length - 1]}).`
+              }
+              {' '}<a href="/settings" className="underline hover:text-stone-600 dark:hover:text-slate-300">Customize</a>
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Total */}
+      <div className="mt-3 border-t-2 border-stone-300 pt-2 dark:border-slate-500">
+        <TaxRow label="Total cash at exit" value={fmt$(s.net_cash)} bold />
       </div>
     </div>
   )
@@ -184,7 +263,8 @@ export default function Events() {
   )
   const highlightDate = searchParams.get('date') ?? null
   const [highlightedRows, setHighlightedRows] = useState<Set<number>>(new Set())
-  const highlightRefs = useRef<Map<number, HTMLTableRowElement>>(new Map())
+  const isMobile = useIsMobile()
+  const highlightRefs = useRef<Map<number, HTMLElement>>(new Map())
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false)
   const typeDropdownRef = useRef<HTMLDivElement>(null)
 
@@ -240,6 +320,7 @@ export default function Events() {
   // Per-vesting-row expansion state (keyed by row index in filtered list)
   const [expandedVesting, setExpandedVesting] = useState<Set<number>>(new Set())
   const [expandedLiq, setExpandedLiq] = useState(false)
+  const [expandedMobileRows, setExpandedMobileRows] = useState<Set<number>>(new Set())
 
   const ts = taxSettings ?? WI_TAX_DEFAULTS
 
@@ -326,6 +407,153 @@ export default function Events() {
         </div>
       </div>
 
+      {/* Mobile card layout */}
+      {isMobile ? <div className="space-y-2">
+        {filtered.map((e, i) => {
+          const saleId = e.sale_id ?? null
+          const bd = saleId != null ? breakdowns.get(saleId) : undefined
+          const isSaleExpanded = saleId != null && expandedSales.has(saleId)
+          const isVestingExpanded = expandedVesting.has(i)
+          const isLoadingSale = saleId != null && loadingTaxIds.has(saleId)
+          const hasST = (e.st_shares ?? 0) > 0
+          const is83b = e.event_type === 'Vesting' && e.income > 0 && !!e.election_83b
+          const hasVestingTax = e.event_type === 'Vesting' && e.income > 0 && !e.election_83b
+          const isPastHorizon = liqIdx >= 0 && !e.is_projected && i > liqIdx
+          const isMobileExpanded = expandedMobileRows.has(i)
+
+          const sharesDisplay = e.event_type === 'Early Loan Payment'
+            ? (e.amount != null ? fmt$(e.amount) : null)
+            : (e.vested_shares ?? e.granted_shares) != null ? fmtNum(e.vested_shares ?? e.granted_shares) : null
+
+          // Cap gains / gross proceeds
+          let capGainsLabel: string | null = null
+          let capGainsValue: React.ReactNode = null
+          if (e.event_type === 'Loan Payoff' && e.cash_due != null) {
+            capGainsLabel = 'Cash Due'
+            capGainsValue = <span>{fmt$(e.cash_due)} <span className={e.status === 'covered' ? 'text-emerald-700' : 'text-orange-700'}>{e.status === 'covered' ? '\u2713' : '!'}</span></span>
+          } else if ((e.event_type === 'Sale' || e.is_projected) && e.gross_proceeds != null) {
+            capGainsLabel = 'Gross Proceeds'
+            capGainsValue = <span className={e.is_projected ? 'text-green-700 opacity-70 dark:text-green-300' : 'text-green-700 dark:text-green-300'}>{fmt$(e.gross_proceeds)}</span>
+          } else if (e.adjusted_total_cap_gains != null && e.adjusted_total_cap_gains !== e.total_cap_gains) {
+            capGainsLabel = 'Cap Gains'
+            capGainsValue = <span className="text-purple-600 dark:text-purple-700">{fmt$(e.adjusted_total_cap_gains)} <span className="text-[9px] text-purple-700 dark:text-purple-500">adj.</span></span>
+          } else if (e.total_cap_gains) {
+            capGainsLabel = 'Cap Gains'
+            capGainsValue = <span className="text-purple-600 dark:text-purple-700">{fmt$(e.total_cap_gains)}</span>
+          }
+
+          // Tax display
+          let taxNode: React.ReactNode = null
+          // Helper: ensure card is expanded when tapping interactive tax indicators
+          const ensureExpanded = () => setExpandedMobileRows(prev => prev.has(i) ? prev : new Set(prev).add(i))
+          if (e.is_projected && e.estimated_tax != null) {
+            taxNode = <span className="text-orange-700 opacity-70 dark:text-orange-700">~{fmt$(e.estimated_tax)}</span>
+          } else if (e.event_type === 'Sale' && saleId != null) {
+            taxNode = (
+              <button onClick={(ev) => { ev.stopPropagation(); ensureExpanded(); toggleSaleTax(saleId) }} className="inline-flex items-center gap-1">
+                {isLoadingSale ? <span className="text-stone-600">...</span> : (
+                  <>
+                    {hasST && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">ST</span>}
+                    <span className={`underline decoration-dotted ${hasST ? 'text-amber-700 dark:text-amber-300' : 'text-orange-700 dark:text-orange-300'}`}>{e.estimated_tax != null ? fmt$(e.estimated_tax) : '\u2014'}</span>
+                  </>
+                )}
+              </button>
+            )
+          } else if (is83b) {
+            taxNode = <button onClick={(ev) => { ev.stopPropagation(); ensureExpanded(); toggleVestingTax(i) }}><span className="text-violet-700 underline decoration-dotted dark:text-violet-300">~{fmt$(est83bTax(e, ts))}</span></button>
+          } else if (hasVestingTax) {
+            taxNode = <button onClick={(ev) => { ev.stopPropagation(); ensureExpanded(); toggleVestingTax(i) }}><span className="text-orange-700 underline decoration-dotted dark:text-orange-300">{fmt$(estTaxForVesting(e, ts))}</span></button>
+          }
+
+          const autoShowInterestDed = e.event_type === 'Share Price' && (e.interest_deduction_applied ?? 0) > 0
+
+          return (
+            <React.Fragment key={i}>
+              <div
+                ref={(el) => { if (el) highlightRefs.current.set(i, el); else highlightRefs.current.delete(i) }}
+                className={[
+                  'rounded-lg border border-stone-200 p-3 text-xs dark:border-slate-700',
+                  e.is_projected ? 'bg-stone-50 opacity-75 dark:bg-slate-900/50' : isPastHorizon ? 'bg-white opacity-40 dark:bg-slate-900' : e.event_type === 'Refinanced' ? 'bg-white opacity-50 dark:bg-slate-900' : 'bg-white dark:bg-slate-900',
+                  highlightedRows.has(i) ? 'ring-2 ring-inset ring-blue-400 animate-pulse' : '',
+                ].join(' ')}
+                onClick={() => setExpandedMobileRows(prev => { const next = new Set(prev); if (next.has(i)) next.delete(i); else next.add(i); return next })}
+              >
+                {/* Line 1: Date + Type badge */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-700 dark:text-slate-300">{e.date}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${TYPE_COLORS[e.event_type] ?? ''} ${e.is_projected ? 'ring-1 ring-dashed ring-gray-400 dark:ring-gray-600' : ''}`}>
+                      {e.is_projected ? 'Liquidation' : e.event_type}
+                    </span>
+                    {e.is_projected && <span className="text-[9px] uppercase tracking-wide text-stone-600 dark:text-slate-400">projected</span>}
+                  </div>
+                  <span className="text-stone-400 dark:text-slate-500">{isMobileExpanded ? '\u25B2' : '\u25BC'}</span>
+                </div>
+                {/* Line 2: Grant + Shares */}
+                <div className="mt-1 flex items-center justify-between text-gray-500 dark:text-slate-400">
+                  <span>{e.grant_year ? `${e.grant_year} ${e.grant_type}` : ''}</span>
+                  {sharesDisplay && (
+                    <span className={`tabular-nums font-medium ${(e.event_type === 'Sale' || e.is_projected) ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-slate-300'}`}>
+                      {sharesDisplay}{e.event_type !== 'Early Loan Payment' ? ' shares' : ''}
+                    </span>
+                  )}
+                </div>
+                {/* Collapsed: tax indicator for quick reference */}
+                {!isMobileExpanded && taxNode && (
+                  <div className="mt-0.5 flex justify-end text-[10px]">
+                    {taxNode}
+                  </div>
+                )}
+                {/* Expanded secondary fields */}
+                {isMobileExpanded && (
+                  <div className="mt-2 space-y-1 border-t border-stone-100 pt-2 dark:border-slate-700">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 dark:text-slate-400">Price</span>
+                      <span className="tabular-nums text-gray-700 dark:text-slate-300">{fmtPrice(e.share_price)}</span>
+                    </div>
+                    {(is83b || e.income > 0) && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500 dark:text-slate-400">Income</span>
+                        {is83b
+                          ? <span className="tabular-nums text-violet-700 dark:text-violet-300">~{fmt$(e.income)}</span>
+                          : <span className="tabular-nums text-emerald-700 dark:text-emerald-300">{fmt$(e.income)}</span>}
+                      </div>
+                    )}
+                    {capGainsLabel && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500 dark:text-slate-400">{capGainsLabel}</span>
+                        <span className="tabular-nums">{capGainsValue}</span>
+                      </div>
+                    )}
+                    {taxNode && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500 dark:text-slate-400">Tax</span>
+                        <span className="tabular-nums">{taxNode}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 dark:text-slate-400">Cum Shares</span>
+                      <span className="tabular-nums font-medium text-gray-900 dark:text-slate-100">{fmtNum(e.cum_shares)}</span>
+                    </div>
+                    {isSaleExpanded && bd && <div className="mt-2"><TaxCard breakdown={bd} /></div>}
+                    {isVestingExpanded && hasVestingTax && <div className="mt-2"><VestingTaxCard e={e} ts={ts} /></div>}
+                    {isVestingExpanded && is83b && <div className="mt-2"><Unrealized83bCard e={e} ts={ts} /></div>}
+                    {e.is_projected && <div className="mt-2"><LiqDetailCard e={e} /></div>}
+                    {(isVestingExpanded || autoShowInterestDed) && (e.interest_deduction_applied ?? 0) > 0 && (
+                      <div className="mt-2"><InterestDeductionCard e={e} /></div>
+                    )}
+                  </div>
+                )}
+              </div>
+              {i === liqIdx && liqIdx >= 0 && liqIdx < filtered.length - 1 && typeFilter.size === 0 && (
+                <div className="border-t-2 border-dashed border-gray-300 py-1 text-center text-[10px] italic text-stone-600 dark:border-slate-600 dark:text-slate-400">
+                  beyond exit horizon — events below won't occur if you liquidate above
+                </div>
+              )}
+            </React.Fragment>
+          )
+        })}
+      </div> : /* Desktop table layout */
       <div tabIndex={0} className="overflow-x-auto rounded-lg border border-stone-200 dark:border-slate-700">
         <table className="w-full text-left text-xs">
           <thead className="bg-stone-50 dark:bg-slate-800">
@@ -513,7 +741,7 @@ export default function Events() {
             })}
           </tbody>
         </table>
-      </div>
+      </div>}
       <p className="text-xs text-stone-600">{filtered.length} events &nbsp;·&nbsp; * price appreciation is unrealized — not a taxable event</p>
     </div>
   )

@@ -4,7 +4,7 @@ import {
   XAxis, YAxis, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts'
 import { api } from '../../api.ts'
-import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, TaxSettings, SaleEntry, HorizonSettings, ExitPreview, DeductionPreview } from '../../api.ts'
+import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, GrantEntry, TaxSettings, SaleEntry, HorizonSettings, ExitPreview, DeductionPreview } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { useDark } from '../../scaffold/hooks/useDark.ts'
 import ImportWizard from '../components/ImportWizard.tsx'
@@ -758,6 +758,7 @@ export default function Dashboard() {
   const fetchEvents = useCallback(() => api.getEvents(), [])
   const fetchPrices = useCallback(() => api.getPrices(), [])
   const fetchLoans = useCallback(() => api.getLoans(), [])
+  const fetchGrants = useCallback(() => api.getGrants(), [])
   const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
   const fetchSales = useCallback(() => api.getSales(), [])
   const fetchHorizon = useCallback(() => api.getHorizonSettings(), [])
@@ -766,6 +767,7 @@ export default function Dashboard() {
   const { data: events, reload: reloadEvents } = useApiData<TimelineEvent[]>(fetchEvents)
   const { data: prices } = useApiData<PriceEntry[]>(fetchPrices)
   const { data: loans } = useApiData<LoanEntry[]>(fetchLoans)
+  const { data: grantsData } = useApiData<GrantEntry[]>(fetchGrants)
   const { data: taxSettings, reload: reloadTaxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
   const { data: sales } = useApiData<SaleEntry[]>(fetchSales)
   const { data: horizonSettings, reload: reloadHorizon } = useApiData<HorizonSettings>(fetchHorizon)
@@ -984,12 +986,48 @@ export default function Dashboard() {
       }
     }
 
+    // Build loan amount map for payoff sale deductions
+    const loanAmountById = new Map<number, number>()
+    for (const l of loans) loanAmountById.set(l.id, l.amount)
+    const earlyPaidByLoan = new Map<number, number>()
+    for (const e of events) {
+      if (e.event_type === 'Early Loan Payment' && e.loan_id != null && e.date <= effectiveDate) {
+        earlyPaidByLoan.set(e.loan_id, (earlyPaidByLoan.get(e.loan_id) ?? 0) + (e.amount ?? 0))
+      }
+    }
+    // Unvested shares sell at cost basis (grant price) — compute their proceeds
+    let unvestedCostProceeds = 0
+    if (grantsData && liqOccurred) {
+      for (const g of grantsData) {
+        if (g.periods <= 0 || g.price <= 0) continue
+        const vs = new Date(g.vest_start + 'T00:00:00')
+        const base = Math.floor(g.shares / g.periods)
+        const rem = g.shares % g.periods
+        let vested = 0
+        for (let p = 0; p < g.periods; p++) {
+          const vd = new Date(vs)
+          vd.setFullYear(vd.getFullYear() + p)
+          if (vd.toISOString().slice(0, 10) <= effectiveDate) {
+            vested += base + (p < rem ? 1 : 0)
+          }
+        }
+        const unvested = g.shares - vested
+        if (unvested > 0) unvestedCostProceeds += unvested * g.price
+      }
+    }
     const cashReceived = (sales
-      ? sales.filter(s => s.loan_id === null && s.date <= effectiveDate)
-          .reduce((sum, s) => sum + s.shares * s.price_per_share - (saleTaxBySaleId.get(s.id) ?? 0), 0)
+      ? sales.filter(s => s.date <= effectiveDate)
+          .reduce((sum, s) => {
+            const proceeds = s.shares * s.price_per_share
+            const tax = saleTaxBySaleId.get(s.id) ?? 0
+            const loanCovered = s.loan_id != null
+              ? Math.max(0, (loanAmountById.get(s.loan_id) ?? 0) - (earlyPaidByLoan.get(s.loan_id) ?? 0))
+              : 0
+            return sum + proceeds - loanCovered - tax
+          }, 0)
       : 0)
       + (liqOccurred && projectedLiqEvent
-          ? Math.max(0, (projectedLiqEvent.gross_proceeds ?? 0) - outstandingPrincipal - (projectedLiqEvent.estimated_tax ?? 0))
+          ? Math.max(0, (projectedLiqEvent.gross_proceeds ?? 0) + unvestedCostProceeds - outstandingPrincipal - (projectedLiqEvent.estimated_tax ?? 0))
           : 0)
 
     const adjCumCg = lastEvent?.cum_cap_gains ?? 0
@@ -1042,9 +1080,10 @@ export default function Dashboard() {
       total_tax_paid: taxPaid - taxSavings,
       cash_received: cashReceived + taxSavings,
       interest_deduction_total: interestDeductionTotal,
+      tax_savings_from_deduction: taxSavings,
       next_event: nextEvent,
     }
-  }, [events, loans, sales, taxSettings, dash, cardDate, projectedLiqDate, projectedLiqEvent, ignoringExitDate])
+  }, [events, loans, grantsData, sales, taxSettings, dash, cardDate, projectedLiqDate, projectedLiqEvent, ignoringExitDate])
 
   if (dashLoading) {
     return <p className="p-6 text-center text-sm text-stone-600">Loading...</p>
@@ -1069,6 +1108,7 @@ export default function Dashboard() {
     total_tax_paid: dash.total_tax_paid ?? 0,
     cash_received: dash.cash_received ?? 0,
     interest_deduction_total: dash.interest_deduction_total ?? 0,
+    tax_savings_from_deduction: dash.tax_savings_from_deduction ?? 0,
     next_event: dash.next_event,
     total_interest: 0,
   }
@@ -1212,7 +1252,7 @@ export default function Dashboard() {
       </div>
       {showDeductionCard && (() => {
         const displayEnabled = pendingDeduction ?? savedDeduction
-        const currentSavings = dash.tax_savings_from_deduction ?? 0
+        const currentSavings = cardValues?.tax_savings_from_deduction ?? dash.tax_savings_from_deduction ?? 0
         const previewSavings = pendingDeductionChanged
           ? (deductionPreview === 'loading' ? null : deductionPreview?.tax_savings_from_deduction ?? null)
           : null
@@ -1221,7 +1261,16 @@ export default function Dashboard() {
               ? (displayEnabled ? `+${fmt$(previewSavings)}` : `−${fmt$(currentSavings)}`)
               : null)
           : (displayEnabled ? fmt$(currentSavings) : null)
-        const excludedYears = taxSettings?.deduction_excluded_years ?? []
+        const excludedYears = new Set(taxSettings?.deduction_excluded_years ?? [])
+        const allYears = [...(taxSettings?.taxable_years ?? [])].sort((a, b) => a - b)
+        const appliedYears = allYears.filter(y => !excludedYears.has(y))
+        const appliedLabel = appliedYears.length === 0
+          ? 'No years applied.'
+          : appliedYears.length === allYears.length
+            ? `Applied to all years (${appliedYears[0]}–${appliedYears[appliedYears.length - 1]}).`
+            : appliedYears.length <= 4
+              ? `Applied to ${appliedYears.join(', ')}.`
+              : `Applied to ${appliedYears[0]}–${appliedYears[appliedYears.length - 1]} (${excludedYears.size} yr${excludedYears.size !== 1 ? 's' : ''} excluded).`
         return (
           <div className="rounded-md bg-stone-100 px-3 py-2 text-xs dark:bg-slate-800">
             <div className="flex items-center gap-3">
@@ -1259,9 +1308,7 @@ export default function Dashboard() {
             </div>
             {savedDeduction && !pendingDeductionChanged && (
               <p className="mt-1 text-[10px] text-stone-400 dark:text-slate-500">
-                {excludedYears.length > 0
-                  ? `Excluded: ${[...excludedYears].sort((a, b) => a - b).join(', ')}. `
-                  : 'Applied to all years. '}
+                {appliedLabel}{' '}
                 <a href="/settings" className="underline hover:text-stone-600 dark:hover:text-slate-300">
                   Customize years
                 </a>

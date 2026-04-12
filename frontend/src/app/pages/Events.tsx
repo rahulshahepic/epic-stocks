@@ -497,14 +497,9 @@ export default function Events() {
                   )}
                 </div>
                 {/* Collapsed: tax indicator for quick reference */}
-                {!isMobileExpanded && hasVestingTax && (
-                  <div className="mt-0.5 text-right text-[10px]">
-                    <span className="text-orange-700 dark:text-orange-300">Tax {fmt$(estTaxForVesting(e, ts))}</span>
-                  </div>
-                )}
-                {!isMobileExpanded && is83b && (
-                  <div className="mt-0.5 text-right text-[10px]">
-                    <span className="text-violet-700 dark:text-violet-300">Tax ~{fmt$(est83bTax(e, ts))}</span>
+                {!isMobileExpanded && taxNode && (
+                  <div className="mt-0.5 flex justify-end text-[10px]">
+                    {taxNode}
                   </div>
                 )}
                 {/* Expanded secondary fields */}

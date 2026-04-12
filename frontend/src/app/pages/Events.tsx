@@ -4,6 +4,7 @@ import { api } from '../../api.ts'
 import type { TimelineEvent, TaxBreakdown, TaxSettings } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { useDataSync } from '../hooks/useDataSync.ts'
+import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
 import { useIsMobile } from '../hooks/useIsMobile.ts'
 import { TaxCard } from './Sales.tsx'
 import React from 'react'
@@ -251,9 +252,11 @@ function InterestDeductionCard({ e }: { e: TimelineEvent }) {
 }
 
 export default function Events() {
+  const { viewing } = useViewing()
+  const vid = viewing?.invitationId
   const [searchParams] = useSearchParams()
-  const fetchEvents = useCallback(() => api.getEvents(), [])
-  const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
+  const fetchEvents = useCallback(() => vid ? api.getSharedEvents(vid) : api.getEvents(), [vid])
+  const fetchTaxSettings = useCallback(() => vid ? Promise.resolve(null as unknown as TaxSettings) : api.getTaxSettings(), [vid])
   const { data: events, loading, reload } = useApiData<TimelineEvent[]>(fetchEvents)
   const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
   useDataSync('sales', reload)

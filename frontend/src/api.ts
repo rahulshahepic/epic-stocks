@@ -384,6 +384,39 @@ export const api = {
   adminRotationRestore: () =>
     post<{ restored: number }>('/api/admin/rotation-restore', {}),
 
+  // ── Sharing ──────────────────────────────────────────────────────────────
+
+  // Inviter actions
+  sendInvite: (email: string) => post<InvitationEntry>('/api/sharing/invite', { email }),
+  getSentInvitations: () => apiFetch<InvitationEntry[]>('/api/sharing/sent'),
+  resendInvitation: (id: number) => post<InvitationEntry>(`/api/sharing/invite/${id}/resend`, {}),
+  revokeInvitation: (id: number) => apiFetch<void>(`/api/sharing/invite/${id}`, { method: 'DELETE' }),
+
+  // Invitee actions
+  acceptInvite: (data: { token?: string; code?: string }) => post<AcceptInviteResult>('/api/sharing/accept', data),
+  getReceivedInvitations: () => apiFetch<ReceivedInvitation[]>('/api/sharing/received'),
+  declineInvitation: (id: number) => apiFetch<void>(`/api/sharing/decline/${id}`, { method: 'POST' }),
+  removeSharedAccess: (id: number) => apiFetch<void>(`/api/sharing/access/${id}`, { method: 'DELETE' }),
+  setSharedNotify: (id: number, enabled: boolean) => put<{ enabled: boolean }>(`/api/sharing/access/${id}/notify`, { enabled }),
+
+  // Public invite info (no auth)
+  getInviteInfo: (params: { token?: string; code?: string }) => {
+    const q = new URLSearchParams()
+    if (params.token) q.set('token', params.token)
+    if (params.code) q.set('code', params.code)
+    return apiFetch<InviteInfoResult>(`/api/sharing/invite-info?${q}`)
+  },
+
+  // Shared data view (read-only, viewing another user's data)
+  getSharedDashboard: (invId: number) => apiFetch<DashboardData>(`/api/sharing/view/${invId}/dashboard`),
+  getSharedEvents: (invId: number) => apiFetch<TimelineEvent[]>(`/api/sharing/view/${invId}/events`),
+  getSharedGrants: (invId: number) => apiFetch<GrantEntry[]>(`/api/sharing/view/${invId}/grants`),
+  getSharedLoans: (invId: number) => apiFetch<LoanEntry[]>(`/api/sharing/view/${invId}/loans`),
+  getSharedPrices: (invId: number) => apiFetch<PriceEntry[]>(`/api/sharing/view/${invId}/prices`),
+  getSharedSales: (invId: number) => apiFetch<SaleEntry[]>(`/api/sharing/view/${invId}/sales`),
+  getSharedSaleTax: (invId: number, saleId: number) => apiFetch<TaxBreakdown>(`/api/sharing/view/${invId}/sales/${saleId}/tax`),
+  exportSharedExcel: (invId: number) => fetch(`/api/sharing/view/${invId}/export/excel`, { credentials: 'include' }),
+
   /** Stream SSE events from the key-rotation endpoint.
    *  Calls onEvent for each parsed event object.  Resolves when the stream ends.
    */
@@ -724,4 +757,48 @@ export interface TaxBreakdown {
   estimated_tax: number
   net_proceeds: number
   lots: LotSummary[]
+}
+
+// ── Sharing types ───────────────────────────────────────────────────────────
+
+export interface InvitationEntry {
+  id: number
+  invitee_email: string
+  status: 'pending' | 'accepted' | 'declined' | 'revoked'
+  short_code: string
+  created_at: string
+  expires_at: string
+  accepted_at: string | null
+  last_viewed_at: string | null
+  invitee_account_email: string | null
+  invitee_name: string | null
+  email_sent?: boolean
+}
+
+export interface AcceptInviteResult {
+  message: string
+  invitation_id: number
+  inviter_name?: string
+}
+
+export interface ReceivedInvitation {
+  id: number
+  inviter_name: string | null
+  inviter_email: string | null
+  accepted_at: string | null
+  last_viewed_at: string | null
+  notify_enabled: boolean
+}
+
+export interface InviteInfoResult {
+  valid: boolean
+  inviter_name?: string
+  status?: string
+  reason?: string
+}
+
+export interface SharedAccount {
+  invitation_id: number
+  inviter_name: string
+  inviter_email: string
 }

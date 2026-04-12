@@ -243,3 +243,39 @@ Ignore the Events sheet on import — it's derived. Only sheets present in the u
 6. **Cost basis for purchase grants is the purchase price, not FMV at vest.** For grants with `grant_price > 0`, vesting only lifts the sale restriction — it does not create a new tax event or step up the cost basis. For income/RSU grants (`grant_price = 0`), FMV at vesting is ordinary income and becomes the cost basis.
 
 7. **Down payment shares are non-taxable.** `dp_shares` records vested shares exchanged at exercise. They reduce the loan principal and generate no income or cap gains event. Consumed in lowest-cost-basis order: Bonus (RSU) lots first, then oldest Purchase lots (FIFO).
+
+## Sharing / Email Invitations
+
+Users can invite others by email to **view** (read-only) their financial data.
+
+### Data Model
+```
+invitations: id, inviter_id, invitee_email, token, short_code, status, invitee_id,
+             invitee_account_email, created_at, expires_at, accepted_at,
+             last_viewed_at, last_sent_at, notify_enabled
+invitation_opt_outs: id, email, created_at
+```
+- `status`: pending | accepted | declined | revoked
+- `token`: URL-safe 48-byte random (base64url) for email links
+- `short_code`: 8-char unambiguous alphanumeric (no 0/O/1/I/l) for manual entry
+- Tokens expire after 7 days; resend resets the expiry
+- One-time use: once `invitee_id` is set, no one else can claim the token
+
+### Flow
+1. Inviter enters email → system sends email with link + manual code
+2. Invitee clicks link → /invite landing page → sign in with any provider
+3. Token carries through OIDC login via sessionStorage
+4. After login, auto-accept → redirected to dashboard
+5. Manual code entry: Settings → Sharing → "Enter invitation code"
+
+### Viewer Permissions (backend-enforced)
+- **Can**: view Dashboard, Events, Grants, Loans, Prices, Sales (all read-only); change "as of" date; export
+- **Cannot**: see Tips, use What If (exit date, deduction toggle), create/edit/delete any data
+- All shared data served via `/api/sharing/view/{invitation_id}/*` endpoints
+- Owner's encryption key is set in ContextVar for each shared-view request
+
+### Multi-user Viewing
+- ViewingContext (React) holds "whose data am I viewing"
+- Account switcher in header (only visible when user has shared accounts)
+- Same pages, different data source — switching doesn't change the current page
+- Per-inviter notification toggle (notify_enabled on invitation)

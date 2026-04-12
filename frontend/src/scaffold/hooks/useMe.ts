@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
 import { api } from '../../api.ts'
+import type { SharedAccount } from '../../api.ts'
 
 interface MeData {
   id: number
   email: string
   name: string
   is_admin: boolean
+  shared_accounts?: SharedAccount[]
 }
 
 let cached: MeData | null = null

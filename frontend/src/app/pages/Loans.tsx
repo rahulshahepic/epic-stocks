@@ -4,6 +4,7 @@ import { api, ConflictError } from '../../api.ts'
 import type { LoanEntry, LoanPayoffSuggestion, SaleEntry, TaxSettings } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { broadcastChange, useDataSync } from '../hooks/useDataSync.ts'
+import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
 import { TaxRateFields, TrancheTable, ratesFromDefaults, ratesFromSale, DEFAULT_RATES } from './Sales.tsx'
 import type { TaxRates } from './Sales.tsx'
 import type { TrancheAllocation } from '../../api.ts'
@@ -56,11 +57,15 @@ function fmt$(n: number) {
 const LOAN_TYPES = ['Interest', 'Tax', 'Purchase']
 
 export default function Loans() {
-  const fetchLoans = useCallback(() => api.getLoans(), [])
+  const { viewing } = useViewing()
+  const vid = viewing?.invitationId
+  const readOnly = !!viewing
+
+  const fetchLoans = useCallback(() => vid ? api.getSharedLoans(vid) : api.getLoans(), [vid])
   const { data: loans, loading, reload } = useApiData<LoanEntry[]>(fetchLoans)
-  const fetchSales = useCallback(() => api.getSales(), [])
+  const fetchSales = useCallback(() => vid ? api.getSharedSales(vid) : api.getSales(), [vid])
   const { data: sales, reload: reloadSales } = useApiData<SaleEntry[]>(fetchSales)
-  const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
+  const fetchTaxSettings = useCallback(() => readOnly ? Promise.resolve(null as unknown as TaxSettings) : api.getTaxSettings(), [readOnly])
   const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
 
   const [mode, setMode] = useState<Mode>('list')
@@ -81,7 +86,7 @@ export default function Loans() {
   const [payoffTrancheLoading, setPayoffTrancheLoading] = useState(false)
 
   const config = useConfig()
-  const epicMode = !!config?.epic_mode
+  const epicMode = !!config?.epic_mode || readOnly
   const isMobile = useIsMobile()
 
   useDataSync('loans', reload)

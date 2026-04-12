@@ -198,6 +198,70 @@ def send_daily_notifications(today: date | None = None):
 
             user.last_notified_at = datetime.now(timezone.utc)
 
+        # ── Shared-data notifications ──────────────────────────────────────
+        # Viewers who have accepted invitations with notify_enabled get notified
+        # about events in the inviter's data.
+        try:
+            from scaffold.models import Invitation
+            from scaffold.crypto import encryption_enabled, decrypt_user_key, set_current_key
+
+            accepted_invs = db.query(Invitation).filter(
+                Invitation.status == "accepted",
+                Invitation.notify_enabled == 1,
+                Invitation.invitee_id.isnot(None),
+            ).all()
+
+            # Group by viewer (invitee_id)
+            viewer_events: dict[int, list[dict]] = {}
+            for inv in accepted_invs:
+                viewer_id = inv.invitee_id
+                if viewer_id not in all_user_ids:
+                    continue  # viewer has no notification prefs
+
+                owner = db.get(User, inv.inviter_id)
+                if not owner:
+                    continue
+
+                # Switch encryption context to owner
+                if encryption_enabled() and owner.encrypted_key:
+                    set_current_key(decrypt_user_key(owner.encrypted_key))
+                else:
+                    set_current_key(None)
+
+                viewer_advance = all_prefs.get(viewer_id, 0)
+                shared_events = get_todays_events_for_user(owner, db, today, advance_days=viewer_advance)
+                if shared_events:
+                    owner_name = owner.name or owner.email
+                    if viewer_id not in viewer_events:
+                        viewer_events[viewer_id] = []
+                    for ev in shared_events:
+                        ev["_shared_owner"] = owner_name
+                    viewer_events[viewer_id].extend(shared_events)
+
+            for viewer_id, shared_evts in viewer_events.items():
+                viewer = db.get(User, viewer_id)
+                if not viewer:
+                    continue
+
+                owners = sorted(set(e.get("_shared_owner", "") for e in shared_evts))
+                total = len(shared_evts)
+                body = f"Events in shared data ({', '.join(owners)}): {total} event{'s' if total != 1 else ''}"
+                payload = {"title": "Equity Tracker", "body": body}
+
+                if viewer_id in push_user_ids:
+                    subs = db.query(PushSubscription).filter(PushSubscription.user_id == viewer_id).all()
+                    for sub in subs:
+                        ok = send_push(sub, payload)
+                        if not ok:
+                            db.delete(sub)
+
+                if viewer_id in email_user_ids:
+                    from scaffold.email_sender import send_email, email_configured
+                    if email_configured():
+                        send_email(viewer.email, f"Equity Tracker: Events in shared data", body)
+        except Exception:
+            logger.exception("Error sending shared-data notifications")
+
         db.commit()
     except Exception:
         logger.exception("Error in daily notification check")

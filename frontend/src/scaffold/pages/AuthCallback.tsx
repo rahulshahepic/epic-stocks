@@ -44,9 +44,23 @@ export default function AuthCallback() {
     const redirectUri = window.location.origin + '/auth/callback'
 
     api.exchangeCode(provider, code, verifier, redirectUri)
-      .then(() => {
+      .then(async () => {
         // The backend sets the HttpOnly session cookie in the response.
-        // No need to store anything client-side.
+        // Check if there's a pending invitation to accept
+        const inviteToken = sessionStorage.getItem('invite_token')
+        const inviteCode = sessionStorage.getItem('invite_code')
+        if (inviteToken || inviteCode) {
+          sessionStorage.removeItem('invite_token')
+          sessionStorage.removeItem('invite_code')
+          try {
+            await api.acceptInvite({
+              token: inviteToken ?? undefined,
+              code: inviteCode ?? undefined,
+            })
+          } catch {
+            // Acceptance failed (expired, already used, etc.) — continue to home
+          }
+        }
         navigate('/', { replace: true })
       })
       .catch(e => {

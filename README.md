@@ -55,6 +55,18 @@ Card-based layout: Setup Wizard (rose/recommended), Import from Excel (with opti
 
 Settings → Tax Rates includes lot selection method, loan payoff method, and all rate fields. The **investment interest deduction** toggle lives on the Dashboard for quick access (see [Investment Interest Deduction](#investment-interest-deduction) below).
 
+### Sharing (Email Invitations)
+
+| Sharing Settings Light | Sharing Settings Dark |
+|-------|------|
+| ![Sharing Light](screenshots/settings-sharing-light-mobile.png) | ![Sharing Dark](screenshots/settings-sharing-dark-mobile.png) |
+
+| Invite Landing |
+|-------|
+| ![Invite Landing](screenshots/invite-landing-light-mobile.png) |
+
+Invite others by email to view your data read-only. The Settings page shows sent/received invitations, and an invite code entry field. The invite landing page guides recipients through sign-in (any provider — doesn't need to match the invitation email). An account switcher in the header lets you switch between your data and accounts shared with you.
+
 ### Epic Mode (Read-Only Grants & Loans)
 
 | Grants Light | Grants Dark |
@@ -125,6 +137,7 @@ The *grant price* (what you paid) is fixed at grant creation. The *share price* 
 8. **Manage loan payoffs** — each loan can have an auto-generated sale that covers the outstanding balance. See [Loan Payoff Flow](#loan-payoff-flow) for how share counts are calculated and how the Request Payoff button works in Epic Mode.
 9. **Set up notifications** — go to **Settings → Notifications**. Enable push (browser) or email, then choose timing: day-of, 3 days before, or 1 week before your events. Hit **Send test** to confirm push is working.
 10. **Export your data** — go to **Import/Export → Download Vesting.xlsx** to get a full export at any time.
+11. **Share your data** — go to **Settings → Sharing** to invite someone by email. They'll receive a link and a manual code. After they sign in (with any provider), they see your data read-only. Use the account switcher in the header to switch between your data and accounts shared with you.
 
 ---
 
@@ -282,6 +295,7 @@ Investment interest is interest paid on loans used to buy investments. Under IRS
 - **Growth Price Estimator** — project future share prices via annual % growth from the current price. Default start date is the next March 1 (matching Epic's typical price announcement cadence). Generates one price per year through a configurable end date. Estimates are visually distinguished (italic, "est." badge) and automatically removed when a real price is added for the same date. Available in Epic Mode — tap **+ Estimate** on the Prices page.
 - **Epic Mode** — read-only deployment mode for use with Epic's managed data pipeline. When active, historical grant/price/loan/import writes are blocked (403) and the UI shows a "Historical data provided by Epic — view only" notice. Future price estimates remain writable (via **+ Price** for individual future dates, or **+ Estimate** for bulk growth projections). Each grant row shows a **Sell** button and each loan row shows a **Request Payoff** button (with lot allocation preview) so users can still act on their data. Sales are always writable but require a future date. Toggled from Admin → Danger Zone, or hard-locked via the `EPIC_MODE=true` env var. A `POST /api/internal/cache-invalidate` webhook lets Epic's batch jobs pre-warm the Redis cache after writing. Past estimates are automatically cleaned up nightly and on page load once their date has passed. See [Loan Payoff Flow](#loan-payoff-flow) for the Request Payoff modal detail.
 - **Maintenance Mode** — two distinct mechanisms: (1) app-managed downtime stored in the database — all replicas see the toggle instantly; financial API routes return 503 while auth and admin remain accessible; (2) deploy-time full downtime via a Caddy sentinel file (`./data/full_maintenance`) that serves a static 503 page while the app container is stopped.
+- **Email Invitations & Sharing** — invite people by email to view your equity data (read-only). Invitees receive an email with a clickable link and a manual entry code. The link works with any sign-in provider — it doesn't need to match the email the invitation was sent to. Once accepted, the viewer sees your Dashboard, Events, Grants, Loans, Prices, and Sales (all read-only). They cannot see Tips, use What If scenarios, or modify any data (enforced on the backend). A financial advisor can be invited by multiple users and switch between them using the account switcher in the header. Inviters see acceptance status, the invitee's actual login email, and when they last viewed data. Both sides can revoke access. Per-inviter notification toggle lets viewers control which accounts they receive event notifications for. Invitation tokens expire after 7 days; inviters can resend to extend.
 - **Dark/Light Mode** — auto-detects system preference, updates live.
 - **Mobile-First** — designed for 375px phone viewports.
 
@@ -526,7 +540,8 @@ epic-stocks/
 │   │       ├── auth_router.py   # OIDC PKCE endpoints + JWT issuance
 │   │       ├── admin.py         # Admin dashboard, user mgmt, blocklist
 │   │       ├── notifications.py # Email notification preferences
-│   │       └── push.py          # Push subscription management
+│   │       ├── push.py          # Push subscription management
+│   │       └── sharing.py       # Email invitations + shared data viewing
 │   ├── app/                 # Equity tracking domain (replace when forking)
 │   │   ├── core.py          # Event generation logic (frozen)
 │   │   ├── sales_engine.py  # FIFO cost-basis + tax + gross-up calculations
@@ -549,9 +564,9 @@ epic-stocks/
 ├── frontend/
 │   ├── src/
 │   │   ├── scaffold/        # Reusable UI layer (keep when forking)
-│   │   │   ├── pages/       # Login, AuthCallback, Admin, Settings, PrivacyPolicy
+│   │   │   ├── pages/       # Login, AuthCallback, Admin, Settings, PrivacyPolicy, InviteLanding
 │   │   │   ├── components/  # Layout shell, Toast
-│   │   │   ├── contexts/    # ThemeContext, MaintenanceContext
+│   │   │   ├── contexts/    # ThemeContext, MaintenanceContext, ViewingContext
 │   │   │   └── hooks/       # useAuth, useConfig, useDark, usePush, useMe
 │   │   ├── app/             # Equity tracking UI (replace when forking)
 │   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport
@@ -651,6 +666,26 @@ All authenticated endpoints require a valid `session` cookie (set automatically 
 | POST | `/api/push/test` | Send a test push notification to the current user's subscriptions |
 | GET/PUT | `/api/notifications/email` | Get/set email notification preference (returns `enabled` + `advance_days`) |
 | PUT | `/api/notifications/advance-days` | Set how many days in advance to send notifications (0 = day-of, 3, or 7) |
+| **Sharing** | | |
+| GET | `/api/sharing/invite-info?token=&code=` | Validate invitation token/code — returns inviter name (no auth required) |
+| POST | `/api/sharing/invite` | Send an invitation email `{"email": "..."}` |
+| GET | `/api/sharing/sent` | List invitations the current user has sent |
+| POST | `/api/sharing/invite/{id}/resend` | Resend an expiring invitation (resets 7-day timer) |
+| DELETE | `/api/sharing/invite/{id}` | Revoke a sent invitation |
+| POST | `/api/sharing/accept` | Accept invitation `{"token": "..."}` or `{"code": "..."}` |
+| GET | `/api/sharing/received` | List accepted invitations (accounts shared with me) |
+| POST | `/api/sharing/decline/{id}` | Decline a pending invitation |
+| DELETE | `/api/sharing/access/{id}` | Remove my access to someone's data (invitee side) |
+| PUT | `/api/sharing/access/{id}/notify` | Toggle per-inviter notifications `{"enabled": bool}` |
+| GET | `/api/sharing/view/{id}/dashboard` | Shared user's dashboard (read-only) |
+| GET | `/api/sharing/view/{id}/events` | Shared user's event timeline (read-only, no exit_summary) |
+| GET | `/api/sharing/view/{id}/grants` | Shared user's grants (read-only) |
+| GET | `/api/sharing/view/{id}/loans` | Shared user's loans (read-only) |
+| GET | `/api/sharing/view/{id}/prices` | Shared user's prices (read-only) |
+| GET | `/api/sharing/view/{id}/sales` | Shared user's sales (read-only) |
+| GET | `/api/sharing/view/{id}/sales/{sale_id}/tax` | Tax breakdown for a shared user's sale |
+| GET | `/api/sharing/view/{id}/export/excel` | Download shared user's data as Excel |
+| **Admin** | | |
 | GET/POST | `/api/admin/maintenance` | Get/set app-managed maintenance mode (admin only) |
 | GET | `/api/admin/rotation-status` | Whether a rotation snapshot exists on disk (admin only) |
 | POST | `/api/admin/rotate-key` | SSE stream: rotate encryption master key (admin only) |

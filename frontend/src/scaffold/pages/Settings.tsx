@@ -4,7 +4,7 @@ import { usePush } from '../hooks/usePush.ts'
 import { useAuth } from '../hooks/useAuth.ts'
 import { useTheme } from '../contexts/ThemeContext.tsx'
 import { api } from '../../api.ts'
-import type { TaxSettings, HorizonSettings } from '../../api.ts'
+import type { TaxSettings, HorizonSettings, InvitationEntry, ReceivedInvitation } from '../../api.ts'
 import type { Theme } from '../contexts/ThemeContext.tsx'
 
 export default function Settings() {
@@ -644,6 +644,9 @@ export default function Settings() {
         )}
       </section>
 
+      {/* Sharing */}
+      <SharingSection />
+
       {/* Account Management */}
       <section className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
         <h3 className="text-sm font-medium text-stone-900 dark:text-slate-100">Account</h3>
@@ -741,5 +744,207 @@ export default function Settings() {
         </p>
       )}
     </div>
+  )
+}
+
+// ── Sharing section ─────────────────────────────────────────────────────────
+
+function SharingSection() {
+  const [sent, setSent] = useState<InvitationEntry[]>([])
+  const [received, setReceived] = useState<ReceivedInvitation[]>([])
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteCode, setInviteCode] = useState('')
+  const [sending, setSending] = useState(false)
+  const [accepting, setAccepting] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+
+  const loadSent = useCallback(() => { api.getSentInvitations().then(setSent).catch(() => {}) }, [])
+  const loadReceived = useCallback(() => { api.getReceivedInvitations().then(setReceived).catch(() => {}) }, [])
+
+  useEffect(() => { loadSent(); loadReceived() }, [loadSent, loadReceived])
+
+  async function handleInvite(e: React.FormEvent) {
+    e.preventDefault()
+    if (!inviteEmail.trim()) return
+    setSending(true); setError(''); setSuccess('')
+    try {
+      const result = await api.sendInvite(inviteEmail.trim())
+      setInviteEmail('')
+      if (result.email_sent) {
+        setSuccess('Invitation sent! They\'ll receive an email with a link and code.')
+      } else {
+        setSuccess(`Email could not be sent. Share this code with them instead: ${result.short_code}`)
+      }
+      loadSent()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send invitation')
+    }
+    setSending(false)
+  }
+
+  async function handleRevoke(id: number) {
+    await api.revokeInvitation(id)
+    loadSent()
+  }
+
+  async function handleResend(id: number) {
+    await api.resendInvitation(id)
+    loadSent()
+    setSuccess('Invitation resent!')
+  }
+
+  async function handleAcceptCode(e: React.FormEvent) {
+    e.preventDefault()
+    if (!inviteCode.trim()) return
+    setAccepting(true); setError(''); setSuccess('')
+    try {
+      const result = await api.acceptInvite({ code: inviteCode.trim() })
+      setInviteCode('')
+      setSuccess(result.message || 'Invitation accepted!')
+      loadReceived()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Invalid code')
+    }
+    setAccepting(false)
+  }
+
+  async function handleRemoveAccess(id: number) {
+    await api.removeSharedAccess(id)
+    loadReceived()
+  }
+
+  async function handleToggleNotify(id: number, enabled: boolean) {
+    await api.setSharedNotify(id, enabled)
+    loadReceived()
+  }
+
+  const statusBadge = (status: string) => {
+    const colors: Record<string, string> = {
+      pending: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+      accepted: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
+      declined: 'bg-stone-100 text-stone-600 dark:bg-slate-700 dark:text-slate-400',
+      revoked: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400',
+    }
+    return <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${colors[status] ?? ''}`}>{status}</span>
+  }
+
+  return (
+    <section className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+      <h3 className="text-sm font-medium text-stone-900 dark:text-slate-100">Sharing</h3>
+      <p className="mt-1 text-xs text-stone-600 dark:text-slate-400">
+        Invite people to view your equity data, or enter a code you received.
+      </p>
+
+      {error && <p className="mt-2 rounded bg-red-50 p-2 text-xs text-red-700 dark:bg-red-900/30 dark:text-red-400">{error}</p>}
+      {success && <p className="mt-2 rounded bg-green-50 p-2 text-xs text-green-700 dark:bg-green-900/30 dark:text-green-400">{success}</p>}
+
+      {/* Invite someone */}
+      <form onSubmit={handleInvite} className="mt-3 flex gap-2">
+        <input
+          type="email"
+          value={inviteEmail}
+          onChange={e => setInviteEmail(e.target.value)}
+          placeholder="Email address to invite"
+          className="flex-1 rounded border border-stone-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+        />
+        <button
+          type="submit"
+          disabled={sending || !inviteEmail.trim()}
+          className="rounded bg-rose-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-800 disabled:opacity-50"
+        >
+          {sending ? 'Sending…' : 'Invite'}
+        </button>
+      </form>
+
+      {/* Sent invitations */}
+      {sent.length > 0 && (
+        <div className="mt-4">
+          <p className="mb-1 text-xs font-medium text-stone-700 dark:text-slate-300">People I&rsquo;ve shared with</p>
+          <div className="space-y-1.5">
+            {sent.map(inv => (
+              <div key={inv.id} className="flex items-center justify-between rounded border border-stone-100 px-2 py-1.5 text-xs dark:border-slate-700">
+                <div className="min-w-0 flex-1">
+                  <span className="font-medium text-stone-800 dark:text-slate-200">{inv.invitee_email}</span>
+                  {inv.invitee_account_email && inv.invitee_account_email !== inv.invitee_email && (
+                    <span className="ml-1 text-stone-500 dark:text-slate-400">(signed in as {inv.invitee_account_email})</span>
+                  )}
+                  {inv.invitee_name && <span className="ml-1 text-stone-500 dark:text-slate-400">— {inv.invitee_name}</span>}
+                  <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                    {statusBadge(inv.status)}
+                    {inv.status === 'pending' && (
+                      <span className="font-mono text-stone-500 dark:text-slate-400" title="Share this code manually if they didn't get the email">
+                        code: {inv.short_code}
+                      </span>
+                    )}
+                    {inv.last_viewed_at && (
+                      <span className="text-stone-400 dark:text-slate-500">
+                        last viewed {new Date(inv.last_viewed_at).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-1 ml-2 shrink-0">
+                  {inv.status === 'pending' && (
+                    <button onClick={() => handleResend(inv.id)} className="text-blue-600 hover:text-blue-800 dark:text-blue-400">resend</button>
+                  )}
+                  {(inv.status === 'pending' || inv.status === 'accepted') && (
+                    <button onClick={() => handleRevoke(inv.id)} className="text-red-600 hover:text-red-800 dark:text-red-400">revoke</button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Received invitations */}
+      {received.length > 0 && (
+        <div className="mt-4">
+          <p className="mb-1 text-xs font-medium text-stone-700 dark:text-slate-300">Data shared with me</p>
+          <div className="space-y-1.5">
+            {received.map(inv => (
+              <div key={inv.id} className="flex items-center justify-between rounded border border-stone-100 px-2 py-1.5 text-xs dark:border-slate-700">
+                <div>
+                  <span className="font-medium text-stone-800 dark:text-slate-200">{inv.inviter_name ?? inv.inviter_email}</span>
+                  {inv.inviter_name && <span className="ml-1 text-stone-500 dark:text-slate-400">({inv.inviter_email})</span>}
+                </div>
+                <div className="flex items-center gap-2 ml-2 shrink-0">
+                  <label className="flex items-center gap-1 text-stone-500 dark:text-slate-400">
+                    <input
+                      type="checkbox"
+                      checked={inv.notify_enabled}
+                      onChange={e => handleToggleNotify(inv.id, e.target.checked)}
+                      className="h-3 w-3"
+                    />
+                    notify
+                  </label>
+                  <button onClick={() => handleRemoveAccess(inv.id)} className="text-red-600 hover:text-red-800 dark:text-red-400">remove</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Enter invitation code */}
+      <form onSubmit={handleAcceptCode} className="mt-4 flex gap-2">
+        <input
+          type="text"
+          value={inviteCode}
+          onChange={e => setInviteCode(e.target.value)}
+          placeholder="Enter invitation code (e.g. ABCD-EFGH)"
+          className="flex-1 rounded border border-stone-300 bg-white px-2 py-1.5 text-xs uppercase tracking-wider dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+          maxLength={9}
+        />
+        <button
+          type="submit"
+          disabled={accepting || !inviteCode.trim()}
+          className="rounded bg-stone-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-stone-800 disabled:opacity-50 dark:bg-slate-600 dark:hover:bg-slate-500"
+        >
+          {accepting ? 'Accepting…' : 'Accept'}
+        </button>
+      </form>
+    </section>
   )
 }

@@ -5,6 +5,7 @@ import type { PriceEntry, SaleEntry, SaleEstimate, TaxBreakdown, TaxSettings, Tr
 import { useApiData } from '../hooks/useApiData.ts'
 import { broadcastChange, useDataSync } from '../hooks/useDataSync.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
+import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
 
 export type TaxRates = {
   federal_income_rate: number
@@ -356,14 +357,18 @@ function RateField({ label, value, onChange }: { label: string; value: number; o
 }
 
 export default function Sales() {
+  const { viewing } = useViewing()
+  const vid = viewing?.invitationId
+  const readOnly = !!viewing
+
   const config = useConfig()
-  const epicMode = !!config?.epic_mode
+  const epicMode = !!config?.epic_mode || readOnly
   const isMobile = useIsMobile()
-  const fetchSales = useCallback(() => api.getSales(), [])
+  const fetchSales = useCallback(() => vid ? api.getSharedSales(vid) : api.getSales(), [vid])
   const { data: sales, loading, reload } = useApiData<SaleEntry[]>(fetchSales)
-  const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
+  const fetchTaxSettings = useCallback(() => readOnly ? Promise.resolve(null as unknown as TaxSettings) : api.getTaxSettings(), [readOnly])
   const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
-  const fetchPrices = useCallback(() => api.getPrices(), [])
+  const fetchPrices = useCallback(() => vid ? api.getSharedPrices(vid) : api.getPrices(), [vid])
   const { data: prices } = useApiData<PriceEntry[]>(fetchPrices)
 
   const [mode, setMode] = useState<Mode>('list')

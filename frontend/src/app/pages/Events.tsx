@@ -444,11 +444,13 @@ export default function Events() {
 
           // Tax display
           let taxNode: React.ReactNode = null
+          // Helper: ensure card is expanded when tapping interactive tax indicators
+          const ensureExpanded = () => setExpandedMobileRows(prev => prev.has(i) ? prev : new Set(prev).add(i))
           if (e.is_projected && e.estimated_tax != null) {
             taxNode = <span className="text-orange-700 opacity-70 dark:text-orange-700">~{fmt$(e.estimated_tax)}</span>
           } else if (e.event_type === 'Sale' && saleId != null) {
             taxNode = (
-              <button onClick={(ev) => { ev.stopPropagation(); toggleSaleTax(saleId) }} className="inline-flex items-center gap-1">
+              <button onClick={(ev) => { ev.stopPropagation(); ensureExpanded(); toggleSaleTax(saleId) }} className="inline-flex items-center gap-1">
                 {isLoadingSale ? <span className="text-stone-600">...</span> : (
                   <>
                     {hasST && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">ST</span>}
@@ -458,9 +460,9 @@ export default function Events() {
               </button>
             )
           } else if (is83b) {
-            taxNode = <button onClick={(ev) => { ev.stopPropagation(); toggleVestingTax(i) }}><span className="text-violet-700 underline decoration-dotted dark:text-violet-300">~{fmt$(est83bTax(e, ts))}</span></button>
+            taxNode = <button onClick={(ev) => { ev.stopPropagation(); ensureExpanded(); toggleVestingTax(i) }}><span className="text-violet-700 underline decoration-dotted dark:text-violet-300">~{fmt$(est83bTax(e, ts))}</span></button>
           } else if (hasVestingTax) {
-            taxNode = <button onClick={(ev) => { ev.stopPropagation(); toggleVestingTax(i) }}><span className="text-orange-700 underline decoration-dotted dark:text-orange-300">{fmt$(estTaxForVesting(e, ts))}</span></button>
+            taxNode = <button onClick={(ev) => { ev.stopPropagation(); ensureExpanded(); toggleVestingTax(i) }}><span className="text-orange-700 underline decoration-dotted dark:text-orange-300">{fmt$(estTaxForVesting(e, ts))}</span></button>
           }
 
           const autoShowInterestDed = e.event_type === 'Share Price' && (e.interest_deduction_applied ?? 0) > 0

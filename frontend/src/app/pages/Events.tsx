@@ -94,26 +94,89 @@ function VestingTaxCard({ e, ts }: { e: TimelineEvent; ts: TaxSettings }) {
 }
 
 function LiqDetailCard({ e }: { e: TimelineEvent }) {
-  const shares = Math.abs(e.vested_shares ?? 0)
-  const gross = e.gross_proceeds ?? 0
-  const unvestedCost = e.unvested_cost_proceeds ?? 0
-  const tax = e.estimated_tax ?? 0
-  const loanPayoff = e.outstanding_loan_principal ?? 0
-  const net = Math.max(0, gross + unvestedCost - tax - loanPayoff)
+  const s = e.exit_summary
+  if (!s) {
+    // Fallback for events without exit_summary (shouldn't happen)
+    const shares = Math.abs(e.vested_shares ?? 0)
+    const gross = e.gross_proceeds ?? 0
+    const tax = e.estimated_tax ?? 0
+    const net = Math.max(0, gross - tax)
+    return (
+      <div className="rounded-lg border border-stone-200 bg-stone-50 p-4 text-xs dark:border-slate-700 dark:bg-slate-800">
+        <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-slate-100">Projected Liquidation</h3>
+        <div className="space-y-1">
+          <TaxRow label={`${fmtNum(shares)} shares × ${fmtPrice(e.share_price)}`} value={fmt$(gross)} />
+          <TaxRow label="Est. tax on sale" value={`−${fmt$(tax)}`} />
+          <div className="my-2 border-t border-stone-200 dark:border-slate-600" />
+          <TaxRow label="Net cash" value={fmt$(net)} bold />
+        </div>
+      </div>
+    )
+  }
+
+  const hasSales = s.prior_sales.length > 0
+  const hasDeduction = s.deduction_savings > 0
+  const liqNet = Math.max(0, s.gross_vested + s.unvested_cost_proceeds - s.liquidation_tax - s.outstanding_principal)
+  const yearsLabel = s.deduction_years.length > 0
+    ? s.deduction_years.length === 1
+      ? String(s.deduction_years[0])
+      : `${s.deduction_years[0]}–${s.deduction_years[s.deduction_years.length - 1]}`
+    : ''
+
   return (
     <div className="rounded-lg border border-stone-200 bg-stone-50 p-4 text-xs dark:border-slate-700 dark:bg-slate-800">
-      <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-slate-100">Projected Liquidation</h3>
+      <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-slate-100">Exit Breakdown</h3>
+
+      {/* Liquidation section */}
       <div className="space-y-1">
-        <TaxRow label={`${fmtNum(shares)} shares × ${fmtPrice(e.share_price)}`} value={fmt$(gross)} />
-        {unvestedCost > 0 && (
-          <TaxRow label="Unvested shares at cost basis" value={fmt$(unvestedCost)} />
+        <p className="text-[10px] font-medium uppercase tracking-wider text-stone-400 dark:text-slate-500">Liquidation Sale</p>
+        <TaxRow label={`${fmtNum(s.vested_shares)} vested × ${fmtPrice(s.share_price)}`} value={fmt$(s.gross_vested)} />
+        {s.unvested_cost_proceeds > 0 && (
+          <TaxRow label="Unvested at cost basis" value={fmt$(s.unvested_cost_proceeds)} />
         )}
-        <TaxRow label="Est. tax on sale" value={`−${fmt$(tax)}`} />
-        {loanPayoff > 0 && (
-          <TaxRow label="Loan principal payoff" value={`−${fmt$(loanPayoff)}`} />
+        <TaxRow label="Est. tax on liquidation" value={`−${fmt$(s.liquidation_tax)}`} />
+        {s.outstanding_principal > 0 && (
+          <TaxRow label="Loan principal payoff" value={`−${fmt$(s.outstanding_principal)}`} />
         )}
-        <div className="my-2 border-t border-stone-200 dark:border-slate-600" />
-        <TaxRow label="Net cash" value={fmt$(net)} bold />
+        <div className="my-1.5 border-t border-stone-200 dark:border-slate-600" />
+        <TaxRow label="Net from liquidation" value={fmt$(liqNet)} bold />
+      </div>
+
+      {/* Prior sales section */}
+      {hasSales && (
+        <div className="mt-3 space-y-1">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-stone-400 dark:text-slate-500">
+            Prior Sales ({s.prior_sales.length})
+          </p>
+          {s.prior_sales.map((sale, i) => (
+            <div key={i} className="space-y-0.5">
+              <TaxRow
+                label={`${sale.date}  ${fmtNum(sale.shares)} sh × ${fmtPrice(sale.price_per_share)}`}
+                value={fmt$(sale.net)}
+              />
+              <p className="pl-2 text-[10px] text-stone-400 dark:text-slate-500">
+                {fmt$(sale.proceeds)} proceeds
+                {sale.estimated_tax > 0 ? ` − ${fmt$(sale.estimated_tax)} tax` : ''}
+                {sale.loan_payoff > 0 ? ` − ${fmt$(sale.loan_payoff)} loan` : ''}
+              </p>
+            </div>
+          ))}
+          <div className="my-1.5 border-t border-stone-200 dark:border-slate-600" />
+          <TaxRow label="Net from prior sales" value={fmt$(s.prior_sales_net)} bold />
+        </div>
+      )}
+
+      {/* Deduction section */}
+      {hasDeduction && (
+        <div className="mt-3 space-y-1">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-stone-400 dark:text-slate-500">Interest Deduction</p>
+          <TaxRow label={`Tax savings${yearsLabel ? ` (${yearsLabel})` : ''}`} value={`+${fmt$(s.deduction_savings)}`} />
+        </div>
+      )}
+
+      {/* Total */}
+      <div className="mt-3 border-t-2 border-stone-300 pt-2 dark:border-slate-500">
+        <TaxRow label="Total cash at exit" value={fmt$(s.net_cash)} bold />
       </div>
     </div>
   )

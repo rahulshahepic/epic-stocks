@@ -984,9 +984,25 @@ export default function Dashboard() {
       }
     }
 
+    // Build loan amount map for payoff sale deductions
+    const loanAmountById = new Map<number, number>()
+    for (const l of loans) loanAmountById.set(l.id, l.amount)
+    const earlyPaidByLoan = new Map<number, number>()
+    for (const e of events) {
+      if (e.event_type === 'Early Loan Payment' && e.loan_id != null && e.date <= effectiveDate) {
+        earlyPaidByLoan.set(e.loan_id, (earlyPaidByLoan.get(e.loan_id) ?? 0) + (e.amount ?? 0))
+      }
+    }
     const cashReceived = (sales
-      ? sales.filter(s => s.loan_id === null && s.date <= effectiveDate)
-          .reduce((sum, s) => sum + s.shares * s.price_per_share - (saleTaxBySaleId.get(s.id) ?? 0), 0)
+      ? sales.filter(s => s.date <= effectiveDate)
+          .reduce((sum, s) => {
+            const proceeds = s.shares * s.price_per_share
+            const tax = saleTaxBySaleId.get(s.id) ?? 0
+            const loanCovered = s.loan_id != null
+              ? Math.max(0, (loanAmountById.get(s.loan_id) ?? 0) - (earlyPaidByLoan.get(s.loan_id) ?? 0))
+              : 0
+            return sum + proceeds - loanCovered - tax
+          }, 0)
       : 0)
       + (liqOccurred && projectedLiqEvent
           ? Math.max(0, (projectedLiqEvent.gross_proceeds ?? 0) - outstandingPrincipal - (projectedLiqEvent.estimated_tax ?? 0))

@@ -699,13 +699,23 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
         if ln["loan_type"] == "Tax" and ln["loan_year"] <= today.year
     )
 
-    # Cash received from cash-out sales (no loan_id) — taxes subtracted after sale loop below
     sales_db = db.query(Sale).filter(Sale.user_id == user.id).all()
+    # Build loan amount + early payment maps for cash received calculation
+    loan_payments_db = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).all()
+    payments_by_loan: dict[int, float] = {}
+    for lp in loan_payments_db:
+        payments_by_loan[lp.loan_id] = payments_by_loan.get(lp.loan_id, 0.0) + lp.amount
+    loan_amount_by_id = {ln.id: ln.amount for ln in loans_db}
+    # Cash received = all sale proceeds minus loan amounts covered by payoff sales
     cash_received_gross = sum(
-        s.shares * s.price_per_share for s in sales_db
-        if s.loan_id is None and s.date <= today
+        s.shares * s.price_per_share - (
+            max(0, loan_amount_by_id.get(s.loan_id, 0) - payments_by_loan.get(s.loan_id, 0))
+            if s.loan_id is not None else 0
+        )
+        for s in sales_db
+        if s.date <= today
     )
-    cash_sale_taxes = 0.0
+    sale_taxes = 0.0
 
     if not grants and not prices:
         return {
@@ -730,11 +740,6 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
         "lt_holding_days": ts_row.lt_holding_days,
     } if ts_row else None
 
-    # Build loan payment data for the loan payment chart
-    loan_payments_db = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).all()
-    payments_by_loan: dict[int, float] = {}
-    for lp in loan_payments_db:
-        payments_by_loan[lp.loan_id] = payments_by_loan.get(lp.loan_id, 0.0) + lp.amount
     covered_loan_ids = {s.loan_id for s in sales_db if s.loan_id is not None}
 
     # All DB reads are done — release the connection before CPU-heavy computation.
@@ -748,8 +753,7 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
                 continue
             result = compute_sale_tax(sorted_tl_dash, {"date": s.date, "shares": s.shares, "price_per_share": s.price_per_share}, ts_dict_dash)
             total_tax_paid += result["estimated_tax"]
-            if s.loan_id is None:
-                cash_sale_taxes += result["estimated_tax"]
+            sale_taxes += result["estimated_tax"]
             sentinel = {
                 "date": datetime.combine(s.date, datetime.min.time()),
                 "event_type": "Sale",
@@ -825,7 +829,7 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
         "total_cap_gains": round(last.get("cum_cap_gains", 0), 2),
         "total_loan_principal": sum(ln["amount"] for ln in loans),
         "total_tax_paid": round(total_tax_paid - tax_savings_from_deduction, 2),
-        "cash_received": round(cash_received_gross - cash_sale_taxes + tax_savings_from_deduction, 2),
+        "cash_received": round(cash_received_gross - sale_taxes + tax_savings_from_deduction, 2),
         "interest_deduction_total": round(interest_deduction_total, 2),
         "tax_savings_from_deduction": round(tax_savings_from_deduction, 2),
         "loan_payment_by_year": sorted(loan_payment_by_year.values(), key=lambda x: x["year"]),

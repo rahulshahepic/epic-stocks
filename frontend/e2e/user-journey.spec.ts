@@ -141,8 +141,8 @@ test.describe('Full user journey', () => {
     await navigateTo(page, 'Dashboard')
     await page.waitForLoadState('networkidle')
 
-    // Dashboard cards should show Total Shares > 0
-    const sharesCard = page.locator('text=Total Shares').locator('..')
+    // Dashboard cards should show Vested Shares > 0
+    const sharesCard = page.getByText('Vested Shares', { exact: true }).locator('..')
     await expect(sharesCard).toBeVisible()
 
     // Navigate to Events and verify event count (spec: 89 real events + 1 projected liquidation = 90)

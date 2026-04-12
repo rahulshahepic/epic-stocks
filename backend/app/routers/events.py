@@ -725,6 +725,11 @@ def preview_exit(
 
 @router.get("/events")
 def get_events(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return _get_events_data(user, db)
+
+
+def _get_events_data(user: User, db: Session) -> list:
+    """Core events logic, usable by both the direct endpoint and shared view."""
     grants, prices, loans, loans_db, initial_price, election_83b_map = _user_source_data(user, db)
     if not grants and not prices:
         return []
@@ -811,6 +816,11 @@ def get_events(user: User = Depends(get_current_user), db: Session = Depends(get
 
 @router.get("/dashboard")
 def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return _get_dashboard_data(user, db)
+
+
+def _get_dashboard_data(user: User, db: Session) -> dict:
+    """Core dashboard logic, usable by both the direct endpoint and shared view."""
     grants, prices, loans, loans_db, initial_price, _election_83b_map = _user_source_data(user, db)
 
     today = date.today()

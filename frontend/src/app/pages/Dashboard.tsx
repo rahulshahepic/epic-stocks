@@ -9,6 +9,7 @@ import { useApiData } from '../hooks/useApiData.ts'
 import { useDark } from '../../scaffold/hooks/useDark.ts'
 import ImportWizard from '../components/ImportWizard.tsx'
 import TipCarousel from '../components/TipCarousel.tsx'
+import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
 
 function fmt$(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
@@ -755,14 +756,18 @@ function ChartBox({ title, children, range, setRange, maxDate }: {
 }
 
 export default function Dashboard() {
-  const fetchDashboard = useCallback(() => api.getDashboard(), [])
-  const fetchEvents = useCallback(() => api.getEvents(), [])
-  const fetchPrices = useCallback(() => api.getPrices(), [])
-  const fetchLoans = useCallback(() => api.getLoans(), [])
-  const fetchGrants = useCallback(() => api.getGrants(), [])
-  const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
-  const fetchSales = useCallback(() => api.getSales(), [])
-  const fetchHorizon = useCallback(() => api.getHorizonSettings(), [])
+  const { viewing } = useViewing()
+  const vid = viewing?.invitationId
+  const readOnly = !!viewing
+
+  const fetchDashboard = useCallback(() => vid ? api.getSharedDashboard(vid) : api.getDashboard(), [vid])
+  const fetchEvents = useCallback(() => vid ? api.getSharedEvents(vid) : api.getEvents(), [vid])
+  const fetchPrices = useCallback(() => vid ? api.getSharedPrices(vid) : api.getPrices(), [vid])
+  const fetchLoans = useCallback(() => vid ? api.getSharedLoans(vid) : api.getLoans(), [vid])
+  const fetchGrants = useCallback(() => vid ? api.getSharedGrants(vid) : api.getGrants(), [vid])
+  const fetchTaxSettings = useCallback(() => readOnly ? Promise.resolve(null as unknown as TaxSettings) : api.getTaxSettings(), [readOnly])
+  const fetchSales = useCallback(() => vid ? api.getSharedSales(vid) : api.getSales(), [vid])
+  const fetchHorizon = useCallback(() => readOnly ? Promise.resolve({ horizon_date: null } as HorizonSettings) : api.getHorizonSettings(), [readOnly])
 
   const { data: dash, loading: dashLoading, reload: reloadDash } = useApiData<DashboardData>(fetchDashboard)
   const { data: events, reload: reloadEvents } = useApiData<TimelineEvent[]>(fetchEvents)
@@ -1228,7 +1233,10 @@ export default function Dashboard() {
   async function downloadReport() {
     setDownloading(true)
     try {
-      const resp = await fetch(`/api/export/holdings-report?as_of=${encodeURIComponent(cardDate)}`, { credentials: 'include' })
+      const exportUrl = vid
+        ? `/api/sharing/view/${vid}/export/excel`
+        : `/api/export/holdings-report?as_of=${encodeURIComponent(cardDate)}`
+      const resp = await fetch(exportUrl, { credentials: 'include' })
       if (!resp.ok) throw new Error(`Export failed (${resp.status})`)
       const blob = await resp.blob()
       const url = URL.createObjectURL(blob)
@@ -1251,8 +1259,12 @@ export default function Dashboard() {
 
   const isEmpty = !events || events.length === 0
 
-  if (isEmpty) {
+  if (isEmpty && !readOnly) {
     return <ImportWizard onComplete={reloadEvents} />
+  }
+
+  if (isEmpty && readOnly) {
+    return <p className="py-12 text-center text-sm text-stone-500 dark:text-slate-400">This user has no data yet.</p>
   }
 
   const cv = cardValues ?? {
@@ -1314,15 +1326,17 @@ export default function Dashboard() {
           >
             {downloading ? '…' : 'Export'}
           </button>
-          <button
-            onClick={() => {
-              setPendingExitDate(exitDate ?? '')
-              setExitEditOpen(o => !o)
-            }}
-            className="text-xs text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300"
-          >
-            {exitDate ? (exitEditOpen ? '▲ exit date' : '▼ exit date') : '+ set exit date'}
-          </button>
+          {!readOnly && (
+            <button
+              onClick={() => {
+                setPendingExitDate(exitDate ?? '')
+                setExitEditOpen(o => !o)
+              }}
+              className="text-xs text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300"
+            >
+              {exitDate ? (exitEditOpen ? '▲ exit date' : '▼ exit date') : '+ set exit date'}
+            </button>
+          )}
         </div>
         {exitEditOpen && (
           <div className="mt-2 border-t border-stone-100 pt-2 dark:border-slate-700/50">
@@ -1396,7 +1410,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      <TipCarousel onApply={() => { reloadDash(); reloadEvents(); reloadHorizon(); reloadTaxSettings() }} />
+      {!readOnly && <TipCarousel onApply={() => { reloadDash(); reloadEvents(); reloadHorizon(); reloadTaxSettings() }} />}
 
       {/* (F) aria-live so screen readers announce summary updates when cardDate changes */}
       <div aria-live="polite" aria-atomic="true" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -1485,7 +1499,7 @@ export default function Dashboard() {
           )}
         </div>
       )}
-      {showDeductionCard && (() => {
+      {showDeductionCard && !readOnly && (() => {
         const displayEnabled = pendingDeduction ?? savedDeduction
         const currentSavings = cardValues?.tax_savings_from_deduction ?? dash.tax_savings_from_deduction ?? 0
         const previewSavings = pendingDeductionChanged

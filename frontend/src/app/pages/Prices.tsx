@@ -3,6 +3,7 @@ import { api } from '../../api.ts'
 import type { PriceEntry } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
+import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
 
 type PriceForm = { effective_date: string; price: number }
 type Mode = 'list' | 'add' | 'edit' | 'growth'
@@ -56,11 +57,15 @@ function computeGrowthPreview(
 }
 
 export default function Prices() {
-  const fetchPrices = useCallback(() => api.getPrices(), [])
+  const { viewing } = useViewing()
+  const vid = viewing?.invitationId
+  const readOnly = !!viewing
+
+  const fetchPrices = useCallback(() => vid ? api.getSharedPrices(vid) : api.getPrices(), [vid])
   const { data: prices, loading, reload } = useApiData<PriceEntry[]>(fetchPrices)
 
   const config = useConfig()
-  const epicMode = config?.epic_mode ?? false
+  const epicMode = (config?.epic_mode ?? false) || readOnly
 
   const [mode, setMode] = useState<Mode>('list')
   const [form, setForm] = useState<PriceForm>({ effective_date: '', price: 0 })

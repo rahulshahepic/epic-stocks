@@ -4,8 +4,10 @@ import Layout from './scaffold/components/Layout.tsx'
 import { ToastProvider } from './scaffold/components/Toast.tsx'
 import { ThemeProvider } from './scaffold/contexts/ThemeContext.tsx'
 import { MaintenanceProvider, useMaintenance } from './scaffold/contexts/MaintenanceContext.tsx'
+import { ViewingProvider } from './scaffold/contexts/ViewingContext.tsx'
 import Login from './scaffold/pages/Login.tsx'
 import AuthCallback from './scaffold/pages/AuthCallback.tsx'
+import InviteLanding from './scaffold/pages/InviteLanding.tsx'
 import PrivacyPolicy from './scaffold/pages/PrivacyPolicy.tsx'
 import Dashboard from './app/pages/Dashboard.tsx'
 import Events from './app/pages/Events.tsx'
@@ -49,8 +51,9 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="/invite" element={<InviteLanding />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
-          <Route element={<RequireAuth><Layout /></RequireAuth>}>
+          <Route element={<RequireAuth><ViewingProvider><Layout /></ViewingProvider></RequireAuth>}>
             <Route index element={<FinancialRoute><Dashboard /></FinancialRoute>} />
             <Route path="events" element={<FinancialRoute><Events /></FinancialRoute>} />
             <Route path="grants" element={<FinancialRoute><Grants /></FinancialRoute>} />

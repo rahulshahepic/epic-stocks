@@ -7,6 +7,7 @@ import { broadcastChange, useDataSync } from '../hooks/useDataSync.ts'
 import { TaxRateFields, ratesFromDefaults, ratesFromSale, DEFAULT_RATES } from './Sales.tsx'
 import type { TaxRates } from './Sales.tsx'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
+import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
 
 type GrantForm = Omit<GrantEntry, 'id' | 'version'>
 type Mode = 'list' | 'add' | 'edit'
@@ -60,19 +61,23 @@ function priceAt(date: string, prices: PriceEntry[] | null | undefined): number 
 }
 
 export default function Grants() {
-  const fetchGrants = useCallback(() => api.getGrants(), [])
+  const { viewing } = useViewing()
+  const vid = viewing?.invitationId
+  const readOnly = !!viewing
+
+  const fetchGrants = useCallback(() => vid ? api.getSharedGrants(vid) : api.getGrants(), [vid])
   const { data: grants, loading, reload } = useApiData<GrantEntry[]>(fetchGrants)
-  const fetchPrices = useCallback(() => api.getPrices(), [])
+  const fetchPrices = useCallback(() => vid ? api.getSharedPrices(vid) : api.getPrices(), [vid])
   const { data: prices } = useApiData<PriceEntry[]>(fetchPrices)
-  const fetchLoans = useCallback(() => api.getLoans(), [])
+  const fetchLoans = useCallback(() => vid ? api.getSharedLoans(vid) : api.getLoans(), [vid])
   const { data: loans, reload: reloadLoans } = useApiData<LoanEntry[]>(fetchLoans)
-  const fetchSales = useCallback(() => api.getSales(), [])
+  const fetchSales = useCallback(() => vid ? api.getSharedSales(vid) : api.getSales(), [vid])
   const { data: sales, reload: reloadSales } = useApiData<SaleEntry[]>(fetchSales)
-  const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
+  const fetchTaxSettings = useCallback(() => readOnly ? Promise.resolve(null as unknown as TaxSettings) : api.getTaxSettings(), [readOnly])
   const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
 
   const config = useConfig()
-  const epicMode = config?.epic_mode ?? false
+  const epicMode = (config?.epic_mode ?? false) || readOnly
   const isMobile = useIsMobile()
 
   // IDs of loans that have been superseded by a refinance — never show these as the active loan

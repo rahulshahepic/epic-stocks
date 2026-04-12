@@ -1259,7 +1259,16 @@ export default function Dashboard() {
               ? (displayEnabled ? `+${fmt$(previewSavings)}` : `−${fmt$(currentSavings)}`)
               : null)
           : (displayEnabled ? fmt$(currentSavings) : null)
-        const excludedYears = taxSettings?.deduction_excluded_years ?? []
+        const excludedYears = new Set(taxSettings?.deduction_excluded_years ?? [])
+        const allYears = [...(taxSettings?.taxable_years ?? [])].sort((a, b) => a - b)
+        const appliedYears = allYears.filter(y => !excludedYears.has(y))
+        const appliedLabel = appliedYears.length === 0
+          ? 'No years applied.'
+          : appliedYears.length === allYears.length
+            ? `Applied to all years (${appliedYears[0]}–${appliedYears[appliedYears.length - 1]}).`
+            : appliedYears.length <= 4
+              ? `Applied to ${appliedYears.join(', ')}.`
+              : `Applied to ${appliedYears[0]}–${appliedYears[appliedYears.length - 1]} (${excludedYears.size} yr${excludedYears.size !== 1 ? 's' : ''} excluded).`
         return (
           <div className="rounded-md bg-stone-100 px-3 py-2 text-xs dark:bg-slate-800">
             <div className="flex items-center gap-3">
@@ -1297,9 +1306,7 @@ export default function Dashboard() {
             </div>
             {savedDeduction && !pendingDeductionChanged && (
               <p className="mt-1 text-[10px] text-stone-400 dark:text-slate-500">
-                {excludedYears.length > 0
-                  ? `Excluded: ${[...excludedYears].sort((a, b) => a - b).join(', ')}. `
-                  : 'Applied to all years. '}
+                {appliedLabel}{' '}
                 <a href="/settings" className="underline hover:text-stone-600 dark:hover:text-slate-300">
                   Customize years
                 </a>

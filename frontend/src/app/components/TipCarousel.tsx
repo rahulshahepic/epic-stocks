@@ -79,7 +79,7 @@ export default function TipCarousel({ onApply }: Props) {
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">{tip.title}</p>
             <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/50 dark:text-green-300">
-              Save {fmt$(tip.savings)}
+              {tip.type === 'exit_date' ? 'Gain' : 'Save'} {fmt$(tip.savings)}
             </span>
           </div>
           <p className="mt-0.5 text-xs text-amber-800 dark:text-amber-300">{tip.description}</p>

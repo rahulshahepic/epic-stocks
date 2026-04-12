@@ -111,6 +111,7 @@ export interface TimelineEvent {
   // Projected liquidation
   is_projected?: boolean
   outstanding_loan_principal?: number | null
+  unvested_cost_proceeds?: number | null
   // Refinanced loan payoff
   refinanced?: boolean
   // Investment interest deduction (when enabled in settings)
@@ -119,6 +120,33 @@ export interface TimelineEvent {
   interest_deduction_on_ltcg?: number
   adjusted_total_cap_gains?: number
   adjusted_cum_cap_gains?: number
+  // Comprehensive exit summary (only on Liquidation (projected) events)
+  exit_summary?: ExitSummary
+}
+
+export interface ExitSaleSummary {
+  date: string
+  shares: number
+  price_per_share: number
+  proceeds: number
+  estimated_tax: number
+  loan_payoff: number
+  net: number
+}
+
+export interface ExitSummary {
+  vested_shares: number
+  share_price: number
+  gross_vested: number
+  unvested_cost_proceeds: number
+  liquidation_tax: number
+  outstanding_principal: number
+  prior_sales: ExitSaleSummary[]
+  prior_sales_net: number
+  income_tax: number
+  deduction_savings: number
+  deduction_years: number[]
+  net_cash: number
 }
 
 export interface GrantEntry {

@@ -64,8 +64,8 @@ test.describe('Sales journey', () => {
     await expect(page.getByText('1 sales')).toBeVisible()
 
     // Wait for any eager-loading state to resolve, then tap the tax cell
-    await expect(page.locator('td button').filter({ hasText: '...' })).toHaveCount(0, { timeout: 5000 })
-    const taxCellButton = page.locator('td button').filter({ hasText: /\$[\d,.]|—/ }).first()
+    const taxCellButton = page.getByRole('button', { name: /tax breakdown/i }).first()
+    await expect(taxCellButton).toBeVisible({ timeout: 5000 })
     await taxCellButton.click()
     await expect(page.getByText('Estimated Tax Breakdown')).toBeVisible({ timeout: 5000 })
     await expect(page.getByText('Gross proceeds').first()).toBeVisible()
@@ -96,12 +96,12 @@ test.describe('Sales journey', () => {
     await expect(page.getByText('No sales recorded yet')).toBeVisible({ timeout: 5000 })
   })
 
-  test('events page shows tax column for vesting events', async ({ page }) => {
+  test('events page shows tax for vesting events', async ({ page }) => {
     await navigateTo(page, 'Events')
     await expect(page.getByText('Events Timeline')).toBeVisible()
-    // Tax column header should be visible
-    await expect(page.getByText('Tax').first()).toBeVisible()
-    // For vesting events with income/cap gains, orange tax amount should appear
+    // Tax amounts should be visible for vesting events (in column header on desktop, inline on mobile cards)
+    await expect(page.getByText('Tax').first()).toBeVisible({ timeout: 5000 })
+    // Orange tax amount should appear for vesting events with income
     const taxCells = page.locator('span.text-orange-700')
     await expect(taxCells.first()).toBeVisible({ timeout: 5000 })
   })

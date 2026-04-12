@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useIsMobile } from '../hooks/useIsMobile.ts'
 import { api, ConflictError } from '../../api.ts'
 import type { PriceEntry, SaleEntry, SaleEstimate, TaxBreakdown, TaxSettings, TrancheLine, TrancheAllocation } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
@@ -357,6 +358,7 @@ function RateField({ label, value, onChange }: { label: string; value: number; o
 export default function Sales() {
   const config = useConfig()
   const epicMode = !!config?.epic_mode
+  const isMobile = useIsMobile()
   const fetchSales = useCallback(() => api.getSales(), [])
   const { data: sales, loading, reload } = useApiData<SaleEntry[]>(fetchSales)
   const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
@@ -791,6 +793,70 @@ export default function Sales() {
         </button>
       </div>
 
+      {/* Mobile card layout */}
+      {isMobile ? <div className="space-y-2">
+        {sales.map(s => {
+          const bd = breakdowns.get(s.id)
+          const isExpanded = expanded.has(s.id)
+          const isLoading = loadingTaxIds.has(s.id)
+          const hasST = bd && bd.st_shares > 0
+          return (
+            <div key={s.id} className="rounded-lg border border-stone-200 bg-white p-3 text-xs dark:border-slate-700 dark:bg-slate-900">
+              {/* Line 1: Date + Type + Edit */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-700 dark:text-slate-300">{s.date}</span>
+                  {s.loan_id != null ? (
+                    <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-medium text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">Payoff</span>
+                  ) : (
+                    <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">Cash Out</span>
+                  )}
+                </div>
+                <button onClick={() => openEdit(s)} className="text-rose-400 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300" aria-label="Edit sale">
+                  <PencilIcon />
+                </button>
+              </div>
+              {/* Line 2: Shares + Price */}
+              <div className="mt-1 text-gray-700 dark:text-slate-300">
+                <span className="tabular-nums">{fmtNum(s.shares)}</span> shares @ <span className="tabular-nums">{fmtUSD(s.price_per_share)}</span>
+              </div>
+              {/* Line 3: Gross + Tax */}
+              <div className="mt-1 flex items-center justify-between">
+                <span className="tabular-nums font-medium text-gray-900 dark:text-slate-100">Gross: {fmtUSD(s.shares * s.price_per_share)}</span>
+                <button
+                  onClick={() => toggleTax(s.id)}
+                  aria-expanded={isExpanded}
+                  aria-label={`${isExpanded ? 'Hide' : 'Show'} tax breakdown`}
+                  className="inline-flex items-center gap-1"
+                >
+                  {isLoading ? (
+                    <span className="text-stone-600">...</span>
+                  ) : bd ? (
+                    <>
+                      <span className="text-gray-500 dark:text-slate-400">Tax:</span>
+                      {hasST && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">ST</span>}
+                      <span className={`tabular-nums font-medium underline decoration-dotted ${hasST ? 'text-amber-700 dark:text-amber-300' : 'text-gray-900 dark:text-slate-100'}`}>{fmtUSD(bd.estimated_tax)}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-gray-500 dark:text-slate-400">Tax:</span>
+                      <span className="text-stone-600 underline decoration-dotted">&mdash;</span>
+                    </>
+                  )}
+                  <span className="text-stone-400 dark:text-slate-500">{isExpanded ? '\u25B2' : '\u25BC'}</span>
+                </button>
+              </div>
+              {/* Expanded tax breakdown */}
+              {isExpanded && bd && (
+                <div className="mt-2 border-t border-stone-100 pt-2 dark:border-slate-700">
+                  {s.notes && <p className="mb-2 text-xs text-gray-500 dark:text-slate-400">Note: {s.notes}</p>}
+                  <TaxCard breakdown={bd} />
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div> : /* Desktop table layout */
       <div tabIndex={0} className="overflow-x-auto rounded-lg border border-stone-200 dark:border-slate-700">
         <table className="w-full text-left text-xs">
           <thead className="bg-stone-50 dark:bg-slate-800">
@@ -851,7 +917,7 @@ export default function Sales() {
                             </span>
                           </>
                         ) : (
-                          <span className="text-stone-600 underline decoration-dotted">—</span>
+                          <span className="text-stone-600 underline decoration-dotted">&mdash;</span>
                         )}
                       </button>
                     </td>
@@ -878,12 +944,12 @@ export default function Sales() {
                 </>
               )
             })}
-            {sales.length === 0 && (
-              <tr><td colSpan={7} className="px-3 py-6 text-center text-stone-600">No sales recorded yet</td></tr>
-            )}
           </tbody>
         </table>
-      </div>
+      </div>}
+      {sales.length === 0 && (
+        <p className="px-3 py-6 text-center text-xs text-stone-600">No sales recorded yet</p>
+      )}
       <p className="text-xs text-stone-600">{sales.length} sales</p>
     </div>
   )

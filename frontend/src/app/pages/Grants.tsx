@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useIsMobile } from '../hooks/useIsMobile.ts'
 import { api, ConflictError } from '../../api.ts'
 import type { GrantEntry, LoanEntry, PriceEntry, SaleEntry, TaxSettings, SaleEstimate } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
@@ -72,6 +73,7 @@ export default function Grants() {
 
   const config = useConfig()
   const epicMode = config?.epic_mode ?? false
+  const isMobile = useIsMobile()
 
   // IDs of loans that have been superseded by a refinance — never show these as the active loan
   const refinancedLoanIds = new Set((loans ?? []).map(l => l.refinances_loan_id).filter((id): id is number => id !== null))
@@ -597,6 +599,76 @@ export default function Grants() {
         </p>
       )}
 
+      {/* Mobile card layout */}
+      {isMobile ? <div className="space-y-2">
+        {grants.map(g => {
+          const loan = loans?.find(l => l.grant_year === g.year && l.grant_type === g.type && l.loan_type === 'Purchase' && !refinancedLoanIds.has(l.id))
+          const linkedSale = loan ? sales?.find(s => s.loan_id === loan.id) : undefined
+          const hasSale = !!linkedSale
+          const isExpanded = expandedGrantId === g.id
+          return (
+            <div key={g.id} className="rounded-lg border border-stone-200 bg-white p-3 text-xs dark:border-slate-700 dark:bg-slate-900">
+              {/* Line 1: Year + Type + Action */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-gray-700 dark:text-slate-300">{g.year}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${g.type === 'Purchase' ? 'bg-rose-50 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'}`}>
+                    {g.type}
+                  </span>
+                  {g.election_83b && (
+                    <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-medium text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">83(b)</span>
+                  )}
+                </div>
+                {epicMode ? (
+                  <button onClick={() => openSellModal(g)} className="text-emerald-700 hover:text-emerald-800 dark:text-emerald-300">Sell</button>
+                ) : (
+                  <button onClick={() => openEdit(g)} className="text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Edit</button>
+                )}
+              </div>
+              {/* Line 2: Shares + Cost Basis */}
+              <div className="mt-1 text-gray-700 dark:text-slate-300">
+                <span className="tabular-nums">{fmtNum(g.shares)}</span> shares <span className="text-gray-400 dark:text-slate-500">&middot;</span> <span className="tabular-nums">{fmtPrice(g.price)}</span> basis
+              </div>
+              {/* Line 3: Vest details */}
+              <div className="mt-1 text-gray-500 dark:text-slate-400">
+                Vest: {g.vest_start} <span className="text-gray-400 dark:text-slate-500">&middot;</span> {g.periods} periods
+                {g.exercise_date && <> <span className="text-gray-400 dark:text-slate-500">&middot;</span> Ex: {g.exercise_date}</>}
+              </div>
+              {/* Line 4: Loan status */}
+              <div className="mt-1">
+                {loan ? (
+                  <button
+                    onClick={() => setExpandedGrantId(isExpanded ? null : g.id)}
+                    className={`text-[10px] underline decoration-dotted ${hasSale ? 'text-green-700 dark:text-green-300' : 'text-amber-700 dark:text-amber-300'}`}
+                  >
+                    {hasSale ? '\u2713 loan+sale' : '\u2713 loan'} {isExpanded ? '\u25B2' : '\u25BC'}
+                  </button>
+                ) : (
+                  <span className="text-[10px] text-stone-600">&mdash;</span>
+                )}
+              </div>
+              {/* Expanded loan detail */}
+              {isExpanded && loan && (
+                <div className="mt-2 rounded-md bg-stone-50 p-3 dark:bg-slate-800">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                    <div><span className="text-stone-600 dark:text-slate-400">Amount</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{fmtPrice(loan.amount)}</span></div>
+                    <div><span className="text-stone-600 dark:text-slate-400">Rate</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{(loan.interest_rate * 100).toFixed(2)}%</span></div>
+                    <div><span className="text-stone-600 dark:text-slate-400">Due</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{loan.due_date}</span></div>
+                    <div><span className="text-stone-600 dark:text-slate-400">Loan #</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{loan.loan_number ?? '\u2014'}</span></div>
+                  </div>
+                  {linkedSale ? (
+                    <p className="mt-2 text-[10px] text-green-700 dark:text-green-300">
+                      {'\u2713'} Payoff sale {linkedSale.date} &middot; {fmtNum(linkedSale.shares)} shares @ {fmtPrice(linkedSale.price_per_share)}
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-[10px] text-amber-700 dark:text-amber-300">No payoff sale linked</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div> : /* Desktop table layout */
       <div tabIndex={0} className="overflow-x-auto rounded-lg border border-stone-200 dark:border-slate-700">
         <table className="w-full text-left text-xs">
           <thead className="bg-stone-50 dark:bg-slate-800">
@@ -641,10 +713,10 @@ export default function Grants() {
                           onClick={() => setExpandedGrantId(isExpanded ? null : g.id)}
                           className={`text-[10px] underline decoration-dotted ${hasSale ? 'text-green-700 dark:text-green-300' : 'text-amber-700 dark:text-amber-300'}`}
                         >
-                          {hasSale ? '✓ loan+sale' : '✓ loan'}
+                          {hasSale ? '\u2713 loan+sale' : '\u2713 loan'}
                         </button>
                       ) : (
-                        <span className="text-[10px] text-stone-600">—</span>
+                        <span className="text-[10px] text-stone-600">&mdash;</span>
                       )}
                     </td>
                     <td className="px-3 py-2 text-right">
@@ -663,11 +735,11 @@ export default function Grants() {
                             <div><span className="text-stone-600 dark:text-slate-400">Amount</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{fmtPrice(loan.amount)}</span></div>
                             <div><span className="text-stone-600 dark:text-slate-400">Rate</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{(loan.interest_rate * 100).toFixed(2)}%</span></div>
                             <div><span className="text-stone-600 dark:text-slate-400">Due</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{loan.due_date}</span></div>
-                            <div><span className="text-stone-600 dark:text-slate-400">Loan #</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{loan.loan_number ?? '—'}</span></div>
+                            <div><span className="text-stone-600 dark:text-slate-400">Loan #</span> <span className="ml-1 font-medium text-gray-700 dark:text-slate-200">{loan.loan_number ?? '\u2014'}</span></div>
                           </div>
                           {linkedSale ? (
                             <p className="mt-2 text-[10px] text-green-700 dark:text-green-300">
-                              ✓ Payoff sale {linkedSale.date} · {fmtNum(linkedSale.shares)} shares @ {fmtPrice(linkedSale.price_per_share)}
+                              {'\u2713'} Payoff sale {linkedSale.date} &middot; {fmtNum(linkedSale.shares)} shares @ {fmtPrice(linkedSale.price_per_share)}
                             </p>
                           ) : (
                             <p className="mt-2 text-[10px] text-amber-700 dark:text-amber-300">No payoff sale linked</p>
@@ -679,12 +751,12 @@ export default function Grants() {
                 </>
               )
             })}
-            {grants.length === 0 && (
-              <tr><td colSpan={9} className="px-3 py-6 text-center text-stone-600">No grants yet</td></tr>
-            )}
           </tbody>
         </table>
-      </div>
+      </div>}
+      {grants.length === 0 && (
+        <p className="px-3 py-6 text-center text-xs text-stone-600">No grants yet</p>
+      )}
       <p className="text-xs text-stone-600">{grants.length} grants</p>
 
       {/* Sell Shares Modal */}

@@ -779,6 +779,9 @@ export default function Dashboard() {
   const [holdingsOpen, setHoldingsOpen] = useState<boolean>(() =>
     localStorage.getItem('dashboard_holdingsOpen') === 'true'
   )
+  const [loansOpen, setLoansOpen] = useState<boolean>(() =>
+    localStorage.getItem('dashboard_loansOpen') === 'true'
+  )
   const [range, setRange] = useState<DateRange>(() => {
     try {
       const saved = localStorage.getItem('dashboard_range')
@@ -886,6 +889,10 @@ export default function Dashboard() {
   useEffect(() => {
     localStorage.setItem('dashboard_holdingsOpen', String(holdingsOpen))
   }, [holdingsOpen])
+
+  useEffect(() => {
+    localStorage.setItem('dashboard_loansOpen', String(loansOpen))
+  }, [loansOpen])
 
   useEffect(() => {
     localStorage.setItem('dashboard_cardDate', cardDate)
@@ -1167,6 +1174,7 @@ export default function Dashboard() {
       return {
         year: g.year,
         type: g.type,
+        exerciseDate: g.exercise_date,
         costBasis: g.price,
         vestedShares: vested,
         unvestedShares: unvested,
@@ -1176,6 +1184,62 @@ export default function Dashboard() {
       }
     })
   }, [grantsData, events, loans, sales, taxSettings, cardDate, projectedLiqDate, ignoringExitDate])
+
+  // Active (non-settled, non-refinanced) loans as of cardDate
+  const activeLoans = useMemo(() => {
+    if (!loans || !events) return null
+
+    const liqOccurred = projectedLiqDate !== null && cardDate >= projectedLiqDate && !ignoringExitDate
+    if (liqOccurred) return [] // all loans paid off at exit
+
+    const effectiveDate = cardDate
+    const effYear = parseInt(effectiveDate.slice(0, 4), 10)
+
+    const settledIds = new Set(
+      (sales ?? []).filter(s => s.loan_id !== null && s.date <= effectiveDate).map(s => s.loan_id)
+    )
+    const refinancedIds = new Set(
+      loans.map(l => l.refinances_loan_id).filter((id): id is number => id !== null)
+    )
+    const earlyPaidByLoan = new Map<number, number>()
+    events.filter(e => e.event_type === 'Early Loan Payment' && e.date <= effectiveDate && e.loan_id != null)
+      .forEach(e => earlyPaidByLoan.set(e.loan_id!, (earlyPaidByLoan.get(e.loan_id!) ?? 0) + (e.amount ?? 0)))
+
+    return loans
+      .filter(l =>
+        l.loan_year <= effYear &&
+        !settledIds.has(l.id) &&
+        !refinancedIds.has(l.id)
+      )
+      .map(l => ({
+        id: l.id,
+        grantYear: l.grant_year,
+        grantType: l.grant_type,
+        loanType: l.loan_type,
+        loanYear: l.loan_year,
+        dueDate: l.due_date,
+        balance: Math.max(0, l.amount - (earlyPaidByLoan.get(l.id) ?? 0)),
+        interestRate: l.interest_rate,
+      }))
+      .filter(l => l.balance > 0)
+  }, [loans, events, sales, cardDate, projectedLiqDate, ignoringExitDate])
+
+  const [downloading, setDownloading] = useState(false)
+  async function downloadReport() {
+    setDownloading(true)
+    try {
+      const resp = await fetch(`/api/export/holdings-report?as_of=${encodeURIComponent(cardDate)}`, { credentials: 'include' })
+      if (!resp.ok) throw new Error(`Export failed (${resp.status})`)
+      const blob = await resp.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Holdings_Report_${cardDate}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch { /* silent */ }
+    setDownloading(false)
+  }
 
   if (dashLoading) {
     return <p className="p-6 text-center text-sm text-stone-600">Loading...</p>
@@ -1243,11 +1307,19 @@ export default function Dashboard() {
             </button>
           ))}
           <button
+            onClick={downloadReport}
+            disabled={downloading}
+            title="Download holdings report as Excel"
+            className="ml-auto text-xs text-gray-400 hover:text-gray-600 disabled:opacity-50 dark:text-slate-500 dark:hover:text-slate-300"
+          >
+            {downloading ? '…' : 'Export'}
+          </button>
+          <button
             onClick={() => {
               setPendingExitDate(exitDate ?? '')
               setExitEditOpen(o => !o)
             }}
-            className="ml-auto text-xs text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300"
+            className="text-xs text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300"
           >
             {exitDate ? (exitEditOpen ? '▲ exit date' : '▼ exit date') : '+ set exit date'}
           </button>
@@ -1358,12 +1430,54 @@ export default function Dashboard() {
                 <div key={`${h.year}-${h.type}`} className="border-b border-stone-100 px-3 py-2 last:border-b-0 dark:border-slate-700/50">
                   <p className="text-xs font-semibold text-gray-800 dark:text-slate-200">{h.year} {h.type}</p>
                   <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs sm:grid-cols-3">
+                    <span className="text-gray-500 dark:text-slate-400">Exercised <span className="font-medium text-gray-800 dark:text-slate-200">{fmtFullDate(h.exerciseDate)}</span></span>
                     <span className="text-gray-500 dark:text-slate-400">Cost basis <span className="font-medium text-gray-800 dark:text-slate-200">{fmtPrice(h.costBasis)}</span></span>
+                    <span className="text-gray-500 dark:text-slate-400">Vested value <span className="font-medium text-gray-800 dark:text-slate-200">{fmt$(h.vestedValue)}</span></span>
                     <span className="text-gray-500 dark:text-slate-400">Vested <span className="font-medium text-gray-800 dark:text-slate-200">{fmtNum(h.vestedShares)}</span></span>
                     <span className="text-gray-500 dark:text-slate-400">Unvested <span className="font-medium text-gray-800 dark:text-slate-200">{fmtNum(h.unvestedShares)}</span></span>
-                    <span className="text-gray-500 dark:text-slate-400">Vested value <span className="font-medium text-gray-800 dark:text-slate-200">{fmt$(h.vestedValue)}</span></span>
                     <span className="text-gray-500 dark:text-slate-400">Taxes <span className="font-medium text-gray-800 dark:text-slate-200">{fmt$(h.totalTax)}</span></span>
                     <span className="text-gray-500 dark:text-slate-400">Loans <span className="font-medium text-gray-800 dark:text-slate-200">{fmt$(h.totalLoan)}</span></span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {activeLoans && activeLoans.length > 0 && (
+        <div className="rounded-lg border border-stone-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+          <button
+            onClick={() => setLoansOpen(o => !o)}
+            className="flex w-full items-center justify-between px-3 py-2.5 text-left"
+          >
+            <span className="text-sm font-medium text-gray-700 dark:text-slate-300">
+              Active Loans
+              <span className="ml-1.5 text-xs font-normal text-gray-400 dark:text-slate-500">({activeLoans.length})</span>
+            </span>
+            <span className="text-xs text-gray-400 dark:text-slate-500">{loansOpen ? '▲' : '▼'}</span>
+          </button>
+          {loansOpen && (
+            <div className="border-t border-stone-100 dark:border-slate-700/50">
+              {/* Header row on sm+ */}
+              <div className="hidden px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-gray-400 sm:grid sm:grid-cols-5 sm:gap-x-2 dark:text-slate-500">
+                <span>Grant</span><span>Type</span><span>Balance</span><span>Rate</span><span>Due</span>
+              </div>
+              {activeLoans.map(l => (
+                <div key={l.id} className="border-b border-stone-100 px-3 py-2 last:border-b-0 dark:border-slate-700/50">
+                  {/* Mobile layout */}
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs sm:hidden">
+                    <span className="text-gray-500 dark:text-slate-400">{l.grantYear} {l.grantType} <span className="text-gray-400 dark:text-slate-500">· {l.loanType}</span></span>
+                    <span className="text-right font-medium text-gray-800 dark:text-slate-200">{fmt$(l.balance)}</span>
+                    <span className="text-gray-500 dark:text-slate-400">Rate <span className="font-medium text-gray-800 dark:text-slate-200">{(l.interestRate * 100).toFixed(2)}%</span></span>
+                    <span className="text-right text-gray-500 dark:text-slate-400">Due <span className="font-medium text-gray-800 dark:text-slate-200">{fmtFullDate(l.dueDate)}</span></span>
+                  </div>
+                  {/* Desktop row */}
+                  <div className="hidden text-xs sm:grid sm:grid-cols-5 sm:gap-x-2">
+                    <span className="font-medium text-gray-800 dark:text-slate-200">{l.grantYear} {l.grantType}</span>
+                    <span className="text-gray-600 dark:text-slate-400">{l.loanType}</span>
+                    <span className="font-medium text-gray-800 dark:text-slate-200">{fmt$(l.balance)}</span>
+                    <span className="text-gray-600 dark:text-slate-400">{(l.interestRate * 100).toFixed(2)}%</span>
+                    <span className="text-gray-600 dark:text-slate-400">{fmtFullDate(l.dueDate)}</span>
                   </div>
                 </div>
               ))}

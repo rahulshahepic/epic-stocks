@@ -101,7 +101,7 @@ describe('Sales', () => {
     await waitFor(() => {
       expect(screen.getByText('2 sales')).toBeInTheDocument()
     })
-    expect(screen.getByText('2023-06-01')).toBeInTheDocument()
+    expect(screen.getAllByText('2023-06-01').length).toBeGreaterThan(0)
   })
 
   it('shows gross proceeds', async () => {
@@ -126,7 +126,7 @@ describe('Sales', () => {
   it('opens edit form via pencil icon', async () => {
     mockApi()
     renderSales()
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Edit sale' })).toHaveLength(2))
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Edit sale' })).toHaveLength(4)) // 2 sales × 2 views (mobile + desktop)
     await userEvent.click(screen.getAllByRole('button', { name: 'Edit sale' })[0])
     expect(screen.getByText('Edit Sale')).toBeInTheDocument()
   })
@@ -134,7 +134,7 @@ describe('Sales', () => {
   it('edit form shows delete sale button', async () => {
     mockApi()
     renderSales()
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Edit sale' })).toHaveLength(2))
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Edit sale' })).toHaveLength(4)) // 2 sales × 2 views (mobile + desktop)
     await userEvent.click(screen.getAllByRole('button', { name: 'Edit sale' })[0])
     expect(screen.getByText('Delete sale')).toBeInTheDocument()
   })
@@ -164,10 +164,10 @@ describe('Sales', () => {
     const taxButtons = screen.getAllByRole('button').filter(b => b.textContent?.includes('$451.98'))
     await userEvent.click(taxButtons[0])
     await waitFor(() => {
-      expect(screen.getByText('Estimated Tax Breakdown')).toBeInTheDocument()
+      expect(screen.getAllByText('Estimated Tax Breakdown').length).toBeGreaterThan(0)
     })
-    expect(screen.getByText(/Gross proceeds/)).toBeInTheDocument()
-    expect(screen.getByText(/Estimated total tax/)).toBeInTheDocument()
+    expect(screen.getAllByText(/Gross proceeds/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Estimated total tax/).length).toBeGreaterThan(0)
   })
 
   it('shows ST badge when sale has short-term gains', async () => {
@@ -192,7 +192,7 @@ describe('Sales', () => {
     )
     renderSales()
     await waitFor(() => {
-      expect(screen.getByText('No sales recorded yet')).toBeInTheDocument()
+      expect(screen.getAllByText('No sales recorded yet').length).toBeGreaterThan(0)
     })
   })
 })

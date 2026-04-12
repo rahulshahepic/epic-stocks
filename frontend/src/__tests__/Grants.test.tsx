@@ -57,9 +57,9 @@ describe('Grants', () => {
     await waitFor(() => {
       expect(screen.getByText('2 grants')).toBeInTheDocument()
     })
-    expect(screen.getByText('Purchase')).toBeInTheDocument()
-    expect(screen.getByText('Bonus')).toBeInTheDocument()
-    expect(screen.getByText('10,000')).toBeInTheDocument()
+    expect(screen.getAllByText('Purchase').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Bonus').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('10,000').length).toBeGreaterThan(0)
   })
 
   it('opens new purchase form', async () => {
@@ -88,7 +88,7 @@ describe('Grants', () => {
     mockApi()
     renderGrants()
     await waitFor(() => {
-      expect(screen.getAllByText('Edit')).toHaveLength(2)
+      expect(screen.getAllByText('Edit')).toHaveLength(4) // 2 grants × 2 views (mobile + desktop)
     })
     await userEvent.click(screen.getAllByText('Edit')[0])
     expect(screen.getByText('Edit Grant')).toBeInTheDocument()

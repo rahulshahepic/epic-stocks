@@ -4,7 +4,7 @@ import {
   XAxis, YAxis, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts'
 import { api } from '../../api.ts'
-import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, TaxSettings, SaleEntry, HorizonSettings, ExitPreview, DeductionPreview } from '../../api.ts'
+import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, GrantEntry, TaxSettings, SaleEntry, HorizonSettings, ExitPreview, DeductionPreview } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { useDark } from '../../scaffold/hooks/useDark.ts'
 import ImportWizard from '../components/ImportWizard.tsx'
@@ -758,6 +758,7 @@ export default function Dashboard() {
   const fetchEvents = useCallback(() => api.getEvents(), [])
   const fetchPrices = useCallback(() => api.getPrices(), [])
   const fetchLoans = useCallback(() => api.getLoans(), [])
+  const fetchGrants = useCallback(() => api.getGrants(), [])
   const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
   const fetchSales = useCallback(() => api.getSales(), [])
   const fetchHorizon = useCallback(() => api.getHorizonSettings(), [])
@@ -766,6 +767,7 @@ export default function Dashboard() {
   const { data: events, reload: reloadEvents } = useApiData<TimelineEvent[]>(fetchEvents)
   const { data: prices } = useApiData<PriceEntry[]>(fetchPrices)
   const { data: loans } = useApiData<LoanEntry[]>(fetchLoans)
+  const { data: grantsData } = useApiData<GrantEntry[]>(fetchGrants)
   const { data: taxSettings, reload: reloadTaxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
   const { data: sales } = useApiData<SaleEntry[]>(fetchSales)
   const { data: horizonSettings, reload: reloadHorizon } = useApiData<HorizonSettings>(fetchHorizon)
@@ -993,6 +995,26 @@ export default function Dashboard() {
         earlyPaidByLoan.set(e.loan_id, (earlyPaidByLoan.get(e.loan_id) ?? 0) + (e.amount ?? 0))
       }
     }
+    // Unvested shares sell at cost basis (grant price) — compute their proceeds
+    let unvestedCostProceeds = 0
+    if (grantsData && liqOccurred) {
+      for (const g of grantsData) {
+        if (g.periods <= 0 || g.price <= 0) continue
+        const vs = new Date(g.vest_start + 'T00:00:00')
+        const base = Math.floor(g.shares / g.periods)
+        const rem = g.shares % g.periods
+        let vested = 0
+        for (let p = 0; p < g.periods; p++) {
+          const vd = new Date(vs)
+          vd.setFullYear(vd.getFullYear() + p)
+          if (vd.toISOString().slice(0, 10) <= effectiveDate) {
+            vested += base + (p < rem ? 1 : 0)
+          }
+        }
+        const unvested = g.shares - vested
+        if (unvested > 0) unvestedCostProceeds += unvested * g.price
+      }
+    }
     const cashReceived = (sales
       ? sales.filter(s => s.date <= effectiveDate)
           .reduce((sum, s) => {
@@ -1005,7 +1027,7 @@ export default function Dashboard() {
           }, 0)
       : 0)
       + (liqOccurred && projectedLiqEvent
-          ? Math.max(0, (projectedLiqEvent.gross_proceeds ?? 0) - outstandingPrincipal - (projectedLiqEvent.estimated_tax ?? 0))
+          ? Math.max(0, (projectedLiqEvent.gross_proceeds ?? 0) + unvestedCostProceeds - outstandingPrincipal - (projectedLiqEvent.estimated_tax ?? 0))
           : 0)
 
     const adjCumCg = lastEvent?.cum_cap_gains ?? 0
@@ -1060,7 +1082,7 @@ export default function Dashboard() {
       interest_deduction_total: interestDeductionTotal,
       next_event: nextEvent,
     }
-  }, [events, loans, sales, taxSettings, dash, cardDate, projectedLiqDate, projectedLiqEvent, ignoringExitDate])
+  }, [events, loans, grantsData, sales, taxSettings, dash, cardDate, projectedLiqDate, projectedLiqEvent, ignoringExitDate])
 
   if (dashLoading) {
     return <p className="p-6 text-center text-sm text-stone-600">Loading...</p>

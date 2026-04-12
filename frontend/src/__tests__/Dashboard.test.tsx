@@ -125,7 +125,8 @@ describe('Dashboard', () => {
     await waitFor(() => {
       expect(screen.getByText('Share Price')).toBeInTheDocument()
     })
-    expect(screen.getByText('Total Shares')).toBeInTheDocument()
+    expect(screen.getByText('Vested Shares')).toBeInTheDocument()
+    expect(screen.getByText('Unvested Shares')).toBeInTheDocument()
     expect(screen.getByText('Total Income')).toBeInTheDocument()
     expect(screen.getByText('Total Cap Gains')).toBeInTheDocument()
     expect(screen.getByText('Loan Principal')).toBeInTheDocument()

@@ -489,6 +489,7 @@ export default function Events() {
                       {e.is_projected ? 'Liquidation' : e.event_type}
                     </span>
                     {e.is_projected && <span className="text-[9px] uppercase tracking-wide text-stone-600 dark:text-slate-400">projected</span>}
+                    {e.is_estimate && <span className="text-[9px] uppercase tracking-wide text-amber-600 dark:text-amber-400">est.</span>}
                   </div>
                   <span className="text-stone-400 dark:text-slate-500">{isMobileExpanded ? '\u25B2' : '\u25BC'}</span>
                 </div>
@@ -613,6 +614,9 @@ export default function Events() {
                         <span className="ml-1 text-[9px] uppercase tracking-wide text-stone-600 dark:text-slate-400">
                           projected {expandedLiq ? '▲' : '▼'}
                         </span>
+                      )}
+                      {e.is_estimate && (
+                        <span className="ml-1 text-[9px] uppercase tracking-wide text-amber-600 dark:text-amber-400">est.</span>
                       )}
                     </td>
                     <td className="whitespace-nowrap px-3 py-2 text-gray-500 dark:text-slate-400">

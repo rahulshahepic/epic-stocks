@@ -38,8 +38,10 @@ def _user_source_data(user: User, db: Session):
         "loan_number": ln.loan_number,
     } for ln in loans_db]
 
+    estimated_price_dates = {p.effective_date for p in prices_db if p.is_estimate}
+
     initial_price = prices[0]["price"] if prices else 0
-    return grants, prices, loans, loans_db, initial_price, election_83b_map
+    return grants, prices, loans, loans_db, initial_price, election_83b_map, estimated_price_dates
 
 
 def _serialize_event(e):
@@ -606,7 +608,7 @@ def preview_deduction(
     db: Session = Depends(get_db),
 ):
     """Compute investment interest deduction impact without saving the setting."""
-    grants, prices, loans, loans_db, initial_price, _ = _user_source_data(user, db)
+    grants, prices, loans, loans_db, initial_price, _, _ = _user_source_data(user, db)
     if not grants and not prices:
         return None
     ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
@@ -676,7 +678,7 @@ def preview_exit(
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid date format")
 
-    grants, prices, loans, loans_db, initial_price, _ = _user_source_data(user, db)
+    grants, prices, loans, loans_db, initial_price, _, _ = _user_source_data(user, db)
     if not grants and not prices:
         return None
 
@@ -730,7 +732,7 @@ def get_events(user: User = Depends(get_current_user), db: Session = Depends(get
 
 def _get_events_data(user: User, db: Session) -> list:
     """Core events logic, usable by both the direct endpoint and shared view."""
-    grants, prices, loans, loans_db, initial_price, election_83b_map = _user_source_data(user, db)
+    grants, prices, loans, loans_db, initial_price, election_83b_map, estimated_price_dates = _user_source_data(user, db)
     if not grants and not prices:
         return []
     timeline = get_timeline(user.id, grants, prices, loans, initial_price)
@@ -744,9 +746,16 @@ def _get_events_data(user: User, db: Session) -> list:
     enriched = _enrich_timeline(timeline, loans_db, loan_payments, sales, horizon_date=horizon_date)
 
     # Annotate vesting events with election_83b flag from their grant
+    # Annotate Share Price events with is_estimate flag
     for e in enriched:
         if e["event_type"] == "Vesting":
             e["election_83b"] = election_83b_map.get((e.get("grant_year"), e.get("grant_type")), False)
+        elif e["event_type"] == "Share Price":
+            ev_date = e["date"]
+            if isinstance(ev_date, datetime):
+                ev_date = ev_date.date()
+            if ev_date in estimated_price_dates:
+                e["is_estimate"] = True
 
     ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
     ts_dict = {
@@ -821,7 +830,7 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
 
 def _get_dashboard_data(user: User, db: Session) -> dict:
     """Core dashboard logic, usable by both the direct endpoint and shared view."""
-    grants, prices, loans, loans_db, initial_price, _election_83b_map = _user_source_data(user, db)
+    grants, prices, loans, loans_db, initial_price, _election_83b_map, _ = _user_source_data(user, db)
 
     today = date.today()
     total_tax_paid = sum(

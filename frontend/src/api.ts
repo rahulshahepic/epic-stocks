@@ -108,6 +108,8 @@ export interface TimelineEvent {
   sale_id?: number | null
   // 83(b) election (bonus/free grants with price=0 who elected 83b at grant time)
   election_83b?: boolean
+  // Estimated price (Share Price events from projected prices)
+  is_estimate?: boolean
   // Projected liquidation
   is_projected?: boolean
   outstanding_loan_principal?: number | null

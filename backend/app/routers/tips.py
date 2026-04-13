@@ -78,7 +78,7 @@ def _compute_scenario_tax(
 
 @router.get("")
 def get_tips(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    grants, prices, loans, loans_db, initial_price, _ = _user_source_data(user, db)
+    grants, prices, loans, loans_db, initial_price, _, _ = _user_source_data(user, db)
     if not grants:
         return []
 

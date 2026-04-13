@@ -11,7 +11,7 @@ from starlette.responses import FileResponse
 import database
 
 logger = logging.getLogger(__name__)
-from scaffold.routers import auth_router, admin, notifications, push, sharing
+from scaffold.routers import auth_router, admin, notifications, push, sharing, unsubscribe
 from app.routers import grants, loans, prices, events, flows, import_export, sales, horizon, cache as cache_router, tips, wizard
 from scaffold.auth import get_current_user
 from scaffold.crypto import encryption_enabled, decrypt_user_key, set_current_key
@@ -537,6 +537,7 @@ _fastapi_app.include_router(cache_router.router)
 _fastapi_app.include_router(tips.router)
 _fastapi_app.include_router(wizard.router)
 _fastapi_app.include_router(sharing.router)
+_fastapi_app.include_router(unsubscribe.router)
 
 
 @_fastapi_app.get("/api/health")

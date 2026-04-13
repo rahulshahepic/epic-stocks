@@ -8,6 +8,7 @@ import { ViewingProvider } from './scaffold/contexts/ViewingContext.tsx'
 import Login from './scaffold/pages/Login.tsx'
 import AuthCallback from './scaffold/pages/AuthCallback.tsx'
 import InviteLanding from './scaffold/pages/InviteLanding.tsx'
+import Unsubscribe from './scaffold/pages/Unsubscribe.tsx'
 import PrivacyPolicy from './scaffold/pages/PrivacyPolicy.tsx'
 import Dashboard from './app/pages/Dashboard.tsx'
 import Events from './app/pages/Events.tsx'
@@ -52,6 +53,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/invite" element={<InviteLanding />} />
+          <Route path="/unsubscribe" element={<Unsubscribe />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
           <Route element={<RequireAuth><ViewingProvider><Layout /></ViewingProvider></RequireAuth>}>
             <Route index element={<FinancialRoute><Dashboard /></FinancialRoute>} />

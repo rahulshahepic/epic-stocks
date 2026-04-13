@@ -368,6 +368,22 @@ export const api = {
   adminDbTables: () => apiFetch<DbTableInfo[]>('/api/admin/db-tables'),
   adminTipsReport: () => apiFetch<TipsReport>('/api/admin/tips-report'),
 
+  // Email & invitation admin
+  adminEmailLookup: (email: string) =>
+    apiFetch<EmailLookupResult>(`/api/admin/email-lookup?email=${encodeURIComponent(email)}`),
+  adminUserDetail: (id: number) => apiFetch<UserDetail>(`/api/admin/users/${id}/detail`),
+  adminClearOptOut: (id: number) => del(`/api/admin/opt-outs/${id}`),
+  adminClearOptOutByEmail: (email: string) =>
+    del(`/api/admin/opt-outs?email=${encodeURIComponent(email)}`),
+  adminBlockSending: (userId: number, reason: string) =>
+    post<{ blocked: boolean }>(`/api/admin/users/${userId}/block-sending`, { reason }),
+  adminUnblockSending: (userId: number) =>
+    del(`/api/admin/users/${userId}/block-sending`),
+  adminResetInvitations: (userId: number) =>
+    post<{ revoked_sent: number; access_removed: number }>(`/api/admin/users/${userId}/reset-invitations`, {}),
+  adminReenableEmail: (userId: number) =>
+    post<{ enabled: boolean }>(`/api/admin/users/${userId}/reenable-email`, {}),
+
   // Operational status — no auth required, polled by App.tsx
   status: () => apiFetch<{ maintenance: boolean }>('/api/status'),
 
@@ -515,6 +531,61 @@ export interface BlockedEmailEntry {
   email: string
   reason: string | null
   blocked_at: string
+}
+
+export interface EmailLookupResult {
+  email: string
+  has_account: boolean
+  user_id: number | null
+  user_name: string | null
+  is_admin: boolean
+  email_notifications_enabled: boolean | null
+  invitation_opt_out: boolean
+  opt_out_id: number | null
+  blocked_from_receiving: boolean
+  blocked_id: number | null
+  blocked_reason: string | null
+  sending_blocked: boolean
+  sending_block_id: number | null
+  sending_block_reason: string | null
+  invitations_sent: number
+  invitations_received: number
+}
+
+export interface InvitationSummary {
+  id: number
+  invitee_email: string
+  status: string
+  created_at: string | null
+  accepted_at: string | null
+  invitee_name: string | null
+}
+
+export interface ReceivedInvitationSummary {
+  id: number
+  inviter_email: string
+  inviter_name: string | null
+  status: string
+  accepted_at: string | null
+}
+
+export interface UserDetail {
+  id: number
+  email: string
+  name: string | null
+  is_admin: boolean
+  created_at: string
+  last_login: string | null
+  grant_count: number
+  loan_count: number
+  price_count: number
+  email_notifications_enabled: boolean | null
+  push_subscriptions: number
+  invitation_opt_out: boolean
+  sending_blocked: boolean
+  sending_block_reason: string | null
+  invitations_sent: InvitationSummary[]
+  invitations_received: ReceivedInvitationSummary[]
 }
 
 export interface ErrorLogEntry {

@@ -13,7 +13,9 @@ function mockFetch(responses: Record<string, unknown>) {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const url = typeof input === 'string' ? input : (input as Request).url
     const method = init?.method ?? 'GET'
-    for (const [path, data] of Object.entries(responses)) {
+    // Sort paths longest-first so /api/admin/users/2/detail matches before /api/admin/users
+    const sortedEntries = Object.entries(responses).sort((a, b) => b[0].length - a[0].length)
+    for (const [path, data] of sortedEntries) {
       if (url.includes(path)) {
         if (method === 'DELETE') return new Response(null, { status: 204 })
         return new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } })
@@ -49,6 +51,24 @@ const USERS = [
 ]
 
 const USERS_RESPONSE = { users: USERS, total: 2 }
+
+const USER_DETAIL_ADMIN = {
+  id: 1, email: 'admin@test.com', name: 'Admin', is_admin: true,
+  created_at: '2025-01-01T00:00:00', last_login: '2025-06-01T00:00:00',
+  grant_count: 5, loan_count: 3, price_count: 2,
+  email_notifications_enabled: true, push_subscriptions: 1,
+  invitation_opt_out: false, sending_blocked: false, sending_block_reason: null,
+  invitations_sent: [], invitations_received: [],
+}
+
+const USER_DETAIL_REGULAR = {
+  id: 2, email: 'user@test.com', name: 'User', is_admin: false,
+  created_at: '2025-02-01T00:00:00', last_login: null,
+  grant_count: 0, loan_count: 0, price_count: 0,
+  email_notifications_enabled: null, push_subscriptions: 0,
+  invitation_opt_out: false, sending_blocked: false, sending_block_reason: null,
+  invitations_sent: [], invitations_received: [],
+}
 
 
 const METRICS = [
@@ -142,21 +162,21 @@ describe('Admin', () => {
     })
   })
 
-  it('delete requires confirmation click', async () => {
-    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
+  it('delete requires confirmation click in user detail card', async () => {
+    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [], '/api/admin/users/2/detail': USER_DETAIL_REGULAR })
     renderPage()
 
-    await waitFor(() => {
-      // Only non-admin user gets a Delete button
-      expect(screen.getAllByText('Delete')).toHaveLength(1)
-    })
+    await waitFor(() => expect(screen.getByText('user@test.com')).toBeInTheDocument())
+    // Click the non-admin user row to open the detail card
+    await userEvent.click(screen.getByText('user@test.com'))
 
-    await userEvent.click(screen.getByText('Delete'))
+    await waitFor(() => expect(screen.getByText('Delete User')).toBeInTheDocument())
+    await userEvent.click(screen.getByText('Delete User'))
     await waitFor(() => expect(screen.getByText('Confirm Delete')).toBeInTheDocument())
   })
 
   it('shows admin badge and hides delete button for admin users', async () => {
-    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
+    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [], '/api/admin/users/1/detail': USER_DETAIL_ADMIN })
     renderPage()
 
     await waitFor(() => {
@@ -164,9 +184,13 @@ describe('Admin', () => {
       const badges = screen.getAllByText('Admin')
       // Page heading "Admin" + badge = 2
       expect(badges.length).toBeGreaterThanOrEqual(2)
-      // Only 1 Delete button (for non-admin user)
-      expect(screen.getAllByText('Delete')).toHaveLength(1)
     })
+
+    // Click the admin user row to open the detail card
+    await userEvent.click(screen.getByText('admin@test.com'))
+    await waitFor(() => expect(screen.getByText('Actions')).toBeInTheDocument())
+    // Admin user should not have a Delete button
+    expect(screen.queryByText('Delete User')).not.toBeInTheDocument()
   })
 
   it('has a search input field', async () => {
@@ -178,12 +202,14 @@ describe('Admin', () => {
     })
   })
 
-  it('renders test notification modal when Notify is clicked', async () => {
-    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
+  it('renders test notification modal from user detail card', async () => {
+    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [], '/api/admin/users/2/detail': USER_DETAIL_REGULAR })
     renderPage()
 
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Notify' }).length).toBeGreaterThan(0))
-    await userEvent.click(screen.getAllByRole('button', { name: 'Notify' })[0])
+    await waitFor(() => expect(screen.getByText('user@test.com')).toBeInTheDocument())
+    await userEvent.click(screen.getByText('user@test.com'))
+    await waitFor(() => expect(screen.getByText('Send Notification')).toBeInTheDocument())
+    await userEvent.click(screen.getByText('Send Notification'))
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument()
@@ -191,13 +217,13 @@ describe('Admin', () => {
   })
 
   it('Notify button opens modal scoped to that user', async () => {
-    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
+    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [], '/api/admin/users/2/detail': USER_DETAIL_REGULAR })
     renderPage()
 
     await waitFor(() => expect(screen.getByText('user@test.com')).toBeInTheDocument())
-
-    const notifyButtons = screen.getAllByRole('button', { name: 'Notify' })
-    await userEvent.click(notifyButtons[0])
+    await userEvent.click(screen.getByText('user@test.com'))
+    await waitFor(() => expect(screen.getByText('Send Notification')).toBeInTheDocument())
+    await userEvent.click(screen.getByText('Send Notification'))
 
     await waitFor(() => expect(screen.getByRole('combobox', { name: 'Template' })).toBeInTheDocument())
     // Modal is scoped to the user — heading shows their name
@@ -205,11 +231,13 @@ describe('Admin', () => {
   })
 
   it('selecting a template pre-fills title and body', async () => {
-    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
+    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [], '/api/admin/users/2/detail': USER_DETAIL_REGULAR })
     renderPage()
 
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Notify' }).length).toBeGreaterThan(0))
-    await userEvent.click(screen.getAllByRole('button', { name: 'Notify' })[0])
+    await waitFor(() => expect(screen.getByText('user@test.com')).toBeInTheDocument())
+    await userEvent.click(screen.getByText('user@test.com'))
+    await waitFor(() => expect(screen.getByText('Send Notification')).toBeInTheDocument())
+    await userEvent.click(screen.getByText('Send Notification'))
     await waitFor(() => expect(screen.getByRole('combobox', { name: 'Template' })).toBeInTheDocument())
 
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Template' }), 'vesting')
@@ -221,11 +249,13 @@ describe('Admin', () => {
   })
 
   it('each event type template uses correct content', async () => {
-    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
+    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [], '/api/admin/users/2/detail': USER_DETAIL_REGULAR })
     renderPage()
 
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Notify' }).length).toBeGreaterThan(0))
-    await userEvent.click(screen.getAllByRole('button', { name: 'Notify' })[0])
+    await waitFor(() => expect(screen.getByText('user@test.com')).toBeInTheDocument())
+    await userEvent.click(screen.getByText('user@test.com'))
+    await waitFor(() => expect(screen.getByText('Send Notification')).toBeInTheDocument())
+    await userEvent.click(screen.getByText('Send Notification'))
     await waitFor(() => expect(screen.getByRole('combobox', { name: 'Template' })).toBeInTheDocument())
 
     const templateSelect = screen.getByRole('combobox', { name: 'Template' })
@@ -239,11 +269,13 @@ describe('Admin', () => {
   })
 
   it('editing title/body resets template to custom', async () => {
-    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
+    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [], '/api/admin/users/2/detail': USER_DETAIL_REGULAR })
     renderPage()
 
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Notify' }).length).toBeGreaterThan(0))
-    await userEvent.click(screen.getAllByRole('button', { name: 'Notify' })[0])
+    await waitFor(() => expect(screen.getByText('user@test.com')).toBeInTheDocument())
+    await userEvent.click(screen.getByText('user@test.com'))
+    await waitFor(() => expect(screen.getByText('Send Notification')).toBeInTheDocument())
+    await userEvent.click(screen.getByText('Send Notification'))
     await waitFor(() => expect(screen.getByRole('combobox', { name: 'Template' })).toBeInTheDocument())
 
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Template' }), 'vesting')
@@ -262,6 +294,7 @@ describe('Admin', () => {
       if (url.includes('/api/admin/test-notify') && method === 'POST')
         return new Response(JSON.stringify(notifyResult), { status: 200, headers: { 'Content-Type': 'application/json' } })
       if (url.includes('/api/admin/stats')) return new Response(JSON.stringify(STATS), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (url.includes('/api/admin/users/2/detail')) return new Response(JSON.stringify(USER_DETAIL_REGULAR), { status: 200, headers: { 'Content-Type': 'application/json' } })
       if (url.includes('/api/admin/users')) return new Response(JSON.stringify(USERS_RESPONSE), { status: 200, headers: { 'Content-Type': 'application/json' } })
       if (url.includes('/api/admin/blocked')) return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } })
       return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
@@ -269,9 +302,9 @@ describe('Admin', () => {
     renderPage()
 
     await waitFor(() => expect(screen.getByText('user@test.com')).toBeInTheDocument())
-
-    const notifyButtons = screen.getAllByRole('button', { name: 'Notify' })
-    await userEvent.click(notifyButtons[0])
+    await userEvent.click(screen.getByText('user@test.com'))
+    await waitFor(() => expect(screen.getByText('Send Notification')).toBeInTheDocument())
+    await userEvent.click(screen.getByText('Send Notification'))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument())
     await userEvent.click(screen.getByRole('button', { name: 'Send' }))
 

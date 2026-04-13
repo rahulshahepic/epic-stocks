@@ -765,9 +765,9 @@ export default function Dashboard() {
   const fetchPrices = useCallback(() => vid ? api.getSharedPrices(vid) : api.getPrices(), [vid])
   const fetchLoans = useCallback(() => vid ? api.getSharedLoans(vid) : api.getLoans(), [vid])
   const fetchGrants = useCallback(() => vid ? api.getSharedGrants(vid) : api.getGrants(), [vid])
-  const fetchTaxSettings = useCallback(() => readOnly ? Promise.resolve(null as unknown as TaxSettings) : api.getTaxSettings(), [readOnly])
+  const fetchTaxSettings = useCallback(() => vid ? api.getSharedTaxSettings(vid) : api.getTaxSettings(), [vid])
   const fetchSales = useCallback(() => vid ? api.getSharedSales(vid) : api.getSales(), [vid])
-  const fetchHorizon = useCallback(() => readOnly ? Promise.resolve({ horizon_date: null } as HorizonSettings) : api.getHorizonSettings(), [readOnly])
+  const fetchHorizon = useCallback(() => vid ? api.getSharedHorizonSettings(vid) : api.getHorizonSettings(), [vid])
 
   const { data: dash, loading: dashLoading, reload: reloadDash } = useApiData<DashboardData>(fetchDashboard)
   const { data: events, reload: reloadEvents } = useApiData<TimelineEvent[]>(fetchEvents)
@@ -1326,7 +1326,7 @@ export default function Dashboard() {
           >
             {downloading ? '…' : 'Export'}
           </button>
-          {!readOnly && (
+          {!readOnly ? (
             <button
               onClick={() => {
                 setPendingExitDate(exitDate ?? '')
@@ -1336,7 +1336,9 @@ export default function Dashboard() {
             >
               {exitDate ? (exitEditOpen ? '▲ exit date' : '▼ exit date') : '+ set exit date'}
             </button>
-          )}
+          ) : exitDate ? (
+            <span className="text-xs text-gray-400 dark:text-slate-500">exit date: {exitDate}</span>
+          ) : null}
         </div>
         {exitEditOpen && (
           <div className="mt-2 border-t border-stone-100 pt-2 dark:border-slate-700/50">
@@ -1400,13 +1402,15 @@ export default function Dashboard() {
 
       {ignoringExitDate && (
         <div className="flex items-center justify-between gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
-          <span>Browsing past your exit date ({exitDate}) — exit not applied</span>
-          <button
-            onClick={() => { setPendingExitDate(cardDate); setExitEditOpen(true) }}
-            className="shrink-0 rounded bg-amber-700 px-2 py-1 font-medium text-white hover:bg-amber-800 dark:bg-amber-600 dark:hover:bg-amber-700"
-          >
-            Move exit here
-          </button>
+          <span>Browsing past {readOnly ? 'the' : 'your'} exit date ({exitDate}) — exit not applied</span>
+          {!readOnly && (
+            <button
+              onClick={() => { setPendingExitDate(cardDate); setExitEditOpen(true) }}
+              className="shrink-0 rounded bg-amber-700 px-2 py-1 font-medium text-white hover:bg-amber-800 dark:bg-amber-600 dark:hover:bg-amber-700"
+            >
+              Move exit here
+            </button>
+          )}
         </div>
       )}
 

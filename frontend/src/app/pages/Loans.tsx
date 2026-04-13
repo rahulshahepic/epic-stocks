@@ -65,7 +65,7 @@ export default function Loans() {
   const { data: loans, loading, reload } = useApiData<LoanEntry[]>(fetchLoans)
   const fetchSales = useCallback(() => vid ? api.getSharedSales(vid) : api.getSales(), [vid])
   const { data: sales, reload: reloadSales } = useApiData<SaleEntry[]>(fetchSales)
-  const fetchTaxSettings = useCallback(() => readOnly ? Promise.resolve(null as unknown as TaxSettings) : api.getTaxSettings(), [readOnly])
+  const fetchTaxSettings = useCallback(() => vid ? api.getSharedTaxSettings(vid) : api.getTaxSettings(), [vid])
   const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
 
   const [mode, setMode] = useState<Mode>('list')

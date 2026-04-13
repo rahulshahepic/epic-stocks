@@ -600,7 +600,7 @@ export default function Grants() {
       </div>
       {epicMode && (
         <p className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:bg-indigo-900/20 dark:text-rose-300">
-          Data provided by Epic — view only
+          {readOnly ? 'Viewing shared data — read only' : 'Data provided by Epic — view only'}
         </p>
       )}
 
@@ -624,7 +624,7 @@ export default function Grants() {
                     <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-medium text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">83(b)</span>
                   )}
                 </div>
-                {epicMode ? (
+                {readOnly ? null : epicMode ? (
                   <button onClick={() => openSellModal(g)} className="text-emerald-700 hover:text-emerald-800 dark:text-emerald-300">Sell</button>
                 ) : (
                   <button onClick={() => openEdit(g)} className="text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Edit</button>
@@ -725,7 +725,7 @@ export default function Grants() {
                       )}
                     </td>
                     <td className="px-3 py-2 text-right">
-                      {epicMode ? (
+                      {readOnly ? null : epicMode ? (
                         <button onClick={() => openSellModal(g)} className="text-emerald-700 hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-300">Sell</button>
                       ) : (
                         <button onClick={() => openEdit(g)} className="text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Edit</button>

@@ -797,7 +797,7 @@ Notifications are sent once per day, at 7 AM UTC. Each user can configure how fa
 **What the notification contains:**
 Notifications are intentionally minimal — they contain no financial data, no share counts, and no dollar amounts. The content is identical across push and email:
 
-- **Push notification** — a single notification with title `Equity Tracker` and a body like: `You have 2 events today: 1 Loan Repayment, 1 Vesting`. Tapping it opens the app dashboard.
+- **Push notification** — title describes the notification type (e.g. `Upcoming Events`, `Invitation Accepted`, `Shared Data Events`). Body example: `You have 2 events today: 1 Loan Repayment, 1 Vesting`. Tapping it deep-links to the relevant page — events notifications open the events timeline filtered to that date, invitation-accepted opens Settings, shared data events open the dashboard.
 - **Email** — subject: `Equity Tracker: 2 events today`. Body: the same event count summary plus a link prompt to log in and view details.
 
 If a user has multiple events of the same type on the same day they are counted together (`2 Vesting`). Users open the app to see the full details.
@@ -806,7 +806,7 @@ If a user has multiple events of the same type on the same day they are counted 
 
 **Opt-in per channel:**
 - *Push* — enabled by subscribing in the browser (Settings → Notifications → Enable). Requires VAPID keys to be configured. Each device subscribes independently; all active devices receive the notification. A **Send test** button in Settings lets users confirm push is working without waiting for a real event.
-- *Email* — enabled via the toggle in Settings. Requires `RESEND_API_KEY` to be configured. Disabled by default. All notification emails include an unsubscribe link in the footer; clicking it disables email notifications for that account without requiring login.
+- *Email* — enabled via the toggle in Settings. Requires `RESEND_API_KEY` to be configured. Enabled by default for new users (can be disabled in Settings). All notification emails include an unsubscribe link in the footer; clicking it disables email notifications for that account without requiring login.
 
 **Advance timing** — users choose when to receive notifications: day-of (default), 3 days before, or 1 week before the event. This is set in Settings → Notifications and applies to both push and email.
 

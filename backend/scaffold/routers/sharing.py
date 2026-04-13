@@ -579,26 +579,31 @@ def _send_invitation_email(inv: Invitation, inviter: User) -> bool:
 def _notify_inviter_accepted(inv: Invitation, db: Session):
     """Notify the inviter that their invitation was accepted (best-effort)."""
     try:
-        from scaffold.email_sender import send_email, email_configured
-        if not email_configured():
-            return
         inviter = db.get(User, inv.inviter_id)
         if not inviter:
             return
-        who = inv.invitee_account_email or inv.invitee_email
+        invitee = db.get(User, inv.invitee_id) if inv.invitee_id else None
+        who = invitee.name or invitee.email if invitee else (inv.invitee_account_email or inv.invitee_email)
         subject = f"Equity Tracker: {who} accepted your invitation"
         text = f"{who} has accepted your invitation to view your equity data."
         html = f"""<div style="font-family: sans-serif; max-width: 480px;">
   <h2 style="color: #4472C4;">Equity Tracker</h2>
   <p><strong>{who}</strong> has accepted your invitation to view your equity data.</p>
 </div>"""
-        send_email(inviter.email, subject, text, html)
 
-        # Push notification too
+        from scaffold.email_sender import send_email, email_configured
+        if email_configured():
+            send_email(inviter.email, subject, text, html)
+
+        # Push notification with deep link to settings (sharing section)
         from scaffold.models import PushSubscription
         from scaffold.notifications import send_push
         subs = db.query(PushSubscription).filter(PushSubscription.user_id == inviter.id).all()
-        payload = {"title": "Equity Tracker", "body": f"{who} accepted your invitation"}
+        payload = {
+            "title": "Invitation Accepted",
+            "body": f"{who} accepted your invitation",
+            "data": {"url": "/settings"},
+        }
         for sub in subs:
             ok = send_push(sub, payload)
             if not ok:

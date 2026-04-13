@@ -384,13 +384,13 @@ export default function Sales() {
   const [breakdowns, setBreakdowns] = useState<Map<number, TaxBreakdown>>(new Map())
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [loadingTaxIds, setLoadingTaxIds] = useState<Set<number>>(new Set())
-  // Fetch all tax breakdowns in one request when sales load
+  // Fetch all tax breakdowns in one request when sales load (own data only)
   useEffect(() => {
-    if (!sales) return
+    if (!sales || readOnly) return
     api.getAllSaleTaxes()
       .then(all => setBreakdowns(new Map(Object.entries(all).map(([k, v]) => [Number(k), v]))))
       .catch(() => {})
-  }, [sales])
+  }, [sales, readOnly])
 
   useDataSync('sales', reload)
 
@@ -548,7 +548,7 @@ export default function Sales() {
     // Load then expand
     setLoadingTaxIds(prev => new Set(prev).add(id))
     try {
-      const tax = await api.getSaleTax(id)
+      const tax = await (vid ? api.getSharedSaleTax(vid, id) : api.getSaleTax(id))
       setBreakdowns(prev => new Map(prev).set(id, tax))
       setExpanded(prev => new Set(prev).add(id))
     } catch {
@@ -793,9 +793,11 @@ export default function Sales() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Sales</h2>
-        <button onClick={openAdd} className="rounded-md bg-rose-700 px-2 py-1 text-xs font-medium text-white hover:bg-rose-800">
-          + Sale
-        </button>
+        {!readOnly && (
+          <button onClick={openAdd} className="rounded-md bg-rose-700 px-2 py-1 text-xs font-medium text-white hover:bg-rose-800">
+            + Sale
+          </button>
+        )}
       </div>
 
       {/* Mobile card layout */}
@@ -817,9 +819,11 @@ export default function Sales() {
                     <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">Cash Out</span>
                   )}
                 </div>
-                <button onClick={() => openEdit(s)} className="text-rose-400 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300" aria-label="Edit sale">
-                  <PencilIcon />
-                </button>
+                {!readOnly && (
+                  <button onClick={() => openEdit(s)} className="text-rose-400 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300" aria-label="Edit sale">
+                    <PencilIcon />
+                  </button>
+                )}
               </div>
               {/* Line 2: Shares + Price */}
               <div className="mt-1 text-gray-700 dark:text-slate-300">
@@ -872,7 +876,7 @@ export default function Sales() {
               <th className="px-3 py-2 text-right">Price/Share</th>
               <th className="px-3 py-2 text-right">Gross Proceeds</th>
               <th className="px-3 py-2 text-right">Tax</th>
-              <th className="px-3 py-2"></th>
+              {!readOnly && <th className="px-3 py-2"></th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -926,19 +930,21 @@ export default function Sales() {
                         )}
                       </button>
                     </td>
-                    <td className="px-3 py-2 text-right">
-                      <button
-                        onClick={() => openEdit(s)}
-                        className="text-rose-400 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300"
-                        aria-label="Edit sale"
-                      >
-                        <PencilIcon />
-                      </button>
-                    </td>
+                    {!readOnly && (
+                      <td className="px-3 py-2 text-right">
+                        <button
+                          onClick={() => openEdit(s)}
+                          className="text-rose-400 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300"
+                          aria-label="Edit sale"
+                        >
+                          <PencilIcon />
+                        </button>
+                      </td>
+                    )}
                   </tr>
                   {isExpanded && bd && (
                     <tr key={`${s.id}-tax`} className="bg-white dark:bg-slate-900">
-                      <td colSpan={7} className="px-3 pb-3 pt-0">
+                      <td colSpan={readOnly ? 6 : 7} className="px-3 pb-3 pt-0">
                         {s.notes && (
                           <p className="mb-2 text-xs text-gray-500 dark:text-slate-400">Note: {s.notes}</p>
                         )}

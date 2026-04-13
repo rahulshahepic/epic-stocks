@@ -394,7 +394,7 @@ export default function Loans() {
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Loans</h2>
         {epicMode
-          ? <p className="text-xs text-rose-700 dark:text-rose-400">Data provided by Epic</p>
+          ? <p className="text-xs text-rose-700 dark:text-rose-400">{readOnly ? 'Viewing shared data — read only' : 'Data provided by Epic'}</p>
           : <div className="flex gap-2">
               <button
                 onClick={handleRegenerateAll}
@@ -435,9 +435,11 @@ export default function Loans() {
                     <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[9px] font-medium text-stone-600 dark:bg-slate-700 dark:text-slate-400">Refinanced</span>
                   )}
                 </div>
-                {epicMode
-                  ? <button onClick={() => openPayoffModal(l)} className="text-xs font-medium text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Request Payoff</button>
-                  : <button onClick={() => openEdit(l)} className="text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Edit</button>
+                {readOnly
+                  ? null
+                  : epicMode
+                    ? <button onClick={() => openPayoffModal(l)} className="text-xs font-medium text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Request Payoff</button>
+                    : <button onClick={() => openEdit(l)} className="text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Edit</button>
                 }
               </div>
               {/* Line 2: Amount + Rate */}
@@ -530,9 +532,11 @@ export default function Loans() {
                       </button>
                     </td>
                     <td className="px-3 py-2 text-right">
-                      {epicMode
-                        ? <button onClick={() => openPayoffModal(l)} className="text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300 text-xs font-medium">Request Payoff</button>
-                        : <button onClick={() => openEdit(l)} className="text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Edit</button>
+                      {readOnly
+                        ? null
+                        : epicMode
+                          ? <button onClick={() => openPayoffModal(l)} className="text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300 text-xs font-medium">Request Payoff</button>
+                          : <button onClick={() => openEdit(l)} className="text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Edit</button>
                       }
                     </td>
                   </tr>

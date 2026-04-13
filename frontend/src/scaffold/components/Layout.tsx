@@ -37,6 +37,13 @@ export default function Layout() {
 
   const sharedAccounts = me?.shared_accounts ?? []
 
+  // Clear stale viewing_context if the invitation is no longer valid for this user
+  useEffect(() => {
+    if (!me || !viewing) return
+    const valid = sharedAccounts.some(a => a.invitation_id === viewing.invitationId)
+    if (!valid) clearViewing()
+  }, [me, viewing, sharedAccounts, clearViewing])
+
   // (B) Focus management on route changes
   const location = useLocation()
   const mainRef = useRef<HTMLElement>(null)

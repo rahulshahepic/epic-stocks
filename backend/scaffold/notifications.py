@@ -85,7 +85,7 @@ def build_notification_payload(events: list[dict], target_date: date | None = No
     total = sum(counts.values())
     parts = [f"{count} {etype}" for etype, count in sorted(counts.items())]
     body = f"You have {total} event{'s' if total != 1 else ''} today: {', '.join(parts)}"
-    payload: dict = {"title": "Equity Tracker", "body": body}
+    payload: dict = {"title": "Upcoming Events", "body": body}
     if target_date is not None:
         url = f"/events?date={target_date.isoformat()}&types={','.join(sorted(counts.keys()))}"
         payload["data"] = {"url": url}
@@ -238,15 +238,28 @@ def send_daily_notifications(today: date | None = None):
                         ev["_shared_owner"] = owner_name
                     viewer_events[viewer_id].extend(shared_events)
 
+            # Build a map of viewer_id → list of invitation_ids (for deep linking)
+            viewer_invitations: dict[int, list[int]] = {}
+            for inv in accepted_invs:
+                if inv.invitee_id in viewer_events:
+                    viewer_invitations.setdefault(inv.invitee_id, []).append(inv.id)
+
             for viewer_id, shared_evts in viewer_events.items():
                 viewer = db.get(User, viewer_id)
                 if not viewer:
                     continue
 
                 owners = sorted(set(e.get("_shared_owner", "") for e in shared_evts))
-                total = len(shared_evts)
-                body = f"Events in shared data ({', '.join(owners)}): {total} event{'s' if total != 1 else ''}"
-                payload = {"title": "Equity Tracker", "body": body}
+                counts = Counter(e["event_type"] for e in shared_evts)
+                total = sum(counts.values())
+                parts = [f"{count} {etype}" for etype, count in sorted(counts.items())]
+                owner_str = ', '.join(owners)
+                body = f"{owner_str}: {total} event{'s' if total != 1 else ''} today — {', '.join(parts)}"
+                payload: dict = {"title": "Shared Data Events", "body": body}
+
+                # Deep link: single owner → dashboard (where account switcher shows them)
+                inv_ids = viewer_invitations.get(viewer_id, [])
+                payload["data"] = {"url": "/"}
 
                 if viewer_id in push_user_ids:
                     subs = db.query(PushSubscription).filter(PushSubscription.user_id == viewer_id).all()
@@ -258,7 +271,7 @@ def send_daily_notifications(today: date | None = None):
                 if viewer_id in email_user_ids:
                     from scaffold.email_sender import send_email, email_configured
                     if email_configured():
-                        send_email(viewer.email, f"Equity Tracker: Events in shared data", body)
+                        send_email(viewer.email, f"Equity Tracker: {owner_str} has events today", body)
         except Exception:
             logger.exception("Error sending shared-data notifications")
 

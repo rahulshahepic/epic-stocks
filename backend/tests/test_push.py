@@ -90,7 +90,7 @@ def test_build_notification_single_event():
     from scaffold.notifications import build_notification_payload
     events = [{"event_type": "Vesting"}]
     result = build_notification_payload(events)
-    assert result == {"title": "Equity Tracker", "body": "You have 1 event today: 1 Vesting"}
+    assert result == {"title": "Upcoming Events", "body": "You have 1 event today: 1 Vesting"}
 
 
 def test_build_notification_multiple_events():

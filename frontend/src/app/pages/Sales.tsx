@@ -366,7 +366,7 @@ export default function Sales() {
   const isMobile = useIsMobile()
   const fetchSales = useCallback(() => vid ? api.getSharedSales(vid) : api.getSales(), [vid])
   const { data: sales, loading, reload } = useApiData<SaleEntry[]>(fetchSales)
-  const fetchTaxSettings = useCallback(() => readOnly ? Promise.resolve(null as unknown as TaxSettings) : api.getTaxSettings(), [readOnly])
+  const fetchTaxSettings = useCallback(() => vid ? api.getSharedTaxSettings(vid) : api.getTaxSettings(), [vid])
   const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
   const fetchPrices = useCallback(() => vid ? api.getSharedPrices(vid) : api.getPrices(), [vid])
   const { data: prices } = useApiData<PriceEntry[]>(fetchPrices)

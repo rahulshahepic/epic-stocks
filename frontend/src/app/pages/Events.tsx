@@ -256,7 +256,7 @@ export default function Events() {
   const vid = viewing?.invitationId
   const [searchParams] = useSearchParams()
   const fetchEvents = useCallback(() => vid ? api.getSharedEvents(vid) : api.getEvents(), [vid])
-  const fetchTaxSettings = useCallback(() => vid ? Promise.resolve(null as unknown as TaxSettings) : api.getTaxSettings(), [vid])
+  const fetchTaxSettings = useCallback(() => vid ? api.getSharedTaxSettings(vid) : api.getTaxSettings(), [vid])
   const { data: events, loading, reload } = useApiData<TimelineEvent[]>(fetchEvents)
   const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
   useDataSync('sales', reload)

@@ -391,11 +391,7 @@ def shared_events(
 ):
     owner = _get_shared_owner(invitation_id, user, db)
     from app.routers.events import _get_events_data
-    data = _get_events_data(owner, db)
-    # Strip exit_summary from events — viewers don't get What If data
-    for e in data:
-        e.pop("exit_summary", None)
-    return data
+    return _get_events_data(owner, db)
 
 
 @router.get("/view/{invitation_id}/grants")
@@ -440,6 +436,43 @@ def shared_sales(
     owner = _get_shared_owner(invitation_id, user, db)
     from scaffold.models import Sale
     return db.query(Sale).filter(Sale.user_id == owner.id).order_by(Sale.date).all()
+
+
+@router.get("/view/{invitation_id}/tax-settings")
+def shared_tax_settings(
+    invitation_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    owner = _get_shared_owner(invitation_id, user, db)
+    from app.routers.sales import _get_or_create_tax_settings
+    from schemas import TaxSettingsRead
+    from scaffold.models import Grant
+    from sqlalchemy import text
+    ts = _get_or_create_tax_settings(owner, db)
+    result = TaxSettingsRead.model_validate(ts)
+    flexible = db.execute(text("SELECT value FROM system_settings WHERE key = 'flexible_payoff_enabled'")).scalar()
+    result.flexible_payoff_enabled = (flexible == "true")
+    grants = db.query(Grant).filter(Grant.user_id == owner.id).all()
+    years: set[int] = set()
+    for g in grants:
+        if g.vest_start and g.periods:
+            for i in range(g.periods):
+                years.add(g.vest_start.year + i)
+    result.taxable_years = sorted(years)
+    return result
+
+
+@router.get("/view/{invitation_id}/horizon-settings")
+def shared_horizon_settings(
+    invitation_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    owner = _get_shared_owner(invitation_id, user, db)
+    from scaffold.models import HorizonSettings
+    hs = db.query(HorizonSettings).filter(HorizonSettings.user_id == owner.id).first()
+    return {"horizon_date": hs.horizon_date if hs else None}
 
 
 @router.get("/view/{invitation_id}/sales/{sale_id}/tax")

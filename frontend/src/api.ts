@@ -414,6 +414,8 @@ export const api = {
   getSharedLoans: (invId: number) => apiFetch<LoanEntry[]>(`/api/sharing/view/${invId}/loans`),
   getSharedPrices: (invId: number) => apiFetch<PriceEntry[]>(`/api/sharing/view/${invId}/prices`),
   getSharedSales: (invId: number) => apiFetch<SaleEntry[]>(`/api/sharing/view/${invId}/sales`),
+  getSharedTaxSettings: (invId: number) => apiFetch<TaxSettings>(`/api/sharing/view/${invId}/tax-settings`),
+  getSharedHorizonSettings: (invId: number) => apiFetch<HorizonSettings>(`/api/sharing/view/${invId}/horizon-settings`),
   getSharedSaleTax: (invId: number, saleId: number) => apiFetch<TaxBreakdown>(`/api/sharing/view/${invId}/sales/${saleId}/tax`),
   exportSharedExcel: (invId: number) => fetch(`/api/sharing/view/${invId}/export/excel`, { credentials: 'include' }),
 

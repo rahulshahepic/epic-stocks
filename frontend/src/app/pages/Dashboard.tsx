@@ -1102,8 +1102,17 @@ export default function Dashboard() {
       interest_deduction_total: interestDeductionTotal,
       tax_savings_from_deduction: taxSavings,
       next_event: nextEvent,
+      price_is_estimate: (() => {
+        if (!prices) return false
+        let isEst = false
+        for (const p of prices) {
+          if (p.effective_date <= effectiveDate) isEst = !!p.is_estimate
+          else break
+        }
+        return isEst
+      })(),
     }
-  }, [events, loans, grantsData, sales, taxSettings, dash, cardDate, projectedLiqDate, projectedLiqEvent, ignoringExitDate])
+  }, [events, loans, grantsData, sales, taxSettings, dash, cardDate, projectedLiqDate, projectedLiqEvent, ignoringExitDate, prices])
 
   // Per-grant holdings breakdown as of cardDate
   const grantHoldings = useMemo(() => {
@@ -1279,6 +1288,7 @@ export default function Dashboard() {
     tax_savings_from_deduction: dash.tax_savings_from_deduction ?? 0,
     next_event: dash.next_event,
     total_interest: 0,
+    price_is_estimate: false,
   }
   const hasInterestDeduction = (cv.interest_deduction_total ?? 0) > 0
   const hasInterestLoans = loans?.some(l => l.loan_type === 'Interest' || l.loan_type === 'Purchase') ?? false
@@ -1418,7 +1428,7 @@ export default function Dashboard() {
 
       {/* (F) aria-live so screen readers announce summary updates when cardDate changes */}
       <div aria-live="polite" aria-atomic="true" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Card label="Share Price" value={fmtPrice(cv.current_price)} variant="price" />
+        <Card label={cv.price_is_estimate ? 'Share Price (est.)' : 'Share Price'} value={fmtPrice(cv.current_price)} variant="price" />
         <Card label="Vested Shares" value={fmtNum(cv.total_shares)} variant="shares" />
         <Card label="Unvested Shares" value={fmtNum(grantHoldings?.reduce((s, h) => s + h.unvestedShares, 0) ?? 0)} variant="unvested" />
         <Card label="Total Income" value={fmt$(cv.total_income)} variant="income" />

@@ -1111,6 +1111,14 @@ def export_holdings_report(
         if ev_date <= as_of_date:
             current_price = ev.get("share_price", current_price)
 
+    # Determine if the effective price is an estimate
+    price_is_estimate = False
+    for p in prices_db:
+        if p.effective_date <= as_of_date:
+            price_is_estimate = bool(p.is_estimate)
+        else:
+            break
+
     # Settled / refinanced loan IDs
     settled_ids = set()
     for s in sales_db:
@@ -1138,7 +1146,8 @@ def export_holdings_report(
             value=f"Generated {datetime.now().strftime('%B %d, %Y at %I:%M %p')}. "
                   "This report is for informational purposes. Consult your tax advisor before making financial decisions."
             ).font = Font(name="Arial", size=9, italic=True, color="FF999999")
-    ws.cell(row=4, column=1, value=f"Share Price: {current_price:.2f}").font = Font(name="Arial", size=10, bold=True)
+    price_label = f"Share Price: {current_price:.2f}" + (" (estimated)" if price_is_estimate else "")
+    ws.cell(row=4, column=1, value=price_label).font = Font(name="Arial", size=10, bold=True)
 
     # --- SECTION 1: Holdings by Grant ---
     row = 6
@@ -1278,10 +1287,10 @@ def export_holdings_report(
         cum_cap_gains = ev.get("cum_cap_gains", cum_cap_gains)
 
     summary_items = [
-        ("Share Price", current_price, "\\$#,##0.00"),
+        ("Share Price (estimated)" if price_is_estimate else "Share Price", current_price, "\\$#,##0.00"),
         ("Total Vested Shares", totals["vested"], "#,##0"),
         ("Total Unvested Shares", totals["unvested"], "#,##0"),
-        ("Total Vested Value", round(totals["value"], 2), "\\$#,##0"),
+        ("Total Vested Value" + (" (estimated)" if price_is_estimate else ""), round(totals["value"], 2), "\\$#,##0"),
         ("Cumulative W-2 Income", round(cum_income, 2), "\\$#,##0"),
         ("Cumulative Capital Gains", round(cum_cap_gains, 2), "\\$#,##0"),
         ("Total Estimated Taxes Paid", round(totals["tax"], 2), "\\$#,##0"),

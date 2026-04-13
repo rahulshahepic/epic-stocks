@@ -496,7 +496,7 @@ def shared_sale_tax(
     if not ts_row:
         raise HTTPException(404, "Tax settings not found")
 
-    grants, prices, loans, _loans_db, initial_price, _e83b = _user_source_data(owner, db)
+    grants, prices, loans, _loans_db, initial_price, _e83b, _ = _user_source_data(owner, db)
     if not grants or not prices:
         raise HTTPException(422, "Insufficient data")
 

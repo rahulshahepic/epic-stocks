@@ -106,6 +106,11 @@ export default function Layout() {
                 ))}
               </select>
             )}
+            {me && (
+              <span className="text-xs text-stone-500 dark:text-slate-400">
+                {me.name || me.email}
+              </span>
+            )}
             <button
               onClick={logout}
               aria-label="Sign out of your account"

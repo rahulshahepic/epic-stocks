@@ -193,8 +193,8 @@ def send_daily_notifications(today: date | None = None):
             if user.id in email_user_ids:
                 from scaffold.email_sender import build_event_email, send_email, email_configured
                 if email_configured():
-                    subject, text, html = build_event_email(events)
-                    send_email(user.email, subject, text, html)
+                    subject, text, html, hdrs = build_event_email(events, recipient_email=user.email)
+                    send_email(user.email, subject, text, html, headers=hdrs)
 
             user.last_notified_at = datetime.now(timezone.utc)
 

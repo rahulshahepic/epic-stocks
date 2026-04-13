@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from scaffold.auth import get_current_user
-from scaffold.models import User, Invitation, InvitationOptOut, BlockedEmail
+from scaffold.models import User, Invitation, InvitationOptOut, BlockedEmail, InviteSendingBlock
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +88,10 @@ def send_invite(
     email = body.email.lower().strip()
     if email == user.email.lower():
         raise HTTPException(422, "You cannot invite yourself")
+
+    # Check if the sender is blocked from sending invitations
+    if db.query(InviteSendingBlock).filter(InviteSendingBlock.user_id == user.id).first():
+        raise HTTPException(403, "Your ability to send invitations has been restricted. Contact an administrator.")
 
     # Check if email is blocked
     if db.query(BlockedEmail).filter(BlockedEmail.email == email).first():
@@ -556,12 +560,13 @@ def _send_invitation_email(inv: Invitation, inviter: User) -> bool:
         if not email_configured():
             logger.info("Email not configured, skipping invitation email")
             return False
-        subject, text, html = build_invitation_email(
+        subject, text, html, hdrs = build_invitation_email(
             inviter_name=inviter.name or inviter.email,
             token=inv.token,
             short_code=_format_short_code(inv.short_code),
+            recipient_email=inv.invitee_email,
         )
-        return send_email(inv.invitee_email, subject, text, html)
+        return send_email(inv.invitee_email, subject, text, html, headers=hdrs)
     except Exception:
         logger.exception("Failed to send invitation email to %s", inv.invitee_email)
         return False

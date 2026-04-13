@@ -17,7 +17,7 @@ class ResendEmailProvider:
     def is_configured(self) -> bool:
         return bool(self._api_key and self._from_addr)
 
-    def send(self, to: str, subject: str, text: str, html: str | None = None) -> bool:
+    def send(self, to: str, subject: str, text: str, html: str | None = None, *, headers: dict[str, str] | None = None) -> bool:
         api_key = os.getenv("RESEND_API_KEY", "")
         from_email = os.getenv("RESEND_FROM", "")
         missing = [k for k, v in [("RESEND_API_KEY", api_key), ("RESEND_FROM", from_email)] if not v]
@@ -28,6 +28,8 @@ class ResendEmailProvider:
         payload: dict = {"from": from_email, "to": [to], "subject": subject, "text": text}
         if html:
             payload["html"] = html
+        if headers:
+            payload["headers"] = headers
 
         try:
             resp = httpx.post(

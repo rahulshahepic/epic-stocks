@@ -76,7 +76,7 @@ def test_build_event_email():
         {"event_type": "Vesting"},
         {"event_type": "Loan Repayment"},
     ]
-    subject, text, html = build_event_email(events)
+    subject, text, html, _hdrs = build_event_email(events)
     assert "3 events" in subject
     assert "2 Vesting" in text
     assert "1 Loan Repayment" in text

@@ -11,7 +11,7 @@ from starlette.responses import FileResponse
 import database
 
 logger = logging.getLogger(__name__)
-from scaffold.routers import auth_router, admin, notifications, push
+from scaffold.routers import auth_router, admin, notifications, push, sharing, unsubscribe
 from app.routers import grants, loans, prices, events, flows, import_export, sales, horizon, cache as cache_router, tips, wizard
 from scaffold.auth import get_current_user
 from scaffold.crypto import encryption_enabled, decrypt_user_key, set_current_key
@@ -319,7 +319,7 @@ def _start_nightly_maintenance():
 
 
 # API routes that are always accessible during maintenance (all HTTP methods).
-_MAINT_ALLOWED_EXACT = frozenset({"/api/health", "/api/status", "/api/config"})
+_MAINT_ALLOWED_EXACT = frozenset({"/api/health", "/api/status", "/api/config", "/api/sharing/invite-info"})
 _MAINT_ALLOWED_PREFIX = ("/api/auth/", "/api/admin/", "/api/push/", "/api/notifications/")
 # GET /api/me is needed for nav (profile info, is_admin flag).
 # Mutating methods on /api/me (DELETE = account deletion) must be blocked —
@@ -536,6 +536,8 @@ _fastapi_app.include_router(horizon.router)
 _fastapi_app.include_router(cache_router.router)
 _fastapi_app.include_router(tips.router)
 _fastapi_app.include_router(wizard.router)
+_fastapi_app.include_router(sharing.router)
+_fastapi_app.include_router(unsubscribe.router)
 
 
 @_fastapi_app.get("/api/health")
@@ -564,8 +566,27 @@ def client_config():
 
 
 @_fastapi_app.get("/api/me")
-def current_user_info(user=Depends(get_current_user)):
-    return {"id": user.id, "email": user.email, "name": user.name, "is_admin": bool(user.is_admin)}
+def current_user_info(user=Depends(get_current_user), db: Session = Depends(get_db)):
+    from scaffold.models import Invitation, User as _User
+    shared = (
+        db.query(Invitation)
+        .filter(Invitation.invitee_id == user.id, Invitation.status == "accepted")
+        .all()
+    )
+    shared_accounts = []
+    for inv in shared:
+        inviter = db.get(_User, inv.inviter_id)
+        if inviter:
+            shared_accounts.append({
+                "invitation_id": inv.id,
+                "inviter_name": inviter.name or inviter.email,
+                "inviter_email": inviter.email,
+            })
+    return {
+        "id": user.id, "email": user.email, "name": user.name,
+        "is_admin": bool(user.is_admin),
+        "shared_accounts": shared_accounts,
+    }
 
 
 @_fastapi_app.post("/api/me/reset", status_code=204)
@@ -583,12 +604,16 @@ def reset_my_data(user=Depends(get_current_user), db: Session = Depends(get_db))
 @_fastapi_app.delete("/api/me", status_code=204)
 def delete_my_account(user=Depends(get_current_user), db: Session = Depends(get_db)):
     """Permanently delete account and all associated data."""
-    from scaffold.models import User, Grant, Loan, Price, PushSubscription, EmailPreference
+    from scaffold.models import User, Grant, Loan, Price, PushSubscription, EmailPreference, Invitation
     db.query(Grant).filter(Grant.user_id == user.id).delete()
     db.query(Loan).filter(Loan.user_id == user.id).delete()
     db.query(Price).filter(Price.user_id == user.id).delete()
     db.query(PushSubscription).filter(PushSubscription.user_id == user.id).delete()
     db.query(EmailPreference).filter(EmailPreference.user_id == user.id).delete()
+    # Sent invitations cascade-delete via FK; clear invitee_id on received ones
+    db.query(Invitation).filter(Invitation.invitee_id == user.id).update(
+        {Invitation.invitee_id: None, Invitation.status: "declined"}, synchronize_session=False
+    )
     db.query(User).filter(User.id == user.id).delete()
     db.commit()
 

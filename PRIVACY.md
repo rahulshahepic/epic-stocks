@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Last updated:** 2026-03-21
+**Last updated:** 2026-04-12
 
 Equity Vesting Tracker ("Epic Stocks") is open-source software that you or your organization self-host. This policy explains what data the application collects, how it's stored, and who can access it.
 
@@ -44,9 +44,9 @@ The application computes an event timeline (vesting events, income, capital gain
 ## How Your Data Is Isolated
 
 - Every database query filters by your authenticated user ID
-- You can only read, modify, or delete your own data through the API
-- There are no API endpoints that expose one user's data to another user
+- You can only read, modify, or delete your own data through the standard API
 - The source code is open for you to verify this: every router in `backend/app/routers/` and `backend/scaffold/routers/` filters by `user_id`
+- **The one exception is the sharing feature** described below: if you choose to invite someone, they can view (but never modify) your financial data through dedicated read-only endpoints
 
 ## Who Can Access Your Data
 
@@ -73,7 +73,40 @@ The person or organization running this server has **technical access** to the s
 
 ### Other Users
 
-Other users of the same instance **cannot** access your data. The API enforces strict per-user data isolation.
+Other users of the same instance **cannot** access your data unless you explicitly invite them. The API enforces strict per-user data isolation.
+
+### People You Invite (Sharing Feature)
+
+You can invite others by email to view your financial data in read-only form. **This is entirely optional** — no one can see your data unless you explicitly send them an invitation. Before sharing, understand what this means:
+
+**What viewers can see:**
+- Your Dashboard summary (share price, vested shares, income, capital gains, loan balances, tax estimates)
+- Your full Events timeline
+- Your Grants, Loans, Prices, and Sales — all the underlying data, in read-only form
+
+**What viewers cannot do:**
+- Modify, create, or delete any of your data
+- See optimization Tips
+- Use What If scenarios (exit date projections, investment interest deduction toggle)
+- Change your settings or preferences
+
+**You are sharing real financial data.** Share prices, grant details, loan balances, interest rates, and tax information will be visible to anyone you invite. Only invite people you trust with this information.
+
+**Understanding the risk:** Once someone accepts your invitation, they can view your data whenever they want until you or they revoke access. You can see the last time they viewed your data (shown in Settings), but you **cannot control what they do with the information they see** — they could screenshot it, write it down, or share it with others. Treat this like handing someone a copy of your financial statement. Revoking access removes their ability to fetch new data from the server, but does not erase anything they may have already seen or saved.
+
+**How invitations work:**
+- You enter an email address in Settings → Sharing → Invite
+- The system sends an email with a clickable link and a manual-entry code
+- The recipient can sign in with any configured provider (Google, Microsoft, etc.) — it does not need to match the email the invitation was sent to
+- Invitation links expire after 7 days if unused; you can resend to extend
+- Once accepted, the invitation token is permanently bound to the accepting user — no one else can use it
+- Both you (the inviter) and the viewer can revoke access at any time
+
+**Per-viewer notifications:** Viewers can optionally receive event notifications about your data. They control this with a per-inviter toggle — you cannot force notifications on a viewer, and they cannot access notification content beyond the same event-count summary that your own notifications contain (no financial amounts are included).
+
+**Invitation emails:** Invitation emails are sent via the configured email provider (Resend or SMTP). They contain only the inviter's display name, a one-time token/code, and a link. No financial data is included in the email. Each email includes an unsubscribe link — recipients can opt out of future invitation emails without needing an account.
+
+**Unsubscribe:** All emails (invitations and event notifications) include an unsubscribe link in the footer and RFC 8058 `List-Unsubscribe` headers for one-click unsubscribe in supporting email clients. No login is required to unsubscribe. Invitation opt-outs are stored by email address; notification opt-outs disable the user's email preference. Site operators can clear opt-outs from the admin panel if needed.
 
 ### Third Parties
 
@@ -83,7 +116,7 @@ The site operator uses the following third-party infrastructure. Your data may p
 - **Hetzner** — the VPS hosting provider. The application and database run on Hetzner hardware. Hetzner has physical and administrative access to the server environment.
 - **Cloudflare** — used for DDoS protection and DNS. HTTPS traffic passes through Cloudflare's network, which means Cloudflare can observe (but does not decrypt, under standard configuration) the metadata of your requests.
 - **Porkbun** — domain registrar. Porkbun manages the domain name; they have no access to your application data.
-- **Resend** — used to deliver email notifications (if you have enabled them). Resend receives the recipient address and email content. Email notifications contain **no financial data** — only a summary count of events (e.g., "you have 2 events today") and a link to log in. No share counts, prices, or loan amounts are included.
+- **Resend** — used to deliver email notifications and invitation emails (if configured). Resend receives the recipient address and email content. Email notifications contain **no financial data** — only a summary count of events (e.g., "you have 2 events today") and a link to log in. Invitation emails contain only the inviter's display name, a one-time code, and a link — no financial data. No share counts, prices, or loan amounts are included in any email.
 - **Push notifications** (if enabled) — delivered via the Web Push protocol through your browser vendor's push service (e.g., Google FCM for Chrome). Notification content contains no financial data — only an event count summary.
 
 None of these services receive your financial data for their own purposes, and your data is never sold to any of them or to any other third party.
@@ -157,6 +190,7 @@ You should enter financial data into this application — or any application —
 2. You trust that the operator is running the published code (open source helps, but cannot prove this).
 3. You trust the operator not to access your data outside the application (encryption raises the bar, but the operator holds the master key).
 4. You accept that no certification, audit, or policy can fully protect against a determined bad actor with server access.
+5. If you use the sharing feature, you trust the people you invite not to misuse what they see. Revoking access stops future data loads but cannot unsee what was already viewed.
 
 The safest option is always to **self-host** and control the entire stack yourself.
 

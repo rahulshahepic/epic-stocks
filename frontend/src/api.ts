@@ -108,6 +108,8 @@ export interface TimelineEvent {
   sale_id?: number | null
   // 83(b) election (bonus/free grants with price=0 who elected 83b at grant time)
   election_83b?: boolean
+  // Estimated price (Share Price events from projected prices)
+  is_estimate?: boolean
   // Projected liquidation
   is_projected?: boolean
   outstanding_loan_principal?: number | null
@@ -366,6 +368,22 @@ export const api = {
   adminDbTables: () => apiFetch<DbTableInfo[]>('/api/admin/db-tables'),
   adminTipsReport: () => apiFetch<TipsReport>('/api/admin/tips-report'),
 
+  // Email & invitation admin
+  adminEmailLookup: (email: string) =>
+    apiFetch<EmailLookupResult>(`/api/admin/email-lookup?email=${encodeURIComponent(email)}`),
+  adminUserDetail: (id: number) => apiFetch<UserDetail>(`/api/admin/users/${id}/detail`),
+  adminClearOptOut: (id: number) => del(`/api/admin/opt-outs/${id}`),
+  adminClearOptOutByEmail: (email: string) =>
+    del(`/api/admin/opt-outs?email=${encodeURIComponent(email)}`),
+  adminBlockSending: (userId: number, reason: string) =>
+    post<{ blocked: boolean }>(`/api/admin/users/${userId}/block-sending`, { reason }),
+  adminUnblockSending: (userId: number) =>
+    del(`/api/admin/users/${userId}/block-sending`),
+  adminResetInvitations: (userId: number) =>
+    post<{ revoked_sent: number; access_removed: number }>(`/api/admin/users/${userId}/reset-invitations`, {}),
+  adminReenableEmail: (userId: number) =>
+    post<{ enabled: boolean }>(`/api/admin/users/${userId}/reenable-email`, {}),
+
   // Operational status — no auth required, polled by App.tsx
   status: () => apiFetch<{ maintenance: boolean }>('/api/status'),
 
@@ -383,6 +401,41 @@ export const api = {
     apiFetch<{ snapshot_exists: boolean; maintenance_active: boolean }>('/api/admin/rotation-status'),
   adminRotationRestore: () =>
     post<{ restored: number }>('/api/admin/rotation-restore', {}),
+
+  // ── Sharing ──────────────────────────────────────────────────────────────
+
+  // Inviter actions
+  sendInvite: (email: string) => post<InvitationEntry>('/api/sharing/invite', { email }),
+  getSentInvitations: () => apiFetch<InvitationEntry[]>('/api/sharing/sent'),
+  resendInvitation: (id: number) => post<InvitationEntry>(`/api/sharing/invite/${id}/resend`, {}),
+  revokeInvitation: (id: number) => apiFetch<void>(`/api/sharing/invite/${id}`, { method: 'DELETE' }),
+
+  // Invitee actions
+  acceptInvite: (data: { token?: string; code?: string }) => post<AcceptInviteResult>('/api/sharing/accept', data),
+  getReceivedInvitations: () => apiFetch<ReceivedInvitation[]>('/api/sharing/received'),
+  declineInvitation: (id: number) => apiFetch<void>(`/api/sharing/decline/${id}`, { method: 'POST' }),
+  removeSharedAccess: (id: number) => apiFetch<void>(`/api/sharing/access/${id}`, { method: 'DELETE' }),
+  setSharedNotify: (id: number, enabled: boolean) => put<{ enabled: boolean }>(`/api/sharing/access/${id}/notify`, { enabled }),
+
+  // Public invite info (no auth)
+  getInviteInfo: (params: { token?: string; code?: string }) => {
+    const q = new URLSearchParams()
+    if (params.token) q.set('token', params.token)
+    if (params.code) q.set('code', params.code)
+    return apiFetch<InviteInfoResult>(`/api/sharing/invite-info?${q}`)
+  },
+
+  // Shared data view (read-only, viewing another user's data)
+  getSharedDashboard: (invId: number) => apiFetch<DashboardData>(`/api/sharing/view/${invId}/dashboard`),
+  getSharedEvents: (invId: number) => apiFetch<TimelineEvent[]>(`/api/sharing/view/${invId}/events`),
+  getSharedGrants: (invId: number) => apiFetch<GrantEntry[]>(`/api/sharing/view/${invId}/grants`),
+  getSharedLoans: (invId: number) => apiFetch<LoanEntry[]>(`/api/sharing/view/${invId}/loans`),
+  getSharedPrices: (invId: number) => apiFetch<PriceEntry[]>(`/api/sharing/view/${invId}/prices`),
+  getSharedSales: (invId: number) => apiFetch<SaleEntry[]>(`/api/sharing/view/${invId}/sales`),
+  getSharedTaxSettings: (invId: number) => apiFetch<TaxSettings>(`/api/sharing/view/${invId}/tax-settings`),
+  getSharedHorizonSettings: (invId: number) => apiFetch<HorizonSettings>(`/api/sharing/view/${invId}/horizon-settings`),
+  getSharedSaleTax: (invId: number, saleId: number) => apiFetch<TaxBreakdown>(`/api/sharing/view/${invId}/sales/${saleId}/tax`),
+  exportSharedExcel: (invId: number) => fetch(`/api/sharing/view/${invId}/export/excel`, { credentials: 'include' }),
 
   /** Stream SSE events from the key-rotation endpoint.
    *  Calls onEvent for each parsed event object.  Resolves when the stream ends.
@@ -478,6 +531,61 @@ export interface BlockedEmailEntry {
   email: string
   reason: string | null
   blocked_at: string
+}
+
+export interface EmailLookupResult {
+  email: string
+  has_account: boolean
+  user_id: number | null
+  user_name: string | null
+  is_admin: boolean
+  email_notifications_enabled: boolean | null
+  invitation_opt_out: boolean
+  opt_out_id: number | null
+  blocked_from_receiving: boolean
+  blocked_id: number | null
+  blocked_reason: string | null
+  sending_blocked: boolean
+  sending_block_id: number | null
+  sending_block_reason: string | null
+  invitations_sent: number
+  invitations_received: number
+}
+
+export interface InvitationSummary {
+  id: number
+  invitee_email: string
+  status: string
+  created_at: string | null
+  accepted_at: string | null
+  invitee_name: string | null
+}
+
+export interface ReceivedInvitationSummary {
+  id: number
+  inviter_email: string
+  inviter_name: string | null
+  status: string
+  accepted_at: string | null
+}
+
+export interface UserDetail {
+  id: number
+  email: string
+  name: string | null
+  is_admin: boolean
+  created_at: string
+  last_login: string | null
+  grant_count: number
+  loan_count: number
+  price_count: number
+  email_notifications_enabled: boolean | null
+  push_subscriptions: number
+  invitation_opt_out: boolean
+  sending_blocked: boolean
+  sending_block_reason: string | null
+  invitations_sent: InvitationSummary[]
+  invitations_received: ReceivedInvitationSummary[]
 }
 
 export interface ErrorLogEntry {
@@ -724,4 +832,48 @@ export interface TaxBreakdown {
   estimated_tax: number
   net_proceeds: number
   lots: LotSummary[]
+}
+
+// ── Sharing types ───────────────────────────────────────────────────────────
+
+export interface InvitationEntry {
+  id: number
+  invitee_email: string
+  status: 'pending' | 'accepted' | 'declined' | 'revoked'
+  short_code: string
+  created_at: string
+  expires_at: string
+  accepted_at: string | null
+  last_viewed_at: string | null
+  invitee_account_email: string | null
+  invitee_name: string | null
+  email_sent?: boolean
+}
+
+export interface AcceptInviteResult {
+  message: string
+  invitation_id: number
+  inviter_name?: string
+}
+
+export interface ReceivedInvitation {
+  id: number
+  inviter_name: string | null
+  inviter_email: string | null
+  accepted_at: string | null
+  last_viewed_at: string | null
+  notify_enabled: boolean
+}
+
+export interface InviteInfoResult {
+  valid: boolean
+  inviter_name?: string
+  status?: string
+  reason?: string
+}
+
+export interface SharedAccount {
+  invitation_id: number
+  inviter_name: string
+  inviter_email: string
 }

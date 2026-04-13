@@ -28,6 +28,8 @@ class User(Base):
     loan_payments: Mapped[list["LoanPayment"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     tax_settings: Mapped["TaxSettings | None"] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
     horizon_settings: Mapped["HorizonSettings | None"] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
+    sent_invitations: Mapped[list["Invitation"]] = relationship(foreign_keys="[Invitation.inviter_id]", back_populates="inviter", cascade="all, delete-orphan")
+    received_invitations: Mapped[list["Invitation"]] = relationship(foreign_keys="[Invitation.invitee_id]", back_populates="invitee")
 
 
 class Grant(Base):
@@ -269,3 +271,49 @@ class SystemSettings(Base):
 
     key: Mapped[str] = mapped_column(String, primary_key=True)
     value: Mapped[str] = mapped_column(String, nullable=False)
+
+
+class Invitation(Base):
+    """An invitation from one user to another to view their financial data (read-only)."""
+    __tablename__ = "invitations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    inviter_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    invitee_email: Mapped[str] = mapped_column(String, nullable=False)
+    token: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    short_code: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
+    invitee_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    invitee_account_email: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_viewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    notify_enabled: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+
+    inviter: Mapped["User"] = relationship(foreign_keys=[inviter_id], back_populates="sent_invitations")
+    invitee: Mapped["User | None"] = relationship(foreign_keys=[invitee_id], back_populates="received_invitations")
+
+    __table_args__ = (
+        UniqueConstraint('inviter_id', 'invitee_email', name='uq_invitation_inviter_email'),
+    )
+
+
+class InvitationOptOut(Base):
+    """Email addresses that have opted out of receiving invitation emails."""
+    __tablename__ = "invitation_opt_outs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class InviteSendingBlock(Base):
+    """Users blocked from sending new invitations (admin-managed)."""
+    __tablename__ = "invite_sending_blocks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    reason: Mapped[str] = mapped_column(String, nullable=True)
+    blocked_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))

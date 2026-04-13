@@ -9,6 +9,12 @@ export function useAuth() {
   const logout = useCallback(async () => {
     resetMeCache()
     resetConfigCache()
+    // Clear user-specific storage to prevent data leaking across logins
+    sessionStorage.removeItem('viewing_context')
+    localStorage.removeItem('dashboard_range')
+    localStorage.removeItem('dashboard_holdingsOpen')
+    localStorage.removeItem('dashboard_loansOpen')
+    localStorage.removeItem('dashboard_cardDate')
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {})
     setAuthenticated(false)
     window.location.href = '/login'

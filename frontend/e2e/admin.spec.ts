@@ -42,11 +42,15 @@ test.describe('Admin workflows', () => {
     await page.getByPlaceholder('Search by email or name...').fill('admin-delete-target@e2e.test')
     await expect(page.getByText('admin-delete-target@e2e.test').first()).toBeVisible()
 
+    // Click user row to open the detail card
+    await page.getByText('admin-delete-target@e2e.test').first().click()
+    await expect(page.getByText('Actions')).toBeVisible()
+
     // First click: button changes to "Confirm Delete"
-    await page.getByRole('button', { name: 'Delete' }).first().click()
+    await page.getByRole('button', { name: 'Delete User' }).click()
     await expect(page.getByRole('button', { name: 'Confirm Delete' })).toBeVisible()
 
-    // Second click: user is deleted and disappears from the list
+    // Second click: user is deleted and modal closes
     await page.getByRole('button', { name: 'Confirm Delete' }).click()
     await page.waitForLoadState('networkidle')
     await expect(page.getByText('admin-delete-target@e2e.test').first()).not.toBeVisible()

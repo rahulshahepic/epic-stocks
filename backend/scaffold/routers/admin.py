@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 
 from database import get_db
-from scaffold.models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, ErrorLog, EmailPreference, SystemMetric, TaxSettings, HorizonSettings, LoanPayment, Sale, TipAcceptance
+from scaffold.models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, ErrorLog, EmailPreference, SystemMetric, TaxSettings, HorizonSettings, LoanPayment, Sale, TipAcceptance, Invitation, InvitationOptOut, InviteSendingBlock
 from scaffold.auth import get_admin_user, get_admin_emails
 from scaffold.maintenance import is_maintenance_active, set_maintenance
 from scaffold.epic_mode import is_epic_mode, set_epic_mode
@@ -511,6 +511,280 @@ def get_tips_report(admin: User = Depends(get_admin_user), db: Session = Depends
         total_estimated_savings=round(total_savings, 2),
         by_type=by_type,
     )
+
+
+# ============================================================
+# Email lookup — search by email across all relevant tables
+# ============================================================
+
+class EmailLookupResult(BaseModel):
+    email: str
+    has_account: bool
+    user_id: int | None = None
+    user_name: str | None = None
+    is_admin: bool = False
+    email_notifications_enabled: bool | None = None
+    invitation_opt_out: bool = False
+    opt_out_id: int | None = None
+    blocked_from_receiving: bool = False
+    blocked_id: int | None = None
+    blocked_reason: str | None = None
+    sending_blocked: bool = False
+    sending_block_id: int | None = None
+    sending_block_reason: str | None = None
+    invitations_sent: int = 0
+    invitations_received: int = 0
+
+
+@router.get("/email-lookup", response_model=EmailLookupResult)
+def email_lookup(email: str, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    email = email.strip().lower()
+    if not email:
+        raise HTTPException(400, "Email required")
+
+    admin_emails = get_admin_emails()
+
+    user = db.query(User).filter(User.email == email).first()
+    opt_out = db.query(InvitationOptOut).filter(InvitationOptOut.email == email).first()
+    blocked = db.query(BlockedEmail).filter(BlockedEmail.email == email).first()
+
+    # Count invitations sent to this email (even if no account)
+    invitations_to_email = db.query(func.count(Invitation.id)).filter(Invitation.invitee_email == email).scalar() or 0
+
+    result = EmailLookupResult(
+        email=email,
+        has_account=user is not None,
+        invitation_opt_out=opt_out is not None,
+        opt_out_id=opt_out.id if opt_out else None,
+        blocked_from_receiving=blocked is not None,
+        blocked_id=blocked.id if blocked else None,
+        blocked_reason=blocked.reason if blocked else None,
+        invitations_received=invitations_to_email,
+    )
+
+    if user:
+        result.user_id = user.id
+        result.user_name = user.name
+        result.is_admin = user.email.lower() in admin_emails
+        pref = db.query(EmailPreference).filter(EmailPreference.user_id == user.id).first()
+        result.email_notifications_enabled = bool(pref.enabled) if pref else None
+        send_block = db.query(InviteSendingBlock).filter(InviteSendingBlock.user_id == user.id).first()
+        result.sending_blocked = send_block is not None
+        result.sending_block_id = send_block.id if send_block else None
+        result.sending_block_reason = send_block.reason if send_block else None
+        result.invitations_sent = db.query(func.count(Invitation.id)).filter(Invitation.inviter_id == user.id).scalar() or 0
+        result.invitations_received = db.query(func.count(Invitation.id)).filter(Invitation.invitee_id == user.id).scalar() or 0
+
+    return result
+
+
+# ============================================================
+# Admin: User detail (invitations, email status)
+# ============================================================
+
+class InvitationSummary(BaseModel):
+    id: int
+    invitee_email: str
+    status: str
+    created_at: str | None
+    accepted_at: str | None
+    invitee_name: str | None = None
+
+
+class ReceivedInvitationSummary(BaseModel):
+    id: int
+    inviter_email: str
+    inviter_name: str | None
+    status: str
+    accepted_at: str | None
+
+
+class UserDetail(BaseModel):
+    id: int
+    email: str
+    name: str | None
+    is_admin: bool
+    created_at: str
+    last_login: str | None
+    grant_count: int
+    loan_count: int
+    price_count: int
+    email_notifications_enabled: bool | None
+    push_subscriptions: int
+    invitation_opt_out: bool
+    sending_blocked: bool
+    sending_block_reason: str | None = None
+    invitations_sent: list[InvitationSummary]
+    invitations_received: list[ReceivedInvitationSummary]
+
+
+@router.get("/users/{user_id}/detail", response_model=UserDetail)
+def admin_user_detail(user_id: int, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    admin_emails = get_admin_emails()
+    gc = db.query(func.count(Grant.id)).filter(Grant.user_id == user.id).scalar()
+    lc = db.query(func.count(Loan.id)).filter(Loan.user_id == user.id).scalar()
+    pc = db.query(func.count(Price.id)).filter(Price.user_id == user.id).scalar()
+    push_count = db.query(func.count(PushSubscription.id)).filter(PushSubscription.user_id == user.id).scalar()
+    pref = db.query(EmailPreference).filter(EmailPreference.user_id == user.id).first()
+    opt_out = db.query(InvitationOptOut).filter(InvitationOptOut.email == user.email.lower()).first()
+    send_block = db.query(InviteSendingBlock).filter(InviteSendingBlock.user_id == user.id).first()
+
+    sent = db.query(Invitation).filter(Invitation.inviter_id == user.id).order_by(Invitation.created_at.desc()).all()
+    received = db.query(Invitation).filter(Invitation.invitee_id == user.id, Invitation.status == "accepted").order_by(Invitation.accepted_at.desc()).all()
+
+    sent_summaries = []
+    for inv in sent:
+        invitee = db.get(User, inv.invitee_id) if inv.invitee_id else None
+        sent_summaries.append(InvitationSummary(
+            id=inv.id,
+            invitee_email=inv.invitee_email,
+            status=inv.status,
+            created_at=inv.created_at.isoformat() if inv.created_at else None,
+            accepted_at=inv.accepted_at.isoformat() if inv.accepted_at else None,
+            invitee_name=invitee.name if invitee else None,
+        ))
+
+    received_summaries = []
+    for inv in received:
+        inviter = db.get(User, inv.inviter_id) if inv.inviter_id else None
+        received_summaries.append(ReceivedInvitationSummary(
+            id=inv.id,
+            inviter_email=inviter.email if inviter else "?",
+            inviter_name=inviter.name if inviter else None,
+            status=inv.status,
+            accepted_at=inv.accepted_at.isoformat() if inv.accepted_at else None,
+        ))
+
+    return UserDetail(
+        id=user.id,
+        email=user.email,
+        name=user.name,
+        is_admin=user.email.lower() in admin_emails,
+        created_at=user.created_at.isoformat() if user.created_at else "",
+        last_login=user.last_login.isoformat() if user.last_login else None,
+        grant_count=gc,
+        loan_count=lc,
+        price_count=pc,
+        email_notifications_enabled=bool(pref.enabled) if pref else None,
+        push_subscriptions=push_count,
+        invitation_opt_out=opt_out is not None,
+        sending_blocked=send_block is not None,
+        sending_block_reason=send_block.reason if send_block else None,
+        invitations_sent=sent_summaries,
+        invitations_received=received_summaries,
+    )
+
+
+# ============================================================
+# Admin: Invitation opt-out management
+# ============================================================
+
+@router.delete("/opt-outs/{opt_out_id}", status_code=204)
+def clear_opt_out(opt_out_id: int, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    entry = db.get(InvitationOptOut, opt_out_id)
+    if not entry:
+        raise HTTPException(404, "Opt-out entry not found")
+    db.delete(entry)
+    db.commit()
+
+
+@router.delete("/opt-outs", status_code=204)
+def clear_opt_out_by_email(email: str, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    email = email.strip().lower()
+    entry = db.query(InvitationOptOut).filter(InvitationOptOut.email == email).first()
+    if not entry:
+        raise HTTPException(404, "No opt-out found for this email")
+    db.delete(entry)
+    db.commit()
+
+
+# ============================================================
+# Admin: Invite sending block management
+# ============================================================
+
+class SendingBlockRequest(BaseModel):
+    reason: str = ""
+
+
+@router.post("/users/{user_id}/block-sending", status_code=201)
+def block_sending(user_id: int, body: SendingBlockRequest, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+    existing = db.query(InviteSendingBlock).filter(InviteSendingBlock.user_id == user_id).first()
+    if existing:
+        raise HTTPException(409, "User is already blocked from sending")
+    block = InviteSendingBlock(user_id=user_id, reason=body.reason)
+    db.add(block)
+    db.commit()
+    return {"blocked": True}
+
+
+@router.delete("/users/{user_id}/block-sending", status_code=204)
+def unblock_sending(user_id: int, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    block = db.query(InviteSendingBlock).filter(InviteSendingBlock.user_id == user_id).first()
+    if not block:
+        raise HTTPException(404, "No sending block found for this user")
+    db.delete(block)
+    db.commit()
+
+
+# ============================================================
+# Admin: Reset invitations for a user
+# ============================================================
+
+@router.post("/users/{user_id}/reset-invitations", status_code=200)
+def reset_invitations(user_id: int, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    """Revoke all pending/accepted invitations sent by this user and remove invitee access."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    sent = db.query(Invitation).filter(
+        Invitation.inviter_id == user_id,
+        Invitation.status.in_(["pending", "accepted"]),
+    ).all()
+    revoked = 0
+    for inv in sent:
+        inv.status = "revoked"
+        revoked += 1
+
+    # Also clean up any invitations where this user is the invitee
+    received = db.query(Invitation).filter(
+        Invitation.invitee_id == user_id,
+        Invitation.status == "accepted",
+    ).all()
+    access_removed = 0
+    for inv in received:
+        inv.status = "revoked"
+        access_removed += 1
+
+    db.commit()
+    return {"revoked_sent": revoked, "access_removed": access_removed}
+
+
+# ============================================================
+# Admin: Re-enable email notifications for a user
+# ============================================================
+
+@router.post("/users/{user_id}/reenable-email", status_code=200)
+def reenable_email(user_id: int, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    """Re-enable email notifications for a user who unsubscribed."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+    pref = db.query(EmailPreference).filter(EmailPreference.user_id == user_id).first()
+    if not pref:
+        pref = EmailPreference(user_id=user_id, enabled=1)
+        db.add(pref)
+    else:
+        pref.enabled = 1
+    db.commit()
+    return {"enabled": True}
 
 
 # ============================================================

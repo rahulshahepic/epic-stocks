@@ -41,7 +41,7 @@ export default function PrivacyPolicy() {
         </div>
 
         <h1 className="mb-1 text-2xl font-bold text-stone-900 dark:text-white">Privacy Policy</h1>
-        <p className="mb-8 text-xs text-stone-600 dark:text-slate-400">Last updated: 2026-03-21</p>
+        <p className="mb-8 text-xs text-stone-600 dark:text-slate-400">Last updated: 2026-04-12</p>
 
         <div className="rounded-lg bg-white p-6 shadow-sm dark:bg-slate-900 md:p-8">
           <P>
@@ -107,8 +107,12 @@ export default function PrivacyPolicy() {
           <Section title="Data Isolation">
             <P>
               Every database query is filtered by your authenticated user ID. You can only read,
-              modify, or delete your own data. There are no API endpoints that expose one user's
-              data to another user. The source code is open for you to verify this.
+              modify, or delete your own data. The source code is open for you to verify this.
+            </P>
+            <P>
+              The one exception is the <strong>sharing feature</strong>: if you choose to invite
+              someone, they can view (but never modify) your financial data. See "People you invite"
+              below for details.
             </P>
           </Section>
 
@@ -122,6 +126,28 @@ export default function PrivacyPolicy() {
                 <li>Delete your account — permanently remove your account and all associated data (Settings › Danger Zone)</li>
               </Ul>
               <P>Both actions are self-service, immediate, and irreversible.</P>
+            </SubSection>
+            <SubSection title="People you invite">
+              <P>
+                You can invite others by email to view your data. <strong>This is entirely
+                optional</strong> — no one can see your data unless you explicitly invite them. Before
+                sharing, understand what this means:
+              </P>
+              <Ul>
+                <li><strong>What they see:</strong> your Dashboard, Events timeline, Grants, Loans, Prices, and Sales — everything on those pages, in read-only form.</li>
+                <li><strong>What they cannot do:</strong> modify your data in any way, see optimization Tips, use What If scenarios (exit date, deduction toggle), or change your settings.</li>
+                <li><strong>You are sharing real financial data.</strong> Share prices, grant details, loan balances, and tax information will be visible to anyone you invite. Only invite people you trust with this information.</li>
+                <li><strong>You control access.</strong> You can revoke an invitation at any time from Settings. The invited person can also remove their own access.</li>
+                <li><strong>Invitations expire.</strong> Unused invitation links expire after 7 days. You can resend to extend.</li>
+                <li><strong>Sign-in flexibility:</strong> The invited person signs in with any configured provider (Google, Microsoft, etc.) — it does not need to match the email the invitation was sent to. You will see both the email you invited and the account they actually signed in with.</li>
+              </Ul>
+              <P>
+                <strong>Risk to understand:</strong> once someone accepts your invitation, they can view
+                your data whenever they want until you revoke access. You can see the last time they
+                viewed your data in Settings, but you cannot control what they do with the information
+                they see (e.g., screenshot it, write it down, or share it further). Treat this like
+                handing someone a copy of your financial statement.
+              </P>
             </SubSection>
             <SubSection title="The site operator">
               <P>
@@ -142,7 +168,7 @@ export default function PrivacyPolicy() {
                 <li><strong>Hetzner</strong> — VPS hosting. The app and database run on Hetzner hardware.</li>
                 <li><strong>Cloudflare</strong> — DDoS protection and DNS. HTTPS traffic passes through Cloudflare's network.</li>
                 <li><strong>Porkbun</strong> — domain registrar. No access to application data.</li>
-                <li><strong>Resend</strong> — email notifications (if enabled). Notification content contains no financial data — only an event count and a login link.</li>
+                <li><strong>Resend</strong> — email notifications and invitation emails (if enabled). Notification content contains no financial data — only an event count and a login link. Invitation emails contain the inviter's display name and a one-time token — no financial data.</li>
                 <li><strong>Push notifications</strong> — delivered via Web Push through your browser's push service. Content contains no financial data.</li>
               </Ul>
               <P>

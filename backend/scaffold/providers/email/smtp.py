@@ -20,7 +20,7 @@ class SmtpEmailProvider:
     def is_configured(self) -> bool:
         return bool(self._host and self._from_addr)
 
-    def send(self, to: str, subject: str, text: str, html: str | None = None) -> bool:
+    def send(self, to: str, subject: str, text: str, html: str | None = None, *, headers: dict[str, str] | None = None) -> bool:
         host = os.getenv("SMTP_HOST", "")
         port = int(os.getenv("SMTP_PORT", "587"))
         user = os.getenv("SMTP_USER", "")
@@ -35,6 +35,9 @@ class SmtpEmailProvider:
         msg["Subject"] = subject
         msg["From"] = from_addr
         msg["To"] = to
+        if headers:
+            for key, value in headers.items():
+                msg[key] = value
         msg.attach(MIMEText(text, "plain"))
         if html:
             msg.attach(MIMEText(html, "html"))

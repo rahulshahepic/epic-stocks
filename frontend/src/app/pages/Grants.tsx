@@ -7,6 +7,7 @@ import { broadcastChange, useDataSync } from '../hooks/useDataSync.ts'
 import { TaxRateFields, ratesFromDefaults, ratesFromSale, DEFAULT_RATES } from './Sales.tsx'
 import type { TaxRates } from './Sales.tsx'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
+import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
 
 type GrantForm = Omit<GrantEntry, 'id' | 'version'>
 type Mode = 'list' | 'add' | 'edit'
@@ -60,19 +61,23 @@ function priceAt(date: string, prices: PriceEntry[] | null | undefined): number 
 }
 
 export default function Grants() {
-  const fetchGrants = useCallback(() => api.getGrants(), [])
+  const { viewing } = useViewing()
+  const vid = viewing?.invitationId
+  const readOnly = !!viewing
+
+  const fetchGrants = useCallback(() => vid ? api.getSharedGrants(vid) : api.getGrants(), [vid])
   const { data: grants, loading, reload } = useApiData<GrantEntry[]>(fetchGrants)
-  const fetchPrices = useCallback(() => api.getPrices(), [])
+  const fetchPrices = useCallback(() => vid ? api.getSharedPrices(vid) : api.getPrices(), [vid])
   const { data: prices } = useApiData<PriceEntry[]>(fetchPrices)
-  const fetchLoans = useCallback(() => api.getLoans(), [])
+  const fetchLoans = useCallback(() => vid ? api.getSharedLoans(vid) : api.getLoans(), [vid])
   const { data: loans, reload: reloadLoans } = useApiData<LoanEntry[]>(fetchLoans)
-  const fetchSales = useCallback(() => api.getSales(), [])
+  const fetchSales = useCallback(() => vid ? api.getSharedSales(vid) : api.getSales(), [vid])
   const { data: sales, reload: reloadSales } = useApiData<SaleEntry[]>(fetchSales)
-  const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
+  const fetchTaxSettings = useCallback(() => vid ? api.getSharedTaxSettings(vid) : api.getTaxSettings(), [vid])
   const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
 
   const config = useConfig()
-  const epicMode = config?.epic_mode ?? false
+  const epicMode = (config?.epic_mode ?? false) || readOnly
   const isMobile = useIsMobile()
 
   // IDs of loans that have been superseded by a refinance — never show these as the active loan
@@ -595,7 +600,7 @@ export default function Grants() {
       </div>
       {epicMode && (
         <p className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:bg-indigo-900/20 dark:text-rose-300">
-          Data provided by Epic — view only
+          {readOnly ? 'Viewing shared data — read only' : 'Data provided by Epic — view only'}
         </p>
       )}
 
@@ -619,7 +624,7 @@ export default function Grants() {
                     <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-medium text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">83(b)</span>
                   )}
                 </div>
-                {epicMode ? (
+                {readOnly ? null : epicMode ? (
                   <button onClick={() => openSellModal(g)} className="text-emerald-700 hover:text-emerald-800 dark:text-emerald-300">Sell</button>
                 ) : (
                   <button onClick={() => openEdit(g)} className="text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Edit</button>
@@ -720,7 +725,7 @@ export default function Grants() {
                       )}
                     </td>
                     <td className="px-3 py-2 text-right">
-                      {epicMode ? (
+                      {readOnly ? null : epicMode ? (
                         <button onClick={() => openSellModal(g)} className="text-emerald-700 hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-300">Sell</button>
                       ) : (
                         <button onClick={() => openEdit(g)} className="text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Edit</button>

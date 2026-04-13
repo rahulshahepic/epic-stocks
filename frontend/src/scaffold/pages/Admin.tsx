@@ -5,6 +5,7 @@ import { useConfig } from '../hooks/useConfig.ts'
 import type {
   AdminStats, AdminUser, BlockedEmailEntry, ErrorLogEntry, TestNotifyResult,
   SystemMetricPoint, DbTableInfo, RotationEvent, TipsReport,
+  UserDetail, EmailLookupResult,
 } from '../../api.ts'
 
 const NOTIFY_TEMPLATES: Record<string, { title: string; body: string }> = {
@@ -73,6 +74,17 @@ export default function Admin() {
   const [notifyBody, setNotifyBody] = useState(NOTIFY_TEMPLATES.custom.body)
   const [notifySending, setNotifySending] = useState(false)
   const [notifyResult, setNotifyResult] = useState<TestNotifyResult | null>(null)
+
+  // User detail card state
+  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null)
+  const [userDetail, setUserDetail] = useState<UserDetail | null>(null)
+  const [userDetailLoading, setUserDetailLoading] = useState(false)
+  const [userDetailAction, setUserDetailAction] = useState('')
+
+  // Email lookup state
+  const [emailLookup, setEmailLookup] = useState('')
+  const [emailLookupResult, setEmailLookupResult] = useState<EmailLookupResult | null>(null)
+  const [emailLookupLoading, setEmailLookupLoading] = useState(false)
 
   // Metrics state
   const [metrics, setMetrics] = useState<SystemMetricPoint[]>([])
@@ -174,21 +186,6 @@ export default function Admin() {
     load()
   }
 
-  async function handleDelete(id: number) {
-    if (confirmDelete !== id) {
-      setConfirmDelete(id)
-      return
-    }
-    try {
-      await api.adminDeleteUser(id)
-      setConfirmDelete(null)
-      setUsers(prev => prev.filter(u => u.id !== id))
-      loadUsers(search)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete user')
-    }
-  }
-
   async function handleTestNotify(e: React.FormEvent) {
     e.preventDefault()
     if (!notifyModal) return
@@ -205,12 +202,50 @@ export default function Admin() {
     }
   }
 
-  function openNotifyModal(u: AdminUser) {
+  function openNotifyModal(u: { id: number; name?: string | null; email: string }) {
     setNotifyModal({ userId: u.id, userName: u.name ?? u.email })
     setNotifyTemplate('custom')
     setNotifyTitle(NOTIFY_TEMPLATES.custom.title)
     setNotifyBody(NOTIFY_TEMPLATES.custom.body)
     setNotifyResult(null)
+  }
+
+  async function openUserDetail(u: AdminUser) {
+    setSelectedUser(u)
+    setUserDetail(null)
+    setUserDetailLoading(true)
+    setUserDetailAction('')
+    try {
+      const detail = await api.adminUserDetail(u.id)
+      setUserDetail(detail)
+    } catch {
+      setError('Failed to load user details')
+    } finally {
+      setUserDetailLoading(false)
+    }
+  }
+
+  async function reloadUserDetail() {
+    if (!selectedUser) return
+    try {
+      const detail = await api.adminUserDetail(selectedUser.id)
+      setUserDetail(detail)
+    } catch { /* ignore */ }
+  }
+
+  async function handleEmailLookup(e: React.FormEvent) {
+    e.preventDefault()
+    if (!emailLookup.trim()) return
+    setEmailLookupLoading(true)
+    setEmailLookupResult(null)
+    try {
+      const result = await api.adminEmailLookup(emailLookup.trim())
+      setEmailLookupResult(result)
+    } catch {
+      setError('Email lookup failed')
+    } finally {
+      setEmailLookupLoading(false)
+    }
   }
 
   function formatBytes(bytes: number) {
@@ -448,6 +483,99 @@ export default function Admin() {
         )}
       </section>
 
+      {/* Email Lookup */}
+      <section className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <h3 className="text-sm font-medium text-gray-900 dark:text-slate-100">Email Lookup</h3>
+        <form onSubmit={handleEmailLookup} className="mt-2 flex gap-2">
+          <input
+            type="email"
+            value={emailLookup}
+            onChange={e => setEmailLookup(e.target.value)}
+            placeholder="Search by exact email..."
+            className="min-w-0 flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+            required
+          />
+          <button
+            type="submit"
+            disabled={emailLookupLoading}
+            className="shrink-0 rounded-md bg-rose-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-800 disabled:opacity-50"
+          >
+            {emailLookupLoading ? '...' : 'Lookup'}
+          </button>
+        </form>
+
+        {emailLookupResult && (
+          <div className="mt-3 rounded-md border border-gray-100 p-3 text-xs dark:border-slate-700">
+            <p className="font-medium text-gray-900 dark:text-slate-100">{emailLookupResult.email}</p>
+            <div className="mt-2 space-y-1 text-gray-600 dark:text-slate-400">
+              <p>Account: {emailLookupResult.has_account
+                ? <span className="text-green-600 dark:text-green-400">Yes — {emailLookupResult.user_name ?? 'No name'} (id:{emailLookupResult.user_id})</span>
+                : <span className="text-stone-500">No account</span>}
+              </p>
+              <p>Email notifications: {emailLookupResult.email_notifications_enabled === null
+                ? 'N/A' : emailLookupResult.email_notifications_enabled
+                ? <span className="text-green-600 dark:text-green-400">Enabled</span>
+                : <span className="text-red-500">Disabled</span>}
+              </p>
+              <p>Invitation opt-out: {emailLookupResult.invitation_opt_out
+                ? <span className="text-red-500">Yes</span>
+                : <span className="text-green-600 dark:text-green-400">No</span>}
+                {emailLookupResult.invitation_opt_out && emailLookupResult.opt_out_id && (
+                  <button
+                    onClick={async () => {
+                      await api.adminClearOptOut(emailLookupResult.opt_out_id!)
+                      handleEmailLookup({ preventDefault: () => {} } as React.FormEvent)
+                    }}
+                    className="ml-2 text-rose-600 hover:text-rose-800 underline dark:text-rose-400"
+                  >clear</button>
+                )}
+              </p>
+              <p>Blocked from receiving: {emailLookupResult.blocked_from_receiving
+                ? <span className="text-red-500">Yes{emailLookupResult.blocked_reason ? ` — ${emailLookupResult.blocked_reason}` : ''}</span>
+                : <span className="text-green-600 dark:text-green-400">No</span>}
+                {emailLookupResult.blocked_from_receiving && emailLookupResult.blocked_id && (
+                  <button
+                    onClick={async () => {
+                      await api.adminUnblock(emailLookupResult.blocked_id!)
+                      handleEmailLookup({ preventDefault: () => {} } as React.FormEvent)
+                      load()
+                    }}
+                    className="ml-2 text-rose-600 hover:text-rose-800 underline dark:text-rose-400"
+                  >unblock</button>
+                )}
+              </p>
+              {emailLookupResult.has_account && (
+                <>
+                  <p>Sending blocked: {emailLookupResult.sending_blocked
+                    ? <span className="text-red-500">Yes{emailLookupResult.sending_block_reason ? ` — ${emailLookupResult.sending_block_reason}` : ''}</span>
+                    : <span className="text-green-600 dark:text-green-400">No</span>}
+                    {emailLookupResult.sending_blocked && emailLookupResult.user_id && (
+                      <button
+                        onClick={async () => {
+                          await api.adminUnblockSending(emailLookupResult.user_id!)
+                          handleEmailLookup({ preventDefault: () => {} } as React.FormEvent)
+                        }}
+                        className="ml-2 text-rose-600 hover:text-rose-800 underline dark:text-rose-400"
+                      >unblock</button>
+                    )}
+                  </p>
+                  <p>Invitations sent: {emailLookupResult.invitations_sent} · Received: {emailLookupResult.invitations_received}</p>
+                  {emailLookupResult.email_notifications_enabled === false && emailLookupResult.user_id && (
+                    <button
+                      onClick={async () => {
+                        await api.adminReenableEmail(emailLookupResult.user_id!)
+                        handleEmailLookup({ preventDefault: () => {} } as React.FormEvent)
+                      }}
+                      className="mt-1 text-rose-600 hover:text-rose-800 underline dark:text-rose-400"
+                    >Re-enable email notifications</button>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </section>
+
       {/* Users */}
       <section className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
         <div className="flex items-center justify-between">
@@ -462,7 +590,11 @@ export default function Admin() {
         />
         <div className="mt-3 space-y-2">
           {users.map(u => (
-            <div key={u.id} className="flex items-center justify-between rounded-md border border-gray-100 p-2 text-xs dark:border-slate-700">
+            <button
+              key={u.id}
+              onClick={() => openUserDetail(u)}
+              className="flex w-full items-center justify-between rounded-md border border-gray-100 p-2 text-left text-xs transition-colors hover:bg-stone-50 dark:border-slate-700 dark:hover:bg-slate-800"
+            >
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium text-gray-900 dark:text-slate-100">
                   {u.email}
@@ -479,25 +611,8 @@ export default function Admin() {
                   {u.grant_count} grants · {u.loan_count} loans · {u.price_count} prices
                 </p>
               </div>
-              <div className="ml-2 flex shrink-0 gap-1">
-                <button
-                  onClick={() => openNotifyModal(u)}
-                  className="rounded px-2 py-1 text-xs font-medium text-white bg-rose-600 hover:bg-rose-700"
-                >
-                  Notify
-                </button>
-                {!u.is_admin && (
-                  <button
-                    onClick={() => handleDelete(u.id)}
-                    className={`rounded px-2 py-1 text-xs font-medium text-white ${
-                      confirmDelete === u.id ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-400 hover:bg-gray-500'
-                    }`}
-                  >
-                    {confirmDelete === u.id ? 'Confirm Delete' : 'Delete'}
-                  </button>
-                )}
-              </div>
-            </div>
+              <span className="ml-2 shrink-0 text-stone-400 dark:text-slate-500">&#9656;</span>
+            </button>
           ))}
           {users.length === 0 && (
             <p className="text-xs text-stone-600 dark:text-slate-400">
@@ -913,6 +1028,223 @@ export default function Admin() {
         <p className="text-center text-xs text-stone-600 dark:text-slate-400">
           {import.meta.env.VITE_COMMIT_SHA.slice(0, 7)}
         </p>
+      )}
+
+      {/* User Detail Modal */}
+      {selectedUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setSelectedUser(null)}>
+          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-lg bg-white p-5 shadow-xl dark:bg-slate-900" onClick={e => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">
+                  {selectedUser.email}
+                </h3>
+                <p className="text-xs text-stone-600 dark:text-slate-400">
+                  {selectedUser.name ?? 'No name'}
+                  {selectedUser.is_admin && (
+                    <span className="ml-1.5 inline-block rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">
+                      Admin
+                    </span>
+                  )}
+                </p>
+              </div>
+              <button onClick={() => setSelectedUser(null)} aria-label="Close" className="text-stone-600 hover:text-gray-600 dark:hover:text-slate-300">✕</button>
+            </div>
+
+            {userDetailLoading && (
+              <div className="flex items-center justify-center py-8">
+                <div className="h-3 w-3 animate-pulse rounded-full bg-rose-500" />
+              </div>
+            )}
+
+            {userDetail && (
+              <div className="space-y-4 text-xs">
+                {/* User Info */}
+                <div className="grid grid-cols-2 gap-2 text-gray-600 dark:text-slate-400">
+                  <p>Joined: {formatDate(userDetail.created_at)}</p>
+                  <p>Last login: {formatDate(userDetail.last_login)}</p>
+                  <p>{userDetail.grant_count} grants · {userDetail.loan_count} loans · {userDetail.price_count} prices</p>
+                  <p>{userDetail.push_subscriptions} push subscription{userDetail.push_subscriptions !== 1 ? 's' : ''}</p>
+                </div>
+
+                {/* Email & Notification Status */}
+                <div className="rounded-md border border-gray-100 p-3 dark:border-slate-700">
+                  <h4 className="mb-2 text-xs font-semibold text-gray-900 dark:text-slate-100">Email & Notifications</h4>
+                  <div className="space-y-1 text-gray-600 dark:text-slate-400">
+                    <p>Email notifications: {userDetail.email_notifications_enabled === null
+                      ? 'Not configured'
+                      : userDetail.email_notifications_enabled
+                      ? <span className="text-green-600 dark:text-green-400">Enabled</span>
+                      : <span className="text-red-500">Disabled (unsubscribed)</span>}
+                      {userDetail.email_notifications_enabled === false && (
+                        <button
+                          onClick={async () => {
+                            setUserDetailAction('reenable-email')
+                            await api.adminReenableEmail(userDetail.id)
+                            await reloadUserDetail()
+                            setUserDetailAction('')
+                          }}
+                          disabled={!!userDetailAction}
+                          className="ml-2 text-rose-600 hover:text-rose-800 underline dark:text-rose-400"
+                        >re-enable</button>
+                      )}
+                    </p>
+                    <p>Invitation opt-out: {userDetail.invitation_opt_out
+                      ? <span className="text-red-500">Yes</span>
+                      : <span className="text-green-600 dark:text-green-400">No</span>}
+                      {userDetail.invitation_opt_out && (
+                        <button
+                          onClick={async () => {
+                            setUserDetailAction('clear-optout')
+                            await api.adminClearOptOutByEmail(userDetail.email)
+                            await reloadUserDetail()
+                            setUserDetailAction('')
+                          }}
+                          disabled={!!userDetailAction}
+                          className="ml-2 text-rose-600 hover:text-rose-800 underline dark:text-rose-400"
+                        >clear</button>
+                      )}
+                    </p>
+                    <p>Sending invitations: {userDetail.sending_blocked
+                      ? <span className="text-red-500">Blocked{userDetail.sending_block_reason ? ` — ${userDetail.sending_block_reason}` : ''}</span>
+                      : <span className="text-green-600 dark:text-green-400">Allowed</span>}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Invitations Sent */}
+                {userDetail.invitations_sent.length > 0 && (
+                  <div className="rounded-md border border-gray-100 p-3 dark:border-slate-700">
+                    <h4 className="mb-2 text-xs font-semibold text-gray-900 dark:text-slate-100">
+                      Invitations Sent ({userDetail.invitations_sent.length})
+                    </h4>
+                    <div className="space-y-1">
+                      {userDetail.invitations_sent.map(inv => (
+                        <div key={inv.id} className="flex items-center justify-between text-gray-600 dark:text-slate-400">
+                          <span className="truncate">{inv.invitee_email}</span>
+                          <span className={`ml-2 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                            inv.status === 'accepted' ? 'bg-green-50 text-green-700 dark:bg-green-900/40 dark:text-green-300'
+                            : inv.status === 'pending' ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                            : 'bg-stone-100 text-stone-600 dark:bg-slate-700 dark:text-slate-400'
+                          }`}>{inv.status}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Invitations Received */}
+                {userDetail.invitations_received.length > 0 && (
+                  <div className="rounded-md border border-gray-100 p-3 dark:border-slate-700">
+                    <h4 className="mb-2 text-xs font-semibold text-gray-900 dark:text-slate-100">
+                      Viewing Data From ({userDetail.invitations_received.length})
+                    </h4>
+                    <div className="space-y-1">
+                      {userDetail.invitations_received.map(inv => (
+                        <div key={inv.id} className="text-gray-600 dark:text-slate-400">
+                          {inv.inviter_name ?? inv.inviter_email}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="rounded-md border border-gray-100 p-3 dark:border-slate-700">
+                  <h4 className="mb-2 text-xs font-semibold text-gray-900 dark:text-slate-100">Actions</h4>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => { openNotifyModal({ id: userDetail.id, name: userDetail.name, email: userDetail.email }) }}
+                      className="rounded px-3 py-1.5 text-xs font-medium text-white bg-rose-600 hover:bg-rose-700"
+                    >
+                      Send Notification
+                    </button>
+
+                    {userDetail.sending_blocked ? (
+                      <button
+                        onClick={async () => {
+                          setUserDetailAction('unblock-sending')
+                          await api.adminUnblockSending(userDetail.id)
+                          await reloadUserDetail()
+                          setUserDetailAction('')
+                        }}
+                        disabled={!!userDetailAction}
+                        className="rounded px-3 py-1.5 text-xs font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
+                      >
+                        Unblock Sending
+                      </button>
+                    ) : (
+                      <button
+                        onClick={async () => {
+                          const reason = prompt('Reason for blocking (optional):')
+                          if (reason === null) return
+                          setUserDetailAction('block-sending')
+                          await api.adminBlockSending(userDetail.id, reason)
+                          await reloadUserDetail()
+                          setUserDetailAction('')
+                        }}
+                        disabled={!!userDetailAction}
+                        className="rounded px-3 py-1.5 text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50"
+                      >
+                        Block Sending
+                      </button>
+                    )}
+
+                    {(userDetail.invitations_sent.some(i => i.status === 'pending' || i.status === 'accepted') ||
+                      userDetail.invitations_received.length > 0) && (
+                      <button
+                        onClick={async () => {
+                          if (!confirm('Reset all invitations? This revokes sent invitations and removes shared access.')) return
+                          setUserDetailAction('reset-invitations')
+                          try {
+                            const result = await api.adminResetInvitations(userDetail.id)
+                            alert(`Revoked ${result.revoked_sent} sent, removed ${result.access_removed} received.`)
+                            await reloadUserDetail()
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : 'Failed to reset invitations')
+                          } finally {
+                            setUserDetailAction('')
+                          }
+                        }}
+                        disabled={!!userDetailAction}
+                        className="rounded px-3 py-1.5 text-xs font-medium text-white bg-orange-600 hover:bg-orange-700 disabled:opacity-50"
+                      >
+                        Reset Invitations
+                      </button>
+                    )}
+
+                    {!userDetail.is_admin && (
+                      <button
+                        onClick={async () => {
+                          if (confirmDelete !== userDetail.id) {
+                            setConfirmDelete(userDetail.id)
+                            return
+                          }
+                          try {
+                            await api.adminDeleteUser(userDetail.id)
+                            setSelectedUser(null)
+                            setConfirmDelete(null)
+                            loadUsers(search)
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : 'Failed to delete user')
+                          }
+                        }}
+                        className={`rounded px-3 py-1.5 text-xs font-medium text-white ${
+                          confirmDelete === userDetail.id ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-400 hover:bg-gray-500'
+                        }`}
+                      >
+                        {confirmDelete === userDetail.id ? 'Confirm Delete' : 'Delete User'}
+                      </button>
+                    )}
+                  </div>
+                  {userDetailAction && (
+                    <p className="mt-2 text-xs text-stone-500 dark:text-slate-400">Processing...</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Notify Modal */}

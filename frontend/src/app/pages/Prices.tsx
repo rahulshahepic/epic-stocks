@@ -3,6 +3,7 @@ import { api } from '../../api.ts'
 import type { PriceEntry } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
+import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
 
 type PriceForm = { effective_date: string; price: number }
 type Mode = 'list' | 'add' | 'edit' | 'growth'
@@ -56,11 +57,15 @@ function computeGrowthPreview(
 }
 
 export default function Prices() {
-  const fetchPrices = useCallback(() => api.getPrices(), [])
+  const { viewing } = useViewing()
+  const vid = viewing?.invitationId
+  const readOnly = !!viewing
+
+  const fetchPrices = useCallback(() => vid ? api.getSharedPrices(vid) : api.getPrices(), [vid])
   const { data: prices, loading, reload } = useApiData<PriceEntry[]>(fetchPrices)
 
   const config = useConfig()
-  const epicMode = config?.epic_mode ?? false
+  const epicMode = (config?.epic_mode ?? false) || readOnly
 
   const [mode, setMode] = useState<Mode>('list')
   const [form, setForm] = useState<PriceForm>({ effective_date: '', price: 0 })
@@ -399,24 +404,28 @@ export default function Prices() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Share Prices</h2>
-        <div className="flex gap-2">
-          <button
-            onClick={openAdd}
-            className="rounded-md bg-amber-800 px-2 py-1 text-xs font-medium text-white hover:bg-amber-900"
-          >
-            + Price
-          </button>
-          <button
-            onClick={() => { setGrowthError(''); setMode('growth') }}
-            className="rounded-md bg-rose-700 px-2 py-1 text-xs font-medium text-white hover:bg-rose-800"
-          >
-            + Estimate
-          </button>
-        </div>
+        {!readOnly && (
+          <div className="flex gap-2">
+            <button
+              onClick={openAdd}
+              className="rounded-md bg-amber-800 px-2 py-1 text-xs font-medium text-white hover:bg-amber-900"
+            >
+              + Price
+            </button>
+            <button
+              onClick={() => { setGrowthError(''); setMode('growth') }}
+              className="rounded-md bg-rose-700 px-2 py-1 text-xs font-medium text-white hover:bg-rose-800"
+            >
+              + Estimate
+            </button>
+          </div>
+        )}
       </div>
       {epicMode && (
         <p className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:bg-indigo-900/20 dark:text-rose-300">
-          Historical data provided by Epic — view only. You can add future price estimates.
+          {readOnly
+            ? `Viewing shared data — read only.`
+            : 'Historical data provided by Epic — view only. You can add future price estimates.'}
         </p>
       )}
 
@@ -432,7 +441,7 @@ export default function Prices() {
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
             {prices.map(p => {
               const isEst = p.is_estimate ?? false
-              const canEdit = !epicMode || isEst
+              const canEdit = !readOnly && (!epicMode || isEst)
               return (
                 <tr key={p.id} className={`bg-white dark:bg-slate-900 ${isEst ? 'opacity-70' : ''}`}>
                   <td className="px-3 py-2 text-gray-700 dark:text-slate-300">

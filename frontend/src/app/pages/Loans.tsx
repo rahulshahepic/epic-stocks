@@ -4,6 +4,7 @@ import { api, ConflictError } from '../../api.ts'
 import type { LoanEntry, LoanPayoffSuggestion, SaleEntry, TaxSettings } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { broadcastChange, useDataSync } from '../hooks/useDataSync.ts'
+import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
 import { TaxRateFields, TrancheTable, ratesFromDefaults, ratesFromSale, DEFAULT_RATES } from './Sales.tsx'
 import type { TaxRates } from './Sales.tsx'
 import type { TrancheAllocation } from '../../api.ts'
@@ -56,11 +57,15 @@ function fmt$(n: number) {
 const LOAN_TYPES = ['Interest', 'Tax', 'Purchase']
 
 export default function Loans() {
-  const fetchLoans = useCallback(() => api.getLoans(), [])
+  const { viewing } = useViewing()
+  const vid = viewing?.invitationId
+  const readOnly = !!viewing
+
+  const fetchLoans = useCallback(() => vid ? api.getSharedLoans(vid) : api.getLoans(), [vid])
   const { data: loans, loading, reload } = useApiData<LoanEntry[]>(fetchLoans)
-  const fetchSales = useCallback(() => api.getSales(), [])
+  const fetchSales = useCallback(() => vid ? api.getSharedSales(vid) : api.getSales(), [vid])
   const { data: sales, reload: reloadSales } = useApiData<SaleEntry[]>(fetchSales)
-  const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
+  const fetchTaxSettings = useCallback(() => vid ? api.getSharedTaxSettings(vid) : api.getTaxSettings(), [vid])
   const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
 
   const [mode, setMode] = useState<Mode>('list')
@@ -81,7 +86,7 @@ export default function Loans() {
   const [payoffTrancheLoading, setPayoffTrancheLoading] = useState(false)
 
   const config = useConfig()
-  const epicMode = !!config?.epic_mode
+  const epicMode = !!config?.epic_mode || readOnly
   const isMobile = useIsMobile()
 
   useDataSync('loans', reload)
@@ -389,7 +394,7 @@ export default function Loans() {
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Loans</h2>
         {epicMode
-          ? <p className="text-xs text-rose-700 dark:text-rose-400">Data provided by Epic</p>
+          ? <p className="text-xs text-rose-700 dark:text-rose-400">{readOnly ? 'Viewing shared data — read only' : 'Data provided by Epic'}</p>
           : <div className="flex gap-2">
               <button
                 onClick={handleRegenerateAll}
@@ -430,9 +435,11 @@ export default function Loans() {
                     <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[9px] font-medium text-stone-600 dark:bg-slate-700 dark:text-slate-400">Refinanced</span>
                   )}
                 </div>
-                {epicMode
-                  ? <button onClick={() => openPayoffModal(l)} className="text-xs font-medium text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Request Payoff</button>
-                  : <button onClick={() => openEdit(l)} className="text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Edit</button>
+                {readOnly
+                  ? null
+                  : epicMode
+                    ? <button onClick={() => openPayoffModal(l)} className="text-xs font-medium text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Request Payoff</button>
+                    : <button onClick={() => openEdit(l)} className="text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Edit</button>
                 }
               </div>
               {/* Line 2: Amount + Rate */}
@@ -525,9 +532,11 @@ export default function Loans() {
                       </button>
                     </td>
                     <td className="px-3 py-2 text-right">
-                      {epicMode
-                        ? <button onClick={() => openPayoffModal(l)} className="text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300 text-xs font-medium">Request Payoff</button>
-                        : <button onClick={() => openEdit(l)} className="text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Edit</button>
+                      {readOnly
+                        ? null
+                        : epicMode
+                          ? <button onClick={() => openPayoffModal(l)} className="text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300 text-xs font-medium">Request Payoff</button>
+                          : <button onClick={() => openEdit(l)} className="text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Edit</button>
                       }
                     </td>
                   </tr>

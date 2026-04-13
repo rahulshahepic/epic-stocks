@@ -3,7 +3,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 
 from database import Base, engine, SessionLocal
-from scaffold.models import User, Grant, Loan, Price, Sale
+from scaffold.models import User, Grant, Loan, Price, Sale, Invitation
 from scaffold.auth import create_token
 from datetime import date, datetime, timezone
 
@@ -104,6 +104,30 @@ for i, eu in enumerate(extra_users[:3]):
                      vest_start=date(2021+j, 3, 1), periods=5, exercise_date=date(2020+j, 12, 31), dp_shares=0))
     for j in range(i):
         db.add(Price(user_id=eu.id, effective_date=date(2021+j, 3, 1), price=3.0+j))
+
+# Invitations for sharing screenshots
+invitations = [
+    Invitation(inviter_id=user.id, invitee_email="advisor@wealth.com",
+               token="screenshot-token-1", short_code="ABCD1234",
+               status="accepted", invitee_id=extra_users[0].id,
+               invitee_account_email="alice.johnson@company.com",
+               expires_at=datetime(2026, 4, 20, tzinfo=timezone.utc),
+               accepted_at=datetime(2026, 4, 5, 10, 0, tzinfo=timezone.utc),
+               last_viewed_at=datetime(2026, 4, 11, 14, 30, tzinfo=timezone.utc)),
+    Invitation(inviter_id=user.id, invitee_email="spouse@family.com",
+               token="screenshot-token-2", short_code="EFGH5678",
+               status="pending",
+               expires_at=datetime(2026, 4, 20, tzinfo=timezone.utc)),
+    # Alice shared her data with the demo user
+    Invitation(inviter_id=extra_users[0].id, invitee_email="demo@example.com",
+               token="screenshot-token-3", short_code="JKLM9012",
+               status="accepted", invitee_id=user.id,
+               invitee_account_email="demo@example.com",
+               expires_at=datetime(2026, 4, 20, tzinfo=timezone.utc),
+               accepted_at=datetime(2026, 4, 3, 8, 0, tzinfo=timezone.utc),
+               last_viewed_at=datetime(2026, 4, 10, 9, 0, tzinfo=timezone.utc)),
+]
+db.add_all(invitations)
 
 db.commit()
 token = create_token(user.id)

@@ -9,6 +9,7 @@ import { useApiData } from '../hooks/useApiData.ts'
 import { useDark } from '../../scaffold/hooks/useDark.ts'
 import ImportWizard from '../components/ImportWizard.tsx'
 import TipCarousel from '../components/TipCarousel.tsx'
+import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
 
 function fmt$(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
@@ -755,14 +756,18 @@ function ChartBox({ title, children, range, setRange, maxDate }: {
 }
 
 export default function Dashboard() {
-  const fetchDashboard = useCallback(() => api.getDashboard(), [])
-  const fetchEvents = useCallback(() => api.getEvents(), [])
-  const fetchPrices = useCallback(() => api.getPrices(), [])
-  const fetchLoans = useCallback(() => api.getLoans(), [])
-  const fetchGrants = useCallback(() => api.getGrants(), [])
-  const fetchTaxSettings = useCallback(() => api.getTaxSettings(), [])
-  const fetchSales = useCallback(() => api.getSales(), [])
-  const fetchHorizon = useCallback(() => api.getHorizonSettings(), [])
+  const { viewing } = useViewing()
+  const vid = viewing?.invitationId
+  const readOnly = !!viewing
+
+  const fetchDashboard = useCallback(() => vid ? api.getSharedDashboard(vid) : api.getDashboard(), [vid])
+  const fetchEvents = useCallback(() => vid ? api.getSharedEvents(vid) : api.getEvents(), [vid])
+  const fetchPrices = useCallback(() => vid ? api.getSharedPrices(vid) : api.getPrices(), [vid])
+  const fetchLoans = useCallback(() => vid ? api.getSharedLoans(vid) : api.getLoans(), [vid])
+  const fetchGrants = useCallback(() => vid ? api.getSharedGrants(vid) : api.getGrants(), [vid])
+  const fetchTaxSettings = useCallback(() => vid ? api.getSharedTaxSettings(vid) : api.getTaxSettings(), [vid])
+  const fetchSales = useCallback(() => vid ? api.getSharedSales(vid) : api.getSales(), [vid])
+  const fetchHorizon = useCallback(() => vid ? api.getSharedHorizonSettings(vid) : api.getHorizonSettings(), [vid])
 
   const { data: dash, loading: dashLoading, reload: reloadDash } = useApiData<DashboardData>(fetchDashboard)
   const { data: events, reload: reloadEvents } = useApiData<TimelineEvent[]>(fetchEvents)
@@ -1097,8 +1102,17 @@ export default function Dashboard() {
       interest_deduction_total: interestDeductionTotal,
       tax_savings_from_deduction: taxSavings,
       next_event: nextEvent,
+      price_is_estimate: (() => {
+        if (!prices) return false
+        let isEst = false
+        for (const p of prices) {
+          if (p.effective_date <= effectiveDate) isEst = !!p.is_estimate
+          else break
+        }
+        return isEst
+      })(),
     }
-  }, [events, loans, grantsData, sales, taxSettings, dash, cardDate, projectedLiqDate, projectedLiqEvent, ignoringExitDate])
+  }, [events, loans, grantsData, sales, taxSettings, dash, cardDate, projectedLiqDate, projectedLiqEvent, ignoringExitDate, prices])
 
   // Per-grant holdings breakdown as of cardDate
   const grantHoldings = useMemo(() => {
@@ -1228,7 +1242,10 @@ export default function Dashboard() {
   async function downloadReport() {
     setDownloading(true)
     try {
-      const resp = await fetch(`/api/export/holdings-report?as_of=${encodeURIComponent(cardDate)}`, { credentials: 'include' })
+      const exportUrl = vid
+        ? `/api/sharing/view/${vid}/export/excel`
+        : `/api/export/holdings-report?as_of=${encodeURIComponent(cardDate)}`
+      const resp = await fetch(exportUrl, { credentials: 'include' })
       if (!resp.ok) throw new Error(`Export failed (${resp.status})`)
       const blob = await resp.blob()
       const url = URL.createObjectURL(blob)
@@ -1251,8 +1268,12 @@ export default function Dashboard() {
 
   const isEmpty = !events || events.length === 0
 
-  if (isEmpty) {
+  if (isEmpty && !readOnly) {
     return <ImportWizard onComplete={reloadEvents} />
+  }
+
+  if (isEmpty && readOnly) {
+    return <p className="py-12 text-center text-sm text-stone-500 dark:text-slate-400">This user has no data yet.</p>
   }
 
   const cv = cardValues ?? {
@@ -1267,6 +1288,7 @@ export default function Dashboard() {
     tax_savings_from_deduction: dash.tax_savings_from_deduction ?? 0,
     next_event: dash.next_event,
     total_interest: 0,
+    price_is_estimate: false,
   }
   const hasInterestDeduction = (cv.interest_deduction_total ?? 0) > 0
   const hasInterestLoans = loans?.some(l => l.loan_type === 'Interest' || l.loan_type === 'Purchase') ?? false
@@ -1314,15 +1336,19 @@ export default function Dashboard() {
           >
             {downloading ? '…' : 'Export'}
           </button>
-          <button
-            onClick={() => {
-              setPendingExitDate(exitDate ?? '')
-              setExitEditOpen(o => !o)
-            }}
-            className="text-xs text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300"
-          >
-            {exitDate ? (exitEditOpen ? '▲ exit date' : '▼ exit date') : '+ set exit date'}
-          </button>
+          {!readOnly ? (
+            <button
+              onClick={() => {
+                setPendingExitDate(exitDate ?? '')
+                setExitEditOpen(o => !o)
+              }}
+              className="text-xs text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300"
+            >
+              {exitDate ? (exitEditOpen ? '▲ exit date' : '▼ exit date') : '+ set exit date'}
+            </button>
+          ) : exitDate ? (
+            <span className="text-xs text-gray-400 dark:text-slate-500">exit date: {exitDate}</span>
+          ) : null}
         </div>
         {exitEditOpen && (
           <div className="mt-2 border-t border-stone-100 pt-2 dark:border-slate-700/50">
@@ -1386,21 +1412,23 @@ export default function Dashboard() {
 
       {ignoringExitDate && (
         <div className="flex items-center justify-between gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
-          <span>Browsing past your exit date ({exitDate}) — exit not applied</span>
-          <button
-            onClick={() => { setPendingExitDate(cardDate); setExitEditOpen(true) }}
-            className="shrink-0 rounded bg-amber-700 px-2 py-1 font-medium text-white hover:bg-amber-800 dark:bg-amber-600 dark:hover:bg-amber-700"
-          >
-            Move exit here
-          </button>
+          <span>Browsing past {readOnly ? 'the' : 'your'} exit date ({exitDate}) — exit not applied</span>
+          {!readOnly && (
+            <button
+              onClick={() => { setPendingExitDate(cardDate); setExitEditOpen(true) }}
+              className="shrink-0 rounded bg-amber-700 px-2 py-1 font-medium text-white hover:bg-amber-800 dark:bg-amber-600 dark:hover:bg-amber-700"
+            >
+              Move exit here
+            </button>
+          )}
         </div>
       )}
 
-      <TipCarousel onApply={() => { reloadDash(); reloadEvents(); reloadHorizon(); reloadTaxSettings() }} />
+      {!readOnly && <TipCarousel onApply={() => { reloadDash(); reloadEvents(); reloadHorizon(); reloadTaxSettings() }} />}
 
       {/* (F) aria-live so screen readers announce summary updates when cardDate changes */}
       <div aria-live="polite" aria-atomic="true" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Card label="Share Price" value={fmtPrice(cv.current_price)} variant="price" />
+        <Card label={cv.price_is_estimate ? 'Share Price (est.)' : 'Share Price'} value={fmtPrice(cv.current_price)} variant="price" />
         <Card label="Vested Shares" value={fmtNum(cv.total_shares)} variant="shares" />
         <Card label="Unvested Shares" value={fmtNum(grantHoldings?.reduce((s, h) => s + h.unvestedShares, 0) ?? 0)} variant="unvested" />
         <Card label="Total Income" value={fmt$(cv.total_income)} variant="income" />
@@ -1485,7 +1513,7 @@ export default function Dashboard() {
           )}
         </div>
       )}
-      {showDeductionCard && (() => {
+      {showDeductionCard && !readOnly && (() => {
         const displayEnabled = pendingDeduction ?? savedDeduction
         const currentSavings = cardValues?.tax_savings_from_deduction ?? dash.tax_savings_from_deduction ?? 0
         const previewSavings = pendingDeductionChanged

@@ -208,6 +208,31 @@ test.describe('Screenshots', () => {
     await page.screenshot({ path: `${OUT}/wizard-page-light-mobile.png`, fullPage: true })
   })
 
+  test('settings sharing section - light - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    await page.click('text=Settings')
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(800)
+    await page.screenshot({ path: `${OUT}/settings-sharing-light-mobile.png`, fullPage: true })
+  })
+
+  test('settings sharing section - dark - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'dark')
+    await page.click('text=Settings')
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(800)
+    await page.screenshot({ path: `${OUT}/settings-sharing-dark-mobile.png`, fullPage: true })
+  })
+
+  test('invite landing page - light - mobile', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' })
+    await page.setViewportSize(MOBILE)
+    await page.goto(`${BASE}/invite?code=XXXX-YYYY`)
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(800)
+    await page.screenshot({ path: `${OUT}/invite-landing-light-mobile.png`, fullPage: true })
+  })
+
   test('loans - epic mode - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     await page.request.post(`${BASE}/api/admin/epic-mode`, { data: { active: true } })

@@ -384,13 +384,13 @@ export default function Sales() {
   const [breakdowns, setBreakdowns] = useState<Map<number, TaxBreakdown>>(new Map())
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [loadingTaxIds, setLoadingTaxIds] = useState<Set<number>>(new Set())
-  // Fetch all tax breakdowns in one request when sales load
+  // Fetch all tax breakdowns in one request when sales load (own data only)
   useEffect(() => {
-    if (!sales) return
+    if (!sales || readOnly) return
     api.getAllSaleTaxes()
       .then(all => setBreakdowns(new Map(Object.entries(all).map(([k, v]) => [Number(k), v]))))
       .catch(() => {})
-  }, [sales])
+  }, [sales, readOnly])
 
   useDataSync('sales', reload)
 
@@ -548,7 +548,7 @@ export default function Sales() {
     // Load then expand
     setLoadingTaxIds(prev => new Set(prev).add(id))
     try {
-      const tax = await api.getSaleTax(id)
+      const tax = await (vid ? api.getSharedSaleTax(vid, id) : api.getSaleTax(id))
       setBreakdowns(prev => new Map(prev).set(id, tax))
       setExpanded(prev => new Set(prev).add(id))
     } catch {

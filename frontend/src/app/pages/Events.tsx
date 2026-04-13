@@ -348,7 +348,7 @@ export default function Events() {
     }
     setLoadingTaxIds(prev => new Set(prev).add(saleId))
     try {
-      const tax = await api.getSaleTax(saleId)
+      const tax = await (vid ? api.getSharedSaleTax(vid, saleId) : api.getSaleTax(saleId))
       setBreakdowns(prev => new Map(prev).set(saleId, tax))
       setExpandedSales(prev => new Set(prev).add(saleId))
     } catch {

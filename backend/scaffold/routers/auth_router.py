@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
-from scaffold.models import User, BlockedEmail
+from scaffold.models import User, BlockedEmail, EmailPreference
 from scaffold.auth import create_token, get_admin_emails, set_session_cookies, clear_session_cookies
 from scaffold.crypto import encryption_enabled, generate_user_key, encrypt_user_key
 import logging
@@ -47,6 +47,9 @@ def _upsert_user(identity, db: Session) -> User:
         db.add(user)
         db.commit()
         db.refresh(user)
+        # Enable email notifications by default for new users
+        db.add(EmailPreference(user_id=user.id, enabled=1))
+        db.commit()
         _notify_admin_new_user(user, db)
     else:
         user.email = email

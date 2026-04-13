@@ -33,8 +33,7 @@ def test_dedup_skips_already_notified_user(client, db_session):
     register_user(client)
     user = db_session.query(User).first()
 
-    pref = EmailPreference(user_id=user.id, enabled=True)
-    db_session.add(pref)
+    # Email is enabled by default for new users, no need to create preference
     db_session.add(Grant(
         user_id=user.id, year=2020, type="Purchase", shares=100, price=5.0,
         vest_start=date(2025, 3, 20), periods=5,

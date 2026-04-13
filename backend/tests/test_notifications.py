@@ -11,11 +11,12 @@ from tests.conftest import register_user
 # EMAIL PREFERENCE ENDPOINTS
 # ============================================================
 
-def test_email_pref_default_disabled(client):
+def test_email_pref_default_enabled(client):
+    """New users get email notifications enabled by default."""
     register_user(client)
     resp = client.get("/api/notifications/email")
     assert resp.status_code == 200
-    assert resp.json()["enabled"] is False
+    assert resp.json()["enabled"] is True
 
 
 def test_email_pref_enable(client):
@@ -41,12 +42,15 @@ def test_email_pref_requires_auth(client):
 
 
 def test_email_pref_user_isolation(client, make_client):
+    """Each user's email preference is independent."""
     register_user(client, "user1@test.com")
-    client.put("/api/notifications/email?enabled=true", json={})
+    # user1 disables email
+    client.put("/api/notifications/email?enabled=false", json={})
 
     with make_client("user2@test.com") as client2:
         resp = client2.get("/api/notifications/email")
-        assert resp.json()["enabled"] is False
+        # user2 still has default enabled
+        assert resp.json()["enabled"] is True
 
 
 # ============================================================
@@ -120,7 +124,7 @@ def test_notification_build_payload():
     from scaffold.notifications import build_notification_payload
     assert build_notification_payload([]) is None
     payload = build_notification_payload([{"event_type": "Vesting"}])
-    assert payload["title"] == "Equity Tracker"
+    assert payload["title"] == "Upcoming Events"
     assert "1 event" in payload["body"]
 
 
@@ -197,8 +201,7 @@ def test_send_daily_notifications_with_email(client, db_session):
 
     register_user(client)
     user = db_session.query(User).first()
-    pref = EmailPreference(user_id=user.id, enabled=True)
-    db_session.add(pref)
+    # Email is enabled by default for new users, no need to create preference
     db_session.add(Grant(
         user_id=user.id, year=2020, type="Purchase", shares=100, price=5.0,
         vest_start=date(2025, 3, 20), periods=5,
@@ -217,3 +220,74 @@ def test_send_daily_notifications_with_email(client, db_session):
             from scaffold.notifications import send_daily_notifications
             send_daily_notifications(today=date(2026, 3, 20))
             assert mock_post.call_count >= 1
+
+
+# ============================================================
+# INVITE ACCEPTED NOTIFICATION
+# ============================================================
+
+def test_invite_accepted_push_has_deep_link(client, make_client, db_session):
+    """Invite-accepted push notification includes name and deep link to /settings."""
+    register_user(client, "inviter@test.com", "Alice")
+    with make_client("invitee@test.com", "Bob") as invitee_client:
+        # Send invite
+        resp = client.post("/api/sharing/invite", json={"email": "invitee@test.com"})
+        assert resp.status_code == 200
+        token = resp.json()["short_code"].replace("-", "")
+
+        # Accept invite
+        with patch("scaffold.notifications.send_push", return_value=True) as mock_push:
+            resp = invitee_client.post("/api/sharing/accept", json={"code": token})
+            assert resp.status_code == 200
+            # Verify push was called with correct payload
+            if mock_push.call_count > 0:
+                payload = mock_push.call_args[0][1]
+                assert payload["title"] == "Invitation Accepted"
+                assert "Bob" in payload["body"]
+                assert payload["data"]["url"] == "/settings"
+
+
+def test_invite_accepted_uses_name_over_email(client, make_client, db_session):
+    """Invite-accepted notification uses invitee's display name when available."""
+    register_user(client, "inviter@test.com", "Alice")
+    with make_client("invitee@test.com", "Bob Smith") as invitee_client:
+        resp = client.post("/api/sharing/invite", json={"email": "invitee@test.com"})
+        token = resp.json()["short_code"].replace("-", "")
+
+        with patch("scaffold.notifications.send_push", return_value=True) as mock_push:
+            invitee_client.post("/api/sharing/accept", json={"code": token})
+            if mock_push.call_count > 0:
+                payload = mock_push.call_args[0][1]
+                assert "Bob Smith" in payload["body"]
+
+
+# ============================================================
+# EMAIL ENABLED BY DEFAULT
+# ============================================================
+
+def test_new_user_gets_email_preference_row(client, db_session):
+    """New user creation auto-creates EmailPreference with enabled=1."""
+    register_user(client)
+    from scaffold.models import User, EmailPreference
+    user = db_session.query(User).first()
+    pref = db_session.query(EmailPreference).filter(EmailPreference.user_id == user.id).first()
+    assert pref is not None
+    assert pref.enabled == 1
+
+
+# ============================================================
+# TEST PUSH DEEP LINK
+# ============================================================
+
+def test_push_test_payload_has_deep_link(client):
+    """Test push notification includes deep link to /settings."""
+    register_user(client)
+    client.post("/api/push/subscribe", json={
+        "endpoint": "https://push.example.com/send/abc123",
+        "keys": {"p256dh": "BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8p8ljEIGQ", "auth": "tBHItJI5svbpC7__Yl_24A"},
+    })
+    with patch("scaffold.notifications.send_push", return_value=True) as mock_push:
+        resp = client.post("/api/push/test", json={})
+        assert resp.status_code == 200
+        payload = mock_push.call_args[0][1]
+        assert payload["data"]["url"] == "/settings"

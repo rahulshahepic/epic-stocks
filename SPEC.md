@@ -253,7 +253,8 @@ Users can invite others by email to **view** (read-only) their financial data.
 invitations: id, inviter_id, invitee_email, token, short_code, status, invitee_id,
              invitee_account_email, created_at, expires_at, accepted_at,
              last_viewed_at, last_sent_at, notify_enabled
-invitation_opt_outs: id, email, created_at
+invitation_opt_outs: id, email, created_at          # recipients who unsubscribed from invitation emails
+invite_sending_blocks: id, user_id, reason, blocked_at  # users blocked from sending (admin-managed)
 ```
 - `status`: pending | accepted | declined | revoked
 - `token`: URL-safe 48-byte random (base64url) for email links

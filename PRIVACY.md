@@ -104,7 +104,9 @@ You can invite others by email to view your financial data in read-only form. **
 
 **Per-viewer notifications:** Viewers can optionally receive event notifications about your data. They control this with a per-inviter toggle — you cannot force notifications on a viewer, and they cannot access notification content beyond the same event-count summary that your own notifications contain (no financial amounts are included).
 
-**Invitation emails:** Invitation emails are sent via the configured email provider (Resend or SMTP). They contain only the inviter's display name, a one-time token/code, and a link. No financial data is included in the email.
+**Invitation emails:** Invitation emails are sent via the configured email provider (Resend or SMTP). They contain only the inviter's display name, a one-time token/code, and a link. No financial data is included in the email. Each email includes an unsubscribe link — recipients can opt out of future invitation emails without needing an account.
+
+**Unsubscribe:** All emails (invitations and event notifications) include an unsubscribe link in the footer and RFC 8058 `List-Unsubscribe` headers for one-click unsubscribe in supporting email clients. No login is required to unsubscribe. Invitation opt-outs are stored by email address; notification opt-outs disable the user's email preference. Site operators can clear opt-outs from the admin panel if needed.
 
 ### Third Parties
 

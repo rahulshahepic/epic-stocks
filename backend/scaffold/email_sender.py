@@ -57,31 +57,22 @@ def list_unsubscribe_headers(email: str, category: str) -> dict[str, str]:
     }
 
 
-def _postal_address() -> str:
-    return os.getenv("EMAIL_POSTAL_ADDRESS", "")
-
-
 def _unsubscribe_footer_text(email: str, category: str) -> str:
     url = unsubscribe_url(email, category)
     if not url:
         return ""
-    addr = _postal_address()
-    addr_line = f"\n{addr}" if addr else ""
-    return f"\n\n---\nTo unsubscribe from these emails: {url}{addr_line}\n"
+    return f"\n\n---\nTo unsubscribe from these emails: {url}\n"
 
 
 def _unsubscribe_footer_html(email: str, category: str) -> str:
     url = unsubscribe_url(email, category)
     if not url:
         return ""
-    addr = _postal_address()
-    addr_html = f'<br>{addr}' if addr else ""
     return (
         '<div style="margin-top:24px;padding-top:16px;border-top:1px solid #e5e5e5;'
         'font-size:11px;color:#999;">'
         f'<a href="{url}" style="color:#999;text-decoration:underline;">Unsubscribe</a>'
         ' from these emails.'
-        f'{addr_html}'
         '</div>'
     )
 

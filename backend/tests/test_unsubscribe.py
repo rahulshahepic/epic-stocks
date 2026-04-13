@@ -141,6 +141,49 @@ class TestOptOutBlocksInvites:
         assert resp.status_code == 422
         assert "opted out" in resp.json()["detail"]
 
+    def test_unsubscribe_declines_pending_invites(self, client, make_client):
+        """When a recipient unsubscribes, all pending invites to them should be declined."""
+        from scaffold.email_sender import generate_unsubscribe_token
+        # Alice invites Bob
+        with make_client("alice@test.com", "Alice") as alice:
+            alice.post("/api/sharing/invite", json={"email": "bob@test.com"})
+            sent = alice.get("/api/sharing/sent").json()
+            assert len(sent) == 1
+            assert sent[0]["status"] == "pending"
+
+        # Bob unsubscribes
+        unsub_token = generate_unsubscribe_token("bob@test.com", "invite")
+        resp = client.post("/api/unsubscribe", json={
+            "token": unsub_token, "email": "bob@test.com", "type": "invite"
+        })
+        assert resp.status_code == 200
+
+        # Alice's invite should now be declined
+        with make_client("alice@test.com", "Alice") as alice:
+            sent = alice.get("/api/sharing/sent").json()
+            assert len(sent) == 1
+            assert sent[0]["status"] == "declined"
+
+    def test_resend_blocked_after_recipient_opts_out(self, client, make_client):
+        """Resending an invite should fail if the recipient has opted out."""
+        from scaffold.email_sender import generate_unsubscribe_token
+        # Alice invites Bob
+        with make_client("alice@test.com", "Alice") as alice:
+            alice.post("/api/sharing/invite", json={"email": "bob@test.com"})
+            sent = alice.get("/api/sharing/sent").json()
+            invite_id = sent[0]["id"]
+
+        # Bob unsubscribes — this also declines the invite
+        unsub_token = generate_unsubscribe_token("bob@test.com", "invite")
+        client.post("/api/unsubscribe", json={
+            "token": unsub_token, "email": "bob@test.com", "type": "invite"
+        })
+
+        # Alice tries to resend — should fail (invite is now declined, not pending)
+        with make_client("alice@test.com", "Alice") as alice:
+            resp = alice.post(f"/api/sharing/invite/{invite_id}/resend")
+            assert resp.status_code == 422
+
 
 # ── Sending block ──────────────────────────────────────────────────────────
 

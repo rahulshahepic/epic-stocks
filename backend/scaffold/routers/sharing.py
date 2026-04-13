@@ -168,6 +168,10 @@ def resend_invite(
     if inv.status != "pending":
         raise HTTPException(422, "Can only resend pending invitations")
 
+    # Check if recipient has opted out since the original invite was sent
+    if db.query(InvitationOptOut).filter(InvitationOptOut.email == inv.invitee_email).first():
+        raise HTTPException(422, "This email address has opted out of invitations")
+
     # Reset expiry
     now = datetime.now(timezone.utc)
     inv.expires_at = now + timedelta(days=INVITE_EXPIRY_DAYS)

@@ -275,6 +275,24 @@ invite_sending_blocks: id, user_id, reason, blocked_at  # users blocked from sen
 - All shared data served via `/api/sharing/view/{invitation_id}/*` endpoints
 - Owner's encryption key is set in ContextVar for each shared-view request
 
+### Email Unsubscribe
+- All invitation and notification emails include an unsubscribe link in the footer
+- HMAC-SHA256 tokens (stateless — no DB lookup to validate): `HMAC(secret, email:category)`
+- Categories: `invite` (adds to `invitation_opt_outs`) or `notify` (disables `email_preferences`)
+- `GET /api/unsubscribe` — verify token, return status (no auth, no side effects)
+- `POST /api/unsubscribe` — process the unsubscribe (no auth)
+- RFC 8058 `List-Unsubscribe` + `List-Unsubscribe-Post` headers on all emails
+- Frontend `/unsubscribe` page: shows confirmation, POST on button click
+- GET never processes — protects against email scanners/prefetchers
+
+### Admin Email Management
+- **Email Lookup** (`GET /api/admin/email-lookup`): search any email across users, opt-outs, blocks, sending blocks, invitations. Works for non-users.
+- **User Detail** (`GET /api/admin/users/{id}/detail`): full user info + invitations sent/received
+- **Block sending** (`POST/DELETE /api/admin/users/{id}/block-sending`): prevent user from sending invitations
+- **Reset invitations** (`POST /api/admin/users/{id}/reset-invitations`): revoke all sent + remove received access
+- **Re-enable email** (`POST /api/admin/users/{id}/reenable-email`): undo unsubscribe for a user
+- **Clear opt-out** (`DELETE /api/admin/opt-outs/{id}` or `?email=`): remove invitation opt-out
+
 ### Multi-user Viewing
 - ViewingContext (React) holds "whose data am I viewing"
 - Account switcher in header (only visible when user has shared accounts)

@@ -6,9 +6,9 @@ When forking to build a different app, you replace only the `app/` layer — the
 ## What to keep (scaffold)
 
 ```
-backend/scaffold/          auth, crypto, email, push notifications, admin
+backend/scaffold/          auth, crypto, email, push notifications, admin, sharing, unsubscribe
 backend/scaffold/providers/  auth + email provider implementations
-frontend/src/scaffold/     Login, Admin, Settings pages; Layout, Toast; hooks
+frontend/src/scaffold/     Login, Admin, Settings, InviteLanding, Unsubscribe pages; Layout, Toast; hooks
 infra/                     shared Caddy config for multi-app hosting
 caddy/                     Caddyfile (single-app) and app.caddy snippet (multi-app)
 docker-compose.yml         single-app deployment (always uses shared proxy network)

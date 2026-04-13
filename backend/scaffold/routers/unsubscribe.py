@@ -76,12 +76,17 @@ def _is_already_unsubscribed(email: str, category: str, db: Session) -> bool:
 
 
 def _unsubscribe_invitations(email: str, db: Session):
-    """Add email to invitation opt-out list."""
-    from scaffold.models import InvitationOptOut
+    """Add email to invitation opt-out list and decline all pending invites."""
+    from scaffold.models import InvitationOptOut, Invitation
     existing = db.query(InvitationOptOut).filter(InvitationOptOut.email == email).first()
     if not existing:
         db.add(InvitationOptOut(email=email))
-        db.commit()
+    # Decline all pending invitations addressed to this email
+    db.query(Invitation).filter(
+        Invitation.invitee_email == email,
+        Invitation.status == "pending",
+    ).update({"status": "declined"})
+    db.commit()
 
 
 def _unsubscribe_notifications(email: str, db: Session):

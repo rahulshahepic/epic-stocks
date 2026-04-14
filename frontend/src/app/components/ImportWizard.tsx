@@ -1234,6 +1234,25 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
     })
   }
 
+  /** Sync refinance loan amounts from the loans they refinance. A refi keeps the same principal. */
+  function syncRefiAmounts() {
+    setReviewedLoans(prev => {
+      const byLoanNumber = new Map<string, ReviewedLoan>()
+      for (const l of prev) byLoanNumber.set(l.loan_number, l)
+
+      return prev.map(l => {
+        if (!l.refinances_loan_number) return l
+        // Walk up the chain to find the original (non-refi) loan
+        let parent = byLoanNumber.get(l.refinances_loan_number)
+        while (parent?.refinances_loan_number) {
+          parent = byLoanNumber.get(parent.refinances_loan_number)
+        }
+        if (parent && parent.amount) return { ...l, amount: parent.amount }
+        return l
+      })
+    })
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────────
 
   const vYears = screen === 'tax_loans' ? vestingYears(grantDraft) : []
@@ -2180,9 +2199,10 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
               </p>
             )}
             <div className="flex gap-2">
-              <NextBtn label="Next: Refinances →" onClick={() => push('schedule_loans_refi')} />
+              <NextBtn label="Next: Refinances →" onClick={() => { syncRefiAmounts(); push('schedule_loans_refi') }} />
               <button type="button" onClick={() => {
                 setReviewedLoans(prev => prev.map(l => l.loan_type === 'Tax' && !l.refinances_loan_number ? { ...l, enabled: false } : l))
+                syncRefiAmounts()
                 push('schedule_loans_refi')
               }} className="rounded-md bg-gray-100 px-4 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-400">
                 Skip

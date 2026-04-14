@@ -760,8 +760,31 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
       const updated = { ...r, ...patch }
       const p = parseFloat(updated.purchase_price) || 0
       const s = parseInt(updated.shares) || 0
-      const dp = parseFloat(updated.dp_cash) || 0
-      return { ...updated, loan_amount: Math.max(0, p * s - dp).toFixed(2) }
+      const total = p * s
+      // If loan_amount was manually set (not being recalculated from price/shares), keep it
+      if ('loan_amount' in patch) return updated
+      // If loading from existing data (has existing loan), don't override
+      if (updated.existing_purchase_loan_number && updated.loan_amount) return updated
+
+      // Default DP: 10% of purchase, capped at $20k
+      const minDp = total > 0 ? Math.min(total * 0.10, 20000) : 0
+      const dpCash = parseFloat(updated.dp_cash) || 0
+      // If user entered dp_cash, use that; otherwise default the minimum
+      const effectiveDp = dpCash > 0 ? dpCash : minDp
+      const loanAmount = Math.max(0, total - effectiveDp)
+
+      // For 2023+, default dp_shares using share exchange (shares at exercise price)
+      let dpShares = updated.dp_shares
+      if (!dpCash && p > 0 && updated.year >= 2023 && updated.dp_shares === '0') {
+        dpShares = String(Math.ceil(minDp / p))
+      }
+
+      return {
+        ...updated,
+        dp_cash: dpCash > 0 ? updated.dp_cash : (minDp > 0 ? minDp.toFixed(2) : ''),
+        dp_shares: dpShares,
+        loan_amount: loanAmount.toFixed(2),
+      }
     })
   }
 
@@ -1073,14 +1096,19 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
       if (!(parseInt(row.shares) > 0)) continue
       const gy = row.year
       const grantType = row.type
+      const grantPrice = parseFloat(row.purchase_price) || 0
       const totalShares = parseInt(row.shares) || 0
       const sharesPerPeriod = Math.floor(totalShares / row.periods)
       const purchaseRow = purchaseRows.find(r => r.year === gy)
       const due = purchaseRow?.loan_due_date || dueDate(gy)
 
-      // Tax loans first
+      // Tax loans only for zero-basis grants (vesting = ordinary income)
+      const isPreTaxGrant = grantPrice === 0
+
+      // Tax loans first (only for zero-basis grants)
       const bonusTaxByYear = new Map<number, number>()
-      for (let i = 0; i < row.periods; i++) {
+      if (!isPreTaxGrant) { /* skip tax loans — non-zero cost basis means vesting is not taxable */ }
+      else for (let i = 0; i < row.periods; i++) {
         const vestDate = new Date(row.vest_start + 'T00:00:00')
         vestDate.setFullYear(vestDate.getFullYear() + i)
         const vestYear = vestDate.getFullYear()
@@ -1128,7 +1156,8 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
         }
       }
 
-      // Bonus Interest loans: iterative on accumulated tax + interest balances
+      // Bonus Interest loans: only if there are tax loans to accrue interest on
+      if (!isPreTaxGrant) continue  // no tax loans = no interest to accrue
       const firstTaxYear = Math.max(2021, new Date(row.vest_start + 'T00:00:00').getFullYear())
       let bonusOutstanding = 0
       for (let ly = firstTaxYear; ly <= LATEST_RATE_YEAR; ly++) {
@@ -1225,6 +1254,25 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
         }
       }
       return updated
+    })
+  }
+
+  /** Sync refinance loan amounts from the loans they refinance. A refi keeps the same principal. */
+  function syncRefiAmounts() {
+    setReviewedLoans(prev => {
+      const byLoanNumber = new Map<string, ReviewedLoan>()
+      for (const l of prev) byLoanNumber.set(l.loan_number, l)
+
+      return prev.map(l => {
+        if (!l.refinances_loan_number) return l
+        // Walk up the chain to find the original (non-refi) loan
+        let parent = byLoanNumber.get(l.refinances_loan_number)
+        while (parent?.refinances_loan_number) {
+          parent = byLoanNumber.get(parent.refinances_loan_number)
+        }
+        if (parent && parent.amount) return { ...l, amount: parent.amount }
+        return l
+      })
     })
   }
 
@@ -1894,7 +1942,12 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
                           <Field label="DP cash paid ($)" type="number" step="0.01" value={row.dp_cash}
                             onChange={v => setPurchaseField(i, { dp_cash: v }, true)} placeholder="0" />
                           <Field label="Loan amount ($)" type="number" step="0.01" value={row.loan_amount}
-                            onChange={v => setPurchaseField(i, { loan_amount: v })} />
+                            onChange={v => {
+                              const total = (parseFloat(row.purchase_price) || 0) * (parseInt(row.shares) || 0)
+                              const maxLoan = total > 0 ? Math.max(total * 0.90, total - 20000) : Infinity
+                              const capped = Math.min(parseFloat(v) || 0, maxLoan)
+                              setPurchaseField(i, { loan_amount: total > 0 ? capped.toFixed(2) : v })
+                            }} />
                           <Field label="Interest rate" type="number" step="0.0001" value={row.interest_rate}
                             onChange={v => setPurchaseField(i, { interest_rate: v })}
                             placeholder="e.g. 0.0178" hint="from loan statement" />
@@ -2174,9 +2227,10 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
               </p>
             )}
             <div className="flex gap-2">
-              <NextBtn label="Next: Refinances →" onClick={() => push('schedule_loans_refi')} />
+              <NextBtn label="Next: Refinances →" onClick={() => { syncRefiAmounts(); push('schedule_loans_refi') }} />
               <button type="button" onClick={() => {
                 setReviewedLoans(prev => prev.map(l => l.loan_type === 'Tax' && !l.refinances_loan_number ? { ...l, enabled: false } : l))
+                syncRefiAmounts()
                 push('schedule_loans_refi')
               }} className="rounded-md bg-gray-100 px-4 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-400">
                 Skip

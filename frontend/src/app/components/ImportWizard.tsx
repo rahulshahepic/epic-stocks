@@ -193,12 +193,24 @@ const PURCHASE_REFI_CHAINS: Record<number, { date: string; rate: number; loanYea
     { date: '2020-06-01', rate: 0.0043, loanYear: 2020, dueDate: '2026-07-15' },  // Jun 2020: refi to 0.43%, original due date kept
     { date: '2021-11-01', rate: 0.0086, loanYear: 2021, dueDate: '2028-07-15' },  // Nov 2021: long-term to 0.86%, due extended
   ],
+  2020: [
+    { date: '2021-11-01', rate: 0.0086, loanYear: 2021, dueDate: '2029-07-15' },  // Nov 2021: long-term to 0.86%, due extended from 2025
+  ],
 }
 
 // Original purchase loan rates and due dates by exercise year (pre-refinance)
 const ORIGINAL_PURCHASE_LOANS: Record<number, { rate: number; dueDate: string }> = {
   2018: { rate: 0.0307, dueDate: '2025-07-15' },
   2019: { rate: 0.0307, dueDate: '2026-07-15' },
+  2020: { rate: 0.0086, dueDate: '2025-07-15' },  // originated late 2020 at 0.86%, refi'd Nov 2021 to extend term
+}
+
+// Tax loan refinances — keyed by "grantYear-grantType-loanYear"
+// The 2020 Bonus first vesting (2021) generated a Tax loan that was extended on 11/1/2021.
+const TAX_LOAN_REFIS: Record<string, { date: string; rate: number; loanYear: number; origDueDate: string; newDueDate: string }[]> = {
+  '2020-Bonus-2021': [
+    { date: '2021-11-01', rate: 0.0086, loanYear: 2021, origDueDate: '2024-07-15', newDueDate: '2029-07-15' },
+  ],
 }
 
 // Latest year with known loan rates
@@ -1079,12 +1091,39 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
         const taxAmount = periodShares * vestPrice * incomeTaxRate
         const existKey = `${gy}-${grantType}-Tax-${vestYear}`
 
-        const actual = pushLoan(existKey, {
-          grant_year: gy, grant_type: grantType, loan_type: 'Tax', loan_year: vestYear,
-          amount: '', estimatedAmount: taxAmount, interest_rate: String(rate), due_date: due,
-          loan_number: `wiz-${gy}-${grantType[0]}-T${vestYear}`, refinances_loan_number: '', enabled: true,
-        })
-        bonusTaxByYear.set(vestYear, actual)
+        // Check if this tax loan has a refinance chain
+        const refiKey = `${gy}-${grantType}-${vestYear}`
+        const taxRefi = TAX_LOAN_REFIS[refiKey]
+        if (taxRefi) {
+          // Generate original tax loan + refinance chain
+          const origNum = `wiz-${gy}-${grantType[0]}-T${vestYear}-orig`
+          loans.push({
+            key: `${existKey}-refi-orig`, grant_year: gy, grant_type: grantType,
+            loan_type: 'Tax', loan_year: vestYear, amount: taxAmount > 0 ? taxAmount.toFixed(2) : '',
+            interest_rate: String(rate), due_date: taxRefi[0].origDueDate, loan_number: origNum,
+            refinances_loan_number: '', enabled: true, is_existing: false,
+          })
+          let prevNum = origNum
+          for (let ri = 0; ri < taxRefi.length; ri++) {
+            const refi = taxRefi[ri]
+            const num = `wiz-${gy}-${grantType[0]}-T${vestYear}-refi${ri + 1}`
+            // The current tax loan (pushed below) will reference this refi
+            pushLoan(existKey, {
+              grant_year: gy, grant_type: grantType, loan_type: 'Tax', loan_year: vestYear,
+              amount: '', estimatedAmount: taxAmount, interest_rate: String(refi.rate), due_date: refi.newDueDate,
+              loan_number: num, refinances_loan_number: prevNum, enabled: true,
+            })
+            prevNum = num
+          }
+          bonusTaxByYear.set(vestYear, taxAmount > 0 ? taxAmount : 0)
+        } else {
+          const actual = pushLoan(existKey, {
+            grant_year: gy, grant_type: grantType, loan_type: 'Tax', loan_year: vestYear,
+            amount: '', estimatedAmount: taxAmount, interest_rate: String(rate), due_date: due,
+            loan_number: `wiz-${gy}-${grantType[0]}-T${vestYear}`, refinances_loan_number: '', enabled: true,
+          })
+          bonusTaxByYear.set(vestYear, actual)
+        }
       }
 
       // Bonus Interest loans: iterative on accumulated tax + interest balances

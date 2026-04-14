@@ -63,7 +63,9 @@ type Screen =
   | 'schedule_intro'
   | 'schedule_prices'   // prices entered BEFORE grants so they can pre-fill cost basis
   | 'schedule_grants'
-  | 'schedule_loans_review' // auto-generated Tax/Interest/Refinance loans for review
+  | 'schedule_loans_tax'       // tax loans review
+  | 'schedule_loans_refi'      // refinance chains review
+  | 'schedule_loans_interest'  // interest loans review (uses data from prior two screens)
   | 'schedule_settings' // user preference questions (replaces old tax-rate step)
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1164,7 +1166,66 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
     } else {
       setReviewedLoans(generated)
     }
-    push('schedule_loans_review')
+    push('schedule_loans_tax')
+  }
+
+  /** Re-estimate interest loans using the tax + refi data the user just confirmed. */
+  function recomputeInterestEstimates() {
+    setReviewedLoans(prev => {
+      // Collect confirmed tax loan amounts by (grant_year, loan_year)
+      const confirmedTax = new Map<string, { amount: number; rate: number }>()
+      for (const l of prev) {
+        if (l.loan_type === 'Tax' && l.enabled && !l.refinances_loan_number) {
+          confirmedTax.set(`${l.grant_year}-${l.loan_year}`, {
+            amount: parseFloat(l.amount) || 0,
+            rate: parseFloat(l.interest_rate) || 0,
+          })
+        }
+      }
+
+      // For each purchase grant, recompute interest iteratively
+      const purchaseGrants = new Set<number>()
+      for (const l of prev) {
+        if (l.grant_type === 'Purchase' && l.loan_type === 'Interest') purchaseGrants.add(l.grant_year)
+      }
+
+      const updated = [...prev]
+      for (const gy of purchaseGrants) {
+        const row = purchaseRows.find(r => r.year === gy)
+        if (!row) continue
+        const purchaseAmount = parseFloat(row.loan_amount) || 0
+        const purchaseRate = parseFloat(row.interest_rate) || 0
+        const refiChain = PURCHASE_REFI_CHAINS[gy]
+        const origLoan = ORIGINAL_PURCHASE_LOANS[gy]
+
+        const priorLoans: { amount: number; rate: number }[] = []
+        const interestIdxs = updated
+          .map((l, i) => l.grant_year === gy && l.grant_type === 'Purchase' && l.loan_type === 'Interest' ? i : -1)
+          .filter(i => i >= 0)
+          .sort((a, b) => updated[a].loan_year - updated[b].loan_year)
+
+        for (const idx of interestIdxs) {
+          const l = updated[idx]
+          if (l.is_existing) {
+            // DB loan — keep saved amount, add to prior
+            priorLoans.push({ amount: parseFloat(l.amount) || 0, rate: parseFloat(l.interest_rate) || 0 })
+            const taxKey = `${gy}-${l.loan_year}`
+            const tax = confirmedTax.get(taxKey)
+            if (tax) priorLoans.push(tax)
+            continue
+          }
+          const purchaseInterest = purchaseInterestForYear(l.loan_year, purchaseAmount, refiChain, origLoan?.rate, purchaseRate)
+          const priorInterest = priorLoans.reduce((sum, pl) => sum + pl.amount * pl.rate, 0)
+          const est = purchaseInterest + priorInterest
+          updated[idx] = { ...l, amount: est > 0 ? est.toFixed(2) : '' }
+          priorLoans.push({ amount: est, rate: parseFloat(l.interest_rate) || 0 })
+          const taxKey = `${gy}-${l.loan_year}`
+          const tax = confirmedTax.get(taxKey)
+          if (tax) priorLoans.push(tax)
+        }
+      }
+      return updated
+    })
   }
 
   // ── Render ────────────────────────────────────────────────────────────────────
@@ -2071,214 +2132,171 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
         </div>
       )}
 
-      {/* ── Schedule: Loans Review ── */}
-      {screen === 'schedule_loans_review' && (
-        <div className="space-y-4">
-          <BackBtn onClick={back} />
-          <div>
-            <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">
-              Review loans
-            </h2>
-            <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
-              Each section below is optional. Amounts are estimates — adjust using your loan statement
-              from Shareworks, which lists the current principal for all loans.
-            </p>
-            <button
-              type="button"
-              onClick={() => { setReviewedLoans([]); push('schedule_settings') }}
-              className="mt-1.5 text-xs text-gray-400 underline hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300"
-            >
-              Skip all — I'll add loans on the Loans page later
-            </button>
+      {/* ── Schedule: Tax Loans ── */}
+      {screen === 'schedule_loans_tax' && (() => {
+        const taxLoans = reviewedLoans.filter(l => l.loan_type === 'Tax' && !l.refinances_loan_number)
+        return (
+          <div className="space-y-4">
+            <BackBtn onClick={back} />
+            <div>
+              <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Tax loans</h2>
+              <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                For Catch-Up and Bonus grants that vest as income. Amounts are estimated from
+                vested shares x price x your tax rate. Check your Shareworks loan statement for exact amounts.
+              </p>
+            </div>
+            {taxLoans.length > 0 ? (
+              <div className="space-y-3">
+                {(() => {
+                  const groups = new Map<string, ReviewedLoan[]>()
+                  for (const l of taxLoans) {
+                    const k = `${l.grant_year} ${l.grant_type}`
+                    if (!groups.has(k)) groups.set(k, [])
+                    groups.get(k)!.push(l)
+                  }
+                  return Array.from(groups.entries()).map(([label, loans]) => (
+                    <div key={label}>
+                      <p className="mb-1 text-[10px] font-medium text-amber-600 dark:text-amber-400">{label}</p>
+                      <div className="space-y-1">
+                        {loans.map(loan => (
+                          <LoanReviewRow key={loan.key} loan={loan} onChange={updated => {
+                            setReviewedLoans(prev => prev.map(l => l.key === loan.key ? updated : l))
+                          }} />
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                })()}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400 dark:text-slate-500">
+                No tax loans — no Catch-Up or Bonus grants with vesting in range.
+              </p>
+            )}
+            <div className="flex gap-2">
+              <NextBtn label="Next: Refinances →" onClick={() => push('schedule_loans_refi')} />
+              <button type="button" onClick={() => {
+                setReviewedLoans(prev => prev.map(l => l.loan_type === 'Tax' && !l.refinances_loan_number ? { ...l, enabled: false } : l))
+                push('schedule_loans_refi')
+              }} className="rounded-md bg-gray-100 px-4 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-400">
+                Skip
+              </button>
+            </div>
           </div>
+        )
+      })()}
 
-          {(() => {
-            // Split reviewed loans into categories
-            const refiLoans = reviewedLoans.filter(l => l.loan_type === 'Purchase' || (l.loan_type === 'Tax' && l.refinances_loan_number))
-            const taxLoans = reviewedLoans.filter(l => l.loan_type === 'Tax' && !l.refinances_loan_number)
-            const interestLoans = reviewedLoans.filter(l => l.loan_type === 'Interest')
-
-            return (
-              <>
-                {/* ── Section 1: Refinances ── */}
-                <div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3 dark:border-violet-800/50 dark:bg-violet-950/20">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h3 className="text-xs font-semibold text-violet-700 dark:text-violet-400">
-                        Refinances
-                        <span className="ml-1 font-normal text-violet-500 dark:text-violet-500">(optional)</span>
-                      </h3>
-                      <p className="mt-0.5 text-[11px] text-violet-600/80 dark:text-violet-400/70">
-                        If your purchase loans were refinanced, entering the history here improves the
-                        interest loan estimates below. If you skip this, remember to update the purchase
-                        loan rate and due date on the Loans page if they changed from a refinance.
-                      </p>
+      {/* ── Schedule: Refinances ── */}
+      {screen === 'schedule_loans_refi' && (() => {
+        const refiLoans = reviewedLoans.filter(l => l.loan_type === 'Purchase' || (l.loan_type === 'Tax' && l.refinances_loan_number))
+        return (
+          <div className="space-y-4">
+            <BackBtn onClick={back} />
+            <div>
+              <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Refinances</h2>
+              <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                Historical refinances of your purchase and tax loans. These rates are used to estimate
+                interest loan amounts on the next page. If you skip, remember to update the current loan
+                rate and due date on the Loans page.
+              </p>
+            </div>
+            {refiLoans.length > 0 ? (
+              <div className="space-y-3">
+                {(() => {
+                  const groups = new Map<string, ReviewedLoan[]>()
+                  for (const l of refiLoans) {
+                    const k = `${l.grant_year} ${l.grant_type}`
+                    if (!groups.has(k)) groups.set(k, [])
+                    groups.get(k)!.push(l)
+                  }
+                  return Array.from(groups.entries()).map(([label, loans]) => (
+                    <div key={label}>
+                      <p className="mb-1 text-[10px] font-medium text-violet-600 dark:text-violet-400">{label}</p>
+                      <div className="space-y-1 border-l-2 border-violet-200 pl-2 dark:border-violet-800">
+                        {loans.map(loan => (
+                          <LoanReviewRow key={loan.key} loan={loan} onChange={updated => {
+                            setReviewedLoans(prev => prev.map(l => l.key === loan.key ? updated : l))
+                          }} />
+                        ))}
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setReviewedLoans(prev => prev.map(l =>
-                        (l.loan_type === 'Purchase' || (l.loan_type === 'Tax' && l.refinances_loan_number))
-                          ? { ...l, enabled: false } : l
-                      ))}
-                      className="ml-2 shrink-0 text-[10px] text-violet-400 underline hover:text-violet-600 dark:text-violet-500"
-                    >
-                      Skip refinances
-                    </button>
-                  </div>
-                  {refiLoans.length > 0 ? (
-                    <div className="mt-2 space-y-3">
-                      {(() => {
-                        // Group refis by grant year + grant type
-                        const refiGroups = new Map<string, ReviewedLoan[]>()
-                        for (const l of refiLoans) {
-                          const k = `${l.grant_year} ${l.grant_type}`
-                          if (!refiGroups.has(k)) refiGroups.set(k, [])
-                          refiGroups.get(k)!.push(l)
-                        }
-                        return Array.from(refiGroups.entries()).map(([label, loans]) => (
-                          <div key={label}>
-                            <p className="mb-1 text-[10px] font-medium text-violet-500 dark:text-violet-400">{label}</p>
-                            <div className="space-y-1 border-l-2 border-violet-200 pl-2 dark:border-violet-800">
-                              {loans.map(loan => (
-                                <LoanReviewRow key={loan.key} loan={loan} onChange={updated => {
-                                  setReviewedLoans(prev => prev.map(l => l.key === loan.key ? updated : l))
-                                }} />
-                              ))}
-                            </div>
-                          </div>
-                        ))
-                      })()}
-                    </div>
-                  ) : (
-                    <p className="mt-1.5 text-[11px] text-violet-400 dark:text-violet-500">
-                      No refinances detected for your grant years.
-                    </p>
-                  )}
-                </div>
-
-                {/* ── Section 2: Tax loans ── */}
-                <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-800/50 dark:bg-amber-950/20">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h3 className="text-xs font-semibold text-amber-700 dark:text-amber-400">
-                        Tax loans
-                        <span className="ml-1 font-normal text-amber-500 dark:text-amber-500">(optional)</span>
-                      </h3>
-                      <p className="mt-0.5 text-[11px] text-amber-600/80 dark:text-amber-400/70">
-                        Generated for Catch-Up and Bonus grants that vest as income.
-                        Amounts are estimated from vested shares x price x your tax rate.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setReviewedLoans(prev => prev.map(l =>
-                        l.loan_type === 'Tax' && !l.refinances_loan_number ? { ...l, enabled: false } : l
-                      ))}
-                      className="ml-2 shrink-0 text-[10px] text-amber-400 underline hover:text-amber-600 dark:text-amber-500"
-                    >
-                      Skip tax loans
-                    </button>
-                  </div>
-                  {taxLoans.length > 0 ? (
-                    <div className="mt-2 space-y-3">
-                      {(() => {
-                        const taxGroups = new Map<string, ReviewedLoan[]>()
-                        for (const l of taxLoans) {
-                          const k = `${l.grant_year} ${l.grant_type}`
-                          if (!taxGroups.has(k)) taxGroups.set(k, [])
-                          taxGroups.get(k)!.push(l)
-                        }
-                        return Array.from(taxGroups.entries()).map(([label, loans]) => (
-                          <div key={label}>
-                            <p className="mb-1 text-[10px] font-medium text-amber-500 dark:text-amber-400">{label}</p>
-                            <div className="space-y-1">
-                              {loans.map(loan => (
-                                <LoanReviewRow key={loan.key} loan={loan} onChange={updated => {
-                                  setReviewedLoans(prev => prev.map(l => l.key === loan.key ? updated : l))
-                                }} />
-                              ))}
-                            </div>
-                          </div>
-                        ))
-                      })()}
-                    </div>
-                  ) : (
-                    <p className="mt-1.5 text-[11px] text-amber-400 dark:text-amber-500">
-                      No tax loans — no Catch-Up or Bonus grants with vesting in range.
-                    </p>
-                  )}
-                </div>
-
-                {/* ── Section 3: Interest loans ── */}
-                <div className="rounded-lg border border-sky-200 bg-sky-50/50 p-3 dark:border-sky-800/50 dark:bg-sky-950/20">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h3 className="text-xs font-semibold text-sky-700 dark:text-sky-400">
-                        Interest loans
-                        <span className="ml-1 font-normal text-sky-500 dark:text-sky-500">(optional)</span>
-                      </h3>
-                      <p className="mt-0.5 text-[11px] text-sky-600/80 dark:text-sky-400/70">
-                        Annual interest on all outstanding loans for each grant. You can find exact
-                        amounts on your loan statement from Shareworks.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setReviewedLoans(prev => prev.map(l =>
-                        l.loan_type === 'Interest' ? { ...l, enabled: false } : l
-                      ))}
-                      className="ml-2 shrink-0 text-[10px] text-sky-400 underline hover:text-sky-600 dark:text-sky-500"
-                    >
-                      Skip interest loans
-                    </button>
-                  </div>
-                  {interestLoans.length > 0 ? (
-                    <div className="mt-2 space-y-3">
-                      {(() => {
-                        const intGroups = new Map<string, ReviewedLoan[]>()
-                        for (const l of interestLoans) {
-                          const k = `${l.grant_year} ${l.grant_type}`
-                          if (!intGroups.has(k)) intGroups.set(k, [])
-                          intGroups.get(k)!.push(l)
-                        }
-                        return Array.from(intGroups.entries()).map(([label, loans]) => (
-                          <div key={label}>
-                            <p className="mb-1 text-[10px] font-medium text-sky-500 dark:text-sky-400">{label}</p>
-                            <div className="space-y-1">
-                              {loans.map(loan => (
-                                <LoanReviewRow key={loan.key} loan={loan} onChange={updated => {
-                                  setReviewedLoans(prev => prev.map(l => l.key === loan.key ? updated : l))
-                                }} />
-                              ))}
-                            </div>
-                          </div>
-                        ))
-                      })()}
-                    </div>
-                  ) : (
-                    <p className="mt-1.5 text-[11px] text-sky-400 dark:text-sky-500">
-                      No interest loans — no participated purchase grants.
-                    </p>
-                  )}
-                </div>
-              </>
-            )
-          })()}
-
-          <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-slate-400">
-            <span>{reviewedLoans.filter(l => l.enabled).length} loans enabled</span>
-            <button
-              type="button"
-              onClick={() => setReviewedLoans(prev => prev.map(l => ({ ...l, enabled: !prev.every(x => x.enabled) })))}
-              className="text-rose-600 hover:text-rose-700 dark:text-rose-400"
-            >
-              {reviewedLoans.every(l => l.enabled) ? 'Disable all' : 'Enable all'}
-            </button>
+                  ))
+                })()}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400 dark:text-slate-500">
+                No refinances detected for your grant years.
+              </p>
+            )}
+            <div className="flex gap-2">
+              <NextBtn label="Next: Interest loans →" onClick={() => { recomputeInterestEstimates(); push('schedule_loans_interest') }} />
+              <button type="button" onClick={() => {
+                setReviewedLoans(prev => prev.map(l =>
+                  (l.loan_type === 'Purchase' || (l.loan_type === 'Tax' && l.refinances_loan_number)) ? { ...l, enabled: false } : l
+                ))
+                recomputeInterestEstimates()
+                push('schedule_loans_interest')
+              }} className="rounded-md bg-gray-100 px-4 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-400">
+                Skip
+              </button>
+            </div>
           </div>
+        )
+      })()}
 
-          <NextBtn label="Next: Preferences →" onClick={() => push('schedule_settings')} />
-        </div>
-      )}
+      {/* ── Schedule: Interest Loans ── */}
+      {screen === 'schedule_loans_interest' && (() => {
+        const interestLoans = reviewedLoans.filter(l => l.loan_type === 'Interest')
+        return (
+          <div className="space-y-4">
+            <BackBtn onClick={back} />
+            <div>
+              <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Interest loans</h2>
+              <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                Annual interest on all outstanding loans for each grant, estimated from the tax loans
+                and refinance rates you entered. Check your Shareworks loan statement for exact amounts.
+              </p>
+            </div>
+            {interestLoans.length > 0 ? (
+              <div className="space-y-3">
+                {(() => {
+                  const groups = new Map<string, ReviewedLoan[]>()
+                  for (const l of interestLoans) {
+                    const k = `${l.grant_year} ${l.grant_type}`
+                    if (!groups.has(k)) groups.set(k, [])
+                    groups.get(k)!.push(l)
+                  }
+                  return Array.from(groups.entries()).map(([label, loans]) => (
+                    <div key={label}>
+                      <p className="mb-1 text-[10px] font-medium text-sky-600 dark:text-sky-400">{label}</p>
+                      <div className="space-y-1">
+                        {loans.map(loan => (
+                          <LoanReviewRow key={loan.key} loan={loan} onChange={updated => {
+                            setReviewedLoans(prev => prev.map(l => l.key === loan.key ? updated : l))
+                          }} />
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                })()}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400 dark:text-slate-500">
+                No interest loans — no participated purchase grants.
+              </p>
+            )}
+            <div className="flex gap-2">
+              <NextBtn label="Next: Preferences →" onClick={() => push('schedule_settings')} />
+              <button type="button" onClick={() => {
+                setReviewedLoans(prev => prev.map(l => l.loan_type === 'Interest' ? { ...l, enabled: false } : l))
+                push('schedule_settings')
+              }} className="rounded-md bg-gray-100 px-4 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-400">
+                Skip
+              </button>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ── Schedule: Preferences ── */}
       {screen === 'schedule_settings' && (

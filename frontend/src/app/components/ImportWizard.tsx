@@ -2080,100 +2080,143 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
               Review loans
             </h2>
             <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
-              Tax, interest, and refinance loans auto-generated from your grants.
-              Amounts are estimates — adjust as needed. Toggle off any loans you didn't take.
+              Each section below is optional. Amounts are estimates — adjust using your loan statement
+              from Shareworks, which lists the current principal for all loans.
             </p>
             <button
               type="button"
               onClick={() => { setReviewedLoans([]); push('schedule_settings') }}
               className="mt-1.5 text-xs text-gray-400 underline hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300"
             >
-              Skip — I'll add loans later
+              Skip all — I'll add loans on the Loans page later
             </button>
           </div>
 
           {(() => {
-            // Group reviewed loans by grant
-            const groups = new Map<string, ReviewedLoan[]>()
-            for (const l of reviewedLoans) {
-              const key = `${l.grant_year}-${l.grant_type}`
-              if (!groups.has(key)) groups.set(key, [])
-              groups.get(key)!.push(l)
-            }
+            // Split reviewed loans into categories
+            const refiLoans = reviewedLoans.filter(l => l.loan_type === 'Purchase' || (l.loan_type === 'Tax' && l.refinances_loan_number))
+            const taxLoans = reviewedLoans.filter(l => l.loan_type === 'Tax' && !l.refinances_loan_number)
+            const interestLoans = reviewedLoans.filter(l => l.loan_type === 'Interest')
 
-            if (groups.size === 0) {
-              return (
-                <p className="text-xs text-gray-400 dark:text-slate-500">
-                  No additional loans to generate. This usually means no grants are marked as participated,
-                  or no prices are entered for vesting years.
-                </p>
-              )
-            }
-
-            return Array.from(groups.entries()).map(([groupKey, groupLoans]) => {
-              const [yearStr, ...typeParts] = groupKey.split('-')
-              const grantType = typeParts.join('-')
-              const enabledCount = groupLoans.filter(l => l.enabled).length
-
-              // Sub-group: refinances, then tax, then interest
-              const refiLoans = groupLoans.filter(l => l.loan_type === 'Purchase')
-              const taxLoans = groupLoans.filter(l => l.loan_type === 'Tax')
-              const interestLoans = groupLoans.filter(l => l.loan_type === 'Interest')
-
-              return (
-                <details key={groupKey} open className="rounded-md border border-stone-200 bg-white dark:border-slate-700 dark:bg-slate-900">
-                  <summary className="flex cursor-pointer items-center justify-between px-3 py-2">
-                    <span className="text-xs font-medium text-gray-800 dark:text-slate-200">
-                      {yearStr} {grantType}
-                    </span>
-                    <span className="text-[11px] text-gray-400 dark:text-slate-500">
-                      {enabledCount}/{groupLoans.length} loans
-                    </span>
-                  </summary>
-                  <div className="space-y-1 border-t border-stone-100 px-3 py-2 dark:border-slate-800">
-                    {refiLoans.length > 0 && (
-                      <div className="mb-2">
-                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-400">
-                          Refinance chain
-                          <span className="ml-1.5 normal-case font-normal text-gray-400 dark:text-slate-500">
-                            — rates here are used to estimate interest loan amounts below
-                          </span>
-                        </p>
-                        {refiLoans.map(loan => (
-                          <LoanReviewRow key={loan.key} loan={loan} onChange={updated => {
-                            setReviewedLoans(prev => prev.map(l => l.key === loan.key ? updated : l))
-                          }} />
-                        ))}
-                      </div>
-                    )}
-                    {taxLoans.length > 0 && (
-                      <div className="mb-2">
-                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
-                          Tax loans
-                        </p>
-                        {taxLoans.map(loan => (
-                          <LoanReviewRow key={loan.key} loan={loan} onChange={updated => {
-                            setReviewedLoans(prev => prev.map(l => l.key === loan.key ? updated : l))
-                          }} />
-                        ))}
-                      </div>
-                    )}
-                    {interestLoans.length > 0 && (
-                      <div>
-                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-sky-600 dark:text-sky-400">
-                          Interest loans
-                        </p>
-                        {interestLoans.map(loan => (
-                          <LoanReviewRow key={loan.key} loan={loan} onChange={updated => {
-                            setReviewedLoans(prev => prev.map(l => l.key === loan.key ? updated : l))
-                          }} />
-                        ))}
-                      </div>
-                    )}
+            return (
+              <>
+                {/* ── Section 1: Refinances ── */}
+                <div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3 dark:border-violet-800/50 dark:bg-violet-950/20">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="text-xs font-semibold text-violet-700 dark:text-violet-400">
+                        Refinances
+                        <span className="ml-1 font-normal text-violet-500 dark:text-violet-500">(optional)</span>
+                      </h3>
+                      <p className="mt-0.5 text-[11px] text-violet-600/80 dark:text-violet-400/70">
+                        If your purchase loans were refinanced, entering the history here improves the
+                        interest loan estimates below. If you skip this, remember to update the purchase
+                        loan rate and due date on the Loans page if they changed from a refinance.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setReviewedLoans(prev => prev.map(l =>
+                        (l.loan_type === 'Purchase' || (l.loan_type === 'Tax' && l.refinances_loan_number))
+                          ? { ...l, enabled: false } : l
+                      ))}
+                      className="ml-2 shrink-0 text-[10px] text-violet-400 underline hover:text-violet-600 dark:text-violet-500"
+                    >
+                      Skip refinances
+                    </button>
                   </div>
-                </details>
-              )
-            })
+                  {refiLoans.length > 0 ? (
+                    <div className="mt-2 space-y-1">
+                      {refiLoans.map(loan => (
+                        <LoanReviewRow key={loan.key} loan={loan} onChange={updated => {
+                          setReviewedLoans(prev => prev.map(l => l.key === loan.key ? updated : l))
+                        }} />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-1.5 text-[11px] text-violet-400 dark:text-violet-500">
+                      No refinances detected for your grant years.
+                    </p>
+                  )}
+                </div>
+
+                {/* ── Section 2: Tax loans ── */}
+                <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-800/50 dark:bg-amber-950/20">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+                        Tax loans
+                        <span className="ml-1 font-normal text-amber-500 dark:text-amber-500">(optional)</span>
+                      </h3>
+                      <p className="mt-0.5 text-[11px] text-amber-600/80 dark:text-amber-400/70">
+                        Generated for Catch-Up and Bonus grants that vest as income.
+                        Amounts are estimated from vested shares x price x your tax rate.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setReviewedLoans(prev => prev.map(l =>
+                        l.loan_type === 'Tax' && !l.refinances_loan_number ? { ...l, enabled: false } : l
+                      ))}
+                      className="ml-2 shrink-0 text-[10px] text-amber-400 underline hover:text-amber-600 dark:text-amber-500"
+                    >
+                      Skip tax loans
+                    </button>
+                  </div>
+                  {taxLoans.length > 0 ? (
+                    <div className="mt-2 space-y-1">
+                      {taxLoans.map(loan => (
+                        <LoanReviewRow key={loan.key} loan={loan} onChange={updated => {
+                          setReviewedLoans(prev => prev.map(l => l.key === loan.key ? updated : l))
+                        }} />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-1.5 text-[11px] text-amber-400 dark:text-amber-500">
+                      No tax loans — no Catch-Up or Bonus grants with vesting in range.
+                    </p>
+                  )}
+                </div>
+
+                {/* ── Section 3: Interest loans ── */}
+                <div className="rounded-lg border border-sky-200 bg-sky-50/50 p-3 dark:border-sky-800/50 dark:bg-sky-950/20">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="text-xs font-semibold text-sky-700 dark:text-sky-400">
+                        Interest loans
+                        <span className="ml-1 font-normal text-sky-500 dark:text-sky-500">(optional)</span>
+                      </h3>
+                      <p className="mt-0.5 text-[11px] text-sky-600/80 dark:text-sky-400/70">
+                        Annual interest on all outstanding loans for each grant. You can find exact
+                        amounts on your loan statement from Shareworks.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setReviewedLoans(prev => prev.map(l =>
+                        l.loan_type === 'Interest' ? { ...l, enabled: false } : l
+                      ))}
+                      className="ml-2 shrink-0 text-[10px] text-sky-400 underline hover:text-sky-600 dark:text-sky-500"
+                    >
+                      Skip interest loans
+                    </button>
+                  </div>
+                  {interestLoans.length > 0 ? (
+                    <div className="mt-2 space-y-1">
+                      {interestLoans.map(loan => (
+                        <LoanReviewRow key={loan.key} loan={loan} onChange={updated => {
+                          setReviewedLoans(prev => prev.map(l => l.key === loan.key ? updated : l))
+                        }} />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-1.5 text-[11px] text-sky-400 dark:text-sky-500">
+                      No interest loans — no participated purchase grants.
+                    </p>
+                  )}
+                </div>
+              </>
+            )
           })()}
 
           <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-slate-400">

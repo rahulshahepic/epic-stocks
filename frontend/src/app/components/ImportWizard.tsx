@@ -760,8 +760,31 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
       const updated = { ...r, ...patch }
       const p = parseFloat(updated.purchase_price) || 0
       const s = parseInt(updated.shares) || 0
-      const dp = parseFloat(updated.dp_cash) || 0
-      return { ...updated, loan_amount: Math.max(0, p * s - dp).toFixed(2) }
+      const total = p * s
+      // If loan_amount was manually set (not being recalculated from price/shares), keep it
+      if ('loan_amount' in patch) return updated
+      // If loading from existing data (has existing loan), don't override
+      if (updated.existing_purchase_loan_number && updated.loan_amount) return updated
+
+      // Default DP: 10% of purchase, capped at $20k
+      const minDp = total > 0 ? Math.min(total * 0.10, 20000) : 0
+      const dpCash = parseFloat(updated.dp_cash) || 0
+      // If user entered dp_cash, use that; otherwise default the minimum
+      const effectiveDp = dpCash > 0 ? dpCash : minDp
+      const loanAmount = Math.max(0, total - effectiveDp)
+
+      // For 2023+, default dp_shares using share exchange (shares at exercise price)
+      let dpShares = updated.dp_shares
+      if (!dpCash && p > 0 && updated.year >= 2023 && updated.dp_shares === '0') {
+        dpShares = String(Math.ceil(minDp / p))
+      }
+
+      return {
+        ...updated,
+        dp_cash: dpCash > 0 ? updated.dp_cash : (minDp > 0 ? minDp.toFixed(2) : ''),
+        dp_shares: dpShares,
+        loan_amount: loanAmount.toFixed(2),
+      }
     })
   }
 
@@ -1919,7 +1942,12 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
                           <Field label="DP cash paid ($)" type="number" step="0.01" value={row.dp_cash}
                             onChange={v => setPurchaseField(i, { dp_cash: v }, true)} placeholder="0" />
                           <Field label="Loan amount ($)" type="number" step="0.01" value={row.loan_amount}
-                            onChange={v => setPurchaseField(i, { loan_amount: v })} />
+                            onChange={v => {
+                              const total = (parseFloat(row.purchase_price) || 0) * (parseInt(row.shares) || 0)
+                              const maxLoan = total > 0 ? Math.max(total * 0.90, total - 20000) : Infinity
+                              const capped = Math.min(parseFloat(v) || 0, maxLoan)
+                              setPurchaseField(i, { loan_amount: total > 0 ? capped.toFixed(2) : v })
+                            }} />
                           <Field label="Interest rate" type="number" step="0.0001" value={row.interest_rate}
                             onChange={v => setPurchaseField(i, { interest_rate: v })}
                             placeholder="e.g. 0.0178" hint="from loan statement" />

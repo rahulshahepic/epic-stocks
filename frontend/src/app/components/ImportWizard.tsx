@@ -181,17 +181,36 @@ const TAX_LOAN_RATES: Record<string, Record<number, number>> = {
   'Bonus':    { 2021: 0.0086, 2022: 0.0293, 2023: 0.0385, 2024: 0.037 },
 }
 
-// Purchase loan refinance history. Grants exercised before each date get that refi.
-// The user entered current rates in the grants table; these are the HISTORICAL loans.
-const PURCHASE_REFI_CHAIN = [
-  { date: '2020-01-01', rate: 0.0169, loanYear: 2020 },  // Jan 2020: 2018+2019 loans refi'd to 1.69%
-  { date: '2020-06-01', rate: 0.0043, loanYear: 2020 },  // Jun 2020: all purchase loans refi'd to 0.43%
-  { date: '2021-11-01', rate: 0.0086, loanYear: 2021 },  // Nov 2021: long-term extension to 0.86%
-]
+// Purchase loan refinance history per grant year.
+// Each grant year has its own chain with specific due dates.
+const PURCHASE_REFI_CHAINS: Record<number, { date: string; rate: number; loanYear: number; dueDate: string }[]> = {
+  2018: [
+    { date: '2020-01-01', rate: 0.0169, loanYear: 2020, dueDate: '2025-07-15' },  // Jan 2020: refi to 1.69%, original due date kept
+    { date: '2020-06-01', rate: 0.0043, loanYear: 2020, dueDate: '2025-07-15' },  // Jun 2020: refi to 0.43%, due date kept
+    { date: '2021-11-01', rate: 0.0086, loanYear: 2021, dueDate: '2027-07-15' },  // Nov 2021: long-term to 0.86%, due extended
+  ],
+  2019: [
+    { date: '2020-06-01', rate: 0.0043, loanYear: 2020, dueDate: '2026-07-15' },  // Jun 2020: refi to 0.43%, original due date kept
+    { date: '2021-11-01', rate: 0.0086, loanYear: 2021, dueDate: '2028-07-15' },  // Nov 2021: long-term to 0.86%, due extended
+  ],
+  2020: [
+    { date: '2021-11-01', rate: 0.0086, loanYear: 2021, dueDate: '2029-07-15' },  // Nov 2021: long-term to 0.86%, due extended from 2025
+  ],
+}
 
-// Original purchase loan rates by exercise year (pre-refinance)
-const ORIGINAL_PURCHASE_RATES: Record<number, number> = {
-  2018: 0.0307, 2019: 0.0307,
+// Original purchase loan rates and due dates by exercise year (pre-refinance)
+const ORIGINAL_PURCHASE_LOANS: Record<number, { rate: number; dueDate: string }> = {
+  2018: { rate: 0.0307, dueDate: '2025-07-15' },
+  2019: { rate: 0.0307, dueDate: '2026-07-15' },
+  2020: { rate: 0.0038, dueDate: '2025-07-15' },  // originated late 2020 at 0.38%, refi'd Nov 2021 to 0.86%
+}
+
+// Tax loan refinances — keyed by "grantYear-grantType-loanYear"
+// The 2020 Bonus first vesting (2021) generated a Tax loan that was extended on 11/1/2021.
+const TAX_LOAN_REFIS: Record<string, { date: string; rate: number; loanYear: number; origDueDate: string; newDueDate: string }[]> = {
+  '2020-Bonus-2021': [
+    { date: '2021-11-01', rate: 0.0086, loanYear: 2021, origDueDate: '2024-07-15', newDueDate: '2029-07-15' },
+  ],
 }
 
 // Latest year with known loan rates
@@ -858,6 +877,47 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
 
   // ── Loan generation for schedule_loans_review ──────────────────────────────
 
+  /** Compute interest on the purchase loan for a calendar year by summing each refi period. */
+  function purchaseInterestForYear(
+    loanYear: number,
+    purchaseAmount: number,
+    refiChain: typeof PURCHASE_REFI_CHAINS[number] | undefined,
+    originalRate: number | undefined,
+    fallbackRate: number,
+  ): number {
+    if (purchaseAmount <= 0) return 0
+
+    // No refi data — use the purchase loan's own rate (from the wizard row)
+    if (!refiChain || originalRate == null) return purchaseAmount * fallbackRate
+
+    const yearStart = new Date(`${loanYear}-01-01T00:00:00`)
+    const yearEnd = new Date(`${loanYear + 1}-01-01T00:00:00`)
+    const daysInYear = (yearEnd.getTime() - yearStart.getTime()) / 86400000
+
+    // Find rate at start of year
+    let currentRate = originalRate
+    for (const refi of refiChain) {
+      if (new Date(refi.date + 'T00:00:00') <= yearStart) currentRate = refi.rate
+    }
+
+    // Calculate interest for each period within the year
+    let total = 0
+    let periodStart = yearStart
+    for (const refi of refiChain) {
+      const rd = new Date(refi.date + 'T00:00:00')
+      if (rd > yearStart && rd < yearEnd) {
+        const days = (rd.getTime() - periodStart.getTime()) / 86400000
+        total += purchaseAmount * currentRate * days / daysInYear
+        currentRate = refi.rate
+        periodStart = rd
+      }
+    }
+    // Remaining period to end of year
+    const remainDays = (yearEnd.getTime() - periodStart.getTime()) / 86400000
+    total += purchaseAmount * currentRate * remainDays / daysInYear
+    return total
+  }
+
   function generateLoansForReview(): ReviewedLoan[] {
     const loans: ReviewedLoan[] = []
     const priceByYear = new Map<number, number>()
@@ -882,65 +942,28 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
       return grantYear >= 2022 ? `${dueYear}-06-30` : `${dueYear}-07-15`
     }
 
-    // ── Purchase grant refinances + Interest loans ──
-    for (const row of purchaseRows) {
-      if (!row.participated || !(parseInt(row.shares) > 0)) continue
-      const gy = row.year
-      const purchaseAmount = parseFloat(row.loan_amount) || 0
-      const due = row.loan_due_date || dueDate(gy)
-      const exerciseYear = new Date(row.exercise_date + 'T00:00:00').getFullYear()
-
-      // Refinance chain: only for grants that existed before the refi dates
-      if (gy <= 2019 && ORIGINAL_PURCHASE_RATES[gy]) {
-        const origRate = ORIGINAL_PURCHASE_RATES[gy]
-        const origNum = `wiz-${gy}-orig`
-        loans.push({
-          key: `${gy}-Purchase-refi-orig`, grant_year: gy, grant_type: 'Purchase',
-          loan_type: 'Purchase', loan_year: gy, amount: purchaseAmount ? purchaseAmount.toFixed(2) : '',
-          interest_rate: String(origRate), due_date: due, loan_number: origNum,
-          refinances_loan_number: '', enabled: true, is_existing: false,
-        })
-        let prevNum = origNum
-        for (let ri = 0; ri < PURCHASE_REFI_CHAIN.length; ri++) {
-          const refi = PURCHASE_REFI_CHAIN[ri]
-          const num = `wiz-${gy}-refi${ri + 1}`
-          loans.push({
-            key: `${gy}-Purchase-refi-${ri + 1}`, grant_year: gy, grant_type: 'Purchase',
-            loan_type: 'Purchase', loan_year: refi.loanYear,
-            amount: purchaseAmount ? purchaseAmount.toFixed(2) : '',
-            interest_rate: String(refi.rate), due_date: due, loan_number: num,
-            refinances_loan_number: prevNum, enabled: true, is_existing: false,
-          })
-          prevNum = num
-        }
-        // The current purchase loan (from the grants table) will need to reference the last refi
-        // We store the last refi loan_number so handleScheduleReview can set it
-      }
-
-      // Interest loans: one per year from max(exerciseYear + 1, 2020) through latest rate year
-      let outstandingEstimate = purchaseAmount
-      const firstInterestYear = Math.max(exerciseYear + 1, 2020)
-      for (let ly = firstInterestYear; ly <= LATEST_RATE_YEAR; ly++) {
-        const rate = INTEREST_LOAN_RATES[ly]
-        if (!rate) continue
-        const existKey = `${gy}-Purchase-Interest-${ly}`
-        const existing = existingByKey.get(existKey)
-        const estimatedAmount = outstandingEstimate > 0 ? outstandingEstimate * rate : 0
-        loans.push({
-          key: existKey, grant_year: gy, grant_type: 'Purchase',
-          loan_type: 'Interest', loan_year: ly,
-          amount: existing ? String(existing.amount) : (estimatedAmount > 0 ? estimatedAmount.toFixed(2) : ''),
-          interest_rate: String(rate), due_date: due,
-          loan_number: existing?.loan_number ?? `wiz-${gy}-I${ly}`,
-          refinances_loan_number: '', enabled: true,
-          is_existing: !!existing,
-        })
-        // Accumulate for next year's estimate (interest capitalizes)
-        outstandingEstimate += estimatedAmount
-      }
+    // Helper to push a reviewed loan
+    function pushLoan(key: string, fields: Omit<ReviewedLoan, 'key' | 'is_existing'> & { estimatedAmount: number }) {
+      const existing = existingByKey.get(key)
+      loans.push({
+        key,
+        grant_year: fields.grant_year, grant_type: fields.grant_type,
+        loan_type: fields.loan_type, loan_year: fields.loan_year,
+        amount: existing ? String(existing.amount) : (fields.estimatedAmount > 0 ? fields.estimatedAmount.toFixed(2) : fields.amount),
+        interest_rate: existing ? String(existing.interest_rate) : fields.interest_rate,
+        due_date: fields.due_date,
+        loan_number: existing?.loan_number ?? fields.loan_number,
+        refinances_loan_number: fields.refinances_loan_number,
+        enabled: fields.enabled,
+        is_existing: !!existing,
+      })
+      return existing ? existing.amount : fields.estimatedAmount
     }
 
-    // ── Catch-Up Tax loans ──
+    // ── Phase 1: Tax loans (Catch-Up + Bonus) — needed before interest calc ──
+    // Track tax loan amounts per grant year for interest computation
+    const taxAmountsByGrantYear = new Map<number, Map<number, number>>() // grantYear -> (loanYear -> amount)
+
     for (const row of catchUpRows) {
       if (!row.included || !(parseInt(row.shares) > 0)) continue
       const gy = row.year
@@ -949,33 +972,101 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
       const purchaseRow = purchaseRows.find(r => r.year === gy)
       const due = purchaseRow?.loan_due_date || dueDate(gy)
 
+      if (!taxAmountsByGrantYear.has(gy)) taxAmountsByGrantYear.set(gy, new Map())
+      const taxMap = taxAmountsByGrantYear.get(gy)!
+
       for (let i = 0; i < row.periods; i++) {
         const vestDate = new Date(row.vest_start + 'T00:00:00')
         vestDate.setFullYear(vestDate.getFullYear() + i)
         const vestYear = vestDate.getFullYear()
         if (vestYear < 2021 || vestYear > LATEST_RATE_YEAR) continue
-        const rateTable = TAX_LOAN_RATES['Catch-Up']
-        const rate = rateTable?.[vestYear]
+        const rate = TAX_LOAN_RATES['Catch-Up']?.[vestYear]
         if (!rate) continue
         const vestPrice = priceByYear.get(vestYear) || 0
         const isLastPeriod = i === row.periods - 1
         const periodShares = isLastPeriod ? totalShares - sharesPerPeriod * (row.periods - 1) : sharesPerPeriod
         const taxAmount = periodShares * vestPrice * incomeTaxRate
         const existKey = `${gy}-Catch-Up-Tax-${vestYear}`
-        const existing = existingByKey.get(existKey)
-        loans.push({
-          key: existKey, grant_year: gy, grant_type: 'Catch-Up',
-          loan_type: 'Tax', loan_year: vestYear,
-          amount: existing ? String(existing.amount) : (taxAmount > 0 ? taxAmount.toFixed(2) : ''),
-          interest_rate: String(rate), due_date: due,
-          loan_number: existing?.loan_number ?? `wiz-${gy}-CU-T${vestYear}`,
-          refinances_loan_number: '', enabled: true,
-          is_existing: !!existing,
+
+        const actual = pushLoan(existKey, {
+          grant_year: gy, grant_type: 'Catch-Up', loan_type: 'Tax', loan_year: vestYear,
+          amount: '', estimatedAmount: taxAmount, interest_rate: String(rate), due_date: due,
+          loan_number: `wiz-${gy}-CU-T${vestYear}`, refinances_loan_number: '', enabled: true,
         })
+        taxMap.set(vestYear, actual)
       }
     }
 
-    // ── Bonus/Free Tax loans ──
+    // ── Phase 2: Refinance chains + Interest loans (Purchase) ──
+    for (const row of purchaseRows) {
+      if (!row.participated || !(parseInt(row.shares) > 0)) continue
+      const gy = row.year
+      const purchaseAmount = parseFloat(row.loan_amount) || 0
+      const due = row.loan_due_date || dueDate(gy)
+      const exerciseYear = new Date(row.exercise_date + 'T00:00:00').getFullYear()
+
+      // Refinance chain
+      const refiChain = PURCHASE_REFI_CHAINS[gy]
+      const origLoan = ORIGINAL_PURCHASE_LOANS[gy]
+      if (refiChain && origLoan) {
+        const origNum = `wiz-${gy}-orig`
+        loans.push({
+          key: `${gy}-Purchase-refi-orig`, grant_year: gy, grant_type: 'Purchase',
+          loan_type: 'Purchase', loan_year: gy, amount: purchaseAmount ? purchaseAmount.toFixed(2) : '',
+          interest_rate: String(origLoan.rate), due_date: origLoan.dueDate, loan_number: origNum,
+          refinances_loan_number: '', enabled: true, is_existing: false,
+        })
+        let prevNum = origNum
+        for (let ri = 0; ri < refiChain.length; ri++) {
+          const refi = refiChain[ri]
+          const num = `wiz-${gy}-refi${ri + 1}`
+          loans.push({
+            key: `${gy}-Purchase-refi-${ri + 1}`, grant_year: gy, grant_type: 'Purchase',
+            loan_type: 'Purchase', loan_year: refi.loanYear,
+            amount: purchaseAmount ? purchaseAmount.toFixed(2) : '',
+            interest_rate: String(refi.rate), due_date: refi.dueDate, loan_number: num,
+            refinances_loan_number: prevNum, enabled: true, is_existing: false,
+          })
+          prevNum = num
+        }
+      }
+
+      // Interest loans: for each year, interest = sum of (each loan × its own rate).
+      // Purchase loan rate changes at each refi; other loans keep their origination rate.
+      const taxMap = taxAmountsByGrantYear.get(gy) ?? new Map<number, number>()
+      const purchaseRate = parseFloat(row.interest_rate) || 0  // current rate from wizard row
+      // Track prior loans with their individual rates: { amount, rate }
+      const priorLoans: { amount: number; rate: number }[] = []
+      const firstInterestYear = Math.max(exerciseYear + 1, 2020)
+      for (let ly = firstInterestYear; ly <= LATEST_RATE_YEAR; ly++) {
+        const interestLoanRate = INTEREST_LOAN_RATES[ly]
+        if (!interestLoanRate) continue
+        const existKey = `${gy}-Purchase-Interest-${ly}`
+
+        // Purchase loan interest: sum each refi period separately
+        const purchaseInterest = purchaseInterestForYear(ly, purchaseAmount, refiChain, origLoan?.rate, purchaseRate)
+        // Prior loans interest: each at its own rate, full year
+        const priorInterest = priorLoans.reduce((sum, l) => sum + l.amount * l.rate, 0)
+        const estimatedAmount = purchaseInterest + priorInterest
+
+        const actual = pushLoan(existKey, {
+          grant_year: gy, grant_type: 'Purchase', loan_type: 'Interest', loan_year: ly,
+          amount: '', estimatedAmount, interest_rate: String(interestLoanRate),
+          due_date: due, loan_number: `wiz-${gy}-I${ly}`, refinances_loan_number: '', enabled: true,
+        })
+
+        // This interest loan becomes a prior loan for next year (at its own rate)
+        priorLoans.push({ amount: actual, rate: interestLoanRate })
+        // Add any tax loans issued this year (at their rate) to prior loans for next year
+        const taxThisYear = taxMap.get(ly)
+        if (taxThisYear) {
+          const taxRate = TAX_LOAN_RATES['Catch-Up']?.[ly] || 0
+          priorLoans.push({ amount: taxThisYear, rate: taxRate })
+        }
+      }
+    }
+
+    // ── Phase 3: Bonus/Free Tax + Interest loans ──
     for (const row of bonusRows) {
       if (!(parseInt(row.shares) > 0)) continue
       const gy = row.year
@@ -985,54 +1076,74 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
       const purchaseRow = purchaseRows.find(r => r.year === gy)
       const due = purchaseRow?.loan_due_date || dueDate(gy)
 
+      // Tax loans first
+      const bonusTaxByYear = new Map<number, number>()
       for (let i = 0; i < row.periods; i++) {
         const vestDate = new Date(row.vest_start + 'T00:00:00')
         vestDate.setFullYear(vestDate.getFullYear() + i)
         const vestYear = vestDate.getFullYear()
         if (vestYear < 2021 || vestYear > LATEST_RATE_YEAR) continue
-        const rateTable = TAX_LOAN_RATES[grantType]
-        const rate = rateTable?.[vestYear]
+        const rate = TAX_LOAN_RATES[grantType]?.[vestYear]
         if (!rate) continue
         const vestPrice = priceByYear.get(vestYear) || 0
         const isLastPeriod = i === row.periods - 1
         const periodShares = isLastPeriod ? totalShares - sharesPerPeriod * (row.periods - 1) : sharesPerPeriod
         const taxAmount = periodShares * vestPrice * incomeTaxRate
         const existKey = `${gy}-${grantType}-Tax-${vestYear}`
-        const existing = existingByKey.get(existKey)
-        loans.push({
-          key: existKey, grant_year: gy, grant_type: grantType,
-          loan_type: 'Tax', loan_year: vestYear,
-          amount: existing ? String(existing.amount) : (taxAmount > 0 ? taxAmount.toFixed(2) : ''),
-          interest_rate: String(rate), due_date: due,
-          loan_number: existing?.loan_number ?? `wiz-${gy}-${grantType[0]}-T${vestYear}`,
-          refinances_loan_number: '', enabled: true,
-          is_existing: !!existing,
-        })
+
+        // Check if this tax loan has a refinance chain
+        const refiKey = `${gy}-${grantType}-${vestYear}`
+        const taxRefi = TAX_LOAN_REFIS[refiKey]
+        if (taxRefi) {
+          // Generate original tax loan + refinance chain
+          const origNum = `wiz-${gy}-${grantType[0]}-T${vestYear}-orig`
+          loans.push({
+            key: `${existKey}-refi-orig`, grant_year: gy, grant_type: grantType,
+            loan_type: 'Tax', loan_year: vestYear, amount: taxAmount > 0 ? taxAmount.toFixed(2) : '',
+            interest_rate: String(rate), due_date: taxRefi[0].origDueDate, loan_number: origNum,
+            refinances_loan_number: '', enabled: true, is_existing: false,
+          })
+          let prevNum = origNum
+          for (let ri = 0; ri < taxRefi.length; ri++) {
+            const refi = taxRefi[ri]
+            const num = `wiz-${gy}-${grantType[0]}-T${vestYear}-refi${ri + 1}`
+            // The current tax loan (pushed below) will reference this refi
+            pushLoan(existKey, {
+              grant_year: gy, grant_type: grantType, loan_type: 'Tax', loan_year: vestYear,
+              amount: '', estimatedAmount: taxAmount, interest_rate: String(refi.rate), due_date: refi.newDueDate,
+              loan_number: num, refinances_loan_number: prevNum, enabled: true,
+            })
+            prevNum = num
+          }
+          bonusTaxByYear.set(vestYear, taxAmount > 0 ? taxAmount : 0)
+        } else {
+          const actual = pushLoan(existKey, {
+            grant_year: gy, grant_type: grantType, loan_type: 'Tax', loan_year: vestYear,
+            amount: '', estimatedAmount: taxAmount, interest_rate: String(rate), due_date: due,
+            loan_number: `wiz-${gy}-${grantType[0]}-T${vestYear}`, refinances_loan_number: '', enabled: true,
+          })
+          bonusTaxByYear.set(vestYear, actual)
+        }
       }
 
-      // Bonus Interest loans: start after tax loans accumulate (year after first tax loan)
+      // Bonus Interest loans: iterative on accumulated tax + interest balances
       const firstTaxYear = Math.max(2021, new Date(row.vest_start + 'T00:00:00').getFullYear())
       let bonusOutstanding = 0
       for (let ly = firstTaxYear; ly <= LATEST_RATE_YEAR; ly++) {
-        // Add any tax loan from this year to outstanding
-        const taxLoan = loans.find(l => l.grant_year === gy && l.grant_type === grantType && l.loan_type === 'Tax' && l.loan_year === ly)
-        if (taxLoan) bonusOutstanding += parseFloat(taxLoan.amount) || 0
+        const taxThisYear = bonusTaxByYear.get(ly) || 0
+        bonusOutstanding += taxThisYear
         // Interest starts the year AFTER first tax loan accumulation
         const iRate = INTEREST_LOAN_RATES[ly]
         if (!iRate || bonusOutstanding <= 0 || ly <= firstTaxYear) continue
         const existKey = `${gy}-${grantType}-Interest-${ly}`
-        const existing = existingByKey.get(existKey)
         const estimatedInterest = bonusOutstanding * iRate
-        loans.push({
-          key: existKey, grant_year: gy, grant_type: grantType,
-          loan_type: 'Interest', loan_year: ly,
-          amount: existing ? String(existing.amount) : (estimatedInterest > 0 ? estimatedInterest.toFixed(2) : ''),
-          interest_rate: String(iRate), due_date: due,
-          loan_number: existing?.loan_number ?? `wiz-${gy}-${grantType[0]}-I${ly}`,
-          refinances_loan_number: '', enabled: true,
-          is_existing: !!existing,
+
+        const actual = pushLoan(existKey, {
+          grant_year: gy, grant_type: grantType, loan_type: 'Interest', loan_year: ly,
+          amount: '', estimatedAmount: estimatedInterest, interest_rate: String(iRate), due_date: due,
+          loan_number: `wiz-${gy}-${grantType[0]}-I${ly}`, refinances_loan_number: '', enabled: true,
         })
-        bonusOutstanding += estimatedInterest
+        bonusOutstanding += actual
       }
     }
 
@@ -1969,90 +2080,143 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
               Review loans
             </h2>
             <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
-              Tax, interest, and refinance loans auto-generated from your grants.
-              Amounts are estimates — adjust as needed. Toggle off any loans you didn't take.
+              Each section below is optional. Amounts are estimates — adjust using your loan statement
+              from Shareworks, which lists the current principal for all loans.
             </p>
+            <button
+              type="button"
+              onClick={() => { setReviewedLoans([]); push('schedule_settings') }}
+              className="mt-1.5 text-xs text-gray-400 underline hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300"
+            >
+              Skip all — I'll add loans on the Loans page later
+            </button>
           </div>
 
           {(() => {
-            // Group reviewed loans by grant
-            const groups = new Map<string, ReviewedLoan[]>()
-            for (const l of reviewedLoans) {
-              const key = `${l.grant_year}-${l.grant_type}`
-              if (!groups.has(key)) groups.set(key, [])
-              groups.get(key)!.push(l)
-            }
+            // Split reviewed loans into categories
+            const refiLoans = reviewedLoans.filter(l => l.loan_type === 'Purchase' || (l.loan_type === 'Tax' && l.refinances_loan_number))
+            const taxLoans = reviewedLoans.filter(l => l.loan_type === 'Tax' && !l.refinances_loan_number)
+            const interestLoans = reviewedLoans.filter(l => l.loan_type === 'Interest')
 
-            if (groups.size === 0) {
-              return (
-                <p className="text-xs text-gray-400 dark:text-slate-500">
-                  No additional loans to generate. This usually means no grants are marked as participated,
-                  or no prices are entered for vesting years.
-                </p>
-              )
-            }
-
-            return Array.from(groups.entries()).map(([groupKey, groupLoans]) => {
-              const [yearStr, ...typeParts] = groupKey.split('-')
-              const grantType = typeParts.join('-')
-              const enabledCount = groupLoans.filter(l => l.enabled).length
-
-              // Sub-group: refinances, then tax, then interest
-              const refiLoans = groupLoans.filter(l => l.loan_type === 'Purchase')
-              const taxLoans = groupLoans.filter(l => l.loan_type === 'Tax')
-              const interestLoans = groupLoans.filter(l => l.loan_type === 'Interest')
-
-              return (
-                <details key={groupKey} open className="rounded-md border border-stone-200 bg-white dark:border-slate-700 dark:bg-slate-900">
-                  <summary className="flex cursor-pointer items-center justify-between px-3 py-2">
-                    <span className="text-xs font-medium text-gray-800 dark:text-slate-200">
-                      {yearStr} {grantType}
-                    </span>
-                    <span className="text-[11px] text-gray-400 dark:text-slate-500">
-                      {enabledCount}/{groupLoans.length} loans
-                    </span>
-                  </summary>
-                  <div className="space-y-1 border-t border-stone-100 px-3 py-2 dark:border-slate-800">
-                    {refiLoans.length > 0 && (
-                      <div className="mb-2">
-                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-400">
-                          Refinance chain
-                        </p>
-                        {refiLoans.map(loan => (
-                          <LoanReviewRow key={loan.key} loan={loan} onChange={updated => {
-                            setReviewedLoans(prev => prev.map(l => l.key === loan.key ? updated : l))
-                          }} />
-                        ))}
-                      </div>
-                    )}
-                    {taxLoans.length > 0 && (
-                      <div className="mb-2">
-                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
-                          Tax loans
-                        </p>
-                        {taxLoans.map(loan => (
-                          <LoanReviewRow key={loan.key} loan={loan} onChange={updated => {
-                            setReviewedLoans(prev => prev.map(l => l.key === loan.key ? updated : l))
-                          }} />
-                        ))}
-                      </div>
-                    )}
-                    {interestLoans.length > 0 && (
-                      <div>
-                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-sky-600 dark:text-sky-400">
-                          Interest loans
-                        </p>
-                        {interestLoans.map(loan => (
-                          <LoanReviewRow key={loan.key} loan={loan} onChange={updated => {
-                            setReviewedLoans(prev => prev.map(l => l.key === loan.key ? updated : l))
-                          }} />
-                        ))}
-                      </div>
-                    )}
+            return (
+              <>
+                {/* ── Section 1: Refinances ── */}
+                <div className="rounded-lg border border-violet-200 bg-violet-50/50 p-3 dark:border-violet-800/50 dark:bg-violet-950/20">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="text-xs font-semibold text-violet-700 dark:text-violet-400">
+                        Refinances
+                        <span className="ml-1 font-normal text-violet-500 dark:text-violet-500">(optional)</span>
+                      </h3>
+                      <p className="mt-0.5 text-[11px] text-violet-600/80 dark:text-violet-400/70">
+                        If your purchase loans were refinanced, entering the history here improves the
+                        interest loan estimates below. If you skip this, remember to update the purchase
+                        loan rate and due date on the Loans page if they changed from a refinance.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setReviewedLoans(prev => prev.map(l =>
+                        (l.loan_type === 'Purchase' || (l.loan_type === 'Tax' && l.refinances_loan_number))
+                          ? { ...l, enabled: false } : l
+                      ))}
+                      className="ml-2 shrink-0 text-[10px] text-violet-400 underline hover:text-violet-600 dark:text-violet-500"
+                    >
+                      Skip refinances
+                    </button>
                   </div>
-                </details>
-              )
-            })
+                  {refiLoans.length > 0 ? (
+                    <div className="mt-2 space-y-1">
+                      {refiLoans.map(loan => (
+                        <LoanReviewRow key={loan.key} loan={loan} onChange={updated => {
+                          setReviewedLoans(prev => prev.map(l => l.key === loan.key ? updated : l))
+                        }} />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-1.5 text-[11px] text-violet-400 dark:text-violet-500">
+                      No refinances detected for your grant years.
+                    </p>
+                  )}
+                </div>
+
+                {/* ── Section 2: Tax loans ── */}
+                <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-800/50 dark:bg-amber-950/20">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+                        Tax loans
+                        <span className="ml-1 font-normal text-amber-500 dark:text-amber-500">(optional)</span>
+                      </h3>
+                      <p className="mt-0.5 text-[11px] text-amber-600/80 dark:text-amber-400/70">
+                        Generated for Catch-Up and Bonus grants that vest as income.
+                        Amounts are estimated from vested shares x price x your tax rate.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setReviewedLoans(prev => prev.map(l =>
+                        l.loan_type === 'Tax' && !l.refinances_loan_number ? { ...l, enabled: false } : l
+                      ))}
+                      className="ml-2 shrink-0 text-[10px] text-amber-400 underline hover:text-amber-600 dark:text-amber-500"
+                    >
+                      Skip tax loans
+                    </button>
+                  </div>
+                  {taxLoans.length > 0 ? (
+                    <div className="mt-2 space-y-1">
+                      {taxLoans.map(loan => (
+                        <LoanReviewRow key={loan.key} loan={loan} onChange={updated => {
+                          setReviewedLoans(prev => prev.map(l => l.key === loan.key ? updated : l))
+                        }} />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-1.5 text-[11px] text-amber-400 dark:text-amber-500">
+                      No tax loans — no Catch-Up or Bonus grants with vesting in range.
+                    </p>
+                  )}
+                </div>
+
+                {/* ── Section 3: Interest loans ── */}
+                <div className="rounded-lg border border-sky-200 bg-sky-50/50 p-3 dark:border-sky-800/50 dark:bg-sky-950/20">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="text-xs font-semibold text-sky-700 dark:text-sky-400">
+                        Interest loans
+                        <span className="ml-1 font-normal text-sky-500 dark:text-sky-500">(optional)</span>
+                      </h3>
+                      <p className="mt-0.5 text-[11px] text-sky-600/80 dark:text-sky-400/70">
+                        Annual interest on all outstanding loans for each grant. You can find exact
+                        amounts on your loan statement from Shareworks.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setReviewedLoans(prev => prev.map(l =>
+                        l.loan_type === 'Interest' ? { ...l, enabled: false } : l
+                      ))}
+                      className="ml-2 shrink-0 text-[10px] text-sky-400 underline hover:text-sky-600 dark:text-sky-500"
+                    >
+                      Skip interest loans
+                    </button>
+                  </div>
+                  {interestLoans.length > 0 ? (
+                    <div className="mt-2 space-y-1">
+                      {interestLoans.map(loan => (
+                        <LoanReviewRow key={loan.key} loan={loan} onChange={updated => {
+                          setReviewedLoans(prev => prev.map(l => l.key === loan.key ? updated : l))
+                        }} />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-1.5 text-[11px] text-sky-400 dark:text-sky-500">
+                      No interest loans — no participated purchase grants.
+                    </p>
+                  )}
+                </div>
+              </>
+            )
           })()}
 
           <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-slate-400">

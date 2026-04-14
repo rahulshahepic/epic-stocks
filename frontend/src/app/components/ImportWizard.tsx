@@ -865,38 +865,45 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
 
   // ── Loan generation for schedule_loans_review ──────────────────────────────
 
-  /** Compute weighted average interest rate for a calendar year using the refinance chain. */
-  function weightedRateForYear(
+  /** Compute interest on the purchase loan for a calendar year by summing each refi period. */
+  function purchaseInterestForYear(
     loanYear: number,
+    purchaseAmount: number,
     refiChain: typeof PURCHASE_REFI_CHAINS[number] | undefined,
     originalRate: number | undefined,
+    fallbackRate: number,
   ): number {
-    // No refi data — fall back to the interest loan rate table
-    if (!refiChain || originalRate == null) return INTEREST_LOAN_RATES[loanYear] || 0
+    if (purchaseAmount <= 0) return 0
+
+    // No refi data — use the purchase loan's own rate (from the wizard row)
+    if (!refiChain || originalRate == null) return purchaseAmount * fallbackRate
 
     const yearStart = new Date(`${loanYear}-01-01T00:00:00`)
     const yearEnd = new Date(`${loanYear + 1}-01-01T00:00:00`)
-    const totalDays = (yearEnd.getTime() - yearStart.getTime()) / 86400000
+    const daysInYear = (yearEnd.getTime() - yearStart.getTime()) / 86400000
 
-    // Walk the refi chain to find rate at start of year and mid-year transitions
+    // Find rate at start of year
     let currentRate = originalRate
-    const transitions: { date: Date; rate: number }[] = []
+    for (const refi of refiChain) {
+      if (new Date(refi.date + 'T00:00:00') <= yearStart) currentRate = refi.rate
+    }
+
+    // Calculate interest for each period within the year
+    let total = 0
+    let periodStart = yearStart
     for (const refi of refiChain) {
       const rd = new Date(refi.date + 'T00:00:00')
-      if (rd <= yearStart) currentRate = refi.rate
-      else if (rd < yearEnd) transitions.push({ date: rd, rate: refi.rate })
+      if (rd > yearStart && rd < yearEnd) {
+        const days = (rd.getTime() - periodStart.getTime()) / 86400000
+        total += purchaseAmount * currentRate * days / daysInYear
+        currentRate = refi.rate
+        periodStart = rd
+      }
     }
-
-    let weighted = 0
-    let periodStart = yearStart
-    for (const t of transitions) {
-      const days = (t.date.getTime() - periodStart.getTime()) / 86400000
-      weighted += currentRate * (days / totalDays)
-      currentRate = t.rate
-      periodStart = t.date
-    }
-    weighted += currentRate * ((yearEnd.getTime() - periodStart.getTime()) / 86400000 / totalDays)
-    return weighted
+    // Remaining period to end of year
+    const remainDays = (yearEnd.getTime() - periodStart.getTime()) / 86400000
+    total += purchaseAmount * currentRate * remainDays / daysInYear
+    return total
   }
 
   function generateLoansForReview(): ReviewedLoan[] {
@@ -1012,28 +1019,38 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
         }
       }
 
-      // Interest loans: iterative, using purchase loan's effective rate from refi chain,
-      // on total outstanding (purchase + prior tax loans + prior interest loans).
+      // Interest loans: for each year, interest = sum of (each loan × its own rate).
+      // Purchase loan rate changes at each refi; other loans keep their origination rate.
       const taxMap = taxAmountsByGrantYear.get(gy) ?? new Map<number, number>()
-      let cumulativeOutstanding = purchaseAmount
+      const purchaseRate = parseFloat(row.interest_rate) || 0  // current rate from wizard row
+      // Track prior loans with their individual rates: { amount, rate }
+      const priorLoans: { amount: number; rate: number }[] = []
       const firstInterestYear = Math.max(exerciseYear + 1, 2020)
       for (let ly = firstInterestYear; ly <= LATEST_RATE_YEAR; ly++) {
-        // Use the purchase loan's effective rate for this year (from refi chain)
-        const effectiveRate = weightedRateForYear(ly, refiChain, origLoan?.rate)
-        if (effectiveRate <= 0) continue
+        const interestLoanRate = INTEREST_LOAN_RATES[ly]
+        if (!interestLoanRate) continue
         const existKey = `${gy}-Purchase-Interest-${ly}`
-        const estimatedAmount = cumulativeOutstanding > 0 ? cumulativeOutstanding * effectiveRate : 0
+
+        // Purchase loan interest: sum each refi period separately
+        const purchaseInterest = purchaseInterestForYear(ly, purchaseAmount, refiChain, origLoan?.rate, purchaseRate)
+        // Prior loans interest: each at its own rate, full year
+        const priorInterest = priorLoans.reduce((sum, l) => sum + l.amount * l.rate, 0)
+        const estimatedAmount = purchaseInterest + priorInterest
 
         const actual = pushLoan(existKey, {
           grant_year: gy, grant_type: 'Purchase', loan_type: 'Interest', loan_year: ly,
-          amount: '', estimatedAmount, interest_rate: String(INTEREST_LOAN_RATES[ly] || effectiveRate),
+          amount: '', estimatedAmount, interest_rate: String(interestLoanRate),
           due_date: due, loan_number: `wiz-${gy}-I${ly}`, refinances_loan_number: '', enabled: true,
         })
 
-        // Update outstanding for next year: add this year's interest + any tax loans issued this year
-        cumulativeOutstanding += actual
-        const taxThisYear = taxMap.get(ly) || 0
-        cumulativeOutstanding += taxThisYear
+        // This interest loan becomes a prior loan for next year (at its own rate)
+        priorLoans.push({ amount: actual, rate: interestLoanRate })
+        // Add any tax loans issued this year (at their rate) to prior loans for next year
+        const taxThisYear = taxMap.get(ly)
+        if (taxThisYear) {
+          const taxRate = TAX_LOAN_RATES['Catch-Up']?.[ly] || 0
+          priorLoans.push({ amount: taxThisYear, rate: taxRate })
+        }
       }
     }
 

@@ -202,7 +202,7 @@ const PURCHASE_REFI_CHAINS: Record<number, { date: string; rate: number; loanYea
 const ORIGINAL_PURCHASE_LOANS: Record<number, { rate: number; dueDate: string }> = {
   2018: { rate: 0.0307, dueDate: '2025-07-15' },
   2019: { rate: 0.0307, dueDate: '2026-07-15' },
-  2020: { rate: 0.0086, dueDate: '2025-07-15' },  // originated late 2020 at 0.86%, refi'd Nov 2021 to extend term
+  2020: { rate: 0.0038, dueDate: '2025-07-15' },  // originated late 2020 at 0.38%, refi'd Nov 2021 to 0.86%
 }
 
 // Tax loan refinances — keyed by "grantYear-grantType-loanYear"

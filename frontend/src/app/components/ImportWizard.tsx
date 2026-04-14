@@ -2126,12 +2126,28 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
                     </button>
                   </div>
                   {refiLoans.length > 0 ? (
-                    <div className="mt-2 space-y-1">
-                      {refiLoans.map(loan => (
-                        <LoanReviewRow key={loan.key} loan={loan} onChange={updated => {
-                          setReviewedLoans(prev => prev.map(l => l.key === loan.key ? updated : l))
-                        }} />
-                      ))}
+                    <div className="mt-2 space-y-3">
+                      {(() => {
+                        // Group refis by grant year + grant type
+                        const refiGroups = new Map<string, ReviewedLoan[]>()
+                        for (const l of refiLoans) {
+                          const k = `${l.grant_year} ${l.grant_type}`
+                          if (!refiGroups.has(k)) refiGroups.set(k, [])
+                          refiGroups.get(k)!.push(l)
+                        }
+                        return Array.from(refiGroups.entries()).map(([label, loans]) => (
+                          <div key={label}>
+                            <p className="mb-1 text-[10px] font-medium text-violet-500 dark:text-violet-400">{label}</p>
+                            <div className="space-y-1 border-l-2 border-violet-200 pl-2 dark:border-violet-800">
+                              {loans.map(loan => (
+                                <LoanReviewRow key={loan.key} loan={loan} onChange={updated => {
+                                  setReviewedLoans(prev => prev.map(l => l.key === loan.key ? updated : l))
+                                }} />
+                              ))}
+                            </div>
+                          </div>
+                        ))
+                      })()}
                     </div>
                   ) : (
                     <p className="mt-1.5 text-[11px] text-violet-400 dark:text-violet-500">
@@ -2164,12 +2180,27 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
                     </button>
                   </div>
                   {taxLoans.length > 0 ? (
-                    <div className="mt-2 space-y-1">
-                      {taxLoans.map(loan => (
-                        <LoanReviewRow key={loan.key} loan={loan} onChange={updated => {
-                          setReviewedLoans(prev => prev.map(l => l.key === loan.key ? updated : l))
-                        }} />
-                      ))}
+                    <div className="mt-2 space-y-3">
+                      {(() => {
+                        const taxGroups = new Map<string, ReviewedLoan[]>()
+                        for (const l of taxLoans) {
+                          const k = `${l.grant_year} ${l.grant_type}`
+                          if (!taxGroups.has(k)) taxGroups.set(k, [])
+                          taxGroups.get(k)!.push(l)
+                        }
+                        return Array.from(taxGroups.entries()).map(([label, loans]) => (
+                          <div key={label}>
+                            <p className="mb-1 text-[10px] font-medium text-amber-500 dark:text-amber-400">{label}</p>
+                            <div className="space-y-1">
+                              {loans.map(loan => (
+                                <LoanReviewRow key={loan.key} loan={loan} onChange={updated => {
+                                  setReviewedLoans(prev => prev.map(l => l.key === loan.key ? updated : l))
+                                }} />
+                              ))}
+                            </div>
+                          </div>
+                        ))
+                      })()}
                     </div>
                   ) : (
                     <p className="mt-1.5 text-[11px] text-amber-400 dark:text-amber-500">
@@ -2202,12 +2233,27 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
                     </button>
                   </div>
                   {interestLoans.length > 0 ? (
-                    <div className="mt-2 space-y-1">
-                      {interestLoans.map(loan => (
-                        <LoanReviewRow key={loan.key} loan={loan} onChange={updated => {
-                          setReviewedLoans(prev => prev.map(l => l.key === loan.key ? updated : l))
-                        }} />
-                      ))}
+                    <div className="mt-2 space-y-3">
+                      {(() => {
+                        const intGroups = new Map<string, ReviewedLoan[]>()
+                        for (const l of interestLoans) {
+                          const k = `${l.grant_year} ${l.grant_type}`
+                          if (!intGroups.has(k)) intGroups.set(k, [])
+                          intGroups.get(k)!.push(l)
+                        }
+                        return Array.from(intGroups.entries()).map(([label, loans]) => (
+                          <div key={label}>
+                            <p className="mb-1 text-[10px] font-medium text-sky-500 dark:text-sky-400">{label}</p>
+                            <div className="space-y-1">
+                              {loans.map(loan => (
+                                <LoanReviewRow key={loan.key} loan={loan} onChange={updated => {
+                                  setReviewedLoans(prev => prev.map(l => l.key === loan.key ? updated : l))
+                                }} />
+                              ))}
+                            </div>
+                          </div>
+                        ))
+                      })()}
                     </div>
                   ) : (
                     <p className="mt-1.5 text-[11px] text-sky-400 dark:text-sky-500">

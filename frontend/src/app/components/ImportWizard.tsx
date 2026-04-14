@@ -181,17 +181,24 @@ const TAX_LOAN_RATES: Record<string, Record<number, number>> = {
   'Bonus':    { 2021: 0.0086, 2022: 0.0293, 2023: 0.0385, 2024: 0.037 },
 }
 
-// Purchase loan refinance history. Grants exercised before each date get that refi.
-// The user entered current rates in the grants table; these are the HISTORICAL loans.
-const PURCHASE_REFI_CHAIN = [
-  { date: '2020-01-01', rate: 0.0169, loanYear: 2020 },  // Jan 2020: 2018+2019 loans refi'd to 1.69%
-  { date: '2020-06-01', rate: 0.0043, loanYear: 2020 },  // Jun 2020: all purchase loans refi'd to 0.43%
-  { date: '2021-11-01', rate: 0.0086, loanYear: 2021 },  // Nov 2021: long-term extension to 0.86%
-]
+// Purchase loan refinance history per grant year.
+// Each grant year has its own chain with specific due dates.
+const PURCHASE_REFI_CHAINS: Record<number, { date: string; rate: number; loanYear: number; dueDate: string }[]> = {
+  2018: [
+    { date: '2020-01-01', rate: 0.0169, loanYear: 2020, dueDate: '2025-07-15' },  // Jan 2020: refi to 1.69%, original due date kept
+    { date: '2020-06-01', rate: 0.0043, loanYear: 2020, dueDate: '2025-07-15' },  // Jun 2020: refi to 0.43%, due date kept
+    { date: '2021-11-01', rate: 0.0086, loanYear: 2021, dueDate: '2027-07-15' },  // Nov 2021: long-term to 0.86%, due extended
+  ],
+  2019: [
+    { date: '2020-06-01', rate: 0.0043, loanYear: 2020, dueDate: '2026-07-15' },  // Jun 2020: refi to 0.43%, original due date kept
+    { date: '2021-11-01', rate: 0.0086, loanYear: 2021, dueDate: '2028-07-15' },  // Nov 2021: long-term to 0.86%, due extended
+  ],
+}
 
-// Original purchase loan rates by exercise year (pre-refinance)
-const ORIGINAL_PURCHASE_RATES: Record<number, number> = {
-  2018: 0.0307, 2019: 0.0307,
+// Original purchase loan rates and due dates by exercise year (pre-refinance)
+const ORIGINAL_PURCHASE_LOANS: Record<number, { rate: number; dueDate: string }> = {
+  2018: { rate: 0.0307, dueDate: '2025-07-15' },
+  2019: { rate: 0.0307, dueDate: '2026-07-15' },
 }
 
 // Latest year with known loan rates
@@ -890,53 +897,52 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
       const due = row.loan_due_date || dueDate(gy)
       const exerciseYear = new Date(row.exercise_date + 'T00:00:00').getFullYear()
 
-      // Refinance chain: only for grants that existed before the refi dates
-      if (gy <= 2019 && ORIGINAL_PURCHASE_RATES[gy]) {
-        const origRate = ORIGINAL_PURCHASE_RATES[gy]
+      // Refinance chain: per-grant chain with correct due dates
+      const refiChain = PURCHASE_REFI_CHAINS[gy]
+      const origLoan = ORIGINAL_PURCHASE_LOANS[gy]
+      if (refiChain && origLoan) {
         const origNum = `wiz-${gy}-orig`
         loans.push({
           key: `${gy}-Purchase-refi-orig`, grant_year: gy, grant_type: 'Purchase',
           loan_type: 'Purchase', loan_year: gy, amount: purchaseAmount ? purchaseAmount.toFixed(2) : '',
-          interest_rate: String(origRate), due_date: due, loan_number: origNum,
+          interest_rate: String(origLoan.rate), due_date: origLoan.dueDate, loan_number: origNum,
           refinances_loan_number: '', enabled: true, is_existing: false,
         })
         let prevNum = origNum
-        for (let ri = 0; ri < PURCHASE_REFI_CHAIN.length; ri++) {
-          const refi = PURCHASE_REFI_CHAIN[ri]
+        for (let ri = 0; ri < refiChain.length; ri++) {
+          const refi = refiChain[ri]
           const num = `wiz-${gy}-refi${ri + 1}`
           loans.push({
             key: `${gy}-Purchase-refi-${ri + 1}`, grant_year: gy, grant_type: 'Purchase',
             loan_type: 'Purchase', loan_year: refi.loanYear,
             amount: purchaseAmount ? purchaseAmount.toFixed(2) : '',
-            interest_rate: String(refi.rate), due_date: due, loan_number: num,
+            interest_rate: String(refi.rate), due_date: refi.dueDate, loan_number: num,
             refinances_loan_number: prevNum, enabled: true, is_existing: false,
           })
           prevNum = num
         }
-        // The current purchase loan (from the grants table) will need to reference the last refi
-        // We store the last refi loan_number so handleScheduleReview can set it
       }
 
       // Interest loans: one per year from max(exerciseYear + 1, 2020) through latest rate year
-      let outstandingEstimate = purchaseAmount
+      // Simple interest on purchase principal only — no compounding.
+      // This is a rough estimate; actual amounts depend on mid-year rate changes from refinances.
       const firstInterestYear = Math.max(exerciseYear + 1, 2020)
       for (let ly = firstInterestYear; ly <= LATEST_RATE_YEAR; ly++) {
         const rate = INTEREST_LOAN_RATES[ly]
         if (!rate) continue
         const existKey = `${gy}-Purchase-Interest-${ly}`
         const existing = existingByKey.get(existKey)
-        const estimatedAmount = outstandingEstimate > 0 ? outstandingEstimate * rate : 0
+        const estimatedAmount = purchaseAmount > 0 ? purchaseAmount * rate : 0
         loans.push({
           key: existKey, grant_year: gy, grant_type: 'Purchase',
           loan_type: 'Interest', loan_year: ly,
           amount: existing ? String(existing.amount) : (estimatedAmount > 0 ? estimatedAmount.toFixed(2) : ''),
-          interest_rate: String(rate), due_date: due,
+          interest_rate: existing ? String(existing.interest_rate) : String(rate),
+          due_date: due,
           loan_number: existing?.loan_number ?? `wiz-${gy}-I${ly}`,
           refinances_loan_number: '', enabled: true,
           is_existing: !!existing,
         })
-        // Accumulate for next year's estimate (interest capitalizes)
-        outstandingEstimate += estimatedAmount
       }
     }
 
@@ -967,7 +973,8 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
           key: existKey, grant_year: gy, grant_type: 'Catch-Up',
           loan_type: 'Tax', loan_year: vestYear,
           amount: existing ? String(existing.amount) : (taxAmount > 0 ? taxAmount.toFixed(2) : ''),
-          interest_rate: String(rate), due_date: due,
+          interest_rate: existing ? String(existing.interest_rate) : String(rate),
+          due_date: due,
           loan_number: existing?.loan_number ?? `wiz-${gy}-CU-T${vestYear}`,
           refinances_loan_number: '', enabled: true,
           is_existing: !!existing,
@@ -1003,7 +1010,8 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
           key: existKey, grant_year: gy, grant_type: grantType,
           loan_type: 'Tax', loan_year: vestYear,
           amount: existing ? String(existing.amount) : (taxAmount > 0 ? taxAmount.toFixed(2) : ''),
-          interest_rate: String(rate), due_date: due,
+          interest_rate: existing ? String(existing.interest_rate) : String(rate),
+          due_date: due,
           loan_number: existing?.loan_number ?? `wiz-${gy}-${grantType[0]}-T${vestYear}`,
           refinances_loan_number: '', enabled: true,
           is_existing: !!existing,
@@ -1027,7 +1035,8 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
           key: existKey, grant_year: gy, grant_type: grantType,
           loan_type: 'Interest', loan_year: ly,
           amount: existing ? String(existing.amount) : (estimatedInterest > 0 ? estimatedInterest.toFixed(2) : ''),
-          interest_rate: String(iRate), due_date: due,
+          interest_rate: existing ? String(existing.interest_rate) : String(iRate),
+          due_date: due,
           loan_number: existing?.loan_number ?? `wiz-${gy}-${grantType[0]}-I${ly}`,
           refinances_loan_number: '', enabled: true,
           is_existing: !!existing,

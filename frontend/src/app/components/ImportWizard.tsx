@@ -1073,14 +1073,19 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
       if (!(parseInt(row.shares) > 0)) continue
       const gy = row.year
       const grantType = row.type
+      const grantPrice = parseFloat(row.purchase_price) || 0
       const totalShares = parseInt(row.shares) || 0
       const sharesPerPeriod = Math.floor(totalShares / row.periods)
       const purchaseRow = purchaseRows.find(r => r.year === gy)
       const due = purchaseRow?.loan_due_date || dueDate(gy)
 
-      // Tax loans first
+      // Tax loans only for zero-basis grants (vesting = ordinary income)
+      const isPreTaxGrant = grantPrice === 0
+
+      // Tax loans first (only for zero-basis grants)
       const bonusTaxByYear = new Map<number, number>()
-      for (let i = 0; i < row.periods; i++) {
+      if (!isPreTaxGrant) { /* skip tax loans — non-zero cost basis means vesting is not taxable */ }
+      else for (let i = 0; i < row.periods; i++) {
         const vestDate = new Date(row.vest_start + 'T00:00:00')
         vestDate.setFullYear(vestDate.getFullYear() + i)
         const vestYear = vestDate.getFullYear()
@@ -1128,7 +1133,8 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
         }
       }
 
-      // Bonus Interest loans: iterative on accumulated tax + interest balances
+      // Bonus Interest loans: only if there are tax loans to accrue interest on
+      if (!isPreTaxGrant) continue  // no tax loans = no interest to accrue
       const firstTaxYear = Math.max(2021, new Date(row.vest_start + 'T00:00:00').getFullYear())
       let bonusOutstanding = 0
       for (let ly = firstTaxYear; ly <= LATEST_RATE_YEAR; ly++) {

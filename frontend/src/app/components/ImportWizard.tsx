@@ -205,6 +205,11 @@ const ORIGINAL_PURCHASE_LOANS: Record<number, { rate: number; dueDate: string }>
   2018: { rate: 0.0307, dueDate: '2025-07-15' },
   2019: { rate: 0.0307, dueDate: '2026-07-15' },
   2020: { rate: 0.0038, dueDate: '2025-07-15' },  // originated late 2020 at 0.38%, refi'd Nov 2021 to 0.86%
+  2021: { rate: 0.0086, dueDate: '2030-07-15' },
+  2022: { rate: 0.0187, dueDate: '2031-06-30' },
+  2023: { rate: 0.0356, dueDate: '2032-06-30' },
+  2024: { rate: 0.037,  dueDate: '2033-06-30' },
+  2025: { rate: 0.0406, dueDate: '2034-06-30' },
 }
 
 // Tax loan refinances — keyed by "grantYear-grantType-loanYear"
@@ -299,20 +304,20 @@ function initBonusRows(): BonusGrantRow[] {
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function Field({
-  label, type = 'text', value, onChange, step, min, placeholder, hint,
+  label, type = 'text', value, onChange, step, min, placeholder, hint, disabled,
 }: {
   label: string; type?: string; value: string | number; onChange: (v: string) => void
-  step?: string; min?: string; placeholder?: string; hint?: string
+  step?: string; min?: string; placeholder?: string; hint?: string; disabled?: boolean
 }) {
   return (
     <label className="block">
       <span className="text-xs text-gray-500 dark:text-slate-400">{label}</span>
       {hint && <span className="ml-1.5 text-[10px] text-gray-400 dark:text-slate-500">{hint}</span>}
       <input
-        type={type} step={step} min={min} placeholder={placeholder}
+        type={type} step={step} min={min} placeholder={placeholder} disabled={disabled}
         value={value}
         onChange={e => onChange(e.target.value)}
-        className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+        className={`mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200${disabled ? ' opacity-50 cursor-not-allowed' : ''}`}
       />
     </label>
   )
@@ -969,15 +974,8 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
       const effectiveDp = dpCash > 0 ? dpCash : minDp
       const loanAmount = Math.max(0, total - effectiveDp)
 
-      // For 2023+, default dp_shares using share exchange (shares at exercise price)
-      let dpShares = updated.dp_shares
-      if (!dpCash && p > 0 && updated.year >= 2023 && updated.dp_shares === '0') {
-        dpShares = String(Math.ceil(minDp / p))
-      }
-
       return {
         ...updated,
-        dp_shares: dpShares,
         loan_amount: loanAmount.toFixed(2),
       }
     })
@@ -1721,7 +1719,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
               onChange={v => setGrantDraft(d => ({ ...d, exercise_date: v }))} />
           </div>
 
-          {grantDraft.type === 'Purchase' && (
+          {grantDraft.type === 'Purchase' && parseInt(grantDraft.year) >= 2023 && (
             <div className="rounded-md border border-stone-200 p-3 dark:border-slate-700">
               <label className="flex items-start gap-2 text-xs text-gray-600 dark:text-slate-400">
                 <input
@@ -2133,9 +2131,20 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
                           onChange={v => setPurchaseField(i, { purchase_price: v }, true)} />
                         <Field label="Shares" type="number" value={row.shares}
                           onChange={v => setPurchaseField(i, { shares: v }, true)} />
-                        <Field label="DP shares" type="number" value={row.dp_shares}
+                        <Field label="DP shares" type="number" value={row.year >= 2023 ? row.dp_shares : '0'}
                           onChange={v => setPurchaseField(i, { dp_shares: v })}
-                          hint="shares exchanged at exercise" />
+                          hint="shares exchanged at exercise"
+                          disabled={row.year < 2023}
+                          placeholder={(() => {
+                            if (row.year < 2023) return 'not available'
+                            const t = (parseFloat(row.purchase_price) || 0) * (parseInt(row.shares) || 0)
+                            const p = parseFloat(row.purchase_price) || 0
+                            if (t > 0 && p > 0) {
+                              const minDp = Math.min(t * 0.10, 20000)
+                              return `default: ${Math.ceil(minDp / p)}`
+                            }
+                            return '0'
+                          })()} />
                       </div>
                       {/* Loan details */}
                       <details>

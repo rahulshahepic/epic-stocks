@@ -296,7 +296,7 @@ describe('ImportWizard', () => {
     await user.click(screen.getByRole('button', { name: /Next: Review loans/i }))
     await waitFor(() => expect(screen.getByRole('heading', { name: /Tax loans/i })).toBeInTheDocument())
     await user.click(screen.getByRole('button', { name: /Next: Refinances/i }))
-    await waitFor(() => expect(screen.getByRole('heading', { name: /Refinances/i })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('heading', { name: /Refinance chains/i })).toBeInTheDocument())
     await user.click(screen.getByRole('button', { name: /Next: Interest loans/i }))
     await waitFor(() => expect(screen.getByRole('heading', { name: /Interest loans/i })).toBeInTheDocument())
     await user.click(screen.getByRole('button', { name: /Next: Preferences/i }))

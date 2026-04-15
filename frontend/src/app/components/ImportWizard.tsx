@@ -251,6 +251,7 @@ interface ReviewedLoan {
   due_date: string
   loan_number: string
   refinances_loan_number: string
+  refi_date: string  // date of refinance (or origination for the first loan in a chain)
   enabled: boolean
   is_existing: boolean  // loaded from DB vs auto-generated
 }
@@ -430,6 +431,130 @@ function LoanReviewRow({ loan, onChange }: { loan: ReviewedLoan; onChange: (l: R
             </div>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+/** Renders a refinance chain group with clear chronological ordering and chain flow indicators. */
+function RefiChainGroup({ label, loans, onChangeLoan }: {
+  label: string
+  loans: ReviewedLoan[]
+  onChangeLoan: (updated: ReviewedLoan) => void
+}) {
+  // Sort by refi_date chronologically (oldest first), then by loan_year as fallback
+  const sorted = [...loans].sort((a, b) => {
+    if (a.refi_date && b.refi_date) return a.refi_date.localeCompare(b.refi_date)
+    if (a.refi_date && !b.refi_date) return 1
+    if (!a.refi_date && b.refi_date) return -1
+    return a.loan_year - b.loan_year
+  })
+
+  function fmtRefiDate(d: string) {
+    if (!d) return ''
+    const dt = new Date(d + 'T00:00:00')
+    return dt.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+  }
+
+  return (
+    <div>
+      <p className="mb-1.5 text-[10px] font-medium text-violet-600 dark:text-violet-400">{label}</p>
+      <div className="space-y-0">
+        {sorted.map((loan, i) => {
+          const isFirst = i === 0
+          const isLast = i === sorted.length - 1
+          const isOnly = sorted.length === 1
+          const ratePercent = ((parseFloat(loan.interest_rate) || 0) * 100).toFixed(2)
+
+          return (
+            <div key={loan.key} className="relative">
+              {/* Connecting line */}
+              {!isOnly && (
+                <div className="absolute left-[11px] top-0 bottom-0 w-px bg-violet-200 dark:bg-violet-800" />
+              )}
+              <div className={`relative flex items-start gap-2 rounded px-2 py-1.5 text-xs ${loan.enabled ? '' : 'opacity-40'}`}>
+                {/* Chain dot */}
+                <div className="relative z-10 mt-1 flex flex-col items-center">
+                  <div className={`h-[7px] w-[7px] rounded-full border-2 ${
+                    isLast && !isOnly
+                      ? 'border-emerald-500 bg-emerald-500'
+                      : isFirst
+                        ? 'border-violet-400 bg-violet-400 dark:border-violet-500 dark:bg-violet-500'
+                        : 'border-violet-300 bg-white dark:border-violet-600 dark:bg-slate-900'
+                  }`} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {/* Chain position label */}
+                    {isFirst && !isOnly && (
+                      <span className="rounded bg-violet-100 px-1 text-[9px] font-medium text-violet-600 dark:bg-violet-900/40 dark:text-violet-400">
+                        original
+                      </span>
+                    )}
+                    {!isFirst && !isLast && (
+                      <span className="rounded bg-violet-100 px-1 text-[9px] text-violet-500 dark:bg-violet-900/30 dark:text-violet-500">
+                        refi
+                      </span>
+                    )}
+                    {isLast && !isOnly && (
+                      <span className="rounded bg-emerald-100 px-1 text-[9px] font-medium text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400">
+                        current
+                      </span>
+                    )}
+                    <span className="font-medium text-gray-700 dark:text-slate-300">
+                      {ratePercent}%
+                    </span>
+                    {loan.refi_date && (
+                      <span className="text-gray-400 dark:text-slate-500">
+                        {fmtRefiDate(loan.refi_date)}
+                      </span>
+                    )}
+                    {loan.is_existing && (
+                      <span className="rounded bg-green-100 px-1 text-[9px] text-green-600 dark:bg-green-900/40 dark:text-green-400">
+                        saved
+                      </span>
+                    )}
+                    <input
+                      type="checkbox" checked={loan.enabled}
+                      onChange={e => onChangeLoan({ ...loan, enabled: e.target.checked })}
+                      className="ml-auto rounded"
+                    />
+                  </div>
+                  {loan.enabled && (
+                    <div className="mt-1 grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-[10px] text-gray-400 dark:text-slate-500">Amount ($)</label>
+                        <input
+                          type="number" step="0.01" value={loan.amount}
+                          onChange={e => onChangeLoan({ ...loan, amount: e.target.value })}
+                          className="w-full rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-gray-400 dark:text-slate-500">Rate (%)</label>
+                        <input
+                          type="number" step="0.01"
+                          value={loan.interest_rate ? String(Math.round(parseFloat(loan.interest_rate) * 1e6) / 1e4) : ''}
+                          onChange={e => onChangeLoan({ ...loan, interest_rate: e.target.value ? String(parseFloat(e.target.value) / 100) : '' })}
+                          className="w-full rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-gray-400 dark:text-slate-500">Due</label>
+                        <input
+                          type="date" value={loan.due_date}
+                          onChange={e => onChangeLoan({ ...loan, due_date: e.target.value })}
+                          className="w-full rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -1003,6 +1128,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
         due_date: fields.due_date,
         loan_number: existing?.loan_number ?? fields.loan_number,
         refinances_loan_number: fields.refinances_loan_number,
+        refi_date: fields.refi_date,
         enabled: fields.enabled,
         is_existing: !!existing,
       })
@@ -1040,7 +1166,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
         const actual = pushLoan(existKey, {
           grant_year: gy, grant_type: 'Catch-Up', loan_type: 'Tax', loan_year: vestYear,
           amount: '', estimatedAmount: taxAmount, interest_rate: String(rate), due_date: due,
-          loan_number: `wiz-${gy}-CU-T${vestYear}`, refinances_loan_number: '', enabled: true,
+          loan_number: `wiz-${gy}-CU-T${vestYear}`, refinances_loan_number: '', refi_date: '', enabled: true,
         })
         taxMap.set(vestYear, actual)
       }
@@ -1063,7 +1189,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
           key: `${gy}-Purchase-refi-orig`, grant_year: gy, grant_type: 'Purchase',
           loan_type: 'Purchase', loan_year: gy, amount: purchaseAmount ? purchaseAmount.toFixed(2) : '',
           interest_rate: String(origLoan.rate), due_date: origLoan.dueDate, loan_number: origNum,
-          refinances_loan_number: '', enabled: true, is_existing: false,
+          refinances_loan_number: '', refi_date: row.exercise_date, enabled: true, is_existing: false,
         })
         let prevNum = origNum
         for (let ri = 0; ri < refiChain.length; ri++) {
@@ -1074,7 +1200,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             loan_type: 'Purchase', loan_year: refi.loanYear,
             amount: purchaseAmount ? purchaseAmount.toFixed(2) : '',
             interest_rate: String(refi.rate), due_date: refi.dueDate, loan_number: num,
-            refinances_loan_number: prevNum, enabled: true, is_existing: false,
+            refinances_loan_number: prevNum, refi_date: refi.date, enabled: true, is_existing: false,
           })
           prevNum = num
         }
@@ -1101,7 +1227,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
         const actual = pushLoan(existKey, {
           grant_year: gy, grant_type: 'Purchase', loan_type: 'Interest', loan_year: ly,
           amount: '', estimatedAmount, interest_rate: String(interestLoanRate),
-          due_date: due, loan_number: `wiz-${gy}-I${ly}`, refinances_loan_number: '', enabled: true,
+          due_date: due, loan_number: `wiz-${gy}-I${ly}`, refinances_loan_number: '', refi_date: '', enabled: true,
         })
 
         // This interest loan becomes a prior loan for next year (at its own rate)
@@ -1151,11 +1277,13 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
         if (taxRefi) {
           // Generate original tax loan + refinance chain
           const origNum = `wiz-${gy}-${grantType[0]}-T${vestYear}-orig`
+          const vestDate = new Date(row.vest_start + 'T00:00:00')
+          vestDate.setFullYear(vestDate.getFullYear() + i)
           loans.push({
             key: `${existKey}-refi-orig`, grant_year: gy, grant_type: grantType,
             loan_type: 'Tax', loan_year: vestYear, amount: taxAmount > 0 ? taxAmount.toFixed(2) : '',
             interest_rate: String(rate), due_date: taxRefi[0].origDueDate, loan_number: origNum,
-            refinances_loan_number: '', enabled: true, is_existing: false,
+            refinances_loan_number: '', refi_date: vestDate.toISOString().slice(0, 10), enabled: true, is_existing: false,
           })
           let prevNum = origNum
           for (let ri = 0; ri < taxRefi.length; ri++) {
@@ -1165,7 +1293,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             pushLoan(existKey, {
               grant_year: gy, grant_type: grantType, loan_type: 'Tax', loan_year: vestYear,
               amount: '', estimatedAmount: taxAmount, interest_rate: String(refi.rate), due_date: refi.newDueDate,
-              loan_number: num, refinances_loan_number: prevNum, enabled: true,
+              loan_number: num, refinances_loan_number: prevNum, refi_date: refi.date, enabled: true,
             })
             prevNum = num
           }
@@ -1174,7 +1302,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
           const actual = pushLoan(existKey, {
             grant_year: gy, grant_type: grantType, loan_type: 'Tax', loan_year: vestYear,
             amount: '', estimatedAmount: taxAmount, interest_rate: String(rate), due_date: due,
-            loan_number: `wiz-${gy}-${grantType[0]}-T${vestYear}`, refinances_loan_number: '', enabled: true,
+            loan_number: `wiz-${gy}-${grantType[0]}-T${vestYear}`, refinances_loan_number: '', refi_date: '', enabled: true,
           })
           bonusTaxByYear.set(vestYear, actual)
         }
@@ -1196,7 +1324,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
         const actual = pushLoan(existKey, {
           grant_year: gy, grant_type: grantType, loan_type: 'Interest', loan_year: ly,
           amount: '', estimatedAmount: estimatedInterest, interest_rate: String(iRate), due_date: due,
-          loan_number: `wiz-${gy}-${grantType[0]}-I${ly}`, refinances_loan_number: '', enabled: true,
+          loan_number: `wiz-${gy}-${grantType[0]}-I${ly}`, refinances_loan_number: '', refi_date: '', enabled: true,
         })
         bonusOutstanding += actual
       }
@@ -2278,15 +2406,14 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
           <div className="space-y-4">
             <BackBtn onClick={back} />
             <div>
-              <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Refinances</h2>
+              <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Refinance chains</h2>
               <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
-                Historical refinances of your purchase and tax loans. These rates are used to estimate
-                interest loan amounts on the next page. If you skip, remember to update the current loan
-                rate and due date on the Loans page.
+                Your purchase loan history from origination to current rate. Oldest on top, current
+                at the bottom. These rates are used to estimate interest loan amounts on the next page.
               </p>
             </div>
             {refiLoans.length > 0 ? (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {(() => {
                   const groups = new Map<string, ReviewedLoan[]>()
                   for (const l of refiLoans) {
@@ -2295,16 +2422,9 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
                     groups.get(k)!.push(l)
                   }
                   return Array.from(groups.entries()).map(([label, loans]) => (
-                    <div key={label}>
-                      <p className="mb-1 text-[10px] font-medium text-violet-600 dark:text-violet-400">{label}</p>
-                      <div className="space-y-1 border-l-2 border-violet-200 pl-2 dark:border-violet-800">
-                        {loans.map(loan => (
-                          <LoanReviewRow key={loan.key} loan={loan} onChange={updated => {
-                            setReviewedLoans(prev => prev.map(l => l.key === loan.key ? updated : l))
-                          }} />
-                        ))}
-                      </div>
-                    </div>
+                    <RefiChainGroup key={label} label={label} loans={loans} onChangeLoan={updated => {
+                      setReviewedLoans(prev => prev.map(l => l.key === updated.key ? updated : l))
+                    }} />
                   ))
                 })()}
               </div>

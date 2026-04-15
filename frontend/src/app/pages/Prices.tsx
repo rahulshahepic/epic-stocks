@@ -16,12 +16,8 @@ type GrowthForm = {
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
-function nextMarch1(): string {
-  const today = new Date()
-  const march1 = new Date(today.getFullYear(), 2, 1)
-  return today > march1
-    ? `${today.getFullYear() + 1}-03-01`
-    : `${today.getFullYear()}-03-01`
+function nextJan1(): string {
+  return `${new Date().getFullYear() + 1}-01-01`
 }
 
 function addYears(iso: string, n: number): string {
@@ -74,7 +70,7 @@ export default function Prices() {
   const [error, setError] = useState('')
   const [removeNearby, setRemoveNearby] = useState(true)
 
-  const defaultFirst = nextMarch1()
+  const defaultFirst = nextJan1()
   const [growthForm, setGrowthForm] = useState<GrowthForm>({
     annual_growth_pct: 5,
     first_date: defaultFirst,

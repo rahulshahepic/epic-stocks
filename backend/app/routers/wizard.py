@@ -353,12 +353,14 @@ def submit(
 
     db.flush()
 
-    # Payoff sales for Purchase loans
+    # Payoff sales for Purchase loans — skip refinanced loans (their payoff events
+    # are converted to $0 "Refinanced" events, so a linked sale would be confusing)
+    refinanced_ids = {loan.refinances_loan_id for loan, _ in loan_objects if loan.refinances_loan_id is not None}
     payoff_count = 0
     if body.generate_payoff_sales:
         from app.routers.loans import _compute_payoff_sale
         for loan, _ in loan_objects:
-            if loan.loan_type == "Purchase":
+            if loan.loan_type == "Purchase" and loan.id not in refinanced_ids:
                 try:
                     suggestion = _compute_payoff_sale(loan, user, db)
                     if suggestion["shares"] > 0 and suggestion["price_per_share"] > 0:

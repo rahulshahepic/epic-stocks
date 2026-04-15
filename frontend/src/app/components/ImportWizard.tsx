@@ -1000,6 +1000,52 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
     }))
   }
 
+  /** Look up the wizard price for a given year. */
+  function priceForYear(year: number): number {
+    const match = prices.find(p => p.price && new Date(p.effective_date + 'T00:00:00').getFullYear() === year)
+    return match ? parseFloat(match.price) || 0 : 0
+  }
+
+  /** Count shares vested from all wizard grants before a target date (checks day before). */
+  function vestedSharesBeforeDate(dateStr: string): number {
+    const target = new Date(dateStr + 'T00:00:00')
+    target.setDate(target.getDate() - 1)
+    let total = 0
+    const addVested = (vestStart: string, periods: number, shares: number) => {
+      if (!vestStart || !periods || !shares) return
+      const start = new Date(vestStart + 'T00:00:00')
+      const spp = Math.floor(shares / periods)
+      for (let i = 0; i < periods; i++) {
+        const vd = new Date(start)
+        vd.setFullYear(vd.getFullYear() + i)
+        if (vd <= target) total += (i === periods - 1) ? shares - spp * (periods - 1) : spp
+      }
+    }
+    for (const row of purchaseRows) {
+      if (!row.participated || !(parseInt(row.shares) > 0)) continue
+      addVested(row.vest_start, row.periods, parseInt(row.shares))
+    }
+    for (const row of catchUpRows) {
+      if (!row.included || !(parseInt(row.shares) > 0)) continue
+      addVested(row.vest_start, row.periods, parseInt(row.shares))
+    }
+    for (const row of bonusRows) {
+      if (!(parseInt(row.shares) > 0)) continue
+      addVested(row.vest_start, row.periods, parseInt(row.shares))
+    }
+    return total
+  }
+
+  /** Count dp_shares consumed by other purchase grants exercised before the target date. */
+  function dpSharesConsumedBefore(exerciseDate: string, excludeYear: number): number {
+    let consumed = 0
+    for (const row of purchaseRows) {
+      if (!row.participated || row.year === excludeYear || row.year < 2023) continue
+      if (row.exercise_date < exerciseDate) consumed += Math.abs(parseInt(row.dp_shares) || 0)
+    }
+    return consumed
+  }
+
   async function handleScheduleReview(saveSettings = false) {
     setSubmitting(true)
     setSubmitError('')
@@ -2133,19 +2179,30 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
                           onChange={v => setPurchaseField(i, { shares: v }, true)} />
                         <Field label="DP shares" type="number" value={row.year >= 2023 ? row.dp_shares : '0'}
                           onChange={v => setPurchaseField(i, { dp_shares: v })}
-                          hint="shares exchanged at exercise"
+                          hint={(() => {
+                            if (row.year < 2023) return 'not available before 2023'
+                            const total = (parseFloat(row.purchase_price) || 0) * (parseInt(row.shares) || 0)
+                            const loanAmt = parseFloat(row.loan_amount) || 0
+                            const dp = total - loanAmt
+                            const exYear = new Date(row.exercise_date + 'T00:00:00').getFullYear()
+                            const mp = priceForYear(exYear)
+                            if (dp > 0 && mp > 0) return `min ${Math.ceil(dp / mp).toLocaleString()} at $${mp}/sh`
+                            return 'shares exchanged at exercise'
+                          })()}
                           disabled={row.year < 2023}
-                          placeholder={(() => {
-                            if (row.year < 2023) return 'not available'
-                            const t = (parseFloat(row.purchase_price) || 0) * (parseInt(row.shares) || 0)
-                            const p = parseFloat(row.purchase_price) || 0
-                            if (t > 0 && p > 0) {
-                              const minDp = Math.min(t * 0.10, 20000)
-                              return `default: ${Math.ceil(minDp / p)}`
-                            }
-                            return '0'
-                          })()} />
+                          placeholder={row.year < 2023 ? 'not available' : '0'} />
                       </div>
+                      {row.year >= 2023 && Math.abs(parseInt(row.dp_shares) || 0) > 0 && (() => {
+                        const needed = Math.abs(parseInt(row.dp_shares) || 0)
+                        const vested = vestedSharesBeforeDate(row.exercise_date)
+                        const consumed = dpSharesConsumedBefore(row.exercise_date, row.year)
+                        const available = vested - consumed
+                        return needed > available ? (
+                          <p className="text-[10px] text-red-600 dark:text-red-400">
+                            Not enough vested shares: need {needed.toLocaleString()}, only {available.toLocaleString()} available from prior grants
+                          </p>
+                        ) : null
+                      })()}
                       {/* Loan details */}
                       <details>
                         <summary className="cursor-pointer text-xs font-medium text-rose-700 hover:text-rose-800 dark:text-rose-400 list-none">
@@ -2314,7 +2371,15 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             </div>
           )}
 
-          <NextBtn label="Next: Review loans →" onClick={enterLoansReview} />
+          <NextBtn label="Next: Review loans →" onClick={enterLoansReview}
+            disabled={purchaseRows.some(row => {
+              if (!row.participated || row.year < 2023) return false
+              const needed = Math.abs(parseInt(row.dp_shares) || 0)
+              if (needed <= 0) return false
+              const vested = vestedSharesBeforeDate(row.exercise_date)
+              const consumed = dpSharesConsumedBefore(row.exercise_date, row.year)
+              return needed > vested - consumed
+            })} />
         </div>
       )}
 
@@ -2391,6 +2456,14 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             // Pre-fill purchase price for each row from the price entered for that exercise year
             setPurchaseRows(rows => rows.map(r => {
               if (r.purchase_price) return r
+              const exerciseYear = new Date(r.exercise_date + 'T00:00:00').getFullYear()
+              const match = prices.find(p => p.price && new Date(p.effective_date + 'T00:00:00').getFullYear() === exerciseYear)
+              return match ? { ...r, purchase_price: match.price } : r
+            }))
+            // Pre-fill bonus cost basis: 2020 bonus is $0, others use FMV at exercise
+            setBonusRows(rows => rows.map(r => {
+              if (r.purchase_price || r.type === 'Free') return r
+              if (r.year === 2020 && r.type === 'Bonus') return { ...r, purchase_price: '0' }
               const exerciseYear = new Date(r.exercise_date + 'T00:00:00').getFullYear()
               const match = prices.find(p => p.price && new Date(p.effective_date + 'T00:00:00').getFullYear() === exerciseYear)
               return match ? { ...r, purchase_price: match.price } : r

@@ -263,15 +263,21 @@ function addYearsToDate(dateStr: string, years: number): string {
 }
 
 function initPurchaseRows(): PurchaseGrantRow[] {
-  return EPIC_GRANT_SCHEDULE.filter(g => g.type === 'Purchase').map(g => ({
-    year: g.year, vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
-    participated: false,
-    purchase_price: '',
-    shares: '', dp_shares: '0', dp_cash: '',
-    loan_amount: '', loan_due_date: addYearsToDate(g.exercise_date, LOAN_TERM_YEARS), interest_rate: '',
-    existing_purchase_loan_number: '',
-    existing_refinance_loans: [],
-  }))
+  return EPIC_GRANT_SCHEDULE.filter(g => g.type === 'Purchase').map(g => {
+    const refiChain = PURCHASE_REFI_CHAINS[g.year]
+    const lastRefi = refiChain?.[refiChain.length - 1]
+    return {
+      year: g.year, vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
+      participated: false,
+      purchase_price: '',
+      shares: '', dp_shares: '0', dp_cash: '',
+      loan_amount: '',
+      loan_due_date: lastRefi?.dueDate ?? addYearsToDate(g.exercise_date, LOAN_TERM_YEARS),
+      interest_rate: lastRefi ? String(lastRefi.rate) : '',
+      existing_purchase_loan_number: '',
+      existing_refinance_loans: [],
+    }
+  })
 }
 
 function initCatchUpRows(): CatchUpRow[] {
@@ -690,8 +696,18 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
         .map(g => {
           const existing = grantByKey.get(`${g.year}-Purchase`)
           const loans = loansByKey.get(`${g.year}-Purchase`) ?? []
-          const purchaseLoan = loans.find(l => l.loan_type === 'Purchase' && !l.refinances_loan_id)
-          const refinanceLoans = loans.filter(l => l.refinances_loan_id != null)
+          // Find the active (chain tip) purchase loan — the one NOT refinanced by any other loan.
+          // This is the current loan the user cares about, not the historical original.
+          const purchaseTypeLoans = loans.filter(l => l.loan_type === 'Purchase')
+          const refinancedLoanIds = new Set(purchaseTypeLoans.map(l => l.refinances_loan_id).filter(Boolean))
+          const activePurchaseLoan = purchaseTypeLoans.length > 0
+            ? (purchaseTypeLoans.find(l => !refinancedLoanIds.has(l.id)) ?? purchaseTypeLoans[purchaseTypeLoans.length - 1])
+            : null
+          // Historical chain = all purchase-type loans except the active one
+          const historicalChainLoans = purchaseTypeLoans.filter(l => l.id !== activePurchaseLoan?.id)
+          // Smart defaults from refi chain data when no existing loans
+          const refiChain = PURCHASE_REFI_CHAINS[g.year]
+          const lastRefi = refiChain?.[refiChain.length - 1]
           return {
             year: g.year, vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
             participated: existing != null,
@@ -699,11 +715,15 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             shares: existing ? String(existing.shares) : '',
             dp_shares: existing ? String(Math.abs(existing.dp_shares)) : '0',
             dp_cash: '',
-            loan_amount: purchaseLoan ? String(purchaseLoan.amount) : '',
-            loan_due_date: purchaseLoan ? purchaseLoan.due_date : addYearsToDate(g.exercise_date, LOAN_TERM_YEARS),
-            interest_rate: purchaseLoan ? String(purchaseLoan.interest_rate) : '',
-            existing_purchase_loan_number: purchaseLoan?.loan_number ?? '',
-            existing_refinance_loans: refinanceLoans,
+            loan_amount: activePurchaseLoan ? String(activePurchaseLoan.amount) : '',
+            loan_due_date: activePurchaseLoan
+              ? activePurchaseLoan.due_date
+              : (lastRefi?.dueDate ?? addYearsToDate(g.exercise_date, LOAN_TERM_YEARS)),
+            interest_rate: activePurchaseLoan
+              ? String(activePurchaseLoan.interest_rate)
+              : (lastRefi ? String(lastRefi.rate) : ''),
+            existing_purchase_loan_number: activePurchaseLoan?.loan_number ?? '',
+            existing_refinance_loans: historicalChainLoans,
           }
         })
 

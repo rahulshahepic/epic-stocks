@@ -528,7 +528,7 @@ export default function Grants() {
                 const maxLoan = total > 0 ? Math.max(total * 0.90, total - 20000) : Infinity
                 setLoanAmount(total > 0 ? Math.min(+v, maxLoan) : +v)
               }} />
-              <Field label="Interest Rate (%)" type="number" step="0.01" value={loanRate} onChange={v => setLoanRate(+v)} />
+              <Field label="Interest Rate (%)" type="number" step="0.01" value={+(loanRate * 100).toFixed(4)} onChange={v => setLoanRate(+v / 100)} />
               <Field label="Due Date" type="date" value={loanDueDate} onChange={v => setLoanDueDate(v)} />
               <Field label="Loan Number" type="text" value={loanNumber} onChange={v => setLoanNumber(v)} />
             </div>

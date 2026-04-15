@@ -328,7 +328,10 @@ function LoanForm({
         <Field label="Loan #" value={loan.loan_number} onChange={f('loan_number')} placeholder="e.g. 123456" />
         <Field label="Year issued" type="number" value={loan.loan_year} onChange={f('loan_year')} />
         <Field label="Amount ($)" type="number" step="0.01" value={loan.amount} onChange={f('amount')} />
-        <Field label="Interest rate" type="number" step="0.001" value={loan.interest_rate} onChange={f('interest_rate')} hint="e.g. 0.045" />
+        <Field label="Interest rate (%)" type="number" step="0.01"
+          value={loan.interest_rate ? String(Math.round(parseFloat(loan.interest_rate) * 1e6) / 1e4) : ''}
+          onChange={v => onChange({ ...loan, interest_rate: v ? String(parseFloat(v) / 100) : '' })}
+          hint="e.g. 4.5" />
         <Field label="Due date" type="date" value={loan.due_date} onChange={f('due_date')} />
         {showRefinancesField && (
           <Field label="Refinances loan #" value={loan.refinances_loan_number} onChange={f('refinances_loan_number')} hint="prior loan #" />
@@ -403,10 +406,11 @@ function LoanReviewRow({ loan, onChange }: { loan: ReviewedLoan; onChange: (l: R
               />
             </div>
             <div>
-              <label className="block text-[10px] text-gray-400 dark:text-slate-500">Rate</label>
+              <label className="block text-[10px] text-gray-400 dark:text-slate-500">Rate (%)</label>
               <input
-                type="number" step="0.0001" value={loan.interest_rate}
-                onChange={e => onChange({ ...loan, interest_rate: e.target.value })}
+                type="number" step="0.01"
+                value={loan.interest_rate ? String(Math.round(parseFloat(loan.interest_rate) * 1e6) / 1e4) : ''}
+                onChange={e => onChange({ ...loan, interest_rate: e.target.value ? String(parseFloat(e.target.value) / 100) : '' })}
                 className="w-full rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
               />
             </div>
@@ -1266,8 +1270,11 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
       return prev.map(l => {
         if (!l.refinances_loan_number) return l
         // Walk up the chain to find the original (non-refi) loan
+        const visited = new Set<string>()
         let parent = byLoanNumber.get(l.refinances_loan_number)
         while (parent?.refinances_loan_number) {
+          if (visited.has(parent.loan_number)) break // circular reference guard
+          visited.add(parent.loan_number)
           parent = byLoanNumber.get(parent.refinances_loan_number)
         }
         if (parent && parent.amount) return { ...l, amount: parent.amount }
@@ -1733,7 +1740,10 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
                       <Field label="Loan #" value={tl.loan_number} onChange={v => update({ ...tl, loan_number: v })} />
                       <Field label="Year issued" type="number" value={tl.due_date.slice(0, 4) || String(new Date(vestDate).getFullYear())} onChange={_ => {}} />
                       <Field label="Amount ($)" type="number" step="0.01" value={tl.amount} onChange={v => update({ ...tl, amount: v })} />
-                      <Field label="Interest rate" type="number" step="0.001" value={tl.interest_rate} onChange={v => update({ ...tl, interest_rate: v })} hint="e.g. 0.05" />
+                      <Field label="Interest rate (%)" type="number" step="0.01"
+                        value={tl.interest_rate ? String(Math.round(parseFloat(tl.interest_rate) * 1e6) / 1e4) : ''}
+                        onChange={v => update({ ...tl, interest_rate: v ? String(parseFloat(v) / 100) : '' })}
+                        hint="e.g. 5" />
                       <Field label="Due date" type="date" value={tl.due_date} onChange={v => update({ ...tl, due_date: v })} />
                     </div>
                   )}
@@ -1948,9 +1958,10 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
                               const capped = Math.min(parseFloat(v) || 0, maxLoan)
                               setPurchaseField(i, { loan_amount: total > 0 ? capped.toFixed(2) : v })
                             }} />
-                          <Field label="Interest rate" type="number" step="0.0001" value={row.interest_rate}
-                            onChange={v => setPurchaseField(i, { interest_rate: v })}
-                            placeholder="e.g. 0.0178" hint="from loan statement" />
+                          <Field label="Interest rate (%)" type="number" step="0.01"
+                            value={row.interest_rate ? String(Math.round(parseFloat(row.interest_rate) * 1e6) / 1e4) : ''}
+                            onChange={v => setPurchaseField(i, { interest_rate: v ? String(parseFloat(v) / 100) : '' })}
+                            placeholder="e.g. 1.78" hint="from loan statement" />
                           <Field label="Due date" type="date" value={row.loan_due_date}
                             onChange={v => setPurchaseField(i, { loan_due_date: v })} />
                         </div>

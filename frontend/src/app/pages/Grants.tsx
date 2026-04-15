@@ -523,8 +523,12 @@ export default function Grants() {
               {mode === 'edit' && editLoanId != null ? 'Purchase Loan' : mode === 'edit' ? 'Add Loan' : 'Optional Loan'}
             </h3>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Loan Amount" type="number" step="0.01" value={loanAmount} onChange={v => setLoanAmount(+v)} />
-              <Field label="Interest Rate (%)" type="number" step="0.01" value={loanRate} onChange={v => setLoanRate(+v)} />
+              <Field label="Loan Amount" type="number" step="0.01" value={loanAmount} onChange={v => {
+                const total = (form.price || 0) * (form.shares || 0)
+                const maxLoan = total > 0 ? Math.max(total * 0.90, total - 20000) : Infinity
+                setLoanAmount(total > 0 ? Math.min(+v, maxLoan) : +v)
+              }} />
+              <Field label="Interest Rate (%)" type="number" step="0.01" value={+(loanRate * 100).toFixed(4)} onChange={v => setLoanRate(+v / 100)} />
               <Field label="Due Date" type="date" value={loanDueDate} onChange={v => setLoanDueDate(v)} />
               <Field label="Loan Number" type="text" value={loanNumber} onChange={v => setLoanNumber(v)} />
             </div>

@@ -284,7 +284,7 @@ describe('ImportWizard', () => {
     expect(scheduleButtons.length).toBeGreaterThanOrEqual(3)
   })
 
-  it('schedule path navigates prices → grants → preferences', async () => {
+  it('schedule path navigates prices → grants → tax → refi → interest → preferences', async () => {
     mockApi()
     const user = userEvent.setup()
     renderWizard()
@@ -293,6 +293,12 @@ describe('ImportWizard', () => {
     expect(screen.getByText(/Annual share prices/i)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /Next: Enter grants/i }))
     expect(screen.getByText(/Your grants/i)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Next: Review loans/i }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: /Tax loans/i })).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /Next: Refinances/i }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: /Refinances/i })).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: /Next: Interest loans/i }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: /Interest loans/i })).toBeInTheDocument())
     await user.click(screen.getByRole('button', { name: /Next: Preferences/i }))
     expect(screen.getByText(/A couple quick questions/i)).toBeInTheDocument()
   })
@@ -306,6 +312,9 @@ describe('ImportWizard', () => {
     await waitFor(() => screen.getByRole('button', { name: /Let's go/i }))
     await user.click(screen.getByRole('button', { name: /Let's go/i }))
     await user.click(screen.getByRole('button', { name: /Next: Enter grants/i }))
+    await user.click(screen.getByRole('button', { name: /Next: Review loans/i }))
+    await user.click(screen.getByRole('button', { name: /Next: Refinances/i }))
+    await user.click(screen.getByRole('button', { name: /Next: Interest loans/i }))
     await user.click(screen.getByRole('button', { name: /Next: Preferences/i }))
     await user.click(screen.getByRole('button', { name: /Skip/i }))
     // Schedule path goes to review before done

@@ -271,14 +271,16 @@ function addYearsToDate(dateStr: string, years: number): string {
 function initPurchaseRows(): PurchaseGrantRow[] {
   return EPIC_GRANT_SCHEDULE.filter(g => g.type === 'Purchase').map(g => {
     const origLoan = ORIGINAL_PURCHASE_LOANS[g.year]
+    const refiChain = PURCHASE_REFI_CHAINS[g.year]
+    const lastRefi = refiChain?.[refiChain.length - 1]
     return {
       year: g.year, vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
       participated: false,
       purchase_price: '',
       shares: '', dp_shares: '0', dp_cash: '',
       loan_amount: '',
-      loan_due_date: origLoan?.dueDate ?? addYearsToDate(g.exercise_date, LOAN_TERM_YEARS),
-      interest_rate: origLoan ? String(origLoan.rate) : '',
+      loan_due_date: lastRefi?.dueDate ?? origLoan?.dueDate ?? addYearsToDate(g.exercise_date, LOAN_TERM_YEARS),
+      interest_rate: lastRefi ? String(lastRefi.rate) : (origLoan ? String(origLoan.rate) : ''),
       existing_purchase_loan_number: '',
       existing_refinance_loans: [],
     }
@@ -882,9 +884,12 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             : null
           // Historical chain = all purchase-type loans except the active one
           const historicalChainLoans = purchaseTypeLoans.filter(l => l.id !== activePurchaseLoan?.id)
-          // Smart defaults: use original purchase loan terms (not refi'd terms)
-          // Refinances are separate loan entries that extend/change the due date
+          // Use the last refinance's terms as current loan defaults (not the original's).
+          // The refi chain represents historical rate/due-date changes; the active loan
+          // should reflect the most recent terms.
           const origLoan = ORIGINAL_PURCHASE_LOANS[g.year]
+          const refiChain = PURCHASE_REFI_CHAINS[g.year]
+          const lastRefi = refiChain?.[refiChain.length - 1]
           return {
             year: g.year, vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
             participated: existing != null,
@@ -893,12 +898,12 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             dp_shares: existing ? String(Math.abs(existing.dp_shares)) : '0',
             dp_cash: '',
             loan_amount: activePurchaseLoan ? String(activePurchaseLoan.amount) : '',
-            loan_due_date: activePurchaseLoan
-              ? activePurchaseLoan.due_date
-              : (origLoan?.dueDate ?? addYearsToDate(g.exercise_date, LOAN_TERM_YEARS)),
-            interest_rate: activePurchaseLoan
-              ? String(activePurchaseLoan.interest_rate)
-              : (origLoan ? String(origLoan.rate) : ''),
+            loan_due_date: lastRefi?.dueDate
+              ?? (activePurchaseLoan ? activePurchaseLoan.due_date
+                : (origLoan?.dueDate ?? addYearsToDate(g.exercise_date, LOAN_TERM_YEARS))),
+            interest_rate: lastRefi ? String(lastRefi.rate)
+              : (activePurchaseLoan ? String(activePurchaseLoan.interest_rate)
+                : (origLoan ? String(origLoan.rate) : '')),
             existing_purchase_loan_number: activePurchaseLoan?.loan_number ?? '',
             existing_refinance_loans: historicalChainLoans,
           }
@@ -1080,8 +1085,20 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             const extraLoans = reviewedToWizardLoans(r.year, 'Purchase')
             // Find the last refinance in the chain so the current purchase loan references it
             const refiChain = extraLoans.filter(l => l.loan_type === 'Purchase' && l.refinances_loan_number)
-            const lastRefiNum = refiChain.length > 0 ? refiChain[refiChain.length - 1].loan_number : ''
+            const hasRefiChain = refiChain.length > 0
+            const lastRefiNum = hasRefiChain ? refiChain[refiChain.length - 1].loan_number : ''
             const currentLoanNum = r.existing_purchase_loan_number || `wiz-${r.year}-0`
+            // When a refi chain exists, the last entry in the chain IS the active loan.
+            // Don't create a separate "current" loan — it would duplicate the original's
+            // terms and generate a spurious payoff event at the old due date.
+            const currentLoan: WizardLoan[] = hasRefiChain ? [] : [{
+              loan_number: currentLoanNum,
+              loan_type: 'Purchase' as const, loan_year: r.year,
+              amount: parseFloat(r.loan_amount) || Math.max(0, (parseInt(r.shares) || 0) * (parseFloat(r.purchase_price) || 0) - (parseFloat(r.dp_cash) || 0)),
+              interest_rate: parseFloat(r.interest_rate) || 0,
+              due_date: r.loan_due_date,
+              refinances_loan_number: lastRefiNum,
+            }]
             return {
               year: r.year, type: 'Purchase' as const,
               shares: parseInt(r.shares) || 0,
@@ -1090,14 +1107,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
               dp_shares: -(Math.abs(parseInt(r.dp_shares) || 0)),
               election_83b: false,
               loans: [
-                {
-                  loan_number: currentLoanNum,
-                  loan_type: 'Purchase' as const, loan_year: r.year,
-                  amount: parseFloat(r.loan_amount) || Math.max(0, (parseInt(r.shares) || 0) * (parseFloat(r.purchase_price) || 0) - (parseFloat(r.dp_cash) || 0)),
-                  interest_rate: parseFloat(r.interest_rate) || 0,
-                  due_date: r.loan_due_date,
-                  refinances_loan_number: lastRefiNum,
-                },
+                ...currentLoan,
                 ...extraLoans,
               ] as WizardLoan[],
             }

@@ -36,7 +36,7 @@ function mockApi() {
       return new Response(JSON.stringify([]), { status: 200 })
     }
     if (url.includes('/api/config')) {
-      return new Response(JSON.stringify({ epic_onboarding_url: '', epic_mode: false, email_notifications_available: false, vapid_public_key: '', resend_from: '' }), { status: 200 })
+      return new Response(JSON.stringify({ epic_mode: false, email_notifications_available: false, vapid_public_key: '', resend_from: '' }), { status: 200 })
     }
     if (url.includes('/api/tax-settings')) {
       return new Response(JSON.stringify({
@@ -409,7 +409,7 @@ describe('ImportWizard', () => {
         return new Response(JSON.stringify([]), { status: 200 })
       }
       if (url.includes('/api/config')) {
-        return new Response(JSON.stringify({ epic_onboarding_url: '', epic_mode: false, email_notifications_available: false, vapid_public_key: '', resend_from: '' }), { status: 200 })
+        return new Response(JSON.stringify({ epic_mode: false, email_notifications_available: false, vapid_public_key: '', resend_from: '' }), { status: 200 })
       }
       if (url.includes('/api/tax-settings')) {
         return new Response(JSON.stringify({

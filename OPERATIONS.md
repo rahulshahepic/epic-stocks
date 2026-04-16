@@ -164,7 +164,7 @@ These are the only values that need to be set in GitHub. Cryptographic secrets (
 | `VPS_HOST` | Variable | VPS hostname or IP |
 | `DOMAIN` | Variable | Your domain name |
 | `TRUSTED_PROXY_IPS` | Variable | Cloudflare IP ranges for real-IP forwarding |
-| `EPIC_ONBOARDING_URL` | Variable | (optional) pre-filled onboarding template URL |
+
 
 ### Multi-app network
 

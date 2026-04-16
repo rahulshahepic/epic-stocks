@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useConfig } from '../../scaffold/hooks/useConfig.ts'
+
 
 const COLUMN_GUIDE = {
   Schedule: [
@@ -55,7 +55,6 @@ interface ImportResult {
 }
 
 export default function ImportExport() {
-  const config = useConfig()
   const navigate = useNavigate()
   const [status, setStatus] = useState<Status>('idle')
   const [result, setResult] = useState<ImportResult | null>(null)
@@ -192,19 +191,7 @@ export default function ImportExport() {
           Upload a .xlsx file with Schedule, Loans, Prices, and/or Sales sheets. Only sheets present in your file will be processed — others are left unchanged.
         </span>
 
-        {config?.epic_onboarding_url && (
-          <a
-            href={config.epic_onboarding_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-3 flex flex-col rounded-md border border-rose-300 bg-rose-50 p-3 hover:border-rose-500 hover:shadow-sm dark:border-rose-700 dark:bg-rose-950/30 dark:hover:border-rose-500"
-          >
-            <span className="text-xs font-semibold text-rose-700 dark:text-rose-300">On Epic's network? Download your pre-filled file first →</span>
-            <span className="mt-0.5 text-xs text-rose-600 dark:text-rose-400">
-              Grant and loan structure already filled in — just add your prices, then upload below.
-            </span>
-          </a>
-        )}
+
 
         <div className="mt-3 space-y-3">
           <label htmlFor="import-file" className="sr-only">Upload Excel file (.xlsx)</label>

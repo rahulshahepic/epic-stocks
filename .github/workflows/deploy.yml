@@ -125,7 +125,7 @@ jobs:
             SMTP_FROM=${{ vars.SMTP_FROM }}
             POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
             TRUSTED_PROXY_IPS=${{ vars.TRUSTED_PROXY_IPS }}
-            EPIC_ONBOARDING_URL=${{ vars.EPIC_ONBOARDING_URL }}
+
             EPIC_MODE=${{ vars.EPIC_MODE }}
             CACHE_INVALIDATE_SECRET=${CACHE_INVALIDATE_SECRET}
             ACME_EMAIL=${{ vars.ACME_EMAIL }}

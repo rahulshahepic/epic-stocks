@@ -353,7 +353,7 @@ cp .env.example .env
 | `REDIS_URL` | No | Redis connection string for the timeline L2 cache (e.g. `redis://localhost:6379/0`). When set, computed event timelines are cached in Redis and pre-warmed in the background after data writes, allowing cache hits to survive process restarts and be shared across replicas. Omit for single-process deployments. The `redis` service in `docker-compose.yml` provides this automatically when `REDIS_URL=redis://redis:6379/0`. |
 | `EPIC_MODE` | No | Set to `true` to hard-lock Epic Mode on at the env level (overrides the admin toggle). Normally leave unset and use the Admin panel toggle instead. |
 | `CACHE_INVALIDATE_SECRET` | No (Epic deployments) | Bearer token secret for `POST /api/internal/cache-invalidate`. Epic's batch systems POST to this endpoint after writing data. **Auto-generated on production deploy** and stored in `.secrets/cache_invalidate_secret`. Read the generated value off the server to configure Epic's webhook caller. Endpoint returns 503 if unset. |
-| `EPIC_ONBOARDING_URL` | No | URL surfaced on the login/onboarding page for Epic users who need to set up their account. |
+
 | `POSTGRES_PASSWORD` | Yes (local dev) | Password for the `postgres` user. **Auto-generated on production deploy.** |
 | `KEY_ENCRYPTION_KEY` | No | Enables per-user AES-256-GCM encryption. Set once, never changes. **Auto-generated on production deploy** and stored in `.secrets/key_encryption_key`. Wraps the operational master key stored in the database. |
 | `LEGACY_MASTER_KEY` | No | One-time migration aid. Set to the old `ENCRYPTION_MASTER_KEY` value on first deploy after upgrading to the two-level key hierarchy; unset it after the first successful boot. |

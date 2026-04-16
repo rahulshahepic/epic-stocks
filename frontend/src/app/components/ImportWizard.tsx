@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../../api.ts'
 import type { WizardGrant, WizardLoan, WizardGrantTemplate, TaxSettings, GrantEntry, PriceEntry, LoanEntry } from '../../api.ts'
-import { useConfig } from '../../scaffold/hooks/useConfig.ts'
+
 import { useApiData } from '../hooks/useApiData.ts'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -619,7 +619,6 @@ function RefiChainGroup({ label, loans, onChangeLoan }: {
 export default function ImportWizard({ onComplete, isPage = false }: { onComplete?: () => void; isPage?: boolean }) {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const config = useConfig()
   const fileRef = useRef<HTMLInputElement>(null)
 
   // Navigation
@@ -1614,19 +1613,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             Upload an Excel file with a Schedule and/or Prices sheet. Missing share counts and amounts are fine — you'll fill those in next.
           </p>
 
-          {config?.epic_onboarding_url && (
-            <a
-              href={config.epic_onboarding_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex flex-col rounded-lg border-2 border-rose-200 bg-rose-50 p-3 hover:border-rose-400 dark:border-rose-800 dark:bg-rose-950/30"
-            >
-              <span className="text-xs font-semibold text-rose-700 dark:text-rose-300">On Epic's network? Download your pre-filled structure file →</span>
-              <span className="mt-0.5 text-[11px] text-gray-500 dark:text-slate-400">
-                Pre-fills your vesting schedule. Upload it below.
-              </span>
-            </a>
-          )}
+
           {uploadError && <p className="text-xs text-red-500">{uploadError}</p>}
           <input
             ref={fileRef}

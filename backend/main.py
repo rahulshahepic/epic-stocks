@@ -560,7 +560,7 @@ def client_config():
         "vapid_public_key": os.environ.get("VAPID_PUBLIC_KEY", ""),
         "email_notifications_available": email_configured(),
         "resend_from": os.environ.get("RESEND_FROM", ""),
-        "epic_onboarding_url": os.environ.get("EPIC_ONBOARDING_URL", ""),
+
         "epic_mode": is_epic_mode(),
     }
 

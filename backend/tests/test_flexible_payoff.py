@@ -185,6 +185,127 @@ def test_payoff_falls_back_to_same_tranche_when_insufficient_coverage(client, db
     assert loan_resp.status_code == 201
 
 
+def test_regenerate_creates_missing_payoff_sales(client, db_session):
+    """regenerate-all-payoff-sales creates sales for loans that don't have one yet."""
+    register_user(client)
+    _setup_data(client)
+
+    # Create a purchase loan WITH payoff sale and an interest loan WITHOUT
+    purchase_loan = client.post(
+        "/api/loans?generate_payoff_sale=true",
+        json={
+            "grant_year": 2018, "grant_type": "Purchase",
+            "loan_type": "Purchase", "loan_year": 2018,
+            "amount": 5000.0, "interest_rate": 0.05,
+            "due_date": "2030-01-01",
+        },
+    ).json()
+    interest_loan = client.post(
+        "/api/loans?generate_payoff_sale=false",
+        json={
+            "grant_year": 2018, "grant_type": "Purchase",
+            "loan_type": "Interest", "loan_year": 2019,
+            "amount": 500.0, "interest_rate": 0.03,
+            "due_date": "2030-01-01",
+        },
+    ).json()
+
+    # Only one sale exists (for the purchase loan)
+    sales_before = client.get("/api/sales").json()
+    assert len(sales_before) == 1
+    assert sales_before[0]["loan_id"] == purchase_loan["id"]
+
+    # Regenerate should create the missing sale for the interest loan
+    resp = client.post("/api/loans/regenerate-all-payoff-sales")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["updated"] == 1  # purchase loan's sale updated
+    assert data["created"] == 1  # interest loan's sale created
+
+    sales_after = client.get("/api/sales").json()
+    assert len(sales_after) == 2
+    loan_ids = {s["loan_id"] for s in sales_after}
+    assert purchase_loan["id"] in loan_ids
+    assert interest_loan["id"] in loan_ids
+
+
+def test_regenerate_skips_refinanced_loans(client, db_session):
+    """regenerate-all-payoff-sales does not create sales for refinanced loans."""
+    register_user(client)
+    _setup_data(client)
+
+    # Create original loan without payoff sale
+    original = client.post(
+        "/api/loans?generate_payoff_sale=false",
+        json={
+            "grant_year": 2018, "grant_type": "Purchase",
+            "loan_type": "Purchase", "loan_year": 2018,
+            "amount": 5000.0, "interest_rate": 0.05,
+            "due_date": "2030-01-01", "loan_number": "L001",
+        },
+    ).json()
+
+    # Create refinancing loan that references the original
+    refi = client.post(
+        "/api/loans?generate_payoff_sale=false",
+        json={
+            "grant_year": 2018, "grant_type": "Purchase",
+            "loan_type": "Purchase", "loan_year": 2022,
+            "amount": 5000.0, "interest_rate": 0.04,
+            "due_date": "2032-01-01",
+            "refinances_loan_id": original["id"],
+        },
+    ).json()
+
+    resp = client.post("/api/loans/regenerate-all-payoff-sales")
+    assert resp.status_code == 200
+
+    sales = client.get("/api/sales").json()
+    loan_ids = {s["loan_id"] for s in sales}
+    # Only the refi loan should get a sale, not the refinanced original
+    assert original["id"] not in loan_ids
+    assert refi["id"] in loan_ids
+
+
+def test_wizard_creates_payoff_sales_for_interest_loans(client, db_session):
+    """Wizard submit generates payoff sales for interest loans, not just purchase."""
+    register_user(client)
+    resp = client.post("/api/wizard/submit", json={
+        "grants": [{
+            "year": 2018, "type": "Purchase", "shares": 10000, "price": 5.0,
+            "vest_start": "2019-01-01", "periods": 4, "exercise_date": "2018-01-01",
+            "loans": [
+                {
+                    "loan_type": "Purchase", "loan_year": 2018,
+                    "amount": 5000.0, "interest_rate": 0.05,
+                    "due_date": "2030-01-01",
+                },
+                {
+                    "loan_type": "Interest", "loan_year": 2019,
+                    "amount": 500.0, "interest_rate": 0.03,
+                    "due_date": "2030-01-01",
+                },
+            ],
+        }],
+        "prices": [{"effective_date": "2020-01-01", "price": 20.0}],
+        "generate_payoff_sales": True,
+    })
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["payoff_sales"] == 2  # both purchase AND interest
+
+    sales = client.get("/api/sales").json()
+    assert len(sales) == 2
+    loan_types = set()
+    loans = client.get("/api/loans").json()
+    sale_loan_ids = {s["loan_id"] for s in sales}
+    for loan in loans:
+        if loan["id"] in sale_loan_ids:
+            loan_types.add(loan["loan_type"])
+    assert "Purchase" in loan_types
+    assert "Interest" in loan_types
+
+
 def test_tax_settings_update_does_not_expose_flexible_flag_for_update(client, db_session):
     """flexible_payoff_enabled is read-only; PUT should not change system_settings."""
     register_user(client)

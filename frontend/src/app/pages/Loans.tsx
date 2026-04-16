@@ -196,7 +196,10 @@ export default function Loans() {
       const result = await api.regenerateAllPayoffSales()
       broadcastChange('sales')
       reloadSales()
-      alert(`Updated ${result.updated} payoff sale${result.updated !== 1 ? 's' : ''}.`)
+      const parts: string[] = []
+      if (result.updated) parts.push(`updated ${result.updated}`)
+      if (result.created) parts.push(`created ${result.created}`)
+      alert(parts.length ? `Payoff sales: ${parts.join(', ')}.` : 'No changes needed.')
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : 'Failed to regenerate payoff sales')
     } finally {

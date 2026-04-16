@@ -398,28 +398,43 @@ def update_loan(
 
 @router.post("/regenerate-all-payoff-sales")
 def regenerate_all_payoff_sales(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Recompute payoff sale share counts for all future loans that have a linked payoff sale."""
+    """Recompute payoff sale share counts for all future loans, creating missing sales."""
     from datetime import date as date_type
     today = date_type.today()
     future_loans = db.query(Loan).filter(Loan.user_id == user.id, Loan.due_date >= today).all()
+    # Skip refinanced loans — they show as $0 "Refinanced" events
+    refinanced_ids = {ln.refinances_loan_id for ln in future_loans if ln.refinances_loan_id is not None}
     ts = _get_tax_settings_dict(user, db)
     updated = 0
+    created = 0
     for loan in future_loans:
-        existing_sale = db.query(Sale).filter(Sale.loan_id == loan.id, Sale.user_id == user.id).first()
-        if not existing_sale:
+        if loan.id in refinanced_ids:
             continue
+        existing_sale = db.query(Sale).filter(Sale.loan_id == loan.id, Sale.user_id == user.id).first()
         suggestion = _compute_payoff_sale(loan, user, db)
-        existing_sale.date = suggestion["date"]
-        existing_sale.shares = suggestion["shares"]
-        existing_sale.price_per_share = suggestion["price_per_share"]
-        existing_sale.notes = suggestion["notes"]
-        for k, v in _tax_rate_fields(ts).items():
-            setattr(existing_sale, k, v)
-        updated += 1
+        if existing_sale:
+            existing_sale.date = suggestion["date"]
+            existing_sale.shares = suggestion["shares"]
+            existing_sale.price_per_share = suggestion["price_per_share"]
+            existing_sale.notes = suggestion["notes"]
+            for k, v in _tax_rate_fields(ts).items():
+                setattr(existing_sale, k, v)
+            updated += 1
+        elif suggestion["shares"] > 0 and suggestion["price_per_share"] > 0:
+            db.add(Sale(
+                user_id=user.id,
+                date=suggestion["date"],
+                shares=suggestion["shares"],
+                price_per_share=suggestion["price_per_share"],
+                loan_id=loan.id,
+                notes=suggestion["notes"],
+                **_tax_rate_fields(ts),
+            ))
+            created += 1
     db.commit()
     from app.event_cache import schedule_recompute
     schedule_recompute(user.id)
-    return {"updated": updated}
+    return {"updated": updated, "created": created}
 
 
 @router.delete("/{loan_id}", status_code=204)

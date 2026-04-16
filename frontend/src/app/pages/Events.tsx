@@ -433,7 +433,7 @@ export default function Events() {
           let capGainsValue: React.ReactNode = null
           if (e.event_type === 'Loan Payoff' && e.cash_due != null) {
             capGainsLabel = 'Cash Due'
-            capGainsValue = <span>{fmt$(e.cash_due)} <span className={e.status === 'covered' ? 'text-emerald-700' : 'text-orange-700'}>{e.status === 'covered' ? '\u2713' : '!'}</span></span>
+            capGainsValue = <span className="text-yellow-600 dark:text-yellow-400">{fmt$(e.cash_due)} <span className={e.status === 'covered' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}>{e.status === 'covered' ? '\u2713' : '!'}</span></span>
           } else if ((e.event_type === 'Sale' || e.is_projected) && e.gross_proceeds != null) {
             capGainsLabel = 'Gross Proceeds'
             capGainsValue = <span className={e.is_projected ? 'text-green-700 opacity-70 dark:text-green-300' : 'text-green-700 dark:text-green-300'}>{fmt$(e.gross_proceeds)}</span>
@@ -637,10 +637,10 @@ export default function Events() {
                     </td>
                     <td className="px-3 py-2 text-right text-purple-600 dark:text-purple-700">
                       {e.event_type === 'Loan Payoff' && e.cash_due != null
-                        ? <span>
+                        ? <span className="text-yellow-600 dark:text-yellow-400">
                             {fmt$(e.cash_due)}
                             {' '}
-                            <span className={e.status === 'covered' ? 'text-emerald-700' : 'text-orange-700'}>
+                            <span className={e.status === 'covered' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}>
                               {e.status === 'covered' ? '✓' : '!'}
                             </span>
                           </span>

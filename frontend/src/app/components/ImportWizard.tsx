@@ -205,6 +205,11 @@ const ORIGINAL_PURCHASE_LOANS: Record<number, { rate: number; dueDate: string }>
   2018: { rate: 0.0307, dueDate: '2025-07-15' },
   2019: { rate: 0.0307, dueDate: '2026-07-15' },
   2020: { rate: 0.0038, dueDate: '2025-07-15' },  // originated late 2020 at 0.38%, refi'd Nov 2021 to 0.86%
+  2021: { rate: 0.0086, dueDate: '2030-07-15' },
+  2022: { rate: 0.0187, dueDate: '2031-06-30' },
+  2023: { rate: 0.0356, dueDate: '2032-06-30' },
+  2024: { rate: 0.037,  dueDate: '2033-06-30' },
+  2025: { rate: 0.0406, dueDate: '2034-06-30' },
 }
 
 // Tax loan refinances — keyed by "grantYear-grantType-loanYear"
@@ -251,6 +256,7 @@ interface ReviewedLoan {
   due_date: string
   loan_number: string
   refinances_loan_number: string
+  refi_date: string  // date of refinance (or origination for the first loan in a chain)
   enabled: boolean
   is_existing: boolean  // loaded from DB vs auto-generated
 }
@@ -263,15 +269,22 @@ function addYearsToDate(dateStr: string, years: number): string {
 }
 
 function initPurchaseRows(): PurchaseGrantRow[] {
-  return EPIC_GRANT_SCHEDULE.filter(g => g.type === 'Purchase').map(g => ({
-    year: g.year, vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
-    participated: false,
-    purchase_price: '',
-    shares: '', dp_shares: '0', dp_cash: '',
-    loan_amount: '', loan_due_date: addYearsToDate(g.exercise_date, LOAN_TERM_YEARS), interest_rate: '',
-    existing_purchase_loan_number: '',
-    existing_refinance_loans: [],
-  }))
+  return EPIC_GRANT_SCHEDULE.filter(g => g.type === 'Purchase').map(g => {
+    const origLoan = ORIGINAL_PURCHASE_LOANS[g.year]
+    const refiChain = PURCHASE_REFI_CHAINS[g.year]
+    const lastRefi = refiChain?.[refiChain.length - 1]
+    return {
+      year: g.year, vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
+      participated: false,
+      purchase_price: '',
+      shares: '', dp_shares: '0', dp_cash: '',
+      loan_amount: '',
+      loan_due_date: lastRefi?.dueDate ?? origLoan?.dueDate ?? addYearsToDate(g.exercise_date, LOAN_TERM_YEARS),
+      interest_rate: lastRefi ? String(lastRefi.rate) : (origLoan ? String(origLoan.rate) : ''),
+      existing_purchase_loan_number: '',
+      existing_refinance_loans: [],
+    }
+  })
 }
 
 function initCatchUpRows(): CatchUpRow[] {
@@ -293,21 +306,71 @@ function initBonusRows(): BonusGrantRow[] {
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function Field({
-  label, type = 'text', value, onChange, step, min, placeholder, hint,
+  label, type = 'text', value, onChange, step, min, placeholder, hint, disabled,
 }: {
   label: string; type?: string; value: string | number; onChange: (v: string) => void
-  step?: string; min?: string; placeholder?: string; hint?: string
+  step?: string; min?: string; placeholder?: string; hint?: string; disabled?: boolean
 }) {
   return (
     <label className="block">
       <span className="text-xs text-gray-500 dark:text-slate-400">{label}</span>
       {hint && <span className="ml-1.5 text-[10px] text-gray-400 dark:text-slate-500">{hint}</span>}
       <input
-        type={type} step={step} min={min} placeholder={placeholder}
+        type={type} step={step} min={min} placeholder={placeholder} disabled={disabled}
         value={value}
         onChange={e => onChange(e.target.value)}
-        className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+        className={`mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200${disabled ? ' opacity-50 cursor-not-allowed' : ''}`}
       />
+    </label>
+  )
+}
+
+/** Interest rate field that stores decimal (0.0307) but displays/edits as percent (3.07).
+ *  Uses local state during editing so intermediate values like "3." and "3.0" aren't lost.
+ *  When label is omitted, renders just the input (for inline use). */
+function PercentField({ label, value, onChange, hint, placeholder, className }: {
+  label?: string; value: string; onChange: (decimalStr: string) => void
+  hint?: string; placeholder?: string; className?: string
+}) {
+  const [local, setLocal] = useState('')
+  const [focused, setFocused] = useState(false)
+
+  const toDisplay = (v: string) => v ? String(Math.round(parseFloat(v) * 1e6) / 1e4) : ''
+
+  const input = (
+    <input
+      type="text"
+      inputMode="decimal"
+      placeholder={placeholder}
+      value={focused ? local : toDisplay(value)}
+      onFocus={() => { setLocal(toDisplay(value)); setFocused(true) }}
+      onChange={e => {
+        const v = e.target.value
+        if (v === '' || /^-?\d*\.?\d*$/.test(v)) {
+          setLocal(v)
+          const num = parseFloat(v)
+          if (!isNaN(num)) onChange(String(num / 100))
+          else if (v === '') onChange('')
+        }
+      }}
+      onBlur={() => {
+        setFocused(false)
+        if (local) {
+          const num = parseFloat(local)
+          if (!isNaN(num)) onChange(String(num / 100))
+        } else onChange('')
+      }}
+      className={className ?? "mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"}
+    />
+  )
+
+  if (!label) return input
+
+  return (
+    <label className="block">
+      <span className="text-xs text-gray-500 dark:text-slate-400">{label}</span>
+      {hint && <span className="ml-1.5 text-[10px] text-gray-400 dark:text-slate-500">{hint}</span>}
+      {input}
     </label>
   )
 }
@@ -328,9 +391,9 @@ function LoanForm({
         <Field label="Loan #" value={loan.loan_number} onChange={f('loan_number')} placeholder="e.g. 123456" />
         <Field label="Year issued" type="number" value={loan.loan_year} onChange={f('loan_year')} />
         <Field label="Amount ($)" type="number" step="0.01" value={loan.amount} onChange={f('amount')} />
-        <Field label="Interest rate (%)" type="number" step="0.01"
-          value={loan.interest_rate ? String(Math.round(parseFloat(loan.interest_rate) * 1e6) / 1e4) : ''}
-          onChange={v => onChange({ ...loan, interest_rate: v ? String(parseFloat(v) / 100) : '' })}
+        <PercentField label="Interest rate (%)"
+          value={loan.interest_rate}
+          onChange={v => onChange({ ...loan, interest_rate: v })}
           hint="e.g. 4.5" />
         <Field label="Due date" type="date" value={loan.due_date} onChange={f('due_date')} />
         {showRefinancesField && (
@@ -407,10 +470,9 @@ function LoanReviewRow({ loan, onChange }: { loan: ReviewedLoan; onChange: (l: R
             </div>
             <div>
               <label className="block text-[10px] text-gray-400 dark:text-slate-500">Rate (%)</label>
-              <input
-                type="number" step="0.01"
-                value={loan.interest_rate ? String(Math.round(parseFloat(loan.interest_rate) * 1e6) / 1e4) : ''}
-                onChange={e => onChange({ ...loan, interest_rate: e.target.value ? String(parseFloat(e.target.value) / 100) : '' })}
+              <PercentField
+                value={loan.interest_rate}
+                onChange={v => onChange({ ...loan, interest_rate: v })}
                 className="w-full rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
               />
             </div>
@@ -424,6 +486,129 @@ function LoanReviewRow({ loan, onChange }: { loan: ReviewedLoan; onChange: (l: R
             </div>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+/** Renders a refinance chain group with clear chronological ordering and chain flow indicators. */
+function RefiChainGroup({ label, loans, onChangeLoan }: {
+  label: string
+  loans: ReviewedLoan[]
+  onChangeLoan: (updated: ReviewedLoan) => void
+}) {
+  // Sort by refi_date chronologically (oldest first), then by loan_year as fallback
+  const sorted = [...loans].sort((a, b) => {
+    if (a.refi_date && b.refi_date) return a.refi_date.localeCompare(b.refi_date)
+    if (a.refi_date && !b.refi_date) return 1
+    if (!a.refi_date && b.refi_date) return -1
+    return a.loan_year - b.loan_year
+  })
+
+  function fmtRefiDate(d: string) {
+    if (!d) return ''
+    const dt = new Date(d + 'T00:00:00')
+    return dt.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+  }
+
+  return (
+    <div>
+      <p className="mb-1.5 text-[10px] font-medium text-violet-600 dark:text-violet-400">{label}</p>
+      <div className="space-y-0">
+        {sorted.map((loan, i) => {
+          const isFirst = i === 0
+          const isLast = i === sorted.length - 1
+          const isOnly = sorted.length === 1
+          const ratePercent = ((parseFloat(loan.interest_rate) || 0) * 100).toFixed(2)
+
+          return (
+            <div key={loan.key} className="relative">
+              {/* Connecting line */}
+              {!isOnly && (
+                <div className="absolute left-[11px] top-0 bottom-0 w-px bg-violet-200 dark:bg-violet-800" />
+              )}
+              <div className={`relative flex items-start gap-2 rounded px-2 py-1.5 text-xs ${loan.enabled ? '' : 'opacity-40'}`}>
+                {/* Chain dot */}
+                <div className="relative z-10 mt-1 flex flex-col items-center">
+                  <div className={`h-[7px] w-[7px] rounded-full border-2 ${
+                    isLast && !isOnly
+                      ? 'border-emerald-500 bg-emerald-500'
+                      : isFirst
+                        ? 'border-violet-400 bg-violet-400 dark:border-violet-500 dark:bg-violet-500'
+                        : 'border-violet-300 bg-white dark:border-violet-600 dark:bg-slate-900'
+                  }`} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {/* Chain position label */}
+                    {isFirst && !isOnly && (
+                      <span className="rounded bg-violet-100 px-1 text-[9px] font-medium text-violet-600 dark:bg-violet-900/40 dark:text-violet-400">
+                        original
+                      </span>
+                    )}
+                    {!isFirst && !isLast && (
+                      <span className="rounded bg-violet-100 px-1 text-[9px] text-violet-500 dark:bg-violet-900/30 dark:text-violet-500">
+                        refi
+                      </span>
+                    )}
+                    {isLast && !isOnly && (
+                      <span className="rounded bg-emerald-100 px-1 text-[9px] font-medium text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400">
+                        current
+                      </span>
+                    )}
+                    <span className="font-medium text-gray-700 dark:text-slate-300">
+                      {ratePercent}%
+                    </span>
+                    {loan.refi_date && (
+                      <span className="text-gray-400 dark:text-slate-500">
+                        {fmtRefiDate(loan.refi_date)}
+                      </span>
+                    )}
+                    {loan.is_existing && (
+                      <span className="rounded bg-green-100 px-1 text-[9px] text-green-600 dark:bg-green-900/40 dark:text-green-400">
+                        saved
+                      </span>
+                    )}
+                    <input
+                      type="checkbox" checked={loan.enabled}
+                      onChange={e => onChangeLoan({ ...loan, enabled: e.target.checked })}
+                      className="ml-auto rounded"
+                    />
+                  </div>
+                  {loan.enabled && (
+                    <div className="mt-1 grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-[10px] text-gray-400 dark:text-slate-500">Amount ($)</label>
+                        <input
+                          type="number" step="0.01" value={loan.amount}
+                          onChange={e => onChangeLoan({ ...loan, amount: e.target.value })}
+                          className="w-full rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-gray-400 dark:text-slate-500">Rate (%)</label>
+                        <PercentField
+                          value={loan.interest_rate}
+                          onChange={v => onChangeLoan({ ...loan, interest_rate: v })}
+                          className="w-full rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-gray-400 dark:text-slate-500">Due</label>
+                        <input
+                          type="date" value={loan.due_date}
+                          onChange={e => onChangeLoan({ ...loan, due_date: e.target.value })}
+                          className="w-full rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-xs dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -690,8 +875,21 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
         .map(g => {
           const existing = grantByKey.get(`${g.year}-Purchase`)
           const loans = loansByKey.get(`${g.year}-Purchase`) ?? []
-          const purchaseLoan = loans.find(l => l.loan_type === 'Purchase' && !l.refinances_loan_id)
-          const refinanceLoans = loans.filter(l => l.refinances_loan_id != null)
+          // Find the active (chain tip) purchase loan — the one NOT refinanced by any other loan.
+          // This is the current loan the user cares about, not the historical original.
+          const purchaseTypeLoans = loans.filter(l => l.loan_type === 'Purchase')
+          const refinancedLoanIds = new Set(purchaseTypeLoans.map(l => l.refinances_loan_id).filter(Boolean))
+          const activePurchaseLoan = purchaseTypeLoans.length > 0
+            ? (purchaseTypeLoans.find(l => !refinancedLoanIds.has(l.id)) ?? purchaseTypeLoans[purchaseTypeLoans.length - 1])
+            : null
+          // Historical chain = all purchase-type loans except the active one
+          const historicalChainLoans = purchaseTypeLoans.filter(l => l.id !== activePurchaseLoan?.id)
+          // Use the last refinance's terms as current loan defaults (not the original's).
+          // The refi chain represents historical rate/due-date changes; the active loan
+          // should reflect the most recent terms.
+          const origLoan = ORIGINAL_PURCHASE_LOANS[g.year]
+          const refiChain = PURCHASE_REFI_CHAINS[g.year]
+          const lastRefi = refiChain?.[refiChain.length - 1]
           return {
             year: g.year, vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
             participated: existing != null,
@@ -699,11 +897,15 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             shares: existing ? String(existing.shares) : '',
             dp_shares: existing ? String(Math.abs(existing.dp_shares)) : '0',
             dp_cash: '',
-            loan_amount: purchaseLoan ? String(purchaseLoan.amount) : '',
-            loan_due_date: purchaseLoan ? purchaseLoan.due_date : addYearsToDate(g.exercise_date, LOAN_TERM_YEARS),
-            interest_rate: purchaseLoan ? String(purchaseLoan.interest_rate) : '',
-            existing_purchase_loan_number: purchaseLoan?.loan_number ?? '',
-            existing_refinance_loans: refinanceLoans,
+            loan_amount: activePurchaseLoan ? String(activePurchaseLoan.amount) : '',
+            loan_due_date: lastRefi?.dueDate
+              ?? (activePurchaseLoan ? activePurchaseLoan.due_date
+                : (origLoan?.dueDate ?? addYearsToDate(g.exercise_date, LOAN_TERM_YEARS))),
+            interest_rate: lastRefi ? String(lastRefi.rate)
+              : (activePurchaseLoan ? String(activePurchaseLoan.interest_rate)
+                : (origLoan ? String(origLoan.rate) : '')),
+            existing_purchase_loan_number: activePurchaseLoan?.loan_number ?? '',
+            existing_refinance_loans: historicalChainLoans,
           }
         })
 
@@ -777,16 +979,8 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
       const effectiveDp = dpCash > 0 ? dpCash : minDp
       const loanAmount = Math.max(0, total - effectiveDp)
 
-      // For 2023+, default dp_shares using share exchange (shares at exercise price)
-      let dpShares = updated.dp_shares
-      if (!dpCash && p > 0 && updated.year >= 2023 && updated.dp_shares === '0') {
-        dpShares = String(Math.ceil(minDp / p))
-      }
-
       return {
         ...updated,
-        dp_cash: dpCash > 0 ? updated.dp_cash : (minDp > 0 ? minDp.toFixed(2) : ''),
-        dp_shares: dpShares,
         loan_amount: loanAmount.toFixed(2),
       }
     })
@@ -809,6 +1003,52 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
       }
       return updated
     }))
+  }
+
+  /** Look up the wizard price for a given year. */
+  function priceForYear(year: number): number {
+    const match = prices.find(p => p.price && new Date(p.effective_date + 'T00:00:00').getFullYear() === year)
+    return match ? parseFloat(match.price) || 0 : 0
+  }
+
+  /** Count shares vested from all wizard grants before a target date (checks day before). */
+  function vestedSharesBeforeDate(dateStr: string): number {
+    const target = new Date(dateStr + 'T00:00:00')
+    target.setDate(target.getDate() - 1)
+    let total = 0
+    const addVested = (vestStart: string, periods: number, shares: number) => {
+      if (!vestStart || !periods || !shares) return
+      const start = new Date(vestStart + 'T00:00:00')
+      const spp = Math.floor(shares / periods)
+      for (let i = 0; i < periods; i++) {
+        const vd = new Date(start)
+        vd.setFullYear(vd.getFullYear() + i)
+        if (vd <= target) total += (i === periods - 1) ? shares - spp * (periods - 1) : spp
+      }
+    }
+    for (const row of purchaseRows) {
+      if (!row.participated || !(parseInt(row.shares) > 0)) continue
+      addVested(row.vest_start, row.periods, parseInt(row.shares))
+    }
+    for (const row of catchUpRows) {
+      if (!row.included || !(parseInt(row.shares) > 0)) continue
+      addVested(row.vest_start, row.periods, parseInt(row.shares))
+    }
+    for (const row of bonusRows) {
+      if (!(parseInt(row.shares) > 0)) continue
+      addVested(row.vest_start, row.periods, parseInt(row.shares))
+    }
+    return total
+  }
+
+  /** Count dp_shares consumed by other purchase grants exercised before the target date. */
+  function dpSharesConsumedBefore(exerciseDate: string, excludeYear: number): number {
+    let consumed = 0
+    for (const row of purchaseRows) {
+      if (!row.participated || row.year === excludeYear || row.year < 2023) continue
+      if (row.exercise_date < exerciseDate) consumed += Math.abs(parseInt(row.dp_shares) || 0)
+    }
+    return consumed
   }
 
   async function handleScheduleReview(saveSettings = false) {
@@ -845,8 +1085,20 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             const extraLoans = reviewedToWizardLoans(r.year, 'Purchase')
             // Find the last refinance in the chain so the current purchase loan references it
             const refiChain = extraLoans.filter(l => l.loan_type === 'Purchase' && l.refinances_loan_number)
-            const lastRefiNum = refiChain.length > 0 ? refiChain[refiChain.length - 1].loan_number : ''
+            const hasRefiChain = refiChain.length > 0
+            const lastRefiNum = hasRefiChain ? refiChain[refiChain.length - 1].loan_number : ''
             const currentLoanNum = r.existing_purchase_loan_number || `wiz-${r.year}-0`
+            // When a refi chain exists, the last entry in the chain IS the active loan.
+            // Don't create a separate "current" loan — it would duplicate the original's
+            // terms and generate a spurious payoff event at the old due date.
+            const currentLoan: WizardLoan[] = hasRefiChain ? [] : [{
+              loan_number: currentLoanNum,
+              loan_type: 'Purchase' as const, loan_year: r.year,
+              amount: parseFloat(r.loan_amount) || Math.max(0, (parseInt(r.shares) || 0) * (parseFloat(r.purchase_price) || 0) - (parseFloat(r.dp_cash) || 0)),
+              interest_rate: parseFloat(r.interest_rate) || 0,
+              due_date: r.loan_due_date,
+              refinances_loan_number: lastRefiNum,
+            }]
             return {
               year: r.year, type: 'Purchase' as const,
               shares: parseInt(r.shares) || 0,
@@ -855,14 +1107,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
               dp_shares: -(Math.abs(parseInt(r.dp_shares) || 0)),
               election_83b: false,
               loans: [
-                {
-                  loan_number: currentLoanNum,
-                  loan_type: 'Purchase' as const, loan_year: r.year,
-                  amount: parseFloat(r.loan_amount) || Math.max(0, (parseInt(r.shares) || 0) * (parseFloat(r.purchase_price) || 0) - (parseFloat(r.dp_cash) || 0)),
-                  interest_rate: parseFloat(r.interest_rate) || 0,
-                  due_date: r.loan_due_date,
-                  refinances_loan_number: lastRefiNum,
-                },
+                ...currentLoan,
                 ...extraLoans,
               ] as WizardLoan[],
             }
@@ -983,6 +1228,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
         due_date: fields.due_date,
         loan_number: existing?.loan_number ?? fields.loan_number,
         refinances_loan_number: fields.refinances_loan_number,
+        refi_date: fields.refi_date,
         enabled: fields.enabled,
         is_existing: !!existing,
       })
@@ -1020,7 +1266,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
         const actual = pushLoan(existKey, {
           grant_year: gy, grant_type: 'Catch-Up', loan_type: 'Tax', loan_year: vestYear,
           amount: '', estimatedAmount: taxAmount, interest_rate: String(rate), due_date: due,
-          loan_number: `wiz-${gy}-CU-T${vestYear}`, refinances_loan_number: '', enabled: true,
+          loan_number: `wiz-${gy}-CU-T${vestYear}`, refinances_loan_number: '', refi_date: '', enabled: true,
         })
         taxMap.set(vestYear, actual)
       }
@@ -1043,7 +1289,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
           key: `${gy}-Purchase-refi-orig`, grant_year: gy, grant_type: 'Purchase',
           loan_type: 'Purchase', loan_year: gy, amount: purchaseAmount ? purchaseAmount.toFixed(2) : '',
           interest_rate: String(origLoan.rate), due_date: origLoan.dueDate, loan_number: origNum,
-          refinances_loan_number: '', enabled: true, is_existing: false,
+          refinances_loan_number: '', refi_date: row.exercise_date, enabled: true, is_existing: false,
         })
         let prevNum = origNum
         for (let ri = 0; ri < refiChain.length; ri++) {
@@ -1054,7 +1300,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             loan_type: 'Purchase', loan_year: refi.loanYear,
             amount: purchaseAmount ? purchaseAmount.toFixed(2) : '',
             interest_rate: String(refi.rate), due_date: refi.dueDate, loan_number: num,
-            refinances_loan_number: prevNum, enabled: true, is_existing: false,
+            refinances_loan_number: prevNum, refi_date: refi.date, enabled: true, is_existing: false,
           })
           prevNum = num
         }
@@ -1081,7 +1327,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
         const actual = pushLoan(existKey, {
           grant_year: gy, grant_type: 'Purchase', loan_type: 'Interest', loan_year: ly,
           amount: '', estimatedAmount, interest_rate: String(interestLoanRate),
-          due_date: due, loan_number: `wiz-${gy}-I${ly}`, refinances_loan_number: '', enabled: true,
+          due_date: due, loan_number: `wiz-${gy}-I${ly}`, refinances_loan_number: '', refi_date: '', enabled: true,
         })
 
         // This interest loan becomes a prior loan for next year (at its own rate)
@@ -1131,11 +1377,13 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
         if (taxRefi) {
           // Generate original tax loan + refinance chain
           const origNum = `wiz-${gy}-${grantType[0]}-T${vestYear}-orig`
+          const vestDate = new Date(row.vest_start + 'T00:00:00')
+          vestDate.setFullYear(vestDate.getFullYear() + i)
           loans.push({
             key: `${existKey}-refi-orig`, grant_year: gy, grant_type: grantType,
             loan_type: 'Tax', loan_year: vestYear, amount: taxAmount > 0 ? taxAmount.toFixed(2) : '',
             interest_rate: String(rate), due_date: taxRefi[0].origDueDate, loan_number: origNum,
-            refinances_loan_number: '', enabled: true, is_existing: false,
+            refinances_loan_number: '', refi_date: vestDate.toISOString().slice(0, 10), enabled: true, is_existing: false,
           })
           let prevNum = origNum
           for (let ri = 0; ri < taxRefi.length; ri++) {
@@ -1145,7 +1393,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             pushLoan(existKey, {
               grant_year: gy, grant_type: grantType, loan_type: 'Tax', loan_year: vestYear,
               amount: '', estimatedAmount: taxAmount, interest_rate: String(refi.rate), due_date: refi.newDueDate,
-              loan_number: num, refinances_loan_number: prevNum, enabled: true,
+              loan_number: num, refinances_loan_number: prevNum, refi_date: refi.date, enabled: true,
             })
             prevNum = num
           }
@@ -1154,7 +1402,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
           const actual = pushLoan(existKey, {
             grant_year: gy, grant_type: grantType, loan_type: 'Tax', loan_year: vestYear,
             amount: '', estimatedAmount: taxAmount, interest_rate: String(rate), due_date: due,
-            loan_number: `wiz-${gy}-${grantType[0]}-T${vestYear}`, refinances_loan_number: '', enabled: true,
+            loan_number: `wiz-${gy}-${grantType[0]}-T${vestYear}`, refinances_loan_number: '', refi_date: '', enabled: true,
           })
           bonusTaxByYear.set(vestYear, actual)
         }
@@ -1176,7 +1424,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
         const actual = pushLoan(existKey, {
           grant_year: gy, grant_type: grantType, loan_type: 'Interest', loan_year: ly,
           amount: '', estimatedAmount: estimatedInterest, interest_rate: String(iRate), due_date: due,
-          loan_number: `wiz-${gy}-${grantType[0]}-I${ly}`, refinances_loan_number: '', enabled: true,
+          loan_number: `wiz-${gy}-${grantType[0]}-I${ly}`, refinances_loan_number: '', refi_date: '', enabled: true,
         })
         bonusOutstanding += actual
       }
@@ -1527,7 +1775,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
               onChange={v => setGrantDraft(d => ({ ...d, exercise_date: v }))} />
           </div>
 
-          {grantDraft.type === 'Purchase' && (
+          {grantDraft.type === 'Purchase' && parseInt(grantDraft.year) >= 2023 && (
             <div className="rounded-md border border-stone-200 p-3 dark:border-slate-700">
               <label className="flex items-start gap-2 text-xs text-gray-600 dark:text-slate-400">
                 <input
@@ -1740,9 +1988,9 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
                       <Field label="Loan #" value={tl.loan_number} onChange={v => update({ ...tl, loan_number: v })} />
                       <Field label="Year issued" type="number" value={tl.due_date.slice(0, 4) || String(new Date(vestDate).getFullYear())} onChange={_ => {}} />
                       <Field label="Amount ($)" type="number" step="0.01" value={tl.amount} onChange={v => update({ ...tl, amount: v })} />
-                      <Field label="Interest rate (%)" type="number" step="0.01"
-                        value={tl.interest_rate ? String(Math.round(parseFloat(tl.interest_rate) * 1e6) / 1e4) : ''}
-                        onChange={v => update({ ...tl, interest_rate: v ? String(parseFloat(v) / 100) : '' })}
+                      <PercentField label="Interest rate (%)"
+                        value={tl.interest_rate}
+                        onChange={v => update({ ...tl, interest_rate: v })}
                         hint="e.g. 5" />
                       <Field label="Due date" type="date" value={tl.due_date} onChange={v => update({ ...tl, due_date: v })} />
                     </div>
@@ -1939,10 +2187,32 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
                           onChange={v => setPurchaseField(i, { purchase_price: v }, true)} />
                         <Field label="Shares" type="number" value={row.shares}
                           onChange={v => setPurchaseField(i, { shares: v }, true)} />
-                        <Field label="DP shares" type="number" value={row.dp_shares}
+                        <Field label="DP shares" type="number" value={row.year >= 2023 ? row.dp_shares : '0'}
                           onChange={v => setPurchaseField(i, { dp_shares: v })}
-                          hint="shares exchanged at exercise" />
+                          hint={(() => {
+                            if (row.year < 2023) return 'not available before 2023'
+                            const total = (parseFloat(row.purchase_price) || 0) * (parseInt(row.shares) || 0)
+                            const loanAmt = parseFloat(row.loan_amount) || 0
+                            const dp = total - loanAmt
+                            const exYear = new Date(row.exercise_date + 'T00:00:00').getFullYear()
+                            const mp = priceForYear(exYear)
+                            if (dp > 0 && mp > 0) return `min ${Math.ceil(dp / mp).toLocaleString()} at $${mp}/sh`
+                            return 'shares exchanged at exercise'
+                          })()}
+                          disabled={row.year < 2023}
+                          placeholder={row.year < 2023 ? 'not available' : '0'} />
                       </div>
+                      {row.year >= 2023 && Math.abs(parseInt(row.dp_shares) || 0) > 0 && (() => {
+                        const needed = Math.abs(parseInt(row.dp_shares) || 0)
+                        const vested = vestedSharesBeforeDate(row.exercise_date)
+                        const consumed = dpSharesConsumedBefore(row.exercise_date, row.year)
+                        const available = vested - consumed
+                        return needed > available ? (
+                          <p className="text-[10px] text-red-600 dark:text-red-400">
+                            Not enough vested shares: need {needed.toLocaleString()}, only {available.toLocaleString()} available from prior grants
+                          </p>
+                        ) : null
+                      })()}
                       {/* Loan details */}
                       <details>
                         <summary className="cursor-pointer text-xs font-medium text-rose-700 hover:text-rose-800 dark:text-rose-400 list-none">
@@ -1950,7 +2220,8 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
                         </summary>
                         <div className="mt-2 grid grid-cols-2 gap-3">
                           <Field label="DP cash paid ($)" type="number" step="0.01" value={row.dp_cash}
-                            onChange={v => setPurchaseField(i, { dp_cash: v }, true)} placeholder="0" />
+                            onChange={v => setPurchaseField(i, { dp_cash: v }, true)}
+                            placeholder={(() => { const t = (parseFloat(row.purchase_price) || 0) * (parseInt(row.shares) || 0); return t > 0 ? `default: ${Math.min(t * 0.10, 20000).toFixed(0)}` : '0' })()} />
                           <Field label="Loan amount ($)" type="number" step="0.01" value={row.loan_amount}
                             onChange={v => {
                               const total = (parseFloat(row.purchase_price) || 0) * (parseInt(row.shares) || 0)
@@ -1958,9 +2229,9 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
                               const capped = Math.min(parseFloat(v) || 0, maxLoan)
                               setPurchaseField(i, { loan_amount: total > 0 ? capped.toFixed(2) : v })
                             }} />
-                          <Field label="Interest rate (%)" type="number" step="0.01"
-                            value={row.interest_rate ? String(Math.round(parseFloat(row.interest_rate) * 1e6) / 1e4) : ''}
-                            onChange={v => setPurchaseField(i, { interest_rate: v ? String(parseFloat(v) / 100) : '' })}
+                          <PercentField label="Interest rate (%)"
+                            value={row.interest_rate}
+                            onChange={v => setPurchaseField(i, { interest_rate: v })}
                             placeholder="e.g. 1.78" hint="from loan statement" />
                           <Field label="Due date" type="date" value={row.loan_due_date}
                             onChange={v => setPurchaseField(i, { loan_due_date: v })} />
@@ -2110,7 +2381,15 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             </div>
           )}
 
-          <NextBtn label="Next: Review loans →" onClick={enterLoansReview} />
+          <NextBtn label="Next: Review loans →" onClick={enterLoansReview}
+            disabled={purchaseRows.some(row => {
+              if (!row.participated || row.year < 2023) return false
+              const needed = Math.abs(parseInt(row.dp_shares) || 0)
+              if (needed <= 0) return false
+              const vested = vestedSharesBeforeDate(row.exercise_date)
+              const consumed = dpSharesConsumedBefore(row.exercise_date, row.year)
+              return needed > vested - consumed
+            })} />
         </div>
       )}
 
@@ -2191,6 +2470,14 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
               const match = prices.find(p => p.price && new Date(p.effective_date + 'T00:00:00').getFullYear() === exerciseYear)
               return match ? { ...r, purchase_price: match.price } : r
             }))
+            // Pre-fill bonus cost basis: 2020 bonus is $0, others use FMV at exercise
+            setBonusRows(rows => rows.map(r => {
+              if (r.purchase_price || r.type === 'Free') return r
+              if (r.year === 2020 && r.type === 'Bonus') return { ...r, purchase_price: '0' }
+              const exerciseYear = new Date(r.exercise_date + 'T00:00:00').getFullYear()
+              const match = prices.find(p => p.price && new Date(p.effective_date + 'T00:00:00').getFullYear() === exerciseYear)
+              return match ? { ...r, purchase_price: match.price } : r
+            }))
             push('schedule_grants')
           }} />
         </div>
@@ -2258,15 +2545,14 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
           <div className="space-y-4">
             <BackBtn onClick={back} />
             <div>
-              <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Refinances</h2>
+              <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Refinance chains</h2>
               <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
-                Historical refinances of your purchase and tax loans. These rates are used to estimate
-                interest loan amounts on the next page. If you skip, remember to update the current loan
-                rate and due date on the Loans page.
+                Your purchase loan history from origination to current rate. Oldest on top, current
+                at the bottom. These rates are used to estimate interest loan amounts on the next page.
               </p>
             </div>
             {refiLoans.length > 0 ? (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {(() => {
                   const groups = new Map<string, ReviewedLoan[]>()
                   for (const l of refiLoans) {
@@ -2275,16 +2561,9 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
                     groups.get(k)!.push(l)
                   }
                   return Array.from(groups.entries()).map(([label, loans]) => (
-                    <div key={label}>
-                      <p className="mb-1 text-[10px] font-medium text-violet-600 dark:text-violet-400">{label}</p>
-                      <div className="space-y-1 border-l-2 border-violet-200 pl-2 dark:border-violet-800">
-                        {loans.map(loan => (
-                          <LoanReviewRow key={loan.key} loan={loan} onChange={updated => {
-                            setReviewedLoans(prev => prev.map(l => l.key === loan.key ? updated : l))
-                          }} />
-                        ))}
-                      </div>
-                    </div>
+                    <RefiChainGroup key={label} label={label} loans={loans} onChangeLoan={updated => {
+                      setReviewedLoans(prev => prev.map(l => l.key === updated.key ? updated : l))
+                    }} />
                   ))
                 })()}
               </div>

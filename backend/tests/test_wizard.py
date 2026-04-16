@@ -227,6 +227,13 @@ def test_submit_resolves_refinance_chain(client):
     refinance = next(l for l in loans if l["loan_number"] == "222222")
     assert refinance["refinances_loan_id"] == original["id"]
 
+    # Payoff sale should only be generated for the active (non-refinanced) loan
+    assert resp.json()["payoff_sales"] == 1
+    sales = client.get("/api/sales").json()
+    payoff_sales = [s for s in sales if s.get("loan_id")]
+    assert len(payoff_sales) == 1
+    assert payoff_sales[0]["loan_id"] == refinance["id"]
+
 
 def test_submit_with_tax_loan(client):
     """Wizard submit creates a Catch-Up grant with a Tax loan."""

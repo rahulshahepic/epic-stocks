@@ -1262,9 +1262,15 @@ export default function Dashboard() {
         <Card label={cv.price_is_estimate ? 'Share Price (est.)' : 'Share Price'} value={fmtPrice(cv.current_price)} variant="price" subtitle="Current value per share" />
         <Card label="Vested Shares" value={fmtNum(cv.total_shares)} variant="shares" subtitle="Shares you own outright" />
         <Card label="Unvested Shares" value={fmtNum(grantHoldings?.reduce((s, h) => s + h.unvestedShares, 0) ?? 0)} variant="unvested" subtitle="Still vesting over time" />
+        <Card
+          label="Next Event"
+          value={cv.next_event ? `${cv.next_event.date} — ${cv.next_event.event_type}` : 'None'}
+          variant="event"
+          subtitle="Your next vesting or price date"
+        />
 
         <p className="col-span-2 sm:col-span-3 mt-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-slate-500">Earnings</p>
-        <Card label="Total Income" value={fmt$(cv.total_income)} variant="income" subtitle="Taxable value at each vest" />
+        <Card label="Total Income" value={fmt$(cv.total_income)} variant="income" subtitle="Taxed as ordinary income at vest" />
         <Card label="Total Cap Gains" value={fmt$(cv.total_cap_gains)} variant="gains" subtitle="Growth since your grants" />
         <Card label="Cash Received" value={fmt$(cv.cash_received)} variant="cash" subtitle="Net proceeds from sales so far" />
 
@@ -1272,46 +1278,7 @@ export default function Dashboard() {
         <Card label="Loan Principal" value={fmt$(cv.total_loan_principal)} variant="loans" subtitle="Total amount borrowed" />
         <Card label="Total Interest" value={fmt$(cv.total_interest)} variant="interest" subtitle="Interest accrued on loans" />
         <Card label={hasInterestDeduction ? 'Tax Paid (after int. ded.)' : 'Tax Paid'} value={fmt$(cv.total_tax_paid)} variant="tax" subtitle="Taxes withheld so far" />
-
-        <Card
-          label="Next Event"
-          value={cv.next_event ? `${cv.next_event.date} — ${cv.next_event.event_type}` : 'None'}
-          variant="event"
-          subtitle="Your next vesting or price date"
-        />
       </div>
-
-      {showExitPreview && (
-        <div aria-live="polite" aria-atomic="true" className="space-y-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-slate-500">
-            If you exited on this date
-          </p>
-          {exitPreview === 'loading' ? (
-            <p className="text-xs text-gray-400 dark:text-slate-500">Calculating…</p>
-          ) : exitPreview ? (
-            <>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <button
-                  onClick={() => setExitBreakdownOpen(o => !o)}
-                  className="col-span-2 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-left dark:border-emerald-800 dark:bg-emerald-950/40"
-                >
-                  <p className="text-xs font-medium uppercase text-emerald-700 dark:text-emerald-300">Net Cash at Exit</p>
-                  <p className="mt-1 text-xl font-semibold text-gray-900 dark:text-slate-100">{fmt$(exitPreview.net_cash)}</p>
-                  <p className="mt-1 text-[11px] leading-tight text-gray-500 dark:text-slate-400">
-                    {exitBreakdownOpen ? '▲ hide breakdown' : '▼ see breakdown'}
-                  </p>
-                </button>
-                <Card label="Gross Proceeds" value={fmt$(exitPreview.gross_vested + exitPreview.unvested_cost_proceeds)} variant="gains" subtitle="Liquidated shares × price" />
-                <Card label="Loans Paid Off" value={fmt$(exitPreview.outstanding_principal)} variant="loans" subtitle="From sale proceeds" />
-                <Card label="Est. Divest Tax" value={fmt$(exitPreview.liquidation_tax)} variant="tax" subtitle="Capital gains on liquidation" />
-              </div>
-              {exitBreakdownOpen && <ExitBreakdownCard s={exitPreview} />}
-            </>
-          ) : (
-            <p className="text-xs text-gray-400 dark:text-slate-500">No price data for this date</p>
-          )}
-        </div>
-      )}
 
       {grantHoldings && grantHoldings.length > 0 && (
         <div className="rounded-lg border border-stone-200 bg-white dark:border-slate-700 dark:bg-slate-900">
@@ -1383,6 +1350,38 @@ export default function Dashboard() {
           )}
         </div>
       )}
+      {showExitPreview && (
+        <div aria-live="polite" aria-atomic="true" className="space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-slate-500">
+            If you exited on this date
+          </p>
+          {exitPreview === 'loading' ? (
+            <p className="text-xs text-gray-400 dark:text-slate-500">Calculating…</p>
+          ) : exitPreview ? (
+            <>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <button
+                  onClick={() => setExitBreakdownOpen(o => !o)}
+                  className="col-span-2 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-left dark:border-emerald-800 dark:bg-emerald-950/40"
+                >
+                  <p className="text-xs font-medium uppercase text-emerald-700 dark:text-emerald-300">Net Cash at Exit</p>
+                  <p className="mt-1 text-xl font-semibold text-gray-900 dark:text-slate-100">{fmt$(exitPreview.net_cash)}</p>
+                  <p className="mt-1 text-[11px] leading-tight text-gray-500 dark:text-slate-400">
+                    {exitBreakdownOpen ? '▲ hide breakdown' : '▼ see breakdown'}
+                  </p>
+                </button>
+                <Card label="Gross Proceeds" value={fmt$(exitPreview.gross_vested + exitPreview.unvested_cost_proceeds)} variant="gains" subtitle="Liquidated shares × price" />
+                <Card label="Loans Paid Off" value={fmt$(exitPreview.outstanding_principal)} variant="loans" subtitle="From sale proceeds" />
+                <Card label="Est. Divest Tax" value={fmt$(exitPreview.liquidation_tax)} variant="tax" subtitle="Capital gains on liquidation" />
+              </div>
+              {exitBreakdownOpen && <ExitBreakdownCard s={exitPreview} />}
+            </>
+          ) : (
+            <p className="text-xs text-gray-400 dark:text-slate-500">No price data for this date</p>
+          )}
+        </div>
+      )}
+
       {showDeductionCard && !readOnly && (() => {
         const displayEnabled = pendingDeduction ?? savedDeduction
         const currentSavings = cardValues?.tax_savings_from_deduction ?? dash.tax_savings_from_deduction ?? 0

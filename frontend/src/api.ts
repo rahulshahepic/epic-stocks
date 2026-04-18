@@ -122,8 +122,6 @@ export interface TimelineEvent {
   interest_deduction_on_ltcg?: number
   adjusted_total_cap_gains?: number
   adjusted_cum_cap_gains?: number
-  // Comprehensive exit summary (only on Liquidation (projected) events)
-  exit_summary?: ExitSummary
 }
 
 export interface ExitSaleSummary {
@@ -189,7 +187,7 @@ export interface LoanEntry {
 }
 
 export interface SmartTip {
-  type: 'exit_date' | 'deduction' | 'method'
+  type: 'deduction' | 'method'
   title: string
   description: string
   savings: number
@@ -328,9 +326,6 @@ export const api = {
   getTaxSettings: () => apiFetch<TaxSettings>('/api/tax-settings'),
   updateTaxSettings: (data: Partial<TaxSettings>) => put<TaxSettings>('/api/tax-settings', data),
 
-  // Horizon Settings
-  getHorizonSettings: () => apiFetch<HorizonSettings>('/api/horizon-settings'),
-  updateHorizonSettings: (data: Partial<HorizonSettings>) => put<HorizonSettings>('/api/horizon-settings', data),
   previewExit: (date: string) => apiFetch<ExitPreview | null>(`/api/preview-exit?date=${encodeURIComponent(date)}`),
   previewDeduction: (enabled: boolean, excludePast = false) =>
     apiFetch<DeductionPreview | null>(`/api/preview-deduction?enabled=${enabled}${excludePast ? '&exclude_past=true' : ''}`),
@@ -433,7 +428,6 @@ export const api = {
   getSharedPrices: (invId: number) => apiFetch<PriceEntry[]>(`/api/sharing/view/${invId}/prices`),
   getSharedSales: (invId: number) => apiFetch<SaleEntry[]>(`/api/sharing/view/${invId}/sales`),
   getSharedTaxSettings: (invId: number) => apiFetch<TaxSettings>(`/api/sharing/view/${invId}/tax-settings`),
-  getSharedHorizonSettings: (invId: number) => apiFetch<HorizonSettings>(`/api/sharing/view/${invId}/horizon-settings`),
   getSharedSaleTax: (invId: number, saleId: number) => apiFetch<TaxBreakdown>(`/api/sharing/view/${invId}/sales/${saleId}/tax`),
   exportSharedExcel: (invId: number) => fetch(`/api/sharing/view/${invId}/export/excel`, { credentials: 'include' }),
 
@@ -698,23 +692,13 @@ export interface TrancheAllocation {
   total_allocated: number
 }
 
-export interface HorizonSettings {
-  horizon_date: string | null
-}
-
 export interface DeductionPreview {
   interest_deduction_total: number
   tax_savings_from_deduction: number
 }
 
-export interface ExitPreview {
+export interface ExitPreview extends ExitSummary {
   date: string
-  gross_proceeds: number
-  outstanding_loan_principal: number
-  estimated_tax: number
-  net_cash: number
-  shares: number
-  share_price: number
 }
 
 export interface LotSummary {

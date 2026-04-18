@@ -92,15 +92,10 @@ def test_import_events_match_known_values(client):
             files={"file": ("fixture.xlsx", f, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
         )
     events = client.get("/api/events").json()
-    real_events = [e for e in events if not e.get("is_projected")]
-    assert len(real_events) == 89
-    assert real_events[-1]["cum_shares"] == 558500
-    # Projected liquidation event is injected at the end
-    projected = [e for e in events if e.get("is_projected")]
-    assert len(projected) == 1
-    assert projected[0]["event_type"] == "Liquidation (projected)"
-    assert projected[0]["cum_shares"] == 0
-    assert projected[0]["gross_proceeds"] > 0
+    assert len(events) == 89
+    assert events[-1]["cum_shares"] == 558500
+    # Projected liquidation is no longer injected into /api/events
+    assert not any(e.get("is_projected") for e in events)
 
 
 def test_import_rejects_non_excel(client):

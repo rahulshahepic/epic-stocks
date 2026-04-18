@@ -806,12 +806,6 @@ export default function Dashboard() {
   const c = useChartColors()
   const [rangeInterest, setRangeInterest] = useState<DateRange>({ mode: 'all', start: '', end: '' })
   const [rangeLoan, setRangeLoan] = useState<DateRange>({ mode: 'all', start: '', end: '' })
-  const [holdingsOpen, setHoldingsOpen] = useState<boolean>(() =>
-    localStorage.getItem('dashboard_holdingsOpen') === 'true'
-  )
-  const [loansOpen, setLoansOpen] = useState<boolean>(() =>
-    localStorage.getItem('dashboard_loansOpen') === 'true'
-  )
   const [range, setRange] = useState<DateRange>(() => {
     try {
       const saved = localStorage.getItem('dashboard_range')
@@ -823,7 +817,16 @@ export default function Dashboard() {
     return localStorage.getItem('dashboard_cardDate') ?? TODAY
   })
   const [exitBreakdownOpen, setExitBreakdownOpen] = useState(false)
-  const [openBreakdowns, setOpenBreakdowns] = useState<Set<string>>(new Set())
+  const [openBreakdowns, setOpenBreakdowns] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('dashboard_openBreakdowns')
+      if (saved) return new Set(JSON.parse(saved) as string[])
+    } catch {}
+    const initial = new Set<string>()
+    if (localStorage.getItem('dashboard_holdingsOpen') === 'true') initial.add('grants')
+    if (localStorage.getItem('dashboard_loansOpen') === 'true') initial.add('activeLoans')
+    return initial
+  })
   const toggleBreakdown = useCallback((key: string) => {
     setOpenBreakdowns(prev => {
       const next = new Set(prev)
@@ -831,6 +834,9 @@ export default function Dashboard() {
       return next
     })
   }, [])
+  useEffect(() => {
+    localStorage.setItem('dashboard_openBreakdowns', JSON.stringify([...openBreakdowns]))
+  }, [openBreakdowns])
 
   // Load an exit preview for the current cardDate (only meaningful for today or later).
   const showExitPreview = cardDate >= TODAY
@@ -904,14 +910,6 @@ export default function Dashboard() {
   useEffect(() => {
     localStorage.setItem('dashboard_range', JSON.stringify(range))
   }, [range])
-
-  useEffect(() => {
-    localStorage.setItem('dashboard_holdingsOpen', String(holdingsOpen))
-  }, [holdingsOpen])
-
-  useEffect(() => {
-    localStorage.setItem('dashboard_loansOpen', String(loansOpen))
-  }, [loansOpen])
 
   useEffect(() => {
     localStorage.setItem('dashboard_cardDate', cardDate)
@@ -1516,8 +1514,22 @@ export default function Dashboard() {
         <p className="col-span-2 sm:col-span-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-slate-500">Up to this date</p>
         <p className="col-span-2 sm:col-span-3 -mt-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-slate-500">Your Shares</p>
         <Card label={cv.price_is_estimate ? 'Share Price (est.)' : 'Share Price'} value={fmtPrice(cv.current_price)} variant="price" subtitle="Current value per share" />
-        <Card label="Vested Shares" value={fmtNum(cv.total_shares)} variant="shares" subtitle="Shares you own outright" />
-        <Card label="Unvested Shares" value={fmtNum(grantHoldings?.reduce((s, h) => s + h.unvestedShares, 0) ?? 0)} variant="unvested" subtitle="Still vesting over time" />
+        <Card
+          label="Vested Shares"
+          value={fmtNum(cv.total_shares)}
+          variant="shares"
+          subtitle="Shares you own outright"
+          onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
+          expanded={openBreakdowns.has('grants')}
+        />
+        <Card
+          label="Unvested Shares"
+          value={fmtNum(grantHoldings?.reduce((s, h) => s + h.unvestedShares, 0) ?? 0)}
+          variant="unvested"
+          subtitle="Still vesting over time"
+          onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
+          expanded={openBreakdowns.has('grants')}
+        />
         <Card
           label="Next Event"
           value={cv.next_event ? `${cv.next_event.date} — ${cv.next_event.event_type}` : 'None'}
@@ -1552,7 +1564,14 @@ export default function Dashboard() {
         />
 
         <p className="col-span-2 sm:col-span-3 mt-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-slate-500">Costs</p>
-        <Card label="Loan Principal" value={fmt$(cv.total_loan_principal)} variant="loans" subtitle="Total amount borrowed" />
+        <Card
+          label="Loan Principal"
+          value={fmt$(cv.total_loan_principal)}
+          variant="loans"
+          subtitle="Total amount borrowed"
+          onClick={activeLoans && activeLoans.length > 0 ? () => toggleBreakdown('activeLoans') : undefined}
+          expanded={openBreakdowns.has('activeLoans')}
+        />
         <Card
           label="Total Interest"
           value={fmt$(cv.total_interest)}
@@ -1571,9 +1590,51 @@ export default function Dashboard() {
         />
       </div>
 
-      {breakdowns && openBreakdowns.size > 0 && (
+      {(breakdowns || grantHoldings || activeLoans) && openBreakdowns.size > 0 && (
         <div className="space-y-3">
-          {openBreakdowns.has('income') && breakdowns.income.groups.length > 0 && (
+          {openBreakdowns.has('grants') && grantHoldings && grantHoldings.length > 0 && (
+            <BreakdownShell title="Grants">
+              {grantHoldings.map(h => (
+                <div key={`${h.year}-${h.type}`} className="rounded border border-stone-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
+                  <p className="text-xs font-semibold text-gray-800 dark:text-slate-200">{h.year} {h.type}</p>
+                  <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] sm:grid-cols-3">
+                    <span className="text-gray-500 dark:text-slate-400">Exercised <span className="font-medium text-gray-800 dark:text-slate-200">{fmtFullDate(h.exerciseDate)}</span></span>
+                    <span className="text-gray-500 dark:text-slate-400">Cost basis <span className="font-medium text-gray-800 dark:text-slate-200">{fmtPrice(h.costBasis)}</span></span>
+                    <span className="text-gray-500 dark:text-slate-400">Vested value <span className="font-medium text-gray-800 dark:text-slate-200">{fmt$(h.vestedValue)}</span></span>
+                    <span className="text-gray-500 dark:text-slate-400">Vested <span className="font-medium text-gray-800 dark:text-slate-200">{fmtNum(h.vestedShares)}</span></span>
+                    <span className="text-gray-500 dark:text-slate-400">Unvested <span className="font-medium text-gray-800 dark:text-slate-200">{fmtNum(h.unvestedShares)}</span></span>
+                    <span className="text-gray-500 dark:text-slate-400">Taxes <span className="font-medium text-gray-800 dark:text-slate-200">{fmt$(h.totalTax)}</span></span>
+                    <span className="text-gray-500 dark:text-slate-400">Loans <span className="font-medium text-gray-800 dark:text-slate-200">{fmt$(h.totalLoan)}</span></span>
+                  </div>
+                </div>
+              ))}
+            </BreakdownShell>
+          )}
+          {openBreakdowns.has('activeLoans') && activeLoans && activeLoans.length > 0 && (
+            <BreakdownShell title={`Active Loans (${activeLoans.length})`}>
+              <div className="hidden px-1 pb-1 text-[10px] font-medium uppercase tracking-wide text-gray-400 sm:grid sm:grid-cols-5 sm:gap-x-2 dark:text-slate-500">
+                <span>Grant</span><span>Type</span><span>Balance</span><span>Rate</span><span>Due</span>
+              </div>
+              {activeLoans.map(l => (
+                <div key={l.id} className="rounded border border-stone-200 bg-white px-3 py-2 text-[11px] dark:border-slate-700 dark:bg-slate-900">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 sm:hidden">
+                    <span className="text-gray-500 dark:text-slate-400">{l.grantYear} {l.grantType} <span className="text-gray-400 dark:text-slate-500">· {l.loanType}</span></span>
+                    <span className="text-right font-medium text-gray-800 dark:text-slate-200">{fmt$(l.balance)}</span>
+                    <span className="text-gray-500 dark:text-slate-400">Rate <span className="font-medium text-gray-800 dark:text-slate-200">{(l.interestRate * 100).toFixed(2)}%</span></span>
+                    <span className="text-right text-gray-500 dark:text-slate-400">Due <span className="font-medium text-gray-800 dark:text-slate-200">{fmtFullDate(l.dueDate)}</span></span>
+                  </div>
+                  <div className="hidden sm:grid sm:grid-cols-5 sm:gap-x-2">
+                    <span className="font-medium text-gray-800 dark:text-slate-200">{l.grantYear} {l.grantType}</span>
+                    <span className="text-gray-600 dark:text-slate-400">{l.loanType}</span>
+                    <span className="font-medium text-gray-800 dark:text-slate-200">{fmt$(l.balance)}</span>
+                    <span className="text-gray-600 dark:text-slate-400">{(l.interestRate * 100).toFixed(2)}%</span>
+                    <span className="text-gray-600 dark:text-slate-400">{fmtFullDate(l.dueDate)}</span>
+                  </div>
+                </div>
+              ))}
+            </BreakdownShell>
+          )}
+          {openBreakdowns.has('income') && breakdowns && breakdowns.income.groups.length > 0 && (
             <BreakdownShell title="Total Income breakdown">
               {breakdowns.income.groups.map(g => (
                 <BreakdownRow
@@ -1590,7 +1651,7 @@ export default function Dashboard() {
               </p>
             </BreakdownShell>
           )}
-          {openBreakdowns.has('capGains') && (breakdowns.capGains.vestingGroups.length > 0 || breakdowns.capGains.priceTotal !== 0) && (
+          {openBreakdowns.has('capGains') && breakdowns && (breakdowns.capGains.vestingGroups.length > 0 || breakdowns.capGains.priceTotal !== 0) && (
             <BreakdownShell title="Total Cap Gains breakdown">
               {breakdowns.capGains.vestingGroups.length > 0 && (
                 <>
@@ -1616,7 +1677,7 @@ export default function Dashboard() {
               <BreakdownRow label="Total" value={fmt$(breakdowns.capGains.total)} bold />
             </BreakdownShell>
           )}
-          {openBreakdowns.has('cash') && breakdowns.cash.sales.length > 0 && (
+          {openBreakdowns.has('cash') && breakdowns && breakdowns.cash.sales.length > 0 && (
             <BreakdownShell title="Cash Received breakdown">
               {breakdowns.cash.sales.map(s => (
                 <BreakdownRow
@@ -1647,7 +1708,7 @@ export default function Dashboard() {
               )}
             </BreakdownShell>
           )}
-          {openBreakdowns.has('interest') && breakdowns.interest.rows.length > 0 && (
+          {openBreakdowns.has('interest') && breakdowns && breakdowns.interest.rows.length > 0 && (
             <BreakdownShell title="Total Interest breakdown">
               {breakdowns.interest.rows.map(r => (
                 <BreakdownRow key={r.id} label={r.label} value={fmt$(r.amount)} sub={r.note} />
@@ -1659,7 +1720,7 @@ export default function Dashboard() {
               </p>
             </BreakdownShell>
           )}
-          {openBreakdowns.has('tax') && (breakdowns.tax.taxLoans > 0 || breakdowns.tax.vestingIncomeTax > 0 || breakdowns.tax.cgTaxFromSales > 0) && (
+          {openBreakdowns.has('tax') && breakdowns && (breakdowns.tax.taxLoans > 0 || breakdowns.tax.vestingIncomeTax > 0 || breakdowns.tax.cgTaxFromSales > 0) && (
             <BreakdownShell title="Tax Paid breakdown">
               {breakdowns.tax.taxLoans > 0 && (
                 <BreakdownRow
@@ -1697,76 +1758,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {grantHoldings && grantHoldings.length > 0 && (
-        <div className="rounded-lg border border-stone-200 bg-white dark:border-slate-700 dark:bg-slate-900">
-          <button
-            onClick={() => setHoldingsOpen(o => !o)}
-            className="flex w-full items-center justify-between px-3 py-2.5 text-left"
-          >
-            <span className="text-sm font-medium text-gray-700 dark:text-slate-300">Holdings by Grant</span>
-            <span className="text-xs text-gray-400 dark:text-slate-500">{holdingsOpen ? '▲' : '▼'}</span>
-          </button>
-          {holdingsOpen && (
-            <div className="border-t border-stone-100 dark:border-slate-700/50">
-              {grantHoldings.map(h => (
-                <div key={`${h.year}-${h.type}`} className="border-b border-stone-100 px-3 py-2 last:border-b-0 dark:border-slate-700/50">
-                  <p className="text-xs font-semibold text-gray-800 dark:text-slate-200">{h.year} {h.type}</p>
-                  <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs sm:grid-cols-3">
-                    <span className="text-gray-500 dark:text-slate-400">Exercised <span className="font-medium text-gray-800 dark:text-slate-200">{fmtFullDate(h.exerciseDate)}</span></span>
-                    <span className="text-gray-500 dark:text-slate-400">Cost basis <span className="font-medium text-gray-800 dark:text-slate-200">{fmtPrice(h.costBasis)}</span></span>
-                    <span className="text-gray-500 dark:text-slate-400">Vested value <span className="font-medium text-gray-800 dark:text-slate-200">{fmt$(h.vestedValue)}</span></span>
-                    <span className="text-gray-500 dark:text-slate-400">Vested <span className="font-medium text-gray-800 dark:text-slate-200">{fmtNum(h.vestedShares)}</span></span>
-                    <span className="text-gray-500 dark:text-slate-400">Unvested <span className="font-medium text-gray-800 dark:text-slate-200">{fmtNum(h.unvestedShares)}</span></span>
-                    <span className="text-gray-500 dark:text-slate-400">Taxes <span className="font-medium text-gray-800 dark:text-slate-200">{fmt$(h.totalTax)}</span></span>
-                    <span className="text-gray-500 dark:text-slate-400">Loans <span className="font-medium text-gray-800 dark:text-slate-200">{fmt$(h.totalLoan)}</span></span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-      {activeLoans && activeLoans.length > 0 && (
-        <div className="rounded-lg border border-stone-200 bg-white dark:border-slate-700 dark:bg-slate-900">
-          <button
-            onClick={() => setLoansOpen(o => !o)}
-            className="flex w-full items-center justify-between px-3 py-2.5 text-left"
-          >
-            <span className="text-sm font-medium text-gray-700 dark:text-slate-300">
-              Active Loans
-              <span className="ml-1.5 text-xs font-normal text-gray-400 dark:text-slate-500">({activeLoans.length})</span>
-            </span>
-            <span className="text-xs text-gray-400 dark:text-slate-500">{loansOpen ? '▲' : '▼'}</span>
-          </button>
-          {loansOpen && (
-            <div className="border-t border-stone-100 dark:border-slate-700/50">
-              {/* Header row on sm+ */}
-              <div className="hidden px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-gray-400 sm:grid sm:grid-cols-5 sm:gap-x-2 dark:text-slate-500">
-                <span>Grant</span><span>Type</span><span>Balance</span><span>Rate</span><span>Due</span>
-              </div>
-              {activeLoans.map(l => (
-                <div key={l.id} className="border-b border-stone-100 px-3 py-2 last:border-b-0 dark:border-slate-700/50">
-                  {/* Mobile layout */}
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs sm:hidden">
-                    <span className="text-gray-500 dark:text-slate-400">{l.grantYear} {l.grantType} <span className="text-gray-400 dark:text-slate-500">· {l.loanType}</span></span>
-                    <span className="text-right font-medium text-gray-800 dark:text-slate-200">{fmt$(l.balance)}</span>
-                    <span className="text-gray-500 dark:text-slate-400">Rate <span className="font-medium text-gray-800 dark:text-slate-200">{(l.interestRate * 100).toFixed(2)}%</span></span>
-                    <span className="text-right text-gray-500 dark:text-slate-400">Due <span className="font-medium text-gray-800 dark:text-slate-200">{fmtFullDate(l.dueDate)}</span></span>
-                  </div>
-                  {/* Desktop row */}
-                  <div className="hidden text-xs sm:grid sm:grid-cols-5 sm:gap-x-2">
-                    <span className="font-medium text-gray-800 dark:text-slate-200">{l.grantYear} {l.grantType}</span>
-                    <span className="text-gray-600 dark:text-slate-400">{l.loanType}</span>
-                    <span className="font-medium text-gray-800 dark:text-slate-200">{fmt$(l.balance)}</span>
-                    <span className="text-gray-600 dark:text-slate-400">{(l.interestRate * 100).toFixed(2)}%</span>
-                    <span className="text-gray-600 dark:text-slate-400">{fmtFullDate(l.dueDate)}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
       {showExitPreview && (
         <div aria-live="polite" aria-atomic="true" className="space-y-2">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-slate-500">

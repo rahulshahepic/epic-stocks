@@ -141,12 +141,13 @@ const CARD_STYLES: Record<string, { bg: string; border: string; label: string }>
   unvested: { bg: 'bg-indigo-50 dark:bg-indigo-950/40', border: 'border-indigo-200 dark:border-indigo-800', label: 'text-indigo-700 dark:text-indigo-300' },
 }
 
-function Card({ label, value, variant }: { label: string; value: string; variant: string }) {
+function Card({ label, value, variant, subtitle }: { label: string; value: string; variant: string; subtitle?: string }) {
   const s = CARD_STYLES[variant] ?? CARD_STYLES.event
   return (
     <div className={`rounded-lg border p-4 ${s.bg} ${s.border}`}>
       <p className={`text-xs font-medium uppercase ${s.label}`}>{label}</p>
       <p className="mt-1 text-xl font-semibold text-gray-900 dark:text-slate-100">{value}</p>
+      {subtitle && <p className="mt-1 text-[11px] leading-tight text-gray-500 dark:text-slate-400">{subtitle}</p>}
     </div>
   )
 }
@@ -1428,19 +1429,26 @@ export default function Dashboard() {
 
       {/* (F) aria-live so screen readers announce summary updates when cardDate changes */}
       <div aria-live="polite" aria-atomic="true" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Card label={cv.price_is_estimate ? 'Share Price (est.)' : 'Share Price'} value={fmtPrice(cv.current_price)} variant="price" />
-        <Card label="Vested Shares" value={fmtNum(cv.total_shares)} variant="shares" />
-        <Card label="Unvested Shares" value={fmtNum(grantHoldings?.reduce((s, h) => s + h.unvestedShares, 0) ?? 0)} variant="unvested" />
-        <Card label="Total Income" value={fmt$(cv.total_income)} variant="income" />
-        <Card label="Total Cap Gains" value={fmt$(cv.total_cap_gains)} variant="gains" />
-        <Card label="Loan Principal" value={fmt$(cv.total_loan_principal)} variant="loans" />
-        <Card label="Total Interest" value={fmt$(cv.total_interest)} variant="interest" />
-        <Card label={hasInterestDeduction ? 'Tax Paid (after int. ded.)' : 'Tax Paid'} value={fmt$(cv.total_tax_paid)} variant="tax" />
-        <Card label="Cash Received" value={fmt$(cv.cash_received)} variant="cash" />
+        <p className="col-span-2 sm:col-span-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-slate-500">Your Shares</p>
+        <Card label={cv.price_is_estimate ? 'Share Price (est.)' : 'Share Price'} value={fmtPrice(cv.current_price)} variant="price" subtitle="Current value per share" />
+        <Card label="Vested Shares" value={fmtNum(cv.total_shares)} variant="shares" subtitle="Shares you own outright" />
+        <Card label="Unvested Shares" value={fmtNum(grantHoldings?.reduce((s, h) => s + h.unvestedShares, 0) ?? 0)} variant="unvested" subtitle="Still vesting over time" />
+
+        <p className="col-span-2 sm:col-span-3 mt-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-slate-500">Earnings</p>
+        <Card label="Total Income" value={fmt$(cv.total_income)} variant="income" subtitle="Taxable value at each vest" />
+        <Card label="Total Cap Gains" value={fmt$(cv.total_cap_gains)} variant="gains" subtitle="Growth since your grants" />
+        <Card label="Cash Received" value={fmt$(cv.cash_received)} variant="cash" subtitle="Money in your pocket" />
+
+        <p className="col-span-2 sm:col-span-3 mt-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-slate-500">Costs</p>
+        <Card label="Loan Principal" value={fmt$(cv.total_loan_principal)} variant="loans" subtitle="Total amount borrowed" />
+        <Card label="Total Interest" value={fmt$(cv.total_interest)} variant="interest" subtitle="Interest accrued on loans" />
+        <Card label={hasInterestDeduction ? 'Tax Paid (after int. ded.)' : 'Tax Paid'} value={fmt$(cv.total_tax_paid)} variant="tax" subtitle="Taxes withheld so far" />
+
         <Card
           label="Next Event"
           value={cv.next_event ? `${cv.next_event.date} — ${cv.next_event.event_type}` : 'None'}
           variant="event"
+          subtitle="Your next vesting or price date"
         />
       </div>
       {grantHoldings && grantHoldings.length > 0 && (

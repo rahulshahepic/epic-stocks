@@ -1,3 +1,5 @@
+import bisect
+import math
 from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -145,9 +147,15 @@ def _price_at_date(timeline: list, as_of) -> float:
     return price
 
 
+def _sort_key_event(e: dict):
+    d = e["date"]
+    d = d.date() if isinstance(d, datetime) else d
+    return (d, 0 if e.get("event_type") == "Vesting" else 1)
+
+
 def _compute_payoff_sale(loan: Loan, user: User, db: Session) -> dict:
     """Compute the suggested payoff sale for a loan (gross-up shares to cover cash_due after tax)."""
-    from app.sales_engine import build_fifo_lots, compute_grossup_shares
+    from app.sales_engine import build_fifo_lots, compute_grossup_shares, compute_sale_tax
 
     early_paid = sum(
         lp.amount for lp in db.query(LoanPayment).filter(LoanPayment.loan_id == loan.id).all()
@@ -163,8 +171,19 @@ def _compute_payoff_sale(loan: Loan, user: User, db: Session) -> dict:
         latest = db.query(Price).filter(Price.user_id == user.id).order_by(Price.effective_date.desc()).first()
         price = latest.price if latest else 0.0
 
-    # Inject prior sales (excluding this loan's own payoff sale) so build_fifo_lots
-    # sees the same consumed-lot state as compute_sale_tax does in get_sale_tax.
+    ts = _get_tax_settings_dict(user, db)
+    lt_days = int(ts.get("lt_holding_days", 365))
+    ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
+
+    # The tax annotator for Sale events uses lot_selection_method. Mirror that here so
+    # our sizing consumes the same lots the actual tax calc will consume.
+    tax_method = ts_row.lot_selection_method if ts_row else 'epic_lifo'
+    tax_lot_order = tax_method if tax_method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
+
+    # Inject prior sales (excluding this loan's own payoff sale) as PRECISE lot sentinels —
+    # matching what _annotate_sale_taxes does. Using crude negative-shares reducers consumes
+    # oldest lots regardless of lot_order, which diverges from the real consumption and
+    # produces an undersized payoff when later sales get stuck with higher-basis or STCG lots.
     existing_payoff = db.query(Sale).filter(Sale.loan_id == loan.id).first()
     prior_sales_q = db.query(Sale).filter(
         Sale.user_id == user.id,
@@ -172,40 +191,73 @@ def _compute_payoff_sale(loan: Loan, user: User, db: Session) -> dict:
     )
     if existing_payoff:
         prior_sales_q = prior_sales_q.filter(Sale.id != existing_payoff.id)
-    for ps in prior_sales_q.all():
-        timeline.append({
-            "date": datetime.combine(ps.date, datetime.min.time()),
-            "event_type": "Sale",
-            "vested_shares": -ps.shares,
-            "grant_price": None,
-            "share_price": 0.0,
-        })
-    timeline.sort(key=lambda e: (
-        e["date"].date() if isinstance(e["date"], datetime) else e["date"],
-        0 if e.get("event_type") == "Vesting" else 1,
-    ))
+    prior_sales = sorted(prior_sales_q.all(), key=lambda s: s.date)
 
-    ts = _get_tax_settings_dict(user, db)
-    lt_days = int(ts.get("lt_holding_days", 365))
+    sorted_tl = sorted(timeline, key=_sort_key_event)
+    sort_keys: list = [_sort_key_event(e) for e in sorted_tl]
+    loan_id_to_grant = {ln.id: (ln.grant_year, ln.grant_type) for ln in db.query(Loan).filter(Loan.user_id == user.id).all()}
+    for ps in prior_sales:
+        ps_date = ps.date
+        ps_gy, ps_gt = (loan_id_to_grant.get(ps.loan_id, (None, None)) if ps.loan_id else (None, None))
+        # Tax annotator passes grant_year/grant_type only for same_tranche lot_selection_method;
+        # since lot_selection_method doesn't include that value today, leave unrestricted.
+        ps_result = compute_sale_tax(
+            sorted_tl,
+            {"date": ps_date, "shares": ps.shares, "price_per_share": ps.price_per_share},
+            ts,
+            lot_order=tax_lot_order,
+        )
+        for lot in ps_result.get("lots_consumed", []):
+            sentinel = {
+                "date": datetime.combine(ps_date, datetime.min.time()),
+                "event_type": "Prior Sale Lot",
+                "target_vest_date": lot["vest_date"],
+                "target_grant_year": lot["grant_year"],
+                "target_grant_type": lot["grant_type"],
+                "shares_consumed": lot["shares"],
+                "vested_shares": 0,
+                "grant_price": None,
+                "share_price": 0.0,
+            }
+            key = _sort_key_event(sentinel)
+            idx = bisect.bisect_right(sort_keys, key)
+            sorted_tl.insert(idx, sentinel)
+            sort_keys.insert(idx, key)
 
     # Determine lot selection method for this payoff.
     # Default is same-tranche; flexible methods are available when admin has enabled the setting
     # and the user has sufficient total stock coverage (vested at price + unvested at cost basis).
     payoff_method = 'same_tranche'
-    ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
     if ts_row and _is_flexible_payoff_enabled(db):
         user_method = ts_row.loan_payoff_method
-        if user_method != 'same_tranche' and _has_sufficient_coverage(user, loan, db, timeline, price, cash_due):
+        if user_method != 'same_tranche' and _has_sufficient_coverage(user, loan, db, sorted_tl, price, cash_due):
             payoff_method = user_method
 
     if payoff_method == 'same_tranche':
-        lots = build_fifo_lots(timeline, loan.due_date, order='epic_lifo',
+        lots = build_fifo_lots(sorted_tl, loan.due_date, order='epic_lifo',
                                grant_year=loan.grant_year, grant_type=loan.grant_type,
                                lt_holding_days=lt_days)
     else:
         order = payoff_method if payoff_method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
-        lots = build_fifo_lots(timeline, loan.due_date, order=order, lt_holding_days=lt_days)
+        lots = build_fifo_lots(sorted_tl, loan.due_date, order=order, lt_holding_days=lt_days)
     shares = compute_grossup_shares(lots, cash_due, price, loan.due_date, ts)
+
+    # Self-correct against the actual tax calc: if the sized sale's net proceeds don't cover
+    # cash_due under the real tax computation (pro-rata LT/ST allocation, lot_selection_method
+    # consumption), bump the share count until it does.
+    if shares > 0 and price > 0:
+        for _ in range(20):
+            verify = compute_sale_tax(
+                sorted_tl,
+                {"date": loan.due_date, "shares": shares, "price_per_share": price},
+                ts,
+                lot_order=tax_lot_order,
+            )
+            net = shares * price - verify["estimated_tax"]
+            if net >= cash_due:
+                break
+            shortfall = cash_due - net
+            shares += max(1, math.ceil(shortfall / price))
 
     loan_label = loan.loan_number or f"{loan.grant_year}/{loan.loan_type}"
     return {

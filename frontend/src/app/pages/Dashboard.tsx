@@ -1510,88 +1510,36 @@ export default function Dashboard() {
       {!readOnly && <TipCarousel onApply={() => { reloadDash(); reloadEvents(); reloadTaxSettings() }} />}
 
       {/* (F) aria-live so screen readers announce summary updates when cardDate changes */}
-      <div aria-live="polite" aria-atomic="true" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <p className="col-span-2 sm:col-span-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-slate-500">Up to this date</p>
-        <p className="col-span-2 sm:col-span-3 -mt-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-slate-500">Your Shares</p>
-        <Card label={cv.price_is_estimate ? 'Share Price (est.)' : 'Share Price'} value={fmtPrice(cv.current_price)} variant="price" subtitle="Current value per share" />
-        <Card
-          label="Vested Shares"
-          value={fmtNum(cv.total_shares)}
-          variant="shares"
-          subtitle="Shares you own outright"
-          onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
-          expanded={openBreakdowns.has('grants')}
-        />
-        <Card
-          label="Unvested Shares"
-          value={fmtNum(grantHoldings?.reduce((s, h) => s + h.unvestedShares, 0) ?? 0)}
-          variant="unvested"
-          subtitle="Still vesting over time"
-          onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
-          expanded={openBreakdowns.has('grants')}
-        />
-        <Card
-          label="Next Event"
-          value={cv.next_event ? `${cv.next_event.date} — ${cv.next_event.event_type}` : 'None'}
-          variant="event"
-          subtitle="Your next vesting or price date"
-        />
+      <div aria-live="polite" aria-atomic="true" className="space-y-3">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-slate-500">Up to this date</p>
 
-        <p className="col-span-2 sm:col-span-3 mt-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-slate-500">Earnings</p>
-        <Card
-          label="Total Income"
-          value={fmt$(cv.total_income)}
-          variant="income"
-          subtitle="Taxed as ordinary income at vest"
-          onClick={breakdowns && breakdowns.income.groups.length > 0 ? () => toggleBreakdown('income') : undefined}
-          expanded={openBreakdowns.has('income')}
-        />
-        <Card
-          label="Total Cap Gains"
-          value={fmt$(cv.total_cap_gains)}
-          variant="gains"
-          subtitle="Growth since your grants"
-          onClick={breakdowns && (breakdowns.capGains.vestingGroups.length > 0 || breakdowns.capGains.priceTotal !== 0) ? () => toggleBreakdown('capGains') : undefined}
-          expanded={openBreakdowns.has('capGains')}
-        />
-        <Card
-          label="Cash Received"
-          value={fmt$(cv.cash_received)}
-          variant="cash"
-          subtitle="Net proceeds from sales so far"
-          onClick={breakdowns && breakdowns.cash.sales.length > 0 ? () => toggleBreakdown('cash') : undefined}
-          expanded={openBreakdowns.has('cash')}
-        />
-
-        <p className="col-span-2 sm:col-span-3 mt-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-slate-500">Costs</p>
-        <Card
-          label="Loan Principal"
-          value={fmt$(cv.total_loan_principal)}
-          variant="loans"
-          subtitle="Total amount borrowed"
-          onClick={activeLoans && activeLoans.length > 0 ? () => toggleBreakdown('activeLoans') : undefined}
-          expanded={openBreakdowns.has('activeLoans')}
-        />
-        <Card
-          label="Total Interest"
-          value={fmt$(cv.total_interest)}
-          variant="interest"
-          subtitle="Interest accrued on loans"
-          onClick={breakdowns && breakdowns.interest.rows.length > 0 ? () => toggleBreakdown('interest') : undefined}
-          expanded={openBreakdowns.has('interest')}
-        />
-        <Card
-          label={hasInterestDeduction ? 'Tax Paid (after int. ded.)' : 'Tax Paid'}
-          value={fmt$(cv.total_tax_paid)}
-          variant="tax"
-          subtitle="Taxes withheld so far"
-          onClick={breakdowns && (breakdowns.tax.taxLoans > 0 || breakdowns.tax.vestingIncomeTax > 0 || breakdowns.tax.cgTaxFromSales > 0) ? () => toggleBreakdown('tax') : undefined}
-          expanded={openBreakdowns.has('tax')}
-        />
-      </div>
-
-      {(breakdowns || grantHoldings || activeLoans) && openBreakdowns.size > 0 && (
-        <div className="space-y-3">
+        <section className="space-y-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-slate-500">Your Shares</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <Card label={cv.price_is_estimate ? 'Share Price (est.)' : 'Share Price'} value={fmtPrice(cv.current_price)} variant="price" subtitle="Current value per share" />
+            <Card
+              label="Vested Shares"
+              value={fmtNum(cv.total_shares)}
+              variant="shares"
+              subtitle="Shares you own outright"
+              onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
+              expanded={openBreakdowns.has('grants')}
+            />
+            <Card
+              label="Unvested Shares"
+              value={fmtNum(grantHoldings?.reduce((s, h) => s + h.unvestedShares, 0) ?? 0)}
+              variant="unvested"
+              subtitle="Still vesting over time"
+              onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
+              expanded={openBreakdowns.has('grants')}
+            />
+            <Card
+              label="Next Event"
+              value={cv.next_event ? `${cv.next_event.date} — ${cv.next_event.event_type}` : 'None'}
+              variant="event"
+              subtitle="Your next vesting or price date"
+            />
+          </div>
           {openBreakdowns.has('grants') && grantHoldings && grantHoldings.length > 0 && (
             <BreakdownShell title="Grants">
               {grantHoldings.map(h => (
@@ -1610,30 +1558,36 @@ export default function Dashboard() {
               ))}
             </BreakdownShell>
           )}
-          {openBreakdowns.has('activeLoans') && activeLoans && activeLoans.length > 0 && (
-            <BreakdownShell title={`Active Loans (${activeLoans.length})`}>
-              <div className="hidden px-1 pb-1 text-[10px] font-medium uppercase tracking-wide text-gray-400 sm:grid sm:grid-cols-5 sm:gap-x-2 dark:text-slate-500">
-                <span>Grant</span><span>Type</span><span>Balance</span><span>Rate</span><span>Due</span>
-              </div>
-              {activeLoans.map(l => (
-                <div key={l.id} className="rounded border border-stone-200 bg-white px-3 py-2 text-[11px] dark:border-slate-700 dark:bg-slate-900">
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 sm:hidden">
-                    <span className="text-gray-500 dark:text-slate-400">{l.grantYear} {l.grantType} <span className="text-gray-400 dark:text-slate-500">· {l.loanType}</span></span>
-                    <span className="text-right font-medium text-gray-800 dark:text-slate-200">{fmt$(l.balance)}</span>
-                    <span className="text-gray-500 dark:text-slate-400">Rate <span className="font-medium text-gray-800 dark:text-slate-200">{(l.interestRate * 100).toFixed(2)}%</span></span>
-                    <span className="text-right text-gray-500 dark:text-slate-400">Due <span className="font-medium text-gray-800 dark:text-slate-200">{fmtFullDate(l.dueDate)}</span></span>
-                  </div>
-                  <div className="hidden sm:grid sm:grid-cols-5 sm:gap-x-2">
-                    <span className="font-medium text-gray-800 dark:text-slate-200">{l.grantYear} {l.grantType}</span>
-                    <span className="text-gray-600 dark:text-slate-400">{l.loanType}</span>
-                    <span className="font-medium text-gray-800 dark:text-slate-200">{fmt$(l.balance)}</span>
-                    <span className="text-gray-600 dark:text-slate-400">{(l.interestRate * 100).toFixed(2)}%</span>
-                    <span className="text-gray-600 dark:text-slate-400">{fmtFullDate(l.dueDate)}</span>
-                  </div>
-                </div>
-              ))}
-            </BreakdownShell>
-          )}
+        </section>
+
+        <section className="space-y-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-slate-500">Earnings</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <Card
+              label="Total Income"
+              value={fmt$(cv.total_income)}
+              variant="income"
+              subtitle="Taxed as ordinary income at vest"
+              onClick={breakdowns && breakdowns.income.groups.length > 0 ? () => toggleBreakdown('income') : undefined}
+              expanded={openBreakdowns.has('income')}
+            />
+            <Card
+              label="Total Cap Gains"
+              value={fmt$(cv.total_cap_gains)}
+              variant="gains"
+              subtitle="Growth since your grants"
+              onClick={breakdowns && (breakdowns.capGains.vestingGroups.length > 0 || breakdowns.capGains.priceTotal !== 0) ? () => toggleBreakdown('capGains') : undefined}
+              expanded={openBreakdowns.has('capGains')}
+            />
+            <Card
+              label="Cash Received"
+              value={fmt$(cv.cash_received)}
+              variant="cash"
+              subtitle="Net proceeds from sales so far"
+              onClick={breakdowns && breakdowns.cash.sales.length > 0 ? () => toggleBreakdown('cash') : undefined}
+              expanded={openBreakdowns.has('cash')}
+            />
+          </div>
           {openBreakdowns.has('income') && breakdowns && breakdowns.income.groups.length > 0 && (
             <BreakdownShell title="Total Income breakdown">
               {breakdowns.income.groups.map(g => (
@@ -1708,6 +1662,60 @@ export default function Dashboard() {
               )}
             </BreakdownShell>
           )}
+        </section>
+
+        <section className="space-y-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-slate-500">Costs</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <Card
+              label="Loan Principal"
+              value={fmt$(cv.total_loan_principal)}
+              variant="loans"
+              subtitle="Total amount borrowed"
+              onClick={activeLoans && activeLoans.length > 0 ? () => toggleBreakdown('activeLoans') : undefined}
+              expanded={openBreakdowns.has('activeLoans')}
+            />
+            <Card
+              label="Total Interest"
+              value={fmt$(cv.total_interest)}
+              variant="interest"
+              subtitle="Interest accrued on loans"
+              onClick={breakdowns && breakdowns.interest.rows.length > 0 ? () => toggleBreakdown('interest') : undefined}
+              expanded={openBreakdowns.has('interest')}
+            />
+            <Card
+              label={hasInterestDeduction ? 'Tax Paid (after int. ded.)' : 'Tax Paid'}
+              value={fmt$(cv.total_tax_paid)}
+              variant="tax"
+              subtitle="Taxes withheld so far"
+              onClick={breakdowns && (breakdowns.tax.taxLoans > 0 || breakdowns.tax.vestingIncomeTax > 0 || breakdowns.tax.cgTaxFromSales > 0) ? () => toggleBreakdown('tax') : undefined}
+              expanded={openBreakdowns.has('tax')}
+            />
+          </div>
+          {openBreakdowns.has('activeLoans') && activeLoans && activeLoans.length > 0 && (
+            <BreakdownShell title={`Active Loans (${activeLoans.length})`}>
+              <div className="hidden px-1 pb-1 text-[10px] font-medium uppercase tracking-wide text-gray-400 sm:grid sm:grid-cols-5 sm:gap-x-2 dark:text-slate-500">
+                <span>Grant</span><span>Type</span><span>Balance</span><span>Rate</span><span>Due</span>
+              </div>
+              {activeLoans.map(l => (
+                <div key={l.id} className="rounded border border-stone-200 bg-white px-3 py-2 text-[11px] dark:border-slate-700 dark:bg-slate-900">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 sm:hidden">
+                    <span className="text-gray-500 dark:text-slate-400">{l.grantYear} {l.grantType} <span className="text-gray-400 dark:text-slate-500">· {l.loanType}</span></span>
+                    <span className="text-right font-medium text-gray-800 dark:text-slate-200">{fmt$(l.balance)}</span>
+                    <span className="text-gray-500 dark:text-slate-400">Rate <span className="font-medium text-gray-800 dark:text-slate-200">{(l.interestRate * 100).toFixed(2)}%</span></span>
+                    <span className="text-right text-gray-500 dark:text-slate-400">Due <span className="font-medium text-gray-800 dark:text-slate-200">{fmtFullDate(l.dueDate)}</span></span>
+                  </div>
+                  <div className="hidden sm:grid sm:grid-cols-5 sm:gap-x-2">
+                    <span className="font-medium text-gray-800 dark:text-slate-200">{l.grantYear} {l.grantType}</span>
+                    <span className="text-gray-600 dark:text-slate-400">{l.loanType}</span>
+                    <span className="font-medium text-gray-800 dark:text-slate-200">{fmt$(l.balance)}</span>
+                    <span className="text-gray-600 dark:text-slate-400">{(l.interestRate * 100).toFixed(2)}%</span>
+                    <span className="text-gray-600 dark:text-slate-400">{fmtFullDate(l.dueDate)}</span>
+                  </div>
+                </div>
+              ))}
+            </BreakdownShell>
+          )}
           {openBreakdowns.has('interest') && breakdowns && breakdowns.interest.rows.length > 0 && (
             <BreakdownShell title="Total Interest breakdown">
               {breakdowns.interest.rows.map(r => (
@@ -1755,8 +1763,8 @@ export default function Dashboard() {
               <BreakdownRow label="Total" value={fmt$(breakdowns.tax.total)} bold />
             </BreakdownShell>
           )}
-        </div>
-      )}
+        </section>
+      </div>
 
       {showExitPreview && (
         <div aria-live="polite" aria-atomic="true" className="space-y-2">

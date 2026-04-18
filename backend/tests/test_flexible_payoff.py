@@ -306,6 +306,65 @@ def test_wizard_creates_payoff_sales_for_interest_loans(client, db_session):
     assert "Interest" in loan_types
 
 
+def test_payoff_sizing_covers_loan_after_actual_tax(client, db_session):
+    """Payoff sale's actual tax-adjusted net proceeds must cover cash_due.
+
+    Regression: when multiple prior sales had consumed lots in lot_selection_method
+    order, _compute_payoff_sale was injecting them as oldest-first reducers, causing
+    later payoff sizings to see a different lot pool than the tax calc actually uses.
+    Result: negative "Cash received" (payoff sale shortfall). The iterative verify
+    step must now ensure sizing matches real tax-adjusted proceeds.
+    """
+    register_user(client)
+    # Multiple Purchase tranches with varying bases to create lot-order sensitivity
+    client.post("/api/grants", json={
+        "year": 2018, "type": "Purchase", "shares": 5000, "price": 2.0,
+        "vest_start": "2018-06-01", "periods": 4, "exercise_date": "2018-01-01",
+        "dp_shares": 0,
+    })
+    client.post("/api/grants", json={
+        "year": 2020, "type": "Purchase", "shares": 5000, "price": 8.0,
+        "vest_start": "2020-06-01", "periods": 4, "exercise_date": "2020-01-01",
+        "dp_shares": 0,
+    })
+    client.post("/api/prices", json={"effective_date": "2018-01-01", "price": 10.0})
+    client.post("/api/prices", json={"effective_date": "2024-01-01", "price": 20.0})
+
+    _set_flexible_payoff(db_session, True)
+    _set_payoff_method(client, "epic_lifo")
+
+    # Two loans — order matters: sizing loan B must see the real lots loan A's sale consumed
+    client.post("/api/loans?generate_payoff_sale=true", json={
+        "grant_year": 2018, "grant_type": "Purchase",
+        "loan_type": "Purchase", "loan_year": 2018,
+        "amount": 30000.0, "interest_rate": 0.03,
+        "due_date": "2024-06-30",
+    })
+    client.post("/api/loans?generate_payoff_sale=true", json={
+        "grant_year": 2020, "grant_type": "Purchase",
+        "loan_type": "Purchase", "loan_year": 2020,
+        "amount": 30000.0, "interest_rate": 0.03,
+        "due_date": "2024-06-30",
+    })
+
+    sales = client.get("/api/sales").json()
+    assert len(sales) == 2
+    loans = {l["id"]: l for l in client.get("/api/loans").json()}
+
+    # Each sale's actual tax-adjusted net proceeds must cover its loan
+    for s in sales:
+        tax = client.get(f"/api/sales/{s['id']}/tax").json()
+        gross = s["shares"] * s["price_per_share"]
+        est_tax = tax["estimated_tax"]
+        loan_amount = loans[s["loan_id"]]["amount"]
+        net = gross - est_tax
+        # Allow $1 tolerance for rounding
+        assert net + 1.0 >= loan_amount, (
+            f"Sale {s['id']} for loan {s['loan_id']}: net={net} < loan={loan_amount} "
+            f"(gross={gross}, tax={est_tax}, shares={s['shares']})"
+        )
+
+
 def test_tax_settings_update_does_not_expose_flexible_flag_for_update(client, db_session):
     """flexible_payoff_enabled is read-only; PUT should not change system_settings."""
     register_user(client)

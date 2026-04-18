@@ -12,6 +12,7 @@ services:
       retries: 10
 
   e2e-app:
+    image: epic-stocks-e2e-app:ci
     build: .
     depends_on:
       e2e-db:
@@ -29,6 +30,7 @@ services:
       retries: 20
 
   playwright:
+    image: epic-stocks-playwright:ci
     build:
       context: .
       dockerfile: Dockerfile.e2e

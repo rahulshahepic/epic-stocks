@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { api } from '../../api.ts'
-import type { SmartTip, HorizonSettings, TaxSettings } from '../../api.ts'
+import type { SmartTip, TaxSettings } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 
 function fmt$(n: number) {
@@ -8,7 +8,6 @@ function fmt$(n: number) {
 }
 
 const TIP_ICONS: Record<SmartTip['type'], string> = {
-  exit_date: '📅',
   deduction: '💸',
   method: '⚙️',
 }
@@ -39,11 +38,7 @@ export default function TipCarousel({ onApply }: Props) {
       api.recordTipAcceptance(tip.type, tip.savings).catch(() => {})
 
       // Apply the setting change
-      if (tip.type === 'exit_date') {
-        await api.updateHorizonSettings(tip.apply as Partial<HorizonSettings>)
-      } else {
-        await api.updateTaxSettings(tip.apply as Partial<TaxSettings>)
-      }
+      await api.updateTaxSettings(tip.apply as Partial<TaxSettings>)
 
       // Remove this tip from local state
       const next = new Set(dismissed)
@@ -79,7 +74,7 @@ export default function TipCarousel({ onApply }: Props) {
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">{tip.title}</p>
             <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/50 dark:text-green-300">
-              {tip.type === 'exit_date' ? 'Gain' : 'Save'} {fmt$(tip.savings)}
+              Save {fmt$(tip.savings)}
             </span>
           </div>
           <p className="mt-0.5 text-xs text-amber-800 dark:text-amber-300">{tip.description}</p>

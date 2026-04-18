@@ -1,10 +1,10 @@
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
-from scaffold.models import User, Grant, Loan, Price, LoanPayment, Sale, TaxSettings, HorizonSettings, TipAcceptance
+from scaffold.models import User, Grant, Loan, Price, LoanPayment, Sale, TaxSettings, TipAcceptance
 from scaffold.auth import get_current_user
 from app.core import generate_all_events, compute_timeline
 from app.routers.events import (
@@ -15,7 +15,6 @@ from app.routers.events import (
 
 router = APIRouter(prefix="/api/tips", tags=["tips"])
 
-_THRESHOLD_EXIT = 1000.0
 _THRESHOLD_DEDUCTION = 500.0
 _THRESHOLD_METHOD = 1000.0
 
@@ -86,7 +85,6 @@ def get_tips(user: User = Depends(get_current_user), db: Session = Depends(get_d
     if not ts_row:
         return []
 
-    hs_row = db.query(HorizonSettings).filter(HorizonSettings.user_id == user.id).first()
     loan_payments = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).order_by(LoanPayment.date).all()
     sales = db.query(Sale).filter(Sale.user_id == user.id).all()
     db.close()
@@ -108,55 +106,29 @@ def get_tips(user: User = Depends(get_current_user), db: Session = Depends(get_d
     current_deduct = bool(ts_row.deduct_investment_interest)
     current_excl = set(ts_row.deduction_excluded_years or [])
 
-    # Determine current horizon_date (same logic as events endpoint)
+    # Use the last vesting date as the natural scenario horizon for tip math.
     base_timeline = compute_timeline(generate_all_events(grants, prices, loans), initial_price)
-    current_horizon = (hs_row.horizon_date if hs_row and hs_row.horizon_date else None) \
-        or _last_vesting_date(base_timeline)
+    scenario_horizon = _last_vesting_date(base_timeline)
 
-    if current_horizon is None:
+    if scenario_horizon is None:
         return []
 
-    baseline_tax, baseline_net_cash = _compute_scenario(
+    baseline_tax, _ = _compute_scenario(
         grants, prices, loans, loans_db, initial_price,
         loan_payments, sales,
-        ts_dict, current_lot, current_horizon, current_deduct,
+        ts_dict, current_lot, scenario_horizon, current_deduct,
         excluded_years=current_excl,
     )
     baseline = baseline_tax  # used by tips 2 & 3
 
     tips = []
 
-    # --- Tip 1: Exit date extension ---
-    # Fire when net cash (proceeds − taxes) improves, not just when taxes drop.
-    # A higher exit price raises both proceeds and taxes; what matters is the net.
-    for days in [30, 60, 90]:
-        new_horizon = current_horizon + timedelta(days=days)
-        _, new_net_cash = _compute_scenario(
-            grants, prices, loans, loans_db, initial_price,
-            loan_payments, sales,
-            ts_dict, current_lot, new_horizon, current_deduct,
-            excluded_years=current_excl,
-        )
-        gain = round(new_net_cash - baseline_net_cash, 2)
-        if gain >= _THRESHOLD_EXIT:
-            tips.append({
-                "type": "exit_date",
-                "title": f"Push your exit date back {days} days",
-                "description": (
-                    f"Moving your projected exit date to {new_horizon.strftime('%b %d, %Y')} "
-                    f"could put ~${gain:,.0f} more in your pocket after taxes."
-                ),
-                "savings": gain,
-                "apply": {"horizon_date": new_horizon.isoformat()},
-            })
-            break  # smallest improvement that clears threshold
-
     # --- Tip 2: Investment interest deduction (going forward) ---
     if not current_deduct:
         this_year = date.today().year
         # Compute savings from deduction applied only to current + future years
         timeline_for_tip = compute_timeline(generate_all_events(grants, prices, loans), initial_price)
-        enriched_for_tip = _enrich_timeline(timeline_for_tip, loans_db, loan_payments, sales, horizon_date=current_horizon)
+        enriched_for_tip = _enrich_timeline(timeline_for_tip, loans_db, loan_payments, sales, horizon_date=scenario_horizon)
         _annotate_sale_taxes(enriched_for_tip, timeline_for_tip, ts_dict, lot_order=current_lot)
         # Determine past years from grant vest schedules (matches taxable_years)
         vest_years: set[int] = set()
@@ -204,7 +176,7 @@ def get_tips(user: User = Depends(get_current_user), db: Session = Depends(get_d
         new_tax = _compute_scenario_tax(
             grants, prices, loans, loans_db, initial_price,
             loan_payments, sales,
-            ts_dict, lot_method, current_horizon, current_deduct,
+            ts_dict, lot_method, scenario_horizon, current_deduct,
             excluded_years=current_excl,
         )
         savings = round(baseline - new_tax, 2)

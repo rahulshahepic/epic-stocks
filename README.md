@@ -457,7 +457,7 @@ For the full deploy pipeline details, uptime monitoring setup, backup strategy, 
 
 ### Branch Strategy
 
-PRs to `main` must originate from the `staging` branch — enforced by `.github/workflows/branch-check.yml`. The CI test suite (`.github/workflows/test.yml`) runs on every push to `main` and `staging`, and on every PR. It includes backend tests (pytest + pip-audit), frontend tests (vitest + npm audit), Caddy config validation, and E2E tests (Playwright).
+PRs to `main` must originate from the `staging` branch — enforced by `.github/workflows/branch-check.yml`. The CI test suite (`.github/workflows/test.yml`) runs on every push to `main` and `staging`, and on every PR. It includes backend tests (pytest), frontend tests (vitest + npm audit), Caddy config validation, and E2E tests (Playwright). `pip-audit` runs weekly on a schedule via `.github/workflows/security-audit.yml` (also triggerable manually).
 
 ## Development
 
@@ -596,7 +596,8 @@ epic-stocks/
 ├── .env.example             # Environment variable template
 ├── .github/workflows/
 │   ├── deploy.yml           # Deploy to VPS on push to main
-│   ├── test.yml             # CI: pytest, vitest, pip-audit, npm audit, Caddy validate, E2E
+│   ├── test.yml             # CI: pytest, vitest, npm audit, Caddy validate, E2E
+│   ├── security-audit.yml   # Weekly pip-audit (scheduled + workflow_dispatch)
 │   └── branch-check.yml    # Enforce PRs to main come from staging
 ├── Dockerfile               # Multi-stage build (frontend + backend)
 ├── Dockerfile.e2e           # E2E test container (Playwright + chromium)

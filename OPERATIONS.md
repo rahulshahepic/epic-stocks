@@ -78,10 +78,11 @@ The app uses the BFF (Backend For Frontend) session cookie pattern. The JWT neve
 ### Dependency auditing (CI)
 
 `.github/workflows/test.yml` runs on every push to `main`/`staging` and on every PR:
-- `pip-audit` on Python dependencies
 - `npm audit --audit-level=high` on frontend dependencies
 - `caddy validate` against the Caddyfile (catches syntax errors before deploy)
 - E2E tests via Playwright (depends on backend + frontend passing)
+
+`.github/workflows/security-audit.yml` runs `pip-audit` on Python dependencies weekly (Mondays 12:00 UTC) and on manual `workflow_dispatch`. It is intentionally off the PR hot path — a failure notifies via GitHub's standard scheduled-workflow email, it does not block merges.
 
 `.github/workflows/branch-check.yml` enforces that PRs to `main` must originate from the `staging` branch.
 

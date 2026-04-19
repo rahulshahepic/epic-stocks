@@ -291,14 +291,23 @@ function TemplatesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; b
             <Field label="Periods"><TextInput type="number" min={1} value={modal.draft.periods} onChange={e => patch({ periods: Number(e.target.value) })} required /></Field>
             <Field label="Exercise date"><TextInput type="date" value={modal.draft.exercise_date} onChange={e => patch({ exercise_date: e.target.value })} required /></Field>
             <Field label="Display order"><TextInput type="number" value={modal.draft.display_order ?? 0} onChange={e => patch({ display_order: Number(e.target.value) })} /></Field>
-            <label className="flex items-center gap-2 text-xs">
-              <input type="checkbox" checked={!!modal.draft.default_catch_up} onChange={e => patch({ default_catch_up: e.target.checked })} />
-              Default catch-up
-            </label>
-            <label className="flex items-center gap-2 text-xs">
-              <input type="checkbox" checked={!!modal.draft.show_dp_shares} onChange={e => patch({ show_dp_shares: e.target.checked })} />
-              Show DP shares (Purchase only)
-            </label>
+            {modal.draft.type === 'Purchase' && (
+              <>
+                <label className="flex items-center gap-2 text-xs">
+                  <input type="checkbox" checked={!!modal.draft.default_catch_up} onChange={e => patch({
+                    default_catch_up: e.target.checked,
+                    // Clear the tax due date if catch-up flips off (and no other eligibility left).
+                    default_tax_due_date: !e.target.checked && !modal.draft.zero_basis
+                      ? null : modal.draft.default_tax_due_date,
+                  })} />
+                  Default catch-up
+                </label>
+                <label className="flex items-center gap-2 text-xs">
+                  <input type="checkbox" checked={!!modal.draft.show_dp_shares} onChange={e => patch({ show_dp_shares: e.target.checked })} />
+                  Show DP shares
+                </label>
+              </>
+            )}
             {modal.draft.type === 'Purchase' && (
               <Field label="Purchase-loan due date (YYYY-MM-DD)">
                 <TextInput

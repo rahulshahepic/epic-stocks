@@ -279,14 +279,24 @@ def test_grant_template_crud(client):
         os.environ.pop("ADMIN_EMAIL", None)
 
 
-def test_grant_template_validator_show_dp_requires_purchase(client):
+def test_grant_template_validator_purchase_only_flags(client):
     _login_admin(client)
     try:
+        # show_dp_shares rejected on Bonus.
         r = client.post("/api/content/grant-templates", json={
             "year": 2030, "type": "Bonus",
             "vest_start": "2031-09-30", "periods": 3,
             "exercise_date": "2030-12-31",
             "show_dp_shares": True,
+        })
+        assert r.status_code == 422
+
+        # default_catch_up rejected on Bonus.
+        r = client.post("/api/content/grant-templates", json={
+            "year": 2030, "type": "Bonus",
+            "vest_start": "2031-09-30", "periods": 3,
+            "exercise_date": "2030-12-31",
+            "default_catch_up": True,
         })
         assert r.status_code == 422
     finally:

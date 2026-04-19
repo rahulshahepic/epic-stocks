@@ -1516,7 +1516,7 @@ export default function Dashboard() {
         <section className="space-y-3">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-slate-500">Your Shares</p>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <Card label={cv.price_is_estimate ? 'Share Price (est.)' : 'Share Price'} value={fmtPrice(cv.current_price)} variant="price" subtitle="Current value per share" />
+            <Card label={cv.price_is_estimate ? 'Share Price (est.)' : 'Share Price'} value={fmtPrice(cv.current_price)} variant="price" subtitle="Price per share on this date" />
             <Card
               label="Vested Shares"
               value={fmtNum(cv.total_shares)}
@@ -1583,7 +1583,7 @@ export default function Dashboard() {
               label="Cash Received"
               value={fmt$(cv.cash_received)}
               variant="cash"
-              subtitle="Net proceeds from sales so far"
+              subtitle="Net proceeds from sales through this date"
               onClick={breakdowns && breakdowns.cash.sales.length > 0 ? () => toggleBreakdown('cash') : undefined}
               expanded={openBreakdowns.has('cash')}
             />
@@ -1687,7 +1687,7 @@ export default function Dashboard() {
               label={hasInterestDeduction ? 'Tax Paid (after int. ded.)' : 'Tax Paid'}
               value={fmt$(cv.total_tax_paid)}
               variant="tax"
-              subtitle="Taxes withheld so far"
+              subtitle="Taxes withheld through this date"
               onClick={breakdowns && (breakdowns.tax.taxLoans > 0 || breakdowns.tax.vestingIncomeTax > 0 || breakdowns.tax.cgTaxFromSales > 0) ? () => toggleBreakdown('tax') : undefined}
               expanded={openBreakdowns.has('tax')}
             />

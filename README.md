@@ -2,6 +2,8 @@
 
 A multi-user PWA for tracking equity compensation: grants, vesting schedules, stock loans, share price history, and derived event timelines showing income vs capital gains over time.
 
+> **Epic campus deployment:** This app also has an **Epic Mode** designed for deployment on Epic's internal campus network, which changes several behaviors (read-only historical data, Request Payoff flow, cache-invalidation webhook, Epic-specific env vars and admin controls). See **[EPIC_DEPLOYMENT.md](EPIC_DEPLOYMENT.md)** for details on that mode and the planned full-network integration.
+
 ## Screenshots
 
 ### Setup Wizard
@@ -66,16 +68,6 @@ Settings → Tax Rates includes lot selection method, loan payoff method, and al
 | ![Invite Landing](screenshots/invite-landing-light-mobile.png) |
 
 Invite others by email to view your data read-only. The Settings page shows sent/received invitations, and an invite code entry field. The invite landing page guides recipients through sign-in (any provider — doesn't need to match the invitation email). An account switcher in the header lets you switch between your data and accounts shared with you.
-
-### Epic Mode (Read-Only Grants & Loans)
-
-| Grants Light | Grants Dark |
-|-------|------|
-| ![Grants Epic Mode Light](screenshots/grants-epic-mode-light-mobile.png) | ![Grants Epic Mode Dark](screenshots/grants-epic-mode-dark-mobile.png) |
-
-| Loans Light |
-|-------|
-| ![Loans Epic Mode Light](screenshots/loans-epic-mode-light-mobile.png) |
 
 ### Admin Dashboard
 
@@ -142,7 +134,7 @@ The *grant price* (what you paid) is fixed at grant creation. The *share price* 
    Click **Export** in the date bar to download a formatted Excel report for the selected date. The **investment interest deduction** toggle is on the dashboard: flip it to preview the tax impact before applying — see [Investment Interest Deduction](#investment-interest-deduction).
 5. **View Events** — the full computed timeline of vesting, exercise, loan payoff, and sale events. Only real events appear; the hypothetical "exit at date X" story lives on the dashboard's *If you exited on this date* section instead.
 6. **Plan or record a sale** — go to **Sales** and tap **+ Sale**. See [Sales Workflow](#sales-workflow) for the full explanation of lot selection methods, the $ Target vs # Shares toggle, the tranche allocation table, and how to record actual tax paid for a past sale.
-7. **Manage loan payoffs** — each loan can have an auto-generated sale that covers the outstanding balance. See [Loan Payoff Flow](#loan-payoff-flow) for how share counts are calculated and how the Request Payoff button works in Epic Mode.
+7. **Manage loan payoffs** — each loan can have an auto-generated sale that covers the outstanding balance. See [Loan Payoff Flow](#loan-payoff-flow) for how share counts are calculated.
 9. **Set up notifications** — go to **Settings → Notifications**. Enable push (browser) or email, then choose timing: day-of, 3 days before, or 1 week before your events. Hit **Send test** to confirm push is working.
 10. **Export your data** — go to **Import/Export → Download Vesting.xlsx** to get a full export at any time.
 11. **Share your data** — go to **Settings → Sharing** to invite someone by email. They'll receive a link and a manual code. After they sign in (with any provider), they see your data read-only. Use the account switcher in the header to switch between your data and accounts shared with you.
@@ -159,8 +151,8 @@ The *grant price* (what you paid) is fixed at grant creation. The *share price* 
 
 The sale form switches its title and available fields based on the date you select:
 
-- **Plan Sale** — the date is today or in the future. Shares and tax are forward-looking estimates based on the current price and projected lots. There is no "actual tax paid" field — you haven't sold yet. In Epic Mode, only future dates are allowed.
-- **Record Sale** — the date is in the past (non-Epic mode only). You're recording something that already happened. An optional **Actual tax paid** field appears so you can enter what you actually remitted — this overrides the estimate and makes the tax breakdown accurate for historical records.
+- **Plan Sale** — the date is today or in the future. Shares and tax are forward-looking estimates based on the current price and projected lots. There is no "actual tax paid" field — you haven't sold yet.
+- **Record Sale** — the date is in the past. You're recording something that already happened. An optional **Actual tax paid** field appears so you can enter what you actually remitted — this overrides the estimate and makes the tax breakdown accurate for historical records.
 
 ### $ Target vs # Shares
 
@@ -169,7 +161,7 @@ Two ways to size a sale, selectable by the toggle at the top of the form:
 - **$ Target** — enter the net cash you want to receive *after tax*. The app gross-ups the share count iteratively until `after-tax proceeds ≥ target`. Useful when you need a specific dollar amount (e.g. to cover a tax bill or loan balance).
 - **# Shares** — enter shares directly. Gross proceeds, estimated tax, and net proceeds are shown as you type.
 
-Both modes are available for Plan and Record sales, in Epic Mode and non-Epic Mode.
+Both modes are available for Plan and Record sales.
 
 ### Lot Selection Methods
 
@@ -220,7 +212,7 @@ Each loan tied to a Purchase grant can have an auto-generated payoff sale that c
 
 The app finds the smallest integer share count such that the after-tax proceeds from selling those shares ≥ the outstanding balance (cash due). It only considers lots from the *originating grant* — this is called same-tranche selection and applies regardless of your default lot method setting.
 
-The payoff sale always shows a **Lot Allocation** table in the Request Payoff modal (Epic Mode) or in the sale record on the Sales page, so you can see exactly which lots from that grant are being consumed and whether they are LT or ST.
+The payoff sale always shows a **Lot Allocation** table in the sale record on the Sales page, so you can see exactly which lots from that grant are being consumed and whether they are LT or ST.
 
 ### Auto-generated payoff sales
 
@@ -233,23 +225,6 @@ When you create a loan with **Payoff loan via sale** checked (the default), a pa
 - **Tax rates** — your current Settings at creation time, locked to the sale record
 
 If you later change tax rate settings or add new share prices, the stored share count will be stale. Use **Regen payoff sales** on the Loans page to recompute share counts for all future payoff sales at once (this also updates the locked tax rates to your current settings).
-
-### Request Payoff (Epic Mode)
-
-In Epic Mode, each loan row shows a **Request Payoff** button instead of an Edit button. This opens a modal that shows the full payoff picture before you commit:
-
-1. **Outstanding balance** — principal + projected interest to the due date
-2. **Shares to sell** — gross-up result (after-tax proceeds ≥ balance)
-3. **Price per share** — share price at the due date
-4. **Est. gross proceeds** — shares × price
-5. **Sale date** — the loan due date
-6. **Lot Allocation table** — shows which lots from the originating grant are consumed, with LT/ST classification
-
-Tap **Confirm Payoff** to create the payoff sale. It appears immediately in the Sales list and on the Events timeline as a "Loan Payoff Sale" event.
-
-If a payoff sale for the loan already exists (e.g. auto-created at loan setup), Confirm Payoff returns the existing sale rather than creating a duplicate.
-
----
 
 ## Investment Interest Deduction
 
@@ -300,12 +275,11 @@ Investment interest is interest paid on loans used to buy investments. Under IRS
 - **Setup Wizard (non-destructive)** — when re-run by a user who already has data, each screen pre-loads matching existing DB records, so prices and grants are updated in place. Any existing records that don't match the wizard's schedule appear at the bottom of their respective screens with a checkbox — uncheck to keep them, leave checked to remove. No changes are written until the final confirmation step.
 - **OIDC Sign-In** — provider-agnostic PKCE flow works with any standards-compliant IdP (Google, Azure Entra ID, etc.). Multiple providers can be enabled simultaneously — the login page shows one button per provider. Automatic account creation; data is tied to the account.
 - **Smart Tips** — the dashboard automatically analyzes your settings and surfaces actionable tips in a carousel above the summary cards: (1) **Investment interest deduction** — if enabling Form 4952 deduction would save ≥$500 going forward (savings calculated from the current year onward; applying auto-excludes past years); (2) **Lot selection method** — if switching to FIFO/LIFO/Epic LIFO saves ≥$1,000 vs. your current method (manual lot selection is not analyzed). Each tip shows estimated savings and an **Apply** button that updates the relevant setting in one tap and refreshes the dashboard. Tips can also be dismissed for the session. Acceptance is recorded for admin reporting.
-- **Admin Dashboard** — user management, aggregate stats, email blocking, system health monitoring (CPU, RAM, DB size, and cache hit rate sparklines with 24h/72h/7d/30d windows), per-table DB size breakdown, and a Danger Zone for maintenance mode and Epic Mode toggles. Click any user to open a detail card with email/notification status, invitations sent/received, and actions (notify, delete, block/unblock sending, reset invitations, promote/revoke **content admin**). An **Email Lookup** tool searches any email across accounts, opt-outs, blocked lists, and invitation records — works for non-users too. Admin cannot see financial data.
+- **Admin Dashboard** — user management, aggregate stats, email blocking, system health monitoring (CPU, RAM, DB size, and cache hit rate sparklines with 24h/72h/7d/30d windows), per-table DB size breakdown, and a Danger Zone for maintenance mode. Click any user to open a detail card with email/notification status, invitations sent/received, and actions (notify, delete, block/unblock sending, reset invitations, promote/revoke **content admin**). An **Email Lookup** tool searches any email across accounts, opt-outs, blocked lists, and invitation records — works for non-users too. Admin cannot see financial data.
 - **Content Admin Role + /content Editor** — admins can designate other users as content admins (persistent across logins). Content admins see a new **Content** nav link and can edit the grant-program data that drives the Setup Wizard: grant templates (schedule), grant type metadata, bonus vesting variants, loan interest/tax/purchase-original rates, purchase and tax refinance chains, and program-wide settings (loan term, fallback tax rates, price year range, DP shares start year, flexible loan-payoff toggle). Admins are implicitly content admins. Edits take effect immediately for all users on their next wizard load; the wizard hooks refresh the cache after any write.
 - **Push & Email Notifications** — configurable advance timing: day-of, 3 days before, or 1 week before each event. Per-user opt-in for each channel independently. Includes a "Send test" button to confirm push is working.
 - **Per-User Encryption** — AES-256-GCM column-level encryption. Two-level key hierarchy: `KEY_ENCRYPTION_KEY` (env var, set once, never changes) wraps an operational master key stored encrypted in the database. The master key can be rotated live from the admin panel — all replicas pick up the new key automatically within seconds, no restart required. Each user has a unique per-user key wrapped by the master key.
-- **Growth Price Estimator** — project future share prices via annual % growth from the current price. Default start date is the next March 1 (matching Epic's typical price announcement cadence). Generates one price per year through a configurable end date. Estimates are visually distinguished (italic, "est." badge) and automatically removed when a real price is added for the same date. Available in Epic Mode — tap **+ Estimate** on the Prices page.
-- **Epic Mode** — read-only deployment mode for use with Epic's managed data pipeline. When active, historical grant/price/loan/import writes are blocked (403) and the UI shows a "Historical data provided by Epic — view only" notice. Future price estimates remain writable (via **+ Price** for individual future dates, or **+ Estimate** for bulk growth projections). Each grant row shows a **Sell** button and each loan row shows a **Request Payoff** button (with lot allocation preview) so users can still act on their data. Sales are always writable but require a future date. Toggled from Admin → Danger Zone, or hard-locked via the `EPIC_MODE=true` env var. A `POST /api/internal/cache-invalidate` webhook lets Epic's batch jobs pre-warm the Redis cache after writing. Past estimates are automatically cleaned up nightly and on page load once their date has passed. See [Loan Payoff Flow](#loan-payoff-flow) for the Request Payoff modal detail.
+- **Growth Price Estimator** — project future share prices via annual % growth from the current price. Default start date is the next March 1 (matching Epic's typical price announcement cadence). Generates one price per year through a configurable end date. Estimates are visually distinguished (italic, "est." badge) and automatically removed when a real price is added for the same date. Tap **+ Estimate** on the Prices page.
 - **Maintenance Mode** — two distinct mechanisms: (1) app-managed downtime stored in the database — all replicas see the toggle instantly; financial API routes return 503 while auth and admin remain accessible; (2) deploy-time full downtime via a Caddy sentinel file (`./data/full_maintenance`) that serves a static 503 page while the app container is stopped.
 - **Email Invitations & Sharing** — invite people by email to view your equity data (read-only). Invitees receive an email with a clickable link and a manual entry code. The link works with any sign-in provider — it doesn't need to match the email the invitation was sent to. Once accepted, the viewer sees your Dashboard, Events, Grants, Loans, Prices, and Sales (all read-only). They cannot see Tips, use What If scenarios, or modify any data (enforced on the backend). A financial advisor can be invited by multiple users and switch between them using the account switcher in the header. Inviters see acceptance status, the invitee's actual login email, and when they last viewed data. Both sides can revoke access. Per-inviter notification toggle lets viewers control which accounts they receive event notifications for. Invitation tokens expire after 7 days; inviters can resend to extend. All emails include an unsubscribe link and RFC 8058 `List-Unsubscribe` headers for one-click unsubscribe in email clients. Recipients can opt out of invitation emails without needing an account.
 - **Dark/Light Mode** — auto-detects system preference, updates live.
@@ -363,9 +337,6 @@ cp .env.example .env
 | `OIDC_PROVIDERS` | Yes | JSON array of OIDC provider configs — see `.env.example` for format. Supports Google, Azure Entra ID, or any OIDC-compliant IdP. Multiple providers show as separate sign-in buttons. |
 | `DATABASE_URL` | Yes (prod) | PostgreSQL DSN. Docker Compose sets this automatically from `POSTGRES_PASSWORD`. |
 | `REDIS_URL` | No | Redis connection string for the timeline L2 cache (e.g. `redis://localhost:6379/0`). When set, computed event timelines are cached in Redis and pre-warmed in the background after data writes, allowing cache hits to survive process restarts and be shared across replicas. Omit for single-process deployments. The `redis` service in `docker-compose.yml` provides this automatically when `REDIS_URL=redis://redis:6379/0`. |
-| `EPIC_MODE` | No | Set to `true` to hard-lock Epic Mode on at the env level (overrides the admin toggle). Normally leave unset and use the Admin panel toggle instead. |
-| `CACHE_INVALIDATE_SECRET` | No (Epic deployments) | Bearer token secret for `POST /api/internal/cache-invalidate`. Epic's batch systems POST to this endpoint after writing data. **Auto-generated on production deploy** and stored in `.secrets/cache_invalidate_secret`. Read the generated value off the server to configure Epic's webhook caller. Endpoint returns 503 if unset. |
-
 | `POSTGRES_PASSWORD` | Yes (local dev) | Password for the `postgres` user. **Auto-generated on production deploy.** |
 | `KEY_ENCRYPTION_KEY` | No | Enables per-user AES-256-GCM encryption. Set once, never changes. **Auto-generated on production deploy** and stored in `.secrets/key_encryption_key`. Wraps the operational master key stored in the database. |
 | `LEGACY_MASTER_KEY` | No | One-time migration aid. Set to the old `ENCRYPTION_MASTER_KEY` value on first deploy after upgrading to the two-level key hierarchy; unset it after the first successful boot. |
@@ -540,7 +511,6 @@ epic-stocks/
 │   │   ├── auth.py          # JWT creation/verification + admin checks
 │   │   ├── crypto.py        # Per-user AES-256-GCM encryption
 │   │   ├── email_sender.py  # Email dispatch (delegates to providers/)
-│   │   ├── epic_mode.py     # Epic Mode state (DB-backed, 1s TTL cache, env override)
 │   │   ├── maintenance.py   # Sentinel path for app-managed downtime
 │   │   ├── migrate_sqlite_to_pg.py # One-time SQLite→PostgreSQL data migration
 │   │   ├── models.py        # SQLAlchemy models (User, BlockedEmail, SystemMetric, etc.)
@@ -571,8 +541,7 @@ epic-stocks/
 │   │       ├── sales.py     # Sales CRUD + tax breakdown
 │   │       ├── tips.py      # Smart Tips: scenario tax comparisons + acceptance recording
 │   │       ├── wizard.py    # Setup Wizard: parse-file, preview (dry-run diff), submit (merge)
-│   │       ├── content.py   # Grant-program content: GET (any user) + content-admin CRUD
-│   │       └── cache.py     # POST /api/internal/cache-invalidate webhook
+│   │       └── content.py   # Grant-program content: GET (any user) + content-admin CRUD
 │   │   ├── content_service.py # Seeder + load_content() loader for grant-program data
 │   └── tests/               # pytest tests
 ├── frontend/
@@ -653,7 +622,6 @@ All authenticated endpoints require a valid `session` cookie (set automatically 
 | GET | `/api/sales/tranche-allocation` | Lot-level allocation for a proposed sale (date, shares, method) |
 | GET | `/api/sales/estimate` | Gross-up estimate: shares needed to net a target cash amount |
 | GET | `/api/loans/{id}/payoff-sale-suggestion` | Suggested gross-up sale for a loan |
-| POST | `/api/loans/{id}/execute-payoff` | Execute loan payoff — creates a sale (Epic Mode) |
 | POST | `/api/loans/regenerate-all-payoff-sales` | Recompute all future payoff sale share counts |
 | GET/POST | `/api/loan-payments` | List/create early loan payments |
 | PUT/DELETE | `/api/loan-payments/{id}` | Update/delete a loan payment |
@@ -682,7 +650,6 @@ All authenticated endpoints require a valid `session` cookie (set automatically 
 | POST/PUT/DELETE | `/api/content/loan-rates[/{id}]` | CRUD loan interest/tax/purchase rates (content admin) |
 | POST/PUT/DELETE | `/api/content/loan-refinances[/{id}]` | CRUD purchase/tax refinance chain entries (content admin) |
 | PUT | `/api/content/grant-program-settings` | Update singleton program settings incl. `flexible_payoff_enabled` (content admin) |
-| POST | `/api/internal/cache-invalidate` | Pre-warm Redis cache (Epic batch webhook; requires `Authorization: Bearer <CACHE_INVALIDATE_SECRET>`) |
 | POST/DELETE | `/api/push/subscribe` | Subscribe/unsubscribe push notifications |
 | GET | `/api/push/status` | Check push subscription status |
 | POST | `/api/push/test` | Send a test push notification to the current user's subscriptions |
@@ -725,7 +692,6 @@ All authenticated endpoints require a valid `session` cookie (set automatically 
 | DELETE | `/api/admin/errors` | Clear error log (admin only) |
 | GET | `/api/admin/metrics?hours=72` | Time-series CPU/RAM/DB metrics history (admin only) |
 | GET | `/api/admin/db-tables` | Per-table DB size breakdown (PostgreSQL only, admin only) |
-| GET/POST | `/api/admin/epic-mode` | Get/set Epic Mode read-only state (admin only) |
 | GET/POST | `/api/admin/flexible-payoff` | Get/set flexible loan payoff method (admin only). Now backed by `grant_program_settings.flexible_payoff_enabled`. |
 | POST | `/api/admin/users/{id}/content-admin` | Promote user to content admin (admin only) |
 | DELETE | `/api/admin/users/{id}/content-admin` | Revoke content admin role (admin only) |
@@ -780,7 +746,6 @@ Click any user in the list to open a detail card with all actions:
 | **Clear invitation opt-out** | Remove an email from the invitation opt-out list (set when a recipient clicks "unsubscribe" in an invitation email). |
 | **Block email** | Prevents an email address from logging in or creating an account. Includes optional reason field. |
 | **Unblock email** | Removes an email from the blocklist, restoring login access. |
-| **Toggle Epic Mode** | Enable/disable read-only mode for Epic's managed data pipeline. When active, historical data writes are blocked (403). Toggled from Admin → Danger Zone, or hard-locked via `EPIC_MODE=true` env var. |
 | **Toggle Flexible Payoff** | Enable/disable flexible loan payoff method selection. When enabled, users can choose their preferred lot selection method for loan payoff sales. Stored on `grant_program_settings.flexible_payoff_enabled`; can also be changed by content admins from `/content`. |
 | **Make / Revoke Content Admin** | Promote a non-admin user to a persistent content-admin role. Content admins see a **Content** nav link and a `/content` editor where they can edit the grant-program schedule, loan rates, refi chains, and program settings used by the Setup Wizard. Admins are implicitly content admins. |
 | **Enable / disable maintenance** | Toggles app-managed downtime. Financial API routes return 503; auth and admin remain accessible. An amber banner appears in the nav and financial pages show a placeholder. Use this before planned ops that affect financial data. |

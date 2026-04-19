@@ -220,6 +220,7 @@ function TemplatesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; b
       default_catch_up: false,
       show_dp_shares: false,
       zero_basis: false,
+      default_purchase_due_date: null,
       default_tax_due_date: null,
       display_order: blob.grant_templates.length,
     },
@@ -298,6 +299,15 @@ function TemplatesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; b
               <input type="checkbox" checked={!!modal.draft.show_dp_shares} onChange={e => patch({ show_dp_shares: e.target.checked })} />
               Show DP shares (Purchase only)
             </label>
+            {modal.draft.type === 'Purchase' && (
+              <Field label="Purchase-loan due date (YYYY-MM-DD)">
+                <TextInput
+                  type="date"
+                  value={modal.draft.default_purchase_due_date ?? ''}
+                  onChange={e => patch({ default_purchase_due_date: e.target.value || null })}
+                />
+              </Field>
+            )}
             {modal.draft.type !== 'Purchase' && (
               <label className="flex items-center gap-2 text-xs">
                 <input
@@ -448,7 +458,6 @@ function RatesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; busy:
       year: new Date().getFullYear(),
       rate: 0,
       grant_type: kind === 'tax' ? 'Bonus' : null,
-      due_date: kind === 'purchase_original' ? '' : null,
     },
   })
   const openEdit = (r: LoanRateRow) => setModal({ mode: 'edit', draft: { ...r } })
@@ -491,7 +500,7 @@ function RatesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; busy:
           <thead className="bg-stone-50 dark:bg-slate-800">
             {kind === 'interest' && <tr><th className="px-2 py-1 text-left">Year</th><th className="px-2 py-1 text-left">Rate</th></tr>}
             {kind === 'tax' && <tr><th className="px-2 py-1 text-left">Grant type</th><th className="px-2 py-1 text-left">Year</th><th className="px-2 py-1 text-left">Rate</th></tr>}
-            {kind === 'purchase_original' && <tr><th className="px-2 py-1 text-left">Year</th><th className="px-2 py-1 text-left">Rate</th><th className="px-2 py-1 text-left">Due date</th></tr>}
+            {kind === 'purchase_original' && <tr><th className="px-2 py-1 text-left">Year</th><th className="px-2 py-1 text-left">Rate</th></tr>}
           </thead>
           <tbody>
             {rows.map(r => (
@@ -503,7 +512,6 @@ function RatesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; busy:
                 {kind === 'tax' && <td className="px-2 py-1">{r.grant_type}</td>}
                 <td className="px-2 py-1">{r.year}</td>
                 <td className="px-2 py-1">{(r.rate * 100).toFixed(3)}%</td>
-                {kind === 'purchase_original' && <td className="px-2 py-1">{r.due_date}</td>}
               </tr>
             ))}
           </tbody>
@@ -533,9 +541,9 @@ function RatesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; busy:
               <TextInput type="number" step="0.01" value={+(modal.draft.rate * 100).toFixed(4)} onChange={e => patch({ rate: Number(e.target.value) / 100 })} required />
             </Field>
             {draftKind === 'purchase_original' && (
-              <Field label="Due date">
-                <TextInput type="date" value={modal.draft.due_date ?? ''} onChange={e => patch({ due_date: e.target.value })} required />
-              </Field>
+              <p className="text-[11px] text-stone-500 dark:text-slate-400">
+                Due date for purchase loans lives on the Purchase grant template.
+              </p>
             )}
             <FormActions mode={modal.mode} busy={busy} onCancel={close} onDelete={handleDelete} />
           </form>

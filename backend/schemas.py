@@ -475,6 +475,7 @@ class GrantTemplateCreate(BaseModel):
     default_catch_up: bool = False
     show_dp_shares: bool = False
     zero_basis: bool = False
+    default_purchase_due_date: str | None = None
     default_tax_due_date: str | None = None
     display_order: int = 0
     active: bool = True
@@ -487,7 +488,7 @@ class GrantTemplateCreate(BaseModel):
             raise ValueError("type cannot be empty")
         return v
 
-    @field_validator("vest_start", "exercise_date", "default_tax_due_date")
+    @field_validator("vest_start", "exercise_date", "default_purchase_due_date", "default_tax_due_date")
     @classmethod
     def iso_date(cls, v):
         if v is None:
@@ -507,6 +508,8 @@ class GrantTemplateCreate(BaseModel):
             raise ValueError("show_dp_shares is only valid when type='Purchase'")
         if self.zero_basis and self.type == "Purchase":
             raise ValueError("zero_basis is only valid for non-Purchase templates")
+        if self.default_purchase_due_date is not None and self.type != "Purchase":
+            raise ValueError("default_purchase_due_date is only valid when type='Purchase'")
         # Tax-loan due date only makes sense for templates that actually generate tax
         # loans — zero-basis grants or templates with a catch-up sub-schedule.
         if self.default_tax_due_date is not None and not (self.zero_basis or self.default_catch_up):
@@ -525,12 +528,13 @@ class GrantTemplateUpdate(BaseModel):
     default_catch_up: bool | None = None
     show_dp_shares: bool | None = None
     zero_basis: bool | None = None
+    default_purchase_due_date: str | None = None
     default_tax_due_date: str | None = None
     display_order: int | None = None
     active: bool | None = None
     notes: str | None = None
 
-    @field_validator("vest_start", "exercise_date", "default_tax_due_date")
+    @field_validator("vest_start", "exercise_date", "default_purchase_due_date", "default_tax_due_date")
     @classmethod
     def iso_date(cls, v):
         if v is None:
@@ -585,7 +589,6 @@ class LoanRateCreate(BaseModel):
     grant_type: str | None = None
     year: int
     rate: float
-    due_date: str | None = None
 
     @field_validator("loan_kind")
     @classmethod
@@ -593,13 +596,6 @@ class LoanRateCreate(BaseModel):
         if v not in _LOAN_KINDS:
             raise ValueError(f"loan_kind must be one of {sorted(_LOAN_KINDS)}")
         return v
-
-    @field_validator("due_date")
-    @classmethod
-    def iso_date(cls, v):
-        if v is None:
-            return v
-        return _validate_iso_date(v)
 
     @field_validator("rate")
     @classmethod
@@ -612,8 +608,6 @@ class LoanRateCreate(BaseModel):
     def check_shape(self):
         if self.loan_kind == "tax" and not self.grant_type:
             raise ValueError("tax loan rates require a grant_type")
-        if self.loan_kind == "purchase_original" and not self.due_date:
-            raise ValueError("purchase_original rates require a due_date")
         return self
 
 
@@ -622,7 +616,6 @@ class LoanRateUpdate(BaseModel):
     grant_type: str | None = None
     year: int | None = None
     rate: float | None = None
-    due_date: str | None = None
 
     @field_validator("loan_kind")
     @classmethod
@@ -630,13 +623,6 @@ class LoanRateUpdate(BaseModel):
         if v is not None and v not in _LOAN_KINDS:
             raise ValueError(f"loan_kind must be one of {sorted(_LOAN_KINDS)}")
         return v
-
-    @field_validator("due_date")
-    @classmethod
-    def iso_date(cls, v):
-        if v is None:
-            return v
-        return _validate_iso_date(v)
 
     @field_validator("rate")
     @classmethod

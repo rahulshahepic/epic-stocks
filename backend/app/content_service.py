@@ -22,26 +22,28 @@ from scaffold.models import (
 
 # ── Seed data (mirrors ImportWizard.tsx constants) ──────────────────────────
 
-# (year, type, vest_start, periods, exercise_date, default_catch_up, zero_basis, default_tax_due_date)
+# (year, type, vest_start, periods, exercise_date, default_catch_up, zero_basis,
+#  default_purchase_due_date, default_tax_due_date)
 # zero_basis: grants issued at $0 cost basis (taxable as ordinary income at vest).
-# default_tax_due_date: when tax loans generated from this template are due (YYYY-MM-DD).
-# Seeded for Bonus/Free (always zero-basis in Epic's program); Purchase templates are FMV.
+# default_purchase_due_date: when the original purchase loan is due (Purchase only).
+# default_tax_due_date: when tax loans generated from this template are due (Bonus/Free,
+# and Purchase templates that carry a catch-up sub-schedule).
 SEED_GRANT_TEMPLATES = [
-    (2018, 'Purchase', '2020-06-15', 6, '2018-12-31', True,  False, None),
-    (2019, 'Purchase', '2021-06-15', 6, '2019-12-31', True,  False, None),
-    (2020, 'Purchase', '2021-09-30', 5, '2020-12-31', True,  False, None),
-    (2020, 'Bonus',    '2021-09-30', 4, '2020-12-31', False, True,  '2025-07-15'),
-    (2021, 'Purchase', '2022-09-30', 5, '2021-12-31', True,  False, None),
-    (2021, 'Bonus',    '2022-09-30', 3, '2021-12-31', False, True,  '2030-07-15'),
-    (2022, 'Purchase', '2023-09-30', 4, '2022-12-31', False, False, None),
-    (2022, 'Bonus',    '2023-09-30', 3, '2022-12-31', False, True,  '2031-06-30'),
-    (2022, 'Free',     '2027-09-30', 1, '2022-12-31', False, True,  '2031-06-30'),
-    (2023, 'Purchase', '2024-09-30', 4, '2023-12-31', False, False, None),
-    (2023, 'Bonus',    '2024-09-30', 3, '2023-12-31', False, True,  '2032-06-30'),
-    (2024, 'Purchase', '2025-09-30', 4, '2024-12-31', False, False, None),
-    (2024, 'Bonus',    '2025-09-30', 3, '2024-12-31', False, True,  '2033-06-30'),
-    (2025, 'Purchase', '2026-09-30', 4, '2025-12-31', False, False, None),
-    (2025, 'Bonus',    '2026-09-30', 3, '2025-12-31', False, True,  '2034-06-30'),
+    (2018, 'Purchase', '2020-06-15', 6, '2018-12-31', True,  False, '2025-07-15', None),
+    (2019, 'Purchase', '2021-06-15', 6, '2019-12-31', True,  False, '2026-07-15', None),
+    (2020, 'Purchase', '2021-09-30', 5, '2020-12-31', True,  False, '2025-07-15', None),
+    (2020, 'Bonus',    '2021-09-30', 4, '2020-12-31', False, True,  None,         '2025-07-15'),
+    (2021, 'Purchase', '2022-09-30', 5, '2021-12-31', True,  False, '2030-07-15', None),
+    (2021, 'Bonus',    '2022-09-30', 3, '2021-12-31', False, True,  None,         '2030-07-15'),
+    (2022, 'Purchase', '2023-09-30', 4, '2022-12-31', False, False, '2031-06-30', None),
+    (2022, 'Bonus',    '2023-09-30', 3, '2022-12-31', False, True,  None,         '2031-06-30'),
+    (2022, 'Free',     '2027-09-30', 1, '2022-12-31', False, True,  None,         '2031-06-30'),
+    (2023, 'Purchase', '2024-09-30', 4, '2023-12-31', False, False, '2032-06-30', None),
+    (2023, 'Bonus',    '2024-09-30', 3, '2023-12-31', False, True,  None,         '2032-06-30'),
+    (2024, 'Purchase', '2025-09-30', 4, '2024-12-31', False, False, '2033-06-30', None),
+    (2024, 'Bonus',    '2025-09-30', 3, '2024-12-31', False, True,  None,         '2033-06-30'),
+    (2025, 'Purchase', '2026-09-30', 4, '2025-12-31', False, False, '2034-06-30', None),
+    (2025, 'Bonus',    '2026-09-30', 3, '2025-12-31', False, True,  None,         '2034-06-30'),
 ]
 
 # (grant_year, grant_type, variant_code, periods, label, is_default)
@@ -51,25 +53,26 @@ SEED_BONUS_VARIANTS = [
     (2020, 'Bonus', 'C', 4, 'C (4 years)', True),
 ]
 
-# loan_rates: (loan_kind, grant_type_or_None, year, rate, due_date_or_None)
-SEED_LOAN_RATES: list[tuple[str, str | None, int, float, str | None]] = []
+# loan_rates: (loan_kind, grant_type_or_None, year, rate)
+# Purchase-original due dates live on GrantTemplate.default_purchase_due_date.
+SEED_LOAN_RATES: list[tuple[str, str | None, int, float]] = []
 for _y, _r in [(2020, 0.0086), (2021, 0.0091), (2022, 0.0328), (2023, 0.0437), (2024, 0.037), (2025, 0.0379)]:
-    SEED_LOAN_RATES.append(('interest', None, _y, _r, None))
+    SEED_LOAN_RATES.append(('interest', None, _y, _r))
 for _y, _r in [(2021, 0.0086), (2022, 0.0187), (2023, 0.0356), (2024, 0.043), (2025, 0.0407)]:
-    SEED_LOAN_RATES.append(('tax', 'Catch-Up', _y, _r, None))
+    SEED_LOAN_RATES.append(('tax', 'Catch-Up', _y, _r))
 for _y, _r in [(2021, 0.0086), (2022, 0.0293), (2023, 0.0385), (2024, 0.037)]:
-    SEED_LOAN_RATES.append(('tax', 'Bonus', _y, _r, None))
-for _y, _r, _dd in [
-    (2018, 0.0307, '2025-07-15'),
-    (2019, 0.0307, '2026-07-15'),
-    (2020, 0.0038, '2025-07-15'),
-    (2021, 0.0086, '2030-07-15'),
-    (2022, 0.0187, '2031-06-30'),
-    (2023, 0.0356, '2032-06-30'),
-    (2024, 0.037,  '2033-06-30'),
-    (2025, 0.0406, '2034-06-30'),
+    SEED_LOAN_RATES.append(('tax', 'Bonus', _y, _r))
+for _y, _r in [
+    (2018, 0.0307),
+    (2019, 0.0307),
+    (2020, 0.0038),
+    (2021, 0.0086),
+    (2022, 0.0187),
+    (2023, 0.0356),
+    (2024, 0.037),
+    (2025, 0.0406),
 ]:
-    SEED_LOAN_RATES.append(('purchase_original', None, _y, _r, _dd))
+    SEED_LOAN_RATES.append(('purchase_original', None, _y, _r))
 
 # loan refinances: (chain_kind, grant_year, grant_type, orig_loan_year, order_idx,
 #                   date, rate, loan_year, due_date, orig_due_date)
@@ -113,12 +116,13 @@ def seed_content_if_empty(db: Session) -> None:
     every boot; a no-op once a content admin has edited any row.
     """
     if db.query(GrantTemplate).count() == 0:
-        for idx, (year, typ, vs, periods, ed, dcu, zb, tdd) in enumerate(SEED_GRANT_TEMPLATES):
+        for idx, (year, typ, vs, periods, ed, dcu, zb, pdd, tdd) in enumerate(SEED_GRANT_TEMPLATES):
             db.add(GrantTemplate(
                 year=year, type=typ, vest_start=vs, periods=periods,
                 exercise_date=ed, default_catch_up=dcu,
                 show_dp_shares=(typ == 'Purchase' and year >= 2023),
                 zero_basis=zb,
+                default_purchase_due_date=pdd,
                 default_tax_due_date=tdd,
                 display_order=idx, active=True, notes=None,
             ))
@@ -131,9 +135,9 @@ def seed_content_if_empty(db: Session) -> None:
             ))
 
     if db.query(LoanRate).count() == 0:
-        for kind, gt, year, rate, due in SEED_LOAN_RATES:
+        for kind, gt, year, rate in SEED_LOAN_RATES:
             db.add(LoanRate(
-                loan_kind=kind, grant_type=gt, year=year, rate=rate, due_date=due,
+                loan_kind=kind, grant_type=gt, year=year, rate=rate,
             ))
 
     if db.query(LoanRefinance).count() == 0:
@@ -180,7 +184,12 @@ def load_content(db: Session) -> dict:
     price_years_start = min_template_year if min_template_year is not None else this_year
     price_years_end = (max_rate_year + 1) if max_rate_year is not None else this_year
 
-    # Shape rates as nested dicts to match the frontend constants
+    # Shape rates as nested dicts to match the frontend constants. The
+    # purchase_original due_date comes from the Purchase template for that year
+    # (single source of truth); falls back to None if no template exists.
+    purchase_template_due_by_year = {
+        t.year: t.default_purchase_due_date for t in templates if t.type == 'Purchase'
+    }
     interest_rates: dict[str, float] = {}
     tax_rates: dict[str, dict[str, float]] = {}
     purchase_original: dict[str, dict] = {}
@@ -192,7 +201,10 @@ def load_content(db: Session) -> dict:
             bucket = tax_rates.setdefault(r.grant_type or '', {})
             bucket[year_str] = r.rate
         elif r.loan_kind == 'purchase_original':
-            purchase_original[year_str] = {'rate': r.rate, 'due_date': r.due_date}
+            purchase_original[year_str] = {
+                'rate': r.rate,
+                'due_date': purchase_template_due_by_year.get(r.year),
+            }
 
     # Refinance chains keyed the way the wizard expects
     purchase_chains: dict[str, list[dict]] = {}
@@ -228,6 +240,7 @@ def load_content(db: Session) -> dict:
                 'default_catch_up': bool(t.default_catch_up),
                 'show_dp_shares': bool(t.show_dp_shares),
                 'zero_basis': bool(t.zero_basis),
+                'default_purchase_due_date': t.default_purchase_due_date,
                 'default_tax_due_date': t.default_tax_due_date,
                 'display_order': t.display_order,
             }
@@ -259,7 +272,6 @@ def load_content(db: Session) -> dict:
                 'grant_type': r.grant_type,
                 'year': r.year,
                 'rate': r.rate,
-                'due_date': r.due_date,
             }
             for r in rates
         ],

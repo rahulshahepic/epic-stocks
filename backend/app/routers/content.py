@@ -86,6 +86,9 @@ def update_grant_template(
     if row.zero_basis and row.type == "Purchase":
         db.rollback()
         raise HTTPException(422, "zero_basis is only valid for non-Purchase templates")
+    if row.default_purchase_due_date is not None and row.type != "Purchase":
+        db.rollback()
+        raise HTTPException(422, "default_purchase_due_date is only valid when type='Purchase'")
     if row.default_tax_due_date is not None and not (row.zero_basis or row.default_catch_up):
         db.rollback()
         raise HTTPException(
@@ -180,14 +183,10 @@ def update_loan_rate(
         raise HTTPException(404, "Loan rate not found")
     for k, v in body.model_dump(exclude_unset=True).items():
         setattr(row, k, v)
-    # Enforce the same shape rules as create: after the patch, tax rows need grant_type,
-    # purchase_original rows need due_date.
+    # Enforce the same shape rules as create: after the patch, tax rows need grant_type.
     if row.loan_kind == "tax" and not row.grant_type:
         db.rollback()
         raise HTTPException(400, "tax loan rates require a grant_type")
-    if row.loan_kind == "purchase_original" and not row.due_date:
-        db.rollback()
-        raise HTTPException(400, "purchase_original rates require a due_date")
     _commit_or_409(db, "Loan rate constraint violation")
     return {"id": row.id}
 

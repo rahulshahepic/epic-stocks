@@ -474,6 +474,7 @@ class GrantTemplateCreate(BaseModel):
     exercise_date: str
     default_catch_up: bool = False
     show_dp_shares: bool = False
+    zero_basis: bool = False
     default_tax_due_date: str | None = None
     display_order: int = 0
     active: bool = True
@@ -504,15 +505,14 @@ class GrantTemplateCreate(BaseModel):
     def check_shape(self):
         if self.show_dp_shares and self.type != "Purchase":
             raise ValueError("show_dp_shares is only valid when type='Purchase'")
+        if self.zero_basis and self.type == "Purchase":
+            raise ValueError("zero_basis is only valid for non-Purchase templates")
         # Tax-loan due date only makes sense for templates that actually generate tax
-        # loans: zero-basis grants (Bonus/Free) and Purchase templates with
-        # default_catch_up=True (the Catch-Up schedule also generates tax loans).
-        if self.default_tax_due_date is not None:
-            if self.type == "Purchase" and not self.default_catch_up:
-                raise ValueError(
-                    "default_tax_due_date is only valid for Bonus/Free templates or "
-                    "Purchase templates with default_catch_up=True"
-                )
+        # loans — zero-basis grants or templates with a catch-up sub-schedule.
+        if self.default_tax_due_date is not None and not (self.zero_basis or self.default_catch_up):
+            raise ValueError(
+                "default_tax_due_date requires zero_basis=True or default_catch_up=True"
+            )
         return self
 
 
@@ -524,6 +524,7 @@ class GrantTemplateUpdate(BaseModel):
     exercise_date: str | None = None
     default_catch_up: bool | None = None
     show_dp_shares: bool | None = None
+    zero_basis: bool | None = None
     default_tax_due_date: str | None = None
     display_order: int | None = None
     active: bool | None = None

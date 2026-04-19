@@ -125,6 +125,7 @@ interface KnownGrant {
   exercise_date: string
   defaultCatchUp: boolean
   showDpShares: boolean
+  zeroBasis: boolean
   defaultTaxDueDate: string | null
 }
 
@@ -507,8 +508,17 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
     exercise_date: g.exercise_date,
     defaultCatchUp: g.default_catch_up,
     showDpShares: g.show_dp_shares,
+    zeroBasis: g.zero_basis,
     defaultTaxDueDate: g.default_tax_due_date,
   }))
+  const ZERO_BASIS_YEARS_BY_TYPE = new Map<string, Set<number>>()
+  for (const g of EPIC_GRANT_SCHEDULE) {
+    if (!g.zeroBasis) continue
+    if (!ZERO_BASIS_YEARS_BY_TYPE.has(g.type)) ZERO_BASIS_YEARS_BY_TYPE.set(g.type, new Set())
+    ZERO_BASIS_YEARS_BY_TYPE.get(g.type)!.add(g.year)
+  }
+  const isZeroBasisTemplate = (year: number, type: string) =>
+    ZERO_BASIS_YEARS_BY_TYPE.get(type)?.has(year) ?? false
   const DP_SHARES_YEARS = new Set(
     EPIC_GRANT_SCHEDULE.filter(g => g.type === 'Purchase' && g.showDpShares).map(g => g.year),
   )
@@ -604,7 +614,8 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
       content.bonus_schedule_variants.find(v => v.is_default)?.variant_code as BonusSchedule | undefined
     return EPIC_GRANT_SCHEDULE.filter(g => g.type === 'Bonus' || g.type === 'Free').map(g => ({
       year: g.year, type: g.type as 'Bonus' | 'Free',
-      purchase_price: g.type === 'Free' ? '0' : '', shares: '',
+      // Zero-basis templates pin the cost basis to $0; FMV templates require user input.
+      purchase_price: g.zeroBasis ? '0' : '', shares: '',
       isBonus2020: BONUS_VARIANT_KEYS.has(`${g.year}-${g.type}`),
       schedule: (defaultBonusVariant ?? 'C') as BonusSchedule,
       vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
@@ -1351,13 +1362,14 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
       if (!(parseInt(row.shares) > 0)) continue
       const gy = row.year
       const grantType = row.type
-      const grantPrice = parseFloat(row.purchase_price) || 0
       const totalShares = parseInt(row.shares) || 0
       const sharesPerPeriod = Math.floor(totalShares / row.periods)
       const due = taxDueDate(gy, grantType)
 
-      // Tax loans only for zero-basis grants (vesting = ordinary income)
-      const isPreTaxGrant = grantPrice === 0
+      // Tax loans only for zero-basis grants (vesting = ordinary income). This is a
+      // template-level property (set by the content admin), not a per-user runtime
+      // decision based on the entered purchase price.
+      const isPreTaxGrant = isZeroBasisTemplate(gy, grantType)
 
       // Tax loans first (only for zero-basis grants)
       const bonusTaxByYear = new Map<number, number>()
@@ -2324,10 +2336,10 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Shares" type="number" value={row.shares}
                     onChange={v => setBonusField(i, { shares: v })} />
-                  {row.type !== 'Free' && (
+                  {row.type !== 'Free' && !isZeroBasisTemplate(row.year, row.type) && (
                     <Field label="Cost basis ($/share)" type="number" step="0.01" value={row.purchase_price}
                       onChange={v => setBonusField(i, { purchase_price: v })}
-                      hint={row.year === 2020 ? 'usually $0' : 'usually = annual price'} />
+                      hint="FMV (taxable at vest)" />
                   )}
                 </div>
               </div>

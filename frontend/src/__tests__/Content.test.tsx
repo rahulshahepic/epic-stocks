@@ -8,7 +8,7 @@ import { resetMeCache } from '../scaffold/hooks/useMe.ts'
 
 const CONTENT = {
   grant_templates: [
-    { id: 1, year: 2025, type: 'Purchase', vest_start: '2026-09-30', periods: 4, exercise_date: '2025-12-31', default_catch_up: false, show_dp_shares: true, default_tax_due_date: null, display_order: 0 },
+    { id: 1, year: 2025, type: 'Purchase', vest_start: '2026-09-30', periods: 4, exercise_date: '2025-12-31', default_catch_up: false, show_dp_shares: true, zero_basis: false, default_tax_due_date: null, display_order: 0 },
   ],
   bonus_schedule_variants: [],
   loan_rates: { interest: { '2025': 0.04 }, tax: {}, purchase_original: {} },

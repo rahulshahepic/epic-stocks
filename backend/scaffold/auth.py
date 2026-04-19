@@ -126,3 +126,10 @@ def get_admin_user(user: User = Depends(get_current_user)) -> User:
     if not user.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
+
+
+def get_content_admin_user(user: User = Depends(get_current_user)) -> User:
+    """Admins and users with is_content_admin=1 can edit grant-program content."""
+    if not (user.is_admin or user.is_content_admin):
+        raise HTTPException(status_code=403, detail="Content admin access required")
+    return user

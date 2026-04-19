@@ -273,7 +273,7 @@ export const api = {
     post<PriceEntry>('/api/flows/annual-price', data),
 
   // User info
-  getMe: () => apiFetch<{ id: number; email: string; name: string; is_admin: boolean }>('/api/me'),
+  getMe: () => apiFetch<{ id: number; email: string; name: string; is_admin: boolean; is_content_admin: boolean; shared_accounts?: SharedAccount[] }>('/api/me'),
 
   // Push notifications
   pushSubscribe: (subscription: PushSubscriptionJSON) =>
@@ -341,8 +341,41 @@ export const api = {
   wizardSubmit: (data: WizardSubmitPayload) =>
     post<WizardSubmitResult>('/api/wizard/submit', data),
 
-  // Wizard content (global, read-only in Phase 1)
+  // Wizard content (read by any logged-in user; writes gated by content-admin)
   getContent: () => apiFetch<ContentBlob>('/api/content'),
+  createGrantTemplate: (data: GrantTemplateCreate) =>
+    post<{ id: number }>('/api/content/grant-templates', data),
+  updateGrantTemplate: (id: number, data: Partial<GrantTemplateCreate>) =>
+    put<{ id: number }>(`/api/content/grant-templates/${id}`, data),
+  deleteGrantTemplate: (id: number) => del(`/api/content/grant-templates/${id}`),
+  createGrantTypeDef: (data: GrantTypeDef) =>
+    post<{ name: string }>('/api/content/grant-type-defs', data),
+  updateGrantTypeDef: (name: string, data: Partial<GrantTypeDef>) =>
+    put<{ name: string }>(`/api/content/grant-type-defs/${encodeURIComponent(name)}`, data),
+  deleteGrantTypeDef: (name: string) => del(`/api/content/grant-type-defs/${encodeURIComponent(name)}`),
+  createBonusVariant: (data: BonusScheduleVariant) =>
+    post<{ id: number }>('/api/content/bonus-schedule-variants', data),
+  updateBonusVariant: (id: number, data: Partial<BonusScheduleVariant>) =>
+    put<{ id: number }>(`/api/content/bonus-schedule-variants/${id}`, data),
+  deleteBonusVariant: (id: number) => del(`/api/content/bonus-schedule-variants/${id}`),
+  createLoanRate: (data: LoanRateCreate) =>
+    post<{ id: number }>('/api/content/loan-rates', data),
+  updateLoanRate: (id: number, data: Partial<LoanRateCreate>) =>
+    put<{ id: number }>(`/api/content/loan-rates/${id}`, data),
+  deleteLoanRate: (id: number) => del(`/api/content/loan-rates/${id}`),
+  createLoanRefinance: (data: LoanRefinanceCreate) =>
+    post<{ id: number }>('/api/content/loan-refinances', data),
+  updateLoanRefinance: (id: number, data: Partial<LoanRefinanceCreate>) =>
+    put<{ id: number }>(`/api/content/loan-refinances/${id}`, data),
+  deleteLoanRefinance: (id: number) => del(`/api/content/loan-refinances/${id}`),
+  updateGrantProgramSettings: (data: Partial<GrantProgramSettings>) =>
+    put<{ id: number }>('/api/content/grant-program-settings', data),
+
+  // Admin: content-admin role management
+  setContentAdmin: (userId: number, enabled: boolean) =>
+    enabled
+      ? apiFetch<void>(`/api/admin/users/${userId}/content-admin`, { method: 'POST' })
+      : del(`/api/admin/users/${userId}/content-admin`),
 
   // Smart Tips
   getTips: () => apiFetch<SmartTip[]>('/api/tips'),
@@ -511,6 +544,7 @@ export interface AdminUser {
   email: string
   name: string | null
   is_admin: boolean
+  is_content_admin: boolean
   created_at: string
   last_login: string | null
   grant_count: number
@@ -921,6 +955,42 @@ export interface GrantProgramSettings {
   default_purchase_due_month_day_post2022: string
   price_years_start: number
   price_years_end: number
+  flexible_payoff_enabled?: boolean
+}
+
+// Create/Update payloads for content-admin write endpoints
+export interface GrantTemplateCreate {
+  year: number
+  type: string
+  vest_start: string
+  periods: number
+  exercise_date: string
+  default_catch_up?: boolean
+  show_dp_shares?: boolean
+  display_order?: number
+  active?: boolean
+  notes?: string | null
+}
+
+export interface LoanRateCreate {
+  loan_kind: 'interest' | 'tax' | 'purchase_original'
+  grant_type?: string | null
+  year: number
+  rate: number
+  due_date?: string | null
+}
+
+export interface LoanRefinanceCreate {
+  chain_kind: 'purchase' | 'tax'
+  grant_year: number
+  grant_type?: string | null
+  orig_loan_year?: number | null
+  order_idx: number
+  date: string
+  rate: number
+  loan_year: number
+  due_date: string
+  orig_due_date?: string | null
 }
 
 export interface ContentBlob {

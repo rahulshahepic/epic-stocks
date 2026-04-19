@@ -34,10 +34,13 @@ LOAN_DATA = {
 
 
 def _set_flexible_payoff(db_session, active: bool):
-    db_session.execute(
-        text("UPDATE system_settings SET value = :v WHERE key = 'flexible_payoff_enabled'"),
-        {"v": "true" if active else "false"},
-    )
+    from scaffold.models import GrantProgramSettings
+    row = db_session.query(GrantProgramSettings).filter(GrantProgramSettings.id == 1).one_or_none()
+    if not row:
+        row = GrantProgramSettings(id=1, flexible_payoff_enabled=active)
+        db_session.add(row)
+    else:
+        row.flexible_payoff_enabled = active
     db_session.commit()
 
 
@@ -77,11 +80,31 @@ def test_admin_set_flexible_payoff(client, db_session):
         resp = client.post("/api/admin/flexible-payoff", json={"active": True})
         assert resp.status_code == 200
         assert resp.json()["active"] is True
-        # Verify it actually changed in DB
-        row = db_session.execute(
-            text("SELECT value FROM system_settings WHERE key = 'flexible_payoff_enabled'")
-        ).scalar()
-        assert row == "true"
+        # Verify it actually changed in the grant_program_settings table
+        from scaffold.models import GrantProgramSettings
+        db_session.expire_all()
+        row = db_session.query(GrantProgramSettings).filter(GrantProgramSettings.id == 1).one()
+        assert bool(row.flexible_payoff_enabled) is True
+    finally:
+        os.environ.pop("ADMIN_EMAIL", None)
+
+
+def test_flexible_payoff_toggles_via_content_endpoint_and_admin_endpoint(client, db_session):
+    """The same underlying field is modified by admin endpoint and /api/content write."""
+    client.post("/api/auth/test-login", json={"email": "admin@example.com", "name": "Admin"})
+    os.environ["ADMIN_EMAIL"] = "admin@example.com"
+    try:
+        # Toggle via /api/content/grant-program-settings
+        resp = client.put("/api/content/grant-program-settings", json={"flexible_payoff_enabled": True})
+        assert resp.status_code == 200
+        # Admin GET reflects the change
+        resp = client.get("/api/admin/flexible-payoff")
+        assert resp.json()["active"] is True
+        # Toggle via admin endpoint
+        client.post("/api/admin/flexible-payoff", json={"active": False})
+        # /api/content reflects back
+        resp = client.get("/api/content")
+        assert resp.json()["grant_program_settings"].get("flexible_payoff_enabled", False) is False
     finally:
         os.environ.pop("ADMIN_EMAIL", None)
 
@@ -366,15 +389,15 @@ def test_payoff_sizing_covers_loan_after_actual_tax(client, db_session):
 
 
 def test_tax_settings_update_does_not_expose_flexible_flag_for_update(client, db_session):
-    """flexible_payoff_enabled is read-only; PUT should not change system_settings."""
+    """flexible_payoff_enabled is read-only from tax-settings; PUT should not change it."""
     register_user(client)
     # Attempt to "update" flexible_payoff_enabled via tax settings — it's not in TaxSettingsUpdate
     # so it should be silently ignored
     resp = client.put("/api/tax-settings", json={"loan_payoff_method": "lifo"})
     assert resp.status_code == 200
 
-    # Verify system_settings row is still false
-    row = db_session.execute(
-        text("SELECT value FROM system_settings WHERE key = 'flexible_payoff_enabled'")
-    ).scalar()
-    assert row == "false"
+    # Verify grant_program_settings row still has flexible_payoff_enabled=False
+    from scaffold.models import GrantProgramSettings
+    db_session.expire_all()
+    row = db_session.query(GrantProgramSettings).filter(GrantProgramSettings.id == 1).one_or_none()
+    assert row is None or bool(row.flexible_payoff_enabled) is False

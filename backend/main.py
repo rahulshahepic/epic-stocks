@@ -598,6 +598,7 @@ def current_user_info(user=Depends(get_current_user), db: Session = Depends(get_
     return {
         "id": user.id, "email": user.email, "name": user.name,
         "is_admin": bool(user.is_admin),
+        "is_content_admin": bool(user.is_content_admin),
         "shared_accounts": shared_accounts,
     }
 

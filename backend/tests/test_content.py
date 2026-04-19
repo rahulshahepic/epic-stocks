@@ -188,3 +188,200 @@ def test_seed_is_idempotent(client, db_session):
     seed_content_if_empty(db_session)
     assert db_session.query(GrantTemplate).count() == before_templates
     assert db_session.query(LoanRate).count() == before_rates
+
+
+# ── Phase 2: write endpoints (content-admin gated) ─────────────────────────
+
+ADMIN_EMAIL = "admin@example.com"
+
+
+def _login_admin(client):
+    os.environ["ADMIN_EMAIL"] = ADMIN_EMAIL
+    client.post("/api/auth/test-login", json={"email": ADMIN_EMAIL, "name": "Admin"})
+
+
+def test_content_writes_forbid_non_admin(client):
+    register_user(client, "regular@test.com")
+    r = client.post("/api/content/grant-templates", json={
+        "year": 2030, "type": "Purchase",
+        "vest_start": "2031-09-30", "periods": 4,
+        "exercise_date": "2030-12-31",
+    })
+    assert r.status_code == 403
+
+
+def test_admin_can_write_content(client):
+    _login_admin(client)
+    try:
+        r = client.post("/api/content/grant-templates", json={
+            "year": 2030, "type": "Purchase",
+            "vest_start": "2031-09-30", "periods": 4,
+            "exercise_date": "2030-12-31",
+        })
+        assert r.status_code == 201, r.text
+    finally:
+        os.environ.pop("ADMIN_EMAIL", None)
+
+
+def test_content_admin_can_write_content(client, make_client, db_session):
+    from scaffold.models import User
+    # Admin promotes a regular user
+    _login_admin(client)
+    try:
+        with make_client("editor@test.com") as editor_client:
+            editor_id = editor_client.get("/api/me").json()["id"]
+        r = client.post(f"/api/admin/users/{editor_id}/content-admin")
+        assert r.status_code == 204
+    finally:
+        os.environ.pop("ADMIN_EMAIL", None)
+
+    # Editor logs in fresh — is_content_admin persists across logins
+    with make_client("editor@test.com") as editor_client:
+        me = editor_client.get("/api/me").json()
+        assert me["is_content_admin"] is True
+        assert me["is_admin"] is False
+        r = editor_client.post("/api/content/grant-templates", json={
+            "year": 2030, "type": "Bonus",
+            "vest_start": "2031-09-30", "periods": 3,
+            "exercise_date": "2030-12-31",
+        })
+        assert r.status_code == 201, r.text
+
+
+def test_grant_template_crud(client):
+    _login_admin(client)
+    try:
+        r = client.post("/api/content/grant-templates", json={
+            "year": 2030, "type": "Purchase",
+            "vest_start": "2031-09-30", "periods": 4,
+            "exercise_date": "2030-12-31",
+        })
+        tpl_id = r.json()["id"]
+
+        # Update
+        r = client.put(f"/api/content/grant-templates/{tpl_id}", json={"periods": 5})
+        assert r.status_code == 200
+
+        # Visible in GET /api/content
+        data = client.get("/api/content").json()
+        match = [t for t in data["grant_templates"] if t["year"] == 2030 and t["type"] == "Purchase"]
+        assert len(match) == 1
+        assert match[0]["periods"] == 5
+
+        # Delete
+        r = client.delete(f"/api/content/grant-templates/{tpl_id}")
+        assert r.status_code == 204
+    finally:
+        os.environ.pop("ADMIN_EMAIL", None)
+
+
+def test_grant_template_validator_show_dp_requires_purchase(client):
+    _login_admin(client)
+    try:
+        r = client.post("/api/content/grant-templates", json={
+            "year": 2030, "type": "Bonus",
+            "vest_start": "2031-09-30", "periods": 3,
+            "exercise_date": "2030-12-31",
+            "show_dp_shares": True,
+        })
+        assert r.status_code == 422
+    finally:
+        os.environ.pop("ADMIN_EMAIL", None)
+
+
+def test_loan_rate_validators(client):
+    _login_admin(client)
+    try:
+        # tax without grant_type
+        r = client.post("/api/content/loan-rates", json={
+            "loan_kind": "tax", "year": 2030, "rate": 0.05,
+        })
+        assert r.status_code == 422
+        # purchase_original without due_date
+        r = client.post("/api/content/loan-rates", json={
+            "loan_kind": "purchase_original", "year": 2030, "rate": 0.05,
+        })
+        assert r.status_code == 422
+        # valid interest rate
+        r = client.post("/api/content/loan-rates", json={
+            "loan_kind": "interest", "year": 2030, "rate": 0.05,
+        })
+        assert r.status_code == 201, r.text
+    finally:
+        os.environ.pop("ADMIN_EMAIL", None)
+
+
+def test_grant_type_def_crud(client):
+    _login_admin(client)
+    try:
+        r = client.post("/api/content/grant-type-defs", json={
+            "name": "Retention",
+            "color_class": "bg-indigo-700 text-white",
+            "description": "Retention grant",
+        })
+        assert r.status_code == 201
+
+        r = client.put("/api/content/grant-type-defs/Retention", json={"description": "Updated"})
+        assert r.status_code == 200
+
+        data = client.get("/api/content").json()
+        names = {d["name"] for d in data["grant_type_defs"]}
+        assert "Retention" in names
+
+        r = client.delete("/api/content/grant-type-defs/Retention")
+        assert r.status_code == 204
+    finally:
+        os.environ.pop("ADMIN_EMAIL", None)
+
+
+def test_bonus_variant_crud(client):
+    _login_admin(client)
+    try:
+        r = client.post("/api/content/bonus-schedule-variants", json={
+            "grant_year": 2030, "grant_type": "Bonus",
+            "variant_code": "X", "periods": 5, "label": "X (5 years)",
+        })
+        assert r.status_code == 201
+        vid = r.json()["id"]
+
+        r = client.put(f"/api/content/bonus-schedule-variants/{vid}", json={"label": "Renamed"})
+        assert r.status_code == 200
+
+        r = client.delete(f"/api/content/bonus-schedule-variants/{vid}")
+        assert r.status_code == 204
+    finally:
+        os.environ.pop("ADMIN_EMAIL", None)
+
+
+def test_loan_refinance_crud(client):
+    _login_admin(client)
+    try:
+        r = client.post("/api/content/loan-refinances", json={
+            "chain_kind": "purchase", "grant_year": 2030, "grant_type": "Purchase",
+            "order_idx": 0, "date": "2032-01-01", "rate": 0.04, "loan_year": 2032,
+            "due_date": "2040-07-15",
+        })
+        assert r.status_code == 201
+        rid = r.json()["id"]
+
+        r = client.put(f"/api/content/loan-refinances/{rid}", json={"rate": 0.045})
+        assert r.status_code == 200
+
+        r = client.delete(f"/api/content/loan-refinances/{rid}")
+        assert r.status_code == 204
+    finally:
+        os.environ.pop("ADMIN_EMAIL", None)
+
+
+def test_grant_program_settings_update(client):
+    _login_admin(client)
+    try:
+        r = client.put("/api/content/grant-program-settings", json={
+            "loan_term_years": 12, "flexible_payoff_enabled": True,
+        })
+        assert r.status_code == 200
+        data = client.get("/api/content").json()
+        assert data["grant_program_settings"]["loan_term_years"] == 12
+        assert data["grant_program_settings"]["flexible_payoff_enabled"] is True
+    finally:
+        os.environ.pop("ADMIN_EMAIL", None)

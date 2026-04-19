@@ -19,6 +19,7 @@ import ImportExport from './app/pages/ImportExport.tsx'
 import ImportWizard from './app/components/ImportWizard.tsx'
 import Settings from './scaffold/pages/Settings.tsx'
 import Admin from './scaffold/pages/Admin.tsx'
+import Content from './app/pages/Content.tsx'
 import Sales from './app/pages/Sales.tsx'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -66,6 +67,7 @@ export default function App() {
             <Route path="wizard" element={<FinancialRoute><div className="p-4"><ImportWizard isPage /></div></FinancialRoute>} />
             <Route path="settings" element={<FinancialRoute><Settings /></FinancialRoute>} />
             <Route path="admin" element={<Admin />} />
+            <Route path="content" element={<Content />} />
           </Route>
         </Routes>
       </ToastProvider>

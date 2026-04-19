@@ -277,5 +277,6 @@ def load_content(db: Session) -> dict:
             'default_purchase_due_month_day_post2022': settings_row.default_purchase_due_month_day_post2022 if settings_row else defaults['default_purchase_due_month_day_post2022'],
             'price_years_start': settings_row.price_years_start if settings_row else defaults['price_years_start'],
             'price_years_end': settings_row.price_years_end if settings_row else defaults['price_years_end'],
+            'flexible_payoff_enabled': bool(settings_row.flexible_payoff_enabled) if settings_row else False,
         },
     }

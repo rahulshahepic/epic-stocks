@@ -1,15 +1,38 @@
-"""Read-only content endpoints for the wizard.
+"""Content endpoints for the wizard.
 
-Phase 1 exposes only GET /api/content; write endpoints (for content admins)
-land in Phase 2.
+GET /api/content is readable by any logged-in user (content is global, not
+per-user).  All write endpoints require content-admin access (is_admin OR
+is_content_admin) and mutate the six content tables introduced in Phase 1.
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from database import get_db
-from scaffold.models import User
-from scaffold.auth import get_current_user
+from scaffold.models import (
+    User,
+    GrantTemplate,
+    GrantTypeDef,
+    BonusScheduleVariant,
+    LoanRate,
+    LoanRefinance,
+    GrantProgramSettings,
+)
+from scaffold.auth import get_current_user, get_content_admin_user
 from app.content_service import load_content
+from schemas import (
+    GrantTemplateCreate,
+    GrantTemplateUpdate,
+    GrantTypeDefCreate,
+    GrantTypeDefUpdate,
+    BonusScheduleVariantCreate,
+    BonusScheduleVariantUpdate,
+    LoanRateCreate,
+    LoanRateUpdate,
+    LoanRefinanceCreate,
+    LoanRefinanceUpdate,
+    GrantProgramSettingsUpdate,
+)
 
 router = APIRouter(prefix="/api/content", tags=["content"])
 
@@ -19,8 +42,260 @@ def get_content(
     _user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Return the full wizard content blob (grant schedule, loan rates, refi chains, etc.).
-
-    Every logged-in user can read this — the content is global, not per-user.
-    """
+    """Return the full wizard content blob (grant schedule, loan rates, refi chains, etc.)."""
     return load_content(db)
+
+
+def _commit_or_409(db: Session, msg: str = "Constraint violation"):
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=msg)
+
+
+# ── Grant templates ────────────────────────────────────────────────────────
+
+@router.post("/grant-templates", status_code=201)
+def create_grant_template(
+    body: GrantTemplateCreate,
+    _admin: User = Depends(get_content_admin_user),
+    db: Session = Depends(get_db),
+):
+    row = GrantTemplate(**body.model_dump())
+    db.add(row)
+    _commit_or_409(db, "Grant template already exists for this (year, type)")
+    db.refresh(row)
+    return {"id": row.id}
+
+
+@router.put("/grant-templates/{tpl_id}", status_code=200)
+def update_grant_template(
+    tpl_id: int,
+    body: GrantTemplateUpdate,
+    _admin: User = Depends(get_content_admin_user),
+    db: Session = Depends(get_db),
+):
+    row = db.get(GrantTemplate, tpl_id)
+    if not row:
+        raise HTTPException(404, "Grant template not found")
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(row, k, v)
+    _commit_or_409(db, "Grant template constraint violation")
+    return {"id": row.id}
+
+
+@router.delete("/grant-templates/{tpl_id}", status_code=204)
+def delete_grant_template(
+    tpl_id: int,
+    _admin: User = Depends(get_content_admin_user),
+    db: Session = Depends(get_db),
+):
+    row = db.get(GrantTemplate, tpl_id)
+    if not row:
+        raise HTTPException(404, "Grant template not found")
+    db.delete(row)
+    db.commit()
+
+
+# ── Grant type defs (keyed by name) ────────────────────────────────────────
+
+@router.post("/grant-type-defs", status_code=201)
+def create_grant_type_def(
+    body: GrantTypeDefCreate,
+    _admin: User = Depends(get_content_admin_user),
+    db: Session = Depends(get_db),
+):
+    if db.get(GrantTypeDef, body.name):
+        raise HTTPException(409, "Grant type already exists")
+    row = GrantTypeDef(**body.model_dump())
+    db.add(row)
+    db.commit()
+    return {"name": row.name}
+
+
+@router.put("/grant-type-defs/{name}", status_code=200)
+def update_grant_type_def(
+    name: str,
+    body: GrantTypeDefUpdate,
+    _admin: User = Depends(get_content_admin_user),
+    db: Session = Depends(get_db),
+):
+    row = db.get(GrantTypeDef, name)
+    if not row:
+        raise HTTPException(404, "Grant type not found")
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(row, k, v)
+    db.commit()
+    return {"name": row.name}
+
+
+@router.delete("/grant-type-defs/{name}", status_code=204)
+def delete_grant_type_def(
+    name: str,
+    _admin: User = Depends(get_content_admin_user),
+    db: Session = Depends(get_db),
+):
+    row = db.get(GrantTypeDef, name)
+    if not row:
+        raise HTTPException(404, "Grant type not found")
+    db.delete(row)
+    db.commit()
+
+
+# ── Bonus schedule variants ────────────────────────────────────────────────
+
+@router.post("/bonus-schedule-variants", status_code=201)
+def create_bonus_variant(
+    body: BonusScheduleVariantCreate,
+    _admin: User = Depends(get_content_admin_user),
+    db: Session = Depends(get_db),
+):
+    row = BonusScheduleVariant(**body.model_dump())
+    db.add(row)
+    _commit_or_409(db, "Bonus variant already exists")
+    db.refresh(row)
+    return {"id": row.id}
+
+
+@router.put("/bonus-schedule-variants/{vid}", status_code=200)
+def update_bonus_variant(
+    vid: int,
+    body: BonusScheduleVariantUpdate,
+    _admin: User = Depends(get_content_admin_user),
+    db: Session = Depends(get_db),
+):
+    row = db.get(BonusScheduleVariant, vid)
+    if not row:
+        raise HTTPException(404, "Bonus variant not found")
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(row, k, v)
+    _commit_or_409(db, "Bonus variant constraint violation")
+    return {"id": row.id}
+
+
+@router.delete("/bonus-schedule-variants/{vid}", status_code=204)
+def delete_bonus_variant(
+    vid: int,
+    _admin: User = Depends(get_content_admin_user),
+    db: Session = Depends(get_db),
+):
+    row = db.get(BonusScheduleVariant, vid)
+    if not row:
+        raise HTTPException(404, "Bonus variant not found")
+    db.delete(row)
+    db.commit()
+
+
+# ── Loan rates ─────────────────────────────────────────────────────────────
+
+@router.post("/loan-rates", status_code=201)
+def create_loan_rate(
+    body: LoanRateCreate,
+    _admin: User = Depends(get_content_admin_user),
+    db: Session = Depends(get_db),
+):
+    row = LoanRate(**body.model_dump())
+    db.add(row)
+    _commit_or_409(db, "Loan rate already exists")
+    db.refresh(row)
+    return {"id": row.id}
+
+
+@router.put("/loan-rates/{rid}", status_code=200)
+def update_loan_rate(
+    rid: int,
+    body: LoanRateUpdate,
+    _admin: User = Depends(get_content_admin_user),
+    db: Session = Depends(get_db),
+):
+    row = db.get(LoanRate, rid)
+    if not row:
+        raise HTTPException(404, "Loan rate not found")
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(row, k, v)
+    # Enforce the same shape rules as create: after the patch, tax rows need grant_type,
+    # purchase_original rows need due_date.
+    if row.loan_kind == "tax" and not row.grant_type:
+        db.rollback()
+        raise HTTPException(400, "tax loan rates require a grant_type")
+    if row.loan_kind == "purchase_original" and not row.due_date:
+        db.rollback()
+        raise HTTPException(400, "purchase_original rates require a due_date")
+    _commit_or_409(db, "Loan rate constraint violation")
+    return {"id": row.id}
+
+
+@router.delete("/loan-rates/{rid}", status_code=204)
+def delete_loan_rate(
+    rid: int,
+    _admin: User = Depends(get_content_admin_user),
+    db: Session = Depends(get_db),
+):
+    row = db.get(LoanRate, rid)
+    if not row:
+        raise HTTPException(404, "Loan rate not found")
+    db.delete(row)
+    db.commit()
+
+
+# ── Loan refinances ────────────────────────────────────────────────────────
+
+@router.post("/loan-refinances", status_code=201)
+def create_loan_refinance(
+    body: LoanRefinanceCreate,
+    _admin: User = Depends(get_content_admin_user),
+    db: Session = Depends(get_db),
+):
+    row = LoanRefinance(**body.model_dump())
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {"id": row.id}
+
+
+@router.put("/loan-refinances/{rid}", status_code=200)
+def update_loan_refinance(
+    rid: int,
+    body: LoanRefinanceUpdate,
+    _admin: User = Depends(get_content_admin_user),
+    db: Session = Depends(get_db),
+):
+    row = db.get(LoanRefinance, rid)
+    if not row:
+        raise HTTPException(404, "Loan refinance not found")
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(row, k, v)
+    db.commit()
+    return {"id": row.id}
+
+
+@router.delete("/loan-refinances/{rid}", status_code=204)
+def delete_loan_refinance(
+    rid: int,
+    _admin: User = Depends(get_content_admin_user),
+    db: Session = Depends(get_db),
+):
+    row = db.get(LoanRefinance, rid)
+    if not row:
+        raise HTTPException(404, "Loan refinance not found")
+    db.delete(row)
+    db.commit()
+
+
+# ── Grant program settings (singleton) ─────────────────────────────────────
+
+@router.put("/grant-program-settings", status_code=200)
+def update_grant_program_settings(
+    body: GrantProgramSettingsUpdate,
+    _admin: User = Depends(get_content_admin_user),
+    db: Session = Depends(get_db),
+):
+    row = db.query(GrantProgramSettings).filter(GrantProgramSettings.id == 1).one_or_none()
+    if not row:
+        row = GrantProgramSettings(id=1)
+        db.add(row)
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(row, k, v)
+    db.commit()
+    return {"id": row.id}

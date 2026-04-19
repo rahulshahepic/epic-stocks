@@ -166,7 +166,7 @@ describe('Sales', () => {
     await waitFor(() => {
       expect(screen.getByText('Estimated Tax Breakdown')).toBeInTheDocument()
     })
-    expect(screen.getByText(/Gross proceeds/)).toBeInTheDocument()
+    expect(screen.getAllByText(/Total from sale/).length).toBeGreaterThan(0)
     expect(screen.getByText(/Estimated total tax/)).toBeInTheDocument()
   })
 
@@ -192,7 +192,7 @@ describe('Sales', () => {
     )
     renderSales()
     await waitFor(() => {
-      expect(screen.getByText('No sales recorded yet')).toBeInTheDocument()
+      expect(screen.getByText(/No sales yet/)).toBeInTheDocument()
     })
   })
 })

@@ -242,7 +242,7 @@ export function TaxCard({ breakdown }: { breakdown: TaxBreakdown }) {
         </div>
       )}
       <div className="space-y-1">
-        <Row label="Gross proceeds" value={fmtUSD(breakdown.gross_proceeds)} />
+        <Row label="Total from sale" value={fmtUSD(breakdown.gross_proceeds)} />
         {(hasLT || hasST) && <Row label="Cost basis" value={fmtUSD(breakdown.cost_basis)} />}
         {(hasLT || hasST) && <Row label="Net gain" value={fmtUSD(breakdown.net_gain)} bold />}
         {hasLT && (
@@ -317,15 +317,15 @@ export function TaxRateFields({ rates, onChange, onReset }: {
         )}
       </div>
       <div className="grid grid-cols-4 gap-2">
-        <RateField label="Fed Income" value={rates.federal_income_rate} onChange={v => set('federal_income_rate', v)} />
-        <RateField label="Fed LT CG" value={rates.federal_lt_cg_rate} onChange={v => set('federal_lt_cg_rate', v)} />
-        <RateField label="Fed ST CG" value={rates.federal_st_cg_rate} onChange={v => set('federal_st_cg_rate', v)} />
-        <RateField label="NIIT" value={rates.niit_rate} onChange={v => set('niit_rate', v)} />
-        <RateField label="State Inc" value={rates.state_income_rate} onChange={v => set('state_income_rate', v)} />
-        <RateField label="State LT" value={rates.state_lt_cg_rate} onChange={v => set('state_lt_cg_rate', v)} />
-        <RateField label="State ST" value={rates.state_st_cg_rate} onChange={v => set('state_st_cg_rate', v)} />
+        <RateField label="Federal income" value={rates.federal_income_rate} onChange={v => set('federal_income_rate', v)} />
+        <RateField label="Federal long-term gains" value={rates.federal_lt_cg_rate} onChange={v => set('federal_lt_cg_rate', v)} />
+        <RateField label="Federal short-term gains" value={rates.federal_st_cg_rate} onChange={v => set('federal_st_cg_rate', v)} />
+        <RateField label="Net investment income tax" value={rates.niit_rate} onChange={v => set('niit_rate', v)} />
+        <RateField label="State income" value={rates.state_income_rate} onChange={v => set('state_income_rate', v)} />
+        <RateField label="State long-term gains" value={rates.state_lt_cg_rate} onChange={v => set('state_lt_cg_rate', v)} />
+        <RateField label="State short-term gains" value={rates.state_st_cg_rate} onChange={v => set('state_st_cg_rate', v)} />
         <label className="block">
-          <span className="text-[10px] text-gray-500 dark:text-slate-400">LT Hold Days</span>
+          <span className="text-[10px] text-gray-500 dark:text-slate-400">Long-term holding (days)</span>
           <input
             type="number"
             value={rates.lt_holding_days}
@@ -664,20 +664,20 @@ export default function Sales() {
         {/* Lot selection method */}
         {showMethodSelector && (
           <label className="block">
-            <span className="text-xs text-gray-500 dark:text-slate-400">Lot selection</span>
+            <span className="text-xs text-gray-500 dark:text-slate-400">Which shares to sell first</span>
             <select
               value={method}
               onChange={e => { setMethod(e.target.value as SaleMethod); setManualAlloc({}) }}
               className="mt-0.5 block w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
             >
-              <option value="epic_lifo">Epic LIFO — prefer long-term gains (default)</option>
-              <option value="fifo">FIFO — oldest lots first</option>
-              <option value="lifo">LIFO — newest lots first</option>
-              <option value="manual_tranche">Manual — pick lots yourself</option>
+              <option value="epic_lifo">Epic default — keep long-held shares for the lower tax rate</option>
+              <option value="fifo">Oldest shares first</option>
+              <option value="lifo">Newest shares first</option>
+              <option value="manual_tranche">Let me pick each batch</option>
             </select>
             {isPayoff && (
               <p className="mt-1 text-[11px] text-stone-500 dark:text-slate-400">
-                Payoff sale — if you have insufficient stock coverage the system will use same-tranche regardless.
+                This sale repays a loan. If you don't have enough shares, the app will pull from the matching grant no matter what you pick here.
               </p>
             )}
           </label>
@@ -734,7 +734,7 @@ export default function Sales() {
                 {isPlanAdd && inputMode === 'dollars' && (
                   <Row label="Shares needed" value={fmtNum(estimate.shares_needed)} />
                 )}
-                <Row label="Gross proceeds" value={fmtUSD(estimate.gross_proceeds)} />
+                <Row label="Total from sale" value={fmtUSD(estimate.gross_proceeds)} />
                 <Row label="Est. tax" value={fmtUSD(estimate.estimated_tax)} />
                 <Row label="Net cash" value={fmtUSD(estimate.net_proceeds)} bold />
               </div>
@@ -814,9 +814,9 @@ export default function Sales() {
                 <div className="flex items-center gap-2">
                   <span className="text-gray-700 dark:text-slate-300">{s.date}</span>
                   {s.loan_id != null ? (
-                    <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-medium text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">Payoff</span>
+                    <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-medium text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">Repayment</span>
                   ) : (
-                    <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">Cash Out</span>
+                    <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">Cash sale</span>
                   )}
                 </div>
                 {!readOnly && (
@@ -874,7 +874,7 @@ export default function Sales() {
               <th className="px-3 py-2">Type</th>
               <th className="px-3 py-2 text-right">Shares</th>
               <th className="px-3 py-2 text-right">Price/Share</th>
-              <th className="px-3 py-2 text-right">Gross Proceeds</th>
+              <th className="px-3 py-2 text-right">Total from sale</th>
               <th className="px-3 py-2 text-right">Tax</th>
               {!readOnly && <th className="px-3 py-2"></th>}
             </tr>
@@ -892,11 +892,11 @@ export default function Sales() {
                     <td className="px-3 py-2">
                       {s.loan_id != null ? (
                         <span className="inline-block rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-medium text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">
-                          Payoff
+                          Repayment
                         </span>
                       ) : (
                         <span className="inline-block rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">
-                          Cash Out
+                          Cash sale
                         </span>
                       )}
                     </td>
@@ -959,7 +959,11 @@ export default function Sales() {
         </table>
       </div>}
       {sales.length === 0 && (
-        <p className="px-3 py-6 text-center text-xs text-stone-600">No sales recorded yet</p>
+        <p className="px-3 py-6 text-center text-xs text-stone-600">
+          {readOnly
+            ? 'No sales yet.'
+            : <>No sales yet. Tap <span className="font-medium">+ Sale</span> above to plan or record one.</>}
+        </p>
       )}
       <p className="text-xs text-stone-600">{sales.length} sales</p>
     </div>

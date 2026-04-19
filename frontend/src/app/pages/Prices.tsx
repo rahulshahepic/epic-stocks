@@ -243,7 +243,7 @@ export default function Prices() {
               className="mt-0.5 shrink-0 accent-amber-600"
             />
             <span className="text-xs text-amber-800 dark:text-amber-300">
-              Also remove {nearbyEstimates.length} nearby estimate{nearbyEstimates.length > 1 ? 's' : ''} within 31 days:{' '}
+              Also delete {nearbyEstimates.length} estimated price{nearbyEstimates.length > 1 ? 's' : ''} within 31 days (this real price replaces them):{' '}
               {nearbyEstimates.map(p => `${p.effective_date} (${fmt$(p.price)})`).join(', ')}
             </span>
           </label>
@@ -464,7 +464,7 @@ export default function Prices() {
             })}
             {prices.length === 0 && (
               <tr>
-                <td colSpan={3} className="px-3 py-6 text-center text-stone-600">No prices yet</td>
+                <td colSpan={3} className="px-3 py-6 text-center text-stone-600">No share prices yet. Tap + Price above to record one.</td>
               </tr>
             )}
           </tbody>

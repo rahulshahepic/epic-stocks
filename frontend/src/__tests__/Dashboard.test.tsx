@@ -128,7 +128,7 @@ describe('Dashboard', () => {
     expect(screen.getByText('Vested Shares')).toBeInTheDocument()
     expect(screen.getByText('Unvested Shares')).toBeInTheDocument()
     expect(screen.getByText('Total Income')).toBeInTheDocument()
-    expect(screen.getByText('Total Cap Gains')).toBeInTheDocument()
+    expect(screen.getByText('Total capital gains')).toBeInTheDocument()
     expect(screen.getByText('Loan Principal')).toBeInTheDocument()
     expect(screen.getByText('Next Event')).toBeInTheDocument()
   })
@@ -140,7 +140,7 @@ describe('Dashboard', () => {
     await waitFor(() => {
       expect(screen.getByText('Shares Over Time')).toBeInTheDocument()
     })
-    expect(screen.getByText('Income vs Cap Gains')).toBeInTheDocument()
+    expect(screen.getByText('Income vs capital gains')).toBeInTheDocument()
     expect(screen.getByText('Share Price History')).toBeInTheDocument()
     expect(screen.getByText('Loan Payments by Due Year')).toBeInTheDocument()
   })
@@ -191,7 +191,7 @@ describe('Dashboard', () => {
 
     // Dashboard should render normally — no crash or error state
     await waitFor(() => {
-      expect(screen.getByText('Income vs Cap Gains')).toBeInTheDocument()
+      expect(screen.getByText('Income vs capital gains')).toBeInTheDocument()
     })
     expect(screen.queryByText('Failed to load dashboard')).not.toBeInTheDocument()
     // All chart section headers should still be visible

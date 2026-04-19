@@ -32,12 +32,6 @@ const MOCK_CONTENT = {
     { year: 2025, type: 'Purchase', vest_start: '2026-09-30', periods: 4, exercise_date: '2025-12-31', default_catch_up: false, show_dp_shares: true  },
     { year: 2025, type: 'Bonus',    vest_start: '2026-09-30', periods: 3, exercise_date: '2025-12-31', default_catch_up: false, show_dp_shares: false },
   ],
-  grant_type_defs: [
-    { name: 'Purchase', color_class: 'bg-rose-700 text-white',    description: 'You paid the share price',  is_pre_tax_when_zero_price: false, display_order: 0 },
-    { name: 'Catch-Up', color_class: 'bg-sky-700 text-white',     description: 'Zero-basis catch-up grant', is_pre_tax_when_zero_price: true,  display_order: 1 },
-    { name: 'Bonus',    color_class: 'bg-emerald-700 text-white', description: 'RSU bonus grant',           is_pre_tax_when_zero_price: true,  display_order: 2 },
-    { name: 'Free',     color_class: 'bg-amber-600 text-white',   description: 'Free/other grant',          is_pre_tax_when_zero_price: true,  display_order: 3 },
-  ],
   bonus_schedule_variants: [
     { grant_year: 2020, grant_type: 'Bonus', variant_code: 'A', periods: 2, label: 'A (2 years)', is_default: false },
     { grant_year: 2020, grant_type: 'Bonus', variant_code: 'B', periods: 3, label: 'B (3 years)', is_default: false },

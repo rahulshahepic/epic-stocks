@@ -348,11 +348,6 @@ export const api = {
   updateGrantTemplate: (id: number, data: Partial<GrantTemplateCreate>) =>
     put<{ id: number }>(`/api/content/grant-templates/${id}`, data),
   deleteGrantTemplate: (id: number) => del(`/api/content/grant-templates/${id}`),
-  createGrantTypeDef: (data: GrantTypeDef) =>
-    post<{ name: string }>('/api/content/grant-type-defs', data),
-  updateGrantTypeDef: (name: string, data: Partial<GrantTypeDef>) =>
-    put<{ name: string }>(`/api/content/grant-type-defs/${encodeURIComponent(name)}`, data),
-  deleteGrantTypeDef: (name: string) => del(`/api/content/grant-type-defs/${encodeURIComponent(name)}`),
   createBonusVariant: (data: Omit<BonusScheduleVariant, 'id'>) =>
     post<{ id: number }>('/api/content/bonus-schedule-variants', data),
   updateBonusVariant: (id: number, data: Partial<Omit<BonusScheduleVariant, 'id'>>) =>
@@ -912,14 +907,6 @@ export interface GrantTemplate {
   display_order: number
 }
 
-export interface GrantTypeDef {
-  name: string
-  color_class: string
-  description: string
-  is_pre_tax_when_zero_price: boolean
-  display_order: number
-}
-
 export interface BonusScheduleVariant {
   id: number
   grant_year: number
@@ -1017,7 +1004,6 @@ export interface LoanRefinanceCreate {
 
 export interface ContentBlob {
   grant_templates: GrantTemplate[]
-  grant_type_defs: GrantTypeDef[]
   bonus_schedule_variants: BonusScheduleVariant[]
   loan_rates: {
     interest: Record<string, number>

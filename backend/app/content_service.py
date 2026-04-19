@@ -13,7 +13,6 @@ from sqlalchemy.orm import Session
 
 from scaffold.models import (
     GrantTemplate,
-    GrantTypeDef,
     BonusScheduleVariant,
     LoanRate,
     LoanRefinance,
@@ -22,14 +21,6 @@ from scaffold.models import (
 
 
 # ── Seed data (mirrors ImportWizard.tsx constants) ──────────────────────────
-
-SEED_GRANT_TYPE_DEFS = [
-    # name, color_class, description, is_pre_tax_when_zero_price, display_order
-    ('Purchase', 'bg-rose-700 text-white',    'You paid the share price',  False, 0),
-    ('Catch-Up', 'bg-sky-700 text-white',     'Zero-basis catch-up grant', True,  1),
-    ('Bonus',    'bg-emerald-700 text-white', 'RSU bonus grant',           True,  2),
-    ('Free',     'bg-amber-600 text-white',   'Free/other grant',          True,  3),
-]
 
 # (year, type, vest_start, periods, exercise_date, default_catch_up)
 SEED_GRANT_TEMPLATES = [
@@ -118,14 +109,6 @@ def seed_content_if_empty(db: Session) -> None:
     Idempotent — each table is only seeded if it is empty.  Safe to call on
     every boot; a no-op once a content admin has edited any row.
     """
-    if db.query(GrantTypeDef).count() == 0:
-        for name, color, desc, is_pre_tax, order in SEED_GRANT_TYPE_DEFS:
-            db.add(GrantTypeDef(
-                name=name, color_class=color, description=desc,
-                is_pre_tax_when_zero_price=is_pre_tax,
-                display_order=order, active=True,
-            ))
-
     if db.query(GrantTemplate).count() == 0:
         for idx, (year, typ, vs, periods, ed, dcu) in enumerate(SEED_GRANT_TEMPLATES):
             db.add(GrantTemplate(
@@ -168,9 +151,6 @@ def load_content(db: Session) -> dict:
     """Return the full grant-program blob in the shape the frontend consumes."""
     templates = db.query(GrantTemplate).order_by(
         GrantTemplate.display_order, GrantTemplate.id
-    ).all()
-    type_defs = db.query(GrantTypeDef).order_by(
-        GrantTypeDef.display_order, GrantTypeDef.name
     ).all()
     variants = db.query(BonusScheduleVariant).order_by(
         BonusScheduleVariant.grant_year,
@@ -246,16 +226,8 @@ def load_content(db: Session) -> dict:
             }
             for t in templates if t.active
         ],
-        'grant_type_defs': [
-            {
-                'name': td.name,
-                'color_class': td.color_class,
-                'description': td.description,
-                'is_pre_tax_when_zero_price': bool(td.is_pre_tax_when_zero_price),
-                'display_order': td.display_order,
-            }
-            for td in type_defs if td.active
-        ],
+        # Grant types live in code (backend/app/grant_types.py and
+        # frontend/src/app/grantTypes.ts); no longer returned by this endpoint.
         'bonus_schedule_variants': [
             {
                 'id': v.id,

@@ -58,17 +58,13 @@ def test_grant_templates_match_epic(client):
         assert "default_purchase_due_month_day" not in actual
 
 
-def test_grant_type_defs(client):
+def test_grant_types_are_code_not_content(client):
     data = _get(client)
-    by_name = {d["name"]: d for d in data["grant_type_defs"]}
-    assert by_name["Purchase"]["color_class"] == "bg-rose-700 text-white"
-    assert by_name["Purchase"]["is_pre_tax_when_zero_price"] is False
-    assert by_name["Catch-Up"]["color_class"] == "bg-sky-700 text-white"
-    assert by_name["Catch-Up"]["is_pre_tax_when_zero_price"] is True
-    assert by_name["Bonus"]["color_class"] == "bg-emerald-700 text-white"
-    assert by_name["Bonus"]["is_pre_tax_when_zero_price"] is True
-    assert by_name["Free"]["color_class"] == "bg-amber-600 text-white"
-    assert by_name["Free"]["is_pre_tax_when_zero_price"] is True
+    # grant_type_defs is no longer part of the /api/content blob —
+    # the four types live in backend/app/grant_types.py as code.
+    assert "grant_type_defs" not in data
+    from app.grant_types import GRANT_TYPE_NAMES
+    assert GRANT_TYPE_NAMES == ["Purchase", "Catch-Up", "Bonus", "Free"]
 
 
 def test_bonus_schedule_variants(client):
@@ -316,25 +312,16 @@ def test_loan_rate_validators(client):
         os.environ.pop("ADMIN_EMAIL", None)
 
 
-def test_grant_type_def_crud(client):
+def test_grant_type_def_endpoints_are_gone(client):
     _login_admin(client)
     try:
+        # Type CRUD endpoints were removed when grant types became code.
         r = client.post("/api/content/grant-type-defs", json={
             "name": "Retention",
             "color_class": "bg-indigo-700 text-white",
             "description": "Retention grant",
         })
-        assert r.status_code == 201
-
-        r = client.put("/api/content/grant-type-defs/Retention", json={"description": "Updated"})
-        assert r.status_code == 200
-
-        data = client.get("/api/content").json()
-        names = {d["name"] for d in data["grant_type_defs"]}
-        assert "Retention" in names
-
-        r = client.delete("/api/content/grant-type-defs/Retention")
-        assert r.status_code == 204
+        assert r.status_code == 404
     finally:
         os.environ.pop("ADMIN_EMAIL", None)
 

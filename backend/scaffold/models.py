@@ -330,18 +330,6 @@ class GrantTemplate(Base):
     )
 
 
-class GrantTypeDef(Base):
-    """Grant type metadata (color + description + pre-tax heuristic) driving the type picker."""
-    __tablename__ = "grant_type_defs"
-
-    name: Mapped[str] = mapped_column(String, primary_key=True)
-    color_class: Mapped[str] = mapped_column(String, nullable=False)
-    description: Mapped[str] = mapped_column(String, nullable=False)
-    is_pre_tax_when_zero_price: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
-    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
-
-
 class BonusScheduleVariant(Base):
     """Alternate vesting schedules per (grant_year, grant_type) — e.g. 2020 Bonus A/B/C."""
     __tablename__ = "bonus_schedule_variants"

@@ -531,30 +531,6 @@ class GrantTemplateUpdate(BaseModel):
         return v
 
 
-class GrantTypeDefCreate(BaseModel):
-    name: str
-    color_class: str
-    description: str
-    is_pre_tax_when_zero_price: bool = False
-    display_order: int = 0
-    active: bool = True
-
-    @field_validator("name")
-    @classmethod
-    def name_not_empty(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("name cannot be empty")
-        return v
-
-
-class GrantTypeDefUpdate(BaseModel):
-    color_class: str | None = None
-    description: str | None = None
-    is_pre_tax_when_zero_price: bool | None = None
-    display_order: int | None = None
-    active: bool | None = None
-
-
 class BonusScheduleVariantCreate(BaseModel):
     grant_year: int
     grant_type: str

@@ -10,9 +10,6 @@ const CONTENT = {
   grant_templates: [
     { id: 1, year: 2025, type: 'Purchase', vest_start: '2026-09-30', periods: 4, exercise_date: '2025-12-31', default_catch_up: false, show_dp_shares: true, display_order: 0 },
   ],
-  grant_type_defs: [
-    { name: 'Purchase', color_class: 'bg-rose-700 text-white', description: 'You paid the share price', is_pre_tax_when_zero_price: false, display_order: 0 },
-  ],
   bonus_schedule_variants: [],
   loan_rates: { interest: { '2025': 0.04 }, tax: {}, purchase_original: {} },
   loan_rates_all: [

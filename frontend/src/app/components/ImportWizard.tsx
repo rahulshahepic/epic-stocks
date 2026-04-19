@@ -8,6 +8,7 @@ import type {
 
 import { useApiData } from '../hooks/useApiData.ts'
 import { useContent } from '../hooks/useContent.ts'
+import { GRANT_COLORS, GRANT_DESCRIPTIONS, PRE_TAX_TYPES } from '../grantTypes.ts'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -508,15 +509,6 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
   }))
   const DP_SHARES_YEARS = new Set(
     EPIC_GRANT_SCHEDULE.filter(g => g.type === 'Purchase' && g.showDpShares).map(g => g.year),
-  )
-  const GRANT_COLORS = Object.fromEntries(
-    content.grant_type_defs.map(d => [d.name, d.color_class]),
-  ) as Record<GrantType, string>
-  const GRANT_DESCRIPTIONS = Object.fromEntries(
-    content.grant_type_defs.map(d => [d.name, d.description]),
-  ) as Record<GrantType, string>
-  const PRE_TAX_TYPES = new Set(
-    content.grant_type_defs.filter(d => d.is_pre_tax_when_zero_price).map(d => d.name),
   )
   const BONUS_SCHEDULES = Object.fromEntries(
     content.bonus_schedule_variants

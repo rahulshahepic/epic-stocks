@@ -125,6 +125,7 @@ interface KnownGrant {
   exercise_date: string
   defaultCatchUp: boolean
   showDpShares: boolean
+  defaultTaxDueDate: string | null
 }
 
 type BonusSchedule = 'A' | 'B' | 'C'
@@ -506,9 +507,18 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
     exercise_date: g.exercise_date,
     defaultCatchUp: g.default_catch_up,
     showDpShares: g.show_dp_shares,
+    defaultTaxDueDate: g.default_tax_due_date,
   }))
   const DP_SHARES_YEARS = new Set(
     EPIC_GRANT_SCHEDULE.filter(g => g.type === 'Purchase' && g.showDpShares).map(g => g.year),
+  )
+  // Admin-configured tax-loan due dates, keyed by (grantYear, grantType).
+  // When set, the wizard uses this; otherwise it falls back to inheriting the
+  // purchase-loan due date (see inheritedDueDate below).
+  const TAX_DUE_DATE_BY_TEMPLATE = new Map(
+    EPIC_GRANT_SCHEDULE
+      .filter(g => g.defaultTaxDueDate)
+      .map(g => [`${g.year}-${g.type}`, g.defaultTaxDueDate as string]),
   )
   const BONUS_SCHEDULES = Object.fromEntries(
     content.bonus_schedule_variants
@@ -1197,12 +1207,20 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
     // Helper: compute due date for a purchase grant year. Each Purchase template
     // carries its own MM-DD; falls back to 06-30 if a future-year template hasn't
     // been configured with one yet.
-    // Tax and interest loans inherit their due date from the purchase loan for
-    // the same grant year. If the user didn't participate in that year's purchase
-    // grant we fall back to the original purchase-loan rate row's due_date.
+    // Interest loans inherit their due date from the purchase loan for that
+    // grant year. If the user didn't participate in that year's purchase grant
+    // we fall back to the original purchase-loan rate row's due_date.
     function inheritedDueDate(grantYear: number): string {
       const purchaseRow = purchaseRows.find(r => r.year === grantYear)
       return purchaseRow?.loan_due_date || ORIGINAL_PURCHASE_LOANS[grantYear]?.dueDate || ''
+    }
+
+    // Tax loans use the admin-configured default_tax_due_date on the originating
+    // template when set (Bonus/Free, or Purchase-with-catch-up). Otherwise they
+    // fall back to inheriting from the purchase loan.
+    function taxDueDate(grantYear: number, grantType: string): string {
+      const templateType = grantType === 'Catch-Up' ? 'Purchase' : grantType
+      return TAX_DUE_DATE_BY_TEMPLATE.get(`${grantYear}-${templateType}`) || inheritedDueDate(grantYear)
     }
 
     // Helper to push a reviewed loan
@@ -1233,7 +1251,7 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
       const gy = row.year
       const totalShares = parseInt(row.shares) || 0
       const sharesPerPeriod = Math.floor(totalShares / row.periods)
-      const due = inheritedDueDate(gy)
+      const due = taxDueDate(gy, 'Catch-Up')
 
       if (!taxAmountsByGrantYear.has(gy)) taxAmountsByGrantYear.set(gy, new Map())
       const taxMap = taxAmountsByGrantYear.get(gy)!
@@ -1336,7 +1354,7 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
       const grantPrice = parseFloat(row.purchase_price) || 0
       const totalShares = parseInt(row.shares) || 0
       const sharesPerPeriod = Math.floor(totalShares / row.periods)
-      const due = inheritedDueDate(gy)
+      const due = taxDueDate(gy, grantType)
 
       // Tax loans only for zero-basis grants (vesting = ordinary income)
       const isPreTaxGrant = grantPrice === 0

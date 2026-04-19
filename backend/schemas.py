@@ -474,6 +474,7 @@ class GrantTemplateCreate(BaseModel):
     exercise_date: str
     default_catch_up: bool = False
     show_dp_shares: bool = False
+    default_tax_due_date: str | None = None
     display_order: int = 0
     active: bool = True
     notes: str | None = None
@@ -485,9 +486,11 @@ class GrantTemplateCreate(BaseModel):
             raise ValueError("type cannot be empty")
         return v
 
-    @field_validator("vest_start", "exercise_date")
+    @field_validator("vest_start", "exercise_date", "default_tax_due_date")
     @classmethod
-    def iso_date(cls, v: str) -> str:
+    def iso_date(cls, v):
+        if v is None:
+            return v
         return _validate_iso_date(v)
 
     @field_validator("periods")
@@ -512,11 +515,12 @@ class GrantTemplateUpdate(BaseModel):
     exercise_date: str | None = None
     default_catch_up: bool | None = None
     show_dp_shares: bool | None = None
+    default_tax_due_date: str | None = None
     display_order: int | None = None
     active: bool | None = None
     notes: str | None = None
 
-    @field_validator("vest_start", "exercise_date")
+    @field_validator("vest_start", "exercise_date", "default_tax_due_date")
     @classmethod
     def iso_date(cls, v):
         if v is None:

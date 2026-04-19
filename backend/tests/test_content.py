@@ -30,24 +30,25 @@ def test_grant_templates_match_epic(client):
     data = _get(client)
     schedule = data["grant_templates"]
     expected = [
-        (2018, "Purchase", "2020-06-15", 6, "2018-12-31", True,  False),
-        (2019, "Purchase", "2021-06-15", 6, "2019-12-31", True,  False),
-        (2020, "Purchase", "2021-09-30", 5, "2020-12-31", True,  False),
-        (2020, "Bonus",    "2021-09-30", 4, "2020-12-31", False, False),
-        (2021, "Purchase", "2022-09-30", 5, "2021-12-31", True,  False),
-        (2021, "Bonus",    "2022-09-30", 3, "2021-12-31", False, False),
-        (2022, "Purchase", "2023-09-30", 4, "2022-12-31", False, False),
-        (2022, "Bonus",    "2023-09-30", 3, "2022-12-31", False, False),
-        (2022, "Free",     "2027-09-30", 1, "2022-12-31", False, False),
-        (2023, "Purchase", "2024-09-30", 4, "2023-12-31", False, True),
-        (2023, "Bonus",    "2024-09-30", 3, "2023-12-31", False, False),
-        (2024, "Purchase", "2025-09-30", 4, "2024-12-31", False, True),
-        (2024, "Bonus",    "2025-09-30", 3, "2024-12-31", False, False),
-        (2025, "Purchase", "2026-09-30", 4, "2025-12-31", False, True),
-        (2025, "Bonus",    "2026-09-30", 3, "2025-12-31", False, False),
+        # year, type, vest_start, periods, exercise_date, default_catch_up, show_dp_shares, default_tax_due_date
+        (2018, "Purchase", "2020-06-15", 6, "2018-12-31", True,  False, None),
+        (2019, "Purchase", "2021-06-15", 6, "2019-12-31", True,  False, None),
+        (2020, "Purchase", "2021-09-30", 5, "2020-12-31", True,  False, None),
+        (2020, "Bonus",    "2021-09-30", 4, "2020-12-31", False, False, "2025-07-15"),
+        (2021, "Purchase", "2022-09-30", 5, "2021-12-31", True,  False, None),
+        (2021, "Bonus",    "2022-09-30", 3, "2021-12-31", False, False, "2030-07-15"),
+        (2022, "Purchase", "2023-09-30", 4, "2022-12-31", False, False, None),
+        (2022, "Bonus",    "2023-09-30", 3, "2022-12-31", False, False, "2031-06-30"),
+        (2022, "Free",     "2027-09-30", 1, "2022-12-31", False, False, "2031-06-30"),
+        (2023, "Purchase", "2024-09-30", 4, "2023-12-31", False, True,  None),
+        (2023, "Bonus",    "2024-09-30", 3, "2023-12-31", False, False, "2032-06-30"),
+        (2024, "Purchase", "2025-09-30", 4, "2024-12-31", False, True,  None),
+        (2024, "Bonus",    "2025-09-30", 3, "2024-12-31", False, False, "2033-06-30"),
+        (2025, "Purchase", "2026-09-30", 4, "2025-12-31", False, True,  None),
+        (2025, "Bonus",    "2026-09-30", 3, "2025-12-31", False, False, "2034-06-30"),
     ]
     assert len(schedule) == len(expected)
-    for actual, (year, typ, vs, periods, ed, dcu, sdp) in zip(schedule, expected):
+    for actual, (year, typ, vs, periods, ed, dcu, sdp, tdd) in zip(schedule, expected):
         assert actual["year"] == year
         assert actual["type"] == typ
         assert actual["vest_start"] == vs
@@ -55,6 +56,7 @@ def test_grant_templates_match_epic(client):
         assert actual["exercise_date"] == ed
         assert actual["default_catch_up"] == dcu
         assert actual["show_dp_shares"] == sdp
+        assert actual["default_tax_due_date"] == tdd
         assert "default_purchase_due_month_day" not in actual
 
 

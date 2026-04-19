@@ -321,6 +321,11 @@ class GrantTemplate(Base):
     exercise_date: Mapped[str] = mapped_column(String, nullable=False)    # YYYY-MM-DD
     default_catch_up: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     show_dp_shares: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    # When the tax loans generated from this template are due (YYYY-MM-DD). Typically
+    # set on Bonus/Free templates (and on Purchase templates with catch-up). Null
+    # means the wizard falls back to inheriting the due date from the purchase loan
+    # for that grant year.
+    default_tax_due_date: Mapped[str | None] = mapped_column(String, nullable=True)
     display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
     notes: Mapped[str | None] = mapped_column(String, nullable=True)

@@ -69,6 +69,11 @@ jobs:
     # ~/.cache/ms-playwright directory avoids that entirely.
     steps:
       - uses: actions/checkout@v4
+      - name: Start e2e-db (parallel with npm / buildx / image build)
+        # Postgres has no dependency on the e2e-app image, so start it immediately.
+        # By the time the e2e-app image finishes building, the db healthcheck has
+        # already passed and `docker compose up e2e-app` doesn't wait on it.
+        run: docker compose -f docker-compose.e2e.yml up -d e2e-db
       - id: setup-node
         uses: actions/setup-node@v4
         with:
@@ -84,9 +89,13 @@ jobs:
           path: ~/.cache/ms-playwright
           key: pw-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
       - name: Install playwright browsers
+        # No --with-deps: the ubuntu-24.04 runner ships libnss3 / libxkbcommon /
+        # libatk etc. already. `--with-deps` costs ~16 s of `sudo apt update` +
+        # "already the newest version" for every lib on every run. If Playwright
+        # ever fails with a missing system lib, add the specific package here.
         run: |
           echo "pw browser cache-hit=${{ steps.pw-cache.outputs.cache-hit }}"
-          cd frontend && time npx playwright install --with-deps chromium
+          cd frontend && time npx playwright install chromium
       - uses: docker/setup-buildx-action@v3
       - name: Build e2e-app image (cached)
         uses: docker/build-push-action@v5
@@ -97,9 +106,9 @@ jobs:
           tags: epic-stocks-e2e-app:ci
           cache-from: type=gha,scope=e2e-app
           cache-to: type=gha,mode=max,scope=e2e-app
-      - name: Start backend + db
+      - name: Start backend
         run: |
-          docker compose -f docker-compose.e2e.yml up -d e2e-db e2e-app
+          docker compose -f docker-compose.e2e.yml up -d e2e-app
           echo "Waiting for backend health..."
           for i in $(seq 1 60); do
             if curl -sf http://localhost:8000/api/health >/dev/null; then

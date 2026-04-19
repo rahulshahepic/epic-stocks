@@ -529,8 +529,8 @@ function RatesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; busy:
               </Field>
             )}
             <Field label="Year"><TextInput type="number" value={modal.draft.year} onChange={e => patch({ year: Number(e.target.value) })} required /></Field>
-            <Field label="Rate (decimal, e.g. 0.0379)">
-              <TextInput type="number" step="0.0001" value={modal.draft.rate} onChange={e => patch({ rate: Number(e.target.value) })} required />
+            <Field label="Rate (%)">
+              <TextInput type="number" step="0.01" value={+(modal.draft.rate * 100).toFixed(4)} onChange={e => patch({ rate: Number(e.target.value) / 100 })} required />
             </Field>
             {draftKind === 'purchase_original' && (
               <Field label="Due date">
@@ -661,7 +661,7 @@ function RefinancesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; 
             )}
             <Field label="Order"><TextInput type="number" min={0} value={modal.draft.order_idx} onChange={e => patch({ order_idx: Number(e.target.value) })} required /></Field>
             <Field label="Refi date"><TextInput type="date" value={modal.draft.date} onChange={e => patch({ date: e.target.value })} required /></Field>
-            <Field label="Rate (decimal)"><TextInput type="number" step="0.0001" value={modal.draft.rate} onChange={e => patch({ rate: Number(e.target.value) })} required /></Field>
+            <Field label="Rate (%)"><TextInput type="number" step="0.01" value={+(modal.draft.rate * 100).toFixed(4)} onChange={e => patch({ rate: Number(e.target.value) / 100 })} required /></Field>
             <Field label="Loan year"><TextInput type="number" value={modal.draft.loan_year} onChange={e => patch({ loan_year: Number(e.target.value) })} required /></Field>
             <Field label="Due date"><TextInput type="date" value={modal.draft.due_date} onChange={e => patch({ due_date: e.target.value })} required /></Field>
             {isTax && (
@@ -695,16 +695,16 @@ function SettingsTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; bu
       className="grid grid-cols-1 gap-3 md:grid-cols-2"
     >
       <label className="flex flex-col text-xs">
-        <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">Federal tax fallback</span>
-        <TextInput type="number" step="0.001" value={form.tax_fallback_federal} onChange={e => update({ tax_fallback_federal: Number(e.target.value) })} />
+        <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">Federal tax fallback (%)</span>
+        <TextInput type="number" step="0.1" value={+(form.tax_fallback_federal * 100).toFixed(4)} onChange={e => update({ tax_fallback_federal: Number(e.target.value) / 100 })} />
       </label>
       <label className="flex flex-col text-xs">
-        <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">State tax fallback</span>
-        <TextInput type="number" step="0.0001" value={form.tax_fallback_state} onChange={e => update({ tax_fallback_state: Number(e.target.value) })} />
+        <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">State tax fallback (%)</span>
+        <TextInput type="number" step="0.01" value={+(form.tax_fallback_state * 100).toFixed(4)} onChange={e => update({ tax_fallback_state: Number(e.target.value) / 100 })} />
       </label>
       <label className="flex flex-col text-xs">
-        <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">Min DP % of purchase</span>
-        <TextInput type="number" step="0.01" value={form.dp_min_percent} onChange={e => update({ dp_min_percent: Number(e.target.value) })} />
+        <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">Min DP (% of purchase)</span>
+        <TextInput type="number" step="0.1" value={+(form.dp_min_percent * 100).toFixed(4)} onChange={e => update({ dp_min_percent: Number(e.target.value) / 100 })} />
       </label>
       <label className="flex flex-col text-xs">
         <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">Min DP cap ($)</span>

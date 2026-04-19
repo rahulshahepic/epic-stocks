@@ -32,9 +32,10 @@ def upgrade() -> None:
         sa.Column('zero_basis', sa.Boolean(), nullable=False, server_default='0'),
     )
     conn = op.get_bind()
-    conn.execute(sa.text(
-        "UPDATE grant_templates SET zero_basis = 1 WHERE type IN ('Bonus', 'Free')"
-    ))
+    conn.execute(
+        sa.text("UPDATE grant_templates SET zero_basis = :v WHERE type IN ('Bonus', 'Free')"),
+        {"v": True},
+    )
 
 
 def downgrade() -> None:

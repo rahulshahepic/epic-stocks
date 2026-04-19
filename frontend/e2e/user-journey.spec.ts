@@ -23,7 +23,7 @@ test.describe('Sales journey', () => {
   test('record a sale and view tax breakdown', async ({ page }) => {
     // Navigate to Sales
     await navigateTo(page, 'Sales')
-    await expect(page.getByText('No sales recorded yet')).toBeVisible()
+    await expect(page.getByText('No sales yet')).toBeVisible()
 
     // Add a sale — form opens in Plan Sale mode (today's date)
     await page.getByRole('button', { name: '+ Sale' }).click()
@@ -35,7 +35,7 @@ test.describe('Sales journey', () => {
 
     // Switch to # Shares mode and fill shares
     await page.getByRole('button', { name: '# Shares' }).click()
-    await page.getByLabel('Shares to sell').fill('100')
+    await page.getByLabel('Shares to sell', { exact: true }).fill('100')
     await page.getByLabel('Price per Share').fill('25.00')
     await page.getByLabel('Notes (optional)').fill('Test sale')
     await page.getByRole('button', { name: 'Record sale' }).click()
@@ -46,7 +46,7 @@ test.describe('Sales journey', () => {
 
     // Tax breakdown auto-expands after save
     await expect(page.getByText('Estimated Tax Breakdown')).toBeVisible()
-    await expect(page.getByText('Gross proceeds').first()).toBeVisible()
+    await expect(page.getByText('Total from sale').first()).toBeVisible()
     await expect(page.getByText('Estimated total tax').first()).toBeVisible()
 
     // Check gross proceeds = 100 * 25.00 = $2,500
@@ -68,7 +68,7 @@ test.describe('Sales journey', () => {
     await expect(taxCellButton).toBeVisible({ timeout: 5000 })
     await taxCellButton.click()
     await expect(page.getByText('Estimated Tax Breakdown')).toBeVisible({ timeout: 5000 })
-    await expect(page.getByText('Gross proceeds').first()).toBeVisible()
+    await expect(page.getByText('Total from sale').first()).toBeVisible()
   })
 
   test('edit and delete sale', async ({ page }) => {
@@ -84,7 +84,7 @@ test.describe('Sales journey', () => {
     // Edit it via pencil icon
     await page.getByRole('button', { name: 'Edit sale' }).first().click()
     await expect(page.getByText('Edit Sale')).toBeVisible()
-    await page.getByLabel('Shares to sell').fill('250')
+    await page.getByLabel('Shares to sell', { exact: true }).fill('250')
     await page.getByRole('button', { name: 'Save' }).click()
     await expect(page.getByText('1 sales')).toBeVisible()
 
@@ -93,7 +93,7 @@ test.describe('Sales journey', () => {
     await page.getByRole('button', { name: 'Edit sale' }).first().click()
     await expect(page.getByText('Edit Sale')).toBeVisible()
     await page.getByRole('button', { name: 'Delete sale' }).click()
-    await expect(page.getByText('No sales recorded yet')).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText('No sales yet')).toBeVisible({ timeout: 5000 })
   })
 
   test('events page shows tax for vesting events', async ({ page }) => {

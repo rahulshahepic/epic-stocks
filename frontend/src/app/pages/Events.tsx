@@ -101,18 +101,18 @@ function Unrealized83bCard({ e, ts }: { e: TimelineEvent; ts: TaxSettings }) {
 
   return (
     <div className="rounded-lg border border-violet-200 bg-violet-50 p-4 text-xs dark:border-violet-800 dark:bg-violet-900/20">
-      <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-slate-100">83(b) Election — Unrealized Gain</h3>
+      <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-slate-100">83(b) Election — Gain if you sold today</h3>
       <div className="space-y-1">
-        <TaxRow label="Unrealized gain at vesting" value={fmt$(e.income)} />
-        <TaxRow label="Cost basis (83b at $0)" value="$0" />
+        <TaxRow label="Gain at vesting (on paper)" value={fmt$(e.income)} />
+        <TaxRow label="What you paid per share (83(b) sets this to $0)" value="$0" />
         <div className="my-2 border-t border-violet-200 dark:border-violet-700" />
         <TaxRow label="No income tax due at vesting" value="$0" />
         <TaxRow
-          label={`Potential LT cap gains × ${fmtPct(ltCgRate)}`}
+          label={`Long-term capital gains tax × ${fmtPct(ltCgRate)}`}
           value={`→ ~${fmt$(potentialTax)}`}
         />
         {isFuture && (
-          <p className="pt-1 text-stone-600">Gain realized only upon sale — holding period starts at vesting.</p>
+          <p className="pt-1 text-stone-600">You only owe this tax when you sell. The long-term clock starts at vesting.</p>
         )}
       </div>
     </div>
@@ -125,26 +125,25 @@ function InterestDeductionCard({ e }: { e: TimelineEvent }) {
   const total = e.interest_deduction_applied ?? 0
   return (
     <div className="rounded-lg border border-purple-200 bg-purple-50 p-3 text-xs dark:border-purple-800 dark:bg-purple-900/20">
-      <h3 className="mb-2 text-xs font-semibold text-purple-900 dark:text-purple-200">Investment Interest Deduction Applied</h3>
+      <h3 className="mb-2 text-xs font-semibold text-purple-900 dark:text-purple-200">Loan interest reduces the tax on these gains</h3>
       <div className="space-y-1">
         {stcgDed > 0 && (
-          <TaxRow label="Offset against short-term gains" value={`−${fmt$(stcgDed)}`} />
+          <TaxRow label="Subtracted from short-term gains" value={`−${fmt$(stcgDed)}`} />
         )}
         {ltcgDed > 0 && (
-          <TaxRow label="Offset against long-term gains" value={`−${fmt$(ltcgDed)}`} />
+          <TaxRow label="Subtracted from long-term gains" value={`−${fmt$(ltcgDed)}`} />
         )}
         <div className="my-1.5 border-t border-purple-200 dark:border-purple-700" />
-        <TaxRow label="Total deduction used this event" value={fmt$(total)} bold />
+        <TaxRow label="Total loan-interest deduction used" value={fmt$(total)} bold />
         {e.adjusted_total_cap_gains != null && (
           <TaxRow
-            label={`Reported cap gains (${fmt$(e.total_cap_gains)} − ${fmt$(total)})`}
+            label={`Capital gains reported (${fmt$(e.total_cap_gains)} − ${fmt$(total)})`}
             value={fmt$(e.adjusted_total_cap_gains)}
           />
         )}
       </div>
       <p className="mt-2 text-[10px] text-purple-600 dark:text-purple-700">
-        Form 4952 estimate — interest paid on investment loans is deducted here.
-        Unused deduction carries forward to future years.
+        Interest you paid on investment loans can reduce the tax on these capital gains. Leftover interest rolls over to future years. (IRS Form 4952.)
       </p>
     </div>
   )
@@ -327,16 +326,16 @@ export default function Events() {
           let capGainsLabel: string | null = null
           let capGainsValue: React.ReactNode = null
           if (e.event_type === 'Loan Payoff' && e.cash_due != null) {
-            capGainsLabel = 'Cash Due'
+            capGainsLabel = 'Amount due'
             capGainsValue = <span className="text-yellow-600 dark:text-yellow-400">{fmt$(e.cash_due)} <span className={e.status === 'covered' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}>{e.status === 'covered' ? '\u2713' : '!'}</span></span>
           } else if (e.event_type === 'Sale' && e.gross_proceeds != null) {
-            capGainsLabel = 'Gross Proceeds'
+            capGainsLabel = 'Total from sale'
             capGainsValue = <span className="text-green-700 dark:text-green-300">{fmt$(e.gross_proceeds)}</span>
           } else if (e.adjusted_total_cap_gains != null && e.adjusted_total_cap_gains !== e.total_cap_gains) {
-            capGainsLabel = 'Cap Gains'
+            capGainsLabel = 'Capital gains'
             capGainsValue = <span className="text-purple-600 dark:text-purple-700">{fmt$(e.adjusted_total_cap_gains)} <span className="text-[9px] text-purple-700 dark:text-purple-500">adj.</span></span>
           } else if (e.total_cap_gains) {
-            capGainsLabel = 'Cap Gains'
+            capGainsLabel = 'Capital gains'
             capGainsValue = <span className="text-purple-600 dark:text-purple-700">{fmt$(e.total_cap_gains)}</span>
           }
 
@@ -428,7 +427,7 @@ export default function Events() {
                       </div>
                     )}
                     <div className="flex justify-between">
-                      <span className="text-gray-500 dark:text-slate-400">Cum Shares</span>
+                      <span className="text-gray-500 dark:text-slate-400">Shares held</span>
                       <span className="tabular-nums font-medium text-gray-900 dark:text-slate-100">{fmtNum(e.cum_shares)}</span>
                     </div>
                     {isSaleExpanded && bd && <div className="mt-2"><TaxCard breakdown={bd} /></div>}
@@ -454,9 +453,9 @@ export default function Events() {
               <th className="px-3 py-2 text-right">Shares</th>
               <th className="px-3 py-2 text-right">Price</th>
               <th className="px-3 py-2 text-right">Income</th>
-              <th className="px-3 py-2 text-right">{hasInterestDeduction ? 'Cap Gains (adj.)' : 'Cap Gains'}</th>
+              <th className="px-3 py-2 text-right">{hasInterestDeduction ? 'Capital gains (adj.)' : 'Capital gains'}</th>
               <th className="px-3 py-2 text-right">Tax</th>
-              <th className="px-3 py-2 text-right">Cum Shares</th>
+              <th className="px-3 py-2 text-right">Shares held</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -521,7 +520,7 @@ export default function Events() {
                         : e.event_type === 'Sale' && e.gross_proceeds != null
                         ? <span className="text-green-700 dark:text-green-300">{fmt$(e.gross_proceeds)}</span>
                         : e.adjusted_total_cap_gains != null && e.adjusted_total_cap_gains !== e.total_cap_gains
-                        ? <span title={`Gross: ${fmt$(e.total_cap_gains)} − ${fmt$(e.interest_deduction_applied ?? 0)} interest ded.`}>
+                        ? <span title={`Gross: ${fmt$(e.total_cap_gains)} − ${fmt$(e.interest_deduction_applied ?? 0)} loan interest`}>
                             {fmt$(e.adjusted_total_cap_gains)}
                             <span className="ml-1 text-[9px] text-purple-700 dark:text-purple-500">adj.</span>
                           </span>
@@ -603,7 +602,7 @@ export default function Events() {
           </tbody>
         </table>
       </div>}
-      <p className="text-xs text-stone-600">{filtered.length} events &nbsp;·&nbsp; * price appreciation is unrealized — not a taxable event</p>
+      <p className="text-xs text-stone-600">{filtered.length} events &nbsp;·&nbsp; * on-paper growth — you only owe tax when you sell</p>
     </div>
   )
 }

@@ -333,14 +333,14 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: Ti
           {hasFuturePrices && (
             <text x="50%" y={16} textAnchor="middle" fontSize={10} fill={c.axis}>
               <tspan fill="#10b981">&#9632;</tspan> Income{'  '}
-              <tspan fill="#8b5cf6">&#9632;</tspan> {'Cap Gains'}{'  '}
+              <tspan fill="#8b5cf6">&#9632;</tspan> {'Capital gains'}{'  '}
               <tspan fill="#6ee7b7">&#9632;</tspan>/<tspan fill="#c4b5fd">&#9632;</tspan> Projected
             </text>
           )}
           {!hasFuturePrices && (
             <text x="50%" y={16} textAnchor="middle" fontSize={10} fill={c.axis}>
               <tspan fill="#10b981">&#9632;</tspan> Income{'  '}
-              <tspan fill="#8b5cf6">&#9632;</tspan> {'Cap Gains'}
+              <tspan fill="#8b5cf6">&#9632;</tspan> {'Capital gains'}
             </text>
           )}
           {tIdx !== null && <ReferenceLine x={tIdx} stroke="#f59e0b" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
@@ -352,9 +352,9 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: Ti
           {hasFuturePrices && (
             <Area type="monotone" dataKey="projExtraIncome" stackId="main" fill="#6ee7b7" fillOpacity={0.5} stroke="#6ee7b7" strokeDasharray="6 3" name="Proj Income" dot={false} />
           )}
-          <Area type="monotone" dataKey="gains" stackId="main" fill="#a78bfa" fillOpacity={0.7} stroke="#8b5cf6" name="Cap Gains" dot={false} />
+          <Area type="monotone" dataKey="gains" stackId="main" fill="#a78bfa" fillOpacity={0.7} stroke="#8b5cf6" name="Capital gains" dot={false} />
           {hasFuturePrices && (
-            <Area type="monotone" dataKey="projExtra" stackId="main" fill="#c4b5fd" fillOpacity={0.5} stroke="#c4b5fd" strokeDasharray="6 3" name="Proj Cap Gains" dot={false} />
+            <Area type="monotone" dataKey="projExtra" stackId="main" fill="#c4b5fd" fillOpacity={0.5} stroke="#c4b5fd" strokeDasharray="6 3" name="Projected capital gains" dot={false} />
           )}
         </AreaChart>
       </ResponsiveContainer>
@@ -364,7 +364,7 @@ function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: Ti
           items={[
             { label: '', value: fmtFullDate(sel._date) },
             { label: 'income', value: fmt$(sel._event.cum_income) },
-            { label: 'cap gains', value: fmt$(sel._event.cum_cap_gains) },
+            { label: 'capital gains', value: fmt$(sel._event.cum_cap_gains) },
             ...(hasDeduction && (sel._event.interest_deduction_applied ?? 0) > 0
               ? [{ label: 'interest deducted this event', value: fmt$(sel._event.interest_deduction_applied!) }]
               : []),
@@ -1573,7 +1573,7 @@ export default function Dashboard() {
               expanded={openBreakdowns.has('income')}
             />
             <Card
-              label="Total Cap Gains"
+              label="Total capital gains"
               value={fmt$(cv.total_cap_gains)}
               variant="gains"
               subtitle="Growth since your grants"
@@ -1607,10 +1607,10 @@ export default function Dashboard() {
             </BreakdownShell>
           )}
           {openBreakdowns.has('capGains') && breakdowns && (breakdowns.capGains.vestingGroups.length > 0 || breakdowns.capGains.priceTotal !== 0) && (
-            <BreakdownShell title="Total Cap Gains breakdown">
+            <BreakdownShell title="Total capital gains breakdown">
               {breakdowns.capGains.vestingGroups.length > 0 && (
                 <>
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-stone-400 dark:text-slate-500">Gains at vest (price − cost basis)</p>
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-stone-400 dark:text-slate-500">Gains at vest (share price − what you paid)</p>
                   {breakdowns.capGains.vestingGroups.map(g => (
                     <BreakdownRow key={g.key} label={`${g.year} ${g.type}`} value={fmt$(g.amount)} />
                   ))}
@@ -1756,7 +1756,7 @@ export default function Dashboard() {
                 <BreakdownRow
                   label="Interest deduction savings"
                   value={`−${fmt$(breakdowns.tax.deductionSavings)}`}
-                  sub="Form 4952 investment-interest deduction applied against cap gains"
+                  sub="Loan interest subtracted from capital gains before tax (IRS Form 4952)"
                   tone="positive"
                 />
               )}
@@ -1874,7 +1874,7 @@ export default function Dashboard() {
           </ChartBox>
         )}
         {events && events.length > 0 && (
-          <ChartBox title="Income vs Cap Gains" range={range} setRange={setRange} maxDate={maxDate}>
+          <ChartBox title="Income vs capital gains" range={range} setRange={setRange} maxDate={maxDate}>
             <IncomeCapGainsChart events={events} c={c} range={range} hasFuturePrices={hasFuturePrices} />
           </ChartBox>
         )}

@@ -463,7 +463,7 @@ export default function Grants() {
           <Field label="Year" type="number" value={form.year} onChange={v => setForm(f => ({ ...f, year: +v }))} />
           <Field label="Shares" type="number" value={form.shares} onChange={v => setForm(f => ({ ...f, shares: +v }))} />
           <Field
-            label={form.type === 'Bonus' ? 'Cost Basis (optional)' : 'Cost Basis'}
+            label={form.type === 'Bonus' ? 'Price per share at grant (optional)' : 'Price per share at grant'}
             type="number" step="0.01"
             value={form.price}
             onChange={v => setForm(f => ({ ...f, price: +v }))}
@@ -473,8 +473,8 @@ export default function Grants() {
           <Field label="Exercise Date" type="date" value={form.exercise_date} onChange={v => setForm(f => ({ ...f, exercise_date: v }))} />
           {form.type === 'Purchase' && (
             <label className="block">
-              <span className="text-xs text-gray-500 dark:text-slate-400">Down Payment Shares</span>
-              <p className="text-[10px] text-stone-600 dark:text-slate-400">Bonus shares used first, then oldest (non-taxable exchange)</p>
+              <span className="text-xs text-gray-500 dark:text-slate-400">Shares used as down payment</span>
+              <p className="text-[10px] text-stone-600 dark:text-slate-400">Existing shares you handed in toward this purchase. Bonus shares are used first, then oldest — this swap is not taxed.</p>
               <input
                 type="number"
                 value={form.dp_shares}
@@ -492,7 +492,7 @@ export default function Grants() {
                 className="mt-0.5 rounded border-gray-300 dark:border-slate-600"
               />
               <span className="text-xs text-gray-600 dark:text-slate-400">
-                Filed 83(b) election — income recognized at grant time; vesting gains are unrealized cap gains
+                Filed an 83(b) election — you pay income tax on the full grant now instead of at each vesting. Later growth is taxed as capital gains when you sell.
               </span>
             </label>
           )}
@@ -507,7 +507,7 @@ export default function Grants() {
                 onChange={e => setCatchUpChecked(e.target.checked)}
                 className="rounded border-gray-300 dark:border-slate-600"
               />
-              <span>Includes Catch-Up shares (zero-basis, vests as ordinary income)</span>
+              <span>Includes Catch-Up shares — bonus shares you paid nothing for; they vest as regular income</span>
             </label>
             {catchUpChecked && (
               <div className="pl-5">
@@ -541,7 +541,7 @@ export default function Grants() {
                     onChange={e => setPayoffSaleChecked(e.target.checked)}
                     className="rounded border-gray-300 dark:border-slate-600"
                   />
-                  <span>Payoff loan via sale</span>
+                  <span>Sell shares to repay this loan</span>
                 </label>
                 {payoffSaleChecked && (
                   <TaxRateFields
@@ -748,10 +748,10 @@ export default function Grants() {
                           </div>
                           {linkedSale ? (
                             <p className="mt-2 text-[10px] text-green-700 dark:text-green-300">
-                              {'\u2713'} Payoff sale {linkedSale.date} &middot; {fmtNum(linkedSale.shares)} shares @ {fmtPrice(linkedSale.price_per_share)}
+                              {'\u2713'} Repayment sale {linkedSale.date} &middot; {fmtNum(linkedSale.shares)} shares @ {fmtPrice(linkedSale.price_per_share)}
                             </p>
                           ) : (
-                            <p className="mt-2 text-[10px] text-amber-700 dark:text-amber-300">No payoff sale linked</p>
+                            <p className="mt-2 text-[10px] text-amber-700 dark:text-amber-300">No sale linked to repay this loan</p>
                           )}
                         </div>
                       </td>
@@ -764,7 +764,11 @@ export default function Grants() {
         </table>
       </div>}
       {grants.length === 0 && (
-        <p className="px-3 py-6 text-center text-xs text-stone-600">No grants yet</p>
+        <p className="px-3 py-6 text-center text-xs text-stone-600">
+          {epicMode
+            ? 'No grants yet.'
+            : <>No grants yet. Tap <span className="font-medium">+ Purchase</span> or <span className="font-medium">+ Bonus</span> above, or head to Import / Export to run the Setup Wizard.</>}
+        </p>
       )}
       <p className="text-xs text-stone-600">{grants.length} grants</p>
 

@@ -56,8 +56,6 @@ TAX_SETTINGS_WITH_DEDUCTION = {
     "lt_holding_days": 365,
     "lot_selection_method": "epic_lifo",
     "prefer_stock_dp": False,
-    "dp_min_percent": 0.10,
-    "dp_min_cap": 20000.0,
     "deduct_investment_interest": True,
 }
 

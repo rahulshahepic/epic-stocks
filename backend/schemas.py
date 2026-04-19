@@ -388,8 +388,6 @@ class TaxSettingsRead(BaseModel):
     loan_payoff_method: str = 'epic_lifo'
     flexible_payoff_enabled: bool = False  # virtual field; populated from grant_program_settings by the endpoint
     prefer_stock_dp: bool = False
-    dp_min_percent: float = 0.10
-    dp_min_cap: float = 20000.0
     deduct_investment_interest: bool = False
     deduction_excluded_years: list[int] | None = None
     taxable_years: list[int] = []  # virtual field; populated by the endpoint
@@ -407,8 +405,6 @@ class TaxSettingsUpdate(BaseModel):
     lot_selection_method: str | None = None
     loan_payoff_method: str | None = None
     prefer_stock_dp: bool | None = None
-    dp_min_percent: float | None = None
-    dp_min_cap: float | None = None
     deduct_investment_interest: bool | None = None
     deduction_excluded_years: list[int] | None = None
 
@@ -533,30 +529,6 @@ class GrantTemplateUpdate(BaseModel):
         if v is not None and v <= 0:
             raise ValueError("periods must be positive")
         return v
-
-
-class GrantTypeDefCreate(BaseModel):
-    name: str
-    color_class: str
-    description: str
-    is_pre_tax_when_zero_price: bool = False
-    display_order: int = 0
-    active: bool = True
-
-    @field_validator("name")
-    @classmethod
-    def name_not_empty(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("name cannot be empty")
-        return v
-
-
-class GrantTypeDefUpdate(BaseModel):
-    color_class: str | None = None
-    description: str | None = None
-    is_pre_tax_when_zero_price: bool | None = None
-    display_order: int | None = None
-    active: bool | None = None
 
 
 class BonusScheduleVariantCreate(BaseModel):
@@ -723,13 +695,8 @@ class LoanRefinanceUpdate(BaseModel):
 
 
 class GrantProgramSettingsUpdate(BaseModel):
-    loan_term_years: int | None = None
-    latest_rate_year: int | None = None
-    dp_shares_start_year: int | None = None
     tax_fallback_federal: float | None = None
     tax_fallback_state: float | None = None
-    default_purchase_due_month_day_pre2022: str | None = None
-    default_purchase_due_month_day_post2022: str | None = None
-    price_years_start: int | None = None
-    price_years_end: int | None = None
+    dp_min_percent: float | None = None
+    dp_min_cap: float | None = None
     flexible_payoff_enabled: bool | None = None

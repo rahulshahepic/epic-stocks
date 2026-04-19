@@ -12,7 +12,6 @@ from database import get_db
 from scaffold.models import (
     User,
     GrantTemplate,
-    GrantTypeDef,
     BonusScheduleVariant,
     LoanRate,
     LoanRefinance,
@@ -23,8 +22,6 @@ from app.content_service import load_content
 from schemas import (
     GrantTemplateCreate,
     GrantTemplateUpdate,
-    GrantTypeDefCreate,
-    GrantTypeDefUpdate,
     BonusScheduleVariantCreate,
     BonusScheduleVariantUpdate,
     LoanRateCreate,
@@ -94,51 +91,6 @@ def delete_grant_template(
     row = db.get(GrantTemplate, tpl_id)
     if not row:
         raise HTTPException(404, "Grant template not found")
-    db.delete(row)
-    db.commit()
-
-
-# ── Grant type defs (keyed by name) ────────────────────────────────────────
-
-@router.post("/grant-type-defs", status_code=201)
-def create_grant_type_def(
-    body: GrantTypeDefCreate,
-    _admin: User = Depends(get_content_admin_user),
-    db: Session = Depends(get_db),
-):
-    if db.get(GrantTypeDef, body.name):
-        raise HTTPException(409, "Grant type already exists")
-    row = GrantTypeDef(**body.model_dump())
-    db.add(row)
-    db.commit()
-    return {"name": row.name}
-
-
-@router.put("/grant-type-defs/{name}", status_code=200)
-def update_grant_type_def(
-    name: str,
-    body: GrantTypeDefUpdate,
-    _admin: User = Depends(get_content_admin_user),
-    db: Session = Depends(get_db),
-):
-    row = db.get(GrantTypeDef, name)
-    if not row:
-        raise HTTPException(404, "Grant type not found")
-    for k, v in body.model_dump(exclude_unset=True).items():
-        setattr(row, k, v)
-    db.commit()
-    return {"name": row.name}
-
-
-@router.delete("/grant-type-defs/{name}", status_code=204)
-def delete_grant_type_def(
-    name: str,
-    _admin: User = Depends(get_content_admin_user),
-    db: Session = Depends(get_db),
-):
-    row = db.get(GrantTypeDef, name)
-    if not row:
-        raise HTTPException(404, "Grant type not found")
     db.delete(row)
     db.commit()
 

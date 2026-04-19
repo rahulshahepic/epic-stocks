@@ -55,19 +55,16 @@ def test_grant_templates_match_epic(client):
         assert actual["exercise_date"] == ed
         assert actual["default_catch_up"] == dcu
         assert actual["show_dp_shares"] == sdp
+        assert "default_purchase_due_month_day" not in actual
 
 
-def test_grant_type_defs(client):
+def test_grant_types_are_code_not_content(client):
     data = _get(client)
-    by_name = {d["name"]: d for d in data["grant_type_defs"]}
-    assert by_name["Purchase"]["color_class"] == "bg-rose-700 text-white"
-    assert by_name["Purchase"]["is_pre_tax_when_zero_price"] is False
-    assert by_name["Catch-Up"]["color_class"] == "bg-sky-700 text-white"
-    assert by_name["Catch-Up"]["is_pre_tax_when_zero_price"] is True
-    assert by_name["Bonus"]["color_class"] == "bg-emerald-700 text-white"
-    assert by_name["Bonus"]["is_pre_tax_when_zero_price"] is True
-    assert by_name["Free"]["color_class"] == "bg-amber-600 text-white"
-    assert by_name["Free"]["is_pre_tax_when_zero_price"] is True
+    # grant_type_defs is no longer part of the /api/content blob —
+    # the four types live in backend/app/grant_types.py as code.
+    assert "grant_type_defs" not in data
+    from app.grant_types import GRANT_TYPE_NAMES
+    assert GRANT_TYPE_NAMES == ["Purchase", "Catch-Up", "Bonus", "Free"]
 
 
 def test_bonus_schedule_variants(client):
@@ -166,15 +163,19 @@ def test_tax_refi_chains(client):
 def test_grant_program_settings(client):
     data = _get(client)
     settings = data["grant_program_settings"]
-    assert settings["loan_term_years"] == 10
-    assert settings["latest_rate_year"] == 2025
-    assert settings["dp_shares_start_year"] == 2023
     assert settings["tax_fallback_federal"] == 0.37
     assert settings["tax_fallback_state"] == 0.0765
-    assert settings["default_purchase_due_month_day_pre2022"] == "07-15"
-    assert settings["default_purchase_due_month_day_post2022"] == "06-30"
+    assert settings["dp_min_percent"] == 0.10
+    assert settings["dp_min_cap"] == 20000.0
+    # Derived from grant_templates / loan_rates, not stored.
     assert settings["price_years_start"] == 2018
     assert settings["price_years_end"] == 2026
+    # Removed: loan_term_years, latest_rate_year, dp_shares_start_year,
+    # default_purchase_due_month_day_pre/post2022.
+    for removed in ("loan_term_years", "latest_rate_year", "dp_shares_start_year",
+                    "default_purchase_due_month_day_pre2022",
+                    "default_purchase_due_month_day_post2022"):
+        assert removed not in settings
 
 
 def test_seed_is_idempotent(client, db_session):
@@ -311,25 +312,16 @@ def test_loan_rate_validators(client):
         os.environ.pop("ADMIN_EMAIL", None)
 
 
-def test_grant_type_def_crud(client):
+def test_grant_type_def_endpoints_are_gone(client):
     _login_admin(client)
     try:
+        # Type CRUD endpoints were removed when grant types became code.
         r = client.post("/api/content/grant-type-defs", json={
             "name": "Retention",
             "color_class": "bg-indigo-700 text-white",
             "description": "Retention grant",
         })
-        assert r.status_code == 201
-
-        r = client.put("/api/content/grant-type-defs/Retention", json={"description": "Updated"})
-        assert r.status_code == 200
-
-        data = client.get("/api/content").json()
-        names = {d["name"] for d in data["grant_type_defs"]}
-        assert "Retention" in names
-
-        r = client.delete("/api/content/grant-type-defs/Retention")
-        assert r.status_code == 204
+        assert r.status_code == 404
     finally:
         os.environ.pop("ADMIN_EMAIL", None)
 
@@ -377,11 +369,11 @@ def test_grant_program_settings_update(client):
     _login_admin(client)
     try:
         r = client.put("/api/content/grant-program-settings", json={
-            "loan_term_years": 12, "flexible_payoff_enabled": True,
+            "tax_fallback_federal": 0.35, "flexible_payoff_enabled": True,
         })
         assert r.status_code == 200
         data = client.get("/api/content").json()
-        assert data["grant_program_settings"]["loan_term_years"] == 12
+        assert data["grant_program_settings"]["tax_fallback_federal"] == 0.35
         assert data["grant_program_settings"]["flexible_payoff_enabled"] is True
     finally:
         os.environ.pop("ADMIN_EMAIL", None)

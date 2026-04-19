@@ -6,11 +6,13 @@ previously hardcoded in frontend/src/app/components/ImportWizard.tsx exactly —
 the regression test in tests/test_content.py asserts this against golden
 fixtures.
 """
+from datetime import date as _date
+
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from scaffold.models import (
     GrantTemplate,
-    GrantTypeDef,
     BonusScheduleVariant,
     LoanRate,
     LoanRefinance,
@@ -19,14 +21,6 @@ from scaffold.models import (
 
 
 # ── Seed data (mirrors ImportWizard.tsx constants) ──────────────────────────
-
-SEED_GRANT_TYPE_DEFS = [
-    # name, color_class, description, is_pre_tax_when_zero_price, display_order
-    ('Purchase', 'bg-rose-700 text-white',    'You paid the share price',  False, 0),
-    ('Catch-Up', 'bg-sky-700 text-white',     'Zero-basis catch-up grant', True,  1),
-    ('Bonus',    'bg-emerald-700 text-white', 'RSU bonus grant',           True,  2),
-    ('Free',     'bg-amber-600 text-white',   'Free/other grant',          True,  3),
-]
 
 # (year, type, vest_start, periods, exercise_date, default_catch_up)
 SEED_GRANT_TEMPLATES = [
@@ -100,15 +94,10 @@ SEED_LOAN_REFINANCES.append(
 
 SEED_GRANT_PROGRAM_SETTINGS = {
     'id': 1,
-    'loan_term_years': 10,
-    'latest_rate_year': 2025,
-    'dp_shares_start_year': 2023,
     'tax_fallback_federal': 0.37,
     'tax_fallback_state': 0.0765,
-    'default_purchase_due_month_day_pre2022': '07-15',
-    'default_purchase_due_month_day_post2022': '06-30',
-    'price_years_start': 2018,
-    'price_years_end': 2026,
+    'dp_min_percent': 0.10,
+    'dp_min_cap': 20000.0,
 }
 
 
@@ -120,14 +109,6 @@ def seed_content_if_empty(db: Session) -> None:
     Idempotent — each table is only seeded if it is empty.  Safe to call on
     every boot; a no-op once a content admin has edited any row.
     """
-    if db.query(GrantTypeDef).count() == 0:
-        for name, color, desc, is_pre_tax, order in SEED_GRANT_TYPE_DEFS:
-            db.add(GrantTypeDef(
-                name=name, color_class=color, description=desc,
-                is_pre_tax_when_zero_price=is_pre_tax,
-                display_order=order, active=True,
-            ))
-
     if db.query(GrantTemplate).count() == 0:
         for idx, (year, typ, vs, periods, ed, dcu) in enumerate(SEED_GRANT_TEMPLATES):
             db.add(GrantTemplate(
@@ -171,9 +152,6 @@ def load_content(db: Session) -> dict:
     templates = db.query(GrantTemplate).order_by(
         GrantTemplate.display_order, GrantTemplate.id
     ).all()
-    type_defs = db.query(GrantTypeDef).order_by(
-        GrantTypeDef.display_order, GrantTypeDef.name
-    ).all()
     variants = db.query(BonusScheduleVariant).order_by(
         BonusScheduleVariant.grant_year,
         BonusScheduleVariant.grant_type,
@@ -187,6 +165,15 @@ def load_content(db: Session) -> dict:
         LoanRefinance.order_idx,
     ).all()
     settings_row = db.query(GrantProgramSettings).filter(GrantProgramSettings.id == 1).one_or_none()
+
+    # Price year range is derived, not stored. Wizard iterates loan_rates directly
+    # to figure out which years have interest/tax loans available, so no upper-bound
+    # setting is needed there either.
+    max_rate_year = db.query(func.max(LoanRate.year)).scalar()
+    min_template_year = db.query(func.min(GrantTemplate.year)).scalar()
+    this_year = _date.today().year
+    price_years_start = min_template_year if min_template_year is not None else this_year
+    price_years_end = (max_rate_year + 1) if max_rate_year is not None else this_year
 
     # Shape rates as nested dicts to match the frontend constants
     interest_rates: dict[str, float] = {}
@@ -239,16 +226,8 @@ def load_content(db: Session) -> dict:
             }
             for t in templates if t.active
         ],
-        'grant_type_defs': [
-            {
-                'name': td.name,
-                'color_class': td.color_class,
-                'description': td.description,
-                'is_pre_tax_when_zero_price': bool(td.is_pre_tax_when_zero_price),
-                'display_order': td.display_order,
-            }
-            for td in type_defs if td.active
-        ],
+        # Grant types live in code (backend/app/grant_types.py and
+        # frontend/src/app/grantTypes.ts); no longer returned by this endpoint.
         'bonus_schedule_variants': [
             {
                 'id': v.id,
@@ -298,15 +277,13 @@ def load_content(db: Session) -> dict:
             for e in refi_entries
         ],
         'grant_program_settings': {
-            'loan_term_years': settings_row.loan_term_years if settings_row else defaults['loan_term_years'],
-            'latest_rate_year': settings_row.latest_rate_year if settings_row else defaults['latest_rate_year'],
-            'dp_shares_start_year': settings_row.dp_shares_start_year if settings_row else defaults['dp_shares_start_year'],
             'tax_fallback_federal': settings_row.tax_fallback_federal if settings_row else defaults['tax_fallback_federal'],
             'tax_fallback_state': settings_row.tax_fallback_state if settings_row else defaults['tax_fallback_state'],
-            'default_purchase_due_month_day_pre2022': settings_row.default_purchase_due_month_day_pre2022 if settings_row else defaults['default_purchase_due_month_day_pre2022'],
-            'default_purchase_due_month_day_post2022': settings_row.default_purchase_due_month_day_post2022 if settings_row else defaults['default_purchase_due_month_day_post2022'],
-            'price_years_start': settings_row.price_years_start if settings_row else defaults['price_years_start'],
-            'price_years_end': settings_row.price_years_end if settings_row else defaults['price_years_end'],
+            'dp_min_percent': settings_row.dp_min_percent if settings_row else defaults['dp_min_percent'],
+            'dp_min_cap': settings_row.dp_min_cap if settings_row else defaults['dp_min_cap'],
             'flexible_payoff_enabled': bool(settings_row.flexible_payoff_enabled) if settings_row else False,
+            # Derived (read-only): computed from grant_templates / loan_rates each call.
+            'price_years_start': price_years_start,
+            'price_years_end': price_years_end,
         },
     }

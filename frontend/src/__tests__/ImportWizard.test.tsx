@@ -32,12 +32,6 @@ const MOCK_CONTENT = {
     { year: 2025, type: 'Purchase', vest_start: '2026-09-30', periods: 4, exercise_date: '2025-12-31', default_catch_up: false, show_dp_shares: true  },
     { year: 2025, type: 'Bonus',    vest_start: '2026-09-30', periods: 3, exercise_date: '2025-12-31', default_catch_up: false, show_dp_shares: false },
   ],
-  grant_type_defs: [
-    { name: 'Purchase', color_class: 'bg-rose-700 text-white',    description: 'You paid the share price',  is_pre_tax_when_zero_price: false, display_order: 0 },
-    { name: 'Catch-Up', color_class: 'bg-sky-700 text-white',     description: 'Zero-basis catch-up grant', is_pre_tax_when_zero_price: true,  display_order: 1 },
-    { name: 'Bonus',    color_class: 'bg-emerald-700 text-white', description: 'RSU bonus grant',           is_pre_tax_when_zero_price: true,  display_order: 2 },
-    { name: 'Free',     color_class: 'bg-amber-600 text-white',   description: 'Free/other grant',          is_pre_tax_when_zero_price: true,  display_order: 3 },
-  ],
   bonus_schedule_variants: [
     { grant_year: 2020, grant_type: 'Bonus', variant_code: 'A', periods: 2, label: 'A (2 years)', is_default: false },
     { grant_year: 2020, grant_type: 'Bonus', variant_code: 'B', periods: 3, label: 'B (3 years)', is_default: false },
@@ -82,13 +76,10 @@ const MOCK_CONTENT = {
     },
   },
   grant_program_settings: {
-    loan_term_years: 10,
-    latest_rate_year: 2025,
-    dp_shares_start_year: 2023,
     tax_fallback_federal: 0.37,
     tax_fallback_state: 0.0765,
-    default_purchase_due_month_day_pre2022: '07-15',
-    default_purchase_due_month_day_post2022: '06-30',
+    dp_min_percent: 0.10,
+    dp_min_cap: 20000,
     price_years_start: 2018,
     price_years_end: 2026,
   },
@@ -131,7 +122,7 @@ function mockApi() {
         federal_income_rate: 0.37, federal_lt_cg_rate: 0.20, federal_st_cg_rate: 0.37,
         niit_rate: 0.038, state_income_rate: 0.0765, state_lt_cg_rate: 0.0765, state_st_cg_rate: 0.0765,
         lt_holding_days: 365, lot_selection_method: 'epic_lifo', loan_payoff_method: 'epic_lifo',
-        flexible_payoff_enabled: false, prefer_stock_dp: false, dp_min_percent: 0, dp_min_cap: 0,
+        flexible_payoff_enabled: false, prefer_stock_dp: false,
         deduct_investment_interest: false,
       }), { status: 200 })
     }
@@ -504,7 +495,7 @@ describe('ImportWizard', () => {
           federal_income_rate: 0.37, federal_lt_cg_rate: 0.20, federal_st_cg_rate: 0.37,
           niit_rate: 0.038, state_income_rate: 0.0765, state_lt_cg_rate: 0.0765, state_st_cg_rate: 0.0765,
           lt_holding_days: 365, lot_selection_method: 'epic_lifo', loan_payoff_method: 'epic_lifo',
-          flexible_payoff_enabled: false, prefer_stock_dp: false, dp_min_percent: 0, dp_min_cap: 0,
+          flexible_payoff_enabled: false, prefer_stock_dp: false,
           deduct_investment_interest: false,
         }), { status: 200 })
       }

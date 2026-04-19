@@ -3,6 +3,7 @@ import { useConfig } from '../hooks/useConfig.ts'
 import { usePush } from '../hooks/usePush.ts'
 import { useAuth } from '../hooks/useAuth.ts'
 import { useTheme } from '../contexts/ThemeContext.tsx'
+import { useContent } from '../../app/hooks/useContent.ts'
 import { api } from '../../api.ts'
 import type { TaxSettings, InvitationEntry, ReceivedInvitation } from '../../api.ts'
 import type { Theme } from '../contexts/ThemeContext.tsx'
@@ -23,6 +24,7 @@ export default function Settings() {
   const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
 
+  const content = useContent()
   const [taxSettings, setTaxSettings] = useState<TaxSettings | null>(null)
   const [editingTax, setEditingTax] = useState(false)
   const [editingDp, setEditingDp] = useState(false)
@@ -42,8 +44,6 @@ export default function Settings() {
     loan_payoff_method: 'epic_lifo',
     flexible_payoff_enabled: false,
     prefer_stock_dp: false,
-    dp_min_percent: 0.10,
-    dp_min_cap: 20000,
     deduct_investment_interest: false,
     deduction_excluded_years: null,
     taxable_years: [],
@@ -257,14 +257,15 @@ export default function Settings() {
                 {taxSettings.prefer_stock_dp ? 'Yes — auto-calculate DP shares' : 'No — manual'}
               </dd>
             </div>
-            <div className="flex justify-between col-span-2">
-              <dt className="text-stone-600 dark:text-slate-400">Min DP rule</dt>
-              <dd className="font-medium text-stone-700 dark:text-slate-300">
-                {taxSettings.dp_min_percent > 0 || taxSettings.dp_min_cap > 0
-                  ? `min(${(taxSettings.dp_min_percent * 100).toFixed(0)}%, $${taxSettings.dp_min_cap.toLocaleString()})`
-                  : 'None'}
-              </dd>
-            </div>
+            {content?.grant_program_settings && (
+              <div className="flex justify-between col-span-2">
+                <dt className="text-stone-600 dark:text-slate-400">Company min DP rule</dt>
+                <dd className="font-medium text-stone-700 dark:text-slate-300">
+                  min({(content.grant_program_settings.dp_min_percent * 100).toFixed(0)}%, $
+                  {content.grant_program_settings.dp_min_cap.toLocaleString()})
+                </dd>
+              </div>
+            )}
           </dl>
         )}
 
@@ -281,24 +282,6 @@ export default function Settings() {
                 <span className="text-xs text-stone-700 dark:text-slate-300">
                   Prefer stock for down payment — auto-calculate DP shares on new purchases
                 </span>
-              </label>
-              <label className="block">
-                <span className="text-xs text-stone-600 dark:text-slate-400">Min DP % of purchase</span>
-                <input
-                  type="number" step="0.1" min="0" max="100"
-                  value={+(taxForm.dp_min_percent * 100).toFixed(2)}
-                  onChange={e => setTaxForm(f => f ? { ...f, dp_min_percent: +e.target.value / 100 } : f)}
-                  className="mt-0.5 block w-full rounded-md border border-stone-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs text-stone-600 dark:text-slate-400">Min DP cap ($)</span>
-                <input
-                  type="number" step="1000" min="0"
-                  value={taxForm.dp_min_cap}
-                  onChange={e => setTaxForm(f => f ? { ...f, dp_min_cap: +e.target.value } : f)}
-                  className="mt-0.5 block w-full rounded-md border border-stone-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
-                />
               </label>
             </div>
             <div className="flex gap-2">

@@ -170,8 +170,6 @@ class TaxSettings(Base):
     lot_selection_method: Mapped[str] = mapped_column(String, nullable=False, default='lifo')
     loan_payoff_method: Mapped[str] = mapped_column(String, nullable=False, default='epic_lifo')
     prefer_stock_dp: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    dp_min_percent: Mapped[float] = mapped_column(Float, nullable=False, default=0.10)
-    dp_min_cap: Mapped[float] = mapped_column(Float, nullable=False, default=20000.0)
     deduct_investment_interest: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     deduction_excluded_years: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
 
@@ -332,18 +330,6 @@ class GrantTemplate(Base):
     )
 
 
-class GrantTypeDef(Base):
-    """Grant type metadata (color + description + pre-tax heuristic) driving the type picker."""
-    __tablename__ = "grant_type_defs"
-
-    name: Mapped[str] = mapped_column(String, primary_key=True)
-    color_class: Mapped[str] = mapped_column(String, nullable=False)
-    description: Mapped[str] = mapped_column(String, nullable=False)
-    is_pre_tax_when_zero_price: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
-    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
-
-
 class BonusScheduleVariant(Base):
     """Alternate vesting schedules per (grant_year, grant_type) — e.g. 2020 Bonus A/B/C."""
     __tablename__ = "bonus_schedule_variants"
@@ -406,17 +392,18 @@ class LoanRefinance(Base):
 
 
 class GrantProgramSettings(Base):
-    """Singleton row (id=1) holding company-wide defaults for the equity grant program."""
+    """Singleton row (id=1) holding company-wide defaults for the equity grant program.
+
+    Year ranges (price_years_start/end) are derived from grant_templates / loan_rates
+    at read time. Loan due dates live on loan_rates / loan_refinances rows and are
+    propagated via code (e.g. interest loans inherit their parent loan's due date).
+    """
     __tablename__ = "grant_program_settings"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    loan_term_years: Mapped[int] = mapped_column(Integer, nullable=False, default=10, server_default="10")
-    latest_rate_year: Mapped[int] = mapped_column(Integer, nullable=False, default=2025, server_default="2025")
-    dp_shares_start_year: Mapped[int] = mapped_column(Integer, nullable=False, default=2023, server_default="2023")
     tax_fallback_federal: Mapped[float] = mapped_column(Float, nullable=False, default=0.37, server_default="0.37")
     tax_fallback_state: Mapped[float] = mapped_column(Float, nullable=False, default=0.0765, server_default="0.0765")
-    default_purchase_due_month_day_pre2022: Mapped[str] = mapped_column(String, nullable=False, default="07-15", server_default="07-15")
-    default_purchase_due_month_day_post2022: Mapped[str] = mapped_column(String, nullable=False, default="06-30", server_default="06-30")
-    price_years_start: Mapped[int] = mapped_column(Integer, nullable=False, default=2018, server_default="2018")
-    price_years_end: Mapped[int] = mapped_column(Integer, nullable=False, default=2026, server_default="2026")
+    # Company-wide down-payment policy (Epic: ≥ 10% of purchase, capped at $20k).
+    dp_min_percent: Mapped[float] = mapped_column(Float, nullable=False, default=0.10, server_default="0.1")
+    dp_min_cap: Mapped[float] = mapped_column(Float, nullable=False, default=20000.0, server_default="20000")
     flexible_payoff_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")

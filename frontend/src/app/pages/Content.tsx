@@ -4,7 +4,6 @@ import { api } from '../../api.ts'
 import type {
   ContentBlob,
   GrantTemplate,
-  GrantTypeDef,
   BonusScheduleVariant,
   GrantProgramSettings,
   GrantTemplateCreate,
@@ -13,10 +12,11 @@ import type {
   LoanRefinanceCreate,
   LoanRefinanceRow,
 } from '../../api.ts'
+import { GRANT_TYPE_NAMES, type GrantTypeName } from '../grantTypes.ts'
 import { useMe } from '../../scaffold/hooks/useMe.ts'
 import { resetContentCache } from '../hooks/useContent.ts'
 
-type Tab = 'templates' | 'types' | 'variants' | 'rates' | 'refinances' | 'settings'
+type Tab = 'templates' | 'variants' | 'rates' | 'refinances' | 'settings'
 type WrapFn = (fn: () => Promise<unknown>, successMsg: string) => Promise<void>
 type Mode = 'add' | 'edit'
 
@@ -83,15 +83,13 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-function GrantTypeSelect({ defs, value, onChange, nullable = false, required = true }: {
-  defs: GrantTypeDef[]
+function GrantTypeSelect({ value, onChange, nullable = false, required = true }: {
   value: string | null
   onChange: (v: string | null) => void
   nullable?: boolean
   required?: boolean
 }) {
-  const names = defs.map(d => d.name)
-  const hasLegacy = value != null && value !== '' && !names.includes(value)
+  const hasLegacy = value != null && value !== '' && !GRANT_TYPE_NAMES.includes(value as GrantTypeName)
   return (
     <select
       value={value ?? ''}
@@ -101,7 +99,7 @@ function GrantTypeSelect({ defs, value, onChange, nullable = false, required = t
     >
       {nullable && <option value="">(none)</option>}
       {!nullable && (value === '' || value == null) && <option value="" disabled>Select…</option>}
-      {defs.map(d => <option key={d.name} value={d.name}>{d.name}</option>)}
+      {GRANT_TYPE_NAMES.map(name => <option key={name} value={name}>{name}</option>)}
       {hasLegacy && <option value={value!}>{value} (legacy)</option>}
     </select>
   )
@@ -189,7 +187,6 @@ export default function Content() {
 
       <nav className="flex flex-wrap gap-1 border-b border-stone-200 pb-2 dark:border-slate-700">
         <TabButton active={tab === 'templates'} label="Grant Templates" onClick={() => setTab('templates')} />
-        <TabButton active={tab === 'types'} label="Grant Types" onClick={() => setTab('types')} />
         <TabButton active={tab === 'variants'} label="Bonus Variants" onClick={() => setTab('variants')} />
         <TabButton active={tab === 'rates'} label="Loan Rates" onClick={() => setTab('rates')} />
         <TabButton active={tab === 'refinances'} label="Refinance Chains" onClick={() => setTab('refinances')} />
@@ -197,7 +194,6 @@ export default function Content() {
       </nav>
 
       {tab === 'templates' && <TemplatesTab blob={blob} wrap={wrap} busy={busy} />}
-      {tab === 'types' && <TypesTab blob={blob} wrap={wrap} busy={busy} />}
       {tab === 'variants' && <VariantsTab blob={blob} wrap={wrap} busy={busy} />}
       {tab === 'rates' && <RatesTab blob={blob} wrap={wrap} busy={busy} />}
       {tab === 'refinances' && <RefinancesTab blob={blob} wrap={wrap} busy={busy} />}
@@ -217,7 +213,7 @@ function TemplatesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; b
     mode: 'add',
     draft: {
       year: new Date().getFullYear() + 1,
-      type: blob.grant_type_defs[0]?.name ?? '',
+      type: GRANT_TYPE_NAMES[0],
       vest_start: '',
       periods: 4,
       exercise_date: '',
@@ -287,7 +283,7 @@ function TemplatesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; b
         >
           <form onSubmit={e => { e.preventDefault(); handleSave() }} className="space-y-3">
             <Field label="Year"><TextInput type="number" value={modal.draft.year} onChange={e => patch({ year: Number(e.target.value) })} required /></Field>
-            <Field label="Type"><GrantTypeSelect defs={blob.grant_type_defs} value={modal.draft.type} onChange={v => patch({ type: v ?? '' })} /></Field>
+            <Field label="Type"><GrantTypeSelect value={modal.draft.type} onChange={v => patch({ type: v ?? '' })} /></Field>
             <Field label="Vest start"><TextInput type="date" value={modal.draft.vest_start} onChange={e => patch({ vest_start: e.target.value })} required /></Field>
             <Field label="Periods"><TextInput type="number" min={1} value={modal.draft.periods} onChange={e => patch({ periods: Number(e.target.value) })} required /></Field>
             <Field label="Exercise date"><TextInput type="date" value={modal.draft.exercise_date} onChange={e => patch({ exercise_date: e.target.value })} required /></Field>
@@ -308,108 +304,6 @@ function TemplatesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; b
   )
 }
 
-// ── Grant Types ──────────────────────────────────────────────────────────
-
-type TypeDraft = GrantTypeDef
-
-function TypesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; busy: boolean }) {
-  const [modal, setModal] = useState<{ mode: Mode; draft: TypeDraft } | null>(null)
-
-  const openAdd = () => setModal({
-    mode: 'add',
-    draft: { name: '', color_class: 'bg-stone-700 text-white', description: '', is_pre_tax_when_zero_price: false, display_order: blob.grant_type_defs.length },
-  })
-  const openEdit = (d: GrantTypeDef) => setModal({ mode: 'edit', draft: { ...d } })
-  const close = () => setModal(null)
-  const patch = (p: Partial<TypeDraft>) => modal && setModal({ ...modal, draft: { ...modal.draft, ...p } })
-
-  const handleSave = async () => {
-    if (!modal) return
-    if (modal.mode === 'add') {
-      await wrap(() => api.createGrantTypeDef(modal.draft), 'Grant type added')
-    } else {
-      const { name, ...patchBody } = modal.draft
-      await wrap(() => api.updateGrantTypeDef(name, patchBody), 'Grant type saved')
-    }
-    close()
-  }
-  const handleDelete = async () => {
-    if (!modal || modal.mode !== 'edit') return
-    await wrap(() => api.deleteGrantTypeDef(modal.draft.name), 'Grant type removed')
-    close()
-  }
-
-  return (
-    <section className="space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <RowCount n={blob.grant_type_defs.length} noun="type" />
-        <AddButton onClick={openAdd} label="Add type" />
-      </div>
-
-      <div className="overflow-x-auto rounded-md border border-stone-200 dark:border-slate-700">
-        <table className="w-full min-w-[420px] text-xs">
-          <thead className="bg-stone-50 dark:bg-slate-800">
-            <tr>
-              <th className="px-2 py-1 text-left">Name</th>
-              <th className="px-2 py-1 text-left">Description</th>
-              <th className="px-2 py-1 text-left">Pre-tax?</th>
-              <th className="px-2 py-1 text-left">Order</th>
-            </tr>
-          </thead>
-          <tbody>
-            {blob.grant_type_defs.map(d => (
-              <tr
-                key={d.name}
-                onClick={() => openEdit(d)}
-                className="cursor-pointer border-t border-stone-100 hover:bg-stone-50 dark:border-slate-700 dark:hover:bg-slate-800"
-              >
-                <td className="px-2 py-1"><span className={`inline-block rounded px-1.5 py-0.5 text-[10px] ${d.color_class}`}>{d.name}</span></td>
-                <td className="px-2 py-1">{d.description}</td>
-                <td className="px-2 py-1">{d.is_pre_tax_when_zero_price ? 'yes' : ''}</td>
-                <td className="px-2 py-1">{d.display_order}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {modal && (
-        <Modal title={modal.mode === 'add' ? 'Add grant type' : `Edit ${modal.draft.name}`} onClose={close}>
-          <form onSubmit={e => { e.preventDefault(); handleSave() }} className="space-y-3">
-            <Field label="Name">
-              <TextInput
-                value={modal.draft.name}
-                onChange={e => patch({ name: e.target.value })}
-                required
-                disabled={modal.mode === 'edit'}
-              />
-            </Field>
-            <Field label="Color class (Tailwind)">
-              <TextInput value={modal.draft.color_class} onChange={e => patch({ color_class: e.target.value })} required />
-            </Field>
-            <Field label="Preview">
-              <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] ${modal.draft.color_class || 'bg-stone-700 text-white'}`}>
-                {modal.draft.name || 'sample'}
-              </span>
-            </Field>
-            <Field label="Description">
-              <TextInput value={modal.draft.description} onChange={e => patch({ description: e.target.value })} required />
-            </Field>
-            <Field label="Display order">
-              <TextInput type="number" value={modal.draft.display_order} onChange={e => patch({ display_order: Number(e.target.value) })} />
-            </Field>
-            <label className="flex items-center gap-2 text-xs">
-              <input type="checkbox" checked={modal.draft.is_pre_tax_when_zero_price} onChange={e => patch({ is_pre_tax_when_zero_price: e.target.checked })} />
-              Pre-tax when zero price
-            </label>
-            <FormActions mode={modal.mode} busy={busy} onCancel={close} onDelete={handleDelete} />
-          </form>
-        </Modal>
-      )}
-    </section>
-  )
-}
-
 // ── Bonus Variants ───────────────────────────────────────────────────────
 
 type VariantDraft = Omit<BonusScheduleVariant, 'id'> & { id?: number }
@@ -421,7 +315,7 @@ function VariantsTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; bu
     mode: 'add',
     draft: {
       grant_year: new Date().getFullYear(),
-      grant_type: blob.grant_type_defs[0]?.name ?? '',
+      grant_type: GRANT_TYPE_NAMES[0],
       variant_code: '',
       periods: 3,
       label: '',
@@ -491,7 +385,7 @@ function VariantsTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; bu
         >
           <form onSubmit={e => { e.preventDefault(); handleSave() }} className="space-y-3">
             <Field label="Grant year"><TextInput type="number" value={modal.draft.grant_year} onChange={e => patch({ grant_year: Number(e.target.value) })} required /></Field>
-            <Field label="Grant type"><GrantTypeSelect defs={blob.grant_type_defs} value={modal.draft.grant_type} onChange={v => patch({ grant_type: v ?? '' })} /></Field>
+            <Field label="Grant type"><GrantTypeSelect value={modal.draft.grant_type} onChange={v => patch({ grant_type: v ?? '' })} /></Field>
             <Field label="Variant code"><TextInput value={modal.draft.variant_code} onChange={e => patch({ variant_code: e.target.value })} required /></Field>
             <Field label="Periods"><TextInput type="number" min={1} value={modal.draft.periods} onChange={e => patch({ periods: Number(e.target.value) })} required /></Field>
             <Field label="Label"><TextInput value={modal.draft.label} onChange={e => patch({ label: e.target.value })} /></Field>
@@ -525,7 +419,7 @@ function RatesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; busy:
       loan_kind: kind,
       year: new Date().getFullYear(),
       rate: 0,
-      grant_type: kind === 'tax' ? (blob.grant_type_defs.find(d => d.name === 'Bonus')?.name ?? blob.grant_type_defs[0]?.name ?? '') : null,
+      grant_type: kind === 'tax' ? 'Bonus' : null,
       due_date: kind === 'purchase_original' ? '' : null,
     },
   })
@@ -603,7 +497,7 @@ function RatesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; busy:
             </Field>
             {draftKind === 'tax' && (
               <Field label="Grant type">
-                <GrantTypeSelect defs={blob.grant_type_defs} value={modal.draft.grant_type ?? ''} onChange={v => patch({ grant_type: v })} />
+                <GrantTypeSelect value={modal.draft.grant_type ?? ''} onChange={v => patch({ grant_type: v })} />
               </Field>
             )}
             <Field label="Year"><TextInput type="number" value={modal.draft.year} onChange={e => patch({ year: Number(e.target.value) })} required /></Field>
@@ -635,7 +529,7 @@ function RefinancesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; 
     draft: {
       chain_kind: 'purchase',
       grant_year: new Date().getFullYear(),
-      grant_type: blob.grant_type_defs.find(d => d.name === 'Purchase')?.name ?? blob.grant_type_defs[0]?.name ?? '',
+      grant_type: 'Purchase',
       orig_loan_year: null,
       order_idx: 0,
       date: '',
@@ -731,7 +625,7 @@ function RefinancesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; 
               </select>
             </Field>
             <Field label="Grant year"><TextInput type="number" value={modal.draft.grant_year} onChange={e => patch({ grant_year: Number(e.target.value) })} required /></Field>
-            <Field label="Grant type"><GrantTypeSelect defs={blob.grant_type_defs} value={modal.draft.grant_type ?? ''} onChange={v => patch({ grant_type: v })} /></Field>
+            <Field label="Grant type"><GrantTypeSelect value={modal.draft.grant_type ?? ''} onChange={v => patch({ grant_type: v })} /></Field>
             {isTax && (
               <Field label="Original loan year">
                 <TextInput type="number" value={modal.draft.orig_loan_year ?? ''} onChange={e => patch({ orig_loan_year: e.target.value === '' ? null : Number(e.target.value) })} />
@@ -773,18 +667,6 @@ function SettingsTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; bu
       className="grid grid-cols-1 gap-3 md:grid-cols-2"
     >
       <label className="flex flex-col text-xs">
-        <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">Loan term (years)</span>
-        <TextInput type="number" value={form.loan_term_years} onChange={e => update({ loan_term_years: Number(e.target.value) })} />
-      </label>
-      <label className="flex flex-col text-xs">
-        <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">Latest rate year</span>
-        <TextInput type="number" value={form.latest_rate_year} onChange={e => update({ latest_rate_year: Number(e.target.value) })} />
-      </label>
-      <label className="flex flex-col text-xs">
-        <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">DP shares start year</span>
-        <TextInput type="number" value={form.dp_shares_start_year} onChange={e => update({ dp_shares_start_year: Number(e.target.value) })} />
-      </label>
-      <label className="flex flex-col text-xs">
         <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">Federal tax fallback</span>
         <TextInput type="number" step="0.001" value={form.tax_fallback_federal} onChange={e => update({ tax_fallback_federal: Number(e.target.value) })} />
       </label>
@@ -793,21 +675,19 @@ function SettingsTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; bu
         <TextInput type="number" step="0.0001" value={form.tax_fallback_state} onChange={e => update({ tax_fallback_state: Number(e.target.value) })} />
       </label>
       <label className="flex flex-col text-xs">
-        <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">Pre-2022 purchase due (MM-DD)</span>
-        <TextInput value={form.default_purchase_due_month_day_pre2022} onChange={e => update({ default_purchase_due_month_day_pre2022: e.target.value })} />
+        <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">Min DP % of purchase</span>
+        <TextInput type="number" step="0.01" value={form.dp_min_percent} onChange={e => update({ dp_min_percent: Number(e.target.value) })} />
       </label>
       <label className="flex flex-col text-xs">
-        <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">Post-2022 purchase due (MM-DD)</span>
-        <TextInput value={form.default_purchase_due_month_day_post2022} onChange={e => update({ default_purchase_due_month_day_post2022: e.target.value })} />
+        <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">Min DP cap ($)</span>
+        <TextInput type="number" step="1000" value={form.dp_min_cap} onChange={e => update({ dp_min_cap: Number(e.target.value) })} />
       </label>
-      <label className="flex flex-col text-xs">
-        <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">Price years start</span>
-        <TextInput type="number" value={form.price_years_start} onChange={e => update({ price_years_start: Number(e.target.value) })} />
-      </label>
-      <label className="flex flex-col text-xs">
-        <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">Price years end</span>
-        <TextInput type="number" value={form.price_years_end} onChange={e => update({ price_years_end: Number(e.target.value) })} />
-      </label>
+
+      <div className="col-span-full rounded-md border border-stone-200 p-3 text-[11px] text-stone-600 dark:border-slate-700 dark:text-slate-400">
+        <span className="font-medium text-stone-700 dark:text-slate-200">Derived price years: </span>
+        <span className="font-mono">{form.price_years_start}</span>–<span className="font-mono">{form.price_years_end}</span>
+        {' '}(from the Grant Templates and Loan Rates tabs; updates automatically).
+      </div>
 
       <div className="col-span-full rounded-md border border-stone-200 p-3 text-xs dark:border-slate-700">
         <label className="inline-flex items-start gap-2">

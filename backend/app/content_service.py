@@ -6,6 +6,9 @@ previously hardcoded in frontend/src/app/components/ImportWizard.tsx exactly —
 the regression test in tests/test_content.py asserts this against golden
 fixtures.
 """
+from datetime import date as _date
+
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from scaffold.models import (
@@ -28,23 +31,25 @@ SEED_GRANT_TYPE_DEFS = [
     ('Free',     'bg-amber-600 text-white',   'Free/other grant',          True,  3),
 ]
 
-# (year, type, vest_start, periods, exercise_date, default_catch_up)
+# (year, type, vest_start, periods, exercise_date, default_catch_up, default_purchase_due_month_day)
+# default_purchase_due_month_day is only set for Purchase rows (None elsewhere). Epic
+# switched the annual purchase due date from 07-15 to 06-30 starting with the 2022 grant.
 SEED_GRANT_TEMPLATES = [
-    (2018, 'Purchase', '2020-06-15', 6, '2018-12-31', True),
-    (2019, 'Purchase', '2021-06-15', 6, '2019-12-31', True),
-    (2020, 'Purchase', '2021-09-30', 5, '2020-12-31', True),
-    (2020, 'Bonus',    '2021-09-30', 4, '2020-12-31', False),
-    (2021, 'Purchase', '2022-09-30', 5, '2021-12-31', True),
-    (2021, 'Bonus',    '2022-09-30', 3, '2021-12-31', False),
-    (2022, 'Purchase', '2023-09-30', 4, '2022-12-31', False),
-    (2022, 'Bonus',    '2023-09-30', 3, '2022-12-31', False),
-    (2022, 'Free',     '2027-09-30', 1, '2022-12-31', False),
-    (2023, 'Purchase', '2024-09-30', 4, '2023-12-31', False),
-    (2023, 'Bonus',    '2024-09-30', 3, '2023-12-31', False),
-    (2024, 'Purchase', '2025-09-30', 4, '2024-12-31', False),
-    (2024, 'Bonus',    '2025-09-30', 3, '2024-12-31', False),
-    (2025, 'Purchase', '2026-09-30', 4, '2025-12-31', False),
-    (2025, 'Bonus',    '2026-09-30', 3, '2025-12-31', False),
+    (2018, 'Purchase', '2020-06-15', 6, '2018-12-31', True,  '07-15'),
+    (2019, 'Purchase', '2021-06-15', 6, '2019-12-31', True,  '07-15'),
+    (2020, 'Purchase', '2021-09-30', 5, '2020-12-31', True,  '07-15'),
+    (2020, 'Bonus',    '2021-09-30', 4, '2020-12-31', False, None),
+    (2021, 'Purchase', '2022-09-30', 5, '2021-12-31', True,  '07-15'),
+    (2021, 'Bonus',    '2022-09-30', 3, '2021-12-31', False, None),
+    (2022, 'Purchase', '2023-09-30', 4, '2022-12-31', False, '06-30'),
+    (2022, 'Bonus',    '2023-09-30', 3, '2022-12-31', False, None),
+    (2022, 'Free',     '2027-09-30', 1, '2022-12-31', False, None),
+    (2023, 'Purchase', '2024-09-30', 4, '2023-12-31', False, '06-30'),
+    (2023, 'Bonus',    '2024-09-30', 3, '2023-12-31', False, None),
+    (2024, 'Purchase', '2025-09-30', 4, '2024-12-31', False, '06-30'),
+    (2024, 'Bonus',    '2025-09-30', 3, '2024-12-31', False, None),
+    (2025, 'Purchase', '2026-09-30', 4, '2025-12-31', False, '06-30'),
+    (2025, 'Bonus',    '2026-09-30', 3, '2025-12-31', False, None),
 ]
 
 # (grant_year, grant_type, variant_code, periods, label, is_default)
@@ -101,14 +106,8 @@ SEED_LOAN_REFINANCES.append(
 SEED_GRANT_PROGRAM_SETTINGS = {
     'id': 1,
     'loan_term_years': 10,
-    'latest_rate_year': 2025,
-    'dp_shares_start_year': 2023,
     'tax_fallback_federal': 0.37,
     'tax_fallback_state': 0.0765,
-    'default_purchase_due_month_day_pre2022': '07-15',
-    'default_purchase_due_month_day_post2022': '06-30',
-    'price_years_start': 2018,
-    'price_years_end': 2026,
 }
 
 
@@ -129,11 +128,12 @@ def seed_content_if_empty(db: Session) -> None:
             ))
 
     if db.query(GrantTemplate).count() == 0:
-        for idx, (year, typ, vs, periods, ed, dcu) in enumerate(SEED_GRANT_TEMPLATES):
+        for idx, (year, typ, vs, periods, ed, dcu, ddmd) in enumerate(SEED_GRANT_TEMPLATES):
             db.add(GrantTemplate(
                 year=year, type=typ, vest_start=vs, periods=periods,
                 exercise_date=ed, default_catch_up=dcu,
                 show_dp_shares=(typ == 'Purchase' and year >= 2023),
+                default_purchase_due_month_day=ddmd,
                 display_order=idx, active=True, notes=None,
             ))
 
@@ -188,6 +188,15 @@ def load_content(db: Session) -> dict:
     ).all()
     settings_row = db.query(GrantProgramSettings).filter(GrantProgramSettings.id == 1).one_or_none()
 
+    # Derive year-range fields instead of storing them. These were admin-editable
+    # settings that duplicated data already present in loan_rates / grant_templates.
+    max_rate_year = db.query(func.max(LoanRate.year)).scalar()
+    min_template_year = db.query(func.min(GrantTemplate.year)).scalar()
+    this_year = _date.today().year
+    latest_rate_year = max_rate_year if max_rate_year is not None else this_year
+    price_years_start = min_template_year if min_template_year is not None else this_year
+    price_years_end = latest_rate_year + 1  # one year of look-ahead for fresh price entry
+
     # Shape rates as nested dicts to match the frontend constants
     interest_rates: dict[str, float] = {}
     tax_rates: dict[str, dict[str, float]] = {}
@@ -235,6 +244,7 @@ def load_content(db: Session) -> dict:
                 'exercise_date': t.exercise_date,
                 'default_catch_up': bool(t.default_catch_up),
                 'show_dp_shares': bool(t.show_dp_shares),
+                'default_purchase_due_month_day': t.default_purchase_due_month_day,
                 'display_order': t.display_order,
             }
             for t in templates if t.active
@@ -299,14 +309,12 @@ def load_content(db: Session) -> dict:
         ],
         'grant_program_settings': {
             'loan_term_years': settings_row.loan_term_years if settings_row else defaults['loan_term_years'],
-            'latest_rate_year': settings_row.latest_rate_year if settings_row else defaults['latest_rate_year'],
-            'dp_shares_start_year': settings_row.dp_shares_start_year if settings_row else defaults['dp_shares_start_year'],
             'tax_fallback_federal': settings_row.tax_fallback_federal if settings_row else defaults['tax_fallback_federal'],
             'tax_fallback_state': settings_row.tax_fallback_state if settings_row else defaults['tax_fallback_state'],
-            'default_purchase_due_month_day_pre2022': settings_row.default_purchase_due_month_day_pre2022 if settings_row else defaults['default_purchase_due_month_day_pre2022'],
-            'default_purchase_due_month_day_post2022': settings_row.default_purchase_due_month_day_post2022 if settings_row else defaults['default_purchase_due_month_day_post2022'],
-            'price_years_start': settings_row.price_years_start if settings_row else defaults['price_years_start'],
-            'price_years_end': settings_row.price_years_end if settings_row else defaults['price_years_end'],
             'flexible_payoff_enabled': bool(settings_row.flexible_payoff_enabled) if settings_row else False,
+            # Derived (read-only): computed from loan_rates / grant_templates each call.
+            'latest_rate_year': latest_rate_year,
+            'price_years_start': price_years_start,
+            'price_years_end': price_years_end,
         },
     }

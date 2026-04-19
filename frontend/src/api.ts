@@ -911,6 +911,7 @@ export interface GrantTemplate {
   exercise_date: string
   default_catch_up: boolean
   show_dp_shares: boolean
+  default_purchase_due_month_day: string | null
   display_order: number
 }
 
@@ -973,15 +974,13 @@ export interface TaxLoanRefinance extends LoanRefinance {
 
 export interface GrantProgramSettings {
   loan_term_years: number
-  latest_rate_year: number
-  dp_shares_start_year: number
   tax_fallback_federal: number
   tax_fallback_state: number
-  default_purchase_due_month_day_pre2022: string
-  default_purchase_due_month_day_post2022: string
+  flexible_payoff_enabled?: boolean
+  // Derived (read-only) on the server from loan_rates / grant_templates.
+  latest_rate_year: number
   price_years_start: number
   price_years_end: number
-  flexible_payoff_enabled?: boolean
 }
 
 // Create/Update payloads for content-admin write endpoints
@@ -993,6 +992,7 @@ export interface GrantTemplateCreate {
   exercise_date: string
   default_catch_up?: boolean
   show_dp_shares?: boolean
+  default_purchase_due_month_day?: string | null
   display_order?: number
   active?: boolean
   notes?: string | null

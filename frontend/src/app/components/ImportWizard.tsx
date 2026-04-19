@@ -123,6 +123,8 @@ interface KnownGrant {
   periods: number
   exercise_date: string
   defaultCatchUp: boolean
+  showDpShares: boolean
+  defaultPurchaseDueMonthDay: string | null
 }
 
 type BonusSchedule = 'A' | 'B' | 'C'
@@ -510,7 +512,17 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
     periods: g.periods,
     exercise_date: g.exercise_date,
     defaultCatchUp: g.default_catch_up,
+    showDpShares: g.show_dp_shares,
+    defaultPurchaseDueMonthDay: g.default_purchase_due_month_day,
   }))
+  const DP_SHARES_YEARS = new Set(
+    EPIC_GRANT_SCHEDULE.filter(g => g.type === 'Purchase' && g.showDpShares).map(g => g.year),
+  )
+  const PURCHASE_DUE_MMDD_BY_YEAR = new Map(
+    EPIC_GRANT_SCHEDULE
+      .filter(g => g.type === 'Purchase' && g.defaultPurchaseDueMonthDay)
+      .map(g => [g.year, g.defaultPurchaseDueMonthDay as string]),
+  )
   const GRANT_COLORS = Object.fromEntries(
     content.grant_type_defs.map(d => [d.name, d.color_class]),
   ) as Record<GrantType, string>
@@ -530,7 +542,6 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
   )
   const LOAN_TERM_YEARS = content.grant_program_settings.loan_term_years
   const LATEST_RATE_YEAR = content.grant_program_settings.latest_rate_year
-  const DP_SHARES_START_YEAR = content.grant_program_settings.dp_shares_start_year
   const FALLBACK_TAX_RATE =
     content.grant_program_settings.tax_fallback_federal + content.grant_program_settings.tax_fallback_state
   const PRICE_YEARS: number[] = []
@@ -1042,7 +1053,7 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
   function dpSharesConsumedBefore(exerciseDate: string, excludeYear: number): number {
     let consumed = 0
     for (const row of purchaseRows) {
-      if (!row.participated || row.year === excludeYear || row.year < DP_SHARES_START_YEAR) continue
+      if (!row.participated || row.year === excludeYear || !DP_SHARES_YEARS.has(row.year)) continue
       if (row.exercise_date < exerciseDate) consumed += Math.abs(parseInt(row.dp_shares) || 0)
     }
     return consumed
@@ -1207,12 +1218,13 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
       existingByKey.set(`${rl.grant_year}-${rl.grant_type}-${rl.loan_type}-${rl.loan_year}`, rl)
     }
 
-    // Helper: compute due date for a grant year
+    // Helper: compute due date for a purchase grant year. Each Purchase template
+    // carries its own MM-DD; falls back to 06-30 if a future-year template hasn't
+    // been configured with one yet.
     function dueDate(grantYear: number): string {
       const dueYear = grantYear + 9
-      return grantYear >= 2022
-        ? `${dueYear}-${content.grant_program_settings.default_purchase_due_month_day_post2022}`
-        : `${dueYear}-${content.grant_program_settings.default_purchase_due_month_day_pre2022}`
+      const mmdd = PURCHASE_DUE_MMDD_BY_YEAR.get(grantYear) ?? '06-30'
+      return `${dueYear}-${mmdd}`
     }
 
     // Helper to push a reviewed loan
@@ -1762,7 +1774,7 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
               onChange={v => setGrantDraft(d => ({ ...d, exercise_date: v }))} />
           </div>
 
-          {grantDraft.type === 'Purchase' && parseInt(grantDraft.year) >= DP_SHARES_START_YEAR && (
+          {grantDraft.type === 'Purchase' && DP_SHARES_YEARS.has(parseInt(grantDraft.year)) && (
             <div className="rounded-md border border-stone-200 p-3 dark:border-slate-700">
               <label className="flex items-start gap-2 text-xs text-gray-600 dark:text-slate-400">
                 <input
@@ -2174,10 +2186,10 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
                           onChange={v => setPurchaseField(i, { purchase_price: v }, true)} />
                         <Field label="Shares" type="number" value={row.shares}
                           onChange={v => setPurchaseField(i, { shares: v }, true)} />
-                        <Field label="DP shares" type="number" value={row.year >= DP_SHARES_START_YEAR ? row.dp_shares : '0'}
+                        <Field label="DP shares" type="number" value={DP_SHARES_YEARS.has(row.year) ? row.dp_shares : '0'}
                           onChange={v => setPurchaseField(i, { dp_shares: v })}
                           hint={(() => {
-                            if (row.year < DP_SHARES_START_YEAR) return `not available before ${DP_SHARES_START_YEAR}`
+                            if (!DP_SHARES_YEARS.has(row.year)) return 'not available for this grant year'
                             const total = (parseFloat(row.purchase_price) || 0) * (parseInt(row.shares) || 0)
                             const loanAmt = parseFloat(row.loan_amount) || 0
                             const dp = total - loanAmt
@@ -2186,10 +2198,10 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
                             if (dp > 0 && mp > 0) return `min ${Math.ceil(dp / mp).toLocaleString()} at $${mp}/sh`
                             return 'shares exchanged at exercise'
                           })()}
-                          disabled={row.year < DP_SHARES_START_YEAR}
-                          placeholder={row.year < DP_SHARES_START_YEAR ? 'not available' : '0'} />
+                          disabled={!DP_SHARES_YEARS.has(row.year)}
+                          placeholder={!DP_SHARES_YEARS.has(row.year) ? 'not available' : '0'} />
                       </div>
-                      {row.year >= DP_SHARES_START_YEAR && Math.abs(parseInt(row.dp_shares) || 0) > 0 && (() => {
+                      {DP_SHARES_YEARS.has(row.year) && Math.abs(parseInt(row.dp_shares) || 0) > 0 && (() => {
                         const needed = Math.abs(parseInt(row.dp_shares) || 0)
                         const vested = vestedSharesBeforeDate(row.exercise_date)
                         const consumed = dpSharesConsumedBefore(row.exercise_date, row.year)
@@ -2370,7 +2382,7 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
 
           <NextBtn label="Next: Review loans →" onClick={enterLoansReview}
             disabled={purchaseRows.some(row => {
-              if (!row.participated || row.year < DP_SHARES_START_YEAR) return false
+              if (!row.participated || !DP_SHARES_YEARS.has(row.year)) return false
               const needed = Math.abs(parseInt(row.dp_shares) || 0)
               if (needed <= 0) return false
               const vested = vestedSharesBeforeDate(row.exercise_date)

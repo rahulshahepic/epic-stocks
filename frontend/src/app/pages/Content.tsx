@@ -300,6 +300,15 @@ function TemplatesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; b
               <input type="checkbox" checked={!!modal.draft.show_dp_shares} onChange={e => patch({ show_dp_shares: e.target.checked })} />
               Show DP shares (Purchase only)
             </label>
+            {modal.draft.type === 'Purchase' && (
+              <Field label="Purchase due (MM-DD)">
+                <TextInput
+                  value={modal.draft.default_purchase_due_month_day ?? ''}
+                  onChange={e => patch({ default_purchase_due_month_day: e.target.value || null })}
+                  placeholder="06-30"
+                />
+              </Field>
+            )}
             <FormActions mode={modal.mode} busy={busy} onCancel={close} onDelete={handleDelete} />
           </form>
         </Modal>
@@ -777,14 +786,6 @@ function SettingsTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; bu
         <TextInput type="number" value={form.loan_term_years} onChange={e => update({ loan_term_years: Number(e.target.value) })} />
       </label>
       <label className="flex flex-col text-xs">
-        <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">Latest rate year</span>
-        <TextInput type="number" value={form.latest_rate_year} onChange={e => update({ latest_rate_year: Number(e.target.value) })} />
-      </label>
-      <label className="flex flex-col text-xs">
-        <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">DP shares start year</span>
-        <TextInput type="number" value={form.dp_shares_start_year} onChange={e => update({ dp_shares_start_year: Number(e.target.value) })} />
-      </label>
-      <label className="flex flex-col text-xs">
         <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">Federal tax fallback</span>
         <TextInput type="number" step="0.001" value={form.tax_fallback_federal} onChange={e => update({ tax_fallback_federal: Number(e.target.value) })} />
       </label>
@@ -792,22 +793,13 @@ function SettingsTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; bu
         <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">State tax fallback</span>
         <TextInput type="number" step="0.0001" value={form.tax_fallback_state} onChange={e => update({ tax_fallback_state: Number(e.target.value) })} />
       </label>
-      <label className="flex flex-col text-xs">
-        <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">Pre-2022 purchase due (MM-DD)</span>
-        <TextInput value={form.default_purchase_due_month_day_pre2022} onChange={e => update({ default_purchase_due_month_day_pre2022: e.target.value })} />
-      </label>
-      <label className="flex flex-col text-xs">
-        <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">Post-2022 purchase due (MM-DD)</span>
-        <TextInput value={form.default_purchase_due_month_day_post2022} onChange={e => update({ default_purchase_due_month_day_post2022: e.target.value })} />
-      </label>
-      <label className="flex flex-col text-xs">
-        <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">Price years start</span>
-        <TextInput type="number" value={form.price_years_start} onChange={e => update({ price_years_start: Number(e.target.value) })} />
-      </label>
-      <label className="flex flex-col text-xs">
-        <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">Price years end</span>
-        <TextInput type="number" value={form.price_years_end} onChange={e => update({ price_years_end: Number(e.target.value) })} />
-      </label>
+
+      <div className="col-span-full rounded-md border border-stone-200 p-3 text-[11px] text-stone-600 dark:border-slate-700 dark:text-slate-400">
+        <span className="font-medium text-stone-700 dark:text-slate-200">Derived year ranges: </span>
+        latest rate year <span className="font-mono">{form.latest_rate_year}</span>, prices{' '}
+        <span className="font-mono">{form.price_years_start}</span>–<span className="font-mono">{form.price_years_end}</span>.
+        These come from the Loan Rates and Grant Templates tabs and update automatically.
+      </div>
 
       <div className="col-span-full rounded-md border border-stone-200 p-3 text-xs dark:border-slate-700">
         <label className="inline-flex items-start gap-2">

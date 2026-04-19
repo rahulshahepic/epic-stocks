@@ -8,7 +8,7 @@ import { resetMeCache } from '../scaffold/hooks/useMe.ts'
 
 const CONTENT = {
   grant_templates: [
-    { id: 1, year: 2025, type: 'Purchase', vest_start: '2026-09-30', periods: 4, exercise_date: '2025-12-31', default_catch_up: false, show_dp_shares: true, display_order: 0 },
+    { id: 1, year: 2025, type: 'Purchase', vest_start: '2026-09-30', periods: 4, exercise_date: '2025-12-31', default_catch_up: false, show_dp_shares: true, default_purchase_due_month_day: '06-30', display_order: 0 },
   ],
   grant_type_defs: [
     { name: 'Purchase', color_class: 'bg-rose-700 text-white', description: 'You paid the share price', is_pre_tax_when_zero_price: false, display_order: 0 },
@@ -21,12 +21,10 @@ const CONTENT = {
   loan_refinances: { purchase: {}, tax: {} },
   loan_refinances_all: [],
   grant_program_settings: {
-    loan_term_years: 10, latest_rate_year: 2025, dp_shares_start_year: 2023,
+    loan_term_years: 10,
     tax_fallback_federal: 0.37, tax_fallback_state: 0.0765,
-    default_purchase_due_month_day_pre2022: '07-15',
-    default_purchase_due_month_day_post2022: '06-30',
-    price_years_start: 2018, price_years_end: 2026,
     flexible_payoff_enabled: false,
+    latest_rate_year: 2025, price_years_start: 2018, price_years_end: 2026,
   },
 }
 

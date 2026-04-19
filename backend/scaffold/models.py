@@ -323,6 +323,9 @@ class GrantTemplate(Base):
     exercise_date: Mapped[str] = mapped_column(String, nullable=False)    # YYYY-MM-DD
     default_catch_up: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     show_dp_shares: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    # Purchase-loan due date (MM-DD) for this grant year. Used by the import wizard when
+    # there's no original loan or refi-chain entry to copy a due date from. Null for non-Purchase.
+    default_purchase_due_month_day: Mapped[str | None] = mapped_column(String, nullable=True)
     display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
     notes: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -406,17 +409,16 @@ class LoanRefinance(Base):
 
 
 class GrantProgramSettings(Base):
-    """Singleton row (id=1) holding company-wide defaults for the equity grant program."""
+    """Singleton row (id=1) holding company-wide defaults for the equity grant program.
+
+    Year ranges (latest_rate_year, price_years_start/end) and the per-year purchase
+    due date are NOT stored here — the first two are derived from loan_rates /
+    grant_templates at read time, and the due date lives on each GrantTemplate row.
+    """
     __tablename__ = "grant_program_settings"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     loan_term_years: Mapped[int] = mapped_column(Integer, nullable=False, default=10, server_default="10")
-    latest_rate_year: Mapped[int] = mapped_column(Integer, nullable=False, default=2025, server_default="2025")
-    dp_shares_start_year: Mapped[int] = mapped_column(Integer, nullable=False, default=2023, server_default="2023")
     tax_fallback_federal: Mapped[float] = mapped_column(Float, nullable=False, default=0.37, server_default="0.37")
     tax_fallback_state: Mapped[float] = mapped_column(Float, nullable=False, default=0.0765, server_default="0.0765")
-    default_purchase_due_month_day_pre2022: Mapped[str] = mapped_column(String, nullable=False, default="07-15", server_default="07-15")
-    default_purchase_due_month_day_post2022: Mapped[str] = mapped_column(String, nullable=False, default="06-30", server_default="06-30")
-    price_years_start: Mapped[int] = mapped_column(Integer, nullable=False, default=2018, server_default="2018")
-    price_years_end: Mapped[int] = mapped_column(Integer, nullable=False, default=2026, server_default="2026")
     flexible_payoff_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")

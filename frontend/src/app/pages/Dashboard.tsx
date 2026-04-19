@@ -1521,7 +1521,7 @@ export default function Dashboard() {
               value={fmtNum(cv.total_shares)}
               subvalue={grantHoldings ? fmt$(grantHoldings.reduce((s, h) => s + h.vestedValue, 0)) + (cv.price_is_estimate ? ' (est.)' : '') : undefined}
               variant="shares"
-              subtitle="at current price · yours outright"
+              subtitle={`Value at ${fmtPrice(cv.current_price)}/share`}
               onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
               expanded={openBreakdowns.has('grants')}
             />
@@ -1530,7 +1530,7 @@ export default function Dashboard() {
               value={fmtNum(grantHoldings?.reduce((s, h) => s + h.unvestedShares, 0) ?? 0)}
               subvalue={grantHoldings ? fmt$(grantHoldings.reduce((s, h) => s + h.unvestedShares * h.costBasis, 0)) : undefined}
               variant="unvested"
-              subtitle="at cost basis · grows as shares vest"
+              subtitle="Value at purchase price"
               onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
               expanded={openBreakdowns.has('grants')}
             />

@@ -3,7 +3,6 @@ import { useConfig } from '../hooks/useConfig.ts'
 import { usePush } from '../hooks/usePush.ts'
 import { useAuth } from '../hooks/useAuth.ts'
 import { useTheme } from '../contexts/ThemeContext.tsx'
-import { useContent } from '../../app/hooks/useContent.ts'
 import { api } from '../../api.ts'
 import type { TaxSettings, InvitationEntry, ReceivedInvitation } from '../../api.ts'
 import type { Theme } from '../contexts/ThemeContext.tsx'
@@ -24,7 +23,6 @@ export default function Settings() {
   const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
 
-  const content = useContent()
   const [taxSettings, setTaxSettings] = useState<TaxSettings | null>(null)
   const [editingTax, setEditingTax] = useState(false)
   const [editingDp, setEditingDp] = useState(false)
@@ -234,10 +232,10 @@ export default function Settings() {
         </section>
       )}
 
-      {/* Down Payment Settings */}
+      {/* Stock Down Payment Preference (user-level) */}
       <section className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-stone-900 dark:text-slate-100">Down Payment</h3>
+          <h3 className="text-sm font-medium text-stone-900 dark:text-slate-100">Stock down payment</h3>
           {!editingDp && (
             <button
               onClick={() => { setTaxForm(taxSettings ? { ...taxSettings } : { ...WI_DEFAULTS }); setEditingDp(true) }}
@@ -246,7 +244,7 @@ export default function Settings() {
           )}
         </div>
         <p className="mt-1 text-xs text-stone-600 dark:text-slate-400">
-          Controls how down payment shares are calculated when adding a new purchase.
+          Whether to auto-calculate the minimum stock exchange on new purchases.
         </p>
 
         {taxSettings && !editingDp && (
@@ -257,15 +255,6 @@ export default function Settings() {
                 {taxSettings.prefer_stock_dp ? 'Yes — auto-calculate DP shares' : 'No — manual'}
               </dd>
             </div>
-            {content?.grant_program_settings && (
-              <div className="flex justify-between col-span-2">
-                <dt className="text-stone-600 dark:text-slate-400">Company min DP rule</dt>
-                <dd className="font-medium text-stone-700 dark:text-slate-300">
-                  min({(content.grant_program_settings.dp_min_percent * 100).toFixed(0)}%, $
-                  {content.grant_program_settings.dp_min_cap.toLocaleString()})
-                </dd>
-              </div>
-            )}
           </dl>
         )}
 

@@ -1152,16 +1152,16 @@ def export_holdings_report(
     # --- SECTION 1: Holdings by Grant ---
     row = 6
     ws.cell(row=row, column=1, value="HOLDINGS BY GRANT").font = _SECTION_FONT
-    for col in range(1, 9):
+    for col in range(1, 10):
         ws.cell(row=row, column=col).fill = _SECTION_FILL
     row += 1
 
     holdings_headers = ["Grant", "Exercise Date", "Cost Basis/Share", "Vested Shares",
-                        "Unvested Shares", "Vested Value", "Est. Taxes Paid", "Outstanding Loans"]
+                        "Unvested Shares", "Unvested Value (Cost Basis)", "Vested Value", "Est. Taxes Paid", "Outstanding Loans"]
     _report_header(ws, row, holdings_headers)
     row += 1
 
-    totals = {"vested": 0, "unvested": 0, "value": 0.0, "tax": 0.0, "loan": 0.0}
+    totals = {"vested": 0, "unvested": 0, "unvested_value": 0.0, "value": 0.0, "tax": 0.0, "loan": 0.0}
 
     for g in grants_db:
         # Compute vested from schedule
@@ -1174,6 +1174,7 @@ def export_holdings_report(
                 if vd <= as_of_date:
                     vested += base + (1 if p < rem else 0)
         unvested = g.shares - vested
+        unvested_value = unvested * (g.price or 0.0)
         vested_value = vested * current_price
 
         # Outstanding loans for this grant
@@ -1205,31 +1206,35 @@ def export_holdings_report(
         _report_cell(ws, row, 3, g.price, "\\$#,##0.00")
         _report_cell(ws, row, 4, vested, "#,##0")
         _report_cell(ws, row, 5, unvested, "#,##0")
-        _report_cell(ws, row, 6, round(vested_value, 2), "\\$#,##0")
-        _report_cell(ws, row, 7, round(total_tax, 2), "\\$#,##0")
-        _report_cell(ws, row, 8, round(total_loan, 2), "\\$#,##0")
+        _report_cell(ws, row, 6, round(unvested_value, 2), "\\$#,##0")
+        _report_cell(ws, row, 7, round(vested_value, 2), "\\$#,##0")
+        _report_cell(ws, row, 8, round(total_tax, 2), "\\$#,##0")
+        _report_cell(ws, row, 9, round(total_loan, 2), "\\$#,##0")
 
         totals["vested"] += vested
         totals["unvested"] += unvested
+        totals["unvested_value"] += unvested_value
         totals["value"] += vested_value
         totals["tax"] += total_tax
         totals["loan"] += total_loan
         row += 1
 
     # Totals row
-    for col in range(1, 9):
+    for col in range(1, 10):
         ws.cell(row=row, column=col).border = Border(top=Side(style="thin", color="FF4472C4"))
     ws.cell(row=row, column=1, value="TOTAL").font = Font(name="Arial", size=10, bold=True)
     ws.cell(row=row, column=4, value=totals["vested"]).font = Font(name="Arial", size=10, bold=True)
     ws.cell(row=row, column=4).number_format = "#,##0"
     ws.cell(row=row, column=5, value=totals["unvested"]).font = Font(name="Arial", size=10, bold=True)
     ws.cell(row=row, column=5).number_format = "#,##0"
-    ws.cell(row=row, column=6, value=round(totals["value"], 2)).font = Font(name="Arial", size=10, bold=True)
+    ws.cell(row=row, column=6, value=round(totals["unvested_value"], 2)).font = Font(name="Arial", size=10, bold=True)
     ws.cell(row=row, column=6).number_format = "\\$#,##0"
-    ws.cell(row=row, column=7, value=round(totals["tax"], 2)).font = Font(name="Arial", size=10, bold=True)
+    ws.cell(row=row, column=7, value=round(totals["value"], 2)).font = Font(name="Arial", size=10, bold=True)
     ws.cell(row=row, column=7).number_format = "\\$#,##0"
-    ws.cell(row=row, column=8, value=round(totals["loan"], 2)).font = Font(name="Arial", size=10, bold=True)
+    ws.cell(row=row, column=8, value=round(totals["tax"], 2)).font = Font(name="Arial", size=10, bold=True)
     ws.cell(row=row, column=8).number_format = "\\$#,##0"
+    ws.cell(row=row, column=9, value=round(totals["loan"], 2)).font = Font(name="Arial", size=10, bold=True)
+    ws.cell(row=row, column=9).number_format = "\\$#,##0"
     row += 2
 
     # --- SECTION 2: Active Loans ---
@@ -1290,6 +1295,7 @@ def export_holdings_report(
         ("Share Price (estimated)" if price_is_estimate else "Share Price", current_price, "\\$#,##0.00"),
         ("Total Vested Shares", totals["vested"], "#,##0"),
         ("Total Unvested Shares", totals["unvested"], "#,##0"),
+        ("Total Unvested Value (Cost Basis)", round(totals["unvested_value"], 2), "\\$#,##0"),
         ("Total Vested Value" + (" (estimated)" if price_is_estimate else ""), round(totals["value"], 2), "\\$#,##0"),
         ("Cumulative W-2 Income", round(cum_income, 2), "\\$#,##0"),
         ("Cumulative Capital Gains", round(cum_cap_gains, 2), "\\$#,##0"),
@@ -1304,7 +1310,7 @@ def export_holdings_report(
         row += 1
 
     # --- Column widths ---
-    col_widths = [22, 16, 16, 16, 16, 16, 18, 18]
+    col_widths = [22, 16, 16, 16, 16, 22, 16, 18, 18]
     for i, w in enumerate(col_widths, 1):
         ws.column_dimensions[get_column_letter(i)].width = w
 

@@ -134,13 +134,14 @@ const CARD_STYLES: Record<string, { bg: string; border: string; label: string }>
   unvested: { bg: 'bg-indigo-50 dark:bg-indigo-950/40', border: 'border-indigo-200 dark:border-indigo-800', label: 'text-indigo-700 dark:text-indigo-300' },
 }
 
-function Card({ label, value, variant, subtitle, onClick, expanded }: { label: string; value: string; variant: string; subtitle?: string; onClick?: () => void; expanded?: boolean }) {
+function Card({ label, value, subvalue, variant, subtitle, onClick, expanded }: { label: string; value: string; subvalue?: string; variant: string; subtitle?: string; onClick?: () => void; expanded?: boolean }) {
   const s = CARD_STYLES[variant] ?? CARD_STYLES.event
   const clickable = !!onClick
   const content = (
     <>
       <p className={`text-xs font-medium uppercase ${s.label}`}>{label}</p>
       <p className="mt-1 text-xl font-semibold text-gray-900 dark:text-slate-100">{value}</p>
+      {subvalue && <p className="mt-0.5 text-sm font-medium text-gray-600 dark:text-slate-300">{subvalue}</p>}
       {subtitle && <p className="mt-1 text-[11px] leading-tight text-gray-500 dark:text-slate-400">{subtitle}</p>}
       {clickable && (
         <p className="mt-1 text-[10px] leading-tight text-gray-400 dark:text-slate-500">
@@ -1518,6 +1519,7 @@ export default function Dashboard() {
             <Card
               label="Vested Shares"
               value={fmtNum(cv.total_shares)}
+              subvalue={grantHoldings ? fmt$(grantHoldings.reduce((s, h) => s + h.vestedValue, 0)) : undefined}
               variant="shares"
               subtitle="Shares you own outright"
               onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
@@ -1526,6 +1528,7 @@ export default function Dashboard() {
             <Card
               label="Unvested Shares"
               value={fmtNum(grantHoldings?.reduce((s, h) => s + h.unvestedShares, 0) ?? 0)}
+              subvalue={grantHoldings ? fmt$(grantHoldings.reduce((s, h) => s + h.unvestedShares * h.costBasis, 0)) : undefined}
               variant="unvested"
               subtitle="Still vesting over time"
               onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}

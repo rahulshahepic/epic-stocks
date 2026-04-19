@@ -1156,8 +1156,9 @@ def export_holdings_report(
         ws.cell(row=row, column=col).fill = _SECTION_FILL
     row += 1
 
+    vested_value_label = "Vested Value (est.)" if price_is_estimate else "Vested Value"
     holdings_headers = ["Grant", "Exercise Date", "Cost Basis/Share", "Vested Shares",
-                        "Unvested Shares", "Unvested Value (Cost Basis)", "Vested Value", "Est. Taxes Paid", "Outstanding Loans"]
+                        "Unvested Shares", "Unvested Value (Cost Basis)", vested_value_label, "Est. Taxes Paid", "Outstanding Loans"]
     _report_header(ws, row, holdings_headers)
     row += 1
 

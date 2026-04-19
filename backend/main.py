@@ -44,16 +44,24 @@ async def lifespan(app):
             _redis_init(redis_url)
         except Exception:
             logger.warning("Redis unavailable — running without L2 cache")
-    task = _start_daily_scheduler()
-    metrics_task = _start_metrics_sampler()
-    maintenance_task = _start_nightly_maintenance()
+    # In test mode the schedulers stay off. The metrics sampler calls
+    # psutil.cpu_percent(interval=0.5) on its first iteration, which blocks
+    # the event loop for 500 ms inside every TestClient lifespan and dominates
+    # backend test wall-clock time. Tests cover these functions by calling them
+    # directly (see test_admin_metrics.py).
+    test_mode = os.getenv("E2E_TEST") == "1"
+    task = None if test_mode else _start_daily_scheduler()
+    metrics_task = None if test_mode else _start_metrics_sampler()
+    maintenance_task = None if test_mode else _start_nightly_maintenance()
     yield
     from app.event_cache import close as _redis_close
     _redis_close()
     if task:
         task.cancel()
-    metrics_task.cancel()
-    maintenance_task.cancel()
+    if metrics_task:
+        metrics_task.cancel()
+    if maintenance_task:
+        maintenance_task.cancel()
 
 
 def _bootstrap_system():

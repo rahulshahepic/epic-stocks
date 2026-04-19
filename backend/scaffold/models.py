@@ -321,6 +321,15 @@ class GrantTemplate(Base):
     exercise_date: Mapped[str] = mapped_column(String, nullable=False)    # YYYY-MM-DD
     default_catch_up: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     show_dp_shares: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    # Whether grants from this template have $0 cost basis (zero-basis RSUs/bonuses
+    # that are taxable as ordinary income at vest). Determines whether the wizard
+    # generates tax loans and whether the price input is user-editable.
+    zero_basis: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    # When the tax loans generated from this template are due (YYYY-MM-DD). Valid
+    # only on templates that actually produce tax loans (zero_basis=True or
+    # default_catch_up=True). Null means the wizard inherits the due date from the
+    # purchase loan for that grant year.
+    default_tax_due_date: Mapped[str | None] = mapped_column(String, nullable=True)
     display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
     notes: Mapped[str | None] = mapped_column(String, nullable=True)

@@ -219,6 +219,8 @@ function TemplatesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; b
       exercise_date: '',
       default_catch_up: false,
       show_dp_shares: false,
+      zero_basis: false,
+      default_tax_due_date: null,
       display_order: blob.grant_templates.length,
     },
   })
@@ -296,6 +298,32 @@ function TemplatesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; b
               <input type="checkbox" checked={!!modal.draft.show_dp_shares} onChange={e => patch({ show_dp_shares: e.target.checked })} />
               Show DP shares (Purchase only)
             </label>
+            {modal.draft.type !== 'Purchase' && (
+              <label className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={!!modal.draft.zero_basis}
+                  onChange={e => patch({
+                    zero_basis: e.target.checked,
+                    // Clear the tax due date if we're flipping off eligibility.
+                    default_tax_due_date: !e.target.checked && !modal.draft.default_catch_up
+                      ? null : modal.draft.default_tax_due_date,
+                  })}
+                />
+                Zero cost basis (taxable at vest)
+              </label>
+            )}
+            {/* Tax-loan due date is only meaningful when the template generates tax loans. */}
+            {(modal.draft.zero_basis || modal.draft.default_catch_up) && (
+              <Field label="Tax-loan due date (YYYY-MM-DD)">
+                <TextInput
+                  type="date"
+                  value={modal.draft.default_tax_due_date ?? ''}
+                  onChange={e => patch({ default_tax_due_date: e.target.value || null })}
+                  placeholder="leave empty to inherit from purchase loan"
+                />
+              </Field>
+            )}
             <FormActions mode={modal.mode} busy={busy} onCancel={close} onDelete={handleDelete} />
           </form>
         </Modal>

@@ -1,8 +1,11 @@
 name: Test
 on:
   pull_request:
-  push:
-    branches: [main, staging]
+# No `push:` trigger. Branch protection on main and staging already requires
+# the `backend`, `frontend`, `e2e`, and `caddy-validate` checks to pass on the
+# incoming PR, and all merges to main must come from staging (enforced by
+# branch-check.yml). Re-running the same tests on the merge commit doubles CI
+# cost with no additional signal — the PR run already tested the same code.
 jobs:
   backend:
     runs-on: ubuntu-latest

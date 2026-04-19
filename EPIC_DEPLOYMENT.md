@@ -1,7 +1,109 @@
 # Epic Network Deployment Notes
 
-Planning notes for deploying on Epic's internal network. Not yet implemented.
-Supersedes some assumptions baked into the current single-user-upload model.
+This document covers the Epic campus deployment track:
+
+1. **Epic Mode** — the read-only deployment toggle that ships in the current
+   app as a stepping stone toward full Epic-network deployment. Implemented.
+2. **Epic campus deployment planning notes** — how the app would consume
+   Epic's source-of-truth equity database, auth via Entra ID, write-back
+   actions, cache invalidation, scaling, and open work. Not yet implemented.
+
+---
+
+## Epic Mode (Implemented)
+
+Epic Mode is a read-only deployment mode built into the app for use with
+Epic's managed data pipeline. It turns the app into a thin action layer on
+top of externally-provided grant/loan/price data.
+
+When active:
+
+- Historical grant/price/loan/import writes are blocked (403) and the UI
+  shows a "Historical data provided by Epic — view only" notice.
+- Future price estimates remain writable (via **+ Price** for individual
+  future dates, or **+ Estimate** for bulk growth projections).
+- Each grant row shows a **Sell** button and each loan row shows a **Request
+  Payoff** button (with lot allocation preview) so users can still act on
+  their data.
+- Sales are always writable but require a future date.
+- A `POST /api/internal/cache-invalidate` webhook lets Epic's batch jobs
+  pre-warm the Redis cache after writing.
+- Past estimates are automatically cleaned up nightly and on page load once
+  their date has passed.
+
+Toggled from Admin → Danger Zone, or hard-locked via the `EPIC_MODE=true`
+env var.
+
+### Screenshots
+
+| Grants Light | Grants Dark |
+|-------|------|
+| ![Grants Epic Mode Light](screenshots/grants-epic-mode-light-mobile.png) | ![Grants Epic Mode Dark](screenshots/grants-epic-mode-dark-mobile.png) |
+
+| Loans Light |
+|-------|
+| ![Loans Epic Mode Light](screenshots/loans-epic-mode-light-mobile.png) |
+
+### Sales in Epic Mode
+
+Only future dates are allowed — Plan Sale only, no Record Sale (you cannot
+record historical sales against data you do not own). Both `$ Target` and
+`# Shares` sizing modes work normally.
+
+### Request Payoff
+
+Each loan row shows a **Request Payoff** button instead of an Edit button.
+This opens a modal that shows the full payoff picture before you commit:
+
+1. **Outstanding balance** — principal + projected interest to the due date
+2. **Shares to sell** — gross-up result (after-tax proceeds ≥ balance)
+3. **Price per share** — share price at the due date
+4. **Est. gross proceeds** — shares × price
+5. **Sale date** — the loan due date
+6. **Lot Allocation table** — shows which lots from the originating grant are consumed, with LT/ST classification
+
+Tap **Confirm Payoff** to create the payoff sale. It appears immediately in
+the Sales list and on the Events timeline as a "Loan Payoff Sale" event.
+
+If a payoff sale for the loan already exists (e.g. auto-created at loan
+setup), Confirm Payoff returns the existing sale rather than creating a
+duplicate.
+
+### Growth Price Estimator
+
+Project future share prices via annual % growth from the current price.
+Default start date is the next March 1 (matching Epic's typical price
+announcement cadence). Generates one price per year through a configurable
+end date. Estimates are visually distinguished (italic, "est." badge) and
+automatically removed when a real price is added for the same date. Tap
+**+ Estimate** on the Prices page.
+
+### Admin controls
+
+**Toggle Epic Mode** — Enable/disable read-only mode for Epic's managed data
+pipeline from Admin → Danger Zone. When active, historical data writes are
+blocked (403). Hard-locked on via `EPIC_MODE=true` env var if you want to
+bypass the admin toggle entirely.
+
+### Environment variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `EPIC_MODE` | No | Set to `true` to hard-lock Epic Mode on at the env level (overrides the admin toggle). Normally leave unset and use the Admin panel toggle instead. |
+| `CACHE_INVALIDATE_SECRET` | No (Epic deployments) | Bearer token secret for `POST /api/internal/cache-invalidate`. Epic's batch systems POST to this endpoint after writing data. **Auto-generated on production deploy** and stored in `.secrets/cache_invalidate_secret`. Read the generated value off the server to configure Epic's webhook caller. Endpoint returns 503 if unset. |
+
+### Epic-Mode-specific API endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/loans/{id}/execute-payoff` | Execute loan payoff — creates a sale (Epic Mode) |
+| POST | `/api/internal/cache-invalidate` | Pre-warm Redis cache (Epic batch webhook; requires `Authorization: Bearer <CACHE_INVALIDATE_SECRET>`) |
+| GET/POST | `/api/admin/epic-mode` | Get/set Epic Mode read-only state (admin only) |
+
+### Code locations
+
+- `backend/scaffold/epic_mode.py` — Epic Mode state (DB-backed, 1s TTL cache, env override)
+- `backend/app/routers/cache.py` — `POST /api/internal/cache-invalidate` webhook
 
 ---
 

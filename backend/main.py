@@ -12,7 +12,7 @@ import database
 
 logger = logging.getLogger(__name__)
 from scaffold.routers import auth_router, admin, notifications, push, sharing, unsubscribe
-from app.routers import grants, loans, prices, events, flows, import_export, sales, cache as cache_router, tips, wizard
+from app.routers import grants, loans, prices, events, flows, import_export, sales, cache as cache_router, tips, wizard, content
 from scaffold.auth import get_current_user
 from scaffold.crypto import encryption_enabled, decrypt_user_key, set_current_key
 from database import get_db
@@ -67,11 +67,16 @@ async def lifespan(app):
 def _bootstrap_system():
     """Ensure system_settings seed rows and master key are initialized on every boot."""
     from scaffold.crypto import initialize_master_key
+    from app.content_service import seed_content_if_empty
     db = database.SessionLocal()
     try:
         initialize_master_key(db)
     except Exception:
         logger.exception("Failed to bootstrap system settings")
+    try:
+        seed_content_if_empty(db)
+    except Exception:
+        logger.exception("Failed to seed wizard content")
     finally:
         db.close()
 
@@ -545,6 +550,7 @@ _fastapi_app.include_router(tips.router)
 _fastapi_app.include_router(wizard.router)
 _fastapi_app.include_router(sharing.router)
 _fastapi_app.include_router(unsubscribe.router)
+_fastapi_app.include_router(content.router)
 
 
 @_fastapi_app.get("/api/health")

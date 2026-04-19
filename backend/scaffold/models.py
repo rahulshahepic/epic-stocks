@@ -306,3 +306,115 @@ class InviteSendingBlock(Base):
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
     reason: Mapped[str] = mapped_column(String, nullable=True)
     blocked_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+# ── Grant program templates + rates (editable by content admins in Phase 2) ──
+
+class GrantTemplate(Base):
+    """Pre-filled defaults for one (year, type) row in the company's grant schedule."""
+    __tablename__ = "grant_templates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    type: Mapped[str] = mapped_column(String, nullable=False)
+    vest_start: Mapped[str] = mapped_column(String, nullable=False)       # YYYY-MM-DD
+    periods: Mapped[int] = mapped_column(Integer, nullable=False)
+    exercise_date: Mapped[str] = mapped_column(String, nullable=False)    # YYYY-MM-DD
+    default_catch_up: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    show_dp_shares: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
+    notes: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint('year', 'type', name='uq_grant_template_year_type'),
+    )
+
+
+class GrantTypeDef(Base):
+    """Grant type metadata (color + description + pre-tax heuristic) driving the type picker."""
+    __tablename__ = "grant_type_defs"
+
+    name: Mapped[str] = mapped_column(String, primary_key=True)
+    color_class: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str] = mapped_column(String, nullable=False)
+    is_pre_tax_when_zero_price: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
+
+
+class BonusScheduleVariant(Base):
+    """Alternate vesting schedules per (grant_year, grant_type) — e.g. 2020 Bonus A/B/C."""
+    __tablename__ = "bonus_schedule_variants"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    grant_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    grant_type: Mapped[str] = mapped_column(String, nullable=False)
+    variant_code: Mapped[str] = mapped_column(String, nullable=False)
+    periods: Mapped[int] = mapped_column(Integer, nullable=False)
+    label: Mapped[str] = mapped_column(String, nullable=False, default="")
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+
+    __table_args__ = (
+        UniqueConstraint('grant_year', 'grant_type', 'variant_code', name='uq_bonus_variant'),
+    )
+
+
+class LoanRate(Base):
+    """Historical loan rate rows. loan_kind ∈ {interest, tax, purchase_original}.
+
+      interest          — one row per year, grant_type is NULL
+      tax               — one row per (grant_type, year)
+      purchase_original — one row per year (original purchase-loan rate + due date), grant_type is NULL
+    """
+    __tablename__ = "loan_rates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    loan_kind: Mapped[str] = mapped_column(String, nullable=False)
+    grant_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    rate: Mapped[float] = mapped_column(Float, nullable=False)
+    due_date: Mapped[str | None] = mapped_column(String, nullable=True)  # YYYY-MM-DD, only for purchase_original
+
+    __table_args__ = (
+        UniqueConstraint('loan_kind', 'grant_type', 'year', name='uq_loan_rate'),
+    )
+
+
+class LoanRefinance(Base):
+    """One entry in a loan refinance chain. chain_kind ∈ {purchase, tax}.
+
+      purchase — grant_type is always 'Purchase'; grouped by grant_year
+      tax      — grouped by (grant_year, grant_type); orig_loan_year identifies the
+                 originating vest year of the tax loan being refinanced
+    """
+    __tablename__ = "loan_refinances"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    chain_kind: Mapped[str] = mapped_column(String, nullable=False)
+    grant_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    grant_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    # For tax chains, the originating vest year of the tax loan.  Unused for purchase chains.
+    orig_loan_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    order_idx: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    date: Mapped[str] = mapped_column(String, nullable=False)              # YYYY-MM-DD refi date
+    rate: Mapped[float] = mapped_column(Float, nullable=False)
+    loan_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    due_date: Mapped[str] = mapped_column(String, nullable=False)          # YYYY-MM-DD new due date after refi
+    orig_due_date: Mapped[str | None] = mapped_column(String, nullable=True)  # tax only: prior due date before refi
+
+
+class GrantProgramSettings(Base):
+    """Singleton row (id=1) holding company-wide defaults for the equity grant program."""
+    __tablename__ = "grant_program_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    loan_term_years: Mapped[int] = mapped_column(Integer, nullable=False, default=10, server_default="10")
+    latest_rate_year: Mapped[int] = mapped_column(Integer, nullable=False, default=2025, server_default="2025")
+    dp_shares_start_year: Mapped[int] = mapped_column(Integer, nullable=False, default=2023, server_default="2023")
+    tax_fallback_federal: Mapped[float] = mapped_column(Float, nullable=False, default=0.37, server_default="0.37")
+    tax_fallback_state: Mapped[float] = mapped_column(Float, nullable=False, default=0.0765, server_default="0.0765")
+    default_purchase_due_month_day_pre2022: Mapped[str] = mapped_column(String, nullable=False, default="07-15", server_default="07-15")
+    default_purchase_due_month_day_post2022: Mapped[str] = mapped_column(String, nullable=False, default="06-30", server_default="06-30")
+    price_years_start: Mapped[int] = mapped_column(Integer, nullable=False, default=2018, server_default="2018")
+    price_years_end: Mapped[int] = mapped_column(Integer, nullable=False, default=2026, server_default="2026")

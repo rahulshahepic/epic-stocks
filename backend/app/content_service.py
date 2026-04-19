@@ -1,20 +1,20 @@
-"""Wizard content loader + idempotent seeder.
+"""Loader + idempotent seeder for the grant-program content tables.
 
-Phase 1: content is read-only from the client's perspective.  All writes (edits
-from content admins) land in Phase 2.  The seed data here must match the values
+Phase 1 exposes these tables read-only via GET /api/content; Phase 2 will add
+write endpoints for content admins.  The seed data here must match the values
 previously hardcoded in frontend/src/app/components/ImportWizard.tsx exactly —
-the regression test in tests/test_content.py asserts this against a golden
-fixture.
+the regression test in tests/test_content.py asserts this against golden
+fixtures.
 """
 from sqlalchemy.orm import Session
 
 from scaffold.models import (
-    ContentGrantTemplate,
-    ContentGrantTypeDef,
-    ContentBonusScheduleVariant,
-    ContentLoanRate,
-    ContentRefiChainEntry,
-    ContentWizardSettings,
+    GrantTemplate,
+    GrantTypeDef,
+    BonusScheduleVariant,
+    LoanRate,
+    LoanRefinance,
+    GrantProgramSettings,
 )
 
 
@@ -74,9 +74,9 @@ for _y, _r, _dd in [
 ]:
     SEED_LOAN_RATES.append(('purchase_original', None, _y, _r, _dd))
 
-# refi chains: (chain_kind, grant_year, grant_type, orig_loan_year, order_idx,
-#               date, rate, loan_year, due_date, orig_due_date)
-SEED_REFI_ENTRIES: list[tuple] = []
+# loan refinances: (chain_kind, grant_year, grant_type, orig_loan_year, order_idx,
+#                   date, rate, loan_year, due_date, orig_due_date)
+SEED_LOAN_REFINANCES: list[tuple] = []
 _PURCHASE_CHAINS = {
     2018: [
         ('2020-01-01', 0.0169, 2020, '2025-07-15'),
@@ -93,12 +93,12 @@ _PURCHASE_CHAINS = {
 }
 for _gy, _entries in _PURCHASE_CHAINS.items():
     for _idx, (_dt, _rt, _ly, _dd) in enumerate(_entries):
-        SEED_REFI_ENTRIES.append(('purchase', _gy, 'Purchase', None, _idx, _dt, _rt, _ly, _dd, None))
-SEED_REFI_ENTRIES.append(
+        SEED_LOAN_REFINANCES.append(('purchase', _gy, 'Purchase', None, _idx, _dt, _rt, _ly, _dd, None))
+SEED_LOAN_REFINANCES.append(
     ('tax', 2020, 'Bonus', 2021, 0, '2021-11-01', 0.0086, 2021, '2029-07-15', '2024-07-15')
 )
 
-SEED_WIZARD_SETTINGS = {
+SEED_GRANT_PROGRAM_SETTINGS = {
     'id': 1,
     'loan_term_years': 10,
     'latest_rate_year': 2025,
@@ -115,51 +115,51 @@ SEED_WIZARD_SETTINGS = {
 # ── Seeding (idempotent; runs on every boot) ────────────────────────────────
 
 def seed_content_if_empty(db: Session) -> None:
-    """Populate content tables from SEED_* constants on a fresh DB.
+    """Populate the grant-program tables from SEED_* constants on a fresh DB.
 
     Idempotent — each table is only seeded if it is empty.  Safe to call on
     every boot; a no-op once a content admin has edited any row.
     """
-    if db.query(ContentGrantTypeDef).count() == 0:
+    if db.query(GrantTypeDef).count() == 0:
         for name, color, desc, is_pre_tax, order in SEED_GRANT_TYPE_DEFS:
-            db.add(ContentGrantTypeDef(
+            db.add(GrantTypeDef(
                 name=name, color_class=color, description=desc,
                 is_pre_tax_when_zero_price=is_pre_tax,
                 display_order=order, active=True,
             ))
 
-    if db.query(ContentGrantTemplate).count() == 0:
+    if db.query(GrantTemplate).count() == 0:
         for idx, (year, typ, vs, periods, ed, dcu) in enumerate(SEED_GRANT_TEMPLATES):
-            db.add(ContentGrantTemplate(
+            db.add(GrantTemplate(
                 year=year, type=typ, vest_start=vs, periods=periods,
                 exercise_date=ed, default_catch_up=dcu,
                 show_dp_shares=(typ == 'Purchase' and year >= 2023),
                 display_order=idx, active=True, notes=None,
             ))
 
-    if db.query(ContentBonusScheduleVariant).count() == 0:
+    if db.query(BonusScheduleVariant).count() == 0:
         for gy, gt, code, periods, label, is_default in SEED_BONUS_VARIANTS:
-            db.add(ContentBonusScheduleVariant(
+            db.add(BonusScheduleVariant(
                 grant_year=gy, grant_type=gt, variant_code=code,
                 periods=periods, label=label, is_default=is_default,
             ))
 
-    if db.query(ContentLoanRate).count() == 0:
+    if db.query(LoanRate).count() == 0:
         for kind, gt, year, rate, due in SEED_LOAN_RATES:
-            db.add(ContentLoanRate(
+            db.add(LoanRate(
                 loan_kind=kind, grant_type=gt, year=year, rate=rate, due_date=due,
             ))
 
-    if db.query(ContentRefiChainEntry).count() == 0:
-        for kind, gy, gt, orig_ly, idx, dt, rate, ly, dd, odd in SEED_REFI_ENTRIES:
-            db.add(ContentRefiChainEntry(
+    if db.query(LoanRefinance).count() == 0:
+        for kind, gy, gt, orig_ly, idx, dt, rate, ly, dd, odd in SEED_LOAN_REFINANCES:
+            db.add(LoanRefinance(
                 chain_kind=kind, grant_year=gy, grant_type=gt,
                 orig_loan_year=orig_ly, order_idx=idx,
                 date=dt, rate=rate, loan_year=ly, due_date=dd, orig_due_date=odd,
             ))
 
-    if db.query(ContentWizardSettings).count() == 0:
-        db.add(ContentWizardSettings(**SEED_WIZARD_SETTINGS))
+    if db.query(GrantProgramSettings).count() == 0:
+        db.add(GrantProgramSettings(**SEED_GRANT_PROGRAM_SETTINGS))
 
     db.commit()
 
@@ -167,26 +167,26 @@ def seed_content_if_empty(db: Session) -> None:
 # ── Content loader ──────────────────────────────────────────────────────────
 
 def load_content(db: Session) -> dict:
-    """Return the full content blob in the shape the frontend wizard consumes."""
-    templates = db.query(ContentGrantTemplate).order_by(
-        ContentGrantTemplate.display_order, ContentGrantTemplate.id
+    """Return the full grant-program blob in the shape the frontend consumes."""
+    templates = db.query(GrantTemplate).order_by(
+        GrantTemplate.display_order, GrantTemplate.id
     ).all()
-    type_defs = db.query(ContentGrantTypeDef).order_by(
-        ContentGrantTypeDef.display_order, ContentGrantTypeDef.name
+    type_defs = db.query(GrantTypeDef).order_by(
+        GrantTypeDef.display_order, GrantTypeDef.name
     ).all()
-    variants = db.query(ContentBonusScheduleVariant).order_by(
-        ContentBonusScheduleVariant.grant_year,
-        ContentBonusScheduleVariant.grant_type,
-        ContentBonusScheduleVariant.variant_code,
+    variants = db.query(BonusScheduleVariant).order_by(
+        BonusScheduleVariant.grant_year,
+        BonusScheduleVariant.grant_type,
+        BonusScheduleVariant.variant_code,
     ).all()
-    rates = db.query(ContentLoanRate).all()
-    refi_entries = db.query(ContentRefiChainEntry).order_by(
-        ContentRefiChainEntry.chain_kind,
-        ContentRefiChainEntry.grant_year,
-        ContentRefiChainEntry.grant_type,
-        ContentRefiChainEntry.order_idx,
+    rates = db.query(LoanRate).all()
+    refi_entries = db.query(LoanRefinance).order_by(
+        LoanRefinance.chain_kind,
+        LoanRefinance.grant_year,
+        LoanRefinance.grant_type,
+        LoanRefinance.order_idx,
     ).all()
-    settings_row = db.query(ContentWizardSettings).filter(ContentWizardSettings.id == 1).one_or_none()
+    settings_row = db.query(GrantProgramSettings).filter(GrantProgramSettings.id == 1).one_or_none()
 
     # Shape rates as nested dicts to match the frontend constants
     interest_rates: dict[str, float] = {}
@@ -202,7 +202,7 @@ def load_content(db: Session) -> dict:
         elif r.loan_kind == 'purchase_original':
             purchase_original[year_str] = {'rate': r.rate, 'due_date': r.due_date}
 
-    # Refi chains keyed the way the wizard expects
+    # Refinance chains keyed the way the wizard expects
     purchase_chains: dict[str, list[dict]] = {}
     tax_chains: dict[str, list[dict]] = {}
     for e in refi_entries:
@@ -215,7 +215,6 @@ def load_content(db: Session) -> dict:
         if e.chain_kind == 'purchase':
             purchase_chains.setdefault(str(e.grant_year), []).append(entry)
         elif e.chain_kind == 'tax':
-            # Tax chain entries carry original+new due dates
             tax_entry = {
                 **entry,
                 'orig_due_date': e.orig_due_date,
@@ -223,8 +222,10 @@ def load_content(db: Session) -> dict:
             key = f"{e.grant_year}-{e.grant_type}-{e.orig_loan_year}"
             tax_chains.setdefault(key, []).append(tax_entry)
 
+    defaults = SEED_GRANT_PROGRAM_SETTINGS
+
     return {
-        'grant_schedule': [
+        'grant_templates': [
             {
                 'year': t.year,
                 'type': t.type,
@@ -262,19 +263,19 @@ def load_content(db: Session) -> dict:
             'tax': tax_rates,
             'purchase_original': purchase_original,
         },
-        'refi_chains': {
+        'loan_refinances': {
             'purchase': purchase_chains,
             'tax': tax_chains,
         },
-        'wizard_settings': {
-            'loan_term_years': settings_row.loan_term_years if settings_row else SEED_WIZARD_SETTINGS['loan_term_years'],
-            'latest_rate_year': settings_row.latest_rate_year if settings_row else SEED_WIZARD_SETTINGS['latest_rate_year'],
-            'dp_shares_start_year': settings_row.dp_shares_start_year if settings_row else SEED_WIZARD_SETTINGS['dp_shares_start_year'],
-            'tax_fallback_federal': settings_row.tax_fallback_federal if settings_row else SEED_WIZARD_SETTINGS['tax_fallback_federal'],
-            'tax_fallback_state': settings_row.tax_fallback_state if settings_row else SEED_WIZARD_SETTINGS['tax_fallback_state'],
-            'default_purchase_due_month_day_pre2022': settings_row.default_purchase_due_month_day_pre2022 if settings_row else SEED_WIZARD_SETTINGS['default_purchase_due_month_day_pre2022'],
-            'default_purchase_due_month_day_post2022': settings_row.default_purchase_due_month_day_post2022 if settings_row else SEED_WIZARD_SETTINGS['default_purchase_due_month_day_post2022'],
-            'price_years_start': settings_row.price_years_start if settings_row else SEED_WIZARD_SETTINGS['price_years_start'],
-            'price_years_end': settings_row.price_years_end if settings_row else SEED_WIZARD_SETTINGS['price_years_end'],
+        'grant_program_settings': {
+            'loan_term_years': settings_row.loan_term_years if settings_row else defaults['loan_term_years'],
+            'latest_rate_year': settings_row.latest_rate_year if settings_row else defaults['latest_rate_year'],
+            'dp_shares_start_year': settings_row.dp_shares_start_year if settings_row else defaults['dp_shares_start_year'],
+            'tax_fallback_federal': settings_row.tax_fallback_federal if settings_row else defaults['tax_fallback_federal'],
+            'tax_fallback_state': settings_row.tax_fallback_state if settings_row else defaults['tax_fallback_state'],
+            'default_purchase_due_month_day_pre2022': settings_row.default_purchase_due_month_day_pre2022 if settings_row else defaults['default_purchase_due_month_day_pre2022'],
+            'default_purchase_due_month_day_post2022': settings_row.default_purchase_due_month_day_post2022 if settings_row else defaults['default_purchase_due_month_day_post2022'],
+            'price_years_start': settings_row.price_years_start if settings_row else defaults['price_years_start'],
+            'price_years_end': settings_row.price_years_end if settings_row else defaults['price_years_end'],
         },
     }

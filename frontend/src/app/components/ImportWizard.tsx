@@ -503,7 +503,7 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
   content: ContentBlob
 }) {
   // ── Content-derived constants (previously module-level hardcoded values) ──
-  const EPIC_GRANT_SCHEDULE: KnownGrant[] = content.grant_schedule.map(g => ({
+  const EPIC_GRANT_SCHEDULE: KnownGrant[] = content.grant_templates.map(g => ({
     year: g.year,
     type: g.type as 'Purchase' | 'Bonus' | 'Free',
     vest_start: g.vest_start,
@@ -528,13 +528,13 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
   const BONUS_VARIANT_KEYS = new Set(
     content.bonus_schedule_variants.map(v => `${v.grant_year}-${v.grant_type}`),
   )
-  const LOAN_TERM_YEARS = content.wizard_settings.loan_term_years
-  const LATEST_RATE_YEAR = content.wizard_settings.latest_rate_year
-  const DP_SHARES_START_YEAR = content.wizard_settings.dp_shares_start_year
+  const LOAN_TERM_YEARS = content.grant_program_settings.loan_term_years
+  const LATEST_RATE_YEAR = content.grant_program_settings.latest_rate_year
+  const DP_SHARES_START_YEAR = content.grant_program_settings.dp_shares_start_year
   const FALLBACK_TAX_RATE =
-    content.wizard_settings.tax_fallback_federal + content.wizard_settings.tax_fallback_state
+    content.grant_program_settings.tax_fallback_federal + content.grant_program_settings.tax_fallback_state
   const PRICE_YEARS: number[] = []
-  for (let y = content.wizard_settings.price_years_start; y <= content.wizard_settings.price_years_end; y++) {
+  for (let y = content.grant_program_settings.price_years_start; y <= content.grant_program_settings.price_years_end; y++) {
     PRICE_YEARS.push(y)
   }
   const INTEREST_LOAN_RATES: Record<number, number> = Object.fromEntries(
@@ -554,14 +554,14 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
   )
   const PURCHASE_REFI_CHAINS: Record<number, { date: string; rate: number; loanYear: number; dueDate: string }[]> =
     Object.fromEntries(
-      Object.entries(content.refi_chains.purchase).map(([k, arr]) => [
+      Object.entries(content.loan_refinances.purchase).map(([k, arr]) => [
         Number(k),
         arr.map(e => ({ date: e.date, rate: e.rate, loanYear: e.loan_year, dueDate: e.due_date })),
       ]),
     )
   const TAX_LOAN_REFIS: Record<string, { date: string; rate: number; loanYear: number; origDueDate: string; newDueDate: string }[]> =
     Object.fromEntries(
-      Object.entries(content.refi_chains.tax).map(([k, arr]) => [
+      Object.entries(content.loan_refinances.tax).map(([k, arr]) => [
         k,
         arr.map(e => ({
           date: e.date, rate: e.rate, loanYear: e.loan_year,
@@ -1211,8 +1211,8 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
     function dueDate(grantYear: number): string {
       const dueYear = grantYear + 9
       return grantYear >= 2022
-        ? `${dueYear}-${content.wizard_settings.default_purchase_due_month_day_post2022}`
-        : `${dueYear}-${content.wizard_settings.default_purchase_due_month_day_pre2022}`
+        ? `${dueYear}-${content.grant_program_settings.default_purchase_due_month_day_post2022}`
+        : `${dueYear}-${content.grant_program_settings.default_purchase_due_month_day_pre2022}`
     }
 
     // Helper to push a reviewed loan

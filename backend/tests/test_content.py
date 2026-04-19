@@ -26,9 +26,9 @@ def test_content_requires_auth(client):
     assert resp.status_code == 401
 
 
-def test_grant_schedule_matches_epic(client):
+def test_grant_templates_match_epic(client):
     data = _get(client)
-    schedule = data["grant_schedule"]
+    schedule = data["grant_templates"]
     expected = [
         (2018, "Purchase", "2020-06-15", 6, "2018-12-31", True,  False),
         (2019, "Purchase", "2021-06-15", 6, "2019-12-31", True,  False),
@@ -132,7 +132,7 @@ def test_purchase_original_loans(client):
 
 def test_purchase_refi_chains(client):
     data = _get(client)
-    chains = data["refi_chains"]["purchase"]
+    chains = data["loan_refinances"]["purchase"]
     assert chains["2018"] == [
         {"date": "2020-01-01", "rate": 0.0169, "loan_year": 2020, "due_date": "2025-07-15"},
         {"date": "2020-06-01", "rate": 0.0043, "loan_year": 2020, "due_date": "2025-07-15"},
@@ -149,7 +149,7 @@ def test_purchase_refi_chains(client):
 
 def test_tax_refi_chains(client):
     data = _get(client)
-    tax_chains = data["refi_chains"]["tax"]
+    tax_chains = data["loan_refinances"]["tax"]
     assert tax_chains == {
         "2020-Bonus-2021": [
             {
@@ -163,9 +163,9 @@ def test_tax_refi_chains(client):
     }
 
 
-def test_wizard_settings(client):
+def test_grant_program_settings(client):
     data = _get(client)
-    settings = data["wizard_settings"]
+    settings = data["grant_program_settings"]
     assert settings["loan_term_years"] == 10
     assert settings["latest_rate_year"] == 2025
     assert settings["dp_shares_start_year"] == 2023
@@ -180,11 +180,11 @@ def test_wizard_settings(client):
 def test_seed_is_idempotent(client, db_session):
     """Calling seed_content_if_empty again after it ran via lifespan must be a no-op."""
     from app.content_service import seed_content_if_empty
-    from scaffold.models import ContentGrantTemplate, ContentLoanRate
-    before_templates = db_session.query(ContentGrantTemplate).count()
-    before_rates = db_session.query(ContentLoanRate).count()
+    from scaffold.models import GrantTemplate, LoanRate
+    before_templates = db_session.query(GrantTemplate).count()
+    before_rates = db_session.query(LoanRate).count()
     assert before_templates > 0
     assert before_rates > 0
     seed_content_if_empty(db_session)
-    assert db_session.query(ContentGrantTemplate).count() == before_templates
-    assert db_session.query(ContentLoanRate).count() == before_rates
+    assert db_session.query(GrantTemplate).count() == before_templates
+    assert db_session.query(LoanRate).count() == before_rates

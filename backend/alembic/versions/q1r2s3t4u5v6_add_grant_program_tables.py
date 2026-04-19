@@ -1,8 +1,10 @@
-"""seed wizard content
+"""add grant program tables
 
-Creates six content tables that replace the hardcoded wizard constants in
-frontend/src/app/components/ImportWizard.tsx and seeds them with the current
-Epic values so wizard behavior is byte-for-byte unchanged.
+Creates six tables that hold the company's grant-program templates and rate
+history (previously hardcoded in frontend/src/app/components/ImportWizard.tsx):
+grant_templates, grant_type_defs, bonus_schedule_variants, loan_rates,
+loan_refinances, grant_program_settings.  Seed data is populated on the next
+lifespan boot via app.content_service.seed_content_if_empty().
 
 Revision ID: q1r2s3t4u5v6
 Revises: p0q1r2s3t4u5
@@ -23,7 +25,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     op.create_table(
-        'content_grant_templates',
+        'grant_templates',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('year', sa.Integer(), nullable=False),
         sa.Column('type', sa.String(), nullable=False),
@@ -36,11 +38,11 @@ def upgrade() -> None:
         sa.Column('active', sa.Boolean(), nullable=False, server_default='1'),
         sa.Column('notes', sa.String(), nullable=True),
         sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('year', 'type', name='uq_content_grant_template_year_type'),
+        sa.UniqueConstraint('year', 'type', name='uq_grant_template_year_type'),
     )
 
     op.create_table(
-        'content_grant_type_defs',
+        'grant_type_defs',
         sa.Column('name', sa.String(), nullable=False),
         sa.Column('color_class', sa.String(), nullable=False),
         sa.Column('description', sa.String(), nullable=False),
@@ -51,7 +53,7 @@ def upgrade() -> None:
     )
 
     op.create_table(
-        'content_bonus_schedule_variants',
+        'bonus_schedule_variants',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('grant_year', sa.Integer(), nullable=False),
         sa.Column('grant_type', sa.String(), nullable=False),
@@ -60,11 +62,11 @@ def upgrade() -> None:
         sa.Column('label', sa.String(), nullable=False, server_default=''),
         sa.Column('is_default', sa.Boolean(), nullable=False, server_default='0'),
         sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('grant_year', 'grant_type', 'variant_code', name='uq_content_bonus_variant'),
+        sa.UniqueConstraint('grant_year', 'grant_type', 'variant_code', name='uq_bonus_variant'),
     )
 
     op.create_table(
-        'content_loan_rates',
+        'loan_rates',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('loan_kind', sa.String(), nullable=False),
         sa.Column('grant_type', sa.String(), nullable=True),
@@ -72,11 +74,11 @@ def upgrade() -> None:
         sa.Column('rate', sa.Float(), nullable=False),
         sa.Column('due_date', sa.String(), nullable=True),
         sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('loan_kind', 'grant_type', 'year', name='uq_content_loan_rate'),
+        sa.UniqueConstraint('loan_kind', 'grant_type', 'year', name='uq_loan_rate'),
     )
 
     op.create_table(
-        'content_refi_chain_entries',
+        'loan_refinances',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('chain_kind', sa.String(), nullable=False),
         sa.Column('grant_year', sa.Integer(), nullable=False),
@@ -92,7 +94,7 @@ def upgrade() -> None:
     )
 
     op.create_table(
-        'content_wizard_settings',
+        'grant_program_settings',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('loan_term_years', sa.Integer(), nullable=False, server_default='10'),
         sa.Column('latest_rate_year', sa.Integer(), nullable=False, server_default='2025'),
@@ -112,13 +114,10 @@ def upgrade() -> None:
     # deployments in sync — both pass through the same idempotent seeder.
 
 
-    # (Seed data lives in app.content_service and runs on every boot.)
-
-
 def downgrade() -> None:
-    op.drop_table('content_wizard_settings')
-    op.drop_table('content_refi_chain_entries')
-    op.drop_table('content_loan_rates')
-    op.drop_table('content_bonus_schedule_variants')
-    op.drop_table('content_grant_type_defs')
-    op.drop_table('content_grant_templates')
+    op.drop_table('grant_program_settings')
+    op.drop_table('loan_refinances')
+    op.drop_table('loan_rates')
+    op.drop_table('bonus_schedule_variants')
+    op.drop_table('grant_type_defs')
+    op.drop_table('grant_templates')

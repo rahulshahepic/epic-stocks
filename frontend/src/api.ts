@@ -866,9 +866,9 @@ export interface SharedAccount {
 }
 
 
-// ── Wizard content (from GET /api/content) ──────────────────────────────────
+// ── Grant program content (from GET /api/content) ──────────────────────────
 
-export interface ContentGrantScheduleEntry {
+export interface GrantTemplate {
   year: number
   type: string
   vest_start: string
@@ -878,7 +878,7 @@ export interface ContentGrantScheduleEntry {
   show_dp_shares: boolean
 }
 
-export interface ContentGrantTypeDef {
+export interface GrantTypeDef {
   name: string
   color_class: string
   description: string
@@ -886,7 +886,7 @@ export interface ContentGrantTypeDef {
   display_order: number
 }
 
-export interface ContentBonusScheduleVariant {
+export interface BonusScheduleVariant {
   grant_year: number
   grant_type: string
   variant_code: string
@@ -895,23 +895,23 @@ export interface ContentBonusScheduleVariant {
   is_default: boolean
 }
 
-export interface ContentPurchaseOriginalLoan {
+export interface PurchaseOriginalLoan {
   rate: number
   due_date: string
 }
 
-export interface ContentPurchaseRefiEntry {
+export interface LoanRefinance {
   date: string
   rate: number
   loan_year: number
   due_date: string
 }
 
-export interface ContentTaxRefiEntry extends ContentPurchaseRefiEntry {
+export interface TaxLoanRefinance extends LoanRefinance {
   orig_due_date: string
 }
 
-export interface ContentWizardSettings {
+export interface GrantProgramSettings {
   loan_term_years: number
   latest_rate_year: number
   dp_shares_start_year: number
@@ -924,17 +924,17 @@ export interface ContentWizardSettings {
 }
 
 export interface ContentBlob {
-  grant_schedule: ContentGrantScheduleEntry[]
-  grant_type_defs: ContentGrantTypeDef[]
-  bonus_schedule_variants: ContentBonusScheduleVariant[]
+  grant_templates: GrantTemplate[]
+  grant_type_defs: GrantTypeDef[]
+  bonus_schedule_variants: BonusScheduleVariant[]
   loan_rates: {
     interest: Record<string, number>
     tax: Record<string, Record<string, number>>
-    purchase_original: Record<string, ContentPurchaseOriginalLoan>
+    purchase_original: Record<string, PurchaseOriginalLoan>
   }
-  refi_chains: {
-    purchase: Record<string, ContentPurchaseRefiEntry[]>
-    tax: Record<string, ContentTaxRefiEntry[]>
+  loan_refinances: {
+    purchase: Record<string, LoanRefinance[]>
+    tax: Record<string, TaxLoanRefinance[]>
   }
-  wizard_settings: ContentWizardSettings
+  grant_program_settings: GrantProgramSettings
 }

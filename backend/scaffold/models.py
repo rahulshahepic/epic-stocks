@@ -308,11 +308,11 @@ class InviteSendingBlock(Base):
     blocked_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
-# ── Wizard content (editable by content admins in Phase 2; read-only in Phase 1) ──
+# ── Grant program templates + rates (editable by content admins in Phase 2) ──
 
-class ContentGrantTemplate(Base):
-    """One row per (year, type) in the Epic grant schedule used to pre-populate the wizard."""
-    __tablename__ = "content_grant_templates"
+class GrantTemplate(Base):
+    """Pre-filled defaults for one (year, type) row in the company's grant schedule."""
+    __tablename__ = "grant_templates"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     year: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -327,13 +327,13 @@ class ContentGrantTemplate(Base):
     notes: Mapped[str | None] = mapped_column(String, nullable=True)
 
     __table_args__ = (
-        UniqueConstraint('year', 'type', name='uq_content_grant_template_year_type'),
+        UniqueConstraint('year', 'type', name='uq_grant_template_year_type'),
     )
 
 
-class ContentGrantTypeDef(Base):
+class GrantTypeDef(Base):
     """Grant type metadata (color + description + pre-tax heuristic) driving the type picker."""
-    __tablename__ = "content_grant_type_defs"
+    __tablename__ = "grant_type_defs"
 
     name: Mapped[str] = mapped_column(String, primary_key=True)
     color_class: Mapped[str] = mapped_column(String, nullable=False)
@@ -343,9 +343,9 @@ class ContentGrantTypeDef(Base):
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
 
 
-class ContentBonusScheduleVariant(Base):
+class BonusScheduleVariant(Base):
     """Alternate vesting schedules per (grant_year, grant_type) — e.g. 2020 Bonus A/B/C."""
-    __tablename__ = "content_bonus_schedule_variants"
+    __tablename__ = "bonus_schedule_variants"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     grant_year: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -356,18 +356,18 @@ class ContentBonusScheduleVariant(Base):
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
 
     __table_args__ = (
-        UniqueConstraint('grant_year', 'grant_type', 'variant_code', name='uq_content_bonus_variant'),
+        UniqueConstraint('grant_year', 'grant_type', 'variant_code', name='uq_bonus_variant'),
     )
 
 
-class ContentLoanRate(Base):
+class LoanRate(Base):
     """Historical loan rate rows. loan_kind ∈ {interest, tax, purchase_original}.
 
       interest          — one row per year, grant_type is NULL
       tax               — one row per (grant_type, year)
       purchase_original — one row per year (original purchase-loan rate + due date), grant_type is NULL
     """
-    __tablename__ = "content_loan_rates"
+    __tablename__ = "loan_rates"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     loan_kind: Mapped[str] = mapped_column(String, nullable=False)
@@ -377,20 +377,18 @@ class ContentLoanRate(Base):
     due_date: Mapped[str | None] = mapped_column(String, nullable=True)  # YYYY-MM-DD, only for purchase_original
 
     __table_args__ = (
-        UniqueConstraint('loan_kind', 'grant_type', 'year', name='uq_content_loan_rate'),
+        UniqueConstraint('loan_kind', 'grant_type', 'year', name='uq_loan_rate'),
     )
 
 
-class ContentRefiChainEntry(Base):
-    """Refinance chain entries. chain_kind ∈ {purchase, tax}.
+class LoanRefinance(Base):
+    """One entry in a loan refinance chain. chain_kind ∈ {purchase, tax}.
 
-      purchase — grant_type is always 'Purchase' (stored for uniformity); grouped by grant_year
-      tax      — grouped by (grant_year, grant_type); each entry represents a refi of the tax
-                 loan originated in 'loan_year' (stored as grant_year+firstVestYearOffset elsewhere).
-                 We store the originating vest year as 'loan_year' for tax rows and use
-                 grant_year as the Epic grant year.
+      purchase — grant_type is always 'Purchase'; grouped by grant_year
+      tax      — grouped by (grant_year, grant_type); orig_loan_year identifies the
+                 originating vest year of the tax loan being refinanced
     """
-    __tablename__ = "content_refi_chain_entries"
+    __tablename__ = "loan_refinances"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     chain_kind: Mapped[str] = mapped_column(String, nullable=False)
@@ -406,9 +404,9 @@ class ContentRefiChainEntry(Base):
     orig_due_date: Mapped[str | None] = mapped_column(String, nullable=True)  # tax only: prior due date before refi
 
 
-class ContentWizardSettings(Base):
-    """Singleton row (id=1) with wizard-wide settings."""
-    __tablename__ = "content_wizard_settings"
+class GrantProgramSettings(Base):
+    """Singleton row (id=1) holding company-wide defaults for the equity grant program."""
+    __tablename__ = "grant_program_settings"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     loan_term_years: Mapped[int] = mapped_column(Integer, nullable=False, default=10, server_default="10")

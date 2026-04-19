@@ -15,7 +15,7 @@ beforeEach(() => {
 
 // Matches the seeded Epic values in backend/app/content_service.py.
 const MOCK_CONTENT = {
-  grant_schedule: [
+  grant_templates: [
     { year: 2018, type: 'Purchase', vest_start: '2020-06-15', periods: 6, exercise_date: '2018-12-31', default_catch_up: true,  show_dp_shares: false },
     { year: 2019, type: 'Purchase', vest_start: '2021-06-15', periods: 6, exercise_date: '2019-12-31', default_catch_up: true,  show_dp_shares: false },
     { year: 2020, type: 'Purchase', vest_start: '2021-09-30', periods: 5, exercise_date: '2020-12-31', default_catch_up: true,  show_dp_shares: false },
@@ -60,7 +60,7 @@ const MOCK_CONTENT = {
       '2025': { rate: 0.0406, due_date: '2034-06-30' },
     },
   },
-  refi_chains: {
+  loan_refinances: {
     purchase: {
       '2018': [
         { date: '2020-01-01', rate: 0.0169, loan_year: 2020, due_date: '2025-07-15' },
@@ -81,7 +81,7 @@ const MOCK_CONTENT = {
       ],
     },
   },
-  wizard_settings: {
+  grant_program_settings: {
     loan_term_years: 10,
     latest_rate_year: 2025,
     dp_shares_start_year: 2023,

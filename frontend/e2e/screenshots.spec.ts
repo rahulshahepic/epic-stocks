@@ -192,8 +192,8 @@ test.describe('Screenshots', () => {
     await authedPage(page, MOBILE, 'light')
     await page.goto(`${BASE}/wizard`)
     await page.waitForLoadState('networkidle')
-    // Navigate through: "Start from scratch" → prices → grant entry
-    await page.click('text=Start from scratch')
+    // Welcome screen → Manual entry → prices → "Next: Add grants" → grant entry.
+    await page.click('text=Manual entry')
     await page.waitForTimeout(300)
     await page.click('text=Next: Add grants')
     await page.waitForTimeout(300)

@@ -343,6 +343,7 @@ export const api = {
 
   // Wizard content (read by any logged-in user; writes gated by content-admin)
   getContent: () => apiFetch<ContentBlob>('/api/content'),
+  getAdminContent: () => apiFetch<AdminContentBlob>('/api/content/admin'),
   createGrantTemplate: (data: GrantTemplateCreate) =>
     post<{ id: number }>('/api/content/grant-templates', data),
   updateGrantTemplate: (id: number, data: Partial<GrantTemplateCreate>) =>
@@ -1006,5 +1007,53 @@ export interface ContentBlob {
     purchase: Record<string, LoanRefinance[]>
     tax: Record<string, TaxLoanRefinance[]>
   }
+  grant_program_settings: GrantProgramSettings
+}
+
+// Admin-shaped blob: flat lists keyed by row id so the admin UI can edit/delete individual rows.
+export interface AdminGrantTemplate extends GrantTemplate {
+  id: number
+  display_order: number
+  active: boolean
+  notes: string | null
+}
+
+export interface AdminGrantTypeDef extends GrantTypeDef {
+  active: boolean
+}
+
+export interface AdminBonusScheduleVariant extends BonusScheduleVariant {
+  id: number
+}
+
+export interface AdminLoanRate {
+  id: number
+  loan_kind: 'interest' | 'tax' | 'purchase_original'
+  grant_type: string | null
+  year: number
+  rate: number
+  due_date: string | null
+}
+
+export interface AdminLoanRefinance {
+  id: number
+  chain_kind: 'purchase' | 'tax'
+  grant_year: number
+  grant_type: string | null
+  orig_loan_year: number | null
+  order_idx: number
+  date: string
+  rate: number
+  loan_year: number
+  due_date: string
+  orig_due_date: string | null
+}
+
+export interface AdminContentBlob {
+  grant_templates: AdminGrantTemplate[]
+  grant_type_defs: AdminGrantTypeDef[]
+  bonus_schedule_variants: AdminBonusScheduleVariant[]
+  loan_rates: AdminLoanRate[]
+  loan_refinances: AdminLoanRefinance[]
   grant_program_settings: GrantProgramSettings
 }

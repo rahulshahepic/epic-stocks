@@ -46,6 +46,119 @@ def get_content(
     return load_content(db)
 
 
+@router.get("/admin")
+def get_admin_content(
+    _admin: User = Depends(get_content_admin_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Return the same content as GET /api/content but as flat lists keyed by row id.
+
+    Used by the content-admin UI so it can edit and delete individual rows.
+    """
+    templates = db.query(GrantTemplate).order_by(
+        GrantTemplate.display_order, GrantTemplate.id
+    ).all()
+    type_defs = db.query(GrantTypeDef).order_by(
+        GrantTypeDef.display_order, GrantTypeDef.name
+    ).all()
+    variants = db.query(BonusScheduleVariant).order_by(
+        BonusScheduleVariant.grant_year,
+        BonusScheduleVariant.grant_type,
+        BonusScheduleVariant.variant_code,
+    ).all()
+    rates = db.query(LoanRate).order_by(
+        LoanRate.loan_kind, LoanRate.grant_type, LoanRate.year
+    ).all()
+    refis = db.query(LoanRefinance).order_by(
+        LoanRefinance.chain_kind,
+        LoanRefinance.grant_year,
+        LoanRefinance.grant_type,
+        LoanRefinance.order_idx,
+    ).all()
+    settings_row = db.query(GrantProgramSettings).filter(GrantProgramSettings.id == 1).one_or_none()
+
+    return {
+        "grant_templates": [
+            {
+                "id": t.id,
+                "year": t.year,
+                "type": t.type,
+                "vest_start": t.vest_start,
+                "periods": t.periods,
+                "exercise_date": t.exercise_date,
+                "default_catch_up": bool(t.default_catch_up),
+                "show_dp_shares": bool(t.show_dp_shares),
+                "display_order": t.display_order,
+                "active": bool(t.active),
+                "notes": t.notes,
+            }
+            for t in templates
+        ],
+        "grant_type_defs": [
+            {
+                "name": td.name,
+                "color_class": td.color_class,
+                "description": td.description,
+                "is_pre_tax_when_zero_price": bool(td.is_pre_tax_when_zero_price),
+                "display_order": td.display_order,
+                "active": bool(td.active),
+            }
+            for td in type_defs
+        ],
+        "bonus_schedule_variants": [
+            {
+                "id": v.id,
+                "grant_year": v.grant_year,
+                "grant_type": v.grant_type,
+                "variant_code": v.variant_code,
+                "periods": v.periods,
+                "label": v.label,
+                "is_default": bool(v.is_default),
+            }
+            for v in variants
+        ],
+        "loan_rates": [
+            {
+                "id": r.id,
+                "loan_kind": r.loan_kind,
+                "grant_type": r.grant_type,
+                "year": r.year,
+                "rate": r.rate,
+                "due_date": r.due_date,
+            }
+            for r in rates
+        ],
+        "loan_refinances": [
+            {
+                "id": r.id,
+                "chain_kind": r.chain_kind,
+                "grant_year": r.grant_year,
+                "grant_type": r.grant_type,
+                "orig_loan_year": r.orig_loan_year,
+                "order_idx": r.order_idx,
+                "date": r.date,
+                "rate": r.rate,
+                "loan_year": r.loan_year,
+                "due_date": r.due_date,
+                "orig_due_date": r.orig_due_date,
+            }
+            for r in refis
+        ],
+        "grant_program_settings": {
+            "loan_term_years": settings_row.loan_term_years if settings_row else 10,
+            "latest_rate_year": settings_row.latest_rate_year if settings_row else 2025,
+            "dp_shares_start_year": settings_row.dp_shares_start_year if settings_row else 2023,
+            "tax_fallback_federal": settings_row.tax_fallback_federal if settings_row else 0.37,
+            "tax_fallback_state": settings_row.tax_fallback_state if settings_row else 0.0765,
+            "default_purchase_due_month_day_pre2022": settings_row.default_purchase_due_month_day_pre2022 if settings_row else "07-15",
+            "default_purchase_due_month_day_post2022": settings_row.default_purchase_due_month_day_post2022 if settings_row else "06-30",
+            "price_years_start": settings_row.price_years_start if settings_row else 2018,
+            "price_years_end": settings_row.price_years_end if settings_row else 2026,
+            "flexible_payoff_enabled": bool(settings_row.flexible_payoff_enabled) if settings_row else False,
+        },
+    }
+
+
 def _commit_or_409(db: Session, msg: str = "Constraint violation"):
     try:
         db.commit()

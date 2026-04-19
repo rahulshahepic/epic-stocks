@@ -26,8 +26,6 @@ WI_DEFAULTS = {
     "lt_holding_days": 365,
     "lot_selection_method": "lifo",
     "prefer_stock_dp": 0,
-    "dp_min_percent": 0.10,
-    "dp_min_cap": 20000.0,
 }
 
 

@@ -22,6 +22,7 @@ const CONTENT = {
   loan_refinances_all: [],
   grant_program_settings: {
     tax_fallback_federal: 0.37, tax_fallback_state: 0.0765,
+    dp_min_percent: 0.10, dp_min_cap: 20000,
     flexible_payoff_enabled: false,
     price_years_start: 2018, price_years_end: 2026,
   },

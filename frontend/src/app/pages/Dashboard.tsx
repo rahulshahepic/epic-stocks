@@ -466,8 +466,6 @@ const WI_TAX_DEFAULTS: TaxSettings = {
   loan_payoff_method: 'epic_lifo',
   flexible_payoff_enabled: false,
   prefer_stock_dp: false,
-  dp_min_percent: 0.10,
-  dp_min_cap: 20000,
   deduct_investment_interest: false,
   deduction_excluded_years: null,
   taxable_years: [],

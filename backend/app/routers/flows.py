@@ -5,7 +5,7 @@ from pydantic import BaseModel, field_validator
 from datetime import date, date as date_cls
 
 from database import get_db
-from scaffold.models import User, Grant, Loan, Price, Sale, TaxSettings
+from scaffold.models import User, Grant, Loan, Price, Sale, TaxSettings, GrantProgramSettings
 from schemas import GrantOut, LoanOut, PriceOut, GrowthPriceRequest
 from scaffold.auth import get_current_user
 
@@ -112,12 +112,10 @@ class AddBonusRequest(BaseModel):
         return v
 
 
-def _compute_min_dp(total_purchase: float, ts: TaxSettings | None) -> float:
-    """Return the minimum required down-payment amount based on user's DP rules."""
-    if ts is None:
-        return 0.0
-    pct = ts.dp_min_percent if ts.dp_min_percent is not None else 0.10
-    cap = ts.dp_min_cap if ts.dp_min_cap is not None else 20000.0
+def _compute_min_dp(total_purchase: float, settings: GrantProgramSettings | None) -> float:
+    """Return the minimum required down-payment amount from company-wide DP policy."""
+    pct = settings.dp_min_percent if settings is not None else 0.10
+    cap = settings.dp_min_cap if settings is not None else 20000.0
     if pct <= 0 and cap <= 0:
         return 0.0
     return min(pct * total_purchase, cap)
@@ -132,8 +130,9 @@ def new_purchase(body: NewPurchaseRequest, user: User = Depends(get_current_user
         raise HTTPException(status_code=409, detail=f"A Purchase grant for {body.year} already exists")
 
     ts = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
+    program_settings = db.query(GrantProgramSettings).filter(GrantProgramSettings.id == 1).one_or_none()
     total_purchase = body.shares * body.price
-    min_dp = _compute_min_dp(total_purchase, ts)
+    min_dp = _compute_min_dp(total_purchase, program_settings)
 
     dp_shares = body.dp_shares  # negative int or 0
     loan_amount = body.loan_amount

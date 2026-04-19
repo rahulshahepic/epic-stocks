@@ -388,8 +388,6 @@ class TaxSettingsRead(BaseModel):
     loan_payoff_method: str = 'epic_lifo'
     flexible_payoff_enabled: bool = False  # virtual field; populated from grant_program_settings by the endpoint
     prefer_stock_dp: bool = False
-    dp_min_percent: float = 0.10
-    dp_min_cap: float = 20000.0
     deduct_investment_interest: bool = False
     deduction_excluded_years: list[int] | None = None
     taxable_years: list[int] = []  # virtual field; populated by the endpoint
@@ -407,8 +405,6 @@ class TaxSettingsUpdate(BaseModel):
     lot_selection_method: str | None = None
     loan_payoff_method: str | None = None
     prefer_stock_dp: bool | None = None
-    dp_min_percent: float | None = None
-    dp_min_cap: float | None = None
     deduct_investment_interest: bool | None = None
     deduction_excluded_years: list[int] | None = None
 
@@ -725,4 +721,6 @@ class LoanRefinanceUpdate(BaseModel):
 class GrantProgramSettingsUpdate(BaseModel):
     tax_fallback_federal: float | None = None
     tax_fallback_state: float | None = None
+    dp_min_percent: float | None = None
+    dp_min_cap: float | None = None
     flexible_payoff_enabled: bool | None = None

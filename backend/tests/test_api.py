@@ -336,17 +336,18 @@ def test_flow_new_purchase_grant_only(client):
 
 def test_flow_new_purchase_with_loan(client):
     register_user(client)
+    # Company DP rule: min(10% of total, $20k). 5000*$3.50=$17,500 → min DP $1,750.
     resp = client.post("/api/flows/new-purchase", json={
         "year": 2022, "shares": 5000, "price": 3.50,
         "vest_start": "2023-03-01", "periods": 5,
         "exercise_date": "2022-12-31",
-        "loan_amount": 17500.0, "loan_rate": 4.0,
+        "loan_amount": 15750.0, "loan_rate": 4.0,
         "loan_due_date": "2027-12-31", "loan_number": "654321",
     })
     assert resp.status_code == 201
     data = resp.json()
     assert data["grant"]["shares"] == 5000
-    assert data["loan"]["amount"] == 17500.0
+    assert data["loan"]["amount"] == 15750.0
     assert data["loan"]["loan_type"] == "Purchase"
     # Verify they appear in the CRUD lists
     grants = client.get("/api/grants").json()

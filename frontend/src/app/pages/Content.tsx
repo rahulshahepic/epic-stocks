@@ -780,6 +780,14 @@ function SettingsTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; bu
         <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">State tax fallback</span>
         <TextInput type="number" step="0.0001" value={form.tax_fallback_state} onChange={e => update({ tax_fallback_state: Number(e.target.value) })} />
       </label>
+      <label className="flex flex-col text-xs">
+        <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">Min DP % of purchase</span>
+        <TextInput type="number" step="0.01" value={form.dp_min_percent} onChange={e => update({ dp_min_percent: Number(e.target.value) })} />
+      </label>
+      <label className="flex flex-col text-xs">
+        <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">Min DP cap ($)</span>
+        <TextInput type="number" step="1000" value={form.dp_min_cap} onChange={e => update({ dp_min_cap: Number(e.target.value) })} />
+      </label>
 
       <div className="col-span-full rounded-md border border-stone-200 p-3 text-[11px] text-stone-600 dark:border-slate-700 dark:text-slate-400">
         <span className="font-medium text-stone-700 dark:text-slate-200">Derived price years: </span>

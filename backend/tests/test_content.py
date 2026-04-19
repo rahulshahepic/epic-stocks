@@ -169,6 +169,8 @@ def test_grant_program_settings(client):
     settings = data["grant_program_settings"]
     assert settings["tax_fallback_federal"] == 0.37
     assert settings["tax_fallback_state"] == 0.0765
+    assert settings["dp_min_percent"] == 0.10
+    assert settings["dp_min_cap"] == 20000.0
     # Derived from grant_templates / loan_rates, not stored.
     assert settings["price_years_start"] == 2018
     assert settings["price_years_end"] == 2026

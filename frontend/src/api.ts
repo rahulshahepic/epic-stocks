@@ -705,8 +705,6 @@ export interface TaxSettings {
   loan_payoff_method: 'epic_lifo' | 'same_tranche' | 'lifo' | 'fifo'
   flexible_payoff_enabled: boolean
   prefer_stock_dp: boolean
-  dp_min_percent: number
-  dp_min_cap: number
   deduct_investment_interest: boolean
   deduction_excluded_years: number[] | null
   taxable_years: number[]
@@ -974,6 +972,8 @@ export interface TaxLoanRefinance extends LoanRefinance {
 export interface GrantProgramSettings {
   tax_fallback_federal: number
   tax_fallback_state: number
+  dp_min_percent: number
+  dp_min_cap: number
   flexible_payoff_enabled?: boolean
   // Derived (read-only) on the server from grant_templates / loan_rates.
   price_years_start: number

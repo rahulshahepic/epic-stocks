@@ -105,6 +105,8 @@ SEED_GRANT_PROGRAM_SETTINGS = {
     'id': 1,
     'tax_fallback_federal': 0.37,
     'tax_fallback_state': 0.0765,
+    'dp_min_percent': 0.10,
+    'dp_min_cap': 20000.0,
 }
 
 
@@ -305,6 +307,8 @@ def load_content(db: Session) -> dict:
         'grant_program_settings': {
             'tax_fallback_federal': settings_row.tax_fallback_federal if settings_row else defaults['tax_fallback_federal'],
             'tax_fallback_state': settings_row.tax_fallback_state if settings_row else defaults['tax_fallback_state'],
+            'dp_min_percent': settings_row.dp_min_percent if settings_row else defaults['dp_min_percent'],
+            'dp_min_cap': settings_row.dp_min_cap if settings_row else defaults['dp_min_cap'],
             'flexible_payoff_enabled': bool(settings_row.flexible_payoff_enabled) if settings_row else False,
             # Derived (read-only): computed from grant_templates / loan_rates each call.
             'price_years_start': price_years_start,

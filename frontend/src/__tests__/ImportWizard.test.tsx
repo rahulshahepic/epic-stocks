@@ -84,6 +84,8 @@ const MOCK_CONTENT = {
   grant_program_settings: {
     tax_fallback_federal: 0.37,
     tax_fallback_state: 0.0765,
+    dp_min_percent: 0.10,
+    dp_min_cap: 20000,
     price_years_start: 2018,
     price_years_end: 2026,
   },
@@ -126,7 +128,7 @@ function mockApi() {
         federal_income_rate: 0.37, federal_lt_cg_rate: 0.20, federal_st_cg_rate: 0.37,
         niit_rate: 0.038, state_income_rate: 0.0765, state_lt_cg_rate: 0.0765, state_st_cg_rate: 0.0765,
         lt_holding_days: 365, lot_selection_method: 'epic_lifo', loan_payoff_method: 'epic_lifo',
-        flexible_payoff_enabled: false, prefer_stock_dp: false, dp_min_percent: 0, dp_min_cap: 0,
+        flexible_payoff_enabled: false, prefer_stock_dp: false,
         deduct_investment_interest: false,
       }), { status: 200 })
     }
@@ -499,7 +501,7 @@ describe('ImportWizard', () => {
           federal_income_rate: 0.37, federal_lt_cg_rate: 0.20, federal_st_cg_rate: 0.37,
           niit_rate: 0.038, state_income_rate: 0.0765, state_lt_cg_rate: 0.0765, state_st_cg_rate: 0.0765,
           lt_holding_days: 365, lot_selection_method: 'epic_lifo', loan_payoff_method: 'epic_lifo',
-          flexible_payoff_enabled: false, prefer_stock_dp: false, dp_min_percent: 0, dp_min_cap: 0,
+          flexible_payoff_enabled: false, prefer_stock_dp: false,
           deduct_investment_interest: false,
         }), { status: 200 })
       }

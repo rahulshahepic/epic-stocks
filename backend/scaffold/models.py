@@ -170,8 +170,6 @@ class TaxSettings(Base):
     lot_selection_method: Mapped[str] = mapped_column(String, nullable=False, default='lifo')
     loan_payoff_method: Mapped[str] = mapped_column(String, nullable=False, default='epic_lifo')
     prefer_stock_dp: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    dp_min_percent: Mapped[float] = mapped_column(Float, nullable=False, default=0.10)
-    dp_min_cap: Mapped[float] = mapped_column(Float, nullable=False, default=20000.0)
     deduct_investment_interest: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     deduction_excluded_years: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
 
@@ -417,4 +415,7 @@ class GrantProgramSettings(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     tax_fallback_federal: Mapped[float] = mapped_column(Float, nullable=False, default=0.37, server_default="0.37")
     tax_fallback_state: Mapped[float] = mapped_column(Float, nullable=False, default=0.0765, server_default="0.0765")
+    # Company-wide down-payment policy (Epic: ≥ 10% of purchase, capped at $20k).
+    dp_min_percent: Mapped[float] = mapped_column(Float, nullable=False, default=0.10, server_default="0.1")
+    dp_min_cap: Mapped[float] = mapped_column(Float, nullable=False, default=20000.0, server_default="20000")
     flexible_payoff_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")

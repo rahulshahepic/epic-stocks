@@ -41,6 +41,8 @@ jobs:
         run: echo "npm cache-hit=${{ steps.setup-node.outputs.cache-hit }}"
       - name: Install deps
         run: cd frontend && time npm ci
+      - name: Type-check
+        run: cd frontend && time npx tsc -b --noEmit
       - name: npm audit
         run: cd frontend && time npm audit --audit-level=high
       - name: Run tests
@@ -60,20 +62,11 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    # No setup-node / npm ci / tsc here — the frontend job covers npm install,
+    # audit, vitest, and type-checking. The e2e runner only orchestrates Docker:
+    # Dockerfile.e2e does its own `npm ci` inside the playwright image.
     steps:
       - uses: actions/checkout@v4
-      - id: setup-node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
-      - name: Cache status
-        run: echo "npm cache-hit=${{ steps.setup-node.outputs.cache-hit }}"
-      - name: Install frontend deps
-        run: cd frontend && time npm ci
-      - name: Type-check frontend
-        run: cd frontend && time npx tsc -b --noEmit
       - uses: docker/setup-buildx-action@v3
       - name: Build e2e-app image (cached)
         uses: docker/build-push-action@v5

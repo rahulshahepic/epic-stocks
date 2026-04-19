@@ -84,9 +84,13 @@ jobs:
           path: ~/.cache/ms-playwright
           key: pw-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
       - name: Install playwright browsers
+        # No --with-deps: the ubuntu-24.04 runner ships libnss3 / libxkbcommon /
+        # libatk etc. already. `--with-deps` costs ~16 s of `sudo apt update` +
+        # "already the newest version" for every lib on every run. If Playwright
+        # ever fails with a missing system lib, add the specific package here.
         run: |
           echo "pw browser cache-hit=${{ steps.pw-cache.outputs.cache-hit }}"
-          cd frontend && time npx playwright install --with-deps chromium
+          cd frontend && time npx playwright install chromium
       - uses: docker/setup-buildx-action@v3
       - name: Build e2e-app image (cached)
         uses: docker/build-push-action@v5

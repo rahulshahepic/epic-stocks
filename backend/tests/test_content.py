@@ -30,24 +30,24 @@ def test_grant_templates_match_epic(client):
     data = _get(client)
     schedule = data["grant_templates"]
     expected = [
-        (2018, "Purchase", "2020-06-15", 6, "2018-12-31", True,  False, "07-15"),
-        (2019, "Purchase", "2021-06-15", 6, "2019-12-31", True,  False, "07-15"),
-        (2020, "Purchase", "2021-09-30", 5, "2020-12-31", True,  False, "07-15"),
-        (2020, "Bonus",    "2021-09-30", 4, "2020-12-31", False, False, None),
-        (2021, "Purchase", "2022-09-30", 5, "2021-12-31", True,  False, "07-15"),
-        (2021, "Bonus",    "2022-09-30", 3, "2021-12-31", False, False, None),
-        (2022, "Purchase", "2023-09-30", 4, "2022-12-31", False, False, "06-30"),
-        (2022, "Bonus",    "2023-09-30", 3, "2022-12-31", False, False, None),
-        (2022, "Free",     "2027-09-30", 1, "2022-12-31", False, False, None),
-        (2023, "Purchase", "2024-09-30", 4, "2023-12-31", False, True,  "06-30"),
-        (2023, "Bonus",    "2024-09-30", 3, "2023-12-31", False, False, None),
-        (2024, "Purchase", "2025-09-30", 4, "2024-12-31", False, True,  "06-30"),
-        (2024, "Bonus",    "2025-09-30", 3, "2024-12-31", False, False, None),
-        (2025, "Purchase", "2026-09-30", 4, "2025-12-31", False, True,  "06-30"),
-        (2025, "Bonus",    "2026-09-30", 3, "2025-12-31", False, False, None),
+        (2018, "Purchase", "2020-06-15", 6, "2018-12-31", True,  False),
+        (2019, "Purchase", "2021-06-15", 6, "2019-12-31", True,  False),
+        (2020, "Purchase", "2021-09-30", 5, "2020-12-31", True,  False),
+        (2020, "Bonus",    "2021-09-30", 4, "2020-12-31", False, False),
+        (2021, "Purchase", "2022-09-30", 5, "2021-12-31", True,  False),
+        (2021, "Bonus",    "2022-09-30", 3, "2021-12-31", False, False),
+        (2022, "Purchase", "2023-09-30", 4, "2022-12-31", False, False),
+        (2022, "Bonus",    "2023-09-30", 3, "2022-12-31", False, False),
+        (2022, "Free",     "2027-09-30", 1, "2022-12-31", False, False),
+        (2023, "Purchase", "2024-09-30", 4, "2023-12-31", False, True),
+        (2023, "Bonus",    "2024-09-30", 3, "2023-12-31", False, False),
+        (2024, "Purchase", "2025-09-30", 4, "2024-12-31", False, True),
+        (2024, "Bonus",    "2025-09-30", 3, "2024-12-31", False, False),
+        (2025, "Purchase", "2026-09-30", 4, "2025-12-31", False, True),
+        (2025, "Bonus",    "2026-09-30", 3, "2025-12-31", False, False),
     ]
     assert len(schedule) == len(expected)
-    for actual, (year, typ, vs, periods, ed, dcu, sdp, ddmd) in zip(schedule, expected):
+    for actual, (year, typ, vs, periods, ed, dcu, sdp) in zip(schedule, expected):
         assert actual["year"] == year
         assert actual["type"] == typ
         assert actual["vest_start"] == vs
@@ -55,7 +55,7 @@ def test_grant_templates_match_epic(client):
         assert actual["exercise_date"] == ed
         assert actual["default_catch_up"] == dcu
         assert actual["show_dp_shares"] == sdp
-        assert actual["default_purchase_due_month_day"] == ddmd
+        assert "default_purchase_due_month_day" not in actual
 
 
 def test_grant_type_defs(client):
@@ -167,17 +167,17 @@ def test_tax_refi_chains(client):
 def test_grant_program_settings(client):
     data = _get(client)
     settings = data["grant_program_settings"]
-    assert settings["loan_term_years"] == 10
     assert settings["tax_fallback_federal"] == 0.37
     assert settings["tax_fallback_state"] == 0.0765
-    # Derived from loan_rates / grant_templates, not stored.
-    assert settings["latest_rate_year"] == 2025
+    # Derived from grant_templates / loan_rates, not stored.
     assert settings["price_years_start"] == 2018
     assert settings["price_years_end"] == 2026
-    # Removed: dp_shares_start_year, default_purchase_due_month_day_pre/post2022
-    assert "dp_shares_start_year" not in settings
-    assert "default_purchase_due_month_day_pre2022" not in settings
-    assert "default_purchase_due_month_day_post2022" not in settings
+    # Removed: loan_term_years, latest_rate_year, dp_shares_start_year,
+    # default_purchase_due_month_day_pre/post2022.
+    for removed in ("loan_term_years", "latest_rate_year", "dp_shares_start_year",
+                    "default_purchase_due_month_day_pre2022",
+                    "default_purchase_due_month_day_post2022"):
+        assert removed not in settings
 
 
 def test_seed_is_idempotent(client, db_session):
@@ -380,11 +380,11 @@ def test_grant_program_settings_update(client):
     _login_admin(client)
     try:
         r = client.put("/api/content/grant-program-settings", json={
-            "loan_term_years": 12, "flexible_payoff_enabled": True,
+            "tax_fallback_federal": 0.35, "flexible_payoff_enabled": True,
         })
         assert r.status_code == 200
         data = client.get("/api/content").json()
-        assert data["grant_program_settings"]["loan_term_years"] == 12
+        assert data["grant_program_settings"]["tax_fallback_federal"] == 0.35
         assert data["grant_program_settings"]["flexible_payoff_enabled"] is True
     finally:
         os.environ.pop("ADMIN_EMAIL", None)

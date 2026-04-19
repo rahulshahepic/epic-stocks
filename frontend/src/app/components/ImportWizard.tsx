@@ -124,7 +124,6 @@ interface KnownGrant {
   exercise_date: string
   defaultCatchUp: boolean
   showDpShares: boolean
-  defaultPurchaseDueMonthDay: string | null
 }
 
 type BonusSchedule = 'A' | 'B' | 'C'
@@ -165,13 +164,6 @@ interface ReviewedLoan {
   refi_date: string  // date of refinance (or origination for the first loan in a chain)
   enabled: boolean
   is_existing: boolean  // loaded from DB vs auto-generated
-}
-
-function addYearsToDate(dateStr: string, years: number): string {
-  if (!dateStr) return ''
-  const d = new Date(dateStr + 'T00:00:00')
-  d.setFullYear(d.getFullYear() + years)
-  return d.toISOString().slice(0, 10)
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -513,15 +505,9 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
     exercise_date: g.exercise_date,
     defaultCatchUp: g.default_catch_up,
     showDpShares: g.show_dp_shares,
-    defaultPurchaseDueMonthDay: g.default_purchase_due_month_day,
   }))
   const DP_SHARES_YEARS = new Set(
     EPIC_GRANT_SCHEDULE.filter(g => g.type === 'Purchase' && g.showDpShares).map(g => g.year),
-  )
-  const PURCHASE_DUE_MMDD_BY_YEAR = new Map(
-    EPIC_GRANT_SCHEDULE
-      .filter(g => g.type === 'Purchase' && g.defaultPurchaseDueMonthDay)
-      .map(g => [g.year, g.defaultPurchaseDueMonthDay as string]),
   )
   const GRANT_COLORS = Object.fromEntries(
     content.grant_type_defs.map(d => [d.name, d.color_class]),
@@ -540,8 +526,6 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
   const BONUS_VARIANT_KEYS = new Set(
     content.bonus_schedule_variants.map(v => `${v.grant_year}-${v.grant_type}`),
   )
-  const LOAN_TERM_YEARS = content.grant_program_settings.loan_term_years
-  const LATEST_RATE_YEAR = content.grant_program_settings.latest_rate_year
   const FALLBACK_TAX_RATE =
     content.grant_program_settings.tax_fallback_federal + content.grant_program_settings.tax_fallback_state
   const PRICE_YEARS: number[] = []
@@ -598,7 +582,7 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
         purchase_price: '',
         shares: '', dp_shares: '0', dp_cash: '',
         loan_amount: '',
-        loan_due_date: lastRefi?.dueDate ?? origLoan?.dueDate ?? addYearsToDate(g.exercise_date, LOAN_TERM_YEARS),
+        loan_due_date: lastRefi?.dueDate ?? origLoan?.dueDate ?? '',
         interest_rate: lastRefi ? String(lastRefi.rate) : (origLoan ? String(origLoan.rate) : ''),
         existing_purchase_loan_number: '',
         existing_refinance_loans: [],
@@ -907,7 +891,7 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
             loan_amount: activePurchaseLoan ? String(activePurchaseLoan.amount) : '',
             loan_due_date: lastRefi?.dueDate
               ?? (activePurchaseLoan ? activePurchaseLoan.due_date
-                : (origLoan?.dueDate ?? addYearsToDate(g.exercise_date, LOAN_TERM_YEARS))),
+                : (origLoan?.dueDate ?? '')),
             interest_rate: lastRefi ? String(lastRefi.rate)
               : (activePurchaseLoan ? String(activePurchaseLoan.interest_rate)
                 : (origLoan ? String(origLoan.rate) : '')),
@@ -1221,10 +1205,12 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
     // Helper: compute due date for a purchase grant year. Each Purchase template
     // carries its own MM-DD; falls back to 06-30 if a future-year template hasn't
     // been configured with one yet.
-    function dueDate(grantYear: number): string {
-      const dueYear = grantYear + 9
-      const mmdd = PURCHASE_DUE_MMDD_BY_YEAR.get(grantYear) ?? '06-30'
-      return `${dueYear}-${mmdd}`
+    // Tax and interest loans inherit their due date from the purchase loan for
+    // the same grant year. If the user didn't participate in that year's purchase
+    // grant we fall back to the original purchase-loan rate row's due_date.
+    function inheritedDueDate(grantYear: number): string {
+      const purchaseRow = purchaseRows.find(r => r.year === grantYear)
+      return purchaseRow?.loan_due_date || ORIGINAL_PURCHASE_LOANS[grantYear]?.dueDate || ''
     }
 
     // Helper to push a reviewed loan
@@ -1255,8 +1241,7 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
       const gy = row.year
       const totalShares = parseInt(row.shares) || 0
       const sharesPerPeriod = Math.floor(totalShares / row.periods)
-      const purchaseRow = purchaseRows.find(r => r.year === gy)
-      const due = purchaseRow?.loan_due_date || dueDate(gy)
+      const due = inheritedDueDate(gy)
 
       if (!taxAmountsByGrantYear.has(gy)) taxAmountsByGrantYear.set(gy, new Map())
       const taxMap = taxAmountsByGrantYear.get(gy)!
@@ -1265,7 +1250,6 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
         const vestDate = new Date(row.vest_start + 'T00:00:00')
         vestDate.setFullYear(vestDate.getFullYear() + i)
         const vestYear = vestDate.getFullYear()
-        if (vestYear < 2021 || vestYear > LATEST_RATE_YEAR) continue
         const rate = TAX_LOAN_RATES['Catch-Up']?.[vestYear]
         if (!rate) continue
         const vestPrice = priceByYear.get(vestYear) || 0
@@ -1288,7 +1272,7 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
       if (!row.participated || !(parseInt(row.shares) > 0)) continue
       const gy = row.year
       const purchaseAmount = parseFloat(row.loan_amount) || 0
-      const due = row.loan_due_date || dueDate(gy)
+      const due = row.loan_due_date || inheritedDueDate(gy)
       const exerciseYear = new Date(row.exercise_date + 'T00:00:00').getFullYear()
 
       // Refinance chain
@@ -1323,10 +1307,10 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
       const purchaseRate = parseFloat(row.interest_rate) || 0  // current rate from wizard row
       // Track prior loans with their individual rates: { amount, rate }
       const priorLoans: { amount: number; rate: number }[] = []
-      const firstInterestYear = Math.max(exerciseYear + 1, 2020)
-      for (let ly = firstInterestYear; ly <= LATEST_RATE_YEAR; ly++) {
+      const interestYears = Object.keys(INTEREST_LOAN_RATES).map(Number).sort((a, b) => a - b)
+      for (const ly of interestYears) {
+        if (ly <= exerciseYear) continue
         const interestLoanRate = INTEREST_LOAN_RATES[ly]
-        if (!interestLoanRate) continue
         const existKey = `${gy}-Purchase-Interest-${ly}`
 
         // Purchase loan interest: sum each refi period separately
@@ -1360,8 +1344,7 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
       const grantPrice = parseFloat(row.purchase_price) || 0
       const totalShares = parseInt(row.shares) || 0
       const sharesPerPeriod = Math.floor(totalShares / row.periods)
-      const purchaseRow = purchaseRows.find(r => r.year === gy)
-      const due = purchaseRow?.loan_due_date || dueDate(gy)
+      const due = inheritedDueDate(gy)
 
       // Tax loans only for zero-basis grants (vesting = ordinary income)
       const isPreTaxGrant = grantPrice === 0
@@ -1373,7 +1356,6 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
         const vestDate = new Date(row.vest_start + 'T00:00:00')
         vestDate.setFullYear(vestDate.getFullYear() + i)
         const vestYear = vestDate.getFullYear()
-        if (vestYear < 2021 || vestYear > LATEST_RATE_YEAR) continue
         const rate = TAX_LOAN_RATES[grantType]?.[vestYear]
         if (!rate) continue
         const vestPrice = priceByYear.get(vestYear) || 0
@@ -1421,9 +1403,10 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
 
       // Bonus Interest loans: only if there are tax loans to accrue interest on
       if (!isPreTaxGrant) continue  // no tax loans = no interest to accrue
-      const firstTaxYear = Math.max(2021, new Date(row.vest_start + 'T00:00:00').getFullYear())
+      const firstTaxYear = new Date(row.vest_start + 'T00:00:00').getFullYear()
+      const maxInterestYear = Math.max(0, ...Object.keys(INTEREST_LOAN_RATES).map(Number))
       let bonusOutstanding = 0
-      for (let ly = firstTaxYear; ly <= LATEST_RATE_YEAR; ly++) {
+      for (let ly = firstTaxYear; ly <= maxInterestYear; ly++) {
         const taxThisYear = bonusTaxByYear.get(ly) || 0
         bonusOutstanding += taxThisYear
         // Interest starts the year AFTER first tax loan accumulation

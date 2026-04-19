@@ -1,4 +1,3 @@
-import re
 from datetime import date
 from typing import Optional
 from pydantic import BaseModel, field_validator, model_validator
@@ -471,15 +470,6 @@ def _validate_iso_date(v: str) -> str:
     return v
 
 
-_MMDD_RE = re.compile(r"^\d{2}-\d{2}$")
-
-
-def _validate_mmdd(v: str) -> str:
-    if not _MMDD_RE.match(v):
-        raise ValueError("must be MM-DD")
-    return v
-
-
 class GrantTemplateCreate(BaseModel):
     year: int
     type: str
@@ -488,7 +478,6 @@ class GrantTemplateCreate(BaseModel):
     exercise_date: str
     default_catch_up: bool = False
     show_dp_shares: bool = False
-    default_purchase_due_month_day: str | None = None
     display_order: int = 0
     active: bool = True
     notes: str | None = None
@@ -505,13 +494,6 @@ class GrantTemplateCreate(BaseModel):
     def iso_date(cls, v: str) -> str:
         return _validate_iso_date(v)
 
-    @field_validator("default_purchase_due_month_day")
-    @classmethod
-    def mmdd(cls, v):
-        if v is None:
-            return v
-        return _validate_mmdd(v)
-
     @field_validator("periods")
     @classmethod
     def periods_positive(cls, v: int) -> int:
@@ -523,8 +505,6 @@ class GrantTemplateCreate(BaseModel):
     def check_shape(self):
         if self.show_dp_shares and self.type != "Purchase":
             raise ValueError("show_dp_shares is only valid when type='Purchase'")
-        if self.default_purchase_due_month_day is not None and self.type != "Purchase":
-            raise ValueError("default_purchase_due_month_day is only valid when type='Purchase'")
         return self
 
 
@@ -536,7 +516,6 @@ class GrantTemplateUpdate(BaseModel):
     exercise_date: str | None = None
     default_catch_up: bool | None = None
     show_dp_shares: bool | None = None
-    default_purchase_due_month_day: str | None = None
     display_order: int | None = None
     active: bool | None = None
     notes: str | None = None
@@ -547,13 +526,6 @@ class GrantTemplateUpdate(BaseModel):
         if v is None:
             return v
         return _validate_iso_date(v)
-
-    @field_validator("default_purchase_due_month_day")
-    @classmethod
-    def mmdd(cls, v):
-        if v is None:
-            return v
-        return _validate_mmdd(v)
 
     @field_validator("periods")
     @classmethod
@@ -751,7 +723,6 @@ class LoanRefinanceUpdate(BaseModel):
 
 
 class GrantProgramSettingsUpdate(BaseModel):
-    loan_term_years: int | None = None
     tax_fallback_federal: float | None = None
     tax_fallback_state: float | None = None
     flexible_payoff_enabled: bool | None = None

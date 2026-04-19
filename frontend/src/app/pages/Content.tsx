@@ -300,15 +300,6 @@ function TemplatesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; b
               <input type="checkbox" checked={!!modal.draft.show_dp_shares} onChange={e => patch({ show_dp_shares: e.target.checked })} />
               Show DP shares (Purchase only)
             </label>
-            {modal.draft.type === 'Purchase' && (
-              <Field label="Purchase due (MM-DD)">
-                <TextInput
-                  value={modal.draft.default_purchase_due_month_day ?? ''}
-                  onChange={e => patch({ default_purchase_due_month_day: e.target.value || null })}
-                  placeholder="06-30"
-                />
-              </Field>
-            )}
             <FormActions mode={modal.mode} busy={busy} onCancel={close} onDelete={handleDelete} />
           </form>
         </Modal>
@@ -782,10 +773,6 @@ function SettingsTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; bu
       className="grid grid-cols-1 gap-3 md:grid-cols-2"
     >
       <label className="flex flex-col text-xs">
-        <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">Loan term (years)</span>
-        <TextInput type="number" value={form.loan_term_years} onChange={e => update({ loan_term_years: Number(e.target.value) })} />
-      </label>
-      <label className="flex flex-col text-xs">
         <span className="mb-1 font-medium text-stone-700 dark:text-slate-300">Federal tax fallback</span>
         <TextInput type="number" step="0.001" value={form.tax_fallback_federal} onChange={e => update({ tax_fallback_federal: Number(e.target.value) })} />
       </label>
@@ -795,10 +782,9 @@ function SettingsTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; bu
       </label>
 
       <div className="col-span-full rounded-md border border-stone-200 p-3 text-[11px] text-stone-600 dark:border-slate-700 dark:text-slate-400">
-        <span className="font-medium text-stone-700 dark:text-slate-200">Derived year ranges: </span>
-        latest rate year <span className="font-mono">{form.latest_rate_year}</span>, prices{' '}
-        <span className="font-mono">{form.price_years_start}</span>–<span className="font-mono">{form.price_years_end}</span>.
-        These come from the Loan Rates and Grant Templates tabs and update automatically.
+        <span className="font-medium text-stone-700 dark:text-slate-200">Derived price years: </span>
+        <span className="font-mono">{form.price_years_start}</span>–<span className="font-mono">{form.price_years_end}</span>
+        {' '}(from the Grant Templates and Loan Rates tabs; updates automatically).
       </div>
 
       <div className="col-span-full rounded-md border border-stone-200 p-3 text-xs dark:border-slate-700">

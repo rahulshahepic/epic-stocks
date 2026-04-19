@@ -31,25 +31,23 @@ SEED_GRANT_TYPE_DEFS = [
     ('Free',     'bg-amber-600 text-white',   'Free/other grant',          True,  3),
 ]
 
-# (year, type, vest_start, periods, exercise_date, default_catch_up, default_purchase_due_month_day)
-# default_purchase_due_month_day is only set for Purchase rows (None elsewhere). Epic
-# switched the annual purchase due date from 07-15 to 06-30 starting with the 2022 grant.
+# (year, type, vest_start, periods, exercise_date, default_catch_up)
 SEED_GRANT_TEMPLATES = [
-    (2018, 'Purchase', '2020-06-15', 6, '2018-12-31', True,  '07-15'),
-    (2019, 'Purchase', '2021-06-15', 6, '2019-12-31', True,  '07-15'),
-    (2020, 'Purchase', '2021-09-30', 5, '2020-12-31', True,  '07-15'),
-    (2020, 'Bonus',    '2021-09-30', 4, '2020-12-31', False, None),
-    (2021, 'Purchase', '2022-09-30', 5, '2021-12-31', True,  '07-15'),
-    (2021, 'Bonus',    '2022-09-30', 3, '2021-12-31', False, None),
-    (2022, 'Purchase', '2023-09-30', 4, '2022-12-31', False, '06-30'),
-    (2022, 'Bonus',    '2023-09-30', 3, '2022-12-31', False, None),
-    (2022, 'Free',     '2027-09-30', 1, '2022-12-31', False, None),
-    (2023, 'Purchase', '2024-09-30', 4, '2023-12-31', False, '06-30'),
-    (2023, 'Bonus',    '2024-09-30', 3, '2023-12-31', False, None),
-    (2024, 'Purchase', '2025-09-30', 4, '2024-12-31', False, '06-30'),
-    (2024, 'Bonus',    '2025-09-30', 3, '2024-12-31', False, None),
-    (2025, 'Purchase', '2026-09-30', 4, '2025-12-31', False, '06-30'),
-    (2025, 'Bonus',    '2026-09-30', 3, '2025-12-31', False, None),
+    (2018, 'Purchase', '2020-06-15', 6, '2018-12-31', True),
+    (2019, 'Purchase', '2021-06-15', 6, '2019-12-31', True),
+    (2020, 'Purchase', '2021-09-30', 5, '2020-12-31', True),
+    (2020, 'Bonus',    '2021-09-30', 4, '2020-12-31', False),
+    (2021, 'Purchase', '2022-09-30', 5, '2021-12-31', True),
+    (2021, 'Bonus',    '2022-09-30', 3, '2021-12-31', False),
+    (2022, 'Purchase', '2023-09-30', 4, '2022-12-31', False),
+    (2022, 'Bonus',    '2023-09-30', 3, '2022-12-31', False),
+    (2022, 'Free',     '2027-09-30', 1, '2022-12-31', False),
+    (2023, 'Purchase', '2024-09-30', 4, '2023-12-31', False),
+    (2023, 'Bonus',    '2024-09-30', 3, '2023-12-31', False),
+    (2024, 'Purchase', '2025-09-30', 4, '2024-12-31', False),
+    (2024, 'Bonus',    '2025-09-30', 3, '2024-12-31', False),
+    (2025, 'Purchase', '2026-09-30', 4, '2025-12-31', False),
+    (2025, 'Bonus',    '2026-09-30', 3, '2025-12-31', False),
 ]
 
 # (grant_year, grant_type, variant_code, periods, label, is_default)
@@ -105,7 +103,6 @@ SEED_LOAN_REFINANCES.append(
 
 SEED_GRANT_PROGRAM_SETTINGS = {
     'id': 1,
-    'loan_term_years': 10,
     'tax_fallback_federal': 0.37,
     'tax_fallback_state': 0.0765,
 }
@@ -128,12 +125,11 @@ def seed_content_if_empty(db: Session) -> None:
             ))
 
     if db.query(GrantTemplate).count() == 0:
-        for idx, (year, typ, vs, periods, ed, dcu, ddmd) in enumerate(SEED_GRANT_TEMPLATES):
+        for idx, (year, typ, vs, periods, ed, dcu) in enumerate(SEED_GRANT_TEMPLATES):
             db.add(GrantTemplate(
                 year=year, type=typ, vest_start=vs, periods=periods,
                 exercise_date=ed, default_catch_up=dcu,
                 show_dp_shares=(typ == 'Purchase' and year >= 2023),
-                default_purchase_due_month_day=ddmd,
                 display_order=idx, active=True, notes=None,
             ))
 
@@ -188,14 +184,14 @@ def load_content(db: Session) -> dict:
     ).all()
     settings_row = db.query(GrantProgramSettings).filter(GrantProgramSettings.id == 1).one_or_none()
 
-    # Derive year-range fields instead of storing them. These were admin-editable
-    # settings that duplicated data already present in loan_rates / grant_templates.
+    # Price year range is derived, not stored. Wizard iterates loan_rates directly
+    # to figure out which years have interest/tax loans available, so no upper-bound
+    # setting is needed there either.
     max_rate_year = db.query(func.max(LoanRate.year)).scalar()
     min_template_year = db.query(func.min(GrantTemplate.year)).scalar()
     this_year = _date.today().year
-    latest_rate_year = max_rate_year if max_rate_year is not None else this_year
     price_years_start = min_template_year if min_template_year is not None else this_year
-    price_years_end = latest_rate_year + 1  # one year of look-ahead for fresh price entry
+    price_years_end = (max_rate_year + 1) if max_rate_year is not None else this_year
 
     # Shape rates as nested dicts to match the frontend constants
     interest_rates: dict[str, float] = {}
@@ -244,7 +240,6 @@ def load_content(db: Session) -> dict:
                 'exercise_date': t.exercise_date,
                 'default_catch_up': bool(t.default_catch_up),
                 'show_dp_shares': bool(t.show_dp_shares),
-                'default_purchase_due_month_day': t.default_purchase_due_month_day,
                 'display_order': t.display_order,
             }
             for t in templates if t.active
@@ -308,12 +303,10 @@ def load_content(db: Session) -> dict:
             for e in refi_entries
         ],
         'grant_program_settings': {
-            'loan_term_years': settings_row.loan_term_years if settings_row else defaults['loan_term_years'],
             'tax_fallback_federal': settings_row.tax_fallback_federal if settings_row else defaults['tax_fallback_federal'],
             'tax_fallback_state': settings_row.tax_fallback_state if settings_row else defaults['tax_fallback_state'],
             'flexible_payoff_enabled': bool(settings_row.flexible_payoff_enabled) if settings_row else False,
-            # Derived (read-only): computed from loan_rates / grant_templates each call.
-            'latest_rate_year': latest_rate_year,
+            # Derived (read-only): computed from grant_templates / loan_rates each call.
             'price_years_start': price_years_start,
             'price_years_end': price_years_end,
         },

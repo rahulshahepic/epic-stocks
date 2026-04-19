@@ -1,6 +1,6 @@
 from datetime import date
 from typing import Optional
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 LOAN_TYPES = {"Interest", "Tax", "Purchase"}
 
@@ -386,7 +386,7 @@ class TaxSettingsRead(BaseModel):
     lt_holding_days: int
     lot_selection_method: str = 'lifo'
     loan_payoff_method: str = 'epic_lifo'
-    flexible_payoff_enabled: bool = False  # virtual field; populated from system_settings by the endpoint
+    flexible_payoff_enabled: bool = False  # virtual field; populated from grant_program_settings by the endpoint
     prefer_stock_dp: bool = False
     dp_min_percent: float = 0.10
     dp_min_cap: float = 20000.0
@@ -454,3 +454,282 @@ class PushSubscriptionOut(BaseModel):
     id: int
     endpoint: str
     model_config = {"from_attributes": True}
+
+
+# ── Grant-program content (Phase 2: content-admin editable) ────────────────
+
+_DATE_RE = None
+
+
+def _validate_iso_date(v: str) -> str:
+    from datetime import date as _d
+    try:
+        _d.fromisoformat(v)
+    except Exception:
+        raise ValueError("must be YYYY-MM-DD")
+    return v
+
+
+class GrantTemplateCreate(BaseModel):
+    year: int
+    type: str
+    vest_start: str
+    periods: int
+    exercise_date: str
+    default_catch_up: bool = False
+    show_dp_shares: bool = False
+    display_order: int = 0
+    active: bool = True
+    notes: str | None = None
+
+    @field_validator("type")
+    @classmethod
+    def type_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("type cannot be empty")
+        return v
+
+    @field_validator("vest_start", "exercise_date")
+    @classmethod
+    def iso_date(cls, v: str) -> str:
+        return _validate_iso_date(v)
+
+    @field_validator("periods")
+    @classmethod
+    def periods_positive(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("periods must be positive")
+        return v
+
+    @model_validator(mode="after")
+    def check_shape(self):
+        if self.show_dp_shares and self.type != "Purchase":
+            raise ValueError("show_dp_shares is only valid when type='Purchase'")
+        return self
+
+
+class GrantTemplateUpdate(BaseModel):
+    year: int | None = None
+    type: str | None = None
+    vest_start: str | None = None
+    periods: int | None = None
+    exercise_date: str | None = None
+    default_catch_up: bool | None = None
+    show_dp_shares: bool | None = None
+    display_order: int | None = None
+    active: bool | None = None
+    notes: str | None = None
+
+    @field_validator("vest_start", "exercise_date")
+    @classmethod
+    def iso_date(cls, v):
+        if v is None:
+            return v
+        return _validate_iso_date(v)
+
+    @field_validator("periods")
+    @classmethod
+    def periods_positive(cls, v):
+        if v is not None and v <= 0:
+            raise ValueError("periods must be positive")
+        return v
+
+
+class GrantTypeDefCreate(BaseModel):
+    name: str
+    color_class: str
+    description: str
+    is_pre_tax_when_zero_price: bool = False
+    display_order: int = 0
+    active: bool = True
+
+    @field_validator("name")
+    @classmethod
+    def name_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("name cannot be empty")
+        return v
+
+
+class GrantTypeDefUpdate(BaseModel):
+    color_class: str | None = None
+    description: str | None = None
+    is_pre_tax_when_zero_price: bool | None = None
+    display_order: int | None = None
+    active: bool | None = None
+
+
+class BonusScheduleVariantCreate(BaseModel):
+    grant_year: int
+    grant_type: str
+    variant_code: str
+    periods: int
+    label: str = ""
+    is_default: bool = False
+
+    @field_validator("periods")
+    @classmethod
+    def periods_positive(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("periods must be positive")
+        return v
+
+
+class BonusScheduleVariantUpdate(BaseModel):
+    grant_year: int | None = None
+    grant_type: str | None = None
+    variant_code: str | None = None
+    periods: int | None = None
+    label: str | None = None
+    is_default: bool | None = None
+
+    @field_validator("periods")
+    @classmethod
+    def periods_positive(cls, v):
+        if v is not None and v <= 0:
+            raise ValueError("periods must be positive")
+        return v
+
+
+_LOAN_KINDS = {"interest", "tax", "purchase_original"}
+
+
+class LoanRateCreate(BaseModel):
+    loan_kind: str
+    grant_type: str | None = None
+    year: int
+    rate: float
+    due_date: str | None = None
+
+    @field_validator("loan_kind")
+    @classmethod
+    def valid_kind(cls, v: str) -> str:
+        if v not in _LOAN_KINDS:
+            raise ValueError(f"loan_kind must be one of {sorted(_LOAN_KINDS)}")
+        return v
+
+    @field_validator("due_date")
+    @classmethod
+    def iso_date(cls, v):
+        if v is None:
+            return v
+        return _validate_iso_date(v)
+
+    @field_validator("rate")
+    @classmethod
+    def rate_non_negative(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError("rate cannot be negative")
+        return v
+
+    @model_validator(mode="after")
+    def check_shape(self):
+        if self.loan_kind == "tax" and not self.grant_type:
+            raise ValueError("tax loan rates require a grant_type")
+        if self.loan_kind == "purchase_original" and not self.due_date:
+            raise ValueError("purchase_original rates require a due_date")
+        return self
+
+
+class LoanRateUpdate(BaseModel):
+    loan_kind: str | None = None
+    grant_type: str | None = None
+    year: int | None = None
+    rate: float | None = None
+    due_date: str | None = None
+
+    @field_validator("loan_kind")
+    @classmethod
+    def valid_kind(cls, v):
+        if v is not None and v not in _LOAN_KINDS:
+            raise ValueError(f"loan_kind must be one of {sorted(_LOAN_KINDS)}")
+        return v
+
+    @field_validator("due_date")
+    @classmethod
+    def iso_date(cls, v):
+        if v is None:
+            return v
+        return _validate_iso_date(v)
+
+    @field_validator("rate")
+    @classmethod
+    def rate_non_negative(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("rate cannot be negative")
+        return v
+
+
+_CHAIN_KINDS = {"purchase", "tax"}
+
+
+class LoanRefinanceCreate(BaseModel):
+    chain_kind: str
+    grant_year: int
+    grant_type: str | None = None
+    orig_loan_year: int | None = None
+    order_idx: int = 0
+    date: str
+    rate: float
+    loan_year: int
+    due_date: str
+    orig_due_date: str | None = None
+
+    @field_validator("chain_kind")
+    @classmethod
+    def valid_kind(cls, v: str) -> str:
+        if v not in _CHAIN_KINDS:
+            raise ValueError(f"chain_kind must be one of {sorted(_CHAIN_KINDS)}")
+        return v
+
+    @field_validator("date", "due_date")
+    @classmethod
+    def iso_date(cls, v):
+        return _validate_iso_date(v)
+
+    @field_validator("orig_due_date")
+    @classmethod
+    def optional_iso_date(cls, v):
+        if v is None:
+            return v
+        return _validate_iso_date(v)
+
+
+class LoanRefinanceUpdate(BaseModel):
+    chain_kind: str | None = None
+    grant_year: int | None = None
+    grant_type: str | None = None
+    orig_loan_year: int | None = None
+    order_idx: int | None = None
+    date: str | None = None
+    rate: float | None = None
+    loan_year: int | None = None
+    due_date: str | None = None
+    orig_due_date: str | None = None
+
+    @field_validator("chain_kind")
+    @classmethod
+    def valid_kind(cls, v):
+        if v is not None and v not in _CHAIN_KINDS:
+            raise ValueError(f"chain_kind must be one of {sorted(_CHAIN_KINDS)}")
+        return v
+
+    @field_validator("date", "due_date", "orig_due_date")
+    @classmethod
+    def iso_date(cls, v):
+        if v is None:
+            return v
+        return _validate_iso_date(v)
+
+
+class GrantProgramSettingsUpdate(BaseModel):
+    loan_term_years: int | None = None
+    latest_rate_year: int | None = None
+    dp_shares_start_year: int | None = None
+    tax_fallback_federal: float | None = None
+    tax_fallback_state: float | None = None
+    default_purchase_due_month_day_pre2022: str | None = None
+    default_purchase_due_month_day_post2022: str | None = None
+    price_years_start: int | None = None
+    price_years_end: int | None = None
+    flexible_payoff_enabled: bool | None = None

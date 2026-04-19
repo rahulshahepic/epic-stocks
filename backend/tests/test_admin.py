@@ -233,6 +233,41 @@ def test_admin_user_list_includes_is_admin(client, make_client):
         assert admin_entry["is_admin"] is True
         regular = next(u for u in users if u["email"] == "regular@test.com")
         assert regular["is_admin"] is False
+        # is_content_admin surfaced too
+        assert admin_entry["is_content_admin"] is False
+        assert regular["is_content_admin"] is False
+
+
+def test_admin_promote_and_demote_content_admin(client, make_client):
+    with _admin_env():
+        _register_admin(client)
+        with make_client("editor@test.com"):
+            pass
+
+        resp = client.get("/api/admin/users")
+        editor = next(u for u in resp.json()["users"] if u["email"] == "editor@test.com")
+        assert editor["is_content_admin"] is False
+
+        r = client.post(f"/api/admin/users/{editor['id']}/content-admin")
+        assert r.status_code == 204
+
+        resp = client.get("/api/admin/users")
+        editor = next(u for u in resp.json()["users"] if u["email"] == "editor@test.com")
+        assert editor["is_content_admin"] is True
+
+        r = client.delete(f"/api/admin/users/{editor['id']}/content-admin")
+        assert r.status_code == 204
+
+        resp = client.get("/api/admin/users")
+        editor = next(u for u in resp.json()["users"] if u["email"] == "editor@test.com")
+        assert editor["is_content_admin"] is False
+
+
+def test_non_admin_cannot_promote_content_admin(client, make_client):
+    with _admin_env():
+        register_user(client, "regular@test.com")
+        r = client.post("/api/admin/users/999/content-admin")
+        assert r.status_code == 403
 
 
 def test_admin_user_search(client, make_client):

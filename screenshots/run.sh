@@ -36,7 +36,7 @@ sleep 3
 echo "==> Capturing screenshots..."
 cd frontend
 SCREENSHOT_EMAIL="demo@example.com" SCREENSHOT_BASE_URL="http://localhost:5173" \
-  npx playwright test --project=chromium e2e/screenshots.spec.ts 2>&1
+  npx playwright test --project=main e2e/screenshots.spec.ts 2>&1
 cd ..
 
 echo "==> Done. Screenshots:"

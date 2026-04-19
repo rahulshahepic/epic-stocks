@@ -83,6 +83,12 @@ Invite others by email to view your data read-only. The Settings page shows sent
 |-------|------|
 | ![Admin Light](screenshots/admin-light-mobile.png) | ![Admin Dark](screenshots/admin-dark-mobile.png) |
 
+### Content Editor (content admins only)
+
+| Light | Dark |
+|-------|------|
+| ![Content Light](screenshots/content-light-mobile.png) | ![Content Dark](screenshots/content-dark-mobile.png) |
+
 ### Login & Privacy Policy
 
 | Light | Dark |
@@ -294,7 +300,8 @@ Investment interest is interest paid on loans used to buy investments. Under IRS
 - **Setup Wizard (non-destructive)** — when re-run by a user who already has data, each screen pre-loads matching existing DB records, so prices and grants are updated in place. Any existing records that don't match the wizard's schedule appear at the bottom of their respective screens with a checkbox — uncheck to keep them, leave checked to remove. No changes are written until the final confirmation step.
 - **OIDC Sign-In** — provider-agnostic PKCE flow works with any standards-compliant IdP (Google, Azure Entra ID, etc.). Multiple providers can be enabled simultaneously — the login page shows one button per provider. Automatic account creation; data is tied to the account.
 - **Smart Tips** — the dashboard automatically analyzes your settings and surfaces actionable tips in a carousel above the summary cards: (1) **Investment interest deduction** — if enabling Form 4952 deduction would save ≥$500 going forward (savings calculated from the current year onward; applying auto-excludes past years); (2) **Lot selection method** — if switching to FIFO/LIFO/Epic LIFO saves ≥$1,000 vs. your current method (manual lot selection is not analyzed). Each tip shows estimated savings and an **Apply** button that updates the relevant setting in one tap and refreshes the dashboard. Tips can also be dismissed for the session. Acceptance is recorded for admin reporting.
-- **Admin Dashboard** — user management, aggregate stats, email blocking, system health monitoring (CPU, RAM, DB size, and cache hit rate sparklines with 24h/72h/7d/30d windows), per-table DB size breakdown, and a Danger Zone for maintenance mode and Epic Mode toggles. Click any user to open a detail card with email/notification status, invitations sent/received, and actions (notify, delete, block/unblock sending, reset invitations). An **Email Lookup** tool searches any email across accounts, opt-outs, blocked lists, and invitation records — works for non-users too. Admin cannot see financial data.
+- **Admin Dashboard** — user management, aggregate stats, email blocking, system health monitoring (CPU, RAM, DB size, and cache hit rate sparklines with 24h/72h/7d/30d windows), per-table DB size breakdown, and a Danger Zone for maintenance mode and Epic Mode toggles. Click any user to open a detail card with email/notification status, invitations sent/received, and actions (notify, delete, block/unblock sending, reset invitations, promote/revoke **content admin**). An **Email Lookup** tool searches any email across accounts, opt-outs, blocked lists, and invitation records — works for non-users too. Admin cannot see financial data.
+- **Content Admin Role + /content Editor** — admins can designate other users as content admins (persistent across logins). Content admins see a new **Content** nav link and can edit the grant-program data that drives the Setup Wizard: grant templates (schedule), grant type metadata, bonus vesting variants, loan interest/tax/purchase-original rates, purchase and tax refinance chains, and program-wide settings (loan term, fallback tax rates, price year range, DP shares start year, flexible loan-payoff toggle). Admins are implicitly content admins. Edits take effect immediately for all users on their next wizard load; the wizard hooks refresh the cache after any write.
 - **Push & Email Notifications** — configurable advance timing: day-of, 3 days before, or 1 week before each event. Per-user opt-in for each channel independently. Includes a "Send test" button to confirm push is working.
 - **Per-User Encryption** — AES-256-GCM column-level encryption. Two-level key hierarchy: `KEY_ENCRYPTION_KEY` (env var, set once, never changes) wraps an operational master key stored encrypted in the database. The master key can be rotated live from the admin panel — all replicas pick up the new key automatically within seconds, no restart required. Each user has a unique per-user key wrapped by the master key.
 - **Growth Price Estimator** — project future share prices via annual % growth from the current price. Default start date is the next March 1 (matching Epic's typical price announcement cadence). Generates one price per year through a configurable end date. Estimates are visually distinguished (italic, "est." badge) and automatically removed when a real price is added for the same date. Available in Epic Mode — tap **+ Estimate** on the Prices page.
@@ -564,7 +571,9 @@ epic-stocks/
 │   │       ├── sales.py     # Sales CRUD + tax breakdown
 │   │       ├── tips.py      # Smart Tips: scenario tax comparisons + acceptance recording
 │   │       ├── wizard.py    # Setup Wizard: parse-file, preview (dry-run diff), submit (merge)
+│   │       ├── content.py   # Grant-program content: GET (any user) + content-admin CRUD
 │   │       └── cache.py     # POST /api/internal/cache-invalidate webhook
+│   │   ├── content_service.py # Seeder + load_content() loader for grant-program data
 │   └── tests/               # pytest tests
 ├── frontend/
 │   ├── src/
@@ -574,9 +583,9 @@ epic-stocks/
 │   │   │   ├── contexts/    # ThemeContext, MaintenanceContext, ViewingContext
 │   │   │   └── hooks/       # useAuth, useConfig, useDark, usePush, useMe
 │   │   ├── app/             # Equity tracking UI (replace when forking)
-│   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport
+│   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport, Content
 │   │   │   ├── components/  # ImportWizard (onboarding + import), TipCarousel
-│   │   │   └── hooks/       # useApiData, useDataSync
+│   │   │   └── hooks/       # useApiData, useDataSync, useContent
 │   │   ├── App.tsx          # Router + layout wiring
 │   │   └── __tests__/       # Vitest tests
 │   ├── public/
@@ -618,7 +627,7 @@ All authenticated endpoints require a valid `session` cookie (set automatically 
 | GET | `/api/auth/login?provider=&code_challenge=&redirect_uri=&state=` | Start PKCE flow — returns IdP authorization URL |
 | POST | `/api/auth/callback` | Exchange PKCE code for JWT |
 | POST | `/api/auth/logout` | Clear session cookie |
-| GET | `/api/me` | Current user info + is_admin flag |
+| GET | `/api/me` | Current user info + `is_admin` and `is_content_admin` flags |
 | POST | `/api/me/reset` | Reset all financial data (keeps account) |
 | DELETE | `/api/me` | Delete account and all associated data |
 | GET | `/api/config` | Client config (VAPID key, email availability, etc.) |
@@ -665,6 +674,14 @@ All authenticated endpoints require a valid `session` cookie (set automatically 
 | GET/PUT | `/api/tax-settings` | Get/set tax rate configuration and lot selection preferences |
 | GET | `/api/tips` | Smart tips: scenario-based tax savings recommendations |
 | POST | `/api/tips/accept` | Record acceptance of a tip recommendation |
+| **Grant-program content** | | |
+| GET | `/api/content` | Global grant-program content blob (templates, rates, refi chains, settings) — any logged-in user |
+| POST/PUT/DELETE | `/api/content/grant-templates[/{id}]` | CRUD grant templates (content admin) |
+| POST/PUT/DELETE | `/api/content/grant-type-defs[/{name}]` | CRUD grant type metadata (content admin) |
+| POST/PUT/DELETE | `/api/content/bonus-schedule-variants[/{id}]` | CRUD bonus vesting variants (content admin) |
+| POST/PUT/DELETE | `/api/content/loan-rates[/{id}]` | CRUD loan interest/tax/purchase rates (content admin) |
+| POST/PUT/DELETE | `/api/content/loan-refinances[/{id}]` | CRUD purchase/tax refinance chain entries (content admin) |
+| PUT | `/api/content/grant-program-settings` | Update singleton program settings incl. `flexible_payoff_enabled` (content admin) |
 | POST | `/api/internal/cache-invalidate` | Pre-warm Redis cache (Epic batch webhook; requires `Authorization: Bearer <CACHE_INVALIDATE_SECRET>`) |
 | POST/DELETE | `/api/push/subscribe` | Subscribe/unsubscribe push notifications |
 | GET | `/api/push/status` | Check push subscription status |
@@ -709,7 +726,9 @@ All authenticated endpoints require a valid `session` cookie (set automatically 
 | GET | `/api/admin/metrics?hours=72` | Time-series CPU/RAM/DB metrics history (admin only) |
 | GET | `/api/admin/db-tables` | Per-table DB size breakdown (PostgreSQL only, admin only) |
 | GET/POST | `/api/admin/epic-mode` | Get/set Epic Mode read-only state (admin only) |
-| GET/POST | `/api/admin/flexible-payoff` | Get/set flexible loan payoff method (admin only) |
+| GET/POST | `/api/admin/flexible-payoff` | Get/set flexible loan payoff method (admin only). Now backed by `grant_program_settings.flexible_payoff_enabled`. |
+| POST | `/api/admin/users/{id}/content-admin` | Promote user to content admin (admin only) |
+| DELETE | `/api/admin/users/{id}/content-admin` | Revoke content admin role (admin only) |
 | GET | `/api/admin/tips-report` | Aggregate tip acceptance report (admin only) |
 | GET | `/api/admin/email-lookup?email=` | Comprehensive email lookup across accounts, opt-outs, blocks, invitations (admin only) |
 | GET | `/api/admin/users/{id}/detail` | User detail with email status, invitations sent/received (admin only) |
@@ -762,7 +781,8 @@ Click any user in the list to open a detail card with all actions:
 | **Block email** | Prevents an email address from logging in or creating an account. Includes optional reason field. |
 | **Unblock email** | Removes an email from the blocklist, restoring login access. |
 | **Toggle Epic Mode** | Enable/disable read-only mode for Epic's managed data pipeline. When active, historical data writes are blocked (403). Toggled from Admin → Danger Zone, or hard-locked via `EPIC_MODE=true` env var. |
-| **Toggle Flexible Payoff** | Enable/disable flexible loan payoff method selection. When enabled, users can choose their preferred lot selection method for loan payoff sales. |
+| **Toggle Flexible Payoff** | Enable/disable flexible loan payoff method selection. When enabled, users can choose their preferred lot selection method for loan payoff sales. Stored on `grant_program_settings.flexible_payoff_enabled`; can also be changed by content admins from `/content`. |
+| **Make / Revoke Content Admin** | Promote a non-admin user to a persistent content-admin role. Content admins see a **Content** nav link and a `/content` editor where they can edit the grant-program schedule, loan rates, refi chains, and program settings used by the Setup Wizard. Admins are implicitly content admins. |
 | **Enable / disable maintenance** | Toggles app-managed downtime. Financial API routes return 503; auth and admin remain accessible. An amber banner appears in the nav and financial pages show a placeholder. Use this before planned ops that affect financial data. |
 | **Rotate encryption key** | Generates a new master key, re-wraps all per-user keys, smoke-tests, then persists to the database and clears maintenance. New key propagates to all replicas automatically within seconds — no deploy or env var change needed. A snapshot of old keys is saved to the database before any changes; restored automatically on failure. |
 | **Restore from snapshot** | Appears in the admin panel when an interrupted rotation left a snapshot in the database. Writes the old per-user keys back and clears maintenance — recovers from a crash without SSH access. |

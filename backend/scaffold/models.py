@@ -17,6 +17,7 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_login: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     is_admin: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    is_content_admin: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     last_notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     grants: Mapped[list["Grant"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -418,3 +419,4 @@ class GrantProgramSettings(Base):
     default_purchase_due_month_day_post2022: Mapped[str] = mapped_column(String, nullable=False, default="06-30", server_default="06-30")
     price_years_start: Mapped[int] = mapped_column(Integer, nullable=False, default=2018, server_default="2018")
     price_years_end: Mapped[int] = mapped_column(Integer, nullable=False, default=2026, server_default="2026")
+    flexible_payoff_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")

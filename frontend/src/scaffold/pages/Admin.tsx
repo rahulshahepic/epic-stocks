@@ -603,6 +603,11 @@ export default function Admin() {
                       Admin
                     </span>
                   )}
+                  {!u.is_admin && u.is_content_admin && (
+                    <span className="ml-1.5 inline-block rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
+                      Content admin
+                    </span>
+                  )}
                 </p>
                 <p className="text-gray-500 dark:text-slate-400">
                   {u.name ?? 'No name'} · Joined {formatDate(u.created_at)} · Last login {formatDate(u.last_login)}
@@ -1210,6 +1215,30 @@ export default function Admin() {
                         className="rounded px-3 py-1.5 text-xs font-medium text-white bg-orange-600 hover:bg-orange-700 disabled:opacity-50"
                       >
                         Reset Invitations
+                      </button>
+                    )}
+
+                    {!userDetail.is_admin && (
+                      <button
+                        onClick={async () => {
+                          setUserDetailAction('toggle-content-admin')
+                          try {
+                            await api.setContentAdmin(userDetail.id, !selectedUser!.is_content_admin)
+                            await loadUsers(search)
+                            await reloadUserDetail()
+                            const refreshed = await api.adminUsers(search)
+                            const updated = refreshed.users.find(x => x.id === userDetail.id)
+                            if (updated) setSelectedUser(updated)
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : 'Failed to toggle content admin')
+                          } finally {
+                            setUserDetailAction('')
+                          }
+                        }}
+                        disabled={!!userDetailAction}
+                        className="rounded px-3 py-1.5 text-xs font-medium text-white bg-sky-600 hover:bg-sky-700 disabled:opacity-50"
+                      >
+                        {selectedUser?.is_content_admin ? 'Revoke Content Admin' : 'Make Content Admin'}
                       </button>
                     )}
 

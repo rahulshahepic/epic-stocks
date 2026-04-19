@@ -233,6 +233,38 @@ test.describe('Screenshots', () => {
     await page.screenshot({ path: `${OUT}/invite-landing-light-mobile.png`, fullPage: true })
   })
 
+  test('content - light - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    await page.click('text=Content')
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: `${OUT}/content-light-mobile.png`, fullPage: true })
+  })
+
+  test('content - dark - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'dark')
+    await page.click('text=Content')
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: `${OUT}/content-dark-mobile.png`, fullPage: true })
+  })
+
+  test('content - light - desktop', async ({ page }) => {
+    await authedPage(page, DESKTOP, 'light')
+    await page.click('text=Content')
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: `${OUT}/content-light-desktop.png`, fullPage: true })
+  })
+
+  test('content - dark - desktop', async ({ page }) => {
+    await authedPage(page, DESKTOP, 'dark')
+    await page.click('text=Content')
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: `${OUT}/content-dark-desktop.png`, fullPage: true })
+  })
+
   test('loans - epic mode - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     await page.request.post(`${BASE}/api/admin/epic-mode`, { data: { active: true } })

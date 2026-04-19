@@ -7,6 +7,7 @@ interface MeData {
   email: string
   name: string
   is_admin: boolean
+  is_content_admin: boolean
   shared_accounts?: SharedAccount[]
 }
 

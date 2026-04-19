@@ -506,6 +506,8 @@ class GrantTemplateCreate(BaseModel):
     def check_shape(self):
         if self.show_dp_shares and self.type != "Purchase":
             raise ValueError("show_dp_shares is only valid when type='Purchase'")
+        if self.default_catch_up and self.type != "Purchase":
+            raise ValueError("default_catch_up is only valid when type='Purchase'")
         if self.zero_basis and self.type == "Purchase":
             raise ValueError("zero_basis is only valid for non-Purchase templates")
         if self.default_purchase_due_date is not None and self.type != "Purchase":

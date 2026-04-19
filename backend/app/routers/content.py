@@ -83,6 +83,9 @@ def update_grant_template(
     if row.show_dp_shares and row.type != "Purchase":
         db.rollback()
         raise HTTPException(422, "show_dp_shares is only valid when type='Purchase'")
+    if row.default_catch_up and row.type != "Purchase":
+        db.rollback()
+        raise HTTPException(422, "default_catch_up is only valid when type='Purchase'")
     if row.zero_basis and row.type == "Purchase":
         db.rollback()
         raise HTTPException(422, "zero_basis is only valid for non-Purchase templates")

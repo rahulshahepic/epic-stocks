@@ -504,6 +504,15 @@ class GrantTemplateCreate(BaseModel):
     def check_shape(self):
         if self.show_dp_shares and self.type != "Purchase":
             raise ValueError("show_dp_shares is only valid when type='Purchase'")
+        # Tax-loan due date only makes sense for templates that actually generate tax
+        # loans: zero-basis grants (Bonus/Free) and Purchase templates with
+        # default_catch_up=True (the Catch-Up schedule also generates tax loans).
+        if self.default_tax_due_date is not None:
+            if self.type == "Purchase" and not self.default_catch_up:
+                raise ValueError(
+                    "default_tax_due_date is only valid for Bonus/Free templates or "
+                    "Purchase templates with default_catch_up=True"
+                )
         return self
 
 

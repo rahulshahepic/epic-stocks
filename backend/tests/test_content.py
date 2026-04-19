@@ -292,6 +292,45 @@ def test_grant_template_validator_show_dp_requires_purchase(client):
         os.environ.pop("ADMIN_EMAIL", None)
 
 
+def test_grant_template_validator_tax_due_requires_zero_basis_or_catch_up(client):
+    _login_admin(client)
+    try:
+        # Plain Purchase template — no tax loans generated, tax due date is meaningless.
+        r = client.post("/api/content/grant-templates", json={
+            "year": 2030, "type": "Purchase",
+            "vest_start": "2031-09-30", "periods": 4,
+            "exercise_date": "2030-12-31",
+            "default_tax_due_date": "2039-06-30",
+        })
+        assert r.status_code == 422
+
+        # Bonus (zero-basis) — allowed.
+        r = client.post("/api/content/grant-templates", json={
+            "year": 2030, "type": "Bonus",
+            "vest_start": "2031-09-30", "periods": 3,
+            "exercise_date": "2030-12-31",
+            "default_tax_due_date": "2033-06-30",
+        })
+        assert r.status_code == 201, r.text
+
+        # Purchase with catch-up — allowed (catch-up generates tax loans).
+        r = client.post("/api/content/grant-templates", json={
+            "year": 2031, "type": "Purchase",
+            "vest_start": "2032-09-30", "periods": 4,
+            "exercise_date": "2031-12-31",
+            "default_catch_up": True,
+            "default_tax_due_date": "2040-06-30",
+        })
+        assert r.status_code == 201, r.text
+
+        # Update-path invariant: can't drop catch-up while keeping tax due date.
+        tpl_id = r.json()["id"]
+        r = client.put(f"/api/content/grant-templates/{tpl_id}", json={"default_catch_up": False})
+        assert r.status_code == 422
+    finally:
+        os.environ.pop("ADMIN_EMAIL", None)
+
+
 def test_loan_rate_validators(client):
     _login_admin(client)
     try:

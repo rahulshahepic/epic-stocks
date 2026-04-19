@@ -78,6 +78,18 @@ def update_grant_template(
         raise HTTPException(404, "Grant template not found")
     for k, v in body.model_dump(exclude_unset=True).items():
         setattr(row, k, v)
+    # Same check_shape invariants as create (Pydantic can't run them on a partial
+    # update because fields may come from the stored row).
+    if row.show_dp_shares and row.type != "Purchase":
+        db.rollback()
+        raise HTTPException(422, "show_dp_shares is only valid when type='Purchase'")
+    if row.default_tax_due_date is not None and row.type == "Purchase" and not row.default_catch_up:
+        db.rollback()
+        raise HTTPException(
+            422,
+            "default_tax_due_date is only valid for Bonus/Free templates or "
+            "Purchase templates with default_catch_up=True",
+        )
     _commit_or_409(db, "Grant template constraint violation")
     return {"id": row.id}
 

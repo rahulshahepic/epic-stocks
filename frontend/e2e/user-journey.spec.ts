@@ -101,8 +101,9 @@ test.describe('Sales journey', () => {
     await expect(page.getByText('Events Timeline')).toBeVisible()
     // Tax amounts should be visible for vesting events (in column header on desktop, inline on mobile cards)
     await expect(page.getByText('Tax').first()).toBeVisible({ timeout: 5000 })
-    // Orange tax amount should appear for vesting events with income
-    const taxCells = page.locator('span.text-orange-700')
+    // Bonus/Free grants in the fixture are 83(b)-elected, so vesting tax shows
+    // as a violet "unrealized gains" indicator rather than orange.
+    const taxCells = page.locator('span.text-violet-700, span.text-orange-700')
     await expect(taxCells.first()).toBeVisible({ timeout: 5000 })
   })
 })
@@ -145,10 +146,10 @@ test.describe('Full user journey', () => {
     const sharesCard = page.getByText('Vested Shares', { exact: true }).locator('..')
     await expect(sharesCard).toBeVisible()
 
-    // Navigate to Events and verify event count (spec: 89 real events + 1 projected liquidation = 90)
+    // Navigate to Events and verify event count (89 real events — no more injected liquidation)
     await navigateTo(page, 'Events')
     await expect(page.getByText('Events Timeline')).toBeVisible()
-    await expect(page.getByRole('button', { name: /All types \(90\)/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /All types \(89\)/i })).toBeVisible()
 
     // Navigate to Prices and add a new price
     await navigateTo(page, 'Prices')
@@ -164,9 +165,9 @@ test.describe('Full user journey', () => {
     // Back to list with 9 prices
     await expect(page.getByText('9 price entries')).toBeVisible()
 
-    // Events should now have one more (Share Price event): 90 real + 1 projected = 91
+    // Events should now have one more (Share Price event): 89 + 1 = 90
     await navigateTo(page, 'Events')
-    await expect(page.getByRole('button', { name: /All types \(91\)/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /All types \(90\)/i })).toBeVisible()
 
     // Export should work
     await navigateTo(page, 'Import')

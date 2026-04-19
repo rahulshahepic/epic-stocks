@@ -56,9 +56,9 @@ test.describe('Quick flow: purchase grant + loan', () => {
     await navigateTo(page, 'Events')
     await expect(page.getByText('Events Timeline')).toBeVisible()
 
-    // Should have events: 1 Exercise + 4 Vesting + 1 Loan Payoff + 1 Sale + 1 Liquidation (projected) = 8 events
+    // Should have events: 1 Exercise + 4 Vesting + 1 Loan Payoff + 1 Sale = 7 events
     const filterBtn = page.getByRole('button', { name: /All types/i })
-    await expect(filterBtn).toContainText('All types (8)')
+    await expect(filterBtn).toContainText('All types (7)')
 
     // Filter to Exercise
     await filterBtn.click()
@@ -101,8 +101,8 @@ test.describe('Quick flow: purchase grant + loan', () => {
     // Verify grant appears
     await expect(page.getByText('1 grants')).toBeVisible({ timeout: 10000 })
 
-    // Verify events: 1 Exercise + 2 Vesting + 1 Liquidation (projected) = 4
+    // Verify events: 1 Exercise + 2 Vesting = 3
     await navigateTo(page, 'Events')
-    await expect(page.getByRole('button', { name: /All types \(4\)/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /All types \(3\)/i })).toBeVisible()
   })
 })

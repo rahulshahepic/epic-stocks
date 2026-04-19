@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 
 from database import get_db
-from scaffold.models import User, Grant, Loan, Price, LoanPayment, Sale, TaxSettings, HorizonSettings
+from scaffold.models import User, Grant, Loan, Price, LoanPayment, Sale, TaxSettings
 from scaffold.auth import get_current_user
 from app.timeline_cache import get_timeline
 from app.sales_engine import compute_sale_tax
@@ -703,25 +703,24 @@ def preview_exit(
     enriched = _enrich_timeline(timeline, loans_db, loan_payments, sales, horizon_date=preview_date)
     if ts_dict:
         _annotate_sale_taxes(enriched, timeline, ts_dict, lot_order=lot_order)
+    deduction_enabled = bool(ts_row and ts_row.deduct_investment_interest)
+    excl_years = set(ts_row.deduction_excluded_years or []) if ts_row else set()
+    if deduction_enabled:
+        _apply_interest_deduction(enriched, loans_db, excluded_years=excl_years)
 
     liq = next((e for e in enriched if e.get("event_type") == "Liquidation (projected)"), None)
     if not liq:
         return None
 
-    outstanding = round(_compute_outstanding_principal(loans_db, loan_payments, sales, preview_date), 2)
-    unvested_cost = round(_compute_unvested_cost(grants, preview_date), 2)
-    gross_vested = liq.get("gross_proceeds") or 0.0
-    tax = liq.get("estimated_tax") or 0.0
-    gross = gross_vested + unvested_cost
-    net = max(0.0, gross - outstanding - tax)
+    summary = _build_exit_summary(
+        enriched, grants, loans_db, loan_payments, sales,
+        preview_date, ts_dict, deduction_enabled, excl_years,
+    )
+    if not summary:
+        return None
     return {
         "date": preview_date.isoformat(),
-        "gross_proceeds": round(gross, 2),
-        "outstanding_loan_principal": outstanding,
-        "estimated_tax": round(tax, 2),
-        "net_cash": round(net, 2),
-        "shares": abs(liq.get("vested_shares") or 0),
-        "share_price": liq.get("share_price") or 0.0,
+        **summary,
     }
 
 
@@ -740,10 +739,7 @@ def _get_events_data(user: User, db: Session) -> list:
     loan_payments = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).order_by(LoanPayment.date).all()
     sales = db.query(Sale).filter(Sale.user_id == user.id).all()
 
-    hs_row = db.query(HorizonSettings).filter(HorizonSettings.user_id == user.id).first()
-    horizon_date = (hs_row.horizon_date if hs_row and hs_row.horizon_date else None) or _last_vesting_date(timeline)
-
-    enriched = _enrich_timeline(timeline, loans_db, loan_payments, sales, horizon_date=horizon_date)
+    enriched = _enrich_timeline(timeline, loans_db, loan_payments, sales)
 
     # Annotate vesting events with election_83b flag from their grant
     # Annotate Share Price events with is_estimate flag
@@ -804,21 +800,6 @@ def _get_events_data(user: User, db: Session) -> list:
     if ts_row and ts_row.deduct_investment_interest:
         excl = set(ts_row.deduction_excluded_years or [])
         _apply_interest_deduction(enriched, loans_db, excluded_years=excl)
-
-    # Build comprehensive exit summary and annotate the liquidation event.
-    if horizon_date is not None:
-        deduction_enabled = bool(ts_row and ts_row.deduct_investment_interest)
-        excl_years = set(ts_row.deduction_excluded_years or []) if ts_row else set()
-        summary = _build_exit_summary(
-            enriched, grants, loans_db, loan_payments, sales,
-            horizon_date, ts_dict, deduction_enabled, excl_years,
-        )
-        if summary:
-            for e in enriched:
-                if e.get("event_type") == "Liquidation (projected)":
-                    e["outstanding_loan_principal"] = summary["outstanding_principal"]
-                    e["unvested_cost_proceeds"] = summary["unvested_cost_proceeds"]
-                    e["exit_summary"] = summary
 
     return [_serialize_event(e) for e in enriched]
 
@@ -968,7 +949,7 @@ def _get_dashboard_data(user: User, db: Session) -> dict:
         "total_cap_gains": round(last.get("cum_cap_gains", 0), 2),
         "total_loan_principal": sum(ln["amount"] for ln in loans),
         "total_tax_paid": round(total_tax_paid - tax_savings_from_deduction, 2),
-        "cash_received": round(cash_received_gross - sale_taxes + tax_savings_from_deduction, 2),
+        "cash_received": round(cash_received_gross - sale_taxes, 2),
         "interest_deduction_total": round(interest_deduction_total, 2),
         "tax_savings_from_deduction": round(tax_savings_from_deduction, 2),
         "loan_payment_by_year": sorted(loan_payment_by_year.values(), key=lambda x: x["year"]),

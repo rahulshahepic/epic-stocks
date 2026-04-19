@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 
 from database import get_db
-from scaffold.models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, ErrorLog, EmailPreference, SystemMetric, TaxSettings, HorizonSettings, LoanPayment, Sale, TipAcceptance, Invitation, InvitationOptOut, InviteSendingBlock
+from scaffold.models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, ErrorLog, EmailPreference, SystemMetric, TaxSettings, LoanPayment, Sale, TipAcceptance, Invitation, InvitationOptOut, InviteSendingBlock
 from scaffold.auth import get_admin_user, get_admin_emails
 from scaffold.maintenance import is_maintenance_active, set_maintenance
 from scaffold.epic_mode import is_epic_mode, set_epic_mode
@@ -162,7 +162,6 @@ def admin_delete_user(user_id: int, admin: User = Depends(get_admin_user), db: S
     db.execute(text("DELETE FROM push_subscriptions WHERE user_id = :uid"), {"uid": user_id})
     db.execute(text("DELETE FROM email_preferences WHERE user_id = :uid"), {"uid": user_id})
     db.execute(text("DELETE FROM tax_settings WHERE user_id = :uid"), {"uid": user_id})
-    db.execute(text("DELETE FROM horizon_settings WHERE user_id = :uid"), {"uid": user_id})
     # import_backups has ondelete=CASCADE so the next statement handles it at DB level
     db.execute(text("DELETE FROM users WHERE id = :uid"), {"uid": user_id})
     db.commit()

@@ -237,16 +237,6 @@ class TestSharedAccess:
         finally:
             bob_cm.__exit__(None, None, None)
 
-    def test_viewer_can_read_horizon_settings(self, client, make_client):
-        _, bob, bob_cm, inv_id = self._setup_shared(client, make_client)
-        try:
-            resp = bob.get(f"/api/sharing/view/{inv_id}/horizon-settings")
-            assert resp.status_code == 200
-            data = resp.json()
-            assert "horizon_date" in data
-        finally:
-            bob_cm.__exit__(None, None, None)
-
     def test_revoked_access_denied(self, client, make_client):
         alice, bob, bob_cm, inv_id = self._setup_shared(client, make_client)
         try:

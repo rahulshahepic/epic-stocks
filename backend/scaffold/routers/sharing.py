@@ -471,18 +471,6 @@ def shared_tax_settings(
     return result
 
 
-@router.get("/view/{invitation_id}/horizon-settings")
-def shared_horizon_settings(
-    invitation_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    owner = _get_shared_owner(invitation_id, user, db)
-    from scaffold.models import HorizonSettings
-    hs = db.query(HorizonSettings).filter(HorizonSettings.user_id == owner.id).first()
-    return {"horizon_date": hs.horizon_date if hs else None}
-
-
 @router.get("/view/{invitation_id}/sales/{sale_id}/tax")
 def shared_sale_tax(
     invitation_id: int,

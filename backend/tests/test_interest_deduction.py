@@ -228,9 +228,9 @@ def test_dashboard_deduction_does_not_change_cap_gains(client):
 
     # Cap gains unchanged — deduction is a tax concept, not a gains concept
     assert abs(dash_after["total_cap_gains"] - dash_before["total_cap_gains"]) < 1.0
-    # Tax and cash move instead
+    # Tax drops; cash_received is pure realized cash and stays the same
     assert dash_after["total_tax_paid"] < dash_before["total_tax_paid"]
-    assert dash_after["cash_received"] >= dash_before["cash_received"]
+    assert abs(dash_after["cash_received"] - dash_before["cash_received"]) < 0.01
     assert dash_after["interest_deduction_total"] > 0
     assert dash_after["tax_savings_from_deduction"] > 0
 

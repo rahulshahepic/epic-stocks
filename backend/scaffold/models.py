@@ -27,7 +27,6 @@ class User(Base):
     sales: Mapped[list["Sale"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     loan_payments: Mapped[list["LoanPayment"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     tax_settings: Mapped["TaxSettings | None"] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
-    horizon_settings: Mapped["HorizonSettings | None"] = relationship(back_populates="user", cascade="all, delete-orphan", uselist=False)
     sent_invitations: Mapped[list["Invitation"]] = relationship(foreign_keys="[Invitation.inviter_id]", back_populates="inviter", cascade="all, delete-orphan")
     received_invitations: Mapped[list["Invitation"]] = relationship(foreign_keys="[Invitation.invitee_id]", back_populates="invitee")
 
@@ -176,16 +175,6 @@ class TaxSettings(Base):
     deduction_excluded_years: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
 
     user: Mapped["User"] = relationship(back_populates="tax_settings")
-
-
-class HorizonSettings(Base):
-    __tablename__ = "horizon_settings"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, unique=True, index=True)
-    horizon_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-
-    user: Mapped["User"] = relationship(back_populates="horizon_settings")
 
 
 class ImportBackup(Base):

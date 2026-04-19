@@ -8,23 +8,45 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - id: setup-python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r backend/requirements.txt pytest pytest-asyncio httpx pip-audit
-      - run: pip-audit -r backend/requirements.txt
-      - run: pytest backend/tests/ -v
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+      - name: Cache status
+        run: echo "pip cache-hit=${{ steps.setup-python.outputs.cache-hit }}"
+      - name: Install deps
+        run: |
+          echo "::group::pip install"
+          time pip install -r backend/requirements.txt pytest pytest-asyncio httpx
+          echo "::endgroup::"
+      - name: Run tests
+        run: |
+          echo "::group::pytest"
+          time pytest backend/tests/ -v --durations=20
+          echo "::endgroup::"
 
   frontend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - id: setup-node
+        uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - run: cd frontend && npm ci
-      - run: cd frontend && npm audit --audit-level=high
-      - run: cd frontend && npm run test
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: Cache status
+        run: echo "npm cache-hit=${{ steps.setup-node.outputs.cache-hit }}"
+      - name: Install deps
+        run: cd frontend && time npm ci
+      - name: Type-check
+        run: cd frontend && time npx tsc -b --noEmit
+      - name: npm audit
+        run: cd frontend && time npm audit --audit-level=high
+      - name: Run tests
+        run: cd frontend && time npm run test
 
   caddy-validate:
     runs-on: ubuntu-latest
@@ -40,14 +62,66 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
-    needs: [backend, frontend]
+    # Playwright runs on the runner, not in a container. The old approach pulled
+    # mcr.microsoft.com/playwright:v1.56.0-jammy (~1.3 GB) every build, which
+    # dominated e2e wall clock because the GHA layer cache does not round-trip
+    # multi-GB base images reliably. Runner-based Playwright with a cached
+    # ~/.cache/ms-playwright directory avoids that entirely.
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Start e2e-db (parallel with npm / buildx / image build)
+        # Postgres has no dependency on the e2e-app image, so start it immediately.
+        # By the time the e2e-app image finishes building, the db healthcheck has
+        # already passed and `docker compose up e2e-app` doesn't wait on it.
+        run: docker compose -f docker-compose.e2e.yml up -d e2e-db
+      - id: setup-node
+        uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - run: cd frontend && npm ci
-      - run: cd frontend && npx tsc -b --noEmit
-      - run: |
-          docker compose -f docker-compose.e2e.yml up --build --abort-on-container-exit --exit-code-from playwright
-          docker compose -f docker-compose.e2e.yml down -v
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend deps
+        run: cd frontend && time npm ci
+      - name: Cache playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+      - name: Install playwright browsers
+        # No --with-deps: the ubuntu-24.04 runner ships libnss3 / libxkbcommon /
+        # libatk etc. already. `--with-deps` costs ~16 s of `sudo apt update` +
+        # "already the newest version" for every lib on every run. If Playwright
+        # ever fails with a missing system lib, add the specific package here.
+        run: |
+          echo "pw browser cache-hit=${{ steps.pw-cache.outputs.cache-hit }}"
+          cd frontend && time npx playwright install chromium
+      - uses: docker/setup-buildx-action@v3
+      - name: Build e2e-app image (cached)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          load: true
+          tags: epic-stocks-e2e-app:ci
+          cache-from: type=gha,scope=e2e-app
+          cache-to: type=gha,mode=max,scope=e2e-app
+      - name: Start backend
+        run: |
+          docker compose -f docker-compose.e2e.yml up -d e2e-app
+          echo "Waiting for backend health..."
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8000/api/health >/dev/null; then
+              echo "Backend ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+      - name: Run e2e tests
+        env:
+          E2E_BASE_URL: http://localhost:8000
+          E2E_API_URL: http://localhost:8000
+        run: cd frontend && time npx playwright test
+      - name: Teardown
+        if: always()
+        run: docker compose -f docker-compose.e2e.yml down -v

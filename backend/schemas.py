@@ -412,13 +412,6 @@ class TaxSettingsUpdate(BaseModel):
     deduct_investment_interest: bool | None = None
     deduction_excluded_years: list[int] | None = None
 
-class HorizonSettingsRead(BaseModel):
-    horizon_date: date | None = None
-    model_config = {"from_attributes": True}
-
-class HorizonSettingsUpdate(BaseModel):
-    horizon_date: date | None = None
-
 class LotSummary(BaseModel):
     grant_year: int | None
     grant_type: str | None

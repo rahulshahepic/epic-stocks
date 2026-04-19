@@ -341,6 +341,9 @@ export const api = {
   wizardSubmit: (data: WizardSubmitPayload) =>
     post<WizardSubmitResult>('/api/wizard/submit', data),
 
+  // Wizard content (global, read-only in Phase 1)
+  getContent: () => apiFetch<ContentBlob>('/api/content'),
+
   // Smart Tips
   getTips: () => apiFetch<SmartTip[]>('/api/tips'),
   recordTipAcceptance: (tip_type: string, savings_estimate: number) =>
@@ -860,4 +863,78 @@ export interface SharedAccount {
   invitation_id: number
   inviter_name: string
   inviter_email: string
+}
+
+
+// ── Wizard content (from GET /api/content) ──────────────────────────────────
+
+export interface ContentGrantScheduleEntry {
+  year: number
+  type: string
+  vest_start: string
+  periods: number
+  exercise_date: string
+  default_catch_up: boolean
+  show_dp_shares: boolean
+}
+
+export interface ContentGrantTypeDef {
+  name: string
+  color_class: string
+  description: string
+  is_pre_tax_when_zero_price: boolean
+  display_order: number
+}
+
+export interface ContentBonusScheduleVariant {
+  grant_year: number
+  grant_type: string
+  variant_code: string
+  periods: number
+  label: string
+  is_default: boolean
+}
+
+export interface ContentPurchaseOriginalLoan {
+  rate: number
+  due_date: string
+}
+
+export interface ContentPurchaseRefiEntry {
+  date: string
+  rate: number
+  loan_year: number
+  due_date: string
+}
+
+export interface ContentTaxRefiEntry extends ContentPurchaseRefiEntry {
+  orig_due_date: string
+}
+
+export interface ContentWizardSettings {
+  loan_term_years: number
+  latest_rate_year: number
+  dp_shares_start_year: number
+  tax_fallback_federal: number
+  tax_fallback_state: number
+  default_purchase_due_month_day_pre2022: string
+  default_purchase_due_month_day_post2022: string
+  price_years_start: number
+  price_years_end: number
+}
+
+export interface ContentBlob {
+  grant_schedule: ContentGrantScheduleEntry[]
+  grant_type_defs: ContentGrantTypeDef[]
+  bonus_schedule_variants: ContentBonusScheduleVariant[]
+  loan_rates: {
+    interest: Record<string, number>
+    tax: Record<string, Record<string, number>>
+    purchase_original: Record<string, ContentPurchaseOriginalLoan>
+  }
+  refi_chains: {
+    purchase: Record<string, ContentPurchaseRefiEntry[]>
+    tax: Record<string, ContentTaxRefiEntry[]>
+  }
+  wizard_settings: ContentWizardSettings
 }

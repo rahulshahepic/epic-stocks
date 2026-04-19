@@ -157,6 +157,7 @@ def test_sales_estimate_missing_params(client):
 
 def _seed_purchase_with_loan(client):
     """Add a purchase grant + loan via /api/flows/new-purchase. Returns loan_id."""
+    # 1000*$5 = $5,000 → min DP $500 at 10%, so loan must be ≤ $4,500.
     resp = client.post("/api/flows/new-purchase", json={
         "year": 2021,
         "shares": 1000,
@@ -164,7 +165,7 @@ def _seed_purchase_with_loan(client):
         "vest_start": "2021-01-01",
         "periods": 1,
         "exercise_date": "2030-01-01",
-        "loan_amount": 5000.0,
+        "loan_amount": 4500.0,
         "loan_rate": 0.05,
         "loan_due_date": "2030-01-01",
         "generate_payoff_sale": False,

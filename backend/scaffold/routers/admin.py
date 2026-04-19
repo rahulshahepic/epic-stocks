@@ -47,6 +47,7 @@ class UserSummary(BaseModel):
     email: str
     name: str | None
     is_admin: bool
+    is_content_admin: bool
     created_at: str
     last_login: str | None
     grant_count: int
@@ -132,11 +133,30 @@ def admin_users(
         result.append(UserSummary(
             id=u.id, email=u.email, name=u.name,
             is_admin=u.email.lower() in admin_emails,
+            is_content_admin=bool(u.is_content_admin),
             created_at=u.created_at.isoformat() if u.created_at else "",
             last_login=u.last_login.isoformat() if u.last_login else None,
             grant_count=gc, loan_count=lc, price_count=pc,
         ))
     return UserListResponse(users=result, total=total)
+
+
+@router.post("/users/{user_id}/content-admin", status_code=204)
+def admin_grant_content_admin(user_id: int, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.is_content_admin = 1
+    db.commit()
+
+
+@router.delete("/users/{user_id}/content-admin", status_code=204)
+def admin_revoke_content_admin(user_id: int, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.is_content_admin = 0
+    db.commit()
 
 
 @router.delete("/users/{user_id}", status_code=204)
@@ -462,16 +482,20 @@ class FlexiblePayoffRequest(BaseModel):
 
 @router.get("/flexible-payoff", response_model=FlexiblePayoffStatus)
 def get_flexible_payoff(admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
-    row = db.execute(text("SELECT value FROM system_settings WHERE key = 'flexible_payoff_enabled'")).scalar()
-    return FlexiblePayoffStatus(active=(row == "true"))
+    from scaffold.models import GrantProgramSettings
+    row = db.query(GrantProgramSettings).filter(GrantProgramSettings.id == 1).one_or_none()
+    return FlexiblePayoffStatus(active=bool(row.flexible_payoff_enabled) if row else False)
 
 
 @router.post("/flexible-payoff", response_model=FlexiblePayoffStatus)
 def set_flexible_payoff(body: FlexiblePayoffRequest, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
-    db.execute(
-        text("UPDATE system_settings SET value = :v WHERE key = 'flexible_payoff_enabled'"),
-        {"v": "true" if body.active else "false"},
-    )
+    from scaffold.models import GrantProgramSettings
+    row = db.query(GrantProgramSettings).filter(GrantProgramSettings.id == 1).one_or_none()
+    if not row:
+        row = GrantProgramSettings(id=1, flexible_payoff_enabled=body.active)
+        db.add(row)
+    else:
+        row.flexible_payoff_enabled = body.active
     db.commit()
     return FlexiblePayoffStatus(active=body.active)
 

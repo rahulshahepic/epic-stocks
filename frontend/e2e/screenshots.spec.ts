@@ -192,8 +192,8 @@ test.describe('Screenshots', () => {
     await authedPage(page, MOBILE, 'light')
     await page.goto(`${BASE}/wizard`)
     await page.waitForLoadState('networkidle')
-    // Navigate through: "Start from scratch" → prices → grant entry
-    await page.click('text=Start from scratch')
+    // Welcome screen → Manual entry → prices → "Next: Add grants" → grant entry.
+    await page.click('text=Manual entry')
     await page.waitForTimeout(300)
     await page.click('text=Next: Add grants')
     await page.waitForTimeout(300)
@@ -231,6 +231,38 @@ test.describe('Screenshots', () => {
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(800)
     await page.screenshot({ path: `${OUT}/invite-landing-light-mobile.png`, fullPage: true })
+  })
+
+  test('content - light - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    await page.getByRole('link', { name: 'Content', exact: true }).click()
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: `${OUT}/content-light-mobile.png`, fullPage: true })
+  })
+
+  test('content - dark - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'dark')
+    await page.getByRole('link', { name: 'Content', exact: true }).click()
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: `${OUT}/content-dark-mobile.png`, fullPage: true })
+  })
+
+  test('content - light - desktop', async ({ page }) => {
+    await authedPage(page, DESKTOP, 'light')
+    await page.getByRole('link', { name: 'Content', exact: true }).click()
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: `${OUT}/content-light-desktop.png`, fullPage: true })
+  })
+
+  test('content - dark - desktop', async ({ page }) => {
+    await authedPage(page, DESKTOP, 'dark')
+    await page.getByRole('link', { name: 'Content', exact: true }).click()
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: `${OUT}/content-dark-desktop.png`, fullPage: true })
   })
 
   test('loans - epic mode - light - mobile', async ({ page }) => {

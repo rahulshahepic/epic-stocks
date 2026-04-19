@@ -1,9 +1,14 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../../api.ts'
-import type { WizardGrant, WizardLoan, WizardGrantTemplate, TaxSettings, GrantEntry, PriceEntry, LoanEntry } from '../../api.ts'
+import type {
+  WizardGrant, WizardLoan, WizardGrantTemplate, TaxSettings,
+  GrantEntry, PriceEntry, LoanEntry, ContentBlob,
+} from '../../api.ts'
 
 import { useApiData } from '../hooks/useApiData.ts'
+import { useContent } from '../hooks/useContent.ts'
+import { GRANT_COLORS, GRANT_DESCRIPTIONS, PRE_TAX_TYPES } from '../grantTypes.ts'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -70,20 +75,6 @@ type Screen =
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const GRANT_COLORS: Record<GrantType, string> = {
-  'Purchase': 'bg-rose-700 text-white',
-  'Catch-Up': 'bg-sky-700 text-white',
-  'Bonus': 'bg-emerald-700 text-white',
-  'Free': 'bg-amber-600 text-white',
-}
-
-const GRANT_DESCRIPTIONS: Record<GrantType, string> = {
-  'Purchase': 'You paid the share price',
-  'Catch-Up': 'Zero-basis catch-up grant',
-  'Bonus': 'RSU bonus grant',
-  'Free': 'Free/other grant',
-}
-
 function emptyLoan(type: 'Purchase' | 'Tax' = 'Purchase'): LoanDraft {
   return { loan_number: '', loan_type: type, loan_year: '', amount: '', interest_rate: '', due_date: '', refinances_loan_number: '' }
 }
@@ -105,11 +96,6 @@ function emptyGrantDraft(year = '', type: GrantType = 'Purchase', template?: Wiz
   }
 }
 
-function isPreTax(draft: GrantDraft): boolean {
-  const price = parseFloat(draft.price)
-  return (draft.type === 'Catch-Up' || draft.type === 'Bonus' || draft.type === 'Free') && (isNaN(price) || price === 0)
-}
-
 /** Compute vesting dates for a draft grant: [vest_start + 0yr, +1yr, +2yr, ...] */
 function vestingYears(draft: GrantDraft): string[] {
   const start = draft.vest_start
@@ -128,100 +114,22 @@ function fmtDate(d: string) {
   return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-// ── Epic Grant Schedule ───────────────────────────────────────────────────────
+// ── Epic Grant Schedule types ────────────────────────────────────────────────
+// Values now live in the DB and are fetched via useContent(); see ImportWizardInner below.
 
 interface KnownGrant {
   year: number
   type: 'Purchase' | 'Bonus' | 'Free'
-  defaultPrice: number
   vest_start: string
   periods: number
   exercise_date: string
   defaultCatchUp: boolean
+  showDpShares: boolean
+  zeroBasis: boolean
+  defaultTaxDueDate: string | null
 }
 
 type BonusSchedule = 'A' | 'B' | 'C'
-
-const BONUS_SCHEDULES: Record<BonusSchedule, { periods: number }> = {
-  A: { periods: 2 },
-  B: { periods: 3 },
-  C: { periods: 4 },
-}
-
-// Company-wide grant structure. All values are defaults — user can override any field.
-// Purchase prices are NOT included here — user enters them from the Epic stocks SharePoint.
-const EPIC_GRANT_SCHEDULE: KnownGrant[] = [
-  { year: 2018, type: 'Purchase', defaultPrice: 0, vest_start: '2020-06-15', periods: 6, exercise_date: '2018-12-31', defaultCatchUp: true },
-  { year: 2019, type: 'Purchase', defaultPrice: 0, vest_start: '2021-06-15', periods: 6, exercise_date: '2019-12-31', defaultCatchUp: true },
-  { year: 2020, type: 'Purchase', defaultPrice: 0, vest_start: '2021-09-30', periods: 5, exercise_date: '2020-12-31', defaultCatchUp: true },
-  { year: 2020, type: 'Bonus',    defaultPrice: 0, vest_start: '2021-09-30', periods: 4, exercise_date: '2020-12-31', defaultCatchUp: false },
-  { year: 2021, type: 'Purchase', defaultPrice: 0, vest_start: '2022-09-30', periods: 5, exercise_date: '2021-12-31', defaultCatchUp: true },
-  { year: 2021, type: 'Bonus',    defaultPrice: 0, vest_start: '2022-09-30', periods: 3, exercise_date: '2021-12-31', defaultCatchUp: false },
-  { year: 2022, type: 'Purchase', defaultPrice: 0, vest_start: '2023-09-30', periods: 4, exercise_date: '2022-12-31', defaultCatchUp: false },
-  { year: 2022, type: 'Bonus',    defaultPrice: 0, vest_start: '2023-09-30', periods: 3, exercise_date: '2022-12-31', defaultCatchUp: false },
-  { year: 2022, type: 'Free',     defaultPrice: 0, vest_start: '2027-09-30', periods: 1, exercise_date: '2022-12-31', defaultCatchUp: false },
-  { year: 2023, type: 'Purchase', defaultPrice: 0, vest_start: '2024-09-30', periods: 4, exercise_date: '2023-12-31', defaultCatchUp: false },
-  { year: 2023, type: 'Bonus',    defaultPrice: 0, vest_start: '2024-09-30', periods: 3, exercise_date: '2023-12-31', defaultCatchUp: false },
-  { year: 2024, type: 'Purchase', defaultPrice: 0, vest_start: '2025-09-30', periods: 4, exercise_date: '2024-12-31', defaultCatchUp: false },
-  { year: 2024, type: 'Bonus',    defaultPrice: 0, vest_start: '2025-09-30', periods: 3, exercise_date: '2024-12-31', defaultCatchUp: false },
-  { year: 2025, type: 'Purchase', defaultPrice: 0, vest_start: '2026-09-30', periods: 4, exercise_date: '2025-12-31', defaultCatchUp: false },
-  { year: 2025, type: 'Bonus',    defaultPrice: 0, vest_start: '2026-09-30', periods: 3, exercise_date: '2025-12-31', defaultCatchUp: false },
-]
-
-const LOAN_TERM_YEARS = 10
-const PRICE_YEARS = [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
-
-// ── Default loan interest rates by year (from Epic loan statements) ──────────
-// These are defaults the user can override.
-
-const INTEREST_LOAN_RATES: Record<number, number> = {
-  2020: 0.0086, 2021: 0.0091, 2022: 0.0328, 2023: 0.0437, 2024: 0.037, 2025: 0.0379,
-}
-
-const TAX_LOAN_RATES: Record<string, Record<number, number>> = {
-  'Catch-Up': { 2021: 0.0086, 2022: 0.0187, 2023: 0.0356, 2024: 0.043, 2025: 0.0407 },
-  'Bonus':    { 2021: 0.0086, 2022: 0.0293, 2023: 0.0385, 2024: 0.037 },
-}
-
-// Purchase loan refinance history per grant year.
-// Each grant year has its own chain with specific due dates.
-const PURCHASE_REFI_CHAINS: Record<number, { date: string; rate: number; loanYear: number; dueDate: string }[]> = {
-  2018: [
-    { date: '2020-01-01', rate: 0.0169, loanYear: 2020, dueDate: '2025-07-15' },  // Jan 2020: refi to 1.69%, original due date kept
-    { date: '2020-06-01', rate: 0.0043, loanYear: 2020, dueDate: '2025-07-15' },  // Jun 2020: refi to 0.43%, due date kept
-    { date: '2021-11-01', rate: 0.0086, loanYear: 2021, dueDate: '2027-07-15' },  // Nov 2021: long-term to 0.86%, due extended
-  ],
-  2019: [
-    { date: '2020-06-01', rate: 0.0043, loanYear: 2020, dueDate: '2026-07-15' },  // Jun 2020: refi to 0.43%, original due date kept
-    { date: '2021-11-01', rate: 0.0086, loanYear: 2021, dueDate: '2028-07-15' },  // Nov 2021: long-term to 0.86%, due extended
-  ],
-  2020: [
-    { date: '2021-11-01', rate: 0.0086, loanYear: 2021, dueDate: '2029-07-15' },  // Nov 2021: long-term to 0.86%, due extended from 2025
-  ],
-}
-
-// Original purchase loan rates and due dates by exercise year (pre-refinance)
-const ORIGINAL_PURCHASE_LOANS: Record<number, { rate: number; dueDate: string }> = {
-  2018: { rate: 0.0307, dueDate: '2025-07-15' },
-  2019: { rate: 0.0307, dueDate: '2026-07-15' },
-  2020: { rate: 0.0038, dueDate: '2025-07-15' },  // originated late 2020 at 0.38%, refi'd Nov 2021 to 0.86%
-  2021: { rate: 0.0086, dueDate: '2030-07-15' },
-  2022: { rate: 0.0187, dueDate: '2031-06-30' },
-  2023: { rate: 0.0356, dueDate: '2032-06-30' },
-  2024: { rate: 0.037,  dueDate: '2033-06-30' },
-  2025: { rate: 0.0406, dueDate: '2034-06-30' },
-}
-
-// Tax loan refinances — keyed by "grantYear-grantType-loanYear"
-// The 2020 Bonus first vesting (2021) generated a Tax loan that was extended on 11/1/2021.
-const TAX_LOAN_REFIS: Record<string, { date: string; rate: number; loanYear: number; origDueDate: string; newDueDate: string }[]> = {
-  '2020-Bonus-2021': [
-    { date: '2021-11-01', rate: 0.0086, loanYear: 2021, origDueDate: '2024-07-15', newDueDate: '2029-07-15' },
-  ],
-}
-
-// Latest year with known loan rates
-const LATEST_RATE_YEAR = 2025
 
 interface PurchaseGrantRow {
   year: number; vest_start: string; periods: number; exercise_date: string
@@ -259,48 +167,6 @@ interface ReviewedLoan {
   refi_date: string  // date of refinance (or origination for the first loan in a chain)
   enabled: boolean
   is_existing: boolean  // loaded from DB vs auto-generated
-}
-
-function addYearsToDate(dateStr: string, years: number): string {
-  if (!dateStr) return ''
-  const d = new Date(dateStr + 'T00:00:00')
-  d.setFullYear(d.getFullYear() + years)
-  return d.toISOString().slice(0, 10)
-}
-
-function initPurchaseRows(): PurchaseGrantRow[] {
-  return EPIC_GRANT_SCHEDULE.filter(g => g.type === 'Purchase').map(g => {
-    const origLoan = ORIGINAL_PURCHASE_LOANS[g.year]
-    const refiChain = PURCHASE_REFI_CHAINS[g.year]
-    const lastRefi = refiChain?.[refiChain.length - 1]
-    return {
-      year: g.year, vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
-      participated: false,
-      purchase_price: '',
-      shares: '', dp_shares: '0', dp_cash: '',
-      loan_amount: '',
-      loan_due_date: lastRefi?.dueDate ?? origLoan?.dueDate ?? addYearsToDate(g.exercise_date, LOAN_TERM_YEARS),
-      interest_rate: lastRefi ? String(lastRefi.rate) : (origLoan ? String(origLoan.rate) : ''),
-      existing_purchase_loan_number: '',
-      existing_refinance_loans: [],
-    }
-  })
-}
-
-function initCatchUpRows(): CatchUpRow[] {
-  return EPIC_GRANT_SCHEDULE.filter(g => g.type === 'Purchase' && g.defaultCatchUp).map(g => ({
-    year: g.year, vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
-    included: true, shares: '',
-  }))
-}
-
-function initBonusRows(): BonusGrantRow[] {
-  return EPIC_GRANT_SCHEDULE.filter(g => g.type === 'Bonus' || g.type === 'Free').map(g => ({
-    year: g.year, type: g.type as 'Bonus' | 'Free',
-    purchase_price: g.type === 'Free' ? '0' : '', shares: '',
-    isBonus2020: g.year === 2020 && g.type === 'Bonus', schedule: 'C' as BonusSchedule,
-    vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
-  }))
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -616,7 +482,146 @@ function RefiChainGroup({ label, loans, onChangeLoan }: {
 
 // ── Main wizard ───────────────────────────────────────────────────────────────
 
-export default function ImportWizard({ onComplete, isPage = false }: { onComplete?: () => void; isPage?: boolean }) {
+export default function ImportWizard(props: { onComplete?: () => void; isPage?: boolean }) {
+  const content = useContent()
+  if (!content) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <p className="text-xs text-gray-500 dark:text-slate-400">Loading…</p>
+      </div>
+    )
+  }
+  return <ImportWizardInner {...props} content={content} />
+}
+
+function ImportWizardInner({ onComplete, isPage = false, content }: {
+  onComplete?: () => void
+  isPage?: boolean
+  content: ContentBlob
+}) {
+  // ── Content-derived constants (previously module-level hardcoded values) ──
+  const EPIC_GRANT_SCHEDULE: KnownGrant[] = content.grant_templates.map(g => ({
+    year: g.year,
+    type: g.type as 'Purchase' | 'Bonus' | 'Free',
+    vest_start: g.vest_start,
+    periods: g.periods,
+    exercise_date: g.exercise_date,
+    defaultCatchUp: g.default_catch_up,
+    showDpShares: g.show_dp_shares,
+    zeroBasis: g.zero_basis,
+    defaultTaxDueDate: g.default_tax_due_date,
+  }))
+  const ZERO_BASIS_YEARS_BY_TYPE = new Map<string, Set<number>>()
+  for (const g of EPIC_GRANT_SCHEDULE) {
+    if (!g.zeroBasis) continue
+    if (!ZERO_BASIS_YEARS_BY_TYPE.has(g.type)) ZERO_BASIS_YEARS_BY_TYPE.set(g.type, new Set())
+    ZERO_BASIS_YEARS_BY_TYPE.get(g.type)!.add(g.year)
+  }
+  const isZeroBasisTemplate = (year: number, type: string) =>
+    ZERO_BASIS_YEARS_BY_TYPE.get(type)?.has(year) ?? false
+  const DP_SHARES_YEARS = new Set(
+    EPIC_GRANT_SCHEDULE.filter(g => g.type === 'Purchase' && g.showDpShares).map(g => g.year),
+  )
+  // Admin-configured tax-loan due dates, keyed by (grantYear, grantType).
+  // When set, the wizard uses this; otherwise it falls back to inheriting the
+  // purchase-loan due date (see inheritedDueDate below).
+  const TAX_DUE_DATE_BY_TEMPLATE = new Map(
+    EPIC_GRANT_SCHEDULE
+      .filter(g => g.defaultTaxDueDate)
+      .map(g => [`${g.year}-${g.type}`, g.defaultTaxDueDate as string]),
+  )
+  const BONUS_SCHEDULES = Object.fromEntries(
+    content.bonus_schedule_variants
+      .filter(v => v.grant_year === 2020 && v.grant_type === 'Bonus')
+      .map(v => [v.variant_code, { periods: v.periods }]),
+  ) as Record<BonusSchedule, { periods: number }>
+  const BONUS_VARIANT_KEYS = new Set(
+    content.bonus_schedule_variants.map(v => `${v.grant_year}-${v.grant_type}`),
+  )
+  const FALLBACK_TAX_RATE =
+    content.grant_program_settings.tax_fallback_federal + content.grant_program_settings.tax_fallback_state
+  const PRICE_YEARS: number[] = []
+  for (let y = content.grant_program_settings.price_years_start; y <= content.grant_program_settings.price_years_end; y++) {
+    PRICE_YEARS.push(y)
+  }
+  const INTEREST_LOAN_RATES: Record<number, number> = Object.fromEntries(
+    Object.entries(content.loan_rates.interest).map(([k, v]) => [Number(k), v]),
+  )
+  const TAX_LOAN_RATES: Record<string, Record<number, number>> = Object.fromEntries(
+    Object.entries(content.loan_rates.tax).map(([gt, m]) => [
+      gt,
+      Object.fromEntries(Object.entries(m).map(([k, v]) => [Number(k), v])),
+    ]),
+  )
+  const ORIGINAL_PURCHASE_LOANS: Record<number, { rate: number; dueDate: string }> = Object.fromEntries(
+    Object.entries(content.loan_rates.purchase_original).map(([k, v]) => [
+      Number(k),
+      { rate: v.rate, dueDate: v.due_date },
+    ]),
+  )
+  const PURCHASE_REFI_CHAINS: Record<number, { date: string; rate: number; loanYear: number; dueDate: string }[]> =
+    Object.fromEntries(
+      Object.entries(content.loan_refinances.purchase).map(([k, arr]) => [
+        Number(k),
+        arr.map(e => ({ date: e.date, rate: e.rate, loanYear: e.loan_year, dueDate: e.due_date })),
+      ]),
+    )
+  const TAX_LOAN_REFIS: Record<string, { date: string; rate: number; loanYear: number; origDueDate: string; newDueDate: string }[]> =
+    Object.fromEntries(
+      Object.entries(content.loan_refinances.tax).map(([k, arr]) => [
+        k,
+        arr.map(e => ({
+          date: e.date, rate: e.rate, loanYear: e.loan_year,
+          origDueDate: e.orig_due_date, newDueDate: e.due_date,
+        })),
+      ]),
+    )
+
+  function isPreTax(draft: GrantDraft): boolean {
+    if (!PRE_TAX_TYPES.has(draft.type)) return false
+    const price = parseFloat(draft.price)
+    return isNaN(price) || price === 0
+  }
+
+  function initPurchaseRows(): PurchaseGrantRow[] {
+    return EPIC_GRANT_SCHEDULE.filter(g => g.type === 'Purchase').map(g => {
+      const origLoan = ORIGINAL_PURCHASE_LOANS[g.year]
+      const refiChain = PURCHASE_REFI_CHAINS[g.year]
+      const lastRefi = refiChain?.[refiChain.length - 1]
+      return {
+        year: g.year, vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
+        participated: false,
+        purchase_price: '',
+        shares: '', dp_shares: '0', dp_cash: '',
+        loan_amount: '',
+        loan_due_date: lastRefi?.dueDate ?? origLoan?.dueDate ?? '',
+        interest_rate: lastRefi ? String(lastRefi.rate) : (origLoan ? String(origLoan.rate) : ''),
+        existing_purchase_loan_number: '',
+        existing_refinance_loans: [],
+      }
+    })
+  }
+
+  function initCatchUpRows(): CatchUpRow[] {
+    return EPIC_GRANT_SCHEDULE.filter(g => g.type === 'Purchase' && g.defaultCatchUp).map(g => ({
+      year: g.year, vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
+      included: true, shares: '',
+    }))
+  }
+
+  function initBonusRows(): BonusGrantRow[] {
+    const defaultBonusVariant =
+      content.bonus_schedule_variants.find(v => v.is_default)?.variant_code as BonusSchedule | undefined
+    return EPIC_GRANT_SCHEDULE.filter(g => g.type === 'Bonus' || g.type === 'Free').map(g => ({
+      year: g.year, type: g.type as 'Bonus' | 'Free',
+      // Zero-basis templates pin the cost basis to $0; FMV templates require user input.
+      purchase_price: g.zeroBasis ? '0' : '', shares: '',
+      isBonus2020: BONUS_VARIANT_KEYS.has(`${g.year}-${g.type}`),
+      schedule: (defaultBonusVariant ?? 'C') as BonusSchedule,
+      vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
+    }))
+  }
+
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const fileRef = useRef<HTMLInputElement>(null)
@@ -899,7 +904,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             loan_amount: activePurchaseLoan ? String(activePurchaseLoan.amount) : '',
             loan_due_date: lastRefi?.dueDate
               ?? (activePurchaseLoan ? activePurchaseLoan.due_date
-                : (origLoan?.dueDate ?? addYearsToDate(g.exercise_date, LOAN_TERM_YEARS))),
+                : (origLoan?.dueDate ?? '')),
             interest_rate: lastRefi ? String(lastRefi.rate)
               : (activePurchaseLoan ? String(activePurchaseLoan.interest_rate)
                 : (origLoan ? String(origLoan.rate) : '')),
@@ -929,7 +934,8 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
             year: g.year, type: g.type as 'Bonus' | 'Free',
             purchase_price: existing ? String(existing.price) : (g.type === 'Free' ? '0' : ''),
             shares: existing ? String(existing.shares) : '',
-            isBonus2020: g.year === 2020 && g.type === 'Bonus', schedule: 'C' as BonusSchedule,
+            isBonus2020: BONUS_VARIANT_KEYS.has(`${g.year}-${g.type}`),
+            schedule: ((content.bonus_schedule_variants.find(v => v.is_default)?.variant_code) ?? 'C') as BonusSchedule,
             vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
           }
         })
@@ -1044,7 +1050,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
   function dpSharesConsumedBefore(exerciseDate: string, excludeYear: number): number {
     let consumed = 0
     for (const row of purchaseRows) {
-      if (!row.participated || row.year === excludeYear || row.year < 2023) continue
+      if (!row.participated || row.year === excludeYear || !DP_SHARES_YEARS.has(row.year)) continue
       if (row.exercise_date < exerciseDate) consumed += Math.abs(parseInt(row.dp_shares) || 0)
     }
     return consumed
@@ -1201,7 +1207,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
     }
     const incomeTaxRate = taxSettings
       ? taxSettings.federal_income_rate + taxSettings.state_income_rate
-      : 0.37 + 0.0765
+      : FALLBACK_TAX_RATE
 
     // Build a map of existing loans by (grant_year, grant_type, loan_type, loan_year)
     const existingByKey = new Map<string, LoanEntry>()
@@ -1209,10 +1215,23 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
       existingByKey.set(`${rl.grant_year}-${rl.grant_type}-${rl.loan_type}-${rl.loan_year}`, rl)
     }
 
-    // Helper: compute due date for a grant year
-    function dueDate(grantYear: number): string {
-      const dueYear = grantYear + 9
-      return grantYear >= 2022 ? `${dueYear}-06-30` : `${dueYear}-07-15`
+    // Helper: compute due date for a purchase grant year. Each Purchase template
+    // carries its own MM-DD; falls back to 06-30 if a future-year template hasn't
+    // been configured with one yet.
+    // Interest loans inherit their due date from the purchase loan for that
+    // grant year. If the user didn't participate in that year's purchase grant
+    // we fall back to the original purchase-loan rate row's due_date.
+    function inheritedDueDate(grantYear: number): string {
+      const purchaseRow = purchaseRows.find(r => r.year === grantYear)
+      return purchaseRow?.loan_due_date || ORIGINAL_PURCHASE_LOANS[grantYear]?.dueDate || ''
+    }
+
+    // Tax loans use the admin-configured default_tax_due_date on the originating
+    // template when set (Bonus/Free, or Purchase-with-catch-up). Otherwise they
+    // fall back to inheriting from the purchase loan.
+    function taxDueDate(grantYear: number, grantType: string): string {
+      const templateType = grantType === 'Catch-Up' ? 'Purchase' : grantType
+      return TAX_DUE_DATE_BY_TEMPLATE.get(`${grantYear}-${templateType}`) || inheritedDueDate(grantYear)
     }
 
     // Helper to push a reviewed loan
@@ -1243,8 +1262,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
       const gy = row.year
       const totalShares = parseInt(row.shares) || 0
       const sharesPerPeriod = Math.floor(totalShares / row.periods)
-      const purchaseRow = purchaseRows.find(r => r.year === gy)
-      const due = purchaseRow?.loan_due_date || dueDate(gy)
+      const due = taxDueDate(gy, 'Catch-Up')
 
       if (!taxAmountsByGrantYear.has(gy)) taxAmountsByGrantYear.set(gy, new Map())
       const taxMap = taxAmountsByGrantYear.get(gy)!
@@ -1253,7 +1271,6 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
         const vestDate = new Date(row.vest_start + 'T00:00:00')
         vestDate.setFullYear(vestDate.getFullYear() + i)
         const vestYear = vestDate.getFullYear()
-        if (vestYear < 2021 || vestYear > LATEST_RATE_YEAR) continue
         const rate = TAX_LOAN_RATES['Catch-Up']?.[vestYear]
         if (!rate) continue
         const vestPrice = priceByYear.get(vestYear) || 0
@@ -1276,7 +1293,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
       if (!row.participated || !(parseInt(row.shares) > 0)) continue
       const gy = row.year
       const purchaseAmount = parseFloat(row.loan_amount) || 0
-      const due = row.loan_due_date || dueDate(gy)
+      const due = row.loan_due_date || inheritedDueDate(gy)
       const exerciseYear = new Date(row.exercise_date + 'T00:00:00').getFullYear()
 
       // Refinance chain
@@ -1311,10 +1328,10 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
       const purchaseRate = parseFloat(row.interest_rate) || 0  // current rate from wizard row
       // Track prior loans with their individual rates: { amount, rate }
       const priorLoans: { amount: number; rate: number }[] = []
-      const firstInterestYear = Math.max(exerciseYear + 1, 2020)
-      for (let ly = firstInterestYear; ly <= LATEST_RATE_YEAR; ly++) {
+      const interestYears = Object.keys(INTEREST_LOAN_RATES).map(Number).sort((a, b) => a - b)
+      for (const ly of interestYears) {
+        if (ly <= exerciseYear) continue
         const interestLoanRate = INTEREST_LOAN_RATES[ly]
-        if (!interestLoanRate) continue
         const existKey = `${gy}-Purchase-Interest-${ly}`
 
         // Purchase loan interest: sum each refi period separately
@@ -1345,14 +1362,14 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
       if (!(parseInt(row.shares) > 0)) continue
       const gy = row.year
       const grantType = row.type
-      const grantPrice = parseFloat(row.purchase_price) || 0
       const totalShares = parseInt(row.shares) || 0
       const sharesPerPeriod = Math.floor(totalShares / row.periods)
-      const purchaseRow = purchaseRows.find(r => r.year === gy)
-      const due = purchaseRow?.loan_due_date || dueDate(gy)
+      const due = taxDueDate(gy, grantType)
 
-      // Tax loans only for zero-basis grants (vesting = ordinary income)
-      const isPreTaxGrant = grantPrice === 0
+      // Tax loans only for zero-basis grants (vesting = ordinary income). This is a
+      // template-level property (set by the content admin), not a per-user runtime
+      // decision based on the entered purchase price.
+      const isPreTaxGrant = isZeroBasisTemplate(gy, grantType)
 
       // Tax loans first (only for zero-basis grants)
       const bonusTaxByYear = new Map<number, number>()
@@ -1361,7 +1378,6 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
         const vestDate = new Date(row.vest_start + 'T00:00:00')
         vestDate.setFullYear(vestDate.getFullYear() + i)
         const vestYear = vestDate.getFullYear()
-        if (vestYear < 2021 || vestYear > LATEST_RATE_YEAR) continue
         const rate = TAX_LOAN_RATES[grantType]?.[vestYear]
         if (!rate) continue
         const vestPrice = priceByYear.get(vestYear) || 0
@@ -1409,9 +1425,10 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
 
       // Bonus Interest loans: only if there are tax loans to accrue interest on
       if (!isPreTaxGrant) continue  // no tax loans = no interest to accrue
-      const firstTaxYear = Math.max(2021, new Date(row.vest_start + 'T00:00:00').getFullYear())
+      const firstTaxYear = new Date(row.vest_start + 'T00:00:00').getFullYear()
+      const maxInterestYear = Math.max(0, ...Object.keys(INTEREST_LOAN_RATES).map(Number))
       let bonusOutstanding = 0
-      for (let ly = firstTaxYear; ly <= LATEST_RATE_YEAR; ly++) {
+      for (let ly = firstTaxYear; ly <= maxInterestYear; ly++) {
         const taxThisYear = bonusTaxByYear.get(ly) || 0
         bonusOutstanding += taxThisYear
         // Interest starts the year AFTER first tax loan accumulation
@@ -1762,7 +1779,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
               onChange={v => setGrantDraft(d => ({ ...d, exercise_date: v }))} />
           </div>
 
-          {grantDraft.type === 'Purchase' && parseInt(grantDraft.year) >= 2023 && (
+          {grantDraft.type === 'Purchase' && DP_SHARES_YEARS.has(parseInt(grantDraft.year)) && (
             <div className="rounded-md border border-stone-200 p-3 dark:border-slate-700">
               <label className="flex items-start gap-2 text-xs text-gray-600 dark:text-slate-400">
                 <input
@@ -2174,10 +2191,10 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
                           onChange={v => setPurchaseField(i, { purchase_price: v }, true)} />
                         <Field label="Shares" type="number" value={row.shares}
                           onChange={v => setPurchaseField(i, { shares: v }, true)} />
-                        <Field label="DP shares" type="number" value={row.year >= 2023 ? row.dp_shares : '0'}
+                        <Field label="DP shares" type="number" value={DP_SHARES_YEARS.has(row.year) ? row.dp_shares : '0'}
                           onChange={v => setPurchaseField(i, { dp_shares: v })}
                           hint={(() => {
-                            if (row.year < 2023) return 'not available before 2023'
+                            if (!DP_SHARES_YEARS.has(row.year)) return 'not available for this grant year'
                             const total = (parseFloat(row.purchase_price) || 0) * (parseInt(row.shares) || 0)
                             const loanAmt = parseFloat(row.loan_amount) || 0
                             const dp = total - loanAmt
@@ -2186,10 +2203,10 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
                             if (dp > 0 && mp > 0) return `min ${Math.ceil(dp / mp).toLocaleString()} at $${mp}/sh`
                             return 'shares exchanged at exercise'
                           })()}
-                          disabled={row.year < 2023}
-                          placeholder={row.year < 2023 ? 'not available' : '0'} />
+                          disabled={!DP_SHARES_YEARS.has(row.year)}
+                          placeholder={!DP_SHARES_YEARS.has(row.year) ? 'not available' : '0'} />
                       </div>
-                      {row.year >= 2023 && Math.abs(parseInt(row.dp_shares) || 0) > 0 && (() => {
+                      {DP_SHARES_YEARS.has(row.year) && Math.abs(parseInt(row.dp_shares) || 0) > 0 && (() => {
                         const needed = Math.abs(parseInt(row.dp_shares) || 0)
                         const vested = vestedSharesBeforeDate(row.exercise_date)
                         const consumed = dpSharesConsumedBefore(row.exercise_date, row.year)
@@ -2319,10 +2336,10 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Shares" type="number" value={row.shares}
                     onChange={v => setBonusField(i, { shares: v })} />
-                  {row.type !== 'Free' && (
+                  {row.type !== 'Free' && !isZeroBasisTemplate(row.year, row.type) && (
                     <Field label="Cost basis ($/share)" type="number" step="0.01" value={row.purchase_price}
                       onChange={v => setBonusField(i, { purchase_price: v })}
-                      hint={row.year === 2020 ? 'usually $0' : 'usually = annual price'} />
+                      hint="FMV (taxable at vest)" />
                   )}
                 </div>
               </div>
@@ -2370,7 +2387,7 @@ export default function ImportWizard({ onComplete, isPage = false }: { onComplet
 
           <NextBtn label="Next: Review loans →" onClick={enterLoansReview}
             disabled={purchaseRows.some(row => {
-              if (!row.participated || row.year < 2023) return false
+              if (!row.participated || !DP_SHARES_YEARS.has(row.year)) return false
               const needed = Math.abs(parseInt(row.dp_shares) || 0)
               if (needed <= 0) return false
               const vested = vestedSharesBeforeDate(row.exercise_date)

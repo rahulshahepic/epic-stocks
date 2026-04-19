@@ -6,10 +6,15 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from database import get_db
-from scaffold.models import User, Grant, Loan, Price, Sale, TaxSettings
+from scaffold.models import User, Grant, Loan, Price, Sale, TaxSettings, GrantProgramSettings
 from schemas import SaleCreate, SaleUpdate, SaleOut, TaxSettingsRead, TaxSettingsUpdate, TaxBreakdown
 from scaffold.auth import get_current_user
 from app.sales_engine import compute_sale_tax, build_fifo_lots, compute_grossup_shares, build_lots_from_overrides
+
+
+def _flexible_payoff_enabled(db: Session) -> bool:
+    row = db.query(GrantProgramSettings).filter(GrantProgramSettings.id == 1).one_or_none()
+    return bool(row.flexible_payoff_enabled) if row else False
 
 router = APIRouter(prefix="/api/sales", tags=["sales"])
 tax_router = APIRouter(prefix="/api/tax-settings", tags=["tax-settings"])
@@ -25,8 +30,6 @@ WI_DEFAULTS = {
     "lt_holding_days": 365,
     "lot_selection_method": "lifo",
     "prefer_stock_dp": 0,
-    "dp_min_percent": 0.10,
-    "dp_min_cap": 20000.0,
 }
 
 
@@ -113,8 +116,7 @@ def get_all_sale_taxes(user: User = Depends(get_current_user), db: Session = Dep
     timeline = _build_timeline(user, db)
     ts = _get_or_create_tax_settings(user, db)
 
-    flexible_row = db.execute(text("SELECT value FROM system_settings WHERE key = 'flexible_payoff_enabled'")).scalar()
-    flexible_enabled = (flexible_row == "true")
+    flexible_enabled = _flexible_payoff_enabled(db)
     payoff_method = getattr(ts, 'loan_payoff_method', 'same_tranche') if flexible_enabled else 'same_tranche'
     manual_method = ts.lot_selection_method
 
@@ -298,8 +300,7 @@ def get_sale_tax(sale_id: int, user: User = Depends(get_current_user), db: Sessi
     gy, gt = None, None
     if sale.loan_id:
         # Payoff sale — use loan_payoff_method when flexible is enabled, else same_tranche
-        flexible = db.execute(text("SELECT value FROM system_settings WHERE key = 'flexible_payoff_enabled'")).scalar()
-        if flexible == "true" and ts:
+        if _flexible_payoff_enabled(db) and ts:
             method = getattr(ts, 'loan_payoff_method', 'same_tranche')
         else:
             method = 'same_tranche'
@@ -485,8 +486,7 @@ def estimate_sale(
 def get_tax_settings(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     ts = _get_or_create_tax_settings(user, db)
     result = TaxSettingsRead.model_validate(ts)
-    flexible = db.execute(text("SELECT value FROM system_settings WHERE key = 'flexible_payoff_enabled'")).scalar()
-    result.flexible_payoff_enabled = (flexible == "true")
+    result.flexible_payoff_enabled = _flexible_payoff_enabled(db)
     # Compute taxable years from grants so the frontend can show per-year toggles
     grants = db.query(Grant).filter(Grant.user_id == user.id).all()
     years: set[int] = set()

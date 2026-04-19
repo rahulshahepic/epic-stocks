@@ -26,8 +26,6 @@ WI_DEFAULTS = {
     "lt_holding_days": 365,
     "lot_selection_method": "lifo",
     "prefer_stock_dp": 0,
-    "dp_min_percent": 0.10,
-    "dp_min_cap": 20000.0,
 }
 
 
@@ -90,8 +88,9 @@ def _build_timeline_for_user(user: User, db: Session) -> list:
 
 
 def _is_flexible_payoff_enabled(db: Session) -> bool:
-    row = db.execute(text("SELECT value FROM system_settings WHERE key = 'flexible_payoff_enabled'")).scalar()
-    return row == "true"
+    from scaffold.models import GrantProgramSettings
+    row = db.query(GrantProgramSettings).filter(GrantProgramSettings.id == 1).one_or_none()
+    return bool(row.flexible_payoff_enabled) if row else False
 
 
 def _has_sufficient_coverage(user: User, loan: Loan, db: Session, timeline: list, price: float, cash_due: float) -> bool:

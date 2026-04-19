@@ -42,8 +42,6 @@ export default function Settings() {
     loan_payoff_method: 'epic_lifo',
     flexible_payoff_enabled: false,
     prefer_stock_dp: false,
-    dp_min_percent: 0.10,
-    dp_min_cap: 20000,
     deduct_investment_interest: false,
     deduction_excluded_years: null,
     taxable_years: [],
@@ -234,10 +232,10 @@ export default function Settings() {
         </section>
       )}
 
-      {/* Down Payment Settings */}
+      {/* Stock Down Payment Preference (user-level) */}
       <section className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-stone-900 dark:text-slate-100">Down Payment</h3>
+          <h3 className="text-sm font-medium text-stone-900 dark:text-slate-100">Stock down payment</h3>
           {!editingDp && (
             <button
               onClick={() => { setTaxForm(taxSettings ? { ...taxSettings } : { ...WI_DEFAULTS }); setEditingDp(true) }}
@@ -246,7 +244,7 @@ export default function Settings() {
           )}
         </div>
         <p className="mt-1 text-xs text-stone-600 dark:text-slate-400">
-          Controls how down payment shares are calculated when adding a new purchase.
+          Whether to auto-calculate the minimum stock exchange on new purchases.
         </p>
 
         {taxSettings && !editingDp && (
@@ -255,14 +253,6 @@ export default function Settings() {
               <dt className="text-stone-600 dark:text-slate-400">Prefer stock for DP</dt>
               <dd className="font-medium text-stone-700 dark:text-slate-300">
                 {taxSettings.prefer_stock_dp ? 'Yes — auto-calculate DP shares' : 'No — manual'}
-              </dd>
-            </div>
-            <div className="flex justify-between col-span-2">
-              <dt className="text-stone-600 dark:text-slate-400">Min DP rule</dt>
-              <dd className="font-medium text-stone-700 dark:text-slate-300">
-                {taxSettings.dp_min_percent > 0 || taxSettings.dp_min_cap > 0
-                  ? `min(${(taxSettings.dp_min_percent * 100).toFixed(0)}%, $${taxSettings.dp_min_cap.toLocaleString()})`
-                  : 'None'}
               </dd>
             </div>
           </dl>
@@ -281,24 +271,6 @@ export default function Settings() {
                 <span className="text-xs text-stone-700 dark:text-slate-300">
                   Prefer stock for down payment — auto-calculate DP shares on new purchases
                 </span>
-              </label>
-              <label className="block">
-                <span className="text-xs text-stone-600 dark:text-slate-400">Min DP % of purchase</span>
-                <input
-                  type="number" step="0.1" min="0" max="100"
-                  value={+(taxForm.dp_min_percent * 100).toFixed(2)}
-                  onChange={e => setTaxForm(f => f ? { ...f, dp_min_percent: +e.target.value / 100 } : f)}
-                  className="mt-0.5 block w-full rounded-md border border-stone-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
-                />
-              </label>
-              <label className="block">
-                <span className="text-xs text-stone-600 dark:text-slate-400">Min DP cap ($)</span>
-                <input
-                  type="number" step="1000" min="0"
-                  value={taxForm.dp_min_cap}
-                  onChange={e => setTaxForm(f => f ? { ...f, dp_min_cap: +e.target.value } : f)}
-                  className="mt-0.5 block w-full rounded-md border border-stone-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
-                />
               </label>
             </div>
             <div className="flex gap-2">

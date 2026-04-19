@@ -453,14 +453,12 @@ def shared_tax_settings(
     db: Session = Depends(get_db),
 ):
     owner = _get_shared_owner(invitation_id, user, db)
-    from app.routers.sales import _get_or_create_tax_settings
+    from app.routers.sales import _get_or_create_tax_settings, _flexible_payoff_enabled
     from schemas import TaxSettingsRead
     from scaffold.models import Grant
-    from sqlalchemy import text
     ts = _get_or_create_tax_settings(owner, db)
     result = TaxSettingsRead.model_validate(ts)
-    flexible = db.execute(text("SELECT value FROM system_settings WHERE key = 'flexible_payoff_enabled'")).scalar()
-    result.flexible_payoff_enabled = (flexible == "true")
+    result.flexible_payoff_enabled = _flexible_payoff_enabled(db)
     grants = db.query(Grant).filter(Grant.user_id == owner.id).all()
     years: set[int] = set()
     for g in grants:

@@ -31,9 +31,11 @@ export default function Layout() {
   const viewFilteredItems = viewing
     ? baseItems.filter(item => !VIEWER_HIDDEN.has(item.to))
     : baseItems
+  const canContent = !viewing && (me?.is_admin || me?.is_content_admin)
+  const withContent = canContent ? [...viewFilteredItems, { to: '/content', label: 'Content' }] : viewFilteredItems
   const navItems = me?.is_admin && !viewing
-    ? [...viewFilteredItems, { to: '/admin', label: 'Admin' }]
-    : viewFilteredItems
+    ? [...withContent, { to: '/admin', label: 'Admin' }]
+    : withContent
 
   const sharedAccounts = me?.shared_accounts ?? []
 

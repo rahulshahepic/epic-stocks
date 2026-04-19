@@ -273,7 +273,7 @@ export const api = {
     post<PriceEntry>('/api/flows/annual-price', data),
 
   // User info
-  getMe: () => apiFetch<{ id: number; email: string; name: string; is_admin: boolean }>('/api/me'),
+  getMe: () => apiFetch<{ id: number; email: string; name: string; is_admin: boolean; is_content_admin: boolean; shared_accounts?: SharedAccount[] }>('/api/me'),
 
   // Push notifications
   pushSubscribe: (subscription: PushSubscriptionJSON) =>
@@ -340,6 +340,37 @@ export const api = {
     post<WizardPreviewResult>('/api/wizard/preview', data),
   wizardSubmit: (data: WizardSubmitPayload) =>
     post<WizardSubmitResult>('/api/wizard/submit', data),
+
+  // Wizard content (read by any logged-in user; writes gated by content-admin)
+  getContent: () => apiFetch<ContentBlob>('/api/content'),
+  createGrantTemplate: (data: GrantTemplateCreate) =>
+    post<{ id: number }>('/api/content/grant-templates', data),
+  updateGrantTemplate: (id: number, data: Partial<GrantTemplateCreate>) =>
+    put<{ id: number }>(`/api/content/grant-templates/${id}`, data),
+  deleteGrantTemplate: (id: number) => del(`/api/content/grant-templates/${id}`),
+  createBonusVariant: (data: Omit<BonusScheduleVariant, 'id'>) =>
+    post<{ id: number }>('/api/content/bonus-schedule-variants', data),
+  updateBonusVariant: (id: number, data: Partial<Omit<BonusScheduleVariant, 'id'>>) =>
+    put<{ id: number }>(`/api/content/bonus-schedule-variants/${id}`, data),
+  deleteBonusVariant: (id: number) => del(`/api/content/bonus-schedule-variants/${id}`),
+  createLoanRate: (data: LoanRateCreate) =>
+    post<{ id: number }>('/api/content/loan-rates', data),
+  updateLoanRate: (id: number, data: Partial<LoanRateCreate>) =>
+    put<{ id: number }>(`/api/content/loan-rates/${id}`, data),
+  deleteLoanRate: (id: number) => del(`/api/content/loan-rates/${id}`),
+  createLoanRefinance: (data: LoanRefinanceCreate) =>
+    post<{ id: number }>('/api/content/loan-refinances', data),
+  updateLoanRefinance: (id: number, data: Partial<LoanRefinanceCreate>) =>
+    put<{ id: number }>(`/api/content/loan-refinances/${id}`, data),
+  deleteLoanRefinance: (id: number) => del(`/api/content/loan-refinances/${id}`),
+  updateGrantProgramSettings: (data: Partial<GrantProgramSettings>) =>
+    put<{ id: number }>('/api/content/grant-program-settings', data),
+
+  // Admin: content-admin role management
+  setContentAdmin: (userId: number, enabled: boolean) =>
+    enabled
+      ? apiFetch<void>(`/api/admin/users/${userId}/content-admin`, { method: 'POST' })
+      : del(`/api/admin/users/${userId}/content-admin`),
 
   // Smart Tips
   getTips: () => apiFetch<SmartTip[]>('/api/tips'),
@@ -508,6 +539,7 @@ export interface AdminUser {
   email: string
   name: string | null
   is_admin: boolean
+  is_content_admin: boolean
   created_at: string
   last_login: string | null
   grant_count: number
@@ -668,8 +700,6 @@ export interface TaxSettings {
   loan_payoff_method: 'epic_lifo' | 'same_tranche' | 'lifo' | 'fifo'
   flexible_payoff_enabled: boolean
   prefer_stock_dp: boolean
-  dp_min_percent: number
-  dp_min_cap: number
   deduct_investment_interest: boolean
   deduction_excluded_years: number[] | null
   taxable_years: number[]
@@ -860,4 +890,135 @@ export interface SharedAccount {
   invitation_id: number
   inviter_name: string
   inviter_email: string
+}
+
+
+// ── Grant program content (from GET /api/content) ──────────────────────────
+
+export interface GrantTemplate {
+  id: number
+  year: number
+  type: string
+  vest_start: string
+  periods: number
+  exercise_date: string
+  default_catch_up: boolean
+  show_dp_shares: boolean
+  zero_basis: boolean
+  default_purchase_due_date: string | null
+  default_tax_due_date: string | null
+  display_order: number
+}
+
+export interface BonusScheduleVariant {
+  id: number
+  grant_year: number
+  grant_type: string
+  variant_code: string
+  periods: number
+  label: string
+  is_default: boolean
+}
+
+export interface LoanRateRow {
+  id: number
+  loan_kind: 'interest' | 'tax' | 'purchase_original'
+  grant_type: string | null
+  year: number
+  rate: number
+}
+
+export interface LoanRefinanceRow {
+  id: number
+  chain_kind: 'purchase' | 'tax'
+  grant_year: number
+  grant_type: string | null
+  orig_loan_year: number | null
+  order_idx: number
+  date: string
+  rate: number
+  loan_year: number
+  due_date: string
+  orig_due_date: string | null
+}
+
+export interface PurchaseOriginalLoan {
+  rate: number
+  due_date: string
+}
+
+export interface LoanRefinance {
+  date: string
+  rate: number
+  loan_year: number
+  due_date: string
+}
+
+export interface TaxLoanRefinance extends LoanRefinance {
+  orig_due_date: string
+}
+
+export interface GrantProgramSettings {
+  tax_fallback_federal: number
+  tax_fallback_state: number
+  dp_min_percent: number
+  dp_min_cap: number
+  flexible_payoff_enabled?: boolean
+  // Derived (read-only) on the server from grant_templates / loan_rates.
+  price_years_start: number
+  price_years_end: number
+}
+
+// Create/Update payloads for content-admin write endpoints
+export interface GrantTemplateCreate {
+  year: number
+  type: string
+  vest_start: string
+  periods: number
+  exercise_date: string
+  default_catch_up?: boolean
+  show_dp_shares?: boolean
+  zero_basis?: boolean
+  default_purchase_due_date?: string | null
+  default_tax_due_date?: string | null
+  display_order?: number
+  active?: boolean
+  notes?: string | null
+}
+
+export interface LoanRateCreate {
+  loan_kind: 'interest' | 'tax' | 'purchase_original'
+  grant_type?: string | null
+  year: number
+  rate: number
+}
+
+export interface LoanRefinanceCreate {
+  chain_kind: 'purchase' | 'tax'
+  grant_year: number
+  grant_type?: string | null
+  orig_loan_year?: number | null
+  order_idx: number
+  date: string
+  rate: number
+  loan_year: number
+  due_date: string
+  orig_due_date?: string | null
+}
+
+export interface ContentBlob {
+  grant_templates: GrantTemplate[]
+  bonus_schedule_variants: BonusScheduleVariant[]
+  loan_rates: {
+    interest: Record<string, number>
+    tax: Record<string, Record<string, number>>
+    purchase_original: Record<string, PurchaseOriginalLoan>
+  }
+  loan_rates_all: LoanRateRow[]
+  loan_refinances: {
+    purchase: Record<string, LoanRefinance[]>
+    tax: Record<string, TaxLoanRefinance[]>
+  }
+  loan_refinances_all: LoanRefinanceRow[]
+  grant_program_settings: GrantProgramSettings
 }

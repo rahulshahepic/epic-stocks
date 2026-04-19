@@ -103,7 +103,7 @@ test.describe('Epic Mode', () => {
     await loginAs(page, userEmail, 'Epic User')
     await navigateTo(page, 'Loans')
 
-    await expect(page.getByRole('button', { name: 'Request Payoff' }).first()).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Calculate repayment' }).first()).toBeVisible()
   })
 
   test('prices page shows view-only banner and hides add button when Epic Mode is on', async ({ page }) => {

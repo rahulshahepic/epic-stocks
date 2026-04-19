@@ -96,23 +96,61 @@ describe('Content page', () => {
     renderContent()
     await waitFor(() => expect(screen.getByText(/Grant-program content/)).toBeDefined())
 
+    // Open the Add Template modal
+    await userEvent.click(screen.getByRole('button', { name: /Add template/ }))
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeDefined())
+
     await userEvent.clear(screen.getByLabelText('Year'))
     await userEvent.type(screen.getByLabelText('Year'), '2030')
-    const typeInput = screen.getByLabelText('Type') as HTMLInputElement
-    await userEvent.clear(typeInput)
-    await userEvent.type(typeInput, 'Purchase')
+    // Grant type comes from a select; default is Purchase (first entry in defs)
     const vestStart = screen.getByLabelText('Vest start') as HTMLInputElement
     await userEvent.type(vestStart, '2031-09-30')
     const exerciseDate = screen.getByLabelText('Exercise date') as HTMLInputElement
     await userEvent.type(exerciseDate, '2030-12-31')
 
-    await userEvent.click(screen.getByRole('button', { name: /Add template/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^Save$/ }))
 
     await waitFor(() => {
       const posted = calls.find(c => c.method === 'POST' && c.url.includes('/api/content/grant-templates'))
       expect(posted).toBeTruthy()
       expect((posted?.body as { year: number; type: string }).year).toBe(2030)
       expect((posted?.body as { year: number; type: string }).type).toBe('Purchase')
+    })
+  })
+
+  it('opens an edit modal when a row is clicked and PUTs changes', async () => {
+    const calls = mockApi(ADMIN_ME)
+    renderContent()
+    await waitFor(() => expect(screen.getByText(/Grant-program content/)).toBeDefined())
+
+    // Click the existing row (year 2025)
+    await userEvent.click(screen.getByText('2025'))
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeDefined())
+
+    const periods = screen.getByLabelText('Periods') as HTMLInputElement
+    await userEvent.clear(periods)
+    await userEvent.type(periods, '6')
+    await userEvent.click(screen.getByRole('button', { name: /^Save$/ }))
+
+    await waitFor(() => {
+      const put = calls.find(c => c.method === 'PUT' && c.url.includes('/api/content/grant-templates/1'))
+      expect(put).toBeTruthy()
+      expect((put?.body as { periods: number }).periods).toBe(6)
+    })
+  })
+
+  it('deletes a row from the edit modal', async () => {
+    const calls = mockApi(ADMIN_ME)
+    renderContent()
+    await waitFor(() => expect(screen.getByText(/Grant-program content/)).toBeDefined())
+
+    await userEvent.click(screen.getByText('2025'))
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeDefined())
+    await userEvent.click(screen.getByRole('button', { name: /^Delete$/ }))
+
+    await waitFor(() => {
+      const del = calls.find(c => c.method === 'DELETE' && c.url.includes('/api/content/grant-templates/1'))
+      expect(del).toBeTruthy()
     })
   })
 

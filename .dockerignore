@@ -1,0 +1,45 @@
+# Keep the Docker build context small. The e2e job on CI populates
+# frontend/node_modules before running `docker buildx build`, which
+# previously ballooned the context to ~240 MB and added ~4 s per build.
+# Everything listed here is either already produced inside the image
+# (node_modules, dist) or irrelevant to runtime (tests, docs, local
+# caches, VCS metadata).
+
+# VCS
+.git
+.github
+.gitignore
+
+# Node
+**/node_modules
+frontend/dist
+frontend/playwright-report
+frontend/test-results
+frontend/coverage
+
+# Python
+**/__pycache__
+**/*.pyc
+.pytest_cache
+backend/data
+
+# Tooling / caches
+.vscode
+.idea
+.cache
+*.log
+
+# Docs and non-runtime assets
+*.md
+screenshots
+# NOTE: test_data/ stays in context — Dockerfile.e2e does `COPY test_data/`.
+
+# Local env files — never ship into images
+.env
+.env.*
+!.env.example
+
+# E2E-only files that aren't needed by the main Dockerfile
+e2e.sh
+docker-compose.e2e.yml
+Dockerfile.e2e

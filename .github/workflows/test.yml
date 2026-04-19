@@ -8,26 +8,43 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - id: setup-python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "pip"
           cache-dependency-path: backend/requirements.txt
-      - run: pip install -r backend/requirements.txt pytest pytest-asyncio httpx
-      - run: pytest backend/tests/ -v
+      - name: Cache status
+        run: echo "pip cache-hit=${{ steps.setup-python.outputs.cache-hit }}"
+      - name: Install deps
+        run: |
+          echo "::group::pip install"
+          time pip install -r backend/requirements.txt pytest pytest-asyncio httpx
+          echo "::endgroup::"
+      - name: Run tests
+        run: |
+          echo "::group::pytest"
+          time pytest backend/tests/ -v --durations=20
+          echo "::endgroup::"
 
   frontend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - id: setup-node
+        uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
-      - run: cd frontend && npm ci
-      - run: cd frontend && npm audit --audit-level=high
-      - run: cd frontend && npm run test
+      - name: Cache status
+        run: echo "npm cache-hit=${{ steps.setup-node.outputs.cache-hit }}"
+      - name: Install deps
+        run: cd frontend && time npm ci
+      - name: npm audit
+        run: cd frontend && time npm audit --audit-level=high
+      - name: Run tests
+        run: cd frontend && time npm run test
 
   caddy-validate:
     runs-on: ubuntu-latest
@@ -43,16 +60,20 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
-    needs: [backend, frontend]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - id: setup-node
+        uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
-      - run: cd frontend && npm ci
-      - run: cd frontend && npx tsc -b --noEmit
+      - name: Cache status
+        run: echo "npm cache-hit=${{ steps.setup-node.outputs.cache-hit }}"
+      - name: Install frontend deps
+        run: cd frontend && time npm ci
+      - name: Type-check frontend
+        run: cd frontend && time npx tsc -b --noEmit
       - uses: docker/setup-buildx-action@v3
       - name: Build e2e-app image (cached)
         uses: docker/build-push-action@v5
@@ -72,6 +93,7 @@ jobs:
           tags: epic-stocks-playwright:ci
           cache-from: type=gha,scope=playwright
           cache-to: type=gha,mode=max,scope=playwright
-      - run: |
-          docker compose -f docker-compose.e2e.yml up --abort-on-container-exit --exit-code-from playwright
+      - name: Run e2e tests
+        run: |
+          time docker compose -f docker-compose.e2e.yml up --abort-on-container-exit --exit-code-from playwright
           docker compose -f docker-compose.e2e.yml down -v

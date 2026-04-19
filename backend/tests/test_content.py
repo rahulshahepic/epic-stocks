@@ -30,25 +30,25 @@ def test_grant_templates_match_epic(client):
     data = _get(client)
     schedule = data["grant_templates"]
     expected = [
-        # year, type, vest_start, periods, exercise_date, default_catch_up, show_dp_shares, zero_basis, default_tax_due_date
-        (2018, "Purchase", "2020-06-15", 6, "2018-12-31", True,  False, False, None),
-        (2019, "Purchase", "2021-06-15", 6, "2019-12-31", True,  False, False, None),
-        (2020, "Purchase", "2021-09-30", 5, "2020-12-31", True,  False, False, None),
-        (2020, "Bonus",    "2021-09-30", 4, "2020-12-31", False, False, True,  "2025-07-15"),
-        (2021, "Purchase", "2022-09-30", 5, "2021-12-31", True,  False, False, None),
-        (2021, "Bonus",    "2022-09-30", 3, "2021-12-31", False, False, True,  "2030-07-15"),
-        (2022, "Purchase", "2023-09-30", 4, "2022-12-31", False, False, False, None),
-        (2022, "Bonus",    "2023-09-30", 3, "2022-12-31", False, False, True,  "2031-06-30"),
-        (2022, "Free",     "2027-09-30", 1, "2022-12-31", False, False, True,  "2031-06-30"),
-        (2023, "Purchase", "2024-09-30", 4, "2023-12-31", False, True,  False, None),
-        (2023, "Bonus",    "2024-09-30", 3, "2023-12-31", False, False, True,  "2032-06-30"),
-        (2024, "Purchase", "2025-09-30", 4, "2024-12-31", False, True,  False, None),
-        (2024, "Bonus",    "2025-09-30", 3, "2024-12-31", False, False, True,  "2033-06-30"),
-        (2025, "Purchase", "2026-09-30", 4, "2025-12-31", False, True,  False, None),
-        (2025, "Bonus",    "2026-09-30", 3, "2025-12-31", False, False, True,  "2034-06-30"),
+        # year, type, vest_start, periods, exercise_date, default_catch_up, show_dp_shares, zero_basis, default_purchase_due_date, default_tax_due_date
+        (2018, "Purchase", "2020-06-15", 6, "2018-12-31", True,  False, False, "2025-07-15", None),
+        (2019, "Purchase", "2021-06-15", 6, "2019-12-31", True,  False, False, "2026-07-15", None),
+        (2020, "Purchase", "2021-09-30", 5, "2020-12-31", True,  False, False, "2025-07-15", None),
+        (2020, "Bonus",    "2021-09-30", 4, "2020-12-31", False, False, True,  None,         "2025-07-15"),
+        (2021, "Purchase", "2022-09-30", 5, "2021-12-31", True,  False, False, "2030-07-15", None),
+        (2021, "Bonus",    "2022-09-30", 3, "2021-12-31", False, False, True,  None,         "2030-07-15"),
+        (2022, "Purchase", "2023-09-30", 4, "2022-12-31", False, False, False, "2031-06-30", None),
+        (2022, "Bonus",    "2023-09-30", 3, "2022-12-31", False, False, True,  None,         "2031-06-30"),
+        (2022, "Free",     "2027-09-30", 1, "2022-12-31", False, False, True,  None,         "2031-06-30"),
+        (2023, "Purchase", "2024-09-30", 4, "2023-12-31", False, True,  False, "2032-06-30", None),
+        (2023, "Bonus",    "2024-09-30", 3, "2023-12-31", False, False, True,  None,         "2032-06-30"),
+        (2024, "Purchase", "2025-09-30", 4, "2024-12-31", False, True,  False, "2033-06-30", None),
+        (2024, "Bonus",    "2025-09-30", 3, "2024-12-31", False, False, True,  None,         "2033-06-30"),
+        (2025, "Purchase", "2026-09-30", 4, "2025-12-31", False, True,  False, "2034-06-30", None),
+        (2025, "Bonus",    "2026-09-30", 3, "2025-12-31", False, False, True,  None,         "2034-06-30"),
     ]
     assert len(schedule) == len(expected)
-    for actual, (year, typ, vs, periods, ed, dcu, sdp, zb, tdd) in zip(schedule, expected):
+    for actual, (year, typ, vs, periods, ed, dcu, sdp, zb, pdd, tdd) in zip(schedule, expected):
         assert actual["year"] == year
         assert actual["type"] == typ
         assert actual["vest_start"] == vs
@@ -57,8 +57,8 @@ def test_grant_templates_match_epic(client):
         assert actual["default_catch_up"] == dcu
         assert actual["show_dp_shares"] == sdp
         assert actual["zero_basis"] == zb
+        assert actual["default_purchase_due_date"] == pdd
         assert actual["default_tax_due_date"] == tdd
-        assert "default_purchase_due_month_day" not in actual
 
 
 def test_grant_types_are_code_not_content(client):
@@ -347,6 +347,15 @@ def test_grant_template_validator_tax_due_requires_zero_basis_or_catch_up(client
             "zero_basis": True,
         })
         assert r.status_code == 422
+
+        # default_purchase_due_date rejected on non-Purchase templates.
+        r = client.post("/api/content/grant-templates", json={
+            "year": 2033, "type": "Bonus",
+            "vest_start": "2034-09-30", "periods": 3,
+            "exercise_date": "2033-12-31",
+            "default_purchase_due_date": "2042-06-30",
+        })
+        assert r.status_code == 422
     finally:
         os.environ.pop("ADMIN_EMAIL", None)
 
@@ -359,14 +368,14 @@ def test_loan_rate_validators(client):
             "loan_kind": "tax", "year": 2030, "rate": 0.05,
         })
         assert r.status_code == 422
-        # purchase_original without due_date
+        # purchase_original no longer needs a due_date (lives on GrantTemplate now).
         r = client.post("/api/content/loan-rates", json={
             "loan_kind": "purchase_original", "year": 2030, "rate": 0.05,
         })
-        assert r.status_code == 422
+        assert r.status_code == 201, r.text
         # valid interest rate
         r = client.post("/api/content/loan-rates", json={
-            "loan_kind": "interest", "year": 2030, "rate": 0.05,
+            "loan_kind": "interest", "year": 2031, "rate": 0.05,
         })
         assert r.status_code == 201, r.text
     finally:

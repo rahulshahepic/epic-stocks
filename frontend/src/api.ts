@@ -905,6 +905,7 @@ export interface GrantTemplate {
   default_catch_up: boolean
   show_dp_shares: boolean
   zero_basis: boolean
+  default_purchase_due_date: string | null
   default_tax_due_date: string | null
   display_order: number
 }
@@ -925,7 +926,6 @@ export interface LoanRateRow {
   grant_type: string | null
   year: number
   rate: number
-  due_date: string | null
 }
 
 export interface LoanRefinanceRow {
@@ -979,6 +979,7 @@ export interface GrantTemplateCreate {
   default_catch_up?: boolean
   show_dp_shares?: boolean
   zero_basis?: boolean
+  default_purchase_due_date?: string | null
   default_tax_due_date?: string | null
   display_order?: number
   active?: boolean
@@ -990,7 +991,6 @@ export interface LoanRateCreate {
   grant_type?: string | null
   year: number
   rate: number
-  due_date?: string | null
 }
 
 export interface LoanRefinanceCreate {

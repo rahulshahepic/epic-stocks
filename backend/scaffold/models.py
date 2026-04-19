@@ -325,6 +325,9 @@ class GrantTemplate(Base):
     # that are taxable as ordinary income at vest). Determines whether the wizard
     # generates tax loans and whether the price input is user-editable.
     zero_basis: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+    # When the original purchase loan from this template is due (YYYY-MM-DD).
+    # Purchase templates only. Subsequent refi changes live on loan_refinances.
+    default_purchase_due_date: Mapped[str | None] = mapped_column(String, nullable=True)
     # When the tax loans generated from this template are due (YYYY-MM-DD). Valid
     # only on templates that actually produce tax loans (zero_basis=True or
     # default_catch_up=True). Null means the wizard inherits the due date from the
@@ -361,7 +364,8 @@ class LoanRate(Base):
 
       interest          — one row per year, grant_type is NULL
       tax               — one row per (grant_type, year)
-      purchase_original — one row per year (original purchase-loan rate + due date), grant_type is NULL
+      purchase_original — one row per year (original purchase-loan rate), grant_type is NULL.
+                          Due date lives on GrantTemplate.default_purchase_due_date.
     """
     __tablename__ = "loan_rates"
 
@@ -370,7 +374,6 @@ class LoanRate(Base):
     grant_type: Mapped[str | None] = mapped_column(String, nullable=True)
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     rate: Mapped[float] = mapped_column(Float, nullable=False)
-    due_date: Mapped[str | None] = mapped_column(String, nullable=True)  # YYYY-MM-DD, only for purchase_original
 
     __table_args__ = (
         UniqueConstraint('loan_kind', 'grant_type', 'year', name='uq_loan_rate'),

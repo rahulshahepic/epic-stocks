@@ -87,7 +87,7 @@ export default function Content() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 text-stone-800 dark:text-slate-200">
       <div>
         <h2 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Grant-program content</h2>
         <p className="text-xs text-stone-600 dark:text-slate-400">

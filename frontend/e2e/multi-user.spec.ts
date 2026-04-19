@@ -44,7 +44,7 @@ test.describe('Multi-user isolation', () => {
     await expect(page.getByText('No grants yet')).toBeVisible({ timeout: 10000 })
 
     await navigateTo(page, 'Prices')
-    await expect(page.getByText('No prices yet')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('No share prices yet')).toBeVisible({ timeout: 10000 })
 
     await navigateTo(page, 'Loans')
     await expect(page.getByText('No loans yet')).toBeVisible({ timeout: 10000 })

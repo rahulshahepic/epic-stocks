@@ -35,7 +35,7 @@ test.describe('Sales journey', () => {
 
     // Switch to # Shares mode and fill shares
     await page.getByRole('button', { name: '# Shares' }).click()
-    await page.getByLabel('Shares to sell').fill('100')
+    await page.getByLabel('Shares to sell', { exact: true }).fill('100')
     await page.getByLabel('Price per Share').fill('25.00')
     await page.getByLabel('Notes (optional)').fill('Test sale')
     await page.getByRole('button', { name: 'Record sale' }).click()
@@ -84,7 +84,7 @@ test.describe('Sales journey', () => {
     // Edit it via pencil icon
     await page.getByRole('button', { name: 'Edit sale' }).first().click()
     await expect(page.getByText('Edit Sale')).toBeVisible()
-    await page.getByLabel('Shares to sell').fill('250')
+    await page.getByLabel('Shares to sell', { exact: true }).fill('250')
     await page.getByRole('button', { name: 'Save' }).click()
     await expect(page.getByText('1 sales')).toBeVisible()
 

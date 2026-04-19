@@ -227,6 +227,7 @@ def load_content(db: Session) -> dict:
     return {
         'grant_templates': [
             {
+                'id': t.id,
                 'year': t.year,
                 'type': t.type,
                 'vest_start': t.vest_start,
@@ -234,6 +235,7 @@ def load_content(db: Session) -> dict:
                 'exercise_date': t.exercise_date,
                 'default_catch_up': bool(t.default_catch_up),
                 'show_dp_shares': bool(t.show_dp_shares),
+                'display_order': t.display_order,
             }
             for t in templates if t.active
         ],
@@ -249,6 +251,7 @@ def load_content(db: Session) -> dict:
         ],
         'bonus_schedule_variants': [
             {
+                'id': v.id,
                 'grant_year': v.grant_year,
                 'grant_type': v.grant_type,
                 'variant_code': v.variant_code,
@@ -263,10 +266,37 @@ def load_content(db: Session) -> dict:
             'tax': tax_rates,
             'purchase_original': purchase_original,
         },
+        'loan_rates_all': [
+            {
+                'id': r.id,
+                'loan_kind': r.loan_kind,
+                'grant_type': r.grant_type,
+                'year': r.year,
+                'rate': r.rate,
+                'due_date': r.due_date,
+            }
+            for r in rates
+        ],
         'loan_refinances': {
             'purchase': purchase_chains,
             'tax': tax_chains,
         },
+        'loan_refinances_all': [
+            {
+                'id': e.id,
+                'chain_kind': e.chain_kind,
+                'grant_year': e.grant_year,
+                'grant_type': e.grant_type,
+                'orig_loan_year': e.orig_loan_year,
+                'order_idx': e.order_idx,
+                'date': e.date,
+                'rate': e.rate,
+                'loan_year': e.loan_year,
+                'due_date': e.due_date,
+                'orig_due_date': e.orig_due_date,
+            }
+            for e in refi_entries
+        ],
         'grant_program_settings': {
             'loan_term_years': settings_row.loan_term_years if settings_row else defaults['loan_term_years'],
             'latest_rate_year': settings_row.latest_rate_year if settings_row else defaults['latest_rate_year'],

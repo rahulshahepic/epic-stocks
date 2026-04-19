@@ -30,3 +30,17 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+
+  # Used by ./e2e.sh for local runs. CI runs Playwright on the runner directly
+  # (see .github/workflows/test.yml) and does not start this service.
+  playwright:
+    image: epic-stocks-playwright:ci
+    build:
+      context: .
+      dockerfile: Dockerfile.e2e
+    depends_on:
+      e2e-app:
+        condition: service_healthy
+    environment:
+      E2E_BASE_URL: http://e2e-app:8000
+      E2E_API_URL: http://e2e-app:8000

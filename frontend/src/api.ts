@@ -353,9 +353,9 @@ export const api = {
   updateGrantTypeDef: (name: string, data: Partial<GrantTypeDef>) =>
     put<{ name: string }>(`/api/content/grant-type-defs/${encodeURIComponent(name)}`, data),
   deleteGrantTypeDef: (name: string) => del(`/api/content/grant-type-defs/${encodeURIComponent(name)}`),
-  createBonusVariant: (data: BonusScheduleVariant) =>
+  createBonusVariant: (data: Omit<BonusScheduleVariant, 'id'>) =>
     post<{ id: number }>('/api/content/bonus-schedule-variants', data),
-  updateBonusVariant: (id: number, data: Partial<BonusScheduleVariant>) =>
+  updateBonusVariant: (id: number, data: Partial<Omit<BonusScheduleVariant, 'id'>>) =>
     put<{ id: number }>(`/api/content/bonus-schedule-variants/${id}`, data),
   deleteBonusVariant: (id: number) => del(`/api/content/bonus-schedule-variants/${id}`),
   createLoanRate: (data: LoanRateCreate) =>
@@ -903,6 +903,7 @@ export interface SharedAccount {
 // ── Grant program content (from GET /api/content) ──────────────────────────
 
 export interface GrantTemplate {
+  id: number
   year: number
   type: string
   vest_start: string
@@ -910,6 +911,7 @@ export interface GrantTemplate {
   exercise_date: string
   default_catch_up: boolean
   show_dp_shares: boolean
+  display_order: number
 }
 
 export interface GrantTypeDef {
@@ -921,12 +923,36 @@ export interface GrantTypeDef {
 }
 
 export interface BonusScheduleVariant {
+  id: number
   grant_year: number
   grant_type: string
   variant_code: string
   periods: number
   label: string
   is_default: boolean
+}
+
+export interface LoanRateRow {
+  id: number
+  loan_kind: 'interest' | 'tax' | 'purchase_original'
+  grant_type: string | null
+  year: number
+  rate: number
+  due_date: string | null
+}
+
+export interface LoanRefinanceRow {
+  id: number
+  chain_kind: 'purchase' | 'tax'
+  grant_year: number
+  grant_type: string | null
+  orig_loan_year: number | null
+  order_idx: number
+  date: string
+  rate: number
+  loan_year: number
+  due_date: string
+  orig_due_date: string | null
 }
 
 export interface PurchaseOriginalLoan {
@@ -1002,9 +1028,11 @@ export interface ContentBlob {
     tax: Record<string, Record<string, number>>
     purchase_original: Record<string, PurchaseOriginalLoan>
   }
+  loan_rates_all: LoanRateRow[]
   loan_refinances: {
     purchase: Record<string, LoanRefinance[]>
     tax: Record<string, TaxLoanRefinance[]>
   }
+  loan_refinances_all: LoanRefinanceRow[]
   grant_program_settings: GrantProgramSettings
 }

@@ -3,12 +3,15 @@ import { Navigate } from 'react-router-dom'
 import { api } from '../../api.ts'
 import type {
   ContentBlob,
+  GrantTemplate,
   GrantTypeDef,
   BonusScheduleVariant,
   GrantProgramSettings,
   GrantTemplateCreate,
   LoanRateCreate,
+  LoanRateRow,
   LoanRefinanceCreate,
+  LoanRefinanceRow,
 } from '../../api.ts'
 import { useMe } from '../../scaffold/hooks/useMe.ts'
 import { resetContentCache } from '../hooks/useContent.ts'
@@ -131,6 +134,21 @@ function TemplatesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; b
     default_catch_up: false,
     show_dp_shares: false,
   })
+  const [editId, setEditId] = useState<number | null>(null)
+  const [edit, setEdit] = useState<GrantTemplate | null>(null)
+
+  const beginEdit = (t: GrantTemplate) => { setEditId(t.id); setEdit({ ...t }) }
+  const cancelEdit = () => { setEditId(null); setEdit(null) }
+  const saveEdit = async () => {
+    if (!edit) return
+    await wrap(() => api.updateGrantTemplate(edit.id, edit), 'Grant template saved')
+    cancelEdit()
+  }
+  const deleteEdit = async () => {
+    if (!edit) return
+    await wrap(() => api.deleteGrantTemplate(edit.id), 'Grant template removed')
+    cancelEdit()
+  }
 
   return (
     <section className="space-y-3">
@@ -145,19 +163,38 @@ function TemplatesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; b
               <th className="px-2 py-1 text-left">Exercise date</th>
               <th className="px-2 py-1 text-left">Catch-up</th>
               <th className="px-2 py-1 text-left">DP shares</th>
+              <th className="px-2 py-1 text-right"></th>
             </tr>
           </thead>
           <tbody>
-            {blob.grant_templates.map((t, i) => (
-              <tr key={`${t.year}-${t.type}-${i}`} className="border-t border-stone-100 dark:border-slate-700">
-                <td className="px-2 py-1">{t.year}</td>
-                <td className="px-2 py-1">{t.type}</td>
-                <td className="px-2 py-1">{t.vest_start}</td>
-                <td className="px-2 py-1">{t.periods}</td>
-                <td className="px-2 py-1">{t.exercise_date}</td>
-                <td className="px-2 py-1">{t.default_catch_up ? 'yes' : ''}</td>
-                <td className="px-2 py-1">{t.show_dp_shares ? 'yes' : ''}</td>
-              </tr>
+            {blob.grant_templates.map(t => (
+              editId === t.id && edit ? (
+                <tr key={t.id} className="border-t border-stone-100 bg-amber-50 dark:border-slate-700 dark:bg-slate-900">
+                  <td className="px-2 py-1"><TextInput type="number" value={edit.year} onChange={e => setEdit({ ...edit, year: Number(e.target.value) })} /></td>
+                  <td className="px-2 py-1"><TextInput value={edit.type} onChange={e => setEdit({ ...edit, type: e.target.value })} /></td>
+                  <td className="px-2 py-1"><TextInput type="date" value={edit.vest_start} onChange={e => setEdit({ ...edit, vest_start: e.target.value })} /></td>
+                  <td className="px-2 py-1"><TextInput type="number" min={1} value={edit.periods} onChange={e => setEdit({ ...edit, periods: Number(e.target.value) })} /></td>
+                  <td className="px-2 py-1"><TextInput type="date" value={edit.exercise_date} onChange={e => setEdit({ ...edit, exercise_date: e.target.value })} /></td>
+                  <td className="px-2 py-1"><input type="checkbox" checked={edit.default_catch_up} onChange={e => setEdit({ ...edit, default_catch_up: e.target.checked })} /></td>
+                  <td className="px-2 py-1"><input type="checkbox" checked={edit.show_dp_shares} onChange={e => setEdit({ ...edit, show_dp_shares: e.target.checked })} /></td>
+                  <td className="px-2 py-1 text-right whitespace-nowrap">
+                    <button type="button" onClick={saveEdit} disabled={busy} className="mr-2 text-xs font-medium text-emerald-700 underline hover:text-emerald-800 disabled:opacity-50">save</button>
+                    <button type="button" onClick={cancelEdit} disabled={busy} className="mr-2 text-xs text-stone-600 underline hover:text-stone-800 disabled:opacity-50 dark:text-slate-400">cancel</button>
+                    <button type="button" onClick={deleteEdit} disabled={busy} className="text-xs font-medium text-rose-700 underline hover:text-rose-800 disabled:opacity-50">delete</button>
+                  </td>
+                </tr>
+              ) : (
+                <tr key={t.id} className="border-t border-stone-100 dark:border-slate-700">
+                  <td className="px-2 py-1">{t.year}</td>
+                  <td className="px-2 py-1">{t.type}</td>
+                  <td className="px-2 py-1">{t.vest_start}</td>
+                  <td className="px-2 py-1">{t.periods}</td>
+                  <td className="px-2 py-1">{t.exercise_date}</td>
+                  <td className="px-2 py-1">{t.default_catch_up ? 'yes' : ''}</td>
+                  <td className="px-2 py-1">{t.show_dp_shares ? 'yes' : ''}</td>
+                  <td className="px-2 py-1 text-right"><button type="button" onClick={() => beginEdit(t)} disabled={busy} className="text-xs text-rose-700 underline hover:text-rose-800 disabled:opacity-50">edit</button></td>
+                </tr>
+              )
             ))}
           </tbody>
         </table>
@@ -213,6 +250,22 @@ function TypesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; busy:
     name: '', color_class: 'bg-stone-700 text-white', description: '',
     is_pre_tax_when_zero_price: false, display_order: blob.grant_type_defs.length,
   })
+  const [editName, setEditName] = useState<string | null>(null)
+  const [edit, setEdit] = useState<GrantTypeDef | null>(null)
+
+  const beginEdit = (d: GrantTypeDef) => { setEditName(d.name); setEdit({ ...d }) }
+  const cancelEdit = () => { setEditName(null); setEdit(null) }
+  const saveEdit = async () => {
+    if (!edit) return
+    const { name, ...patch } = edit
+    await wrap(() => api.updateGrantTypeDef(name, patch), 'Grant type saved')
+    cancelEdit()
+  }
+  const deleteEdit = async () => {
+    if (!edit) return
+    await wrap(() => api.deleteGrantTypeDef(edit.name), 'Grant type removed')
+    cancelEdit()
+  }
 
   return (
     <section className="space-y-3">
@@ -221,29 +274,38 @@ function TypesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; busy:
           <thead className="bg-stone-50 dark:bg-slate-800">
             <tr>
               <th className="px-2 py-1 text-left">Name</th>
+              <th className="px-2 py-1 text-left">Color class</th>
               <th className="px-2 py-1 text-left">Description</th>
               <th className="px-2 py-1 text-left">Pre-tax when zero price?</th>
               <th className="px-2 py-1 text-left">Order</th>
-              <th className="px-2 py-1 text-left">Actions</th>
+              <th className="px-2 py-1 text-right"></th>
             </tr>
           </thead>
           <tbody>
             {blob.grant_type_defs.map(d => (
-              <tr key={d.name} className="border-t border-stone-100 dark:border-slate-700">
-                <td className="px-2 py-1"><span className={`inline-block rounded px-1.5 py-0.5 text-[10px] ${d.color_class}`}>{d.name}</span></td>
-                <td className="px-2 py-1">{d.description}</td>
-                <td className="px-2 py-1">{d.is_pre_tax_when_zero_price ? 'yes' : ''}</td>
-                <td className="px-2 py-1">{d.display_order}</td>
-                <td className="px-2 py-1">
-                  <button
-                    onClick={() => wrap(() => api.deleteGrantTypeDef(d.name), 'Grant type removed')}
-                    disabled={busy}
-                    className="text-xs text-rose-700 underline hover:text-rose-800 disabled:opacity-50"
-                  >
-                    delete
-                  </button>
-                </td>
-              </tr>
+              editName === d.name && edit ? (
+                <tr key={d.name} className="border-t border-stone-100 bg-amber-50 dark:border-slate-700 dark:bg-slate-900">
+                  <td className="px-2 py-1"><span className={`inline-block rounded px-1.5 py-0.5 text-[10px] ${edit.color_class}`}>{edit.name}</span></td>
+                  <td className="px-2 py-1"><TextInput value={edit.color_class} onChange={e => setEdit({ ...edit, color_class: e.target.value })} /></td>
+                  <td className="px-2 py-1"><TextInput value={edit.description} onChange={e => setEdit({ ...edit, description: e.target.value })} /></td>
+                  <td className="px-2 py-1"><input type="checkbox" checked={edit.is_pre_tax_when_zero_price} onChange={e => setEdit({ ...edit, is_pre_tax_when_zero_price: e.target.checked })} /></td>
+                  <td className="px-2 py-1"><TextInput type="number" value={edit.display_order} onChange={e => setEdit({ ...edit, display_order: Number(e.target.value) })} /></td>
+                  <td className="px-2 py-1 text-right whitespace-nowrap">
+                    <button type="button" onClick={saveEdit} disabled={busy} className="mr-2 text-xs font-medium text-emerald-700 underline hover:text-emerald-800 disabled:opacity-50">save</button>
+                    <button type="button" onClick={cancelEdit} disabled={busy} className="mr-2 text-xs text-stone-600 underline hover:text-stone-800 disabled:opacity-50 dark:text-slate-400">cancel</button>
+                    <button type="button" onClick={deleteEdit} disabled={busy} className="text-xs font-medium text-rose-700 underline hover:text-rose-800 disabled:opacity-50">delete</button>
+                  </td>
+                </tr>
+              ) : (
+                <tr key={d.name} className="border-t border-stone-100 dark:border-slate-700">
+                  <td className="px-2 py-1"><span className={`inline-block rounded px-1.5 py-0.5 text-[10px] ${d.color_class}`}>{d.name}</span></td>
+                  <td className="px-2 py-1"><code className="text-[10px] text-stone-600 dark:text-slate-400">{d.color_class}</code></td>
+                  <td className="px-2 py-1">{d.description}</td>
+                  <td className="px-2 py-1">{d.is_pre_tax_when_zero_price ? 'yes' : ''}</td>
+                  <td className="px-2 py-1">{d.display_order}</td>
+                  <td className="px-2 py-1 text-right"><button type="button" onClick={() => beginEdit(d)} disabled={busy} className="text-xs text-rose-700 underline hover:text-rose-800 disabled:opacity-50">edit</button></td>
+                </tr>
+              )
             ))}
           </tbody>
         </table>
@@ -283,7 +345,7 @@ function TypesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; busy:
 // ── Bonus Variants ───────────────────────────────────────────────────────
 
 function VariantsTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; busy: boolean }) {
-  const [draft, setDraft] = useState<BonusScheduleVariant>({
+  const [draft, setDraft] = useState<Omit<BonusScheduleVariant, 'id'>>({
     grant_year: new Date().getFullYear(),
     grant_type: 'Bonus',
     variant_code: '',
@@ -291,6 +353,22 @@ function VariantsTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; bu
     label: '',
     is_default: false,
   })
+  const [editId, setEditId] = useState<number | null>(null)
+  const [edit, setEdit] = useState<BonusScheduleVariant | null>(null)
+
+  const beginEdit = (v: BonusScheduleVariant) => { setEditId(v.id); setEdit({ ...v }) }
+  const cancelEdit = () => { setEditId(null); setEdit(null) }
+  const saveEdit = async () => {
+    if (!edit) return
+    const { id, ...patch } = edit
+    await wrap(() => api.updateBonusVariant(id, patch), 'Variant saved')
+    cancelEdit()
+  }
+  const deleteEdit = async () => {
+    if (!edit) return
+    await wrap(() => api.deleteBonusVariant(edit.id), 'Variant removed')
+    cancelEdit()
+  }
 
   return (
     <section className="space-y-3">
@@ -304,18 +382,36 @@ function VariantsTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; bu
               <th className="px-2 py-1 text-left">Periods</th>
               <th className="px-2 py-1 text-left">Label</th>
               <th className="px-2 py-1 text-left">Default</th>
+              <th className="px-2 py-1 text-right"></th>
             </tr>
           </thead>
           <tbody>
-            {blob.bonus_schedule_variants.map((v, i) => (
-              <tr key={`${v.grant_year}-${v.grant_type}-${v.variant_code}-${i}`} className="border-t border-stone-100 dark:border-slate-700">
-                <td className="px-2 py-1">{v.grant_year}</td>
-                <td className="px-2 py-1">{v.grant_type}</td>
-                <td className="px-2 py-1">{v.variant_code}</td>
-                <td className="px-2 py-1">{v.periods}</td>
-                <td className="px-2 py-1">{v.label}</td>
-                <td className="px-2 py-1">{v.is_default ? 'yes' : ''}</td>
-              </tr>
+            {blob.bonus_schedule_variants.map(v => (
+              editId === v.id && edit ? (
+                <tr key={v.id} className="border-t border-stone-100 bg-amber-50 dark:border-slate-700 dark:bg-slate-900">
+                  <td className="px-2 py-1"><TextInput type="number" value={edit.grant_year} onChange={e => setEdit({ ...edit, grant_year: Number(e.target.value) })} /></td>
+                  <td className="px-2 py-1"><TextInput value={edit.grant_type} onChange={e => setEdit({ ...edit, grant_type: e.target.value })} /></td>
+                  <td className="px-2 py-1"><TextInput value={edit.variant_code} onChange={e => setEdit({ ...edit, variant_code: e.target.value })} /></td>
+                  <td className="px-2 py-1"><TextInput type="number" min={1} value={edit.periods} onChange={e => setEdit({ ...edit, periods: Number(e.target.value) })} /></td>
+                  <td className="px-2 py-1"><TextInput value={edit.label} onChange={e => setEdit({ ...edit, label: e.target.value })} /></td>
+                  <td className="px-2 py-1"><input type="checkbox" checked={edit.is_default} onChange={e => setEdit({ ...edit, is_default: e.target.checked })} /></td>
+                  <td className="px-2 py-1 text-right whitespace-nowrap">
+                    <button type="button" onClick={saveEdit} disabled={busy} className="mr-2 text-xs font-medium text-emerald-700 underline hover:text-emerald-800 disabled:opacity-50">save</button>
+                    <button type="button" onClick={cancelEdit} disabled={busy} className="mr-2 text-xs text-stone-600 underline hover:text-stone-800 disabled:opacity-50 dark:text-slate-400">cancel</button>
+                    <button type="button" onClick={deleteEdit} disabled={busy} className="text-xs font-medium text-rose-700 underline hover:text-rose-800 disabled:opacity-50">delete</button>
+                  </td>
+                </tr>
+              ) : (
+                <tr key={v.id} className="border-t border-stone-100 dark:border-slate-700">
+                  <td className="px-2 py-1">{v.grant_year}</td>
+                  <td className="px-2 py-1">{v.grant_type}</td>
+                  <td className="px-2 py-1">{v.variant_code}</td>
+                  <td className="px-2 py-1">{v.periods}</td>
+                  <td className="px-2 py-1">{v.label}</td>
+                  <td className="px-2 py-1">{v.is_default ? 'yes' : ''}</td>
+                  <td className="px-2 py-1 text-right"><button type="button" onClick={() => beginEdit(v)} disabled={busy} className="text-xs text-rose-700 underline hover:text-rose-800 disabled:opacity-50">edit</button></td>
+                </tr>
+              )
             ))}
           </tbody>
         </table>
@@ -365,23 +461,31 @@ function VariantsTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; bu
 function RatesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; busy: boolean }) {
   const [kind, setKind] = useState<'interest' | 'tax' | 'purchase_original'>('interest')
   const [draft, setDraft] = useState<LoanRateCreate>({ loan_kind: 'interest', year: new Date().getFullYear(), rate: 0 })
+  const [editId, setEditId] = useState<number | null>(null)
+  const [edit, setEdit] = useState<LoanRateRow | null>(null)
 
   useEffect(() => {
     setDraft(d => ({ ...d, loan_kind: kind, grant_type: kind === 'tax' ? (d.grant_type ?? 'Bonus') : null, due_date: kind === 'purchase_original' ? (d.due_date ?? '') : null }))
+    setEditId(null); setEdit(null)
   }, [kind])
 
-  // Render a row for each kind.
-  const interestRows = Object.entries(blob.loan_rates.interest)
-    .map(([year, rate]) => ({ year, rate }))
-    .sort((a, b) => Number(a.year) - Number(b.year))
+  const rows = blob.loan_rates_all
+    .filter(r => r.loan_kind === kind)
+    .sort((a, b) => (a.grant_type ?? '').localeCompare(b.grant_type ?? '') || a.year - b.year)
 
-  const taxRows = Object.entries(blob.loan_rates.tax).flatMap(([gt, byYear]) =>
-    Object.entries(byYear).map(([year, rate]) => ({ grant_type: gt, year, rate }))
-  ).sort((a, b) => a.grant_type.localeCompare(b.grant_type) || Number(a.year) - Number(b.year))
-
-  const purchaseRows = Object.entries(blob.loan_rates.purchase_original)
-    .map(([year, v]) => ({ year, rate: v.rate, due_date: v.due_date }))
-    .sort((a, b) => Number(a.year) - Number(b.year))
+  const beginEdit = (r: LoanRateRow) => { setEditId(r.id); setEdit({ ...r }) }
+  const cancelEdit = () => { setEditId(null); setEdit(null) }
+  const saveEdit = async () => {
+    if (!edit) return
+    const { id, ...patch } = edit
+    await wrap(() => api.updateLoanRate(id, patch), 'Loan rate saved')
+    cancelEdit()
+  }
+  const deleteEdit = async () => {
+    if (!edit) return
+    await wrap(() => api.deleteLoanRate(edit.id), 'Loan rate removed')
+    cancelEdit()
+  }
 
   return (
     <section className="space-y-3">
@@ -394,30 +498,37 @@ function RatesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; busy:
       <div className="overflow-x-auto rounded-md border border-stone-200 dark:border-slate-700">
         <table className="w-full min-w-[400px] text-xs">
           <thead className="bg-stone-50 dark:bg-slate-800">
-            {kind === 'interest' && <tr><th className="px-2 py-1 text-left">Year</th><th className="px-2 py-1 text-left">Rate</th></tr>}
-            {kind === 'tax' && <tr><th className="px-2 py-1 text-left">Grant type</th><th className="px-2 py-1 text-left">Year</th><th className="px-2 py-1 text-left">Rate</th></tr>}
-            {kind === 'purchase_original' && <tr><th className="px-2 py-1 text-left">Year</th><th className="px-2 py-1 text-left">Rate</th><th className="px-2 py-1 text-left">Due date</th></tr>}
+            {kind === 'interest' && <tr><th className="px-2 py-1 text-left">Year</th><th className="px-2 py-1 text-left">Rate</th><th className="px-2 py-1 text-right"></th></tr>}
+            {kind === 'tax' && <tr><th className="px-2 py-1 text-left">Grant type</th><th className="px-2 py-1 text-left">Year</th><th className="px-2 py-1 text-left">Rate</th><th className="px-2 py-1 text-right"></th></tr>}
+            {kind === 'purchase_original' && <tr><th className="px-2 py-1 text-left">Year</th><th className="px-2 py-1 text-left">Rate</th><th className="px-2 py-1 text-left">Due date</th><th className="px-2 py-1 text-right"></th></tr>}
           </thead>
           <tbody>
-            {kind === 'interest' && interestRows.map(r => (
-              <tr key={r.year} className="border-t border-stone-100 dark:border-slate-700">
-                <td className="px-2 py-1">{r.year}</td>
-                <td className="px-2 py-1">{(r.rate * 100).toFixed(3)}%</td>
-              </tr>
-            ))}
-            {kind === 'tax' && taxRows.map(r => (
-              <tr key={`${r.grant_type}-${r.year}`} className="border-t border-stone-100 dark:border-slate-700">
-                <td className="px-2 py-1">{r.grant_type}</td>
-                <td className="px-2 py-1">{r.year}</td>
-                <td className="px-2 py-1">{(r.rate * 100).toFixed(3)}%</td>
-              </tr>
-            ))}
-            {kind === 'purchase_original' && purchaseRows.map(r => (
-              <tr key={r.year} className="border-t border-stone-100 dark:border-slate-700">
-                <td className="px-2 py-1">{r.year}</td>
-                <td className="px-2 py-1">{(r.rate * 100).toFixed(3)}%</td>
-                <td className="px-2 py-1">{r.due_date}</td>
-              </tr>
+            {rows.map(r => (
+              editId === r.id && edit ? (
+                <tr key={r.id} className="border-t border-stone-100 bg-amber-50 dark:border-slate-700 dark:bg-slate-900">
+                  {kind === 'tax' && (
+                    <td className="px-2 py-1"><TextInput value={edit.grant_type ?? ''} onChange={e => setEdit({ ...edit, grant_type: e.target.value })} /></td>
+                  )}
+                  <td className="px-2 py-1"><TextInput type="number" value={edit.year} onChange={e => setEdit({ ...edit, year: Number(e.target.value) })} /></td>
+                  <td className="px-2 py-1"><TextInput type="number" step="0.0001" value={edit.rate} onChange={e => setEdit({ ...edit, rate: Number(e.target.value) })} /></td>
+                  {kind === 'purchase_original' && (
+                    <td className="px-2 py-1"><TextInput type="date" value={edit.due_date ?? ''} onChange={e => setEdit({ ...edit, due_date: e.target.value })} /></td>
+                  )}
+                  <td className="px-2 py-1 text-right whitespace-nowrap">
+                    <button type="button" onClick={saveEdit} disabled={busy} className="mr-2 text-xs font-medium text-emerald-700 underline hover:text-emerald-800 disabled:opacity-50">save</button>
+                    <button type="button" onClick={cancelEdit} disabled={busy} className="mr-2 text-xs text-stone-600 underline hover:text-stone-800 disabled:opacity-50 dark:text-slate-400">cancel</button>
+                    <button type="button" onClick={deleteEdit} disabled={busy} className="text-xs font-medium text-rose-700 underline hover:text-rose-800 disabled:opacity-50">delete</button>
+                  </td>
+                </tr>
+              ) : (
+                <tr key={r.id} className="border-t border-stone-100 dark:border-slate-700">
+                  {kind === 'tax' && <td className="px-2 py-1">{r.grant_type}</td>}
+                  <td className="px-2 py-1">{r.year}</td>
+                  <td className="px-2 py-1">{(r.rate * 100).toFixed(3)}%</td>
+                  {kind === 'purchase_original' && <td className="px-2 py-1">{r.due_date}</td>}
+                  <td className="px-2 py-1 text-right"><button type="button" onClick={() => beginEdit(r)} disabled={busy} className="text-xs text-rose-700 underline hover:text-rose-800 disabled:opacity-50">edit</button></td>
+                </tr>
+              )
             ))}
           </tbody>
         </table>
@@ -465,33 +576,89 @@ function RefinancesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; 
     chain_kind: 'purchase', grant_year: 2018, grant_type: 'Purchase',
     orig_loan_year: null, order_idx: 0, date: '', rate: 0, loan_year: 0, due_date: '', orig_due_date: null,
   })
+  const [editId, setEditId] = useState<number | null>(null)
+  const [edit, setEdit] = useState<LoanRefinanceRow | null>(null)
+
+  const beginEdit = (r: LoanRefinanceRow) => { setEditId(r.id); setEdit({ ...r }) }
+  const cancelEdit = () => { setEditId(null); setEdit(null) }
+  const saveEdit = async () => {
+    if (!edit) return
+    const { id, ...patch } = edit
+    await wrap(() => api.updateLoanRefinance(id, patch), 'Refinance saved')
+    cancelEdit()
+  }
+  const deleteEdit = async () => {
+    if (!edit) return
+    await wrap(() => api.deleteLoanRefinance(edit.id), 'Refinance removed')
+    cancelEdit()
+  }
+
+  // Group refinances by chain
+  type ChainGroup = { key: string; label: string; rows: LoanRefinanceRow[] }
+  const groups = (kind: 'purchase' | 'tax'): ChainGroup[] => {
+    const byKey = new Map<string, ChainGroup>()
+    for (const r of blob.loan_refinances_all.filter(r => r.chain_kind === kind)) {
+      const key = kind === 'purchase'
+        ? `${r.grant_year}-${r.grant_type}`
+        : `${r.grant_year}-${r.grant_type}-${r.orig_loan_year}`
+      const label = kind === 'purchase'
+        ? `Grant ${r.grant_year} ${r.grant_type}`
+        : `${r.grant_year}-${r.grant_type}-${r.orig_loan_year}`
+      let g = byKey.get(key)
+      if (!g) { g = { key, label, rows: [] }; byKey.set(key, g) }
+      g.rows.push(r)
+    }
+    for (const g of byKey.values()) g.rows.sort((a, b) => a.order_idx - b.order_idx)
+    return [...byKey.values()].sort((a, b) => a.label.localeCompare(b.label))
+  }
+  const purchaseGroups = groups('purchase')
+  const taxGroups = groups('tax')
+
+  const renderChain = (g: ChainGroup, isTax: boolean) => (
+    <div key={g.key} className="rounded-md border border-stone-200 p-2 dark:border-slate-700">
+      <p className="mb-1 font-medium">{g.label}</p>
+      <ol className="ml-4 list-decimal space-y-0.5">
+        {g.rows.map(r => (
+          editId === r.id && edit ? (
+            <li key={r.id} className="rounded bg-amber-50 p-1 dark:bg-slate-900">
+              <div className="flex flex-wrap items-end gap-1">
+                <label className="flex flex-col"><span className="text-[10px] text-stone-600 dark:text-slate-400">Order</span><TextInput type="number" value={edit.order_idx} onChange={e => setEdit({ ...edit, order_idx: Number(e.target.value) })} /></label>
+                <label className="flex flex-col"><span className="text-[10px] text-stone-600 dark:text-slate-400">Date</span><TextInput type="date" value={edit.date} onChange={e => setEdit({ ...edit, date: e.target.value })} /></label>
+                <label className="flex flex-col"><span className="text-[10px] text-stone-600 dark:text-slate-400">Rate</span><TextInput type="number" step="0.0001" value={edit.rate} onChange={e => setEdit({ ...edit, rate: Number(e.target.value) })} /></label>
+                <label className="flex flex-col"><span className="text-[10px] text-stone-600 dark:text-slate-400">Loan year</span><TextInput type="number" value={edit.loan_year} onChange={e => setEdit({ ...edit, loan_year: Number(e.target.value) })} /></label>
+                <label className="flex flex-col"><span className="text-[10px] text-stone-600 dark:text-slate-400">Due</span><TextInput type="date" value={edit.due_date} onChange={e => setEdit({ ...edit, due_date: e.target.value })} /></label>
+                {isTax && (
+                  <label className="flex flex-col"><span className="text-[10px] text-stone-600 dark:text-slate-400">Orig due</span><TextInput type="date" value={edit.orig_due_date ?? ''} onChange={e => setEdit({ ...edit, orig_due_date: e.target.value })} /></label>
+                )}
+                <div className="ml-auto whitespace-nowrap">
+                  <button type="button" onClick={saveEdit} disabled={busy} className="mr-2 text-xs font-medium text-emerald-700 underline hover:text-emerald-800 disabled:opacity-50">save</button>
+                  <button type="button" onClick={cancelEdit} disabled={busy} className="mr-2 text-xs text-stone-600 underline hover:text-stone-800 disabled:opacity-50 dark:text-slate-400">cancel</button>
+                  <button type="button" onClick={deleteEdit} disabled={busy} className="text-xs font-medium text-rose-700 underline hover:text-rose-800 disabled:opacity-50">delete</button>
+                </div>
+              </div>
+            </li>
+          ) : (
+            <li key={r.id} className="flex items-center justify-between">
+              <span>
+                {r.date} → {(r.rate * 100).toFixed(3)}%, due {r.due_date}
+                {isTax && <> (orig due {r.orig_due_date})</>}
+              </span>
+              <button type="button" onClick={() => beginEdit(r)} disabled={busy} className="ml-2 text-xs text-rose-700 underline hover:text-rose-800 disabled:opacity-50">edit</button>
+            </li>
+          )
+        ))}
+      </ol>
+    </div>
+  )
 
   return (
     <section className="space-y-3">
       <div className="space-y-2 text-xs">
         <h3 className="font-semibold text-gray-900 dark:text-slate-100">Purchase chains</h3>
-        {Object.entries(blob.loan_refinances.purchase).map(([gy, chain]) => (
-          <div key={gy} className="rounded-md border border-stone-200 p-2 dark:border-slate-700">
-            <p className="mb-1 font-medium">Grant {gy}</p>
-            <ol className="ml-4 list-decimal space-y-0.5">
-              {chain.map((r, i) => (
-                <li key={i}>{r.date} → {(r.rate * 100).toFixed(3)}%, due {r.due_date}</li>
-              ))}
-            </ol>
-          </div>
-        ))}
+        {purchaseGroups.map(g => renderChain(g, false))}
 
         <h3 className="font-semibold text-gray-900 dark:text-slate-100">Tax chains</h3>
-        {Object.entries(blob.loan_refinances.tax).map(([key, chain]) => (
-          <div key={key} className="rounded-md border border-stone-200 p-2 dark:border-slate-700">
-            <p className="mb-1 font-medium">{key}</p>
-            <ol className="ml-4 list-decimal space-y-0.5">
-              {chain.map((r, i) => (
-                <li key={i}>{r.date} → {(r.rate * 100).toFixed(3)}%, due {r.due_date} (orig due {r.orig_due_date})</li>
-              ))}
-            </ol>
-          </div>
-        ))}
+        {taxGroups.map(g => renderChain(g, true))}
       </div>
 
       <form

@@ -8,89 +8,11 @@ A mobile-first web app for tracking equity compensation — grants, vesting sche
 
 ## Table of Contents
 
-- [Screenshots](#screenshots)
 - [Understanding Your Equity](#understanding-your-equity) — key concepts explained
 - [For Users](#for-users) — getting started, dashboard, sales, loans, notifications, sharing
 - [For Content Admins](#for-content-admins) — editing the grant program schedule and rates
 - [For Site Admins](#for-site-admins) — user management, system health, maintenance
 - [For Site Operators](#for-site-operators) — deployment, environment variables, development, API reference
-
----
-
-## Screenshots
-
-### Setup Wizard
-
-New users are greeted by the guided setup wizard (shown automatically when no grants exist, and accessible any time from the Import page).
-
-| Welcome | Grants Table |
-|---------|-------------|
-| ![Wizard Welcome Light](screenshots/wizard-welcome-light-mobile.png) | ![Wizard Grant Entry](screenshots/wizard-grant-entry-light-mobile.png) |
-
-| Dark | Re-run from Import page |
-|------|------------------------|
-| ![Wizard Welcome Dark](screenshots/wizard-welcome-dark-mobile.png) | ![Wizard Page](screenshots/wizard-page-light-mobile.png) |
-
-### Dashboard
-
-| | Light | Dark |
-|--|-------|------|
-| **Mobile** | ![Dashboard Light Mobile](screenshots/dashboard-light-mobile.png) | ![Dashboard Dark Mobile](screenshots/dashboard-dark-mobile.png) |
-| **Desktop** | ![Dashboard Light Desktop](screenshots/dashboard-light-desktop.png) | ![Dashboard Dark Desktop](screenshots/dashboard-dark-desktop.png) |
-
-### Events Timeline
-
-| Light | Dark |
-|-------|------|
-| ![Events Light Mobile](screenshots/events-light-mobile.png) | ![Events Dark Mobile](screenshots/events-dark-mobile.png) |
-
-### Import / Export
-
-Card-based layout: Setup Wizard (recommended), Import from Excel, Export to Excel, and a collapsible column guide.
-
-![Import Export](screenshots/import-export-mobile.png)
-
-### Stock Sales
-
-| Light | Dark |
-|-------|------|
-| ![Sales Light Mobile](screenshots/sales-light-mobile.png) | ![Sales Dark Mobile](screenshots/sales-dark-mobile.png) |
-
-### Settings
-
-| Light | Dark |
-|-------|------|
-| ![Settings Light](screenshots/settings-light-mobile.png) | ![Settings Dark](screenshots/settings-dark-mobile.png) |
-
-### Sharing (Email Invitations)
-
-| Sharing Settings Light | Sharing Settings Dark |
-|-------|------|
-| ![Sharing Light](screenshots/settings-sharing-light-mobile.png) | ![Sharing Dark](screenshots/settings-sharing-dark-mobile.png) |
-
-| Invite Landing |
-|-------|
-| ![Invite Landing](screenshots/invite-landing-light-mobile.png) |
-
-### Admin Dashboard
-
-| Light | Dark |
-|-------|------|
-| ![Admin Light](screenshots/admin-light-mobile.png) | ![Admin Dark](screenshots/admin-dark-mobile.png) |
-
-### Content Editor (content admins only)
-
-| Light | Dark |
-|-------|------|
-| ![Content Light](screenshots/content-light-mobile.png) | ![Content Dark](screenshots/content-dark-mobile.png) |
-
-### Login & Privacy Policy
-
-| Light | Dark |
-|-------|------|
-| ![Login Light Mobile](screenshots/login-light-mobile.png) | ![Login Dark Mobile](screenshots/login-dark-mobile.png) |
-
-![Privacy Policy](screenshots/privacy-light-mobile.png)
 
 ---
 
@@ -156,16 +78,26 @@ Everything in the app is derived from these four tables at request time:
 
 1. **Sign in** — click the sign-in button for your organization's identity provider (Google, Azure AD, or whatever your admin has configured). Your data is tied to that account; you can export everything at any time.
 
+   | Light | Dark |
+   |-------|------|
+   | ![Login](screenshots/login-light-mobile.png) | ![Login Dark](screenshots/login-dark-mobile.png) |
+
 2. **Enter your data** — the **Setup Wizard** appears automatically when you have no grants and is always accessible from the Import page. Three options:
    - **Setup Wizard** (recommended) — Epic's company-wide grant structure is pre-filled (vest dates, periods, exercise dates). Enter your share counts, annual market prices from Epic Stocks SharePoint, and loan details grant by grant. Catch-up grants are included by default for years ≤ 2021. The 2020 Bonus has an A/B/C vesting schedule selector matching your grant agreement. If you already have data, the wizard pre-loads your existing records on each screen and lets you update them — unmatched existing records appear at the bottom so you can choose to keep or remove them. Nothing is written until you confirm at the final step.
    - **Import from Excel** — upload a `Vesting.xlsx` file (exported from this app or another user) to pre-fill the wizard. Confirm or adjust share counts before committing.
    - **Manual entry** — enter prices first, then add grants and loans one at a time.
+
+   | Wizard welcome | Grant entry |
+   |----------------|-------------|
+   | ![Wizard Welcome](screenshots/wizard-welcome-light-mobile.png) | ![Wizard Grant Entry](screenshots/wizard-grant-entry-light-mobile.png) |
 
 3. **Add share prices** — go to **Prices** and enter the annual share price (Epic announces this each March). Without at least one price, no events can be computed. Use **+ Estimate** to project future prices at an annual % growth rate — useful for modeling expected increases before they're officially announced. Estimates appear in italics with an "est." badge and are automatically removed when the real price for that date is added.
 
 4. **View the Dashboard** — once you have grants and at least one price, the dashboard shows your full financial picture. See [The Dashboard](#the-dashboard) below.
 
 5. **Explore the Events timeline** — the **Events** page shows the full computed timeline: every vesting tranche, exercise date, loan payoff, and recorded sale, with income, capital gains, and running totals for each event.
+
+   ![Events Timeline](screenshots/events-light-mobile.png)
 
 6. **Plan or record a sale** — go to **Sales → + Sale**. See [Sales](#sales) below.
 
@@ -179,7 +111,11 @@ Everything in the app is derived from these four tables at request time:
 
 ### The Dashboard
 
-The dashboard is split into two stacked sections that share a single **As of** date picker (**Today** and **Last event** quick buttons).
+| Mobile | Desktop |
+|--------|---------|
+| ![Dashboard Mobile](screenshots/dashboard-light-mobile.png) | ![Dashboard Desktop](screenshots/dashboard-light-desktop.png) |
+
+The dashboard is split into two stacked sections that share a single **As of** date picker (**Today** and **Last event** quick buttons). Dark mode is supported and follows your system preference.
 
 #### "Up to this date"
 
@@ -213,6 +149,10 @@ The **investment interest deduction** toggle lives directly on the dashboard. Fl
 ---
 
 ### Sales
+
+| Light | Dark |
+|-------|------|
+| ![Sales](screenshots/sales-light-mobile.png) | ![Sales Dark](screenshots/sales-dark-mobile.png) |
 
 Go to **Sales → + Sale**.
 
@@ -337,6 +277,8 @@ Each tip shows estimated savings. Tips can be dismissed for the session.
 
 ### Notifications
 
+![Settings](screenshots/settings-light-mobile.png)
+
 Go to **Settings → Notifications** to configure.
 
 - **Push** (browser) — subscribe from your browser. Each device subscribes independently; all active devices receive the notification. Tap **Send test** to verify it's working without waiting for a real event.
@@ -360,6 +302,10 @@ Go to **Settings → Notifications** to configure.
 ---
 
 ### Sharing Your Data
+
+| Sharing settings | Invite landing |
+|-----------------|----------------|
+| ![Sharing Settings](screenshots/settings-sharing-light-mobile.png) | ![Invite Landing](screenshots/invite-landing-light-mobile.png) |
 
 Invite someone (a financial advisor, accountant, or family member) to view your data read-only from **Settings → Sharing**.
 
@@ -385,6 +331,8 @@ The 83(b) flag is display-only — it doesn't change how events are computed. If
 
 ### Exporting Your Data
 
+![Import / Export](screenshots/import-export-mobile.png)
+
 Go to **Import/Export → Download Vesting.xlsx** to export all your grants, prices, loans, and sales at any time. The same file can be re-imported to restore or transfer your data.
 
 The **Import** page also keeps the last 3 backup snapshots from previous imports — you can restore any of them if an import goes wrong.
@@ -392,6 +340,10 @@ The **Import** page also keeps the last 3 backup snapshots from previous imports
 ---
 
 ## For Content Admins
+
+| Light | Dark |
+|-------|------|
+| ![Content Editor](screenshots/content-light-mobile.png) | ![Content Editor Dark](screenshots/content-dark-mobile.png) |
 
 Content admins edit the grant-program data that drives the Setup Wizard for all users. A site admin promotes users to this role from the Admin panel (the role persists across logins). Site admins are implicitly content admins.
 
@@ -412,6 +364,10 @@ Edits take effect immediately for all users on their next wizard load. The wizar
 ---
 
 ## For Site Admins
+
+| Light | Dark |
+|-------|------|
+| ![Admin Dashboard](screenshots/admin-light-mobile.png) | ![Admin Dashboard Dark](screenshots/admin-dark-mobile.png) |
 
 Site admins are designated via the `ADMIN_EMAIL` environment variable (semicolon-delimited for multiple). Access is granted dynamically on each login — adding or removing an email from `ADMIN_EMAIL` takes effect on the user's next sign-in. Navigate to `/admin` after signing in with a matching account.
 

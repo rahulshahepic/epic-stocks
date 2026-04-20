@@ -190,7 +190,7 @@ export default function Loans() {
   }
 
   async function handleRegenerateAll() {
-    if (!confirm('Recompute payoff sale share counts for all future loans using current lot selection method?')) return
+    if (!confirm('Recalculate how many shares each future loan\'s repayment sale should sell, using your current lot-selection setting?')) return
     setRegenerating(true)
     try {
       const result = await api.regenerateAllPayoffSales()
@@ -199,9 +199,9 @@ export default function Loans() {
       const parts: string[] = []
       if (result.updated) parts.push(`updated ${result.updated}`)
       if (result.created) parts.push(`created ${result.created}`)
-      alert(parts.length ? `Payoff sales: ${parts.join(', ')}.` : 'No changes needed.')
+      alert(parts.length ? `Repayment sales: ${parts.join(', ')}.` : 'No changes needed.')
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : 'Failed to regenerate payoff sales')
+      alert(e instanceof Error ? e.message : 'Failed to update repayment sales')
     } finally {
       setRegenerating(false)
     }
@@ -335,7 +335,7 @@ export default function Loans() {
             </select>
             {form.refinances_loan_id && (
               <p className="mt-1 text-[10px] text-amber-700 dark:text-amber-300">
-                The old loan's payoff event will show as "Refinanced" with $0 cash due. Its auto-generated sale will be removed.
+                The old loan will be marked "Refinanced" with nothing left to pay, and any sale that was set up to repay it will be removed.
               </p>
             )}
           </label>
@@ -349,7 +349,7 @@ export default function Loans() {
               onChange={e => setPayoffSaleChecked(e.target.checked)}
               className="rounded border-gray-300 dark:border-slate-600"
             />
-            <span>Payoff loan via sale</span>
+            <span>Sell shares to repay this loan</span>
           </label>
           {payoffSaleChecked && (
             <TaxRateFields
@@ -403,9 +403,9 @@ export default function Loans() {
                 onClick={handleRegenerateAll}
                 disabled={regenerating}
                 className="rounded-md bg-gray-200 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-300 disabled:opacity-50 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-gray-600"
-                title="Recompute payoff sale share counts for all future loans using current lot selection method"
+                title="Recalculate how many shares each future loan's repayment sale should sell, using your current lot-selection setting"
               >
-                {regenerating ? 'Regenerating…' : 'Regen payoff sales'}
+                {regenerating ? 'Updating…' : 'Update repayment sales'}
               </button>
               <button onClick={openAdd} className="rounded-md bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700">
                 + Loan
@@ -441,7 +441,7 @@ export default function Loans() {
                 {readOnly
                   ? null
                   : epicMode
-                    ? <button onClick={() => openPayoffModal(l)} className="text-xs font-medium text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Request Payoff</button>
+                    ? <button onClick={() => openPayoffModal(l)} className="text-xs font-medium text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Calculate repayment</button>
                     : <button onClick={() => openEdit(l)} className="text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Edit</button>
                 }
               </div>
@@ -538,7 +538,7 @@ export default function Loans() {
                       {readOnly
                         ? null
                         : epicMode
-                          ? <button onClick={() => openPayoffModal(l)} className="text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300 text-xs font-medium">Request Payoff</button>
+                          ? <button onClick={() => openPayoffModal(l)} className="text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300 text-xs font-medium">Calculate repayment</button>
                           : <button onClick={() => openEdit(l)} className="text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300">Edit</button>
                       }
                     </td>
@@ -572,7 +572,11 @@ export default function Loans() {
         </table>
       </div>}
       {loans.length === 0 && (
-        <p className="px-3 py-6 text-center text-xs text-stone-600">No loans yet</p>
+        <p className="px-3 py-6 text-center text-xs text-stone-600">
+          {epicMode
+            ? 'No loans yet.'
+            : <>No loans yet. Tap <span className="font-medium">+ Loan</span> above to record one.</>}
+        </p>
       )}
       <p className="text-xs text-stone-600">{loans.length} loans</p>
 
@@ -580,7 +584,7 @@ export default function Loans() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={closePayoffModal}>
           <div className="w-full max-w-sm max-h-[90vh] overflow-y-auto rounded-lg bg-white p-5 shadow-xl dark:bg-slate-900" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Request Early Payoff</h3>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Repay this loan early</h3>
               <button onClick={closePayoffModal} aria-label="Close dialog" className="text-stone-600 hover:text-gray-600 dark:hover:text-slate-300">✕</button>
             </div>
             <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
@@ -588,7 +592,7 @@ export default function Loans() {
             </p>
             {payoffModal.existingSale && (
               <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
-                Existing payoff sale on {payoffModal.existingSale.date} will be updated.
+                The existing repayment sale on {payoffModal.existingSale.date} will be updated.
               </p>
             )}
 

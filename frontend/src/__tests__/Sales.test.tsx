@@ -166,15 +166,15 @@ describe('Sales', () => {
     await waitFor(() => {
       expect(screen.getByText('Estimated Tax Breakdown')).toBeInTheDocument()
     })
-    expect(screen.getByText(/Gross proceeds/)).toBeInTheDocument()
+    expect(screen.getAllByText(/Total from sale/).length).toBeGreaterThan(0)
     expect(screen.getByText(/Estimated total tax/)).toBeInTheDocument()
   })
 
-  it('shows ST badge when sale has short-term gains', async () => {
+  it('shows short-term badge when sale has short-term gains', async () => {
     mockApi({ stcg: true })
     renderSales()
     await waitFor(() => {
-      expect(screen.getAllByText('ST')).not.toHaveLength(0)
+      expect(screen.getAllByText('Short-term')).not.toHaveLength(0)
     })
   })
 
@@ -192,7 +192,7 @@ describe('Sales', () => {
     )
     renderSales()
     await waitFor(() => {
-      expect(screen.getByText('No sales recorded yet')).toBeInTheDocument()
+      expect(screen.getByText(/No sales yet/)).toBeInTheDocument()
     })
   })
 })

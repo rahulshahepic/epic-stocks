@@ -25,7 +25,7 @@ test.describe('Multi-user isolation', () => {
     await page.getByRole('button', { name: '+ Purchase' }).click()
     await page.getByLabel('Year').fill('2024')
     await page.getByLabel('Shares', { exact: true }).fill('10000')
-    await page.getByLabel('Cost Basis').fill('10.00')
+    await page.getByLabel('Price per share at grant', { exact: true }).fill('10.00')
     await page.getByLabel('Vest Start').fill('2025-03-01')
     await page.getByLabel('Vest Periods').fill('4')
     await page.getByLabel('Exercise Date').fill('2024-12-31')
@@ -44,7 +44,7 @@ test.describe('Multi-user isolation', () => {
     await expect(page.getByText('No grants yet')).toBeVisible({ timeout: 10000 })
 
     await navigateTo(page, 'Prices')
-    await expect(page.getByText('No prices yet')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('No share prices yet')).toBeVisible({ timeout: 10000 })
 
     await navigateTo(page, 'Loans')
     await expect(page.getByText('No loans yet')).toBeVisible({ timeout: 10000 })

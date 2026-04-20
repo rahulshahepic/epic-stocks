@@ -5,30 +5,30 @@ import { useNavigate } from 'react-router-dom'
 const COLUMN_GUIDE = {
   Schedule: [
     { col: 'year', desc: 'Grant year (e.g. 2021). Matches the year on your Epic annual statement.' },
-    { col: 'type', desc: '"RSU" for restricted stock units, "Option" for stock options.' },
+    { col: 'type', desc: '"RSU" (shares you own once they vest) or "Option" (the right to buy shares at a set price). Your Epic paperwork will say which.' },
     { col: 'shares', desc: 'Total shares granted that year.' },
-    { col: 'price', desc: 'Grant price per share — $0 for RSUs, the option strike price for options.' },
+    { col: 'price', desc: 'What you pay per share. $0 for RSUs. For options, the price set in your contract.' },
     { col: 'vest_start', desc: 'Date vesting begins (YYYY-MM-DD). Typically March 1 of the grant year.' },
-    { col: 'periods', desc: 'Number of vesting periods (usually 8 for a standard 4-year quarterly schedule).' },
-    { col: 'exercise_date', desc: 'Date by which options must be exercised. Leave blank for RSUs.' },
-    { col: 'dp_shares', desc: 'Down-payment shares used to purchase this grant. Find on your purchase confirmation; enter as a positive number.' },
-    { col: '83(b)', desc: 'TRUE if you filed an 83(b) election within 30 days of this grant. FALSE or blank otherwise.' },
+    { col: 'periods', desc: 'How many times the grant vests in pieces (usually 8 for a standard 4-year quarterly schedule).' },
+    { col: 'exercise_date', desc: 'Deadline to buy the shares (options only). Leave blank for RSUs.' },
+    { col: 'dp_shares', desc: 'If you handed in existing shares toward this purchase, enter the count (positive number). Find this on your purchase confirmation. Leave blank if you paid cash.' },
+    { col: '83(b)', desc: 'TRUE if you filed an 83(b) election with the IRS within 30 days of this grant (ask your tax advisor if unsure). Otherwise FALSE or leave blank.' },
   ],
   Loans: [
     { col: 'grant_year', desc: 'Year of the grant this loan is associated with.' },
     { col: 'grant_type', desc: '"RSU" or "Option" — must match the Schedule entry.' },
-    { col: 'loan_type', desc: '"Purchase" for the original loan, "Interest" for accrued interest loans, "Tax" for tax-withholding loans.' },
+    { col: 'loan_type', desc: '"Purchase" = the original loan you used to buy the shares. "Interest" = a loan covering interest charges. "Tax" = a loan covering withholding tax.' },
     { col: 'loan_year', desc: 'Year this loan was issued.' },
-    { col: 'amount', desc: 'Loan principal amount in dollars.' },
+    { col: 'amount', desc: 'How much was borrowed, in dollars.' },
     { col: 'interest_rate', desc: 'Annual interest rate as a decimal (e.g. 0.05 for 5%).' },
     { col: 'due_date', desc: 'Loan due date (YYYY-MM-DD).' },
-    { col: 'loan_number', desc: 'Loan number from your Epic statement. Used to match loans to payoff sales.' },
-    { col: 'refinances_loan_number', desc: 'Loan # of the older loan this one replaced via refinance. Leave blank if not a refinance. When set, the older loan\'s payoff event shows as "Refinanced" with $0 cash due.' },
+    { col: 'loan_number', desc: 'Loan number from your Epic statement. Used to link the loan to the sale that repays it.' },
+    { col: 'refinances_loan_number', desc: 'If this loan replaced an older one, enter the older loan\'s number. Leave blank otherwise. The old loan will then be marked "Refinanced" with nothing left to pay.' },
   ],
   LoanPayments: [
-    { col: 'loan_number', desc: 'Loan # of the loan this payment applies to (must match a Loan # in the Loans sheet).' },
+    { col: 'loan_number', desc: 'Loan # this payment applies to (must match a Loan # in the Loans sheet).' },
     { col: 'date', desc: 'Date the payment was made (YYYY-MM-DD).' },
-    { col: 'amount', desc: 'Cash amount paid. Reduces the remaining balance shown on the loan\'s payoff event.' },
+    { col: 'amount', desc: 'Cash amount paid. Reduces the remaining balance on the loan.' },
     { col: 'notes', desc: 'Optional notes (e.g. payment reference number).' },
   ],
   Prices: [
@@ -40,7 +40,7 @@ const COLUMN_GUIDE = {
     { col: 'shares', desc: 'Number of shares sold.' },
     { col: 'price', desc: 'Sale price per share in dollars.' },
     { col: 'notes', desc: 'Optional notes.' },
-    { col: 'loan_number', desc: 'Loan # this sale was made to cover (optional). When set, the loan\'s payoff event is marked as covered.' },
+    { col: 'loan_number', desc: 'If this sale was used to repay a loan, enter the loan number. The loan will then show as paid off.' },
   ],
 }
 
@@ -212,10 +212,10 @@ export default function ImportExport() {
               className="mt-0.5 rounded border-gray-300 dark:border-slate-600"
             />
             <span>
-              <span className="font-medium">Generate payoff sales for loans</span>
+              <span className="font-medium">Plan share sales to repay each loan</span>
               <span className="ml-1 text-stone-500 dark:text-slate-500">(recommended)</span>
               <br />
-              <span className="text-stone-500 dark:text-slate-500">For each loan, automatically creates a stock sale sized to cover the payoff after capital gains tax.</span>
+              <span className="text-stone-500 dark:text-slate-500">For each loan, the app will plan a share sale big enough to cover the loan plus the tax on it.</span>
             </span>
           </label>
         </div>
@@ -250,7 +250,7 @@ export default function ImportExport() {
           <div className="mt-3 rounded-md bg-green-50 p-3 dark:bg-green-900/30">
             <p className="text-xs font-medium text-green-800 dark:text-green-300">
               Imported {result.sheets_imported.join(', ')}: {result.grants} grants, {result.loans} loans, {result.prices} prices
-              {result.payoff_sales > 0 && `, ${result.payoff_sales} payoff sales generated`}
+              {result.payoff_sales > 0 && `, ${result.payoff_sales} repayment sales planned`}
             </p>
           </div>
         )}

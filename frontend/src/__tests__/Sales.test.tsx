@@ -170,11 +170,11 @@ describe('Sales', () => {
     expect(screen.getByText(/Estimated total tax/)).toBeInTheDocument()
   })
 
-  it('shows ST badge when sale has short-term gains', async () => {
+  it('shows short-term badge when sale has short-term gains', async () => {
     mockApi({ stcg: true })
     renderSales()
     await waitFor(() => {
-      expect(screen.getAllByText('ST')).not.toHaveLength(0)
+      expect(screen.getAllByText('Short-term')).not.toHaveLength(0)
     })
   })
 

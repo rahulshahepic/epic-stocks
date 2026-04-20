@@ -311,19 +311,19 @@ export default function Settings() {
           )}
         </div>
         <p className="mt-1 text-xs text-stone-600 dark:text-slate-400">
-          Wisconsin defaults. Used to estimate tax on share sales. 30% exclusion on qualifying LT gains is baked into state LT rate.
+          Wisconsin defaults. Used to estimate tax on share sales. 30% exclusion on qualifying long-term gains is baked into the state long-term rate.
         </p>
 
         {taxSettings && !editingTax && (
           <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
             {[
-              ['Federal Income', taxSettings.federal_income_rate],
-              ['Federal LT CG', taxSettings.federal_lt_cg_rate],
-              ['Federal ST CG', taxSettings.federal_st_cg_rate],
-              ['NIIT', taxSettings.niit_rate],
-              ['State Income', taxSettings.state_income_rate],
-              ['State LT CG', taxSettings.state_lt_cg_rate],
-              ['State ST CG', taxSettings.state_st_cg_rate],
+              ['Federal income', taxSettings.federal_income_rate],
+              ['Federal long-term capital gains', taxSettings.federal_lt_cg_rate],
+              ['Federal short-term capital gains', taxSettings.federal_st_cg_rate],
+              ['Net investment income tax', taxSettings.niit_rate],
+              ['State income', taxSettings.state_income_rate],
+              ['State long-term capital gains', taxSettings.state_lt_cg_rate],
+              ['State short-term capital gains', taxSettings.state_st_cg_rate],
             ].map(([label, val]) => (
               <div key={label as string} className="flex justify-between">
                 <dt className="text-stone-600 dark:text-slate-400">{label}</dt>
@@ -331,7 +331,7 @@ export default function Settings() {
               </div>
             ))}
             <div className="flex justify-between">
-              <dt className="text-stone-600 dark:text-slate-400">LT Threshold</dt>
+              <dt className="text-stone-600 dark:text-slate-400">Long-term threshold</dt>
               <dd className="font-medium text-stone-700 dark:text-slate-300">{taxSettings.lt_holding_days}d</dd>
             </div>
             <div className="flex justify-between col-span-2">
@@ -340,7 +340,7 @@ export default function Settings() {
                 {taxSettings.lot_selection_method === 'fifo' ? 'FIFO (oldest first)' :
                  taxSettings.lot_selection_method === 'lifo' ? 'LIFO (newest first)' :
                  taxSettings.lot_selection_method === 'manual_tranche' ? 'Manual (pick lots)' :
-                 'Epic LIFO (prefer LT gains)'}
+                 'Epic LIFO (prefer long-term gains)'}
               </dd>
             </div>
             {taxSettings.flexible_payoff_enabled && (
@@ -350,7 +350,7 @@ export default function Settings() {
                   {taxSettings.loan_payoff_method === 'fifo' ? 'FIFO (oldest first)' :
                    taxSettings.loan_payoff_method === 'lifo' ? 'LIFO (newest first)' :
                    taxSettings.loan_payoff_method === 'same_tranche' ? 'Same Tranche' :
-                   'Epic LIFO (prefer LT gains)'}
+                   'Epic LIFO (prefer long-term gains)'}
                 </dd>
               </div>
             )}
@@ -371,13 +371,13 @@ export default function Settings() {
           <div className="mt-3 space-y-3">
             <div className="grid grid-cols-2 gap-3">
               {([
-                ['Federal Income Rate', 'federal_income_rate'],
-                ['Federal LT CG Rate', 'federal_lt_cg_rate'],
-                ['Federal ST CG Rate', 'federal_st_cg_rate'],
-                ['NIIT Rate', 'niit_rate'],
-                ['State Income Rate', 'state_income_rate'],
-                ['State LT CG Rate', 'state_lt_cg_rate'],
-                ['State ST CG Rate', 'state_st_cg_rate'],
+                ['Federal income rate', 'federal_income_rate'],
+                ['Federal long-term capital gains rate', 'federal_lt_cg_rate'],
+                ['Federal short-term capital gains rate', 'federal_st_cg_rate'],
+                ['Net investment income tax rate', 'niit_rate'],
+                ['State income rate', 'state_income_rate'],
+                ['State long-term capital gains rate', 'state_lt_cg_rate'],
+                ['State short-term capital gains rate', 'state_st_cg_rate'],
               ] as [string, keyof TaxSettings][]).map(([label, key]) => (
                 <label key={key} className="block">
                   <span className="text-xs text-stone-600 dark:text-slate-400">{label}</span>
@@ -428,7 +428,7 @@ export default function Settings() {
                 </label>
               )}
               <label className="block">
-                <span className="text-xs text-stone-600 dark:text-slate-400">LT Holding Threshold (days)</span>
+                <span className="text-xs text-stone-600 dark:text-slate-400">Long-term holding threshold (days)</span>
                 <input
                   type="number"
                   value={taxForm.lt_holding_days}

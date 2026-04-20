@@ -348,7 +348,7 @@ export default function Events() {
               <button onClick={(ev) => { ev.stopPropagation(); ensureExpanded(); toggleSaleTax(saleId) }} className="inline-flex items-center gap-1">
                 {isLoadingSale ? <span className="text-stone-600">...</span> : (
                   <>
-                    {hasST && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">ST</span>}
+                    {hasST && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">Short-term</span>}
                     <span className={`underline decoration-dotted ${hasST ? 'text-amber-700 dark:text-amber-300' : 'text-orange-700 dark:text-orange-300'}`}>{e.estimated_tax != null ? fmt$(e.estimated_tax) : '\u2014'}</span>
                   </>
                 )}
@@ -540,7 +540,7 @@ export default function Events() {
                             <>
                               {hasST && (
                                 <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-                                  ST
+                                  Short-term
                                 </span>
                               )}
                               <span className={`underline decoration-dotted ${hasST ? 'text-amber-700 dark:text-amber-300' : 'text-orange-700 dark:text-orange-300'}`}>

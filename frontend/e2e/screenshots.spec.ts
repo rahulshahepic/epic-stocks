@@ -2,7 +2,7 @@
  * Capture README screenshots. Run via: ./screenshots/run.sh
  * Skipped unless SCREENSHOT_EMAIL is set (requires backend running with E2E_TEST=1).
  */
-import { test, type Page } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 
 const BASE = process.env.SCREENSHOT_BASE_URL ?? 'http://localhost:5173'
 const EMAIL = process.env.SCREENSHOT_EMAIL ?? ''
@@ -213,7 +213,9 @@ test.describe('Screenshots', () => {
     await page.click('text=Settings')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(800)
-    await page.locator('text=Sharing').first().scrollIntoViewIfNeeded()
+    const sharingHeading = page.locator('h2, h3').filter({ hasText: 'Sharing' }).first()
+    await sharingHeading.scrollIntoViewIfNeeded()
+    await expect(sharingHeading).toBeInViewport()
     await page.screenshot({ path: `${OUT}/settings-sharing-light-mobile.png` })
   })
 
@@ -222,7 +224,9 @@ test.describe('Screenshots', () => {
     await page.click('text=Settings')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(800)
-    await page.locator('text=Sharing').first().scrollIntoViewIfNeeded()
+    const sharingHeading = page.locator('h2, h3').filter({ hasText: 'Sharing' }).first()
+    await sharingHeading.scrollIntoViewIfNeeded()
+    await expect(sharingHeading).toBeInViewport()
     await page.screenshot({ path: `${OUT}/settings-sharing-dark-mobile.png` })
   })
 

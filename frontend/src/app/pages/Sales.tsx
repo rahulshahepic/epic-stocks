@@ -140,7 +140,7 @@ export function TrancheTable({
                 <td className="px-3 py-1 text-right">
                   {allocated > 0 ? (
                     <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${line.is_lt ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'}`}>
-                      {line.is_lt ? 'LT' : 'ST'}
+                      {line.is_lt ? 'Long-term' : 'Short-term'}
                     </span>
                   ) : <span className="text-gray-300 dark:text-slate-400">—</span>}
                 </td>
@@ -223,8 +223,8 @@ export function TaxCard({ breakdown }: { breakdown: TaxBreakdown }) {
               <tr className="text-stone-600 dark:text-slate-400">
                 <th className="pb-1 text-left font-normal">Grant</th>
                 <th className="pb-1 text-right font-normal">Shares</th>
-                <th className="pb-1 text-right font-normal">LT</th>
-                <th className="pb-1 text-right font-normal">ST</th>
+                <th className="pb-1 text-right font-normal">Long-term</th>
+                <th className="pb-1 text-right font-normal">Short-term</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-green-100 dark:divide-green-900/40">
@@ -843,7 +843,7 @@ export default function Sales() {
                   ) : bd ? (
                     <>
                       <span className="text-gray-500 dark:text-slate-400">Tax:</span>
-                      {hasST && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">ST</span>}
+                      {hasST && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">Short-term</span>}
                       <span className={`tabular-nums font-medium underline decoration-dotted ${hasST ? 'text-amber-700 dark:text-amber-300' : 'text-gray-900 dark:text-slate-100'}`}>{fmtUSD(bd.estimated_tax)}</span>
                     </>
                   ) : (
@@ -918,7 +918,7 @@ export default function Sales() {
                           <>
                             {hasST && (
                               <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-                                ST
+                                Short-term
                               </span>
                             )}
                             <span className={`font-medium underline decoration-dotted ${hasST ? 'text-amber-700 dark:text-amber-300' : 'text-gray-900 dark:text-slate-100'}`}>

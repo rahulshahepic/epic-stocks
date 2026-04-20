@@ -204,7 +204,7 @@ After saving a sale, tap the tax amount to see the full breakdown:
 - Gross proceeds
 - Ordinary income component (for RSU/Bonus lots where FMV at vest was recognized as income)
 - Short-term and long-term capital gains per lot
-- Federal income tax, federal LT/ST capital gains tax, NIIT (3.8%), state income tax, state capital gains tax
+- Federal income tax, federal long-term/short-term capital gains tax, net investment income tax (3.8%), state income tax, state capital gains tax
 - Estimated total tax and net proceeds
 
 Tax rates are captured from your Settings at the time the sale is created and stored with the sale record. Changing your tax rates later does not retroactively change a saved sale's breakdown.
@@ -219,7 +219,7 @@ Each loan tied to a Purchase grant can have an auto-generated payoff sale that c
 
 The app finds the smallest integer share count such that after-tax proceeds from selling those shares ≥ the outstanding balance. It only considers lots from the *originating grant* (same-tranche selection), regardless of your default lot method setting.
 
-The payoff sale always shows a Lot Allocation table in the Sales page so you can see exactly which lots are being consumed and whether they are LT or ST.
+The payoff sale always shows a Lot Allocation table in the Sales page so you can see exactly which lots are being consumed and whether they are long-term or short-term.
 
 #### Auto-generated payoff sales
 
@@ -243,7 +243,7 @@ Toggle this on the **Dashboard** or change it in **Settings → Tax Rates**.
 **How the estimate works:**
 
 - Interest with `due_date = 1/1/YEAR` is deductible in that year (e.g. interest due 1/1/2025 → deductible in 2025).
-- The deductible pool is applied first to short-term gains, then long-term gains (minimizes tax since STCG is taxed higher).
+- The deductible pool is applied first to short-term gains, then long-term gains (minimizes tax since short-term gains are taxed higher).
 - Any unused deduction in a year carries forward indefinitely to future years with eligible gains.
 - Use **Settings → Tax Rates → Customize by year** to exclude years where you took the standard deduction.
 
@@ -258,7 +258,7 @@ Toggle this on the **Dashboard** or change it in **Settings → Tax Rates**.
 
 - The "Cap Gains" column header changes to **"Cap Gains (adj.)"**.
 - Events where a deduction is applied show an "adj." badge with a tooltip showing the gross amount.
-- Expanding a vesting or price event shows the STCG/LTCG split and how much of the interest pool was consumed.
+- Expanding a vesting or price event shows the short-term/long-term capital gains split and how much of the interest pool was consumed.
 
 > This is an estimate only, and only applies in years where you itemize deductions (not the standard deduction). Consult a tax advisor before making decisions based on it. Filing Form 4952 and electing to treat capital gains as investment income means those gains lose their preferential rate — whether this is beneficial depends on your specific situation.
 

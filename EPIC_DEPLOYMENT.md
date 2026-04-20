@@ -209,10 +209,11 @@ User requests to pay off a specific loan ahead of its due date.
 **Mechanics:**
 - Triggers a sale of stock to cover the outstanding loan balance
 - Lot selection is LIFO by default, **with an Epic-specific override**: skip
-  any lots whose cost basis would result in short-term capital gains (STCG) if
-  possible — i.e., prefer lots held longer than the LTCG threshold even if LIFO
-  order would reach a short-term lot first
-- If LTCG lots alone are insufficient to cover the loan, fall back to STCG lots
+  any lots whose cost basis would result in short-term capital gains if
+  possible — i.e., prefer lots held longer than the long-term threshold even if
+  LIFO order would reach a short-term lot first
+- If long-term lots alone are insufficient to cover the loan, fall back to
+  short-term lots
 - The sale amount must cover: loan principal remaining (minus any early cash
   payments already made)
 - The gross-up calculation must account for estimated tax on the gain so the
@@ -221,8 +222,8 @@ User requests to pay off a specific loan ahead of its due date.
 **Difference from current implementation:**
 Current `_compute_payoff_sale` in `loans.py` does LIFO/FIFO lot selection
 without the "skip STCG if possible" logic. This needs to be added as a new lot
-selection mode, e.g. `"epic_lifo"` — LIFO but prefer LTCG lots, skip STCG lots
-unless unavoidable.
+selection mode, e.g. `"epic_lifo"` — LIFO but prefer long-term lots, skip
+short-term lots unless unavoidable.
 
 ### 2. Stock Sale Request
 
@@ -288,7 +289,7 @@ See conversation history for full analysis. Summary:
 | Encryption: disable per-user KEK | Remove `KEY_ENCRYPTION_KEY` from Epic deploy config. TDE handles at-rest encryption at the DB level. |
 | DB adapter: MSSQL | Replace `psycopg2-binary` with `pyodbc` or `pymssql`. Update `DATABASE_URL` format. SQLAlchemy dialect: `mssql+pyodbc`. |
 | Cache invalidation: webhook endpoint | `POST /api/internal/cache-invalidate` with scope payload. Secured via shared secret. |
-| Lot selection: `epic_lifo` mode | LIFO but prefer LTCG lots; skip STCG lots unless unavoidable. Add to `sales_engine.py`. |
+| Lot selection: `epic_lifo` mode | LIFO but prefer long-term lots; skip short-term lots unless unavoidable. Add to `sales_engine.py`. |
 | Sale action: tranche-targeted | New endpoint that enforces loan coverage before cash conversion. Gross-up for withholding. |
 | Sale action: "what if" cash target | Given desired net X, iteratively compute shares needed. Can be purely read (no write) — just runs core.py with hypothetical sale injected. |
 | Payoff action: write-back | Actual write to Epic's DB when user confirms a payoff/sale request. Requires write service account + approval workflow TBD. |

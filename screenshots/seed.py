@@ -43,19 +43,19 @@ db.add_all(prices)
 
 loans = [
     Loan(user_id=user.id, grant_year=2018, grant_type="Purchase", loan_type="Purchase",
-         loan_year=2018, amount=29350.0, interest_rate=3.5, due_date=date(2025, 12, 31), loan_number="100001"),
+         loan_year=2018, amount=29350.0, interest_rate=0.035, due_date=date(2025, 12, 31), loan_number="100001"),
     Loan(user_id=user.id, grant_year=2018, grant_type="Purchase", loan_type="Interest",
-         loan_year=2019, amount=1027.0, interest_rate=3.5, due_date=date(2025, 12, 31), loan_number="100002"),
+         loan_year=2019, amount=1027.0, interest_rate=0.035, due_date=date(2025, 12, 31), loan_number="100002"),
     Loan(user_id=user.id, grant_year=2019, grant_type="Purchase", loan_type="Purchase",
-         loan_year=2019, amount=29000.0, interest_rate=4.0, due_date=date(2026, 12, 31), loan_number="100003"),
+         loan_year=2019, amount=29000.0, interest_rate=0.04, due_date=date(2026, 12, 31), loan_number="100003"),
     Loan(user_id=user.id, grant_year=2019, grant_type="Purchase", loan_type="Interest",
-         loan_year=2020, amount=1160.0, interest_rate=4.0, due_date=date(2026, 12, 31), loan_number="100004"),
+         loan_year=2020, amount=1160.0, interest_rate=0.04, due_date=date(2026, 12, 31), loan_number="100004"),
     Loan(user_id=user.id, grant_year=2021, grant_type="Purchase", loan_type="Purchase",
-         loan_year=2021, amount=34500.0, interest_rate=4.5, due_date=date(2028, 12, 31), loan_number="100005"),
+         loan_year=2021, amount=34500.0, interest_rate=0.045, due_date=date(2028, 12, 31), loan_number="100005"),
     Loan(user_id=user.id, grant_year=2018, grant_type="Purchase", loan_type="Tax",
-         loan_year=2020, amount=4500.0, interest_rate=3.5, due_date=date(2025, 12, 31), loan_number="100006"),
+         loan_year=2020, amount=4500.0, interest_rate=0.035, due_date=date(2025, 12, 31), loan_number="100006"),
     Loan(user_id=user.id, grant_year=2021, grant_type="Purchase", loan_type="Interest",
-         loan_year=2022, amount=1552.0, interest_rate=4.5, due_date=date(2028, 12, 31), loan_number="100007"),
+         loan_year=2022, amount=1552.0, interest_rate=0.045, due_date=date(2028, 12, 31), loan_number="100007"),
 ]
 db.add_all(loans)
 db.flush()  # need IDs for sale loan_id FKs

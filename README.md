@@ -105,7 +105,9 @@ Everything in the app is derived from these four tables at request time:
 
 8. **Share your data** — invite a financial advisor or family member by email from **Settings → Sharing**. They see your data read-only; you can revoke access at any time.
 
-9. **Export your data** — go to **Import/Export → Download Vesting.xlsx** for a full export at any time.
+9. **Compare to a salary offer** — go to **Comp Calc** to translate your stock-loan program into a single comparable comp number. See [Total Comp Calculator](#total-comp-calculator) below.
+
+10. **Export your data** — go to **Import/Export → Download Vesting.xlsx** for a full export at any time.
 
 ---
 
@@ -145,6 +147,32 @@ Tap **Net Cash at Exit** to expand the full exit breakdown, including prior-sale
 #### Investment interest deduction toggle
 
 The **investment interest deduction** toggle lives directly on the dashboard. Flip it to preview the estimated tax impact before applying — see [Investment Interest Deduction](#investment-interest-deduction) below.
+
+---
+
+### Total Comp Calculator
+
+| Mobile | Desktop |
+|--------|---------|
+| ![Comp Calc Mobile](screenshots/comp-calculator-results-light-mobile.png) | ![Comp Calc Desktop](screenshots/comp-calculator-results-light-desktop.png) |
+
+Epic's stock purchase program is structured as a low-rate loan to buy stock — not as a salary or RSU grant. That makes it hard to compare an Epic offer against an offer that pays cash + stock. The **Comp Calc** tab gives you a single comparable number.
+
+The math, in plain English: if Epic loaned you $L to buy stock, and that stock grows by *r* % a year, then the appreciation on Epic's loan is *r* × *L*. Subtract the interest you pay on that loan and what's left is your comp from the program.
+
+**The flow:**
+
+1. **Intro** — explains the framing.
+2. **Pick a year** — past, current, or up to 5 years out (as of Dec 31).
+3. **Results** — three columns side-by-side: just that year, a 3-year average, and a 5-year average. Rolling averages flatten out spikes from Epic's annual repricing. Each column shows:
+   - **Loan principal** — outstanding principal across all your loans (mirrors the Dashboard's "Outstanding Loan Principal" logic; for averages, this is the per-year-end average).
+   - **Annual interest** — projected from your Purchase loans (principal × rate), with recorded Interest loans used where present, mirroring the Dashboard's interest math.
+   - **Appreciation** — annualized CAGR from your price history. The 1-year column accepts an override for forward-looking years or stress tests.
+   - **After-tax** at your blended LT cap-gains rate.
+   - **Salary equiv** — what pretax salary (taxed as ordinary income) you'd need to net the same amount.
+4. **Optional toggle**: deduct loan interest as investment-interest expense (IRS Form 4952) — reduces effective interest cost by your marginal ordinary rate. Defaults to your **Settings → Tax → Deduct investment interest** preference.
+
+All math runs locally in your browser — no calculation results are stored. Tax rates come from your **Settings → Tax Rates**.
 
 ---
 
@@ -708,7 +736,7 @@ epic-stocks/
 │   │   │   ├── contexts/    # ThemeContext, MaintenanceContext, ViewingContext
 │   │   │   └── hooks/       # useAuth, useConfig, useDark, usePush, useMe
 │   │   ├── app/             # Equity tracking UI (replace when forking)
-│   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport, Content
+│   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport, Content, CompCalculator
 │   │   │   ├── components/  # ImportWizard, TipCarousel
 │   │   │   └── hooks/       # useApiData, useDataSync, useContent
 │   │   ├── App.tsx          # Router + layout wiring

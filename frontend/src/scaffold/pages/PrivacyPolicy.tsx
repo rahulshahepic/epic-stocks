@@ -122,10 +122,11 @@ export default function PrivacyPolicy() {
               <Ul>
                 <li>View, create, update, and delete all your grants, loans, and prices</li>
                 <li>Export all your data to Excel at any time</li>
+                <li>Sign out everywhere — invalidate every active session for your account on every browser and device in one action (Settings › Account)</li>
                 <li>Reset your data — delete all grants, loans, and prices while keeping your account (Settings › Danger Zone)</li>
                 <li>Delete your account — permanently remove your account and all associated data (Settings › Danger Zone)</li>
               </Ul>
-              <P>Both actions are self-service, immediate, and irreversible.</P>
+              <P>Both data-deletion actions are self-service, immediate, and irreversible.</P>
             </SubSection>
             <SubSection title="People you invite">
               <P>

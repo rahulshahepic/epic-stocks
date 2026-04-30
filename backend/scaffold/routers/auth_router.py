@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from scaffold.models import User, BlockedEmail, EmailPreference
-from scaffold.auth import create_token, get_admin_emails, set_session_cookies, clear_session_cookies
+from scaffold.auth import create_token, get_admin_emails, set_session_cookies, clear_session_cookies, get_current_user
 from scaffold.crypto import encryption_enabled, generate_user_key, encrypt_user_key
 import logging
 
@@ -103,7 +103,7 @@ def auth_callback(body: CallbackRequest, response: Response, db: Session = Depen
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
     user = _upsert_user(identity, db)
-    token = create_token(user.id)
+    token = create_token(user.id, user.session_version)
     set_session_cookies(response, token)
     return {"ok": True}
 
@@ -111,6 +111,30 @@ def auth_callback(body: CallbackRequest, response: Response, db: Session = Depen
 @router.post("/logout")
 def logout(response: Response):
     """Clear the session cookie."""
+    clear_session_cookies(response)
+    return {"ok": True}
+
+
+@router.post("/refresh")
+def refresh(response: Response, user: User = Depends(get_current_user)):
+    """Re-issue the session cookie with a fresh expiry. Sliding-session refresh:
+    the frontend calls this on app mount and on visibility change so active
+    users effectively never get logged out, while genuinely inactive sessions
+    still expire after the cookie max_age."""
+    set_session_cookies(response, create_token(user.id, user.session_version))
+    return {"ok": True}
+
+
+@router.post("/logout-everywhere")
+def logout_everywhere(
+    response: Response,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Invalidate every outstanding session for this user by bumping
+    session_version. The current cookie is also cleared."""
+    user.session_version = int(user.session_version) + 1
+    db.commit()
     clear_session_cookies(response)
     return {"ok": True}
 
@@ -134,5 +158,5 @@ if os.getenv("E2E_TEST") == "1":
             picture=None,
         )
         user = _upsert_user(identity, db)
-        set_session_cookies(response, create_token(user.id))
+        set_session_cookies(response, create_token(user.id, user.session_version))
         return {"ok": True}

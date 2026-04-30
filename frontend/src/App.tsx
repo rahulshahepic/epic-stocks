@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { isLoggedIn } from './api.ts'
+import { useSessionRefresh } from './scaffold/hooks/useSessionRefresh.ts'
 import Layout from './scaffold/components/Layout.tsx'
 import { ToastProvider } from './scaffold/components/Toast.tsx'
 import { ThemeProvider } from './scaffold/contexts/ThemeContext.tsx'
@@ -24,6 +25,7 @@ import Sales from './app/pages/Sales.tsx'
 import CompCalculator from './app/pages/CompCalculator.tsx'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
+  useSessionRefresh()
   return isLoggedIn() ? <>{children}</> : <Navigate to="/login" replace />
 }
 

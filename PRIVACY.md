@@ -56,10 +56,11 @@ You have full access to your own data through the application UI and API. You ca
 
 - View, create, update, and delete all your grants, loans, and prices
 - Export all your data to Excel at any time
+- **Sign out everywhere** — invalidate every active session for your account on every browser and device in one action (Settings > Account > Sign Out Everywhere)
 - **Reset your data** — delete all grants, loans, and prices while keeping your account (Settings > Danger Zone > Reset All Data)
 - **Delete your account** — permanently remove your account and all associated data, including grants, loans, prices, notification preferences, and push subscriptions (Settings > Danger Zone > Delete Account)
 
-Both actions are self-service, immediate, and irreversible. No admin involvement is required.
+Both data-deletion actions are self-service, immediate, and irreversible. No admin involvement is required.
 
 ### The Site Operator
 

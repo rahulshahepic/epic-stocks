@@ -19,6 +19,9 @@ class User(Base):
     is_admin: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     is_content_admin: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     last_notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Bumped by "sign out everywhere" to invalidate all outstanding JWTs. Tokens
+    # carry the value at issue time; mismatch = forced re-login.
+    session_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
 
     grants: Mapped[list["Grant"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     loans: Mapped[list["Loan"]] = relationship(back_populates="user", cascade="all, delete-orphan")

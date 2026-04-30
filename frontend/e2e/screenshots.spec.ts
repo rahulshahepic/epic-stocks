@@ -82,7 +82,8 @@ test.describe('Screenshots', () => {
     await authedPage(page, MOBILE, 'light')
     await page.click('text=Import')
     await page.waitForLoadState('networkidle')
-    await page.screenshot({ path: `${OUT}/import-export-mobile.png`, fullPage: true })
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: `${OUT}/import-export-mobile.png` })
   })
 
   test('sales page - light - mobile', async ({ page }) => {

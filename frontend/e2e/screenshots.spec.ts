@@ -271,53 +271,38 @@ test.describe('Screenshots', () => {
     await page.screenshot({ path: `${OUT}/content-dark-desktop.png`, fullPage: true })
   })
 
-  test('comp calculator - intro - light - mobile', async ({ page }) => {
+  test('comp calculator - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     await page.goto(`${BASE}/comp-calculator`)
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/comp-calculator-intro-light-mobile.png`, fullPage: true })
+    await page.screenshot({ path: `${OUT}/comp-calculator-light-mobile.png`, fullPage: true })
   })
 
-  test('comp calculator - intro - dark - mobile', async ({ page }) => {
-    await authedPage(page, MOBILE, 'dark')
-    await page.goto(`${BASE}/comp-calculator`)
-    await page.waitForLoadState('networkidle')
-    await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/comp-calculator-intro-dark-mobile.png`, fullPage: true })
-  })
-
-  test('comp calculator - results - light - mobile', async ({ page }) => {
-    await authedPage(page, MOBILE, 'light')
-    await page.goto(`${BASE}/comp-calculator`)
-    await page.waitForLoadState('networkidle')
-    await page.click('text=Start →')
-    await page.waitForTimeout(200)
-    await page.click('text=See comp →')
-    await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/comp-calculator-results-light-mobile.png`, fullPage: true })
-  })
-
-  test('comp calculator - results - light - desktop', async ({ page }) => {
+  test('comp calculator - light - desktop', async ({ page }) => {
     await authedPage(page, DESKTOP, 'light')
     await page.goto(`${BASE}/comp-calculator`)
     await page.waitForLoadState('networkidle')
-    await page.click('text=Start →')
-    await page.waitForTimeout(200)
-    await page.click('text=See comp →')
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/comp-calculator-results-light-desktop.png`, fullPage: true })
+    await page.screenshot({ path: `${OUT}/comp-calculator-light-desktop.png`, fullPage: true })
   })
 
-  test('comp calculator - results - dark - mobile', async ({ page }) => {
+  test('comp calculator - dark - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'dark')
     await page.goto(`${BASE}/comp-calculator`)
     await page.waitForLoadState('networkidle')
-    await page.click('text=Start →')
-    await page.waitForTimeout(200)
-    await page.click('text=See comp →')
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/comp-calculator-results-dark-mobile.png`, fullPage: true })
+    await page.screenshot({ path: `${OUT}/comp-calculator-dark-mobile.png`, fullPage: true })
+  })
+
+  test('comp calculator - rolling avg - light - desktop', async ({ page }) => {
+    await authedPage(page, DESKTOP, 'light')
+    await page.goto(`${BASE}/comp-calculator`)
+    await page.waitForLoadState('networkidle')
+    await page.click('text=3-year average')
+    await page.click('text=5-year average')
+    await page.waitForTimeout(300)
+    await page.screenshot({ path: `${OUT}/comp-calculator-rolling-light-desktop.png`, fullPage: true })
   })
 
   test('loans - epic mode - light - mobile', async ({ page }) => {

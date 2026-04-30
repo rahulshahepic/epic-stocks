@@ -129,13 +129,20 @@ export function averageOutstandingPrincipal(
 
 /** Find the price at or before the given date (closest match looking back). */
 export function priceAt(prices: PriceEntry[], date: string): number | null {
+  const rec = priceRecordAt(prices, date)
+  return rec ? rec.price : null
+}
+
+/** Find the price record at or before the given date. Useful when callers need
+ *  to inspect `is_estimate` (e.g. to mark a year as projected). */
+export function priceRecordAt(prices: PriceEntry[], date: string): PriceEntry | null {
   const sorted = [...prices].sort((a, b) => a.effective_date.localeCompare(b.effective_date))
   let last: PriceEntry | null = null
   for (const p of sorted) {
     if (p.effective_date <= date) last = p
     else break
   }
-  return last ? last.price : null
+  return last
 }
 
 /** Annualized appreciation rate over W years ending at `asOf`.

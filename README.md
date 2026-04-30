@@ -154,23 +154,19 @@ The **investment interest deduction** toggle lives directly on the dashboard. Fl
 
 | Mobile | Desktop |
 |--------|---------|
-| ![Comp Calc Mobile](screenshots/comp-calculator-results-light-mobile.png) | ![Comp Calc Desktop](screenshots/comp-calculator-results-light-desktop.png) |
+| ![Comp Calc Mobile](screenshots/comp-calculator-light-mobile.png) | ![Comp Calc Desktop](screenshots/comp-calculator-light-desktop.png) |
 
-Epic's stock purchase program is structured as a low-rate loan to buy stock — not as a salary or RSU grant. That makes it hard to compare an Epic offer against an offer that pays cash + stock. The **Comp Calc** tab gives you a single comparable number.
+Epic's stock purchase program is structured as a low-rate loan to buy stock — not as a salary or RSU grant. That makes it hard to compare an Epic offer against an offer that pays cash + stock. The **Comp Calc** tab gives you a single comparable number, year by year.
 
 The math, in plain English: if Epic loaned you $L to buy stock, and that stock grows by *r* % a year, then the appreciation on Epic's loan is *r* × *L*. Subtract the interest you pay on that loan and what's left is your comp from the program.
 
-**The flow:**
+**The view:**
 
-1. **Intro** — explains the framing.
-2. **Pick a year** — past, current, or up to 5 years out (as of Dec 31).
-3. **Results** — three columns side-by-side: just that year, a 3-year average, and a 5-year average. Rolling averages flatten out spikes from Epic's annual repricing. Each column shows:
-   - **Loan principal** — outstanding principal across all your loans (mirrors the Dashboard's "Outstanding Loan Principal" logic; for averages, this is the per-year-end average).
-   - **Annual interest** — projected from your Purchase loans (principal × rate), with recorded Interest loans used where present, mirroring the Dashboard's interest math.
-   - **Appreciation** — annualized CAGR from your price history. The 1-year column accepts an override for forward-looking years or stress tests.
-   - **After-tax** at your blended LT cap-gains rate.
-   - **Salary equiv** — what pretax salary (taxed as ordinary income) you'd need to net the same amount.
-4. **Optional toggle**: deduct loan interest as investment-interest expense (IRS Form 4952) — reduces effective interest cost by your marginal ordinary rate. Defaults to your **Settings → Tax → Deduct investment interest** preference.
+- **Bar chart of net comp by year** — one bar for every year you have price data for, from your first loan year through the latest Dec 31 price. Click a bar to drill into that year's breakdown.
+- **Selected year detail** — the year's stock appreciation percentage, outstanding loan principal at Dec 31, gain on principal, interest paid, and resulting net comp. Plus after-capital-gains-tax dollars and the equivalent pretax salary at your ordinary income rate.
+- **3-year and 5-year rolling-average overlays** — toggleable lines on the chart that smooth out spikes from Epic's annual repricing. The same averages also appear inside the year-detail panel.
+- **Projected years** — if you've entered estimated prices for future Dec 31 dates in **Prices**, those years appear as striped, lighter bars and are flagged "Projected" in the detail panel. No separate override input on this page — projections live in the prices table.
+- **Optional toggle**: deduct loan interest as investment-interest expense (IRS Form 4952) — reduces effective interest cost by your marginal ordinary income rate. Defaults to your **Settings → Tax → Deduct investment interest** preference.
 
 All math runs locally in your browser — no calculation results are stored. Tax rates come from your **Settings → Tax Rates**.
 

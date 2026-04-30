@@ -13,7 +13,10 @@ from scaffold.models import User
 from scaffold.crypto import encryption_enabled, decrypt_user_key, set_current_key
 
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-me")
-JWT_EXPIRE_HOURS = 24
+# 30 days — long enough for installed PWAs to stay signed in across normal
+# periods of inactivity. Server-set HttpOnly cookies are not subject to iOS
+# Safari's 7-day script-cookie cap, so the full max_age is honored.
+JWT_EXPIRE_HOURS = 24 * 30
 COOKIE_MAX_AGE = JWT_EXPIRE_HOURS * 3600
 
 

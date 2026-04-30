@@ -71,5 +71,5 @@ Follow the order in SPEC.md. Build backend first, then frontend. **Every step mu
 | **PDF loan statement import** | OCR or structured template for importing loan data directly from Epic's PDF statements. Stretch goal. |
 
 **Decided against:**
-- JWT refresh tokens — 24hr access tokens + seamless Google re-auth is sufficient
+- JWT refresh tokens — 30-day access tokens + seamless Google re-auth on expiry is sufficient (PWA-friendly)
 - Client-side (zero-knowledge) encryption — would break server-side event computation, Excel export, and push notifications

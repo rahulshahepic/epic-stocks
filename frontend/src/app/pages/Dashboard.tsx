@@ -1153,6 +1153,8 @@ export default function Dashboard() {
         )
         .reduce((sum, e) => sum + e.income * incomeRate, 0)
 
+      const vestedValue = vested * currentPrice
+      const unvestedValue = unvested * g.price
       return {
         year: g.year,
         type: g.type,
@@ -1160,7 +1162,9 @@ export default function Dashboard() {
         costBasis: g.price,
         vestedShares: vested,
         unvestedShares: unvested,
-        vestedValue: vested * currentPrice,
+        vestedValue,
+        unvestedValue,
+        totalValue: vestedValue + unvestedValue,
         totalTax: taxLoanTotal + vestingIncomeTax,
         totalLoan,
       }
@@ -1547,11 +1551,13 @@ export default function Dashboard() {
                 <div key={`${h.year}-${h.type}`} className="rounded border border-stone-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
                   <p className="text-xs font-semibold text-gray-800 dark:text-slate-200">{h.year} {h.type}</p>
                   <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] sm:grid-cols-3">
-                    <span className="text-gray-500 dark:text-slate-400">Exercised <span className="font-medium text-gray-800 dark:text-slate-200">{fmtFullDate(h.exerciseDate)}</span></span>
+                    <span className="text-gray-500 dark:text-slate-400">Purchased <span className="font-medium text-gray-800 dark:text-slate-200">{fmtFullDate(h.exerciseDate)}</span></span>
                     <span className="text-gray-500 dark:text-slate-400">Cost basis <span className="font-medium text-gray-800 dark:text-slate-200">{fmtPrice(h.costBasis)}</span></span>
-                    <span className="text-gray-500 dark:text-slate-400">Vested value <span className="font-medium text-gray-800 dark:text-slate-200">{fmt$(h.vestedValue)}</span></span>
                     <span className="text-gray-500 dark:text-slate-400">Vested <span className="font-medium text-gray-800 dark:text-slate-200">{fmtNum(h.vestedShares)}</span></span>
+                    <span className="text-gray-500 dark:text-slate-400">Vested value <span className="font-medium text-gray-800 dark:text-slate-200">{fmt$(h.vestedValue)}</span></span>
                     <span className="text-gray-500 dark:text-slate-400">Unvested <span className="font-medium text-gray-800 dark:text-slate-200">{fmtNum(h.unvestedShares)}</span></span>
+                    <span className="text-gray-500 dark:text-slate-400">Unvested value <span className="font-medium text-gray-800 dark:text-slate-200">{fmt$(h.unvestedValue)}</span></span>
+                    <span className="text-gray-500 dark:text-slate-400">Total value <span className="font-medium text-gray-800 dark:text-slate-200">{fmt$(h.totalValue)}</span></span>
                     <span className="text-gray-500 dark:text-slate-400">Taxes <span className="font-medium text-gray-800 dark:text-slate-200">{fmt$(h.totalTax)}</span></span>
                     <span className="text-gray-500 dark:text-slate-400">Loans <span className="font-medium text-gray-800 dark:text-slate-200">{fmt$(h.totalLoan)}</span></span>
                   </div>

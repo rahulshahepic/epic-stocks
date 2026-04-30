@@ -105,7 +105,9 @@ Everything in the app is derived from these four tables at request time:
 
 8. **Share your data** — invite a financial advisor or family member by email from **Settings → Sharing**. They see your data read-only; you can revoke access at any time.
 
-9. **Export your data** — go to **Import/Export → Download Vesting.xlsx** for a full export at any time.
+9. **Compare to a salary offer** — go to **Comp Calc** to translate your stock-loan program into a single comparable comp number. See [Total Comp Calculator](#total-comp-calculator) below.
+
+10. **Export your data** — go to **Import/Export → Download Vesting.xlsx** for a full export at any time.
 
 ---
 
@@ -145,6 +147,28 @@ Tap **Net Cash at Exit** to expand the full exit breakdown, including prior-sale
 #### Investment interest deduction toggle
 
 The **investment interest deduction** toggle lives directly on the dashboard. Flip it to preview the estimated tax impact before applying — see [Investment Interest Deduction](#investment-interest-deduction) below.
+
+---
+
+### Total Comp Calculator
+
+| Mobile | Desktop |
+|--------|---------|
+| ![Comp Calc Mobile](screenshots/comp-calculator-light-mobile.png) | ![Comp Calc Desktop](screenshots/comp-calculator-light-desktop.png) |
+
+Epic's stock purchase program is structured as a low-rate loan to buy stock — not as a salary or RSU grant. That makes it hard to compare an Epic offer against an offer that pays cash + stock. The **Comp Calc** tab gives you a single comparable number, year by year.
+
+The math, in plain English: if Epic loaned you $L to buy stock, and that stock grows by *r* % a year, then the appreciation on Epic's loan is *r* × *L*. Subtract the interest you pay on that loan and what's left is your comp from the program.
+
+**The view:**
+
+- **Bar chart of net comp by year** — one bar for every year you have price data for, from your first loan year through the latest Dec 31 price. Click a bar to drill into that year's breakdown.
+- **Selected year detail** — the year's stock appreciation percentage, outstanding loan principal at Dec 31, gain on principal, interest paid, and resulting net comp. Plus after-capital-gains-tax dollars and the equivalent pretax salary at your ordinary income rate.
+- **3-year and 5-year rolling-average overlays** — toggleable lines on the chart that smooth out spikes from Epic's annual repricing. The same averages also appear inside the year-detail panel.
+- **Projected years** — if you've entered estimated prices for future Dec 31 dates in **Prices**, those years appear as striped, lighter bars and are flagged "Projected" in the detail panel. No separate override input on this page — projections live in the prices table.
+- **Optional toggle**: deduct loan interest as investment-interest expense (IRS Form 4952) — reduces effective interest cost by your marginal ordinary income rate. Defaults to your **Settings → Tax → Deduct investment interest** preference.
+
+All math runs locally in your browser — no calculation results are stored. Tax rates come from your **Settings → Tax Rates**.
 
 ---
 
@@ -298,6 +322,16 @@ Go to **Settings → Notifications** to configure.
 | Down payment exchange | No |
 
 **What the notification contains:** Only event counts and types — no dollar amounts, share counts, or any financial data. Example: *"You have 2 events today: 1 Loan Repayment, 1 Vesting."* Tapping the notification opens the relevant page.
+
+---
+
+### Signing Out
+
+**Sign Out** (Settings → Account) clears the session on this device only — other browsers or devices stay signed in.
+
+**Sign Out Everywhere** (Settings → Account) revokes every active session for your account in one action. Use this if you've signed in on a device you no longer have access to, or if you want to force every browser to re-authenticate. After confirming, every existing session token is invalidated immediately and you'll be sent to the login page.
+
+Sessions otherwise last 30 days, with a sliding refresh — the app silently extends your session each time you open it, so an installed PWA stays signed in indefinitely as long as you keep using it.
 
 ---
 
@@ -708,7 +742,7 @@ epic-stocks/
 │   │   │   ├── contexts/    # ThemeContext, MaintenanceContext, ViewingContext
 │   │   │   └── hooks/       # useAuth, useConfig, useDark, usePush, useMe
 │   │   ├── app/             # Equity tracking UI (replace when forking)
-│   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport, Content
+│   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport, Content, CompCalculator
 │   │   │   ├── components/  # ImportWizard, TipCarousel
 │   │   │   └── hooks/       # useApiData, useDataSync, useContent
 │   │   ├── App.tsx          # Router + layout wiring
@@ -754,6 +788,8 @@ All authenticated endpoints require a valid `session` cookie (set automatically 
 | GET | `/api/auth/login?provider=&code_challenge=&redirect_uri=&state=` | Start PKCE flow — returns IdP authorization URL |
 | POST | `/api/auth/callback` | Exchange PKCE code for JWT |
 | POST | `/api/auth/logout` | Clear session cookie |
+| POST | `/api/auth/refresh` | Re-issue session cookie with extended expiry (sliding session) |
+| POST | `/api/auth/logout-everywhere` | Bump `session_version` to revoke every outstanding token for this user |
 | GET | `/api/me` | Current user info + `is_admin` and `is_content_admin` flags |
 | POST | `/api/me/reset` | Reset all financial data (keeps account) |
 | DELETE | `/api/me` | Delete account and all associated data |

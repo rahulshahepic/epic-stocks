@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { isLoggedIn } from './api.ts'
+import { useSessionRefresh } from './scaffold/hooks/useSessionRefresh.ts'
 import Layout from './scaffold/components/Layout.tsx'
 import { ToastProvider } from './scaffold/components/Toast.tsx'
 import { ThemeProvider } from './scaffold/contexts/ThemeContext.tsx'
@@ -21,8 +22,10 @@ import Settings from './scaffold/pages/Settings.tsx'
 import Admin from './scaffold/pages/Admin.tsx'
 import Content from './app/pages/Content.tsx'
 import Sales from './app/pages/Sales.tsx'
+import CompCalculator from './app/pages/CompCalculator.tsx'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
+  useSessionRefresh()
   return isLoggedIn() ? <>{children}</> : <Navigate to="/login" replace />
 }
 
@@ -62,6 +65,7 @@ export default function App() {
             <Route path="grants" element={<FinancialRoute><Grants /></FinancialRoute>} />
             <Route path="sales" element={<FinancialRoute><Sales /></FinancialRoute>} />
             <Route path="loans" element={<FinancialRoute><Loans /></FinancialRoute>} />
+            <Route path="comp-calculator" element={<FinancialRoute><CompCalculator /></FinancialRoute>} />
             <Route path="prices" element={<FinancialRoute><Prices /></FinancialRoute>} />
             <Route path="import" element={<FinancialRoute><ImportExport /></FinancialRoute>} />
             <Route path="wizard" element={<FinancialRoute><div className="p-4"><ImportWizard isPage /></div></FinancialRoute>} />

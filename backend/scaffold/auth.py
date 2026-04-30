@@ -13,7 +13,10 @@ from scaffold.models import User
 from scaffold.crypto import encryption_enabled, decrypt_user_key, set_current_key
 
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-me")
-JWT_EXPIRE_HOURS = 24
+# 30 days — long enough for installed PWAs to stay signed in across normal
+# periods of inactivity. Server-set HttpOnly cookies are not subject to iOS
+# Safari's 7-day script-cookie cap, so the full max_age is honored.
+JWT_EXPIRE_HOURS = 24 * 30
 COOKIE_MAX_AGE = JWT_EXPIRE_HOURS * 3600
 
 
@@ -39,10 +42,14 @@ def _b64url_decode(s: str) -> bytes:
     return base64.urlsafe_b64decode(s + "=" * padding)
 
 
-def create_token(user_id: int) -> str:
+def create_token(user_id: int, session_version: int = 0) -> str:
     header = _b64url_encode(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
     exp = datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRE_HOURS)
-    payload = _b64url_encode(json.dumps({"sub": str(user_id), "exp": int(exp.timestamp())}).encode())
+    payload = _b64url_encode(json.dumps({
+        "sub": str(user_id),
+        "exp": int(exp.timestamp()),
+        "sv": int(session_version),
+    }).encode())
     sig_input = f"{header}.{payload}".encode()
     signature = _b64url_encode(hmac.new(JWT_SECRET.encode(), sig_input, hashlib.sha256).digest())
     return f"{header}.{payload}.{signature}"
@@ -104,11 +111,15 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     try:
         payload = _decode_token(token)
         user_id = int(payload["sub"])
+        token_sv = int(payload.get("sv", 0))
     except (ValueError, KeyError):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    # "Sign out everywhere" bumps session_version, invalidating older tokens.
+    if token_sv != int(user.session_version):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session revoked")
     # Refresh admin flag on every request so env changes take effect immediately
     is_admin = user.email.lower() in get_admin_emails()
     if bool(user.is_admin) != is_admin:

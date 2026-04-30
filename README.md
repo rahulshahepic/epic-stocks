@@ -26,9 +26,9 @@ An equity **grant** is a promise from your employer to give you company shares u
 
 | Type | What it is |
 |------|-----------|
-| **Purchase grant** | You buy shares at a discounted price (the *grant price* or *purchase price*). Shares are locked until the *exercise date*. You typically take out a loan to cover the cost at purchase time. |
+| **Purchase grant** | You buy shares at the current fair market value (the *grant price* or *purchase price*) — there's no discount; you pay the actual share price. Shares are locked until the *exercise date*. You typically take out a loan to cover the cost at purchase time. |
 | **Catch-up grant** | Same structure as a purchase grant — designed to let longer-tenured employees buy more shares at earlier, lower prices. |
-| **Bonus / RSU grant** | Shares given to you for free (grant price = $0) on a vesting schedule. Each vest date is a taxable event. |
+| **Bonus / RSU grant** | Shares awarded as bonus compensation on a vesting schedule. Cost basis varies: earlier bonus grants were issued at $0 (FMV at each vest is taxed as ordinary income and becomes the cost basis), while later bonus grants were issued at FMV with income tax handled up front, so the cost basis equals the grant-time price. |
 
 ### Vesting
 
@@ -40,15 +40,15 @@ Every calculation in this app involves two prices:
 
 | | Name | What it is |
 |--|------|-----------|
-| **Fixed at grant** | Grant price / purchase price | What you paid per share. $0 for Bonus/RSU grants. |
+| **Fixed at grant** | Grant price / purchase price | What you paid per share. May be $0 for Bonus/RSU grants where FMV at vest is taxed as income; otherwise the grant-time FMV. |
 | **Changes over time** | Share price / FMV | The current fair market value per share. For private companies, this is typically set once a year by the company. |
 
 The spread between these two prices drives all tax calculations.
 
 ### How taxes work on equity
 
-- **Ordinary income (Bonus/RSU grants)** — on each vest date, the fair market value (FMV) of the shares that vest is treated as ordinary income and taxed at your regular income rate. The FMV at vest becomes your *cost basis* — the starting point for future capital gains.
-- **Capital gains (all grants)** — when you sell shares, the profit above your cost basis is a capital gain. For purchase grants, cost basis is the purchase price. For RSU grants, cost basis is the FMV at the vest date (already taxed as income).
+- **Ordinary income (Bonus/RSU grants with $0 cost basis)** — on each vest date, the fair market value (FMV) of the shares that vest is treated as ordinary income and taxed at your regular income rate. The FMV at vest becomes your *cost basis* — the starting point for future capital gains. Bonus grants issued at FMV (income tax handled up front) skip this step: vesting just lifts the sale restriction.
+- **Capital gains (all grants)** — when you sell shares, the profit above your cost basis is a capital gain. For grants with a non-zero purchase price (Purchase grants and post-tax Bonus grants), cost basis is that purchase price. For zero-basis Bonus/RSU grants, cost basis is the FMV at the vest date (already taxed as income).
 - **Long-term vs. short-term** — a lot held ≥ 365 days from its vest date qualifies for the lower *long-term capital gains* rate. Lots held less than that are *short-term* and taxed at the same rate as ordinary income.
 
 ### Lots

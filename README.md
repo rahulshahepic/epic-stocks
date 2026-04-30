@@ -329,6 +329,16 @@ Go to **Settings → Notifications** to configure.
 
 ---
 
+### Signing Out
+
+**Sign Out** (Settings → Account) clears the session on this device only — other browsers or devices stay signed in.
+
+**Sign Out Everywhere** (Settings → Account) revokes every active session for your account in one action. Use this if you've signed in on a device you no longer have access to, or if you want to force every browser to re-authenticate. After confirming, every existing session token is invalidated immediately and you'll be sent to the login page.
+
+Sessions otherwise last 30 days, with a sliding refresh — the app silently extends your session each time you open it, so an installed PWA stays signed in indefinitely as long as you keep using it.
+
+---
+
 ### Sharing Your Data
 
 | Sharing settings | Invite landing |

@@ -1,11 +1,12 @@
 // Pure math helpers for the Total Comp Calculator.
-// Mirrors backend semantics in app/routers/events.py:
-//   _compute_outstanding_principal (line 66) and _build_interest_pool (line 493).
+// `outstandingPrincipalAt` mirrors the Dashboard's client-side principal IIFE
+// (Dashboard.tsx:979-992) which itself mirrors backend `_compute_outstanding_principal`
+// (events.py:66). `_build_interest_pool` (events.py:493) is referenced for context.
 
 import type { LoanEntry, LoanPaymentEntry, PriceEntry, SaleEntry } from '../../api.ts'
 
 export interface CompInputs {
-  loanPrincipal: number       // L: total outstanding loan principal at as_of
+  loanPrincipal: number       // L: outstanding loan principal (avg over window)
   annualInterest: number      // I: average annual interest over the window
   appreciationRate: number    // r: annualized return over the window (decimal)
 }
@@ -48,42 +49,45 @@ export function outstandingPrincipalAt(
   return total
 }
 
-/** Annual interest paid in calendar year `Y` across all active loans.
- *  For each loan active during that year, contribution = (amount − early_payments_before_Y) × interest_rate.
- *  Early payments mid-year are not prorated — this is a deliberate simplification
- *  to match the user's mental model (annual statement-style interest). */
+/** Annual interest paid (or projected) in calendar year `Y`.
+ *
+ *  Mirrors Dashboard's per-year interest logic (Dashboard.tsx:1043-1067):
+ *  - Recorded Interest-type loans for year `Y`: sum their amounts directly.
+ *    (An Interest loan's `amount` IS the recorded interest expense; multiplying
+ *    by its rate would double-count compounding.)
+ *  - For each Purchase loan active in `Y`, project the year's interest
+ *    (principal × rate) only when no Interest loan was recorded for that year.
+ *    Add compounding on prior recorded Interest loans for that grant.
+ *  - Tax loans don't contribute (taxes are not interest).
+ *  - `payments` and `sales` are accepted for symmetry with the principal helper
+ *    but are not currently applied — matching Dashboard's behavior.
+ */
 export function annualInterestForYear(
   loans: LoanEntry[],
-  payments: LoanPaymentEntry[],
-  sales: SaleEntry[],
+  _payments: LoanPaymentEntry[],
+  _sales: SaleEntry[],
   year: number,
 ): number {
-  const yearStart = `${year}-01-01`
-  const yearEnd = `${year}-12-31`
-  const settledBeforeStart = new Set(
-    sales.filter(s => s.loan_id != null && s.date < yearStart).map(s => s.loan_id as number),
-  )
-  const refinanced = new Set(
-    loans.filter(l => l.refinances_loan_id != null).map(l => l.refinances_loan_id as number),
-  )
-  const paid = new Map<number, number>()
-  for (const p of payments) {
-    if (p.date < yearStart) paid.set(p.loan_id, (paid.get(p.loan_id) ?? 0) + p.amount)
-  }
-  let total = 0
-  for (const l of loans) {
-    if (l.loan_year > year) continue
-    if (l.due_date < yearStart) continue            // matured before this year
-    if (settledBeforeStart.has(l.id)) continue
-    if (refinanced.has(l.id)) {
-      // Refinanced loans no longer accrue interest after the refi date.
-      // We approximate by including them only if they haven't yet been refinanced by a loan dated within or before this year.
-      const successor = loans.find(s => s.refinances_loan_id === l.id)
-      if (successor && successor.loan_year <= year) continue
+  const purchaseLoans = loans.filter(l => l.loan_type === 'Purchase')
+  const interestLoans = loans.filter(l => l.loan_type === 'Interest')
+
+  // Recorded interest loans for this year — sum amounts directly.
+  let total = interestLoans
+    .filter(l => l.loan_year === year)
+    .reduce((sum, l) => sum + l.amount, 0)
+
+  // Project interest from Purchase loans for years not covered by recorded Interest loans.
+  for (const p of purchaseLoans) {
+    const dueYear = parseInt(p.due_date.slice(0, 4))
+    if (year <= p.loan_year || year > dueYear) continue
+    const related = interestLoans.filter(
+      l => l.grant_year === p.grant_year && l.grant_type === p.grant_type,
+    )
+    if (related.some(l => l.loan_year === year)) continue
+    total += p.amount * p.interest_rate
+    for (const il of related) {
+      if (il.loan_year < year) total += il.amount * il.interest_rate
     }
-    const principal = Math.max(0, l.amount - (paid.get(l.id) ?? 0))
-    total += principal * l.interest_rate
-    void yearEnd  // (not needed beyond clarity)
   }
   return total
 }
@@ -101,6 +105,24 @@ export function averageAnnualInterest(
   let sum = 0
   for (let y = endYear - windowYears + 1; y <= endYear; y++) {
     sum += annualInterestForYear(loans, payments, sales, y)
+  }
+  return sum / windowYears
+}
+
+/** Average outstanding principal across the W-year window ending at `asOf`.
+ *  Sample point: Dec 31 of each year in the window. */
+export function averageOutstandingPrincipal(
+  loans: LoanEntry[],
+  payments: LoanPaymentEntry[],
+  sales: SaleEntry[],
+  asOf: string,
+  windowYears: number,
+): number {
+  const endYear = parseInt(asOf.slice(0, 4))
+  if (windowYears < 1) return 0
+  let sum = 0
+  for (let y = endYear - windowYears + 1; y <= endYear; y++) {
+    sum += outstandingPrincipalAt(loans, payments, sales, `${y}-12-31`)
   }
   return sum / windowYears
 }

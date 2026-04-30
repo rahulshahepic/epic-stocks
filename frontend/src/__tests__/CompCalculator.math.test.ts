@@ -3,6 +3,7 @@ import {
   outstandingPrincipalAt,
   annualInterestForYear,
   averageAnnualInterest,
+  averageOutstandingPrincipal,
   priceAt,
   annualizedAppreciation,
   shiftYears,
@@ -110,28 +111,41 @@ describe('outstandingPrincipalAt', () => {
 })
 
 describe('annualInterestForYear', () => {
-  it('multiplies principal by rate', () => {
-    const loans = [loan({ amount: 100000, interest_rate: 0.04 })]
+  it('projects Purchase principal × rate for years with no recorded Interest loan', () => {
+    const loans = [loan({ loan_type: 'Purchase', amount: 100000, interest_rate: 0.04 })]
     expect(annualInterestForYear(loans, [], [], 2024)).toBeCloseTo(4000, 4)
   })
   it('skips loans matured before the year', () => {
     const loans = [loan({ amount: 100000, interest_rate: 0.04, due_date: '2022-12-31' })]
     expect(annualInterestForYear(loans, [], [], 2024)).toBe(0)
   })
-  it('skips loans refinanced in or before the year', () => {
+  it('refinanced original is dropped via its due_date (matches Epic refi flow)', () => {
     const loans = [
-      loan({ id: 1, amount: 100000, interest_rate: 0.04, loan_year: 2020 }),
-      loan({ id: 2, amount: 100000, interest_rate: 0.05, loan_year: 2022, refinances_loan_id: 1 }),
+      loan({ id: 1, amount: 100000, interest_rate: 0.04, loan_year: 2020, due_date: '2022-12-31' }),
+      loan({ id: 2, amount: 100000, interest_rate: 0.05, loan_year: 2022, due_date: '2030-12-31', refinances_loan_id: 1 }),
     ]
-    // For year 2023: original (id=1) was refinanced by id=2 in 2022, so only id=2 contributes
+    // For year 2023: original matured at end of 2022, only the refi (id=2) contributes.
     expect(annualInterestForYear(loans, [], [], 2023)).toBeCloseTo(5000, 4)
   })
-  it('subtracts early payments before the year', () => {
-    const loans = [loan({ id: 1, amount: 100000, interest_rate: 0.04 })]
-    const payments: LoanPaymentEntry[] = [
-      { id: 1, version: 1, loan_id: 1, date: '2022-06-01', amount: 50000, notes: '' },
+  it('ignores Tax loans (taxes do not accrue interest)', () => {
+    const loans = [loan({ loan_type: 'Tax', amount: 100000, interest_rate: 0.04 })]
+    expect(annualInterestForYear(loans, [], [], 2024)).toBe(0)
+  })
+  it('sums recorded Interest loan amounts directly (no rate multiplication)', () => {
+    const loans = [
+      loan({ id: 1, loan_type: 'Purchase', amount: 100000, interest_rate: 0.04, loan_year: 2020, grant_year: 2020, grant_type: 'Purchase' }),
+      loan({ id: 2, loan_type: 'Interest', amount: 4000, interest_rate: 0.04, loan_year: 2024, grant_year: 2020, grant_type: 'Purchase' }),
     ]
-    expect(annualInterestForYear(loans, payments, [], 2024)).toBeCloseTo(2000, 4)
+    // For 2024: Interest loan is recorded → use its amount; Purchase doesn't double-count.
+    expect(annualInterestForYear(loans, [], [], 2024)).toBe(4000)
+  })
+  it('compounds on prior Interest loans when projecting later years', () => {
+    const loans = [
+      loan({ id: 1, loan_type: 'Purchase', amount: 100000, interest_rate: 0.04, loan_year: 2020, grant_year: 2020, grant_type: 'Purchase' }),
+      loan({ id: 2, loan_type: 'Interest', amount: 4000, interest_rate: 0.04, loan_year: 2024, grant_year: 2020, grant_type: 'Purchase' }),
+    ]
+    // For 2025 (no recorded Interest): 100k × 0.04 + 4k × 0.04 = 4160
+    expect(annualInterestForYear(loans, [], [], 2025)).toBeCloseTo(4160, 4)
   })
 })
 
@@ -142,6 +156,22 @@ describe('averageAnnualInterest', () => {
   })
   it('returns 0 for empty window', () => {
     expect(averageAnnualInterest([], [], [], '2024-12-31', 0)).toBe(0)
+  })
+})
+
+describe('averageOutstandingPrincipal', () => {
+  it('averages year-end principal across the window', () => {
+    // loan 1 starts 2020 at $100, loan 2 starts 2023 at $200
+    const loans = [
+      loan({ id: 1, amount: 100, loan_year: 2020 }),
+      loan({ id: 2, amount: 200, loan_year: 2023 }),
+    ]
+    // 3-year window ending 2024: 2022=100, 2023=300, 2024=300 → avg ≈ 233.33
+    expect(averageOutstandingPrincipal(loans, [], [], '2024-12-31', 3)).toBeCloseTo(233.33, 1)
+  })
+  it('1-year window equals year-end principal', () => {
+    const loans = [loan({ amount: 100, loan_year: 2020 })]
+    expect(averageOutstandingPrincipal(loans, [], [], '2024-12-31', 1)).toBe(100)
   })
 })
 

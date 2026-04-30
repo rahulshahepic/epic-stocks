@@ -271,6 +271,55 @@ test.describe('Screenshots', () => {
     await page.screenshot({ path: `${OUT}/content-dark-desktop.png`, fullPage: true })
   })
 
+  test('comp calculator - intro - light - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    await page.goto(`${BASE}/comp-calculator`)
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: `${OUT}/comp-calculator-intro-light-mobile.png`, fullPage: true })
+  })
+
+  test('comp calculator - intro - dark - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'dark')
+    await page.goto(`${BASE}/comp-calculator`)
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: `${OUT}/comp-calculator-intro-dark-mobile.png`, fullPage: true })
+  })
+
+  test('comp calculator - results - light - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    await page.goto(`${BASE}/comp-calculator`)
+    await page.waitForLoadState('networkidle')
+    await page.click('text=Start →')
+    await page.waitForTimeout(200)
+    await page.click('text=See comp →')
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: `${OUT}/comp-calculator-results-light-mobile.png`, fullPage: true })
+  })
+
+  test('comp calculator - results - light - desktop', async ({ page }) => {
+    await authedPage(page, DESKTOP, 'light')
+    await page.goto(`${BASE}/comp-calculator`)
+    await page.waitForLoadState('networkidle')
+    await page.click('text=Start →')
+    await page.waitForTimeout(200)
+    await page.click('text=See comp →')
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: `${OUT}/comp-calculator-results-light-desktop.png`, fullPage: true })
+  })
+
+  test('comp calculator - results - dark - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'dark')
+    await page.goto(`${BASE}/comp-calculator`)
+    await page.waitForLoadState('networkidle')
+    await page.click('text=Start →')
+    await page.waitForTimeout(200)
+    await page.click('text=See comp →')
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: `${OUT}/comp-calculator-results-dark-mobile.png`, fullPage: true })
+  })
+
   test('loans - epic mode - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     await page.request.post(`${BASE}/api/admin/epic-mode`, { data: { active: true } })

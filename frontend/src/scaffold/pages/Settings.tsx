@@ -10,7 +10,8 @@ import type { Theme } from '../contexts/ThemeContext.tsx'
 export default function Settings() {
   const config = useConfig()
   const { subscribed, loading, supported, subscribe, unsubscribe } = usePush(config?.vapid_public_key ?? '')
-  const { logout } = useAuth()
+  const { logout, logoutEverywhere } = useAuth()
+  const [logoutEverywhereConfirm, setLogoutEverywhereConfirm] = useState(false)
   const { theme, setTheme } = useTheme()
 
   const [emailEnabled, setEmailEnabled] = useState(false)
@@ -534,12 +535,42 @@ export default function Settings() {
         <p className="mt-1 text-xs text-stone-600 dark:text-slate-400">
           Signed in with Google. All your data is stored securely on the server.
         </p>
-        <button
-          onClick={logout}
-          className="mt-3 rounded-md bg-gray-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700"
-        >
-          Sign Out
-        </button>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            onClick={logout}
+            className="rounded-md bg-gray-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700"
+          >
+            Sign Out
+          </button>
+          {!logoutEverywhereConfirm ? (
+            <button
+              onClick={() => setLogoutEverywhereConfirm(true)}
+              className="rounded-md border border-stone-300 px-3 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              Sign Out Everywhere
+            </button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={logoutEverywhere}
+                className="rounded-md bg-gray-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800"
+              >
+                Yes, sign out all devices
+              </button>
+              <button
+                onClick={() => setLogoutEverywhereConfirm(false)}
+                className="rounded-md px-3 py-1.5 text-xs text-stone-600 hover:text-stone-700 dark:hover:text-slate-300"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+        {logoutEverywhereConfirm && (
+          <p className="mt-2 text-xs text-stone-600 dark:text-slate-400">
+            This invalidates every active session — every browser, every device. You'll need to sign back in on each one.
+          </p>
+        )}
 
         <div className="mt-4 border-t border-stone-200 pt-4 dark:border-slate-700">
           <p className="text-xs font-medium text-red-700 dark:text-red-400">Danger Zone</p>

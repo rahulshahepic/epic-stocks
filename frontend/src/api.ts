@@ -218,6 +218,8 @@ export const api = {
   },
   exchangeCode: (provider: string, code: string, codeVerifier: string, redirectUri: string) =>
     post<{ access_token: string }>('/api/auth/callback', { provider, code, code_verifier: codeVerifier, redirect_uri: redirectUri }),
+  refreshSession: () => post<{ ok: boolean }>('/api/auth/refresh', {}),
+  logoutEverywhere: () => post<{ ok: boolean }>('/api/auth/logout-everywhere', {}),
 
   getDashboard: () => apiFetch<DashboardData>('/api/dashboard'),
   getEvents: () => apiFetch<TimelineEvent[]>('/api/events'),

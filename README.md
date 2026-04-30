@@ -782,6 +782,8 @@ All authenticated endpoints require a valid `session` cookie (set automatically 
 | GET | `/api/auth/login?provider=&code_challenge=&redirect_uri=&state=` | Start PKCE flow — returns IdP authorization URL |
 | POST | `/api/auth/callback` | Exchange PKCE code for JWT |
 | POST | `/api/auth/logout` | Clear session cookie |
+| POST | `/api/auth/refresh` | Re-issue session cookie with extended expiry (sliding session) |
+| POST | `/api/auth/logout-everywhere` | Bump `session_version` to revoke every outstanding token for this user |
 | GET | `/api/me` | Current user info + `is_admin` and `is_content_admin` flags |
 | POST | `/api/me/reset` | Reset all financial data (keeps account) |
 | DELETE | `/api/me` | Delete account and all associated data |

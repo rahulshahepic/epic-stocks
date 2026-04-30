@@ -22,13 +22,14 @@ A quick primer on the concepts the app uses throughout. If you're already famili
 
 ### Grants
 
-An equity **grant** is a promise from your employer to give you company shares under specific conditions. This app handles three kinds:
+An equity **grant** is a promise from your employer to give you company shares under specific conditions. This app handles four kinds:
 
 | Type | What it is |
 |------|-----------|
 | **Purchase grant** | You buy shares at the current fair market value (the *grant price* or *purchase price*) — there's no discount; you pay the actual share price. Shares are locked until the *exercise date*. You typically take out a loan to cover the cost at purchase time. |
-| **Catch-up grant** | Same structure as a purchase grant — designed to let longer-tenured employees buy more shares at earlier, lower prices. |
-| **Bonus / RSU grant** | Shares awarded as bonus compensation on a vesting schedule. Cost basis varies: earlier bonus grants were issued at $0 (FMV at each vest is taxed as ordinary income and becomes the cost basis), while later bonus grants were issued at FMV with income tax handled up front, so the cost basis equals the grant-time price. |
+| **Catch-up grant** | $0 cost basis; FMV at each vest is taxed as ordinary income. Offered for a few years starting in 2017 when Epic restarted its stock program after a period of issuing SARs instead (a switch driven by shareholder-count disclosure rules that later relaxed). The catch-up amount was a per-employee multiple of the purchase-grant shares, to compensate folks who missed out during the SARs era. |
+| **Free grant** | Same tax treatment as a catch-up grant — $0 cost basis, FMV at vest taxed as ordinary income. |
+| **Bonus / RSU grant** | Shares awarded as bonus compensation on a vesting schedule. The first bonus was issued pre-tax with $0 cost basis, so FMV at each vest is taxed as ordinary income. Later bonus grants were issued post-tax at FMV — effectively a purchase funded by your bonus — so the cost basis equals the grant-time price and vesting only lifts the sale restriction. |
 
 ### Vesting
 
@@ -40,15 +41,15 @@ Every calculation in this app involves two prices:
 
 | | Name | What it is |
 |--|------|-----------|
-| **Fixed at grant** | Grant price / purchase price | What you paid per share. May be $0 for Bonus/RSU grants where FMV at vest is taxed as income; otherwise the grant-time FMV. |
+| **Fixed at grant** | Grant price / purchase price | What you paid per share. $0 for Catch-up, Free, and pre-tax Bonus grants (FMV at vest is taxed as income); otherwise the grant-time FMV. |
 | **Changes over time** | Share price / FMV | The current fair market value per share. For private companies, this is typically set once a year by the company. |
 
 The spread between these two prices drives all tax calculations.
 
 ### How taxes work on equity
 
-- **Ordinary income (Bonus/RSU grants with $0 cost basis)** — on each vest date, the fair market value (FMV) of the shares that vest is treated as ordinary income and taxed at your regular income rate. The FMV at vest becomes your *cost basis* — the starting point for future capital gains. Bonus grants issued at FMV (income tax handled up front) skip this step: vesting just lifts the sale restriction.
-- **Capital gains (all grants)** — when you sell shares, the profit above your cost basis is a capital gain. For grants with a non-zero purchase price (Purchase grants and post-tax Bonus grants), cost basis is that purchase price. For zero-basis Bonus/RSU grants, cost basis is the FMV at the vest date (already taxed as income).
+- **Ordinary income (zero-basis grants)** — on each vest date, the fair market value (FMV) of the shares that vest is treated as ordinary income and taxed at your regular income rate. The FMV at vest becomes your *cost basis* — the starting point for future capital gains. This applies to Catch-up grants, Free grants, and pre-tax Bonus grants. Purchase grants and post-tax Bonus grants skip this step: vesting just lifts the sale restriction.
+- **Capital gains (all grants)** — when you sell shares, the profit above your cost basis is a capital gain. For grants with a non-zero purchase price (Purchase grants and post-tax Bonus grants), cost basis is that purchase price. For zero-basis grants (Catch-up, Free, pre-tax Bonus), cost basis is the FMV at the vest date (already taxed as income).
 - **Long-term vs. short-term** — a lot held ≥ 365 days from its vest date qualifies for the lower *long-term capital gains* rate. Lots held less than that are *short-term* and taxed at the same rate as ordinary income.
 
 ### Lots

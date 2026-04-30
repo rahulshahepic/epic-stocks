@@ -5,6 +5,7 @@ import {
   averageAnnualInterest,
   averageOutstandingPrincipal,
   priceAt,
+  priceRecordAt,
   annualizedAppreciation,
   shiftYears,
   computeBase,
@@ -48,6 +49,23 @@ describe('priceAt', () => {
   })
   it('matches exact date', () => {
     expect(priceAt(prices, '2022-03-01')).toBe(125)
+  })
+})
+
+describe('priceRecordAt', () => {
+  const prices: PriceEntry[] = [
+    { id: 1, version: 1, effective_date: '2020-12-31', price: 100 },
+    { id: 2, version: 1, effective_date: '2023-12-31', price: 130, is_estimate: true },
+  ]
+  it('returns the full record on or before date', () => {
+    expect(priceRecordAt(prices, '2024-06-01')).toMatchObject({ id: 2, is_estimate: true })
+  })
+  it('returns null when no price exists yet', () => {
+    expect(priceRecordAt(prices, '2019-01-01')).toBeNull()
+  })
+  it('returns the actual record when one exists, regardless of estimate status', () => {
+    expect(priceRecordAt(prices, '2021-06-01')).toMatchObject({ id: 1 })
+    expect(priceRecordAt(prices, '2021-06-01')?.is_estimate).toBeFalsy()
   })
 })
 

@@ -22,28 +22,29 @@ from scaffold.models import (
 
 # ── Seed data (mirrors ImportWizard.tsx constants) ──────────────────────────
 
-# (year, type, vest_start, periods, exercise_date, default_catch_up, zero_basis,
+# (year, type, vest_start, periods, exercise_date, default_catch_up,
 #  default_purchase_due_date, default_tax_due_date)
-# zero_basis: grants issued at $0 cost basis (taxable as ordinary income at vest).
 # default_purchase_due_date: when the original purchase loan is due (Purchase only).
-# default_tax_due_date: when tax loans generated from this template are due (Bonus/Free,
-# and Purchase templates that carry a catch-up sub-schedule).
+# default_tax_due_date: when tax loans generated from this template are due (Bonus/Free
+# templates that the user enters $0 cost basis on, and Purchase templates that carry a
+# catch-up sub-schedule). Whether tax loans are actually generated is driven by the
+# user-entered cost basis, not a template flag — $0 means taxable at vest.
 SEED_GRANT_TEMPLATES = [
-    (2018, 'Purchase', '2020-06-15', 6, '2018-12-31', True,  False, '2025-07-15', None),
-    (2019, 'Purchase', '2021-06-15', 6, '2019-12-31', True,  False, '2026-07-15', None),
-    (2020, 'Purchase', '2021-09-30', 5, '2020-12-31', True,  False, '2025-07-15', None),
-    (2020, 'Bonus',    '2021-09-30', 4, '2020-12-31', False, True,  None,         '2025-07-15'),
-    (2021, 'Purchase', '2022-09-30', 5, '2021-12-31', True,  False, '2030-07-15', None),
-    (2021, 'Bonus',    '2022-09-30', 3, '2021-12-31', False, False, None,         None),
-    (2022, 'Purchase', '2023-09-30', 4, '2022-12-31', False, False, '2031-06-30', None),
-    (2022, 'Bonus',    '2023-09-30', 3, '2022-12-31', False, False, None,         None),
-    (2022, 'Free',     '2027-09-30', 1, '2022-12-31', False, True,  None,         '2031-06-30'),
-    (2023, 'Purchase', '2024-09-30', 4, '2023-12-31', False, False, '2032-06-30', None),
-    (2023, 'Bonus',    '2024-09-30', 3, '2023-12-31', False, False, None,         None),
-    (2024, 'Purchase', '2025-09-30', 4, '2024-12-31', False, False, '2033-06-30', None),
-    (2024, 'Bonus',    '2025-09-30', 3, '2024-12-31', False, False, None,         None),
-    (2025, 'Purchase', '2026-09-30', 4, '2025-12-31', False, False, '2034-06-30', None),
-    (2025, 'Bonus',    '2026-09-30', 3, '2025-12-31', False, False, None,         None),
+    (2018, 'Purchase', '2020-06-15', 6, '2018-12-31', True,  '2025-07-15', None),
+    (2019, 'Purchase', '2021-06-15', 6, '2019-12-31', True,  '2026-07-15', None),
+    (2020, 'Purchase', '2021-09-30', 5, '2020-12-31', True,  '2025-07-15', None),
+    (2020, 'Bonus',    '2021-09-30', 4, '2020-12-31', False, None,         '2025-07-15'),
+    (2021, 'Purchase', '2022-09-30', 5, '2021-12-31', True,  '2030-07-15', None),
+    (2021, 'Bonus',    '2022-09-30', 3, '2021-12-31', False, None,         None),
+    (2022, 'Purchase', '2023-09-30', 4, '2022-12-31', False, '2031-06-30', None),
+    (2022, 'Bonus',    '2023-09-30', 3, '2022-12-31', False, None,         None),
+    (2022, 'Free',     '2027-09-30', 1, '2022-12-31', False, None,         '2031-06-30'),
+    (2023, 'Purchase', '2024-09-30', 4, '2023-12-31', False, '2032-06-30', None),
+    (2023, 'Bonus',    '2024-09-30', 3, '2023-12-31', False, None,         None),
+    (2024, 'Purchase', '2025-09-30', 4, '2024-12-31', False, '2033-06-30', None),
+    (2024, 'Bonus',    '2025-09-30', 3, '2024-12-31', False, None,         None),
+    (2025, 'Purchase', '2026-09-30', 4, '2025-12-31', False, '2034-06-30', None),
+    (2025, 'Bonus',    '2026-09-30', 3, '2025-12-31', False, None,         None),
 ]
 
 # (grant_year, grant_type, variant_code, periods, label, is_default)
@@ -116,12 +117,11 @@ def seed_content_if_empty(db: Session) -> None:
     every boot; a no-op once a content admin has edited any row.
     """
     if db.query(GrantTemplate).count() == 0:
-        for idx, (year, typ, vs, periods, ed, dcu, zb, pdd, tdd) in enumerate(SEED_GRANT_TEMPLATES):
+        for idx, (year, typ, vs, periods, ed, dcu, pdd, tdd) in enumerate(SEED_GRANT_TEMPLATES):
             db.add(GrantTemplate(
                 year=year, type=typ, vest_start=vs, periods=periods,
                 exercise_date=ed, default_catch_up=dcu,
                 show_dp_shares=(typ == 'Purchase' and year >= 2023),
-                zero_basis=zb,
                 default_purchase_due_date=pdd,
                 default_tax_due_date=tdd,
                 display_order=idx, active=True, notes=None,
@@ -239,7 +239,6 @@ def load_content(db: Session) -> dict:
                 'exercise_date': t.exercise_date,
                 'default_catch_up': bool(t.default_catch_up),
                 'show_dp_shares': bool(t.show_dp_shares),
-                'zero_basis': bool(t.zero_basis),
                 'default_purchase_due_date': t.default_purchase_due_date,
                 'default_tax_due_date': t.default_tax_due_date,
                 'display_order': t.display_order,

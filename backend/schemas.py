@@ -474,7 +474,6 @@ class GrantTemplateCreate(BaseModel):
     exercise_date: str
     default_catch_up: bool = False
     show_dp_shares: bool = False
-    zero_basis: bool = False
     default_purchase_due_date: str | None = None
     default_tax_due_date: str | None = None
     display_order: int = 0
@@ -508,15 +507,17 @@ class GrantTemplateCreate(BaseModel):
             raise ValueError("show_dp_shares is only valid when type='Purchase'")
         if self.default_catch_up and self.type != "Purchase":
             raise ValueError("default_catch_up is only valid when type='Purchase'")
-        if self.zero_basis and self.type == "Purchase":
-            raise ValueError("zero_basis is only valid for non-Purchase templates")
         if self.default_purchase_due_date is not None and self.type != "Purchase":
             raise ValueError("default_purchase_due_date is only valid when type='Purchase'")
-        # Tax-loan due date only makes sense for templates that actually generate tax
-        # loans — zero-basis grants or templates with a catch-up sub-schedule.
-        if self.default_tax_due_date is not None and not (self.zero_basis or self.default_catch_up):
+        # Tax-loan due date only makes sense on templates that can generate tax loans:
+        # Bonus/Free grants (when the user enters $0 cost basis) or Purchase templates
+        # with a catch-up sub-schedule.
+        if self.default_tax_due_date is not None and not (
+            self.type in ("Bonus", "Free") or self.default_catch_up
+        ):
             raise ValueError(
-                "default_tax_due_date requires zero_basis=True or default_catch_up=True"
+                "default_tax_due_date is only valid for Bonus/Free templates "
+                "or Purchase templates with default_catch_up=True"
             )
         return self
 
@@ -529,7 +530,6 @@ class GrantTemplateUpdate(BaseModel):
     exercise_date: str | None = None
     default_catch_up: bool | None = None
     show_dp_shares: bool | None = None
-    zero_basis: bool | None = None
     default_purchase_due_date: str | None = None
     default_tax_due_date: str | None = None
     display_order: int | None = None

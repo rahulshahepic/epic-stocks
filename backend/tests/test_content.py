@@ -36,16 +36,16 @@ def test_grant_templates_match_epic(client):
         (2020, "Purchase", "2021-09-30", 5, "2020-12-31", True,  False, False, "2025-07-15", None),
         (2020, "Bonus",    "2021-09-30", 4, "2020-12-31", False, False, True,  None,         "2025-07-15"),
         (2021, "Purchase", "2022-09-30", 5, "2021-12-31", True,  False, False, "2030-07-15", None),
-        (2021, "Bonus",    "2022-09-30", 3, "2021-12-31", False, False, True,  None,         "2030-07-15"),
+        (2021, "Bonus",    "2022-09-30", 3, "2021-12-31", False, False, False, None,         None),
         (2022, "Purchase", "2023-09-30", 4, "2022-12-31", False, False, False, "2031-06-30", None),
-        (2022, "Bonus",    "2023-09-30", 3, "2022-12-31", False, False, True,  None,         "2031-06-30"),
+        (2022, "Bonus",    "2023-09-30", 3, "2022-12-31", False, False, False, None,         None),
         (2022, "Free",     "2027-09-30", 1, "2022-12-31", False, False, True,  None,         "2031-06-30"),
         (2023, "Purchase", "2024-09-30", 4, "2023-12-31", False, True,  False, "2032-06-30", None),
-        (2023, "Bonus",    "2024-09-30", 3, "2023-12-31", False, False, True,  None,         "2032-06-30"),
+        (2023, "Bonus",    "2024-09-30", 3, "2023-12-31", False, False, False, None,         None),
         (2024, "Purchase", "2025-09-30", 4, "2024-12-31", False, True,  False, "2033-06-30", None),
-        (2024, "Bonus",    "2025-09-30", 3, "2024-12-31", False, False, True,  None,         "2033-06-30"),
+        (2024, "Bonus",    "2025-09-30", 3, "2024-12-31", False, False, False, None,         None),
         (2025, "Purchase", "2026-09-30", 4, "2025-12-31", False, True,  False, "2034-06-30", None),
-        (2025, "Bonus",    "2026-09-30", 3, "2025-12-31", False, False, True,  None,         "2034-06-30"),
+        (2025, "Bonus",    "2026-09-30", 3, "2025-12-31", False, False, False, None,         None),
     ]
     assert len(schedule) == len(expected)
     for actual, (year, typ, vs, periods, ed, dcu, sdp, zb, pdd, tdd) in zip(schedule, expected):

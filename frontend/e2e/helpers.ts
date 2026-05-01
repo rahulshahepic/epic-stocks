@@ -22,7 +22,19 @@ export async function loginAs(page: Page, email: string, name = 'Test User') {
 
 /** Navigate to a page via the nav bar */
 export async function navigateTo(page: Page, label: string) {
-  await page.getByRole('navigation').getByRole('link', { name: label, exact: true }).click()
+  const link = page.getByRole('navigation').getByRole('link', { name: label, exact: true })
+  // Derive the expected pathname from the link's own href instead of guessing
+  // from the label — Dashboard is "/" not "/dashboard", and we don't want to
+  // hard-code mappings here.
+  const href = await link.getAttribute('href')
+  await link.click()
+  // Wait for the route to actually commit before returning. Without this the
+  // caller's next assertion races the click → router-state-update →
+  // component-mount → first fetch chain, which under CI load can exceed a
+  // tight per-assertion timeout (see multi-user.spec.ts).
+  if (href) {
+    await page.waitForURL(url => url.pathname === href)
+  }
 }
 
 /** Reset the current user's data via the API (uses session cookie automatically) */

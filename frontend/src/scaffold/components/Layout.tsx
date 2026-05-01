@@ -8,11 +8,11 @@ import { useViewing } from '../contexts/ViewingContext.tsx'
 
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard' },
+  { to: '/comp-calculator', label: 'Comp Calc' },
   { to: '/events', label: 'Events' },
   { to: '/grants', label: 'Grants' },
   { to: '/sales', label: 'Sales' },
   { to: '/loans', label: 'Loans' },
-  { to: '/comp-calculator', label: 'Comp Calc' },
   { to: '/prices', label: 'Prices' },
   { to: '/import', label: 'Import' },
   { to: '/settings', label: 'Settings' },

@@ -906,7 +906,6 @@ export interface GrantTemplate {
   exercise_date: string
   default_catch_up: boolean
   show_dp_shares: boolean
-  zero_basis: boolean
   default_purchase_due_date: string | null
   default_tax_due_date: string | null
   display_order: number
@@ -980,7 +979,6 @@ export interface GrantTemplateCreate {
   exercise_date: string
   default_catch_up?: boolean
   show_dp_shares?: boolean
-  zero_basis?: boolean
   default_purchase_due_date?: string | null
   default_tax_due_date?: string | null
   display_order?: number

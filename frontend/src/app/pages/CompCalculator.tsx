@@ -108,15 +108,17 @@ function computeYearRow(
 interface ChartTooltipPayload {
   payload: YearRow
 }
-function ChartTooltip({ active, payload, label, c, useDeduction }: {
+function ChartTooltip({ active, payload, label, c, useDeduction, m }: {
   active?: boolean
   payload?: ChartTooltipPayload[]
   label?: number
   c: ChartColors
   useDeduction: boolean
+  m: number
 }) {
   if (!active || !payload?.length) return null
   const row = payload[0].payload
+  const interestCost = useDeduction ? row.interest * (1 - m) : row.interest
   return (
     <div
       className="rounded-md border px-2 py-1.5 text-[11px] shadow-sm"
@@ -125,8 +127,9 @@ function ChartTooltip({ active, payload, label, c, useDeduction }: {
       <p className="font-semibold tabular-nums">{label}{row.isProjected ? ' · projected' : ''}</p>
       <p className="tabular-nums">Net comp: {fmt$(row.comp)}</p>
       <p className="tabular-nums opacity-80">Appreciation: {fmtPct(row.appreciation)}</p>
-      <p className="tabular-nums opacity-80">Interest: {fmt$(row.interest)}</p>
-      {useDeduction && <p className="opacity-60">After interest deduction</p>}
+      <p className="tabular-nums opacity-80">
+        Interest{useDeduction ? ' (after deduction)' : ''}: {fmt$(interestCost)}
+      </p>
     </div>
   )
 }
@@ -146,7 +149,8 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
     )
   }
   const gain = row.appreciation * row.principal
-  const interestCost = useDeduction ? row.interest * (1 - m) : row.interest
+  const taxBenefit = row.interest * m
+  const interestCost = useDeduction ? row.interest - taxBenefit : row.interest
   const afterTax = row.comp * (1 - c)
   const equivSalary = computeTaxEquivSalary(row.comp, c, m)
   return (
@@ -177,12 +181,29 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
           <dt className="text-gray-600 dark:text-slate-300">Gain on principal</dt>
           <dd className="tabular-nums text-gray-900 dark:text-slate-100">{fmt$(gain)}</dd>
         </div>
-        <div className="flex justify-between gap-2">
-          <dt className="text-gray-600 dark:text-slate-300">
-            Interest paid in {row.year}{useDeduction ? ' (after deduction)' : ''}
-          </dt>
-          <dd className="tabular-nums text-gray-900 dark:text-slate-100">−{fmt$(interestCost)}</dd>
-        </div>
+        {useDeduction ? (
+          <>
+            <div className="flex justify-between gap-2">
+              <dt className="text-gray-600 dark:text-slate-300">Interest paid in {row.year}</dt>
+              <dd className="tabular-nums text-gray-900 dark:text-slate-100">−{fmt$(row.interest)}</dd>
+            </div>
+            <div className="flex justify-between gap-2 pl-3 text-[11px]">
+              <dt className="text-gray-500 dark:text-slate-400">
+                Tax benefit ({fmtPct(m, 1)} × {fmt$(row.interest)})
+              </dt>
+              <dd className="tabular-nums text-emerald-700 dark:text-emerald-400">+{fmt$(taxBenefit)}</dd>
+            </div>
+            <div className="flex justify-between gap-2 pl-3 text-[11px]">
+              <dt className="text-gray-500 dark:text-slate-400">Net interest cost</dt>
+              <dd className="tabular-nums text-gray-700 dark:text-slate-300">−{fmt$(interestCost)}</dd>
+            </div>
+          </>
+        ) : (
+          <div className="flex justify-between gap-2">
+            <dt className="text-gray-600 dark:text-slate-300">Interest paid in {row.year}</dt>
+            <dd className="tabular-nums text-gray-900 dark:text-slate-100">−{fmt$(interestCost)}</dd>
+          </div>
+        )}
         <div className="flex justify-between gap-2 border-t border-rose-200 pt-1.5 dark:border-rose-800">
           <dt className="font-semibold text-gray-900 dark:text-slate-100">Net comp</dt>
           <dd className="font-semibold tabular-nums text-gray-900 dark:text-slate-100">{fmt$(row.comp)}</dd>
@@ -303,7 +324,7 @@ export default function CompCalculator() {
             <p className="mb-2">In one number, your annual comp from the program is:</p>
             <p className="font-mono text-[11px]">net comp = (stock appreciation %) × (loan principal) − (interest paid)</p>
             <p className="mt-2">
-              The chart below shows that figure for every year we have price data for. Click a bar to see the breakdown.
+              The chart below shows that figure for every year we have price data for. Pick a year (or click a bar) to see the breakdown.
               Toggle the rolling-average overlays to smooth out spikes from Epic's annual repricing.
             </p>
           </div>
@@ -318,7 +339,24 @@ export default function CompCalculator() {
         <>
           <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
             <div className="mb-2 flex flex-wrap items-center gap-2">
-              <p className="mr-auto text-xs font-medium text-gray-700 dark:text-slate-200">Net comp by year</p>
+              <p className="text-xs font-medium text-gray-700 dark:text-slate-200">Net comp by year</p>
+              <label className="ml-auto flex items-center gap-1.5 text-[11px] text-gray-600 dark:text-slate-300">
+                <span>Year</span>
+                <select
+                  value={selectedYear ?? ''}
+                  onChange={e => {
+                    const y = parseInt(e.target.value)
+                    if (!isNaN(y)) setSelectedYear(y)
+                  }}
+                  className="rounded border border-stone-300 bg-white px-1.5 py-0.5 text-[11px] tabular-nums text-gray-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+                >
+                  {rows.map(r => (
+                    <option key={r.year} value={r.year}>
+                      {r.year}{r.isProjected ? ' (projected)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <button
                 type="button"
                 onClick={() => setShow3y(s => !s)}
@@ -357,7 +395,7 @@ export default function CompCalculator() {
                   tick={{ fontSize: 10, fill: chartColors.axis }}
                   tickFormatter={(v: number) => v >= 1000 || v <= -1000 ? `${Math.round(v / 1000)}k` : `${v}`}
                 />
-                <Tooltip content={<ChartTooltip c={chartColors} useDeduction={deductOn} />} cursor={{ fill: 'rgba(225, 29, 72, 0.08)' }} />
+                <Tooltip content={<ChartTooltip c={chartColors} useDeduction={deductOn} m={m} />} cursor={{ fill: 'rgba(225, 29, 72, 0.08)' }} />
                 <ReferenceLine y={0} stroke={chartColors.axis} strokeWidth={1} />
                 {rows.some(r => r.year === CURRENT_YEAR) && (
                   <ReferenceLine x={CURRENT_YEAR} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />
@@ -387,7 +425,7 @@ export default function CompCalculator() {
               </ComposedChart>
             </ResponsiveContainer>
             <p className="mt-1 text-[10px] text-gray-500 dark:text-slate-500">
-              Click a bar for that year's breakdown.{hasProjected ? ' Striped, lighter bars are projected (use estimated prices).' : ''}
+              Pick a year above or click a bar to see its breakdown.{hasProjected ? ' Striped, lighter bars are projected (use estimated prices).' : ''}
             </p>
           </div>
 

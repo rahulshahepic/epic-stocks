@@ -219,7 +219,6 @@ function TemplatesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; b
       exercise_date: '',
       default_catch_up: false,
       show_dp_shares: false,
-      zero_basis: false,
       default_purchase_due_date: null,
       default_tax_due_date: null,
       display_order: blob.grant_templates.length,
@@ -296,9 +295,8 @@ function TemplatesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; b
                 <label className="flex items-center gap-2 text-xs">
                   <input type="checkbox" checked={!!modal.draft.default_catch_up} onChange={e => patch({
                     default_catch_up: e.target.checked,
-                    // Clear the tax due date if catch-up flips off (and no other eligibility left).
-                    default_tax_due_date: !e.target.checked && !modal.draft.zero_basis
-                      ? null : modal.draft.default_tax_due_date,
+                    // Clear the tax due date if catch-up flips off (Purchase has no other path to tax loans).
+                    default_tax_due_date: !e.target.checked ? null : modal.draft.default_tax_due_date,
                   })} />
                   Default catch-up
                 </label>
@@ -317,23 +315,10 @@ function TemplatesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; b
                 />
               </Field>
             )}
-            {modal.draft.type !== 'Purchase' && (
-              <label className="flex items-center gap-2 text-xs">
-                <input
-                  type="checkbox"
-                  checked={!!modal.draft.zero_basis}
-                  onChange={e => patch({
-                    zero_basis: e.target.checked,
-                    // Clear the tax due date if we're flipping off eligibility.
-                    default_tax_due_date: !e.target.checked && !modal.draft.default_catch_up
-                      ? null : modal.draft.default_tax_due_date,
-                  })}
-                />
-                Zero cost basis (taxable at vest)
-              </label>
-            )}
-            {/* Tax-loan due date is only meaningful when the template generates tax loans. */}
-            {(modal.draft.zero_basis || modal.draft.default_catch_up) && (
+            {/* Tax-loan due date is only meaningful when the template can generate tax
+                loans: Bonus/Free templates (when the user enters $0 cost basis at wizard
+                time) or Purchase templates with a catch-up sub-schedule. */}
+            {(modal.draft.type === 'Bonus' || modal.draft.type === 'Free' || modal.draft.default_catch_up) && (
               <Field label="Tax-loan due date (YYYY-MM-DD)">
                 <TextInput
                   type="date"

@@ -812,7 +812,15 @@ export default function Dashboard() {
     } catch {}
     return { mode: 'all', start: '', end: '' }
   })
+  const [dateMode, setDateMode] = useState<'today' | 'last-event' | 'custom'>(() => {
+    const saved = localStorage.getItem('dashboard_dateMode')
+    if (saved === 'today' || saved === 'last-event' || saved === 'custom') return saved
+    return 'today'
+  })
   const [cardDate, setCardDate] = useState<string>(() => {
+    const mode = localStorage.getItem('dashboard_dateMode')
+    if (!mode || mode === 'today') return TODAY
+    if (mode === 'last-event') return TODAY // resolved after events load via effect
     return localStorage.getItem('dashboard_cardDate') ?? TODAY
   })
   const [exitBreakdownOpen, setExitBreakdownOpen] = useState(false)
@@ -911,8 +919,9 @@ export default function Dashboard() {
   }, [range])
 
   useEffect(() => {
-    localStorage.setItem('dashboard_cardDate', cardDate)
-  }, [cardDate])
+    localStorage.setItem('dashboard_dateMode', dateMode)
+    if (dateMode === 'custom') localStorage.setItem('dashboard_cardDate', cardDate)
+  }, [dateMode, cardDate])
 
   // Only show projected/dashed styling when a future price actually differs from the current price
   const hasFuturePrices = useMemo(() => {
@@ -940,6 +949,12 @@ export default function Dashboard() {
     if (!events?.length) return TODAY
     return events[events.length - 1].date
   }, [events])
+
+  // Keep cardDate in sync when using a dynamic mode
+  useEffect(() => {
+    if (dateMode === 'today') setCardDate(TODAY)
+    else if (dateMode === 'last-event') setCardDate(lastRealEventDate)
+  }, [dateMode, lastRealEventDate])
 
   // Card values computed from local data as of cardDate
   const cardValues = useMemo(() => {
@@ -1476,22 +1491,22 @@ export default function Dashboard() {
             type="date"
             value={cardDate}
             max={maxDate}
-            onChange={e => setCardDate(e.target.value)}
+            onChange={e => { setDateMode('custom'); setCardDate(e.target.value) }}
             className="h-7 flex-1 rounded border border-gray-300 bg-white px-2 text-xs text-gray-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
           />
         </div>
         <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
           <span className="shrink-0 text-xs text-gray-400 dark:text-slate-500">Jump to:</span>
           {([
-            { label: 'Today', date: TODAY },
-            { label: 'Last event', date: lastRealEventDate, title: 'Jump to your last scheduled event' },
-          ] as { label: string; date: string; title?: string }[]).map(({ label, date, title }) => (
+            { label: 'Today', mode: 'today' as const },
+            { label: 'Last event', mode: 'last-event' as const, title: 'Jump to your last scheduled event' },
+          ]).map(({ label, mode, title }) => (
             <button
               key={label}
-              onClick={() => setCardDate(date)}
+              onClick={() => setDateMode(mode)}
               title={title}
               className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
-                cardDate === date
+                dateMode === mode
                   ? 'bg-rose-700 text-white'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'
               }`}

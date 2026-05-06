@@ -138,6 +138,15 @@ function renderWizard(onComplete = vi.fn()) {
   )
 }
 
+/** Fill the manual-entry Purchase grant with values that pass Review-screen validation. */
+async function fillValidPurchaseGrant(user: ReturnType<typeof userEvent.setup>) {
+  await user.type(screen.getByLabelText(/Grant year/i) as HTMLInputElement, '2024')
+  await user.type(screen.getByLabelText(/^Shares$/i) as HTMLInputElement, '100')
+  await user.type(screen.getByLabelText(/Cost basis/i) as HTMLInputElement, '1.50')
+  await user.type(screen.getByLabelText(/Vest start/i) as HTMLInputElement, '2025-09-30')
+  await user.type(screen.getByLabelText(/Exercise date/i) as HTMLInputElement, '2024-12-31')
+}
+
 describe('ImportWizard', () => {
   it('renders welcome screen with three path options', () => {
     mockApi()
@@ -277,6 +286,7 @@ describe('ImportWizard', () => {
     // Navigate to review
     await user.click(screen.getByRole('button', { name: /Manual entry/i }))
     await user.click(screen.getByRole('button', { name: /Next: Add grants/i }))
+    await fillValidPurchaseGrant(user)
     await user.click(screen.getByRole('button', { name: /Next →/i }))
     await waitFor(() => screen.getByText(/Did you take out a loan/i))
     await user.click(screen.getByRole('button', { name: /^No$/i }))
@@ -298,6 +308,7 @@ describe('ImportWizard', () => {
 
     await user.click(screen.getByRole('button', { name: /Manual entry/i }))
     await user.click(screen.getByRole('button', { name: /Next: Add grants/i }))
+    await fillValidPurchaseGrant(user)
     await user.click(screen.getByRole('button', { name: /Next →/i }))
     await waitFor(() => screen.getByText(/Did you take out a loan/i))
     await user.click(screen.getByRole('button', { name: /^No$/i }))
@@ -510,5 +521,131 @@ describe('ImportWizard', () => {
     await user.click(screen.getByRole('button', { name: /Next: Enter grants/i }))
     // No red "will be removed" warning should appear for catch-up grants
     expect(screen.queryByText(/Existing grants not in Epic's schedule/i)).not.toBeInTheDocument()
+  })
+
+  it('Review surfaces a warning when a price row has a date but no value', async () => {
+    mockApi()
+    const user = userEvent.setup()
+    renderWizard()
+
+    await user.click(screen.getByRole('button', { name: /Manual entry/i }))
+    // Type a date but leave price empty
+    const dateInput = screen.getByLabelText('Date') as HTMLInputElement
+    await user.type(dateInput, '2024-12-31')
+    await user.click(screen.getByRole('button', { name: /Next: Add grants/i }))
+    await fillValidPurchaseGrant(user)
+    await user.click(screen.getByRole('button', { name: /Next →/i }))
+    await waitFor(() => screen.getByText(/Did you take out a loan/i))
+    await user.click(screen.getByRole('button', { name: /^No$/i }))
+    await waitFor(() => screen.getByText(/Add another grant/i))
+    await user.click(screen.getByRole('button', { name: /No, review/i }))
+    await waitFor(() => screen.getByText('Review'))
+
+    // The dropped-rows warning should mention the empty price
+    expect(screen.getByText(/Empty rows will be skipped/i)).toBeInTheDocument()
+    expect(screen.getByText(/no price entered/i)).toBeInTheDocument()
+    // No price should appear in the submitted-prices list
+    expect(screen.getByText(/Prices \(0\)/)).toBeInTheDocument()
+  })
+
+  it('Review excludes empty-price rows from the submit payload', async () => {
+    let submitted: { prices: { effective_date: string; price: number }[] } | null = null
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : (input as Request).url
+      const method = (init?.method ?? 'GET').toUpperCase()
+      if (url.includes('/api/wizard/submit') && method === 'POST') {
+        submitted = JSON.parse(init!.body as string)
+        return new Response(JSON.stringify({ grants: 1, loans: 0, prices: 0, payoff_sales: 0 }), { status: 201 })
+      }
+      if (url.includes('/api/prices') && method === 'GET') return new Response(JSON.stringify([]), { status: 200 })
+      if (url.includes('/api/grants') && method === 'GET') return new Response(JSON.stringify([]), { status: 200 })
+      if (url.includes('/api/loans') && method === 'GET') return new Response(JSON.stringify([]), { status: 200 })
+      if (url.includes('/api/config')) return new Response(JSON.stringify({ epic_mode: false, email_notifications_available: false, vapid_public_key: '', resend_from: '' }), { status: 200 })
+      if (url.includes('/api/content')) return new Response(JSON.stringify(MOCK_CONTENT), { status: 200 })
+      if (url.includes('/api/tax-settings')) return new Response(JSON.stringify({
+        federal_income_rate: 0.37, federal_lt_cg_rate: 0.20, federal_st_cg_rate: 0.37,
+        niit_rate: 0.038, state_income_rate: 0.0765, state_lt_cg_rate: 0.0765, state_st_cg_rate: 0.0765,
+        lt_holding_days: 365, lot_selection_method: 'epic_lifo', loan_payoff_method: 'epic_lifo',
+        flexible_payoff_enabled: false, prefer_stock_dp: false,
+        deduct_investment_interest: false,
+      }), { status: 200 })
+      return new Response('Not found', { status: 404 })
+    })
+    const user = userEvent.setup()
+    renderWizard()
+
+    await user.click(screen.getByRole('button', { name: /Manual entry/i }))
+    const dateInput = screen.getByLabelText('Date') as HTMLInputElement
+    await user.type(dateInput, '2024-12-31')
+    await user.click(screen.getByRole('button', { name: /Next: Add grants/i }))
+    await fillValidPurchaseGrant(user)
+    await user.click(screen.getByRole('button', { name: /Next →/i }))
+    await waitFor(() => screen.getByText(/Did you take out a loan/i))
+    await user.click(screen.getByRole('button', { name: /^No$/i }))
+    await waitFor(() => screen.getByText(/Add another grant/i))
+    await user.click(screen.getByRole('button', { name: /No, review/i }))
+    await waitFor(() => screen.getByText('Review'))
+    await user.click(screen.getByRole('button', { name: /Submit →/i }))
+    await waitFor(() => screen.getByText('Setup complete!'))
+
+    expect(submitted).not.toBeNull()
+    expect(submitted!.prices).toEqual([])
+  })
+
+  it('Review surfaces a warning and excludes a $0 loan from the submit payload', async () => {
+    let submitted: {
+      grants: { loans: { amount: number }[] }[]
+    } | null = null
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : (input as Request).url
+      const method = (init?.method ?? 'GET').toUpperCase()
+      if (url.includes('/api/wizard/submit') && method === 'POST') {
+        submitted = JSON.parse(init!.body as string)
+        return new Response(JSON.stringify({ grants: 1, loans: 0, prices: 0, payoff_sales: 0 }), { status: 201 })
+      }
+      if (url.includes('/api/prices') && method === 'GET') return new Response(JSON.stringify([]), { status: 200 })
+      if (url.includes('/api/grants') && method === 'GET') return new Response(JSON.stringify([]), { status: 200 })
+      if (url.includes('/api/loans') && method === 'GET') return new Response(JSON.stringify([]), { status: 200 })
+      if (url.includes('/api/config')) return new Response(JSON.stringify({ epic_mode: false, email_notifications_available: false, vapid_public_key: '', resend_from: '' }), { status: 200 })
+      if (url.includes('/api/content')) return new Response(JSON.stringify(MOCK_CONTENT), { status: 200 })
+      if (url.includes('/api/tax-settings')) return new Response(JSON.stringify({
+        federal_income_rate: 0.37, federal_lt_cg_rate: 0.20, federal_st_cg_rate: 0.37,
+        niit_rate: 0.038, state_income_rate: 0.0765, state_lt_cg_rate: 0.0765, state_st_cg_rate: 0.0765,
+        lt_holding_days: 365, lot_selection_method: 'epic_lifo', loan_payoff_method: 'epic_lifo',
+        flexible_payoff_enabled: false, prefer_stock_dp: false,
+        deduct_investment_interest: false,
+      }), { status: 200 })
+      return new Response('Not found', { status: 404 })
+    })
+    const user = userEvent.setup()
+    renderWizard()
+
+    await user.click(screen.getByRole('button', { name: /Manual entry/i }))
+    await user.click(screen.getByRole('button', { name: /Next: Add grants/i }))
+    await fillValidPurchaseGrant(user)
+    await user.click(screen.getByRole('button', { name: /Next →/i }))
+    await waitFor(() => screen.getByText(/Did you take out a loan/i))
+    // Yes — opens the loan form
+    await user.click(screen.getByRole('button', { name: /^Yes$/i }))
+    // Don't fill in any fields, just save the loan — amount stays at 0
+    await user.click(screen.getByRole('button', { name: /Save loan/i }))
+    // No refinance
+    await waitFor(() => screen.getByText(/ever refinanced/i))
+    await user.click(screen.getByRole('button', { name: /^No$/i }))
+    await waitFor(() => screen.getByText(/Add another grant/i))
+    await user.click(screen.getByRole('button', { name: /No, review/i }))
+    await waitFor(() => screen.getByText('Review'))
+
+    // Warning should mention the dropped loan
+    expect(screen.getByText(/Empty rows will be skipped/i)).toBeInTheDocument()
+    expect(screen.getByText(/has \$0 amount/i)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Submit →/i }))
+    await waitFor(() => screen.getByText('Setup complete!'))
+
+    expect(submitted).not.toBeNull()
+    // The grant was submitted without the $0 loan
+    expect(submitted!.grants).toHaveLength(1)
+    expect(submitted!.grants[0].loans).toEqual([])
   })
 })

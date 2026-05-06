@@ -794,19 +794,80 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
 
   // ── Submit / Preview ──────────────────────────────────────────────────────────
 
-  function buildPricesPayload() {
-    return prices
-      .filter(p => p.effective_date && p.price !== '')
-      .map(p => ({ effective_date: p.effective_date, price: parseFloat(p.price) }))
+  /** Drop empty/zero rows that the backend would reject and surface what's left.
+   *  - Loans with amount ≤ 0 are silently skipped (with a warning shown on Review).
+   *  - Prices with empty/non-positive value are silently skipped (with a warning).
+   *  - Anything else that the backend would reject (missing dates, zero shares,
+   *    etc.) becomes a blocking issue — surfaced per row, submit disabled. */
+  function sanitizeForSubmit() {
+    const droppedLoans: { grant: string; reason: string }[] = []
+    const droppedPrices: { effective_date: string; reason: string }[] = []
+    const blockingIssues: string[] = []
+
+    const cleanPrices: { effective_date: string; price: number }[] = []
+    for (const p of prices) {
+      if (!p.effective_date) continue  // empty row — placeholder, ignore silently
+      const trimmed = p.price.trim?.() ?? p.price
+      const num = parseFloat(trimmed)
+      if (!trimmed || isNaN(num) || num <= 0) {
+        droppedPrices.push({
+          effective_date: p.effective_date,
+          reason: !trimmed ? 'no price entered' : 'price must be greater than 0',
+        })
+        continue
+      }
+      cleanPrices.push({ effective_date: p.effective_date, price: num })
+    }
+
+    const cleanGrants: WizardGrant[] = completedGrants.map(g => {
+      const cleanLoans: WizardLoan[] = []
+      for (const l of g.loans) {
+        if (!(l.amount > 0)) {
+          droppedLoans.push({
+            grant: `${g.year} ${g.type}`,
+            reason: `${l.loan_type} loan${l.loan_number ? ` #${l.loan_number}` : ''} has $0 amount`,
+          })
+          continue
+        }
+        if (l.interest_rate < 0) {
+          blockingIssues.push(`${g.year} ${g.type}: loan${l.loan_number ? ` #${l.loan_number}` : ''} has a negative interest rate`)
+        }
+        if (!l.due_date) {
+          blockingIssues.push(`${g.year} ${g.type}: loan${l.loan_number ? ` #${l.loan_number}` : ''} is missing a due date`)
+        }
+        if (!l.loan_year) {
+          blockingIssues.push(`${g.year} ${g.type}: loan${l.loan_number ? ` #${l.loan_number}` : ''} is missing a loan year`)
+        }
+        cleanLoans.push(l)
+      }
+      return { ...g, loans: cleanLoans }
+    })
+
+    for (const g of cleanGrants) {
+      const tag = `${g.year || '(no year)'} ${g.type}`
+      if (g.year < 1900 || g.year > 2100) blockingIssues.push(`${tag}: grant year is missing or out of range`)
+      if (!g.shares || g.shares <= 0) blockingIssues.push(`${tag}: shares must be greater than 0`)
+      if (!g.periods || g.periods <= 0) blockingIssues.push(`${tag}: vesting periods must be greater than 0`)
+      if (!g.vest_start) blockingIssues.push(`${tag}: vesting start date is missing`)
+      if (!g.exercise_date) blockingIssues.push(`${tag}: exercise date is missing`)
+      if (g.price < 0) blockingIssues.push(`${tag}: price cannot be negative`)
+    }
+
+    return { grants: cleanGrants, prices: cleanPrices, droppedLoans, droppedPrices, blockingIssues }
   }
 
   async function handleSubmit() {
+    const s = sanitizeForSubmit()
+    if (s.blockingIssues.length > 0) {
+      setSubmitError(s.blockingIssues.join('; '))
+      return
+    }
     setSubmitting(true)
     setSubmitError('')
     try {
       await api.wizardSubmit({
-        grants: completedGrants,
-        prices: buildPricesPayload(),
+        grants: s.grants,
+        prices: s.prices,
         clear_existing: false,
         generate_payoff_sales: true,
         preserve_grant_ids: Array.from(preserveOrphanGrantIds),
@@ -2049,21 +2110,61 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
       )}
 
       {/* ── Review ── */}
-      {screen === 'review' && (
+      {screen === 'review' && (() => {
+        const s = sanitizeForSubmit()
+        return (
         <div className="space-y-4">
           <BackBtn onClick={back} />
           <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Review</h2>
           {submitError && <p className="text-xs text-red-500">{submitError}</p>}
 
+          {/* Blocking issues (must fix) */}
+          {s.blockingIssues.length > 0 && (
+            <div className="rounded-md border border-red-300 bg-red-50 p-3 dark:border-red-800 dark:bg-red-950/30">
+              <p className="text-xs font-medium text-red-800 dark:text-red-300">
+                Fix {s.blockingIssues.length === 1 ? 'this' : 'these'} before submitting:
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {s.blockingIssues.map((issue, i) => (
+                  <li key={i} className="text-[11px] text-red-700 dark:text-red-400">• {issue}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Empty rows that will be silently skipped */}
+          {(s.droppedLoans.length > 0 || s.droppedPrices.length > 0) && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+              <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                Empty rows will be skipped:
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {s.droppedPrices.map((d, i) => (
+                  <li key={`p-${i}`} className="text-[11px] text-amber-700 dark:text-amber-400">
+                    • Price on {fmtDate(d.effective_date)} — {d.reason}
+                  </li>
+                ))}
+                {s.droppedLoans.map((d, i) => (
+                  <li key={`l-${i}`} className="text-[11px] text-amber-700 dark:text-amber-400">
+                    • {d.grant}: {d.reason}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1.5 text-[11px] text-amber-600 dark:text-amber-500">
+                Go back to fill them in, or submit to skip.
+              </p>
+            </div>
+          )}
+
           {/* Prices */}
           <div className="rounded-md border border-stone-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
             <p className="text-xs font-medium text-gray-700 dark:text-slate-300">
-              Prices ({prices.filter(p => p.effective_date && p.price !== '').length})
+              Prices ({s.prices.length})
             </p>
             <div className="mt-1.5 space-y-0.5">
-              {prices.filter(p => p.effective_date && p.price !== '').map((p, i) => (
+              {s.prices.map((p, i) => (
                 <p key={i} className="text-xs text-gray-500 dark:text-slate-400">
-                  {fmtDate(p.effective_date)} — ${parseFloat(p.price).toFixed(2)}
+                  {fmtDate(p.effective_date)} — ${p.price.toFixed(2)}
                 </p>
               ))}
             </div>
@@ -2072,10 +2173,10 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
           {/* Grants */}
           <div className="rounded-md border border-stone-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
             <p className="text-xs font-medium text-gray-700 dark:text-slate-300">
-              Grants ({completedGrants.length})
+              Grants ({s.grants.length})
             </p>
             <div className="mt-1.5 space-y-1.5">
-              {completedGrants.map((g, i) => (
+              {s.grants.map((g, i) => (
                 <div key={i} className="text-xs">
                   <p className="font-medium text-gray-800 dark:text-slate-200">
                     {g.year} {g.type} — {g.shares.toLocaleString()} shares
@@ -2107,10 +2208,12 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
           <NextBtn
             label="Submit →"
             saving={submitting}
+            disabled={s.blockingIssues.length > 0}
             onClick={handleSubmit}
           />
         </div>
-      )}
+        )
+      })()}
 
       {/* ── Schedule: Intro ── */}
       {screen === 'schedule_intro' && (

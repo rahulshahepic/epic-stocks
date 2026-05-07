@@ -306,6 +306,43 @@ test.describe('Screenshots', () => {
     await page.screenshot({ path: `${OUT}/comp-calculator-rolling-light-desktop.png`, fullPage: true })
   })
 
+  // Seed plausible portfolio values so the screenshots look like a real
+  // retirement plan rather than a $237K exit ruining at year 1.
+  async function seedRetirement(page: Page) {
+    await page.goto(`${BASE}/retirement`)
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(500)
+    const fill = async (label: RegExp, value: string) => {
+      const input = page.getByLabel(label)
+      await input.click()
+      await input.fill(value)
+    }
+    await fill(/Epic exit value/, '5')
+    await fill(/Additional portfolio/, '1')
+    await fill(/Cash buffer/, '0.5')
+    await page.getByRole('button', { name: /Run/ }).click()
+    await page.waitForSelector('text=Above starting wealth', { timeout: 60000 })
+    await page.waitForTimeout(500)
+  }
+
+  test('retirement - light - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    await seedRetirement(page)
+    await page.screenshot({ path: `${OUT}/retirement-light-mobile.png`, fullPage: true })
+  })
+
+  test('retirement - light - desktop', async ({ page }) => {
+    await authedPage(page, DESKTOP, 'light')
+    await seedRetirement(page)
+    await page.screenshot({ path: `${OUT}/retirement-light-desktop.png`, fullPage: true })
+  })
+
+  test('retirement - dark - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'dark')
+    await seedRetirement(page)
+    await page.screenshot({ path: `${OUT}/retirement-dark-mobile.png`, fullPage: true })
+  })
+
   test('loans - epic mode - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     await page.request.post(`${BASE}/api/admin/epic-mode`, { data: { active: true } })

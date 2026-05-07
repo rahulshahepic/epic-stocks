@@ -108,7 +108,9 @@ Everything in the app is derived from these four tables at request time:
 
 9. **Compare to a salary offer** — go to **Comp Calc** to translate your stock-loan program into a single comparable comp number. See [Total Comp Calculator](#total-comp-calculator) below.
 
-10. **Export your data** — go to **Import/Export → Download Vesting.xlsx** for a full export at any time.
+10. **Stress-test retirement** — go to **Retirement** to run a 100,000-path Monte Carlo of a 50-year retirement using your Epic exit value plus other assets. See [Retirement Simulator](#retirement-simulator) below.
+
+11. **Export your data** — go to **Import/Export → Download Vesting.xlsx** for a full export at any time.
 
 ---
 
@@ -170,6 +172,36 @@ The math, in plain English: if Epic loaned you $L to buy stock, and that stock g
 - **Optional toggle**: deduct loan interest as investment-interest expense (IRS Form 4952) — reduces effective interest cost by your marginal ordinary income rate. Defaults to your **Settings → Tax → Deduct investment interest** preference.
 
 All math runs locally in your browser — no calculation results are stored. Tax rates come from your **Settings → Tax Rates**.
+
+---
+
+### Retirement Simulator
+
+| Mobile | Desktop |
+|--------|---------|
+| ![Retirement Mobile](screenshots/retirement-light-mobile.png) | ![Retirement Desktop](screenshots/retirement-light-desktop.png) |
+
+The **Retirement** tab runs a 100,000-path Monte Carlo of a 50-year retirement entirely in your browser. It pre-fills the Epic exit value from the dashboard's "If you exited today" net cash, lets you add a separate brokerage / 401k portfolio plus a cash buffer, then projects total wealth over time under stylized real-return assumptions.
+
+**Inputs:**
+
+- **Epic exit value** ($M) — pre-filled from today's exit preview; editable.
+- **Additional portfolio** ($M) — brokerage, 401k, other assets.
+- **Cash buffer** ($M, default 0.5) — held outside equity at 0% real return.
+- **Default / minimum spend** ($K/yr real) — what you withdraw in good years and the floor in bad/negative years.
+- **Equity allocation** (%) — stocks vs. bonds; remainder is bonds.
+- **Return scenario** — **Historical** (7%/1.5% real geometric means), **Moderate** (5%/0%), or **Cautious** (3.5%/-0.5%). Stocks and bonds are correlated (ρ = -0.05) in log space.
+- **SS FRA monthly benefit + claim age** (62-70) — Social Security adjusted by the SSA early/late formula.
+- **Refill tax drag** (%) — tax paid when selling equity to refill the cash buffer.
+
+**Outputs:**
+
+- 4 stat cards — % paths above starting wealth, % ruin (both pools hit zero), median final $M, P10 final $M.
+- A fan chart of total wealth (real $M) at 5-year intervals with p5–p95 percentile bands and a median line.
+- A histogram of year-50 final wealth, green/red bars marking above/below starting wealth (ruin paths excluded).
+- A percentile table at p1, p5, p10, p25, p50, p75, p90, p95, p99.
+
+All values are real (inflation-adjusted). Withdrawals happen at year-end after equity grows. The simulation runs locally — no data leaves your browser. Click **Run simulation** to execute; tweak inputs and re-run any time.
 
 ---
 
@@ -743,7 +775,7 @@ epic-stocks/
 │   │   │   ├── contexts/    # ThemeContext, MaintenanceContext, ViewingContext
 │   │   │   └── hooks/       # useAuth, useConfig, useDark, usePush, useMe
 │   │   ├── app/             # Equity tracking UI (replace when forking)
-│   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport, Content, CompCalculator
+│   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport, Content, CompCalculator, Retirement
 │   │   │   ├── components/  # ImportWizard, TipCarousel
 │   │   │   └── hooks/       # useApiData, useDataSync, useContent
 │   │   ├── App.tsx          # Router + layout wiring

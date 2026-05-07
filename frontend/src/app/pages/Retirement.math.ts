@@ -1,6 +1,6 @@
 // Pure math for the retirement Monte Carlo simulator.
 // All dollar amounts are in $M (millions) of real (inflation-adjusted) dollars
-// unless noted otherwise.
+// unless noted otherwise. Spend / health-insurance inputs are in $K/year real.
 
 export type Scenario = 'historical' | 'moderate' | 'cautious'
 
@@ -24,38 +24,42 @@ export const SCENARIO_LABELS: Record<Scenario, string> = {
 }
 
 export interface SimParams {
-  epicExit: number
-  additional: number
-  cashBuffer: number
-  defaultSpend: number
-  minSpend: number
-  equityAlloc: number
+  epicExit: number       // $M
+  additional: number     // $M
+  stockPct: number       // 0..1, % of total portfolio
+  bondPct: number        // 0..1, % of total portfolio (cash = 1 - stockPct - bondPct)
+  defaultSpend: number   // $K/yr (excluding health insurance)
+  minSpend: number       // $K/yr floor (excluding health insurance)
+  healthInsurance: number // $K/yr
+  zeroHIPost65: boolean  // health-insurance cost goes to 0 once age > 65
+  refillTaxDrag: number  // 0..1
   scenario: Scenario
-  ssMonthly: number
-  claimAge: number
-  refillTaxDrag: number
-  years: number
+  ssMonthly: number      // $/month at FRA
+  claimAge: number       // 62-70
+  currentAge: number     // age at simulation start
+  endAge: number         // simulate to this age
   paths: number
-  retireAge: number
-  fra: number
-  rho: number
+  fra: number            // 67
+  rho: number            // -0.05
   seed?: number
 }
 
 export const DEFAULT_PARAMS: SimParams = {
   epicExit: 0,
   additional: 0,
-  cashBuffer: 0.5,
+  stockPct: 0.7,
+  bondPct: 0.2,
   defaultSpend: 300,
   minSpend: 135,
-  equityAlloc: 0.8,
+  healthInsurance: 25,
+  zeroHIPost65: true,
+  refillTaxDrag: 0.25,
   scenario: 'historical',
   ssMonthly: 2500,
   claimAge: 67,
-  refillTaxDrag: 0.25,
-  years: 50,
+  currentAge: 50,
+  endAge: 95,
   paths: 100_000,
-  retireAge: 43,
   fra: 67,
   rho: -0.05,
 }
@@ -136,12 +140,14 @@ export function quantile(sorted: ArrayLike<number>, q: number): number {
 
 export interface SimResult {
   fanYears: number[]
+  fanAges: number[]
   fanWealth: Float64Array[]
   finalWealth: Float64Array
   ruined: Uint8Array
   startingEquity: number
   startingCash: number
   startingTotal: number
+  years: number
   pctAboveStart: number
   pctRuin: number
   medianFinalM: number
@@ -156,29 +162,38 @@ export function simulate(params: SimParams): SimResult {
   const sigS = arithToLogSigma(sc.sMean, sc.sStd)
   const sigB = arithToLogSigma(sc.bMean, sc.bStd)
 
-  const startingEquity = params.epicExit + params.additional
-  const startingCash = params.cashBuffer
+  const totalPortfolio = params.epicExit + params.additional
+  const stockPct = Math.max(0, params.stockPct)
+  const bondPct = Math.max(0, params.bondPct)
+  const equityPct = stockPct + bondPct
+  const cashPct = Math.max(0, 1 - equityPct)
+  const startingEquity = totalPortfolio * Math.min(1, equityPct)
+  const startingCash = totalPortfolio * cashPct
   const startingTotal = startingEquity + startingCash
 
-  const wEq = params.equityAlloc
-  const wBd = 1 - wEq
+  // Within equity, weights for stock vs. bond.
+  const wS = equityPct > 0 ? stockPct / equityPct : 0
+  const wB = 1 - wS
 
   const defaultSpendM = params.defaultSpend / 1000
   const minSpendM = params.minSpend / 1000
+  const hiM = params.healthInsurance / 1000
 
   const ssAdj = ssAdjustment(params.claimAge, params.fra)
   const ssAnnualM = ((params.ssMonthly * 12) / 1_000_000) * ssAdj
-  const ssStartYear = params.claimAge - params.retireAge
 
-  const cashTarget = params.cashBuffer
-  const taxDrag = params.refillTaxDrag
+  const cashTarget = startingCash
+  const taxDrag = Math.max(0, Math.min(0.99, params.refillTaxDrag))
 
+  const Y = Math.max(1, Math.round(params.endAge - params.currentAge))
+  const N = Math.max(1, Math.round(params.paths))
+
+  // Fan years: 0, 5, 10, ... up to Y.
   const fanYears: number[] = []
-  for (let y = 0; y <= params.years; y += 5) fanYears.push(y)
-  if (fanYears[fanYears.length - 1] !== params.years) fanYears.push(params.years)
+  for (let y = 0; y <= Y; y += 5) fanYears.push(y)
+  if (fanYears[fanYears.length - 1] !== Y) fanYears.push(Y)
+  const fanAges = fanYears.map(y => params.currentAge + y)
 
-  const N = params.paths
-  const Y = params.years
   const yearToFanIdx = new Map<number, number>()
   fanYears.forEach((y, idx) => yearToFanIdx.set(y, idx))
 
@@ -194,15 +209,23 @@ export function simulate(params: SimParams): SimResult {
     let isRuined = false
 
     for (let y = 1; y <= Y; y++) {
-      const [stockR, bondR] = sampleAnnualReturns(muS, sigS, muB, sigB, params.rho, rand)
-      const portR = wEq * stockR + wBd * bondR
+      const age = params.currentAge + y
+      const equityBefore = equity
 
-      equity = equity * (1 + portR)
-      if (equity < 0) equity = 0
+      let portR = 0
+      if (equity > 0) {
+        const [stockR, bondR] = sampleAnnualReturns(muS, sigS, muB, sigB, params.rho, rand)
+        portR = wS * stockR + wB * bondR
+        equity = equity * (1 + portR)
+        if (equity < 0) equity = 0
+      }
 
-      const spend = portR < 0 ? minSpendM : defaultSpendM
-      const ssIncome = y >= ssStartYear ? ssAnnualM : 0
-      let needed = spend - ssIncome
+      const baseSpendM = portR < 0 ? minSpendM : defaultSpendM
+      const hiThisYear = params.zeroHIPost65 && age > 65 ? 0 : hiM
+      const totalSpendM = baseSpendM + hiThisYear
+
+      const ssIncomeM = age >= params.claimAge ? ssAnnualM : 0
+      let needed = totalSpendM - ssIncomeM
 
       if (needed > 0) {
         const fromCash = Math.min(cash, needed)
@@ -224,11 +247,17 @@ export function simulate(params: SimParams): SimResult {
         }
       }
 
-      if (portR > 0 && cash < cashTarget && equity > 0) {
-        const shortfall = cashTarget - cash
-        const grossSell = Math.min(shortfall / (1 - taxDrag), equity)
-        equity -= grossSell
-        cash += grossSell * (1 - taxDrag)
+      // Refill cash only from this year's *net positive equity change* — i.e.
+      // earnings in excess of what we already pulled out for spending. This
+      // preserves equity principal, never selling more than the year's gain.
+      const equityChange = equity - equityBefore
+      if (equityChange > 0 && cash < cashTarget) {
+        const refillRoom = cashTarget - cash
+        const grossSell = Math.min(refillRoom / (1 - taxDrag), equityChange)
+        if (grossSell > 0) {
+          equity -= grossSell
+          cash += grossSell * (1 - taxDrag)
+        }
       }
 
       if (equity <= 0 && cash <= 0) isRuined = true
@@ -257,12 +286,14 @@ export function simulate(params: SimParams): SimResult {
 
   return {
     fanYears,
+    fanAges,
     fanWealth,
     finalWealth,
     ruined,
     startingEquity,
     startingCash,
     startingTotal,
+    years: Y,
     pctAboveStart: above / N,
     pctRuin: ruin / N,
     medianFinalM,
@@ -272,6 +303,7 @@ export function simulate(params: SimParams): SimResult {
 
 export interface FanPercentiles {
   year: number
+  age: number
   p5: number
   p10: number
   p25: number
@@ -287,6 +319,7 @@ export function computeFanPercentiles(result: SimResult): FanPercentiles[] {
     sorted.sort()
     return {
       year: result.fanYears[idx],
+      age: result.fanAges[idx],
       p5: quantile(sorted, 0.05),
       p10: quantile(sorted, 0.10),
       p25: quantile(sorted, 0.25),

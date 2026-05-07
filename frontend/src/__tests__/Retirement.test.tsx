@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import Retirement from '../app/pages/Retirement.tsx'
@@ -17,11 +17,30 @@ beforeEach(() => {
   }
 })
 
-function mockExitPreview(netCash: number | null) {
+const TAX_SETTINGS = {
+  federal_income_rate: 0.37,
+  federal_lt_cg_rate: 0.20,
+  federal_st_cg_rate: 0.37,
+  niit_rate: 0.038,
+  state_income_rate: 0.0985,
+  state_lt_cg_rate: 0.0985,
+  state_st_cg_rate: 0.0985,
+  lt_holding_days: 366,
+  lot_selection_method: 'epic_lifo',
+  loan_payoff_method: 'same_tranche',
+  flexible_payoff_enabled: true,
+  prefer_stock_dp: false,
+  deduct_investment_interest: false,
+  deduction_excluded_years: null,
+  taxable_years: [],
+}
+
+function mockApi(opts: { netCash?: number | null } = {}) {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url
     if (url.includes('/api/preview-exit')) {
-      const body = netCash == null
+      const nc = opts.netCash
+      const body = nc == null
         ? null
         : {
             date: '2026-05-07',
@@ -37,9 +56,12 @@ function mockExitPreview(netCash: number | null) {
             deduction_savings: 0,
             deduction_years: [],
             deduction_excluded_years: [],
-            net_cash: netCash,
+            net_cash: nc,
           }
       return new Response(JSON.stringify(body), { status: 200 })
+    }
+    if (url.includes('/api/tax-settings')) {
+      return new Response(JSON.stringify(TAX_SETTINGS), { status: 200 })
     }
     return new Response('{}', { status: 200 })
   })
@@ -47,62 +69,127 @@ function mockExitPreview(netCash: number | null) {
 
 describe('Retirement page', () => {
   it('renders the parameter form with defaults', async () => {
-    mockExitPreview(null)
+    mockApi({ netCash: null })
     render(
       <MemoryRouter>
         <Retirement />
       </MemoryRouter>,
     )
     expect(screen.getByRole('heading', { name: /retirement simulator/i })).toBeInTheDocument()
-    expect(screen.getByText(/total starting wealth/i)).toBeInTheDocument()
+    expect(screen.getByText(/total portfolio:/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /run.*paths.*years/i })).toBeInTheDocument()
+    expect(screen.getByLabelText(/Exit date/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/^Health insurance/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Current age/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Simulate until age/i)).toBeInTheDocument()
   })
 
-  it('pre-fills Epic exit value from the exit preview ($M)', async () => {
-    mockExitPreview(4_500_000)
+  it('pre-fills Epic exit value from the exit preview at the chosen date', async () => {
+    mockApi({ netCash: 4_500_000 })
     render(
       <MemoryRouter>
         <Retirement />
       </MemoryRouter>,
     )
-    const epicInput = await screen.findByDisplayValue('4.5')
-    expect(epicInput).toBeInTheDocument()
+    expect(await screen.findByDisplayValue('4.5')).toBeInTheDocument()
   })
 
-  it('lets the user override the equity allocation and scenario', async () => {
-    mockExitPreview(null)
+  it('pre-fills refill tax drag from blended LT cap-gains rate', async () => {
+    mockApi({ netCash: null })
+    render(
+      <MemoryRouter>
+        <Retirement />
+      </MemoryRouter>,
+    )
+    // 0.20 + 0.0985 + 0.038 = 0.3365 → 33.65 → rounded to 33.7
+    expect(await screen.findByDisplayValue('33.7')).toBeInTheDocument()
+  })
+
+  it('shows cash = 100 − stocks − bonds', async () => {
+    mockApi({ netCash: null })
     const user = userEvent.setup()
     render(
       <MemoryRouter>
         <Retirement />
       </MemoryRouter>,
     )
-
-    const allocInput = screen.getByLabelText(/Equity allocation/i) as HTMLInputElement
-    await user.clear(allocInput)
-    await user.type(allocInput, '60')
-    expect(allocInput.value).toBe('60')
-
-    await user.click(screen.getByRole('button', { name: /Cautious/i }))
-    expect(screen.getByText(/Equity 3.5%/)).toBeInTheDocument()
+    // Default 70% stocks + 20% bonds → 10% cash
+    await waitFor(() => expect(screen.getByText('10%')).toBeInTheDocument())
+    const stocksInput = screen.getByLabelText(/^Stocks/) as HTMLInputElement
+    await user.clear(stocksInput)
+    await user.type(stocksInput, '50')
+    // 50% stocks + 20% bonds → 30% cash
+    await waitFor(() => expect(screen.getByText('30%')).toBeInTheDocument())
   })
 
-  it('shows SS adjustment factor changing with claim age', async () => {
-    mockExitPreview(null)
+  it('flags allocation overflow when stocks + bonds > 100%', async () => {
+    mockApi({ netCash: null })
     const user = userEvent.setup()
     render(
       <MemoryRouter>
         <Retirement />
       </MemoryRouter>,
     )
+    const bondsInput = screen.getByLabelText(/^Bonds/) as HTMLInputElement
+    await user.clear(bondsInput)
+    await user.type(bondsInput, '50')
+    expect(screen.getByText(/Stocks \+ Bonds > 100%/i)).toBeInTheDocument()
+  })
 
-    // FRA = 67, so default factor is 100%
+  it('shows SS adjustment factor and adjusted monthly amount', async () => {
+    mockApi({ netCash: null })
+    render(
+      <MemoryRouter>
+        <Retirement />
+      </MemoryRouter>,
+    )
+    // FRA = 67, default claim 67 → 100%
     expect(screen.getByText('100.0%')).toBeInTheDocument()
+    expect(screen.getByText(/\$2500\/mo/)).toBeInTheDocument()
+  })
 
-    const claimInput = screen.getByLabelText(/Claim age/i) as HTMLInputElement
-    await user.clear(claimInput)
-    await user.type(claimInput, '70')
-    // 8% × 3 years = 124%
-    expect(screen.getByText('124.0%')).toBeInTheDocument()
+  it('updates SS adjustment when the claim-age slider changes', async () => {
+    mockApi({ netCash: null })
+    render(
+      <MemoryRouter>
+        <Retirement />
+      </MemoryRouter>,
+    )
+    const slider = screen.getByLabelText(/Claim age/i) as HTMLInputElement
+    slider.focus()
+    // fireEvent simulating slider drag
+    const { fireEvent } = await import('@testing-library/react')
+    fireEvent.change(slider, { target: { value: '70' } })
+    // 8% × 3 = 124% of FRA
+    await waitFor(() => expect(screen.getByText('124.0%')).toBeInTheDocument())
+  })
+
+  it('toggles the post-65 health-insurance zero-out checkbox', async () => {
+    mockApi({ netCash: null })
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter>
+        <Retirement />
+      </MemoryRouter>,
+    )
+    const checkbox = screen.getByRole('checkbox', { name: /Zero out health insurance after age 65/ }) as HTMLInputElement
+    expect(checkbox.checked).toBe(true)
+    await user.click(checkbox)
+    expect(checkbox.checked).toBe(false)
+  })
+
+  it('updates horizon when current/end age changes', async () => {
+    mockApi({ netCash: null })
+    render(
+      <MemoryRouter>
+        <Retirement />
+      </MemoryRouter>,
+    )
+    // Default 50 → 95 = 45-year horizon
+    expect(screen.getByText(/45-year horizon/)).toBeInTheDocument()
+    const { fireEvent } = await import('@testing-library/react')
+    const endSlider = screen.getByLabelText(/Simulate until age/i) as HTMLInputElement
+    fireEvent.change(endSlider, { target: { value: '90' } })
+    await waitFor(() => expect(screen.getByText(/40-year horizon/)).toBeInTheDocument())
   })
 })

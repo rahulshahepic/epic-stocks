@@ -159,12 +159,50 @@ describe('simulate', () => {
   })
 
   it('returns starting total at year 0', () => {
-    const r = simulate({ ...DEFAULT_PARAMS, epicExit: 3, additional: 1, cashBuffer: 0.5, paths: 50, seed: 1 })
-    expect(r.startingEquity).toBe(4)
-    expect(r.startingCash).toBe(0.5)
-    expect(r.startingTotal).toBe(4.5)
+    const r = simulate({
+      ...DEFAULT_PARAMS,
+      epicExit: 3,
+      additional: 1,
+      stockPct: 0.7,
+      bondPct: 0.2,
+      paths: 50,
+      seed: 1,
+    })
+    // total = 4, equity = 4 × 0.9 = 3.6, cash = 4 × 0.1 = 0.4
+    expect(r.startingEquity).toBeCloseTo(3.6, 6)
+    expect(r.startingCash).toBeCloseTo(0.4, 6)
+    expect(r.startingTotal).toBeCloseTo(4, 6)
     const fanIdx0 = r.fanYears.indexOf(0)
-    expect(r.fanWealth[fanIdx0][0]).toBe(4.5)
+    expect(r.fanWealth[fanIdx0][0]).toBeCloseTo(4, 6)
+  })
+
+  it('honours endAge / currentAge for the simulation horizon', () => {
+    const r = simulate({ ...DEFAULT_PARAMS, currentAge: 60, endAge: 90, paths: 5, seed: 1 })
+    expect(r.years).toBe(30)
+    expect(r.fanYears[r.fanYears.length - 1]).toBe(30)
+    expect(r.fanAges[0]).toBe(60)
+    expect(r.fanAges[r.fanAges.length - 1]).toBe(90)
+  })
+
+  it('zeroes health insurance after age 65 when checkbox is on', () => {
+    // Two parallel runs that differ only in HI: with-zero vs without-zero.
+    const base = {
+      ...DEFAULT_PARAMS,
+      epicExit: 3,
+      additional: 0,
+      stockPct: 0.7,
+      bondPct: 0.2,
+      defaultSpend: 200,
+      minSpend: 100,
+      healthInsurance: 50, // exaggerated to make the difference show
+      currentAge: 60,
+      endAge: 80,
+      paths: 200,
+      seed: 11,
+    }
+    const withZero = simulate({ ...base, zeroHIPost65: true })
+    const without = simulate({ ...base, zeroHIPost65: false })
+    expect(withZero.medianFinalM).toBeGreaterThan(without.medianFinalM)
   })
 
   it('produces ruin in pessimistic / under-funded retirements', () => {
@@ -172,7 +210,8 @@ describe('simulate', () => {
       ...DEFAULT_PARAMS,
       epicExit: 4,
       additional: 0,
-      cashBuffer: 0.5,
+      stockPct: 0.7,
+      bondPct: 0.2,
       defaultSpend: 300,
       minSpend: 135,
       scenario: 'cautious',
@@ -187,7 +226,8 @@ describe('simulate', () => {
       ...DEFAULT_PARAMS,
       epicExit: 30,
       additional: 0,
-      cashBuffer: 1,
+      stockPct: 0.7,
+      bondPct: 0.2,
       defaultSpend: 300,
       minSpend: 135,
       scenario: 'historical',
@@ -198,7 +238,7 @@ describe('simulate', () => {
   })
 
   it('exposes a fan year for every multiple of 5 up to years', () => {
-    const r = simulate({ ...DEFAULT_PARAMS, paths: 10, seed: 1 })
+    const r = simulate({ ...DEFAULT_PARAMS, currentAge: 50, endAge: 100, paths: 10, seed: 1 })
     expect(r.fanYears).toEqual([0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50])
     expect(r.fanWealth.length).toBe(r.fanYears.length)
     for (const arr of r.fanWealth) expect(arr.length).toBe(10)
@@ -237,7 +277,8 @@ describe('histogram', () => {
     const r = simulate({
       ...DEFAULT_PARAMS,
       epicExit: 6,
-      cashBuffer: 0.5,
+      stockPct: 0.7,
+      bondPct: 0.2,
       defaultSpend: 300,
       minSpend: 135,
       scenario: 'historical',

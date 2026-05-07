@@ -185,23 +185,24 @@ The **Retirement** tab runs a 100,000-path Monte Carlo of a 50-year retirement e
 
 **Inputs:**
 
-- **Epic exit value** ($M) — pre-filled from today's exit preview; editable.
-- **Additional portfolio** ($M) — brokerage, 401k, other assets.
-- **Cash buffer** ($M, default 0.5) — held outside equity at 0% real return.
-- **Default / minimum spend** ($K/yr real) — what you withdraw in good years and the floor in bad/negative years.
-- **Equity allocation** (%) — stocks vs. bonds; remainder is bonds.
+- **Exit date** — date picker; the Epic exit value auto-fills from the dashboard's "If you exited" net cash for that date (editable).
+- **Epic exit value + additional portfolio** ($M) — Epic exit plus brokerage / 401k / other assets give the total portfolio.
+- **Stocks / Bonds / Cash allocation** (%) — split the total portfolio. Cash is auto-computed as `100 − stocks − bonds`.
+- **Default / minimum spend** ($K/yr real, excluding health insurance) — what you withdraw in good years and the floor in bad / negative-return years.
+- **Health insurance** ($K/yr real, default $25K) with a default-checked **Zero out after age 65** checkbox (Medicare).
+- **Refill tax drag** (%) — tax paid when selling equity to refill cash. Default = your blended LT cap-gains rate from **Settings → Tax Rates**. Cash is only refilled from a year's net positive equity gain (preserves principal).
 - **Return scenario** — **Historical** (7%/1.5% real geometric means), **Moderate** (5%/0%), or **Cautious** (3.5%/-0.5%). Stocks and bonds are correlated (ρ = -0.05) in log space.
-- **SS FRA monthly benefit + claim age** (62-70) — Social Security adjusted by the SSA early/late formula.
-- **Refill tax drag** (%) — tax paid when selling equity to refill the cash buffer.
+- **Current age + simulate-until age** (sliders) — sets the simulation horizon (years = end_age − current_age).
+- **SS FRA monthly benefit + claim age slider** (62-70) — Social Security adjusted by the SSA early/late formula. SS reduces the portfolio withdrawal in years it's active.
 
 **Outputs:**
 
 - 4 stat cards — % paths above starting wealth, % ruin (both pools hit zero), median final $M, P10 final $M.
-- A fan chart of total wealth (real $M) at 5-year intervals with p5–p95 percentile bands and a median line.
-- A histogram of year-50 final wealth, green/red bars marking above/below starting wealth (ruin paths excluded).
+- A fan chart of total wealth (real $M), x-axis in age, with p5–p95 percentile bands and a median line.
+- A histogram of final-age wealth, green/red bars marking above/below starting wealth (ruin paths excluded, count noted separately).
 - A percentile table at p1, p5, p10, p25, p50, p75, p90, p95, p99.
 
-All values are real (inflation-adjusted). Withdrawals happen at year-end after equity grows. The simulation runs locally — no data leaves your browser. Click **Run simulation** to execute; tweak inputs and re-run any time.
+All values are real (inflation-adjusted). Withdrawals happen at year-end after equity grows. Health insurance, when enabled, is added on top of base spend until the post-65 zero-out kicks in. The simulation runs locally — no data leaves your browser. Click **Run simulation** to execute; tweak inputs and re-run any time.
 
 ---
 

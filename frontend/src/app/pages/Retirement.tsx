@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Area,
   Bar,
@@ -13,9 +13,10 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { api } from '../../api.ts'
+import { api, type TaxSettings } from '../../api.ts'
 import { useDark } from '../../scaffold/hooks/useDark.ts'
 import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
+import { capGainsRate } from './CompCalculator.math.ts'
 import {
   computeFanPercentiles,
   DEFAULT_PARAMS,
@@ -143,8 +144,46 @@ function NumInput({ label, value, onChange, step, min, max, suffix, hint }: NumI
   )
 }
 
+interface SliderInputProps {
+  label: string
+  value: number
+  onChange: (n: number) => void
+  min: number
+  max: number
+  step?: number
+  suffix?: string
+  hint?: string
+  formatValue?: (n: number) => string
+}
+function SliderInput({ label, value, onChange, min, max, step = 1, suffix, hint, formatValue }: SliderInputProps) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="flex items-baseline justify-between gap-2 text-[11px] font-medium text-gray-700 dark:text-slate-200">
+        <span>
+          {label}
+          {suffix && <span className="ml-1 text-gray-400 dark:text-slate-500">({suffix})</span>}
+        </span>
+        <span className="tabular-nums text-gray-900 dark:text-slate-100">
+          {formatValue ? formatValue(value) : value}
+        </span>
+      </span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={e => onChange(parseFloat(e.target.value))}
+        className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-stone-200 accent-rose-600 dark:bg-slate-700"
+      />
+      {hint && <span className="text-[10px] text-gray-400 dark:text-slate-500">{hint}</span>}
+    </label>
+  )
+}
+
 interface FanRow {
   year: number
+  age: number
   base: number
   b1: number
   b2: number
@@ -159,6 +198,7 @@ interface FanRow {
 function buildFanData(rows: FanPercentiles[]): FanRow[] {
   return rows.map(p => ({
     year: p.year,
+    age: p.age,
     base: p.p5,
     b1: p.p10 - p.p5,
     b2: p.p25 - p.p10,
@@ -193,7 +233,7 @@ function FanTooltip({
       className="rounded-md border px-2.5 py-2 text-[11px] shadow-md"
       style={{ background: c.tooltipBg, color: c.tooltipText, borderColor: c.grid }}
     >
-      <p className="mb-1 font-semibold tabular-nums">Year {row.year}</p>
+      <p className="mb-1 font-semibold tabular-nums">Age {row.age} (year {row.year})</p>
       <Row k="p95" v={row.pct.p95} />
       <Row k="p90" v={row.pct.p90} />
       <Row k="p75" v={row.pct.p75} />
@@ -232,43 +272,67 @@ const TODAY = new Date().toISOString().slice(0, 10)
 export default function Retirement() {
   const { viewing } = useViewing()
   const c = useChartColors()
-  const [exitDefault, setExitDefault] = useState<number | null>(null)
-  const [exitOverridden, setExitOverridden] = useState(false)
+  const [exitDate, setExitDate] = useState<string>(TODAY)
+  const [exitPreviewLoading, setExitPreviewLoading] = useState(false)
+  const exitOverriddenRef = useRef(false)
+  const refillOverriddenRef = useRef(false)
   const [params, setParams] = useState<SimParams>(() => ({ ...DEFAULT_PARAMS }))
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<SimResult | null>(null)
   const [explainerOpen, setExplainerOpen] = useState(false)
   const [hasRun, setHasRun] = useState(false)
 
-  // Fetch exit preview to pre-populate Epic exit value (today's net cash on exit, in $M)
+  // Pre-fill Epic exit value from previewExit at the chosen date.
   useEffect(() => {
-    if (viewing) return // skip — we don't have a shared variant of preview-exit
-    api.previewExit(TODAY)
+    if (viewing) return
+    if (exitOverriddenRef.current) return
+    let cancelled = false
+    setExitPreviewLoading(true)
+    api.previewExit(exitDate)
       .then(p => {
-        if (!p) return
-        const m = p.net_cash / 1_000_000
-        setExitDefault(m)
+        if (cancelled || !p) return
+        const m = Number((p.net_cash / 1_000_000).toFixed(3))
+        setParams(prev => ({ ...prev, epicExit: Math.max(0, m) }))
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setExitPreviewLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [exitDate, viewing])
+
+  // Pre-fill refill tax drag from the user's blended LT cap-gains rate.
+  useEffect(() => {
+    if (viewing) return
+    if (refillOverriddenRef.current) return
+    api.getTaxSettings()
+      .then((ts: TaxSettings) => {
+        if (refillOverriddenRef.current) return
+        const rate = capGainsRate(ts)
+        if (Number.isFinite(rate) && rate >= 0 && rate < 1) {
+          setParams(prev => ({ ...prev, refillTaxDrag: Number(rate.toFixed(4)) }))
+        }
       })
       .catch(() => {})
   }, [viewing])
-
-  useEffect(() => {
-    if (exitDefault != null && !exitOverridden) {
-      setParams(prev => ({ ...prev, epicExit: Math.max(0, Number(exitDefault.toFixed(3))) }))
-    }
-  }, [exitDefault, exitOverridden])
 
   const update = useCallback(<K extends keyof SimParams>(key: K, value: SimParams[K]) => {
     setParams(prev => ({ ...prev, [key]: value }))
   }, [])
 
-  const startingTotal = (params.epicExit + params.additional) + params.cashBuffer
+  const totalPortfolio = params.epicExit + params.additional
+  const cashPct = Math.max(0, 1 - params.stockPct - params.bondPct)
+  const startingCash = totalPortfolio * cashPct
+  const allocOver = params.stockPct + params.bondPct > 1
   const ssAdj = ssAdjustment(params.claimAge, params.fra)
   const ssAnnualK = (params.ssMonthly * 12 / 1000) * ssAdj
+  const ssStartYear = Math.max(0, params.claimAge - params.currentAge)
+  const years = Math.max(1, Math.round(params.endAge - params.currentAge))
 
   const run = useCallback(() => {
     setRunning(true)
-    // Defer to next tick so the UI can repaint into the "running" state.
     setTimeout(() => {
       try {
         const r = simulate(params)
@@ -312,15 +376,17 @@ export default function Retirement() {
         {explainerOpen && (
           <div className="border-t border-stone-200 px-4 py-3 text-xs leading-relaxed text-gray-600 dark:border-slate-700 dark:text-slate-300">
             <p className="mb-2">
-              A {params.paths.toLocaleString()}-path Monte Carlo simulation of a {params.years}-year retirement, run entirely in your browser.
-              Equity is split between stocks and bonds (correlated log-normal returns) with a separate cash buffer that earns 0% real.
-              Withdrawals come from cash first, then equity (with a tax drag when refilling). Social Security kicks in at your chosen claim age.
+              A {params.paths.toLocaleString()}-path Monte Carlo of a {years}-year retirement (age {params.currentAge} to {params.endAge}), run entirely in your browser.
+              Total portfolio is split into stocks, bonds, and cash by the percentages you choose.
+              Withdrawals come from cash first, then equity (with a tax drag); cash is refilled only from the year's net positive equity gain (preserves principal).
+              Social Security kicks in at your chosen claim age with the SSA early/late factor applied to your FRA monthly benefit.
             </p>
             <p className="mb-2">
-              All dollar values are <strong>real</strong> (inflation-adjusted). Default spend is what you withdraw in good years; minimum spend is the floor in years with negative portfolio returns.
+              All dollar values are <strong>real</strong> (inflation-adjusted). <strong>Default spend</strong> excludes health insurance — the health-insurance line is added separately and zeros out at age 66 by default (Medicare).
+              In bad years (negative portfolio return) spending drops to the <strong>minimum</strong> floor.
             </p>
             <p>
-              Pre-populated Epic exit value comes from "If you exited today" on the Dashboard. Override it freely.
+              Pre-populated Epic exit value comes from "If you exited" on the Dashboard for the date you choose below; refill tax drag defaults to your blended LT cap-gains rate from <em>Settings → Tax Rates</em>.
             </p>
           </div>
         )}
@@ -329,17 +395,32 @@ export default function Retirement() {
       <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
         <p className="mb-3 text-xs font-semibold text-gray-700 dark:text-slate-200">Portfolio</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-medium text-gray-700 dark:text-slate-200">Exit date</span>
+            <input
+              type="date"
+              value={exitDate}
+              onChange={e => {
+                exitOverriddenRef.current = false
+                setExitDate(e.target.value)
+              }}
+              className="rounded border border-stone-300 bg-white px-2 py-1 text-sm tabular-nums text-gray-900 focus:border-rose-400 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+            />
+            <span className="text-[10px] text-gray-400 dark:text-slate-500">
+              {exitPreviewLoading ? 'Fetching exit preview…' : 'Net cash on this date pre-fills below'}
+            </span>
+          </label>
           <NumInput
             label="Epic exit value"
             value={params.epicExit}
             onChange={v => {
-              setExitOverridden(true)
+              exitOverriddenRef.current = true
               update('epicExit', v)
             }}
             min={0}
             step={0.1}
             suffix="$M"
-            hint={exitDefault != null ? `Pre-filled from today's exit preview (${fmt$M(exitDefault)})` : viewing ? 'Enter manually when viewing shared data.' : undefined}
+            hint="Editable — overrides the auto-fetch"
           />
           <NumInput
             label="Additional portfolio"
@@ -350,24 +431,53 @@ export default function Retirement() {
             suffix="$M"
             hint="Brokerage, 401k, etc."
           />
-          <NumInput
-            label="Cash buffer"
-            value={params.cashBuffer}
-            onChange={v => update('cashBuffer', v)}
-            min={0}
-            step={0.1}
-            suffix="$M"
-            hint="Held outside equity, 0% real return"
-          />
         </div>
+
+        <p className="mt-4 mb-2 text-[11px] font-semibold text-gray-700 dark:text-slate-200">
+          Allocation of total portfolio (cash = remainder)
+        </p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <NumInput
+            label="Stocks"
+            value={Math.round(params.stockPct * 100)}
+            onChange={v => update('stockPct', Math.max(0, Math.min(100, v)) / 100)}
+            min={0}
+            max={100}
+            step={1}
+            suffix="%"
+          />
+          <NumInput
+            label="Bonds"
+            value={Math.round(params.bondPct * 100)}
+            onChange={v => update('bondPct', Math.max(0, Math.min(100, v)) / 100)}
+            min={0}
+            max={100}
+            step={1}
+            suffix="%"
+          />
+          <div className="flex flex-col gap-1">
+            <span className="text-[11px] font-medium text-gray-700 dark:text-slate-200">
+              Cash <span className="ml-1 text-gray-400 dark:text-slate-500">(%)</span>
+            </span>
+            <div className="rounded border border-stone-200 bg-stone-50 px-2 py-1 text-sm tabular-nums text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              {(cashPct * 100).toFixed(0)}%
+            </div>
+            <span className={`text-[10px] ${allocOver ? 'text-rose-600 dark:text-rose-400' : 'text-gray-400 dark:text-slate-500'}`}>
+              {allocOver ? 'Stocks + Bonds > 100% — adjust' : 'Auto: 100 − stocks − bonds'}
+            </span>
+          </div>
+        </div>
+
         <p className="mt-3 text-[11px] text-stone-500 dark:text-slate-400">
-          Total starting wealth: <strong className="tabular-nums text-gray-900 dark:text-slate-100">{fmt$M(startingTotal)}</strong>
-          {' '}(equity {fmt$M(params.epicExit + params.additional)} + cash {fmt$M(params.cashBuffer)})
+          Total portfolio: <strong className="tabular-nums text-gray-900 dark:text-slate-100">{fmt$M(totalPortfolio)}</strong>
+          {' '}→ stocks {fmt$M(totalPortfolio * params.stockPct)} ·
+          {' '}bonds {fmt$M(totalPortfolio * params.bondPct)} ·
+          {' '}cash {fmt$M(startingCash)}
         </p>
       </div>
 
       <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-        <p className="mb-3 text-xs font-semibold text-gray-700 dark:text-slate-200">Spending & allocation</p>
+        <p className="mb-3 text-xs font-semibold text-gray-700 dark:text-slate-200">Spending & taxes</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
           <NumInput
             label="Default spend"
@@ -376,7 +486,7 @@ export default function Retirement() {
             min={0}
             step={5}
             suffix="$K/yr"
-            hint="Withdrawn in good years"
+            hint="Excludes health insurance"
           />
           <NumInput
             label="Minimum spend (floor)"
@@ -385,65 +495,103 @@ export default function Retirement() {
             min={0}
             step={5}
             suffix="$K/yr"
-            hint="Floor when portfolio drops"
+            hint="Used when portfolio drops"
           />
           <NumInput
-            label="Equity allocation"
-            value={Math.round(params.equityAlloc * 100)}
-            onChange={v => update('equityAlloc', Math.max(0, Math.min(100, v)) / 100)}
+            label="Health insurance"
+            value={params.healthInsurance}
+            onChange={v => update('healthInsurance', v)}
             min={0}
-            max={100}
-            step={5}
-            suffix="%"
-            hint="Rest is bonds"
+            step={1}
+            suffix="$K/yr"
+            hint="Pre-Medicare premiums + OOP"
           />
           <NumInput
             label="Refill tax drag"
-            value={Math.round(params.refillTaxDrag * 100)}
-            onChange={v => update('refillTaxDrag', Math.max(0, Math.min(99, v)) / 100)}
+            value={Math.round(params.refillTaxDrag * 1000) / 10}
+            onChange={v => {
+              refillOverriddenRef.current = true
+              update('refillTaxDrag', Math.max(0, Math.min(99, v)) / 100)
+            }}
             min={0}
             max={99}
-            step={1}
+            step={0.5}
             suffix="%"
-            hint="Tax on equity sales to refill cash"
+            hint="Default = your blended LT cap-gains rate"
           />
         </div>
-        <div className="mt-4">
-          <p className="mb-1.5 text-[11px] font-medium text-gray-700 dark:text-slate-200">Return scenario</p>
-          <div className="flex flex-wrap gap-1.5">
-            {(Object.keys(SCENARIOS) as Scenario[]).map(s => {
-              const sc = SCENARIOS[s]
-              const active = params.scenario === s
-              return (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => update('scenario', s)}
-                  className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${
-                    active
-                      ? 'border-rose-500 bg-rose-100 text-rose-800 dark:border-rose-400 dark:bg-rose-950/40 dark:text-rose-300'
-                      : 'border-stone-300 bg-white text-gray-600 hover:bg-stone-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
-                  }`}
-                  title={`Equity ${fmtPct(sc.sMean, 1)}±${fmtPct(sc.sStd, 0)} · Bonds ${fmtPct(sc.bMean, 1)}±${fmtPct(sc.bStd, 0)} (real, geometric)`}
-                >
-                  {SCENARIO_LABELS[s]}
-                </button>
-              )
-            })}
-          </div>
-          <p className="mt-1.5 text-[10px] text-stone-500 dark:text-slate-400">
-            Equity {fmtPct(SCENARIOS[params.scenario].sMean, 1)} / σ {fmtPct(SCENARIOS[params.scenario].sStd, 0)}
-            {' · '}
-            Bonds {fmtPct(SCENARIOS[params.scenario].bMean, 1)} / σ {fmtPct(SCENARIOS[params.scenario].bStd, 0)}
-            {' · '}
-            ρ {params.rho.toFixed(2)} (all real, geometric).
-          </p>
+        <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded border border-stone-200 bg-stone-50 px-3 py-2 text-[11px] dark:border-slate-700 dark:bg-slate-800">
+          <input
+            type="checkbox"
+            checked={params.zeroHIPost65}
+            onChange={e => update('zeroHIPost65', e.target.checked)}
+            className="rounded"
+          />
+          <span className="text-gray-700 dark:text-slate-200">
+            Zero out health insurance after age 65 <span className="text-gray-400 dark:text-slate-500">(Medicare kicks in)</span>
+          </span>
+        </label>
+      </div>
+
+      <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <p className="mb-3 text-xs font-semibold text-gray-700 dark:text-slate-200">Return scenario</p>
+        <div className="flex flex-wrap gap-1.5">
+          {(Object.keys(SCENARIOS) as Scenario[]).map(s => {
+            const sc = SCENARIOS[s]
+            const active = params.scenario === s
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => update('scenario', s)}
+                className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${
+                  active
+                    ? 'border-rose-500 bg-rose-100 text-rose-800 dark:border-rose-400 dark:bg-rose-950/40 dark:text-rose-300'
+                    : 'border-stone-300 bg-white text-gray-600 hover:bg-stone-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+                }`}
+                title={`Equity ${fmtPct(sc.sMean, 1)}±${fmtPct(sc.sStd, 0)} · Bonds ${fmtPct(sc.bMean, 1)}±${fmtPct(sc.bStd, 0)} (real, geometric)`}
+              >
+                {SCENARIO_LABELS[s]}
+              </button>
+            )
+          })}
+        </div>
+        <p className="mt-1.5 text-[10px] text-stone-500 dark:text-slate-400">
+          Equity {fmtPct(SCENARIOS[params.scenario].sMean, 1)} / σ {fmtPct(SCENARIOS[params.scenario].sStd, 0)}
+          {' · '}
+          Bonds {fmtPct(SCENARIOS[params.scenario].bMean, 1)} / σ {fmtPct(SCENARIOS[params.scenario].bStd, 0)}
+          {' · '}
+          ρ {params.rho.toFixed(2)} (all real, geometric).
+        </p>
+      </div>
+
+      <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <p className="mb-3 text-xs font-semibold text-gray-700 dark:text-slate-200">Time horizon</p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <SliderInput
+            label="Current age"
+            value={params.currentAge}
+            onChange={v => update('currentAge', Math.max(30, Math.min(90, Math.round(v))))}
+            min={30}
+            max={90}
+            step={1}
+            hint="Age at simulation start"
+          />
+          <SliderInput
+            label="Simulate until age"
+            value={params.endAge}
+            onChange={v => update('endAge', Math.max(params.currentAge + 1, Math.min(110, Math.round(v))))}
+            min={Math.min(params.currentAge + 1, 110)}
+            max={110}
+            step={1}
+            hint={`${years}-year horizon`}
+          />
         </div>
       </div>
 
       <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
         <p className="mb-3 text-xs font-semibold text-gray-700 dark:text-slate-200">Social Security</p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <NumInput
             label="FRA monthly benefit"
             value={params.ssMonthly}
@@ -453,42 +601,39 @@ export default function Retirement() {
             suffix="$/mo"
             hint="At age 67 (FRA)"
           />
-          <NumInput
+          <SliderInput
             label="Claim age"
             value={params.claimAge}
             onChange={v => update('claimAge', Math.max(62, Math.min(70, Math.round(v))))}
             min={62}
             max={70}
             step={1}
-            hint="Integer 62–70"
-          />
-          <NumInput
-            label="Retirement age"
-            value={params.retireAge}
-            onChange={v => update('retireAge', Math.max(30, Math.min(70, Math.round(v))))}
-            min={30}
-            max={70}
-            step={1}
-            hint="Used to time SS start"
+            formatValue={v => `${v}`}
+            hint="62 = early reduction · 70 = max delayed credits"
           />
         </div>
-        <p className="mt-2 text-[11px] text-stone-500 dark:text-slate-400">
-          Adjustment factor at age {params.claimAge}: <strong>{(ssAdj * 100).toFixed(1)}%</strong> of FRA
-          {' · '}
-          Annual benefit (real): <strong className="tabular-nums">${ssAnnualK.toFixed(1)}K</strong>
-          {' · '}
-          Starts simulation year {Math.max(0, params.claimAge - params.retireAge)}.
-        </p>
+        <div className="mt-2 grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-2 sm:gap-3">
+          <p className="text-stone-500 dark:text-slate-400">
+            Adjustment factor at age {params.claimAge}: <strong className="text-gray-900 dark:text-slate-100">{(ssAdj * 100).toFixed(1)}%</strong> of FRA
+          </p>
+          <p className="text-stone-500 dark:text-slate-400">
+            Adjusted monthly: <strong className="text-gray-900 dark:text-slate-100 tabular-nums">${(params.ssMonthly * ssAdj).toFixed(0)}/mo</strong>
+            {' · '}annual: <strong className="text-gray-900 dark:text-slate-100 tabular-nums">${ssAnnualK.toFixed(1)}K</strong>
+          </p>
+          <p className="text-stone-500 dark:text-slate-400 sm:col-span-2">
+            Starts simulation year {ssStartYear} ({params.currentAge >= params.claimAge ? 'immediately' : `age ${params.claimAge}`}).
+          </p>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
           onClick={run}
-          disabled={running}
+          disabled={running || allocOver}
           className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-rose-700 disabled:opacity-50 dark:bg-rose-500 dark:hover:bg-rose-400"
         >
-          {running ? 'Running…' : hasRun ? 'Re-run simulation' : `Run ${params.paths.toLocaleString()} paths × ${params.years} years`}
+          {running ? 'Running…' : hasRun ? 'Re-run simulation' : `Run ${params.paths.toLocaleString()} paths × ${years} years`}
         </button>
         {result && (
           <p className="text-[11px] text-stone-500 dark:text-slate-400">
@@ -532,7 +677,11 @@ export default function Retirement() {
             <ResponsiveContainer width="100%" height={300}>
               <ComposedChart data={fanData} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
-                <XAxis dataKey="year" tick={{ fontSize: 10, fill: c.axis }} />
+                <XAxis
+                  dataKey="age"
+                  tick={{ fontSize: 10, fill: c.axis }}
+                  tickFormatter={(v: number) => `${v}`}
+                />
                 <YAxis
                   domain={[0, dataMaxY > 0 ? Math.ceil(dataMaxY * 1.05) : 'auto']}
                   tick={{ fontSize: 10, fill: c.axis }}
@@ -556,6 +705,7 @@ export default function Retirement() {
               <Legend swatch={c.band[2]} label="p25–p75" />
               <Legend swatch={c.median} label="median (p50)" thickLine />
               <Legend swatch={c.start} label={`start (${fmt$M(result.startingTotal)})`} dashed />
+              <span className="ml-auto">x-axis: age</span>
             </div>
           </div>
 
@@ -563,7 +713,7 @@ export default function Retirement() {
             <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
               <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
                 <p className="text-xs font-semibold text-gray-700 dark:text-slate-200">
-                  Year-{params.years} final wealth distribution (real $M)
+                  Final wealth distribution at age {params.endAge} (real $M)
                 </p>
                 <p className="text-[10px] text-stone-500 dark:text-slate-400">
                   {histData.excluded.toLocaleString()} ruin paths excluded ({fmtPct(histData.excluded / histData.total)})
@@ -599,7 +749,7 @@ export default function Retirement() {
 
           <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
             <p className="mb-2 text-xs font-semibold text-gray-700 dark:text-slate-200">
-              Year-{params.years} percentile table (real $M)
+              Final-age percentile table (real $M)
             </p>
             <div className="overflow-x-auto">
               <table className="w-full text-xs tabular-nums">
@@ -639,7 +789,7 @@ export default function Retirement() {
 
       {!hasRun && (
         <div className="rounded-lg border border-stone-200 bg-stone-50 p-4 text-xs leading-relaxed text-stone-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-          Configure inputs above and press <strong>Run simulation</strong>. The default 100,000 × 50-year run takes a few seconds in the browser.
+          Configure inputs above and press <strong>Run simulation</strong>. The default 100,000 × {years}-year run takes a few seconds in the browser.
         </div>
       )}
 

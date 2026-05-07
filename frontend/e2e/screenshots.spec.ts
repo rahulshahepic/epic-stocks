@@ -319,7 +319,6 @@ test.describe('Screenshots', () => {
     }
     await fill(/Epic exit value/, '5')
     await fill(/Additional portfolio/, '1')
-    await fill(/Cash buffer/, '0.5')
     await page.getByRole('button', { name: /Run/ }).click()
     await page.waitForSelector('text=Above starting wealth', { timeout: 60000 })
     await page.waitForTimeout(500)

@@ -220,8 +220,8 @@ describe('Retirement page', () => {
     )
     const dobInput = await screen.findByLabelText(/Date of birth/i) as HTMLInputElement
     await waitFor(() => expect(dobInput.value).toBe('1980-04-15'))
-    // Hint references "Saved · current age" and the derived integer.
-    await waitFor(() => expect(screen.getByText(/Saved · current age/)).toBeInTheDocument())
+    // Hint mentions current age and SS / Medicare framing.
+    await waitFor(() => expect(screen.getByText(/Saved · age .* used for SS \/ Medicare/)).toBeInTheDocument())
   })
 
   it('shows missing-DOB warning when no DOB is set', async () => {
@@ -232,5 +232,100 @@ describe('Retirement page', () => {
       </MemoryRouter>,
     )
     expect(await screen.findByText(/Set date of birth above/)).toBeInTheDocument()
+  })
+
+  it('does not render the standalone "Current age" tile (derived from DOB only)', async () => {
+    mockApi({ netCash: null, dob: '1980-04-15' })
+    render(
+      <MemoryRouter>
+        <Retirement />
+      </MemoryRouter>,
+    )
+    await screen.findByLabelText(/Date of birth/i)
+    // The old "Current age" read-only chip + its "Today − date of birth" hint
+    // are gone; only the DOB hint should mention age now.
+    expect(screen.queryByText(/Today\s*−\s*date of birth/)).not.toBeInTheDocument()
+  })
+
+  it('auto-fills default spend = 3% and min spend = 2% of total portfolio', async () => {
+    // Exit preview = $8M; default spend → $240K, min spend → $160K.
+    mockApi({ netCash: 8_000_000 })
+    render(
+      <MemoryRouter>
+        <Retirement />
+      </MemoryRouter>,
+    )
+    const defaultSpend = await screen.findByLabelText(/^Default spend/) as HTMLInputElement
+    await waitFor(() => expect(defaultSpend.value).toBe('240'))
+    const minSpend = screen.getByLabelText(/^Minimum spend \(floor\)/) as HTMLInputElement
+    expect(minSpend.tagName).toBe('INPUT')
+    expect(minSpend.value).toBe('160')
+  })
+
+  it('respects user edits to spend (does not re-auto-fill after override)', async () => {
+    mockApi({ netCash: 8_000_000 })
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter>
+        <Retirement />
+      </MemoryRouter>,
+    )
+    const defaultSpend = await screen.findByLabelText(/^Default spend/) as HTMLInputElement
+    await waitFor(() => expect(defaultSpend.value).toBe('240'))
+    await user.clear(defaultSpend)
+    await user.type(defaultSpend, '500')
+    expect(defaultSpend.value).toBe('500')
+    // Now bump additional portfolio: total grows but defaultSpend should stick.
+    const additional = screen.getByLabelText(/^Additional portfolio/) as HTMLInputElement
+    await user.clear(additional)
+    await user.type(additional, '4')
+    expect(defaultSpend.value).toBe('500')
+  })
+
+  it('keeps the leading-zero typing flow stable (no "025" / "010" stuck)', async () => {
+    mockApi({ netCash: 8_000_000 })
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter>
+        <Retirement />
+      </MemoryRouter>,
+    )
+    const additional = await screen.findByLabelText(/^Additional portfolio/) as HTMLInputElement
+    // Stage: type a value, then position-cursor-at-start scenario via clear+retype.
+    await user.clear(additional)
+    await user.type(additional, '02')
+    // While typing the field reflects the raw "02" — that's fine — but on blur
+    // it normalizes to "2" (leading zero gone, parsed numeric value).
+    additional.blur()
+    await waitFor(() => expect(additional.value).toBe('2'))
+  })
+
+  it('reveals the Minimum-spend explainer when its info button is clicked', async () => {
+    mockApi({ netCash: 8_000_000 })
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter>
+        <Retirement />
+      </MemoryRouter>,
+    )
+    await screen.findByLabelText(/^Minimum spend/)
+    const btn = screen.getByRole('button', { name: /Minimum spend.*explanation/i })
+    expect(screen.queryByText(/Set this floor equal to your default spend/)).not.toBeInTheDocument()
+    await user.click(btn)
+    expect(screen.getByText(/Set this floor equal to your default spend/)).toBeInTheDocument()
+  })
+
+  it('reveals the σ scenario explainer when its info button is clicked', async () => {
+    mockApi({ netCash: null })
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter>
+        <Retirement />
+      </MemoryRouter>,
+    )
+    const btn = await screen.findByRole('button', { name: /Return scenario explanation/i })
+    expect(screen.queryByText(/about 2\/3 of years fall within mean/)).not.toBeInTheDocument()
+    await user.click(btn)
+    expect(screen.getByText(/about 2\/3 of years fall within mean/)).toBeInTheDocument()
   })
 })

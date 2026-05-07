@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   Area,
   Bar,
@@ -111,6 +111,25 @@ function StatCard({
   )
 }
 
+function InfoButton({ open, onToggle, label }: { open: boolean; onToggle: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={e => {
+        // Stop the click from bubbling to the surrounding <label>, which would
+        // refocus the associated input.
+        e.stopPropagation()
+        onToggle()
+      }}
+      aria-label={`Show ${label} explanation`}
+      aria-expanded={open}
+      className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-stone-400 text-[9px] font-bold leading-none text-stone-500 hover:bg-stone-100 hover:text-stone-700 dark:border-slate-500 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+    >
+      ?
+    </button>
+  )
+}
+
 interface NumInputProps {
   label: string
   value: number
@@ -120,28 +139,65 @@ interface NumInputProps {
   max?: number
   suffix?: string
   hint?: string
+  info?: ReactNode
 }
-function NumInput({ label, value, onChange, step, min, max, suffix, hint }: NumInputProps) {
+function NumInput({ label, value, onChange, step, min, max, suffix, hint, info }: NumInputProps) {
+  // Use local string state so leading zeros (e.g. "025") don't get stuck when
+  // parseFloat collapses them back to the same numeric prop and React's
+  // controlled input bails out of a DOM update.
+  const [text, setText] = useState<string>(() => (Number.isFinite(value) ? String(value) : '0'))
+  const [focused, setFocused] = useState(false)
+  const [infoOpen, setInfoOpen] = useState(false)
+  const inputId = useId()
+
+  useEffect(() => {
+    if (focused) return
+    const parsed = parseFloat(text)
+    if (!Number.isFinite(parsed) || parsed !== value) {
+      setText(Number.isFinite(value) ? String(value) : '0')
+    }
+  }, [value, focused, text])
+
+  // Note: the InfoButton lives OUTSIDE the <label> so testing-library doesn't
+  // associate it with the input via label-contains-control matching (that
+  // would make getByLabelText return the button instead of the input).
   return (
-    <label className="flex flex-col gap-1">
-      <span className="text-[11px] font-medium text-gray-700 dark:text-slate-200">
-        {label}
-        {suffix && <span className="ml-1 text-gray-400 dark:text-slate-500">({suffix})</span>}
-      </span>
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1">
+        <label htmlFor={inputId} className="text-[11px] font-medium text-gray-700 dark:text-slate-200">
+          {label}
+          {suffix && <span className="ml-1 text-gray-400 dark:text-slate-500">({suffix})</span>}
+        </label>
+        {info && <InfoButton open={infoOpen} onToggle={() => setInfoOpen(o => !o)} label={label} />}
+      </div>
       <input
+        id={inputId}
         type="number"
         step={step ?? 'any'}
         min={min}
         max={max}
-        value={Number.isFinite(value) ? value : 0}
+        value={text}
+        onFocus={() => setFocused(true)}
         onChange={e => {
+          setText(e.target.value)
           const v = parseFloat(e.target.value)
           onChange(Number.isFinite(v) ? v : 0)
+        }}
+        onBlur={() => {
+          setFocused(false)
+          const parsed = parseFloat(text)
+          if (Number.isFinite(parsed)) setText(String(parsed))
+          else setText(Number.isFinite(value) ? String(value) : '0')
         }}
         className="rounded border border-stone-300 bg-white px-2 py-1 text-sm tabular-nums text-gray-900 focus:border-rose-400 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
       />
       {hint && <span className="text-[10px] text-gray-400 dark:text-slate-500">{hint}</span>}
-    </label>
+      {info && infoOpen && (
+        <div className="rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-[10px] leading-snug text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+          {info}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -289,11 +345,14 @@ export default function Retirement() {
   const [exitPreviewLoading, setExitPreviewLoading] = useState(false)
   const exitOverriddenRef = useRef(false)
   const refillOverriddenRef = useRef(false)
+  const defaultSpendOverriddenRef = useRef(false)
+  const minSpendOverriddenRef = useRef(false)
   const paramsLoadedRef = useRef(false)
   const [params, setParams] = useState<SimParams>(() => ({ ...DEFAULT_PARAMS }))
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<SimResult | null>(null)
   const [explainerOpen, setExplainerOpen] = useState(false)
+  const [sigmaOpen, setSigmaOpen] = useState(false)
   const [hasRun, setHasRun] = useState(false)
   const [ownerDOB, setOwnerDOB] = useState<string | null>(null)
   const [ownerName, setOwnerName] = useState<string | null>(null)
@@ -330,6 +389,8 @@ export default function Retirement() {
           // Treat saved values as user choices: don't auto-overwrite them.
           if ('epicExit' in saved) exitOverriddenRef.current = true
           if ('refillTaxDrag' in saved) refillOverriddenRef.current = true
+          if ('defaultSpend' in saved) defaultSpendOverriddenRef.current = true
+          if ('minSpend' in saved) minSpendOverriddenRef.current = true
         }
         paramsLoadedRef.current = true
       })
@@ -383,6 +444,25 @@ export default function Retirement() {
       })
       .catch(() => {})
   }, [vid])
+
+  // Default spend / min spend auto-derive from total portfolio (3% / 2%).
+  // Stops auto-deriving once the user (or saved params) has touched the field.
+  useEffect(() => {
+    const totalK = (params.epicExit + params.additional) * 1000
+    if (totalK <= 0) return
+    const wantDefault = Math.round(totalK * 0.03)
+    const wantMin = Math.round(totalK * 0.02)
+    setParams(prev => {
+      let next = prev
+      if (!defaultSpendOverriddenRef.current && prev.defaultSpend !== wantDefault) {
+        next = { ...next, defaultSpend: wantDefault }
+      }
+      if (!minSpendOverriddenRef.current && prev.minSpend !== wantMin) {
+        next = { ...next, minSpend: wantMin }
+      }
+      return next
+    })
+  }, [params.epicExit, params.additional])
 
   const update = useCallback(<K extends keyof SimParams>(key: K, value: SimParams[K]) => {
     setParams(prev => ({ ...prev, [key]: value }))
@@ -482,7 +562,7 @@ export default function Retirement() {
         <p className="mb-3 text-xs font-semibold text-gray-700 dark:text-slate-200">
           {vid ? `${ownerName ?? 'Owner'}'s details` : 'Your details'}
         </p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="flex flex-col gap-1">
             <span className="text-[11px] font-medium text-gray-700 dark:text-slate-200">
               Date of birth
@@ -503,8 +583,8 @@ export default function Retirement() {
               {vid
                 ? 'Set by the data owner'
                 : dobMissing
-                  ? 'Enter to derive current age + Medicare/SS timing'
-                  : `Saved · current age ${ageFromDOB(ownerDOB) ?? '—'}`}
+                  ? 'Used to estimate Social Security claim timing and Medicare eligibility (age 65)'
+                  : `Saved · age ${ageFromDOB(ownerDOB) ?? '—'} today · used for SS / Medicare timing`}
             </span>
           </label>
           <label className="flex flex-col gap-1">
@@ -521,18 +601,9 @@ export default function Retirement() {
               className="rounded border border-stone-300 bg-white px-2 py-1 text-sm tabular-nums text-gray-900 focus:border-rose-400 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
             />
             <span className="text-[10px] text-gray-400 dark:text-slate-500">
-              {exitPreviewLoading ? 'Fetching exit preview…' : 'Drives the exit amount below — does not change current age'}
+              {exitPreviewLoading ? 'Fetching exit preview…' : 'Drives the exit amount below'}
             </span>
           </label>
-          <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-gray-700 dark:text-slate-200">Current age</span>
-            <div className="rounded border border-stone-200 bg-stone-50 px-2 py-1 text-sm tabular-nums text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-              {ageFromDOB(ownerDOB) ?? '—'}
-            </div>
-            <span className="text-[10px] text-gray-400 dark:text-slate-500">
-              Today &minus; date of birth
-            </span>
-          </div>
         </div>
         <p className="mt-4 mb-2 text-[11px] font-semibold text-gray-700 dark:text-slate-200">Portfolio</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
@@ -608,20 +679,44 @@ export default function Retirement() {
           <NumInput
             label="Default spend"
             value={params.defaultSpend}
-            onChange={v => update('defaultSpend', v)}
+            onChange={v => {
+              defaultSpendOverriddenRef.current = true
+              update('defaultSpend', v)
+            }}
             min={0}
             step={5}
             suffix="$K/yr"
-            hint="Excludes health insurance"
+            hint="Default = 3% of total portfolio · excludes health insurance"
           />
           <NumInput
             label="Minimum spend (floor)"
             value={params.minSpend}
-            onChange={v => update('minSpend', v)}
+            onChange={v => {
+              minSpendOverriddenRef.current = true
+              update('minSpend', v)
+            }}
             min={0}
             step={5}
             suffix="$K/yr"
-            hint="Used when portfolio drops"
+            hint="Default = 2% of total portfolio"
+            info={
+              <>
+                <p className="mb-1">
+                  In any year your portfolio loses money (negative return), the simulation cuts spending from your
+                  default down to this floor. The bigger the gap between default and floor, the more flexibility
+                  you&rsquo;re modelling in bad years.
+                </p>
+                <p className="mb-1">
+                  Defaults: <strong>default spend = 3%</strong> of total portfolio, <strong>floor = 2%</strong>.
+                  So on a $10M portfolio you&rsquo;d spend $300K most years and drop to $200K (a 33% cut) in
+                  down-market years.
+                </p>
+                <p>
+                  Don&rsquo;t want to model any spending cut? Set this floor equal to your default spend &mdash; the
+                  simulation will then keep spending the same in every year regardless of returns.
+                </p>
+              </>
+            }
           />
           <NumInput
             label="Health insurance"
@@ -660,7 +755,29 @@ export default function Retirement() {
       </div>
 
       <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-        <p className="mb-3 text-xs font-semibold text-gray-700 dark:text-slate-200">Return scenario</p>
+        <div className="mb-3 flex items-center gap-1.5">
+          <p className="text-xs font-semibold text-gray-700 dark:text-slate-200">Return scenario</p>
+          <InfoButton open={sigmaOpen} onToggle={() => setSigmaOpen(o => !o)} label="Return scenario" />
+        </div>
+        {sigmaOpen && (
+          <div className="mb-3 rounded border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] leading-relaxed text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+            <p className="mb-1">
+              Each scenario is a pair of bell-curves describing how stocks and bonds might behave over the
+              long run. The <strong>mean</strong> is the average yearly return; <strong>σ (sigma)</strong> is
+              how much returns swing year-to-year.
+            </p>
+            <p className="mb-1">
+              Roughly, about 2/3 of years fall within mean&nbsp;&plusmn;&nbsp;σ. So with equity mean&nbsp;7% and
+              σ&nbsp;17%, a typical year ranges from about &minus;10% to&nbsp;+24%; about 1 year in&nbsp;20 is
+              worse than &minus;27% or better than&nbsp;+41%. Bigger σ = wilder swings (good <em>and</em> bad).
+            </p>
+            <p>
+              <strong>Historical</strong> uses long-run U.S. averages (7% / 1.5% real).&nbsp;
+              <strong>Moderate</strong> trims means and slightly widens σ.&nbsp;
+              <strong>Cautious</strong> trims them further with the widest σ &mdash; useful for stress-testing.
+            </p>
+          </div>
+        )}
         <div className="flex flex-wrap gap-1.5">
           {(Object.keys(SCENARIOS) as Scenario[]).map(s => {
             const sc = SCENARIOS[s]

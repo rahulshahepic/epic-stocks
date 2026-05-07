@@ -49,8 +49,10 @@ export const DEFAULT_PARAMS: SimParams = {
   additional: 0,
   stockPct: 0.7,
   bondPct: 0.2,
-  defaultSpend: 300,
-  minSpend: 135,
+  // Spend defaults are auto-derived from total portfolio (3% / 2%) by the UI
+  // once the exit-preview / saved params land. 0 here is just a placeholder.
+  defaultSpend: 0,
+  minSpend: 0,
   healthInsurance: 25,
   zeroHIPost65: true,
   refillTaxDrag: 0.25,

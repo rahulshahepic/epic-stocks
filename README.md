@@ -185,14 +185,14 @@ The **Retirement** tab runs a 100,000-path Monte Carlo of a 50-year retirement e
 
 **Inputs:**
 
-- **Date of birth** — saved on the user account; drives current age, the post-65 health-insurance cutoff, and SS claim-age timing. When viewing a shared account, the data owner's DOB is used (read-only).
-- **Retirement date** — date picker; the Epic exit value auto-fills from the dashboard's "If you exited" net cash for that date (editable). Does not change current age.
+- **Date of birth** — saved on the user account; used to estimate Social Security claim timing and Medicare eligibility (age 65), and to derive the simulation start age. When viewing a shared account, the data owner's DOB is used (read-only).
+- **Retirement date** — date picker; the Epic exit value auto-fills from the dashboard's "If you exited" net cash for that date (editable).
 - **Epic exit value + additional portfolio** ($M) — Epic exit plus brokerage / 401k / other assets give the total portfolio.
 - **Stocks / Bonds / Cash allocation** (%) — split the total portfolio. Cash is auto-computed as `100 − stocks − bonds`.
-- **Default / minimum spend** ($K/yr real, excluding health insurance) — what you withdraw in good years and the floor in bad / negative-return years.
+- **Default / minimum spend** ($K/yr real, excluding health insurance) — default-spend defaults to **3%** of total portfolio; minimum-spend (the floor used in negative-return years) defaults to **2%**. A click-to-expand explainer next to "Minimum spend" walks through the formula and notes you can set the floor equal to default spend to model no spending cuts in down years. Both defaults track total portfolio until you edit them.
 - **Health insurance** ($K/yr real, default $25K) with a default-checked **Zero out after age 65** checkbox (Medicare).
 - **Refill tax drag** (%) — tax paid when selling equity to refill cash. Default = your blended LT cap-gains rate from **Settings → Tax Rates**. Cash is only refilled from a year's net positive equity gain (preserves principal).
-- **Return scenario** — **Historical** (7%/1.5% real geometric means), **Moderate** (5%/0%), or **Cautious** (3.5%/-0.5%). Stocks and bonds are correlated (ρ = -0.05) in log space.
+- **Return scenario** — **Historical** (7%/1.5% real geometric means), **Moderate** (5%/0%), or **Cautious** (3.5%/-0.5%). Stocks and bonds are correlated (ρ = -0.05) in log space. A click-to-expand explainer next to the section heading walks through what σ (sigma) means and how the three scenarios differ.
 - **Simulate-until age** (slider) — sets the simulation horizon (years = end_age − current_age, where current_age comes from DOB).
 - **SS FRA monthly benefit + claim age slider** (62-70) — Social Security adjusted by the SSA early/late formula. SS reduces the portfolio withdrawal in years it's active.
 

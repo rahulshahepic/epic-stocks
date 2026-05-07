@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, ResponsiveContainer, CartesianGrid, ReferenceLine,
@@ -842,8 +842,9 @@ export default function Dashboard() {
     })
   }, [])
   useEffect(() => {
+    if (vid) return // viewer changes are in-memory only
     localStorage.setItem('dashboard_openBreakdowns', JSON.stringify([...openBreakdowns]))
-  }, [openBreakdowns])
+  }, [openBreakdowns, vid])
 
   // Load an exit preview for the current cardDate (only meaningful for today or later).
   const showExitPreview = cardDate >= TODAY
@@ -856,12 +857,13 @@ export default function Dashboard() {
     }
     setExitPreview('loading')
     const timer = setTimeout(() => {
-      api.previewExit(cardDate)
+      const fetcher = vid ? api.getSharedPreviewExit(vid, cardDate) : api.previewExit(cardDate)
+      fetcher
         .then(result => setExitPreview(result))
         .catch(() => setExitPreview(null))
     }, 200)
     return () => clearTimeout(timer)
-  }, [cardDate, showExitPreview])
+  }, [cardDate, showExitPreview, vid])
 
   // Investment interest deduction preview
   const [pendingDeduction, setPendingDeduction] = useState<boolean | null>(null)
@@ -915,13 +917,58 @@ export default function Dashboard() {
   }
 
   useEffect(() => {
+    if (vid) return
     localStorage.setItem('dashboard_range', JSON.stringify(range))
-  }, [range])
+  }, [range, vid])
 
   useEffect(() => {
+    if (vid) return
     localStorage.setItem('dashboard_dateMode', dateMode)
     if (dateMode === 'custom') localStorage.setItem('dashboard_cardDate', cardDate)
-  }, [dateMode, cardDate])
+  }, [dateMode, cardDate, vid])
+
+  // Load owner's saved dashboard prefs when viewing — used as the initial state
+  // for date-mode / cardDate / range / openBreakdowns. Local changes the viewer
+  // makes from here are in-memory only (the gates above prevent persistence).
+  // Owner's own dashboard saves to the server too, so the next viewer fetch
+  // reflects the owner's latest choice. Runs once per viewing context change.
+  const ownerPrefsAppliedRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (!vid) {
+      ownerPrefsAppliedRef.current = null
+      return
+    }
+    if (ownerPrefsAppliedRef.current === vid) return
+    api.getSharedDashboardPrefs(vid)
+      .then(({ prefs }) => {
+        ownerPrefsAppliedRef.current = vid
+        const m = (prefs as Record<string, unknown>).dateMode
+        if (m === 'today' || m === 'last-event' || m === 'custom') setDateMode(m)
+        const cd = (prefs as Record<string, unknown>).cardDate
+        if (typeof cd === 'string' && cd.length === 10) setCardDate(cd)
+        const rg = (prefs as Record<string, unknown>).range
+        if (rg && typeof rg === 'object' && 'mode' in rg) setRange(rg as DateRange)
+        const ob = (prefs as Record<string, unknown>).openBreakdowns
+        if (Array.isArray(ob)) setOpenBreakdowns(new Set(ob.filter(x => typeof x === 'string') as string[]))
+      })
+      .catch(() => {})
+  }, [vid])
+
+  // Sync owner's dashboard prefs to the server (debounced) so shared viewers
+  // see the owner's latest choices. Skipped while viewing (viewer changes don't
+  // overwrite the owner's persisted prefs).
+  useEffect(() => {
+    if (vid) return
+    const t = setTimeout(() => {
+      api.saveDashboardPrefs({
+        dateMode,
+        cardDate,
+        range,
+        openBreakdowns: [...openBreakdowns],
+      } as Record<string, unknown>).catch(() => {})
+    }, 400)
+    return () => clearTimeout(t)
+  }, [vid, dateMode, cardDate, range, openBreakdowns])
 
   // Only show projected/dashed styling when a future price actually differs from the current price
   const hasFuturePrices = useMemo(() => {

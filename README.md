@@ -108,7 +108,9 @@ Everything in the app is derived from these four tables at request time:
 
 9. **Compare to a salary offer** — go to **Comp Calc** to translate your stock-loan program into a single comparable comp number. See [Total Comp Calculator](#total-comp-calculator) below.
 
-10. **Export your data** — go to **Import/Export → Download Vesting.xlsx** for a full export at any time.
+10. **Stress-test retirement** — go to **Retirement** to run a 100,000-path Monte Carlo of a 50-year retirement using your Epic exit value plus other assets. See [Retirement Simulator](#retirement-simulator) below.
+
+11. **Export your data** — go to **Import/Export → Download Vesting.xlsx** for a full export at any time.
 
 ---
 
@@ -170,6 +172,40 @@ The math, in plain English: if Epic loaned you $L to buy stock, and that stock g
 - **Optional toggle**: deduct loan interest as investment-interest expense (IRS Form 4952) — reduces effective interest cost by your marginal ordinary income rate. Defaults to your **Settings → Tax → Deduct investment interest** preference.
 
 All math runs locally in your browser — no calculation results are stored. Tax rates come from your **Settings → Tax Rates**.
+
+---
+
+### Retirement Simulator
+
+| Mobile | Desktop |
+|--------|---------|
+| ![Retirement Mobile](screenshots/retirement-light-mobile.png) | ![Retirement Desktop](screenshots/retirement-light-desktop.png) |
+
+The **Retirement** tab runs a 100,000-path Monte Carlo of a 50-year retirement entirely in your browser. It pre-fills the Epic exit value from the dashboard's "If you exited today" net cash, lets you add a separate brokerage / 401k portfolio plus a cash buffer, then projects total wealth over time under stylized real-return assumptions.
+
+**Inputs:**
+
+- **Date of birth** — saved on the user account; drives current age, the post-65 health-insurance cutoff, and SS claim-age timing. When viewing a shared account, the data owner's DOB is used (read-only).
+- **Retirement date** — date picker; the Epic exit value auto-fills from the dashboard's "If you exited" net cash for that date (editable). Does not change current age.
+- **Epic exit value + additional portfolio** ($M) — Epic exit plus brokerage / 401k / other assets give the total portfolio.
+- **Stocks / Bonds / Cash allocation** (%) — split the total portfolio. Cash is auto-computed as `100 − stocks − bonds`.
+- **Default / minimum spend** ($K/yr real, excluding health insurance) — what you withdraw in good years and the floor in bad / negative-return years.
+- **Health insurance** ($K/yr real, default $25K) with a default-checked **Zero out after age 65** checkbox (Medicare).
+- **Refill tax drag** (%) — tax paid when selling equity to refill cash. Default = your blended LT cap-gains rate from **Settings → Tax Rates**. Cash is only refilled from a year's net positive equity gain (preserves principal).
+- **Return scenario** — **Historical** (7%/1.5% real geometric means), **Moderate** (5%/0%), or **Cautious** (3.5%/-0.5%). Stocks and bonds are correlated (ρ = -0.05) in log space.
+- **Simulate-until age** (slider) — sets the simulation horizon (years = end_age − current_age, where current_age comes from DOB).
+- **SS FRA monthly benefit + claim age slider** (62-70) — Social Security adjusted by the SSA early/late formula. SS reduces the portfolio withdrawal in years it's active.
+
+**Persistence:** The owner's last-run input set is saved to the database on every **Run simulation** click and re-loaded on next visit. Shared viewers see the owner's saved scenario as the default; viewer edits run locally but are never written back. The dashboard's date-mode / range / open-breakdowns preferences are also persisted server-side per owner (and a viewer's local changes never overwrite the owner's saved state).
+
+**Outputs:**
+
+- 4 stat cards — % paths above starting wealth, % ruin (both pools hit zero), median final $M, P10 final $M.
+- A fan chart of total wealth (real $M), x-axis in age, with p5–p95 percentile bands and a median line.
+- A histogram of final-age wealth, green/red bars marking above/below starting wealth (ruin paths excluded, count noted separately).
+- A percentile table at p1, p5, p10, p25, p50, p75, p90, p95, p99.
+
+All values are real (inflation-adjusted). Withdrawals happen at year-end after equity grows. Health insurance, when enabled, is added on top of base spend until the post-65 zero-out kicks in. The simulation runs locally — no data leaves your browser. Click **Run simulation** to execute; tweak inputs and re-run any time.
 
 ---
 
@@ -733,6 +769,7 @@ epic-stocks/
 │   │       ├── sales.py     # Sales CRUD + tax breakdown
 │   │       ├── tips.py      # Smart Tips: scenario tax comparisons + acceptance recording
 │   │       ├── wizard.py    # Setup Wizard: parse-file, preview (dry-run diff), submit
+│   │       ├── retirement.py # Retirement Simulator: persist sim params + dashboard prefs
 │   │       └── content.py   # Grant-program content: GET (any user) + content-admin CRUD
 │   └── tests/               # pytest tests
 ├── frontend/
@@ -743,7 +780,7 @@ epic-stocks/
 │   │   │   ├── contexts/    # ThemeContext, MaintenanceContext, ViewingContext
 │   │   │   └── hooks/       # useAuth, useConfig, useDark, usePush, useMe
 │   │   ├── app/             # Equity tracking UI (replace when forking)
-│   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport, Content, CompCalculator
+│   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport, Content, CompCalculator, Retirement
 │   │   │   ├── components/  # ImportWizard, TipCarousel
 │   │   │   └── hooks/       # useApiData, useDataSync, useContent
 │   │   ├── App.tsx          # Router + layout wiring

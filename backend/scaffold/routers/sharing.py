@@ -446,6 +446,54 @@ def shared_sales(
     return db.query(Sale).filter(Sale.user_id == owner.id).order_by(Sale.date).all()
 
 
+@router.get("/view/{invitation_id}/preview-exit")
+def shared_preview_exit(
+    invitation_id: int,
+    date: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    owner = _get_shared_owner(invitation_id, user, db)
+    from app.routers.events import _preview_exit_data
+    return _preview_exit_data(owner, db, date)
+
+
+@router.get("/view/{invitation_id}/profile")
+def shared_profile(
+    invitation_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return the data owner's profile fields the viewer needs (DOB drives age math)."""
+    owner = _get_shared_owner(invitation_id, user, db)
+    return {
+        "name": owner.name,
+        "date_of_birth": owner.date_of_birth.isoformat() if owner.date_of_birth else None,
+    }
+
+
+@router.get("/view/{invitation_id}/retirement-params")
+def shared_retirement_params(
+    invitation_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Read-only: viewer sees the owner's saved simulator params."""
+    owner = _get_shared_owner(invitation_id, user, db)
+    return {"params": owner.retirement_params}
+
+
+@router.get("/view/{invitation_id}/dashboard-prefs")
+def shared_dashboard_prefs(
+    invitation_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Read-only: viewer sees the owner's saved dashboard view state."""
+    owner = _get_shared_owner(invitation_id, user, db)
+    return {"prefs": owner.dashboard_prefs or {}}
+
+
 @router.get("/view/{invitation_id}/tax-settings")
 def shared_tax_settings(
     invitation_id: int,

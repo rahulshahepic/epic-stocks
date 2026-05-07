@@ -856,12 +856,13 @@ export default function Dashboard() {
     }
     setExitPreview('loading')
     const timer = setTimeout(() => {
-      api.previewExit(cardDate)
+      const fetcher = vid ? api.getSharedPreviewExit(vid, cardDate) : api.previewExit(cardDate)
+      fetcher
         .then(result => setExitPreview(result))
         .catch(() => setExitPreview(null))
     }, 200)
     return () => clearTimeout(timer)
-  }, [cardDate, showExitPreview])
+  }, [cardDate, showExitPreview, vid])
 
   // Investment interest deduction preview
   const [pendingDeduction, setPendingDeduction] = useState<boolean | null>(null)

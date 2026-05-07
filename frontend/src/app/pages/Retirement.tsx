@@ -282,13 +282,16 @@ export default function Retirement() {
   const [explainerOpen, setExplainerOpen] = useState(false)
   const [hasRun, setHasRun] = useState(false)
 
-  // Pre-fill Epic exit value from previewExit at the chosen date.
+  const vid = viewing?.invitationId
+
+  // Pre-fill Epic exit value from previewExit at the chosen date. Uses the
+  // shared variant when viewing someone else's account.
   useEffect(() => {
-    if (viewing) return
     if (exitOverriddenRef.current) return
     let cancelled = false
     setExitPreviewLoading(true)
-    api.previewExit(exitDate)
+    const fetcher = vid ? api.getSharedPreviewExit(vid, exitDate) : api.previewExit(exitDate)
+    fetcher
       .then(p => {
         if (cancelled || !p) return
         const m = Number((p.net_cash / 1_000_000).toFixed(3))
@@ -301,13 +304,13 @@ export default function Retirement() {
     return () => {
       cancelled = true
     }
-  }, [exitDate, viewing])
+  }, [exitDate, vid])
 
-  // Pre-fill refill tax drag from the user's blended LT cap-gains rate.
+  // Pre-fill refill tax drag from the (shared or own) blended LT cap-gains rate.
   useEffect(() => {
-    if (viewing) return
     if (refillOverriddenRef.current) return
-    api.getTaxSettings()
+    const fetcher = vid ? api.getSharedTaxSettings(vid) : api.getTaxSettings()
+    fetcher
       .then((ts: TaxSettings) => {
         if (refillOverriddenRef.current) return
         const rate = capGainsRate(ts)
@@ -316,7 +319,7 @@ export default function Retirement() {
         }
       })
       .catch(() => {})
-  }, [viewing])
+  }, [vid])
 
   const update = useCallback(<K extends keyof SimParams>(key: K, value: SimParams[K]) => {
     setParams(prev => ({ ...prev, [key]: value }))
@@ -359,7 +362,7 @@ export default function Retirement() {
         <h1 className="text-lg font-bold text-gray-900 dark:text-slate-100">Retirement Simulator</h1>
         {viewing && (
           <span className="text-[11px] text-stone-500 dark:text-slate-400">
-            Computed locally — uses defaults for shared accounts.
+            Viewing {viewing.name}&rsquo;s exit value &amp; tax rates · simulation runs in your browser
           </span>
         )}
       </div>

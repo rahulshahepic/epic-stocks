@@ -446,6 +446,18 @@ def shared_sales(
     return db.query(Sale).filter(Sale.user_id == owner.id).order_by(Sale.date).all()
 
 
+@router.get("/view/{invitation_id}/preview-exit")
+def shared_preview_exit(
+    invitation_id: int,
+    date: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    owner = _get_shared_owner(invitation_id, user, db)
+    from app.routers.events import _preview_exit_data
+    return _preview_exit_data(owner, db, date)
+
+
 @router.get("/view/{invitation_id}/tax-settings")
 def shared_tax_settings(
     invitation_id: int,

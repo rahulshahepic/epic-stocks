@@ -462,6 +462,7 @@ export const api = {
   getSharedSales: (invId: number) => apiFetch<SaleEntry[]>(`/api/sharing/view/${invId}/sales`),
   getSharedTaxSettings: (invId: number) => apiFetch<TaxSettings>(`/api/sharing/view/${invId}/tax-settings`),
   getSharedSaleTax: (invId: number, saleId: number) => apiFetch<TaxBreakdown>(`/api/sharing/view/${invId}/sales/${saleId}/tax`),
+  getSharedPreviewExit: (invId: number, date: string) => apiFetch<ExitPreview | null>(`/api/sharing/view/${invId}/preview-exit?date=${encodeURIComponent(date)}`),
   exportSharedExcel: (invId: number) => fetch(`/api/sharing/view/${invId}/export/excel`, { credentials: 'include' }),
 
   /** Stream SSE events from the key-rotation endpoint.

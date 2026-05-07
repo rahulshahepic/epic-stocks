@@ -665,16 +665,13 @@ def preview_deduction(
     }
 
 
-@router.get("/preview-exit")
-def preview_exit(
-    date: str = Query(..., description="ISO date to preview as exit date"),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Compute projected liquidation figures for a given exit date without saving it."""
+def _preview_exit_data(user: User, db: Session, date_str: str):
+    """Core preview-exit logic. Used by both the direct endpoint and the
+    /sharing/view/{invitation_id}/preview-exit endpoint, so it must operate
+    on an arbitrary User (not just the current request user)."""
     from datetime import date as date_type
     try:
-        preview_date = date_type.fromisoformat(date)
+        preview_date = date_type.fromisoformat(date_str)
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid date format")
 
@@ -722,6 +719,16 @@ def preview_exit(
         "date": preview_date.isoformat(),
         **summary,
     }
+
+
+@router.get("/preview-exit")
+def preview_exit(
+    date: str = Query(..., description="ISO date to preview as exit date"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Compute projected liquidation figures for a given exit date without saving it."""
+    return _preview_exit_data(user, db, date)
 
 
 @router.get("/events")

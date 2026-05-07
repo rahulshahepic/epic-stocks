@@ -23,6 +23,7 @@ import Admin from './scaffold/pages/Admin.tsx'
 import Content from './app/pages/Content.tsx'
 import Sales from './app/pages/Sales.tsx'
 import CompCalculator from './app/pages/CompCalculator.tsx'
+import Retirement from './app/pages/Retirement.tsx'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   useSessionRefresh()
@@ -66,6 +67,7 @@ export default function App() {
             <Route path="sales" element={<FinancialRoute><Sales /></FinancialRoute>} />
             <Route path="loans" element={<FinancialRoute><Loans /></FinancialRoute>} />
             <Route path="comp-calculator" element={<FinancialRoute><CompCalculator /></FinancialRoute>} />
+            <Route path="retirement" element={<FinancialRoute><Retirement /></FinancialRoute>} />
             <Route path="prices" element={<FinancialRoute><Prices /></FinancialRoute>} />
             <Route path="import" element={<FinancialRoute><ImportExport /></FinancialRoute>} />
             <Route path="wizard" element={<FinancialRoute><div className="p-4"><ImportWizard isPage /></div></FinancialRoute>} />

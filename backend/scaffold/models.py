@@ -22,6 +22,17 @@ class User(Base):
     # Bumped by "sign out everywhere" to invalidate all outstanding JWTs. Tokens
     # carry the value at issue time; mismatch = forced re-login.
     session_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    # Profile / preferences (added for Retirement Simulator).
+    # date_of_birth drives "current age" on the simulator and SS/Medicare timing.
+    date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # JSON blob of saved retirement-sim parameters (one per user, latest wins).
+    # Stored plain because (a) viewers fetch via the shared endpoint after the
+    # owner's encryption key is set, and (b) the same dollar amounts already
+    # flow plaintext through /api/dashboard.
+    retirement_params: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Owner's saved dashboard view preferences (date mode / specific date / range).
+    # Plain JSON — display state only, no financial data.
+    dashboard_prefs: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     grants: Mapped[list["Grant"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     loans: Mapped[list["Loan"]] = relationship(back_populates="user", cascade="all, delete-orphan")

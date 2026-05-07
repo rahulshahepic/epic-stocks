@@ -9,6 +9,7 @@ import { useViewing } from '../contexts/ViewingContext.tsx'
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard' },
   { to: '/comp-calculator', label: 'Comp Calc' },
+  { to: '/retirement', label: 'Retirement' },
   { to: '/events', label: 'Events' },
   { to: '/grants', label: 'Grants' },
   { to: '/sales', label: 'Sales' },

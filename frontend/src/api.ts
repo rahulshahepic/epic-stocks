@@ -275,7 +275,15 @@ export const api = {
     post<PriceEntry>('/api/flows/annual-price', data),
 
   // User info
-  getMe: () => apiFetch<{ id: number; email: string; name: string; is_admin: boolean; is_content_admin: boolean; shared_accounts?: SharedAccount[] }>('/api/me'),
+  getMe: () => apiFetch<{ id: number; email: string; name: string; is_admin: boolean; is_content_admin: boolean; shared_accounts?: SharedAccount[]; date_of_birth?: string | null }>('/api/me'),
+  updateProfile: (body: { date_of_birth?: string | null }) => apiFetch<{ date_of_birth: string | null }>('/api/me/profile', { method: 'PATCH', body: JSON.stringify(body) }),
+  getRetirementParams: () => apiFetch<{ params: Record<string, unknown> | null }>('/api/retirement/params'),
+  saveRetirementParams: (params: Record<string, unknown>) => put<{ params: Record<string, unknown> }>('/api/retirement/params', { params }),
+  getDashboardPrefs: () => apiFetch<{ prefs: Record<string, unknown> }>('/api/dashboard-prefs'),
+  saveDashboardPrefs: (prefs: Record<string, unknown>) => put<{ prefs: Record<string, unknown> }>('/api/dashboard-prefs', { prefs }),
+  getSharedProfile: (invId: number) => apiFetch<{ name: string | null; date_of_birth: string | null }>(`/api/sharing/view/${invId}/profile`),
+  getSharedRetirementParams: (invId: number) => apiFetch<{ params: Record<string, unknown> | null }>(`/api/sharing/view/${invId}/retirement-params`),
+  getSharedDashboardPrefs: (invId: number) => apiFetch<{ prefs: Record<string, unknown> }>(`/api/sharing/view/${invId}/dashboard-prefs`),
 
   // Push notifications
   pushSubscribe: (subscription: PushSubscriptionJSON) =>
@@ -462,6 +470,7 @@ export const api = {
   getSharedSales: (invId: number) => apiFetch<SaleEntry[]>(`/api/sharing/view/${invId}/sales`),
   getSharedTaxSettings: (invId: number) => apiFetch<TaxSettings>(`/api/sharing/view/${invId}/tax-settings`),
   getSharedSaleTax: (invId: number, saleId: number) => apiFetch<TaxBreakdown>(`/api/sharing/view/${invId}/sales/${saleId}/tax`),
+  getSharedPreviewExit: (invId: number, date: string) => apiFetch<ExitPreview | null>(`/api/sharing/view/${invId}/preview-exit?date=${encodeURIComponent(date)}`),
   exportSharedExcel: (invId: number) => fetch(`/api/sharing/view/${invId}/export/excel`, { credentials: 'include' }),
 
   /** Stream SSE events from the key-rotation endpoint.

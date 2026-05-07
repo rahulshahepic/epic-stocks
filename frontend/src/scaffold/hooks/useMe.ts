@@ -9,12 +9,19 @@ interface MeData {
   is_admin: boolean
   is_content_admin: boolean
   shared_accounts?: SharedAccount[]
+  date_of_birth?: string | null
 }
 
 let cached: MeData | null = null
 
 export function resetMeCache() {
   cached = null
+}
+
+/** Update the cached /me record in place — used after PATCHing a profile field. */
+export function updateMeCache(patch: Partial<MeData>) {
+  if (!cached) return
+  cached = { ...cached, ...patch }
 }
 
 const USER_SCOPED_LS_KEYS = [

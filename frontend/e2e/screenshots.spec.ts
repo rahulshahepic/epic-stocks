@@ -306,14 +306,20 @@ test.describe('Screenshots', () => {
     await page.screenshot({ path: `${OUT}/comp-calculator-rolling-light-desktop.png`, fullPage: true })
   })
 
-  // Seed plausible portfolio values so the screenshots look like a real
+  // Seed plausible portfolio values + DOB so the screenshots reflect a real
   // retirement plan rather than a $237K exit ruining at year 1.
   async function seedRetirement(page: Page) {
     await page.goto(`${BASE}/retirement`)
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
+    // DOB is the first <input type="date"> on the page.
+    const dob = page.locator('input[type="date"]').first()
+    await dob.click()
+    await dob.fill('1976-04-15')
+    await page.locator('body').click()
+    await page.waitForTimeout(300)
     const fill = async (label: RegExp, value: string) => {
-      const input = page.getByLabel(label)
+      const input = page.getByLabel(label, { exact: false })
       await input.click()
       await input.fill(value)
     }

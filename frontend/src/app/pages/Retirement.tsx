@@ -16,6 +16,7 @@ import {
 import { api, type TaxSettings } from '../../api.ts'
 import { useDark } from '../../scaffold/hooks/useDark.ts'
 import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
+import { useMe, updateMeCache } from '../../scaffold/hooks/useMe.ts'
 import { capGainsRate } from './CompCalculator.math.ts'
 import {
   computeFanPercentiles,
@@ -269,28 +270,90 @@ function HistogramTooltip({
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
+function ageFromDOB(dob: string | null | undefined, asOf: string = TODAY): number | null {
+  if (!dob) return null
+  const a = new Date(dob)
+  const b = new Date(asOf)
+  if (isNaN(a.getTime()) || isNaN(b.getTime())) return null
+  let years = b.getUTCFullYear() - a.getUTCFullYear()
+  const m = b.getUTCMonth() - a.getUTCMonth()
+  if (m < 0 || (m === 0 && b.getUTCDate() < a.getUTCDate())) years--
+  return years
+}
+
 export default function Retirement() {
   const { viewing } = useViewing()
   const c = useChartColors()
-  const [exitDate, setExitDate] = useState<string>(TODAY)
+  const me = useMe()
+  const [retirementDate, setRetirementDate] = useState<string>(TODAY)
   const [exitPreviewLoading, setExitPreviewLoading] = useState(false)
   const exitOverriddenRef = useRef(false)
   const refillOverriddenRef = useRef(false)
+  const paramsLoadedRef = useRef(false)
   const [params, setParams] = useState<SimParams>(() => ({ ...DEFAULT_PARAMS }))
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<SimResult | null>(null)
   const [explainerOpen, setExplainerOpen] = useState(false)
   const [hasRun, setHasRun] = useState(false)
+  const [ownerDOB, setOwnerDOB] = useState<string | null>(null)
+  const [ownerName, setOwnerName] = useState<string | null>(null)
+  const [savingDOB, setSavingDOB] = useState(false)
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
 
   const vid = viewing?.invitationId
 
-  // Pre-fill Epic exit value from previewExit at the chosen date. Uses the
-  // shared variant when viewing someone else's account.
+  // Resolve who's DOB we're showing.  When viewing, fetch the owner's profile;
+  // otherwise use the cached /me data.
+  useEffect(() => {
+    if (vid) {
+      api.getSharedProfile(vid)
+        .then(p => {
+          setOwnerDOB(p.date_of_birth)
+          setOwnerName(p.name)
+        })
+        .catch(() => {})
+    } else if (me) {
+      setOwnerDOB(me.date_of_birth ?? null)
+      setOwnerName(me.name)
+    }
+  }, [vid, me])
+
+  // Load saved sim params (owner's, viewer-readonly when sharing). Run once
+  // per (vid) change so a manually-edited param isn't snapped back later.
+  useEffect(() => {
+    paramsLoadedRef.current = false
+    const fetcher = vid ? api.getSharedRetirementParams(vid) : api.getRetirementParams()
+    fetcher
+      .then(({ params: saved }) => {
+        if (saved && typeof saved === 'object') {
+          setParams(prev => ({ ...prev, ...saved as Partial<SimParams> }))
+          // Treat saved values as user choices: don't auto-overwrite them.
+          if ('epicExit' in saved) exitOverriddenRef.current = true
+          if ('refillTaxDrag' in saved) refillOverriddenRef.current = true
+        }
+        paramsLoadedRef.current = true
+      })
+      .catch(() => {
+        paramsLoadedRef.current = true
+      })
+  }, [vid])
+
+  // Push DOB-derived current age into params so the math module uses it.
+  // (We keep currentAge in SimParams so `simulate` stays a pure function.)
+  useEffect(() => {
+    const age = ageFromDOB(ownerDOB)
+    if (age != null && age > 0) {
+      setParams(prev => (prev.currentAge === age ? prev : { ...prev, currentAge: age }))
+    }
+  }, [ownerDOB])
+
+  // Pre-fill Epic exit value from previewExit at the chosen retirement date.
+  // Uses the shared variant when viewing someone else's account.
   useEffect(() => {
     if (exitOverriddenRef.current) return
     let cancelled = false
     setExitPreviewLoading(true)
-    const fetcher = vid ? api.getSharedPreviewExit(vid, exitDate) : api.previewExit(exitDate)
+    const fetcher = vid ? api.getSharedPreviewExit(vid, retirementDate) : api.previewExit(retirementDate)
     fetcher
       .then(p => {
         if (cancelled || !p) return
@@ -304,7 +367,7 @@ export default function Retirement() {
     return () => {
       cancelled = true
     }
-  }, [exitDate, vid])
+  }, [retirementDate, vid])
 
   // Pre-fill refill tax drag from the (shared or own) blended LT cap-gains rate.
   useEffect(() => {
@@ -325,6 +388,18 @@ export default function Retirement() {
     setParams(prev => ({ ...prev, [key]: value }))
   }, [])
 
+  const saveDOB = useCallback(async (newDOB: string) => {
+    if (vid) return // viewer can't edit owner's DOB
+    setSavingDOB(true)
+    try {
+      const result = await api.updateProfile({ date_of_birth: newDOB || '' })
+      setOwnerDOB(result.date_of_birth)
+      updateMeCache({ date_of_birth: result.date_of_birth })
+    } finally {
+      setSavingDOB(false)
+    }
+  }, [vid])
+
   const totalPortfolio = params.epicExit + params.additional
   const cashPct = Math.max(0, 1 - params.stockPct - params.bondPct)
   const startingCash = totalPortfolio * cashPct
@@ -333,6 +408,7 @@ export default function Retirement() {
   const ssAnnualK = (params.ssMonthly * 12 / 1000) * ssAdj
   const ssStartYear = Math.max(0, params.claimAge - params.currentAge)
   const years = Math.max(1, Math.round(params.endAge - params.currentAge))
+  const dobMissing = !ownerDOB
 
   const run = useCallback(() => {
     setRunning(true)
@@ -341,11 +417,18 @@ export default function Retirement() {
         const r = simulate(params)
         setResult(r)
         setHasRun(true)
+        // Persist params for the owner only — viewers don't write back.
+        if (!vid) {
+          setSaveStatus('saving')
+          api.saveRetirementParams(params as unknown as Record<string, unknown>)
+            .then(() => setSaveStatus('saved'))
+            .catch(() => setSaveStatus('idle'))
+        }
       } finally {
         setRunning(false)
       }
     }, 30)
-  }, [params])
+  }, [params, vid])
 
   const fanData = useMemo(() => (result ? buildFanData(computeFanPercentiles(result)) : []), [result])
   const histData = useMemo(() => (result ? histogram(result, 30) : null), [result])
@@ -396,23 +479,63 @@ export default function Retirement() {
       </div>
 
       <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-        <p className="mb-3 text-xs font-semibold text-gray-700 dark:text-slate-200">Portfolio</p>
+        <p className="mb-3 text-xs font-semibold text-gray-700 dark:text-slate-200">
+          {vid ? `${ownerName ?? 'Owner'}'s details` : 'Your details'}
+        </p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
           <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-gray-700 dark:text-slate-200">Exit date</span>
+            <span className="text-[11px] font-medium text-gray-700 dark:text-slate-200">
+              Date of birth
+            </span>
             <input
               type="date"
-              value={exitDate}
+              value={ownerDOB ?? ''}
+              disabled={!!vid || savingDOB}
+              onChange={e => {
+                setOwnerDOB(e.target.value || null)
+              }}
+              onBlur={e => {
+                if (!vid) saveDOB(e.target.value)
+              }}
+              className="rounded border border-stone-300 bg-white px-2 py-1 text-sm tabular-nums text-gray-900 focus:border-rose-400 focus:outline-none disabled:bg-stone-100 disabled:text-stone-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:disabled:bg-slate-900 dark:disabled:text-slate-400"
+            />
+            <span className="text-[10px] text-gray-400 dark:text-slate-500">
+              {vid
+                ? 'Set by the data owner'
+                : dobMissing
+                  ? 'Enter to derive current age + Medicare/SS timing'
+                  : `Saved · current age ${ageFromDOB(ownerDOB) ?? '—'}`}
+            </span>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-medium text-gray-700 dark:text-slate-200">
+              Retirement date
+            </span>
+            <input
+              type="date"
+              value={retirementDate}
               onChange={e => {
                 exitOverriddenRef.current = false
-                setExitDate(e.target.value)
+                setRetirementDate(e.target.value)
               }}
               className="rounded border border-stone-300 bg-white px-2 py-1 text-sm tabular-nums text-gray-900 focus:border-rose-400 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
             />
             <span className="text-[10px] text-gray-400 dark:text-slate-500">
-              {exitPreviewLoading ? 'Fetching exit preview…' : 'Net cash on this date pre-fills below'}
+              {exitPreviewLoading ? 'Fetching exit preview…' : 'Drives the exit amount below — does not change current age'}
             </span>
           </label>
+          <div className="flex flex-col gap-1">
+            <span className="text-[11px] font-medium text-gray-700 dark:text-slate-200">Current age</span>
+            <div className="rounded border border-stone-200 bg-stone-50 px-2 py-1 text-sm tabular-nums text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              {ageFromDOB(ownerDOB) ?? '—'}
+            </div>
+            <span className="text-[10px] text-gray-400 dark:text-slate-500">
+              Today &minus; date of birth
+            </span>
+          </div>
+        </div>
+        <p className="mt-4 mb-2 text-[11px] font-semibold text-gray-700 dark:text-slate-200">Portfolio</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
           <NumInput
             label="Epic exit value"
             value={params.epicExit}
@@ -423,7 +546,7 @@ export default function Retirement() {
             min={0}
             step={0.1}
             suffix="$M"
-            hint="Editable — overrides the auto-fetch"
+            hint="Auto-filled from the date above; editable"
           />
           <NumInput
             label="Additional portfolio"
@@ -570,26 +693,20 @@ export default function Retirement() {
 
       <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
         <p className="mb-3 text-xs font-semibold text-gray-700 dark:text-slate-200">Time horizon</p>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <SliderInput
-            label="Current age"
-            value={params.currentAge}
-            onChange={v => update('currentAge', Math.max(30, Math.min(90, Math.round(v))))}
-            min={30}
-            max={90}
-            step={1}
-            hint="Age at simulation start"
-          />
-          <SliderInput
-            label="Simulate until age"
-            value={params.endAge}
-            onChange={v => update('endAge', Math.max(params.currentAge + 1, Math.min(110, Math.round(v))))}
-            min={Math.min(params.currentAge + 1, 110)}
-            max={110}
-            step={1}
-            hint={`${years}-year horizon`}
-          />
-        </div>
+        <SliderInput
+          label="Simulate until age"
+          value={params.endAge}
+          onChange={v => update('endAge', Math.max(params.currentAge + 1, Math.min(110, Math.round(v))))}
+          min={Math.min(params.currentAge + 1, 110)}
+          max={110}
+          step={1}
+          hint={`Starts at age ${params.currentAge} (from DOB) · ${years}-year horizon`}
+        />
+        {dobMissing && (
+          <p className="mt-2 text-[10px] text-amber-700 dark:text-amber-300">
+            ⚠ Set date of birth above to enable age-based features (current age defaults to 50).
+          </p>
+        )}
       </div>
 
       <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
@@ -640,7 +757,15 @@ export default function Retirement() {
         </button>
         {result && (
           <p className="text-[11px] text-stone-500 dark:text-slate-400">
-            {result.finalWealth.length.toLocaleString()} paths simulated. Tweak inputs and re-run anytime.
+            {result.finalWealth.length.toLocaleString()} paths simulated.
+            {' '}
+            {vid
+              ? 'Viewer changes are not saved.'
+              : saveStatus === 'saving'
+                ? 'Saving inputs…'
+                : saveStatus === 'saved'
+                  ? 'Inputs saved.'
+                  : 'Tweak and re-run anytime.'}
           </p>
         )}
       </div>

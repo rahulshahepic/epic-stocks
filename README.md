@@ -185,15 +185,18 @@ The **Retirement** tab runs a 100,000-path Monte Carlo of a 50-year retirement e
 
 **Inputs:**
 
-- **Exit date** — date picker; the Epic exit value auto-fills from the dashboard's "If you exited" net cash for that date (editable).
+- **Date of birth** — saved on the user account; drives current age, the post-65 health-insurance cutoff, and SS claim-age timing. When viewing a shared account, the data owner's DOB is used (read-only).
+- **Retirement date** — date picker; the Epic exit value auto-fills from the dashboard's "If you exited" net cash for that date (editable). Does not change current age.
 - **Epic exit value + additional portfolio** ($M) — Epic exit plus brokerage / 401k / other assets give the total portfolio.
 - **Stocks / Bonds / Cash allocation** (%) — split the total portfolio. Cash is auto-computed as `100 − stocks − bonds`.
 - **Default / minimum spend** ($K/yr real, excluding health insurance) — what you withdraw in good years and the floor in bad / negative-return years.
 - **Health insurance** ($K/yr real, default $25K) with a default-checked **Zero out after age 65** checkbox (Medicare).
 - **Refill tax drag** (%) — tax paid when selling equity to refill cash. Default = your blended LT cap-gains rate from **Settings → Tax Rates**. Cash is only refilled from a year's net positive equity gain (preserves principal).
 - **Return scenario** — **Historical** (7%/1.5% real geometric means), **Moderate** (5%/0%), or **Cautious** (3.5%/-0.5%). Stocks and bonds are correlated (ρ = -0.05) in log space.
-- **Current age + simulate-until age** (sliders) — sets the simulation horizon (years = end_age − current_age).
+- **Simulate-until age** (slider) — sets the simulation horizon (years = end_age − current_age, where current_age comes from DOB).
 - **SS FRA monthly benefit + claim age slider** (62-70) — Social Security adjusted by the SSA early/late formula. SS reduces the portfolio withdrawal in years it's active.
+
+**Persistence:** The owner's last-run input set is saved to the database on every **Run simulation** click and re-loaded on next visit. Shared viewers see the owner's saved scenario as the default; viewer edits run locally but are never written back. The dashboard's date-mode / range / open-breakdowns preferences are also persisted server-side per owner (and a viewer's local changes never overwrite the owner's saved state).
 
 **Outputs:**
 
@@ -766,6 +769,7 @@ epic-stocks/
 │   │       ├── sales.py     # Sales CRUD + tax breakdown
 │   │       ├── tips.py      # Smart Tips: scenario tax comparisons + acceptance recording
 │   │       ├── wizard.py    # Setup Wizard: parse-file, preview (dry-run diff), submit
+│   │       ├── retirement.py # Retirement Simulator: persist sim params + dashboard prefs
 │   │       └── content.py   # Grant-program content: GET (any user) + content-admin CRUD
 │   └── tests/               # pytest tests
 ├── frontend/

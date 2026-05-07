@@ -3,7 +3,7 @@ import os
 import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from sqlalchemy.orm import Session
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -13,6 +13,7 @@ import database
 logger = logging.getLogger(__name__)
 from scaffold.routers import auth_router, admin, notifications, push, sharing, unsubscribe
 from app.routers import grants, loans, prices, events, flows, import_export, sales, cache as cache_router, tips, wizard, content
+from app.routers.retirement import retirement_router, dashboard_prefs_router
 from scaffold.auth import get_current_user
 from scaffold.crypto import encryption_enabled, decrypt_user_key, set_current_key
 from database import get_db
@@ -551,6 +552,8 @@ _fastapi_app.include_router(wizard.router)
 _fastapi_app.include_router(sharing.router)
 _fastapi_app.include_router(unsubscribe.router)
 _fastapi_app.include_router(content.router)
+_fastapi_app.include_router(retirement_router)
+_fastapi_app.include_router(dashboard_prefs_router)
 
 
 @_fastapi_app.get("/api/health")
@@ -600,7 +603,35 @@ def current_user_info(user=Depends(get_current_user), db: Session = Depends(get_
         "is_admin": bool(user.is_admin),
         "is_content_admin": bool(user.is_content_admin),
         "shared_accounts": shared_accounts,
+        "date_of_birth": user.date_of_birth.isoformat() if user.date_of_birth else None,
     }
+
+
+from pydantic import BaseModel, Field
+
+
+class _ProfileUpdate(BaseModel):
+    date_of_birth: str | None = Field(default=None, description="ISO date or empty string to clear")
+
+
+@_fastapi_app.patch("/api/me/profile")
+def update_my_profile(
+    body: _ProfileUpdate,
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Update user-editable profile fields (currently just date_of_birth)."""
+    from datetime import date as _date
+    if body.date_of_birth is not None:
+        if body.date_of_birth == "":
+            user.date_of_birth = None
+        else:
+            try:
+                user.date_of_birth = _date.fromisoformat(body.date_of_birth)
+            except ValueError:
+                raise HTTPException(status_code=422, detail="Invalid date format")
+    db.commit()
+    return {"date_of_birth": user.date_of_birth.isoformat() if user.date_of_birth else None}
 
 
 @_fastapi_app.post("/api/me/reset", status_code=204)

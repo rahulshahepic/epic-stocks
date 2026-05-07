@@ -3,10 +3,12 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import Retirement from '../app/pages/Retirement.tsx'
+import { resetMeCache } from '../scaffold/hooks/useMe.ts'
 
 beforeEach(() => {
   localStorage.setItem('auth_token', 'test-token')
   vi.restoreAllMocks()
+  resetMeCache()
   // recharts ResponsiveContainer measures the parent; jsdom needs a stub.
   if (!globalThis.ResizeObserver) {
     globalThis.ResizeObserver = class {
@@ -35,7 +37,7 @@ const TAX_SETTINGS = {
   taxable_years: [],
 }
 
-function mockApi(opts: { netCash?: number | null } = {}) {
+function mockApi(opts: { netCash?: number | null; dob?: string | null; savedParams?: Record<string, unknown> | null } = {}) {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url
     if (url.includes('/api/preview-exit')) {
@@ -63,6 +65,20 @@ function mockApi(opts: { netCash?: number | null } = {}) {
     if (url.includes('/api/tax-settings')) {
       return new Response(JSON.stringify(TAX_SETTINGS), { status: 200 })
     }
+    if (url.includes('/api/retirement/params')) {
+      return new Response(JSON.stringify({ params: opts.savedParams ?? null }), { status: 200 })
+    }
+    if (url.endsWith('/api/me') || url.includes('/api/me?')) {
+      return new Response(JSON.stringify({
+        id: 1, email: 't@t.com', name: 'Test',
+        is_admin: false, is_content_admin: false,
+        shared_accounts: [],
+        date_of_birth: opts.dob ?? null,
+      }), { status: 200 })
+    }
+    if (url.includes('/api/me/profile')) {
+      return new Response(JSON.stringify({ date_of_birth: opts.dob ?? null }), { status: 200 })
+    }
     return new Response('{}', { status: 200 })
   })
 }
@@ -78,9 +94,9 @@ describe('Retirement page', () => {
     expect(screen.getByRole('heading', { name: /retirement simulator/i })).toBeInTheDocument()
     expect(screen.getByText(/total portfolio:/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /run.*paths.*years/i })).toBeInTheDocument()
-    expect(screen.getByLabelText(/Exit date/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Retirement date/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Date of birth/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/^Health insurance/)).toBeInTheDocument()
-    expect(screen.getByLabelText(/Current age/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/Simulate until age/i)).toBeInTheDocument()
   })
 
@@ -178,7 +194,7 @@ describe('Retirement page', () => {
     expect(checkbox.checked).toBe(false)
   })
 
-  it('updates horizon when current/end age changes', async () => {
+  it('updates horizon when end age slider changes', async () => {
     mockApi({ netCash: null })
     render(
       <MemoryRouter>
@@ -191,5 +207,30 @@ describe('Retirement page', () => {
     const endSlider = screen.getByLabelText(/Simulate until age/i) as HTMLInputElement
     fireEvent.change(endSlider, { target: { value: '90' } })
     await waitFor(() => expect(screen.getByText(/40-year horizon/)).toBeInTheDocument())
+  })
+
+  it('derives current age from the saved DOB', async () => {
+    // DOB 1980-04-15 with TODAY = current real date in test env. We just check
+    // the input picks up the value and the derived hint is rendered.
+    mockApi({ netCash: null, dob: '1980-04-15' })
+    render(
+      <MemoryRouter>
+        <Retirement />
+      </MemoryRouter>,
+    )
+    const dobInput = await screen.findByLabelText(/Date of birth/i) as HTMLInputElement
+    await waitFor(() => expect(dobInput.value).toBe('1980-04-15'))
+    // Hint references "Saved · current age" and the derived integer.
+    await waitFor(() => expect(screen.getByText(/Saved · current age/)).toBeInTheDocument())
+  })
+
+  it('shows missing-DOB warning when no DOB is set', async () => {
+    mockApi({ netCash: null, dob: null })
+    render(
+      <MemoryRouter>
+        <Retirement />
+      </MemoryRouter>,
+    )
+    expect(await screen.findByText(/Set date of birth above/)).toBeInTheDocument()
   })
 })

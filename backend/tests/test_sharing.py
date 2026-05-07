@@ -273,6 +273,90 @@ class TestSharedAccess:
         finally:
             bob_cm.__exit__(None, None, None)
 
+    # ── Profile (DOB) ───────────────────────────────────────────────────────
+
+    def test_viewer_reads_owner_profile_and_dob(self, client, make_client):
+        """Viewer sees the owner's name + DOB; viewer's own DOB is independent."""
+        alice, bob, bob_cm, inv_id = self._setup_shared(client, make_client)
+        try:
+            # Alice sets her DOB
+            r = alice.patch("/api/me/profile", json={"date_of_birth": "1980-04-15"})
+            assert r.status_code == 200
+            assert r.json()["date_of_birth"] == "1980-04-15"
+
+            # Bob sees Alice's DOB via the shared profile endpoint
+            resp = bob.get(f"/api/sharing/view/{inv_id}/profile")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["name"] == "Alice"
+            assert data["date_of_birth"] == "1980-04-15"
+
+            # Bob's own DOB is still unset (independent of Alice's)
+            assert bob.get("/api/me").json()["date_of_birth"] is None
+        finally:
+            bob_cm.__exit__(None, None, None)
+
+    def test_profile_validates_dob_format(self, client):
+        register_user(client, "alice@test.com")
+        resp = client.patch("/api/me/profile", json={"date_of_birth": "not-a-date"})
+        assert resp.status_code == 422
+
+    def test_profile_clears_dob_with_empty_string(self, client):
+        register_user(client, "alice@test.com")
+        client.patch("/api/me/profile", json={"date_of_birth": "1990-01-01"})
+        resp = client.patch("/api/me/profile", json={"date_of_birth": ""})
+        assert resp.status_code == 200
+        assert resp.json()["date_of_birth"] is None
+        assert client.get("/api/me").json()["date_of_birth"] is None
+
+    # ── Saved retirement params ────────────────────────────────────────────
+
+    def test_save_and_load_retirement_params(self, client):
+        register_user(client, "alice@test.com")
+        # Initially null
+        assert client.get("/api/retirement/params").json()["params"] is None
+        # Save
+        body = {"params": {"epicExit": 5, "stockPct": 0.7, "scenario": "historical"}}
+        r = client.put("/api/retirement/params", json=body)
+        assert r.status_code == 200
+        # Reload
+        loaded = client.get("/api/retirement/params").json()["params"]
+        assert loaded == body["params"]
+
+    def test_viewer_sees_owner_retirement_params_readonly(self, client, make_client):
+        alice, bob, bob_cm, inv_id = self._setup_shared(client, make_client)
+        try:
+            alice.put("/api/retirement/params", json={"params": {"epicExit": 5, "stockPct": 0.6}})
+            resp = bob.get(f"/api/sharing/view/{inv_id}/retirement-params")
+            assert resp.status_code == 200
+            assert resp.json()["params"] == {"epicExit": 5, "stockPct": 0.6}
+
+            # Bob's own saved params are independent (and still null)
+            assert bob.get("/api/retirement/params").json()["params"] is None
+        finally:
+            bob_cm.__exit__(None, None, None)
+
+    # ── Saved dashboard prefs ──────────────────────────────────────────────
+
+    def test_save_and_load_dashboard_prefs(self, client):
+        register_user(client, "alice@test.com")
+        assert client.get("/api/dashboard-prefs").json()["prefs"] == {}
+        r = client.put("/api/dashboard-prefs", json={"prefs": {"dateMode": "last-event", "openBreakdowns": ["grants"]}})
+        assert r.status_code == 200
+        loaded = client.get("/api/dashboard-prefs").json()["prefs"]
+        assert loaded["dateMode"] == "last-event"
+        assert loaded["openBreakdowns"] == ["grants"]
+
+    def test_viewer_sees_owner_dashboard_prefs_readonly(self, client, make_client):
+        alice, bob, bob_cm, inv_id = self._setup_shared(client, make_client)
+        try:
+            alice.put("/api/dashboard-prefs", json={"prefs": {"dateMode": "today"}})
+            resp = bob.get(f"/api/sharing/view/{inv_id}/dashboard-prefs")
+            assert resp.status_code == 200
+            assert resp.json()["prefs"] == {"dateMode": "today"}
+        finally:
+            bob_cm.__exit__(None, None, None)
+
     def test_revoked_access_denied(self, client, make_client):
         alice, bob, bob_cm, inv_id = self._setup_shared(client, make_client)
         try:

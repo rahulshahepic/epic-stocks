@@ -385,7 +385,11 @@ export default function Retirement() {
     fetcher
       .then(({ params: saved }) => {
         if (saved && typeof saved === 'object') {
-          setParams(prev => ({ ...prev, ...saved as Partial<SimParams> }))
+          const { retirementDate: savedDate, ...rest } = saved as Partial<SimParams> & { retirementDate?: unknown }
+          setParams(prev => ({ ...prev, ...rest as Partial<SimParams> }))
+          if (typeof savedDate === 'string' && savedDate) {
+            setRetirementDate(savedDate)
+          }
           // Treat saved values as user choices: don't auto-overwrite them.
           if ('epicExit' in saved) exitOverriddenRef.current = true
           if ('refillTaxDrag' in saved) refillOverriddenRef.current = true
@@ -399,14 +403,16 @@ export default function Retirement() {
       })
   }, [vid])
 
-  // Push DOB-derived current age into params so the math module uses it.
-  // (We keep currentAge in SimParams so `simulate` stays a pure function.)
+  // Push the age-at-retirement-date into params as the simulation start age.
+  // The exit-preview seeds wealth as of `retirementDate`, so the horizon must
+  // also start there — otherwise the simulation grants free pre-retirement
+  // compounding on top of an already-projected balance.
   useEffect(() => {
-    const age = ageFromDOB(ownerDOB)
+    const age = ageFromDOB(ownerDOB, retirementDate)
     if (age != null && age > 0) {
       setParams(prev => (prev.currentAge === age ? prev : { ...prev, currentAge: age }))
     }
-  }, [ownerDOB])
+  }, [ownerDOB, retirementDate])
 
   // Pre-fill Epic exit value from previewExit at the chosen retirement date.
   // Uses the shared variant when viewing someone else's account.
@@ -480,6 +486,17 @@ export default function Retirement() {
     }
   }, [vid])
 
+  // Persist the retirement date alone (e.g. on blur) so the user's plan
+  // survives a refresh even without clicking Run. Owner-only.
+  const saveRetirementDate = useCallback((newDate: string) => {
+    if (vid) return
+    if (!newDate) return
+    api.saveRetirementParams({
+      ...(params as unknown as Record<string, unknown>),
+      retirementDate: newDate,
+    }).catch(() => {})
+  }, [vid, params])
+
   const totalPortfolio = params.epicExit + params.additional
   const cashPct = Math.max(0, 1 - params.stockPct - params.bondPct)
   const startingCash = totalPortfolio * cashPct
@@ -500,7 +517,10 @@ export default function Retirement() {
         // Persist params for the owner only — viewers don't write back.
         if (!vid) {
           setSaveStatus('saving')
-          api.saveRetirementParams(params as unknown as Record<string, unknown>)
+          api.saveRetirementParams({
+            ...(params as unknown as Record<string, unknown>),
+            retirementDate,
+          })
             .then(() => setSaveStatus('saved'))
             .catch(() => setSaveStatus('idle'))
         }
@@ -508,7 +528,7 @@ export default function Retirement() {
         setRunning(false)
       }
     }, 30)
-  }, [params, vid])
+  }, [params, retirementDate, vid])
 
   const fanData = useMemo(() => (result ? buildFanData(computeFanPercentiles(result)) : []), [result])
   const histData = useMemo(() => (result ? histogram(result, 30) : null), [result])
@@ -542,7 +562,7 @@ export default function Retirement() {
         {explainerOpen && (
           <div className="border-t border-stone-200 px-4 py-3 text-xs leading-relaxed text-gray-600 dark:border-slate-700 dark:text-slate-300">
             <p className="mb-2">
-              A {params.paths.toLocaleString()}-path Monte Carlo of a {years}-year retirement (age {params.currentAge} to {params.endAge}), run entirely in your browser.
+              A {params.paths.toLocaleString()}-path Monte Carlo of a {years}-year retirement starting at your age at retirement (age {params.currentAge} to {params.endAge}), run entirely in your browser.
               Total portfolio is split into stocks, bonds, and cash by the percentages you choose.
               Withdrawals come from cash first, then equity (with a tax drag); cash is refilled only from the year's net positive equity gain (preserves principal).
               Social Security kicks in at your chosen claim age with the SSA early/late factor applied to your FRA monthly benefit.
@@ -583,8 +603,8 @@ export default function Retirement() {
               {vid
                 ? 'Set by the data owner'
                 : dobMissing
-                  ? 'Used to estimate Social Security claim timing and Medicare eligibility (age 65)'
-                  : `Saved · age ${ageFromDOB(ownerDOB) ?? '—'} today · used for SS / Medicare timing`}
+                  ? 'Used to derive your age at retirement, Social Security claim timing, and Medicare eligibility (age 65)'
+                  : `Saved · age ${ageFromDOB(ownerDOB) ?? '—'} today, ${ageFromDOB(ownerDOB, retirementDate) ?? '—'} at retirement`}
             </span>
           </label>
           <label className="flex flex-col gap-1">
@@ -594,14 +614,20 @@ export default function Retirement() {
             <input
               type="date"
               value={retirementDate}
+              disabled={!!vid}
               onChange={e => {
                 exitOverriddenRef.current = false
                 setRetirementDate(e.target.value)
               }}
-              className="rounded border border-stone-300 bg-white px-2 py-1 text-sm tabular-nums text-gray-900 focus:border-rose-400 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+              onBlur={e => saveRetirementDate(e.target.value)}
+              className="rounded border border-stone-300 bg-white px-2 py-1 text-sm tabular-nums text-gray-900 focus:border-rose-400 focus:outline-none disabled:bg-stone-100 disabled:text-stone-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:disabled:bg-slate-900 dark:disabled:text-slate-400"
             />
             <span className="text-[10px] text-gray-400 dark:text-slate-500">
-              {exitPreviewLoading ? 'Fetching exit preview…' : 'Drives the exit amount below'}
+              {exitPreviewLoading
+                ? 'Fetching exit preview…'
+                : vid
+                  ? 'Set by the data owner'
+                  : 'Saved on change · drives exit amount + simulation start age'}
             </span>
           </label>
         </div>
@@ -817,11 +843,11 @@ export default function Retirement() {
           min={Math.min(params.currentAge + 1, 110)}
           max={110}
           step={1}
-          hint={`Starts at age ${params.currentAge} (from DOB) · ${years}-year horizon`}
+          hint={`Starts at age ${params.currentAge} (your age at retirement) · ${years}-year horizon`}
         />
         {dobMissing && (
           <p className="mt-2 text-[10px] text-amber-700 dark:text-amber-300">
-            ⚠ Set date of birth above to enable age-based features (current age defaults to 50).
+            ⚠ Set date of birth above to enable age-based features (start age defaults to 50).
           </p>
         )}
       </div>

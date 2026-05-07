@@ -220,8 +220,8 @@ describe('Retirement page', () => {
     )
     const dobInput = await screen.findByLabelText(/Date of birth/i) as HTMLInputElement
     await waitFor(() => expect(dobInput.value).toBe('1980-04-15'))
-    // Hint mentions current age and SS / Medicare framing.
-    await waitFor(() => expect(screen.getByText(/Saved · age .* used for SS \/ Medicare/)).toBeInTheDocument())
+    // Hint shows both today's age and the age-at-retirement-date.
+    await waitFor(() => expect(screen.getByText(/Saved · age \d+ today, \d+ at retirement/)).toBeInTheDocument())
   })
 
   it('shows missing-DOB warning when no DOB is set', async () => {
@@ -327,5 +327,71 @@ describe('Retirement page', () => {
     expect(screen.queryByText(/about 2\/3 of years fall within mean/)).not.toBeInTheDocument()
     await user.click(btn)
     expect(screen.getByText(/about 2\/3 of years fall within mean/)).toBeInTheDocument()
+  })
+
+  it('restores a saved retirement date on mount instead of resetting to today', async () => {
+    mockApi({ netCash: null, savedParams: { retirementDate: '2030-06-15' } })
+    render(
+      <MemoryRouter>
+        <Retirement />
+      </MemoryRouter>,
+    )
+    const dateInput = await screen.findByLabelText(/Retirement date/i) as HTMLInputElement
+    await waitFor(() => expect(dateInput.value).toBe('2030-06-15'))
+  })
+
+  it('persists the retirement date on blur (PUT to /api/retirement/params)', async () => {
+    mockApi({ netCash: null })
+    render(
+      <MemoryRouter>
+        <Retirement />
+      </MemoryRouter>,
+    )
+    const dateInput = await screen.findByLabelText(/^Retirement date/i) as HTMLInputElement
+    const { fireEvent } = await import('@testing-library/react')
+    // user.type doesn't reliably drive type="date" inputs in jsdom — fireEvent
+    // is the supported way to set a value on them.
+    fireEvent.change(dateInput, { target: { value: '2031-04-15' } })
+    fireEvent.blur(dateInput)
+    await waitFor(() => {
+      const calls = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls
+      const matches = calls.filter(([input, init]: any) => {
+        const url = typeof input === 'string' ? input : input?.url ?? String(input)
+        return url.includes('/api/retirement/params') && (init?.method ?? '').toUpperCase() === 'PUT'
+      })
+      const withDate = matches
+        .map(c => JSON.parse((c[1] as { body: string }).body))
+        // saveRetirementParams sends { params: {...} } — field lives one level in.
+        .find(b => b?.params?.retirementDate === '2031-04-15')
+      expect(withDate).toBeTruthy()
+    })
+  })
+
+  it('uses age at the retirement date (not today) as the simulation start age', async () => {
+    // DOB 1980-04-15, default endAge=95. Pick retirement date 2036-04-15 →
+    // age-at-retirement = 56 → horizon = 95 − 56 = 39 years (not the
+    // "age today" horizon, which would be ~49).
+    mockApi({ netCash: null, dob: '1980-04-15' })
+    render(
+      <MemoryRouter>
+        <Retirement />
+      </MemoryRouter>,
+    )
+    const dateInput = await screen.findByLabelText(/^Retirement date/i) as HTMLInputElement
+    const { fireEvent } = await import('@testing-library/react')
+    fireEvent.change(dateInput, { target: { value: '2036-04-15' } })
+    await waitFor(() => expect(screen.getByText(/39-year horizon/)).toBeInTheDocument())
+    expect(screen.getByText(/Starts at age 56/)).toBeInTheDocument()
+  })
+
+  it('renders the retirement date input as enabled for the data owner (not a shared viewer)', async () => {
+    mockApi({ netCash: null })
+    render(
+      <MemoryRouter>
+        <Retirement />
+      </MemoryRouter>,
+    )
+    const dateInput = await screen.findByLabelText(/^Retirement date/i) as HTMLInputElement
+    expect(dateInput.disabled).toBe(false)
   })
 })

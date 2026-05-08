@@ -24,9 +24,11 @@ import {
   finalPercentiles,
   HISTORICAL_RETURNS,
   histogram,
+  projectedSpend,
   resolveScenarioShifts,
   SCENARIO_LABELS,
   simulate,
+  SPEND_RAMP_FLOOR,
   ssAdjustment,
   type FanPercentiles,
   type Scenario,
@@ -119,6 +121,65 @@ function StatCard({
       <p className="mt-1 text-2xl font-bold tabular-nums text-gray-900 dark:text-slate-100">{value}</p>
       {sub && <p className="mt-0.5 text-[10px] text-stone-500 dark:text-slate-400">{sub}</p>}
     </div>
+  )
+}
+
+// Info popover for the min-spend control. Shows a worked-examples table so
+// the user can see exactly what spending the sim will use at different
+// portfolio levels, given their actual default/min/starting numbers.
+function SpendRampInfo({
+  defaultSpend,
+  minSpend,
+  startingTotal,
+}: {
+  defaultSpend: number
+  minSpend: number
+  startingTotal: number  // $M
+}) {
+  const floorPct = Math.round(SPEND_RAMP_FLOOR * 100)
+  const ratios = [1.0, 0.9, 0.75, 0.6, 0.5, 0.4]
+  const rows = ratios.map(r => ({
+    ratio: r,
+    portfolio: startingTotal * r,
+    spend: projectedSpend(r, defaultSpend, minSpend),
+  }))
+  const flat = defaultSpend > 0 && minSpend === defaultSpend
+  return (
+    <>
+      <p className="mb-1">
+        Spending scales with your portfolio. At <strong>100%+</strong> of starting wealth you spend your <strong>default</strong>;
+        at <strong>{floorPct}%</strong> or below you spend the <strong>floor</strong>; in between, the sim interpolates linearly.
+      </p>
+      <p className="mb-1">
+        This models real human behavior: when the nest egg shrinks, discretionary spend (travel, dining, gifts) gets trimmed.
+        The bigger the gap between default and floor, the more flexibility you&rsquo;re modelling.
+      </p>
+      {startingTotal > 0 && defaultSpend > 0 && (
+        <table className="my-2 w-full border-collapse text-[11px]">
+          <thead>
+            <tr className="border-b border-stone-300 dark:border-slate-600">
+              <th className="py-1 text-left font-semibold">Portfolio</th>
+              <th className="py-1 text-right font-semibold">% of start</th>
+              <th className="py-1 text-right font-semibold">Spend that year</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.ratio} className="border-b border-stone-100 dark:border-slate-700/50">
+                <td className="py-0.5">{fmt$M(r.portfolio)}</td>
+                <td className="py-0.5 text-right">{Math.round(r.ratio * 100)}%</td>
+                <td className="py-0.5 text-right tabular-nums">${Math.round(r.spend)}K</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <p>
+        Don&rsquo;t want to model any spending cut? Set this floor equal to your default spend &mdash; the sim then
+        keeps spending flat regardless of portfolio level.
+        {flat && <span className="ml-1 italic">(That&rsquo;s your current setting.)</span>}
+      </p>
+    </>
   )
 }
 
@@ -600,7 +661,7 @@ export default function Retirement() {
             <p className="mb-2">
               All dollar values are <strong>real</strong> (inflation-adjusted). <strong>Default spend</strong> excludes health insurance — the health-insurance line is added separately and zeros out at age 66 by default (Medicare).
               With a spouse included, health insurance steps from 100% (both pre-65) to 50% (one on Medicare) to 0% (both on Medicare), and a second SS stream is added at the spouse's claim age.
-              In bad years (negative portfolio return) spending drops to the <strong>minimum</strong> floor.
+              Spending scales with your portfolio: at 100%+ of starting wealth you spend your <strong>default</strong>, dropping linearly to the <strong>minimum</strong> floor at 50% — modelling how people actually trim discretionary spend as their nest egg shrinks.
             </p>
             <p>
               Pre-populated Epic exit value comes from "If you exited" on the Dashboard for the date you choose below; refill tax drag defaults to your blended LT cap-gains rate from <em>Settings → Tax Rates</em>.
@@ -789,22 +850,11 @@ export default function Retirement() {
             suffix="$K/yr"
             hint="Default = 2% of total portfolio"
             info={
-              <>
-                <p className="mb-1">
-                  In any year your portfolio loses money (negative return), the simulation cuts spending from your
-                  default down to this floor. The bigger the gap between default and floor, the more flexibility
-                  you&rsquo;re modelling in bad years.
-                </p>
-                <p className="mb-1">
-                  Defaults: <strong>default spend = 3%</strong> of total portfolio, <strong>floor = 2%</strong>.
-                  So on a $10M portfolio you&rsquo;d spend $300K most years and drop to $200K (a 33% cut) in
-                  down-market years.
-                </p>
-                <p>
-                  Don&rsquo;t want to model any spending cut? Set this floor equal to your default spend &mdash; the
-                  simulation will then keep spending the same in every year regardless of returns.
-                </p>
-              </>
+              <SpendRampInfo
+                defaultSpend={params.defaultSpend}
+                minSpend={params.minSpend}
+                startingTotal={totalPortfolio}
+              />
             }
           />
           <NumInput

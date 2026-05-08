@@ -43,6 +43,23 @@ export const SCENARIO_LABELS: Record<Scenario, string> = {
 // blocks for inter-path Monte Carlo diversity.
 export const MEAN_BLOCK_LEN = 20
 
+// Behavioral spending ramp: when total wealth (equity + cash) falls to this
+// fraction of the starting total or below, annual spend is clamped to
+// minSpend. At ≥100% of start it's at defaultSpend. Linear interpolation in
+// between. Models the empirical reality that retirees cut discretionary
+// spend as their portfolio shrinks rather than blindly drawing the same
+// dollars regardless of remaining balance.
+export const SPEND_RAMP_FLOOR = 0.5
+
+// Given a current wealth ratio (currentTotal / startingTotal), return the
+// blended annual spend the simulator would use that year (excluding health
+// insurance). Pure function so the UI can show worked examples that match
+// the math exactly.
+export function projectedSpend(wealthRatio: number, defaultSpend: number, minSpend: number): number {
+  const t = Math.max(0, Math.min(1, (wealthRatio - SPEND_RAMP_FLOOR) / (1 - SPEND_RAMP_FLOOR)))
+  return minSpend + t * (defaultSpend - minSpend)
+}
+
 export interface HistoricalReturn {
   year: number
   stockReal: number
@@ -361,7 +378,13 @@ export function simulate(params: SimParams): SimResult {
         if (equity < 0) equity = 0
       }
 
-      const baseSpendM = portR < 0 ? minSpendM : defaultSpendM
+      // Behavioral spending: ramp linearly between minSpend (at ≤50% of
+      // starting total) and defaultSpend (at ≥100%). People dial back as
+      // their nest egg shrinks; this prevents the simulator from spending at
+      // full default while sitting at a fraction of the starting balance.
+      const wealthRatio = startingTotal > 0 ? (equity + cash) / startingTotal : 0
+      const spendT = Math.max(0, Math.min(1, (wealthRatio - SPEND_RAMP_FLOOR) / (1 - SPEND_RAMP_FLOOR)))
+      const baseSpendM = minSpendM + spendT * (defaultSpendM - minSpendM)
       const spouseAge = params.spouseCurrentAge + y
       let hiThisYear = hiM
       if (params.zeroHIPost65) {

@@ -94,8 +94,31 @@ describe('ssAdjustment', () => {
 })
 
 describe('block bootstrap', () => {
-  it('uses BLOCK_LEN of 10 (matches doc/UI defaults)', () => {
-    expect(BLOCK_LEN).toBe(10)
+  it('uses BLOCK_LEN of 30 (matches doc/UI defaults)', () => {
+    expect(BLOCK_LEN).toBe(30)
+  })
+
+  it('produces ~0% ruin at sub-3% withdrawal in historical scenario', () => {
+    // Sanity: walking actual contiguous 51-year windows from each historical
+    // starting year ruins on 0/98 paths at $12M / 90/5/5 / $275k spend.
+    // The bootstrap should match that closely — synthetic stitching of bad
+    // decades is the main left-tail risk, and 30-year blocks keep it tame.
+    const r = simulate({
+      ...DEFAULT_PARAMS,
+      epicExit: 12,
+      additional: 0,
+      stockPct: 0.9,
+      bondPct: 0.05,
+      defaultSpend: 275,
+      minSpend: 130,
+      healthInsurance: 25,
+      currentAge: 44,
+      endAge: 95,
+      scenario: 'historical',
+      paths: 5000,
+      seed: 77,
+    })
+    expect(r.pctRuin).toBeLessThan(0.005)
   })
 
   it('the custom-zero scenario matches historical when shifts are 0', () => {

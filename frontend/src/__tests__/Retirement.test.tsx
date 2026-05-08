@@ -348,9 +348,9 @@ describe('Retirement page', () => {
       </MemoryRouter>,
     )
     const btn = await screen.findByRole('button', { name: /Return scenario explanation/i })
-    expect(screen.queryByText(/preserves crash shapes/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/long blocks keep paths close/i)).not.toBeInTheDocument()
     await user.click(btn)
-    expect(screen.getByText(/preserves crash shapes/i)).toBeInTheDocument()
+    expect(screen.getByText(/long blocks keep paths close/i)).toBeInTheDocument()
   })
 
   it('restores a saved retirement date on mount instead of resetting to today', async () => {

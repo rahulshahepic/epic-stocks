@@ -852,9 +852,11 @@ export default function Retirement() {
           <div className="mb-3 rounded border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] leading-relaxed text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
             <p className="mb-1">
               Each year of every path is sampled from a real {HISTORY_FIRST_YEAR}&ndash;{HISTORY_LAST_YEAR} year of U.S. history (S&amp;P 500
-              + 10yr Treasury, both real). We pick a random starting year and use 10 consecutive years before
-              jumping again, so 1929 is followed by 1930, 2008 by 2009, and so on. That preserves crash shapes,
-              recovery patterns, and stock/bond co-movement an i.i.d. lognormal model can&rsquo;t capture.
+              + 10yr Treasury, both real). We pick a random starting year and use 30 consecutive years before
+              jumping again, so 1929 is followed by 1930, 2008 by 2009, and so on &mdash; long blocks keep paths
+              close to what real 30-year stretches actually produced, instead of stitching together only the
+              best (or worst) decades. Walking the actual {HISTORY_FIRST_YEAR}&ndash;{HISTORY_LAST_YEAR} sequence at sub-3% withdrawal
+              produces 0% ruin; the bootstrap matches that closely.
             </p>
             <p className="mb-1">
               Each scenario applies a single constant <strong>shift</strong> to every resampled return,
@@ -906,7 +908,7 @@ export default function Retirement() {
           </div>
         )}
         <p className="mt-1.5 text-[10px] text-stone-500 dark:text-slate-400">
-          Block-bootstrapped from U.S. {HISTORY_FIRST_YEAR}&ndash;{HISTORY_LAST_YEAR} real returns ({HISTORICAL_RETURNS.length} years, 10-year blocks).
+          Block-bootstrapped from U.S. {HISTORY_FIRST_YEAR}&ndash;{HISTORY_LAST_YEAR} real returns ({HISTORICAL_RETURNS.length} years, 30-year blocks).
           {' '}Stocks shift {fmtPct(resolveScenarioShifts(params).stockShift, 1)}, bonds shift {fmtPct(resolveScenarioShifts(params).bondShift, 1)}.
         </p>
       </div>

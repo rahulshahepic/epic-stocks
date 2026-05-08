@@ -852,12 +852,13 @@ export default function Retirement() {
           <div className="mb-3 rounded border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] leading-relaxed text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
             <p className="mb-1">
               Each year of every path is sampled from a real {HISTORY_FIRST_YEAR}&ndash;{HISTORY_LAST_YEAR} year of U.S. history (S&amp;P 500
-              + 10yr Treasury, both real). We pick a random starting year and use 10 consecutive years before
-              jumping again, so 1929 is followed by 1930, 2008 by 2009, and so on. That preserves crash shapes,
-              recovery patterns, and stock/bond co-movement an i.i.d. lognormal model can&rsquo;t capture. At
-              very long horizons (45+ years) the bootstrap occasionally chains together more bad decades than
-              any actual 50-year window contained, which shows up as a small extra ruin tail &mdash; treat that
-              as stress-testing rather than a literal forecast.
+              + 10yr Treasury, both real). We start at a random year and walk forward; each year there&rsquo;s a
+              1-in-10 chance the path jumps to a new random year (stationary bootstrap, mean block length 10).
+              That preserves crash shapes, recovery patterns, and stock/bond co-movement &mdash; 1929 is usually
+              followed by 1930, 2008 by 2009 &mdash; while still giving plenty of Monte Carlo variation between
+              paths. Geometric block lengths mean most paths contain at least one long contiguous historical
+              run, which is why the bootstrap matches the 0/N historical rolling-windows ruin baseline at
+              sub-3% withdrawal for typical retirement horizons.
             </p>
             <p className="mb-1">
               Each scenario applies a single constant <strong>shift</strong> to every resampled return,
@@ -909,7 +910,7 @@ export default function Retirement() {
           </div>
         )}
         <p className="mt-1.5 text-[10px] text-stone-500 dark:text-slate-400">
-          Block-bootstrapped from U.S. {HISTORY_FIRST_YEAR}&ndash;{HISTORY_LAST_YEAR} real returns ({HISTORICAL_RETURNS.length} years, 10-year blocks).
+          Stationary block bootstrap of U.S. {HISTORY_FIRST_YEAR}&ndash;{HISTORY_LAST_YEAR} real returns ({HISTORICAL_RETURNS.length} years, ~10yr mean block).
           {' '}Stocks shift {fmtPct(resolveScenarioShifts(params).stockShift, 1)}, bonds shift {fmtPct(resolveScenarioShifts(params).bondShift, 1)}.
         </p>
       </div>

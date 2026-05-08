@@ -33,17 +33,16 @@ export const SCENARIO_LABELS: Record<Scenario, string> = {
   custom: 'Custom',
 }
 
-// Block bootstrap settings. 10 years balances Monte Carlo variation against
-// historical realism. For a 30-year retirement that's 3 blocks/path drawn
-// from ~98 starting years (~10^5 unique combinations) — plenty of MC
-// diversity, and ruin probability essentially matches the 0/98 historical
-// rolling-windows baseline at sub-3% withdrawal. At very long horizons (45+
-// years, e.g. retiring at 44) the path is 5+ independent blocks, which can
-// occasionally stitch synthetic decade-after-decade bad sequences worse than
-// any actual 50-year window — those show up as a small elevated ruin tail
-// (~1-2% historical, more in moderate/cautious). Useful as a stress test;
-// not a literal forecast.
-export const BLOCK_LEN = 10
+// Stationary bootstrap (Politis & Romano 1994): at each year, with
+// probability 1/MEAN_BLOCK_LEN start a new random block, otherwise advance
+// one year. Block lengths are geometrically distributed with mean L, so
+// most blocks are short (variation) but a meaningful fraction are very long
+// (close-to-historical sequences). That outperforms fixed-length blocks at
+// long horizons: fixed BL=10 gives ~5 independent blocks for a 51-year
+// path, which can chain together synthetic bad-decade sequences worse than
+// any actual 50-year window. Geometric block lengths suppress that — paths
+// often draw a single long block that's just a real historical 50-year run.
+export const MEAN_BLOCK_LEN = 10
 
 export interface HistoricalReturn {
   year: number
@@ -333,22 +332,25 @@ export function simulate(params: SimParams): SimResult {
   const fan0Idx = yearToFanIdx.get(0)
   if (fan0Idx != null) fanWealth[fan0Idx].fill(startingTotal)
 
+  const jumpProb = 1 / MEAN_BLOCK_LEN
+
   for (let i = 0; i < N; i++) {
     let equity = startingEquity
     let cash = startingCash
     let isRuined = false
-    let blockStart = Math.floor(rand() * dataLen)
+    let dataIdx = Math.floor(rand() * dataLen)
 
     for (let y = 1; y <= Y; y++) {
       const age = params.currentAge + y
       const equityBefore = equity
 
-      // Pick a fresh circular block every BLOCK_LEN years.
-      const yearInBlock = (y - 1) % BLOCK_LEN
-      if (yearInBlock === 0 && y > 1) {
-        blockStart = Math.floor(rand() * dataLen)
+      // Stationary bootstrap: each year (after the first), with probability
+      // 1/L jump to a new uniformly-random year; otherwise advance one year.
+      // Geometric block-length distribution with mean L.
+      if (y > 1) {
+        if (rand() < jumpProb) dataIdx = Math.floor(rand() * dataLen)
+        else dataIdx = (dataIdx + 1) % dataLen
       }
-      const dataIdx = (blockStart + yearInBlock) % dataLen
       const sample = data[dataIdx]
       const stockR = sample.stockReal + stockShift
       const bondR = sample.bondReal + bondShift

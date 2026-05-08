@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Last updated:** 2026-04-12
+**Last updated:** 2026-05-08
 
 Equity Vesting Tracker ("Epic Stocks") is open-source software that you or your organization self-host. This policy explains what data the application collects, how it's stored, and who can access it.
 
@@ -26,8 +26,21 @@ We do **not** receive or store your password, contacts, calendar, or any other d
 You manually enter the following data, which is stored in the application database:
 
 - **Equity grants** — year, type, share count, exercise price, vesting schedule
-- **Stock loans** — loan type, amount, interest rate, due date
+- **Stock loans** — loan type, amount, interest rate, due date, optional loan number
 - **Share prices** — effective date and price per share
+- **Sales / dispositions** — date, share count, sale price, optional notes, optional per-sale tax-rate overrides, and optional manual lot allocations
+- **Loan payments** — early cash payments you record against a loan (date, amount, optional notes)
+- **Tax settings** — your federal and state income, long- and short-term capital gains rates, NIIT, long-term holding period, lot-selection method, loan-payoff method, and the investment-interest deduction toggle and excluded years
+
+### Profile and Saved Preferences (entered by you)
+
+The Retirement Simulator and other personalisation features also save the following per-user data:
+
+- **Date of birth** — used by the Retirement Simulator to time Social Security claim eligibility and Medicare (age 65). Optional; only required to use age-based features.
+- **Retirement scenario inputs** — your saved retirement plan: total portfolio amounts, asset allocation, default/min spend, health-insurance estimate, refill tax drag, return scenario, simulation horizon, retirement date, your Social Security FRA monthly benefit and claim age, and (optionally, when you enable the spouse toggle) your spouse's date of birth, FRA monthly benefit, and claim age.
+- **Dashboard preferences** — your date mode, date range, and which dashboard sections you have expanded.
+- **Notification preferences** — whether email notifications are enabled, your advance-warning days setting, your registered Web Push subscriptions, and per-inviter notification opt-ins on shared accounts.
+- **Optimization tip acceptance** — which optimization tips you have accepted on the Dashboard, plus the savings estimate at the time of acceptance.
 
 ### Computed Data (never stored)
 
@@ -58,13 +71,13 @@ You have full access to your own data through the application UI and API. You ca
 - Export all your data to Excel at any time
 - **Sign out everywhere** — invalidate every active session for your account on every browser and device in one action (Settings > Account > Sign Out Everywhere)
 - **Reset your data** — delete all grants, loans, and prices while keeping your account (Settings > Danger Zone > Reset All Data)
-- **Delete your account** — permanently remove your account and all associated data, including grants, loans, prices, notification preferences, and push subscriptions (Settings > Danger Zone > Delete Account)
+- **Delete your account** — permanently remove your account and all associated data, including grants, loans, prices, sales, loan payments, tax settings, retirement scenario inputs, dashboard preferences, date of birth, notification preferences, push subscriptions, and any active sharing invitations (Settings > Danger Zone > Delete Account)
 
 Both data-deletion actions are self-service, immediate, and irreversible. No admin involvement is required.
 
 ### The Site Operator
 
-The person or organization running this server has **technical access** to the server environment. Your financial data is encrypted per-user with AES-256-GCM before being written to the database (the master key is generated automatically on the server on first deploy). However, the operator holds the master key and could decrypt the data if they chose to.
+The person or organization running this server has **technical access** to the server environment. Your core financial data — grants, loans, prices, sales, loan payments, and tax rates — is encrypted per-user with AES-256-GCM before being written to the database (the master key is generated automatically on the server on first deploy). Saved preferences (retirement scenario inputs, dashboard preferences) and your date of birth are stored as plain values rather than per-field encrypted, and rely on the database's own access controls. However, the operator holds the master key and could decrypt the encrypted data if they chose to.
 
 **If you are uncomfortable with this, you have options:**
 
@@ -126,7 +139,7 @@ None of these services receive your financial data for their own purposes, and y
 
 - Your data persists until you explicitly delete it or delete your account
 - **Resetting your data** (Settings > Danger Zone) removes all grants, loans, and prices but keeps your account active
-- **Deleting your account** (Settings > Danger Zone) permanently removes your user record and all associated data: grants, loans, prices, push subscriptions, and email preferences
+- **Deleting your account** (Settings > Danger Zone) permanently removes your user record and all associated data: grants, loans, prices, sales, loan payments, tax settings, retirement scenario inputs, dashboard preferences, date of birth, push subscriptions, email preferences, and active invitations
 - Both actions take effect immediately and cannot be undone
 - There are no backups unless the site operator configures them independently
 

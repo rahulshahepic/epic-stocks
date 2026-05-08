@@ -33,22 +33,16 @@ import {
   type SimResult,
 } from './Retirement.math.ts'
 
+// Input is in $M. Renders dynamically across the full range so a $80K p10 reads
+// "$80K" rather than "$0.08M" — every label on this page goes through here.
 function fmt$M(n: number, digits: number = 2): string {
-  if (!isFinite(n)) return '—'
-  if (Math.abs(n) >= 100) return `$${n.toFixed(0)}M`
-  if (Math.abs(n) >= 10) return `$${n.toFixed(1)}M`
-  return `$${n.toFixed(digits)}M`
-}
-
-// Histogram x-axis labels: same input units as fmt$M (millions of dollars),
-// but switches to $K below $1M so log-scale ticks like $0.1M don't round to "$0M".
-function fmtAxisDollarsM(n: number): string {
   if (!isFinite(n)) return '—'
   const a = Math.abs(n)
   if (a === 0) return '$0'
   if (a >= 100) return `$${n.toFixed(0)}M`
-  if (a >= 1) return `$${Math.round(n)}M`
-  if (a >= 0.001) return `$${Math.round(n * 1000)}K`
+  if (a >= 10) return `$${n.toFixed(1)}M`
+  if (a >= 1) return `$${n.toFixed(digits)}M`
+  if (a >= 0.001) return `$${(n * 1000).toFixed(0)}K`
   return `$${(n * 1_000_000).toFixed(0)}`
 }
 
@@ -369,6 +363,7 @@ export default function Retirement() {
   const [ownerDOB, setOwnerDOB] = useState<string | null>(null)
   const [ownerName, setOwnerName] = useState<string | null>(null)
   const [savingDOB, setSavingDOB] = useState(false)
+  const [spouseDOB, setSpouseDOB] = useState<string | null>(null)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
 
   const vid = viewing?.invitationId
@@ -397,10 +392,14 @@ export default function Retirement() {
     fetcher
       .then(({ params: saved }) => {
         if (saved && typeof saved === 'object') {
-          const { retirementDate: savedDate, ...rest } = saved as Partial<SimParams> & { retirementDate?: unknown }
+          const { retirementDate: savedDate, spouseDOB: savedSpouseDOB, ...rest } =
+            saved as Partial<SimParams> & { retirementDate?: unknown; spouseDOB?: unknown }
           setParams(prev => ({ ...prev, ...rest as Partial<SimParams> }))
           if (typeof savedDate === 'string' && savedDate) {
             setRetirementDate(savedDate)
+          }
+          if (typeof savedSpouseDOB === 'string') {
+            setSpouseDOB(savedSpouseDOB || null)
           }
           // Treat saved values as user choices: don't auto-overwrite them.
           if ('epicExit' in saved) exitOverriddenRef.current = true
@@ -425,6 +424,16 @@ export default function Retirement() {
       setParams(prev => (prev.currentAge === age ? prev : { ...prev, currentAge: age }))
     }
   }, [ownerDOB, retirementDate])
+
+  // Mirror of currentAge for the spouse — drives spouse SS start year and the
+  // Medicare step-down for health insurance.
+  useEffect(() => {
+    if (!params.includeSpouse) return
+    const age = ageFromDOB(spouseDOB, retirementDate)
+    if (age != null && age > 0) {
+      setParams(prev => (prev.spouseCurrentAge === age ? prev : { ...prev, spouseCurrentAge: age }))
+    }
+  }, [spouseDOB, retirementDate, params.includeSpouse])
 
   // Pre-fill Epic exit value from previewExit at the chosen retirement date.
   // Uses the shared variant when viewing someone else's account.
@@ -506,8 +515,9 @@ export default function Retirement() {
     api.saveRetirementParams({
       ...(params as unknown as Record<string, unknown>),
       retirementDate: newDate,
+      spouseDOB,
     }).catch(() => {})
-  }, [vid, params])
+  }, [vid, params, spouseDOB])
 
   const totalPortfolio = params.epicExit + params.additional
   const cashPct = Math.max(0, 1 - params.stockPct - params.bondPct)
@@ -532,6 +542,7 @@ export default function Retirement() {
           api.saveRetirementParams({
             ...(params as unknown as Record<string, unknown>),
             retirementDate,
+            spouseDOB,
           })
             .then(() => setSaveStatus('saved'))
             .catch(() => setSaveStatus('idle'))
@@ -540,7 +551,7 @@ export default function Retirement() {
         setRunning(false)
       }
     }, 30)
-  }, [params, retirementDate, vid])
+  }, [params, retirementDate, spouseDOB, vid])
 
   const fanData = useMemo(() => (result ? buildFanData(computeFanPercentiles(result)) : []), [result])
   const histData = useMemo(() => (result ? histogram(result, 30) : null), [result])
@@ -581,6 +592,7 @@ export default function Retirement() {
             </p>
             <p className="mb-2">
               All dollar values are <strong>real</strong> (inflation-adjusted). <strong>Default spend</strong> excludes health insurance — the health-insurance line is added separately and zeros out at age 66 by default (Medicare).
+              With a spouse included, health insurance steps from 100% (both pre-65) to 50% (one on Medicare) to 0% (both on Medicare), and a second SS stream is added at the spouse's claim age.
               In bad years (negative portfolio return) spending drops to the <strong>minimum</strong> floor.
             </p>
             <p>
@@ -643,6 +655,48 @@ export default function Retirement() {
             </span>
           </label>
         </div>
+        <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded border border-stone-200 bg-stone-50 px-3 py-2 text-[11px] dark:border-slate-700 dark:bg-slate-800">
+          <input
+            type="checkbox"
+            checked={params.includeSpouse}
+            disabled={!!vid}
+            onChange={e => update('includeSpouse', e.target.checked)}
+            className="rounded"
+          />
+          <span className="text-gray-700 dark:text-slate-200">
+            Include spouse <span className="text-gray-400 dark:text-slate-500">(adds a second SS stream and steps health insurance down 100% → 50% → 0% as each spouse hits Medicare)</span>
+          </span>
+        </label>
+        {params.includeSpouse && (
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium text-gray-700 dark:text-slate-200">
+                Spouse date of birth
+              </span>
+              <input
+                type="date"
+                value={spouseDOB ?? ''}
+                disabled={!!vid}
+                onChange={e => setSpouseDOB(e.target.value || null)}
+                onBlur={e => {
+                  if (vid) return
+                  const next = e.target.value || null
+                  api.saveRetirementParams({
+                    ...(params as unknown as Record<string, unknown>),
+                    retirementDate,
+                    spouseDOB: next,
+                  }).catch(() => {})
+                }}
+                className="rounded border border-stone-300 bg-white px-2 py-1 text-sm tabular-nums text-gray-900 focus:border-rose-400 focus:outline-none disabled:bg-stone-100 disabled:text-stone-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:disabled:bg-slate-900 dark:disabled:text-slate-400"
+              />
+              <span className="text-[10px] text-gray-400 dark:text-slate-500">
+                {spouseDOB
+                  ? `Age ${ageFromDOB(spouseDOB) ?? '—'} today, ${ageFromDOB(spouseDOB, retirementDate) ?? '—'} at retirement`
+                  : 'Used to time spouse SS claim and Medicare eligibility (age 65)'}
+              </span>
+            </label>
+          </div>
+        )}
         <p className="mt-4 mb-2 text-[11px] font-semibold text-gray-700 dark:text-slate-200">Portfolio</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
           <NumInput
@@ -899,6 +953,40 @@ export default function Retirement() {
             Starts simulation year {ssStartYear} ({params.currentAge >= params.claimAge ? 'immediately' : `age ${params.claimAge}`}).
           </p>
         </div>
+        {params.includeSpouse && (
+          <div className="mt-4 border-t border-stone-200 pt-3 dark:border-slate-700">
+            <p className="mb-2 text-[11px] font-medium text-gray-700 dark:text-slate-200">Spouse</p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <NumInput
+                label="Spouse FRA monthly"
+                value={params.spouseSsMonthly}
+                onChange={v => update('spouseSsMonthly', v)}
+                min={0}
+                step={50}
+                suffix="$/mo"
+                hint="0 if spouse has no SS · for spousal benefit, enter 50% of higher earner's PIA"
+              />
+              <SliderInput
+                label="Spouse claim age"
+                value={params.spouseClaimAge}
+                onChange={v => update('spouseClaimAge', Math.max(62, Math.min(70, Math.round(v))))}
+                min={62}
+                max={70}
+                step={1}
+                formatValue={v => `${v}`}
+                hint="62 = early reduction · 70 = max delayed credits"
+              />
+            </div>
+            <div className="mt-2 grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-2 sm:gap-3">
+              <p className="text-stone-500 dark:text-slate-400">
+                Adjustment factor at age {params.spouseClaimAge}: <strong className="text-gray-900 dark:text-slate-100">{(ssAdjustment(params.spouseClaimAge, params.fra) * 100).toFixed(1)}%</strong> of FRA
+              </p>
+              <p className="text-stone-500 dark:text-slate-400">
+                Adjusted monthly: <strong className="text-gray-900 dark:text-slate-100 tabular-nums">${(params.spouseSsMonthly * ssAdjustment(params.spouseClaimAge, params.fra)).toFixed(0)}/mo</strong>
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -1016,7 +1104,7 @@ export default function Retirement() {
                         : ['dataMin', 'dataMax']
                     }
                     tick={{ fontSize: 10, fill: c.axis }}
-                    tickFormatter={fmtAxisDollarsM}
+                    tickFormatter={(v: number) => fmt$M(v, 0)}
                   />
                   <YAxis tick={{ fontSize: 10, fill: c.axis }} />
                   <Tooltip content={<HistogramTooltip c={c} />} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />

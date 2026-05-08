@@ -41,7 +41,7 @@ export default function PrivacyPolicy() {
         </div>
 
         <h1 className="mb-1 text-2xl font-bold text-stone-900 dark:text-white">Privacy Policy</h1>
-        <p className="mb-8 text-xs text-stone-600 dark:text-slate-400">Last updated: 2026-04-12</p>
+        <p className="mb-8 text-xs text-stone-600 dark:text-slate-400">Last updated: 2026-05-08</p>
 
         <div className="rounded-lg bg-white p-6 shadow-sm dark:bg-slate-900 md:p-8">
           <P>
@@ -82,8 +82,21 @@ export default function PrivacyPolicy() {
               <P>You manually enter the following, which is stored in the application database:</P>
               <Ul>
                 <li>Equity grants — year, type, share count, exercise price, vesting schedule</li>
-                <li>Stock loans — loan type, amount, interest rate, due date</li>
+                <li>Stock loans — loan type, amount, interest rate, due date, optional loan number</li>
                 <li>Share prices — effective date and price per share</li>
+                <li>Sales / dispositions — date, share count, sale price, optional notes, optional per-sale tax-rate overrides, optional manual lot allocations</li>
+                <li>Loan payments — early cash payments you record against a loan (date, amount, optional notes)</li>
+                <li>Tax settings — federal and state income, long- and short-term capital gains rates, NIIT, long-term holding period, lot-selection method, loan-payoff method, and the investment-interest deduction toggle</li>
+              </Ul>
+            </SubSection>
+            <SubSection title="Profile and saved preferences (entered by you)">
+              <P>The Retirement Simulator and other personalisation features also save the following per-user data:</P>
+              <Ul>
+                <li>Date of birth — used by the Retirement Simulator to time Social Security claim eligibility and Medicare (age 65). Optional.</li>
+                <li>Retirement scenario inputs — your saved retirement plan: portfolio amounts, allocation, default/min spend, health-insurance estimate, refill tax drag, return scenario, simulation horizon, retirement date, your Social Security FRA monthly benefit and claim age, and (optionally, with the spouse toggle) your spouse's date of birth, FRA monthly benefit, and claim age</li>
+                <li>Dashboard preferences — date mode, date range, and which sections are expanded</li>
+                <li>Notification preferences — email-notification opt-in, advance-warning days, registered Web Push subscriptions, and per-inviter notification opt-ins on shared accounts</li>
+                <li>Optimization tip acceptance — which optimization tips you have accepted on the Dashboard</li>
               </Ul>
             </SubSection>
             <SubSection title="Computed data (never stored)">
@@ -153,9 +166,13 @@ export default function PrivacyPolicy() {
             <SubSection title="The site operator">
               <P>
                 The person running this server has technical access to the server environment.
-                Your financial data is encrypted with AES-256-GCM before being written to the
-                database — each user gets a unique key, and that key is itself encrypted with a
-                master key stored only on the server. The operator holds the master key.
+                Your core financial data — grants, loans, prices, sales, loan payments, and tax
+                rates — is encrypted with AES-256-GCM before being written to the database. Each
+                user gets a unique key, and that key is itself encrypted with a master key stored
+                only on the server. Saved preferences (retirement scenario inputs, dashboard
+                preferences) and your date of birth are stored as plain values rather than
+                per-field encrypted, and rely on the database's own access controls. The operator
+                holds the master key.
               </P>
               <P>
                 If you are uncomfortable with this, you can self-host your own instance — you

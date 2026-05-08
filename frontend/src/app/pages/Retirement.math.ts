@@ -41,6 +41,11 @@ export interface SimParams {
   paths: number
   fra: number            // 67
   rho: number            // -0.05
+  // Spouse extension. When includeSpouse is false the rest are ignored.
+  includeSpouse: boolean
+  spouseCurrentAge: number  // age at simulation start (derived from spouse DOB + retirement date)
+  spouseSsMonthly: number   // $/month at FRA (0 = no spouse SS)
+  spouseClaimAge: number    // 62-70
   seed?: number
 }
 
@@ -64,6 +69,10 @@ export const DEFAULT_PARAMS: SimParams = {
   paths: 100_000,
   fra: 67,
   rho: -0.05,
+  includeSpouse: false,
+  spouseCurrentAge: 50,
+  spouseSsMonthly: 0,
+  spouseClaimAge: 67,
 }
 
 // Mulberry32 — small, fast, deterministic PRNG (used for seedable tests).
@@ -184,6 +193,12 @@ export function simulate(params: SimParams): SimResult {
   const ssAdj = ssAdjustment(params.claimAge, params.fra)
   const ssAnnualM = ((params.ssMonthly * 12) / 1_000_000) * ssAdj
 
+  const hasSpouse = params.includeSpouse
+  const spouseSsAdj = hasSpouse ? ssAdjustment(params.spouseClaimAge, params.fra) : 1
+  const spouseSsAnnualM = hasSpouse
+    ? ((params.spouseSsMonthly * 12) / 1_000_000) * spouseSsAdj
+    : 0
+
   const cashTarget = startingCash
   const taxDrag = Math.max(0, Math.min(0.99, params.refillTaxDrag))
 
@@ -223,10 +238,23 @@ export function simulate(params: SimParams): SimResult {
       }
 
       const baseSpendM = portR < 0 ? minSpendM : defaultSpendM
-      const hiThisYear = params.zeroHIPost65 && age > 65 ? 0 : hiM
+      const spouseAge = params.spouseCurrentAge + y
+      let hiThisYear = hiM
+      if (params.zeroHIPost65) {
+        if (hasSpouse) {
+          const ownerOnMedicare = age > 65
+          const spouseOnMedicare = spouseAge > 65
+          if (ownerOnMedicare && spouseOnMedicare) hiThisYear = 0
+          else if (ownerOnMedicare || spouseOnMedicare) hiThisYear = hiM * 0.5
+        } else if (age > 65) {
+          hiThisYear = 0
+        }
+      }
       const totalSpendM = baseSpendM + hiThisYear
 
-      const ssIncomeM = age >= params.claimAge ? ssAnnualM : 0
+      const ownerSsM = age >= params.claimAge ? ssAnnualM : 0
+      const spouseSsM = hasSpouse && spouseAge >= params.spouseClaimAge ? spouseSsAnnualM : 0
+      const ssIncomeM = ownerSsM + spouseSsM
       let needed = totalSpendM - ssIncomeM
 
       if (needed > 0) {

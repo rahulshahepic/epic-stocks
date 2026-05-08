@@ -8,10 +8,12 @@ import {
   HISTORICAL_RETURNS,
   histogram,
   mulberry32,
+  projectedSpend,
   quantile,
   resolveScenarioShifts,
   SCENARIOS,
   simulate,
+  SPEND_RAMP_FLOOR,
   ssAdjustment,
 } from '../app/pages/Retirement.math.ts'
 
@@ -183,6 +185,59 @@ describe('block bootstrap', () => {
     // Moderate should keep the absolute billionaire chance under 3% (vs the
     // ~3-4% the i.i.d. lognormal model produced for the same inputs).
     expect(modBn / mod.finalWealth.length).toBeLessThan(0.03)
+  })
+})
+
+describe('projectedSpend (behavioral spending ramp)', () => {
+  it('returns default spend at or above starting wealth', () => {
+    expect(projectedSpend(1.0, 300, 100)).toBe(300)
+    expect(projectedSpend(1.5, 300, 100)).toBe(300)
+    expect(projectedSpend(10, 300, 100)).toBe(300)
+  })
+
+  it('returns min spend at or below the floor ratio', () => {
+    expect(projectedSpend(SPEND_RAMP_FLOOR, 300, 100)).toBe(100)
+    expect(projectedSpend(0.25, 300, 100)).toBe(100)
+    expect(projectedSpend(0, 300, 100)).toBe(100)
+  })
+
+  it('linearly interpolates between floor and starting wealth', () => {
+    // At the midpoint (0.75 = halfway between 0.5 and 1.0) we expect the
+    // spend halfway between min (100) and default (300) → 200.
+    expect(projectedSpend(0.75, 300, 100)).toBe(200)
+    // At 0.6 (20% of the way from 0.5 to 1.0), spend = 100 + 0.2*(300-100) = 140.
+    expect(projectedSpend(0.6, 300, 100)).toBeCloseTo(140, 6)
+    // At 0.9 (80% of the way), spend = 100 + 0.8*200 = 260.
+    expect(projectedSpend(0.9, 300, 100)).toBeCloseTo(260, 6)
+  })
+
+  it('flattens to a single value when default == min', () => {
+    expect(projectedSpend(0.3, 250, 250)).toBe(250)
+    expect(projectedSpend(0.6, 250, 250)).toBe(250)
+    expect(projectedSpend(1.2, 250, 250)).toBe(250)
+  })
+})
+
+describe('graded spending in simulate()', () => {
+  it('reduces ruin probability vs an equivalent flat-spend run on a stressed portfolio', () => {
+    // Same portfolio, same returns; the only difference is whether spending
+    // can ramp down. Behavioral spend (default != min) should produce
+    // strictly fewer ruins than a flat-spend run pinned at the default.
+    const stressed = {
+      ...DEFAULT_PARAMS,
+      epicExit: 4,
+      additional: 0,
+      stockPct: 0.7,
+      bondPct: 0.2,
+      defaultSpend: 250,
+      healthInsurance: 25,
+      scenario: 'cautious' as const,
+      paths: 1500,
+      seed: 51,
+    }
+    const flat = simulate({ ...stressed, minSpend: 250 })
+    const ramped = simulate({ ...stressed, minSpend: 100 })
+    expect(ramped.pctRuin).toBeLessThan(flat.pctRuin)
   })
 })
 

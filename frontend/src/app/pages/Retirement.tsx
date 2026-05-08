@@ -33,22 +33,16 @@ import {
   type SimResult,
 } from './Retirement.math.ts'
 
+// Input is in $M. Renders dynamically across the full range so a $80K p10 reads
+// "$80K" rather than "$0.08M" — every label on this page goes through here.
 function fmt$M(n: number, digits: number = 2): string {
-  if (!isFinite(n)) return '—'
-  if (Math.abs(n) >= 100) return `$${n.toFixed(0)}M`
-  if (Math.abs(n) >= 10) return `$${n.toFixed(1)}M`
-  return `$${n.toFixed(digits)}M`
-}
-
-// Histogram x-axis labels: same input units as fmt$M (millions of dollars),
-// but switches to $K below $1M so log-scale ticks like $0.1M don't round to "$0M".
-function fmtAxisDollarsM(n: number): string {
   if (!isFinite(n)) return '—'
   const a = Math.abs(n)
   if (a === 0) return '$0'
   if (a >= 100) return `$${n.toFixed(0)}M`
-  if (a >= 1) return `$${Math.round(n)}M`
-  if (a >= 0.001) return `$${Math.round(n * 1000)}K`
+  if (a >= 10) return `$${n.toFixed(1)}M`
+  if (a >= 1) return `$${n.toFixed(digits)}M`
+  if (a >= 0.001) return `$${(n * 1000).toFixed(0)}K`
   return `$${(n * 1_000_000).toFixed(0)}`
 }
 
@@ -1110,7 +1104,7 @@ export default function Retirement() {
                         : ['dataMin', 'dataMax']
                     }
                     tick={{ fontSize: 10, fill: c.axis }}
-                    tickFormatter={fmtAxisDollarsM}
+                    tickFormatter={(v: number) => fmt$M(v, 0)}
                   />
                   <YAxis tick={{ fontSize: 10, fill: c.axis }} />
                   <Tooltip content={<HistogramTooltip c={c} />} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />

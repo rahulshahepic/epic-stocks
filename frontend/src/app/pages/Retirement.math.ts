@@ -383,12 +383,34 @@ export function histogram(result: SimResult, binCount: number = 30): HistogramRe
   const counts = new Array<number>(binCount).fill(0)
 
   if (useLog) {
-    const loLog = Math.log(lo)
-    const hiLog = Math.log(hi)
+    // A single surviving outlier ($10 of wealth in a portfolio that's mostly
+    // $1M–$1B) would otherwise drag the visible range across 9 decades and
+    // fill the left axis with rounded-to-zero ticks. Trim the visible range
+    // to the central 99% of survivors, but always keep `start` in view so
+    // the reference line renders. Out-of-range values still count — they
+    // land in the first or last bin.
+    const sortedKept = new Float64Array(kept)
+    let j = 0
+    for (let i = 0; i < result.finalWealth.length; i++) {
+      if (!result.ruined[i]) sortedKept[j++] = result.finalWealth[i]
+    }
+    sortedKept.sort()
+    const trimLo = quantile(sortedKept, 0.005)
+    const trimHi = quantile(sortedKept, 0.995)
+    let loEff = trimLo > 0 ? trimLo : lo
+    let hiEff = trimHi > loEff ? trimHi : hi
+    if (start > 0) {
+      if (start < loEff) loEff = start
+      if (start > hiEff) hiEff = start
+    }
+    if (hiEff <= loEff) hiEff = loEff * 1.0001
+    const loLog = Math.log(loEff)
+    const hiLog = Math.log(hiEff)
     const widthLog = (hiLog - loLog) / binCount
     for (let i = 0; i < result.finalWealth.length; i++) {
       if (result.ruined[i]) continue
-      let b = Math.floor((Math.log(result.finalWealth[i]) - loLog) / widthLog)
+      const v = result.finalWealth[i]
+      let b = v <= 0 ? 0 : Math.floor((Math.log(v) - loLog) / widthLog)
       if (b >= binCount) b = binCount - 1
       if (b < 0) b = 0
       counts[b]++

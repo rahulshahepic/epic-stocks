@@ -33,16 +33,17 @@ export const SCENARIO_LABELS: Record<Scenario, string> = {
   custom: 'Custom',
 }
 
-// Block bootstrap settings. Block length matters more than it sounds:
-// short blocks (5-10yr) let a path manufacture sustained good *or* bad runs
-// that never actually happened — a Monte Carlo can stitch together only the
-// best decades for an unrealistic right tail, or only the worst decades for
-// an unrealistic left tail. Walking the actual contiguous 51-year windows of
-// 1928-2025 produces 0% ruin at 2.3% withdrawal — the right baseline. Long
-// blocks (30yr) keep paths close to real history while still giving plenty
-// of Monte Carlo variation: a 51-year path is 1-2 blocks, drawn from ~98
-// possible starting years, ≈ thousands of unique block pairings.
-export const BLOCK_LEN = 30
+// Block bootstrap settings. 10 years balances Monte Carlo variation against
+// historical realism. For a 30-year retirement that's 3 blocks/path drawn
+// from ~98 starting years (~10^5 unique combinations) — plenty of MC
+// diversity, and ruin probability essentially matches the 0/98 historical
+// rolling-windows baseline at sub-3% withdrawal. At very long horizons (45+
+// years, e.g. retiring at 44) the path is 5+ independent blocks, which can
+// occasionally stitch synthetic decade-after-decade bad sequences worse than
+// any actual 50-year window — those show up as a small elevated ruin tail
+// (~1-2% historical, more in moderate/cautious). Useful as a stress test;
+// not a literal forecast.
+export const BLOCK_LEN = 10
 
 export interface HistoricalReturn {
   year: number

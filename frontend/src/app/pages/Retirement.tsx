@@ -22,9 +22,10 @@ import {
   computeFanPercentiles,
   DEFAULT_PARAMS,
   finalPercentiles,
+  HISTORICAL_RETURNS,
   histogram,
+  resolveScenarioShifts,
   SCENARIO_LABELS,
-  SCENARIOS,
   simulate,
   ssAdjustment,
   type FanPercentiles,
@@ -32,6 +33,10 @@ import {
   type SimParams,
   type SimResult,
 } from './Retirement.math.ts'
+
+const SCENARIO_ORDER: Scenario[] = ['historical', 'moderate', 'cautious', 'custom']
+const HISTORY_FIRST_YEAR = HISTORICAL_RETURNS[0].year
+const HISTORY_LAST_YEAR = HISTORICAL_RETURNS[HISTORICAL_RETURNS.length - 1].year
 
 // Input is in $M. Renders dynamically across the full range so a $80K p10 reads
 // "$80K" rather than "$0.08M" — every label on this page goes through here.
@@ -507,17 +512,24 @@ export default function Retirement() {
     }
   }, [vid])
 
-  // Persist the retirement date alone (e.g. on blur) so the user's plan
-  // survives a refresh even without clicking Run. Owner-only.
-  const saveRetirementDate = useCallback((newDate: string) => {
-    if (vid) return
-    if (!newDate) return
-    api.saveRetirementParams({
-      ...(params as unknown as Record<string, unknown>),
-      retirementDate: newDate,
-      spouseDOB,
-    }).catch(() => {})
-  }, [vid, params, spouseDOB])
+  // Debounced auto-save: persist the full param set whenever it (or
+  // retirementDate / spouseDOB) changes. Owner only; viewer never writes.
+  // Skips until the initial load completes so we don't save defaults over a
+  // user's already-saved plan during the post-load merge.
+  useEffect(() => {
+    if (vid || !paramsLoadedRef.current) return
+    setSaveStatus('saving')
+    const t = setTimeout(() => {
+      api.saveRetirementParams({
+        ...(params as unknown as Record<string, unknown>),
+        retirementDate,
+        spouseDOB,
+      })
+        .then(() => setSaveStatus('saved'))
+        .catch(() => setSaveStatus('idle'))
+    }, 500)
+    return () => clearTimeout(t)
+  }, [params, retirementDate, spouseDOB, vid])
 
   const totalPortfolio = params.epicExit + params.additional
   const cashPct = Math.max(0, 1 - params.stockPct - params.bondPct)
@@ -536,22 +548,11 @@ export default function Retirement() {
         const r = simulate(params)
         setResult(r)
         setHasRun(true)
-        // Persist params for the owner only — viewers don't write back.
-        if (!vid) {
-          setSaveStatus('saving')
-          api.saveRetirementParams({
-            ...(params as unknown as Record<string, unknown>),
-            retirementDate,
-            spouseDOB,
-          })
-            .then(() => setSaveStatus('saved'))
-            .catch(() => setSaveStatus('idle'))
-        }
       } finally {
         setRunning(false)
       }
     }, 30)
-  }, [params, retirementDate, spouseDOB, vid])
+  }, [params])
 
   const fanData = useMemo(() => (result ? buildFanData(computeFanPercentiles(result)) : []), [result])
   const histData = useMemo(() => (result ? histogram(result, 30) : null), [result])
@@ -566,11 +567,15 @@ export default function Retirement() {
     <div className="space-y-5">
       <div className="flex items-baseline justify-between gap-2">
         <h1 className="text-lg font-bold text-gray-900 dark:text-slate-100">Retirement Simulator</h1>
-        {viewing && (
-          <span className="text-[11px] text-stone-500 dark:text-slate-400">
-            Viewing {viewing.name}&rsquo;s exit value &amp; tax rates · simulation runs in your browser
-          </span>
-        )}
+        <span className="text-[11px] text-stone-500 dark:text-slate-400">
+          {vid
+            ? `Viewing ${viewing?.name ?? 'owner'}’s plan — your edits aren’t saved`
+            : saveStatus === 'saving'
+              ? 'Saving…'
+              : saveStatus === 'saved'
+                ? 'All inputs saved'
+                : 'Inputs save automatically'}
+        </span>
       </div>
 
       <div className="rounded-lg border border-stone-200 bg-stone-50 dark:border-slate-700 dark:bg-slate-800">
@@ -585,7 +590,9 @@ export default function Retirement() {
         {explainerOpen && (
           <div className="border-t border-stone-200 px-4 py-3 text-xs leading-relaxed text-gray-600 dark:border-slate-700 dark:text-slate-300">
             <p className="mb-2">
-              A {params.paths.toLocaleString()}-path Monte Carlo of a {years}-year retirement starting at your age at retirement (age {params.currentAge} to {params.endAge}), run entirely in your browser.
+              A {params.paths.toLocaleString()}-path simulation of a {years}-year retirement (age {params.currentAge} to {params.endAge}), run entirely in your browser.
+              Each path samples 5-year blocks of real U.S. stock + 10yr Treasury returns ({HISTORY_FIRST_YEAR}&ndash;{HISTORY_LAST_YEAR}, real),
+              picking a fresh starting year every 5 years &mdash; so crash years stay clustered with their actual recoveries.
               Total portfolio is split into stocks, bonds, and cash by the percentages you choose.
               Withdrawals come from cash first, then equity (with a tax drag); cash is refilled only from the year's net positive equity gain (preserves principal).
               Social Security kicks in at your chosen claim age with the SSA early/late factor applied to your FRA monthly benefit.
@@ -628,7 +635,7 @@ export default function Retirement() {
                 ? 'Set by the data owner'
                 : dobMissing
                   ? 'Used to derive your age at retirement, Social Security claim timing, and Medicare eligibility (age 65)'
-                  : `Saved · age ${ageFromDOB(ownerDOB) ?? '—'} today, ${ageFromDOB(ownerDOB, retirementDate) ?? '—'} at retirement`}
+                  : `Age ${ageFromDOB(ownerDOB) ?? '—'} today, ${ageFromDOB(ownerDOB, retirementDate) ?? '—'} at retirement`}
             </span>
           </label>
           <label className="flex flex-col gap-1">
@@ -643,7 +650,6 @@ export default function Retirement() {
                 exitOverriddenRef.current = false
                 setRetirementDate(e.target.value)
               }}
-              onBlur={e => saveRetirementDate(e.target.value)}
               className="rounded border border-stone-300 bg-white px-2 py-1 text-sm tabular-nums text-gray-900 focus:border-rose-400 focus:outline-none disabled:bg-stone-100 disabled:text-stone-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:disabled:bg-slate-900 dark:disabled:text-slate-400"
             />
             <span className="text-[10px] text-gray-400 dark:text-slate-500">
@@ -651,7 +657,7 @@ export default function Retirement() {
                 ? 'Fetching exit preview…'
                 : vid
                   ? 'Set by the data owner'
-                  : 'Saved on change · drives exit amount + simulation start age'}
+                  : 'Drives exit amount + simulation start age'}
             </span>
           </label>
         </div>
@@ -678,15 +684,6 @@ export default function Retirement() {
                 value={spouseDOB ?? ''}
                 disabled={!!vid}
                 onChange={e => setSpouseDOB(e.target.value || null)}
-                onBlur={e => {
-                  if (vid) return
-                  const next = e.target.value || null
-                  api.saveRetirementParams({
-                    ...(params as unknown as Record<string, unknown>),
-                    retirementDate,
-                    spouseDOB: next,
-                  }).catch(() => {})
-                }}
                 className="rounded border border-stone-300 bg-white px-2 py-1 text-sm tabular-nums text-gray-900 focus:border-rose-400 focus:outline-none disabled:bg-stone-100 disabled:text-stone-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:disabled:bg-slate-900 dark:disabled:text-slate-400"
               />
               <span className="text-[10px] text-gray-400 dark:text-slate-500">
@@ -854,25 +851,23 @@ export default function Retirement() {
         {sigmaOpen && (
           <div className="mb-3 rounded border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] leading-relaxed text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
             <p className="mb-1">
-              Each scenario is a pair of bell-curves describing how stocks and bonds might behave over the
-              long run. The <strong>mean</strong> is the average yearly return; <strong>σ (sigma)</strong> is
-              how much returns swing year-to-year.
+              Each year of every path is sampled from a real {HISTORY_FIRST_YEAR}&ndash;{HISTORY_LAST_YEAR} year of U.S. history (S&amp;P 500
+              + 10yr Treasury, both real). We pick a random starting year and use 10 consecutive years before
+              jumping again, so 1929 is followed by 1930, 2008 by 2009, and so on. That preserves crash shapes,
+              recovery patterns, and stock/bond co-movement an i.i.d. lognormal model can&rsquo;t capture.
             </p>
             <p className="mb-1">
-              Roughly, about 2/3 of years fall within mean&nbsp;&plusmn;&nbsp;σ. So with equity mean&nbsp;7% and
-              σ&nbsp;17%, a typical year ranges from about &minus;10% to&nbsp;+24%; about 1 year in&nbsp;20 is
-              worse than &minus;27% or better than&nbsp;+41%. Bigger σ = wilder swings (good <em>and</em> bad).
-            </p>
-            <p>
-              <strong>Historical</strong> uses long-run U.S. averages (7% / 1.5% real).&nbsp;
-              <strong>Moderate</strong> trims means and slightly widens σ.&nbsp;
-              <strong>Cautious</strong> trims them further with the widest σ &mdash; useful for stress-testing.
+              Each scenario applies a single constant <strong>shift</strong> to every resampled return,
+              re-locating the distribution without distorting variance, autocorrelation, or tail asymmetry.
+              <strong> Historical</strong>: no shift &mdash; the raw distribution {HISTORY_FIRST_YEAR}&ndash;{HISTORY_LAST_YEAR}.
+              {' '}<strong>Moderate</strong>: stocks &minus;2pp, bonds &minus;0.5pp (≈ Vanguard 2025 10-yr outlook
+              given current valuations). <strong>Cautious</strong>: stocks &minus;3.5pp, bonds &minus;1pp.
+              {' '}<strong>Custom</strong>: dial them yourself.
             </p>
           </div>
         )}
         <div className="flex flex-wrap gap-1.5">
-          {(Object.keys(SCENARIOS) as Scenario[]).map(s => {
-            const sc = SCENARIOS[s]
+          {SCENARIO_ORDER.map(s => {
             const active = params.scenario === s
             return (
               <button
@@ -884,19 +879,35 @@ export default function Retirement() {
                     ? 'border-rose-500 bg-rose-100 text-rose-800 dark:border-rose-400 dark:bg-rose-950/40 dark:text-rose-300'
                     : 'border-stone-300 bg-white text-gray-600 hover:bg-stone-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
                 }`}
-                title={`Equity ${fmtPct(sc.sMean, 1)}±${fmtPct(sc.sStd, 0)} · Bonds ${fmtPct(sc.bMean, 1)}±${fmtPct(sc.bStd, 0)} (real, geometric)`}
               >
                 {SCENARIO_LABELS[s]}
               </button>
             )
           })}
         </div>
+        {params.scenario === 'custom' && (
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <NumInput
+              label="Stocks return shift"
+              value={Math.round(params.customStockShift * 1000) / 10}
+              onChange={v => update('customStockShift', v / 100)}
+              step={0.1}
+              suffix="pp"
+              hint="Added to every resampled stock return. e.g. −2 trims ~2pp/yr off historical"
+            />
+            <NumInput
+              label="Bonds return shift"
+              value={Math.round(params.customBondShift * 1000) / 10}
+              onChange={v => update('customBondShift', v / 100)}
+              step={0.1}
+              suffix="pp"
+              hint="Added to every resampled bond return"
+            />
+          </div>
+        )}
         <p className="mt-1.5 text-[10px] text-stone-500 dark:text-slate-400">
-          Equity {fmtPct(SCENARIOS[params.scenario].sMean, 1)} / σ {fmtPct(SCENARIOS[params.scenario].sStd, 0)}
-          {' · '}
-          Bonds {fmtPct(SCENARIOS[params.scenario].bMean, 1)} / σ {fmtPct(SCENARIOS[params.scenario].bStd, 0)}
-          {' · '}
-          ρ {params.rho.toFixed(2)} (all real, geometric).
+          Block-bootstrapped from U.S. {HISTORY_FIRST_YEAR}&ndash;{HISTORY_LAST_YEAR} real returns ({HISTORICAL_RETURNS.length} years, 10-year blocks).
+          {' '}Stocks shift {fmtPct(resolveScenarioShifts(params).stockShift, 1)}, bonds shift {fmtPct(resolveScenarioShifts(params).bondShift, 1)}.
         </p>
       </div>
 
@@ -1001,14 +1012,6 @@ export default function Retirement() {
         {result && (
           <p className="text-[11px] text-stone-500 dark:text-slate-400">
             {result.finalWealth.length.toLocaleString()} paths simulated.
-            {' '}
-            {vid
-              ? 'Viewer changes are not saved.'
-              : saveStatus === 'saving'
-                ? 'Saving inputs…'
-                : saveStatus === 'saved'
-                  ? 'Inputs saved.'
-                  : 'Tweak and re-run anytime.'}
           </p>
         )}
       </div>

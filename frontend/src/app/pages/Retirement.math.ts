@@ -1,27 +1,161 @@
 // Pure math for the retirement Monte Carlo simulator.
 // All dollar amounts are in $M (millions) of real (inflation-adjusted) dollars
 // unless noted otherwise. Spend / health-insurance inputs are in $K/year real.
+//
+// Returns are sampled by 5-year circular block bootstrap from 1928-2025 US
+// stock + 10yr Treasury history (Damodaran nominal returns, BLS CPI). Each
+// block preserves intra-block stock/bond co-movement, autocorrelation, and
+// crash/recovery shape that an i.i.d. lognormal model misses. Scenarios
+// differ only by a constant shift added to every resampled return — this
+// re-locates the distribution without distorting its variance, autocorrelation,
+// or tail asymmetry.
 
-export type Scenario = 'historical' | 'moderate' | 'cautious'
+export type Scenario = 'historical' | 'moderate' | 'cautious' | 'custom'
 
 export interface ScenarioParams {
-  sMean: number
-  sStd: number
-  bMean: number
-  bStd: number
+  stockShift: number  // added to every resampled stock return
+  bondShift: number   // added to every resampled bond return
 }
 
-export const SCENARIOS: Record<Scenario, ScenarioParams> = {
-  historical: { sMean: 0.07, sStd: 0.17, bMean: 0.015, bStd: 0.08 },
-  moderate: { sMean: 0.05, sStd: 0.18, bMean: 0, bStd: 0.09 },
-  cautious: { sMean: 0.035, sStd: 0.20, bMean: -0.005, bStd: 0.10 },
+// Built-in scenario shifts. 'custom' uses params.customStockShift / customBondShift.
+// Moderate ≈ Vanguard 2025 10-yr outlook (raw historical CAGR minus ~2pp on
+// equities given current valuations); cautious tightens further.
+export const SCENARIOS: Record<Exclude<Scenario, 'custom'>, ScenarioParams> = {
+  historical: { stockShift: 0, bondShift: 0 },
+  moderate: { stockShift: -0.02, bondShift: -0.005 },
+  cautious: { stockShift: -0.035, bondShift: -0.01 },
 }
 
 export const SCENARIO_LABELS: Record<Scenario, string> = {
   historical: 'Historical',
   moderate: 'Moderate',
   cautious: 'Cautious',
+  custom: 'Custom',
 }
+
+// Block bootstrap settings. 10 years per block — long enough that each block
+// already averages over a full short-cycle so paths can't manufacture a 51-year
+// run by stitching together only the best 5-year periods, but short enough to
+// give meaningful path-to-path variation over a 50-year horizon (5-6 blocks).
+export const BLOCK_LEN = 10
+
+export interface HistoricalReturn {
+  year: number
+  stockReal: number
+  bondReal: number
+}
+
+// Raw US data 1928-2025: [year, S&P 500 nominal, 10yr T.Bond nominal, CPI %].
+// Stocks + bonds: Aswath Damodaran (NYU Stern). CPI: BLS via Minneapolis Fed.
+// Real return = (1 + nominal) / (1 + cpi) - 1, computed below.
+const HISTORICAL_RAW: ReadonlyArray<readonly [number, number, number, number]> = [
+  [1928, 0.4381, 0.0084, -0.0120],
+  [1929, -0.0830, 0.0420, 0.0000],
+  [1930, -0.2512, 0.0454, -0.0270],
+  [1931, -0.4384, -0.0256, -0.0890],
+  [1932, -0.0864, 0.0879, -0.1030],
+  [1933, 0.4998, 0.0186, -0.0520],
+  [1934, -0.0119, 0.0796, 0.0350],
+  [1935, 0.4674, 0.0447, 0.0260],
+  [1936, 0.3194, 0.0502, 0.0100],
+  [1937, -0.3534, 0.0138, 0.0370],
+  [1938, 0.2928, 0.0421, -0.0200],
+  [1939, -0.0110, 0.0441, -0.0130],
+  [1940, -0.1067, 0.0540, 0.0070],
+  [1941, -0.1277, -0.0202, 0.0510],
+  [1942, 0.1917, 0.0229, 0.1090],
+  [1943, 0.2506, 0.0249, 0.0600],
+  [1944, 0.1903, 0.0258, 0.0160],
+  [1945, 0.3582, 0.0380, 0.0230],
+  [1946, -0.0843, 0.0313, 0.0850],
+  [1947, 0.0520, 0.0092, 0.1440],
+  [1948, 0.0570, 0.0195, 0.0770],
+  [1949, 0.1830, 0.0466, -0.0100],
+  [1950, 0.3081, 0.0043, 0.0110],
+  [1951, 0.2368, -0.0030, 0.0790],
+  [1952, 0.1815, 0.0227, 0.0230],
+  [1953, -0.0121, 0.0414, 0.0080],
+  [1954, 0.5256, 0.0329, 0.0030],
+  [1955, 0.3260, -0.0134, -0.0030],
+  [1956, 0.0744, -0.0226, 0.0150],
+  [1957, -0.1046, 0.0680, 0.0330],
+  [1958, 0.4372, -0.0210, 0.0270],
+  [1959, 0.1206, -0.0265, 0.0108],
+  [1960, 0.0034, 0.1164, 0.0150],
+  [1961, 0.2664, 0.0206, 0.0110],
+  [1962, -0.0881, 0.0569, 0.0120],
+  [1963, 0.2261, 0.0168, 0.0120],
+  [1964, 0.1642, 0.0373, 0.0130],
+  [1965, 0.1240, 0.0072, 0.0160],
+  [1966, -0.0997, 0.0291, 0.0300],
+  [1967, 0.2380, -0.0158, 0.0280],
+  [1968, 0.1081, 0.0327, 0.0430],
+  [1969, -0.0824, -0.0501, 0.0550],
+  [1970, 0.0356, 0.1675, 0.0580],
+  [1971, 0.1422, 0.0979, 0.0430],
+  [1972, 0.1876, 0.0282, 0.0330],
+  [1973, -0.1431, 0.0366, 0.0620],
+  [1974, -0.2590, 0.0199, 0.1110],
+  [1975, 0.3700, 0.0361, 0.0910],
+  [1976, 0.2383, 0.1598, 0.0570],
+  [1977, -0.0698, 0.0129, 0.0650],
+  [1978, 0.0651, -0.0078, 0.0760],
+  [1979, 0.1852, 0.0067, 0.1130],
+  [1980, 0.3174, -0.0299, 0.1350],
+  [1981, -0.0470, 0.0820, 0.1030],
+  [1982, 0.2042, 0.3281, 0.0610],
+  [1983, 0.2234, 0.0320, 0.0320],
+  [1984, 0.0615, 0.1373, 0.0430],
+  [1985, 0.3124, 0.2571, 0.0350],
+  [1986, 0.1849, 0.2428, 0.0190],
+  [1987, 0.0581, -0.0496, 0.0370],
+  [1988, 0.1654, 0.0822, 0.0410],
+  [1989, 0.3148, 0.1769, 0.0480],
+  [1990, -0.0306, 0.0624, 0.0540],
+  [1991, 0.3023, 0.1500, 0.0420],
+  [1992, 0.0749, 0.0936, 0.0300],
+  [1993, 0.0997, 0.1421, 0.0300],
+  [1994, 0.0133, -0.0804, 0.0260],
+  [1995, 0.3720, 0.2348, 0.0280],
+  [1996, 0.2268, 0.0143, 0.0290],
+  [1997, 0.3310, 0.0994, 0.0230],
+  [1998, 0.2834, 0.1492, 0.0160],
+  [1999, 0.2089, -0.0825, 0.0220],
+  [2000, -0.0903, 0.1666, 0.0340],
+  [2001, -0.1185, 0.0557, 0.0280],
+  [2002, -0.2197, 0.1512, 0.0160],
+  [2003, 0.2836, 0.0038, 0.0230],
+  [2004, 0.1074, 0.0449, 0.0270],
+  [2005, 0.0483, 0.0287, 0.0340],
+  [2006, 0.1561, 0.0196, 0.0320],
+  [2007, 0.0548, 0.1021, 0.0290],
+  [2008, -0.3655, 0.2010, 0.0380],
+  [2009, 0.2594, -0.1112, -0.0040],
+  [2010, 0.1482, 0.0846, 0.0160],
+  [2011, 0.0210, 0.1604, 0.0320],
+  [2012, 0.1589, 0.0297, 0.0210],
+  [2013, 0.3215, -0.0910, 0.0150],
+  [2014, 0.1352, 0.1075, 0.0160],
+  [2015, 0.0138, 0.0128, 0.0010],
+  [2016, 0.1177, 0.0069, 0.0130],
+  [2017, 0.2161, 0.0280, 0.0210],
+  [2018, -0.0423, -0.0002, 0.0240],
+  [2019, 0.3121, 0.0964, 0.0180],
+  [2020, 0.1802, 0.1133, 0.0120],
+  [2021, 0.2847, -0.0442, 0.0470],
+  [2022, -0.1804, -0.1783, 0.0800],
+  [2023, 0.2606, 0.0388, 0.0410],
+  [2024, 0.2488, -0.0164, 0.0290],
+  [2025, 0.1778, 0.0780, 0.0260],
+]
+
+export const HISTORICAL_RETURNS: ReadonlyArray<HistoricalReturn> = HISTORICAL_RAW.map(
+  ([year, nomS, nomB, infl]) => ({
+    year,
+    stockReal: (1 + nomS) / (1 + infl) - 1,
+    bondReal: (1 + nomB) / (1 + infl) - 1,
+  }),
+)
 
 export interface SimParams {
   epicExit: number       // $M
@@ -34,13 +168,14 @@ export interface SimParams {
   zeroHIPost65: boolean  // health-insurance cost goes to 0 once age > 65
   refillTaxDrag: number  // 0..1
   scenario: Scenario
+  customStockShift: number  // applied when scenario === 'custom'
+  customBondShift: number   // applied when scenario === 'custom'
   ssMonthly: number      // $/month at FRA
   claimAge: number       // 62-70
   currentAge: number     // age at simulation start
   endAge: number         // simulate to this age
   paths: number
   fra: number            // 67
-  rho: number            // -0.05
   // Spouse extension. When includeSpouse is false the rest are ignored.
   includeSpouse: boolean
   spouseCurrentAge: number  // age at simulation start (derived from spouse DOB + retirement date)
@@ -62,13 +197,14 @@ export const DEFAULT_PARAMS: SimParams = {
   zeroHIPost65: true,
   refillTaxDrag: 0.25,
   scenario: 'historical',
+  customStockShift: 0,
+  customBondShift: 0,
   ssMonthly: 2500,
   claimAge: 67,
   currentAge: 50,
   endAge: 95,
   paths: 100_000,
   fra: 67,
-  rho: -0.05,
   includeSpouse: false,
   spouseCurrentAge: 50,
   spouseSsMonthly: 0,
@@ -87,21 +223,12 @@ export function mulberry32(seed: number): () => number {
   }
 }
 
-// Box-Muller: returns two independent N(0,1) samples per call.
-export function boxMuller(rand: () => number): [number, number] {
-  let u1 = rand()
-  while (u1 === 0) u1 = rand()
-  const u2 = rand()
-  const r = Math.sqrt(-2 * Math.log(u1))
-  const theta = 2 * Math.PI * u2
-  return [r * Math.cos(theta), r * Math.sin(theta)]
-}
-
-// Convert quoted arithmetic std dev (of returns) to log-return sigma.
-//   σ_log² = ln(1 + (σ_a / (1 + μ_g))²)
-export function arithToLogSigma(geomMean: number, arithStd: number): number {
-  const ratio = arithStd / (1 + geomMean)
-  return Math.sqrt(Math.log(1 + ratio * ratio))
+// Resolve the (stockShift, bondShift) pair for a given params object.
+export function resolveScenarioShifts(params: Pick<SimParams, 'scenario' | 'customStockShift' | 'customBondShift'>): ScenarioParams {
+  if (params.scenario === 'custom') {
+    return { stockShift: params.customStockShift, bondShift: params.customBondShift }
+  }
+  return SCENARIOS[params.scenario]
 }
 
 // SS benefit adjustment factor at claim age. FRA default 67.
@@ -118,24 +245,6 @@ export function ssAdjustment(claimAge: number, fra: number = 67): number {
   }
   const yearsLate = Math.min(claimAge - fra, 70 - fra)
   return 1 + 0.08 * yearsLate
-}
-
-// Sample correlated stock & bond *arithmetic* one-year returns from the
-// underlying log-normal process (ρ correlation in log space).
-export function sampleAnnualReturns(
-  muS: number,
-  sigS: number,
-  muB: number,
-  sigB: number,
-  rho: number,
-  rand: () => number,
-): [number, number] {
-  const [z1, z2] = boxMuller(rand)
-  const wS = z1
-  const wB = rho * z1 + Math.sqrt(1 - rho * rho) * z2
-  const stockR = Math.exp(muS + sigS * wS) - 1
-  const bondR = Math.exp(muB + sigB * wB) - 1
-  return [stockR, bondR]
 }
 
 // Linear interpolation quantile on a sorted ascending array.
@@ -167,11 +276,9 @@ export interface SimResult {
 
 export function simulate(params: SimParams): SimResult {
   const rand = params.seed != null ? mulberry32(params.seed) : Math.random
-  const sc = SCENARIOS[params.scenario]
-  const muS = Math.log(1 + sc.sMean)
-  const muB = Math.log(1 + sc.bMean)
-  const sigS = arithToLogSigma(sc.sMean, sc.sStd)
-  const sigB = arithToLogSigma(sc.bMean, sc.bStd)
+  const { stockShift, bondShift } = resolveScenarioShifts(params)
+  const data = HISTORICAL_RETURNS
+  const dataLen = data.length
 
   const totalPortfolio = params.epicExit + params.additional
   const stockPct = Math.max(0, params.stockPct)
@@ -224,14 +331,24 @@ export function simulate(params: SimParams): SimResult {
     let equity = startingEquity
     let cash = startingCash
     let isRuined = false
+    let blockStart = Math.floor(rand() * dataLen)
 
     for (let y = 1; y <= Y; y++) {
       const age = params.currentAge + y
       const equityBefore = equity
 
+      // Pick a fresh circular block every BLOCK_LEN years.
+      const yearInBlock = (y - 1) % BLOCK_LEN
+      if (yearInBlock === 0 && y > 1) {
+        blockStart = Math.floor(rand() * dataLen)
+      }
+      const dataIdx = (blockStart + yearInBlock) % dataLen
+      const sample = data[dataIdx]
+      const stockR = sample.stockReal + stockShift
+      const bondR = sample.bondReal + bondShift
+
       let portR = 0
       if (equity > 0) {
-        const [stockR, bondR] = sampleAnnualReturns(muS, sigS, muB, sigB, params.rho, rand)
         portR = wS * stockR + wB * bondR
         equity = equity * (1 + portR)
         if (equity < 0) equity = 0

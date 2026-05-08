@@ -35,14 +35,13 @@ export const SCENARIO_LABELS: Record<Scenario, string> = {
 
 // Stationary bootstrap (Politis & Romano 1994): at each year, with
 // probability 1/MEAN_BLOCK_LEN start a new random block, otherwise advance
-// one year. Block lengths are geometrically distributed with mean L, so
-// most blocks are short (variation) but a meaningful fraction are very long
-// (close-to-historical sequences). That outperforms fixed-length blocks at
-// long horizons: fixed BL=10 gives ~5 independent blocks for a 51-year
-// path, which can chain together synthetic bad-decade sequences worse than
-// any actual 50-year window. Geometric block lengths suppress that — paths
-// often draw a single long block that's just a real historical 50-year run.
-export const MEAN_BLOCK_LEN = 10
+// one year. Block lengths are geometrically distributed with mean L. Mean
+// 20 gives a strong bias toward keeping each path on a single contiguous
+// historical run (P(no jumps in 30 years) ≈ 22%), which mostly suppresses
+// the synthetic-bad-stitching that fixed shorter blocks fall victim to at
+// long horizons, while geometric variance still produces enough short
+// blocks for inter-path Monte Carlo diversity.
+export const MEAN_BLOCK_LEN = 20
 
 export interface HistoricalReturn {
   year: number

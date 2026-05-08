@@ -94,8 +94,8 @@ describe('ssAdjustment', () => {
 })
 
 describe('block bootstrap', () => {
-  it('uses MEAN_BLOCK_LEN of 10 (stationary bootstrap, matches doc/UI defaults)', () => {
-    expect(MEAN_BLOCK_LEN).toBe(10)
+  it('uses MEAN_BLOCK_LEN of 20 (stationary bootstrap, matches doc/UI defaults)', () => {
+    expect(MEAN_BLOCK_LEN).toBe(20)
   })
 
   it('30-year retiree at 2.3% WR has near-zero ruin in historical scenario', () => {

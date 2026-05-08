@@ -108,7 +108,7 @@ Everything in the app is derived from these four tables at request time:
 
 9. **Compare to a salary offer** — go to **Comp Calc** to translate your stock-loan program into a single comparable comp number. See [Total Comp Calculator](#total-comp-calculator) below.
 
-10. **Stress-test retirement** — go to **Retirement** to run a 100,000-path Monte Carlo of a 50-year retirement using your Epic exit value plus other assets. See [Retirement Simulator](#retirement-simulator) below.
+10. **Stress-test retirement** — go to **Retirement** to run a 100,000-path simulation of your retirement using your Epic exit value plus other assets. Each path samples real years of 1928-2025 U.S. stock + bond history (block bootstrap) so crash shapes and recoveries are realistic. See [Retirement Simulator](#retirement-simulator) below.
 
 11. **Export your data** — go to **Import/Export → Download Vesting.xlsx** for a full export at any time.
 
@@ -181,23 +181,29 @@ All math runs locally in your browser — no calculation results are stored. Tax
 |--------|---------|
 | ![Retirement Mobile](screenshots/retirement-light-mobile.png) | ![Retirement Desktop](screenshots/retirement-light-desktop.png) |
 
-The **Retirement** tab runs a 100,000-path Monte Carlo of a 50-year retirement entirely in your browser. It pre-fills the Epic exit value from the dashboard's "If you exited today" net cash, lets you add a separate brokerage / 401k portfolio plus a cash buffer, then projects total wealth over time under stylized real-return assumptions.
+The **Retirement** tab runs a 100,000-path simulation of your retirement entirely in your browser. It pre-fills the Epic exit value from the dashboard's "If you exited today" net cash, lets you add a separate brokerage / 401k portfolio plus a cash buffer, then projects total wealth over time using **block-bootstrapped real returns from 1928–2025 U.S. history**.
+
+**How returns are sampled.** Each year of every Monte-Carlo path is drawn from a real historical year (S&P 500 + 10-year Treasury, both inflation-adjusted using BLS CPI). We start at a random year and walk forward; each subsequent year there's a 1-in-20 chance the path jumps to a new random year, otherwise it advances. This is the **stationary block bootstrap** of Politis & Romano (1994), with mean block length 20. It preserves crash shapes, recovery patterns, and stock/bond co-movement that an i.i.d. lognormal model can't capture — 1929 is usually followed by 1930, 2008 by 2009 — while still giving plenty of inter-path Monte-Carlo variation. Long blocks mean most paths contain at least one extended contiguous historical run, so ruin probability for sub-3% withdrawals matches the 0/N rolling-historical-windows answer at typical retirement horizons.
 
 **Inputs:**
 
-- **Date of birth** — saved on the user account; used to estimate Social Security claim timing, Medicare eligibility (age 65), and your **age at the chosen retirement date** (which is now the simulation start age). When viewing a shared account, the data owner's DOB is used (read-only).
-- **Retirement date** — date picker; the Epic exit value auto-fills from the dashboard's "If you exited" net cash for that date, and the simulation horizon starts at your age on that date (so wealth and time horizon stay aligned). The date itself is persisted on blur — refresh the page and it sticks.
+- **Date of birth** — saved on the user account; used to estimate Social Security claim timing, Medicare eligibility (age 65), and your **age at the chosen retirement date** (which is the simulation start age). When viewing a shared account, the data owner's DOB is used (read-only).
+- **Retirement date** — date picker; the Epic exit value auto-fills from the dashboard's "If you exited" net cash for that date, and the simulation horizon starts at your age on that date (so wealth and time horizon stay aligned).
 - **Epic exit value + additional portfolio** ($M) — Epic exit plus brokerage / 401k / other assets give the total portfolio.
 - **Stocks / Bonds / Cash allocation** (%) — split the total portfolio. Cash is auto-computed as `100 − stocks − bonds`.
 - **Default / minimum spend** ($K/yr real, excluding health insurance) — default-spend defaults to **3%** of total portfolio; minimum-spend (the floor used in negative-return years) defaults to **2%**. A click-to-expand explainer next to "Minimum spend" walks through the formula and notes you can set the floor equal to default spend to model no spending cuts in down years. Both defaults track total portfolio until you edit them.
 - **Health insurance** ($K/yr real, default $25K) with a default-checked **Zero out after age 65** checkbox (Medicare). With **Include spouse** on, the line steps from 100% (both pre-65) → 50% (one on Medicare) → 0% (both on Medicare).
 - **Refill tax drag** (%) — tax paid when selling equity to refill cash. Default = your blended LT cap-gains rate from **Settings → Tax Rates**. Cash is only refilled from a year's net positive equity gain (preserves principal).
-- **Return scenario** — **Historical** (7%/1.5% real geometric means), **Moderate** (5%/0%), or **Cautious** (3.5%/-0.5%). Stocks and bonds are correlated (ρ = -0.05) in log space. A click-to-expand explainer next to the section heading walks through what σ (sigma) means and how the three scenarios differ.
-- **Simulate-until age** (slider) — sets the simulation horizon (years = end_age − age_at_retirement, derived from DOB and the chosen retirement date).
+- **Return scenario** — four options that all share the same bootstrap shape but apply a constant shift to every resampled return:
+  - **Historical** — no shift; the raw 1928-2025 distribution. Average real CAGR ≈ 6.7% stocks, 2% 10yr Treasury.
+  - **Moderate** — stocks −2pp, bonds −0.5pp. Roughly Vanguard's 2025 10-year outlook given current equity valuations.
+  - **Cautious** — stocks −3.5pp, bonds −1pp. Stress test for materially worse forward returns.
+  - **Custom** — set the stocks and bonds shifts yourself in percentage points (e.g. `−2.5` trims 2.5pp/yr off historical stock returns).
+- **Simulate-until age** (slider) — sets the simulation horizon (years = end_age − age_at_retirement).
 - **SS FRA monthly benefit + claim age slider** (62-70) — Social Security adjusted by the SSA early/late formula. SS reduces the portfolio withdrawal in years it's active.
-- **Include spouse** (toggle) — adds a spouse DOB, spouse FRA monthly benefit, and spouse claim-age slider. The spouse SS stream uses the SSA early/late formula at the spouse's claim age and is added on top of yours; the spouse DOB also drives the Medicare step-down for health insurance. For the spousal-benefit rule (50% of higher earner's PIA), enter that as the spouse's FRA monthly directly. The spouse DOB and these inputs persist alongside the rest of the saved scenario.
+- **Include spouse** (toggle) — adds a spouse DOB, spouse FRA monthly benefit, and spouse claim-age slider. The spouse SS stream uses the SSA early/late formula at the spouse's claim age and is added on top of yours; the spouse DOB also drives the Medicare step-down for health insurance. For the spousal-benefit rule (50% of higher earner's PIA), enter that as the spouse's FRA monthly directly.
 
-**Persistence:** The owner's last-run input set (including the retirement date) is saved on every **Run simulation** click; the retirement date is also persisted on blur of the date picker so a refresh never resets it. Saved data re-loads on next visit. Shared viewers see the owner's saved scenario as the default; viewer edits run locally but are never written back. The dashboard's date-mode / range / open-breakdowns preferences are also persisted server-side per owner (and a viewer's local changes never overwrite the owner's saved state).
+**Persistence:** Every input change auto-saves (debounced) — there's a single status indicator at the top of the page (`Inputs save automatically` → `Saving…` → `All inputs saved`) and no per-field save annotations. Saved data re-loads on next visit. Shared viewers see the owner's saved scenario as the default; viewer edits run locally but are never written back, and the same header indicator surfaces that explicitly.
 
 **Outputs:**
 
@@ -207,6 +213,8 @@ The **Retirement** tab runs a 100,000-path Monte Carlo of a 50-year retirement e
 - A percentile table at p1, p5, p10, p25, p50, p75, p90, p95, p99.
 
 All values are real (inflation-adjusted). Withdrawals happen at year-end after equity grows. Health insurance, when enabled, is added on top of base spend until the post-65 zero-out kicks in. The simulation runs locally — no data leaves your browser. Click **Run simulation** to execute; tweak inputs and re-run any time.
+
+**Data sources for the historical bootstrap:** S&P 500 nominal annual returns and 10-year Treasury nominal returns from Aswath Damodaran (NYU Stern); CPI inflation from BLS via the Minneapolis Fed. Real return for each year is `(1 + nominal) / (1 + cpi) - 1`. The full table is embedded in `frontend/src/app/pages/Retirement.math.ts` so the simulation runs offline.
 
 ---
 

@@ -853,10 +853,10 @@ export default function Retirement() {
             <p className="mb-1">
               Each year of every path is sampled from a real {HISTORY_FIRST_YEAR}&ndash;{HISTORY_LAST_YEAR} year of U.S. history (S&amp;P 500
               + 10yr Treasury, both real). We start at a random year and walk forward; each year there&rsquo;s a
-              1-in-10 chance the path jumps to a new random year (stationary bootstrap, mean block length 10).
+              1-in-20 chance the path jumps to a new random year (stationary bootstrap, mean block length 20).
               That preserves crash shapes, recovery patterns, and stock/bond co-movement &mdash; 1929 is usually
               followed by 1930, 2008 by 2009 &mdash; while still giving plenty of Monte Carlo variation between
-              paths. Geometric block lengths mean most paths contain at least one long contiguous historical
+              paths. Long geometric blocks mean most paths contain at least one long contiguous historical
               run, which is why the bootstrap matches the 0/N historical rolling-windows ruin baseline at
               sub-3% withdrawal for typical retirement horizons.
             </p>
@@ -910,7 +910,7 @@ export default function Retirement() {
           </div>
         )}
         <p className="mt-1.5 text-[10px] text-stone-500 dark:text-slate-400">
-          Stationary block bootstrap of U.S. {HISTORY_FIRST_YEAR}&ndash;{HISTORY_LAST_YEAR} real returns ({HISTORICAL_RETURNS.length} years, ~10yr mean block).
+          Stationary block bootstrap of U.S. {HISTORY_FIRST_YEAR}&ndash;{HISTORY_LAST_YEAR} real returns ({HISTORICAL_RETURNS.length} years, ~20yr mean block).
           {' '}Stocks shift {fmtPct(resolveScenarioShifts(params).stockShift, 1)}, bonds shift {fmtPct(resolveScenarioShifts(params).bondShift, 1)}.
         </p>
       </div>

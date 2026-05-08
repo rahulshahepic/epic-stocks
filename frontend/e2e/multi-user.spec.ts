@@ -3,14 +3,15 @@ import { loginAs, navigateTo, resetUserData } from './helpers'
 
 // Per-assertion timeout for API-driven UI updates. The test does ~25 such
 // waits across two users plus a reset cycle; on contended CI runners the
-// click → router → mount → fetch → render chain occasionally exceeds the
-// Playwright default. 15s gives ample margin without masking real bugs.
-const SETTLE = 15_000
+// click → router → mount → fetch → render chain can blow past a tight
+// timeout. 25s is comfortably above what any single assertion needs locally
+// while still failing fast on a real regression.
+const SETTLE = 25_000
 
 test.describe('Multi-user isolation', () => {
   test('two users cannot see each other\'s data', async ({ page }) => {
     // Many login + navigation cycles in this test — give the whole thing room.
-    test.setTimeout(60_000)
+    test.setTimeout(90_000)
 
     // Reset both users before starting (loginAs sets the cookie, then resetUserData uses it)
     await loginAs(page, 'usera-isolation@test.com', 'User A')

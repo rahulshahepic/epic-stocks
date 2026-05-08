@@ -344,6 +344,36 @@ describe('histogram', () => {
     const h = histogram(r, 10)
     expect(h.scale).toBe('linear')
   })
+
+  // A single absurdly low surviving path must not drag the visible left
+  // edge across many decades. The outlier still counts (lands in bin 0),
+  // but the leftmost bin's x0 should be near the bulk of the data.
+  it('log mode trims extreme low outliers from the visible range', () => {
+    const bulk: number[] = []
+    for (let i = 0; i < 1000; i++) bulk.push(50 + (i % 200))  // ~50–250
+    const values = [0.0001, ...bulk, 50000]  // one absurdly low + one absurdly high
+    const r = makeSyntheticResult(values, 100)
+    const h = histogram(r, 30)
+    expect(h.scale).toBe('log')
+    expect(h.bins.reduce((s, b) => s + b.count, 0)).toBe(values.length)
+    // Trim should keep the left edge well above the $0.0001 outlier.
+    expect(h.bins[0].x0).toBeGreaterThan(1)
+    // The outlier lands in bin 0 and the high outlier in the last bin.
+    expect(h.bins[0].count).toBeGreaterThanOrEqual(1)
+    expect(h.bins[h.bins.length - 1].count).toBeGreaterThanOrEqual(1)
+  })
+
+  // The trim must not push starting wealth out of the visible range, otherwise
+  // the dashed reference line on the chart would render off-screen.
+  it('log mode keeps starting wealth inside the visible range', () => {
+    const values = [0.5, 0.6, 0.7, 0.8, 0.9, 1, 50, 100, 200, 1000]
+    const start = 5  // sits between the two clusters
+    const r = makeSyntheticResult(values, start)
+    const h = histogram(r, 20)
+    expect(h.scale).toBe('log')
+    expect(h.bins[0].x0).toBeLessThanOrEqual(start)
+    expect(h.bins[h.bins.length - 1].x1).toBeGreaterThanOrEqual(start)
+  })
 })
 
 // Build a SimResult with given non-ruined finalWealth values; ruined entries

@@ -40,6 +40,18 @@ function fmt$M(n: number, digits: number = 2): string {
   return `$${n.toFixed(digits)}M`
 }
 
+// Histogram x-axis labels: same input units as fmt$M (millions of dollars),
+// but switches to $K below $1M so log-scale ticks like $0.1M don't round to "$0M".
+function fmtAxisDollarsM(n: number): string {
+  if (!isFinite(n)) return '—'
+  const a = Math.abs(n)
+  if (a === 0) return '$0'
+  if (a >= 100) return `$${n.toFixed(0)}M`
+  if (a >= 1) return `$${Math.round(n)}M`
+  if (a >= 0.001) return `$${Math.round(n * 1000)}K`
+  return `$${(n * 1_000_000).toFixed(0)}`
+}
+
 function fmtPct(n: number, digits: number = 1): string {
   return (n * 100).toFixed(digits) + '%'
 }
@@ -1004,7 +1016,7 @@ export default function Retirement() {
                         : ['dataMin', 'dataMax']
                     }
                     tick={{ fontSize: 10, fill: c.axis }}
-                    tickFormatter={(v: number) => fmt$M(v, 0)}
+                    tickFormatter={fmtAxisDollarsM}
                   />
                   <YAxis tick={{ fontSize: 10, fill: c.axis }} />
                   <Tooltip content={<HistogramTooltip c={c} />} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />

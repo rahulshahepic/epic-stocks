@@ -1,17 +1,19 @@
 import { describe, it, expect } from 'vitest'
 import {
-  arithToLogSigma,
-  boxMuller,
+  MEAN_BLOCK_LEN,
   computeFanPercentiles,
   DEFAULT_PARAMS,
   finalPercentiles,
   FINAL_PERCENTILES,
+  HISTORICAL_RETURNS,
   histogram,
   mulberry32,
+  projectedSpend,
   quantile,
-  sampleAnnualReturns,
+  resolveScenarioShifts,
   SCENARIOS,
   simulate,
+  SPEND_RAMP_FLOOR,
   ssAdjustment,
 } from '../app/pages/Retirement.math.ts'
 
@@ -32,31 +34,41 @@ describe('mulberry32', () => {
   })
 })
 
-describe('boxMuller', () => {
-  it('produces N(0,1) samples (approximate stats over many draws)', () => {
-    const rand = mulberry32(12345)
-    const samples: number[] = []
-    for (let i = 0; i < 10000; i++) {
-      const [a, b] = boxMuller(rand)
-      samples.push(a, b)
+describe('HISTORICAL_RETURNS', () => {
+  it('covers a contiguous span of years', () => {
+    expect(HISTORICAL_RETURNS.length).toBeGreaterThan(90)
+    for (let i = 1; i < HISTORICAL_RETURNS.length; i++) {
+      expect(HISTORICAL_RETURNS[i].year).toBe(HISTORICAL_RETURNS[i - 1].year + 1)
     }
-    const mean = samples.reduce((s, x) => s + x, 0) / samples.length
-    const variance = samples.reduce((s, x) => s + (x - mean) ** 2, 0) / samples.length
-    expect(Math.abs(mean)).toBeLessThan(0.05)
-    expect(Math.abs(Math.sqrt(variance) - 1)).toBeLessThan(0.05)
+  })
+
+  it('arithmetic mean of real stock returns matches long-run U.S. (~8% +/- 2pp)', () => {
+    const mean =
+      HISTORICAL_RETURNS.reduce((s, r) => s + r.stockReal, 0) / HISTORICAL_RETURNS.length
+    expect(mean).toBeGreaterThan(0.06)
+    expect(mean).toBeLessThan(0.10)
+  })
+
+  it('arithmetic mean of real bond returns is positive but modest (~2%)', () => {
+    const mean =
+      HISTORICAL_RETURNS.reduce((s, r) => s + r.bondReal, 0) / HISTORICAL_RETURNS.length
+    expect(mean).toBeGreaterThan(0.0)
+    expect(mean).toBeLessThan(0.04)
   })
 })
 
-describe('arithToLogSigma', () => {
-  it('matches the closed form for small ratios', () => {
-    // For small σ_a/(1+μ): σ_log ≈ σ_a/(1+μ)
-    const s = arithToLogSigma(0.07, 0.17)
-    expect(s).toBeCloseTo(Math.sqrt(Math.log(1 + (0.17 / 1.07) ** 2)), 8)
+describe('resolveScenarioShifts', () => {
+  it('returns the built-in shift for non-custom scenarios', () => {
+    expect(resolveScenarioShifts({ scenario: 'historical', customStockShift: 0.99, customBondShift: 0.99 }))
+      .toEqual(SCENARIOS.historical)
+    expect(resolveScenarioShifts({ scenario: 'moderate', customStockShift: 0, customBondShift: 0 }))
+      .toEqual(SCENARIOS.moderate)
+    expect(resolveScenarioShifts({ scenario: 'cautious', customStockShift: 0, customBondShift: 0 }))
+      .toEqual(SCENARIOS.cautious)
   })
-  it('is monotonic in arithmetic std', () => {
-    const a = arithToLogSigma(0.05, 0.10)
-    const b = arithToLogSigma(0.05, 0.20)
-    expect(b).toBeGreaterThan(a)
+  it('uses the user shifts when scenario is custom', () => {
+    expect(resolveScenarioShifts({ scenario: 'custom', customStockShift: -0.04, customBondShift: -0.015 }))
+      .toEqual({ stockShift: -0.04, bondShift: -0.015 })
   })
 })
 
@@ -83,53 +95,149 @@ describe('ssAdjustment', () => {
   })
 })
 
-describe('sampleAnnualReturns', () => {
-  it('produces stock returns whose log-sample mean ≈ μ_log', () => {
-    const sc = SCENARIOS.historical
-    const muS = Math.log(1 + sc.sMean)
-    const muB = Math.log(1 + sc.bMean)
-    const sigS = arithToLogSigma(sc.sMean, sc.sStd)
-    const sigB = arithToLogSigma(sc.bMean, sc.bStd)
-    const rand = mulberry32(7)
-    const logS: number[] = []
-    const logB: number[] = []
-    for (let i = 0; i < 20000; i++) {
-      const [s, b] = sampleAnnualReturns(muS, sigS, muB, sigB, -0.05, rand)
-      logS.push(Math.log(1 + s))
-      logB.push(Math.log(1 + b))
-    }
-    const meanS = logS.reduce((a, x) => a + x, 0) / logS.length
-    const meanB = logB.reduce((a, x) => a + x, 0) / logB.length
-    expect(Math.abs(meanS - muS)).toBeLessThan(0.01)
-    expect(Math.abs(meanB - muB)).toBeLessThan(0.01)
+describe('block bootstrap', () => {
+  it('uses MEAN_BLOCK_LEN of 20 (stationary bootstrap, matches doc/UI defaults)', () => {
+    expect(MEAN_BLOCK_LEN).toBe(20)
   })
 
-  it('honours the requested correlation in log space (within tolerance)', () => {
-    const muS = 0.05
-    const muB = 0.01
-    const sigS = 0.15
-    const sigB = 0.07
-    const rho = -0.05
-    const rand = mulberry32(99)
-    const xs: number[] = []
-    const ys: number[] = []
-    for (let i = 0; i < 20000; i++) {
-      const [s, b] = sampleAnnualReturns(muS, sigS, muB, sigB, rho, rand)
-      xs.push(Math.log(1 + s))
-      ys.push(Math.log(1 + b))
+  it('30-year retiree at 2.3% WR has near-zero ruin in historical scenario', () => {
+    // Walking actual 30-year historical windows from each starting year
+    // ruins on 0/98 paths at this withdrawal rate. The 10-year-block
+    // bootstrap matches that in the typical retirement-horizon case (3
+    // blocks/path is enough to vary outcomes without enabling pathological
+    // stitching).
+    const r = simulate({
+      ...DEFAULT_PARAMS,
+      epicExit: 12,
+      additional: 0,
+      stockPct: 0.9,
+      bondPct: 0.05,
+      defaultSpend: 275,
+      minSpend: 130,
+      healthInsurance: 25,
+      currentAge: 65,
+      endAge: 95,
+      scenario: 'historical',
+      paths: 5000,
+      seed: 77,
+    })
+    expect(r.pctRuin).toBeLessThan(0.005)
+  })
+
+  it('the custom-zero scenario matches historical when shifts are 0', () => {
+    const a = simulate({ ...DEFAULT_PARAMS, epicExit: 5, paths: 200, seed: 21, scenario: 'historical' })
+    const b = simulate({
+      ...DEFAULT_PARAMS,
+      epicExit: 5,
+      paths: 200,
+      seed: 21,
+      scenario: 'custom',
+      customStockShift: 0,
+      customBondShift: 0,
+    })
+    expect(b.medianFinalM).toBeCloseTo(a.medianFinalM, 9)
+    expect(b.pctRuin).toBeCloseTo(a.pctRuin, 9)
+  })
+
+  it('moderate is strictly worse on median than historical (same seed)', () => {
+    const base = { ...DEFAULT_PARAMS, epicExit: 5, paths: 500, seed: 33 }
+    const hist = simulate({ ...base, scenario: 'historical' })
+    const mod = simulate({ ...base, scenario: 'moderate' })
+    expect(mod.medianFinalM).toBeLessThan(hist.medianFinalM)
+  })
+
+  it('cautious is strictly worse on median than moderate (same seed)', () => {
+    const base = { ...DEFAULT_PARAMS, epicExit: 5, paths: 500, seed: 41 }
+    const mod = simulate({ ...base, scenario: 'moderate' })
+    const cau = simulate({ ...base, scenario: 'cautious' })
+    expect(cau.medianFinalM).toBeLessThan(mod.medianFinalM)
+  })
+
+  it('moderate shift compresses the right tail materially vs historical (90/5/5, 51yr)', () => {
+    // The user-reported failure mode: i.i.d. lognormal gave ~3% chance of
+    // ending a billionaire from $12M, even in moderate. The bootstrap+shift
+    // model should produce a meaningfully smaller right tail under moderate
+    // than under historical, on the same seed.
+    const base = {
+      ...DEFAULT_PARAMS,
+      epicExit: 12,
+      additional: 0,
+      stockPct: 0.9,
+      bondPct: 0.05,
+      defaultSpend: 275,
+      minSpend: 130,
+      healthInsurance: 25,
+      currentAge: 44,
+      endAge: 95,
+      paths: 5000,
+      seed: 99,
     }
-    const mx = xs.reduce((a, x) => a + x, 0) / xs.length
-    const my = ys.reduce((a, x) => a + x, 0) / ys.length
-    let cov = 0,
-      vx = 0,
-      vy = 0
-    for (let i = 0; i < xs.length; i++) {
-      cov += (xs[i] - mx) * (ys[i] - my)
-      vx += (xs[i] - mx) ** 2
-      vy += (ys[i] - my) ** 2
+    const hist = simulate({ ...base, scenario: 'historical' })
+    const mod = simulate({ ...base, scenario: 'moderate' })
+    const billion = (r: ReturnType<typeof simulate>) => {
+      let n = 0
+      for (let i = 0; i < r.finalWealth.length; i++) if (r.finalWealth[i] >= 1000) n++
+      return n
     }
-    const corr = cov / Math.sqrt(vx * vy)
-    expect(Math.abs(corr - rho)).toBeLessThan(0.03)
+    const histBn = billion(hist)
+    const modBn = billion(mod)
+    expect(modBn).toBeLessThan(histBn)
+    // Moderate should keep the absolute billionaire chance under 3% (vs the
+    // ~3-4% the i.i.d. lognormal model produced for the same inputs).
+    expect(modBn / mod.finalWealth.length).toBeLessThan(0.03)
+  })
+})
+
+describe('projectedSpend (behavioral spending ramp)', () => {
+  it('returns default spend at or above starting wealth', () => {
+    expect(projectedSpend(1.0, 300, 100)).toBe(300)
+    expect(projectedSpend(1.5, 300, 100)).toBe(300)
+    expect(projectedSpend(10, 300, 100)).toBe(300)
+  })
+
+  it('returns min spend at or below the floor ratio', () => {
+    expect(projectedSpend(SPEND_RAMP_FLOOR, 300, 100)).toBe(100)
+    expect(projectedSpend(0.25, 300, 100)).toBe(100)
+    expect(projectedSpend(0, 300, 100)).toBe(100)
+  })
+
+  it('linearly interpolates between floor and starting wealth', () => {
+    // At the midpoint (0.75 = halfway between 0.5 and 1.0) we expect the
+    // spend halfway between min (100) and default (300) → 200.
+    expect(projectedSpend(0.75, 300, 100)).toBe(200)
+    // At 0.6 (20% of the way from 0.5 to 1.0), spend = 100 + 0.2*(300-100) = 140.
+    expect(projectedSpend(0.6, 300, 100)).toBeCloseTo(140, 6)
+    // At 0.9 (80% of the way), spend = 100 + 0.8*200 = 260.
+    expect(projectedSpend(0.9, 300, 100)).toBeCloseTo(260, 6)
+  })
+
+  it('flattens to a single value when default == min', () => {
+    expect(projectedSpend(0.3, 250, 250)).toBe(250)
+    expect(projectedSpend(0.6, 250, 250)).toBe(250)
+    expect(projectedSpend(1.2, 250, 250)).toBe(250)
+  })
+})
+
+describe('graded spending in simulate()', () => {
+  it('reduces ruin probability vs an equivalent flat-spend run on a stressed portfolio', () => {
+    // Same portfolio, same returns; the only difference is whether spending
+    // can ramp down. Behavioral spend (default != min) should produce
+    // strictly fewer ruins than a flat-spend run pinned at the default.
+    const stressed = {
+      ...DEFAULT_PARAMS,
+      epicExit: 4,
+      additional: 0,
+      stockPct: 0.7,
+      bondPct: 0.2,
+      defaultSpend: 250,
+      healthInsurance: 25,
+      scenario: 'cautious' as const,
+      paths: 1500,
+      seed: 51,
+    }
+    const flat = simulate({ ...stressed, minSpend: 250 })
+    const ramped = simulate({ ...stressed, minSpend: 100 })
+    expect(ramped.pctRuin).toBeLessThan(flat.pctRuin)
   })
 })
 

@@ -245,7 +245,7 @@ describe('Retirement page', () => {
     const dobInput = await screen.findByLabelText(/Date of birth/i) as HTMLInputElement
     await waitFor(() => expect(dobInput.value).toBe('1980-04-15'))
     // Hint shows both today's age and the age-at-retirement-date.
-    await waitFor(() => expect(screen.getByText(/Saved · age \d+ today, \d+ at retirement/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/Age \d+ today, \d+ at retirement/)).toBeInTheDocument())
   })
 
   it('shows missing-DOB warning when no DOB is set', async () => {
@@ -348,9 +348,9 @@ describe('Retirement page', () => {
       </MemoryRouter>,
     )
     const btn = await screen.findByRole('button', { name: /Return scenario explanation/i })
-    expect(screen.queryByText(/about 2\/3 of years fall within mean/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/stationary bootstrap/i)).not.toBeInTheDocument()
     await user.click(btn)
-    expect(screen.getByText(/about 2\/3 of years fall within mean/)).toBeInTheDocument()
+    expect(screen.getByText(/stationary bootstrap/i)).toBeInTheDocument()
   })
 
   it('restores a saved retirement date on mount instead of resetting to today', async () => {
@@ -364,7 +364,7 @@ describe('Retirement page', () => {
     await waitFor(() => expect(dateInput.value).toBe('2030-06-15'))
   })
 
-  it('persists the retirement date on blur (PUT to /api/retirement/params)', async () => {
+  it('auto-persists the retirement date after a change (PUT to /api/retirement/params)', async () => {
     mockApi({ netCash: null })
     render(
       <MemoryRouter>
@@ -376,7 +376,6 @@ describe('Retirement page', () => {
     // user.type doesn't reliably drive type="date" inputs in jsdom — fireEvent
     // is the supported way to set a value on them.
     fireEvent.change(dateInput, { target: { value: '2031-04-15' } })
-    fireEvent.blur(dateInput)
     await waitFor(() => {
       const calls = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls
       const matches = calls.filter(([input, init]: any) => {
@@ -388,7 +387,7 @@ describe('Retirement page', () => {
         // saveRetirementParams sends { params: {...} } — field lives one level in.
         .find(b => b?.params?.retirementDate === '2031-04-15')
       expect(withDate).toBeTruthy()
-    })
+    }, { timeout: 2000 })
   })
 
   it('uses age at the retirement date (not today) as the simulation start age', async () => {

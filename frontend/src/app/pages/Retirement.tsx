@@ -988,6 +988,7 @@ export default function Retirement() {
                 </p>
                 <p className="text-[10px] text-stone-500 dark:text-slate-400">
                   {histData.excluded.toLocaleString()} ruin paths excluded ({fmtPct(histData.excluded / histData.total)})
+                  {histData.scale === 'log' && <> · log scale</>}
                 </p>
               </div>
               <ResponsiveContainer width="100%" height={220}>
@@ -996,7 +997,12 @@ export default function Retirement() {
                   <XAxis
                     dataKey="mid"
                     type="number"
-                    domain={['dataMin', 'dataMax']}
+                    scale={histData.scale === 'log' ? 'log' : 'auto'}
+                    domain={
+                      histData.scale === 'log' && histData.bins.length > 0
+                        ? [histData.bins[0].x0, histData.bins[histData.bins.length - 1].x1]
+                        : ['dataMin', 'dataMax']
+                    }
                     tick={{ fontSize: 10, fill: c.axis }}
                     tickFormatter={(v: number) => fmt$M(v, 0)}
                   />

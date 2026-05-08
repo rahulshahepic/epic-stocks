@@ -351,7 +351,13 @@ export interface HistogramResult {
   excluded: number
   total: number
   startingTotal: number
+  scale: 'linear' | 'log'
 }
+
+// Switch to log-binning when the spread between min and max non-ruined wealth
+// crosses this multiplier. Linear bins squash long-tailed distributions into
+// the leftmost 1–2 bars; log bins reveal the tail.
+export const HISTOGRAM_LOG_THRESHOLD = 10
 
 export function histogram(result: SimResult, binCount: number = 30): HistogramResult {
   const start = result.startingTotal
@@ -369,11 +375,33 @@ export function histogram(result: SimResult, binCount: number = 30): HistogramRe
   }
   const kept = result.finalWealth.length - excluded
   if (kept === 0) {
-    return { bins: [], excluded, total: result.finalWealth.length, startingTotal: start }
+    return { bins: [], excluded, total: result.finalWealth.length, startingTotal: start, scale: 'linear' }
   }
   if (hi === lo) hi = lo + 1
-  const width = (hi - lo) / binCount
+
+  const useLog = lo > 0 && hi / lo > HISTOGRAM_LOG_THRESHOLD
   const counts = new Array<number>(binCount).fill(0)
+
+  if (useLog) {
+    const loLog = Math.log(lo)
+    const hiLog = Math.log(hi)
+    const widthLog = (hiLog - loLog) / binCount
+    for (let i = 0; i < result.finalWealth.length; i++) {
+      if (result.ruined[i]) continue
+      let b = Math.floor((Math.log(result.finalWealth[i]) - loLog) / widthLog)
+      if (b >= binCount) b = binCount - 1
+      if (b < 0) b = 0
+      counts[b]++
+    }
+    const bins = counts.map((count, i) => {
+      const x0 = Math.exp(loLog + i * widthLog)
+      const x1 = Math.exp(loLog + (i + 1) * widthLog)
+      return { x0, x1, count, aboveStart: (x0 + x1) / 2 >= start }
+    })
+    return { bins, excluded, total: result.finalWealth.length, startingTotal: start, scale: 'log' }
+  }
+
+  const width = (hi - lo) / binCount
   for (let i = 0; i < result.finalWealth.length; i++) {
     if (result.ruined[i]) continue
     let b = Math.floor((result.finalWealth[i] - lo) / width)
@@ -386,5 +414,5 @@ export function histogram(result: SimResult, binCount: number = 30): HistogramRe
     const x1 = lo + (i + 1) * width
     return { x0, x1, count, aboveStart: (x0 + x1) / 2 >= start }
   })
-  return { bins, excluded, total: result.finalWealth.length, startingTotal: start }
+  return { bins, excluded, total: result.finalWealth.length, startingTotal: start, scale: 'linear' }
 }

@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import Retirement from '../app/pages/Retirement.tsx'
 import { resetMeCache } from '../scaffold/hooks/useMe.ts'
+import { ViewingProvider } from '../scaffold/contexts/ViewingContext.tsx'
 
 beforeEach(() => {
   localStorage.setItem('auth_token', 'test-token')
@@ -37,9 +38,32 @@ const TAX_SETTINGS = {
   taxable_years: [],
 }
 
-function mockApi(opts: { netCash?: number | null; dob?: string | null; savedParams?: Record<string, unknown> | null } = {}) {
+function mockApi(opts: {
+  netCash?: number | null
+  dob?: string | null
+  savedParams?: Record<string, unknown> | null
+  // Viewer-mode mocks (when vid is set on viewing context)
+  sharedDob?: string | null
+  sharedName?: string | null
+  sharedParams?: Record<string, unknown> | null
+} = {}) {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url
+    if (url.includes('/api/sharing/view/') && url.includes('/retirement-params')) {
+      return new Response(JSON.stringify({ params: opts.sharedParams ?? null }), { status: 200 })
+    }
+    if (url.includes('/api/sharing/view/') && url.includes('/profile')) {
+      return new Response(JSON.stringify({
+        date_of_birth: opts.sharedDob ?? null,
+        name: opts.sharedName ?? 'Owner',
+      }), { status: 200 })
+    }
+    if (url.includes('/api/sharing/view/') && url.includes('/preview-exit')) {
+      return new Response(JSON.stringify(null), { status: 200 })
+    }
+    if (url.includes('/api/sharing/view/') && url.includes('/tax-settings')) {
+      return new Response(JSON.stringify(TAX_SETTINGS), { status: 200 })
+    }
     if (url.includes('/api/preview-exit')) {
       const nc = opts.netCash
       const body = nc == null
@@ -382,6 +406,50 @@ describe('Retirement page', () => {
     fireEvent.change(dateInput, { target: { value: '2036-04-15' } })
     await waitFor(() => expect(screen.getByText(/39-year horizon/)).toBeInTheDocument())
     expect(screen.getByText(/Starts at age 56/)).toBeInTheDocument()
+  })
+
+  it('renders the owner-saved spouse data when viewing as a guest', async () => {
+    // Owner has saved a scenario with spouse turned on. As a viewer, we should
+    // see the toggle enabled, the spouse DOB pre-filled (read-only), and the
+    // spouse SS section populated with the owner's values.
+    sessionStorage.setItem('viewing_context', JSON.stringify({ invitationId: 7, name: 'Alice' }))
+    mockApi({
+      sharedDob: '1980-04-15',
+      sharedName: 'Alice',
+      sharedParams: {
+        epicExit: 5,
+        additional: 0,
+        stockPct: 0.7,
+        bondPct: 0.2,
+        ssMonthly: 2500,
+        claimAge: 67,
+        currentAge: 46,
+        endAge: 95,
+        retirementDate: '2030-01-01',
+        includeSpouse: true,
+        spouseDOB: '1985-03-15',
+        spouseSsMonthly: 1800,
+        spouseClaimAge: 68,
+        spouseCurrentAge: 41,
+      },
+    })
+    render(
+      <MemoryRouter>
+        <ViewingProvider>
+          <Retirement />
+        </ViewingProvider>
+      </MemoryRouter>,
+    )
+    const toggle = await screen.findByRole('checkbox', { name: /Include spouse/i }) as HTMLInputElement
+    await waitFor(() => expect(toggle.checked).toBe(true))
+    expect(toggle.disabled).toBe(true)
+    const spouseDob = screen.getByLabelText(/Spouse date of birth/i) as HTMLInputElement
+    await waitFor(() => expect(spouseDob.value).toBe('1985-03-15'))
+    expect(spouseDob.disabled).toBe(true)
+    const spouseFRA = screen.getByLabelText(/Spouse FRA monthly/i) as HTMLInputElement
+    await waitFor(() => expect(spouseFRA.value).toBe('1800'))
+    const spouseClaim = screen.getByLabelText(/Spouse claim age/i) as HTMLInputElement
+    await waitFor(() => expect(spouseClaim.value).toBe('68'))
   })
 
   it('toggles spouse fields on/off', async () => {

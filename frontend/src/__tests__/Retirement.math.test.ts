@@ -301,4 +301,67 @@ describe('histogram', () => {
       expect(b.aboveStart).toBe(mid >= h.startingTotal)
     }
   })
+
+  // hi/lo == 9, just under the 10x threshold → linear.
+  it('picks linear when hi/lo <= threshold', () => {
+    const values = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    const r = makeSyntheticResult(values, 100)
+    const h = histogram(r, 10)
+    expect(h.scale).toBe('linear')
+    expect(h.bins.reduce((s, b) => s + b.count, 0)).toBe(values.length)
+  })
+
+  // hi/lo == 10000, well above threshold → log.
+  it('picks log when hi/lo > threshold', () => {
+    const values = [1, 10, 100, 1000, 10000]
+    const r = makeSyntheticResult(values, 100)
+    const h = histogram(r, 20)
+    expect(h.scale).toBe('log')
+    expect(h.bins.length).toBe(20)
+    expect(h.bins.reduce((s, b) => s + b.count, 0)).toBe(values.length)
+    for (const b of h.bins) {
+      expect(b.x1).toBeGreaterThan(b.x0)
+      expect(b.x0).toBeGreaterThan(0)
+    }
+    for (let i = 1; i < h.bins.length; i++) {
+      expect(h.bins[i].x0).toBeGreaterThanOrEqual(h.bins[i - 1].x0)
+    }
+  })
+
+  it('log bins are equal-width in log space', () => {
+    const r = makeSyntheticResult([1, 5, 20, 100, 500, 2000, 10000], 100)
+    const h = histogram(r, 12)
+    expect(h.scale).toBe('log')
+    const widths = h.bins.map(b => Math.log(b.x1) - Math.log(b.x0))
+    for (let i = 1; i < widths.length; i++) {
+      expect(widths[i]).toBeCloseTo(widths[0], 10)
+    }
+  })
+
+  // Edge case: a non-ruined path with wealth 0 forbids log binning (log(0) = -∞).
+  it('falls back to linear when lo === 0', () => {
+    const r = makeSyntheticResult([0, 100, 1000, 10000], 100)
+    const h = histogram(r, 10)
+    expect(h.scale).toBe('linear')
+  })
 })
+
+// Build a SimResult with given non-ruined finalWealth values; ruined entries
+// are not added so the histogram sees exactly the values passed in.
+function makeSyntheticResult(finalValues: number[], startingTotal: number) {
+  return {
+    fanYears: [],
+    fanAges: [],
+    fanWealth: [] as Float64Array[],
+    finalWealth: Float64Array.from(finalValues),
+    ruined: new Uint8Array(finalValues.length),
+    startingEquity: 0,
+    startingCash: 0,
+    startingTotal,
+    years: 0,
+    pctAboveStart: 0,
+    pctRuin: 0,
+    medianFinalM: 0,
+    p10FinalM: 0,
+  }
+}

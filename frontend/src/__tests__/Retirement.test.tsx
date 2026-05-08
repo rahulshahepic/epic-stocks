@@ -384,6 +384,24 @@ describe('Retirement page', () => {
     expect(screen.getByText(/Starts at age 56/)).toBeInTheDocument()
   })
 
+  it('toggles spouse fields on/off', async () => {
+    mockApi({ netCash: null, dob: '1980-04-15' })
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter>
+        <Retirement />
+      </MemoryRouter>,
+    )
+    // Spouse fields hidden by default.
+    expect(screen.queryByLabelText(/Spouse date of birth/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/Spouse FRA monthly/i)).not.toBeInTheDocument()
+    const toggle = await screen.findByRole('checkbox', { name: /Include spouse/i })
+    await user.click(toggle)
+    expect(screen.getByLabelText(/Spouse date of birth/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Spouse FRA monthly/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Spouse claim age/i)).toBeInTheDocument()
+  })
+
   it('renders the retirement date input as enabled for the data owner (not a shared viewer)', async () => {
     mockApi({ netCash: null })
     render(

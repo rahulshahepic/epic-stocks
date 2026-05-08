@@ -205,6 +205,121 @@ describe('simulate', () => {
     expect(withZero.medianFinalM).toBeGreaterThan(without.medianFinalM)
   })
 
+  it('adds spouse SS as a second income stream when includeSpouse is on', () => {
+    // Both spouses already past their claim age so SS flows from year 1.
+    // Healthcare zero'd via includeSpouse=false comparator → only diff is SS income.
+    const base = {
+      ...DEFAULT_PARAMS,
+      epicExit: 3,
+      additional: 0,
+      stockPct: 0.7,
+      bondPct: 0.2,
+      defaultSpend: 200,
+      minSpend: 100,
+      healthInsurance: 0,
+      zeroHIPost65: false,
+      currentAge: 70,
+      endAge: 90,
+      claimAge: 67,
+      ssMonthly: 2500,
+      spouseClaimAge: 67,
+      spouseCurrentAge: 70,
+      spouseSsMonthly: 2000,
+      paths: 200,
+      seed: 5,
+    }
+    const without = simulate({ ...base, includeSpouse: false })
+    const withSpouse = simulate({ ...base, includeSpouse: true })
+    expect(withSpouse.medianFinalM).toBeGreaterThan(without.medianFinalM)
+  })
+
+  it('honours spouse claim age — no spouse SS before that age', () => {
+    // Spouse 10 yr younger; sim ends before spouse hits claim age, so adding
+    // includeSpouse should not change SS income (and thus final wealth).
+    const base = {
+      ...DEFAULT_PARAMS,
+      epicExit: 3,
+      additional: 0,
+      stockPct: 0.7,
+      bondPct: 0.2,
+      defaultSpend: 200,
+      minSpend: 100,
+      healthInsurance: 0,
+      zeroHIPost65: false,
+      currentAge: 70,
+      endAge: 75,            // 5-yr horizon
+      claimAge: 67,
+      ssMonthly: 2500,
+      spouseCurrentAge: 60,  // spouse turns 65 only at end of horizon
+      spouseClaimAge: 67,    // would claim 7 yr after horizon ends
+      spouseSsMonthly: 5000, // big number — would be visible if it leaked in
+      paths: 100,
+      seed: 9,
+    }
+    const off = simulate({ ...base, includeSpouse: false })
+    const on = simulate({ ...base, includeSpouse: true })
+    expect(on.medianFinalM).toBeCloseTo(off.medianFinalM, 6)
+  })
+
+  it('steps health insurance 100% → 50% → 0% as each spouse hits Medicare', () => {
+    // Spouse 5 yr younger. Owner hits 65 at year 5, spouse at year 10.
+    // Without spouse the post-owner-65 years are 0% HI (current behaviour).
+    // With spouse, those 5 years between owner-65 and spouse-65 are 50% HI,
+    // so total spending is higher and final wealth lower.
+    const base = {
+      ...DEFAULT_PARAMS,
+      epicExit: 5,
+      additional: 0,
+      stockPct: 0.7,
+      bondPct: 0.2,
+      defaultSpend: 150,
+      minSpend: 100,
+      healthInsurance: 60,    // exaggerated to make the difference visible
+      zeroHIPost65: true,
+      currentAge: 60,
+      endAge: 80,
+      ssMonthly: 0,           // strip out SS to isolate the HI effect
+      spouseSsMonthly: 0,
+      claimAge: 67,
+      spouseClaimAge: 67,
+      spouseCurrentAge: 55,   // 5 yr younger
+      paths: 200,
+      seed: 13,
+    }
+    const single = simulate({ ...base, includeSpouse: false })
+    const couple = simulate({ ...base, includeSpouse: true })
+    expect(couple.medianFinalM).toBeLessThan(single.medianFinalM)
+  })
+
+  it('zeroes HI when both spouses are on Medicare', () => {
+    // Both spouses already past 65 → 0% HI for the entire run, regardless of
+    // includeSpouse (modulo SS, which we strip out). The two runs should
+    // produce nearly identical median wealth.
+    const base = {
+      ...DEFAULT_PARAMS,
+      epicExit: 4,
+      additional: 0,
+      stockPct: 0.7,
+      bondPct: 0.2,
+      defaultSpend: 150,
+      minSpend: 100,
+      healthInsurance: 60,
+      zeroHIPost65: true,
+      currentAge: 70,
+      endAge: 85,
+      ssMonthly: 0,
+      spouseSsMonthly: 0,
+      claimAge: 67,
+      spouseClaimAge: 67,
+      spouseCurrentAge: 70,
+      paths: 200,
+      seed: 17,
+    }
+    const single = simulate({ ...base, includeSpouse: false })
+    const couple = simulate({ ...base, includeSpouse: true })
+    expect(Math.abs(couple.medianFinalM - single.medianFinalM)).toBeLessThan(1e-6)
+  })
+
   it('produces ruin in pessimistic / under-funded retirements', () => {
     const r = simulate({
       ...DEFAULT_PARAMS,

@@ -792,15 +792,17 @@ export default function Retirement() {
               setParams(prev => ({
                 ...prev,
                 taxableAdditional: v,
-                // Simple-mode default: assume full basis (no embedded gain).
-                // Advanced mode lets the user override basis explicitly below.
-                additionalBasis: prev.advanced ? prev.additionalBasis : v,
+                // Simple-mode default: assume fully appreciated (basis = 0).
+                // Conservative — most pre-existing brokerage held for years
+                // has substantial unrealized gains. Open the advanced view
+                // to set a real basis or split into 401(k)/Roth buckets.
+                additionalBasis: prev.advanced ? prev.additionalBasis : 0,
               }))
             }}
             min={0}
             step={0.1}
             suffix="$M"
-            hint={params.advanced ? 'Pre-existing taxable brokerage' : 'Brokerage, 401(k), Roth, etc.'}
+            hint={params.advanced ? 'Pre-existing taxable brokerage' : 'Treated as fully-appreciated taxable; open below for buckets/basis'}
           />
         </div>
 
@@ -829,8 +831,8 @@ export default function Retirement() {
                 step={0.1}
                 suffix="$M"
                 hint={params.taxableAdditional > 0
-                  ? `Of $${params.taxableAdditional.toFixed(2)}M taxable additional. Default = full basis.`
-                  : 'Cost basis of pre-existing taxable additional'}
+                  ? `Of $${params.taxableAdditional.toFixed(2)}M taxable additional. Default = $0 (fully appreciated).`
+                  : 'Cost basis of pre-existing taxable additional · default = $0'}
               />
               <NumInput
                 label="Traditional 401(k) / IRA"
@@ -1161,7 +1163,7 @@ export default function Retirement() {
             <StatCard
               label="Ruin"
               value={fmtPct(result.pctRuin)}
-              sub="Both pools hit 0"
+              sub="Couldn't fund spend — path zeros out"
               variant={result.pctRuin <= 0.1 ? 'good' : result.pctRuin >= 0.3 ? 'bad' : 'neutral'}
             />
             <StatCard

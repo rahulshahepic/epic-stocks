@@ -900,11 +900,15 @@ export default function Retirement() {
           {' '}bonds {fmt$M(totalPortfolio * params.bondPct)} ·
           {' '}cash {fmt$M(startingCash)}
         </p>
-        {cashUnderfunded && params.advanced && (
-          <p className="mt-1 text-[10px] text-amber-700 dark:text-amber-300">
-            ⚠ Cash buffer caps at the taxable bucket size — the rest of the cash allocation stays invested in tax-deferred accounts.
-          </p>
-        )}
+        <p className="mt-1 text-[10px] leading-snug text-stone-500 dark:text-slate-400">
+          Cash sits in the taxable bucket only — tax-deferred accounts (401(k), Roth) are modelled as 100% invested in stocks/bonds.
+          If you actually hold cash or stable-value funds inside a 401(k), the simulator will treat that as invested rather than as a tax-free liquidity buffer.
+          {cashUnderfunded && params.advanced && (
+            <span className="ml-1 text-amber-700 dark:text-amber-300">
+              ⚠ Your cash allocation exceeds the taxable bucket — the rest stays invested in tax-deferred accounts.
+            </span>
+          )}
+        </p>
       </div>
 
       <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">

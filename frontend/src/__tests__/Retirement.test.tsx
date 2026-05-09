@@ -134,15 +134,15 @@ describe('Retirement page', () => {
     expect(await screen.findByDisplayValue('4.5')).toBeInTheDocument()
   })
 
-  it('pre-fills refill tax drag from blended LT cap-gains rate', async () => {
+  it('mentions the user state tax rates from TaxSettings in the spending notes', async () => {
     mockApi({ netCash: null })
     render(
       <MemoryRouter>
         <Retirement />
       </MemoryRouter>,
     )
-    // 0.20 + 0.0985 + 0.038 = 0.3365 → 33.65 → rounded to 33.7
-    expect(await screen.findByDisplayValue('33.7')).toBeInTheDocument()
+    // state_income_rate = 0.0985, state_lt_cg_rate = 0.0985 → "9.85% ordinary · 9.85% LTCG"
+    await waitFor(() => expect(screen.getByText(/9\.85%\s+ordinary/)).toBeInTheDocument())
   })
 
   it('shows cash = 100 − stocks − bonds', async () => {
@@ -204,7 +204,7 @@ describe('Retirement page', () => {
     await waitFor(() => expect(screen.getByText('124.0%')).toBeInTheDocument())
   })
 
-  it('toggles the post-65 health-insurance zero-out checkbox', async () => {
+  it('toggles the post-65 Medicare model checkbox', async () => {
     mockApi({ netCash: null })
     const user = userEvent.setup()
     render(
@@ -212,7 +212,7 @@ describe('Retirement page', () => {
         <Retirement />
       </MemoryRouter>,
     )
-    const checkbox = screen.getByRole('checkbox', { name: /Zero out health insurance after age 65/ }) as HTMLInputElement
+    const checkbox = screen.getByRole('checkbox', { name: /Apply Medicare model after age 65/ }) as HTMLInputElement
     expect(checkbox.checked).toBe(true)
     await user.click(checkbox)
     expect(checkbox.checked).toBe(false)

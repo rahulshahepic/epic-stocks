@@ -294,6 +294,7 @@ export interface HistoricalReturn {
   year: number
   stockReal: number
   bondReal: number
+  inflation: number  // raw CPI for the year (used to erode nominal cost basis)
 }
 
 // Raw US data 1928-2025: [year, S&P 500 nominal, 10yr T.Bond nominal, CPI %].
@@ -405,6 +406,7 @@ export const HISTORICAL_RETURNS: ReadonlyArray<HistoricalReturn> = HISTORICAL_RA
     year,
     stockReal: (1 + nomS) / (1 + infl) - 1,
     bondReal: (1 + nomB) / (1 + infl) - 1,
+    inflation: infl,
   }),
 )
 
@@ -483,8 +485,9 @@ export const DEFAULT_PARAMS: SimParams = {
 
 // Migrate a saved params blob from the legacy schema (single `additional`
 // number + `refillTaxDrag`) into the new bucket model. Treats a legacy
-// `additional` value as taxable-with-full-basis — equivalent to "I haven't
-// thought about tax buckets yet, treat my non-Epic wealth optimistically."
+// `additional` value as taxable with **zero basis** (fully appreciated) —
+// the conservative assumption for non-Epic wealth that the user hadn't
+// broken down. They can override basis explicitly in the advanced view.
 // `refillTaxDrag` is dropped (replaced by the bracket-based tax engine).
 export function migrateLoadedParams(saved: Record<string, unknown>): Partial<SimParams> {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -492,7 +495,7 @@ export function migrateLoadedParams(saved: Record<string, unknown>): Partial<Sim
   const out: Record<string, unknown> = { ...rest }
   if (typeof additional === 'number') {
     if (out.taxableAdditional == null) out.taxableAdditional = additional
-    if (out.additionalBasis == null) out.additionalBasis = additional
+    if (out.additionalBasis == null) out.additionalBasis = 0
   }
   return out as Partial<SimParams>
 }
@@ -646,6 +649,19 @@ export function simulate(params: SimParams): SimResult {
     for (let y = 1; y <= Y; y++) {
       const age = params.currentAge + y
       const spouseAge = params.spouseCurrentAge + y
+      // Once a path is ruined (couldn't fund spend in some prior year), it
+      // stops accumulating. Otherwise the bridge-year stress case — where
+      // pre-59½ liquid wealth is exhausted but a $5M 401(k) keeps growing
+      // untouched — would report "ruin=100% but median final=$30M", which is
+      // misleading. In reality the user would have taken the early-withdrawal
+      // penalty rather than starve; the simulator chooses the conservative
+      // accounting (path stops) and leaves penalty-withdrawal modelling for v2.
+      if (isRuined) {
+        cash = 0; taxableEq = 0; taxableBasis = 0; tradEq = 0; rothEq = 0
+        const fanIdx = yearToFanIdx.get(y)
+        if (fanIdx != null) fanWealth[fanIdx][i] = 0
+        continue
+      }
       const taxableEqStart = taxableEq  // pre-growth snapshot for refill check
 
       // Stationary bootstrap: each year (after the first), with probability
@@ -658,6 +674,18 @@ export function simulate(params: SimParams): SimResult {
       const stockR = sample.stockReal + stockShift
       const bondR = sample.bondReal + bondShift
       const portR = wS * stockR + wB * bondR
+
+      // Erode taxable basis by this year's CPI. Cost basis is fixed in
+      // nominal $ in real life, but the simulator tracks everything in real
+      // $ — so basis loses purchasing power year over year. Using the
+      // sampled year's actual CPI (not a flat 2.5%) keeps the path
+      // internally consistent: a high-inflation year boosts real returns
+      // *and* erodes basis simultaneously, the way it actually does.
+      // Deflationary years (CPI < 0) raise basis; the basisFraction cap
+      // below clamps it to 1.
+      if (taxableBasis > 0) {
+        taxableBasis = Math.max(0, taxableBasis / (1 + sample.inflation))
+      }
 
       // Apply growth uniformly across all three equity buckets.
       taxableEq = Math.max(0, taxableEq * (1 + portR))
@@ -774,20 +802,41 @@ export function simulate(params: SimParams): SimResult {
 
       // Refill cash buffer from this year's net positive equity gain in the
       // taxable bucket only (cash lives in the taxable account in this model).
-      // Approximated as tax-neutral: basis decreases pro-rata, but tax on the
-      // embedded gain is deferred until that cash spent (which never realizes
-      // since cash withdrawals are tax-free). Slightly under-taxes refill
-      // churn — small vs spend tax burden; tighten in v2 if needed.
+      // The refill is a sale: it realizes LTCG on the gain portion at the
+      // year's marginal rate, stacked on top of any spend-cycle LTCG. We
+      // recompute the year's tax with the extra gain and pay the delta out
+      // of cash (so net cash gained from the refill is grossSell - refillTax).
       const equityChangeTaxable = taxableEq - taxableEqStart
       if (equityChangeTaxable > 0 && cash < cashTarget && taxableEq > 0) {
         const refillRoom = cashTarget - cash
         const grossSell = Math.min(refillRoom, equityChangeTaxable)
         if (grossSell > 0) {
           const refillBasisFraction = taxableEq > 0 ? Math.min(1, taxableBasis / taxableEq) : 1
+          const refillGainM = grossSell * (1 - refillBasisFraction)
           const basisReturned = grossSell * refillBasisFraction
+          // Marginal LTCG cost: re-run the tax engine with the spend-cycle
+          // ordinary + LTCG plus this refill's gain, and take the delta.
+          const ordGrossM = pulledTrad + ssTaxableM
+          const spendLTCGM = pulledTaxable * (1 - basisFraction)
+          const taxBefore = computeAnnualTax({
+            ordinaryGross: ordGrossM * 1_000_000,
+            ltcg: spendLTCGM * 1_000_000,
+            status,
+            stateOrdinaryRate,
+            stateLTCGRate,
+          })
+          const taxAfter = computeAnnualTax({
+            ordinaryGross: ordGrossM * 1_000_000,
+            ltcg: (spendLTCGM + refillGainM) * 1_000_000,
+            status,
+            stateOrdinaryRate,
+            stateLTCGRate,
+          })
+          const refillTaxM = Math.max(0, (taxAfter.total - taxBefore.total) / 1_000_000)
           taxableEq -= grossSell
           taxableBasis = Math.max(0, taxableBasis - basisReturned)
-          cash += grossSell
+          cash += grossSell - refillTaxM
+          if (cash < 0) cash = 0
         }
       }
 

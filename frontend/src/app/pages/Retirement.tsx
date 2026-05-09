@@ -971,6 +971,7 @@ export default function Retirement() {
         <p className="mt-3 text-[10px] leading-snug text-stone-500 dark:text-slate-400">
           Each year we calculate what you'd actually owe in taxes: federal income brackets (with the bigger married-filing-jointly brackets if you've added a spouse), federal capital-gains tax on investment growth, an extra 3.8% surcharge on investment income for higher earners, Medicare income surcharges after 65, and your state taxes ({fmtPct(params.stateOrdinaryRate, 2)} on income · {fmtPct(params.stateLTCGRate, 2)} on capital gains, from <em>Settings → Tax Rates</em>).
           We spend from your accounts in order: cash first (no tax), then brokerage (only the growth is taxed), then 401(k), then Roth — and the 401(k)/Roth stay locked until age {RETIREMENT_ACCESS_AGE}.
+          <br /><span className="text-stone-400 dark:text-slate-500">Wisconsin assumption: Social Security is exempt from state tax (it still counts toward federal). If you're entering rates for a state that taxes SS, your sim will be slightly optimistic.</span>
         </p>
       </div>
 

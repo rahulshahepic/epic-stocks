@@ -213,19 +213,28 @@ export interface AnnualTaxResult {
 // Compute one year's federal+state+NIIT tax bill given the year's gross
 // income components. All dollar amounts in nominal $/yr. State rates come
 // from the user's TaxSettings (state_income_rate, state_lt_cg_rate).
+//
+// Wisconsin assumption: this app targets Epic employees (Epic is in Verona,
+// WI), so we apply WI's Social Security exemption — 85% of SS is taxable at
+// the federal level but state tax is computed on traditional withdrawals
+// only, not on SS. (38 states + DC exempt SS; WI is one.) If we ever ship
+// to a non-WI userbase this should become a per-user toggle.
 export function computeAnnualTax({
-  ordinaryGross,
+  traditionalWithdrawal,
+  ssTaxable,
   ltcg,
   status,
   stateOrdinaryRate,
   stateLTCGRate,
 }: {
-  ordinaryGross: number
-  ltcg: number
+  traditionalWithdrawal: number  // gross from 401(k)/IRA — taxed as ordinary at fed + state
+  ssTaxable: number              // 85% of SS gross — taxed as ordinary at fed only (WI exempts)
+  ltcg: number                   // long-term capital gains (taxable bucket sales)
   status: FilingStatus
   stateOrdinaryRate: number
   stateLTCGRate: number
 }): AnnualTaxResult {
+  const ordinaryGross = traditionalWithdrawal + ssTaxable
   const stdDed = status === 'mfj' ? STD_DEDUCTION_MFJ : STD_DEDUCTION_SINGLE
   const taxableOrd = Math.max(0, ordinaryGross - stdDed)
   const fedOrdTiers = status === 'mfj' ? FED_ORDINARY_MFJ : FED_ORDINARY_SINGLE
@@ -235,7 +244,8 @@ export function computeAnnualTax({
   const magi = ordinaryGross + Math.max(0, ltcg)
   const niitThr = status === 'mfj' ? NIIT_THRESHOLD_MFJ : NIIT_THRESHOLD_SINGLE
   const niit = NIIT_RATE * Math.max(0, Math.min(Math.max(0, ltcg), magi - niitThr))
-  const state = ordinaryGross * stateOrdinaryRate + Math.max(0, ltcg) * stateLTCGRate
+  // State tax: traditional only on ordinary side (SS exempt in WI), full LTCG.
+  const state = traditionalWithdrawal * stateOrdinaryRate + Math.max(0, ltcg) * stateLTCGRate
   return {
     fedOrdinary,
     fedLTCG,
@@ -762,10 +772,10 @@ export function simulate(params: SimParams): SimResult {
           if (need > 1e-9) shortfall = true
         }
 
-        const ordGrossM = pulledTrad + ssTaxableM
         const ltcgM = pulledTaxable * (1 - basisFraction)
         const taxRes = computeAnnualTax({
-          ordinaryGross: ordGrossM * 1_000_000,
+          traditionalWithdrawal: pulledTrad * 1_000_000,
+          ssTaxable: ssTaxableM * 1_000_000,
           ltcg: ltcgM * 1_000_000,
           status,
           stateOrdinaryRate,
@@ -816,17 +826,18 @@ export function simulate(params: SimParams): SimResult {
           const basisReturned = grossSell * refillBasisFraction
           // Marginal LTCG cost: re-run the tax engine with the spend-cycle
           // ordinary + LTCG plus this refill's gain, and take the delta.
-          const ordGrossM = pulledTrad + ssTaxableM
           const spendLTCGM = pulledTaxable * (1 - basisFraction)
           const taxBefore = computeAnnualTax({
-            ordinaryGross: ordGrossM * 1_000_000,
+            traditionalWithdrawal: pulledTrad * 1_000_000,
+            ssTaxable: ssTaxableM * 1_000_000,
             ltcg: spendLTCGM * 1_000_000,
             status,
             stateOrdinaryRate,
             stateLTCGRate,
           })
           const taxAfter = computeAnnualTax({
-            ordinaryGross: ordGrossM * 1_000_000,
+            traditionalWithdrawal: pulledTrad * 1_000_000,
+            ssTaxable: ssTaxableM * 1_000_000,
             ltcg: (spendLTCGM + refillGainM) * 1_000_000,
             status,
             stateOrdinaryRate,

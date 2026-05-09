@@ -613,13 +613,13 @@ describe('computeAnnualTax', () => {
   const noState = { stateOrdinaryRate: 0, stateLTCGRate: 0 }
 
   it('zero income → zero tax', () => {
-    const t = computeAnnualTax({ ordinaryGross: 0, ltcg: 0, status: 'mfj', ...noState })
+    const t = computeAnnualTax({ traditionalWithdrawal: 0, ssTaxable: 0, ltcg: 0, status: 'mfj', ...noState })
     expect(t.total).toBe(0)
   })
 
   it('income below standard deduction → zero federal ordinary tax', () => {
     // MFJ std deduction = $31,500. $20K ordinary income → 0 fed tax.
-    const t = computeAnnualTax({ ordinaryGross: 20_000, ltcg: 0, status: 'mfj', ...noState })
+    const t = computeAnnualTax({ traditionalWithdrawal: 20_000, ssTaxable: 0, ltcg: 0, status: 'mfj', ...noState })
     expect(t.fedOrdinary).toBe(0)
   })
 
@@ -628,7 +628,7 @@ describe('computeAnnualTax', () => {
     // 10% on first $24.8K = $2,480
     // 12% on next $43.7K (= $68.5K - $24.8K) = $5,244
     // Total = $7,724
-    const t = computeAnnualTax({ ordinaryGross: 100_000, ltcg: 0, status: 'mfj', ...noState })
+    const t = computeAnnualTax({ traditionalWithdrawal: 100_000, ssTaxable: 0, ltcg: 0, status: 'mfj', ...noState })
     expect(t.fedOrdinary).toBeCloseTo(7_724, -1)
   })
 
@@ -636,7 +636,7 @@ describe('computeAnnualTax', () => {
     // MFJ. $40K ordinary - $31.5K std ded = $8.5K taxable ord.
     // $50K LTCG: stacks at $8.5K cumulative → first $96.7K-$8.5K = $88.2K of
     // LTCG fits in the 0% bracket, so all $50K is at 0% LTCG.
-    const t = computeAnnualTax({ ordinaryGross: 40_000, ltcg: 50_000, status: 'mfj', ...noState })
+    const t = computeAnnualTax({ traditionalWithdrawal: 40_000, ssTaxable: 0, ltcg: 50_000, status: 'mfj', ...noState })
     expect(t.fedLTCG).toBe(0)
   })
 
@@ -644,33 +644,33 @@ describe('computeAnnualTax', () => {
     // MFJ. $200K ordinary - $31.5K = $168.5K taxable ord.
     // $50K LTCG stacks at $168.5K → all in 15% bracket (above $96.7K) →
     // 15% × $50K = $7,500.
-    const t = computeAnnualTax({ ordinaryGross: 200_000, ltcg: 50_000, status: 'mfj', ...noState })
+    const t = computeAnnualTax({ traditionalWithdrawal: 200_000, ssTaxable: 0, ltcg: 50_000, status: 'mfj', ...noState })
     expect(t.fedLTCG).toBeCloseTo(7_500, -1)
   })
 
   it('NIIT 3.8% applies when MAGI exceeds the threshold', () => {
     // MFJ NIIT threshold = $250K. $200K ord + $100K LTCG = $300K MAGI.
     // NIIT = 3.8% × min($100K LTCG, $50K excess) = 3.8% × $50K = $1,900.
-    const t = computeAnnualTax({ ordinaryGross: 200_000, ltcg: 100_000, status: 'mfj', ...noState })
+    const t = computeAnnualTax({ traditionalWithdrawal: 200_000, ssTaxable: 0, ltcg: 100_000, status: 'mfj', ...noState })
     expect(t.niit).toBeCloseTo(1_900, -1)
   })
 
   it('NIIT does not apply when MAGI is below the threshold', () => {
     // MFJ. $100K ord + $50K LTCG = $150K MAGI < $250K threshold → NIIT = 0.
-    const t = computeAnnualTax({ ordinaryGross: 100_000, ltcg: 50_000, status: 'mfj', ...noState })
+    const t = computeAnnualTax({ traditionalWithdrawal: 100_000, ssTaxable: 0, ltcg: 50_000, status: 'mfj', ...noState })
     expect(t.niit).toBe(0)
   })
 
   it('Single brackets are tighter than MFJ', () => {
-    const mfj = computeAnnualTax({ ordinaryGross: 200_000, ltcg: 0, status: 'mfj', ...noState })
-    const single = computeAnnualTax({ ordinaryGross: 200_000, ltcg: 0, status: 'single', ...noState })
+    const mfj = computeAnnualTax({ traditionalWithdrawal: 200_000, ssTaxable: 0, ltcg: 0, status: 'mfj', ...noState })
+    const single = computeAnnualTax({ traditionalWithdrawal: 200_000, ssTaxable: 0, ltcg: 0, status: 'single', ...noState })
     expect(single.fedOrdinary).toBeGreaterThan(mfj.fedOrdinary)
   })
 
   it('state tax applies as a flat rate on top of federal', () => {
     // 9.85% state on both ordinary and LTCG (CA-ish).
     const t = computeAnnualTax({
-      ordinaryGross: 100_000,
+      traditionalWithdrawal: 100_000, ssTaxable: 0,
       ltcg: 50_000,
       status: 'mfj',
       stateOrdinaryRate: 0.0985,
@@ -681,13 +681,34 @@ describe('computeAnnualTax', () => {
 
   it('no-state-tax filer (TX/FL/NV) gets zero state tax', () => {
     const t = computeAnnualTax({
-      ordinaryGross: 200_000,
+      traditionalWithdrawal: 200_000, ssTaxable: 0,
       ltcg: 100_000,
       status: 'mfj',
       stateOrdinaryRate: 0,
       stateLTCGRate: 0,
     })
     expect(t.state).toBe(0)
+  })
+
+  it('Wisconsin SS exemption: state tax ignores SS, federal still includes 85%', () => {
+    // App targets Epic (Verona, WI). WI exempts Social Security from state
+    // tax — so $30K SS adds $25.5K to federal taxable income but $0 to state.
+    const stateRate = 0.07  // approx WI top bracket
+    const noSS = computeAnnualTax({
+      traditionalWithdrawal: 100_000, ssTaxable: 0,
+      ltcg: 0, status: 'mfj',
+      stateOrdinaryRate: stateRate, stateLTCGRate: stateRate,
+    })
+    const withSS = computeAnnualTax({
+      traditionalWithdrawal: 100_000, ssTaxable: 25_500,  // 85% of $30K SS gross
+      ltcg: 0, status: 'mfj',
+      stateOrdinaryRate: stateRate, stateLTCGRate: stateRate,
+    })
+    // State tax should be IDENTICAL (both have $100K traditional, no LTCG).
+    expect(withSS.state).toBeCloseTo(noSS.state, 6)
+    expect(withSS.state).toBeCloseTo(100_000 * stateRate, 6)
+    // Federal ordinary should be HIGHER with SS in the mix.
+    expect(withSS.fedOrdinary).toBeGreaterThan(noSS.fedOrdinary)
   })
 })
 

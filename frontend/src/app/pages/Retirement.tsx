@@ -13,19 +13,20 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { api, type TaxSettings } from '../../api.ts'
+import { api } from '../../api.ts'
 import { useDark } from '../../scaffold/hooks/useDark.ts'
 import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
 import { useMe, updateMeCache } from '../../scaffold/hooks/useMe.ts'
-import { capGainsRate } from './CompCalculator.math.ts'
 import {
   computeFanPercentiles,
   DEFAULT_PARAMS,
   finalPercentiles,
   HISTORICAL_RETURNS,
   histogram,
+  migrateLoadedParams,
   projectedSpend,
   resolveScenarioShifts,
+  RETIREMENT_ACCESS_AGE,
   SCENARIO_LABELS,
   simulate,
   SPEND_RAMP_FLOOR,
@@ -416,7 +417,6 @@ export default function Retirement() {
   const [retirementDate, setRetirementDate] = useState<string>(TODAY)
   const [exitPreviewLoading, setExitPreviewLoading] = useState(false)
   const exitOverriddenRef = useRef(false)
-  const refillOverriddenRef = useRef(false)
   const defaultSpendOverriddenRef = useRef(false)
   const minSpendOverriddenRef = useRef(false)
   const paramsLoadedRef = useRef(false)
@@ -458,9 +458,14 @@ export default function Retirement() {
     fetcher
       .then(({ params: saved }) => {
         if (saved && typeof saved === 'object') {
-          const { retirementDate: savedDate, spouseDOB: savedSpouseDOB, ...rest } =
-            saved as Partial<SimParams> & { retirementDate?: unknown; spouseDOB?: unknown }
-          setParams(prev => ({ ...prev, ...rest as Partial<SimParams> }))
+          const rawSaved = saved as Record<string, unknown>
+          const savedDate = rawSaved.retirementDate
+          const savedSpouseDOB = rawSaved.spouseDOB
+          const migrated = migrateLoadedParams(rawSaved)
+          // Strip non-SimParams sidecar fields before merging.
+          delete (migrated as Record<string, unknown>).retirementDate
+          delete (migrated as Record<string, unknown>).spouseDOB
+          setParams(prev => ({ ...prev, ...migrated }))
           if (typeof savedDate === 'string' && savedDate) {
             setRetirementDate(savedDate)
           }
@@ -468,10 +473,9 @@ export default function Retirement() {
             setSpouseDOB(savedSpouseDOB || null)
           }
           // Treat saved values as user choices: don't auto-overwrite them.
-          if ('epicExit' in saved) exitOverriddenRef.current = true
-          if ('refillTaxDrag' in saved) refillOverriddenRef.current = true
-          if ('defaultSpend' in saved) defaultSpendOverriddenRef.current = true
-          if ('minSpend' in saved) minSpendOverriddenRef.current = true
+          if ('epicExit' in rawSaved) exitOverriddenRef.current = true
+          if ('defaultSpend' in rawSaved) defaultSpendOverriddenRef.current = true
+          if ('minSpend' in rawSaved) minSpendOverriddenRef.current = true
         }
         paramsLoadedRef.current = true
       })
@@ -523,17 +527,18 @@ export default function Retirement() {
     }
   }, [retirementDate, vid])
 
-  // Pre-fill refill tax drag from the (shared or own) blended LT cap-gains rate.
+  // Pull state tax rates from the user's TaxSettings — federal is bracket-based
+  // in the simulator (no user input needed), state is a flat rate from settings.
+  // Always synced; the user adjusts state rates in Settings → Tax Rates.
   useEffect(() => {
-    if (refillOverriddenRef.current) return
     const fetcher = vid ? api.getSharedTaxSettings(vid) : api.getTaxSettings()
     fetcher
-      .then((ts: TaxSettings) => {
-        if (refillOverriddenRef.current) return
-        const rate = capGainsRate(ts)
-        if (Number.isFinite(rate) && rate >= 0 && rate < 1) {
-          setParams(prev => ({ ...prev, refillTaxDrag: Number(rate.toFixed(4)) }))
-        }
+      .then(ts => {
+        setParams(prev => ({
+          ...prev,
+          stateOrdinaryRate: Number.isFinite(ts.state_income_rate) ? ts.state_income_rate : 0,
+          stateLTCGRate: Number.isFinite(ts.state_lt_cg_rate) ? ts.state_lt_cg_rate : 0,
+        }))
       })
       .catch(() => {})
   }, [vid])
@@ -541,7 +546,7 @@ export default function Retirement() {
   // Default spend / min spend auto-derive from total portfolio (3% / 2%).
   // Stops auto-deriving once the user (or saved params) has touched the field.
   useEffect(() => {
-    const totalK = (params.epicExit + params.additional) * 1000
+    const totalK = (params.epicExit + params.taxableAdditional + params.traditional + params.roth) * 1000
     if (totalK <= 0) return
     const wantDefault = Math.round(totalK * 0.03)
     const wantMin = Math.round(totalK * 0.02)
@@ -555,7 +560,7 @@ export default function Retirement() {
       }
       return next
     })
-  }, [params.epicExit, params.additional])
+  }, [params.epicExit, params.taxableAdditional, params.traditional, params.roth])
 
   const update = useCallback(<K extends keyof SimParams>(key: K, value: SimParams[K]) => {
     setParams(prev => ({ ...prev, [key]: value }))
@@ -592,15 +597,21 @@ export default function Retirement() {
     return () => clearTimeout(t)
   }, [params, retirementDate, spouseDOB, vid])
 
-  const totalPortfolio = params.epicExit + params.additional
+  const totalPortfolio = params.epicExit + params.taxableAdditional + params.traditional + params.roth
+  const taxableTotal = params.epicExit + params.taxableAdditional
   const cashPct = Math.max(0, 1 - params.stockPct - params.bondPct)
-  const startingCash = totalPortfolio * cashPct
+  const cashTargetRaw = totalPortfolio * cashPct
+  const startingCash = Math.min(taxableTotal, cashTargetRaw)
+  const cashUnderfunded = cashTargetRaw - startingCash > 0.001
   const allocOver = params.stockPct + params.bondPct > 1
   const ssAdj = ssAdjustment(params.claimAge, params.fra)
   const ssAnnualK = (params.ssMonthly * 12 / 1000) * ssAdj
   const ssStartYear = Math.max(0, params.claimAge - params.currentAge)
   const years = Math.max(1, Math.round(params.endAge - params.currentAge))
   const dobMissing = !ownerDOB
+  const ageAtRetirement = ageFromDOB(ownerDOB, retirementDate) ?? params.currentAge
+  const bridgeYears = Math.max(0, RETIREMENT_ACCESS_AGE - ageAtRetirement)
+  const hasLockedAssets = params.traditional + params.roth > 0
 
   const run = useCallback(() => {
     setRunning(true)
@@ -655,16 +666,21 @@ export default function Retirement() {
               Each path samples 5-year blocks of real U.S. stock + 10yr Treasury returns ({HISTORY_FIRST_YEAR}&ndash;{HISTORY_LAST_YEAR}, real),
               picking a fresh starting year every 5 years &mdash; so crash years stay clustered with their actual recoveries.
               Total portfolio is split into stocks, bonds, and cash by the percentages you choose.
-              Withdrawals come from cash first, then equity (with a tax drag); cash is refilled only from the year's net positive equity gain (preserves principal).
-              Social Security kicks in at your chosen claim age with the SSA early/late factor applied to your FRA monthly benefit.
             </p>
             <p className="mb-2">
-              All dollar values are <strong>real</strong> (inflation-adjusted). <strong>Default spend</strong> excludes health insurance — the health-insurance line is added separately and zeros out at age 66 by default (Medicare).
-              With a spouse included, health insurance steps from 100% (both pre-65) to 50% (one on Medicare) to 0% (both on Medicare), and a second SS stream is added at the spouse's claim age.
-              Spending scales with your portfolio: at 100%+ of starting wealth you spend your <strong>default</strong>, dropping linearly to the <strong>minimum</strong> floor at 50% — modelling how people actually trim discretionary spend as their nest egg shrinks.
+              Wealth is tracked in four buckets: cash (taxable, liquid), taxable equity with cost-basis tracking (LTCG on gain portion only), traditional 401(k)/IRA (locked until {RETIREMENT_ACCESS_AGE}, ordinary income tax on withdrawal), and Roth (locked until {RETIREMENT_ACCESS_AGE}, tax-free).
+              Each year the simulator funds spending sequentially from cash → taxable → traditional → Roth, computing federal brackets + NIIT + Medicare IRMAA + state tax on the actual withdrawals.
+              Pre-{RETIREMENT_ACCESS_AGE} ruin is possible even with full Roth/401(k) — the bridge years must come from cash + taxable.
+              Social Security flows in at your chosen claim age with the SSA early/late factor; 85% of SS is added to ordinary income.
+            </p>
+            <p className="mb-2">
+              All dollar values are <strong>real</strong> (inflation-adjusted) — federal brackets are CPI-indexed in real life so they're treated as real here.
+              <strong> Default spend</strong> excludes health insurance — pre-65 uses your input premium, post-65 (Medicare) uses base Part B + Part D plus IRMAA surcharges based on that year's MAGI.
+              With a spouse included, both file MFJ, both pay separate Medicare, and a second SS stream is added at the spouse's claim age.
+              Spending scales with your portfolio: at 100%+ of starting wealth you spend your <strong>default</strong>, dropping linearly to the <strong>minimum</strong> floor at 50%.
             </p>
             <p>
-              Pre-populated Epic exit value comes from "If you exited" on the Dashboard for the date you choose below; refill tax drag defaults to your blended LT cap-gains rate from <em>Settings → Tax Rates</em>.
+              Pre-populated Epic exit value comes from "If you exited" on the Dashboard for the date you choose below; state tax rates pull from <em>Settings → Tax Rates</em>.
             </p>
           </div>
         )}
@@ -771,14 +787,77 @@ export default function Retirement() {
           />
           <NumInput
             label="Additional portfolio"
-            value={params.additional}
-            onChange={v => update('additional', v)}
+            value={params.taxableAdditional}
+            onChange={v => {
+              setParams(prev => ({
+                ...prev,
+                taxableAdditional: v,
+                // Simple-mode default: assume full basis (no embedded gain).
+                // Advanced mode lets the user override basis explicitly below.
+                additionalBasis: prev.advanced ? prev.additionalBasis : v,
+              }))
+            }}
             min={0}
             step={0.1}
             suffix="$M"
-            hint="Brokerage, 401k, etc."
+            hint={params.advanced ? 'Pre-existing taxable brokerage' : 'Brokerage, 401(k), Roth, etc.'}
           />
         </div>
+
+        <button
+          type="button"
+          onClick={() => update('advanced', !params.advanced)}
+          className="mt-3 inline-flex items-center gap-1 text-[11px] font-medium text-rose-700 hover:text-rose-800 dark:text-rose-300 dark:hover:text-rose-200"
+        >
+          <span>{params.advanced ? '▾' : '▸'}</span>
+          <span>{params.advanced ? 'Hide account types & basis' : 'Account types & basis (advanced)'}</span>
+        </button>
+        {params.advanced && (
+          <div className="mt-3 rounded border border-stone-200 bg-stone-50 p-3 dark:border-slate-700 dark:bg-slate-800">
+            <p className="mb-2 text-[10px] leading-snug text-stone-600 dark:text-slate-400">
+              Tax-deferred buckets are <strong>locked until age {RETIREMENT_ACCESS_AGE}</strong> — pre-{RETIREMENT_ACCESS_AGE} spending must come from cash + taxable, even if Roth/401(k) is full.
+              Withdrawals from <strong>Traditional</strong> are taxed as ordinary income, <strong>Roth</strong> are tax-free,
+              and <strong>Taxable</strong> uses LTCG on the gain portion only (basis is returned tax-free).
+              Epic exit proceeds enter the taxable bucket with full basis (no embedded gain — they were just sold).
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <NumInput
+                label="Taxable cost basis"
+                value={params.additionalBasis}
+                onChange={v => update('additionalBasis', Math.max(0, v))}
+                min={0}
+                step={0.1}
+                suffix="$M"
+                hint={params.taxableAdditional > 0
+                  ? `Of $${params.taxableAdditional.toFixed(2)}M taxable additional. Default = full basis.`
+                  : 'Cost basis of pre-existing taxable additional'}
+              />
+              <NumInput
+                label="Traditional 401(k) / IRA"
+                value={params.traditional}
+                onChange={v => update('traditional', Math.max(0, v))}
+                min={0}
+                step={0.1}
+                suffix="$M"
+                hint={`Locked until ${RETIREMENT_ACCESS_AGE} · ordinary tax`}
+              />
+              <NumInput
+                label="Roth IRA / 401(k)"
+                value={params.roth}
+                onChange={v => update('roth', Math.max(0, v))}
+                min={0}
+                step={0.1}
+                suffix="$M"
+                hint={`Locked until ${RETIREMENT_ACCESS_AGE} · tax-free`}
+              />
+            </div>
+            {bridgeYears > 0 && hasLockedAssets && (
+              <p className="mt-2 text-[10px] text-amber-700 dark:text-amber-300">
+                ⚠ {bridgeYears.toFixed(1)}-year bridge before age {RETIREMENT_ACCESS_AGE}: spending must come from cash + taxable only.
+              </p>
+            )}
+          </div>
+        )}
 
         <p className="mt-4 mb-2 text-[11px] font-semibold text-gray-700 dark:text-slate-200">
           Allocation of total portfolio (cash = remainder)
@@ -821,11 +900,16 @@ export default function Retirement() {
           {' '}bonds {fmt$M(totalPortfolio * params.bondPct)} ·
           {' '}cash {fmt$M(startingCash)}
         </p>
+        {cashUnderfunded && params.advanced && (
+          <p className="mt-1 text-[10px] text-amber-700 dark:text-amber-300">
+            ⚠ Cash buffer caps at the taxable bucket size — the rest of the cash allocation stays invested in tax-deferred accounts.
+          </p>
+        )}
       </div>
 
       <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-        <p className="mb-3 text-xs font-semibold text-gray-700 dark:text-slate-200">Spending & taxes</p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
+        <p className="mb-3 text-xs font-semibold text-gray-700 dark:text-slate-200">Spending</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
           <NumInput
             label="Default spend"
             value={params.defaultSpend}
@@ -866,19 +950,6 @@ export default function Retirement() {
             suffix="$K/yr"
             hint="Pre-Medicare premiums + OOP"
           />
-          <NumInput
-            label="Refill tax drag"
-            value={Math.round(params.refillTaxDrag * 1000) / 10}
-            onChange={v => {
-              refillOverriddenRef.current = true
-              update('refillTaxDrag', Math.max(0, Math.min(99, v)) / 100)
-            }}
-            min={0}
-            max={99}
-            step={0.5}
-            suffix="%"
-            hint="Default = your blended LT cap-gains rate"
-          />
         </div>
         <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded border border-stone-200 bg-stone-50 px-3 py-2 text-[11px] dark:border-slate-700 dark:bg-slate-800">
           <input
@@ -888,9 +959,13 @@ export default function Retirement() {
             className="rounded"
           />
           <span className="text-gray-700 dark:text-slate-200">
-            Zero out health insurance after age 65 <span className="text-gray-400 dark:text-slate-500">(Medicare kicks in)</span>
+            Apply Medicare model after age 65 <span className="text-gray-400 dark:text-slate-500">(replaces HI premium with base Medicare + IRMAA surcharges by MAGI)</span>
           </span>
         </label>
+        <p className="mt-3 text-[10px] leading-snug text-stone-500 dark:text-slate-400">
+          Taxes are computed each year from 2026 federal brackets (ordinary + LTCG, MFJ when spouse is included), NIIT (3.8% on investment income above thresholds), Medicare IRMAA after 65, and your state rates from <em>Settings → Tax Rates</em> ({fmtPct(params.stateOrdinaryRate, 2)} ordinary · {fmtPct(params.stateLTCGRate, 2)} LTCG).
+          Withdrawal order: cash → taxable (LTCG on gain only) → traditional → Roth, with traditional & Roth gated until {RETIREMENT_ACCESS_AGE}.
+        </p>
       </div>
 
       <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">

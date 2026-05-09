@@ -1,16 +1,20 @@
 import { describe, it, expect } from 'vitest'
 import {
   MEAN_BLOCK_LEN,
+  computeAnnualTax,
   computeFanPercentiles,
   DEFAULT_PARAMS,
   finalPercentiles,
   FINAL_PERCENTILES,
   HISTORICAL_RETURNS,
   histogram,
+  irmaaSurcharge,
+  migrateLoadedParams,
   mulberry32,
   projectedSpend,
   quantile,
   resolveScenarioShifts,
+  RETIREMENT_ACCESS_AGE,
   SCENARIOS,
   simulate,
   SPEND_RAMP_FLOOR,
@@ -109,7 +113,7 @@ describe('block bootstrap', () => {
     const r = simulate({
       ...DEFAULT_PARAMS,
       epicExit: 12,
-      additional: 0,
+      taxableAdditional: 0,
       stockPct: 0.9,
       bondPct: 0.05,
       defaultSpend: 275,
@@ -161,7 +165,7 @@ describe('block bootstrap', () => {
     const base = {
       ...DEFAULT_PARAMS,
       epicExit: 12,
-      additional: 0,
+      taxableAdditional: 0,
       stockPct: 0.9,
       bondPct: 0.05,
       defaultSpend: 275,
@@ -226,7 +230,7 @@ describe('graded spending in simulate()', () => {
     const stressed = {
       ...DEFAULT_PARAMS,
       epicExit: 4,
-      additional: 0,
+      taxableAdditional: 0,
       stockPct: 0.7,
       bondPct: 0.2,
       defaultSpend: 250,
@@ -270,7 +274,7 @@ describe('simulate', () => {
     const r = simulate({
       ...DEFAULT_PARAMS,
       epicExit: 3,
-      additional: 1,
+      taxableAdditional: 1,
       stockPct: 0.7,
       bondPct: 0.2,
       paths: 50,
@@ -297,7 +301,7 @@ describe('simulate', () => {
     const base = {
       ...DEFAULT_PARAMS,
       epicExit: 3,
-      additional: 0,
+      taxableAdditional: 0,
       stockPct: 0.7,
       bondPct: 0.2,
       defaultSpend: 200,
@@ -319,7 +323,7 @@ describe('simulate', () => {
     const base = {
       ...DEFAULT_PARAMS,
       epicExit: 3,
-      additional: 0,
+      taxableAdditional: 0,
       stockPct: 0.7,
       bondPct: 0.2,
       defaultSpend: 200,
@@ -342,12 +346,13 @@ describe('simulate', () => {
   })
 
   it('honours spouse claim age — no spouse SS before that age', () => {
-    // Spouse 10 yr younger; sim ends before spouse hits claim age, so adding
-    // includeSpouse should not change SS income (and thus final wealth).
+    // Spouse 10 yr younger; sim ends before spouse hits claim age, so the
+    // spouse SS stream never flows. (Filing status still flips Single→MFJ when
+    // includeSpouse is on, so tax brackets shift modestly — covered separately.)
     const base = {
       ...DEFAULT_PARAMS,
       epicExit: 3,
-      additional: 0,
+      taxableAdditional: 0,
       stockPct: 0.7,
       bondPct: 0.2,
       defaultSpend: 200,
@@ -366,7 +371,10 @@ describe('simulate', () => {
     }
     const off = simulate({ ...base, includeSpouse: false })
     const on = simulate({ ...base, includeSpouse: true })
-    expect(on.medianFinalM).toBeCloseTo(off.medianFinalM, 6)
+    // Difference should reflect only the MFJ-vs-Single bracket / std-deduction
+    // delta on owner SS (≤$1K/yr × 5yr ≈ $5K total). Anywhere near the spouse
+    // SS stream ($60K/yr × 5yr × 0.7 SS adj = ~$210K) means it leaked in.
+    expect(Math.abs(on.medianFinalM - off.medianFinalM)).toBeLessThan(0.05)
   })
 
   it('steps health insurance 100% → 50% → 0% as each spouse hits Medicare', () => {
@@ -377,7 +385,7 @@ describe('simulate', () => {
     const base = {
       ...DEFAULT_PARAMS,
       epicExit: 5,
-      additional: 0,
+      taxableAdditional: 0,
       stockPct: 0.7,
       bondPct: 0.2,
       defaultSpend: 150,
@@ -399,20 +407,21 @@ describe('simulate', () => {
     expect(couple.medianFinalM).toBeLessThan(single.medianFinalM)
   })
 
-  it('zeroes HI when both spouses are on Medicare', () => {
-    // Both spouses already past 65 → 0% HI for the entire run, regardless of
-    // includeSpouse (modulo SS, which we strip out). The two runs should
-    // produce nearly identical median wealth.
+  it('switches HI from pre-Medicare premium to base Medicare + IRMAA after 65', () => {
+    // With both spouses past 65 and zeroHIPost65 on, a huge pre-Medicare HI
+    // input ($60K/yr) gets replaced by Medicare base premium + IRMAA, which
+    // for low-MAGI retirees is well under $10K/yr per person. Wealth at end
+    // should be much higher than running the same sim with zeroHIPost65 off
+    // (which keeps the $60K bill running for the entire horizon).
     const base = {
       ...DEFAULT_PARAMS,
       epicExit: 4,
-      additional: 0,
+      taxableAdditional: 0,
       stockPct: 0.7,
       bondPct: 0.2,
       defaultSpend: 150,
       minSpend: 100,
       healthInsurance: 60,
-      zeroHIPost65: true,
       currentAge: 70,
       endAge: 85,
       ssMonthly: 0,
@@ -420,19 +429,20 @@ describe('simulate', () => {
       claimAge: 67,
       spouseClaimAge: 67,
       spouseCurrentAge: 70,
+      includeSpouse: true,
       paths: 200,
       seed: 17,
     }
-    const single = simulate({ ...base, includeSpouse: false })
-    const couple = simulate({ ...base, includeSpouse: true })
-    expect(Math.abs(couple.medianFinalM - single.medianFinalM)).toBeLessThan(1e-6)
+    const medicareOn = simulate({ ...base, zeroHIPost65: true })
+    const medicareOff = simulate({ ...base, zeroHIPost65: false })
+    expect(medicareOn.medianFinalM).toBeGreaterThan(medicareOff.medianFinalM)
   })
 
   it('produces ruin in pessimistic / under-funded retirements', () => {
     const r = simulate({
       ...DEFAULT_PARAMS,
       epicExit: 4,
-      additional: 0,
+      taxableAdditional: 0,
       stockPct: 0.7,
       bondPct: 0.2,
       defaultSpend: 300,
@@ -448,7 +458,7 @@ describe('simulate', () => {
     const r = simulate({
       ...DEFAULT_PARAMS,
       epicExit: 30,
-      additional: 0,
+      taxableAdditional: 0,
       stockPct: 0.7,
       bondPct: 0.2,
       defaultSpend: 300,
@@ -596,6 +606,301 @@ describe('histogram', () => {
     expect(h.scale).toBe('log')
     expect(h.bins[0].x0).toBeLessThanOrEqual(start)
     expect(h.bins[h.bins.length - 1].x1).toBeGreaterThanOrEqual(start)
+  })
+})
+
+describe('computeAnnualTax', () => {
+  const noState = { stateOrdinaryRate: 0, stateLTCGRate: 0 }
+
+  it('zero income → zero tax', () => {
+    const t = computeAnnualTax({ ordinaryGross: 0, ltcg: 0, status: 'mfj', ...noState })
+    expect(t.total).toBe(0)
+  })
+
+  it('income below standard deduction → zero federal ordinary tax', () => {
+    // MFJ std deduction = $31,500. $20K ordinary income → 0 fed tax.
+    const t = computeAnnualTax({ ordinaryGross: 20_000, ltcg: 0, status: 'mfj', ...noState })
+    expect(t.fedOrdinary).toBe(0)
+  })
+
+  it('progressive ordinary brackets', () => {
+    // MFJ, $100K gross. After $31.5K std ded → $68.5K taxable.
+    // 10% on first $24.8K = $2,480
+    // 12% on next $43.7K (= $68.5K - $24.8K) = $5,244
+    // Total = $7,724
+    const t = computeAnnualTax({ ordinaryGross: 100_000, ltcg: 0, status: 'mfj', ...noState })
+    expect(t.fedOrdinary).toBeCloseTo(7_724, -1)
+  })
+
+  it('LTCG stacks on top of ordinary income for bracket determination', () => {
+    // MFJ. $40K ordinary - $31.5K std ded = $8.5K taxable ord.
+    // $50K LTCG: stacks at $8.5K cumulative → first $96.7K-$8.5K = $88.2K of
+    // LTCG fits in the 0% bracket, so all $50K is at 0% LTCG.
+    const t = computeAnnualTax({ ordinaryGross: 40_000, ltcg: 50_000, status: 'mfj', ...noState })
+    expect(t.fedLTCG).toBe(0)
+  })
+
+  it('LTCG that pushes past the 15% threshold is taxed at 15% on the excess', () => {
+    // MFJ. $200K ordinary - $31.5K = $168.5K taxable ord.
+    // $50K LTCG stacks at $168.5K → all in 15% bracket (above $96.7K) →
+    // 15% × $50K = $7,500.
+    const t = computeAnnualTax({ ordinaryGross: 200_000, ltcg: 50_000, status: 'mfj', ...noState })
+    expect(t.fedLTCG).toBeCloseTo(7_500, -1)
+  })
+
+  it('NIIT 3.8% applies when MAGI exceeds the threshold', () => {
+    // MFJ NIIT threshold = $250K. $200K ord + $100K LTCG = $300K MAGI.
+    // NIIT = 3.8% × min($100K LTCG, $50K excess) = 3.8% × $50K = $1,900.
+    const t = computeAnnualTax({ ordinaryGross: 200_000, ltcg: 100_000, status: 'mfj', ...noState })
+    expect(t.niit).toBeCloseTo(1_900, -1)
+  })
+
+  it('NIIT does not apply when MAGI is below the threshold', () => {
+    // MFJ. $100K ord + $50K LTCG = $150K MAGI < $250K threshold → NIIT = 0.
+    const t = computeAnnualTax({ ordinaryGross: 100_000, ltcg: 50_000, status: 'mfj', ...noState })
+    expect(t.niit).toBe(0)
+  })
+
+  it('Single brackets are tighter than MFJ', () => {
+    const mfj = computeAnnualTax({ ordinaryGross: 200_000, ltcg: 0, status: 'mfj', ...noState })
+    const single = computeAnnualTax({ ordinaryGross: 200_000, ltcg: 0, status: 'single', ...noState })
+    expect(single.fedOrdinary).toBeGreaterThan(mfj.fedOrdinary)
+  })
+
+  it('state tax applies as a flat rate on top of federal', () => {
+    // 9.85% state on both ordinary and LTCG (CA-ish).
+    const t = computeAnnualTax({
+      ordinaryGross: 100_000,
+      ltcg: 50_000,
+      status: 'mfj',
+      stateOrdinaryRate: 0.0985,
+      stateLTCGRate: 0.0985,
+    })
+    expect(t.state).toBeCloseTo(100_000 * 0.0985 + 50_000 * 0.0985, 6)
+  })
+
+  it('no-state-tax filer (TX/FL/NV) gets zero state tax', () => {
+    const t = computeAnnualTax({
+      ordinaryGross: 200_000,
+      ltcg: 100_000,
+      status: 'mfj',
+      stateOrdinaryRate: 0,
+      stateLTCGRate: 0,
+    })
+    expect(t.state).toBe(0)
+  })
+})
+
+describe('irmaaSurcharge', () => {
+  it('returns 0 below the first threshold', () => {
+    expect(irmaaSurcharge(150_000, 'mfj')).toBe(0)
+    expect(irmaaSurcharge(100_000, 'single')).toBe(0)
+  })
+
+  it('steps up monotonically with MAGI', () => {
+    const tiers = [200_000, 220_000, 280_000, 350_000, 500_000, 800_000]
+    let prev = -1
+    for (const m of tiers) {
+      const s = irmaaSurcharge(m, 'mfj')
+      expect(s).toBeGreaterThanOrEqual(prev)
+      prev = s
+    }
+  })
+
+  it('single thresholds are half the MFJ thresholds', () => {
+    // The first non-zero MFJ tier kicks in at $212K; single at $106K.
+    expect(irmaaSurcharge(213_000, 'mfj')).toBeGreaterThan(0)
+    expect(irmaaSurcharge(107_000, 'single')).toBeGreaterThan(0)
+    expect(irmaaSurcharge(107_000, 'mfj')).toBe(0)
+  })
+})
+
+describe('migrateLoadedParams', () => {
+  it('maps legacy `additional` into taxableAdditional with full basis', () => {
+    const m = migrateLoadedParams({ epicExit: 5, additional: 2 })
+    expect(m.taxableAdditional).toBe(2)
+    expect(m.additionalBasis).toBe(2)
+  })
+
+  it('strips refillTaxDrag (no equivalent in the new model)', () => {
+    const m = migrateLoadedParams({ epicExit: 5, additional: 1, refillTaxDrag: 0.25 })
+    expect((m as Record<string, unknown>).refillTaxDrag).toBeUndefined()
+  })
+
+  it('preserves new-shape params unchanged', () => {
+    const m = migrateLoadedParams({
+      epicExit: 5,
+      taxableAdditional: 1.5,
+      additionalBasis: 0.3,
+      traditional: 2,
+      roth: 1,
+    })
+    expect(m.taxableAdditional).toBe(1.5)
+    expect(m.additionalBasis).toBe(0.3)
+    expect(m.traditional).toBe(2)
+    expect(m.roth).toBe(1)
+  })
+
+  it('does not overwrite explicit new-shape fields with legacy fallback', () => {
+    const m = migrateLoadedParams({ additional: 5, taxableAdditional: 2, additionalBasis: 0.5 })
+    expect(m.taxableAdditional).toBe(2)
+    expect(m.additionalBasis).toBe(0.5)
+  })
+})
+
+describe('account buckets and 59½ gating', () => {
+  // Common base: pre-59½ retiree with most wealth in a 401(k). The bridge
+  // years should fund spending entirely from cash + taxable.
+  const bridge = {
+    ...DEFAULT_PARAMS,
+    epicExit: 0,
+    taxableAdditional: 0.5,
+    additionalBasis: 0.5,
+    traditional: 5,
+    roth: 0,
+    stockPct: 0.7,
+    bondPct: 0.2,
+    defaultSpend: 200,
+    minSpend: 200,
+    healthInsurance: 25,
+    zeroHIPost65: false,  // strip Medicare model to isolate the gate
+    currentAge: 50,
+    endAge: 65,
+    ssMonthly: 0,
+    spouseSsMonthly: 0,
+    paths: 200,
+    seed: 31,
+  }
+
+  it('pre-59½ ruin happens when cash+taxable can\'t cover spending even with full 401(k)', () => {
+    const r = simulate(bridge)
+    // $0.5M taxable at $200K/yr spend can't bridge ~10 years to age 59.5 →
+    // the path runs out of accessible wealth before 401(k) unlocks.
+    expect(r.pctRuin).toBeGreaterThan(0.5)
+  })
+
+  it('moving the same wealth into taxable removes the bridge-year ruin', () => {
+    const taxableHeavy = {
+      ...bridge,
+      taxableAdditional: 5.5,
+      additionalBasis: 5.5,  // full basis
+      traditional: 0,
+    }
+    const r = simulate(taxableHeavy)
+    // Now everything is accessible — same $5.5M, same spend, drastically lower ruin.
+    expect(r.pctRuin).toBeLessThan(0.05)
+  })
+
+  it('Roth wealth is also locked pre-59½ and cannot bridge', () => {
+    // Same total wealth ($5.5M), all in Roth instead of taxable. Should
+    // ruin at the same rate as the all-traditional case (Roth is locked too).
+    const allRoth = { ...bridge, taxableAdditional: 0.5, traditional: 0, roth: 5 }
+    const r = simulate(allRoth)
+    expect(r.pctRuin).toBeGreaterThan(0.5)
+  })
+
+  it('post-59½ retiree taps the 401(k) with no liquidity ruin', () => {
+    // Same dollar amounts, but starting at 60 instead of 50. Now traditional
+    // is immediately accessible, so ruin should drop dramatically.
+    const post = { ...bridge, currentAge: 60, endAge: 75 }
+    const r = simulate(post)
+    expect(r.pctRuin).toBeLessThan(0.05)
+  })
+})
+
+describe('Epic exit basis treatment', () => {
+  it('treats Epic exit proceeds as full basis (less tax than legacy 0-basis assumption)', () => {
+    // Epic exit = $5M with full basis. Withdrawals from this bucket only
+    // realize LTCG on growth above the $5M starting basis. The gain fraction
+    // starts at 0 and grows over time.
+    const r = simulate({
+      ...DEFAULT_PARAMS,
+      epicExit: 5,
+      taxableAdditional: 0,
+      stockPct: 0.7,
+      bondPct: 0.2,
+      defaultSpend: 150,
+      minSpend: 100,
+      healthInsurance: 0,
+      zeroHIPost65: false,
+      currentAge: 65,
+      endAge: 90,
+      ssMonthly: 0,
+      paths: 500,
+      seed: 51,
+    })
+    // Median final >0 (no ruin in moderate spend / high basis case).
+    expect(r.medianFinalM).toBeGreaterThan(0)
+    expect(r.pctRuin).toBeLessThan(0.1)
+  })
+
+  it('zero-basis taxable additional taxes more aggressively than full-basis', () => {
+    // Two parallel sims. Same total taxable wealth but one has zero basis
+    // (fully appreciated) and the other has full basis (just realized).
+    // The zero-basis case should have lower median final wealth because
+    // every withdrawal triggers full LTCG tax, vs. the full-basis case where
+    // initial withdrawals are tax-free principal returns.
+    const base = {
+      ...DEFAULT_PARAMS,
+      epicExit: 0,
+      taxableAdditional: 5,
+      stockPct: 0.7,
+      bondPct: 0.2,
+      defaultSpend: 200,
+      minSpend: 150,
+      healthInsurance: 0,
+      zeroHIPost65: false,
+      currentAge: 65,
+      endAge: 90,
+      ssMonthly: 0,
+      paths: 500,
+      seed: 73,
+      // Need a state rate to make LTCG noticeable on smaller withdrawals
+      // (the federal 0% LTCG bracket otherwise zeros out small gains).
+      stateLTCGRate: 0.05,
+    }
+    const fullBasis = simulate({ ...base, additionalBasis: 5 })
+    const zeroBasis = simulate({ ...base, additionalBasis: 0 })
+    expect(zeroBasis.medianFinalM).toBeLessThan(fullBasis.medianFinalM)
+  })
+})
+
+describe('SS taxation and filing status', () => {
+  it('MFJ filing produces lower tax than Single on the same income (wider brackets)', () => {
+    // Single owner with high SS but no spouse. With includeSpouse on, filing
+    // is MFJ and brackets are wider, lowering tax → higher final wealth.
+    const base = {
+      ...DEFAULT_PARAMS,
+      epicExit: 0,
+      taxableAdditional: 3,
+      additionalBasis: 0,  // all gains → maximal LTCG visibility
+      traditional: 2,
+      roth: 0,
+      stockPct: 0.7,
+      bondPct: 0.2,
+      defaultSpend: 250,
+      minSpend: 200,
+      healthInsurance: 0,
+      zeroHIPost65: false,
+      currentAge: 65,
+      endAge: 80,
+      ssMonthly: 3000,  // owner SS only
+      spouseSsMonthly: 0,  // no spouse SS — isolate filing-status effect
+      claimAge: 67,
+      spouseClaimAge: 67,
+      spouseCurrentAge: 65,
+      paths: 300,
+      seed: 17,
+    }
+    const single = simulate({ ...base, includeSpouse: false })
+    const mfj = simulate({ ...base, includeSpouse: true })
+    expect(mfj.medianFinalM).toBeGreaterThan(single.medianFinalM)
+  })
+})
+
+describe('RETIREMENT_ACCESS_AGE constant', () => {
+  it('is 59.5 (standard 401(k) / IRA penalty-free withdrawal age)', () => {
+    expect(RETIREMENT_ACCESS_AGE).toBe(59.5)
   })
 })
 

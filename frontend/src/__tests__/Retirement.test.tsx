@@ -141,9 +141,19 @@ describe('Retirement page', () => {
         <Retirement />
       </MemoryRouter>,
     )
+    // The brackets line renders immediately (static text). The LTCG rate
+    // ("9.85%") arrives from the async TaxSettings prefill — wait for it.
+    // JSX puts the formatted percent and the surrounding text in separate
+    // text nodes, so we match against the parent <p>'s combined textContent
+    // rather than a regex that has to span the JSX boundary.
     await waitFor(() => expect(screen.getByText(/Wisconsin progressive brackets/)).toBeInTheDocument())
-    // state_lt_cg_rate from TaxSettings = 0.0985 → "9.85% on capital gains"
-    expect(screen.getByText(/9\.85%\s+on capital gains/)).toBeInTheDocument()
+    await waitFor(() => {
+      const found = screen.getByText((_content, element) => {
+        const txt = element?.textContent ?? ''
+        return element?.tagName === 'P' && txt.includes('9.85%') && txt.includes('on capital gains')
+      })
+      expect(found).toBeInTheDocument()
+    })
   })
 
   it('shows cash = 100 − stocks − bonds', async () => {

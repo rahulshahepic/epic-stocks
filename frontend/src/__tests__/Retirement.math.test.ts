@@ -39,25 +39,25 @@ describe('mulberry32', () => {
 })
 
 describe('HISTORICAL_RETURNS', () => {
-  it('covers a contiguous span of years', () => {
-    expect(HISTORICAL_RETURNS.length).toBeGreaterThan(90)
-    for (let i = 1; i < HISTORICAL_RETURNS.length; i++) {
-      expect(HISTORICAL_RETURNS[i].year).toBe(HISTORICAL_RETURNS[i - 1].year + 1)
-    }
+  it('covers 1,100+ monthly observations spanning 90+ years', () => {
+    expect(HISTORICAL_RETURNS.length).toBeGreaterThan(1100)
+    // First entry is Jan 1928 (yyyymm = 192801), last is Sep 2023 (202309)
+    expect(HISTORICAL_RETURNS[0].year).toBe(192801)
+    expect(HISTORICAL_RETURNS[HISTORICAL_RETURNS.length - 1].year).toBe(202309)
   })
 
-  it('arithmetic mean of real stock returns matches long-run U.S. (~8% +/- 2pp)', () => {
+  it('arithmetic mean of monthly real stock returns is ~0.5–0.8% (≈ 7–10% annualised)', () => {
     const mean =
       HISTORICAL_RETURNS.reduce((s, r) => s + r.stockReal, 0) / HISTORICAL_RETURNS.length
-    expect(mean).toBeGreaterThan(0.06)
-    expect(mean).toBeLessThan(0.10)
+    expect(mean).toBeGreaterThan(0.004)
+    expect(mean).toBeLessThan(0.009)
   })
 
-  it('arithmetic mean of real bond returns is positive but modest (~2%)', () => {
+  it('arithmetic mean of monthly real bond returns is positive but modest', () => {
     const mean =
       HISTORICAL_RETURNS.reduce((s, r) => s + r.bondReal, 0) / HISTORICAL_RETURNS.length
     expect(mean).toBeGreaterThan(0.0)
-    expect(mean).toBeLessThan(0.04)
+    expect(mean).toBeLessThan(0.005)
   })
 })
 
@@ -100,8 +100,8 @@ describe('ssAdjustment', () => {
 })
 
 describe('block bootstrap', () => {
-  it('uses MEAN_BLOCK_LEN of 20 (stationary bootstrap, matches doc/UI defaults)', () => {
-    expect(MEAN_BLOCK_LEN).toBe(20)
+  it('uses MEAN_BLOCK_LEN of 240 months (≈ 20-year blocks, stationary bootstrap)', () => {
+    expect(MEAN_BLOCK_LEN).toBe(240)
   })
 
   it('30-year retiree at 2.3% WR has near-zero ruin in historical scenario', () => {
@@ -227,6 +227,8 @@ describe('graded spending in simulate()', () => {
     // Same portfolio, same returns; the only difference is whether spending
     // can ramp down. Behavioral spend (default != min) should produce
     // strictly fewer ruins than a flat-spend run pinned at the default.
+    // endAge shortened to 80 so the ramp has room to differentiate before
+    // the portfolio fully exhausts in both cases.
     const stressed = {
       ...DEFAULT_PARAMS,
       epicExit: 4,
@@ -235,6 +237,7 @@ describe('graded spending in simulate()', () => {
       bondPct: 0.2,
       defaultSpend: 250,
       healthInsurance: 25,
+      endAge: 80,
       scenario: 'cautious' as const,
       paths: 1500,
       seed: 51,

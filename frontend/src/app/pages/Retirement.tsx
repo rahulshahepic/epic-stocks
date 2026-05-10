@@ -38,8 +38,9 @@ import {
 } from './Retirement.math.ts'
 
 const SCENARIO_ORDER: Scenario[] = ['historical', 'moderate', 'cautious', 'custom']
-const HISTORY_FIRST_YEAR = HISTORICAL_RETURNS[0].year
-const HISTORY_LAST_YEAR = HISTORICAL_RETURNS[HISTORICAL_RETURNS.length - 1].year
+// .year is yyyymm — extract just the calendar year for display.
+const HISTORY_FIRST_YEAR = Math.floor(HISTORICAL_RETURNS[0].year / 100)
+const HISTORY_LAST_YEAR = Math.floor(HISTORICAL_RETURNS[HISTORICAL_RETURNS.length - 1].year / 100)
 
 // Input is in $M. Renders dynamically across the full range so a $80K p10 reads
 // "$80K" rather than "$0.08M" — every label on this page goes through here.
@@ -662,7 +663,7 @@ export default function Retirement() {
           <div className="border-t border-stone-200 px-4 py-3 text-xs leading-relaxed text-gray-600 dark:border-slate-700 dark:text-slate-300">
             <p className="mb-2">
               We simulate your retirement {params.paths.toLocaleString()} times — from age {params.currentAge} to {params.endAge} — and show you how often things turn out well vs. badly.
-              Every run uses real U.S. stock and bond returns from history ({HISTORY_FIRST_YEAR}–{HISTORY_LAST_YEAR}), borrowing 5-year stretches at a time so a 2008-style crash stays glued to the 2009 recovery (instead of cherry-picking only good or bad years).
+              Every run uses real U.S. stock and bond returns from history ({HISTORY_FIRST_YEAR}–{HISTORY_LAST_YEAR}), borrowing multi-year stretches at a time so a 2008-style crash stays glued to the 2009 recovery (instead of cherry-picking only good or bad years).
               Your money is split into stocks, bonds, and cash based on the percentages you set.
             </p>
             <p className="mb-2">
@@ -986,7 +987,7 @@ export default function Retirement() {
           <div className="mb-3 rounded border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] leading-relaxed text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
             <p className="mb-1">
               For each simulated retirement, we replay actual stretches of U.S. market history ({HISTORY_FIRST_YEAR}–{HISTORY_LAST_YEAR}) instead of making up returns from a formula.
-              We pick a random starting year, walk forward (so 1929 is followed by 1930, 2008 by 2009 — crashes stay glued to their actual recoveries), and occasionally jump to a different starting year to mix things up across the {params.paths.toLocaleString()} simulations.
+              We pick a random starting month, walk forward month by month (so Oct 1929 is followed by Nov 1929, Sep 2008 by Oct 2008 — crashes stay glued to their actual recoveries), and occasionally jump to a different starting month to mix things up across the {params.paths.toLocaleString()} simulations.
               This is more honest than the usual "average return ± noise" approach, which can quietly invent stretches of bad years that never actually happened together.
             </p>
             <p className="mb-1">
@@ -1038,7 +1039,7 @@ export default function Retirement() {
           </div>
         )}
         <p className="mt-1.5 text-[10px] text-stone-500 dark:text-slate-400">
-          Stationary block bootstrap of U.S. {HISTORY_FIRST_YEAR}&ndash;{HISTORY_LAST_YEAR} real returns ({HISTORICAL_RETURNS.length} years, ~20yr mean block).
+          Stationary block bootstrap of U.S. {HISTORY_FIRST_YEAR}&ndash;{HISTORY_LAST_YEAR} real returns ({HISTORICAL_RETURNS.length} months, ~20yr mean block).
           {' '}Stocks shift {fmtPct(resolveScenarioShifts(params).stockShift, 1)}, bonds shift {fmtPct(resolveScenarioShifts(params).bondShift, 1)}.
         </p>
       </div>

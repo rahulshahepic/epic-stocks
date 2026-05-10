@@ -1640,6 +1640,7 @@ export interface SimParams {
   spouseFra: number         // spouse's full retirement age (66 or 67 depending on birth year)
   spouseWorkIncome: number  // $K/yr gross W-2 while spouse is working (0 = not working)
   spouseStopWorkAge: number // spouse age at which employment ends (last working year)
+  spouseHasEmployerHI: boolean // spouse's employer covers health insurance while working
   // State LTCG rate pulled from TaxSettings; state ordinary income tax uses
   // hard-coded WI brackets (see computeAnnualTax). The user's state_income_rate
   // is no longer consulted for the retirement sim.
@@ -1679,6 +1680,7 @@ export const DEFAULT_PARAMS: SimParams = {
   spouseFra: 67,
   spouseWorkIncome: 0,
   spouseStopWorkAge: 65,
+  spouseHasEmployerHI: false,
   stateLTCGRate: 0,
   advanced: false,
 }
@@ -1903,11 +1905,13 @@ export function simulate(params: SimParams): SimResult {
   // Initial HI estimate (zero MAGI) — seeds the first year's monthly
   // amortization. IRMAA is updated annually at year-end using the year's
   // actual MAGI, mirroring the real 2-year-lagged IRMAA lookback.
+  const spouseEHIAtStart = hasSpouse && params.spouseHasEmployerHI
+    && params.spouseCurrentAge <= params.spouseStopWorkAge
   const initialHIM = healthInsuranceCost({
     ownerAge: params.currentAge,
     spouseAge: params.spouseCurrentAge,
     hasSpouse,
-    preMedicareCost: hiK * 1000,
+    preMedicareCost: spouseEHIAtStart ? 0 : hiK * 1000,
     zeroHIPost65: params.zeroHIPost65,
     magi: 0,
     status,
@@ -1979,6 +1983,10 @@ export function simulate(params: SimParams): SimResult {
       const ownerSsM = age >= params.claimAge ? ssAnnual / 12 / 1_000_000 : 0
       const spouseWorking = hasSpouse
         && spouseAnnualGross > 0
+        && spouseAge <= params.spouseStopWorkAge
+      // Employer HI is independent of whether income is tracked — it just requires
+      // the spouse to still be employed (age ≤ stop-work age).
+      const spouseHasEHI = hasSpouse && params.spouseHasEmployerHI
         && spouseAge <= params.spouseStopWorkAge
       const spouseSsRawM = hasSpouse && spouseAge >= params.spouseClaimAge
         ? spouseSsAnnual / 12 / 1_000_000 : 0
@@ -2061,7 +2069,7 @@ export function simulate(params: SimParams): SimResult {
             ownerAge: age,
             spouseAge,
             hasSpouse,
-            preMedicareCost: hiK * 1000,
+            preMedicareCost: spouseHasEHI ? 0 : hiK * 1000,
             zeroHIPost65: params.zeroHIPost65,
             magi: yearMAGI,
             status,

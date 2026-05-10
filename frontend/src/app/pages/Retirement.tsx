@@ -1165,6 +1165,20 @@ export default function Retirement() {
                   hint="Age when spouse's W-2 income ends"
                 />
               </div>
+              <label className="mt-3 flex cursor-pointer items-center gap-2 text-[11px] text-stone-600 dark:text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={params.spouseHasEmployerHI}
+                  onChange={e => update('spouseHasEmployerHI', e.target.checked)}
+                  className="h-3.5 w-3.5 rounded border-stone-300 text-rose-600 dark:border-slate-600"
+                />
+                Spouse's employer covers health insurance while working
+                {params.spouseHasEmployerHI && (
+                  <span className="text-stone-400 dark:text-slate-500">
+                    · saves ~${params.healthInsurance.toFixed(0)}K/yr until age {params.spouseStopWorkAge}
+                  </span>
+                )}
+              </label>
               {params.spouseWorkIncome > 0 && (() => {
                 const annualGross = params.spouseWorkIncome * 1_000
                 const payroll = computeSpousePayrollTax(annualGross, params.includeSpouse ? 'mfj' : 'single')

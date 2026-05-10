@@ -1233,4 +1233,23 @@ describe('simulate — spouse work income', () => {
     const b = simulate({ ...base })  // default is 0
     expect(a.medianFinalM).toBeCloseTo(b.medianFinalM, 4)
   })
+
+  it('employer HI eliminates pre-Medicare premium → higher final wealth than paying out of pocket', () => {
+    const paying = simulate({ ...base, healthInsurance: 30, spouseHasEmployerHI: false })
+    const covered = simulate({ ...base, healthInsurance: 30, spouseHasEmployerHI: true })
+    expect(covered.medianFinalM).toBeGreaterThan(paying.medianFinalM)
+  })
+
+  it('employer HI benefit ends at spouseStopWorkAge', () => {
+    // Stopping work very early means fewer covered years → less benefit than stopping late
+    const earlyStop = simulate({ ...base, healthInsurance: 30, spouseHasEmployerHI: true, spouseStopWorkAge: 53 })
+    const lateStop  = simulate({ ...base, healthInsurance: 30, spouseHasEmployerHI: true, spouseStopWorkAge: 65 })
+    expect(lateStop.medianFinalM).toBeGreaterThan(earlyStop.medianFinalM)
+  })
+
+  it('employer HI with no spouse has no effect', () => {
+    const a = simulate({ ...base, includeSpouse: false, spouseHasEmployerHI: false })
+    const b = simulate({ ...base, includeSpouse: false, spouseHasEmployerHI: true })
+    expect(a.medianFinalM).toBeCloseTo(b.medianFinalM, 4)
+  })
 })

@@ -134,15 +134,16 @@ describe('Retirement page', () => {
     expect(await screen.findByDisplayValue('4.5')).toBeInTheDocument()
   })
 
-  it('mentions the user state tax rates from TaxSettings in the spending notes', async () => {
+  it('mentions Wisconsin brackets and the user state LTCG rate in the spending notes', async () => {
     mockApi({ netCash: null })
     render(
       <MemoryRouter>
         <Retirement />
       </MemoryRouter>,
     )
-    // state_income_rate = 0.0985, state_lt_cg_rate = 0.0985 → "9.85% on income · 9.85% on capital gains"
-    await waitFor(() => expect(screen.getByText(/9\.85%\s+on income/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/Wisconsin progressive brackets/)).toBeInTheDocument())
+    // state_lt_cg_rate from TaxSettings = 0.0985 → "9.85% on capital gains"
+    expect(screen.getByText(/9\.85%\s+on capital gains/)).toBeInTheDocument()
   })
 
   it('shows cash = 100 − stocks − bonds', async () => {

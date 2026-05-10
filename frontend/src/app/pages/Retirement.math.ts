@@ -1720,6 +1720,15 @@ export function resolveScenarioShifts(params: Pick<SimParams, 'scenario' | 'cust
   return SCENARIOS[params.scenario]
 }
 
+// Full retirement age (FRA) from birth year, per SSA schedule.
+// Born 1960+: 67. Born 1955-1959: 66 + 2 months per year past 1954.
+// Born ≤1954: 66. Returns fractional years (e.g. 66.5 for 1957).
+export function fraFromBirthYear(birthYear: number): number {
+  if (birthYear <= 1954) return 66
+  if (birthYear >= 1960) return 67
+  return 66 + ((birthYear - 1954) * 2) / 12
+}
+
 // SS benefit adjustment factor at claim age. FRA default 67.
 //   Early: 5/9 of 1% per month for first 36, 5/12 of 1% per month beyond.
 //   Late: 8% per year delayed retirement credit, capped at age 70.

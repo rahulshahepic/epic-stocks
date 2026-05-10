@@ -7,6 +7,7 @@ import {
   DEFAULT_PARAMS,
   finalPercentiles,
   FINAL_PERCENTILES,
+  fraFromBirthYear,
   HISTORICAL_RETURNS,
   histogram,
   irmaaSurcharge,
@@ -1076,6 +1077,24 @@ function makeSyntheticResult(finalValues: number[], startingTotal: number) {
     p10FinalM: 0,
   }
 }
+
+describe('fraFromBirthYear', () => {
+  it('returns 66 for birth years 1954 and earlier', () => {
+    expect(fraFromBirthYear(1950)).toBe(66)
+    expect(fraFromBirthYear(1954)).toBe(66)
+  })
+
+  it('returns 67 for birth years 1960 and later', () => {
+    expect(fraFromBirthYear(1960)).toBe(67)
+    expect(fraFromBirthYear(1985)).toBe(67)
+  })
+
+  it('interpolates 2 months per year for 1955–1959', () => {
+    expect(fraFromBirthYear(1955)).toBeCloseTo(66 + 2 / 12, 9)
+    expect(fraFromBirthYear(1957)).toBeCloseTo(66 + 6 / 12, 9)  // 66½
+    expect(fraFromBirthYear(1959)).toBeCloseTo(66 + 10 / 12, 9)
+  })
+})
 
 describe('computeSpousePayrollTax', () => {
   it('charges 6.2% SS + 1.45% Medicare on wages below the wage base', () => {

@@ -22,6 +22,7 @@ import {
   computeSpousePayrollTax,
   DEFAULT_PARAMS,
   finalPercentiles,
+  fraFromBirthYear,
   HISTORICAL_RETURNS,
   histogram,
   migrateLoadedParams,
@@ -502,7 +503,13 @@ export default function Retirement() {
     if (!params.includeSpouse) return
     const age = ageFromDOB(spouseDOB, retirementDate)
     if (age != null && age > 0) {
-      setParams(prev => (prev.spouseCurrentAge === age ? prev : { ...prev, spouseCurrentAge: age }))
+      const birthYear = spouseDOB ? new Date(spouseDOB).getFullYear() : null
+      const fra = birthYear != null ? fraFromBirthYear(birthYear) : 67
+      setParams(prev => {
+        const ageOk = prev.spouseCurrentAge === age
+        const fraOk = prev.spouseFra === fra
+        return ageOk && fraOk ? prev : { ...prev, spouseCurrentAge: age, spouseFra: fra }
+      })
     }
   }, [spouseDOB, retirementDate, params.includeSpouse])
 
@@ -1137,7 +1144,7 @@ export default function Retirement() {
             {/* Spouse employment */}
             <div className="mt-4 border-t border-stone-200 pt-3 dark:border-slate-700">
               <p className="mb-2 text-[11px] font-medium text-gray-700 dark:text-slate-200">Spouse employment</p>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <NumInput
                   label="Annual gross income"
                   value={params.spouseWorkIncome}
@@ -1156,16 +1163,6 @@ export default function Retirement() {
                   step={1}
                   suffix="yrs"
                   hint="Age when spouse's W-2 income ends"
-                />
-                <NumInput
-                  label="Spouse's full retirement age"
-                  value={params.spouseFra}
-                  onChange={v => update('spouseFra', Math.max(62, Math.min(70, Math.round(v))))}
-                  min={62}
-                  max={70}
-                  step={1}
-                  suffix="yrs"
-                  hint="67 for anyone born 1960 or later · affects SS earnings test"
                 />
               </div>
               {params.spouseWorkIncome > 0 && (() => {

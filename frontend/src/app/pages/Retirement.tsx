@@ -13,19 +13,20 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { api, type TaxSettings } from '../../api.ts'
+import { api } from '../../api.ts'
 import { useDark } from '../../scaffold/hooks/useDark.ts'
 import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
 import { useMe, updateMeCache } from '../../scaffold/hooks/useMe.ts'
-import { capGainsRate } from './CompCalculator.math.ts'
 import {
   computeFanPercentiles,
   DEFAULT_PARAMS,
   finalPercentiles,
   HISTORICAL_RETURNS,
   histogram,
+  migrateLoadedParams,
   projectedSpend,
   resolveScenarioShifts,
+  RETIREMENT_ACCESS_AGE,
   SCENARIO_LABELS,
   simulate,
   SPEND_RAMP_FLOOR,
@@ -147,20 +148,18 @@ function SpendRampInfo({
   return (
     <>
       <p className="mb-1">
-        Spending scales with your portfolio. At <strong>100%+</strong> of starting wealth you spend your <strong>default</strong>;
-        at <strong>{floorPct}%</strong> or below you spend the <strong>floor</strong>; in between, the sim interpolates linearly.
+        We assume you'd cut back on spending if your nest egg shrank. When your wealth is at <strong>100% or more</strong> of where you started, you spend your <strong>default</strong>. When it drops to <strong>{floorPct}%</strong> or less, you've trimmed all the way down to your <strong>floor</strong>. In between, it scales smoothly.
       </p>
       <p className="mb-1">
-        This models real human behavior: when the nest egg shrinks, discretionary spend (travel, dining, gifts) gets trimmed.
-        The bigger the gap between default and floor, the more flexibility you&rsquo;re modelling.
+        This is what people actually do — travel less, dine out less, skip the kitchen remodel — rather than spending the same in a recession as in a boom. The bigger the gap between default and floor, the more flexibility you're saying you have.
       </p>
       {startingTotal > 0 && defaultSpend > 0 && (
         <table className="my-2 w-full border-collapse text-[11px]">
           <thead>
             <tr className="border-b border-stone-300 dark:border-slate-600">
-              <th className="py-1 text-left font-semibold">Portfolio</th>
+              <th className="py-1 text-left font-semibold">If your wealth is</th>
               <th className="py-1 text-right font-semibold">% of start</th>
-              <th className="py-1 text-right font-semibold">Spend that year</th>
+              <th className="py-1 text-right font-semibold">You'd spend</th>
             </tr>
           </thead>
           <tbody>
@@ -175,9 +174,8 @@ function SpendRampInfo({
         </table>
       )}
       <p>
-        Don&rsquo;t want to model any spending cut? Set this floor equal to your default spend &mdash; the sim then
-        keeps spending flat regardless of portfolio level.
-        {flat && <span className="ml-1 italic">(That&rsquo;s your current setting.)</span>}
+        Want to assume you'd never cut back? Set the floor equal to your default — spending then stays flat no matter what the markets do.
+        {flat && <span className="ml-1 italic">(That's what you've set right now.)</span>}
       </p>
     </>
   )
@@ -363,13 +361,13 @@ function FanTooltip({
       style={{ background: c.tooltipBg, color: c.tooltipText, borderColor: c.grid }}
     >
       <p className="mb-1 font-semibold tabular-nums">Age {row.age} (year {row.year})</p>
-      <Row k="p95" v={row.pct.p95} />
-      <Row k="p90" v={row.pct.p90} />
-      <Row k="p75" v={row.pct.p75} />
-      <Row k="p50" v={row.pct.p50} />
-      <Row k="p25" v={row.pct.p25} />
-      <Row k="p10" v={row.pct.p10} />
-      <Row k="p5" v={row.pct.p5} />
+      <Row k="best 5%" v={row.pct.p95} />
+      <Row k="best 10%" v={row.pct.p90} />
+      <Row k="best 25%" v={row.pct.p75} />
+      <Row k="typical" v={row.pct.p50} />
+      <Row k="worst 25%" v={row.pct.p25} />
+      <Row k="worst 10%" v={row.pct.p10} />
+      <Row k="worst 5%" v={row.pct.p5} />
     </div>
   )
 }
@@ -391,7 +389,7 @@ function HistogramTooltip({
       style={{ background: c.tooltipBg, color: c.tooltipText, borderColor: c.grid }}
     >
       <p className="font-semibold">{fmt$M(b.x0, 1)} – {fmt$M(b.x1, 1)}</p>
-      <p className="tabular-nums">{b.count.toLocaleString()} paths ({b.aboveStart ? 'above' : 'below'} start)</p>
+      <p className="tabular-nums">{b.count.toLocaleString()} retirements ended in this range ({b.aboveStart ? 'above' : 'below'} starting wealth)</p>
     </div>
   )
 }
@@ -416,7 +414,6 @@ export default function Retirement() {
   const [retirementDate, setRetirementDate] = useState<string>(TODAY)
   const [exitPreviewLoading, setExitPreviewLoading] = useState(false)
   const exitOverriddenRef = useRef(false)
-  const refillOverriddenRef = useRef(false)
   const defaultSpendOverriddenRef = useRef(false)
   const minSpendOverriddenRef = useRef(false)
   const paramsLoadedRef = useRef(false)
@@ -458,9 +455,14 @@ export default function Retirement() {
     fetcher
       .then(({ params: saved }) => {
         if (saved && typeof saved === 'object') {
-          const { retirementDate: savedDate, spouseDOB: savedSpouseDOB, ...rest } =
-            saved as Partial<SimParams> & { retirementDate?: unknown; spouseDOB?: unknown }
-          setParams(prev => ({ ...prev, ...rest as Partial<SimParams> }))
+          const rawSaved = saved as Record<string, unknown>
+          const savedDate = rawSaved.retirementDate
+          const savedSpouseDOB = rawSaved.spouseDOB
+          const migrated = migrateLoadedParams(rawSaved)
+          // Strip non-SimParams sidecar fields before merging.
+          delete (migrated as Record<string, unknown>).retirementDate
+          delete (migrated as Record<string, unknown>).spouseDOB
+          setParams(prev => ({ ...prev, ...migrated }))
           if (typeof savedDate === 'string' && savedDate) {
             setRetirementDate(savedDate)
           }
@@ -468,10 +470,9 @@ export default function Retirement() {
             setSpouseDOB(savedSpouseDOB || null)
           }
           // Treat saved values as user choices: don't auto-overwrite them.
-          if ('epicExit' in saved) exitOverriddenRef.current = true
-          if ('refillTaxDrag' in saved) refillOverriddenRef.current = true
-          if ('defaultSpend' in saved) defaultSpendOverriddenRef.current = true
-          if ('minSpend' in saved) minSpendOverriddenRef.current = true
+          if ('epicExit' in rawSaved) exitOverriddenRef.current = true
+          if ('defaultSpend' in rawSaved) defaultSpendOverriddenRef.current = true
+          if ('minSpend' in rawSaved) minSpendOverriddenRef.current = true
         }
         paramsLoadedRef.current = true
       })
@@ -523,17 +524,20 @@ export default function Retirement() {
     }
   }, [retirementDate, vid])
 
-  // Pre-fill refill tax drag from the (shared or own) blended LT cap-gains rate.
+  // Pull state tax rates from the user's TaxSettings — federal is bracket-based
+  // in the simulator (no user input needed), state is a flat rate from settings.
+  // Always synced; the user adjusts state rates in Settings → Tax Rates.
   useEffect(() => {
-    if (refillOverriddenRef.current) return
     const fetcher = vid ? api.getSharedTaxSettings(vid) : api.getTaxSettings()
     fetcher
-      .then((ts: TaxSettings) => {
-        if (refillOverriddenRef.current) return
-        const rate = capGainsRate(ts)
-        if (Number.isFinite(rate) && rate >= 0 && rate < 1) {
-          setParams(prev => ({ ...prev, refillTaxDrag: Number(rate.toFixed(4)) }))
-        }
+      .then(ts => {
+        // State ordinary income tax uses hard-coded WI brackets in the sim;
+        // we only need the LTCG rate from TaxSettings (set this to your
+        // post-30%-exclusion effective rate, ~5.36% at the WI top bracket).
+        setParams(prev => ({
+          ...prev,
+          stateLTCGRate: Number.isFinite(ts.state_lt_cg_rate) ? ts.state_lt_cg_rate : 0,
+        }))
       })
       .catch(() => {})
   }, [vid])
@@ -541,7 +545,7 @@ export default function Retirement() {
   // Default spend / min spend auto-derive from total portfolio (3% / 2%).
   // Stops auto-deriving once the user (or saved params) has touched the field.
   useEffect(() => {
-    const totalK = (params.epicExit + params.additional) * 1000
+    const totalK = (params.epicExit + params.taxableAdditional + params.traditional + params.roth) * 1000
     if (totalK <= 0) return
     const wantDefault = Math.round(totalK * 0.03)
     const wantMin = Math.round(totalK * 0.02)
@@ -555,7 +559,7 @@ export default function Retirement() {
       }
       return next
     })
-  }, [params.epicExit, params.additional])
+  }, [params.epicExit, params.taxableAdditional, params.traditional, params.roth])
 
   const update = useCallback(<K extends keyof SimParams>(key: K, value: SimParams[K]) => {
     setParams(prev => ({ ...prev, [key]: value }))
@@ -592,15 +596,21 @@ export default function Retirement() {
     return () => clearTimeout(t)
   }, [params, retirementDate, spouseDOB, vid])
 
-  const totalPortfolio = params.epicExit + params.additional
+  const totalPortfolio = params.epicExit + params.taxableAdditional + params.traditional + params.roth
+  const taxableTotal = params.epicExit + params.taxableAdditional
   const cashPct = Math.max(0, 1 - params.stockPct - params.bondPct)
-  const startingCash = totalPortfolio * cashPct
+  const cashTargetRaw = totalPortfolio * cashPct
+  const startingCash = Math.min(taxableTotal, cashTargetRaw)
+  const cashUnderfunded = cashTargetRaw - startingCash > 0.001
   const allocOver = params.stockPct + params.bondPct > 1
   const ssAdj = ssAdjustment(params.claimAge, params.fra)
   const ssAnnualK = (params.ssMonthly * 12 / 1000) * ssAdj
   const ssStartYear = Math.max(0, params.claimAge - params.currentAge)
   const years = Math.max(1, Math.round(params.endAge - params.currentAge))
   const dobMissing = !ownerDOB
+  const ageAtRetirement = ageFromDOB(ownerDOB, retirementDate) ?? params.currentAge
+  const bridgeYears = Math.max(0, RETIREMENT_ACCESS_AGE - ageAtRetirement)
+  const hasLockedAssets = params.traditional + params.roth > 0
 
   const run = useCallback(() => {
     setRunning(true)
@@ -651,20 +661,28 @@ export default function Retirement() {
         {explainerOpen && (
           <div className="border-t border-stone-200 px-4 py-3 text-xs leading-relaxed text-gray-600 dark:border-slate-700 dark:text-slate-300">
             <p className="mb-2">
-              A {params.paths.toLocaleString()}-path simulation of a {years}-year retirement (age {params.currentAge} to {params.endAge}), run entirely in your browser.
-              Each path samples 5-year blocks of real U.S. stock + 10yr Treasury returns ({HISTORY_FIRST_YEAR}&ndash;{HISTORY_LAST_YEAR}, real),
-              picking a fresh starting year every 5 years &mdash; so crash years stay clustered with their actual recoveries.
-              Total portfolio is split into stocks, bonds, and cash by the percentages you choose.
-              Withdrawals come from cash first, then equity (with a tax drag); cash is refilled only from the year's net positive equity gain (preserves principal).
-              Social Security kicks in at your chosen claim age with the SSA early/late factor applied to your FRA monthly benefit.
+              We simulate your retirement {params.paths.toLocaleString()} times — from age {params.currentAge} to {params.endAge} — and show you how often things turn out well vs. badly.
+              Every run uses real U.S. stock and bond returns from history ({HISTORY_FIRST_YEAR}–{HISTORY_LAST_YEAR}), borrowing 5-year stretches at a time so a 2008-style crash stays glued to the 2009 recovery (instead of cherry-picking only good or bad years).
+              Your money is split into stocks, bonds, and cash based on the percentages you set.
             </p>
             <p className="mb-2">
-              All dollar values are <strong>real</strong> (inflation-adjusted). <strong>Default spend</strong> excludes health insurance — the health-insurance line is added separately and zeros out at age 66 by default (Medicare).
-              With a spouse included, health insurance steps from 100% (both pre-65) to 50% (one on Medicare) to 0% (both on Medicare), and a second SS stream is added at the spouse's claim age.
-              Spending scales with your portfolio: at 100%+ of starting wealth you spend your <strong>default</strong>, dropping linearly to the <strong>minimum</strong> floor at 50% — modelling how people actually trim discretionary spend as their nest egg shrinks.
+              We track your wealth across four buckets so taxes come out right:
+              {' '}<strong>cash</strong> (no tax to spend),
+              {' '}<strong>taxable brokerage</strong> (you only owe capital-gains tax on the growth portion, not the original money you put in),
+              {' '}<strong>401(k) / Traditional IRA</strong> (locked until age {RETIREMENT_ACCESS_AGE}, then taxed like a paycheck), and
+              {' '}<strong>Roth</strong> (locked until age {RETIREMENT_ACCESS_AGE}, then totally tax-free).
+              Each year we spend from cash first, then taxable brokerage, then 401(k), then Roth — and we calculate what you'd actually owe in federal + state taxes that year.
+              If you retire before age {RETIREMENT_ACCESS_AGE} and your cash + brokerage run dry, the path counts as failed even if your 401(k) is still full — you can't legally touch it yet.
+              Social Security kicks in at the age you choose, adjusted for early/late claiming.
+            </p>
+            <p className="mb-2">
+              All dollar amounts are shown in <strong>today's purchasing power</strong> — so $200K spend in year 30 still means "what $200K buys today," not the inflated headline number.
+              {' '}<strong>Default spend</strong> is what you live on excluding health insurance, which we add separately — your premium estimate before age 65, then Medicare cost (with extra fees if your income is high) after.
+              Got a spouse? We add their Social Security stream and switch your tax brackets to married-filing-jointly.
+              We also model that you'd cut spending if your nest egg shrank — at full wealth you spend the default, dropping toward your floor if things go badly.
             </p>
             <p>
-              Pre-populated Epic exit value comes from "If you exited" on the Dashboard for the date you choose below; refill tax drag defaults to your blended LT cap-gains rate from <em>Settings → Tax Rates</em>.
+              Your Epic exit number is pre-filled from the dashboard's "If you exited" estimate for the retirement date you pick. State tax rates come from <em>Settings → Tax Rates</em>.
             </p>
           </div>
         )}
@@ -718,7 +736,7 @@ export default function Retirement() {
                 ? 'Fetching exit preview…'
                 : vid
                   ? 'Set by the data owner'
-                  : 'Drives exit amount + simulation start age'}
+                  : 'Sets your exit amount and how old you\'ll be when retirement starts'}
             </span>
           </label>
         </div>
@@ -731,7 +749,7 @@ export default function Retirement() {
             className="rounded"
           />
           <span className="text-gray-700 dark:text-slate-200">
-            Include spouse <span className="text-gray-400 dark:text-slate-500">(adds a second SS stream and steps health insurance down 100% → 50% → 0% as each spouse hits Medicare)</span>
+            Include spouse <span className="text-gray-400 dark:text-slate-500">(adds their Social Security, switches to married-filing-jointly tax brackets, and counts each person's health insurance separately)</span>
           </span>
         </label>
         {params.includeSpouse && (
@@ -750,7 +768,7 @@ export default function Retirement() {
               <span className="text-[10px] text-gray-400 dark:text-slate-500">
                 {spouseDOB
                   ? `Age ${ageFromDOB(spouseDOB) ?? '—'} today, ${ageFromDOB(spouseDOB, retirementDate) ?? '—'} at retirement`
-                  : 'Used to time spouse SS claim and Medicare eligibility (age 65)'}
+                  : 'Used to time their Social Security and Medicare (kicks in at 65)'}
               </span>
             </label>
           </div>
@@ -767,21 +785,86 @@ export default function Retirement() {
             min={0}
             step={0.1}
             suffix="$M"
-            hint="Auto-filled from the date above; editable"
+            hint="Pre-filled from your dashboard for the retirement date above — you can override it"
           />
           <NumInput
             label="Additional portfolio"
-            value={params.additional}
-            onChange={v => update('additional', v)}
+            value={params.taxableAdditional}
+            onChange={v => {
+              setParams(prev => ({
+                ...prev,
+                taxableAdditional: v,
+                // Simple-mode default: assume fully appreciated (basis = 0).
+                // Conservative — most pre-existing brokerage held for years
+                // has substantial unrealized gains. Open the advanced view
+                // to set a real basis or split into 401(k)/Roth buckets.
+                additionalBasis: prev.advanced ? prev.additionalBasis : 0,
+              }))
+            }}
             min={0}
             step={0.1}
             suffix="$M"
-            hint="Brokerage, 401k, etc."
+            hint={params.advanced ? 'Pre-existing taxable brokerage' : 'Treated as fully-appreciated taxable; open below for buckets/basis'}
           />
         </div>
 
+        <button
+          type="button"
+          onClick={() => update('advanced', !params.advanced)}
+          className="mt-3 inline-flex items-center gap-1 text-[11px] font-medium text-rose-700 hover:text-rose-800 dark:text-rose-300 dark:hover:text-rose-200"
+        >
+          <span>{params.advanced ? '▾' : '▸'}</span>
+          <span>{params.advanced ? 'Hide account breakdown' : 'Break out by account type (more accurate taxes)'}</span>
+        </button>
+        {params.advanced && (
+          <div className="mt-3 rounded border border-stone-200 bg-stone-50 p-3 dark:border-slate-700 dark:bg-slate-800">
+            <p className="mb-2 text-[10px] leading-snug text-stone-600 dark:text-slate-400">
+              Different account types are taxed very differently — splitting them out makes the simulation match what you'd actually owe each year.
+              {' '}<strong>401(k) and Roth are off-limits until age {RETIREMENT_ACCESS_AGE}</strong> (the IRS hits early withdrawals with a 10% penalty), so if you retire earlier, those years have to be funded from your taxable brokerage and cash.
+              When you sell from your <strong>brokerage</strong>, you only owe tax on the growth — the original money you put in (your "cost basis") comes back tax-free. Your Epic exit money has full basis because it was just sold.
+              <strong> 401(k)</strong> withdrawals are taxed like a paycheck. <strong>Roth</strong> withdrawals are completely tax-free.
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <NumInput
+                label="What you originally paid (basis)"
+                value={params.additionalBasis}
+                onChange={v => update('additionalBasis', Math.max(0, v))}
+                min={0}
+                step={0.1}
+                suffix="$M"
+                hint={params.taxableAdditional > 0
+                  ? `Of $${params.taxableAdditional.toFixed(2)}M brokerage. Default = $0 (assumes it's all grown from much less).`
+                  : 'What you originally paid for your brokerage assets · default = $0'}
+              />
+              <NumInput
+                label="401(k) / Traditional IRA"
+                value={params.traditional}
+                onChange={v => update('traditional', Math.max(0, v))}
+                min={0}
+                step={0.1}
+                suffix="$M"
+                hint={`Locked until age ${RETIREMENT_ACCESS_AGE} · taxed as income`}
+              />
+              <NumInput
+                label="Roth IRA / Roth 401(k)"
+                value={params.roth}
+                onChange={v => update('roth', Math.max(0, v))}
+                min={0}
+                step={0.1}
+                suffix="$M"
+                hint={`Locked until age ${RETIREMENT_ACCESS_AGE} · withdrawals are tax-free`}
+              />
+            </div>
+            {bridgeYears > 0 && hasLockedAssets && (
+              <p className="mt-2 text-[10px] text-amber-700 dark:text-amber-300">
+                ⚠ You'd retire {bridgeYears.toFixed(1)} years before you can touch your 401(k)/Roth. Those bridge years have to come from your cash and brokerage — make sure they can cover it.
+              </p>
+            )}
+          </div>
+        )}
+
         <p className="mt-4 mb-2 text-[11px] font-semibold text-gray-700 dark:text-slate-200">
-          Allocation of total portfolio (cash = remainder)
+          How your money is invested (cash fills in the rest)
         </p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <NumInput
@@ -810,7 +893,7 @@ export default function Retirement() {
               {(cashPct * 100).toFixed(0)}%
             </div>
             <span className={`text-[10px] ${allocOver ? 'text-rose-600 dark:text-rose-400' : 'text-gray-400 dark:text-slate-500'}`}>
-              {allocOver ? 'Stocks + Bonds > 100% — adjust' : 'Auto: 100 − stocks − bonds'}
+              {allocOver ? 'Stocks + bonds add to more than 100% — adjust' : 'Whatever\'s left after stocks + bonds'}
             </span>
           </div>
         </div>
@@ -821,11 +904,20 @@ export default function Retirement() {
           {' '}bonds {fmt$M(totalPortfolio * params.bondPct)} ·
           {' '}cash {fmt$M(startingCash)}
         </p>
+        <p className="mt-1 text-[10px] leading-snug text-stone-500 dark:text-slate-400">
+          We assume your cash sits outside your retirement accounts (checking, savings, money market) — your 401(k) and Roth are treated as fully invested in stocks and bonds.
+          If you actually keep stable-value funds inside a 401(k), the simulator will treat that as invested rather than spendable cash.
+          {cashUnderfunded && params.advanced && (
+            <span className="ml-1 text-amber-700 dark:text-amber-300">
+              ⚠ You've asked for more cash than fits in your taxable accounts — the rest stays invested in your 401(k)/Roth.
+            </span>
+          )}
+        </p>
       </div>
 
       <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-        <p className="mb-3 text-xs font-semibold text-gray-700 dark:text-slate-200">Spending & taxes</p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
+        <p className="mb-3 text-xs font-semibold text-gray-700 dark:text-slate-200">Spending</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
           <NumInput
             label="Default spend"
             value={params.defaultSpend}
@@ -836,7 +928,7 @@ export default function Retirement() {
             min={0}
             step={5}
             suffix="$K/yr"
-            hint="Default = 3% of total portfolio · excludes health insurance"
+            hint="What you live on per year (excluding health insurance) · auto-set to 3% of your portfolio"
           />
           <NumInput
             label="Minimum spend (floor)"
@@ -848,7 +940,7 @@ export default function Retirement() {
             min={0}
             step={5}
             suffix="$K/yr"
-            hint="Default = 2% of total portfolio"
+            hint="What you'd cut down to in a bad year · auto-set to 2% of your portfolio"
             info={
               <SpendRampInfo
                 defaultSpend={params.defaultSpend}
@@ -864,20 +956,7 @@ export default function Retirement() {
             min={0}
             step={1}
             suffix="$K/yr"
-            hint="Pre-Medicare premiums + OOP"
-          />
-          <NumInput
-            label="Refill tax drag"
-            value={Math.round(params.refillTaxDrag * 1000) / 10}
-            onChange={v => {
-              refillOverriddenRef.current = true
-              update('refillTaxDrag', Math.max(0, Math.min(99, v)) / 100)
-            }}
-            min={0}
-            max={99}
-            step={0.5}
-            suffix="%"
-            hint="Default = your blended LT cap-gains rate"
+            hint="What you pay before Medicare kicks in (premium + out-of-pocket)"
           />
         </div>
         <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded border border-stone-200 bg-stone-50 px-3 py-2 text-[11px] dark:border-slate-700 dark:bg-slate-800">
@@ -888,9 +967,14 @@ export default function Retirement() {
             className="rounded"
           />
           <span className="text-gray-700 dark:text-slate-200">
-            Zero out health insurance after age 65 <span className="text-gray-400 dark:text-slate-500">(Medicare kicks in)</span>
+            Switch to Medicare costs at age 65 <span className="text-gray-400 dark:text-slate-500">(replaces your premium with base Medicare, plus an income-based surcharge if your taxable income is high)</span>
           </span>
         </label>
+        <p className="mt-3 text-[10px] leading-snug text-stone-500 dark:text-slate-400">
+          Each year we calculate what you'd actually owe in taxes: federal income brackets (with the bigger married-filing-jointly brackets if you've added a spouse), federal capital-gains tax on investment growth, an extra 3.8% surcharge on investment income for higher earners, Medicare income surcharges after 65, Wisconsin progressive brackets (3.5%/4.4%/5.3%/7.65%) on 401(k) withdrawals, and {fmtPct(params.stateLTCGRate, 2)} on capital gains (from <em>Settings → Tax Rates</em> — this should be your post-30%-WI-exclusion effective rate, ~5.36% at the top WI bracket).
+          We spend from your accounts in order: cash first (no tax), then brokerage (only the growth is taxed), then 401(k), then Roth — and the 401(k)/Roth stay locked until age {RETIREMENT_ACCESS_AGE}.
+          <br /><span className="text-stone-400 dark:text-slate-500">Wisconsin assumption: Social Security is exempt from state tax (it still counts toward federal); state income tax uses WI's progressive brackets, not a flat marginal rate. Each dollar lands in its actual WI bracket since we know your full income each year.</span>
+        </p>
       </div>
 
       <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
@@ -901,22 +985,16 @@ export default function Retirement() {
         {sigmaOpen && (
           <div className="mb-3 rounded border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] leading-relaxed text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
             <p className="mb-1">
-              Each year of every path is sampled from a real {HISTORY_FIRST_YEAR}&ndash;{HISTORY_LAST_YEAR} year of U.S. history (S&amp;P 500
-              + 10yr Treasury, both real). We start at a random year and walk forward; each year there&rsquo;s a
-              1-in-20 chance the path jumps to a new random year (stationary bootstrap, mean block length 20).
-              That preserves crash shapes, recovery patterns, and stock/bond co-movement &mdash; 1929 is usually
-              followed by 1930, 2008 by 2009 &mdash; while still giving plenty of Monte Carlo variation between
-              paths. Long geometric blocks mean most paths contain at least one long contiguous historical
-              run, which is why the bootstrap matches the 0/N historical rolling-windows ruin baseline at
-              sub-3% withdrawal for typical retirement horizons.
+              For each simulated retirement, we replay actual stretches of U.S. market history ({HISTORY_FIRST_YEAR}–{HISTORY_LAST_YEAR}) instead of making up returns from a formula.
+              We pick a random starting year, walk forward (so 1929 is followed by 1930, 2008 by 2009 — crashes stay glued to their actual recoveries), and occasionally jump to a different starting year to mix things up across the {params.paths.toLocaleString()} simulations.
+              This is more honest than the usual "average return ± noise" approach, which can quietly invent stretches of bad years that never actually happened together.
             </p>
             <p className="mb-1">
-              Each scenario applies a single constant <strong>shift</strong> to every resampled return,
-              re-locating the distribution without distorting variance, autocorrelation, or tail asymmetry.
-              <strong> Historical</strong>: no shift &mdash; the raw distribution {HISTORY_FIRST_YEAR}&ndash;{HISTORY_LAST_YEAR}.
-              {' '}<strong>Moderate</strong>: stocks &minus;2pp, bonds &minus;0.5pp (≈ Vanguard 2025 10-yr outlook
-              given current valuations). <strong>Cautious</strong>: stocks &minus;3.5pp, bonds &minus;1pp.
-              {' '}<strong>Custom</strong>: dial them yourself.
+              The four scenarios shift the historical returns up or down to reflect different views on the future:
+              <strong> Historical</strong> — exactly what happened {HISTORY_FIRST_YEAR}–{HISTORY_LAST_YEAR}.
+              <strong> Moderate</strong> — knock 2 percentage points off stock returns and 0.5pp off bonds (roughly Vanguard's 2025 10-year forecast given today's high valuations).
+              <strong> Cautious</strong> — bigger haircut: stocks −3.5pp, bonds −1pp.
+              <strong> Custom</strong> — set your own.
             </p>
           </div>
         )}
@@ -966,19 +1044,20 @@ export default function Retirement() {
       </div>
 
       <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-        <p className="mb-3 text-xs font-semibold text-gray-700 dark:text-slate-200">Time horizon</p>
+        <p className="mb-3 text-xs font-semibold text-gray-700 dark:text-slate-200">How long to plan for</p>
         <SliderInput
-          label="Simulate until age"
+          label="Plan until you're"
           value={params.endAge}
           onChange={v => update('endAge', Math.max(params.currentAge + 1, Math.min(110, Math.round(v))))}
           min={Math.min(params.currentAge + 1, 110)}
           max={110}
           step={1}
-          hint={`Starts at age ${params.currentAge} (your age at retirement) · ${years}-year horizon`}
+          formatValue={v => `age ${v}`}
+          hint={`Retire at ${params.currentAge}, plan ${years} years of retirement (set this past your likely lifespan to be safe)`}
         />
         {dobMissing && (
           <p className="mt-2 text-[10px] text-amber-700 dark:text-amber-300">
-            ⚠ Set date of birth above to enable age-based features (start age defaults to 50).
+            ⚠ Set your date of birth above so we can figure out your age (otherwise we assume 50).
           </p>
         )}
       </div>
@@ -987,35 +1066,35 @@ export default function Retirement() {
         <p className="mb-3 text-xs font-semibold text-gray-700 dark:text-slate-200">Social Security</p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <NumInput
-            label="FRA monthly benefit"
+            label="Monthly benefit at age 67"
             value={params.ssMonthly}
             onChange={v => update('ssMonthly', v)}
             min={0}
             step={50}
             suffix="$/mo"
-            hint="At age 67 (FRA)"
+            hint='From your "my Social Security" estimate at age 67 (full retirement age)'
           />
           <SliderInput
-            label="Claim age"
+            label="When you claim"
             value={params.claimAge}
             onChange={v => update('claimAge', Math.max(62, Math.min(70, Math.round(v))))}
             min={62}
             max={70}
             step={1}
-            formatValue={v => `${v}`}
-            hint="62 = early reduction · 70 = max delayed credits"
+            formatValue={v => `age ${v}`}
+            hint="Claim at 62 = ~30% smaller checks · wait until 70 = ~24% bigger checks"
           />
         </div>
         <div className="mt-2 grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-2 sm:gap-3">
           <p className="text-stone-500 dark:text-slate-400">
-            Adjustment factor at age {params.claimAge}: <strong className="text-gray-900 dark:text-slate-100">{(ssAdj * 100).toFixed(1)}%</strong> of FRA
+            Claiming at {params.claimAge} → you get <strong className="text-gray-900 dark:text-slate-100">{(ssAdj * 100).toFixed(1)}%</strong> of your age-67 benefit
           </p>
           <p className="text-stone-500 dark:text-slate-400">
-            Adjusted monthly: <strong className="text-gray-900 dark:text-slate-100 tabular-nums">${(params.ssMonthly * ssAdj).toFixed(0)}/mo</strong>
-            {' · '}annual: <strong className="text-gray-900 dark:text-slate-100 tabular-nums">${ssAnnualK.toFixed(1)}K</strong>
+            That's <strong className="text-gray-900 dark:text-slate-100 tabular-nums">${(params.ssMonthly * ssAdj).toFixed(0)}/mo</strong>
+            {' · '}or <strong className="text-gray-900 dark:text-slate-100 tabular-nums">${ssAnnualK.toFixed(1)}K/yr</strong>
           </p>
           <p className="text-stone-500 dark:text-slate-400 sm:col-span-2">
-            Starts simulation year {ssStartYear} ({params.currentAge >= params.claimAge ? 'immediately' : `age ${params.claimAge}`}).
+            {params.currentAge >= params.claimAge ? 'Starts immediately (you\'ll be past claim age at retirement).' : `Starts ${ssStartYear} years into retirement (when you turn ${params.claimAge}).`}
           </p>
         </div>
         {params.includeSpouse && (
@@ -1023,31 +1102,31 @@ export default function Retirement() {
             <p className="mb-2 text-[11px] font-medium text-gray-700 dark:text-slate-200">Spouse</p>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <NumInput
-                label="Spouse FRA monthly"
+                label="Spouse's monthly benefit at age 67"
                 value={params.spouseSsMonthly}
                 onChange={v => update('spouseSsMonthly', v)}
                 min={0}
                 step={50}
                 suffix="$/mo"
-                hint="0 if spouse has no SS · for spousal benefit, enter 50% of higher earner's PIA"
+                hint="0 if no Social Security · if claiming the spousal benefit, use half of the higher earner's amount"
               />
               <SliderInput
-                label="Spouse claim age"
+                label="When spouse claims"
                 value={params.spouseClaimAge}
                 onChange={v => update('spouseClaimAge', Math.max(62, Math.min(70, Math.round(v))))}
                 min={62}
                 max={70}
                 step={1}
-                formatValue={v => `${v}`}
-                hint="62 = early reduction · 70 = max delayed credits"
+                formatValue={v => `age ${v}`}
+                hint="Claim at 62 = ~30% smaller checks · wait until 70 = ~24% bigger checks"
               />
             </div>
             <div className="mt-2 grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-2 sm:gap-3">
               <p className="text-stone-500 dark:text-slate-400">
-                Adjustment factor at age {params.spouseClaimAge}: <strong className="text-gray-900 dark:text-slate-100">{(ssAdjustment(params.spouseClaimAge, params.fra) * 100).toFixed(1)}%</strong> of FRA
+                Claiming at {params.spouseClaimAge} → spouse gets <strong className="text-gray-900 dark:text-slate-100">{(ssAdjustment(params.spouseClaimAge, params.fra) * 100).toFixed(1)}%</strong> of the age-67 benefit
               </p>
               <p className="text-stone-500 dark:text-slate-400">
-                Adjusted monthly: <strong className="text-gray-900 dark:text-slate-100 tabular-nums">${(params.spouseSsMonthly * ssAdjustment(params.spouseClaimAge, params.fra)).toFixed(0)}/mo</strong>
+                That's <strong className="text-gray-900 dark:text-slate-100 tabular-nums">${(params.spouseSsMonthly * ssAdjustment(params.spouseClaimAge, params.fra)).toFixed(0)}/mo</strong>
               </p>
             </div>
           </div>
@@ -1061,11 +1140,11 @@ export default function Retirement() {
           disabled={running || allocOver}
           className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-rose-700 disabled:opacity-50 dark:bg-rose-500 dark:hover:bg-rose-400"
         >
-          {running ? 'Running…' : hasRun ? 'Re-run simulation' : `Run ${params.paths.toLocaleString()} paths × ${years} years`}
+          {running ? 'Running…' : hasRun ? 'Re-run simulation' : `Simulate ${params.paths.toLocaleString()} retirements × ${years} years`}
         </button>
         {result && (
           <p className="text-[11px] text-stone-500 dark:text-slate-400">
-            {result.finalWealth.length.toLocaleString()} paths simulated.
+            {result.finalWealth.length.toLocaleString()} retirements simulated.
           </p>
         )}
       </div>
@@ -1074,33 +1153,33 @@ export default function Retirement() {
         <>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <StatCard
-              label="Above starting wealth"
+              label="Ended richer than you started"
               value={fmtPct(result.pctAboveStart)}
-              sub={`${result.finalWealth.length.toLocaleString()} paths total`}
+              sub={`out of ${result.finalWealth.length.toLocaleString()} simulated retirements`}
               variant={result.pctAboveStart >= 0.5 ? 'good' : 'neutral'}
             />
             <StatCard
-              label="Ruin"
+              label="Ran out of money"
               value={fmtPct(result.pctRuin)}
-              sub="Both pools hit 0"
+              sub="couldn't pay the bills in some year"
               variant={result.pctRuin <= 0.1 ? 'good' : result.pctRuin >= 0.3 ? 'bad' : 'neutral'}
             />
             <StatCard
-              label="Median final"
+              label="Typical ending wealth"
               value={fmt$M(result.medianFinalM)}
-              sub={`vs start ${fmt$M(result.startingTotal)}`}
+              sub={`half end above this · started at ${fmt$M(result.startingTotal)}`}
             />
             <StatCard
-              label="P10 final"
+              label="Bad-case ending wealth"
               value={fmt$M(result.p10FinalM)}
-              sub="10% of paths end below this"
+              sub="10% of retirements end below this"
               variant={result.p10FinalM >= result.startingTotal ? 'good' : 'neutral'}
             />
           </div>
 
           <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
             <p className="mb-2 text-xs font-semibold text-gray-700 dark:text-slate-200">
-              Total wealth fan chart (real $M)
+              How your wealth could play out over time (today's dollars)
             </p>
             <ResponsiveContainer width="100%" height={300}>
               <ComposedChart data={fanData} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
@@ -1128,12 +1207,12 @@ export default function Retirement() {
               </ComposedChart>
             </ResponsiveContainer>
             <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[10px] text-stone-500 dark:text-slate-400">
-              <Legend swatch={c.band[0]} label="p5–p10 / p90–p95" />
-              <Legend swatch={c.band[1]} label="p10–p25 / p75–p90" />
-              <Legend swatch={c.band[2]} label="p25–p75" />
-              <Legend swatch={c.median} label="median (p50)" thickLine />
-              <Legend swatch={c.start} label={`start (${fmt$M(result.startingTotal)})`} dashed />
-              <span className="ml-auto">x-axis: age</span>
+              <Legend swatch={c.band[2]} label="middle 50% of outcomes" />
+              <Legend swatch={c.band[1]} label="middle 80%" />
+              <Legend swatch={c.band[0]} label="middle 90%" />
+              <Legend swatch={c.median} label="typical (median) outcome" thickLine />
+              <Legend swatch={c.start} label={`starting wealth (${fmt$M(result.startingTotal)})`} dashed />
+              <span className="ml-auto">your age →</span>
             </div>
           </div>
 
@@ -1141,10 +1220,10 @@ export default function Retirement() {
             <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
               <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
                 <p className="text-xs font-semibold text-gray-700 dark:text-slate-200">
-                  Final wealth distribution at age {params.endAge} (real $M)
+                  Where you end up at age {params.endAge} (today's dollars)
                 </p>
                 <p className="text-[10px] text-stone-500 dark:text-slate-400">
-                  {histData.excluded.toLocaleString()} ruin paths excluded ({fmtPct(histData.excluded / histData.total)})
+                  {histData.excluded.toLocaleString()} runs that ran out of money not shown ({fmtPct(histData.excluded / histData.total)})
                   {histData.scale === 'log' && <> · log scale</>}
                 </p>
               </div>
@@ -1174,26 +1253,38 @@ export default function Retirement() {
                 </BarChart>
               </ResponsiveContainer>
               <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[10px] text-stone-500 dark:text-slate-400">
-                <Legend swatch={c.good} label="above starting wealth" />
-                <Legend swatch={c.bad} label="below starting wealth" />
-                <Legend swatch={c.start} label={`start (${fmt$M(result.startingTotal)})`} dashed />
+                <Legend swatch={c.good} label="ended richer than they started" />
+                <Legend swatch={c.bad} label="ended poorer" />
+                <Legend swatch={c.start} label={`starting wealth (${fmt$M(result.startingTotal)})`} dashed />
               </div>
             </div>
           )}
 
           <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
             <p className="mb-2 text-xs font-semibold text-gray-700 dark:text-slate-200">
-              Final-age percentile table (real $M)
+              Range of final outcomes at age {params.endAge} (today's dollars)
             </p>
             <div className="overflow-x-auto">
               <table className="w-full text-xs tabular-nums">
                 <thead>
                   <tr className="text-left text-[10px] uppercase tracking-wider text-stone-500 dark:text-slate-400">
-                    {finalRows.map(r => (
-                      <th key={r.q} className="px-2 py-1 font-medium">
-                        p{Math.round(r.q * 100)}
-                      </th>
-                    ))}
+                    {finalRows.map(r => {
+                      const q = Math.round(r.q * 100)
+                      const label =
+                        q === 1 ? 'worst 1%'
+                        : q === 5 ? 'worst 5%'
+                        : q === 10 ? 'worst 10%'
+                        : q === 25 ? 'worst 25%'
+                        : q === 50 ? 'middle (typical)'
+                        : q === 75 ? 'best 25%'
+                        : q === 90 ? 'best 10%'
+                        : q === 95 ? 'best 5%'
+                        : q === 99 ? 'best 1%'
+                        : `${q}th pct`
+                      return (
+                        <th key={r.q} className="px-2 py-1 font-medium">{label}</th>
+                      )
+                    })}
                   </tr>
                 </thead>
                 <tbody>
@@ -1215,7 +1306,7 @@ export default function Retirement() {
               </table>
             </div>
             <p className="mt-1.5 text-[10px] text-stone-500 dark:text-slate-400">
-              Includes ruin paths (final wealth = $0M when applicable).
+              Runs that ran out of money show as $0.
             </p>
           </div>
         </>
@@ -1223,12 +1314,12 @@ export default function Retirement() {
 
       {!hasRun && (
         <div className="rounded-lg border border-stone-200 bg-stone-50 p-4 text-xs leading-relaxed text-stone-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-          Configure inputs above and press <strong>Run simulation</strong>. The default 100,000 × {years}-year run takes a few seconds in the browser.
+          Set your numbers above and hit <strong>Run simulation</strong>. We'll simulate your retirement 100,000 times in your browser — takes a few seconds.
         </div>
       )}
 
       <footer className="pt-4 text-center text-[10px] text-gray-400 dark:text-slate-500">
-        All calculations run locally in your browser. Returns are real (inflation-adjusted) and stylized — not financial advice.
+        Everything runs in your browser — no data leaves your device. All amounts are in today's purchasing power. This is a planning tool, not financial advice.
       </footer>
     </div>
   )

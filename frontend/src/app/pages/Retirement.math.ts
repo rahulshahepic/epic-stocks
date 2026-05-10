@@ -9,6 +9,19 @@
 // differ only by a constant shift added to every resampled return — this
 // re-locates the distribution without distorting its variance, autocorrelation,
 // or tail asymmetry.
+//
+// Account model: wealth is split into a liquidity buffer (cash) plus three
+// equity buckets — taxable (with basis), traditional (locked until 59½, taxed
+// at ordinary income on withdrawal), and roth (locked until 59½, tax-free).
+// Each year's spending need is funded sequentially: cash → taxable → traditional
+// → roth (latter two only after 59½). Tax is computed via 2026-indexed federal
+// brackets (ordinary + LTCG stacked), NIIT, IRMAA Medicare surcharges, and
+// Wisconsin progressive state brackets on traditional withdrawals (this app
+// targets Epic, which is in Verona, WI — see computeAnnualTax for the full WI
+// assumption list). State LTCG uses a flat rate from the user's TaxSettings
+// because WI's 30% LTCG exclusion doesn't translate cleanly into a bracket
+// schedule. Brackets are CPI-indexed in real life so they're treated as
+// real-dollar throughout the simulation.
 
 export type Scenario = 'historical' | 'moderate' | 'cautious' | 'custom'
 
@@ -60,10 +73,274 @@ export function projectedSpend(wealthRatio: number, defaultSpend: number, minSpe
   return minSpend + t * (defaultSpend - minSpend)
 }
 
+// Penalty-free retirement-account access age. Pre-59.5, traditional and roth
+// buckets are inaccessible — only cash and taxable can be drawn. (We're
+// modeling the planning constraint, not the 10% early-withdrawal penalty
+// option; users typically don't tap retirement accounts early.)
+export const RETIREMENT_ACCESS_AGE = 59.5
+
+// 2026 federal tax constants. Brackets are CPI-indexed in real life (since
+// TCJA, indexed to chained-CPI), so we treat them as real-dollar thresholds
+// throughout the simulation. Values are 2026 estimates extrapolated from 2025
+// IRS schedules; minor drift from final IRS publication won't materially
+// move retirement-horizon outcomes.
+export type FilingStatus = 'mfj' | 'single'
+
+interface BracketTier {
+  // Income above `floor` (and below the next tier's floor) is taxed at `rate`.
+  floor: number
+  rate: number
+}
+
+const FED_ORDINARY_MFJ: ReadonlyArray<BracketTier> = [
+  { floor: 0,        rate: 0.10 },
+  { floor: 24_800,   rate: 0.12 },
+  { floor: 100_950,  rate: 0.22 },
+  { floor: 215_300,  rate: 0.24 },
+  { floor: 410_950,  rate: 0.32 },
+  { floor: 522_400,  rate: 0.35 },
+  { floor: 782_400,  rate: 0.37 },
+]
+const FED_ORDINARY_SINGLE: ReadonlyArray<BracketTier> = [
+  { floor: 0,        rate: 0.10 },
+  { floor: 12_400,   rate: 0.12 },
+  { floor: 50_475,   rate: 0.22 },
+  { floor: 107_650,  rate: 0.24 },
+  { floor: 205_475,  rate: 0.32 },
+  { floor: 261_200,  rate: 0.35 },
+  { floor: 651_200,  rate: 0.37 },
+]
+
+// LTCG brackets are stacked on top of taxable ordinary income. The threshold
+// is the cumulative income (ordinary + LTCG) at which the rate steps up.
+const FED_LTCG_MFJ: ReadonlyArray<BracketTier> = [
+  { floor: 0,        rate: 0    },
+  { floor: 96_700,   rate: 0.15 },
+  { floor: 600_050,  rate: 0.20 },
+]
+const FED_LTCG_SINGLE: ReadonlyArray<BracketTier> = [
+  { floor: 0,        rate: 0    },
+  { floor: 48_350,   rate: 0.15 },
+  { floor: 533_400,  rate: 0.20 },
+]
+
+// Wisconsin ordinary income brackets, 2026 estimates (CPI-indexed in real
+// life; treated as real-dollar thresholds throughout the sim — same as fed).
+// We use brackets here (not a flat rate) because in retirement we know every
+// income component each year, so each dollar can land in its actual bracket.
+// This is the same justification for using federal brackets — the comp
+// calculator uses flat marginal rates because it doesn't know your other
+// income, but the retirement sim does.
+const WI_ORDINARY_MFJ: ReadonlyArray<BracketTier> = [
+  { floor: 0,        rate: 0.0350 },
+  { floor: 20_000,   rate: 0.0440 },
+  { floor: 40_000,   rate: 0.0530 },
+  { floor: 440_000,  rate: 0.0765 },
+]
+const WI_ORDINARY_SINGLE: ReadonlyArray<BracketTier> = [
+  { floor: 0,        rate: 0.0350 },
+  { floor: 15_000,   rate: 0.0440 },
+  { floor: 30_000,   rate: 0.0530 },
+  { floor: 330_000,  rate: 0.0765 },
+]
+// WI's standard deduction is a sliding scale that phases out near $135K MFJ /
+// $112K Single AGI — Epic retirees almost always exceed that, so we skip it.
+// Mild over-tax (~$455/yr max) for low-income years; immaterial.
+
+const STD_DEDUCTION_MFJ = 31_500
+const STD_DEDUCTION_SINGLE = 15_750
+
+const NIIT_RATE = 0.038
+const NIIT_THRESHOLD_MFJ = 250_000
+const NIIT_THRESHOLD_SINGLE = 200_000
+
+// Medicare base premium per person per year (Part B + Part D).
+// 2026 estimate: ~$185/mo Part B + ~$50/mo Part D ≈ $2,820. Real $.
+const MEDICARE_BASE_PER_PERSON = 2_820
+
+// IRMAA Part B + Part D add-on per person per year, by MAGI tier (MFJ
+// thresholds; single thresholds = MFJ/2). 2026 estimates from CMS schedules.
+// IRMAA officially uses MAGI from 2 years prior, but for sim purposes we use
+// current-year MAGI — the 2-yr lag is rounding error at this fidelity.
+interface IrmaaTier {
+  magiFloorMFJ: number  // threshold for MFJ; single uses half this
+  surcharge: number     // $/yr per person, Part B + Part D combined
+}
+const IRMAA_TIERS: ReadonlyArray<IrmaaTier> = [
+  { magiFloorMFJ: 0,        surcharge: 0      },
+  { magiFloorMFJ: 212_000,  surcharge: 1_050  },
+  { magiFloorMFJ: 266_000,  surcharge: 2_625  },
+  { magiFloorMFJ: 334_000,  surcharge: 4_200  },
+  { magiFloorMFJ: 400_000,  surcharge: 5_775  },
+  { magiFloorMFJ: 750_000,  surcharge: 6_300  },
+]
+
+// Apply a progressive bracket schedule to a chunk of taxable income.
+function applyBrackets(taxableIncome: number, tiers: ReadonlyArray<BracketTier>): number {
+  if (taxableIncome <= 0) return 0
+  let tax = 0
+  for (let i = 0; i < tiers.length; i++) {
+    const lo = tiers[i].floor
+    const hi = i + 1 < tiers.length ? tiers[i + 1].floor : Infinity
+    if (taxableIncome <= lo) break
+    const slabTop = Math.min(taxableIncome, hi)
+    tax += (slabTop - lo) * tiers[i].rate
+  }
+  return tax
+}
+
+// Apply LTCG brackets stacked on top of `ordinaryTaxable` (the ordinary
+// taxable income, not gross — std deduction already removed). The LTCG sits
+// in whatever bracket window remains above ordinary.
+function applyLTCGStacked(
+  ltcg: number,
+  ordinaryTaxable: number,
+  tiers: ReadonlyArray<BracketTier>,
+): number {
+  if (ltcg <= 0) return 0
+  let tax = 0
+  let remaining = ltcg
+  let cursor = ordinaryTaxable
+  for (let i = 0; i < tiers.length; i++) {
+    if (remaining <= 0) break
+    const lo = tiers[i].floor
+    const hi = i + 1 < tiers.length ? tiers[i + 1].floor : Infinity
+    if (cursor >= hi) continue
+    const slabAvailable = hi - Math.max(cursor, lo)
+    const taxedHere = Math.min(remaining, slabAvailable)
+    if (taxedHere > 0) {
+      tax += taxedHere * tiers[i].rate
+      remaining -= taxedHere
+      cursor += taxedHere
+    }
+  }
+  return tax
+}
+
+// Look up the IRMAA surcharge for a given MAGI and filing status.
+export function irmaaSurcharge(magi: number, status: FilingStatus): number {
+  // Single thresholds are half the MFJ thresholds.
+  const scale = status === 'mfj' ? 1 : 2
+  let s = 0
+  for (const t of IRMAA_TIERS) {
+    if (magi >= t.magiFloorMFJ / scale) s = t.surcharge
+  }
+  return s
+}
+
+export interface AnnualTaxResult {
+  fedOrdinary: number
+  fedLTCG: number
+  niit: number
+  state: number
+  total: number
+  magi: number
+}
+
+// Compute one year's federal+state+NIIT tax bill given the year's gross
+// income components. All dollar amounts in nominal $/yr.
+//
+// Wisconsin assumptions (this app targets Epic — Verona, WI):
+//   1. SS is exempt from state tax. 85% of SS is still taxable federally
+//      (per IRS rules) but it doesn't enter the WI bracket calc.
+//   2. Ordinary state tax uses progressive WI brackets, not a flat rate.
+//      The retirement sim knows every income component each year, so each
+//      dollar can land in its actual bracket — same reason we use federal
+//      brackets here.
+//   3. LTCG state rate stays a flat user input from Settings → Tax Rates,
+//      because WI's 30% LTCG exclusion doesn't translate cleanly into a
+//      bracket schedule. Set state_lt_cg_rate to your effective rate
+//      (top WI bracket × 0.70 ≈ 5.36%).
+// If we ever ship to a non-WI userbase, the WI brackets and SS exemption
+// should both become per-user toggles.
+export function computeAnnualTax({
+  traditionalWithdrawal,
+  ssTaxable,
+  ltcg,
+  status,
+  stateLTCGRate,
+}: {
+  traditionalWithdrawal: number  // gross from 401(k)/IRA — taxed as ordinary at fed + state
+  ssTaxable: number              // 85% of SS gross — taxed as ordinary at fed only (WI exempts)
+  ltcg: number                   // long-term capital gains (taxable bucket sales)
+  status: FilingStatus
+  stateLTCGRate: number
+}): AnnualTaxResult {
+  const ordinaryGross = traditionalWithdrawal + ssTaxable
+  const stdDed = status === 'mfj' ? STD_DEDUCTION_MFJ : STD_DEDUCTION_SINGLE
+  const taxableOrd = Math.max(0, ordinaryGross - stdDed)
+  const fedOrdTiers = status === 'mfj' ? FED_ORDINARY_MFJ : FED_ORDINARY_SINGLE
+  const ltcgTiers = status === 'mfj' ? FED_LTCG_MFJ : FED_LTCG_SINGLE
+  const fedOrdinary = applyBrackets(taxableOrd, fedOrdTiers)
+  const fedLTCG = applyLTCGStacked(Math.max(0, ltcg), taxableOrd, ltcgTiers)
+  const magi = ordinaryGross + Math.max(0, ltcg)
+  const niitThr = status === 'mfj' ? NIIT_THRESHOLD_MFJ : NIIT_THRESHOLD_SINGLE
+  const niit = NIIT_RATE * Math.max(0, Math.min(Math.max(0, ltcg), magi - niitThr))
+  // State tax: WI brackets on traditional withdrawals (SS exempt, no std
+  // deduction since it phases out for Epic-comp incomes), flat user rate on LTCG.
+  const wiTiers = status === 'mfj' ? WI_ORDINARY_MFJ : WI_ORDINARY_SINGLE
+  const stateOrdinary = applyBrackets(Math.max(0, traditionalWithdrawal), wiTiers)
+  const stateLTCG = Math.max(0, ltcg) * stateLTCGRate
+  const state = stateOrdinary + stateLTCG
+  return {
+    fedOrdinary,
+    fedLTCG,
+    niit,
+    state,
+    total: fedOrdinary + fedLTCG + niit + state,
+    magi,
+  }
+}
+
+// Health-insurance cost for a given year, modelling Medicare + IRMAA after 65.
+// Returns the year's HI cost in $/yr (nominal). When zeroHIPost65 is on, post-65
+// cost = base Medicare premium + IRMAA surcharge based on current-year MAGI;
+// pre-65 = user's input premium. With a spouse, costs are summed per-person.
+export function healthInsuranceCost({
+  ownerAge,
+  spouseAge,
+  hasSpouse,
+  preMedicareCost,
+  zeroHIPost65,
+  magi,
+  status,
+}: {
+  ownerAge: number
+  spouseAge: number  // ignored if !hasSpouse
+  hasSpouse: boolean
+  preMedicareCost: number  // $/yr
+  zeroHIPost65: boolean
+  magi: number
+  status: FilingStatus
+}): number {
+  if (!zeroHIPost65) return preMedicareCost
+  const ownerOnMedicare = ownerAge > 65
+  const spouseOnMedicare = hasSpouse && spouseAge > 65
+  if (hasSpouse) {
+    let cost = 0
+    if (ownerOnMedicare) {
+      cost += MEDICARE_BASE_PER_PERSON + irmaaSurcharge(magi, status)
+    } else {
+      cost += preMedicareCost / 2  // owner still on private insurance
+    }
+    if (spouseOnMedicare) {
+      cost += MEDICARE_BASE_PER_PERSON + irmaaSurcharge(magi, status)
+    } else {
+      cost += preMedicareCost / 2  // spouse still on private insurance
+    }
+    return cost
+  }
+  if (ownerOnMedicare) {
+    return MEDICARE_BASE_PER_PERSON + irmaaSurcharge(magi, status)
+  }
+  return preMedicareCost
+}
+
 export interface HistoricalReturn {
   year: number
   stockReal: number
   bondReal: number
+  inflation: number  // raw CPI for the year (used to erode nominal cost basis)
 }
 
 // Raw US data 1928-2025: [year, S&P 500 nominal, 10yr T.Bond nominal, CPI %].
@@ -175,19 +452,29 @@ export const HISTORICAL_RETURNS: ReadonlyArray<HistoricalReturn> = HISTORICAL_RA
     year,
     stockReal: (1 + nomS) / (1 + infl) - 1,
     bondReal: (1 + nomB) / (1 + infl) - 1,
+    inflation: infl,
   }),
 )
 
 export interface SimParams {
-  epicExit: number       // $M
-  additional: number     // $M
+  // Account buckets (all $M, real). Epic exit is its own field so the UI can
+  // surface it separately and so we can cleanly fold its full basis (it was
+  // just sold) into the taxable bucket. Advanced inputs are taxableAdditional
+  // (pre-existing brokerage), additionalBasis (cost basis of that brokerage),
+  // traditional (401k/Trad IRA, locked until 59½, ordinary tax), and roth
+  // (locked until 59½, tax-free).
+  epicExit: number
+  taxableAdditional: number
+  additionalBasis: number
+  traditional: number
+  roth: number
+
   stockPct: number       // 0..1, % of total portfolio
   bondPct: number        // 0..1, % of total portfolio (cash = 1 - stockPct - bondPct)
   defaultSpend: number   // $K/yr (excluding health insurance)
   minSpend: number       // $K/yr floor (excluding health insurance)
-  healthInsurance: number // $K/yr
-  zeroHIPost65: boolean  // health-insurance cost goes to 0 once age > 65
-  refillTaxDrag: number  // 0..1
+  healthInsurance: number // $K/yr — pre-Medicare premium estimate
+  zeroHIPost65: boolean  // when on, replaces post-65 HI with Medicare base + IRMAA
   scenario: Scenario
   customStockShift: number  // applied when scenario === 'custom'
   customBondShift: number   // applied when scenario === 'custom'
@@ -202,12 +489,21 @@ export interface SimParams {
   spouseCurrentAge: number  // age at simulation start (derived from spouse DOB + retirement date)
   spouseSsMonthly: number   // $/month at FRA (0 = no spouse SS)
   spouseClaimAge: number    // 62-70
+  // State LTCG rate pulled from TaxSettings; state ordinary income tax uses
+  // hard-coded WI brackets (see computeAnnualTax). The user's state_income_rate
+  // is no longer consulted for the retirement sim.
+  stateLTCGRate: number      // 0..1, applied to LTCG
+  // UI flag — toggles the advanced bucket inputs. Math ignores it.
+  advanced: boolean
   seed?: number
 }
 
 export const DEFAULT_PARAMS: SimParams = {
   epicExit: 0,
-  additional: 0,
+  taxableAdditional: 0,
+  additionalBasis: 0,
+  traditional: 0,
+  roth: 0,
   stockPct: 0.7,
   bondPct: 0.2,
   // Spend defaults are auto-derived from total portfolio (3% / 2%) by the UI
@@ -216,7 +512,6 @@ export const DEFAULT_PARAMS: SimParams = {
   minSpend: 0,
   healthInsurance: 25,
   zeroHIPost65: true,
-  refillTaxDrag: 0.25,
   scenario: 'historical',
   customStockShift: 0,
   customBondShift: 0,
@@ -230,6 +525,25 @@ export const DEFAULT_PARAMS: SimParams = {
   spouseCurrentAge: 50,
   spouseSsMonthly: 0,
   spouseClaimAge: 67,
+  stateLTCGRate: 0,
+  advanced: false,
+}
+
+// Migrate a saved params blob from the legacy schema (single `additional`
+// number + `refillTaxDrag`) into the new bucket model. Treats a legacy
+// `additional` value as taxable with **zero basis** (fully appreciated) —
+// the conservative assumption for non-Epic wealth that the user hadn't
+// broken down. They can override basis explicitly in the advanced view.
+// `refillTaxDrag` is dropped (replaced by the bracket-based tax engine).
+export function migrateLoadedParams(saved: Record<string, unknown>): Partial<SimParams> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { additional, refillTaxDrag, ...rest } = saved as Record<string, unknown>
+  const out: Record<string, unknown> = { ...rest }
+  if (typeof additional === 'number') {
+    if (out.taxableAdditional == null) out.taxableAdditional = additional
+    if (out.additionalBasis == null) out.additionalBasis = 0
+  }
+  return out as Partial<SimParams>
 }
 
 // Mulberry32 — small, fast, deterministic PRNG (used for seedable tests).
@@ -301,35 +615,53 @@ export function simulate(params: SimParams): SimResult {
   const data = HISTORICAL_RETURNS
   const dataLen = data.length
 
-  const totalPortfolio = params.epicExit + params.additional
+  // Bucket totals (in $M, real).
+  const taxableTotal = Math.max(0, params.epicExit + params.taxableAdditional)
+  const tradTotal = Math.max(0, params.traditional)
+  const rothTotal = Math.max(0, params.roth)
+  // Epic exit always carries full basis (just sold). Pre-existing taxable
+  // additional carries user-supplied basis (capped to its value).
+  const baselineBasis = Math.max(0, params.epicExit) +
+    Math.min(Math.max(0, params.additionalBasis), Math.max(0, params.taxableAdditional))
+  const totalPortfolio = taxableTotal + tradTotal + rothTotal
+
   const stockPct = Math.max(0, params.stockPct)
   const bondPct = Math.max(0, params.bondPct)
   const equityPct = stockPct + bondPct
   const cashPct = Math.max(0, 1 - equityPct)
-  const startingEquity = totalPortfolio * Math.min(1, equityPct)
-  const startingCash = totalPortfolio * cashPct
+
+  // Cash buffer is funded from the taxable bucket (we don't model cash held
+  // inside tax-deferred accounts as separately accessible). If taxable can't
+  // fully fund the cash allocation, the remainder of taxable stays equity.
+  const cashTarget0 = totalPortfolio * cashPct
+  const startingCash = Math.min(taxableTotal, cashTarget0)
+  const taxableEquity0 = taxableTotal - startingCash
+  // Basis applies to the equity portion of taxable (cash is dollars — basis
+  // returned tax-free regardless). Distribute the user-entered basis pro-rata.
+  const taxableBasis0 = taxableTotal > 0 ? baselineBasis * (taxableEquity0 / taxableTotal) : 0
+  const startingEquity = taxableEquity0 + tradTotal + rothTotal
   const startingTotal = startingEquity + startingCash
 
-  // Within equity, weights for stock vs. bond.
+  // Within equity, weights for stock vs. bond (same allocation across all
+  // three buckets — typical asset-location nuances would be a v2 concern).
   const wS = equityPct > 0 ? stockPct / equityPct : 0
   const wB = 1 - wS
 
-  const defaultSpendM = params.defaultSpend / 1000
-  const minSpendM = params.minSpend / 1000
-  const hiM = params.healthInsurance / 1000
+  const defaultSpendK = params.defaultSpend
+  const minSpendK = params.minSpend
+  const hiK = params.healthInsurance
 
   const ssAdj = ssAdjustment(params.claimAge, params.fra)
-  const ssAnnualM = ((params.ssMonthly * 12) / 1_000_000) * ssAdj
+  const ssAnnual = (params.ssMonthly * 12) * ssAdj  // $/yr nominal-equiv (real)
 
   const hasSpouse = params.includeSpouse
   const spouseSsAdj = hasSpouse ? ssAdjustment(params.spouseClaimAge, params.fra) : 1
-  const spouseSsAnnualM = hasSpouse
-    ? ((params.spouseSsMonthly * 12) / 1_000_000) * spouseSsAdj
-    : 0
+  const spouseSsAnnual = hasSpouse ? (params.spouseSsMonthly * 12) * spouseSsAdj : 0
+
+  const status: FilingStatus = hasSpouse ? 'mfj' : 'single'
+  const stateLTCGRate = Math.max(0, params.stateLTCGRate)
 
   const cashTarget = startingCash
-  const taxDrag = Math.max(0, Math.min(0.99, params.refillTaxDrag))
-
   const Y = Math.max(1, Math.round(params.endAge - params.currentAge))
   const N = Math.max(1, Math.round(params.paths))
 
@@ -351,18 +683,34 @@ export function simulate(params: SimParams): SimResult {
   const jumpProb = 1 / MEAN_BLOCK_LEN
 
   for (let i = 0; i < N; i++) {
-    let equity = startingEquity
     let cash = startingCash
+    let taxableEq = taxableEquity0
+    let taxableBasis = taxableBasis0
+    let tradEq = tradTotal
+    let rothEq = rothTotal
     let isRuined = false
     let dataIdx = Math.floor(rand() * dataLen)
 
     for (let y = 1; y <= Y; y++) {
       const age = params.currentAge + y
-      const equityBefore = equity
+      const spouseAge = params.spouseCurrentAge + y
+      // Once a path is ruined (couldn't fund spend in some prior year), it
+      // stops accumulating. Otherwise the bridge-year stress case — where
+      // pre-59½ liquid wealth is exhausted but a $5M 401(k) keeps growing
+      // untouched — would report "ruin=100% but median final=$30M", which is
+      // misleading. In reality the user would have taken the early-withdrawal
+      // penalty rather than starve; the simulator chooses the conservative
+      // accounting (path stops) and leaves penalty-withdrawal modelling for v2.
+      if (isRuined) {
+        cash = 0; taxableEq = 0; taxableBasis = 0; tradEq = 0; rothEq = 0
+        const fanIdx = yearToFanIdx.get(y)
+        if (fanIdx != null) fanWealth[fanIdx][i] = 0
+        continue
+      }
+      const taxableEqStart = taxableEq  // pre-growth snapshot for refill check
 
       // Stationary bootstrap: each year (after the first), with probability
       // 1/L jump to a new uniformly-random year; otherwise advance one year.
-      // Geometric block-length distribution with mean L.
       if (y > 1) {
         if (rand() < jumpProb) dataIdx = Math.floor(rand() * dataLen)
         else dataIdx = (dataIdx + 1) % dataLen
@@ -370,82 +718,176 @@ export function simulate(params: SimParams): SimResult {
       const sample = data[dataIdx]
       const stockR = sample.stockReal + stockShift
       const bondR = sample.bondReal + bondShift
+      const portR = wS * stockR + wB * bondR
 
-      let portR = 0
-      if (equity > 0) {
-        portR = wS * stockR + wB * bondR
-        equity = equity * (1 + portR)
-        if (equity < 0) equity = 0
+      // Erode taxable basis by this year's CPI. Cost basis is fixed in
+      // nominal $ in real life, but the simulator tracks everything in real
+      // $ — so basis loses purchasing power year over year. Using the
+      // sampled year's actual CPI (not a flat 2.5%) keeps the path
+      // internally consistent: a high-inflation year boosts real returns
+      // *and* erodes basis simultaneously, the way it actually does.
+      // Deflationary years (CPI < 0) raise basis; the basisFraction cap
+      // below clamps it to 1.
+      if (taxableBasis > 0) {
+        taxableBasis = Math.max(0, taxableBasis / (1 + sample.inflation))
       }
 
-      // Behavioral spending: ramp linearly between minSpend (at ≤50% of
-      // starting total) and defaultSpend (at ≥100%). People dial back as
-      // their nest egg shrinks; this prevents the simulator from spending at
-      // full default while sitting at a fraction of the starting balance.
-      const wealthRatio = startingTotal > 0 ? (equity + cash) / startingTotal : 0
+      // Apply growth uniformly across all three equity buckets.
+      taxableEq = Math.max(0, taxableEq * (1 + portR))
+      tradEq = Math.max(0, tradEq * (1 + portR))
+      rothEq = Math.max(0, rothEq * (1 + portR))
+
+      // Behavioral spending ramp (in real $/yr, converted to $M for accounting).
+      const wealthRatio = startingTotal > 0 ? (taxableEq + tradEq + rothEq + cash) / startingTotal : 0
       const spendT = Math.max(0, Math.min(1, (wealthRatio - SPEND_RAMP_FLOOR) / (1 - SPEND_RAMP_FLOOR)))
-      const baseSpendM = minSpendM + spendT * (defaultSpendM - minSpendM)
-      const spouseAge = params.spouseCurrentAge + y
-      let hiThisYear = hiM
-      if (params.zeroHIPost65) {
-        if (hasSpouse) {
-          const ownerOnMedicare = age > 65
-          const spouseOnMedicare = spouseAge > 65
-          if (ownerOnMedicare && spouseOnMedicare) hiThisYear = 0
-          else if (ownerOnMedicare || spouseOnMedicare) hiThisYear = hiM * 0.5
-        } else if (age > 65) {
-          hiThisYear = 0
-        }
-      }
-      const totalSpendM = baseSpendM + hiThisYear
+      const baseSpend = (minSpendK + spendT * (defaultSpendK - minSpendK)) / 1000  // $M
 
-      const ownerSsM = age >= params.claimAge ? ssAnnualM : 0
-      const spouseSsM = hasSpouse && spouseAge >= params.spouseClaimAge ? spouseSsAnnualM : 0
-      const ssIncomeM = ownerSsM + spouseSsM
-      let needed = totalSpendM - ssIncomeM
+      // SS income (gross, real). Each spouse claims at their own age.
+      const ownerSsAnnualM = age >= params.claimAge ? ssAnnual / 1_000_000 : 0
+      const spouseSsAnnualM = hasSpouse && spouseAge >= params.spouseClaimAge ? spouseSsAnnual / 1_000_000 : 0
+      const ssGrossM = ownerSsAnnualM + spouseSsAnnualM
+      const ssTaxableM = ssGrossM * 0.85
 
-      if (needed > 0) {
-        const fromCash = Math.min(cash, needed)
-        cash -= fromCash
-        needed -= fromCash
-      } else if (needed < 0) {
-        cash -= needed // surplus into cash
-        needed = 0
-      }
+      // Basis fraction is fixed for the year (set by post-growth state). Pulls
+      // and refills both consume basis pro-rata.
+      const basisFraction = taxableEq > 0 ? Math.min(1, taxableBasis / taxableEq) : 1
 
-      if (needed > 0 && equity > 0) {
-        const grossNeeded = needed / (1 - taxDrag)
-        if (equity >= grossNeeded) {
-          equity -= grossNeeded
-          needed = 0
+      // Iterate to converge on tax. Marginal federal+state rate is bounded
+      // ~0.5 so the fixed-point contracts; 5 passes is plenty.
+      let pulledCash = 0
+      let pulledTaxable = 0
+      let pulledTrad = 0
+      let pulledRoth = 0
+      let prevTax = 0
+      let hiM = 0
+      let shortfall = false
+
+      for (let iter = 0; iter < 5; iter++) {
+        const tentativeOrdM = pulledTrad + ssTaxableM
+        const tentativeLTCGM = pulledTaxable * (1 - basisFraction)
+        const tentativeMAGI = (tentativeOrdM + tentativeLTCGM) * 1_000_000
+        hiM = healthInsuranceCost({
+          ownerAge: age,
+          spouseAge,
+          hasSpouse,
+          preMedicareCost: hiK * 1000,
+          zeroHIPost65: params.zeroHIPost65,
+          magi: tentativeMAGI,
+          status,
+        }) / 1_000_000
+
+        const totalSpendM = baseSpend + hiM
+        let need = totalSpendM + prevTax - ssGrossM
+        pulledCash = 0
+        pulledTaxable = 0
+        pulledTrad = 0
+        pulledRoth = 0
+        shortfall = false
+
+        if (need <= 0) {
+          // Surplus: SS net of tax exceeds spend. Negative pull = cash deposit.
+          pulledCash = need
         } else {
-          needed -= equity * (1 - taxDrag)
-          equity = 0
+          if (cash > 0) {
+            pulledCash = Math.min(cash, need)
+            need -= pulledCash
+          }
+          if (need > 0 && taxableEq > 0) {
+            pulledTaxable = Math.min(taxableEq, need)
+            need -= pulledTaxable
+          }
+          if (need > 0 && age >= RETIREMENT_ACCESS_AGE && tradEq > 0) {
+            pulledTrad = Math.min(tradEq, need)
+            need -= pulledTrad
+          }
+          if (need > 0 && age >= RETIREMENT_ACCESS_AGE && rothEq > 0) {
+            pulledRoth = Math.min(rothEq, need)
+            need -= pulledRoth
+          }
+          if (need > 1e-9) shortfall = true
         }
+
+        const ltcgM = pulledTaxable * (1 - basisFraction)
+        const taxRes = computeAnnualTax({
+          traditionalWithdrawal: pulledTrad * 1_000_000,
+          ssTaxable: ssTaxableM * 1_000_000,
+          ltcg: ltcgM * 1_000_000,
+          status,
+          stateLTCGRate,
+        })
+        const newTax = taxRes.total / 1_000_000
+        if (Math.abs(newTax - prevTax) < 1e-7) {
+          prevTax = newTax
+          break
+        }
+        prevTax = newTax
       }
 
-      // Refill cash only from this year's *net positive equity change* — i.e.
-      // earnings in excess of what we already pulled out for spending. This
-      // preserves equity principal, never selling more than the year's gain.
-      const equityChange = equity - equityBefore
-      if (equityChange > 0 && cash < cashTarget) {
-        const refillRoom = cashTarget - cash
-        const grossSell = Math.min(refillRoom / (1 - taxDrag), equityChange)
-        if (grossSell > 0) {
-          equity -= grossSell
-          cash += grossSell * (1 - taxDrag)
-        }
+      // Apply pulls. Negative pulledCash means surplus deposit to cash.
+      cash -= pulledCash
+      if (pulledTaxable > 0) {
+        const basisReturned = pulledTaxable * basisFraction
+        taxableEq -= pulledTaxable
+        taxableBasis = Math.max(0, taxableBasis - basisReturned)
       }
-
-      if (equity <= 0 && cash <= 0) isRuined = true
-      if (equity < 0) equity = 0
+      tradEq -= pulledTrad
+      rothEq -= pulledRoth
       if (cash < 0) cash = 0
+      if (taxableEq < 0) taxableEq = 0
+      if (tradEq < 0) tradEq = 0
+      if (rothEq < 0) rothEq = 0
+
+      // Ruin: couldn't fund this year's spend + tax even after exhausting every
+      // accessible bucket. Pre-59½ this can fire while traditional/roth are
+      // still locked and full — exactly the bridge-funding failure we wanted
+      // to model. Once flagged the path can't recover.
+      if (shortfall) isRuined = true
+      if (cash + taxableEq + tradEq + rothEq <= 0) isRuined = true
+
+      // Refill cash buffer from this year's net positive equity gain in the
+      // taxable bucket only (cash lives in the taxable account in this model).
+      // The refill is a sale: it realizes LTCG on the gain portion at the
+      // year's marginal rate, stacked on top of any spend-cycle LTCG. We
+      // recompute the year's tax with the extra gain and pay the delta out
+      // of cash (so net cash gained from the refill is grossSell - refillTax).
+      const equityChangeTaxable = taxableEq - taxableEqStart
+      if (equityChangeTaxable > 0 && cash < cashTarget && taxableEq > 0) {
+        const refillRoom = cashTarget - cash
+        const grossSell = Math.min(refillRoom, equityChangeTaxable)
+        if (grossSell > 0) {
+          const refillBasisFraction = taxableEq > 0 ? Math.min(1, taxableBasis / taxableEq) : 1
+          const refillGainM = grossSell * (1 - refillBasisFraction)
+          const basisReturned = grossSell * refillBasisFraction
+          // Marginal LTCG cost: re-run the tax engine with the spend-cycle
+          // ordinary + LTCG plus this refill's gain, and take the delta.
+          const spendLTCGM = pulledTaxable * (1 - basisFraction)
+          const taxBefore = computeAnnualTax({
+            traditionalWithdrawal: pulledTrad * 1_000_000,
+            ssTaxable: ssTaxableM * 1_000_000,
+            ltcg: spendLTCGM * 1_000_000,
+            status,
+            stateLTCGRate,
+          })
+          const taxAfter = computeAnnualTax({
+            traditionalWithdrawal: pulledTrad * 1_000_000,
+            ssTaxable: ssTaxableM * 1_000_000,
+            ltcg: (spendLTCGM + refillGainM) * 1_000_000,
+            status,
+            stateLTCGRate,
+          })
+          const refillTaxM = Math.max(0, (taxAfter.total - taxBefore.total) / 1_000_000)
+          taxableEq -= grossSell
+          taxableBasis = Math.max(0, taxableBasis - basisReturned)
+          cash += grossSell - refillTaxM
+          if (cash < 0) cash = 0
+        }
+      }
 
       const fanIdx = yearToFanIdx.get(y)
-      if (fanIdx != null) fanWealth[fanIdx][i] = equity + cash
+      if (fanIdx != null) fanWealth[fanIdx][i] = cash + taxableEq + tradEq + rothEq
     }
 
-    finalWealth[i] = equity + cash
+    finalWealth[i] = cash + taxableEq + tradEq + rothEq
     ruined[i] = isRuined ? 1 : 0
   }
 

@@ -117,11 +117,11 @@ describe('Retirement page', () => {
     )
     expect(screen.getByRole('heading', { name: /retirement simulator/i })).toBeInTheDocument()
     expect(screen.getByText(/total portfolio:/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /run.*paths.*years/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Simulate.*retirements.*years/i })).toBeInTheDocument()
     expect(screen.getByLabelText(/Retirement date/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/Date of birth/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/^Health insurance/)).toBeInTheDocument()
-    expect(screen.getByLabelText(/Simulate until age/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Plan until you're/i)).toBeInTheDocument()
   })
 
   it('pre-fills Epic exit value from the exit preview at the chosen date', async () => {
@@ -134,15 +134,26 @@ describe('Retirement page', () => {
     expect(await screen.findByDisplayValue('4.5')).toBeInTheDocument()
   })
 
-  it('pre-fills refill tax drag from blended LT cap-gains rate', async () => {
+  it('mentions Wisconsin brackets and the user state LTCG rate in the spending notes', async () => {
     mockApi({ netCash: null })
     render(
       <MemoryRouter>
         <Retirement />
       </MemoryRouter>,
     )
-    // 0.20 + 0.0985 + 0.038 = 0.3365 → 33.65 → rounded to 33.7
-    expect(await screen.findByDisplayValue('33.7')).toBeInTheDocument()
+    // The brackets line renders immediately (static text). The LTCG rate
+    // ("9.85%") arrives from the async TaxSettings prefill — wait for it.
+    // JSX puts the formatted percent and the surrounding text in separate
+    // text nodes, so we match against the parent <p>'s combined textContent
+    // rather than a regex that has to span the JSX boundary.
+    await waitFor(() => expect(screen.getByText(/Wisconsin progressive brackets/)).toBeInTheDocument())
+    await waitFor(() => {
+      const found = screen.getByText((_content, element) => {
+        const txt = element?.textContent ?? ''
+        return element?.tagName === 'P' && txt.includes('9.85%') && txt.includes('on capital gains')
+      })
+      expect(found).toBeInTheDocument()
+    })
   })
 
   it('shows cash = 100 − stocks − bonds', async () => {
@@ -173,7 +184,7 @@ describe('Retirement page', () => {
     const bondsInput = screen.getByLabelText(/^Bonds/) as HTMLInputElement
     await user.clear(bondsInput)
     await user.type(bondsInput, '50')
-    expect(screen.getByText(/Stocks \+ Bonds > 100%/i)).toBeInTheDocument()
+    expect(screen.getByText(/Stocks \+ bonds add to more than 100%/i)).toBeInTheDocument()
   })
 
   it('shows SS adjustment factor and adjusted monthly amount', async () => {
@@ -195,7 +206,7 @@ describe('Retirement page', () => {
         <Retirement />
       </MemoryRouter>,
     )
-    const slider = screen.getByLabelText(/Claim age/i) as HTMLInputElement
+    const slider = screen.getByLabelText(/When you claim/i) as HTMLInputElement
     slider.focus()
     // fireEvent simulating slider drag
     const { fireEvent } = await import('@testing-library/react')
@@ -204,7 +215,7 @@ describe('Retirement page', () => {
     await waitFor(() => expect(screen.getByText('124.0%')).toBeInTheDocument())
   })
 
-  it('toggles the post-65 health-insurance zero-out checkbox', async () => {
+  it('toggles the post-65 Medicare model checkbox', async () => {
     mockApi({ netCash: null })
     const user = userEvent.setup()
     render(
@@ -212,7 +223,7 @@ describe('Retirement page', () => {
         <Retirement />
       </MemoryRouter>,
     )
-    const checkbox = screen.getByRole('checkbox', { name: /Zero out health insurance after age 65/ }) as HTMLInputElement
+    const checkbox = screen.getByRole('checkbox', { name: /Switch to Medicare costs at age 65/ }) as HTMLInputElement
     expect(checkbox.checked).toBe(true)
     await user.click(checkbox)
     expect(checkbox.checked).toBe(false)
@@ -225,12 +236,12 @@ describe('Retirement page', () => {
         <Retirement />
       </MemoryRouter>,
     )
-    // Default 50 → 95 = 45-year horizon
-    expect(screen.getByText(/45-year horizon/)).toBeInTheDocument()
+    // Default 50 → 95 = 45 years of retirement
+    expect(screen.getByText(/plan 45 years of retirement/)).toBeInTheDocument()
     const { fireEvent } = await import('@testing-library/react')
-    const endSlider = screen.getByLabelText(/Simulate until age/i) as HTMLInputElement
+    const endSlider = screen.getByLabelText(/Plan until you're/i) as HTMLInputElement
     fireEvent.change(endSlider, { target: { value: '90' } })
-    await waitFor(() => expect(screen.getByText(/40-year horizon/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/plan 40 years of retirement/)).toBeInTheDocument())
   })
 
   it('derives current age from the saved DOB', async () => {
@@ -255,7 +266,7 @@ describe('Retirement page', () => {
         <Retirement />
       </MemoryRouter>,
     )
-    expect(await screen.findByText(/Set date of birth above/)).toBeInTheDocument()
+    expect(await screen.findByText(/Set your date of birth above/)).toBeInTheDocument()
   })
 
   it('does not render the standalone "Current age" tile (derived from DOB only)', async () => {
@@ -334,9 +345,9 @@ describe('Retirement page', () => {
     )
     await screen.findByLabelText(/^Minimum spend/)
     const btn = screen.getByRole('button', { name: /Minimum spend.*explanation/i })
-    expect(screen.queryByText(/Set this floor equal to your default spend/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Want to assume you'd never cut back/)).not.toBeInTheDocument()
     await user.click(btn)
-    expect(screen.getByText(/Set this floor equal to your default spend/)).toBeInTheDocument()
+    expect(screen.getByText(/Want to assume you'd never cut back/)).toBeInTheDocument()
   })
 
   it('reveals the σ scenario explainer when its info button is clicked', async () => {
@@ -348,9 +359,9 @@ describe('Retirement page', () => {
       </MemoryRouter>,
     )
     const btn = await screen.findByRole('button', { name: /Return scenario explanation/i })
-    expect(screen.queryByText(/stationary bootstrap/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/replay actual stretches of U\.S\. market history/i)).not.toBeInTheDocument()
     await user.click(btn)
-    expect(screen.getByText(/stationary bootstrap/i)).toBeInTheDocument()
+    expect(screen.getByText(/replay actual stretches of U\.S\. market history/i)).toBeInTheDocument()
   })
 
   it('restores a saved retirement date on mount instead of resetting to today', async () => {
@@ -403,8 +414,8 @@ describe('Retirement page', () => {
     const dateInput = await screen.findByLabelText(/^Retirement date/i) as HTMLInputElement
     const { fireEvent } = await import('@testing-library/react')
     fireEvent.change(dateInput, { target: { value: '2036-04-15' } })
-    await waitFor(() => expect(screen.getByText(/39-year horizon/)).toBeInTheDocument())
-    expect(screen.getByText(/Starts at age 56/)).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText(/plan 39 years of retirement/)).toBeInTheDocument())
+    expect(screen.getByText(/Retire at 56/)).toBeInTheDocument()
   })
 
   it('renders the owner-saved spouse data when viewing as a guest', async () => {
@@ -445,9 +456,9 @@ describe('Retirement page', () => {
     const spouseDob = screen.getByLabelText(/Spouse date of birth/i) as HTMLInputElement
     await waitFor(() => expect(spouseDob.value).toBe('1985-03-15'))
     expect(spouseDob.disabled).toBe(true)
-    const spouseFRA = screen.getByLabelText(/Spouse FRA monthly/i) as HTMLInputElement
+    const spouseFRA = screen.getByLabelText(/Spouse.s monthly benefit at age 67/i) as HTMLInputElement
     await waitFor(() => expect(spouseFRA.value).toBe('1800'))
-    const spouseClaim = screen.getByLabelText(/Spouse claim age/i) as HTMLInputElement
+    const spouseClaim = screen.getByLabelText(/When spouse claims/i) as HTMLInputElement
     await waitFor(() => expect(spouseClaim.value).toBe('68'))
   })
 
@@ -461,12 +472,12 @@ describe('Retirement page', () => {
     )
     // Spouse fields hidden by default.
     expect(screen.queryByLabelText(/Spouse date of birth/i)).not.toBeInTheDocument()
-    expect(screen.queryByLabelText(/Spouse FRA monthly/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/Spouse.s monthly benefit at age 67/i)).not.toBeInTheDocument()
     const toggle = await screen.findByRole('checkbox', { name: /Include spouse/i })
     await user.click(toggle)
     expect(screen.getByLabelText(/Spouse date of birth/i)).toBeInTheDocument()
-    expect(screen.getByLabelText(/Spouse FRA monthly/i)).toBeInTheDocument()
-    expect(screen.getByLabelText(/Spouse claim age/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Spouse.s monthly benefit at age 67/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/When spouse claims/i)).toBeInTheDocument()
   })
 
   it('renders the retirement date input as enabled for the data owner (not a shared viewer)', async () => {

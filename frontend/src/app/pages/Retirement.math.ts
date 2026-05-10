@@ -1637,6 +1637,9 @@ export interface SimParams {
   spouseCurrentAge: number  // age at simulation start (derived from spouse DOB + retirement date)
   spouseSsMonthly: number   // $/month at FRA (0 = no spouse SS)
   spouseClaimAge: number    // 62-70
+  spouseFra: number         // spouse's full retirement age (66 or 67 depending on birth year)
+  spouseWorkIncome: number  // $K/yr gross W-2 while spouse is working (0 = not working)
+  spouseStopWorkAge: number // spouse age at which employment ends (last working year)
   // State LTCG rate pulled from TaxSettings; state ordinary income tax uses
   // hard-coded WI brackets (see computeAnnualTax). The user's state_income_rate
   // is no longer consulted for the retirement sim.
@@ -1673,6 +1676,9 @@ export const DEFAULT_PARAMS: SimParams = {
   spouseCurrentAge: 50,
   spouseSsMonthly: 0,
   spouseClaimAge: 67,
+  spouseFra: 67,
+  spouseWorkIncome: 0,
+  spouseStopWorkAge: 65,
   stateLTCGRate: 0,
   advanced: false,
 }
@@ -1728,6 +1734,54 @@ export function ssAdjustment(claimAge: number, fra: number = 67): number {
   }
   const yearsLate = Math.min(claimAge - fra, 70 - fra)
   return 1 + 0.08 * yearsLate
+}
+
+// 2026 Social Security wage base in real $. Treated as fixed in real terms
+// throughout the sim (consistent with how tax brackets are held constant). The
+// wage base grows ~1% real/yr historically; treating it flat is slightly
+// conservative (overstates SS tax in later nominal years) and keeps the math simple.
+export const SS_WAGE_BASE_REAL = 176_100  // $
+
+// SSA earnings-test exempt amounts (2026, real $). Before FRA, benefits are
+// reduced $1 for every $2 of wages above the lower threshold. In the year FRA
+// is reached, the reduction is $1 per $3 above the higher threshold.
+export const SS_EARNINGS_EXEMPT_BEFORE_FRA = 22_320   // $/yr real
+export const SS_EARNINGS_EXEMPT_FRA_YEAR   = 59_520   // $/yr real
+
+// Employee-side payroll taxes (SS + Medicare) on a single person's gross W-2 wages.
+// For MFJ the additional-Medicare threshold is $250K combined; since the user is
+// retired and has no W-2 income, combined household wages equal the spouse's wages.
+// Returns total annual employee payroll tax in dollars.
+export function computeSpousePayrollTax(annualGrossWages: number, status: FilingStatus): number {
+  const ss = 0.062 * Math.min(annualGrossWages, SS_WAGE_BASE_REAL)
+  const medicare = 0.0145 * annualGrossWages
+  const addlMedicareThreshold = status === 'mfj' ? 250_000 : 200_000
+  const addlMedicare = 0.009 * Math.max(0, annualGrossWages - addlMedicareThreshold)
+  return ss + medicare + addlMedicare
+}
+
+// Reduce monthly SS benefit by the SSA earnings test while spouse is working
+// before FRA. Amounts withheld before FRA are credited back as a higher benefit
+// after FRA (the SSA does this automatically), but modeling that recapture
+// requires tracking cumulative withheld amounts; omitted here as a known
+// conservative simplification — it slightly understates lifetime SS income for
+// early claimers who work past FRA.
+export function spouseSsAfterEarningsTest(
+  ssMonthlyM: number,       // $M/month, already claiming
+  spouseGrossWorkM: number, // $M/month gross wages
+  spouseAge: number,
+  spouseFra: number,
+): number {
+  if (spouseGrossWorkM <= 0 || spouseAge >= spouseFra) return ssMonthlyM
+  const annualWages = spouseGrossWorkM * 12 * 1_000_000  // → $
+  const annualSs = ssMonthlyM * 12 * 1_000_000           // → $
+  let withheld: number
+  if (spouseAge < spouseFra) {
+    withheld = Math.max(0, annualWages - SS_EARNINGS_EXEMPT_BEFORE_FRA) / 2
+  } else {
+    withheld = Math.max(0, annualWages - SS_EARNINGS_EXEMPT_FRA_YEAR) / 3
+  }
+  return Math.max(0, annualSs - withheld) / 12 / 1_000_000  // → $M/month
 }
 
 // Linear interpolation quantile on a sorted ascending array.
@@ -1802,6 +1856,16 @@ export function simulate(params: SimParams): SimResult {
   const spouseSsAnnual = hasSpouse ? (params.spouseSsMonthly * 12) * spouseSsAdj : 0
 
   const status: FilingStatus = hasSpouse ? 'mfj' : 'single'
+
+  // Spouse work income. Precompute monthly figures (constant salary assumption).
+  const spouseAnnualGross = hasSpouse && params.spouseWorkIncome > 0
+    ? params.spouseWorkIncome * 1_000  // $K → $
+    : 0
+  // Annual payroll tax amortized monthly. Computed once — constant real salary assumption.
+  const spousePayrollMonthM = spouseAnnualGross > 0
+    ? computeSpousePayrollTax(spouseAnnualGross, status) / 12 / 1_000_000
+    : 0
+  const spouseWorkMonthM = spouseAnnualGross / 12 / 1_000_000  // $M/month gross
   const stateLTCGRate = Math.max(0, params.stateLTCGRate)
 
   const cashTarget = startingCash
@@ -1853,6 +1917,7 @@ export function simulate(params: SimParams): SimResult {
     let yearTradWithdrawal = 0
     let yearLTCG = 0
     let yearSSTaxable = 0
+    let yearSpouseWorkGross = 0  // $M, spouse gross W-2 — added to ordinary income at year-end
     // Prior-year annual HI in $M — amortized 1/12 per month.
     let pathHIM = initialHIM
     // Taxable equity at the start of each simulation year (for refill check).
@@ -1903,10 +1968,21 @@ export function simulate(params: SimParams): SimResult {
 
       // Monthly SS income — each spouse claims at their own age.
       const ownerSsM = age >= params.claimAge ? ssAnnual / 12 / 1_000_000 : 0
-      const spouseSsM = hasSpouse && spouseAge >= params.spouseClaimAge
+      const spouseWorking = hasSpouse
+        && spouseAnnualGross > 0
+        && spouseAge <= params.spouseStopWorkAge
+      const spouseSsRawM = hasSpouse && spouseAge >= params.spouseClaimAge
         ? spouseSsAnnual / 12 / 1_000_000 : 0
+      // Apply SSA earnings test: benefits are reduced while claiming before FRA + working.
+      const spouseSsM = spouseSsAfterEarningsTest(
+        spouseSsRawM, spouseWorking ? spouseWorkMonthM : 0, spouseAge, params.spouseFra)
       const ssGrossM = ownerSsM + spouseSsM
       const ssTaxableMonthM = ssGrossM * 0.85
+
+      // Spouse work income net of payroll tax (income tax settled annually).
+      const spouseNetWorkMonthM = spouseWorking
+        ? spouseWorkMonthM - spousePayrollMonthM
+        : 0
 
       // Monthly behavioral spending ramp (same formula as annual, scaled 1/12).
       const wealthRatio = startingTotal > 0
@@ -1922,8 +1998,9 @@ export function simulate(params: SimParams): SimResult {
       // and refills consume basis pro-rata.
       const basisFraction = taxableEq > 0 ? Math.min(1, taxableBasis / taxableEq) : 1
 
-      // Monthly net need from portfolio.
-      let need = baseSpendMonthly + hiMonthly - ssGrossM
+      // Monthly net need from portfolio. SS and spouse's net work income (gross minus
+      // payroll taxes; income tax on gross is handled at year-end) reduce the draw.
+      let need = baseSpendMonthly + hiMonthly - ssGrossM - spouseNetWorkMonthM
       let pulledCash = 0, pulledTaxable = 0, pulledTrad = 0, pulledRoth = 0
       let shortfall = false
 
@@ -1955,6 +2032,7 @@ export function simulate(params: SimParams): SimResult {
       rothEq -= pulledRoth
       yearTradWithdrawal += pulledTrad
       yearSSTaxable += ssTaxableMonthM
+      if (spouseWorking) yearSpouseWorkGross += spouseWorkMonthM
 
       if (cash < 0) cash = 0
       if (taxableEq < 0) taxableEq = 0
@@ -1968,7 +2046,8 @@ export function simulate(params: SimParams): SimResult {
       if (isYearEnd) {
         if (!isRuined) {
           // Update HI for next year using this year's accumulated MAGI.
-          const yearMAGI = (yearTradWithdrawal + yearSSTaxable + yearLTCG) * 1_000_000
+          // Spouse W-2 income is included — it raises MAGI for IRMAA purposes.
+          const yearMAGI = (yearTradWithdrawal + yearSpouseWorkGross + yearSSTaxable + yearLTCG) * 1_000_000
           pathHIM = healthInsuranceCost({
             ownerAge: age,
             spouseAge,
@@ -1979,9 +2058,11 @@ export function simulate(params: SimParams): SimResult {
             status,
           }) / 1_000_000
 
-          // Annual tax on the year's accumulated income.
+          // Annual tax on the year's accumulated income. Spouse W-2 gross is
+          // treated as ordinary income (same bracket path as 401k withdrawals;
+          // WI brackets and the federal standard deduction both apply correctly).
           const taxRes = computeAnnualTax({
-            traditionalWithdrawal: yearTradWithdrawal * 1_000_000,
+            traditionalWithdrawal: (yearTradWithdrawal + yearSpouseWorkGross) * 1_000_000,
             ssTaxable: yearSSTaxable * 1_000_000,
             ltcg: yearLTCG * 1_000_000,
             status,
@@ -2026,13 +2107,13 @@ export function simulate(params: SimParams): SimResult {
               const refillGainM = grossSell * (1 - refillBasisFraction)
               const basisReturned = grossSell * refillBasisFraction
               const taxBefore = computeAnnualTax({
-                traditionalWithdrawal: yearTradWithdrawal * 1_000_000,
+                traditionalWithdrawal: (yearTradWithdrawal + yearSpouseWorkGross) * 1_000_000,
                 ssTaxable: yearSSTaxable * 1_000_000,
                 ltcg: yearLTCG * 1_000_000,
                 status, stateLTCGRate,
               })
               const taxAfter = computeAnnualTax({
-                traditionalWithdrawal: yearTradWithdrawal * 1_000_000,
+                traditionalWithdrawal: (yearTradWithdrawal + yearSpouseWorkGross) * 1_000_000,
                 ssTaxable: yearSSTaxable * 1_000_000,
                 ltcg: (yearLTCG + refillGainM) * 1_000_000,
                 status, stateLTCGRate,
@@ -2060,6 +2141,7 @@ export function simulate(params: SimParams): SimResult {
         yearTradWithdrawal = 0
         yearLTCG = 0
         yearSSTaxable = 0
+        yearSpouseWorkGross = 0
         yearStartTaxableEq = taxableEq
       }
     }

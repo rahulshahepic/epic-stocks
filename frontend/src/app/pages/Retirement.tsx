@@ -19,6 +19,7 @@ import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
 import { useMe, updateMeCache } from '../../scaffold/hooks/useMe.ts'
 import {
   computeFanPercentiles,
+  computeSpousePayrollTax,
   DEFAULT_PARAMS,
   finalPercentiles,
   HISTORICAL_RETURNS,
@@ -30,6 +31,8 @@ import {
   SCENARIO_LABELS,
   simulate,
   SPEND_RAMP_FLOOR,
+  SS_EARNINGS_EXEMPT_BEFORE_FRA,
+  SS_WAGE_BASE_REAL,
   ssAdjustment,
   type FanPercentiles,
   type Scenario,
@@ -1129,6 +1132,63 @@ export default function Retirement() {
               <p className="text-stone-500 dark:text-slate-400">
                 That's <strong className="text-gray-900 dark:text-slate-100 tabular-nums">${(params.spouseSsMonthly * ssAdjustment(params.spouseClaimAge, params.fra)).toFixed(0)}/mo</strong>
               </p>
+            </div>
+
+            {/* Spouse employment */}
+            <div className="mt-4 border-t border-stone-200 pt-3 dark:border-slate-700">
+              <p className="mb-2 text-[11px] font-medium text-gray-700 dark:text-slate-200">Spouse employment</p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <NumInput
+                  label="Annual gross income"
+                  value={params.spouseWorkIncome}
+                  onChange={v => update('spouseWorkIncome', v)}
+                  min={0}
+                  step={5}
+                  suffix="$K/yr"
+                  hint="Leave at 0 if spouse is already retired"
+                />
+                <NumInput
+                  label="Stops working at age"
+                  value={params.spouseStopWorkAge}
+                  onChange={v => update('spouseStopWorkAge', Math.max(params.spouseCurrentAge, Math.round(v)))}
+                  min={params.spouseCurrentAge}
+                  max={80}
+                  step={1}
+                  suffix="yrs"
+                  hint="Age when spouse's W-2 income ends"
+                />
+                <NumInput
+                  label="Spouse's full retirement age"
+                  value={params.spouseFra}
+                  onChange={v => update('spouseFra', Math.max(62, Math.min(70, Math.round(v))))}
+                  min={62}
+                  max={70}
+                  step={1}
+                  suffix="yrs"
+                  hint="67 for anyone born 1960 or later · affects SS earnings test"
+                />
+              </div>
+              {params.spouseWorkIncome > 0 && (() => {
+                const annualGross = params.spouseWorkIncome * 1_000
+                const payroll = computeSpousePayrollTax(annualGross, params.includeSpouse ? 'mfj' : 'single')
+                const earningsTestActive = params.spouseClaimAge < params.spouseFra
+                  && params.spouseWorkIncome * 1_000 > SS_EARNINGS_EXEMPT_BEFORE_FRA
+                return (
+                  <div className="mt-2 grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-2 sm:gap-3">
+                    <p className="text-stone-500 dark:text-slate-400">
+                      Payroll taxes (SS + Medicare): <strong className="text-gray-900 dark:text-slate-100 tabular-nums">${(payroll / 1_000).toFixed(1)}K/yr</strong>
+                      {annualGross > SS_WAGE_BASE_REAL && (
+                        <> · SS capped at ${(SS_WAGE_BASE_REAL / 1_000).toFixed(0)}K wage base</>
+                      )}
+                    </p>
+                    {earningsTestActive && (
+                      <p className="text-amber-600 dark:text-amber-400">
+                        SS earnings test applies — claiming before FRA while earning &gt;${(SS_EARNINGS_EXEMPT_BEFORE_FRA / 1_000).toFixed(0)}K/yr reduces spouse SS benefits until age {params.spouseFra}
+                      </p>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
           </div>
         )}

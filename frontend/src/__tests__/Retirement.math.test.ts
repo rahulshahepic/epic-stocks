@@ -3,6 +3,7 @@ import {
   MEAN_BLOCK_LEN,
   computeAnnualTax,
   computeFanPercentiles,
+  computeSpousePayrollTax,
   DEFAULT_PARAMS,
   finalPercentiles,
   FINAL_PERCENTILES,
@@ -18,7 +19,10 @@ import {
   SCENARIOS,
   simulate,
   SPEND_RAMP_FLOOR,
+  SS_EARNINGS_EXEMPT_BEFORE_FRA,
+  SS_WAGE_BASE_REAL,
   ssAdjustment,
+  spouseSsAfterEarningsTest,
 } from '../app/pages/Retirement.math.ts'
 
 describe('mulberry32', () => {
@@ -1072,3 +1076,142 @@ function makeSyntheticResult(finalValues: number[], startingTotal: number) {
     p10FinalM: 0,
   }
 }
+
+describe('computeSpousePayrollTax', () => {
+  it('charges 6.2% SS + 1.45% Medicare on wages below the wage base', () => {
+    const wages = 100_000
+    const tax = computeSpousePayrollTax(wages, 'mfj')
+    const expected = 0.062 * wages + 0.0145 * wages
+    expect(tax).toBeCloseTo(expected, 2)
+  })
+
+  it('caps SS at SS_WAGE_BASE_REAL but continues Medicare above it', () => {
+    const wages = SS_WAGE_BASE_REAL + 50_000
+    const tax = computeSpousePayrollTax(wages, 'mfj')
+    const ssCap = 0.062 * SS_WAGE_BASE_REAL
+    const medicare = 0.0145 * wages
+    expect(tax).toBeCloseTo(ssCap + medicare, 2)
+  })
+
+  it('adds 0.9% additional Medicare on MFJ wages above $250K', () => {
+    const wages = 300_000
+    const tax = computeSpousePayrollTax(wages, 'mfj')
+    const ss = 0.062 * SS_WAGE_BASE_REAL
+    const medicare = 0.0145 * wages
+    const addl = 0.009 * (wages - 250_000)
+    expect(tax).toBeCloseTo(ss + medicare + addl, 2)
+  })
+
+  it('uses $200K threshold for single filers', () => {
+    const wages = 250_000
+    const mfj = computeSpousePayrollTax(wages, 'mfj')
+    const single = computeSpousePayrollTax(wages, 'single')
+    // MFJ threshold is $250K so no additional Medicare; single threshold is $200K so it applies
+    expect(single).toBeGreaterThan(mfj)
+  })
+
+  it('returns zero for zero wages', () => {
+    expect(computeSpousePayrollTax(0, 'mfj')).toBe(0)
+  })
+})
+
+describe('spouseSsAfterEarningsTest', () => {
+  it('applies no reduction at or after FRA', () => {
+    // spouseAge >= spouseFra: full benefit regardless of earnings
+    const ssM = 3_000 / 12 / 1_000_000
+    const workM = 200_000 / 12 / 1_000_000
+    expect(spouseSsAfterEarningsTest(ssM, workM, 67, 67)).toBeCloseTo(ssM, 9)
+    expect(spouseSsAfterEarningsTest(ssM, workM, 68, 67)).toBeCloseTo(ssM, 9)
+  })
+
+  it('applies no reduction when not working', () => {
+    const ssM = 2_000 / 12 / 1_000_000
+    expect(spouseSsAfterEarningsTest(ssM, 0, 63, 67)).toBeCloseTo(ssM, 9)
+  })
+
+  it('reduces SS $1 per $2 of earnings above exempt amount before FRA', () => {
+    const annualSs = 24_000  // $24K/yr SS benefit
+    const annualWages = SS_EARNINGS_EXEMPT_BEFORE_FRA + 10_000  // $10K over exempt
+    const ssM = annualSs / 12 / 1_000_000
+    const workM = annualWages / 12 / 1_000_000
+    const result = spouseSsAfterEarningsTest(ssM, workM, 64, 67)
+    const expectedAnnualReduction = 10_000 / 2
+    const expectedMonthlyM = (annualSs - expectedAnnualReduction) / 12 / 1_000_000
+    expect(result).toBeCloseTo(expectedMonthlyM, 9)
+  })
+
+  it('floors SS at zero (high earner eliminates benefit entirely)', () => {
+    const ssM = 1_000 / 12 / 1_000_000    // $1K/yr SS
+    const workM = 500_000 / 12 / 1_000_000 // $500K wages — withheld > benefit
+    expect(spouseSsAfterEarningsTest(ssM, workM, 63, 67)).toBe(0)
+  })
+})
+
+describe('simulate — spouse work income', () => {
+  const base = {
+    ...DEFAULT_PARAMS,
+    epicExit: 3,
+    taxableAdditional: 0,
+    additionalBasis: 0,
+    traditional: 0,
+    roth: 0,
+    stockPct: 0.6,
+    bondPct: 0.3,
+    defaultSpend: 80,
+    minSpend: 60,
+    healthInsurance: 25,
+    zeroHIPost65: false,
+    ssMonthly: 2500,
+    claimAge: 67,
+    currentAge: 55,
+    endAge: 85,
+    fra: 67,
+    includeSpouse: true,
+    spouseCurrentAge: 52,
+    spouseSsMonthly: 1500,
+    spouseClaimAge: 67,
+    spouseFra: 67,
+    spouseWorkIncome: 0,
+    spouseStopWorkAge: 65,
+    stateLTCGRate: 0.05,
+    paths: 500,
+    seed: 42,
+  }
+
+  it('spouse work income reduces portfolio draw — higher final wealth than no income', () => {
+    const noWork = simulate({ ...base, spouseWorkIncome: 0 })
+    const working = simulate({ ...base, spouseWorkIncome: 150 })  // $150K/yr
+    expect(working.medianFinalM).toBeGreaterThan(noWork.medianFinalM)
+  })
+
+  it('higher work income → greater benefit', () => {
+    const low = simulate({ ...base, spouseWorkIncome: 50 })
+    const high = simulate({ ...base, spouseWorkIncome: 200 })
+    expect(high.medianFinalM).toBeGreaterThan(low.medianFinalM)
+  })
+
+  it('work income with stop-work age: stops early yields less than working longer', () => {
+    const early = simulate({ ...base, spouseWorkIncome: 120, spouseStopWorkAge: 57 })
+    const late  = simulate({ ...base, spouseWorkIncome: 120, spouseStopWorkAge: 65 })
+    expect(late.medianFinalM).toBeGreaterThan(early.medianFinalM)
+  })
+
+  it('earnings test lowers SS benefit when claiming before FRA while working', () => {
+    // Spouse earns well above exempt amount while claiming early
+    const noWork = simulate({
+      ...base, spouseWorkIncome: 0, spouseClaimAge: 62,
+    })
+    const working = simulate({
+      ...base, spouseWorkIncome: 100, spouseClaimAge: 62, spouseStopWorkAge: 67,
+    })
+    // Working adds income but the net SS reduction is captured. Working spouse
+    // should still come out ahead on total wealth even with the earnings test.
+    expect(working.medianFinalM).toBeGreaterThan(noWork.medianFinalM)
+  })
+
+  it('zero work income produces identical result to default (no work income path)', () => {
+    const a = simulate({ ...base, spouseWorkIncome: 0 })
+    const b = simulate({ ...base })  // default is 0
+    expect(a.medianFinalM).toBeCloseTo(b.medianFinalM, 4)
+  })
+})

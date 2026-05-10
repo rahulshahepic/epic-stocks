@@ -10,6 +10,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
+echo "==> Installing backend dependencies..."
+pip install -q -r backend/requirements.txt
+
 TMPDB=$(mktemp /tmp/screenshots-XXXXX.db)
 
 echo "==> Seeding temporary database..."

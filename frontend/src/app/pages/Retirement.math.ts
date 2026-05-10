@@ -15,9 +15,13 @@
 // at ordinary income on withdrawal), and roth (locked until 59½, tax-free).
 // Each year's spending need is funded sequentially: cash → taxable → traditional
 // → roth (latter two only after 59½). Tax is computed via 2026-indexed federal
-// brackets (ordinary + LTCG stacked), NIIT, IRMAA Medicare surcharges, and a
-// flat state rate sourced from the user's TaxSettings. Brackets are CPI-indexed
-// in real life so they're treated as real-dollar throughout the simulation.
+// brackets (ordinary + LTCG stacked), NIIT, IRMAA Medicare surcharges, and
+// Wisconsin progressive state brackets on traditional withdrawals (this app
+// targets Epic, which is in Verona, WI — see computeAnnualTax for the full WI
+// assumption list). State LTCG uses a flat rate from the user's TaxSettings
+// because WI's 30% LTCG exclusion doesn't translate cleanly into a bracket
+// schedule. Brackets are CPI-indexed in real life so they're treated as
+// real-dollar throughout the simulation.
 
 export type Scenario = 'historical' | 'moderate' | 'cautious' | 'custom'
 
@@ -120,6 +124,29 @@ const FED_LTCG_SINGLE: ReadonlyArray<BracketTier> = [
   { floor: 533_400,  rate: 0.20 },
 ]
 
+// Wisconsin ordinary income brackets, 2026 estimates (CPI-indexed in real
+// life; treated as real-dollar thresholds throughout the sim — same as fed).
+// We use brackets here (not a flat rate) because in retirement we know every
+// income component each year, so each dollar can land in its actual bracket.
+// This is the same justification for using federal brackets — the comp
+// calculator uses flat marginal rates because it doesn't know your other
+// income, but the retirement sim does.
+const WI_ORDINARY_MFJ: ReadonlyArray<BracketTier> = [
+  { floor: 0,        rate: 0.0350 },
+  { floor: 20_000,   rate: 0.0440 },
+  { floor: 40_000,   rate: 0.0530 },
+  { floor: 440_000,  rate: 0.0765 },
+]
+const WI_ORDINARY_SINGLE: ReadonlyArray<BracketTier> = [
+  { floor: 0,        rate: 0.0350 },
+  { floor: 15_000,   rate: 0.0440 },
+  { floor: 30_000,   rate: 0.0530 },
+  { floor: 330_000,  rate: 0.0765 },
+]
+// WI's standard deduction is a sliding scale that phases out near $135K MFJ /
+// $112K Single AGI — Epic retirees almost always exceed that, so we skip it.
+// Mild over-tax (~$455/yr max) for low-income years; immaterial.
+
 const STD_DEDUCTION_MFJ = 31_500
 const STD_DEDUCTION_SINGLE = 15_750
 
@@ -211,21 +238,35 @@ export interface AnnualTaxResult {
 }
 
 // Compute one year's federal+state+NIIT tax bill given the year's gross
-// income components. All dollar amounts in nominal $/yr. State rates come
-// from the user's TaxSettings (state_income_rate, state_lt_cg_rate).
+// income components. All dollar amounts in nominal $/yr.
+//
+// Wisconsin assumptions (this app targets Epic — Verona, WI):
+//   1. SS is exempt from state tax. 85% of SS is still taxable federally
+//      (per IRS rules) but it doesn't enter the WI bracket calc.
+//   2. Ordinary state tax uses progressive WI brackets, not a flat rate.
+//      The retirement sim knows every income component each year, so each
+//      dollar can land in its actual bracket — same reason we use federal
+//      brackets here.
+//   3. LTCG state rate stays a flat user input from Settings → Tax Rates,
+//      because WI's 30% LTCG exclusion doesn't translate cleanly into a
+//      bracket schedule. Set state_lt_cg_rate to your effective rate
+//      (top WI bracket × 0.70 ≈ 5.36%).
+// If we ever ship to a non-WI userbase, the WI brackets and SS exemption
+// should both become per-user toggles.
 export function computeAnnualTax({
-  ordinaryGross,
+  traditionalWithdrawal,
+  ssTaxable,
   ltcg,
   status,
-  stateOrdinaryRate,
   stateLTCGRate,
 }: {
-  ordinaryGross: number
-  ltcg: number
+  traditionalWithdrawal: number  // gross from 401(k)/IRA — taxed as ordinary at fed + state
+  ssTaxable: number              // 85% of SS gross — taxed as ordinary at fed only (WI exempts)
+  ltcg: number                   // long-term capital gains (taxable bucket sales)
   status: FilingStatus
-  stateOrdinaryRate: number
   stateLTCGRate: number
 }): AnnualTaxResult {
+  const ordinaryGross = traditionalWithdrawal + ssTaxable
   const stdDed = status === 'mfj' ? STD_DEDUCTION_MFJ : STD_DEDUCTION_SINGLE
   const taxableOrd = Math.max(0, ordinaryGross - stdDed)
   const fedOrdTiers = status === 'mfj' ? FED_ORDINARY_MFJ : FED_ORDINARY_SINGLE
@@ -235,7 +276,12 @@ export function computeAnnualTax({
   const magi = ordinaryGross + Math.max(0, ltcg)
   const niitThr = status === 'mfj' ? NIIT_THRESHOLD_MFJ : NIIT_THRESHOLD_SINGLE
   const niit = NIIT_RATE * Math.max(0, Math.min(Math.max(0, ltcg), magi - niitThr))
-  const state = ordinaryGross * stateOrdinaryRate + Math.max(0, ltcg) * stateLTCGRate
+  // State tax: WI brackets on traditional withdrawals (SS exempt, no std
+  // deduction since it phases out for Epic-comp incomes), flat user rate on LTCG.
+  const wiTiers = status === 'mfj' ? WI_ORDINARY_MFJ : WI_ORDINARY_SINGLE
+  const stateOrdinary = applyBrackets(Math.max(0, traditionalWithdrawal), wiTiers)
+  const stateLTCG = Math.max(0, ltcg) * stateLTCGRate
+  const state = stateOrdinary + stateLTCG
   return {
     fedOrdinary,
     fedLTCG,
@@ -443,8 +489,9 @@ export interface SimParams {
   spouseCurrentAge: number  // age at simulation start (derived from spouse DOB + retirement date)
   spouseSsMonthly: number   // $/month at FRA (0 = no spouse SS)
   spouseClaimAge: number    // 62-70
-  // State tax rates pulled from TaxSettings; federal is bracket-based.
-  stateOrdinaryRate: number  // 0..1, applied to ordinary income (trad + 0.85*SS)
+  // State LTCG rate pulled from TaxSettings; state ordinary income tax uses
+  // hard-coded WI brackets (see computeAnnualTax). The user's state_income_rate
+  // is no longer consulted for the retirement sim.
   stateLTCGRate: number      // 0..1, applied to LTCG
   // UI flag — toggles the advanced bucket inputs. Math ignores it.
   advanced: boolean
@@ -478,7 +525,6 @@ export const DEFAULT_PARAMS: SimParams = {
   spouseCurrentAge: 50,
   spouseSsMonthly: 0,
   spouseClaimAge: 67,
-  stateOrdinaryRate: 0,
   stateLTCGRate: 0,
   advanced: false,
 }
@@ -613,7 +659,6 @@ export function simulate(params: SimParams): SimResult {
   const spouseSsAnnual = hasSpouse ? (params.spouseSsMonthly * 12) * spouseSsAdj : 0
 
   const status: FilingStatus = hasSpouse ? 'mfj' : 'single'
-  const stateOrdinaryRate = Math.max(0, params.stateOrdinaryRate)
   const stateLTCGRate = Math.max(0, params.stateLTCGRate)
 
   const cashTarget = startingCash
@@ -762,13 +807,12 @@ export function simulate(params: SimParams): SimResult {
           if (need > 1e-9) shortfall = true
         }
 
-        const ordGrossM = pulledTrad + ssTaxableM
         const ltcgM = pulledTaxable * (1 - basisFraction)
         const taxRes = computeAnnualTax({
-          ordinaryGross: ordGrossM * 1_000_000,
+          traditionalWithdrawal: pulledTrad * 1_000_000,
+          ssTaxable: ssTaxableM * 1_000_000,
           ltcg: ltcgM * 1_000_000,
           status,
-          stateOrdinaryRate,
           stateLTCGRate,
         })
         const newTax = taxRes.total / 1_000_000
@@ -816,20 +860,19 @@ export function simulate(params: SimParams): SimResult {
           const basisReturned = grossSell * refillBasisFraction
           // Marginal LTCG cost: re-run the tax engine with the spend-cycle
           // ordinary + LTCG plus this refill's gain, and take the delta.
-          const ordGrossM = pulledTrad + ssTaxableM
           const spendLTCGM = pulledTaxable * (1 - basisFraction)
           const taxBefore = computeAnnualTax({
-            ordinaryGross: ordGrossM * 1_000_000,
+            traditionalWithdrawal: pulledTrad * 1_000_000,
+            ssTaxable: ssTaxableM * 1_000_000,
             ltcg: spendLTCGM * 1_000_000,
             status,
-            stateOrdinaryRate,
             stateLTCGRate,
           })
           const taxAfter = computeAnnualTax({
-            ordinaryGross: ordGrossM * 1_000_000,
+            traditionalWithdrawal: pulledTrad * 1_000_000,
+            ssTaxable: ssTaxableM * 1_000_000,
             ltcg: (spendLTCGM + refillGainM) * 1_000_000,
             status,
-            stateOrdinaryRate,
             stateLTCGRate,
           })
           const refillTaxM = Math.max(0, (taxAfter.total - taxBefore.total) / 1_000_000)

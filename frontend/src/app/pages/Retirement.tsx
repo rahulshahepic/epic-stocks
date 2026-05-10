@@ -531,9 +531,11 @@ export default function Retirement() {
     const fetcher = vid ? api.getSharedTaxSettings(vid) : api.getTaxSettings()
     fetcher
       .then(ts => {
+        // State ordinary income tax uses hard-coded WI brackets in the sim;
+        // we only need the LTCG rate from TaxSettings (set this to your
+        // post-30%-exclusion effective rate, ~5.36% at the WI top bracket).
         setParams(prev => ({
           ...prev,
-          stateOrdinaryRate: Number.isFinite(ts.state_income_rate) ? ts.state_income_rate : 0,
           stateLTCGRate: Number.isFinite(ts.state_lt_cg_rate) ? ts.state_lt_cg_rate : 0,
         }))
       })
@@ -969,8 +971,9 @@ export default function Retirement() {
           </span>
         </label>
         <p className="mt-3 text-[10px] leading-snug text-stone-500 dark:text-slate-400">
-          Each year we calculate what you'd actually owe in taxes: federal income brackets (with the bigger married-filing-jointly brackets if you've added a spouse), federal capital-gains tax on investment growth, an extra 3.8% surcharge on investment income for higher earners, Medicare income surcharges after 65, and your state taxes ({fmtPct(params.stateOrdinaryRate, 2)} on income · {fmtPct(params.stateLTCGRate, 2)} on capital gains, from <em>Settings → Tax Rates</em>).
+          Each year we calculate what you'd actually owe in taxes: federal income brackets (with the bigger married-filing-jointly brackets if you've added a spouse), federal capital-gains tax on investment growth, an extra 3.8% surcharge on investment income for higher earners, Medicare income surcharges after 65, Wisconsin progressive brackets (3.5%/4.4%/5.3%/7.65%) on 401(k) withdrawals, and {fmtPct(params.stateLTCGRate, 2)} on capital gains (from <em>Settings → Tax Rates</em> — this should be your post-30%-WI-exclusion effective rate, ~5.36% at the top WI bracket).
           We spend from your accounts in order: cash first (no tax), then brokerage (only the growth is taxed), then 401(k), then Roth — and the 401(k)/Roth stay locked until age {RETIREMENT_ACCESS_AGE}.
+          <br /><span className="text-stone-400 dark:text-slate-500">Wisconsin assumption: Social Security is exempt from state tax (it still counts toward federal); state income tax uses WI's progressive brackets, not a flat marginal rate. Each dollar lands in its actual WI bracket since we know your full income each year.</span>
         </p>
       </div>
 

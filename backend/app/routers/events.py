@@ -79,6 +79,29 @@ def _compute_outstanding_principal(loans_db, loan_payments, sales, as_of_date) -
     )
 
 
+def _compute_projected_unrecorded_interest(loans_db, as_of_date) -> float:
+    """
+    Interest that has accrued on Purchase loans by as_of_date but hasn't been
+    recorded as Interest loan rows yet.  Mirrors the 'guaranteed' projection in
+    the InterestChart: purchase_principal × rate for each year in
+    [loan_year+1, min(exit_year, due_year)] that has no Interest loan entry.
+    """
+    purchase_loans = [l for l in loans_db if l.loan_type == 'Purchase']
+    interest_loans = [l for l in loans_db if l.loan_type == 'Interest']
+    recorded = {(il.grant_year, il.grant_type, il.loan_year) for il in interest_loans}
+    refinanced_ids = {l.refinances_loan_id for l in loans_db if l.refinances_loan_id is not None}
+    exit_year = as_of_date.year
+    total = 0.0
+    for p in purchase_loans:
+        if p.id in refinanced_ids:
+            continue
+        due_year = p.due_date.year
+        for yr in range(p.loan_year + 1, min(exit_year, due_year) + 1):
+            if (p.grant_year, p.grant_type, yr) not in recorded:
+                total += p.amount * p.interest_rate
+    return total
+
+
 def _compute_unvested_cost(grants, as_of_date) -> float:
     """Proceeds from selling unvested shares at cost basis (grant price)."""
     from dateutil.relativedelta import relativedelta
@@ -174,7 +197,8 @@ def _build_exit_summary(enriched, grants, loans_db, loan_payments, sales_db,
         deduction_savings = round(deduction_savings, 2)
         deduction_years = sorted(years_seen)
 
-    liq_net = round(max(0.0, gross_vested + unvested_cost - liq_tax - outstanding), 2)
+    accrued_interest = round(_compute_projected_unrecorded_interest(loans_db, horizon_date), 2)
+    liq_net = round(max(0.0, gross_vested + unvested_cost - liq_tax - outstanding - accrued_interest), 2)
     net_cash = round(prior_sales_net + liq_net + deduction_savings, 2)
 
     return {
@@ -184,6 +208,7 @@ def _build_exit_summary(enriched, grants, loans_db, loan_payments, sales_db,
         "unvested_cost_proceeds": unvested_cost,
         "liquidation_tax": round(liq_tax, 2),
         "outstanding_principal": outstanding,
+        "outstanding_accrued_interest": accrued_interest,
         "prior_sales": prior_sales,
         "prior_sales_net": prior_sales_net,
         "income_tax": income_tax,

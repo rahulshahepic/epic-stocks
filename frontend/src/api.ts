@@ -141,6 +141,7 @@ export interface ExitSummary {
   unvested_cost_proceeds: number
   liquidation_tax: number
   outstanding_principal: number
+  outstanding_accrued_interest: number
   prior_sales: ExitSaleSummary[]
   prior_sales_net: number
   income_tax: number

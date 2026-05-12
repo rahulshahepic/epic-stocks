@@ -1856,7 +1856,7 @@ export default function Dashboard() {
                   </p>
                 </button>
                 <Card label="Gross Proceeds" value={fmt$(exitPreview.gross_vested + exitPreview.unvested_cost_proceeds)} variant="gains" subtitle="Liquidated shares × price" />
-                <Card label="Loans Paid Off" value={fmt$(exitPreview.outstanding_principal)} variant="loans" subtitle="From sale proceeds" />
+                <Card label="Loans Paid Off" value={fmt$(exitPreview.outstanding_principal + exitPreview.outstanding_accrued_interest)} variant="loans" subtitle="Principal + accrued interest" />
                 <Card label="Est. Divest Tax" value={fmt$(exitPreview.liquidation_tax)} variant="tax" subtitle="Capital gains on liquidation" />
               </div>
               {exitBreakdownOpen && <ExitBreakdownCard s={exitPreview} />}

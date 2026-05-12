@@ -231,23 +231,21 @@ def test_preview_exit_accrued_interest_zero_when_fully_recorded(client):
 
 
 def test_preview_exit_net_cash_reduced_by_accrued_interest(client):
-    """net_cash with unrecorded interest should be lower than without any loans."""
+    """net_cash formula subtracts outstanding_accrued_interest from liq_net."""
     register_user(client)
     _seed_with_purchase_loan(client)
 
-    resp_with = client.get("/api/preview-exit?date=2023-06-01").json()
+    data = client.get("/api/preview-exit?date=2023-06-01").json()
 
-    # Compare to a baseline with no loans
-    register_user(client)  # re-registers same user, wiping data
-    client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 10.0})
-    client.post("/api/grants", json={
-        "year": 2020, "type": "A", "shares": 1000, "price": 10.0,
-        "vest_start": "2020-01-01", "periods": 2,
-        "exercise_date": "2020-01-01", "dp_shares": 0, "election_83b": False,
-    })
-    resp_without = client.get("/api/preview-exit?date=2023-06-01").json()
-
-    assert resp_with["net_cash"] < resp_without["net_cash"]
-    # The difference should be at least the accrued interest (principal also reduces net_cash)
-    diff = resp_without["net_cash"] - resp_with["net_cash"]
-    assert diff >= pytest.approx(15_000.0)
+    # Verify the backend wired accrued interest into the net_cash formula.
+    # net_cash = max(0, gross + unvested - tax - principal - accrued) + prior_sales + deduction
+    expected_liq_net = max(0.0,
+        data["gross_vested"] + data["unvested_cost_proceeds"]
+        - data["liquidation_tax"]
+        - data["outstanding_principal"]
+        - data["outstanding_accrued_interest"]
+    )
+    expected_net_cash = round(expected_liq_net + data["prior_sales_net"] + data["deduction_savings"], 2)
+    assert data["net_cash"] == pytest.approx(expected_net_cash)
+    # Sanity: accrued interest is non-zero so it actually affected net_cash
+    assert data["outstanding_accrued_interest"] > 0

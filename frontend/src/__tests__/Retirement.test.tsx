@@ -76,6 +76,7 @@ function mockApi(opts: {
             unvested_cost_proceeds: 0,
             liquidation_tax: 0,
             outstanding_principal: 0,
+            outstanding_accrued_interest: 0,
             prior_sales: [],
             prior_sales_net: 0,
             income_tax: 0,

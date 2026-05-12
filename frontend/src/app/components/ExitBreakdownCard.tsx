@@ -24,7 +24,7 @@ function Row({ label, value, bold }: { label: string; value: string; bold?: bool
 export default function ExitBreakdownCard({ s }: { s: ExitSummary }) {
   const hasSales = s.prior_sales.length > 0
   const hasDeduction = s.deduction_savings > 0
-  const liqNet = Math.max(0, s.gross_vested + s.unvested_cost_proceeds - s.liquidation_tax - s.outstanding_principal)
+  const liqNet = Math.max(0, s.gross_vested + s.unvested_cost_proceeds - s.liquidation_tax - s.outstanding_principal - s.outstanding_accrued_interest)
   const yearsLabel = s.deduction_years.length > 0
     ? s.deduction_years.length === 1
       ? String(s.deduction_years[0])
@@ -44,6 +44,9 @@ export default function ExitBreakdownCard({ s }: { s: ExitSummary }) {
         <Row label="Est. tax on liquidation" value={`−${fmt$(s.liquidation_tax)}`} />
         {s.outstanding_principal > 0 && (
           <Row label="Loan principal payoff" value={`−${fmt$(s.outstanding_principal)}`} />
+        )}
+        {s.outstanding_accrued_interest > 0 && (
+          <Row label="Accrued interest (projected)" value={`−${fmt$(s.outstanding_accrued_interest)}`} />
         )}
         <div className="my-1.5 border-t border-stone-200 dark:border-slate-600" />
         <Row label="Net from liquidation" value={fmt$(liqNet)} bold />

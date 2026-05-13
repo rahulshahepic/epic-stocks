@@ -26,8 +26,7 @@ def upgrade() -> None:
     op.add_column('users', sa.Column('provider_name', sa.String(), nullable=True))
     op.execute("UPDATE users SET provider_name = 'google' WHERE provider_name IS NULL")
     # Make non-nullable now that all rows have a value
-    op.alter_column('users', 'provider_name', existing_type=sa.String(), nullable=False,
-                    server_default='google')
+    op.alter_column('users', 'provider_name', existing_type=sa.String(), nullable=False)
     # Drop the old unique index on google_id alone, add compound unique constraint
     op.drop_index('ix_users_google_id', table_name='users')
     op.create_unique_constraint('uq_users_provider_sub', 'users', ['provider_name', 'google_id'])

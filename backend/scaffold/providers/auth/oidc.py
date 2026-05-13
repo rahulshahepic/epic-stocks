@@ -143,9 +143,10 @@ class OIDCProvider:
         email = token.claims.get("email") or token.claims.get("preferred_username", "")
 
         return UserIdentity(
+            provider_name=self.config.name,
             provider_sub=sub,
             email=email,
-            email_verified=bool(token.claims.get("email_verified", True)),
+            email_verified=bool(token.claims.get("email_verified", False)),
             name=token.claims.get("name"),
             picture=token.claims.get("picture"),
         )

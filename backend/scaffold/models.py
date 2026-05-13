@@ -10,7 +10,8 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     email: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
-    google_id: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    provider_name: Mapped[str] = mapped_column(String, nullable=False, server_default="google")
+    google_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String, nullable=True)
     picture: Mapped[str] = mapped_column(String, nullable=True)
     encrypted_key: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -32,6 +33,7 @@ class User(Base):
     # Owner's saved dashboard view preferences (date mode / specific date / range).
     # Plain JSON — display state only, no financial data.
     dashboard_prefs: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    __table_args__ = (UniqueConstraint("provider_name", "google_id", name="uq_users_provider_sub"),)
 
     grants: Mapped[list["Grant"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     loans: Mapped[list["Loan"]] = relationship(back_populates="user", cascade="all, delete-orphan")

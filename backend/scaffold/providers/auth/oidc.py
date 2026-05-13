@@ -145,7 +145,7 @@ class OIDCProvider:
         return UserIdentity(
             provider_sub=sub,
             email=email,
-            email_verified=bool(token.claims.get("email_verified", True)),
+            email_verified=bool(token.claims.get("email_verified", False)),
             name=token.claims.get("name"),
             picture=token.claims.get("picture"),
         )

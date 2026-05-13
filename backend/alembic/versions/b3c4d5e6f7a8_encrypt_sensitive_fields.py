@@ -12,7 +12,7 @@ The notes / data_json columns (sale, loan_payment, import_backup) are already
 VARCHAR so they need no DDL change — the TypeDecorator change is transparent.
 
 Revision ID: b3c4d5e6f7a8
-Revises: a6b7c8d9e0f1
+Revises: c8d9e0f1g2h3
 Create Date: 2026-05-12 00:00:00.000000
 
 """
@@ -23,7 +23,7 @@ import sqlalchemy as sa
 
 
 revision: str = 'b3c4d5e6f7a8'
-down_revision: Union[str, Sequence[str], None] = 'a6b7c8d9e0f1'
+down_revision: Union[str, Sequence[str], None] = 'c8d9e0f1g2h3'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

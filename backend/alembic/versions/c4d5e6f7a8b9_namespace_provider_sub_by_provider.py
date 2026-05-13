@@ -4,8 +4,8 @@ Adds users.provider_name so the identity lookup key is (provider_name, google_id
 instead of google_id alone. Existing rows are backfilled as 'google'. The old
 unique index on google_id alone is replaced with a compound unique constraint.
 
-Revision ID: a6b7c8d9e0f1
-Revises: z5a6b7c8d9e0
+Revision ID: c4d5e6f7a8b9
+Revises: b3c4d5e6f7a8
 Create Date: 2026-05-13 00:00:00.000000
 
 """
@@ -15,8 +15,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = 'a6b7c8d9e0f1'
-down_revision: Union[str, Sequence[str], None] = 'z5a6b7c8d9e0'
+revision: str = 'c4d5e6f7a8b9'
+down_revision: Union[str, Sequence[str], None] = 'b3c4d5e6f7a8'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

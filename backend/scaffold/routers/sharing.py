@@ -93,6 +93,16 @@ def send_invite(
     if db.query(InviteSendingBlock).filter(InviteSendingBlock.user_id == user.id).first():
         raise HTTPException(403, "Your ability to send invitations has been restricted. Contact an administrator.")
 
+    # Rate-limit: max 10 new invitations per 24 hours per user
+    _INVITE_DAILY_LIMIT = 10
+    cutoff_24h = datetime.now(timezone.utc) - timedelta(hours=24)
+    recent_count = db.query(Invitation).filter(
+        Invitation.inviter_id == user.id,
+        Invitation.last_sent_at >= cutoff_24h,
+    ).count()
+    if recent_count >= _INVITE_DAILY_LIMIT:
+        raise HTTPException(429, f"You can send at most {_INVITE_DAILY_LIMIT} invitations per 24 hours")
+
     # Check if email is blocked
     if db.query(BlockedEmail).filter(BlockedEmail.email == email).first():
         raise HTTPException(422, "This email address cannot receive invitations")
@@ -172,8 +182,12 @@ def resend_invite(
     if db.query(InvitationOptOut).filter(InvitationOptOut.email == inv.invitee_email).first():
         raise HTTPException(422, "This email address has opted out of invitations")
 
-    # Reset expiry
+    # Rate-limit resends: at most once per hour
     now = datetime.now(timezone.utc)
+    if inv.last_sent_at:
+        last = inv.last_sent_at.replace(tzinfo=timezone.utc) if inv.last_sent_at.tzinfo is None else inv.last_sent_at
+        if (now - last).total_seconds() < 3600:
+            raise HTTPException(429, "Please wait before resending this invitation")
     inv.expires_at = now + timedelta(days=INVITE_EXPIRY_DAYS)
     inv.last_sent_at = now
     db.commit()
@@ -631,9 +645,10 @@ def _notify_inviter_accepted(inv: Invitation, db: Session):
         who = invitee.name or invitee.email if invitee else (inv.invitee_account_email or inv.invitee_email)
         subject = f"Equity Tracker: {who} accepted your invitation"
         text = f"{who} has accepted your invitation to view your equity data."
+        from html import escape as _esc
         html = f"""<div style="font-family: sans-serif; max-width: 480px;">
   <h2 style="color: #4472C4;">Equity Tracker</h2>
-  <p><strong>{who}</strong> has accepted your invitation to view your equity data.</p>
+  <p><strong>{_esc(who)}</strong> has accepted your invitation to view your equity data.</p>
 </div>"""
 
         from scaffold.email_sender import send_email, email_configured

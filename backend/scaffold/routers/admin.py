@@ -390,13 +390,14 @@ def admin_test_notify(
             email_skipped_reason = f"{' and '.join(missing)} not configured"
         else:
             try:
+                from html import escape as _esc
                 url = app_url()
                 link_html = f'<a href="{url}" style="color: #4472C4;">Open Equity Tracker</a>' if url else ""
                 html_body = (
                     f'<div style="font-family: sans-serif; max-width: 480px;">'
                     f'<h2 style="color: #4472C4;">Equity Tracker</h2>'
-                    f'<h3 style="margin-bottom: 4px;">{body.title}</h3>'
-                    f'<p style="color: #374151;">{body.body}</p>'
+                    f'<h3 style="margin-bottom: 4px;">{_esc(body.title)}</h3>'
+                    f'<p style="color: #374151;">{_esc(body.body)}</p>'
                     + (f'<p>{link_html}</p>' if link_html else "")
                     + f'<p style="font-size: 12px; color: #9CA3AF;">This is a test notification.</p>'
                     f'</div>'

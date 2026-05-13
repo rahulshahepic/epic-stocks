@@ -61,13 +61,28 @@ class TestInviteCRUD:
         sent = client.get("/api/sharing/sent").json()
         assert sent[0]["status"] == "revoked"
 
-    def test_resend_resets_expiry(self, client):
+    def test_resend_enforces_cooldown(self, client):
+        register_user(client, "alice@test.com")
+        inv = _invite(client, "bob@test.com").json()
+        # Immediate resend should be rate-limited (1-hour cooldown)
+        resp = client.post(f"/api/sharing/invite/{inv['id']}/resend")
+        assert resp.status_code == 429
+
+    def test_resend_resets_expiry_after_cooldown(self, client, db_session):
+        from datetime import datetime, timedelta, timezone
+        from sqlalchemy import text
         register_user(client, "alice@test.com")
         inv = _invite(client, "bob@test.com").json()
         old_expires = inv["expires_at"]
+        # Backdate last_sent_at to simulate 2 hours ago
+        past = datetime.now(timezone.utc) - timedelta(hours=2)
+        db_session.execute(
+            text("UPDATE invitations SET last_sent_at = :t WHERE id = :id"),
+            {"t": past, "id": inv["id"]},
+        )
+        db_session.commit()
         resp = client.post(f"/api/sharing/invite/{inv['id']}/resend")
         assert resp.status_code == 200
-        # expires_at should be updated (at least not decreased)
         assert resp.json()["expires_at"] >= old_expires
 
     def test_revoke_then_reinvite(self, client):

@@ -598,11 +598,12 @@ def test_admin_test_notify_no_subscriptions(client, make_client):
         assert data["email_sent"] is False
 
 
-def test_admin_test_notify_rate_limited(client, make_client):
-    """test-notify is rate-limited to 5 per hour per admin."""
-    from scaffold.routers import admin as admin_router
-    # Clear the in-memory counter before test
-    admin_router._test_notify_counts.clear()
+def test_admin_test_notify_rate_limited(client, make_client, db_session):
+    """test-notify is rate-limited to 5 per hour per admin (DB-backed, replica-safe)."""
+    from sqlalchemy import text
+    # Clear any existing rate limit state from previous test runs
+    db_session.execute(text("DELETE FROM system_settings WHERE key = 'test_notify_counts'"))
+    db_session.commit()
 
     with _admin_env():
         _register_admin(client)
@@ -624,4 +625,6 @@ def test_admin_test_notify_rate_limited(client, make_client):
         assert resp.status_code == 429
         assert "Rate limit" in resp.json()["detail"]
 
-    admin_router._test_notify_counts.clear()
+    # Clean up
+    db_session.execute(text("DELETE FROM system_settings WHERE key = 'test_notify_counts'"))
+    db_session.commit()

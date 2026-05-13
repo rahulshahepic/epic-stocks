@@ -27,6 +27,8 @@ def _notify_admin_new_user(user: User, db: Session):
 
 def _upsert_user(identity, db: Session) -> User:
     """Create or update a User from a provider UserIdentity. Returns the user."""
+    if not identity.email_verified:
+        raise HTTPException(status_code=403, detail="Email address is not verified by the identity provider")
     email = identity.email
     check_email = email.lower()
 

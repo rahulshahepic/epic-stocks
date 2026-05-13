@@ -256,3 +256,123 @@ def test_import_backup_data_json_encrypted_at_rest(client):
 
     assert raw is not None, "Expected a backup row after second import"
     assert isinstance(raw, str) and raw.startswith("$ENC$"), f"import backup data_json not encrypted: {raw}"
+
+
+# ============================================================
+# Backfill: encrypting pre-existing plaintext rows
+# ============================================================
+
+def test_backfill_encrypts_plaintext_dob_and_retirement_params(client):
+    """backfill_plaintext_encryption encrypts pre-existing plaintext values."""
+    from scaffold.crypto import backfill_plaintext_encryption
+    import database
+
+    register_user(client, "backfill-test@example.com")
+
+    # Reach behind the ORM and write plaintext values directly — simulating a
+    # row that existed before the EncryptedDate / EncryptedJSON migration.
+    with TEST_ENGINE.begin() as conn:
+        conn.execute(
+            text("UPDATE users SET date_of_birth = '1975-08-20', retirement_params = '{\"epicExit\": 2.5}' WHERE email = 'backfill-test@example.com'")
+        )
+
+    # Verify they're plaintext now
+    with TEST_ENGINE.connect() as conn:
+        row = conn.execute(
+            text("SELECT date_of_birth, retirement_params FROM users WHERE email = 'backfill-test@example.com'")
+        ).fetchone()
+    assert row[0] == "1975-08-20"
+    assert "epicExit" in row[1]
+
+    # Run the backfill
+    db = database.SessionLocal()
+    try:
+        backfill_plaintext_encryption(db)
+    finally:
+        db.close()
+
+    # Verify both are now encrypted
+    with TEST_ENGINE.connect() as conn:
+        row = conn.execute(
+            text("SELECT date_of_birth, retirement_params FROM users WHERE email = 'backfill-test@example.com'")
+        ).fetchone()
+    assert row[0].startswith("$ENC$"), f"date_of_birth not encrypted after backfill: {row[0]}"
+    assert row[1].startswith("$ENC$"), f"retirement_params not encrypted after backfill: {row[1]}"
+
+    # API must still return the correct decrypted values
+    r = client.get("/api/me")
+    assert r.json()["date_of_birth"] == "1975-08-20"
+    loaded = client.get("/api/retirement/params").json()["params"]
+    assert loaded["epicExit"] == 2.5
+
+
+def test_backfill_is_idempotent(client):
+    """Running backfill twice leaves already-encrypted values unchanged."""
+    from scaffold.crypto import backfill_plaintext_encryption
+    import database
+
+    register_user(client, "backfill-idem@example.com")
+    client.patch("/api/me/profile", json={"date_of_birth": "1990-03-10"})
+
+    # Capture the encrypted value after first write
+    with TEST_ENGINE.connect() as conn:
+        enc_before = conn.execute(
+            text("SELECT date_of_birth FROM users WHERE email = 'backfill-idem@example.com'")
+        ).scalar()
+    assert enc_before.startswith("$ENC$")
+
+    # Run backfill — should not touch already-encrypted rows
+    db = database.SessionLocal()
+    try:
+        backfill_plaintext_encryption(db)
+    finally:
+        db.close()
+
+    with TEST_ENGINE.connect() as conn:
+        enc_after = conn.execute(
+            text("SELECT date_of_birth FROM users WHERE email = 'backfill-idem@example.com'")
+        ).scalar()
+
+    # Value must be unchanged (same ciphertext blob skipped, not re-encrypted)
+    assert enc_after == enc_before
+
+
+def test_backfill_encrypts_sale_notes_and_actual_tax(client):
+    """Backfill handles plaintext notes and actual_tax_paid on sales."""
+    from scaffold.crypto import backfill_plaintext_encryption
+    import database
+
+    register_user(client, "backfill-sale@example.com")
+    client.post("/api/grants", json={
+        "year": 2020, "type": "Purchase", "shares": 10000, "price": 1.0,
+        "vest_start": "2021-03-01", "periods": 5,
+        "exercise_date": "2020-12-31", "dp_shares": 0,
+    })
+    client.post("/api/prices", json={"effective_date": "2020-12-31", "price": 1.0})
+    client.post("/api/prices", json={"effective_date": "2023-01-01", "price": 2.0})
+    r = client.post("/api/sales", json={
+        "date": "2023-06-01", "shares": 100, "price_per_share": 2.0,
+        "notes": "already encrypted note", "actual_tax_paid": 500.0,
+    })
+    sale_id = r.json()["id"]
+
+    # Overwrite with plaintext directly in DB
+    with TEST_ENGINE.begin() as conn:
+        conn.execute(
+            text("UPDATE sales SET notes = 'plaintext note', actual_tax_paid = '777.77' WHERE id = :sid"),
+            {"sid": sale_id},
+        )
+
+    db = database.SessionLocal()
+    try:
+        backfill_plaintext_encryption(db)
+    finally:
+        db.close()
+
+    with TEST_ENGINE.connect() as conn:
+        row = conn.execute(
+            text("SELECT notes, actual_tax_paid FROM sales WHERE id = :sid"), {"sid": sale_id}
+        ).fetchone()
+
+    assert row[0].startswith("$ENC$"), f"notes not encrypted after backfill: {row[0]}"
+    assert row[1].startswith("$ENC$"), f"actual_tax_paid not encrypted after backfill: {row[1]}"

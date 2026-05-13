@@ -179,6 +179,68 @@ def update_master_key(new_key: str, db) -> None:
     _master_key_last_checked = time.monotonic()
 
 
+def backfill_plaintext_encryption(db) -> None:
+    """Encrypt any pre-existing plaintext values in columns that are now encrypted at rest.
+
+    Safe to call on every boot — rows already prefixed with $ENC$ are skipped,
+    and the function is a no-op when encryption is not configured.  Each column
+    is committed independently so a restart mid-run resumes rather than redoes work.
+
+    Columns covered (all were plaintext before the a6b7c8d9e0f1 migration):
+      users.date_of_birth, users.retirement_params
+      sales.notes, sales.actual_tax_paid
+      loan_payments.notes
+      import_backups.data_json
+    """
+    if not _KEK or not ENCRYPTION_MASTER_KEY:
+        return
+
+    from sqlalchemy import text
+
+    _key_cache: dict[int, bytes] = {}
+
+    def _user_key(user_id: int) -> bytes | None:
+        if user_id not in _key_cache:
+            enc = db.execute(
+                text("SELECT encrypted_key FROM users WHERE id = :uid"), {"uid": user_id}
+            ).scalar()
+            if not enc:
+                return None
+            _key_cache[user_id] = decrypt_user_key(enc)
+        return _key_cache[user_id]
+
+    # (table, pk_col, user_id_col, value_col)
+    specs = [
+        ("users",         "id", "id",      "date_of_birth"),
+        ("users",         "id", "id",      "retirement_params"),
+        ("sales",         "id", "user_id", "notes"),
+        ("sales",         "id", "user_id", "actual_tax_paid"),
+        ("loan_payments", "id", "user_id", "notes"),
+        ("import_backups","id", "user_id", "data_json"),
+    ]
+
+    for table, pk_col, uid_col, val_col in specs:
+        rows = db.execute(
+            text(
+                f"SELECT {pk_col}, {uid_col}, {val_col} FROM {table}"
+                f" WHERE {val_col} IS NOT NULL"
+                f" AND {val_col} != ''"
+                f" AND CAST({val_col} AS TEXT) NOT LIKE '$ENC$%'"
+            )
+        ).fetchall()
+        if not rows:
+            continue
+        for pk, user_id, plaintext in rows:
+            key = _user_key(user_id)
+            if not key:
+                continue
+            db.execute(
+                text(f"UPDATE {table} SET {val_col} = :v WHERE {pk_col} = :pk"),
+                {"v": encrypt_value(str(plaintext), key), "pk": pk},
+            )
+        db.commit()
+
+
 # ── Per-user key operations ───────────────────────────────────────────────────
 
 def generate_user_key() -> bytes:

@@ -77,7 +77,7 @@ Both data-deletion actions are self-service, immediate, and irreversible. No adm
 
 ### The Site Operator
 
-The person or organization running this server has **technical access** to the server environment. Your core financial data — grants, loans, prices, sales, loan payments, and tax rates — is encrypted per-user with AES-256-GCM before being written to the database (the master key is generated automatically on the server on first deploy). Saved preferences (retirement scenario inputs, dashboard preferences) and your date of birth are stored as plain values rather than per-field encrypted, and rely on the database's own access controls. However, the operator holds the master key and could decrypt the encrypted data if they chose to.
+The person or organization running this server has **technical access** to the server environment. Your financial data — grants, loans, prices, sales (including notes and actual tax paid), loan payments (including notes), tax rates, date of birth, retirement scenario inputs, and pre-import backup snapshots — is encrypted per-user with AES-256-GCM before being written to the database (the master key is generated automatically on the server on first deploy). Dashboard display preferences are stored as plain values. However, the operator holds the master key and could decrypt the encrypted data if they chose to.
 
 **If you are uncomfortable with this, you have options:**
 

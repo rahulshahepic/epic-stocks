@@ -2,7 +2,7 @@ from datetime import datetime, date, timezone
 from sqlalchemy import Integer, String, Float, BigInteger, Date, DateTime, ForeignKey, Boolean, JSON, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
-from scaffold.crypto import EncryptedFloat, EncryptedInt, EncryptedString
+from scaffold.crypto import EncryptedFloat, EncryptedInt, EncryptedString, EncryptedDate, EncryptedJSON
 
 
 class User(Base):
@@ -24,12 +24,11 @@ class User(Base):
     session_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     # Profile / preferences (added for Retirement Simulator).
     # date_of_birth drives "current age" on the simulator and SS/Medicare timing.
-    date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # deferred=True prevents decryption with the wrong key when another user's
+    # request loads this row (e.g. /api/me loading inviter profiles).
+    date_of_birth: Mapped[date | None] = mapped_column(EncryptedDate, nullable=True, deferred=True)
     # JSON blob of saved retirement-sim parameters (one per user, latest wins).
-    # Stored plain because (a) viewers fetch via the shared endpoint after the
-    # owner's encryption key is set, and (b) the same dollar amounts already
-    # flow plaintext through /api/dashboard.
-    retirement_params: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    retirement_params: Mapped[dict | None] = mapped_column(EncryptedJSON, nullable=True, deferred=True)
     # Owner's saved dashboard view preferences (date mode / specific date / range).
     # Plain JSON — display state only, no financial data.
     dashboard_prefs: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -130,7 +129,7 @@ class Sale(Base):
     date: Mapped[date] = mapped_column(Date, nullable=False)
     shares: Mapped[int] = mapped_column(Integer, nullable=False)
     price_per_share: Mapped[float] = mapped_column(EncryptedFloat, nullable=False)
-    notes: Mapped[str] = mapped_column(String, nullable=False, default="")
+    notes: Mapped[str] = mapped_column(EncryptedString, nullable=False, default="")
     # If set, this sale was generated to cover this loan's payoff.
     loan_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("loans.id", ondelete="SET NULL"), nullable=True, index=True)
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
@@ -148,7 +147,7 @@ class Sale(Base):
     # Groups related sales created together (e.g. payoff + cash-out from one plan)
     sale_plan_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # User-recorded actual tax paid; overrides estimated tax in display for past sales
-    actual_tax_paid: Mapped[float | None] = mapped_column(Float, nullable=True)
+    actual_tax_paid: Mapped[float | None] = mapped_column(EncryptedFloat, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="sales")
 
@@ -162,7 +161,7 @@ class LoanPayment(Base):
     loan_id: Mapped[int] = mapped_column(Integer, ForeignKey("loans.id", ondelete="CASCADE"), nullable=False, index=True)
     date: Mapped[date] = mapped_column(Date, nullable=False)
     amount: Mapped[float] = mapped_column(EncryptedFloat, nullable=False)
-    notes: Mapped[str] = mapped_column(String, nullable=False, default="")
+    notes: Mapped[str] = mapped_column(EncryptedString, nullable=False, default="")
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
 
     user: Mapped["User"] = relationship(back_populates="loan_payments")
@@ -198,7 +197,7 @@ class ImportBackup(Base):
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     # JSON snapshot: {"grants": [...], "prices": [...], "loans": [...]}
-    data_json: Mapped[str] = mapped_column(String, nullable=False)
+    data_json: Mapped[str] = mapped_column(EncryptedString, nullable=False)
 
 
 class BlockedEmail(Base):

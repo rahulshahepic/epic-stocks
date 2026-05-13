@@ -364,16 +364,27 @@ def _get_shared_owner(invitation_id: int, viewer: User, db: Session) -> User:
     if not inv:
         raise HTTPException(404, "Shared access not found")
 
-    owner = db.get(User, inv.inviter_id)
-    if not owner:
+    # Fetch the owner's encrypted_key via raw SQL so no TypeDecorator decryption
+    # runs with the viewer's key before we've switched to the owner's key.
+    from sqlalchemy import text as _text
+    key_row = db.execute(
+        _text("SELECT id, encrypted_key FROM users WHERE id = :uid"),
+        {"uid": inv.inviter_id},
+    ).fetchone()
+    if not key_row:
         raise HTTPException(404, "User not found")
 
-    # Switch encryption context to the data owner
+    # Switch encryption context to the data owner BEFORE the ORM loads
+    # any encrypted columns on the owner's User row.
     from scaffold.crypto import encryption_enabled, decrypt_user_key, set_current_key
-    if encryption_enabled() and owner.encrypted_key:
-        set_current_key(decrypt_user_key(owner.encrypted_key))
+    if encryption_enabled() and key_row.encrypted_key:
+        set_current_key(decrypt_user_key(key_row.encrypted_key))
     else:
         set_current_key(None)
+
+    owner = db.get(User, key_row.id)
+    if not owner:
+        raise HTTPException(404, "User not found")
 
     inv.last_viewed_at = datetime.now(timezone.utc)
     db.commit()

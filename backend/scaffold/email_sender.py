@@ -112,6 +112,7 @@ def build_event_email(events: list[dict], recipient_email: str = "") -> tuple[st
 
 def build_invitation_email(inviter_name: str, token: str, short_code: str, recipient_email: str = "") -> tuple[str, str, str, dict[str, str]]:
     """Build subject, text body, HTML body, and headers for an invitation email."""
+    from html import escape as _esc
     url = app_url()
     link = f"{url}/invite?token={token}" if url else ""
     unsub_text = _unsubscribe_footer_text(recipient_email, "invite") if recipient_email else ""
@@ -132,9 +133,10 @@ def build_invitation_email(inviter_name: str, token: str, short_code: str, recip
         f'<a href="{link}" style="display:inline-block;padding:10px 24px;background:#b91c1c;'
         'color:white;border-radius:8px;text-decoration:none;font-weight:600;">Accept Invitation</a>'
     ) if link else ""
+    safe_name = _esc(inviter_name)
     html = f"""<div style="font-family: sans-serif; max-width: 480px;">
   <h2 style="color: #4472C4;">Equity Vesting Tracker</h2>
-  <p><strong>{inviter_name}</strong> has invited you to view their equity vesting data.</p>
+  <p><strong>{safe_name}</strong> has invited you to view their equity vesting data.</p>
   {f'<p style="margin:24px 0;">{btn}</p>' if btn else ''}
   <p style="margin-top:16px;font-size:13px;color:#666;">
     Or enter this code manually after signing in:<br>

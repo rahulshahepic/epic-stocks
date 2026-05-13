@@ -14,7 +14,7 @@
     header @nocache Cache-Control "no-cache"
 
     # Security headers
-    header >Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'"
+    header >Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'"
     header >X-Content-Type-Options "nosniff"
     header >X-Frame-Options "DENY"
     header >Referrer-Policy "strict-origin-when-cross-origin"
@@ -34,6 +34,8 @@
         header Cache-Control "no-store, no-cache"
         header CDN-Cache-Control "no-store"
         header Surrogate-Control "no-store"
+        # Override CSP for the maintenance page: no scripts, inline style allowed via hash
+        header Content-Security-Policy "default-src 'none'; style-src 'sha256-xMh+Nqpx9KJvmI29lubtlkoQN9gMnoH6cBHwytJ9i2I='"
         respond `<!DOCTYPE html>
 <html lang="en">
 <head>

@@ -1,4 +1,5 @@
 """Notification logic — daily check for today's events, send push + email per user."""
+import html as _html
 import json
 import logging
 import os
@@ -301,14 +302,16 @@ def send_admin_new_user_notification(user: User):
     if not admin_emails:
         return
 
+    safe_email = _html.escape(user.email)
+    safe_name = _html.escape(user.name or "N/A")
     subject = f"Equity Tracker: New user signup — {user.email}"
     text = f"New user registered:\n\nName: {user.name or 'N/A'}\nEmail: {user.email}\n"
     html = f"""<div style="font-family: sans-serif; max-width: 480px;">
   <h2 style="color: #4472C4;">Equity Tracker — New User</h2>
   <p>A new user has registered:</p>
   <table style="border-collapse: collapse;">
-    <tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">Name</td><td>{user.name or 'N/A'}</td></tr>
-    <tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">Email</td><td>{user.email}</td></tr>
+    <tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">Name</td><td>{safe_name}</td></tr>
+    <tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">Email</td><td>{safe_email}</td></tr>
   </table>
 </div>"""
 

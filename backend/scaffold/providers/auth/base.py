@@ -4,6 +4,7 @@ from typing import Protocol, runtime_checkable
 
 @dataclass
 class UserIdentity:
+    provider_name: str  # matches OIDCProviderConfig.name; used as namespace for provider_sub
     provider_sub: str   # unique identifier from provider (Google sub, Azure oid)
     email: str
     email_verified: bool

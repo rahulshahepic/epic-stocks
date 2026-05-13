@@ -67,13 +67,17 @@ async def lifespan(app):
 
 def _bootstrap_system():
     """Ensure system_settings seed rows and master key are initialized on every boot."""
-    from scaffold.crypto import initialize_master_key
+    from scaffold.crypto import initialize_master_key, backfill_plaintext_encryption
     from app.content_service import seed_content_if_empty
     db = database.SessionLocal()
     try:
         initialize_master_key(db)
     except Exception:
         logger.exception("Failed to bootstrap system settings")
+    try:
+        backfill_plaintext_encryption(db)
+    except Exception:
+        logger.exception("Failed to backfill plaintext encryption")
     try:
         seed_content_if_empty(db)
     except Exception:

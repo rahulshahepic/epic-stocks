@@ -703,8 +703,8 @@ function InterestChart({ loans, c, range }: { loans: LoanEntry[]; c: ChartColors
   return (
     <>
       <div className="mb-2 text-center text-[10px]" style={{ color: c.axis }}>
-        <span style={{ color: '#fb7185' }}>&#9632;</span> Recorded + Guaranteed{'  '}
-        {hasProjected && <><span style={{ color: '#fda4af' }}>&#9632;</span> + Est. interest-on-interest</>}
+        <span className="text-[#fb7185]">&#9632;</span> Recorded + Guaranteed{'  '}
+        {hasProjected && <><span className="text-[#fda4af]">&#9632;</span> + Est. interest-on-interest</>}
       </div>
       <ResponsiveContainer width="100%" height={220}>
         <AreaChart data={displayed} onClick={(state) => {
@@ -751,8 +751,8 @@ function LoanChart({ loanPaymentByYear, c, range, setRange, maxDate }: {
   return (
     <ChartBox title="Loan Payments by Due Year" range={range} setRange={setRange} maxDate={maxDate}>
       <div className="mb-2 text-center text-[10px]" style={{ color: c.axis }}>
-        <span style={{ color: '#4ade80' }}>&#9632;</span> Payoff sale{'  '}
-        <span style={{ color: '#fb923c' }}>&#9632;</span> Cash in
+        <span className="text-[#4ade80]">&#9632;</span> Payoff sale{'  '}
+        <span className="text-[#fb923c]">&#9632;</span> Cash in
       </div>
       <ResponsiveContainer width="100%" height={220}>
         <BarChart data={displayed}>

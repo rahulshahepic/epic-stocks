@@ -186,7 +186,7 @@ def backfill_plaintext_encryption(db) -> None:
     and the function is a no-op when encryption is not configured.  Each column
     is committed independently so a restart mid-run resumes rather than redoes work.
 
-    Columns covered (all were plaintext before the a6b7c8d9e0f1 migration):
+    Columns covered (all were plaintext before the b3c4d5e6f7a8 migration):
       users.date_of_birth, users.retirement_params
       sales.notes, sales.actual_tax_paid
       loan_payments.notes

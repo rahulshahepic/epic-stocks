@@ -235,8 +235,9 @@ def test_loan_payment_notes_encrypted_at_rest(client):
 def test_import_backup_data_json_encrypted_at_rest(client):
     """ImportBackup.data_json snapshot is stored encrypted."""
     import io
+    fixture = os.path.join(os.path.dirname(__file__), "..", "..", "test_data", "fixture.xlsx")
     register_user(client, "backup-enc@example.com")
-    with open("/home/user/epic-stocks/test_data/fixture.xlsx", "rb") as f:
+    with open(fixture, "rb") as f:
         data = f.read()
     # First import: seeds data, no backup yet (nothing to back up)
     r = client.post(

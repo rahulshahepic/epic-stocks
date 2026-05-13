@@ -11,8 +11,8 @@ TypeDecorators can store AES-256-GCM ciphertext at rest:
 The notes / data_json columns (sale, loan_payment, import_backup) are already
 VARCHAR so they need no DDL change — the TypeDecorator change is transparent.
 
-Revision ID: a6b7c8d9e0f1
-Revises: z5a6b7c8d9e0
+Revision ID: b3c4d5e6f7a8
+Revises: a6b7c8d9e0f1
 Create Date: 2026-05-12 00:00:00.000000
 
 """
@@ -22,8 +22,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = 'a6b7c8d9e0f1'
-down_revision: Union[str, Sequence[str], None] = 'z5a6b7c8d9e0'
+revision: str = 'b3c4d5e6f7a8'
+down_revision: Union[str, Sequence[str], None] = 'a6b7c8d9e0f1'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

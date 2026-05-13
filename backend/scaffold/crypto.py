@@ -31,10 +31,12 @@ Migration from single-level setup
 
 import base64
 import hashlib
+import json
 import os
 import secrets
 import time
 from contextvars import ContextVar
+from datetime import date
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from sqlalchemy import String
@@ -314,3 +316,59 @@ class EncryptedString(TypeDecorator):
         if key and isinstance(value, str) and value.startswith(_ENC_PREFIX):
             return decrypt_value(value, key)
         return value
+
+
+class EncryptedDate(TypeDecorator):
+    """date stored encrypted at rest as ISO-format string. Transparent to application code."""
+    impl = String
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        s = value.isoformat() if isinstance(value, date) else str(value)
+        key = get_current_key()
+        if key:
+            return encrypt_value(s, key)
+        return s
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        if isinstance(value, date):
+            return value
+        key = get_current_key()
+        if key and isinstance(value, str) and value.startswith(_ENC_PREFIX):
+            value = decrypt_value(value, key)
+        try:
+            return date.fromisoformat(str(value))
+        except (ValueError, TypeError):
+            return None
+
+
+class EncryptedJSON(TypeDecorator):
+    """dict/list stored encrypted at rest as a JSON string. Transparent to application code."""
+    impl = String
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        s = value if isinstance(value, str) else json.dumps(value)
+        key = get_current_key()
+        if key:
+            return encrypt_value(s, key)
+        return s
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        if isinstance(value, (dict, list)):
+            return value
+        key = get_current_key()
+        if key and isinstance(value, str) and value.startswith(_ENC_PREFIX):
+            value = decrypt_value(value, key)
+        try:
+            return json.loads(value)
+        except (ValueError, TypeError):
+            return None

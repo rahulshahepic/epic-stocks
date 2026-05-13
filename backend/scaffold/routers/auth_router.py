@@ -36,11 +36,15 @@ def _upsert_user(identity, db: Session) -> User:
     if blocked:
         raise HTTPException(status_code=403, detail="Account blocked")
 
-    user = db.query(User).filter(User.google_id == identity.provider_sub).first()
+    user = db.query(User).filter(
+        User.provider_name == identity.provider_name,
+        User.google_id == identity.provider_sub,
+    ).first()
     if not user:
         enc_key = encrypt_user_key(generate_user_key()) if encryption_enabled() else None
         user = User(
             email=email,
+            provider_name=identity.provider_name,
             google_id=identity.provider_sub,
             name=identity.name,
             picture=identity.picture,
@@ -153,6 +157,7 @@ if os.getenv("E2E_TEST") == "1":
         """Create/update a user and set the session cookie. No Bearer token returned."""
         from scaffold.providers.auth.base import UserIdentity
         identity = UserIdentity(
+            provider_name="test",
             provider_sub=f"test-{body.email}",
             email=body.email,
             email_verified=True,

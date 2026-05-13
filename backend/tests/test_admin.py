@@ -441,7 +441,7 @@ def test_test_login_sets_admin_flag(client, db_session):
         # Simulate what the test-login endpoint does
         email = ADMIN_EMAIL
         enc_key = encrypt_user_key(generate_user_key()) if encryption_enabled() else None
-        user = User(email=email, google_id=f"test-{email}", name="Admin", encrypted_key=enc_key)
+        user = User(email=email, provider_name="test", google_id=f"test-{email}", name="Admin", encrypted_key=enc_key)
         db_session.add(user)
         db_session.commit()
         db_session.refresh(user)
@@ -469,7 +469,7 @@ def test_test_login_non_admin_flag(client, db_session):
     with _admin_env():
         email = "nobody@test.com"
         enc_key = encrypt_user_key(generate_user_key()) if encryption_enabled() else None
-        user = User(email=email, google_id=f"test-{email}", name="Nobody", encrypted_key=enc_key)
+        user = User(email=email, provider_name="test", google_id=f"test-{email}", name="Nobody", encrypted_key=enc_key)
         db_session.add(user)
         db_session.commit()
         db_session.refresh(user)

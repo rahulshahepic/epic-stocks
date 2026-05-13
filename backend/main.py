@@ -671,10 +671,12 @@ def delete_my_account(user=Depends(get_current_user), db: Session = Depends(get_
 if STATIC_DIR.is_dir():
     _fastapi_app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
 
+    _STATIC_ROOT = STATIC_DIR.resolve()
+
     @_fastapi_app.get("/{path:path}")
     def spa_fallback(path: str):
-        file = STATIC_DIR / path
-        if file.is_file():
+        file = (STATIC_DIR / path).resolve()
+        if file.is_file() and str(file).startswith(str(_STATIC_ROOT) + os.sep):
             return FileResponse(file)
         return FileResponse(STATIC_DIR / "index.html")
 

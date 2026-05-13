@@ -2,7 +2,6 @@ import json
 import logging
 import os
 import secrets
-from collections import defaultdict
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -21,10 +20,7 @@ from scaffold.epic_mode import is_epic_mode, set_epic_mode
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
-# In-memory rate limiter for admin test-notify: 5 calls per hour per admin user.
-# Acceptable to be per-instance only (admin-only cost-control valve).
 _TEST_NOTIFY_LIMIT = 5
-_test_notify_counts: dict[tuple, int] = defaultdict(int)  # (user_id, hour_utc) -> count
 
 # Fixed advisory lock key for key rotation (PostgreSQL session-level lock).
 _ROTATION_LOCK_KEY = 1234567890
@@ -348,16 +344,37 @@ class TestNotifyResult(BaseModel):
     email_skipped_reason: str | None = None
 
 
+def _check_test_notify_rate(admin_id: int, db: Session) -> None:
+    """DB-backed rate limit: max _TEST_NOTIFY_LIMIT test notifications per admin per hour.
+
+    Stored in system_settings as JSON under key 'test_notify_counts'.
+    Keyed by 'user_id:YYYYMMDDHH'; entries from previous hours are pruned on each call.
+    Using the DB ensures the limit is shared across all replicas.
+    """
+    hour_str = datetime.now(timezone.utc).strftime("%Y%m%d%H")
+    full_key = f"{admin_id}:{hour_str}"
+    row = db.execute(text("SELECT value FROM system_settings WHERE key = 'test_notify_counts'")).scalar()
+    counts: dict = json.loads(row) if row else {}
+    # Prune stale hours — keep only the current hour
+    counts = {k: v for k, v in counts.items() if k.endswith(f":{hour_str}")}
+    if counts.get(full_key, 0) >= _TEST_NOTIFY_LIMIT:
+        raise HTTPException(status_code=429, detail=f"Rate limit: max {_TEST_NOTIFY_LIMIT} test notifications per hour")
+    counts[full_key] = counts.get(full_key, 0) + 1
+    serialized = json.dumps(counts)
+    if row is not None:
+        db.execute(text("UPDATE system_settings SET value = :v WHERE key = 'test_notify_counts'"), {"v": serialized})
+    else:
+        db.execute(text("INSERT INTO system_settings (key, value) VALUES ('test_notify_counts', :v)"), {"v": serialized})
+    db.commit()
+
+
 @router.post("/test-notify", response_model=TestNotifyResult)
 def admin_test_notify(
     body: TestNotifyRequest,
     admin: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ):
-    hour_key = (admin.id, datetime.now(timezone.utc).strftime("%Y%m%d%H"))
-    if _test_notify_counts[hour_key] >= _TEST_NOTIFY_LIMIT:
-        raise HTTPException(status_code=429, detail=f"Rate limit: max {_TEST_NOTIFY_LIMIT} test notifications per hour")
-    _test_notify_counts[hour_key] += 1
+    _check_test_notify_rate(admin.id, db)
 
     user = db.query(User).filter(User.id == body.user_id).first()
     if not user:

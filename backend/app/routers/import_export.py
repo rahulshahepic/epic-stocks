@@ -168,6 +168,9 @@ def import_excel(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    from scaffold.rate_limit import check_rate
+    check_rate(user.id, "import_excel", max_calls=5, window_secs=300)
+
     if not file.filename or not file.filename.lower().endswith((".xlsx", ".xls")):
         raise HTTPException(status_code=400, detail="File must be an Excel (.xlsx) file")
 
@@ -907,6 +910,9 @@ def export_excel(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    from scaffold.rate_limit import check_rate
+    check_rate(user.id, "export_excel", max_calls=10, window_secs=300)
+
     grants_db = db.query(Grant).filter(Grant.user_id == user.id).order_by(Grant.year).all()
     loans_db = db.query(Loan).filter(Loan.user_id == user.id).order_by(Loan.due_date).all()
     prices_db = db.query(Price).filter(Price.user_id == user.id).order_by(Price.effective_date).all()
@@ -1061,6 +1067,9 @@ def export_holdings_report(
     db: Session = Depends(get_db),
 ):
     """Generate a formatted holdings report Excel for a given date."""
+    from scaffold.rate_limit import check_rate
+    check_rate(user.id, "export_holdings_report", max_calls=10, window_secs=300)
+
     from dateutil.relativedelta import relativedelta
     from openpyxl.utils import get_column_letter
     from openpyxl.styles import Alignment, Border, Side
@@ -1322,9 +1331,11 @@ def export_holdings_report(
     wb.save(buf)
     content = buf.getvalue()
 
+    from urllib.parse import quote
     filename = f"Holdings_Report_{as_of}.xlsx"
+    encoded = quote(filename, safe="")
     return StreamingResponse(
         io.BytesIO(content),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"; filename*=UTF-8\'\'{encoded}'},
     )

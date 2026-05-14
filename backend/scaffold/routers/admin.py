@@ -344,27 +344,52 @@ class TestNotifyResult(BaseModel):
     email_skipped_reason: str | None = None
 
 
-def _check_test_notify_rate(admin_id: int, db: Session) -> None:
-    """DB-backed rate limit: max _TEST_NOTIFY_LIMIT test notifications per admin per hour.
+_TEST_NOTIFY_TARGET_LIMIT = 2  # max test notifications to the same target user per hour
 
-    Stored in system_settings as JSON under key 'test_notify_counts'.
-    Keyed by 'user_id:YYYYMMDDHH'; entries from previous hours are pruned on each call.
-    Using the DB ensures the limit is shared across all replicas.
+
+def _check_test_notify_rate(admin_id: int, target_user_id: int, db: Session) -> None:
+    """DB-backed rate limit for test notifications.
+
+    Two independent limits, both stored in system_settings:
+    - Per-admin:  max _TEST_NOTIFY_LIMIT sends per hour (prevents admin spam overall).
+    - Per-target: max _TEST_NOTIFY_TARGET_LIMIT sends to the same user per hour
+                  (limits blast radius of a compromised admin account).
     """
     hour_str = datetime.now(timezone.utc).strftime("%Y%m%d%H")
-    full_key = f"{admin_id}:{hour_str}"
-    row = db.execute(text("SELECT value FROM system_settings WHERE key = 'test_notify_counts'")).scalar()
-    counts: dict = json.loads(row) if row else {}
-    # Prune stale hours — keep only the current hour
-    counts = {k: v for k, v in counts.items() if k.endswith(f":{hour_str}")}
-    if counts.get(full_key, 0) >= _TEST_NOTIFY_LIMIT:
-        raise HTTPException(status_code=429, detail=f"Rate limit: max {_TEST_NOTIFY_LIMIT} test notifications per hour")
-    counts[full_key] = counts.get(full_key, 0) + 1
-    serialized = json.dumps(counts)
-    if row is not None:
-        db.execute(text("UPDATE system_settings SET value = :v WHERE key = 'test_notify_counts'"), {"v": serialized})
-    else:
-        db.execute(text("INSERT INTO system_settings (key, value) VALUES ('test_notify_counts', :v)"), {"v": serialized})
+
+    def _check_and_bump(settings_key: str, count_key: str, limit: int, label: str) -> None:
+        row = db.execute(
+            text("SELECT value FROM system_settings WHERE key = :k"), {"k": settings_key}
+        ).scalar()
+        counts: dict = json.loads(row) if row else {}
+        counts = {k: v for k, v in counts.items() if k.endswith(f":{hour_str}")}
+        if counts.get(count_key, 0) >= limit:
+            raise HTTPException(status_code=429, detail=f"Rate limit: max {limit} {label} per hour")
+        counts[count_key] = counts.get(count_key, 0) + 1
+        serialized = json.dumps(counts)
+        if row is not None:
+            db.execute(
+                text("UPDATE system_settings SET value = :v WHERE key = :k"),
+                {"v": serialized, "k": settings_key},
+            )
+        else:
+            db.execute(
+                text("INSERT INTO system_settings (key, value) VALUES (:k, :v)"),
+                {"k": settings_key, "v": serialized},
+            )
+
+    _check_and_bump(
+        "test_notify_counts",
+        f"{admin_id}:{hour_str}",
+        _TEST_NOTIFY_LIMIT,
+        "test notifications per admin",
+    )
+    _check_and_bump(
+        "test_notify_target_counts",
+        f"{target_user_id}:{hour_str}",
+        _TEST_NOTIFY_TARGET_LIMIT,
+        "test notifications to the same user",
+    )
     db.commit()
 
 
@@ -374,7 +399,7 @@ def admin_test_notify(
     admin: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ):
-    _check_test_notify_rate(admin.id, db)
+    _check_test_notify_rate(admin.id, body.user_id, db)
 
     user = db.query(User).filter(User.id == body.user_id).first()
     if not user:

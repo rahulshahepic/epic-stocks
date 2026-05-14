@@ -14,7 +14,16 @@ def app_url() -> str:
 # ── Unsubscribe token helpers (HMAC-based, stateless) ─────────────────────
 
 def _unsubscribe_secret() -> bytes:
-    """Derive a stable secret for unsubscribe HMAC tokens."""
+    """Return the secret used for unsubscribe HMAC tokens.
+
+    Prefers UNSUBSCRIBE_SECRET env var so the tokens survive JWT_SECRET rotation.
+    Falls back to a JWT_SECRET-derived value for environments that haven't set
+    the dedicated var yet (backward-compatible; links issued before setting
+    UNSUBSCRIBE_SECRET will stop working on next rotation).
+    """
+    dedicated = os.getenv("UNSUBSCRIBE_SECRET", "")
+    if dedicated:
+        return dedicated.encode()
     from scaffold.auth import JWT_SECRET
     return f"unsubscribe:{JWT_SECRET}".encode()
 

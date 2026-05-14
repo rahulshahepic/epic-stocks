@@ -168,8 +168,8 @@ def import_excel(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    from scaffold.rate_limit import check_rate
-    check_rate(user.id, "import_excel", max_calls=5, window_secs=300)
+    from scaffold.rate_limit import check_rate_db
+    check_rate_db(user.id, "import_excel", max_calls=5, window_secs=300, db=db)
 
     if not file.filename or not file.filename.lower().endswith((".xlsx", ".xls")):
         raise HTTPException(status_code=400, detail="File must be an Excel (.xlsx) file")

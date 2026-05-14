@@ -1,13 +1,16 @@
-"""Per-user in-memory rate limiter for expensive API endpoints.
+"""Per-user rate limiters for expensive API endpoints.
 
-Intentionally simple — no Redis dependency, no persistence. In a multi-replica
-deployment the effective limit is per-process, so the actual cap is
-max_calls * N replicas. For the compute-heavy endpoints guarded here this is
-still meaningful protection: even at 2-3x the stated limit, the rate is low
-enough that server resources are protected.
+check_rate      — in-memory, per-process. Effective limit scales with replica
+                  count, but still provides meaningful DoS protection for
+                  compute-heavy endpoints.
+check_rate_db   — DB-backed via system_settings JSON. Shared across all replicas;
+                  use for endpoints where a per-replica limit is insufficient.
 """
+import json
+import os
 import time
 from collections import defaultdict
+from datetime import datetime, timezone
 from threading import Lock
 
 from fastapi import HTTPException
@@ -21,7 +24,6 @@ def check_rate(user_id: int, endpoint: str, max_calls: int, window_secs: int) ->
 
     No-op when E2E_TEST=1 so the test suite can call endpoints freely.
     """
-    import os
     if os.getenv("E2E_TEST") == "1":
         return
     key = (user_id, endpoint)
@@ -32,3 +34,43 @@ def check_rate(user_id: int, endpoint: str, max_calls: int, window_secs: int) ->
             raise HTTPException(status_code=429, detail="Too many requests — please slow down")
         recent.append(now)
         _calls[key] = recent
+
+
+def check_rate_db(user_id: int, endpoint: str, max_calls: int, window_secs: int, db) -> None:
+    """DB-backed rate limit shared across all replicas.
+
+    Counts are stored in system_settings as JSON under key
+    'rate_limit:<endpoint>'. Each entry is keyed by '<user_id>:<window_start>'
+    where window_start is a Unix timestamp floored to window_secs.
+    Stale windows are pruned on every call.
+
+    No-op when E2E_TEST=1.
+    """
+    if os.getenv("E2E_TEST") == "1":
+        return
+    from sqlalchemy import text
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    window_start = (now_ts // window_secs) * window_secs
+    full_key = f"{user_id}:{window_start}"
+    settings_key = f"rate_limit:{endpoint}"
+    row = db.execute(
+        text("SELECT value FROM system_settings WHERE key = :k"), {"k": settings_key}
+    ).scalar()
+    counts: dict = json.loads(row) if row else {}
+    # Prune entries outside the current window
+    counts = {k: v for k, v in counts.items() if k.endswith(f":{window_start}")}
+    if counts.get(full_key, 0) >= max_calls:
+        raise HTTPException(status_code=429, detail="Too many requests — please slow down")
+    counts[full_key] = counts.get(full_key, 0) + 1
+    serialized = json.dumps(counts)
+    if row is not None:
+        db.execute(
+            text("UPDATE system_settings SET value = :v WHERE key = :k"),
+            {"v": serialized, "k": settings_key},
+        )
+    else:
+        db.execute(
+            text("INSERT INTO system_settings (key, value) VALUES (:k, :v)"),
+            {"k": settings_key, "v": serialized},
+        )
+    db.commit()

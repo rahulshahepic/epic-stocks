@@ -19,6 +19,8 @@ export default function Unsubscribe() {
   const [processing, setProcessing] = useState(false)
   const [done, setDone] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Fallback: whether the user is logged in when their token is invalid
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null)
 
   useEffect(() => {
     if (!token || !email || !type) {
@@ -30,8 +32,12 @@ export default function Unsubscribe() {
       .then(r => r.json())
       .then((data: UnsubscribeStatus) => {
         setStatus(data)
-        if (!data.valid) setError('This unsubscribe link is invalid or expired.')
         if (data.already_unsubscribed) setDone(true)
+        if (!data.valid) {
+          // Token expired — check if the user is already logged in so we can
+          // offer a one-click authenticated unsubscribe instead.
+          fetch('/api/me').then(r => setIsLoggedIn(r.ok)).catch(() => setIsLoggedIn(false))
+        }
       })
       .catch(() => setError('Could not verify unsubscribe link.'))
       .finally(() => setLoading(false))
@@ -45,6 +51,25 @@ export default function Unsubscribe() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, email, type }),
+      })
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => null)
+        throw new Error(body?.detail ?? `Error ${resp.status}`)
+      }
+      setDone(true)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to unsubscribe.')
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  async function handleAuthUnsubscribe() {
+    setProcessing(true)
+    setError(null)
+    try {
+      const resp = await fetch(`/api/unsubscribe/self?type=${encodeURIComponent(type)}`, {
+        method: 'POST',
       })
       if (!resp.ok) {
         const body = await resp.json().catch(() => null)
@@ -95,6 +120,7 @@ export default function Unsubscribe() {
           </div>
         )}
 
+        {/* Token is valid — normal one-click unsubscribe */}
         {status?.valid && !done && (
           <div className="rounded-lg border border-stone-200 bg-white p-5 text-left dark:border-slate-800 dark:bg-slate-900">
             <p className="mb-3 text-sm text-stone-700 dark:text-slate-300">
@@ -112,6 +138,45 @@ export default function Unsubscribe() {
             >
               {processing ? 'Processing...' : 'Unsubscribe'}
             </button>
+          </div>
+        )}
+
+        {/* Token is invalid — offer fallback based on auth state */}
+        {status && !status.valid && !done && (
+          <div className="rounded-lg border border-stone-200 bg-white p-5 text-left dark:border-slate-800 dark:bg-slate-900">
+            <p className="mb-2 text-sm font-medium text-stone-700 dark:text-slate-300">
+              This unsubscribe link has expired.
+            </p>
+            {isLoggedIn === null && (
+              <p className="text-xs text-stone-400 dark:text-slate-500">Checking your session…</p>
+            )}
+            {isLoggedIn === true && (
+              <>
+                <p className="mb-4 text-xs text-stone-500 dark:text-slate-400">
+                  You're logged in — you can still unsubscribe directly.
+                </p>
+                <button
+                  onClick={handleAuthUnsubscribe}
+                  disabled={processing}
+                  className="w-full rounded-lg bg-rose-700 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-rose-800 disabled:opacity-50"
+                >
+                  {processing ? 'Processing…' : `Unsubscribe from ${typeLabel} emails`}
+                </button>
+              </>
+            )}
+            {isLoggedIn === false && (
+              <>
+                <p className="mb-4 text-xs text-stone-500 dark:text-slate-400">
+                  Log in to manage your {typeLabel} email preferences.
+                </p>
+                <a
+                  href="/login"
+                  className="block w-full rounded-lg bg-rose-700 px-4 py-2.5 text-center text-sm font-medium text-white shadow-sm transition hover:bg-rose-800"
+                >
+                  Log in to manage preferences
+                </a>
+              </>
+            )}
           </div>
         )}
       </div>

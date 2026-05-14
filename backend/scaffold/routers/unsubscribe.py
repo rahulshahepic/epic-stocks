@@ -6,6 +6,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
+from scaffold.auth import get_current_user
+from scaffold.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -102,3 +104,23 @@ def _unsubscribe_notifications(email: str, db: Session):
     else:
         db.add(EmailPreference(user_id=user.id, enabled=0))
     db.commit()
+
+
+@router.post("/self")
+def unsubscribe_self(
+    type: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Authenticated fallback: unsubscribe the current user without a token.
+
+    Used when the HMAC link in an email has expired (e.g. after secret rotation).
+    The user must be logged in; their session replaces the token as proof of identity.
+    """
+    if type not in ("invite", "notify"):
+        raise HTTPException(400, "Invalid unsubscribe type")
+    if type == "invite":
+        _unsubscribe_invitations(user.email.lower(), db)
+    else:
+        _unsubscribe_notifications(user.email.lower(), db)
+    return {"success": True, "email": user.email, "type": type}

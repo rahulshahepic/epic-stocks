@@ -72,6 +72,7 @@ jobs:
             JWT_SECRET=$(seed_or_gen jwt_secret JWT_SECRET)
             POSTGRES_PASSWORD=$(seed_or_gen postgres_password POSTGRES_PASSWORD)
             CACHE_INVALIDATE_SECRET=$(seed_or_gen cache_invalidate_secret CACHE_INVALIDATE_SECRET)
+            UNSUBSCRIBE_SECRET=$(seed_or_gen unsubscribe_secret UNSUBSCRIBE_SECRET)
             VAPID_PRIVATE=$(seed_or_migrate_vapid vapid_private_key VAPID_PRIVATE_KEY)
             VAPID_PUBLIC=$(seed_or_migrate_vapid vapid_public_key VAPID_PUBLIC_KEY)
 
@@ -124,6 +125,7 @@ jobs:
             SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
             SMTP_FROM=${{ vars.SMTP_FROM }}
             POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+            UNSUBSCRIBE_SECRET=${UNSUBSCRIBE_SECRET}
             TRUSTED_PROXY_IPS=${{ vars.TRUSTED_PROXY_IPS }}
 
             EPIC_MODE=${{ vars.EPIC_MODE }}

@@ -1,6 +1,6 @@
 import os
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -122,12 +122,24 @@ def logout(response: Response):
 
 
 @router.post("/refresh")
-def refresh(response: Response, user: User = Depends(get_current_user)):
+def refresh(request: Request, response: Response, user: User = Depends(get_current_user)):
     """Re-issue the session cookie with a fresh expiry. Sliding-session refresh:
     the frontend calls this on app mount and on visibility change so active
     users effectively never get logged out, while genuinely inactive sessions
-    still expire after the cookie max_age."""
-    set_session_cookies(response, create_token(user.id, user.session_version))
+    still expire after the cookie max_age.
+
+    siat (session-issued-at) is carried forward unchanged so the absolute
+    session ceiling is enforced regardless of how many times the token is refreshed.
+    """
+    from scaffold.auth import _decode_token, _token_from_request
+    existing_siat = None
+    try:
+        token = _token_from_request(request)
+        if token:
+            existing_siat = int(_decode_token(token).get("siat", 0)) or None
+    except Exception:
+        pass
+    set_session_cookies(response, create_token(user.id, user.session_version, siat=existing_siat))
     return {"ok": True}
 
 

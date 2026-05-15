@@ -599,25 +599,33 @@ def test_admin_test_notify_no_subscriptions(client, make_client):
 
 
 def test_admin_test_notify_rate_limited(client, make_client, db_session):
-    """test-notify is rate-limited to 5 per hour per admin (DB-backed, replica-safe)."""
+    """test-notify enforces two independent rate limits:
+    - Per-target: max 2 sends to the same user per hour.
+    - Per-admin:  max 5 sends total per hour.
+    Both are DB-backed so the limits are shared across replicas.
+    """
     from sqlalchemy import text
     # Clear any existing rate limit state from previous test runs
-    db_session.execute(text("DELETE FROM system_settings WHERE key = 'test_notify_counts'"))
+    for k in ("test_notify_counts", "test_notify_target_counts"):
+        db_session.execute(text(f"DELETE FROM system_settings WHERE key = '{k}'"))
     db_session.commit()
 
     with _admin_env():
         _register_admin(client)
         with make_client("ratelimit@test.com") as client_target:
             target_id = client_target.get("/api/me").json()["id"]
+        with make_client("ratelimit2@test.com") as client_target2:
+            target2_id = client_target2.get("/api/me").json()["id"]
 
-        for i in range(5):
+        # Per-target limit: first 2 calls to the same user succeed
+        for i in range(2):
             resp = client.post(
                 "/api/admin/test-notify",
                 json={"user_id": target_id, "title": "Hi", "body": "Test"},
             )
-            assert resp.status_code == 200, f"Call {i+1} failed unexpectedly"
+            assert resp.status_code == 200, f"Per-target call {i+1} failed unexpectedly"
 
-        # 6th call should be rate-limited
+        # 3rd call to the same user is blocked by per-target limit
         resp = client.post(
             "/api/admin/test-notify",
             json={"user_id": target_id, "title": "Hi", "body": "Test"},
@@ -625,6 +633,14 @@ def test_admin_test_notify_rate_limited(client, make_client, db_session):
         assert resp.status_code == 429
         assert "Rate limit" in resp.json()["detail"]
 
+        # Calls to a different target still work (per-admin budget not yet exhausted)
+        resp = client.post(
+            "/api/admin/test-notify",
+            json={"user_id": target2_id, "title": "Hi", "body": "Test"},
+        )
+        assert resp.status_code == 200
+
     # Clean up
-    db_session.execute(text("DELETE FROM system_settings WHERE key = 'test_notify_counts'"))
+    for k in ("test_notify_counts", "test_notify_target_counts"):
+        db_session.execute(text(f"DELETE FROM system_settings WHERE key = '{k}'"))
     db_session.commit()

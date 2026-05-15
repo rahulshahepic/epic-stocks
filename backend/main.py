@@ -463,12 +463,13 @@ class EncryptionMiddleware:
         try:
             payload = _decode_token(token)
             user_id = int(payload["sub"])
+            token_sv = int(payload.get("sv", 0))
             own_db = db is None
             if own_db:
                 db = database.SessionLocal()
             try:
                 user = db.get(User, user_id)
-                if user and user.encrypted_key:
+                if user and user.encrypted_key and token_sv == int(user.session_version):
                     set_current_key(decrypt_user_key(user.encrypted_key))
             finally:
                 if own_db:

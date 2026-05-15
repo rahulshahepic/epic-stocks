@@ -124,6 +124,49 @@ class TestUnsubscribeAPI:
         })
         assert resp2.status_code == 200
 
+    def test_self_unsubscribe_notify(self, client):
+        """Authenticated /self endpoint works without a token (expired-link fallback)."""
+        register_user(client, "self-unsub@test.com")
+        client.put("/api/notifications/email?enabled=true")
+
+        resp = client.post("/api/unsubscribe/self?type=notify")
+        assert resp.status_code == 200
+        assert resp.json()["success"] is True
+
+        # Email prefs should now be disabled
+        pref = client.get("/api/notifications/email").json()
+        assert pref["enabled"] is False
+
+    def test_self_unsubscribe_invite(self, client):
+        register_user(client, "self-unsub-inv@test.com")
+
+        resp = client.post("/api/unsubscribe/self?type=invite")
+        assert resp.status_code == 200
+        assert resp.json()["success"] is True
+
+        # Email should now be on the opt-out list
+        from scaffold.models import InvitationOptOut
+        from tests.conftest import TEST_ENGINE
+        from sqlalchemy import text
+        with TEST_ENGINE.connect() as conn:
+            row = conn.execute(
+                text("SELECT 1 FROM invitation_opt_outs WHERE email = 'self-unsub-inv@test.com'")
+            ).fetchone()
+        assert row is not None
+
+    def test_self_unsubscribe_requires_auth(self, client):
+        # No login — should get 401
+        from starlette.testclient import TestClient
+        from main import app
+        with TestClient(app) as anon:
+            resp = anon.post("/api/unsubscribe/self?type=notify")
+        assert resp.status_code == 401
+
+    def test_self_unsubscribe_invalid_type(self, client):
+        register_user(client, "self-unsub-bad@test.com")
+        resp = client.post("/api/unsubscribe/self?type=bad")
+        assert resp.status_code == 400
+
 
 # ── Invitation opt-out blocks sending ──────────────────────────────────────
 

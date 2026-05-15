@@ -55,7 +55,7 @@ _master_key_version: int = -1   # -1 = not yet loaded
 _master_key_last_checked: float = 0.0
 _RELOAD_TTL: float = 5.0        # seconds between DB version checks
 
-_current_key: ContextVar[bytes | None] = ContextVar("_current_key", default=None)
+_current_key: ContextVar[bytearray | None] = ContextVar("_current_key", default=None)
 _ENC_PREFIX = "$ENC$"
 
 
@@ -258,11 +258,23 @@ def decrypt_user_key(encrypted: str) -> bytes:
     return _master_aesgcm().decrypt(data[:12], data[12:], None)
 
 
-def set_current_key(key: bytes | None):
-    _current_key.set(key)
+def set_current_key(key: bytes | bytearray | None):
+    if key is None:
+        # Zero the existing key before clearing — defense-in-depth against
+        # memory dumps. Only do this on explicit clear (not on replacement)
+        # because ContextVar contexts are shallow-copied into thread pools;
+        # zeroing on replacement would corrupt the shared bytearray visible
+        # in the spawning async context.
+        existing = _current_key.get()
+        if existing is not None:
+            for i in range(len(existing)):
+                existing[i] = 0
+        _current_key.set(None)
+    else:
+        _current_key.set(bytearray(key))
 
 
-def get_current_key() -> bytes | None:
+def get_current_key() -> bytearray | None:
     return _current_key.get()
 
 

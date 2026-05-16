@@ -1,19 +1,21 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Bar, Cell, CartesianGrid, ComposedChart, Line, ReferenceLine,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { api } from '../../api.ts'
-import type { LoanEntry, LoanPaymentEntry, PriceEntry, SaleEntry, TaxSettings, DashboardData } from '../../api.ts'
+import type { GrantEntry, LoanEntry, LoanPaymentEntry, PriceEntry, SaleEntry, TaxSettings, DashboardData } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { useDark } from '../../scaffold/hooks/useDark.ts'
 import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
 import {
   outstandingPrincipalAt,
   averageOutstandingPrincipal,
+  averageAdjustedPrincipal,
   averageAnnualInterest,
   annualInterestForYear,
   annualizedAppreciation,
+  unvestedPrincipalAt,
   priceRecordAt,
   computeBase,
   computeWithDeduction,
@@ -29,17 +31,23 @@ interface AllData {
   sales: SaleEntry[]
   taxSettings: TaxSettings
   dashboard: DashboardData
+  grants: GrantEntry[]
 }
 
 interface YearRow {
   year: number
   principal: number
+  unvestedPrincipal: number
   interest: number
   appreciation: number
   comp: number
   comp3y: number | null
   comp5y: number | null
+  taxEquiv: number
+  taxEquiv3y: number | null
+  taxEquiv5y: number | null
   isProjected: boolean
+  afterExit: boolean
 }
 
 function fmt$(n: number): string {
@@ -74,12 +82,40 @@ function computeYearRow(
   data: AllData,
   year: number,
   m: number,
+  c: number,
   useDeduction: boolean,
+  exitDate: string | null,
 ): YearRow | null {
   const asOf = `${year}-12-31`
   const appreciation = annualizedAppreciation(data.prices, asOf, 1)
   if (appreciation == null) return null
-  const principal = outstandingPrincipalAt(data.loans, data.payments, data.sales, asOf)
+
+  const exitYear = exitDate ? parseInt(exitDate.slice(0, 4)) : null
+  const afterExit = exitYear != null && year > exitYear
+
+  if (afterExit) {
+    return {
+      year,
+      principal: 0,
+      unvestedPrincipal: 0,
+      interest: 0,
+      appreciation,
+      comp: 0,
+      comp3y: null,
+      comp5y: null,
+      taxEquiv: 0,
+      taxEquiv3y: null,
+      taxEquiv5y: null,
+      isProjected: isYearProjected(data.prices, year),
+      afterExit: true,
+    }
+  }
+
+  const rawPrincipal = outstandingPrincipalAt(data.loans, data.payments, data.sales, asOf)
+  const unvestedPrincipal = exitDate
+    ? unvestedPrincipalAt(data.loans, data.payments, data.sales, data.grants, asOf, exitDate)
+    : 0
+  const principal = Math.max(0, rawPrincipal - unvestedPrincipal)
   const interest = annualInterestForYear(data.loans, data.payments, data.sales, year)
   const comp = useDeduction
     ? computeWithDeduction(appreciation, principal, interest, m)
@@ -88,33 +124,44 @@ function computeYearRow(
   const rolling = (w: 3 | 5): number | null => {
     const r = annualizedAppreciation(data.prices, asOf, w)
     if (r == null) return null
-    const L = averageOutstandingPrincipal(data.loans, data.payments, data.sales, asOf, w)
+    const L = exitDate
+      ? averageAdjustedPrincipal(data.loans, data.payments, data.sales, data.grants, asOf, w, exitDate)
+      : averageOutstandingPrincipal(data.loans, data.payments, data.sales, asOf, w)
     const I = averageAnnualInterest(data.loans, data.payments, data.sales, asOf, w)
     return useDeduction ? computeWithDeduction(r, L, I, m) : computeBase(r, L, I)
   }
 
+  const comp3y = rolling(3)
+  const comp5y = rolling(5)
+
   return {
     year,
     principal,
+    unvestedPrincipal,
     interest,
     appreciation,
     comp,
-    comp3y: rolling(3),
-    comp5y: rolling(5),
+    comp3y,
+    comp5y,
+    taxEquiv: computeTaxEquivSalary(comp, c, m),
+    taxEquiv3y: comp3y != null ? computeTaxEquivSalary(comp3y, c, m) : null,
+    taxEquiv5y: comp5y != null ? computeTaxEquivSalary(comp5y, c, m) : null,
     isProjected: isYearProjected(data.prices, year),
+    afterExit: false,
   }
 }
 
 interface ChartTooltipPayload {
   payload: YearRow
 }
-function ChartTooltip({ active, payload, label, c, useDeduction, m }: {
+function ChartTooltip({ active, payload, label, c, useDeduction, m, taxEquivView }: {
   active?: boolean
   payload?: ChartTooltipPayload[]
   label?: number
   c: ChartColors
   useDeduction: boolean
   m: number
+  taxEquivView: boolean
 }) {
   if (!active || !payload?.length) return null
   const row = payload[0].payload
@@ -125,7 +172,11 @@ function ChartTooltip({ active, payload, label, c, useDeduction, m }: {
       style={{ background: c.tooltipBg, color: c.tooltipText, borderColor: c.grid }}
     >
       <p className="font-semibold tabular-nums">{label}{row.isProjected ? ' · projected' : ''}</p>
-      <p className="tabular-nums">Net comp: {fmt$(row.comp)}</p>
+      {taxEquivView ? (
+        <p className="tabular-nums">Tax equiv salary: {fmt$(row.taxEquiv)}</p>
+      ) : (
+        <p className="tabular-nums">Net comp: {fmt$(row.comp)}</p>
+      )}
       <p className="tabular-nums opacity-80">Appreciation: {fmtPct(row.appreciation)}</p>
       <p className="tabular-nums opacity-80">
         Interest{useDeduction ? ' (after deduction)' : ''}: {fmt$(interestCost)}
@@ -148,11 +199,18 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
       </div>
     )
   }
+  if (row.afterExit) {
+    return (
+      <div className="rounded-lg border border-stone-200 bg-stone-50 p-4 text-xs text-gray-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+        <p className="font-medium text-gray-700 dark:text-slate-300">After planned exit — no compensation realized in {year}.</p>
+        <p className="mt-1">Unvested shares are sold back at cost basis on exit; appreciation after your exit date is not realized.</p>
+      </div>
+    )
+  }
   const gain = row.appreciation * row.principal
   const taxBenefit = row.interest * m
   const interestCost = useDeduction ? row.interest - taxBenefit : row.interest
   const afterTax = row.comp * (1 - c)
-  const equivSalary = computeTaxEquivSalary(row.comp, c, m)
   return (
     <div className="rounded-lg border border-rose-300 bg-rose-50 p-4 dark:border-rose-700 dark:bg-rose-950/30">
       <div className="flex items-baseline justify-between gap-2">
@@ -174,9 +232,17 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
           <dd className="tabular-nums text-gray-900 dark:text-slate-100">{fmtPct(row.appreciation)}</dd>
         </div>
         <div className="flex justify-between gap-2">
-          <dt className="text-gray-600 dark:text-slate-300">Loan principal (Dec 31, {row.year})</dt>
+          <dt className="text-gray-600 dark:text-slate-300">
+            {row.unvestedPrincipal > 0 ? `Vested loan principal (Dec 31, ${row.year})` : `Loan principal (Dec 31, ${row.year})`}
+          </dt>
           <dd className="tabular-nums text-gray-900 dark:text-slate-100">{fmt$(row.principal)}</dd>
         </div>
+        {row.unvestedPrincipal > 0 && (
+          <div className="flex justify-between gap-2 pl-3 text-[11px]">
+            <dt className="text-gray-500 dark:text-slate-400">Unvested principal excluded (early exit)</dt>
+            <dd className="tabular-nums text-gray-500 dark:text-slate-400">−{fmt$(row.unvestedPrincipal)}</dd>
+          </div>
+        )}
         <div className="flex justify-between gap-2 border-t border-rose-200 pt-1.5 dark:border-rose-800">
           <dt className="text-gray-600 dark:text-slate-300">Gain on principal</dt>
           <dd className="tabular-nums text-gray-900 dark:text-slate-100">{fmt$(gain)}</dd>
@@ -217,7 +283,7 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
         </div>
         <div className="flex justify-between gap-2">
           <dt className="text-gray-600 dark:text-slate-300">Equivalent pretax salary (ordinary income {fmtPct(m, 1)})</dt>
-          <dd className="tabular-nums text-gray-900 dark:text-slate-100">{fmt$(equivSalary)}</dd>
+          <dd className="tabular-nums text-gray-900 dark:text-slate-100">{fmt$(row.taxEquiv)}</dd>
         </div>
       </dl>
 
@@ -225,15 +291,29 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
         <dl className="mt-4 space-y-1.5 border-t border-rose-200 pt-3 text-xs dark:border-rose-800">
           <p className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-slate-400">Smoothed across recent years</p>
           {row.comp3y != null && (
-            <div className="flex justify-between gap-2">
-              <dt className="text-gray-600 dark:text-slate-300">3-year rolling average</dt>
-              <dd className="tabular-nums text-gray-900 dark:text-slate-100">{fmt$(row.comp3y)} / yr</dd>
+            <div className="space-y-0.5">
+              <p className="font-medium text-gray-700 dark:text-slate-200">3-year rolling average</p>
+              <div className="flex justify-between gap-2 pl-2 text-[11px]">
+                <dt className="text-gray-600 dark:text-slate-300">Equiv. pretax salary</dt>
+                <dd className="font-medium tabular-nums text-gray-900 dark:text-slate-100">{fmt$(row.taxEquiv3y ?? 0)} / yr</dd>
+              </div>
+              <div className="flex justify-between gap-2 pl-2 text-[11px]">
+                <dt className="text-gray-500 dark:text-slate-400">Net comp</dt>
+                <dd className="tabular-nums text-gray-500 dark:text-slate-400">{fmt$(row.comp3y)} / yr</dd>
+              </div>
             </div>
           )}
           {row.comp5y != null && (
-            <div className="flex justify-between gap-2">
-              <dt className="text-gray-600 dark:text-slate-300">5-year rolling average</dt>
-              <dd className="tabular-nums text-gray-900 dark:text-slate-100">{fmt$(row.comp5y)} / yr</dd>
+            <div className="space-y-0.5">
+              <p className="font-medium text-gray-700 dark:text-slate-200">5-year rolling average</p>
+              <div className="flex justify-between gap-2 pl-2 text-[11px]">
+                <dt className="text-gray-600 dark:text-slate-300">Equiv. pretax salary</dt>
+                <dd className="font-medium tabular-nums text-gray-900 dark:text-slate-100">{fmt$(row.taxEquiv5y ?? 0)} / yr</dd>
+              </div>
+              <div className="flex justify-between gap-2 pl-2 text-[11px]">
+                <dt className="text-gray-500 dark:text-slate-400">Net comp</dt>
+                <dd className="tabular-nums text-gray-500 dark:text-slate-400">{fmt$(row.comp5y)} / yr</dd>
+              </div>
             </div>
           )}
         </dl>
@@ -246,27 +326,58 @@ export default function CompCalculator() {
   const { viewing } = useViewing()
   const vid = viewing?.invitationId
   const fetcher = useCallback(async (): Promise<AllData> => {
-    const [loans, prices, sales, taxSettings, dashboard, payments] = await Promise.all([
+    const [loans, prices, sales, taxSettings, dashboard, payments, grants] = await Promise.all([
       vid ? api.getSharedLoans(vid) : api.getLoans(),
       vid ? api.getSharedPrices(vid) : api.getPrices(),
       vid ? api.getSharedSales(vid) : api.getSales(),
       vid ? api.getSharedTaxSettings(vid) : api.getTaxSettings(),
       vid ? api.getSharedDashboard(vid) : api.getDashboard(),
       vid ? Promise.resolve([] as LoanPaymentEntry[]) : api.getLoanPayments(),
+      vid ? api.getSharedGrants(vid) : api.getGrants(),
     ])
-    return { loans, payments, prices, sales, taxSettings, dashboard }
+    return { loans, payments, prices, sales, taxSettings, dashboard, grants }
   }, [vid])
   const { data, loading, error } = useApiData<AllData>(fetcher)
 
   const [deductOn, setDeductOn] = useState<boolean>(false)
   const [show3y, setShow3y] = useState<boolean>(false)
   const [show5y, setShow5y] = useState<boolean>(false)
+  const [taxEquivView, setTaxEquivView] = useState<boolean>(false)
   const [selectedYear, setSelectedYear] = useState<number | null>(null)
   const [explainerOpen, setExplainerOpen] = useState<boolean>(false)
+  const [exitDate, setExitDate] = useState<string | null>(null)
+  const retirementParamsRef = useRef<Record<string, unknown>>({})
 
   useEffect(() => {
     if (data?.taxSettings) setDeductOn(data.taxSettings.deduct_investment_interest)
   }, [data])
+
+  useEffect(() => {
+    const load = vid
+      ? api.getSharedRetirementParams(vid)
+      : api.getRetirementParams()
+    load.then(r => {
+      const params = (r.params ?? {}) as Record<string, unknown>
+      retirementParamsRef.current = params
+      if (typeof params.retirementDate === 'string' && params.retirementDate) {
+        setExitDate(params.retirementDate)
+      }
+    }).catch(() => {})
+  }, [vid])
+
+  function handleExitDateChange(date: string | null) {
+    setExitDate(date)
+    if (!vid) {
+      const merged = { ...retirementParamsRef.current }
+      if (date) {
+        merged.retirementDate = date
+      } else {
+        delete merged.retirementDate
+      }
+      retirementParamsRef.current = merged
+      api.saveRetirementParams(merged).catch(() => {})
+    }
+  }
 
   const m = data ? ordinaryRate(data.taxSettings) : 0
   const c = data ? capGainsRate(data.taxSettings) : 0
@@ -282,11 +393,11 @@ export default function CompCalculator() {
     const max = Math.max(...years)
     const out: YearRow[] = []
     for (let y = min; y <= max; y++) {
-      const row = computeYearRow(data, y, m, deductOn)
+      const row = computeYearRow(data, y, m, c, deductOn, exitDate)
       if (row) out.push(row)
     }
     return out
-  }, [data, m, deductOn])
+  }, [data, m, c, deductOn, exitDate])
 
   useEffect(() => {
     if (!rows.length) return
@@ -331,6 +442,33 @@ export default function CompCalculator() {
         )}
       </div>
 
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-stone-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+        <label className="flex items-center gap-2 text-xs font-medium text-gray-900 dark:text-slate-100">
+          <span>Planned exit date</span>
+          <input
+            type="date"
+            value={exitDate ?? ''}
+            onChange={e => handleExitDateChange(e.target.value || null)}
+            disabled={!!vid}
+            className="rounded border border-stone-300 bg-white px-2 py-0.5 text-xs tabular-nums text-gray-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 disabled:opacity-50"
+          />
+        </label>
+        {exitDate && !vid && (
+          <button
+            type="button"
+            onClick={() => handleExitDateChange(null)}
+            className="text-xs text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300"
+          >
+            Clear
+          </button>
+        )}
+        <p className="text-[10px] text-gray-500 dark:text-slate-400">
+          {exitDate
+            ? 'Comp reduced for shares that would not vest before this date. Synced with Retirement tab.'
+            : 'Optional · synced with Retirement tab · excludes unvested shares from comp calculations'}
+        </p>
+      </div>
+
       {rows.length === 0 ? (
         <div className="rounded-lg border border-stone-200 bg-white p-4 text-xs text-gray-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
           Not enough price history yet. Add Dec 31 prices for at least two consecutive years in <em>Settings → Prices</em> to see comp by year.
@@ -339,7 +477,9 @@ export default function CompCalculator() {
         <>
           <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
             <div className="mb-2 flex flex-wrap items-center gap-2">
-              <p className="text-xs font-medium text-gray-700 dark:text-slate-200">Net comp by year</p>
+              <p className="text-xs font-medium text-gray-700 dark:text-slate-200">
+                {taxEquivView ? 'Tax-equivalent salary by year' : 'Net comp by year'}
+              </p>
               <label className="ml-auto flex items-center gap-1.5 text-[11px] text-gray-600 dark:text-slate-300">
                 <span>Year</span>
                 <select
@@ -357,6 +497,16 @@ export default function CompCalculator() {
                   ))}
                 </select>
               </label>
+              <button
+                type="button"
+                onClick={() => setTaxEquivView(s => !s)}
+                title="Show tax-equivalent salary"
+                className={`rounded-full border px-2.5 py-0.5 text-[10px] font-medium ${taxEquivView
+                  ? 'border-emerald-400 bg-emerald-100 text-emerald-800 dark:border-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300'
+                  : 'border-stone-300 bg-white text-gray-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400'}`}
+              >
+                Tax equiv $
+              </button>
               <button
                 type="button"
                 onClick={() => setShow3y(s => !s)}
@@ -395,37 +545,43 @@ export default function CompCalculator() {
                   tick={{ fontSize: 10, fill: chartColors.axis }}
                   tickFormatter={(v: number) => v >= 1000 || v <= -1000 ? `${Math.round(v / 1000)}k` : `${v}`}
                 />
-                <Tooltip content={<ChartTooltip c={chartColors} useDeduction={deductOn} m={m} />} cursor={{ fill: 'rgba(225, 29, 72, 0.08)' }} />
+                <Tooltip content={<ChartTooltip c={chartColors} useDeduction={deductOn} m={m} taxEquivView={taxEquivView} />} cursor={{ fill: 'rgba(225, 29, 72, 0.08)' }} />
                 <ReferenceLine y={0} stroke={chartColors.axis} strokeWidth={1} />
                 {rows.some(r => r.year === CURRENT_YEAR) && (
                   <ReferenceLine x={CURRENT_YEAR} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />
                 )}
-                <Bar dataKey="comp" name="Net comp" radius={[2, 2, 0, 0]}>
+                {exitDate && (
+                  <ReferenceLine x={parseInt(exitDate.slice(0, 4))} stroke="#6366f1" strokeDasharray="4 4" label={{ value: 'Exit', fontSize: 10, fill: '#6366f1', position: 'insideTopRight' }} />
+                )}
+                <Bar dataKey={taxEquivView ? 'taxEquiv' : 'comp'} name={taxEquivView ? 'Tax equiv salary' : 'Net comp'} radius={[2, 2, 0, 0]}>
                   {rows.map(r => {
                     const selected = r.year === selectedYear
-                    const baseFill = selected ? '#9f1239' : '#e11d48'
+                    const baseFill = r.afterExit ? '#9ca3af' : (selected ? '#9f1239' : '#e11d48')
+                    const faded = r.isProjected || r.afterExit
                     return (
                       <Cell
                         key={r.year}
                         fill={baseFill}
-                        fillOpacity={r.isProjected ? 0.35 : 1}
-                        stroke={r.isProjected ? '#e11d48' : 'none'}
-                        strokeDasharray={r.isProjected ? '3 2' : undefined}
-                        strokeWidth={r.isProjected ? 1 : 0}
+                        fillOpacity={faded ? 0.4 : 1}
+                        stroke={faded ? baseFill : 'none'}
+                        strokeDasharray={faded ? '3 2' : undefined}
+                        strokeWidth={faded ? 1 : 0}
                       />
                     )
                   })}
                 </Bar>
                 {show3y && (
-                  <Line type="monotone" dataKey="comp3y" name="3-year average" stroke="#0284c7" strokeWidth={2} dot={false} connectNulls />
+                  <Line type="monotone" dataKey={taxEquivView ? 'taxEquiv3y' : 'comp3y'} name="3-year average" stroke="#0284c7" strokeWidth={2} dot={false} connectNulls />
                 )}
                 {show5y && (
-                  <Line type="monotone" dataKey="comp5y" name="5-year average" stroke="#7c3aed" strokeWidth={2} dot={false} connectNulls />
+                  <Line type="monotone" dataKey={taxEquivView ? 'taxEquiv5y' : 'comp5y'} name="5-year average" stroke="#7c3aed" strokeWidth={2} dot={false} connectNulls />
                 )}
               </ComposedChart>
             </ResponsiveContainer>
             <p className="mt-1 text-[10px] text-gray-500 dark:text-slate-500">
-              Pick a year above or click a bar to see its breakdown.{hasProjected ? ' Striped, lighter bars are projected (use estimated prices).' : ''}
+              Pick a year above or click a bar to see its breakdown.
+              {hasProjected ? ' Striped, lighter bars use estimated prices.' : ''}
+              {rows.some(r => r.afterExit) ? ' Gray bars are after your planned exit (comp not realized).' : ''}
             </p>
           </div>
 

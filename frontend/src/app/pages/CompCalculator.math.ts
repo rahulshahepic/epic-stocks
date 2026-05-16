@@ -3,7 +3,7 @@
 // (Dashboard.tsx:979-992) which itself mirrors backend `_compute_outstanding_principal`
 // (events.py:66). `_build_interest_pool` (events.py:493) is referenced for context.
 
-import type { LoanEntry, LoanPaymentEntry, PriceEntry, SaleEntry } from '../../api.ts'
+import type { GrantEntry, LoanEntry, LoanPaymentEntry, PriceEntry, SaleEntry } from '../../api.ts'
 
 export interface CompInputs {
   loanPrincipal: number       // L: outstanding loan principal (avg over window)
@@ -90,6 +90,77 @@ export function annualInterestForYear(
     }
   }
   return total
+}
+
+/** Principal attributable to unvested tranches as of `exitDate`.
+ *  For each grant, computes the fraction of shares that vest after `exitDate`
+ *  and applies that fraction to the outstanding Purchase + Interest loan balances
+ *  for that grant.  Tax loans are excluded (they are not share-backed). */
+export function unvestedPrincipalAt(
+  loans: LoanEntry[],
+  payments: LoanPaymentEntry[],
+  sales: SaleEntry[],
+  grants: GrantEntry[],
+  asOf: string,
+  exitDate: string,
+): number {
+  const year = parseInt(asOf.slice(0, 4))
+  const settled = new Set(
+    sales.filter(s => s.loan_id != null && s.date <= asOf).map(s => s.loan_id as number),
+  )
+  const refinanced = new Set(
+    loans.filter(l => l.refinances_loan_id != null).map(l => l.refinances_loan_id as number),
+  )
+  const paid = new Map<number, number>()
+  for (const p of payments) {
+    if (p.date <= asOf) paid.set(p.loan_id, (paid.get(p.loan_id) ?? 0) + p.amount)
+  }
+
+  let total = 0
+  for (const grant of grants) {
+    if (!grant.vest_start || grant.shares <= 0 || grant.periods <= 0) continue
+    const base = Math.floor(grant.shares / grant.periods)
+    const rem = grant.shares % grant.periods
+    let unvestedShares = 0
+    for (let p = 0; p < grant.periods; p++) {
+      if (shiftYears(grant.vest_start, p) > exitDate) {
+        unvestedShares += base + (p < rem ? 1 : 0)
+      }
+    }
+    const fraction = unvestedShares / grant.shares
+    if (fraction <= 0) continue
+    for (const l of loans) {
+      if (l.grant_year !== grant.year || l.grant_type !== grant.type) continue
+      if (l.loan_type === 'Tax') continue
+      if (l.loan_year > year) continue
+      if (settled.has(l.id) || refinanced.has(l.id)) continue
+      total += fraction * Math.max(0, l.amount - (paid.get(l.id) ?? 0))
+    }
+  }
+  return total
+}
+
+/** Average principal adjusted for unvested shares over a W-year window.
+ *  Each year's contribution = outstandingPrincipal − unvestedPrincipal. */
+export function averageAdjustedPrincipal(
+  loans: LoanEntry[],
+  payments: LoanPaymentEntry[],
+  sales: SaleEntry[],
+  grants: GrantEntry[],
+  asOf: string,
+  windowYears: number,
+  exitDate: string,
+): number {
+  const endYear = parseInt(asOf.slice(0, 4))
+  if (windowYears < 1) return 0
+  let sum = 0
+  for (let y = endYear - windowYears + 1; y <= endYear; y++) {
+    const yAsOf = `${y}-12-31`
+    const raw = outstandingPrincipalAt(loans, payments, sales, yAsOf)
+    const unvested = unvestedPrincipalAt(loans, payments, sales, grants, yAsOf, exitDate)
+    sum += Math.max(0, raw - unvested)
+  }
+  return sum / windowYears
 }
 
 /** Average annual interest over the W-year window ending at `asOf`. */

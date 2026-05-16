@@ -292,24 +292,26 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
           <p className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-slate-400">Smoothed across recent years</p>
           {row.comp3y != null && (
             <div className="space-y-0.5">
-              <div className="flex justify-between gap-2">
-                <dt className="font-medium text-gray-700 dark:text-slate-200">3-year rolling average</dt>
+              <p className="font-medium text-gray-700 dark:text-slate-200">3-year rolling average</p>
+              <div className="flex justify-between gap-2 pl-2 text-[11px]">
+                <dt className="text-gray-600 dark:text-slate-300">Equiv. pretax salary</dt>
                 <dd className="font-medium tabular-nums text-gray-900 dark:text-slate-100">{fmt$(row.taxEquiv3y ?? 0)} / yr</dd>
               </div>
               <div className="flex justify-between gap-2 pl-2 text-[11px]">
-                <dt className="text-gray-500 dark:text-slate-400">net comp</dt>
+                <dt className="text-gray-500 dark:text-slate-400">Net comp</dt>
                 <dd className="tabular-nums text-gray-500 dark:text-slate-400">{fmt$(row.comp3y)} / yr</dd>
               </div>
             </div>
           )}
           {row.comp5y != null && (
             <div className="space-y-0.5">
-              <div className="flex justify-between gap-2">
-                <dt className="font-medium text-gray-700 dark:text-slate-200">5-year rolling average</dt>
+              <p className="font-medium text-gray-700 dark:text-slate-200">5-year rolling average</p>
+              <div className="flex justify-between gap-2 pl-2 text-[11px]">
+                <dt className="text-gray-600 dark:text-slate-300">Equiv. pretax salary</dt>
                 <dd className="font-medium tabular-nums text-gray-900 dark:text-slate-100">{fmt$(row.taxEquiv5y ?? 0)} / yr</dd>
               </div>
               <div className="flex justify-between gap-2 pl-2 text-[11px]">
-                <dt className="text-gray-500 dark:text-slate-400">net comp</dt>
+                <dt className="text-gray-500 dark:text-slate-400">Net comp</dt>
                 <dd className="tabular-nums text-gray-500 dark:text-slate-400">{fmt$(row.comp5y)} / yr</dd>
               </div>
             </div>

@@ -1,19 +1,21 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Bar, Cell, CartesianGrid, ComposedChart, Line, ReferenceLine,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { api } from '../../api.ts'
-import type { LoanEntry, LoanPaymentEntry, PriceEntry, SaleEntry, TaxSettings, DashboardData } from '../../api.ts'
+import type { GrantEntry, LoanEntry, LoanPaymentEntry, PriceEntry, SaleEntry, TaxSettings, DashboardData } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { useDark } from '../../scaffold/hooks/useDark.ts'
 import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
 import {
   outstandingPrincipalAt,
   averageOutstandingPrincipal,
+  averageAdjustedPrincipal,
   averageAnnualInterest,
   annualInterestForYear,
   annualizedAppreciation,
+  unvestedPrincipalAt,
   priceRecordAt,
   computeBase,
   computeWithDeduction,
@@ -29,11 +31,13 @@ interface AllData {
   sales: SaleEntry[]
   taxSettings: TaxSettings
   dashboard: DashboardData
+  grants: GrantEntry[]
 }
 
 interface YearRow {
   year: number
   principal: number
+  unvestedPrincipal: number
   interest: number
   appreciation: number
   comp: number
@@ -43,6 +47,7 @@ interface YearRow {
   taxEquiv3y: number | null
   taxEquiv5y: number | null
   isProjected: boolean
+  afterExit: boolean
 }
 
 function fmt$(n: number): string {
@@ -79,11 +84,38 @@ function computeYearRow(
   m: number,
   c: number,
   useDeduction: boolean,
+  exitDate: string | null,
 ): YearRow | null {
   const asOf = `${year}-12-31`
   const appreciation = annualizedAppreciation(data.prices, asOf, 1)
   if (appreciation == null) return null
-  const principal = outstandingPrincipalAt(data.loans, data.payments, data.sales, asOf)
+
+  const exitYear = exitDate ? parseInt(exitDate.slice(0, 4)) : null
+  const afterExit = exitYear != null && year > exitYear
+
+  if (afterExit) {
+    return {
+      year,
+      principal: 0,
+      unvestedPrincipal: 0,
+      interest: 0,
+      appreciation,
+      comp: 0,
+      comp3y: null,
+      comp5y: null,
+      taxEquiv: 0,
+      taxEquiv3y: null,
+      taxEquiv5y: null,
+      isProjected: isYearProjected(data.prices, year),
+      afterExit: true,
+    }
+  }
+
+  const rawPrincipal = outstandingPrincipalAt(data.loans, data.payments, data.sales, asOf)
+  const unvestedPrincipal = exitDate
+    ? unvestedPrincipalAt(data.loans, data.payments, data.sales, data.grants, asOf, exitDate)
+    : 0
+  const principal = Math.max(0, rawPrincipal - unvestedPrincipal)
   const interest = annualInterestForYear(data.loans, data.payments, data.sales, year)
   const comp = useDeduction
     ? computeWithDeduction(appreciation, principal, interest, m)
@@ -92,7 +124,9 @@ function computeYearRow(
   const rolling = (w: 3 | 5): number | null => {
     const r = annualizedAppreciation(data.prices, asOf, w)
     if (r == null) return null
-    const L = averageOutstandingPrincipal(data.loans, data.payments, data.sales, asOf, w)
+    const L = exitDate
+      ? averageAdjustedPrincipal(data.loans, data.payments, data.sales, data.grants, asOf, w, exitDate)
+      : averageOutstandingPrincipal(data.loans, data.payments, data.sales, asOf, w)
     const I = averageAnnualInterest(data.loans, data.payments, data.sales, asOf, w)
     return useDeduction ? computeWithDeduction(r, L, I, m) : computeBase(r, L, I)
   }
@@ -103,6 +137,7 @@ function computeYearRow(
   return {
     year,
     principal,
+    unvestedPrincipal,
     interest,
     appreciation,
     comp,
@@ -112,6 +147,7 @@ function computeYearRow(
     taxEquiv3y: comp3y != null ? computeTaxEquivSalary(comp3y, c, m) : null,
     taxEquiv5y: comp5y != null ? computeTaxEquivSalary(comp5y, c, m) : null,
     isProjected: isYearProjected(data.prices, year),
+    afterExit: false,
   }
 }
 
@@ -163,6 +199,14 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
       </div>
     )
   }
+  if (row.afterExit) {
+    return (
+      <div className="rounded-lg border border-stone-200 bg-stone-50 p-4 text-xs text-gray-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+        <p className="font-medium text-gray-700 dark:text-slate-300">After planned exit — no compensation realized in {year}.</p>
+        <p className="mt-1">Unvested shares are sold back at cost basis on exit; appreciation after your exit date is not realized.</p>
+      </div>
+    )
+  }
   const gain = row.appreciation * row.principal
   const taxBenefit = row.interest * m
   const interestCost = useDeduction ? row.interest - taxBenefit : row.interest
@@ -188,9 +232,17 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
           <dd className="tabular-nums text-gray-900 dark:text-slate-100">{fmtPct(row.appreciation)}</dd>
         </div>
         <div className="flex justify-between gap-2">
-          <dt className="text-gray-600 dark:text-slate-300">Loan principal (Dec 31, {row.year})</dt>
+          <dt className="text-gray-600 dark:text-slate-300">
+            {row.unvestedPrincipal > 0 ? `Vested loan principal (Dec 31, ${row.year})` : `Loan principal (Dec 31, ${row.year})`}
+          </dt>
           <dd className="tabular-nums text-gray-900 dark:text-slate-100">{fmt$(row.principal)}</dd>
         </div>
+        {row.unvestedPrincipal > 0 && (
+          <div className="flex justify-between gap-2 pl-3 text-[11px]">
+            <dt className="text-gray-500 dark:text-slate-400">Unvested principal excluded (early exit)</dt>
+            <dd className="tabular-nums text-gray-500 dark:text-slate-400">−{fmt$(row.unvestedPrincipal)}</dd>
+          </div>
+        )}
         <div className="flex justify-between gap-2 border-t border-rose-200 pt-1.5 dark:border-rose-800">
           <dt className="text-gray-600 dark:text-slate-300">Gain on principal</dt>
           <dd className="tabular-nums text-gray-900 dark:text-slate-100">{fmt$(gain)}</dd>
@@ -272,15 +324,16 @@ export default function CompCalculator() {
   const { viewing } = useViewing()
   const vid = viewing?.invitationId
   const fetcher = useCallback(async (): Promise<AllData> => {
-    const [loans, prices, sales, taxSettings, dashboard, payments] = await Promise.all([
+    const [loans, prices, sales, taxSettings, dashboard, payments, grants] = await Promise.all([
       vid ? api.getSharedLoans(vid) : api.getLoans(),
       vid ? api.getSharedPrices(vid) : api.getPrices(),
       vid ? api.getSharedSales(vid) : api.getSales(),
       vid ? api.getSharedTaxSettings(vid) : api.getTaxSettings(),
       vid ? api.getSharedDashboard(vid) : api.getDashboard(),
       vid ? Promise.resolve([] as LoanPaymentEntry[]) : api.getLoanPayments(),
+      vid ? api.getSharedGrants(vid) : api.getGrants(),
     ])
-    return { loans, payments, prices, sales, taxSettings, dashboard }
+    return { loans, payments, prices, sales, taxSettings, dashboard, grants }
   }, [vid])
   const { data, loading, error } = useApiData<AllData>(fetcher)
 
@@ -290,10 +343,39 @@ export default function CompCalculator() {
   const [taxEquivView, setTaxEquivView] = useState<boolean>(false)
   const [selectedYear, setSelectedYear] = useState<number | null>(null)
   const [explainerOpen, setExplainerOpen] = useState<boolean>(false)
+  const [exitDate, setExitDate] = useState<string | null>(null)
+  const retirementParamsRef = useRef<Record<string, unknown>>({})
 
   useEffect(() => {
     if (data?.taxSettings) setDeductOn(data.taxSettings.deduct_investment_interest)
   }, [data])
+
+  useEffect(() => {
+    const load = vid
+      ? api.getSharedRetirementParams(vid)
+      : api.getRetirementParams()
+    load.then(r => {
+      const params = (r.params ?? {}) as Record<string, unknown>
+      retirementParamsRef.current = params
+      if (typeof params.retirementDate === 'string' && params.retirementDate) {
+        setExitDate(params.retirementDate)
+      }
+    }).catch(() => {})
+  }, [vid])
+
+  function handleExitDateChange(date: string | null) {
+    setExitDate(date)
+    if (!vid) {
+      const merged = { ...retirementParamsRef.current }
+      if (date) {
+        merged.retirementDate = date
+      } else {
+        delete merged.retirementDate
+      }
+      retirementParamsRef.current = merged
+      api.saveRetirementParams(merged).catch(() => {})
+    }
+  }
 
   const m = data ? ordinaryRate(data.taxSettings) : 0
   const c = data ? capGainsRate(data.taxSettings) : 0
@@ -309,11 +391,11 @@ export default function CompCalculator() {
     const max = Math.max(...years)
     const out: YearRow[] = []
     for (let y = min; y <= max; y++) {
-      const row = computeYearRow(data, y, m, c, deductOn)
+      const row = computeYearRow(data, y, m, c, deductOn, exitDate)
       if (row) out.push(row)
     }
     return out
-  }, [data, m, deductOn])
+  }, [data, m, c, deductOn, exitDate])
 
   useEffect(() => {
     if (!rows.length) return
@@ -356,6 +438,33 @@ export default function CompCalculator() {
             </p>
           </div>
         )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-stone-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+        <label className="flex items-center gap-2 text-xs font-medium text-gray-900 dark:text-slate-100">
+          <span>Planned exit date</span>
+          <input
+            type="date"
+            value={exitDate ?? ''}
+            onChange={e => handleExitDateChange(e.target.value || null)}
+            disabled={!!vid}
+            className="rounded border border-stone-300 bg-white px-2 py-0.5 text-xs tabular-nums text-gray-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 disabled:opacity-50"
+          />
+        </label>
+        {exitDate && !vid && (
+          <button
+            type="button"
+            onClick={() => handleExitDateChange(null)}
+            className="text-xs text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300"
+          >
+            Clear
+          </button>
+        )}
+        <p className="text-[10px] text-gray-500 dark:text-slate-400">
+          {exitDate
+            ? 'Comp reduced for shares that would not vest before this date. Synced with Retirement tab.'
+            : 'Optional · synced with Retirement tab · excludes unvested shares from comp calculations'}
+        </p>
       </div>
 
       {rows.length === 0 ? (
@@ -439,18 +548,22 @@ export default function CompCalculator() {
                 {rows.some(r => r.year === CURRENT_YEAR) && (
                   <ReferenceLine x={CURRENT_YEAR} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />
                 )}
+                {exitDate && (
+                  <ReferenceLine x={parseInt(exitDate.slice(0, 4))} stroke="#6366f1" strokeDasharray="4 4" label={{ value: 'Exit', fontSize: 10, fill: '#6366f1', position: 'insideTopRight' }} />
+                )}
                 <Bar dataKey={taxEquivView ? 'taxEquiv' : 'comp'} name={taxEquivView ? 'Tax equiv salary' : 'Net comp'} radius={[2, 2, 0, 0]}>
                   {rows.map(r => {
                     const selected = r.year === selectedYear
-                    const baseFill = selected ? '#9f1239' : '#e11d48'
+                    const baseFill = r.afterExit ? '#9ca3af' : (selected ? '#9f1239' : '#e11d48')
+                    const faded = r.isProjected || r.afterExit
                     return (
                       <Cell
                         key={r.year}
                         fill={baseFill}
-                        fillOpacity={r.isProjected ? 0.35 : 1}
-                        stroke={r.isProjected ? '#e11d48' : 'none'}
-                        strokeDasharray={r.isProjected ? '3 2' : undefined}
-                        strokeWidth={r.isProjected ? 1 : 0}
+                        fillOpacity={faded ? 0.4 : 1}
+                        stroke={faded ? baseFill : 'none'}
+                        strokeDasharray={faded ? '3 2' : undefined}
+                        strokeWidth={faded ? 1 : 0}
                       />
                     )
                   })}
@@ -464,7 +577,9 @@ export default function CompCalculator() {
               </ComposedChart>
             </ResponsiveContainer>
             <p className="mt-1 text-[10px] text-gray-500 dark:text-slate-500">
-              Pick a year above or click a bar to see its breakdown.{hasProjected ? ' Striped, lighter bars are projected (use estimated prices).' : ''}
+              Pick a year above or click a bar to see its breakdown.
+              {hasProjected ? ' Striped, lighter bars use estimated prices.' : ''}
+              {rows.some(r => r.afterExit) ? ' Gray bars are after your planned exit (comp not realized).' : ''}
             </p>
           </div>
 

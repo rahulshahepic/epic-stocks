@@ -4,6 +4,8 @@ import {
   annualInterestForYear,
   averageAnnualInterest,
   averageOutstandingPrincipal,
+  averageAdjustedPrincipal,
+  unvestedPrincipalAt,
   priceAt,
   priceRecordAt,
   annualizedAppreciation,
@@ -15,7 +17,7 @@ import {
   ordinaryRate,
   capGainsRate,
 } from '../app/pages/CompCalculator.math.ts'
-import type { LoanEntry, LoanPaymentEntry, PriceEntry, SaleEntry } from '../api.ts'
+import type { GrantEntry, LoanEntry, LoanPaymentEntry, PriceEntry, SaleEntry } from '../api.ts'
 
 function loan(over: Partial<LoanEntry> = {}): LoanEntry {
   return {
@@ -243,6 +245,106 @@ describe('computeAll', () => {
     expect(totals.withDeduction).toBe(370_000)
     expect(totals.afterTaxBase).toBeCloseTo(262_500, 1)
     expect(totals.taxEquivBase).toBeCloseTo(437_500, 1)
+  })
+})
+
+function grant(over: Partial<GrantEntry> = {}): GrantEntry {
+  return {
+    id: 1, version: 1, year: 2020, type: 'Purchase',
+    shares: 10000, price: 10, vest_start: '2021-03-01', periods: 5,
+    exercise_date: '2020-09-01', dp_shares: 0, election_83b: false,
+    ...over,
+  }
+}
+
+describe('unvestedPrincipalAt', () => {
+  // Grant: 10,000 shares, 5 periods, vest_start 2021-03-01
+  // Tranches vest: 2021-03-01, 2022-03-01, 2023-03-01, 2024-03-01, 2025-03-01 (2000 each)
+  const g = grant()
+  const l = loan({ id: 1, amount: 100000, grant_year: 2020, grant_type: 'Purchase' })
+
+  it('returns 0 when no exit date effect (all vested)', () => {
+    // Exit after all tranches vest → 0 unvested
+    expect(unvestedPrincipalAt([l], [], [], [g], '2025-12-31', '2026-01-01')).toBe(0)
+  })
+
+  it('returns full loan when exit before any vesting', () => {
+    // Exit 2020-12-31 → all 5 tranches unvested → fraction=1
+    expect(unvestedPrincipalAt([l], [], [], [g], '2025-12-31', '2020-12-31')).toBe(100000)
+  })
+
+  it('computes correct unvested fraction mid-vesting', () => {
+    // Exit 2023-06-30 → tranches 2021, 2022, 2023 vest (6000/10000); 2024, 2025 unvested (4000/10000)
+    const unvested = unvestedPrincipalAt([l], [], [], [g], '2025-12-31', '2023-06-30')
+    expect(unvested).toBeCloseTo(40000, 1) // 40% × $100,000
+  })
+
+  it('includes Interest loans in the unvested fraction', () => {
+    const interestLoan = loan({ id: 2, loan_type: 'Interest', amount: 4000, loan_year: 2021, grant_year: 2020, grant_type: 'Purchase' })
+    // Exit 2023-06-30: 40% unvested on both Purchase ($100k) and Interest ($4k)
+    const unvested = unvestedPrincipalAt([l, interestLoan], [], [], [g], '2025-12-31', '2023-06-30')
+    expect(unvested).toBeCloseTo(41600, 1) // 40% × $104,000
+  })
+
+  it('excludes Tax loans from unvested calculation', () => {
+    const taxLoan = loan({ id: 3, loan_type: 'Tax', amount: 5000, grant_year: 2020, grant_type: 'Purchase' })
+    const unvested = unvestedPrincipalAt([l, taxLoan], [], [], [g], '2025-12-31', '2023-06-30')
+    expect(unvested).toBeCloseTo(40000, 1) // Tax loan not included
+  })
+
+  it('skips grants with no matching loans', () => {
+    const otherGrant = grant({ id: 2, year: 2022, type: 'Bonus' })
+    // otherGrant has no loans → no additional unvested principal
+    expect(unvestedPrincipalAt([l], [], [], [g, otherGrant], '2025-12-31', '2023-06-30')).toBeCloseTo(40000, 1)
+  })
+
+  it('handles remainder shares correctly for uneven periods', () => {
+    // 10 shares, 3 periods → tranches: 4, 3, 3 (base=3, rem=1)
+    const g3 = grant({ shares: 10, periods: 3, vest_start: '2021-01-01' })
+    const l3 = loan({ id: 10, amount: 90000, grant_year: 2020, grant_type: 'Purchase' })
+    // Exit after first tranche (2021-01-01) only: 2nd (2022) and 3rd (2023) unvested = 6/10
+    const unvested = unvestedPrincipalAt([l3], [], [], [g3], '2025-12-31', '2021-06-01')
+    expect(unvested).toBeCloseTo(54000, 1) // 60% × $90,000
+  })
+
+  it('subtracts early payments before applying fraction', () => {
+    const payment: LoanPaymentEntry = { id: 1, version: 1, loan_id: 1, date: '2022-01-01', amount: 20000, notes: '' }
+    // Outstanding = $80,000; 40% unvested = $32,000
+    const unvested = unvestedPrincipalAt([l], [payment], [], [g], '2025-12-31', '2023-06-30')
+    expect(unvested).toBeCloseTo(32000, 1)
+  })
+
+  it('returns 0 for grant with zero shares', () => {
+    const emptyGrant = grant({ shares: 0 })
+    expect(unvestedPrincipalAt([l], [], [], [emptyGrant], '2025-12-31', '2023-06-30')).toBe(0)
+  })
+})
+
+describe('averageAdjustedPrincipal', () => {
+  const g = grant()
+  const l = loan({ id: 1, amount: 100000, grant_year: 2020, grant_type: 'Purchase' })
+
+  it('equals outstandingPrincipalAt when all vested by exit date', () => {
+    // Exit in 2030, all tranches already vest by 2025 → no adjustment
+    const adjusted = averageAdjustedPrincipal([l], [], [], [g], '2025-12-31', 1, '2030-01-01')
+    expect(adjusted).toBe(100000)
+  })
+
+  it('reduces principal by unvested fraction', () => {
+    // Exit 2023-06-30: 40% unvested → effective = $60,000; 1-year window
+    const adjusted = averageAdjustedPrincipal([l], [], [], [g], '2025-12-31', 1, '2023-06-30')
+    expect(adjusted).toBeCloseTo(60000, 1)
+  })
+
+  it('averages adjusted values across the window', () => {
+    // 3-year window ending 2025; same unvested fraction each year
+    // Exit 2023-06-30 → all three years have 40% unvested: avg = $60,000
+    const adjusted = averageAdjustedPrincipal([l], [], [], [g], '2025-12-31', 3, '2023-06-30')
+    expect(adjusted).toBeCloseTo(60000, 1)
+  })
+
+  it('returns 0 for zero-length window', () => {
+    expect(averageAdjustedPrincipal([l], [], [], [g], '2025-12-31', 0, '2030-01-01')).toBe(0)
   })
 })
 

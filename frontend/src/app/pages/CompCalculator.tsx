@@ -39,6 +39,9 @@ interface YearRow {
   comp: number
   comp3y: number | null
   comp5y: number | null
+  taxEquiv: number
+  taxEquiv3y: number | null
+  taxEquiv5y: number | null
   isProjected: boolean
 }
 
@@ -74,6 +77,7 @@ function computeYearRow(
   data: AllData,
   year: number,
   m: number,
+  c: number,
   useDeduction: boolean,
 ): YearRow | null {
   const asOf = `${year}-12-31`
@@ -93,14 +97,20 @@ function computeYearRow(
     return useDeduction ? computeWithDeduction(r, L, I, m) : computeBase(r, L, I)
   }
 
+  const comp3y = rolling(3)
+  const comp5y = rolling(5)
+
   return {
     year,
     principal,
     interest,
     appreciation,
     comp,
-    comp3y: rolling(3),
-    comp5y: rolling(5),
+    comp3y,
+    comp5y,
+    taxEquiv: computeTaxEquivSalary(comp, c, m),
+    taxEquiv3y: comp3y != null ? computeTaxEquivSalary(comp3y, c, m) : null,
+    taxEquiv5y: comp5y != null ? computeTaxEquivSalary(comp5y, c, m) : null,
     isProjected: isYearProjected(data.prices, year),
   }
 }
@@ -108,13 +118,14 @@ function computeYearRow(
 interface ChartTooltipPayload {
   payload: YearRow
 }
-function ChartTooltip({ active, payload, label, c, useDeduction, m }: {
+function ChartTooltip({ active, payload, label, c, useDeduction, m, taxEquivView }: {
   active?: boolean
   payload?: ChartTooltipPayload[]
   label?: number
   c: ChartColors
   useDeduction: boolean
   m: number
+  taxEquivView: boolean
 }) {
   if (!active || !payload?.length) return null
   const row = payload[0].payload
@@ -125,7 +136,11 @@ function ChartTooltip({ active, payload, label, c, useDeduction, m }: {
       style={{ background: c.tooltipBg, color: c.tooltipText, borderColor: c.grid }}
     >
       <p className="font-semibold tabular-nums">{label}{row.isProjected ? ' · projected' : ''}</p>
-      <p className="tabular-nums">Net comp: {fmt$(row.comp)}</p>
+      {taxEquivView ? (
+        <p className="tabular-nums">Tax equiv salary: {fmt$(row.taxEquiv)}</p>
+      ) : (
+        <p className="tabular-nums">Net comp: {fmt$(row.comp)}</p>
+      )}
       <p className="tabular-nums opacity-80">Appreciation: {fmtPct(row.appreciation)}</p>
       <p className="tabular-nums opacity-80">
         Interest{useDeduction ? ' (after deduction)' : ''}: {fmt$(interestCost)}
@@ -152,7 +167,6 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
   const taxBenefit = row.interest * m
   const interestCost = useDeduction ? row.interest - taxBenefit : row.interest
   const afterTax = row.comp * (1 - c)
-  const equivSalary = computeTaxEquivSalary(row.comp, c, m)
   return (
     <div className="rounded-lg border border-rose-300 bg-rose-50 p-4 dark:border-rose-700 dark:bg-rose-950/30">
       <div className="flex items-baseline justify-between gap-2">
@@ -217,7 +231,7 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
         </div>
         <div className="flex justify-between gap-2">
           <dt className="text-gray-600 dark:text-slate-300">Equivalent pretax salary (ordinary income {fmtPct(m, 1)})</dt>
-          <dd className="tabular-nums text-gray-900 dark:text-slate-100">{fmt$(equivSalary)}</dd>
+          <dd className="tabular-nums text-gray-900 dark:text-slate-100">{fmt$(row.taxEquiv)}</dd>
         </div>
       </dl>
 
@@ -225,15 +239,27 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
         <dl className="mt-4 space-y-1.5 border-t border-rose-200 pt-3 text-xs dark:border-rose-800">
           <p className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-slate-400">Smoothed across recent years</p>
           {row.comp3y != null && (
-            <div className="flex justify-between gap-2">
-              <dt className="text-gray-600 dark:text-slate-300">3-year rolling average</dt>
-              <dd className="tabular-nums text-gray-900 dark:text-slate-100">{fmt$(row.comp3y)} / yr</dd>
+            <div className="space-y-0.5">
+              <div className="flex justify-between gap-2">
+                <dt className="font-medium text-gray-700 dark:text-slate-200">3-year rolling average</dt>
+                <dd className="font-medium tabular-nums text-gray-900 dark:text-slate-100">{fmt$(row.taxEquiv3y ?? 0)} / yr</dd>
+              </div>
+              <div className="flex justify-between gap-2 pl-2 text-[11px]">
+                <dt className="text-gray-500 dark:text-slate-400">net comp</dt>
+                <dd className="tabular-nums text-gray-500 dark:text-slate-400">{fmt$(row.comp3y)} / yr</dd>
+              </div>
             </div>
           )}
           {row.comp5y != null && (
-            <div className="flex justify-between gap-2">
-              <dt className="text-gray-600 dark:text-slate-300">5-year rolling average</dt>
-              <dd className="tabular-nums text-gray-900 dark:text-slate-100">{fmt$(row.comp5y)} / yr</dd>
+            <div className="space-y-0.5">
+              <div className="flex justify-between gap-2">
+                <dt className="font-medium text-gray-700 dark:text-slate-200">5-year rolling average</dt>
+                <dd className="font-medium tabular-nums text-gray-900 dark:text-slate-100">{fmt$(row.taxEquiv5y ?? 0)} / yr</dd>
+              </div>
+              <div className="flex justify-between gap-2 pl-2 text-[11px]">
+                <dt className="text-gray-500 dark:text-slate-400">net comp</dt>
+                <dd className="tabular-nums text-gray-500 dark:text-slate-400">{fmt$(row.comp5y)} / yr</dd>
+              </div>
             </div>
           )}
         </dl>
@@ -261,6 +287,7 @@ export default function CompCalculator() {
   const [deductOn, setDeductOn] = useState<boolean>(false)
   const [show3y, setShow3y] = useState<boolean>(false)
   const [show5y, setShow5y] = useState<boolean>(false)
+  const [taxEquivView, setTaxEquivView] = useState<boolean>(false)
   const [selectedYear, setSelectedYear] = useState<number | null>(null)
   const [explainerOpen, setExplainerOpen] = useState<boolean>(false)
 
@@ -282,7 +309,7 @@ export default function CompCalculator() {
     const max = Math.max(...years)
     const out: YearRow[] = []
     for (let y = min; y <= max; y++) {
-      const row = computeYearRow(data, y, m, deductOn)
+      const row = computeYearRow(data, y, m, c, deductOn)
       if (row) out.push(row)
     }
     return out
@@ -339,7 +366,9 @@ export default function CompCalculator() {
         <>
           <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
             <div className="mb-2 flex flex-wrap items-center gap-2">
-              <p className="text-xs font-medium text-gray-700 dark:text-slate-200">Net comp by year</p>
+              <p className="text-xs font-medium text-gray-700 dark:text-slate-200">
+                {taxEquivView ? 'Tax-equivalent salary by year' : 'Net comp by year'}
+              </p>
               <label className="ml-auto flex items-center gap-1.5 text-[11px] text-gray-600 dark:text-slate-300">
                 <span>Year</span>
                 <select
@@ -357,6 +386,16 @@ export default function CompCalculator() {
                   ))}
                 </select>
               </label>
+              <button
+                type="button"
+                onClick={() => setTaxEquivView(s => !s)}
+                title="Show tax-equivalent salary"
+                className={`rounded-full border px-2.5 py-0.5 text-[10px] font-medium ${taxEquivView
+                  ? 'border-emerald-400 bg-emerald-100 text-emerald-800 dark:border-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300'
+                  : 'border-stone-300 bg-white text-gray-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400'}`}
+              >
+                Tax equiv $
+              </button>
               <button
                 type="button"
                 onClick={() => setShow3y(s => !s)}
@@ -395,12 +434,12 @@ export default function CompCalculator() {
                   tick={{ fontSize: 10, fill: chartColors.axis }}
                   tickFormatter={(v: number) => v >= 1000 || v <= -1000 ? `${Math.round(v / 1000)}k` : `${v}`}
                 />
-                <Tooltip content={<ChartTooltip c={chartColors} useDeduction={deductOn} m={m} />} cursor={{ fill: 'rgba(225, 29, 72, 0.08)' }} />
+                <Tooltip content={<ChartTooltip c={chartColors} useDeduction={deductOn} m={m} taxEquivView={taxEquivView} />} cursor={{ fill: 'rgba(225, 29, 72, 0.08)' }} />
                 <ReferenceLine y={0} stroke={chartColors.axis} strokeWidth={1} />
                 {rows.some(r => r.year === CURRENT_YEAR) && (
                   <ReferenceLine x={CURRENT_YEAR} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />
                 )}
-                <Bar dataKey="comp" name="Net comp" radius={[2, 2, 0, 0]}>
+                <Bar dataKey={taxEquivView ? 'taxEquiv' : 'comp'} name={taxEquivView ? 'Tax equiv salary' : 'Net comp'} radius={[2, 2, 0, 0]}>
                   {rows.map(r => {
                     const selected = r.year === selectedYear
                     const baseFill = selected ? '#9f1239' : '#e11d48'
@@ -417,10 +456,10 @@ export default function CompCalculator() {
                   })}
                 </Bar>
                 {show3y && (
-                  <Line type="monotone" dataKey="comp3y" name="3-year average" stroke="#0284c7" strokeWidth={2} dot={false} connectNulls />
+                  <Line type="monotone" dataKey={taxEquivView ? 'taxEquiv3y' : 'comp3y'} name="3-year average" stroke="#0284c7" strokeWidth={2} dot={false} connectNulls />
                 )}
                 {show5y && (
-                  <Line type="monotone" dataKey="comp5y" name="5-year average" stroke="#7c3aed" strokeWidth={2} dot={false} connectNulls />
+                  <Line type="monotone" dataKey={taxEquivView ? 'taxEquiv5y' : 'comp5y'} name="5-year average" stroke="#7c3aed" strokeWidth={2} dot={false} connectNulls />
                 )}
               </ComposedChart>
             </ResponsiveContainer>

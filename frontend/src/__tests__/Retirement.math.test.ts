@@ -3,6 +3,7 @@ import {
   MEAN_BLOCK_LEN,
   computeAnnualTax,
   computeFanPercentiles,
+  computeRiskOfRuinTable,
   computeSpousePayrollTax,
   DEFAULT_PARAMS,
   finalPercentiles,
@@ -1251,5 +1252,98 @@ describe('simulate — spouse work income', () => {
     const a = simulate({ ...base, includeSpouse: false, spouseHasEmployerHI: false })
     const b = simulate({ ...base, includeSpouse: false, spouseHasEmployerHI: true })
     expect(a.medianFinalM).toBeCloseTo(b.medianFinalM, 4)
+  })
+})
+
+describe('computeRiskOfRuinTable', () => {
+  const base = {
+    ...DEFAULT_PARAMS,
+    currentAge: 60,
+    endAge: 85,
+    epicExit: 2,
+    paths: 500,
+    seed: 99,
+  }
+
+  it('produces correct age columns anchored to retirement and end age', () => {
+    const result = simulate(base)
+    const table = computeRiskOfRuinTable(result)
+    // Must start at currentAge and end at endAge
+    expect(table.ages[0]).toBe(60)
+    expect(table.ages[table.ages.length - 1]).toBe(85)
+    // All ages must be present in fanAges
+    const fanAgeSet = new Set(result.fanAges)
+    for (const a of table.ages) expect(fanAgeSet.has(a)).toBe(true)
+    // No duplicates
+    expect(new Set(table.ages).size).toBe(table.ages.length)
+  })
+
+  it('deduplicates when endAge falls on a 5-year boundary', () => {
+    // endAge 80 = currentAge 60 + 20, which is already in the candidate list
+    const r = simulate({ ...base, endAge: 80 })
+    const table = computeRiskOfRuinTable(r)
+    expect(table.ages.filter(a => a === 80).length).toBe(1)
+  })
+
+  it('produces 5 threshold rows with ascending wealth values', () => {
+    const result = simulate(base)
+    const table = computeRiskOfRuinTable(result)
+    expect(table.thresholds.length).toBe(5)
+    expect(table.thresholdPctiles).toEqual([10, 25, 50, 75, 90])
+    for (let i = 1; i < table.thresholds.length; i++) {
+      expect(table.thresholds[i]).toBeGreaterThanOrEqual(table.thresholds[i - 1])
+    }
+  })
+
+  it('cells dimensions match ages × thresholds', () => {
+    const result = simulate(base)
+    const table = computeRiskOfRuinTable(result)
+    expect(table.cells.length).toBe(table.thresholds.length)
+    for (const row of table.cells) expect(row.length).toBe(table.ages.length)
+  })
+
+  it('pReach is in [0,1] and decreases or stays flat with higher thresholds at the same age', () => {
+    const result = simulate(base)
+    const table = computeRiskOfRuinTable(result)
+    // Higher wealth threshold → fewer paths qualify → pReach non-increasing
+    for (let ci = 0; ci < table.ages.length; ci++) {
+      for (let ri = 1; ri < table.thresholds.length; ri++) {
+        expect(table.cells[ri][ci].pReach).toBeLessThanOrEqual(table.cells[ri - 1][ci].pReach + 1e-10)
+      }
+    }
+  })
+
+  it('pRuinGiven is in [0,1] and decreases or stays flat with higher wealth at the same age', () => {
+    const result = simulate(base)
+    const table = computeRiskOfRuinTable(result)
+    // More wealth → lower conditional ruin risk
+    for (let ci = 0; ci < table.ages.length; ci++) {
+      for (let ri = 1; ri < table.thresholds.length; ri++) {
+        const higher = table.cells[ri][ci].pRuinGiven
+        const lower  = table.cells[ri - 1][ci].pRuinGiven
+        expect(higher).toBeLessThanOrEqual(lower + 0.05)  // allow small noise from sampling
+      }
+    }
+  })
+
+  it('n equals qualifying path count and matches pReach', () => {
+    const result = simulate(base)
+    const table = computeRiskOfRuinTable(result)
+    const N = result.ruined.length
+    for (const row of table.cells) {
+      for (const cell of row) {
+        expect(cell.n).toBeGreaterThanOrEqual(0)
+        expect(cell.n).toBeLessThanOrEqual(N)
+        expect(Math.abs(cell.pReach - cell.n / N)).toBeLessThan(1e-10)
+      }
+    }
+  })
+
+  it('short horizon (12-year) still produces valid table', () => {
+    const r = simulate({ ...base, currentAge: 63, endAge: 75, paths: 200, seed: 7 })
+    const table = computeRiskOfRuinTable(r)
+    expect(table.ages.length).toBeGreaterThanOrEqual(1)
+    expect(table.ages[0]).toBe(63)
+    expect(table.ages[table.ages.length - 1]).toBe(75)
   })
 })

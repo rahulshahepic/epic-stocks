@@ -19,6 +19,7 @@ import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
 import { useMe, updateMeCache } from '../../scaffold/hooks/useMe.ts'
 import {
   computeFanPercentiles,
+  computeRiskOfRuinTable,
   computeSpousePayrollTax,
   DEFAULT_PARAMS,
   finalPercentiles,
@@ -36,6 +37,7 @@ import {
   SS_WAGE_BASE_REAL,
   ssAdjustment,
   type FanPercentiles,
+  type RiskOfRuinTable,
   type Scenario,
   type SimParams,
   type SimResult,
@@ -433,6 +435,7 @@ export default function Retirement() {
   const [savingDOB, setSavingDOB] = useState(false)
   const [spouseDOB, setSpouseDOB] = useState<string | null>(null)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [showRuinTable, setShowRuinTable] = useState(false)
 
   const vid = viewing?.invitationId
 
@@ -639,6 +642,7 @@ export default function Retirement() {
   const fanData = useMemo(() => (result ? buildFanData(computeFanPercentiles(result)) : []), [result])
   const histData = useMemo(() => (result ? histogram(result, 30) : null), [result])
   const finalRows = useMemo(() => (result ? finalPercentiles(result) : []), [result])
+  const ruinTable = useMemo(() => (result ? computeRiskOfRuinTable(result) : null), [result])
 
   const dataMaxY = useMemo(() => {
     if (!fanData.length) return 0
@@ -1381,6 +1385,19 @@ export default function Retirement() {
               Runs that ran out of money show as $0.
             </p>
           </div>
+
+          {ruinTable && (
+            <div>
+              <button
+                onClick={() => setShowRuinTable(v => !v)}
+                className="flex w-full items-center justify-between rounded-lg border border-stone-200 bg-white px-4 py-3 text-xs font-medium text-gray-700 hover:bg-stone-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                <span>Risk of ruin — conditional analysis</span>
+                <span className="text-stone-400 dark:text-slate-500">{showRuinTable ? '▲' : '▼'}</span>
+              </button>
+              {showRuinTable && <RiskOfRuinPanel table={ruinTable} />}
+            </div>
+          )}
         </>
       )}
 
@@ -1393,6 +1410,74 @@ export default function Retirement() {
       <footer className="pt-4 text-center text-[10px] text-gray-400 dark:text-slate-500">
         Everything runs in your browser — no data leaves your device. All amounts are in today's purchasing power. This is a planning tool, not financial advice.
       </footer>
+    </div>
+  )
+}
+
+function ruinCellBg(p: number): string {
+  if (p < 0.05) return 'bg-emerald-50 dark:bg-emerald-900/20'
+  if (p < 0.10) return 'bg-lime-50 dark:bg-lime-900/20'
+  if (p < 0.20) return 'bg-amber-50 dark:bg-amber-900/20'
+  if (p < 0.30) return 'bg-orange-50 dark:bg-orange-900/20'
+  return 'bg-rose-50 dark:bg-rose-900/20'
+}
+
+function ruinCellText(p: number): string {
+  if (p < 0.05) return 'text-emerald-700 dark:text-emerald-400'
+  if (p < 0.10) return 'text-lime-700 dark:text-lime-400'
+  if (p < 0.20) return 'text-amber-700 dark:text-amber-400'
+  if (p < 0.30) return 'text-orange-700 dark:text-orange-400'
+  return 'text-rose-700 dark:text-rose-400'
+}
+
+function RiskOfRuinPanel({ table }: { table: RiskOfRuinTable }) {
+  const refAge = table.ages[Math.min(1, table.ages.length - 1)]
+  return (
+    <div className="mt-px rounded-b-lg border border-t-0 border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+      <p className="mb-1 text-[10px] text-stone-500 dark:text-slate-400">
+        Each cell: <strong className="font-medium text-stone-600 dark:text-slate-300">chance of reaching that wealth at that age</strong> (top) ·{' '}
+        <strong className="font-medium text-stone-600 dark:text-slate-300">chance of eventually going broke if you do</strong> (bottom, color-coded).
+        Wealth rows are percentiles of all simulated portfolios at age {refAge}.
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs tabular-nums">
+          <thead>
+            <tr className="text-[10px] uppercase tracking-wider text-stone-500 dark:text-slate-400">
+              <th className="px-2 py-1 text-left font-medium">If I have at least…</th>
+              {table.ages.map(age => (
+                <th key={age} className="px-2 py-1 text-center font-medium">Age {age}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {table.thresholds.map((threshold, ri) => (
+              <tr key={ri} className="border-t border-stone-100 dark:border-slate-800">
+                <td className="whitespace-nowrap px-2 py-1.5 font-medium text-gray-700 dark:text-slate-200">
+                  {fmt$M(threshold)}
+                  <span className="ml-1 text-[10px] font-normal text-stone-400 dark:text-slate-500">
+                    p{table.thresholdPctiles[ri]}
+                  </span>
+                </td>
+                {table.cells[ri].map((cell, ci) => (
+                  <td key={ci} className={`px-2 py-1.5 text-center ${ruinCellBg(cell.pRuinGiven)}`}>
+                    <div className="text-[10px] text-stone-500 dark:text-slate-400">
+                      {fmtPct(cell.pReach, 0)} reach
+                    </div>
+                    <div className={`text-xs font-semibold ${ruinCellText(cell.pRuinGiven)}`}>
+                      {fmtPct(cell.pRuinGiven, 1)} ruin
+                    </div>
+                    {cell.n < 50 && (
+                      <div className="mt-0.5 text-[9px] text-stone-400 dark:text-slate-500">
+                        n={cell.n}
+                      </div>
+                    )}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }

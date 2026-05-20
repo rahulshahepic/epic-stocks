@@ -2209,6 +2209,74 @@ export interface FanPercentiles {
   p95: number
 }
 
+export interface RiskOfRuinCell {
+  pReach: number      // fraction of all N paths with wealth >= threshold at this age
+  pRuinGiven: number  // fraction of qualifying paths that eventually ruined
+  n: number           // qualifying path count (low → low-confidence)
+}
+
+export interface RiskOfRuinTable {
+  ages: number[]
+  thresholds: number[]        // in $M, ascending
+  thresholdPctiles: number[]  // e.g. [10, 25, 50, 75, 90]
+  cells: RiskOfRuinCell[][]   // [thresholdIdx][ageIdx]
+}
+
+const RUIN_PCTILES = [10, 25, 50, 75, 90]
+
+export function computeRiskOfRuinTable(result: SimResult): RiskOfRuinTable {
+  const { fanAges, fanWealth, ruined } = result
+  const N = ruined.length
+
+  const currentAge = fanAges[0]
+  const endAge = fanAges[fanAges.length - 1]
+  const candidates = [
+    currentAge,
+    currentAge + 5,
+    currentAge + 10,
+    currentAge + 15,
+    currentAge + 20,
+    endAge,
+  ]
+  const fanAgeSet = new Set(fanAges)
+  const seen = new Set<number>()
+  const ages: number[] = []
+  for (const a of candidates) {
+    if (fanAgeSet.has(a) && !seen.has(a)) {
+      seen.add(a)
+      ages.push(a)
+    }
+  }
+
+  // Use first fan year with variance (index 1) as reference for threshold percentiles.
+  const refFanIdx = Math.min(1, fanAges.length - 1)
+  const refSorted = Float64Array.from(fanWealth[refFanIdx])
+  refSorted.sort()
+  const thresholds = RUIN_PCTILES.map(p => quantile(refSorted, p / 100))
+
+  const ageIndices = ages.map(a => fanAges.indexOf(a))
+  const cells: RiskOfRuinCell[][] = thresholds.map(threshold =>
+    ageIndices.map(fanIdx => {
+      const w = fanWealth[fanIdx]
+      let qualifying = 0
+      let ruinedAfter = 0
+      for (let i = 0; i < N; i++) {
+        if (w[i] >= threshold) {
+          qualifying++
+          if (ruined[i]) ruinedAfter++
+        }
+      }
+      return {
+        pReach: qualifying / N,
+        pRuinGiven: qualifying > 0 ? ruinedAfter / qualifying : 0,
+        n: qualifying,
+      }
+    })
+  )
+
+  return { ages, thresholds, thresholdPctiles: RUIN_PCTILES, cells }
+}
+
 export function computeFanPercentiles(result: SimResult): FanPercentiles[] {
   return result.fanWealth.map((arr, idx) => {
     const sorted = Float64Array.from(arr)

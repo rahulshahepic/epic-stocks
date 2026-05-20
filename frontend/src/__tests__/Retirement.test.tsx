@@ -147,11 +147,11 @@ describe('Retirement page', () => {
     // JSX puts the formatted percent and the surrounding text in separate
     // text nodes, so we match against the parent <p>'s combined textContent
     // rather than a regex that has to span the JSX boundary.
-    await waitFor(() => expect(screen.getByText(/Wisconsin progressive brackets/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/Wisconsin-specific/)).toBeInTheDocument())
     await waitFor(() => {
       const found = screen.getByText((_content, element) => {
         const txt = element?.textContent ?? ''
-        return element?.tagName === 'P' && txt.includes('9.85%') && txt.includes('on capital gains')
+        return element?.tagName === 'P' && txt.includes('9.85%') && txt.includes('capital gains rate')
       })
       expect(found).toBeInTheDocument()
     })

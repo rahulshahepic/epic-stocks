@@ -987,7 +987,7 @@ export default function Retirement() {
         <p className="mt-3 text-[10px] leading-snug text-stone-500 dark:text-slate-400">
           Your spending number is what you actually keep and spend — taxes are handled automatically on top.
           Each year the simulator calculates federal income tax, capital gains tax on investment growth, and any Medicare surcharges (for higher incomes after 65), then pulls that from your accounts separately.
-          Capital gains rate comes from <em>Settings → Tax Rates</em>.
+          Your capital gains rate is {fmtPct(params.stateLTCGRate, 2)} (from <em>Settings → Tax Rates</em>).
           <br /><span className="text-stone-400 dark:text-slate-500">Wisconsin-specific: Social Security isn't taxed at the state level. 401(k) withdrawals use WI's progressive income brackets.</span>
         </p>
       </div>

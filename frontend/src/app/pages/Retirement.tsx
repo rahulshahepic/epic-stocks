@@ -155,10 +155,10 @@ function SpendRampInfo({
   return (
     <>
       <p className="mb-1">
-        We assume you'd cut back on spending if your nest egg shrank. When your wealth is at <strong>100% or more</strong> of where you started, you spend your <strong>default</strong>. When it drops to <strong>{floorPct}%</strong> or less, you've trimmed all the way down to your <strong>floor</strong>. In between, it scales smoothly.
+        Most people spend less when their savings shrink — fewer vacations, skip the renovation, eat out less. This models that. When your portfolio is at <strong>100%+</strong> of where you started, you spend the <strong>default</strong>. Once it drops to <strong>{floorPct}%</strong>, you're at the <strong>floor</strong>. It scales smoothly in between.
       </p>
       <p className="mb-1">
-        This is what people actually do — travel less, dine out less, skip the kitchen remodel — rather than spending the same in a recession as in a boom. The bigger the gap between default and floor, the more flexibility you're saying you have.
+        The bigger the gap between your default and floor, the more flexibility you're telling the simulator you have.
       </p>
       {startingTotal > 0 && defaultSpend > 0 && (
         <table className="my-2 w-full border-collapse text-[11px]">
@@ -681,20 +681,19 @@ export default function Retirement() {
               Your money is split into stocks, bonds, and cash based on the percentages you set.
             </p>
             <p className="mb-2">
-              We track your wealth across four buckets so taxes come out right:
-              {' '}<strong>cash</strong> (no tax to spend),
-              {' '}<strong>taxable brokerage</strong> (you only owe capital-gains tax on the growth portion, not the original money you put in),
-              {' '}<strong>401(k) / Traditional IRA</strong> (locked until age {RETIREMENT_ACCESS_AGE}, then taxed like a paycheck), and
-              {' '}<strong>Roth</strong> (locked until age {RETIREMENT_ACCESS_AGE}, then totally tax-free).
-              Each year we spend from cash first, then taxable brokerage, then 401(k), then Roth — and we calculate what you'd actually owe in federal + state taxes that year.
-              If you retire before age {RETIREMENT_ACCESS_AGE} and your cash + brokerage run dry, the path counts as failed even if your 401(k) is still full — you can't legally touch it yet.
-              Social Security kicks in at the age you choose, adjusted for early/late claiming.
+              We track four account types because they're taxed differently:
+              {' '}<strong>cash</strong> (spend it freely, no tax),
+              {' '}<strong>brokerage</strong> (you only owe tax on the gains — not the money you originally put in),
+              {' '}<strong>401(k) / IRA</strong> (locked until age {RETIREMENT_ACCESS_AGE}, then taxed like regular income when you withdraw), and
+              {' '}<strong>Roth</strong> (locked until age {RETIREMENT_ACCESS_AGE}, then completely tax-free).
+              We pull from cash first, then brokerage, then 401(k), then Roth — and calculate your tax bill each year.
+              If you retire before {RETIREMENT_ACCESS_AGE}, the 401(k) and Roth are off-limits, so those early years have to run on cash and brokerage.
             </p>
             <p className="mb-2">
-              All dollar amounts are shown in <strong>today's purchasing power</strong> — so $200K spend in year 30 still means "what $200K buys today," not the inflated headline number.
-              {' '}<strong>Default spend</strong> is what you live on excluding health insurance, which we add separately — your premium estimate before age 65, then Medicare cost (with extra fees if your income is high) after.
-              Got a spouse? We add their Social Security stream and switch your tax brackets to married-filing-jointly.
-              We also model that you'd cut spending if your nest egg shrank — at full wealth you spend the default, dropping toward your floor if things go badly.
+              Your <strong>spending</strong> number is what you actually spend — groceries, housing, travel, everything. Think of it as your annual take-home needs, not a gross salary. Taxes are figured out separately and added on top.
+              Health insurance is tracked separately too — your estimated premium before 65, then Medicare after.
+              All dollar amounts are in <strong>today's dollars</strong>, so "$150K in year 20" still means what $150K buys right now.
+              Got a spouse? Their Social Security is added and your tax brackets switch to the married rate.
             </p>
             <p>
               Your Epic exit number is pre-filled from the dashboard's "If you exited" estimate for the retirement date you pick. State tax rates come from <em>Settings → Tax Rates</em>.
@@ -943,7 +942,7 @@ export default function Retirement() {
             min={0}
             step={5}
             suffix="$K/yr"
-            hint="What you live on per year (excluding health insurance) · auto-set to 3% of your portfolio"
+            hint="Your actual annual expenses — housing, food, travel, etc. (not counting health insurance) · auto-set to 3% of your portfolio"
           />
           <NumInput
             label="Minimum spend (floor)"
@@ -982,13 +981,14 @@ export default function Retirement() {
             className="rounded"
           />
           <span className="text-gray-700 dark:text-slate-200">
-            Switch to Medicare costs at age 65 <span className="text-gray-400 dark:text-slate-500">(replaces your premium with base Medicare, plus an income-based surcharge if your taxable income is high)</span>
+            Switch to Medicare costs at age 65 <span className="text-gray-400 dark:text-slate-500">(replaces your premium with standard Medicare; higher earners pay extra)</span>
           </span>
         </label>
         <p className="mt-3 text-[10px] leading-snug text-stone-500 dark:text-slate-400">
-          Each year we calculate what you'd actually owe in taxes: federal income brackets (with the bigger married-filing-jointly brackets if you've added a spouse), federal capital-gains tax on investment growth, an extra 3.8% surcharge on investment income for higher earners, Medicare income surcharges after 65, Wisconsin progressive brackets (3.5%/4.4%/5.3%/7.65%) on 401(k) withdrawals, and {fmtPct(params.stateLTCGRate, 2)} on capital gains (from <em>Settings → Tax Rates</em> — this should be your post-30%-WI-exclusion effective rate, ~5.36% at the top WI bracket).
-          We spend from your accounts in order: cash first (no tax), then brokerage (only the growth is taxed), then 401(k), then Roth — and the 401(k)/Roth stay locked until age {RETIREMENT_ACCESS_AGE}.
-          <br /><span className="text-stone-400 dark:text-slate-500">Wisconsin assumption: Social Security is exempt from state tax (it still counts toward federal); state income tax uses WI's progressive brackets, not a flat marginal rate. Each dollar lands in its actual WI bracket since we know your full income each year.</span>
+          Your spending number is what you actually keep and spend — taxes are handled automatically on top.
+          Each year the simulator calculates federal income tax, capital gains tax on investment growth, and any Medicare surcharges (for higher incomes after 65), then pulls that from your accounts separately.
+          Capital gains rate comes from <em>Settings → Tax Rates</em>.
+          <br /><span className="text-stone-400 dark:text-slate-500">Wisconsin-specific: Social Security isn't taxed at the state level. 401(k) withdrawals use WI's progressive income brackets.</span>
         </p>
       </div>
 

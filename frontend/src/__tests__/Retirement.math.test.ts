@@ -11,6 +11,7 @@ import {
   fraFromBirthYear,
   HISTORICAL_RETURNS,
   histogram,
+  interpolateGlide,
   irmaaSurcharge,
   migrateLoadedParams,
   mulberry32,
@@ -106,8 +107,8 @@ describe('ssAdjustment', () => {
 })
 
 describe('block bootstrap', () => {
-  it('uses MEAN_BLOCK_LEN of 240 months (≈ 20-year blocks, stationary bootstrap)', () => {
-    expect(MEAN_BLOCK_LEN).toBe(240)
+  it('uses MEAN_BLOCK_LEN of 120 months (≈ 10-year blocks, stationary bootstrap)', () => {
+    expect(MEAN_BLOCK_LEN).toBe(120)
   })
 
   it('30-year retiree at 2.3% WR has near-zero ruin in historical scenario', () => {
@@ -1252,6 +1253,73 @@ describe('simulate — spouse work income', () => {
     const a = simulate({ ...base, includeSpouse: false, spouseHasEmployerHI: false })
     const b = simulate({ ...base, includeSpouse: false, spouseHasEmployerHI: true })
     expect(a.medianFinalM).toBeCloseTo(b.medianFinalM, 4)
+  })
+})
+
+describe('interpolateGlide', () => {
+  it('empty points returns defaults derived from stockPct/bondPct', () => {
+    // 70/20 → equityPct=0.9, wS=7/9, wB=2/9, cashPct=0.1
+    const r = interpolateGlide(65, [], 0.7, 0.2)
+    expect(r.wS).toBeCloseTo(0.7 / 0.9, 9)
+    expect(r.wB).toBeCloseTo(0.2 / 0.9, 9)
+    expect(r.cashPct).toBeCloseTo(0.1, 9)
+  })
+
+  it('clamps to first entry when age is before first point', () => {
+    const pts = [{ age: 65, stockPct: 0.6, bondPct: 0.3 }, { age: 75, stockPct: 0.4, bondPct: 0.5 }]
+    const r = interpolateGlide(60, pts, 0.7, 0.2)
+    const sp = 0.6, bp = 0.3
+    expect(r.wS).toBeCloseTo(sp / (sp + bp), 9)
+    expect(r.cashPct).toBeCloseTo(Math.max(0, 1 - sp - bp), 9)
+  })
+
+  it('clamps to last entry when age is after last point', () => {
+    const pts = [{ age: 65, stockPct: 0.6, bondPct: 0.3 }, { age: 75, stockPct: 0.4, bondPct: 0.5 }]
+    const r = interpolateGlide(80, pts, 0.7, 0.2)
+    const sp = 0.4, bp = 0.5
+    expect(r.wS).toBeCloseTo(sp / (sp + bp), 9)
+    expect(r.wB).toBeCloseTo(bp / (sp + bp), 9)
+    expect(r.cashPct).toBeCloseTo(Math.max(0, 1 - sp - bp), 9)
+  })
+
+  it('linearly interpolates between two points', () => {
+    const pts = [{ age: 60, stockPct: 0.8, bondPct: 0.1 }, { age: 80, stockPct: 0.4, bondPct: 0.5 }]
+    // At age 70 = midpoint → stockPct=0.6, bondPct=0.3
+    const r = interpolateGlide(70, pts, 0.7, 0.2)
+    const sp = 0.6, bp = 0.3
+    expect(r.wS).toBeCloseTo(sp / (sp + bp), 6)
+    expect(r.wB).toBeCloseTo(bp / (sp + bp), 6)
+    expect(r.cashPct).toBeCloseTo(Math.max(0, 1 - sp - bp), 6)
+  })
+})
+
+describe('annual rebalancing', () => {
+  it('tax-advantaged rebalancing produces different median final wealth than no rebalancing', () => {
+    // 70/20 stock/bond split with enough paths to observe the effect.
+    // With rebalancing, the allocation is snapped back annually (only in tax-advantaged);
+    // without rebalancing, allocations drift with market returns. They should differ.
+    const base = {
+      ...DEFAULT_PARAMS,
+      epicExit: 0,
+      traditional: 5,    // tax-advantaged bucket to rebalance within
+      roth: 2,
+      taxableAdditional: 0,
+      stockPct: 0.7,
+      bondPct: 0.2,
+      defaultSpend: 200,
+      minSpend: 150,
+      healthInsurance: 0,
+      zeroHIPost65: false,
+      currentAge: 65,
+      endAge: 90,
+      ssMonthly: 0,
+      paths: 1000,
+      seed: 55,
+    }
+    const noRebal = simulate({ ...base, rebalance: 'none' })
+    const rebal = simulate({ ...base, rebalance: 'tax-advantaged' })
+    // They should not be identical — rebalancing changes the path.
+    expect(rebal.medianFinalM).not.toBe(noRebal.medianFinalM)
   })
 })
 

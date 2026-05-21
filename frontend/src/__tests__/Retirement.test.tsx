@@ -185,7 +185,7 @@ describe('Retirement page', () => {
     const bondsInput = screen.getByLabelText(/^Bonds/) as HTMLInputElement
     await user.clear(bondsInput)
     await user.type(bondsInput, '50')
-    expect(screen.getByText(/Stocks \+ bonds add to more than 100%/i)).toBeInTheDocument()
+    expect(screen.getByText(/Over 100%/i)).toBeInTheDocument()
   })
 
   it('shows SS adjustment factor and adjusted monthly amount', async () => {

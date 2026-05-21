@@ -875,180 +875,177 @@ export default function Retirement() {
                 ⚠ You'd retire {bridgeYears.toFixed(1)} years before you can touch your 401(k)/Roth. Those bridge years have to come from your cash and brokerage — make sure they can cover it.
               </p>
             )}
-
-            <div className="mt-4 border-t border-stone-200 pt-3 dark:border-slate-700">
-              <label className="flex cursor-pointer items-center gap-2 text-[11px] font-semibold text-gray-700 dark:text-slate-200">
-                <input
-                  type="checkbox"
-                  checked={params.glidePoints.length > 0}
-                  onChange={e => {
-                    if (e.target.checked) {
-                      const startAge = Math.round(params.currentAge)
-                      const endAge = Math.round(params.endAge)
-                      const s0 = Math.round(params.stockPct * 100)
-                      const b0 = Math.round(params.bondPct * 100)
-                      const s1 = Math.max(s0 - 10, 30)
-                      const b1 = Math.min(b0 + 10, 60)
-                      update('glidePoints', [
-                        { age: startAge, stockPct: s0 / 100, bondPct: b0 / 100 },
-                        { age: endAge, stockPct: s1 / 100, bondPct: b1 / 100 },
-                      ] as GlidePoint[])
-                    } else {
-                      update('glidePoints', [])
-                    }
-                  }}
-                  className="rounded"
-                />
-                Portfolio Glide Path
-              </label>
-              <p className="mt-0.5 text-[10px] text-stone-500 dark:text-slate-400">
-                Override the fixed allocation with a target that shifts with age (e.g. gradually reduce stocks as you age into retirement).
-              </p>
-
-              {params.glidePoints.length > 0 && (
-                <div className="mt-2">
-                  <table className="w-full text-[11px]">
-                    <thead>
-                      <tr className="border-b border-stone-200 dark:border-slate-700">
-                        <th className="pb-1 pr-2 text-left font-medium text-gray-600 dark:text-slate-400">Age</th>
-                        <th className="pb-1 pr-2 text-left font-medium text-gray-600 dark:text-slate-400">Stocks %</th>
-                        <th className="pb-1 pr-2 text-left font-medium text-gray-600 dark:text-slate-400">Bonds %</th>
-                        <th className="pb-1 pr-2 text-left font-medium text-gray-600 dark:text-slate-400">Cash % (derived)</th>
-                        <th className="pb-1 text-left font-medium text-gray-600 dark:text-slate-400"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {[...params.glidePoints]
-                        .sort((a, b) => a.age - b.age)
-                        .map((pt, idx) => {
-                          const cashD = Math.max(0, 100 - Math.round(pt.stockPct * 100) - Math.round(pt.bondPct * 100))
-                          const invalid = Math.round(pt.stockPct * 100) + Math.round(pt.bondPct * 100) > 100
-                          return (
-                            <tr key={idx} className="border-b border-stone-100 dark:border-slate-800">
-                              <td className="py-1 pr-2">
-                                <input
-                                  type="number"
-                                  value={pt.age}
-                                  min={params.currentAge}
-                                  max={params.endAge}
-                                  step={1}
-                                  onChange={e => {
-                                    const newPts = [...params.glidePoints]
-                                    const realIdx = newPts.indexOf(pt)
-                                    if (realIdx >= 0) newPts[realIdx] = { ...pt, age: Number(e.target.value) }
-                                    update('glidePoints', newPts)
-                                  }}
-                                  className="w-16 rounded border border-stone-300 bg-white px-1 py-0.5 tabular-nums text-gray-900 focus:border-rose-400 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
-                                />
-                              </td>
-                              <td className="py-1 pr-2">
-                                <input
-                                  type="number"
-                                  value={Math.round(pt.stockPct * 100)}
-                                  min={0}
-                                  max={100}
-                                  step={1}
-                                  onChange={e => {
-                                    const newPts = [...params.glidePoints]
-                                    const realIdx = newPts.indexOf(pt)
-                                    if (realIdx >= 0) newPts[realIdx] = { ...pt, stockPct: Math.max(0, Math.min(100, Number(e.target.value))) / 100 }
-                                    update('glidePoints', newPts)
-                                  }}
-                                  className={`w-16 rounded border px-1 py-0.5 tabular-nums focus:outline-none ${invalid ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/20' : 'border-stone-300 bg-white dark:border-slate-600 dark:bg-slate-700'} text-gray-900 focus:border-rose-400 dark:text-slate-100`}
-                                />
-                              </td>
-                              <td className="py-1 pr-2">
-                                <input
-                                  type="number"
-                                  value={Math.round(pt.bondPct * 100)}
-                                  min={0}
-                                  max={100}
-                                  step={1}
-                                  onChange={e => {
-                                    const newPts = [...params.glidePoints]
-                                    const realIdx = newPts.indexOf(pt)
-                                    if (realIdx >= 0) newPts[realIdx] = { ...pt, bondPct: Math.max(0, Math.min(100, Number(e.target.value))) / 100 }
-                                    update('glidePoints', newPts)
-                                  }}
-                                  className={`w-16 rounded border px-1 py-0.5 tabular-nums focus:outline-none ${invalid ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/20' : 'border-stone-300 bg-white dark:border-slate-600 dark:bg-slate-700'} text-gray-900 focus:border-rose-400 dark:text-slate-100`}
-                                />
-                              </td>
-                              <td className={`py-1 pr-2 tabular-nums ${invalid ? 'text-rose-600 dark:text-rose-400' : 'text-gray-500 dark:text-slate-400'}`}>
-                                {invalid ? 'Over 100%' : `${cashD}%`}
-                              </td>
-                              <td className="py-1">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const newPts = [...params.glidePoints]
-                                    const realIdx = newPts.indexOf(pt)
-                                    if (realIdx >= 0) newPts.splice(realIdx, 1)
-                                    update('glidePoints', newPts)
-                                  }}
-                                  className="text-stone-400 hover:text-rose-600 dark:text-slate-500 dark:hover:text-rose-400"
-                                  aria-label="Remove row"
-                                >
-                                  ×
-                                </button>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                    </tbody>
-                  </table>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const sorted = [...params.glidePoints].sort((a, b) => a.age - b.age)
-                      const lastAge = sorted.length > 0 ? sorted[sorted.length - 1].age : params.currentAge
-                      const newAge = Math.min(lastAge + 5, params.endAge)
-                      const lastPt = sorted[sorted.length - 1] ?? { stockPct: params.stockPct, bondPct: params.bondPct }
-                      update('glidePoints', [...params.glidePoints, { age: newAge, stockPct: lastPt.stockPct, bondPct: lastPt.bondPct }])
-                    }}
-                    className="mt-2 text-[11px] font-medium text-rose-700 hover:text-rose-800 dark:text-rose-300 dark:hover:text-rose-200"
-                  >
-                    + Add Row
-                  </button>
-                </div>
-              )}
-            </div>
           </div>
         )}
 
-        <p className="mt-4 mb-2 text-[11px] font-semibold text-gray-700 dark:text-slate-200">
-          How your money is invested (cash fills in the rest)
-        </p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <NumInput
-            label="Stocks"
-            value={Math.round(params.stockPct * 100)}
-            onChange={v => update('stockPct', Math.max(0, Math.min(100, v)) / 100)}
-            min={0}
-            max={100}
-            step={1}
-            suffix="%"
-          />
-          <NumInput
-            label="Bonds"
-            value={Math.round(params.bondPct * 100)}
-            onChange={v => update('bondPct', Math.max(0, Math.min(100, v)) / 100)}
-            min={0}
-            max={100}
-            step={1}
-            suffix="%"
-          />
-          <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-gray-700 dark:text-slate-200">
-              Cash <span className="ml-1 text-gray-400 dark:text-slate-500">(%)</span>
-            </span>
-            <div className="rounded border border-stone-200 bg-stone-50 px-2 py-1 text-sm tabular-nums text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-              {(cashPct * 100).toFixed(0)}%
-            </div>
-            <span className={`text-[10px] ${allocOver ? 'text-rose-600 dark:text-rose-400' : 'text-gray-400 dark:text-slate-500'}`}>
-              {allocOver ? 'Stocks + bonds add to more than 100% — adjust' : 'Whatever\'s left after stocks + bonds'}
-            </span>
-          </div>
+        <div className="mt-4 mb-2 flex items-baseline justify-between">
+          <p className="text-[11px] font-semibold text-gray-700 dark:text-slate-200">
+            {params.glidePoints.length > 0 ? 'Allocation by age (glide path)' : 'How your money is invested (cash fills in the rest)'}
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              if (params.glidePoints.length > 0) {
+                const sorted = [...params.glidePoints].sort((a, b) => a.age - b.age)
+                const first = sorted[0]
+                if (first) {
+                  update('stockPct', first.stockPct)
+                  update('bondPct', first.bondPct)
+                }
+                update('glidePoints', [])
+              } else {
+                const s0 = Math.round(params.stockPct * 100)
+                const b0 = Math.round(params.bondPct * 100)
+                update('glidePoints', [
+                  { age: Math.round(params.currentAge), stockPct: s0 / 100, bondPct: b0 / 100 },
+                  { age: Math.round(params.endAge), stockPct: Math.max(s0 - 10, 30) / 100, bondPct: Math.min(b0 + 10, 60) / 100 },
+                ] as GlidePoint[])
+              }
+            }}
+            className="text-[10px] text-rose-700 hover:text-rose-800 dark:text-rose-300 dark:hover:text-rose-200"
+          >
+            {params.glidePoints.length > 0 ? 'Use fixed allocation' : 'Add glide path →'}
+          </button>
         </div>
+
+        {params.glidePoints.length === 0 ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <NumInput
+              label="Stocks"
+              value={Math.round(params.stockPct * 100)}
+              onChange={v => update('stockPct', Math.max(0, Math.min(100, v)) / 100)}
+              min={0}
+              max={100}
+              step={1}
+              suffix="%"
+            />
+            <NumInput
+              label="Bonds"
+              value={Math.round(params.bondPct * 100)}
+              onChange={v => update('bondPct', Math.max(0, Math.min(100, v)) / 100)}
+              min={0}
+              max={100}
+              step={1}
+              suffix="%"
+            />
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium text-gray-700 dark:text-slate-200">
+                Cash <span className="ml-1 text-gray-400 dark:text-slate-500">(%)</span>
+              </span>
+              <div className="rounded border border-stone-200 bg-stone-50 px-2 py-1 text-sm tabular-nums text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                {(cashPct * 100).toFixed(0)}%
+              </div>
+              <span className={`text-[10px] ${allocOver ? 'text-rose-600 dark:text-rose-400' : 'text-gray-400 dark:text-slate-500'}`}>
+                {allocOver ? 'Stocks + bonds add to more than 100% — adjust' : 'Whatever\'s left after stocks + bonds'}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <table className="w-full text-[11px]">
+              <thead>
+                <tr className="border-b border-stone-200 dark:border-slate-700">
+                  <th className="pb-1 pr-2 text-left font-medium text-gray-600 dark:text-slate-400">Age</th>
+                  <th className="pb-1 pr-2 text-left font-medium text-gray-600 dark:text-slate-400">Stocks %</th>
+                  <th className="pb-1 pr-2 text-left font-medium text-gray-600 dark:text-slate-400">Bonds %</th>
+                  <th className="pb-1 pr-2 text-left font-medium text-gray-600 dark:text-slate-400">Cash %</th>
+                  <th className="pb-1 text-left font-medium text-gray-600 dark:text-slate-400"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...params.glidePoints]
+                  .sort((a, b) => a.age - b.age)
+                  .map((pt, idx) => {
+                    const cashD = Math.max(0, 100 - Math.round(pt.stockPct * 100) - Math.round(pt.bondPct * 100))
+                    const invalid = Math.round(pt.stockPct * 100) + Math.round(pt.bondPct * 100) > 100
+                    return (
+                      <tr key={idx} className="border-b border-stone-100 dark:border-slate-800">
+                        <td className="py-1 pr-2">
+                          <input
+                            type="number"
+                            value={pt.age}
+                            min={params.currentAge}
+                            max={params.endAge}
+                            step={1}
+                            onChange={e => {
+                              const newPts = [...params.glidePoints]
+                              const realIdx = newPts.indexOf(pt)
+                              if (realIdx >= 0) newPts[realIdx] = { ...pt, age: Number(e.target.value) }
+                              update('glidePoints', newPts)
+                            }}
+                            className="w-16 rounded border border-stone-300 bg-white px-1 py-0.5 tabular-nums text-gray-900 focus:border-rose-400 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+                          />
+                        </td>
+                        <td className="py-1 pr-2">
+                          <input
+                            type="number"
+                            value={Math.round(pt.stockPct * 100)}
+                            min={0}
+                            max={100}
+                            step={1}
+                            onChange={e => {
+                              const newPts = [...params.glidePoints]
+                              const realIdx = newPts.indexOf(pt)
+                              if (realIdx >= 0) newPts[realIdx] = { ...pt, stockPct: Math.max(0, Math.min(100, Number(e.target.value))) / 100 }
+                              update('glidePoints', newPts)
+                            }}
+                            className={`w-16 rounded border px-1 py-0.5 tabular-nums focus:outline-none ${invalid ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/20' : 'border-stone-300 bg-white dark:border-slate-600 dark:bg-slate-700'} text-gray-900 focus:border-rose-400 dark:text-slate-100`}
+                          />
+                        </td>
+                        <td className="py-1 pr-2">
+                          <input
+                            type="number"
+                            value={Math.round(pt.bondPct * 100)}
+                            min={0}
+                            max={100}
+                            step={1}
+                            onChange={e => {
+                              const newPts = [...params.glidePoints]
+                              const realIdx = newPts.indexOf(pt)
+                              if (realIdx >= 0) newPts[realIdx] = { ...pt, bondPct: Math.max(0, Math.min(100, Number(e.target.value))) / 100 }
+                              update('glidePoints', newPts)
+                            }}
+                            className={`w-16 rounded border px-1 py-0.5 tabular-nums focus:outline-none ${invalid ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/20' : 'border-stone-300 bg-white dark:border-slate-600 dark:bg-slate-700'} text-gray-900 focus:border-rose-400 dark:text-slate-100`}
+                          />
+                        </td>
+                        <td className={`py-1 pr-2 tabular-nums ${invalid ? 'text-rose-600 dark:text-rose-400' : 'text-gray-500 dark:text-slate-400'}`}>
+                          {invalid ? 'Over 100%' : `${cashD}%`}
+                        </td>
+                        <td className="py-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newPts = [...params.glidePoints]
+                              const realIdx = newPts.indexOf(pt)
+                              if (realIdx >= 0) newPts.splice(realIdx, 1)
+                              update('glidePoints', newPts)
+                            }}
+                            className="text-stone-400 hover:text-rose-600 dark:text-slate-500 dark:hover:text-rose-400"
+                            aria-label="Remove row"
+                          >
+                            ×
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+              </tbody>
+            </table>
+            <button
+              type="button"
+              onClick={() => {
+                const sorted = [...params.glidePoints].sort((a, b) => a.age - b.age)
+                const lastAge = sorted.length > 0 ? sorted[sorted.length - 1].age : params.currentAge
+                const newAge = Math.min(lastAge + 5, params.endAge)
+                const lastPt = sorted[sorted.length - 1] ?? { stockPct: params.stockPct, bondPct: params.bondPct }
+                update('glidePoints', [...params.glidePoints, { age: newAge, stockPct: lastPt.stockPct, bondPct: lastPt.bondPct }])
+              }}
+              className="mt-2 text-[11px] font-medium text-rose-700 hover:text-rose-800 dark:text-rose-300 dark:hover:text-rose-200"
+            >
+              + Add point
+            </button>
+          </div>
+        )}
 
         <p className="mt-3 text-[11px] text-stone-500 dark:text-slate-400">
           Total portfolio: <strong className="tabular-nums text-gray-900 dark:text-slate-100">{fmt$M(totalPortfolio)}</strong>

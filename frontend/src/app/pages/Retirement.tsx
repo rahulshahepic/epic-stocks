@@ -910,12 +910,12 @@ export default function Retirement() {
                         <tr key="v" className="border-b border-stone-100 dark:border-slate-800">
                           <td className="py-1 pr-2 tabular-nums text-gray-500 dark:text-slate-400">{Math.round(params.currentAge)}</td>
                           <td className="py-1 pr-2">
-                            <input type="number" value={Math.round(pt.stockPct * 100)} min={0} max={100} step={1}
+                            <input type="number" aria-label="Stocks" value={Math.round(pt.stockPct * 100)} min={0} max={100} step={1}
                               onChange={e => update('stockPct', Math.max(0, Math.min(100, Number(e.target.value))) / 100)}
                               className={inputCls(invalid)} />
                           </td>
                           <td className="py-1 pr-2">
-                            <input type="number" value={Math.round(pt.bondPct * 100)} min={0} max={100} step={1}
+                            <input type="number" aria-label="Bonds" value={Math.round(pt.bondPct * 100)} min={0} max={100} step={1}
                               onChange={e => update('bondPct', Math.max(0, Math.min(100, Number(e.target.value))) / 100)}
                               className={inputCls(invalid)} />
                           </td>

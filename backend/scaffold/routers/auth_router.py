@@ -167,15 +167,20 @@ if os.getenv("E2E_TEST") == "1":
     @router.post("/test-login")
     def test_login(body: TestLoginRequest, response: Response, db: Session = Depends(get_db)):
         """Create/update a user and set the session cookie. No Bearer token returned."""
-        from scaffold.providers.auth.base import UserIdentity
-        identity = UserIdentity(
-            provider_name="test",
-            provider_sub=f"test-{body.email}",
-            email=body.email,
-            email_verified=True,
-            name=body.name,
-            picture=None,
-        )
-        user = _upsert_user(identity, db)
+        user = db.query(User).filter(User.email == body.email).first()
+        if not user:
+            user = User(
+                email=body.email,
+                provider_name="test",
+                google_id=f"test-{body.email}",
+                name=body.name,
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+        admin_emails = get_admin_emails()
+        user.is_admin = body.email.lower() in {e.lower() for e in admin_emails}
+        user.last_login = datetime.now(timezone.utc)
+        db.commit()
         set_session_cookies(response, create_token(user.id, user.session_version))
         return {"ok": True}

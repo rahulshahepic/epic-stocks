@@ -5,22 +5,7 @@ import { useMe } from '../hooks/useMe.ts'
 import { useMaintenance } from '../contexts/MaintenanceContext.tsx'
 import { useConfig } from '../hooks/useConfig.ts'
 import { useViewing } from '../contexts/ViewingContext.tsx'
-
-const NAV_ITEMS = [
-  { to: '/', label: 'Dashboard' },
-  { to: '/comp-calculator', label: 'Comp Calc' },
-  { to: '/retirement', label: 'Retirement' },
-  { to: '/events', label: 'Events' },
-  { to: '/grants', label: 'Grants' },
-  { to: '/sales', label: 'Sales' },
-  { to: '/loans', label: 'Loans' },
-  { to: '/prices', label: 'Prices' },
-  { to: '/import', label: 'Import' },
-  { to: '/settings', label: 'Settings' },
-]
-
-// Pages hidden when viewing someone else's data
-const VIEWER_HIDDEN = new Set(['/import', '/wizard'])
+import { useAppContext } from '../contexts/AppContext.tsx'
 
 export default function Layout() {
   const { logout } = useAuth()
@@ -28,10 +13,13 @@ export default function Layout() {
   const maintenance = useMaintenance()
   const config = useConfig()
   const { viewing, setViewing, clearViewing } = useViewing()
+  const { appName, navItems: appNavItems, viewerHiddenRoutes, epicModeHiddenRoutes } = useAppContext()
   const epicMode = config?.epic_mode ?? false
-  const baseItems = epicMode ? NAV_ITEMS.filter(item => item.to !== '/import') : NAV_ITEMS
+  const baseItems = epicMode
+    ? [...appNavItems.filter(item => !epicModeHiddenRoutes.has(item.to)), { to: '/settings', label: 'Settings' }]
+    : [...appNavItems, { to: '/settings', label: 'Settings' }]
   const viewFilteredItems = viewing
-    ? baseItems.filter(item => !VIEWER_HIDDEN.has(item.to))
+    ? baseItems.filter(item => !viewerHiddenRoutes.has(item.to))
     : baseItems
   const canContent = !viewing && (me?.is_admin || me?.is_content_admin)
   const withContent = canContent ? [...viewFilteredItems, { to: '/content', label: 'Content' }] : viewFilteredItems
@@ -84,7 +72,7 @@ export default function Layout() {
       <header className="border-b border-stone-200 bg-white dark:border-slate-800 dark:bg-slate-900">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
           <span className="text-sm font-bold text-rose-700 dark:text-rose-400">
-            Equity Tracker
+            {appName}
           </span>
           <div className="flex items-center gap-3">
             {sharedAccounts.length > 0 && (

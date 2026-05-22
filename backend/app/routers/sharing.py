@@ -552,7 +552,7 @@ def shared_sale_tax(
     owner = _get_shared_owner(invitation_id, user, db)
     from scaffold.models import Sale, TaxSettings
     from app.routers.events import _user_source_data
-    from app.timeline_cache import get_timeline
+    from services.timeline_cache import get_timeline
     from app.sales_engine import compute_sale_tax
 
     sale = db.query(Sale).filter(Sale.id == sale_id, Sale.user_id == owner.id).first()

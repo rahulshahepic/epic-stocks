@@ -89,7 +89,7 @@ def _do_recompute(user_id: int) -> None:
     from scaffold.models import Grant, Price, Loan, User as UserModel
     from scaffold.crypto import encryption_enabled, decrypt_user_key, set_current_key
     from app.core import generate_all_events, compute_timeline
-    from app.timeline_cache import _hash
+    from services.timeline_cache import _hash
 
     db = SessionLocal()
     try:

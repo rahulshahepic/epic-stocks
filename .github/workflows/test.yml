@@ -24,6 +24,11 @@ jobs:
           echo "::group::pip install"
           time pip install -r backend/requirements.txt pytest pytest-asyncio httpx
           echo "::endgroup::"
+      - name: Check import boundaries
+        run: |
+          echo "::group::import-linter"
+          cd backend && time lint-imports
+          echo "::endgroup::"
       - name: Run tests
         run: |
           echo "::group::pytest"

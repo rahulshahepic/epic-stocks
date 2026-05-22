@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { isLoggedIn } from './api.ts'
+import { AppProvider } from './app/AppProvider.tsx'
 import { useSessionRefresh } from './scaffold/hooks/useSessionRefresh.ts'
 import Layout from './scaffold/components/Layout.tsx'
 import { ToastProvider } from './scaffold/components/Toast.tsx'
@@ -50,6 +51,7 @@ function FinancialRoute({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
+    <AppProvider>
     <ThemeProvider>
     <BrowserRouter>
       <MaintenanceProvider>
@@ -80,5 +82,6 @@ export default function App() {
       </MaintenanceProvider>
     </BrowserRouter>
     </ThemeProvider>
+    </AppProvider>
   )
 }

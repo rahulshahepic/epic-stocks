@@ -60,7 +60,7 @@ def _tax_rate_fields(ts: dict) -> dict:
 
 
 def _build_timeline_for_user(user: User, db: Session) -> list:
-    from app.timeline_cache import get_timeline
+    from services.timeline_cache import get_timeline
     grants_db = db.query(Grant).filter(Grant.user_id == user.id).order_by(Grant.year).all()
     prices_db = db.query(Price).filter(Price.user_id == user.id).order_by(Price.effective_date).all()
     loans_db = db.query(Loan).filter(Loan.user_id == user.id).order_by(Loan.due_date).all()

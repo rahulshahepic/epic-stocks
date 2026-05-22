@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
+import { AppProvider } from '../app/AppProvider.tsx'
 import Admin from '../scaffold/pages/Admin.tsx'
 
 beforeEach(() => {
@@ -82,7 +83,7 @@ const DB_TABLES = [
 ]
 
 function renderPage() {
-  return render(<MemoryRouter><Admin /></MemoryRouter>)
+  return render(<AppProvider><MemoryRouter><Admin /></MemoryRouter></AppProvider>)
 }
 
 describe('Admin', () => {

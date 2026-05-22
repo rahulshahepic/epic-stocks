@@ -30,6 +30,15 @@ Follow the order in SPEC.md. Build backend first, then frontend. **Every step mu
 - **Run E2E tests via `./e2e.sh` from the repo root.** This script handles type-checking, starting a fresh backend + Vite server, waiting for both to be healthy, and cleanup. Do not manually spin up servers and run Playwright separately.
 - Known-good values for core logic validation: 89 events, final cum_shares=558500, cum_income=$144,325, cum_cap_gains=$1,224,195. (cum_shares was 269843 before Loan Payoff refactor; was 571500 before fixture dp_shares updated from -2000 to -15000.)
 
+## Debugging CI Failures
+- **Read CI logs with `curl`, not WebFetch.** WebFetch truncates large log files mid-build and never reaches the test output. Use:
+  ```bash
+  curl -s "<log-url>" | tail -c 30000
+  ```
+  The test failures appear at the end of the log (after the Docker build). `tail -c 30000` reliably skips the build noise and lands in the Playwright output.
+- **Backend errors from E2E runs:** When Playwright tests fail, the CI workflow runs `docker compose logs e2e-app` automatically (the "Dump backend logs on failure" step). Look for that step in the GitHub Actions run — it contains full Python tracebacks including the SQL, parameters, and exception type. Do not put exception details in HTTP response bodies; keep them in server logs.
+- **`loginAs` failures:** If `POST /api/auth/test-login` returns non-2xx, check the backend logs first. Common causes: `DatatypeMismatch` (passing Python bool to an INTEGER column — always use `int(...)`), `IntegrityError` from a concurrent insert race (handled by the retry loop in `test_login`), or a missing `E2E_TEST=1` env var (endpoint not registered).
+
 ## Code Style
 - Python: minimal comments, concise, no unnecessary abstractions
 - TypeScript: functional components, hooks, Tailwind utility classes
@@ -54,7 +63,7 @@ Follow the order in SPEC.md. Build backend first, then frontend. **Every step mu
 > **⚠️ MANDATORY AFTER EVERY UI CHANGE: Run `./screenshots/run.sh` and commit the updated screenshots. DO NOT skip this. DO NOT forget. This is not optional.**
 
 - **ALWAYS update README screenshots after any UI change** — login page, dashboard, import, settings, any page.
-- **How:** Run `./screenshots/run.sh` from the repo root. **You can and should run this in your current environment** — it works in Claude Code web sessions. It spins up a temp backend + frontend, seeds sample data, and runs `frontend/e2e/screenshots.spec.ts` via Playwright to capture all screenshots into `screenshots/`.
+- **How:** Run `./screenshots/run.sh` from the repo root. **You can and should run this in your current environment** — it works in Claude Code web sessions. It spins up a temp backend + frontend, seeds sample data, and runs `frontend/e2e/screenshots.spec.ts` via Playwright to capture all screenshots into `screenshots/`. The script is self-contained — do not try to start servers manually or run `npx playwright test` directly.
 - **What to capture:** The spec captures dashboard (light/dark × mobile/desktop) and admin (light/dark × mobile). Add new test cases to the spec when adding new pages.
 - **README:** After capturing, update `README.md` to reference any new screenshot files.
 

@@ -16,7 +16,8 @@ export async function loginAs(page: Page, email: string, name = 'Test User') {
   const resp = await page.request.post(`${API_BASE}/api/auth/test-login`, {
     data: { email, name },
   })
-  expect(resp.ok()).toBeTruthy()
+  const body = await resp.text().catch(() => '(unreadable)')
+  expect(resp.ok(), `test-login ${email} → HTTP ${resp.status()}: ${body}`).toBeTruthy()
   await page.goto(BASE_URL)
   await expect(page.getByRole('navigation')).toBeVisible({ timeout: 15_000 })
 }

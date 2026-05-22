@@ -167,31 +167,46 @@ if os.getenv("E2E_TEST") == "1":
     @router.post("/test-login")
     def test_login(body: TestLoginRequest, response: Response, db: Session = Depends(get_db)):
         """Create/update a user and set the session cookie. No Bearer token returned."""
-        from fastapi import HTTPException
+        import traceback as _tb
+        from sqlalchemy.exc import IntegrityError
+        try:
+            return _test_login_impl(body, response, db)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.error("test_login unhandled exception for %s:\n%s", body.email, _tb.format_exc())
+            raise HTTPException(status_code=500, detail=f"{type(exc).__name__}: {exc}")
+
+    def _test_login_impl(body: TestLoginRequest, response: Response, db: Session):
         from sqlalchemy.exc import IntegrityError
         blocked = db.query(BlockedEmail).filter(BlockedEmail.email == body.email.lower()).first()
         if blocked:
             raise HTTPException(status_code=403, detail="Account blocked")
         is_new = False
-        user = db.query(User).filter(User.email == body.email).first()
-        if not user:
-            enc_key = encrypt_user_key(generate_user_key()) if encryption_enabled() else None
-            try:
-                user = User(
-                    email=body.email,
-                    provider_name="test",
-                    google_id=f"test-{body.email}",
-                    name=body.name,
-                    encrypted_key=enc_key,
-                )
-                db.add(user)
-                db.flush()  # raises IntegrityError if a concurrent worker won the race
-                db.add(EmailPreference(user_id=user.id, enabled=1))
-                is_new = True
-            except IntegrityError:
-                # Race: another worker committed the same email first — re-fetch and fall through
-                db.rollback()
-                user = db.query(User).filter(User.email == body.email).first()
+        # Retry loop handles the race where two workers simultaneously try to create
+        # the same user (admin@e2e.test in particular). On IntegrityError the loser
+        # rolls back and re-fetches the row the winner just committed.
+        for _attempt in range(3):
+            user = db.query(User).filter(User.email == body.email).first()
+            if not user:
+                enc_key = encrypt_user_key(generate_user_key()) if encryption_enabled() else None
+                try:
+                    user = User(
+                        email=body.email,
+                        provider_name="test",
+                        google_id=f"test-{body.email}",
+                        name=body.name,
+                        encrypted_key=enc_key,
+                    )
+                    db.add(user)
+                    db.flush()  # raises IntegrityError if a concurrent worker won the race
+                    db.add(EmailPreference(user_id=user.id, enabled=1))
+                    is_new = True
+                except IntegrityError:
+                    db.rollback()
+                    is_new = False
+                    continue  # re-query on next iteration — the winner must have committed
+            break
         admin_emails = get_admin_emails()
         user.is_admin = body.email.lower() in {e.lower() for e in admin_emails}
         user.last_login = datetime.now(timezone.utc)

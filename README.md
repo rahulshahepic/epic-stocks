@@ -791,12 +791,13 @@ epic-stocks/
 │   │   ├── scaffold/        # Reusable UI layer (keep when forking)
 │   │   │   ├── pages/       # Login, AuthCallback, Admin, Settings, PrivacyPolicy, InviteLanding, Unsubscribe
 │   │   │   ├── components/  # Layout shell, Toast
-│   │   │   ├── contexts/    # ThemeContext, MaintenanceContext, ViewingContext
+│   │   │   ├── contexts/    # ThemeContext, MaintenanceContext, ViewingContext, AppContext (injection interface)
 │   │   │   └── hooks/       # useAuth, useConfig, useDark, usePush, useMe
 │   │   ├── app/             # Equity tracking UI (replace when forking)
 │   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport, Content, CompCalculator, Retirement
-│   │   │   ├── components/  # ImportWizard, TipCarousel
-│   │   │   └── hooks/       # useApiData, useDataSync, useContent
+│   │   │   ├── components/  # ImportWizard, TipCarousel, AppSettingsSections
+│   │   │   ├── hooks/       # useApiData, useDataSync, useContent
+│   │   │   └── AppProvider.tsx  # Injects app name, nav items, notify templates, privacy content into scaffold
 │   │   ├── App.tsx          # Router + layout wiring
 │   │   └── __tests__/       # Vitest tests
 │   ├── public/
@@ -964,7 +965,7 @@ This application stores sensitive financial data. Read **[PRIVACY.md](PRIVACY.md
 
 If you run an instance for others: use HTTPS, set `KEY_ENCRYPTION_KEY`, and keep your secrets safe. See **[OPERATIONS.md](OPERATIONS.md)** for the full security and ops checklist, including Cloudflare setup, SSH hardening, and VPS firewall rules.
 
-The built-in privacy page (`/privacy`) lists the third-party services used by the reference deployment. If you use different infrastructure or identity providers, update `frontend/src/scaffold/pages/PrivacyPolicy.tsx` to reflect your own services.
+The built-in privacy page (`/privacy`) lists the third-party services used by the reference deployment. If you use different infrastructure or identity providers, update the `privacyDataCollected` and `privacyThirdParties` props in `frontend/src/app/AppProvider.tsx` — no scaffold files need to change.
 
 ---
 

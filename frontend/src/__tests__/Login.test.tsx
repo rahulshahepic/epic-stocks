@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { AppProvider } from '../app/AppProvider.tsx'
 import Login from '../scaffold/pages/Login.tsx'
 
 beforeEach(() => {
@@ -13,16 +14,18 @@ beforeEach(() => {
 
 function renderLogin() {
   return render(
-    <MemoryRouter initialEntries={['/login']}>
-      <Login />
-    </MemoryRouter>
+    <AppProvider>
+      <MemoryRouter initialEntries={['/login']}>
+        <Login />
+      </MemoryRouter>
+    </AppProvider>
   )
 }
 
 describe('Login page', () => {
   it('renders the app title', () => {
     renderLogin()
-    expect(screen.getByText('Equity Vesting Tracker')).toBeInTheDocument()
+    expect(screen.getByText('Equity Tracker')).toBeInTheDocument()
   })
 
   it('renders sign-in subtitle', () => {

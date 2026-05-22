@@ -9,7 +9,7 @@ beforeEach(() => {
 describe('App routing', () => {
   it('redirects to login when not authenticated', () => {
     render(<App />)
-    expect(screen.getByText('Equity Vesting Tracker')).toBeInTheDocument()
+    expect(screen.getByText('Equity Tracker')).toBeInTheDocument()
   })
 
   it('shows login page title', () => {

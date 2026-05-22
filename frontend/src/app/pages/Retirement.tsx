@@ -37,6 +37,7 @@ import {
   SS_WAGE_BASE_REAL,
   ssAdjustment,
   type FanPercentiles,
+  type GlidePoint,
   type RiskOfRuinTable,
   type Scenario,
   type SimParams,
@@ -155,10 +156,10 @@ function SpendRampInfo({
   return (
     <>
       <p className="mb-1">
-        We assume you'd cut back on spending if your nest egg shrank. When your wealth is at <strong>100% or more</strong> of where you started, you spend your <strong>default</strong>. When it drops to <strong>{floorPct}%</strong> or less, you've trimmed all the way down to your <strong>floor</strong>. In between, it scales smoothly.
+        Most people spend less when their savings shrink — fewer vacations, skip the renovation, eat out less. This models that. When your portfolio is at <strong>100%+</strong> of where you started, you spend the <strong>default</strong>. Once it drops to <strong>{floorPct}%</strong>, you're at the <strong>floor</strong>. It scales smoothly in between.
       </p>
       <p className="mb-1">
-        This is what people actually do — travel less, dine out less, skip the kitchen remodel — rather than spending the same in a recession as in a boom. The bigger the gap between default and floor, the more flexibility you're saying you have.
+        The bigger the gap between your default and floor, the more flexibility you're telling the simulator you have.
       </p>
       {startingTotal > 0 && defaultSpend > 0 && (
         <table className="my-2 w-full border-collapse text-[11px]">
@@ -681,20 +682,19 @@ export default function Retirement() {
               Your money is split into stocks, bonds, and cash based on the percentages you set.
             </p>
             <p className="mb-2">
-              We track your wealth across four buckets so taxes come out right:
-              {' '}<strong>cash</strong> (no tax to spend),
-              {' '}<strong>taxable brokerage</strong> (you only owe capital-gains tax on the growth portion, not the original money you put in),
-              {' '}<strong>401(k) / Traditional IRA</strong> (locked until age {RETIREMENT_ACCESS_AGE}, then taxed like a paycheck), and
-              {' '}<strong>Roth</strong> (locked until age {RETIREMENT_ACCESS_AGE}, then totally tax-free).
-              Each year we spend from cash first, then taxable brokerage, then 401(k), then Roth — and we calculate what you'd actually owe in federal + state taxes that year.
-              If you retire before age {RETIREMENT_ACCESS_AGE} and your cash + brokerage run dry, the path counts as failed even if your 401(k) is still full — you can't legally touch it yet.
-              Social Security kicks in at the age you choose, adjusted for early/late claiming.
+              We track four account types because they're taxed differently:
+              {' '}<strong>cash</strong> (spend it freely, no tax),
+              {' '}<strong>brokerage</strong> (you only owe tax on the gains — not the money you originally put in),
+              {' '}<strong>401(k) / IRA</strong> (locked until age {RETIREMENT_ACCESS_AGE}, then taxed like regular income when you withdraw), and
+              {' '}<strong>Roth</strong> (locked until age {RETIREMENT_ACCESS_AGE}, then completely tax-free).
+              We pull from cash first, then brokerage, then 401(k), then Roth — and calculate your tax bill each year.
+              If you retire before {RETIREMENT_ACCESS_AGE}, the 401(k) and Roth are off-limits, so those early years have to run on cash and brokerage.
             </p>
             <p className="mb-2">
-              All dollar amounts are shown in <strong>today's purchasing power</strong> — so $200K spend in year 30 still means "what $200K buys today," not the inflated headline number.
-              {' '}<strong>Default spend</strong> is what you live on excluding health insurance, which we add separately — your premium estimate before age 65, then Medicare cost (with extra fees if your income is high) after.
-              Got a spouse? We add their Social Security stream and switch your tax brackets to married-filing-jointly.
-              We also model that you'd cut spending if your nest egg shrank — at full wealth you spend the default, dropping toward your floor if things go badly.
+              Your <strong>spending</strong> number is what you actually spend — groceries, housing, travel, everything. Think of it as your annual take-home needs, not a gross salary. Taxes are figured out separately and added on top.
+              Health insurance is tracked separately too — your estimated premium before 65, then Medicare after.
+              All dollar amounts are in <strong>today's dollars</strong>, so "$150K in year 20" still means what $150K buys right now.
+              Got a spouse? Their Social Security is added and your tax brackets switch to the married rate.
             </p>
             <p>
               Your Epic exit number is pre-filled from the dashboard's "If you exited" estimate for the retirement date you pick. State tax rates come from <em>Settings → Tax Rates</em>.
@@ -703,9 +703,10 @@ export default function Retirement() {
         )}
       </div>
 
+      {/* Card 1: Who & when */}
       <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
         <p className="mb-3 text-xs font-semibold text-gray-700 dark:text-slate-200">
-          {vid ? `${ownerName ?? 'Owner'}'s details` : 'Your details'}
+          {vid ? `${ownerName ?? 'Owner'}'s details` : 'Who & when'}
         </p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="flex flex-col gap-1">
@@ -788,7 +789,28 @@ export default function Retirement() {
             </label>
           </div>
         )}
-        <p className="mt-4 mb-2 text-[11px] font-semibold text-gray-700 dark:text-slate-200">Portfolio</p>
+        <div className="mt-4 border-t border-stone-200 pt-3 dark:border-slate-700">
+          <SliderInput
+            label="Plan until you're"
+            value={params.endAge}
+            onChange={v => update('endAge', Math.max(params.currentAge + 1, Math.min(110, Math.round(v))))}
+            min={Math.min(params.currentAge + 1, 110)}
+            max={110}
+            step={1}
+            formatValue={v => `age ${v}`}
+            hint={`Retire at ${params.currentAge}, plan ${years} years of retirement (set this past your likely lifespan to be safe)`}
+          />
+          {dobMissing && (
+            <p className="mt-2 text-[10px] text-amber-700 dark:text-amber-300">
+              ⚠ Set your date of birth above so we can figure out your age (otherwise we assume 50).
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Card 2: Your money */}
+      <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <p className="mb-3 text-xs font-semibold text-gray-700 dark:text-slate-200">Your money</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
           <NumInput
             label="Epic exit value"
@@ -879,39 +901,124 @@ export default function Retirement() {
         )}
 
         <p className="mt-4 mb-2 text-[11px] font-semibold text-gray-700 dark:text-slate-200">
-          How your money is invested (cash fills in the rest)
+          How your money is invested
         </p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <NumInput
-            label="Stocks"
-            value={Math.round(params.stockPct * 100)}
-            onChange={v => update('stockPct', Math.max(0, Math.min(100, v)) / 100)}
-            min={0}
-            max={100}
-            step={1}
-            suffix="%"
-          />
-          <NumInput
-            label="Bonds"
-            value={Math.round(params.bondPct * 100)}
-            onChange={v => update('bondPct', Math.max(0, Math.min(100, v)) / 100)}
-            min={0}
-            max={100}
-            step={1}
-            suffix="%"
-          />
-          <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-gray-700 dark:text-slate-200">
-              Cash <span className="ml-1 text-gray-400 dark:text-slate-500">(%)</span>
-            </span>
-            <div className="rounded border border-stone-200 bg-stone-50 px-2 py-1 text-sm tabular-nums text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-              {(cashPct * 100).toFixed(0)}%
+        {/* Single unified allocation table. One row = fixed allocation; more rows = shifts over time. */}
+        {(() => {
+          const isVirtual = params.glidePoints.length === 0
+          const displayRows: Array<{ age: number; stockPct: number; bondPct: number }> = isVirtual
+            ? [{ age: Math.round(params.currentAge), stockPct: params.stockPct, bondPct: params.bondPct }]
+            : [...params.glidePoints].sort((a, b) => a.age - b.age)
+          const inputCls = (invalid: boolean) =>
+            `w-16 rounded border px-1 py-0.5 tabular-nums focus:outline-none focus:border-rose-400 ${invalid ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/20' : 'border-stone-300 bg-white dark:border-slate-600 dark:bg-slate-700'} text-gray-900 dark:text-slate-100`
+          return (
+            <div>
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr className="border-b border-stone-200 dark:border-slate-700">
+                    <th className="pb-1 pr-2 text-left font-medium text-gray-600 dark:text-slate-400">Age</th>
+                    <th className="pb-1 pr-2 text-left font-medium text-gray-600 dark:text-slate-400">Stocks %</th>
+                    <th className="pb-1 pr-2 text-left font-medium text-gray-600 dark:text-slate-400">Bonds %</th>
+                    <th className="pb-1 pr-2 text-left font-medium text-gray-600 dark:text-slate-400">Cash %</th>
+                    <th className="pb-1" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayRows.map((pt, idx) => {
+                    const cashD = Math.max(0, 100 - Math.round(pt.stockPct * 100) - Math.round(pt.bondPct * 100))
+                    const invalid = Math.round(pt.stockPct * 100) + Math.round(pt.bondPct * 100) > 100
+                    if (isVirtual) {
+                      return (
+                        <tr key="v" className="border-b border-stone-100 dark:border-slate-800">
+                          <td className="py-1 pr-2 tabular-nums text-gray-500 dark:text-slate-400">{Math.round(params.currentAge)}</td>
+                          <td className="py-1 pr-2">
+                            <input type="number" aria-label="Stocks" value={Math.round(pt.stockPct * 100)} min={0} max={100} step={1}
+                              onChange={e => update('stockPct', Math.max(0, Math.min(100, Number(e.target.value))) / 100)}
+                              className={inputCls(invalid)} />
+                          </td>
+                          <td className="py-1 pr-2">
+                            <input type="number" aria-label="Bonds" value={Math.round(pt.bondPct * 100)} min={0} max={100} step={1}
+                              onChange={e => update('bondPct', Math.max(0, Math.min(100, Number(e.target.value))) / 100)}
+                              className={inputCls(invalid)} />
+                          </td>
+                          <td className={`py-1 pr-2 tabular-nums ${invalid ? 'text-rose-600 dark:text-rose-400' : 'text-gray-500 dark:text-slate-400'}`}>
+                            {invalid ? 'Over 100%' : `${cashD}%`}
+                          </td>
+                          <td />
+                        </tr>
+                      )
+                    }
+                    return (
+                      <tr key={idx} className="border-b border-stone-100 dark:border-slate-800">
+                        <td className="py-1 pr-2">
+                          <input type="number" value={pt.age} min={params.currentAge} max={params.endAge} step={1}
+                            onChange={e => {
+                              const newPts = [...params.glidePoints]
+                              const ri = params.glidePoints.indexOf(pt)
+                              if (ri >= 0) newPts[ri] = { ...pt, age: Number(e.target.value) }
+                              update('glidePoints', newPts)
+                            }}
+                            className="w-16 rounded border border-stone-300 bg-white px-1 py-0.5 tabular-nums text-gray-900 focus:border-rose-400 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100" />
+                        </td>
+                        <td className="py-1 pr-2">
+                          <input type="number" value={Math.round(pt.stockPct * 100)} min={0} max={100} step={1}
+                            onChange={e => {
+                              const newPts = [...params.glidePoints]
+                              const ri = params.glidePoints.indexOf(pt)
+                              if (ri >= 0) newPts[ri] = { ...pt, stockPct: Math.max(0, Math.min(100, Number(e.target.value))) / 100 }
+                              update('glidePoints', newPts)
+                            }}
+                            className={inputCls(invalid)} />
+                        </td>
+                        <td className="py-1 pr-2">
+                          <input type="number" value={Math.round(pt.bondPct * 100)} min={0} max={100} step={1}
+                            onChange={e => {
+                              const newPts = [...params.glidePoints]
+                              const ri = params.glidePoints.indexOf(pt)
+                              if (ri >= 0) newPts[ri] = { ...pt, bondPct: Math.max(0, Math.min(100, Number(e.target.value))) / 100 }
+                              update('glidePoints', newPts)
+                            }}
+                            className={inputCls(invalid)} />
+                        </td>
+                        <td className={`py-1 pr-2 tabular-nums ${invalid ? 'text-rose-600 dark:text-rose-400' : 'text-gray-500 dark:text-slate-400'}`}>
+                          {invalid ? 'Over 100%' : `${cashD}%`}
+                        </td>
+                        <td className="py-1">
+                          {params.glidePoints.length > 1 && (
+                            <button type="button"
+                              onClick={() => {
+                                const newPts = params.glidePoints.filter(p => p !== pt)
+                                update('glidePoints', newPts)
+                              }}
+                              className="text-stone-400 hover:text-rose-600 dark:text-slate-500 dark:hover:text-rose-400"
+                              aria-label="Remove">×</button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+              <button type="button"
+                onClick={() => {
+                  const base: Array<{ age: number; stockPct: number; bondPct: number }> = isVirtual
+                    ? [{ age: Math.round(params.currentAge), stockPct: params.stockPct, bondPct: params.bondPct }]
+                    : [...params.glidePoints]
+                  const sorted = [...base].sort((a, b) => a.age - b.age)
+                  const last = sorted[sorted.length - 1]
+                  const newAge = Math.min(last.age + 10, Math.round(params.endAge))
+                  update('glidePoints', [
+                    ...base,
+                    { age: newAge, stockPct: Math.max(last.stockPct - 0.1, 0.3), bondPct: Math.min(last.bondPct + 0.1, 0.6) },
+                  ] as GlidePoint[])
+                }}
+                className="mt-2 text-[11px] font-medium text-rose-700 hover:text-rose-800 dark:text-rose-300 dark:hover:text-rose-200"
+              >
+                + Add reallocation
+              </button>
             </div>
-            <span className={`text-[10px] ${allocOver ? 'text-rose-600 dark:text-rose-400' : 'text-gray-400 dark:text-slate-500'}`}>
-              {allocOver ? 'Stocks + bonds add to more than 100% — adjust' : 'Whatever\'s left after stocks + bonds'}
-            </span>
-          </div>
-        </div>
+          )
+        })()}
 
         <p className="mt-3 text-[11px] text-stone-500 dark:text-slate-400">
           Total portfolio: <strong className="tabular-nums text-gray-900 dark:text-slate-100">{fmt$M(totalPortfolio)}</strong>
@@ -928,6 +1035,32 @@ export default function Retirement() {
             </span>
           )}
         </p>
+
+        <div className="mt-4">
+          <label className="mb-1 block text-[11px] font-semibold text-gray-700 dark:text-slate-200">
+            Annual rebalancing
+          </label>
+          <div className="flex flex-wrap gap-1.5">
+            {(['none', 'tax-advantaged', 'all'] as const).map(opt => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => update('rebalance', opt)}
+                className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${
+                  params.rebalance === opt
+                    ? 'border-rose-500 bg-rose-100 text-rose-800 dark:border-rose-400 dark:bg-rose-950/40 dark:text-rose-300'
+                    : 'border-stone-300 bg-white text-gray-600 hover:bg-stone-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+                }`}
+              >
+                {opt === 'none' ? 'None' : opt === 'tax-advantaged' ? 'Tax-advantaged only' : 'All accounts'}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1 text-[10px] text-stone-500 dark:text-slate-400">
+            Tax-advantaged-only rebalances within 401(k)/IRA accounts (no taxable event).
+            All-accounts also rebalances taxable brokerage, realizing capital gains.
+          </p>
+        </div>
       </div>
 
       <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
@@ -943,7 +1076,7 @@ export default function Retirement() {
             min={0}
             step={5}
             suffix="$K/yr"
-            hint="What you live on per year (excluding health insurance) · auto-set to 3% of your portfolio"
+            hint="Your actual annual expenses — housing, food, travel, etc. (not counting health insurance) · auto-set to 3% of your portfolio"
           />
           <NumInput
             label="Minimum spend (floor)"
@@ -982,101 +1115,18 @@ export default function Retirement() {
             className="rounded"
           />
           <span className="text-gray-700 dark:text-slate-200">
-            Switch to Medicare costs at age 65 <span className="text-gray-400 dark:text-slate-500">(replaces your premium with base Medicare, plus an income-based surcharge if your taxable income is high)</span>
+            Switch to Medicare costs at age 65 <span className="text-gray-400 dark:text-slate-500">(replaces your premium with standard Medicare; higher earners pay extra)</span>
           </span>
         </label>
         <p className="mt-3 text-[10px] leading-snug text-stone-500 dark:text-slate-400">
-          Each year we calculate what you'd actually owe in taxes: federal income brackets (with the bigger married-filing-jointly brackets if you've added a spouse), federal capital-gains tax on investment growth, an extra 3.8% surcharge on investment income for higher earners, Medicare income surcharges after 65, Wisconsin progressive brackets (3.5%/4.4%/5.3%/7.65%) on 401(k) withdrawals, and {fmtPct(params.stateLTCGRate, 2)} on capital gains (from <em>Settings → Tax Rates</em> — this should be your post-30%-WI-exclusion effective rate, ~5.36% at the top WI bracket).
-          We spend from your accounts in order: cash first (no tax), then brokerage (only the growth is taxed), then 401(k), then Roth — and the 401(k)/Roth stay locked until age {RETIREMENT_ACCESS_AGE}.
-          <br /><span className="text-stone-400 dark:text-slate-500">Wisconsin assumption: Social Security is exempt from state tax (it still counts toward federal); state income tax uses WI's progressive brackets, not a flat marginal rate. Each dollar lands in its actual WI bracket since we know your full income each year.</span>
+          Your spending number is what you actually keep and spend — taxes are handled automatically on top.
+          Each year the simulator calculates federal income tax, capital gains tax on investment growth, and any Medicare surcharges (for higher incomes after 65), then pulls that from your accounts separately.
+          Your capital gains rate is {fmtPct(params.stateLTCGRate, 2)} (from <em>Settings → Tax Rates</em>).
+          <br /><span className="text-stone-400 dark:text-slate-500">Wisconsin-specific: Social Security isn't taxed at the state level. 401(k) withdrawals use WI's progressive income brackets.</span>
         </p>
       </div>
 
-      <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-        <div className="mb-3 flex items-center gap-1.5">
-          <p className="text-xs font-semibold text-gray-700 dark:text-slate-200">Return scenario</p>
-          <InfoButton open={sigmaOpen} onToggle={() => setSigmaOpen(o => !o)} label="Return scenario" />
-        </div>
-        {sigmaOpen && (
-          <div className="mb-3 rounded border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] leading-relaxed text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
-            <p className="mb-1">
-              For each simulated retirement, we replay actual stretches of U.S. market history ({HISTORY_FIRST_YEAR}–{HISTORY_LAST_YEAR}) instead of making up returns from a formula.
-              We pick a random starting month, walk forward month by month (so Oct 1929 is followed by Nov 1929, Sep 2008 by Oct 2008 — crashes stay glued to their actual recoveries), and occasionally jump to a different starting month to mix things up across the {params.paths.toLocaleString()} simulations.
-              This is more honest than the usual "average return ± noise" approach, which can quietly invent stretches of bad years that never actually happened together.
-            </p>
-            <p className="mb-1">
-              The four scenarios shift the historical returns up or down to reflect different views on the future:
-              <strong> Historical</strong> — exactly what happened {HISTORY_FIRST_YEAR}–{HISTORY_LAST_YEAR}.
-              <strong> Moderate</strong> — knock 2 percentage points off stock returns and 0.5pp off bonds (roughly Vanguard's 2025 10-year forecast given today's high valuations).
-              <strong> Cautious</strong> — bigger haircut: stocks −3.5pp, bonds −1pp.
-              <strong> Custom</strong> — set your own.
-            </p>
-          </div>
-        )}
-        <div className="flex flex-wrap gap-1.5">
-          {SCENARIO_ORDER.map(s => {
-            const active = params.scenario === s
-            return (
-              <button
-                key={s}
-                type="button"
-                onClick={() => update('scenario', s)}
-                className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${
-                  active
-                    ? 'border-rose-500 bg-rose-100 text-rose-800 dark:border-rose-400 dark:bg-rose-950/40 dark:text-rose-300'
-                    : 'border-stone-300 bg-white text-gray-600 hover:bg-stone-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
-                }`}
-              >
-                {SCENARIO_LABELS[s]}
-              </button>
-            )
-          })}
-        </div>
-        {params.scenario === 'custom' && (
-          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <NumInput
-              label="Stocks return shift"
-              value={Math.round(params.customStockShift * 1000) / 10}
-              onChange={v => update('customStockShift', v / 100)}
-              step={0.1}
-              suffix="pp"
-              hint="Added to every resampled stock return. e.g. −2 trims ~2pp/yr off historical"
-            />
-            <NumInput
-              label="Bonds return shift"
-              value={Math.round(params.customBondShift * 1000) / 10}
-              onChange={v => update('customBondShift', v / 100)}
-              step={0.1}
-              suffix="pp"
-              hint="Added to every resampled bond return"
-            />
-          </div>
-        )}
-        <p className="mt-1.5 text-[10px] text-stone-500 dark:text-slate-400">
-          Stationary block bootstrap of U.S. {HISTORY_FIRST_YEAR}&ndash;{HISTORY_LAST_YEAR} real returns ({HISTORICAL_RETURNS.length} months, ~20yr mean block).
-          {' '}Stocks shift {fmtPct(resolveScenarioShifts(params).stockShift, 1)}, bonds shift {fmtPct(resolveScenarioShifts(params).bondShift, 1)}.
-        </p>
-      </div>
-
-      <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-        <p className="mb-3 text-xs font-semibold text-gray-700 dark:text-slate-200">How long to plan for</p>
-        <SliderInput
-          label="Plan until you're"
-          value={params.endAge}
-          onChange={v => update('endAge', Math.max(params.currentAge + 1, Math.min(110, Math.round(v))))}
-          min={Math.min(params.currentAge + 1, 110)}
-          max={110}
-          step={1}
-          formatValue={v => `age ${v}`}
-          hint={`Retire at ${params.currentAge}, plan ${years} years of retirement (set this past your likely lifespan to be safe)`}
-        />
-        {dobMissing && (
-          <p className="mt-2 text-[10px] text-amber-700 dark:text-amber-300">
-            ⚠ Set your date of birth above so we can figure out your age (otherwise we assume 50).
-          </p>
-        )}
-      </div>
-
+      {/* Card 4: Social Security */}
       <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
         <p className="mb-3 text-xs font-semibold text-gray-700 dark:text-slate-200">Social Security</p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -1207,6 +1257,73 @@ export default function Retirement() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Card 5: Market outlook */}
+      <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <div className="mb-3 flex items-center gap-1.5">
+          <p className="text-xs font-semibold text-gray-700 dark:text-slate-200">Market outlook</p>
+          <InfoButton open={sigmaOpen} onToggle={() => setSigmaOpen(o => !o)} label="Market outlook" />
+        </div>
+        {sigmaOpen && (
+          <div className="mb-3 rounded border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] leading-relaxed text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+            <p className="mb-1">
+              For each simulated retirement, we replay actual stretches of U.S. market history ({HISTORY_FIRST_YEAR}–{HISTORY_LAST_YEAR}) instead of making up returns from a formula.
+              We pick a random starting month, walk forward month by month (so Oct 1929 is followed by Nov 1929, Sep 2008 by Oct 2008 — crashes stay glued to their actual recoveries), and occasionally jump to a different starting month to mix things up across the {params.paths.toLocaleString()} simulations.
+              This is more honest than the usual "average return ± noise" approach, which can quietly invent stretches of bad years that never actually happened together.
+            </p>
+            <p className="mb-1">
+              The four scenarios shift the historical returns up or down to reflect different views on the future:
+              <strong> Historical</strong> — exactly what happened {HISTORY_FIRST_YEAR}–{HISTORY_LAST_YEAR}.
+              <strong> Moderate</strong> — knock 2 percentage points off stock returns and 0.5pp off bonds (roughly Vanguard's 2025 10-year forecast given today's high valuations).
+              <strong> Cautious</strong> — bigger haircut: stocks −3.5pp, bonds −1pp.
+              <strong> Custom</strong> — set your own.
+            </p>
+          </div>
+        )}
+        <div className="flex flex-wrap gap-1.5">
+          {SCENARIO_ORDER.map(s => {
+            const active = params.scenario === s
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => update('scenario', s)}
+                className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${
+                  active
+                    ? 'border-rose-500 bg-rose-100 text-rose-800 dark:border-rose-400 dark:bg-rose-950/40 dark:text-rose-300'
+                    : 'border-stone-300 bg-white text-gray-600 hover:bg-stone-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+                }`}
+              >
+                {SCENARIO_LABELS[s]}
+              </button>
+            )
+          })}
+        </div>
+        {params.scenario === 'custom' && (
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <NumInput
+              label="Stocks return shift"
+              value={Math.round(params.customStockShift * 1000) / 10}
+              onChange={v => update('customStockShift', v / 100)}
+              step={0.1}
+              suffix="pp"
+              hint="Added to every resampled stock return. e.g. −2 trims ~2pp/yr off historical"
+            />
+            <NumInput
+              label="Bonds return shift"
+              value={Math.round(params.customBondShift * 1000) / 10}
+              onChange={v => update('customBondShift', v / 100)}
+              step={0.1}
+              suffix="pp"
+              hint="Added to every resampled bond return"
+            />
+          </div>
+        )}
+        <p className="mt-1.5 text-[10px] text-stone-500 dark:text-slate-400">
+          Stationary block bootstrap of U.S. {HISTORY_FIRST_YEAR}&ndash;{HISTORY_LAST_YEAR} real returns ({HISTORICAL_RETURNS.length} months, ~10yr mean block).
+          {' '}Stocks shift {fmtPct(resolveScenarioShifts(params).stockShift, 1)}, bonds shift {fmtPct(resolveScenarioShifts(params).bondShift, 1)}.
+        </p>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">

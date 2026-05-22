@@ -3,16 +3,16 @@
 // unless noted otherwise. Spend / health-insurance inputs are in $K/year real.
 //
 // Returns are sampled by stationary block bootstrap from 1928–2023 monthly US
-// stock + 10yr Treasury history (Shiller/Yale data, mean block = 240 months).
+// stock + 10yr Treasury history (Shiller/Yale data, mean block = 120 months).
 // Each block preserves intra-block stock/bond co-movement, autocorrelation, and
 // crash/recovery shape that an i.i.d. lognormal model misses. Scenarios
 // differ only by a constant shift added to every resampled return — this
 // re-locates the distribution without distorting its variance, autocorrelation,
 // or tail asymmetry.
 //
-// Account model: wealth is split into a liquidity buffer (cash) plus three
-// equity buckets — taxable (with basis), traditional (locked until 59½, taxed
-// at ordinary income on withdrawal), and roth (locked until 59½, tax-free).
+// Account model: wealth is split into a liquidity buffer (cash) plus six
+// sub-buckets (stocks and bonds within each of taxable, traditional, roth).
+// The taxable bucket tracks cost basis separately for stocks and bonds.
 // Each year's spending need is funded sequentially: cash → taxable → traditional
 // → roth (latter two only after 59½). Tax is computed via 2026-indexed federal
 // brackets (ordinary + LTCG stacked), NIIT, IRMAA Medicare surcharges, and
@@ -22,12 +22,29 @@
 // because WI's 30% LTCG exclusion doesn't translate cleanly into a bracket
 // schedule. Brackets are CPI-indexed in real life so they're treated as
 // real-dollar throughout the simulation.
+//
+// Rebalancing: an optional annual rebalancing step can be enabled via
+// params.rebalance ('none' | 'tax-advantaged' | 'all'). Tax-advantaged-only
+// rebalances within 401(k)/IRA/Roth accounts (no taxable event). All-accounts
+// also rebalances the taxable brokerage, realizing capital gains when selling.
+//
+// Glidepath: params.glidePoints (GlidePoint[]) optionally specifies a target
+// stock/bond allocation that changes with age. When non-empty, the annual
+// rebalance and cash-refill targets use the interpolated allocation for that
+// year's age, allowing a declining-equity glidepath through retirement.
 
 export type Scenario = 'historical' | 'moderate' | 'cautious' | 'custom'
 
 export interface ScenarioParams {
   stockShift: number  // added to every resampled stock return
   bondShift: number   // added to every resampled bond return
+}
+
+export interface GlidePoint {
+  age: number
+  stockPct: number  // fraction of total portfolio (0..1)
+  bondPct: number   // fraction of total portfolio (0..1)
+  // cashPct = 1 - stockPct - bondPct (derived)
 }
 
 // Built-in scenario shifts. 'custom' uses params.customStockShift / customBondShift.
@@ -48,12 +65,12 @@ export const SCENARIO_LABELS: Record<Scenario, string> = {
 
 // Stationary bootstrap (Politis & Romano 1994): at each month, with
 // probability 1/MEAN_BLOCK_LEN start a new random block, otherwise advance
-// one month. Block lengths are geometrically distributed with mean L. Mean
-// 240 (≈ 20 years) preserves the same long-run continuity as the prior
-// annual model (P(no jumps in 360 months) ≈ 22%), ensuring each simulated
-// path mostly rides a single contiguous historical run while still sampling
-// enough inter-block diversity for Monte Carlo spread.
-export const MEAN_BLOCK_LEN = 240
+// one month. Block lengths are geometrically distributed with mean L.
+// Mean 120 (≈ 10 years) preserves multi-year market cycle autocorrelation
+// (crashes stay glued to their recoveries) while giving ~3 independent blocks
+// per 30-year path, improving Monte Carlo diversity vs. 20-year blocks which
+// yield only ~1.5 blocks per path.
+export const MEAN_BLOCK_LEN = 120
 
 // Behavioral spending ramp: when total wealth (equity + cash) falls to this
 // fraction of the starting total or below, annual spend is clamped to
@@ -1645,6 +1662,14 @@ export interface SimParams {
   // hard-coded WI brackets (see computeAnnualTax). The user's state_income_rate
   // is no longer consulted for the retirement sim.
   stateLTCGRate: number      // 0..1, applied to LTCG
+  // Annual rebalancing. 'none' = let drift; 'tax-advantaged' = rebalance only
+  // within 401(k)/IRA/Roth (no taxable event); 'all' = also rebalance taxable
+  // brokerage, realizing capital gains.
+  rebalance: 'none' | 'tax-advantaged' | 'all'
+  // Optional glidepath: target stock/bond allocations at specific ages. When
+  // non-empty, allocations interpolate between entries; the cash refill and
+  // annual rebalance use the interpolated target for the current age.
+  glidePoints: GlidePoint[]
   // UI flag — toggles the advanced bucket inputs. Math ignores it.
   advanced: boolean
   seed?: number
@@ -1682,6 +1707,8 @@ export const DEFAULT_PARAMS: SimParams = {
   spouseStopWorkAge: 65,
   spouseHasEmployerHI: false,
   stateLTCGRate: 0,
+  rebalance: 'tax-advantaged',
+  glidePoints: [],
   advanced: false,
 }
 
@@ -1700,6 +1727,53 @@ export function migrateLoadedParams(saved: Record<string, unknown>): Partial<Sim
     if (out.additionalBasis == null) out.additionalBasis = 0
   }
   return out as Partial<SimParams>
+}
+
+// Interpolate stock/bond/cash weights from a glidepath at a given age.
+// If points is empty, derives weights from defaultStockPct/defaultBondPct the
+// same way the simulation does: wS = stockPct / equityPct, wB = 1 - wS,
+// cashPct = 1 - equityPct.
+// If points has entries, sorts by age, clamps to first/last, and linearly
+// interpolates stockPct/bondPct between surrounding entries.
+// Returns wS (stock fraction of equity), wB (bond fraction of equity), and
+// cashPct (fraction of total portfolio held as cash).
+export function interpolateGlide(
+  age: number,
+  points: GlidePoint[],
+  defaultStockPct: number,
+  defaultBondPct: number,
+): { wS: number; wB: number; cashPct: number } {
+  if (points.length === 0) {
+    const equityPct = defaultStockPct + defaultBondPct
+    const wS = equityPct > 0 ? defaultStockPct / equityPct : 0
+    const wB = 1 - wS
+    const cashPct = Math.max(0, 1 - equityPct)
+    return { wS, wB, cashPct }
+  }
+  const sorted = [...points].sort((a, b) => a.age - b.age)
+  if (age <= sorted[0].age) {
+    const sp = sorted[0].stockPct
+    const bp = sorted[0].bondPct
+    const wS = (sp + bp) > 0 ? sp / (sp + bp) : 0
+    return { wS, wB: 1 - wS, cashPct: Math.max(0, 1 - sp - bp) }
+  }
+  if (age >= sorted[sorted.length - 1].age) {
+    const sp = sorted[sorted.length - 1].stockPct
+    const bp = sorted[sorted.length - 1].bondPct
+    const wS = (sp + bp) > 0 ? sp / (sp + bp) : 0
+    return { wS, wB: 1 - wS, cashPct: Math.max(0, 1 - sp - bp) }
+  }
+  let lo = sorted[0], hi = sorted[1]
+  for (let i = 0; i < sorted.length - 1; i++) {
+    if (sorted[i].age <= age && sorted[i + 1].age >= age) {
+      lo = sorted[i]; hi = sorted[i + 1]; break
+    }
+  }
+  const t = (age - lo.age) / (hi.age - lo.age)
+  const sp = lo.stockPct + t * (hi.stockPct - lo.stockPct)
+  const bp = lo.bondPct + t * (hi.bondPct - lo.bondPct)
+  const wS = (sp + bp) > 0 ? sp / (sp + bp) : 0
+  return { wS, wB: 1 - wS, cashPct: Math.max(0, 1 - sp - bp) }
 }
 
 // Mulberry32 — small, fast, deterministic PRNG (used for seedable tests).
@@ -1919,10 +1993,18 @@ export function simulate(params: SimParams): SimResult {
 
   for (let i = 0; i < N; i++) {
     let cash = startingCash
-    let taxableEq = taxableEquity0
-    let taxableBasis = taxableBasis0
-    let tradEq = tradTotal
-    let rothEq = rothTotal
+    // Separate stock/bond sub-buckets per account type.
+    // txS/txB: taxable stocks and bonds ($M); txSb/txBb: their cost bases.
+    // trdS/trdB: traditional stocks and bonds ($M, no basis — all withdrawals are ordinary income).
+    // rthS/rthB: roth stocks and bonds ($M, no basis — withdrawals are tax-free).
+    let txS = taxableEquity0 * wS
+    let txSb = taxableBasis0 * wS
+    let txB = taxableEquity0 * wB
+    let txBb = taxableBasis0 * wB
+    let trdS = tradTotal * wS
+    let trdB = tradTotal * wB
+    let rthS = rothTotal * wS
+    let rthB = rothTotal * wB
     let isRuined = false
     let dataIdx = Math.floor(rand() * dataLen)
 
@@ -1933,8 +2015,8 @@ export function simulate(params: SimParams): SimResult {
     let yearSpouseWorkGross = 0  // $M, spouse gross W-2 — added to ordinary income at year-end
     // Prior-year annual HI in $M — amortized 1/12 per month.
     let pathHIM = initialHIM
-    // Taxable equity at the start of each simulation year (for refill check).
-    let yearStartTaxableEq = taxableEq
+    // Taxable total (stocks + bonds) at the start of each simulation year (for refill check).
+    let yearStartTaxableTotal = txS + txB
 
     for (let m = 1; m <= M; m++) {
       const monthOfYear = ((m - 1) % 12) + 1  // 1..12
@@ -1945,7 +2027,7 @@ export function simulate(params: SimParams): SimResult {
 
       // Once a path is ruined it stops accumulating.
       if (isRuined) {
-        cash = 0; taxableEq = 0; taxableBasis = 0; tradEq = 0; rothEq = 0
+        cash = 0; txS = 0; txSb = 0; txB = 0; txBb = 0; trdS = 0; trdB = 0; rthS = 0; rthB = 0
         if (isYearEnd) {
           const fanIdx = yearToFanIdx.get(y)
           if (fanIdx != null) fanWealth[fanIdx][i] = 0
@@ -1964,20 +2046,21 @@ export function simulate(params: SimParams): SimResult {
       // for cautious). Divide by 12 to apply correctly to monthly returns.
       const stockR = sample.stockReal + stockShift / 12
       const bondR = sample.bondReal + bondShift / 12
-      const portR = wS * stockR + wB * bondR
 
-      // Erode taxable basis by this month's CPI. Cost basis is fixed in
+      // Erode taxable bases by this month's CPI. Cost basis is fixed in
       // nominal $ in real life, but the simulator tracks everything in real
       // $ — so basis loses purchasing power each month. Using the sampled
       // month's actual CPI keeps each path internally consistent.
-      if (taxableBasis > 0) {
-        taxableBasis = Math.max(0, taxableBasis / (1 + sample.inflation))
-      }
+      if (txSb > 0) txSb = Math.max(0, txSb / (1 + sample.inflation))
+      if (txBb > 0) txBb = Math.max(0, txBb / (1 + sample.inflation))
 
-      // Apply monthly growth uniformly across all three equity buckets.
-      taxableEq = Math.max(0, taxableEq * (1 + portR))
-      tradEq = Math.max(0, tradEq * (1 + portR))
-      rothEq = Math.max(0, rothEq * (1 + portR))
+      // Apply monthly growth directly to each sub-bucket.
+      txS = Math.max(0, txS * (1 + stockR))
+      txB = Math.max(0, txB * (1 + bondR))
+      trdS = Math.max(0, trdS * (1 + stockR))
+      trdB = Math.max(0, trdB * (1 + bondR))
+      rthS = Math.max(0, rthS * (1 + stockR))
+      rthB = Math.max(0, rthB * (1 + bondR))
 
       // Monthly SS income — each spouse claims at their own age.
       const ownerSsM = age >= params.claimAge ? ssAnnual / 12 / 1_000_000 : 0
@@ -2003,7 +2086,7 @@ export function simulate(params: SimParams): SimResult {
 
       // Monthly behavioral spending ramp (same formula as annual, scaled 1/12).
       const wealthRatio = startingTotal > 0
-        ? (taxableEq + tradEq + rothEq + cash) / startingTotal : 0
+        ? (txS + txB + trdS + trdB + rthS + rthB + cash) / startingTotal : 0
       const spendT = Math.max(0, Math.min(1,
         (wealthRatio - SPEND_RAMP_FLOOR) / (1 - SPEND_RAMP_FLOOR)))
       const baseSpendMonthly = (minSpendK + spendT * (defaultSpendK - minSpendK)) / 1000 / 12
@@ -2011,54 +2094,66 @@ export function simulate(params: SimParams): SimResult {
       // Monthly HI: amortize prior year's annual HI 1/12 per month.
       const hiMonthly = pathHIM / 12
 
-      // Basis fraction — fixed for this month (post-growth state). Pulls
-      // and refills consume basis pro-rata.
-      const basisFraction = taxableEq > 0 ? Math.min(1, taxableBasis / taxableEq) : 1
-
       // Monthly net need from portfolio. SS and spouse's net work income (gross minus
       // payroll taxes; income tax on gross is handled at year-end) reduce the draw.
       let need = baseSpendMonthly + hiMonthly - ssGrossM - spouseNetWorkMonthM
-      let pulledCash = 0, pulledTaxable = 0, pulledTrad = 0, pulledRoth = 0
+      let pulledTrad = 0
       let shortfall = false
 
       if (need <= 0) {
-        pulledCash = need  // surplus: negative pull = cash deposit
+        cash -= need  // surplus: add to cash
+        need = 0
       } else {
-        if (cash > 0) { pulledCash = Math.min(cash, need); need -= pulledCash }
-        if (need > 0 && taxableEq > 0) {
-          pulledTaxable = Math.min(taxableEq, need); need -= pulledTaxable
+        if (cash > 0) { const p = Math.min(cash, need); cash -= p; need -= p }
+
+        // Withdraw from taxable proportionally from stocks and bonds.
+        const txEq = txS + txB
+        if (need > 0 && txEq > 0) {
+          const pulled = Math.min(txEq, need); need -= pulled
+          const pS = pulled * txS / txEq
+          const pB = pulled * txB / txEq
+          const sBF = txS > 0 ? Math.min(1, txSb / txS) : 0
+          const bBF = txB > 0 ? Math.min(1, txBb / txB) : 0
+          yearLTCG += pS * (1 - sBF) + pB * (1 - bBF)
+          txS = Math.max(0, txS - pS); txSb = Math.max(0, txSb - pS * sBF)
+          txB = Math.max(0, txB - pB); txBb = Math.max(0, txBb - pB * bBF)
         }
-        if (need > 0 && age >= RETIREMENT_ACCESS_AGE && tradEq > 0) {
-          pulledTrad = Math.min(tradEq, need); need -= pulledTrad
+
+        // Withdraw from traditional proportionally from stocks and bonds.
+        if (need > 0 && age >= RETIREMENT_ACCESS_AGE) {
+          const trdEq = trdS + trdB
+          if (trdEq > 0) {
+            const pulled = Math.min(trdEq, need); need -= pulled
+            const fS = trdS / trdEq
+            trdS = Math.max(0, trdS - pulled * fS)
+            trdB = Math.max(0, trdB - pulled * (1 - fS))
+            pulledTrad = pulled
+          }
         }
-        if (need > 0 && age >= RETIREMENT_ACCESS_AGE && rothEq > 0) {
-          pulledRoth = Math.min(rothEq, need); need -= pulledRoth
+
+        // Withdraw from roth proportionally from stocks and bonds.
+        if (need > 0 && age >= RETIREMENT_ACCESS_AGE) {
+          const rthEq = rthS + rthB
+          if (rthEq > 0) {
+            const pulled = Math.min(rthEq, need); need -= pulled
+            const fS = rthS / rthEq
+            rthS = Math.max(0, rthS - pulled * fS)
+            rthB = Math.max(0, rthB - pulled * (1 - fS))
+          }
         }
+
         if (need > 1e-9) shortfall = true
       }
 
-      // Apply pulls.
-      cash -= pulledCash
-      if (pulledTaxable > 0) {
-        const basisReturned = pulledTaxable * basisFraction
-        taxableEq -= pulledTaxable
-        taxableBasis = Math.max(0, taxableBasis - basisReturned)
-        yearLTCG += pulledTaxable * (1 - basisFraction)
-      }
-      tradEq -= pulledTrad
-      rothEq -= pulledRoth
       yearTradWithdrawal += pulledTrad
       yearSSTaxable += ssTaxableMonthM
       if (spouseWorking) yearSpouseWorkGross += spouseWorkMonthM
 
       if (cash < 0) cash = 0
-      if (taxableEq < 0) taxableEq = 0
-      if (tradEq < 0) tradEq = 0
-      if (rothEq < 0) rothEq = 0
 
       // Ruin: monthly spending shortfall, or portfolio fully exhausted.
       if (shortfall) isRuined = true
-      if (cash + taxableEq + tradEq + rothEq <= 0) isRuined = true
+      if (cash + txS + txB + trdS + trdB + rthS + rthB <= 0) isRuined = true
 
       if (isYearEnd) {
         if (!isRuined) {
@@ -2087,42 +2182,69 @@ export function simulate(params: SimParams): SimResult {
           })
           const taxM = taxRes.total / 1_000_000
 
-          // Pay annual tax bill: cash → taxable → trad → roth.
+          // Pay annual tax bill from taxable proportionally: cash → taxable (stocks/bonds) → trad → roth.
           if (taxM > 0) {
-            const bf2 = taxableEq > 0 ? Math.min(1, taxableBasis / taxableEq) : 1
             let taxRemain = taxM
             if (cash > 0) {
               const p = Math.min(cash, taxRemain); cash -= p; taxRemain -= p
             }
-            if (taxRemain > 0 && taxableEq > 0) {
-              const p = Math.min(taxableEq, taxRemain)
-              taxableEq -= p
-              taxableBasis = Math.max(0, taxableBasis - p * bf2)
-              taxRemain -= p
+            if (taxRemain > 0) {
+              const txEq2 = txS + txB
+              if (txEq2 > 0) {
+                const p = Math.min(txEq2, taxRemain)
+                const bf2S = txS > 0 ? Math.min(1, txSb / txS) : 0
+                const bf2B = txB > 0 ? Math.min(1, txBb / txB) : 0
+                const pS = p * txS / txEq2
+                const pB = p * txB / txEq2
+                txS = Math.max(0, txS - pS); txSb = Math.max(0, txSb - pS * bf2S)
+                txB = Math.max(0, txB - pB); txBb = Math.max(0, txBb - pB * bf2B)
+                taxRemain -= p
+              }
             }
-            if (taxRemain > 0 && tradEq > 0) {
-              const p = Math.min(tradEq, taxRemain); tradEq -= p; taxRemain -= p
+            if (taxRemain > 0) {
+              const trdEq2 = trdS + trdB
+              if (trdEq2 > 0) {
+                const p = Math.min(trdEq2, taxRemain)
+                const fS = trdS / trdEq2
+                trdS = Math.max(0, trdS - p * fS); trdB = Math.max(0, trdB - p * (1 - fS))
+                taxRemain -= p
+              }
             }
-            if (taxRemain > 0 && rothEq > 0) {
-              const p = Math.min(rothEq, taxRemain); rothEq -= p; taxRemain -= p
+            if (taxRemain > 0) {
+              const rthEq2 = rthS + rthB
+              if (rthEq2 > 0) {
+                const p = Math.min(rthEq2, taxRemain)
+                const fS = rthS / rthEq2
+                rthS = Math.max(0, rthS - p * fS); rthB = Math.max(0, rthB - p * (1 - fS))
+                taxRemain -= p
+              }
             }
             if (taxRemain > 1e-9) isRuined = true
           }
         }
 
         if (!isRuined) {
-          // Refill cash buffer from this year's net positive equity gain in
-          // the taxable bucket. The refill is a sale: it realizes LTCG on
-          // the gain portion. Recompute the year's marginal tax with the
-          // extra gain and pay the delta out of cash.
-          const equityChangeTaxable = taxableEq - yearStartTaxableEq
-          if (equityChangeTaxable > 0 && cash < cashTarget && taxableEq > 0) {
-            const refillRoom = cashTarget - cash
+          // Refill cash buffer from this year's net positive equity gain in the
+          // taxable bucket. The refill is a sale: it realizes LTCG on the gain
+          // portion. Recompute the year's marginal tax with the extra gain and
+          // pay the delta out of cash.
+          const equityChangeTaxable = (txS + txB) - yearStartTaxableTotal
+          // Determine cash target: use glidepath if points are defined.
+          let cashTargetNow = cashTarget
+          if (params.glidePoints.length > 0) {
+            const glide = interpolateGlide(age, params.glidePoints, params.stockPct, params.bondPct)
+            cashTargetNow = glide.cashPct * (cash + txS + txB + trdS + trdB + rthS + rthB)
+          }
+          if (equityChangeTaxable > 0 && cash < cashTargetNow && (txS + txB) > 0) {
+            const refillRoom = cashTargetNow - cash
             const grossSell = Math.min(refillRoom, equityChangeTaxable)
             if (grossSell > 0) {
-              const refillBasisFraction = taxableEq > 0 ? Math.min(1, taxableBasis / taxableEq) : 1
-              const refillGainM = grossSell * (1 - refillBasisFraction)
-              const basisReturned = grossSell * refillBasisFraction
+              const txEqR = txS + txB
+              const pS = grossSell * txS / txEqR
+              const pB = grossSell * txB / txEqR
+              const sBF = txS > 0 ? Math.min(1, txSb / txS) : 0
+              const bBF = txB > 0 ? Math.min(1, txBb / txB) : 0
+              const refillGainM = pS * (1 - sBF) + pB * (1 - bBF)
               const taxBefore = computeAnnualTax({
                 traditionalWithdrawal: (yearTradWithdrawal + yearSpouseWorkGross) * 1_000_000,
                 ssTaxable: yearSSTaxable * 1_000_000,
@@ -2136,22 +2258,102 @@ export function simulate(params: SimParams): SimResult {
                 status, stateLTCGRate,
               })
               const refillTaxM = Math.max(0, (taxAfter.total - taxBefore.total) / 1_000_000)
-              taxableEq -= grossSell
-              taxableBasis = Math.max(0, taxableBasis - basisReturned)
+              txS = Math.max(0, txS - pS); txSb = Math.max(0, txSb - pS * sBF)
+              txB = Math.max(0, txB - pB); txBb = Math.max(0, txBb - pB * bBF)
               cash += grossSell - refillTaxM
               if (cash < 0) cash = 0
             }
           }
 
           if (cash < 0) cash = 0
-          if (taxableEq < 0) taxableEq = 0
-          if (tradEq < 0) tradEq = 0
-          if (rothEq < 0) rothEq = 0
+          if (txS < 0) txS = 0; if (txB < 0) txB = 0
+          if (trdS < 0) trdS = 0; if (trdB < 0) trdB = 0
+          if (rthS < 0) rthS = 0; if (rthB < 0) rthB = 0
+
+          // Annual rebalancing: snap stock/bond allocation back to target.
+          if (params.rebalance !== 'none') {
+            const { wS: wST } = interpolateGlide(age, params.glidePoints, params.stockPct, params.bondPct)
+            const equity = txS + txB + trdS + trdB + rthS + rthB
+            const targetStocks = wST * equity
+            const currentStocks = txS + trdS + rthS
+            const stockExcess = currentStocks - targetStocks
+
+            if (Math.abs(stockExcess) > equity * 1e-9) {
+              if (stockExcess > 0) {
+                // Too many stocks: sell stocks, buy bonds in tax-advantaged accounts first.
+                const taxAdvS = trdS + rthS
+                const taxAdvSell = Math.min(stockExcess, taxAdvS)
+                if (taxAdvSell > 0 && taxAdvS > 0) {
+                  const trdFrac = trdS / taxAdvS
+                  trdS -= taxAdvSell * trdFrac; trdB += taxAdvSell * trdFrac
+                  rthS -= taxAdvSell * (1 - trdFrac); rthB += taxAdvSell * (1 - trdFrac)
+                }
+                const residual = stockExcess - taxAdvSell
+                if (residual > equity * 1e-9 && params.rebalance === 'all' && txS > 0) {
+                  const sell = Math.min(residual, txS)
+                  const sBF = txS > 0 ? Math.min(1, txSb / txS) : 0
+                  const rebalLTCG = sell * (1 - sBF)
+                  if (rebalLTCG > 0) {
+                    const taxBefore = computeAnnualTax({
+                      traditionalWithdrawal: (yearTradWithdrawal + yearSpouseWorkGross) * 1_000_000,
+                      ssTaxable: yearSSTaxable * 1_000_000,
+                      ltcg: yearLTCG * 1_000_000,
+                      status, stateLTCGRate,
+                    })
+                    const taxAfter = computeAnnualTax({
+                      traditionalWithdrawal: (yearTradWithdrawal + yearSpouseWorkGross) * 1_000_000,
+                      ssTaxable: yearSSTaxable * 1_000_000,
+                      ltcg: (yearLTCG + rebalLTCG) * 1_000_000,
+                      status, stateLTCGRate,
+                    })
+                    const rebalTax = Math.max(0, (taxAfter.total - taxBefore.total) / 1_000_000)
+                    cash = Math.max(0, cash - rebalTax)
+                  }
+                  txS = Math.max(0, txS - sell); txSb = Math.max(0, txSb - sell * sBF)
+                  txB += sell; txBb += sell  // buy bonds at cost basis = purchase price
+                }
+              } else {
+                // Too many bonds: sell bonds, buy stocks in tax-advantaged accounts first.
+                const bondExcess = -stockExcess
+                const taxAdvB = trdB + rthB
+                const taxAdvSell = Math.min(bondExcess, taxAdvB)
+                if (taxAdvSell > 0 && taxAdvB > 0) {
+                  const trdFrac = trdB / taxAdvB
+                  trdB -= taxAdvSell * trdFrac; trdS += taxAdvSell * trdFrac
+                  rthB -= taxAdvSell * (1 - trdFrac); rthS += taxAdvSell * (1 - trdFrac)
+                }
+                const residual = bondExcess - taxAdvSell
+                if (residual > equity * 1e-9 && params.rebalance === 'all' && txB > 0) {
+                  const sell = Math.min(residual, txB)
+                  const bBF = txB > 0 ? Math.min(1, txBb / txB) : 0
+                  const rebalLTCG = sell * (1 - bBF)
+                  if (rebalLTCG > 0) {
+                    const taxBefore = computeAnnualTax({
+                      traditionalWithdrawal: (yearTradWithdrawal + yearSpouseWorkGross) * 1_000_000,
+                      ssTaxable: yearSSTaxable * 1_000_000,
+                      ltcg: yearLTCG * 1_000_000,
+                      status, stateLTCGRate,
+                    })
+                    const taxAfter = computeAnnualTax({
+                      traditionalWithdrawal: (yearTradWithdrawal + yearSpouseWorkGross) * 1_000_000,
+                      ssTaxable: yearSSTaxable * 1_000_000,
+                      ltcg: (yearLTCG + rebalLTCG) * 1_000_000,
+                      status, stateLTCGRate,
+                    })
+                    const rebalTax = Math.max(0, (taxAfter.total - taxBefore.total) / 1_000_000)
+                    cash = Math.max(0, cash - rebalTax)
+                  }
+                  txB = Math.max(0, txB - sell); txBb = Math.max(0, txBb - sell * bBF)
+                  txS += sell; txSb += sell  // buy stocks at cost basis = purchase price
+                }
+              }
+            }
+          }
         }
 
         const fanIdx = yearToFanIdx.get(y)
         if (fanIdx != null) {
-          fanWealth[fanIdx][i] = isRuined ? 0 : (cash + taxableEq + tradEq + rothEq)
+          fanWealth[fanIdx][i] = isRuined ? 0 : (cash + txS + txB + trdS + trdB + rthS + rthB)
         }
 
         // Reset annual accumulators and advance year-start snapshot.
@@ -2159,11 +2361,11 @@ export function simulate(params: SimParams): SimResult {
         yearLTCG = 0
         yearSSTaxable = 0
         yearSpouseWorkGross = 0
-        yearStartTaxableEq = taxableEq
+        yearStartTaxableTotal = txS + txB
       }
     }
 
-    finalWealth[i] = cash + taxableEq + tradEq + rothEq
+    finalWealth[i] = cash + txS + txB + trdS + trdB + rthS + rthB
     ruined[i] = isRuined ? 1 : 0
   }
 

@@ -22,7 +22,7 @@ PY="$VENV/bin/python3"
 TMPDB=$(mktemp /tmp/screenshots-XXXXX.db)
 
 echo "==> Seeding temporary database..."
-DATABASE_URL="sqlite:///$TMPDB" JWT_SECRET="screenshots-secret" \
+DATABASE_URL="sqlite:///$TMPDB" JWT_SECRET="screenshots-secret" E2E_TEST=1 \
   "$PY" screenshots/seed.py > /tmp/screenshot_token.txt
 TOKEN=$(cat /tmp/screenshot_token.txt)
 

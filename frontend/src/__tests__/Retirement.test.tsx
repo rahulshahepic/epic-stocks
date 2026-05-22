@@ -147,11 +147,11 @@ describe('Retirement page', () => {
     // JSX puts the formatted percent and the surrounding text in separate
     // text nodes, so we match against the parent <p>'s combined textContent
     // rather than a regex that has to span the JSX boundary.
-    await waitFor(() => expect(screen.getByText(/Wisconsin progressive brackets/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/Wisconsin-specific/)).toBeInTheDocument())
     await waitFor(() => {
       const found = screen.getByText((_content, element) => {
         const txt = element?.textContent ?? ''
-        return element?.tagName === 'P' && txt.includes('9.85%') && txt.includes('on capital gains')
+        return element?.tagName === 'P' && txt.includes('9.85%') && txt.includes('capital gains rate')
       })
       expect(found).toBeInTheDocument()
     })
@@ -185,7 +185,7 @@ describe('Retirement page', () => {
     const bondsInput = screen.getByLabelText(/^Bonds/) as HTMLInputElement
     await user.clear(bondsInput)
     await user.type(bondsInput, '50')
-    expect(screen.getByText(/Stocks \+ bonds add to more than 100%/i)).toBeInTheDocument()
+    expect(screen.getByText(/Over 100%/i)).toBeInTheDocument()
   })
 
   it('shows SS adjustment factor and adjusted monthly amount', async () => {
@@ -359,7 +359,7 @@ describe('Retirement page', () => {
         <Retirement />
       </MemoryRouter>,
     )
-    const btn = await screen.findByRole('button', { name: /Return scenario explanation/i })
+    const btn = await screen.findByRole('button', { name: /Market outlook explanation/i })
     expect(screen.queryByText(/replay actual stretches of U\.S\. market history/i)).not.toBeInTheDocument()
     await user.click(btn)
     expect(screen.getByText(/replay actual stretches of U\.S\. market history/i)).toBeInTheDocument()

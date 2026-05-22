@@ -125,6 +125,9 @@ jobs:
           E2E_BASE_URL: http://localhost:8000
           E2E_API_URL: http://localhost:8000
         run: cd frontend && time npx playwright test
+      - name: Dump backend logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.e2e.yml logs e2e-app
       - name: Teardown
         if: always()
         run: docker compose -f docker-compose.e2e.yml down -v

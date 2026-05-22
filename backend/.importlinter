@@ -1,0 +1,25 @@
+[importlinter]
+root_packages =
+    app
+    scaffold
+    services
+
+[importlinter:contract:scaffold-not-imports-app]
+name = scaffold must not import app
+type = forbidden
+source_modules =
+    scaffold
+forbidden_modules =
+    app
+# services is the neutral layer; scaffold importing services which imports app is allowed.
+ignore_imports =
+    services.timeline_cache -> app.core
+    services.timeline_cache -> app.event_cache
+
+[importlinter:contract:services-not-imports-scaffold-routers]
+name = services must not import scaffold routers
+type = forbidden
+source_modules =
+    services
+forbidden_modules =
+    scaffold.routers

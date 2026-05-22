@@ -13,3 +13,4 @@ joserfc>=1.0.0
 py-vapid>=1.9.0
 psutil>=5.9.0
 redis>=5.0.0
+import-linter>=2.0

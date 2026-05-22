@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from database import SessionLocal
 from scaffold.models import User, Grant, Loan, Price, PushSubscription, EmailPreference, Sale
-from app.timeline_cache import get_timeline
+from services.timeline_cache import get_timeline
 
 logger = logging.getLogger(__name__)
 

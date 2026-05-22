@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.ts'
 import { api } from '../../api.ts'
+import { useAppContext } from '../contexts/AppContext.tsx'
 
 function generateCodeVerifier(): string {
   const array = new Uint8Array(64)
@@ -24,6 +25,7 @@ async function generateCodeChallenge(verifier: string): Promise<string> {
 export default function Login() {
   const { isAuthenticated } = useAuth()
   const navigate = useNavigate()
+  const { appName, appTagline } = useAppContext()
   const [providers, setProviders] = useState<Array<{ name: string; label: string }>>([])
   const [loading, setLoading] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -72,10 +74,10 @@ export default function Login() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-stone-50 px-4 dark:bg-slate-950">
       <div className="w-full max-w-sm text-center">
         <h1 className="mb-2 text-2xl font-bold text-rose-700 dark:text-rose-400">
-          Equity Vesting Tracker
+          {appName}
         </h1>
         <p className="mb-8 text-sm text-stone-600 dark:text-slate-400">
-          Sign in to manage your equity compensation
+          {appTagline}
         </p>
 
         {error && (

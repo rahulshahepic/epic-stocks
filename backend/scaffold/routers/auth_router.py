@@ -176,30 +176,26 @@ if os.getenv("E2E_TEST") == "1":
         user = db.query(User).filter(User.email == body.email).first()
         if not user:
             enc_key = encrypt_user_key(generate_user_key()) if encryption_enabled() else None
-            user = User(
-                email=body.email,
-                provider_name="test",
-                google_id=f"test-{body.email}",
-                name=body.name,
-                encrypted_key=enc_key,
-            )
-            db.add(user)
-            db.flush()  # get user.id without committing
-            db.add(EmailPreference(user_id=user.id, enabled=1))
-            is_new = True
+            try:
+                user = User(
+                    email=body.email,
+                    provider_name="test",
+                    google_id=f"test-{body.email}",
+                    name=body.name,
+                    encrypted_key=enc_key,
+                )
+                db.add(user)
+                db.flush()  # raises IntegrityError if a concurrent worker won the race
+                db.add(EmailPreference(user_id=user.id, enabled=1))
+                is_new = True
+            except IntegrityError:
+                # Race: another worker committed the same email first — re-fetch and fall through
+                db.rollback()
+                user = db.query(User).filter(User.email == body.email).first()
         admin_emails = get_admin_emails()
         user.is_admin = body.email.lower() in {e.lower() for e in admin_emails}
         user.last_login = datetime.now(timezone.utc)
-        try:
-            db.commit()
-        except IntegrityError:
-            # Race: another worker created the same user concurrently — re-fetch and update
-            db.rollback()
-            is_new = False
-            user = db.query(User).filter(User.email == body.email).first()
-            user.is_admin = body.email.lower() in {e.lower() for e in admin_emails}
-            user.last_login = datetime.now(timezone.utc)
-            db.commit()
+        db.commit()
         if is_new:
             _notify_admin_new_user(user, db)
         set_session_cookies(response, create_token(user.id, user.session_version))

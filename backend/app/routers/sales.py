@@ -44,7 +44,7 @@ def _get_or_create_tax_settings(user: User, db: Session) -> TaxSettings:
 
 
 def _build_timeline(user: User, db: Session) -> list:
-    from app.timeline_cache import get_timeline
+    from services.timeline_cache import get_timeline
     grants_db = db.query(Grant).filter(Grant.user_id == user.id).order_by(Grant.year).all()
     prices_db = db.query(Price).filter(Price.user_id == user.id).order_by(Price.effective_date).all()
     loans_db = db.query(Loan).filter(Loan.user_id == user.id).order_by(Loan.due_date).all()

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from scaffold.models import User, Grant, Loan, Price, LoanPayment, Sale, TaxSettings
 from scaffold.auth import get_current_user
-from app.timeline_cache import get_timeline
+from services.timeline_cache import get_timeline
 from app.sales_engine import compute_sale_tax
 from app.date_utils import to_date as _to_date
 

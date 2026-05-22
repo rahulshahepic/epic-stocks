@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { useAppContext } from '../contexts/AppContext.tsx'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -28,6 +29,7 @@ function Ul({ children }: { children: React.ReactNode }) {
 
 export default function PrivacyPolicy() {
   const navigate = useNavigate()
+  const { appName, privacyLastUpdated, privacyDataCollected, privacyThirdParties } = useAppContext()
   return (
     <div className="min-h-screen bg-stone-50 px-4 py-10 dark:bg-slate-950">
       <div className="mx-auto max-w-2xl">
@@ -41,12 +43,12 @@ export default function PrivacyPolicy() {
         </div>
 
         <h1 className="mb-1 text-2xl font-bold text-stone-900 dark:text-white">Privacy Policy</h1>
-        <p className="mb-8 text-xs text-stone-600 dark:text-slate-400">Last updated: 2026-05-08</p>
+        <p className="mb-8 text-xs text-stone-600 dark:text-slate-400">Last updated: {privacyLastUpdated}</p>
 
         <div className="rounded-lg bg-white p-6 shadow-sm dark:bg-slate-900 md:p-8">
           <P>
-            Equity Vesting Tracker ("Epic Stocks") is open-source software. This policy explains what
-            data the application collects, how it's stored, and who can access it.
+            {appName} is open-source software. This policy explains what data the application
+            collects, how it's stored, and who can access it.
           </P>
 
           <div className="mb-6 rounded-md border border-rose-200 bg-rose-50 p-4 dark:border-rose-900/60 dark:bg-rose-950/30">
@@ -59,63 +61,30 @@ export default function PrivacyPolicy() {
             </p>
           </div>
 
-          <Section title="Why Google Sign-In?">
+          <Section title="How Sign-In Works">
             <P>
-              We use Google Sign-In so that we <strong>never handle your password</strong>. When you
-              click "Sign in with Google", your credentials go directly to Google — we never see
-              them. Google then tells us who you are by sharing a small set of profile fields:
+              We use third-party identity providers (such as Google or Microsoft) so that we{' '}
+              <strong>never handle your password</strong>. When you click a sign-in button, your
+              credentials go directly to that provider — we never see them. The provider then
+              tells us who you are by sharing a small set of profile fields:
             </P>
             <Ul>
               <li><strong>Email address</strong> — your unique identifier in this app</li>
               <li><strong>Display name</strong> — shown in the UI</li>
-              <li><strong>Profile picture URL</strong> — shown in the UI</li>
-              <li><strong>Google subject ID</strong> — a stable ID that links your Google account</li>
+              <li><strong>Profile picture URL</strong> — shown in the UI (if provided)</li>
+              <li><strong>Subject ID</strong> — a stable ID that links your provider account</li>
             </Ul>
             <P>
-              We do not receive or store your Google password, contacts, calendar, or any other
-              Google data beyond the four fields above.
+              We do not receive or store your password, contacts, calendar, or any other data
+              from your identity provider beyond the profile fields listed above.
             </P>
           </Section>
 
-          <Section title="What We Collect">
-            <SubSection title="Financial data (entered by you)">
-              <P>You manually enter the following, which is stored in the application database:</P>
-              <Ul>
-                <li>Equity grants — year, type, share count, exercise price, vesting schedule</li>
-                <li>Stock loans — loan type, amount, interest rate, due date, optional loan number</li>
-                <li>Share prices — effective date and price per share</li>
-                <li>Sales / dispositions — date, share count, sale price, optional notes, optional per-sale tax-rate overrides, optional manual lot allocations</li>
-                <li>Loan payments — early cash payments you record against a loan (date, amount, optional notes)</li>
-                <li>Tax settings — federal and state income, long- and short-term capital gains rates, NIIT, long-term holding period, lot-selection method, loan-payoff method, and the investment-interest deduction toggle</li>
-              </Ul>
-            </SubSection>
-            <SubSection title="Profile and saved preferences (entered by you)">
-              <P>The Retirement Simulator and other personalisation features also save the following per-user data:</P>
-              <Ul>
-                <li>Date of birth — used by the Retirement Simulator to time Social Security claim eligibility and Medicare (age 65). Optional.</li>
-                <li>Retirement scenario inputs — your saved retirement plan: portfolio amounts, allocation, default/min spend, health-insurance estimate, refill tax drag, return scenario, simulation horizon, retirement date, your Social Security FRA monthly benefit and claim age, and (optionally, with the spouse toggle) your spouse's date of birth, FRA monthly benefit, and claim age</li>
-                <li>Dashboard preferences — date mode, date range, and which sections are expanded</li>
-                <li>Notification preferences — email-notification opt-in, advance-warning days, registered Web Push subscriptions, and per-inviter notification opt-ins on shared accounts</li>
-                <li>Optimization tip acceptance — which optimization tips you have accepted on the Dashboard</li>
-              </Ul>
-            </SubSection>
-            <SubSection title="Computed data (never stored)">
-              <P>
-                The event timeline (vesting events, income, capital gains) is computed from your
-                grants, loans, and prices on every request. Computed events are never written to
-                the database — they exist only in memory during your request.
-              </P>
-            </SubSection>
-            <SubSection title="What we don't collect">
-              <Ul>
-                <li>Passwords (authentication is handled entirely by Google)</li>
-                <li>Analytics or usage tracking</li>
-                <li>Cookies beyond the authentication session token</li>
-                <li>Data from other users</li>
-                <li>Any Google account data beyond the profile fields listed above</li>
-              </Ul>
-            </SubSection>
-          </Section>
+          {privacyDataCollected && (
+            <Section title="What We Collect">
+              {privacyDataCollected}
+            </Section>
+          )}
 
           <Section title="Data Isolation">
             <P>
@@ -179,21 +148,11 @@ export default function PrivacyPolicy() {
                 control the database and the key.
               </P>
             </SubSection>
-            <SubSection title="Third-party services">
-              <P>The site operator uses the following infrastructure:</P>
-              <Ul>
-                <li><strong>Google OAuth</strong> — verifies your identity. Google receives your credentials; we receive only your profile fields.</li>
-                <li><strong>Hetzner</strong> — VPS hosting. The app and database run on Hetzner hardware.</li>
-                <li><strong>Cloudflare</strong> — DDoS protection and DNS. HTTPS traffic passes through Cloudflare's network.</li>
-                <li><strong>Porkbun</strong> — domain registrar. No access to application data.</li>
-                <li><strong>Resend</strong> — email notifications and invitation emails (if enabled). Notification content contains no financial data — only an event count and a login link. Invitation emails contain the inviter's display name and a one-time token — no financial data.</li>
-                <li><strong>Push notifications</strong> — delivered via Web Push through your browser's push service. Content contains no financial data.</li>
-              </Ul>
-              <P>
-                <strong>None of these services receive or can access your financial data</strong> for
-                any purpose, and we do not sell your data to any of them.
-              </P>
-            </SubSection>
+            {privacyThirdParties && (
+              <SubSection title="Third-party services">
+                {privacyThirdParties}
+              </SubSection>
+            )}
           </Section>
 
           <Section title="Data Retention and Portability">

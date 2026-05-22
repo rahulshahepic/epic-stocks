@@ -2,18 +2,12 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { LineChart, Line, ResponsiveContainer, Tooltip, YAxis, XAxis } from 'recharts'
 import { api } from '../../api.ts'
 import { useConfig } from '../hooks/useConfig.ts'
+import { useAppContext } from '../contexts/AppContext.tsx'
 import type {
   AdminStats, AdminUser, BlockedEmailEntry, ErrorLogEntry, TestNotifyResult,
   SystemMetricPoint, DbTableInfo, RotationEvent, TipsReport,
   UserDetail, EmailLookupResult,
 } from '../../api.ts'
-
-const NOTIFY_TEMPLATES: Record<string, { title: string; body: string }> = {
-  custom:        { title: 'Test from admin', body: 'This is a test notification from the Epic Stocks admin panel.' },
-  vesting:       { title: 'Equity Tracker', body: 'You have 1 event today: 1 Vesting' },
-  exercise:      { title: 'Equity Tracker', body: 'You have 1 event today: 1 Exercise' },
-  loan_repayment:{ title: 'Equity Tracker', body: 'You have 1 event today: 1 Loan Repayment' },
-}
 
 const METRIC_WINDOWS = [
   { label: '24h', hours: 24 },
@@ -56,6 +50,7 @@ function Sparkline({ data, dataKey, color, formatter }: {
 
 export default function Admin() {
   const config = useConfig()
+  const { notifyTemplates } = useAppContext()
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
   const [totalUsers, setTotalUsers] = useState(0)
@@ -70,8 +65,8 @@ export default function Admin() {
   const [searchInput, setSearchInput] = useState('')
   const [notifyModal, setNotifyModal] = useState<{ userId: number; userName: string } | null>(null)
   const [notifyTemplate, setNotifyTemplate] = useState('custom')
-  const [notifyTitle, setNotifyTitle] = useState(NOTIFY_TEMPLATES.custom.title)
-  const [notifyBody, setNotifyBody] = useState(NOTIFY_TEMPLATES.custom.body)
+  const [notifyTitle, setNotifyTitle] = useState('')
+  const [notifyBody, setNotifyBody] = useState('')
   const [notifySending, setNotifySending] = useState(false)
   const [notifyResult, setNotifyResult] = useState<TestNotifyResult | null>(null)
 
@@ -203,10 +198,12 @@ export default function Admin() {
   }
 
   function openNotifyModal(u: { id: number; name?: string | null; email: string }) {
+    const firstKey = Object.keys(notifyTemplates)[0] ?? 'custom'
+    const firstTpl = notifyTemplates[firstKey]
     setNotifyModal({ userId: u.id, userName: u.name ?? u.email })
-    setNotifyTemplate('custom')
-    setNotifyTitle(NOTIFY_TEMPLATES.custom.title)
-    setNotifyBody(NOTIFY_TEMPLATES.custom.body)
+    setNotifyTemplate(firstKey)
+    setNotifyTitle(firstTpl?.title ?? '')
+    setNotifyBody(firstTpl?.body ?? '')
     setNotifyResult(null)
   }
 
@@ -1303,17 +1300,19 @@ export default function Admin() {
                 value={notifyTemplate}
                 onChange={e => {
                   const tpl = e.target.value
+                  const tmpl = notifyTemplates[tpl]
                   setNotifyTemplate(tpl)
-                  setNotifyTitle(NOTIFY_TEMPLATES[tpl].title)
-                  setNotifyBody(NOTIFY_TEMPLATES[tpl].body)
+                  if (tmpl) {
+                    setNotifyTitle(tmpl.title)
+                    setNotifyBody(tmpl.body)
+                  }
                   setNotifyResult(null)
                 }}
                 className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
               >
-                <option value="custom">Custom</option>
-                <option value="vesting">Vesting event</option>
-                <option value="exercise">Exercise event</option>
-                <option value="loan_repayment">Loan Repayment event</option>
+                {Object.entries(notifyTemplates).map(([key, tpl]) => (
+                  <option key={key} value={key}>{tpl.label}</option>
+                ))}
               </select>
               <input
                 type="text"

@@ -45,11 +45,14 @@ export async function navigateTo(page: Page, label: string) {
   if (href) {
     await page.waitForURL(url => url.pathname === href)
   }
-  // toBeHidden passes when the locator matches zero elements, so a page
-  // whose fetch resolves before we check (or that has no Loading state at
-  // all) is a no-op. If Loading is showing, we wait for it to detach.
-  await expect(page.getByText('Loading...', { exact: true }).first())
-    .toBeHidden({ timeout: 30_000 })
+  // Two-phase wait: first, give the page component up to 2 s to mount and
+  // show its "Loading..." placeholder (catching the race where waitForURL
+  // resolves before React has rendered the new route). If Loading... never
+  // appears within that window the fetch was already done — fine. Then wait
+  // for Loading... to detach, which signals the initial API fetch is done.
+  const loading = page.getByText('Loading...', { exact: true }).first()
+  await loading.waitFor({ state: 'visible', timeout: 2_000 }).catch(() => { /* already gone or never shown */ })
+  await expect(loading).toBeHidden({ timeout: 30_000 })
 }
 
 /** Reset the current user's data via the API (uses session cookie automatically) */

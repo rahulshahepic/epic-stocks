@@ -208,7 +208,7 @@ if os.getenv("E2E_TEST") == "1":
                     continue  # re-query on next iteration — the winner must have committed
             break
         admin_emails = get_admin_emails()
-        user.is_admin = body.email.lower() in {e.lower() for e in admin_emails}
+        user.is_admin = int(body.email.lower() in {e.lower() for e in admin_emails})
         user.last_login = datetime.now(timezone.utc)
         db.commit()
         if is_new:

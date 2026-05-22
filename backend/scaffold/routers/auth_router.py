@@ -167,6 +167,10 @@ if os.getenv("E2E_TEST") == "1":
     @router.post("/test-login")
     def test_login(body: TestLoginRequest, response: Response, db: Session = Depends(get_db)):
         """Create/update a user and set the session cookie. No Bearer token returned."""
+        from fastapi import HTTPException
+        blocked = db.query(BlockedEmail).filter(BlockedEmail.email == body.email.lower()).first()
+        if blocked:
+            raise HTTPException(status_code=403, detail="Account blocked")
         user = db.query(User).filter(User.email == body.email).first()
         if not user:
             user = User(
@@ -178,6 +182,9 @@ if os.getenv("E2E_TEST") == "1":
             db.add(user)
             db.commit()
             db.refresh(user)
+            db.add(EmailPreference(user_id=user.id, enabled=1))
+            db.commit()
+            _notify_admin_new_user(user, db)
         admin_emails = get_admin_emails()
         user.is_admin = body.email.lower() in {e.lower() for e in admin_emails}
         user.last_login = datetime.now(timezone.utc)

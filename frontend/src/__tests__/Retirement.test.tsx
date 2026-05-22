@@ -359,7 +359,7 @@ describe('Retirement page', () => {
         <Retirement />
       </MemoryRouter>,
     )
-    const btn = await screen.findByRole('button', { name: /Return scenario explanation/i })
+    const btn = await screen.findByRole('button', { name: /Market outlook explanation/i })
     expect(screen.queryByText(/replay actual stretches of U\.S\. market history/i)).not.toBeInTheDocument()
     await user.click(btn)
     expect(screen.getByText(/replay actual stretches of U\.S\. market history/i)).toBeInTheDocument()

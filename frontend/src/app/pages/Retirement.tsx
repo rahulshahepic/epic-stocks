@@ -703,9 +703,10 @@ export default function Retirement() {
         )}
       </div>
 
+      {/* Card 1: Who & when */}
       <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
         <p className="mb-3 text-xs font-semibold text-gray-700 dark:text-slate-200">
-          {vid ? `${ownerName ?? 'Owner'}'s details` : 'Your details'}
+          {vid ? `${ownerName ?? 'Owner'}'s details` : 'Who & when'}
         </p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="flex flex-col gap-1">
@@ -788,7 +789,28 @@ export default function Retirement() {
             </label>
           </div>
         )}
-        <p className="mt-4 mb-2 text-[11px] font-semibold text-gray-700 dark:text-slate-200">Portfolio</p>
+        <div className="mt-4 border-t border-stone-200 pt-3 dark:border-slate-700">
+          <SliderInput
+            label="Plan until you're"
+            value={params.endAge}
+            onChange={v => update('endAge', Math.max(params.currentAge + 1, Math.min(110, Math.round(v))))}
+            min={Math.min(params.currentAge + 1, 110)}
+            max={110}
+            step={1}
+            formatValue={v => `age ${v}`}
+            hint={`Retire at ${params.currentAge}, plan ${years} years of retirement (set this past your likely lifespan to be safe)`}
+          />
+          {dobMissing && (
+            <p className="mt-2 text-[10px] text-amber-700 dark:text-amber-300">
+              ⚠ Set your date of birth above so we can figure out your age (otherwise we assume 50).
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Card 2: Your money */}
+      <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <p className="mb-3 text-xs font-semibold text-gray-700 dark:text-slate-200">Your money</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
           <NumInput
             label="Epic exit value"
@@ -1104,91 +1126,7 @@ export default function Retirement() {
         </p>
       </div>
 
-      <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-        <div className="mb-3 flex items-center gap-1.5">
-          <p className="text-xs font-semibold text-gray-700 dark:text-slate-200">Return scenario</p>
-          <InfoButton open={sigmaOpen} onToggle={() => setSigmaOpen(o => !o)} label="Return scenario" />
-        </div>
-        {sigmaOpen && (
-          <div className="mb-3 rounded border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] leading-relaxed text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
-            <p className="mb-1">
-              For each simulated retirement, we replay actual stretches of U.S. market history ({HISTORY_FIRST_YEAR}–{HISTORY_LAST_YEAR}) instead of making up returns from a formula.
-              We pick a random starting month, walk forward month by month (so Oct 1929 is followed by Nov 1929, Sep 2008 by Oct 2008 — crashes stay glued to their actual recoveries), and occasionally jump to a different starting month to mix things up across the {params.paths.toLocaleString()} simulations.
-              This is more honest than the usual "average return ± noise" approach, which can quietly invent stretches of bad years that never actually happened together.
-            </p>
-            <p className="mb-1">
-              The four scenarios shift the historical returns up or down to reflect different views on the future:
-              <strong> Historical</strong> — exactly what happened {HISTORY_FIRST_YEAR}–{HISTORY_LAST_YEAR}.
-              <strong> Moderate</strong> — knock 2 percentage points off stock returns and 0.5pp off bonds (roughly Vanguard's 2025 10-year forecast given today's high valuations).
-              <strong> Cautious</strong> — bigger haircut: stocks −3.5pp, bonds −1pp.
-              <strong> Custom</strong> — set your own.
-            </p>
-          </div>
-        )}
-        <div className="flex flex-wrap gap-1.5">
-          {SCENARIO_ORDER.map(s => {
-            const active = params.scenario === s
-            return (
-              <button
-                key={s}
-                type="button"
-                onClick={() => update('scenario', s)}
-                className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${
-                  active
-                    ? 'border-rose-500 bg-rose-100 text-rose-800 dark:border-rose-400 dark:bg-rose-950/40 dark:text-rose-300'
-                    : 'border-stone-300 bg-white text-gray-600 hover:bg-stone-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
-                }`}
-              >
-                {SCENARIO_LABELS[s]}
-              </button>
-            )
-          })}
-        </div>
-        {params.scenario === 'custom' && (
-          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <NumInput
-              label="Stocks return shift"
-              value={Math.round(params.customStockShift * 1000) / 10}
-              onChange={v => update('customStockShift', v / 100)}
-              step={0.1}
-              suffix="pp"
-              hint="Added to every resampled stock return. e.g. −2 trims ~2pp/yr off historical"
-            />
-            <NumInput
-              label="Bonds return shift"
-              value={Math.round(params.customBondShift * 1000) / 10}
-              onChange={v => update('customBondShift', v / 100)}
-              step={0.1}
-              suffix="pp"
-              hint="Added to every resampled bond return"
-            />
-          </div>
-        )}
-        <p className="mt-1.5 text-[10px] text-stone-500 dark:text-slate-400">
-          Stationary block bootstrap of U.S. {HISTORY_FIRST_YEAR}&ndash;{HISTORY_LAST_YEAR} real returns ({HISTORICAL_RETURNS.length} months, ~10yr mean block).
-          {' '}Stocks shift {fmtPct(resolveScenarioShifts(params).stockShift, 1)}, bonds shift {fmtPct(resolveScenarioShifts(params).bondShift, 1)}.
-        </p>
-      </div>
-
-      <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-        <p className="mb-3 text-xs font-semibold text-gray-700 dark:text-slate-200">How long to plan for</p>
-        <SliderInput
-          label="Plan until you're"
-          value={params.endAge}
-          onChange={v => update('endAge', Math.max(params.currentAge + 1, Math.min(110, Math.round(v))))}
-          min={Math.min(params.currentAge + 1, 110)}
-          max={110}
-          step={1}
-          formatValue={v => `age ${v}`}
-          hint={`Retire at ${params.currentAge}, plan ${years} years of retirement (set this past your likely lifespan to be safe)`}
-        />
-        {dobMissing && (
-          <p className="mt-2 text-[10px] text-amber-700 dark:text-amber-300">
-            ⚠ Set your date of birth above so we can figure out your age (otherwise we assume 50).
-          </p>
-        )}
-      </div>
-
+      {/* Card 4: Social Security */}
       <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
         <p className="mb-3 text-xs font-semibold text-gray-700 dark:text-slate-200">Social Security</p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -1319,6 +1257,73 @@ export default function Retirement() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Card 5: Market outlook */}
+      <div className="rounded-lg border border-stone-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <div className="mb-3 flex items-center gap-1.5">
+          <p className="text-xs font-semibold text-gray-700 dark:text-slate-200">Market outlook</p>
+          <InfoButton open={sigmaOpen} onToggle={() => setSigmaOpen(o => !o)} label="Market outlook" />
+        </div>
+        {sigmaOpen && (
+          <div className="mb-3 rounded border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] leading-relaxed text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+            <p className="mb-1">
+              For each simulated retirement, we replay actual stretches of U.S. market history ({HISTORY_FIRST_YEAR}–{HISTORY_LAST_YEAR}) instead of making up returns from a formula.
+              We pick a random starting month, walk forward month by month (so Oct 1929 is followed by Nov 1929, Sep 2008 by Oct 2008 — crashes stay glued to their actual recoveries), and occasionally jump to a different starting month to mix things up across the {params.paths.toLocaleString()} simulations.
+              This is more honest than the usual "average return ± noise" approach, which can quietly invent stretches of bad years that never actually happened together.
+            </p>
+            <p className="mb-1">
+              The four scenarios shift the historical returns up or down to reflect different views on the future:
+              <strong> Historical</strong> — exactly what happened {HISTORY_FIRST_YEAR}–{HISTORY_LAST_YEAR}.
+              <strong> Moderate</strong> — knock 2 percentage points off stock returns and 0.5pp off bonds (roughly Vanguard's 2025 10-year forecast given today's high valuations).
+              <strong> Cautious</strong> — bigger haircut: stocks −3.5pp, bonds −1pp.
+              <strong> Custom</strong> — set your own.
+            </p>
+          </div>
+        )}
+        <div className="flex flex-wrap gap-1.5">
+          {SCENARIO_ORDER.map(s => {
+            const active = params.scenario === s
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => update('scenario', s)}
+                className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${
+                  active
+                    ? 'border-rose-500 bg-rose-100 text-rose-800 dark:border-rose-400 dark:bg-rose-950/40 dark:text-rose-300'
+                    : 'border-stone-300 bg-white text-gray-600 hover:bg-stone-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+                }`}
+              >
+                {SCENARIO_LABELS[s]}
+              </button>
+            )
+          })}
+        </div>
+        {params.scenario === 'custom' && (
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <NumInput
+              label="Stocks return shift"
+              value={Math.round(params.customStockShift * 1000) / 10}
+              onChange={v => update('customStockShift', v / 100)}
+              step={0.1}
+              suffix="pp"
+              hint="Added to every resampled stock return. e.g. −2 trims ~2pp/yr off historical"
+            />
+            <NumInput
+              label="Bonds return shift"
+              value={Math.round(params.customBondShift * 1000) / 10}
+              onChange={v => update('customBondShift', v / 100)}
+              step={0.1}
+              suffix="pp"
+              hint="Added to every resampled bond return"
+            />
+          </div>
+        )}
+        <p className="mt-1.5 text-[10px] text-stone-500 dark:text-slate-400">
+          Stationary block bootstrap of U.S. {HISTORY_FIRST_YEAR}&ndash;{HISTORY_LAST_YEAR} real returns ({HISTORICAL_RETURNS.length} months, ~10yr mean block).
+          {' '}Stocks shift {fmtPct(resolveScenarioShifts(params).stockShift, 1)}, bonds shift {fmtPct(resolveScenarioShifts(params).bondShift, 1)}.
+        </p>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">

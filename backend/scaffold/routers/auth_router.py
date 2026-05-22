@@ -168,9 +168,11 @@ if os.getenv("E2E_TEST") == "1":
     def test_login(body: TestLoginRequest, response: Response, db: Session = Depends(get_db)):
         """Create/update a user and set the session cookie. No Bearer token returned."""
         from fastapi import HTTPException
+        from sqlalchemy.exc import IntegrityError
         blocked = db.query(BlockedEmail).filter(BlockedEmail.email == body.email.lower()).first()
         if blocked:
             raise HTTPException(status_code=403, detail="Account blocked")
+        is_new = False
         user = db.query(User).filter(User.email == body.email).first()
         if not user:
             enc_key = encrypt_user_key(generate_user_key()) if encryption_enabled() else None
@@ -182,14 +184,23 @@ if os.getenv("E2E_TEST") == "1":
                 encrypted_key=enc_key,
             )
             db.add(user)
-            db.commit()
-            db.refresh(user)
+            db.flush()  # get user.id without committing
             db.add(EmailPreference(user_id=user.id, enabled=1))
-            db.commit()
-            _notify_admin_new_user(user, db)
+            is_new = True
         admin_emails = get_admin_emails()
         user.is_admin = body.email.lower() in {e.lower() for e in admin_emails}
         user.last_login = datetime.now(timezone.utc)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            # Race: another worker created the same user concurrently — re-fetch and update
+            db.rollback()
+            is_new = False
+            user = db.query(User).filter(User.email == body.email).first()
+            user.is_admin = body.email.lower() in {e.lower() for e in admin_emails}
+            user.last_login = datetime.now(timezone.utc)
+            db.commit()
+        if is_new:
+            _notify_admin_new_user(user, db)
         set_session_cookies(response, create_token(user.id, user.session_version))
         return {"ok": True}

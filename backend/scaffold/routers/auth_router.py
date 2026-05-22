@@ -173,11 +173,13 @@ if os.getenv("E2E_TEST") == "1":
             raise HTTPException(status_code=403, detail="Account blocked")
         user = db.query(User).filter(User.email == body.email).first()
         if not user:
+            enc_key = encrypt_user_key(generate_user_key()) if encryption_enabled() else None
             user = User(
                 email=body.email,
                 provider_name="test",
                 google_id=f"test-{body.email}",
                 name=body.name,
+                encrypted_key=enc_key,
             )
             db.add(user)
             db.commit()

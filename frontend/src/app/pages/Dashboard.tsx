@@ -1585,7 +1585,7 @@ export default function Dashboard() {
             <Card
               label="Vested Shares"
               value={fmtNum(cv.total_shares)}
-              subvalue={grantHoldings ? fmt$(grantHoldings.reduce((s, h) => s + h.vestedValue, 0)) + (cv.price_is_estimate ? ' (est.)' : '') : undefined}
+              subvalue={fmt$(cv.total_shares * cv.current_price) + (cv.price_is_estimate ? ' (est.)' : '')}
               variant="shares"
               subtitle={`Value at ${fmtPrice(cv.current_price)}/share`}
               onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}

@@ -1163,6 +1163,17 @@ export default function Dashboard() {
       ? taxSettings.federal_income_rate + taxSettings.state_income_rate
       : 0
 
+    // Per-grant sold shares from explicit lot overrides (lot_overrides carries grant attribution)
+    const soldByGrant = new Map<string, number>()
+    for (const s of (sales ?? [])) {
+      if (s.date > effectiveDate || !s.lot_overrides) continue
+      for (const lot of s.lot_overrides) {
+        if (lot.grant_year == null || lot.grant_type == null) continue
+        const key = `${lot.grant_year}-${lot.grant_type}`
+        soldByGrant.set(key, (soldByGrant.get(key) ?? 0) + lot.shares)
+      }
+    }
+
     // Build settled/refinanced loan sets (mirrors outstandingPrincipal logic)
     const settledIds = new Set(
       (sales ?? []).filter(s => s.loan_id !== null && s.date <= effectiveDate).map(s => s.loan_id)
@@ -1190,6 +1201,10 @@ export default function Dashboard() {
         }
       }
       const unvested = g.shares - vested
+      // dp_shares are negative when shares were exchanged as a down payment; subtract
+      // lot-attributed sales where the user recorded per-lot allocation
+      const soldViaLots = soldByGrant.get(`${g.year}-${g.type}`) ?? 0
+      const heldVested = Math.max(0, vested + (g.dp_shares ?? 0) - soldViaLots)
 
       // Outstanding loans for this grant
       const grantLoans = loans.filter(l =>
@@ -1215,14 +1230,14 @@ export default function Dashboard() {
         )
         .reduce((sum, e) => sum + e.income * incomeRate, 0)
 
-      const vestedValue = vested * currentPrice
+      const vestedValue = heldVested * currentPrice
       const unvestedValue = unvested * g.price
       return {
         year: g.year,
         type: g.type,
         exerciseDate: g.exercise_date,
         costBasis: g.price,
-        vestedShares: vested,
+        vestedShares: heldVested,
         unvestedShares: unvested,
         vestedValue,
         unvestedValue,

@@ -29,9 +29,10 @@
 // also rebalances the taxable brokerage, realizing capital gains when selling.
 //
 // Glidepath: params.glidePoints (GlidePoint[]) optionally specifies a target
-// stock/bond allocation that changes with age. When non-empty, the annual
+// stock/bond allocation that changes over time. yearsAfter=0 is at retirement;
+// subsequent points are years after retirement. When non-empty, the annual
 // rebalance and cash-refill targets use the interpolated allocation for that
-// year's age, allowing a declining-equity glidepath through retirement.
+// year, allowing a declining-equity glidepath through retirement.
 
 export type Scenario = 'historical' | 'moderate' | 'cautious' | 'custom'
 
@@ -41,9 +42,9 @@ export interface ScenarioParams {
 }
 
 export interface GlidePoint {
-  age: number
-  stockPct: number  // fraction of total portfolio (0..1)
-  bondPct: number   // fraction of total portfolio (0..1)
+  yearsAfter: number  // years after retirement (0 = at retirement)
+  stockPct: number    // fraction of total portfolio (0..1)
+  bondPct: number     // fraction of total portfolio (0..1)
   // cashPct = 1 - stockPct - bondPct (derived)
 }
 
@@ -1726,19 +1727,28 @@ export function migrateLoadedParams(saved: Record<string, unknown>): Partial<Sim
     if (out.taxableAdditional == null) out.taxableAdditional = additional
     if (out.additionalBasis == null) out.additionalBasis = 0
   }
+  // Migrate old glidePoints that stored absolute `age` to `yearsAfter`.
+  if (Array.isArray(out.glidePoints) && out.glidePoints.length > 0 && 'age' in (out.glidePoints[0] as object)) {
+    const baseAge = typeof out.currentAge === 'number' ? out.currentAge : 0
+    out.glidePoints = (out.glidePoints as Array<Record<string, unknown>>).map(pt => ({
+      yearsAfter: Math.max(0, Math.round((pt.age as number) - baseAge)),
+      stockPct: pt.stockPct,
+      bondPct: pt.bondPct,
+    }))
+  }
   return out as Partial<SimParams>
 }
 
-// Interpolate stock/bond/cash weights from a glidepath at a given age.
+// Interpolate stock/bond/cash weights from a glidepath at a given yearsAfter value.
 // If points is empty, derives weights from defaultStockPct/defaultBondPct the
 // same way the simulation does: wS = stockPct / equityPct, wB = 1 - wS,
 // cashPct = 1 - equityPct.
-// If points has entries, sorts by age, clamps to first/last, and linearly
+// If points has entries, sorts by yearsAfter, clamps to first/last, and linearly
 // interpolates stockPct/bondPct between surrounding entries.
 // Returns wS (stock fraction of equity), wB (bond fraction of equity), and
 // cashPct (fraction of total portfolio held as cash).
 export function interpolateGlide(
-  age: number,
+  yearsAfter: number,
   points: GlidePoint[],
   defaultStockPct: number,
   defaultBondPct: number,
@@ -1750,14 +1760,14 @@ export function interpolateGlide(
     const cashPct = Math.max(0, 1 - equityPct)
     return { wS, wB, cashPct }
   }
-  const sorted = [...points].sort((a, b) => a.age - b.age)
-  if (age <= sorted[0].age) {
+  const sorted = [...points].sort((a, b) => a.yearsAfter - b.yearsAfter)
+  if (yearsAfter <= sorted[0].yearsAfter) {
     const sp = sorted[0].stockPct
     const bp = sorted[0].bondPct
     const wS = (sp + bp) > 0 ? sp / (sp + bp) : 0
     return { wS, wB: 1 - wS, cashPct: Math.max(0, 1 - sp - bp) }
   }
-  if (age >= sorted[sorted.length - 1].age) {
+  if (yearsAfter >= sorted[sorted.length - 1].yearsAfter) {
     const sp = sorted[sorted.length - 1].stockPct
     const bp = sorted[sorted.length - 1].bondPct
     const wS = (sp + bp) > 0 ? sp / (sp + bp) : 0
@@ -1765,11 +1775,11 @@ export function interpolateGlide(
   }
   let lo = sorted[0], hi = sorted[1]
   for (let i = 0; i < sorted.length - 1; i++) {
-    if (sorted[i].age <= age && sorted[i + 1].age >= age) {
+    if (sorted[i].yearsAfter <= yearsAfter && sorted[i + 1].yearsAfter >= yearsAfter) {
       lo = sorted[i]; hi = sorted[i + 1]; break
     }
   }
-  const t = (age - lo.age) / (hi.age - lo.age)
+  const t = (yearsAfter - lo.yearsAfter) / (hi.yearsAfter - lo.yearsAfter)
   const sp = lo.stockPct + t * (hi.stockPct - lo.stockPct)
   const bp = lo.bondPct + t * (hi.bondPct - lo.bondPct)
   const wS = (sp + bp) > 0 ? sp / (sp + bp) : 0
@@ -2232,7 +2242,7 @@ export function simulate(params: SimParams): SimResult {
           // Determine cash target: use glidepath if points are defined.
           let cashTargetNow = cashTarget
           if (params.glidePoints.length > 0) {
-            const glide = interpolateGlide(age, params.glidePoints, params.stockPct, params.bondPct)
+            const glide = interpolateGlide(age - params.currentAge, params.glidePoints, params.stockPct, params.bondPct)
             cashTargetNow = glide.cashPct * (cash + txS + txB + trdS + trdB + rthS + rthB)
           }
           if (equityChangeTaxable > 0 && cash < cashTargetNow && (txS + txB) > 0) {
@@ -2272,7 +2282,7 @@ export function simulate(params: SimParams): SimResult {
 
           // Annual rebalancing: snap stock/bond allocation back to target.
           if (params.rebalance !== 'none') {
-            const { wS: wST } = interpolateGlide(age, params.glidePoints, params.stockPct, params.bondPct)
+            const { wS: wST } = interpolateGlide(age - params.currentAge, params.glidePoints, params.stockPct, params.bondPct)
             const equity = txS + txB + trdS + trdB + rthS + rthB
             const targetStocks = wST * equity
             const currentStocks = txS + trdS + rthS

@@ -906,9 +906,9 @@ export default function Retirement() {
         {/* Single unified allocation table. One row = fixed allocation; more rows = shifts over time. */}
         {(() => {
           const isVirtual = params.glidePoints.length === 0
-          const displayRows: Array<{ age: number; stockPct: number; bondPct: number }> = isVirtual
-            ? [{ age: Math.round(params.currentAge), stockPct: params.stockPct, bondPct: params.bondPct }]
-            : [...params.glidePoints].sort((a, b) => a.age - b.age)
+          const displayRows: Array<{ yearsAfter: number; stockPct: number; bondPct: number }> = isVirtual
+            ? [{ yearsAfter: 0, stockPct: params.stockPct, bondPct: params.bondPct }]
+            : [...params.glidePoints].sort((a, b) => a.yearsAfter - b.yearsAfter)
           const inputCls = (invalid: boolean) =>
             `w-16 rounded border px-1 py-0.5 tabular-nums focus:outline-none focus:border-rose-400 ${invalid ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/20' : 'border-stone-300 bg-white dark:border-slate-600 dark:bg-slate-700'} text-gray-900 dark:text-slate-100`
           return (
@@ -916,7 +916,7 @@ export default function Retirement() {
               <table className="w-full text-[11px]">
                 <thead>
                   <tr className="border-b border-stone-200 dark:border-slate-700">
-                    <th className="pb-1 pr-2 text-left font-medium text-gray-600 dark:text-slate-400">Age</th>
+                    <th className="pb-1 pr-2 text-left font-medium text-gray-600 dark:text-slate-400">Years after</th>
                     <th className="pb-1 pr-2 text-left font-medium text-gray-600 dark:text-slate-400">Stocks %</th>
                     <th className="pb-1 pr-2 text-left font-medium text-gray-600 dark:text-slate-400">Bonds %</th>
                     <th className="pb-1 pr-2 text-left font-medium text-gray-600 dark:text-slate-400">Cash %</th>
@@ -930,7 +930,7 @@ export default function Retirement() {
                     if (isVirtual) {
                       return (
                         <tr key="v" className="border-b border-stone-100 dark:border-slate-800">
-                          <td className="py-1 pr-2 tabular-nums text-gray-500 dark:text-slate-400">{Math.round(params.currentAge)}</td>
+                          <td className="py-1 pr-2 text-gray-500 dark:text-slate-400">At retirement</td>
                           <td className="py-1 pr-2">
                             <input type="number" aria-label="Stocks" value={Math.round(pt.stockPct * 100)} min={0} max={100} step={1}
                               onChange={e => update('stockPct', Math.max(0, Math.min(100, Number(e.target.value))) / 100)}
@@ -951,14 +951,17 @@ export default function Retirement() {
                     return (
                       <tr key={idx} className="border-b border-stone-100 dark:border-slate-800">
                         <td className="py-1 pr-2">
-                          <input type="number" value={pt.age} min={params.currentAge} max={params.endAge} step={1}
-                            onChange={e => {
-                              const newPts = [...params.glidePoints]
-                              const ri = params.glidePoints.indexOf(pt)
-                              if (ri >= 0) newPts[ri] = { ...pt, age: Number(e.target.value) }
-                              update('glidePoints', newPts)
-                            }}
-                            className="w-16 rounded border border-stone-300 bg-white px-1 py-0.5 tabular-nums text-gray-900 focus:border-rose-400 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100" />
+                          {pt.yearsAfter === 0
+                            ? <span className="tabular-nums text-gray-500 dark:text-slate-400 text-[11px]">At retirement</span>
+                            : <input type="number" value={pt.yearsAfter} min={1} max={Math.round(params.endAge - params.currentAge)} step={1}
+                                onChange={e => {
+                                  const newPts = [...params.glidePoints]
+                                  const ri = params.glidePoints.indexOf(pt)
+                                  if (ri >= 0) newPts[ri] = { ...pt, yearsAfter: Math.max(1, Number(e.target.value)) }
+                                  update('glidePoints', newPts)
+                                }}
+                                className="w-16 rounded border border-stone-300 bg-white px-1 py-0.5 tabular-nums text-gray-900 focus:border-rose-400 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100" />
+                          }
                         </td>
                         <td className="py-1 pr-2">
                           <input type="number" value={Math.round(pt.stockPct * 100)} min={0} max={100} step={1}
@@ -1001,16 +1004,17 @@ export default function Retirement() {
               </table>
               <button type="button"
                 onClick={() => {
-                  const base: Array<{ age: number; stockPct: number; bondPct: number }> = isVirtual
-                    ? [{ age: Math.round(params.currentAge), stockPct: params.stockPct, bondPct: params.bondPct }]
+                  const base: GlidePoint[] = isVirtual
+                    ? [{ yearsAfter: 0, stockPct: params.stockPct, bondPct: params.bondPct }]
                     : [...params.glidePoints]
-                  const sorted = [...base].sort((a, b) => a.age - b.age)
+                  const sorted = [...base].sort((a, b) => a.yearsAfter - b.yearsAfter)
                   const last = sorted[sorted.length - 1]
-                  const newAge = Math.min(last.age + 10, Math.round(params.endAge))
+                  const maxYears = Math.round(params.endAge - params.currentAge)
+                  const newYearsAfter = Math.min(last.yearsAfter + 10, maxYears)
                   update('glidePoints', [
                     ...base,
-                    { age: newAge, stockPct: Math.max(last.stockPct - 0.1, 0.3), bondPct: Math.min(last.bondPct + 0.1, 0.6) },
-                  ] as GlidePoint[])
+                    { yearsAfter: newYearsAfter, stockPct: Math.max(last.stockPct - 0.1, 0.3), bondPct: Math.min(last.bondPct + 0.1, 0.6) },
+                  ])
                 }}
                 className="mt-2 text-[11px] font-medium text-rose-700 hover:text-rose-800 dark:text-rose-300 dark:hover:text-rose-200"
               >

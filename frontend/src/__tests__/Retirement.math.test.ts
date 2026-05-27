@@ -1259,23 +1259,23 @@ describe('simulate — spouse work income', () => {
 describe('interpolateGlide', () => {
   it('empty points returns defaults derived from stockPct/bondPct', () => {
     // 70/20 → equityPct=0.9, wS=7/9, wB=2/9, cashPct=0.1
-    const r = interpolateGlide(65, [], 0.7, 0.2)
+    const r = interpolateGlide(0, [], 0.7, 0.2)
     expect(r.wS).toBeCloseTo(0.7 / 0.9, 9)
     expect(r.wB).toBeCloseTo(0.2 / 0.9, 9)
     expect(r.cashPct).toBeCloseTo(0.1, 9)
   })
 
-  it('clamps to first entry when age is before first point', () => {
-    const pts = [{ age: 65, stockPct: 0.6, bondPct: 0.3 }, { age: 75, stockPct: 0.4, bondPct: 0.5 }]
-    const r = interpolateGlide(60, pts, 0.7, 0.2)
+  it('clamps to first entry when yearsAfter is before first point', () => {
+    const pts = [{ yearsAfter: 0, stockPct: 0.6, bondPct: 0.3 }, { yearsAfter: 10, stockPct: 0.4, bondPct: 0.5 }]
+    const r = interpolateGlide(-5, pts, 0.7, 0.2)
     const sp = 0.6, bp = 0.3
     expect(r.wS).toBeCloseTo(sp / (sp + bp), 9)
     expect(r.cashPct).toBeCloseTo(Math.max(0, 1 - sp - bp), 9)
   })
 
-  it('clamps to last entry when age is after last point', () => {
-    const pts = [{ age: 65, stockPct: 0.6, bondPct: 0.3 }, { age: 75, stockPct: 0.4, bondPct: 0.5 }]
-    const r = interpolateGlide(80, pts, 0.7, 0.2)
+  it('clamps to last entry when yearsAfter is after last point', () => {
+    const pts = [{ yearsAfter: 0, stockPct: 0.6, bondPct: 0.3 }, { yearsAfter: 10, stockPct: 0.4, bondPct: 0.5 }]
+    const r = interpolateGlide(15, pts, 0.7, 0.2)
     const sp = 0.4, bp = 0.5
     expect(r.wS).toBeCloseTo(sp / (sp + bp), 9)
     expect(r.wB).toBeCloseTo(bp / (sp + bp), 9)
@@ -1283,9 +1283,9 @@ describe('interpolateGlide', () => {
   })
 
   it('linearly interpolates between two points', () => {
-    const pts = [{ age: 60, stockPct: 0.8, bondPct: 0.1 }, { age: 80, stockPct: 0.4, bondPct: 0.5 }]
-    // At age 70 = midpoint → stockPct=0.6, bondPct=0.3
-    const r = interpolateGlide(70, pts, 0.7, 0.2)
+    const pts = [{ yearsAfter: 0, stockPct: 0.8, bondPct: 0.1 }, { yearsAfter: 20, stockPct: 0.4, bondPct: 0.5 }]
+    // At yearsAfter=10 = midpoint → stockPct=0.6, bondPct=0.3
+    const r = interpolateGlide(10, pts, 0.7, 0.2)
     const sp = 0.6, bp = 0.3
     expect(r.wS).toBeCloseTo(sp / (sp + bp), 6)
     expect(r.wB).toBeCloseTo(bp / (sp + bp), 6)

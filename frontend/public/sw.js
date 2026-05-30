@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v1'
+const CACHE_VERSION = 'v2'
 
 // Clear old caches on activation
 self.addEventListener('activate', (event) => {

@@ -10,8 +10,8 @@
     @hashed path /assets/*
     header @hashed Cache-Control "public, max-age=31536000, immutable"
 
-    # HTML, SW, manifest — always revalidate
-    @nocache path / /index.html /sw.js /manifest.json
+    # HTML, SW, manifest, and icons — always revalidate
+    @nocache path / /index.html /sw.js /manifest.json /favicon.svg /favicon.ico /favicon-16x16.png /favicon-32x32.png /apple-touch-icon.png
     header @nocache Cache-Control "no-cache"
 
     # Security headers

@@ -40,6 +40,7 @@ function stagingAssetsPlugin(): Plugin {
               .replace(/content="#C41230"/g, 'content="#D97706"')
               .replace(/content="#E8334A"/g, 'content="#F59E0B"')
               .replace('content="Equity"', 'content="Equity β"')
+              .replace('href="/favicon.svg"', 'href="/favicon.svg?v=staging"')
           },
         }
       : undefined,

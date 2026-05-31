@@ -50,6 +50,13 @@ export default function Layout() {
  Skip to main content
  </a>
 
+ {import.meta.env.VITE_APP_ENV === 'staging' && (
+ <div className="flex items-center justify-center gap-2 bg-amber-500 px-4 py-1.5 text-xs font-semibold text-white">
+ <span className="h-2 w-2 rounded-full bg-white/60" />
+ Staging environment — not production data
+ </div>
+ )}
+
  {maintenance && (
  <div className="flex items-center justify-center gap-2 bg-amber-400 px-4 py-1.5 text-xs font-medium text-amber-950">
  <span className="h-2 w-2 animate-pulse rounded-full bg-amber-800" />

@@ -6,6 +6,7 @@ import path from 'node:path'
 
 function stagingAssetsPlugin(): Plugin {
   const isStaging = process.env.VITE_APP_ENV === 'staging'
+  const commitSha = process.env.VITE_COMMIT_SHA || 'dev'
 
   const stagingManifest = JSON.stringify(
     {
@@ -31,18 +32,29 @@ function stagingAssetsPlugin(): Plugin {
 
   return {
     name: 'staging-assets',
-    transformIndexHtml: isStaging
-      ? {
-          order: 'post',
-          handler(html) {
-            return html
-              .replace('<title>Equity Tracker</title>', '<title>Equity Tracker (Staging)</title>')
-              .replace(/content="#C41230"/g, 'content="#D97706"')
-              .replace(/content="#E8334A"/g, 'content="#F59E0B"')
-              .replace('content="Equity"', 'content="Equity β"')
-          },
+    transformIndexHtml: {
+      order: 'post',
+      handler(html) {
+        // Cache-bust all icon links with the commit SHA — applies to every build.
+        // Caddy's path matcher ignores query strings, so @nocache still matches.
+        let result = html
+          .replace('href="/favicon.svg"', `href="/favicon.svg?v=${commitSha}"`)
+          .replace('href="/favicon-32x32.png"', `href="/favicon-32x32.png?v=${commitSha}"`)
+          .replace('href="/favicon-16x16.png"', `href="/favicon-16x16.png?v=${commitSha}"`)
+          .replace('href="/favicon.ico"', `href="/favicon.ico?v=${commitSha}"`)
+          .replace('href="/apple-touch-icon.png"', `href="/apple-touch-icon.png?v=${commitSha}"`)
+
+        if (isStaging) {
+          result = result
+            .replace('<title>Equity Tracker</title>', '<title>Equity Tracker (Staging)</title>')
+            .replace(/content="#C41230"/g, 'content="#D97706"')
+            .replace(/content="#E8334A"/g, 'content="#F59E0B"')
+            .replace('content="Equity"', 'content="Equity β"')
         }
-      : undefined,
+
+        return result
+      },
+    },
     closeBundle() {
       if (!isStaging) return
       const outDir = path.resolve('dist')

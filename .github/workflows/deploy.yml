@@ -128,6 +128,7 @@ jobs:
             UNSUBSCRIBE_SECRET=${UNSUBSCRIBE_SECRET}
             TRUSTED_PROXY_IPS=${{ vars.TRUSTED_PROXY_IPS }}
 
+            APP_ENV=${{ vars.APP_ENV || 'production' }}
             EPIC_MODE=${{ vars.EPIC_MODE }}
             CACHE_INVALIDATE_SECRET=${CACHE_INVALIDATE_SECRET}
             ACME_EMAIL=${{ vars.ACME_EMAIL }}

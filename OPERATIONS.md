@@ -133,7 +133,7 @@ Connects to the VPS via SSH (key stored in GitHub Actions secrets) and:
 1. Generates any missing server-side secrets (JWT, encryption key, VAPID keys, Postgres password) into `/opt/epic-stocks/.secrets/`, then writes `.env` from those files plus GitHub Secrets/Vars. Also writes `COMMIT_SHA=${{ github.sha }}` into `.env` so it is available as a Docker build arg.
 2. Creates a 2 GB swapfile if one doesn't exist (idempotent)
 3. `git fetch origin main && git reset --hard origin/main` — always matches the repo exactly; no local drift
-4. `docker compose build` — passes `COMMIT_SHA` as a build arg to the frontend stage; Vite bakes it in as `VITE_COMMIT_SHA`. The resulting 7-char short hash is displayed in small text at the bottom of the Admin and Settings pages so testers can confirm which build is running. `docker compose up -d`
+4. `docker compose build` — passes `COMMIT_SHA` and `APP_ENV` as build args to the frontend stage. `VITE_COMMIT_SHA` is displayed as a 7-char short hash in Admin and Settings. `VITE_APP_ENV=staging` activates the staging visual identity (amber icon, renamed PWA, amber header banner). `docker compose up -d`
 5. Polls `http://localhost/api/health` every 5 seconds for up to 60 seconds
 
 **Step 3 — Health polling**
@@ -165,6 +165,7 @@ These are the only values that need to be set in GitHub. Cryptographic secrets (
 | `VPS_HOST` | Variable | VPS hostname or IP |
 | `DOMAIN` | Variable | Your domain name |
 | `TRUSTED_PROXY_IPS` | Variable | Cloudflare IP ranges for real-IP forwarding |
+| `APP_ENV` | Variable | Set to `staging` in the staging GitHub environment to enable staging visual identity (amber icon, "Equity Tracker (Staging)" PWA name, amber header banner). Omit or set to `production` for production — defaults to `production` if absent. |
 
 
 ### Multi-app network

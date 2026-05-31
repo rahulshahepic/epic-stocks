@@ -6,6 +6,8 @@ RUN npm ci
 COPY frontend/ ./
 ARG COMMIT_SHA=dev
 ENV VITE_COMMIT_SHA=$COMMIT_SHA
+ARG APP_ENV=production
+ENV VITE_APP_ENV=$APP_ENV
 RUN npm run build
 
 # Stage 2: Python runtime

@@ -1,6 +1,49 @@
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ── Crimson Studio palette ──────────────────────────────── */
+:root {
+  --cs-base: #F8F6F4;
+  --cs-surface: #FFFFFF;
+  --cs-raised: #F0EDE9;
+  --cs-border: #EAE7E3;
+  --cs-border-strong: #C8C3BC;
+  --cs-text: #1A1411;
+  --cs-text-2: #6B5F58;
+  --cs-muted: #A8998F;
+  --cs-brand: #C41230;
+  --cs-brand-hover: #A80F28;
+  --cs-brand-subtle: #F7E8EB;
+}
+
+.dark {
+  --cs-base: #111009;
+  --cs-surface: #1C1917;
+  --cs-raised: #252220;
+  --cs-border: rgba(255, 255, 255, 0.07);
+  --cs-border-strong: rgba(255, 255, 255, 0.14);
+  --cs-text: #F2EDE8;
+  --cs-text-2: #A8998F;
+  --cs-muted: #6B5F58;
+  --cs-brand: #E8334A;
+  --cs-brand-hover: #D42A40;
+  --cs-brand-subtle: rgba(232, 51, 74, 0.1);
+}
+
+@theme inline {
+  --color-cs-base: var(--cs-base);
+  --color-cs-surface: var(--cs-surface);
+  --color-cs-raised: var(--cs-raised);
+  --color-cs-border: var(--cs-border);
+  --color-cs-border-strong: var(--cs-border-strong);
+  --color-cs-text: var(--cs-text);
+  --color-cs-text-2: var(--cs-text-2);
+  --color-cs-muted: var(--cs-muted);
+  --color-cs-brand: var(--cs-brand);
+  --color-cs-brand-hover: var(--cs-brand-hover);
+  --color-cs-brand-subtle: var(--cs-brand-subtle);
+}
+
 /* ── Animations ─────────────────────────────────────────── */
 @keyframes slide-up {
   from { opacity: 0; transform: translateY(1rem); }
@@ -12,11 +55,8 @@
 
 /* ── Focus ring (accessibility) ─────────────────────────── */
 :focus-visible {
-  outline: 2px solid #be123c;
+  outline: 2px solid var(--cs-brand);
   outline-offset: 2px;
-}
-.dark :focus-visible {
-  outline-color: #fb7185;
 }
 
 /* ── Skip-nav link (accessibility) ──────────────────────── */
@@ -26,7 +66,7 @@
   left: 1rem;
   z-index: 9999;
   padding: 0.5rem 1rem;
-  background: #be123c;
+  background: var(--cs-brand);
   color: #fff;
   font-size: 0.75rem;
   font-weight: 600;

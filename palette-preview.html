@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Epic Stocks — Palette Preview</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #1a1a1a;
+    color: #fff;
+    padding: 32px 24px;
+    min-height: 100vh;
+  }
+
+  h1 {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #888;
+    margin-bottom: 32px;
+  }
+
+  .palette-section {
+    margin-bottom: 56px;
+  }
+
+  .palette-label {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .palette-desc {
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 20px;
+  }
+  .recommended-badge {
+    display: inline-block;
+    background: #C41230;
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 99px;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+
+  /* Two columns: light + dark */
+  .modes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  @media (max-width: 600px) {
+    .modes { grid-template-columns: 1fr; }
+  }
+
+  .mode-panel {
+    border-radius: 20px;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .mode-header {
+    padding: 10px 16px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  /* Swatch row */
+  .swatches {
+    display: flex;
+    gap: 0;
+  }
+  .swatch {
+    flex: 1;
+    height: 48px;
+    position: relative;
+  }
+  .swatch-label {
+    position: absolute;
+    bottom: 4px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    mix-blend-mode: difference;
+    color: white;
+    opacity: 0.7;
+  }
+
+  /* Mock UI card */
+  .mock-ui {
+    padding: 16px;
+  }
+  .mock-nav {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 14px;
+    align-items: center;
+  }
+  .nav-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .nav-icon svg {
+    width: 14px;
+    height: 14px;
+  }
+  .mock-title {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 12px;
+  }
+  .mock-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .mock-card {
+    border-radius: 14px;
+    padding: 12px;
+    border: 1px solid transparent;
+  }
+  .mock-card-label {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    opacity: 0.6;
+  }
+  .mock-card-value {
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+  }
+  .mock-card-sub {
+    font-size: 10px;
+    margin-top: 2px;
+    opacity: 0.5;
+  }
+  .mock-btn {
+    display: inline-block;
+    padding: 8px 16px;
+    border-radius: 99px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+  .mock-chart-bar {
+    height: 48px;
+    border-radius: 10px 10px 0 0;
+    margin-top: 8px;
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    padding: 0 4px;
+  }
+  .bar {
+    border-radius: 6px 6px 0 0;
+    flex: 1;
+  }
+
+  /* ─── Palette 1: Crimson Studio ─────────────── */
+
+  /* Light */
+  .p1-light-bg { background: #F8F6F4; }
+  .p1-light-surface { background: #FFFFFF; }
+  .p1-light-header { background: #FFFFFF; color: #1A1411; border-bottom: 1px solid #EAE7E3; }
+  .p1-light-title { color: #1A1411; }
+  .p1-light-card-a { background: #FFFFFF; border-color: #EAE7E3; }
+  .p1-light-card-b { background: #FFF0F2; border-color: #FDD6DB; }
+  .p1-light-text { color: #1A1411; }
+  .p1-light-sub { color: #A8998F; }
+  .p1-light-brand { background: #C41230; color: white; }
+  .p1-light-nav-active { background: rgba(196,18,48,0.1); }
+  .p1-light-nav-active svg { color: #C41230; }
+  .p1-light-nav { color: #6B5F58; }
+
+  /* Dark */
+  .p1-dark-bg { background: #111009; }
+  .p1-dark-surface { background: #1C1917; }
+  .p1-dark-header { background: #1C1917; color: #F2EDE8; border-bottom: 1px solid rgba(255,255,255,0.07); }
+  .p1-dark-title { color: #F2EDE8; }
+  .p1-dark-card-a { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.07); }
+  .p1-dark-card-b { background: rgba(232,51,74,0.12); border-color: rgba(232,51,74,0.25); }
+  .p1-dark-text { color: #F2EDE8; }
+  .p1-dark-sub { color: #A8998F; }
+  .p1-dark-brand { background: #E8334A; color: white; }
+  .p1-dark-nav-active { background: rgba(232,51,74,0.15); }
+  .p1-dark-nav-active svg { color: #E8334A; }
+  .p1-dark-nav { color: #A8998F; }
+
+  /* ─── Palette 2: Nordic Red ─────────────────── */
+
+  /* Light */
+  .p2-light-bg { background: #F5F5F5; }
+  .p2-light-surface { background: #FFFFFF; }
+  .p2-light-header { background: #FFFFFF; color: #0F0F0F; border-bottom: 1px solid #E5E5E5; }
+  .p2-light-title { color: #0F0F0F; }
+  .p2-light-card-a { background: #FFFFFF; border-color: #E5E5E5; }
+  .p2-light-card-b { background: #FFF2F4; border-color: #FFCCD3; }
+  .p2-light-text { color: #0F0F0F; }
+  .p2-light-sub { color: #6B7280; }
+  .p2-light-brand { background: #C41230; color: white; }
+  .p2-light-nav-active { background: rgba(196,18,48,0.08); }
+  .p2-light-nav-active svg { color: #C41230; }
+  .p2-light-nav { color: #6B7280; }
+
+  /* Dark */
+  .p2-dark-bg { background: #0F1117; }
+  .p2-dark-surface { background: #161B27; }
+  .p2-dark-header { background: #161B27; color: #FAFAFA; border-bottom: 1px solid rgba(255,255,255,0.1); }
+  .p2-dark-title { color: #FAFAFA; }
+  .p2-dark-card-a { background: #1E2435; border-color: rgba(255,255,255,0.1); }
+  .p2-dark-card-b { background: rgba(240,68,88,0.12); border-color: rgba(240,68,88,0.3); }
+  .p2-dark-text { color: #FAFAFA; }
+  .p2-dark-sub { color: #9CA3AF; }
+  .p2-dark-brand { background: #F04458; color: white; }
+  .p2-dark-nav-active { background: rgba(240,68,88,0.15); }
+  .p2-dark-nav-active svg { color: #F04458; }
+  .p2-dark-nav { color: #9CA3AF; }
+
+  /* ─── Palette 3: Obsidian ────────────────────── */
+
+  /* Light */
+  .p3-light-bg { background: #F0EEE9; }
+  .p3-light-surface { background: #FAF9F7; }
+  .p3-light-header { background: #FAF9F7; color: #111110; border-bottom: 1px solid #E0DDD6; }
+  .p3-light-title { color: #111110; }
+  .p3-light-card-a { background: #FAF9F7; border-color: #E0DDD6; }
+  .p3-light-card-b { background: #FFF1F2; border-color: #FECDD3; }
+  .p3-light-text { color: #111110; }
+  .p3-light-sub { color: #78716C; }
+  .p3-light-brand { background: #C41230; color: white; }
+  .p3-light-nav-active { background: rgba(196,18,48,0.1); }
+  .p3-light-nav-active svg { color: #C41230; }
+  .p3-light-nav { color: #78716C; }
+
+  /* Dark */
+  .p3-dark-bg { background: #0A0A0B; }
+  .p3-dark-surface { background: #141413; }
+  .p3-dark-header { background: #141413; color: #F5F5F4; border-bottom: 1px solid rgba(255,255,255,0.06); }
+  .p3-dark-title { color: #F5F5F4; }
+  .p3-dark-card-a { background: #1A1A18; border-color: rgba(255,255,255,0.06); }
+  .p3-dark-card-b { background: rgba(255,48,80,0.1); border-color: rgba(255,48,80,0.2); }
+  .p3-dark-text { color: #F5F5F4; }
+  .p3-dark-sub { color: #78716C; }
+  .p3-dark-brand { background: #FF3050; color: white; }
+  .p3-dark-nav-active { background: rgba(255,48,80,0.15); }
+  .p3-dark-nav-active svg { color: #FF3050; }
+  .p3-dark-nav { color: #78716C; }
+
+  .divider {
+    border: none;
+    border-top: 1px solid rgba(255,255,255,0.07);
+    margin: 0 0 56px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Epic Stocks — UX Modernization Palette Preview</h1>
+
+<!-- ════════════════════════════════════════════════ -->
+<!--  PALETTE 1: CRIMSON STUDIO                       -->
+<!-- ════════════════════════════════════════════════ -->
+<div class="palette-section">
+  <div class="palette-label">
+    Palette 1 — Crimson Studio
+    <span class="recommended-badge">Recommended</span>
+  </div>
+  <div class="palette-desc">Warm dark: near-black with amber undertones. Dark mode evokes the icon itself — deep, glowing crimson.</div>
+
+  <div class="modes">
+
+    <!-- LIGHT -->
+    <div class="mode-panel">
+      <div class="swatches">
+        <div class="swatch" style="background:#F8F6F4"><span class="swatch-label">base</span></div>
+        <div class="swatch" style="background:#FFFFFF"><span class="swatch-label">surface</span></div>
+        <div class="swatch" style="background:#EAE7E3"><span class="swatch-label">border</span></div>
+        <div class="swatch" style="background:#1A1411"><span class="swatch-label">text</span></div>
+        <div class="swatch" style="background:#A8998F"><span class="swatch-label">muted</span></div>
+        <div class="swatch" style="background:#C41230"><span class="swatch-label">brand</span></div>
+      </div>
+      <div class="mode-header p1-light-header">☀ Light Mode</div>
+      <div class="mock-ui p1-light-bg">
+        <div class="mock-nav">
+          <div class="nav-icon p1-light-nav-active" style="border-left: 2px solid #C41230;">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" class="p1-light-nav-active" style="color:#C41230"><rect x="2" y="8" width="3" height="6" rx="1"/><rect x="6.5" y="5" width="3" height="9" rx="1"/><rect x="11" y="2" width="3" height="12" rx="1"/></svg>
+          </div>
+          <div class="nav-icon" style="color:#6B5F58">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="6" r="3"/><path d="M2 14c0-3 2.7-5 6-5s6 2 6 5"/></svg>
+          </div>
+          <div style="flex:1"></div>
+          <div style="width:28px;height:28px;border-radius:99px;background:#C41230;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:white">R</div>
+        </div>
+        <div class="mock-title p1-light-title">Dashboard</div>
+        <div class="mock-cards">
+          <div class="mock-card p1-light-card-a">
+            <div class="mock-card-label p1-light-sub">Vested Shares</div>
+            <div class="mock-card-value p1-light-text">558,500</div>
+            <div class="mock-card-sub p1-light-sub">↑ 12,000 this year</div>
+          </div>
+          <div class="mock-card p1-light-card-b">
+            <div class="mock-card-label" style="color:#C41230;opacity:0.8">Unrealized Gain</div>
+            <div class="mock-card-value" style="color:#C41230">$1.2M</div>
+            <div class="mock-card-sub p1-light-sub">cap gains</div>
+          </div>
+          <div class="mock-card p1-light-card-a">
+            <div class="mock-card-label p1-light-sub">Income</div>
+            <div class="mock-card-value p1-light-text">$144K</div>
+            <div class="mock-card-sub p1-light-sub">cumulative</div>
+          </div>
+          <div class="mock-card p1-light-card-a">
+            <div class="mock-card-label p1-light-sub">Loans</div>
+            <div class="mock-card-value p1-light-text">$48K</div>
+            <div class="mock-card-sub p1-light-sub">outstanding</div>
+          </div>
+        </div>
+        <div class="mock-btn p1-light-brand">+ Add Grant</div>
+        <!-- mini bar chart -->
+        <div style="display:flex;gap:4px;align-items:flex-end;height:40px;margin-top:14px;padding:0 4px;">
+          <div class="bar" style="height:40%;background:#EAE7E3;border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:55%;background:#EAE7E3;border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:50%;background:#EAE7E3;border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:65%;background:#EAE7E3;border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:60%;background:#EAE7E3;border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:80%;background:#C41230;border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:100%;background:#C41230;border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:90%;background:#C41230;opacity:0.4;border-radius:4px 4px 0 0;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DARK -->
+    <div class="mode-panel">
+      <div class="swatches">
+        <div class="swatch" style="background:#111009"><span class="swatch-label">base</span></div>
+        <div class="swatch" style="background:#1C1917"><span class="swatch-label">surface</span></div>
+        <div class="swatch" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15)"><span class="swatch-label">border</span></div>
+        <div class="swatch" style="background:#F2EDE8"><span class="swatch-label">text</span></div>
+        <div class="swatch" style="background:#A8998F"><span class="swatch-label">muted</span></div>
+        <div class="swatch" style="background:#E8334A"><span class="swatch-label">brand</span></div>
+      </div>
+      <div class="mode-header p1-dark-header">🌙 Dark Mode</div>
+      <div class="mock-ui p1-dark-bg">
+        <div class="mock-nav">
+          <div class="nav-icon p1-dark-nav-active" style="border-left: 2px solid #E8334A;">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" style="color:#E8334A"><rect x="2" y="8" width="3" height="6" rx="1"/><rect x="6.5" y="5" width="3" height="9" rx="1"/><rect x="11" y="2" width="3" height="12" rx="1"/></svg>
+          </div>
+          <div class="nav-icon" style="color:#A8998F">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="6" r="3"/><path d="M2 14c0-3 2.7-5 6-5s6 2 6 5"/></svg>
+          </div>
+          <div style="flex:1"></div>
+          <div style="width:28px;height:28px;border-radius:99px;background:#E8334A;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:white">R</div>
+        </div>
+        <div class="mock-title p1-dark-title">Dashboard</div>
+        <div class="mock-cards">
+          <div class="mock-card p1-dark-card-a" style="backdrop-filter:blur(8px)">
+            <div class="mock-card-label p1-dark-sub">Vested Shares</div>
+            <div class="mock-card-value p1-dark-text">558,500</div>
+            <div class="mock-card-sub p1-dark-sub">↑ 12,000 this year</div>
+          </div>
+          <div class="mock-card p1-dark-card-b">
+            <div class="mock-card-label" style="color:#E8334A;opacity:0.9">Unrealized Gain</div>
+            <div class="mock-card-value" style="color:#E8334A">$1.2M</div>
+            <div class="mock-card-sub p1-dark-sub">cap gains</div>
+          </div>
+          <div class="mock-card p1-dark-card-a" style="backdrop-filter:blur(8px)">
+            <div class="mock-card-label p1-dark-sub">Income</div>
+            <div class="mock-card-value p1-dark-text">$144K</div>
+            <div class="mock-card-sub p1-dark-sub">cumulative</div>
+          </div>
+          <div class="mock-card p1-dark-card-a" style="backdrop-filter:blur(8px)">
+            <div class="mock-card-label p1-dark-sub">Loans</div>
+            <div class="mock-card-value p1-dark-text">$48K</div>
+            <div class="mock-card-sub p1-dark-sub">outstanding</div>
+          </div>
+        </div>
+        <div class="mock-btn p1-dark-brand">+ Add Grant</div>
+        <div style="display:flex;gap:4px;align-items:flex-end;height:40px;margin-top:14px;padding:0 4px;">
+          <div class="bar" style="height:40%;background:rgba(255,255,255,0.08);border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:55%;background:rgba(255,255,255,0.08);border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:50%;background:rgba(255,255,255,0.08);border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:65%;background:rgba(255,255,255,0.08);border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:60%;background:rgba(255,255,255,0.08);border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:80%;background:#E8334A;border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:100%;background:#E8334A;border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:90%;background:#E8334A;opacity:0.35;border-radius:4px 4px 0 0;"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ════════════════════════════════════════════════ -->
+<!--  PALETTE 2: NORDIC RED                           -->
+<!-- ════════════════════════════════════════════════ -->
+<div class="palette-section">
+  <div class="palette-label">Palette 2 — Nordic Red</div>
+  <div class="palette-desc">Cool, clean, neutral. GitHub/Linear dark energy. Sharper contrast, less warm.</div>
+
+  <div class="modes">
+    <!-- LIGHT -->
+    <div class="mode-panel">
+      <div class="swatches">
+        <div class="swatch" style="background:#F5F5F5"><span class="swatch-label">base</span></div>
+        <div class="swatch" style="background:#FFFFFF"><span class="swatch-label">surface</span></div>
+        <div class="swatch" style="background:#E5E5E5"><span class="swatch-label">border</span></div>
+        <div class="swatch" style="background:#0F0F0F"><span class="swatch-label">text</span></div>
+        <div class="swatch" style="background:#6B7280"><span class="swatch-label">muted</span></div>
+        <div class="swatch" style="background:#C41230"><span class="swatch-label">brand</span></div>
+      </div>
+      <div class="mode-header p2-light-header">☀ Light Mode</div>
+      <div class="mock-ui p2-light-bg">
+        <div class="mock-nav">
+          <div class="nav-icon p2-light-nav-active" style="border-left: 2px solid #C41230;">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" style="color:#C41230"><rect x="2" y="8" width="3" height="6" rx="1"/><rect x="6.5" y="5" width="3" height="9" rx="1"/><rect x="11" y="2" width="3" height="12" rx="1"/></svg>
+          </div>
+          <div class="nav-icon" style="color:#6B7280">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="6" r="3"/><path d="M2 14c0-3 2.7-5 6-5s6 2 6 5"/></svg>
+          </div>
+          <div style="flex:1"></div>
+          <div style="width:28px;height:28px;border-radius:99px;background:#C41230;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:white">R</div>
+        </div>
+        <div class="mock-title p2-light-title">Dashboard</div>
+        <div class="mock-cards">
+          <div class="mock-card p2-light-card-a">
+            <div class="mock-card-label p2-light-sub">Vested Shares</div>
+            <div class="mock-card-value p2-light-text">558,500</div>
+            <div class="mock-card-sub p2-light-sub">↑ 12,000 this year</div>
+          </div>
+          <div class="mock-card p2-light-card-b">
+            <div class="mock-card-label" style="color:#C41230;opacity:0.8">Unrealized Gain</div>
+            <div class="mock-card-value" style="color:#C41230">$1.2M</div>
+            <div class="mock-card-sub p2-light-sub">cap gains</div>
+          </div>
+          <div class="mock-card p2-light-card-a">
+            <div class="mock-card-label p2-light-sub">Income</div>
+            <div class="mock-card-value p2-light-text">$144K</div>
+            <div class="mock-card-sub p2-light-sub">cumulative</div>
+          </div>
+          <div class="mock-card p2-light-card-a">
+            <div class="mock-card-label p2-light-sub">Loans</div>
+            <div class="mock-card-value p2-light-text">$48K</div>
+            <div class="mock-card-sub p2-light-sub">outstanding</div>
+          </div>
+        </div>
+        <div class="mock-btn p2-light-brand">+ Add Grant</div>
+        <div style="display:flex;gap:4px;align-items:flex-end;height:40px;margin-top:14px;padding:0 4px;">
+          <div class="bar" style="height:40%;background:#E5E5E5;border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:55%;background:#E5E5E5;border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:50%;background:#E5E5E5;border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:65%;background:#E5E5E5;border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:60%;background:#E5E5E5;border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:80%;background:#C41230;border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:100%;background:#C41230;border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:90%;background:#C41230;opacity:0.4;border-radius:4px 4px 0 0;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DARK -->
+    <div class="mode-panel">
+      <div class="swatches">
+        <div class="swatch" style="background:#0F1117"><span class="swatch-label">base</span></div>
+        <div class="swatch" style="background:#161B27"><span class="swatch-label">surface</span></div>
+        <div class="swatch" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15)"><span class="swatch-label">border</span></div>
+        <div class="swatch" style="background:#FAFAFA"><span class="swatch-label">text</span></div>
+        <div class="swatch" style="background:#9CA3AF"><span class="swatch-label">muted</span></div>
+        <div class="swatch" style="background:#F04458"><span class="swatch-label">brand</span></div>
+      </div>
+      <div class="mode-header p2-dark-header">🌙 Dark Mode</div>
+      <div class="mock-ui p2-dark-bg">
+        <div class="mock-nav">
+          <div class="nav-icon p2-dark-nav-active" style="border-left: 2px solid #F04458;">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" style="color:#F04458"><rect x="2" y="8" width="3" height="6" rx="1"/><rect x="6.5" y="5" width="3" height="9" rx="1"/><rect x="11" y="2" width="3" height="12" rx="1"/></svg>
+          </div>
+          <div class="nav-icon" style="color:#9CA3AF">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="6" r="3"/><path d="M2 14c0-3 2.7-5 6-5s6 2 6 5"/></svg>
+          </div>
+          <div style="flex:1"></div>
+          <div style="width:28px;height:28px;border-radius:99px;background:#F04458;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:white">R</div>
+        </div>
+        <div class="mock-title p2-dark-title">Dashboard</div>
+        <div class="mock-cards">
+          <div class="mock-card p2-dark-card-a">
+            <div class="mock-card-label p2-dark-sub">Vested Shares</div>
+            <div class="mock-card-value p2-dark-text">558,500</div>
+            <div class="mock-card-sub p2-dark-sub">↑ 12,000 this year</div>
+          </div>
+          <div class="mock-card p2-dark-card-b">
+            <div class="mock-card-label" style="color:#F04458;opacity:0.9">Unrealized Gain</div>
+            <div class="mock-card-value" style="color:#F04458">$1.2M</div>
+            <div class="mock-card-sub p2-dark-sub">cap gains</div>
+          </div>
+          <div class="mock-card p2-dark-card-a">
+            <div class="mock-card-label p2-dark-sub">Income</div>
+            <div class="mock-card-value p2-dark-text">$144K</div>
+            <div class="mock-card-sub p2-dark-sub">cumulative</div>
+          </div>
+          <div class="mock-card p2-dark-card-a">
+            <div class="mock-card-label p2-dark-sub">Loans</div>
+            <div class="mock-card-value p2-dark-text">$48K</div>
+            <div class="mock-card-sub p2-dark-sub">outstanding</div>
+          </div>
+        </div>
+        <div class="mock-btn p2-dark-brand">+ Add Grant</div>
+        <div style="display:flex;gap:4px;align-items:flex-end;height:40px;margin-top:14px;padding:0 4px;">
+          <div class="bar" style="height:40%;background:rgba(255,255,255,0.08);border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:55%;background:rgba(255,255,255,0.08);border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:50%;background:rgba(255,255,255,0.08);border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:65%;background:rgba(255,255,255,0.08);border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:60%;background:rgba(255,255,255,0.08);border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:80%;background:#F04458;border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:100%;background:#F04458;border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:90%;background:#F04458;opacity:0.35;border-radius:4px 4px 0 0;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ════════════════════════════════════════════════ -->
+<!--  PALETTE 3: OBSIDIAN                             -->
+<!-- ════════════════════════════════════════════════ -->
+<div class="palette-section">
+  <div class="palette-label">Palette 3 — Obsidian</div>
+  <div class="palette-desc">Most dramatic. True near-black, cream light mode, neon-edged crimson. Bloomberg-grade.</div>
+
+  <div class="modes">
+    <!-- LIGHT -->
+    <div class="mode-panel">
+      <div class="swatches">
+        <div class="swatch" style="background:#F0EEE9"><span class="swatch-label">base</span></div>
+        <div class="swatch" style="background:#FAF9F7"><span class="swatch-label">surface</span></div>
+        <div class="swatch" style="background:#E0DDD6"><span class="swatch-label">border</span></div>
+        <div class="swatch" style="background:#111110"><span class="swatch-label">text</span></div>
+        <div class="swatch" style="background:#78716C"><span class="swatch-label">muted</span></div>
+        <div class="swatch" style="background:#C41230"><span class="swatch-label">brand</span></div>
+      </div>
+      <div class="mode-header p3-light-header">☀ Light Mode</div>
+      <div class="mock-ui p3-light-bg">
+        <div class="mock-nav">
+          <div class="nav-icon p3-light-nav-active" style="border-left: 2px solid #C41230;">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" style="color:#C41230"><rect x="2" y="8" width="3" height="6" rx="1"/><rect x="6.5" y="5" width="3" height="9" rx="1"/><rect x="11" y="2" width="3" height="12" rx="1"/></svg>
+          </div>
+          <div class="nav-icon" style="color:#78716C">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="6" r="3"/><path d="M2 14c0-3 2.7-5 6-5s6 2 6 5"/></svg>
+          </div>
+          <div style="flex:1"></div>
+          <div style="width:28px;height:28px;border-radius:99px;background:#C41230;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:white">R</div>
+        </div>
+        <div class="mock-title p3-light-title">Dashboard</div>
+        <div class="mock-cards">
+          <div class="mock-card p3-light-card-a">
+            <div class="mock-card-label p3-light-sub">Vested Shares</div>
+            <div class="mock-card-value p3-light-text">558,500</div>
+            <div class="mock-card-sub p3-light-sub">↑ 12,000 this year</div>
+          </div>
+          <div class="mock-card p3-light-card-b">
+            <div class="mock-card-label" style="color:#C41230;opacity:0.8">Unrealized Gain</div>
+            <div class="mock-card-value" style="color:#C41230">$1.2M</div>
+            <div class="mock-card-sub p3-light-sub">cap gains</div>
+          </div>
+          <div class="mock-card p3-light-card-a">
+            <div class="mock-card-label p3-light-sub">Income</div>
+            <div class="mock-card-value p3-light-text">$144K</div>
+            <div class="mock-card-sub p3-light-sub">cumulative</div>
+          </div>
+          <div class="mock-card p3-light-card-a">
+            <div class="mock-card-label p3-light-sub">Loans</div>
+            <div class="mock-card-value p3-light-text">$48K</div>
+            <div class="mock-card-sub p3-light-sub">outstanding</div>
+          </div>
+        </div>
+        <div class="mock-btn p3-light-brand">+ Add Grant</div>
+        <div style="display:flex;gap:4px;align-items:flex-end;height:40px;margin-top:14px;padding:0 4px;">
+          <div class="bar" style="height:40%;background:#E0DDD6;border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:55%;background:#E0DDD6;border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:50%;background:#E0DDD6;border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:65%;background:#E0DDD6;border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:60%;background:#E0DDD6;border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:80%;background:#C41230;border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:100%;background:#C41230;border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:90%;background:#C41230;opacity:0.4;border-radius:4px 4px 0 0;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DARK -->
+    <div class="mode-panel">
+      <div class="swatches">
+        <div class="swatch" style="background:#0A0A0B"><span class="swatch-label">base</span></div>
+        <div class="swatch" style="background:#141413"><span class="swatch-label">surface</span></div>
+        <div class="swatch" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12)"><span class="swatch-label">border</span></div>
+        <div class="swatch" style="background:#F5F5F4"><span class="swatch-label">text</span></div>
+        <div class="swatch" style="background:#78716C"><span class="swatch-label">muted</span></div>
+        <div class="swatch" style="background:#FF3050"><span class="swatch-label">brand</span></div>
+      </div>
+      <div class="mode-header p3-dark-header">🌙 Dark Mode</div>
+      <div class="mock-ui p3-dark-bg">
+        <div class="mock-nav">
+          <div class="nav-icon p3-dark-nav-active" style="border-left: 2px solid #FF3050;">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" style="color:#FF3050"><rect x="2" y="8" width="3" height="6" rx="1"/><rect x="6.5" y="5" width="3" height="9" rx="1"/><rect x="11" y="2" width="3" height="12" rx="1"/></svg>
+          </div>
+          <div class="nav-icon" style="color:#78716C">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="6" r="3"/><path d="M2 14c0-3 2.7-5 6-5s6 2 6 5"/></svg>
+          </div>
+          <div style="flex:1"></div>
+          <div style="width:28px;height:28px;border-radius:99px;background:#FF3050;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:white">R</div>
+        </div>
+        <div class="mock-title p3-dark-title">Dashboard</div>
+        <div class="mock-cards">
+          <div class="mock-card p3-dark-card-a">
+            <div class="mock-card-label p3-dark-sub">Vested Shares</div>
+            <div class="mock-card-value p3-dark-text">558,500</div>
+            <div class="mock-card-sub p3-dark-sub">↑ 12,000 this year</div>
+          </div>
+          <div class="mock-card p3-dark-card-b">
+            <div class="mock-card-label" style="color:#FF3050;opacity:0.9">Unrealized Gain</div>
+            <div class="mock-card-value" style="color:#FF3050">$1.2M</div>
+            <div class="mock-card-sub p3-dark-sub">cap gains</div>
+          </div>
+          <div class="mock-card p3-dark-card-a">
+            <div class="mock-card-label p3-dark-sub">Income</div>
+            <div class="mock-card-value p3-dark-text">$144K</div>
+            <div class="mock-card-sub p3-dark-sub">cumulative</div>
+          </div>
+          <div class="mock-card p3-dark-card-a">
+            <div class="mock-card-label p3-dark-sub">Loans</div>
+            <div class="mock-card-value p3-dark-text">$48K</div>
+            <div class="mock-card-sub p3-dark-sub">outstanding</div>
+          </div>
+        </div>
+        <div class="mock-btn p3-dark-brand" style="box-shadow: 0 0 16px rgba(255,48,80,0.3)">+ Add Grant</div>
+        <div style="display:flex;gap:4px;align-items:flex-end;height:40px;margin-top:14px;padding:0 4px;">
+          <div class="bar" style="height:40%;background:rgba(255,255,255,0.07);border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:55%;background:rgba(255,255,255,0.07);border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:50%;background:rgba(255,255,255,0.07);border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:65%;background:rgba(255,255,255,0.07);border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:60%;background:rgba(255,255,255,0.07);border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:80%;background:#FF3050;border-radius:4px 4px 0 0;"></div>
+          <div class="bar" style="height:100%;background:#FF3050;border-radius:4px 4px 0 0;box-shadow:0 0 8px rgba(255,48,80,0.5)"></div>
+          <div class="bar" style="height:90%;background:#FF3050;opacity:0.35;border-radius:4px 4px 0 0;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

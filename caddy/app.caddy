@@ -14,14 +14,6 @@
     @nocache path / /index.html /sw.js /manifest.json /favicon.svg /favicon.ico /favicon-16x16.png /favicon-32x32.png /apple-touch-icon.png
     header @nocache Cache-Control "no-cache"
 
-    # Security headers
-    header >Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
-    header >Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'"
-    header >X-Content-Type-Options "nosniff"
-    header >X-Frame-Options "DENY"
-    header >Referrer-Policy "strict-origin-when-cross-origin"
-    header >Permissions-Policy "geolocation=(), camera=(), microphone=()"
-
     # Per-app maintenance sentinel — path uses app name to avoid collisions
     # when multiple apps share the same appdata volume.
     @full_maint {
@@ -35,7 +27,14 @@
         header Cache-Control "no-store, no-cache"
         header CDN-Cache-Control "no-store"
         header Surrogate-Control "no-store"
-        # Override CSP for the maintenance page: no scripts, inline style allowed via hash
+        # Security headers scoped to this handle block only — prevents the normal
+        # CSP from also being applied (two CSP headers = browser takes intersection,
+        # blocking the inline style even when the hash is present).
+        header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+        header X-Content-Type-Options "nosniff"
+        header X-Frame-Options "DENY"
+        header Referrer-Policy "strict-origin-when-cross-origin"
+        header Permissions-Policy "geolocation=(), camera=(), microphone=()"
         header Content-Security-Policy "default-src 'none'; style-src 'sha256-xMh+Nqpx9KJvmI29lubtlkoQN9gMnoH6cBHwytJ9i2I='"
         respond `<!DOCTYPE html>
 <html lang="en">
@@ -71,6 +70,12 @@
 
     # Normal operation — forward to the app container on the proxy network
     handle {
+        header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+        header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'"
+        header X-Content-Type-Options "nosniff"
+        header X-Frame-Options "DENY"
+        header Referrer-Policy "strict-origin-when-cross-origin"
+        header Permissions-Policy "geolocation=(), camera=(), microphone=()"
         reverse_proxy epic-stocks-app:8000
     }
 }

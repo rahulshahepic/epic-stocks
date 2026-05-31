@@ -869,7 +869,7 @@ export default function Sales() {
  <div tabIndex={0} className="overflow-x-auto rounded-lg border border-cs-border">
  <table className="w-full text-left text-xs">
  <thead className="bg-cs-raised">
- <tr className="text-cs-muted">
+ <tr className="text-cs-text-2">
  <th className="px-3 py-2">Date</th>
  <th className="px-3 py-2">Type</th>
  <th className="px-3 py-2 text-right">Shares</th>

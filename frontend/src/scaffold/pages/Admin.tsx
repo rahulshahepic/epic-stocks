@@ -453,7 +453,7 @@ export default function Admin() {
  <div tabIndex={0} className="mt-3 overflow-x-auto">
  <table className="w-full text-xs">
  <thead>
- <tr className="border-b border-gray-100 text-left text-cs-muted ">
+ <tr className="border-b border-cs-border text-left text-cs-text-2 ">
  <th className="pb-1.5 font-medium">Table</th>
  <th className="pb-1.5 text-right font-medium">Size</th>
  <th className="pb-1.5 text-right font-medium">~Rows</th>

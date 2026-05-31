@@ -1464,7 +1464,7 @@ export default function Retirement() {
  <div className="overflow-x-auto">
  <table className="w-full text-xs tabular-nums">
  <thead>
- <tr className="text-left text-[10px] uppercase tracking-wider text-cs-muted">
+ <tr className="text-left text-[10px] uppercase tracking-wider text-cs-text-2">
  {finalRows.map(r => {
  const q = Math.round(r.q * 100)
  const label =
@@ -1563,7 +1563,7 @@ function RiskOfRuinPanel({ table }: { table: RiskOfRuinTable }) {
  <div className="overflow-x-auto">
  <table className="w-full text-xs tabular-nums">
  <thead>
- <tr className="text-[10px] uppercase tracking-wider text-cs-muted">
+ <tr className="text-[10px] uppercase tracking-wider text-cs-text-2">
  <th className="px-2 py-1 text-left font-medium">If I have at least…</th>
  {table.ages.map(age => (
  <th key={age} className="px-2 py-1 text-center font-medium">Age {age}</th>

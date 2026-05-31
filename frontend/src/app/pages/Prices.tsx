@@ -347,7 +347,7 @@ export default function Prices() {
  <div tabIndex={0} className="overflow-x-auto rounded-lg border border-cs-border">
  <table className="w-full text-left text-xs">
  <thead className="bg-cs-raised">
- <tr className="text-cs-muted">
+ <tr className="text-cs-text-2">
  <th className="px-3 py-2">Date</th>
  <th className="px-3 py-2 text-right">Projected Price</th>
  <th className="px-3 py-2 text-right">Change</th>
@@ -428,7 +428,7 @@ export default function Prices() {
  <div tabIndex={0} className="overflow-x-auto rounded-lg border border-cs-border">
  <table className="w-full text-left text-xs">
  <thead className="bg-cs-raised">
- <tr className="text-cs-muted">
+ <tr className="text-cs-text-2">
  <th className="px-3 py-2">Effective Date</th>
  <th className="px-3 py-2 text-right">Price</th>
  <th className="px-3 py-2"></th>

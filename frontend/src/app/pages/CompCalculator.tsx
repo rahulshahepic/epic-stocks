@@ -194,14 +194,14 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
 }) {
  if (!row) {
  return (
- <div className="rounded-lg border border-cs-border bg-cs-raised p-4 text-xs text-cs-muted ">
+ <div className="rounded-lg border border-cs-border bg-cs-raised p-4 text-xs text-cs-text-2 ">
  Not enough price history to compute comp for {year}. Pick a different year on the chart, or add a Dec 31 price for {year - 1} and {year} in <em>Settings → Prices</em>.
  </div>
  )
  }
  if (row.afterExit) {
  return (
- <div className="rounded-lg border border-cs-border bg-cs-raised p-4 text-xs text-cs-muted ">
+ <div className="rounded-lg border border-cs-border bg-cs-raised p-4 text-xs text-cs-text-2 ">
  <p className="font-medium text-cs-text-2">After planned exit — no compensation realized in {year}.</p>
  <p className="mt-1">Unvested shares are sold back at cost basis on exit; appreciation after your exit date is not realized.</p>
  </div>

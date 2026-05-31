@@ -246,7 +246,7 @@ export default function AppSettingsSections() {
  className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text"
  />
  </label>
- <div className="col-span-2 rounded-md border border-gray-200 p-3 ">
+ <div className="col-span-2 rounded-md border border-cs-border p-3 ">
  <label className="flex items-start gap-2 cursor-pointer">
  <input
  type="checkbox"
@@ -320,7 +320,7 @@ export default function AppSettingsSections() {
  </button>
  <button
  onClick={() => { setTaxForm({ ...WI_DEFAULTS }) }}
- className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-cs-text-2 hover:bg-cs-raised "
+ className="rounded-md border border-cs-border-strong px-3 py-1.5 text-xs font-medium text-cs-text-2 hover:bg-cs-raised bg-cs-surface "
  >
  Reset to WI Defaults
  </button>

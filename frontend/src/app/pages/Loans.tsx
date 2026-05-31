@@ -435,7 +435,7 @@ export default function Loans() {
  {l.loan_type}
  </span>
  {refinancedByLoan && (
- <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[9px] font-medium text-cs-text-2 ">Refinanced</span>
+ <span className="rounded-full bg-cs-raised px-1.5 py-0.5 text-[9px] font-medium text-cs-text-2 ">Refinanced</span>
  )}
  </div>
  {readOnly
@@ -508,7 +508,7 @@ export default function Loans() {
  <td className="whitespace-nowrap px-3 py-2 text-cs-text-2">
  {l.grant_year} {l.grant_type}
  {refinancedByLoan && (
- <span className="ml-1.5 inline-block rounded-full bg-gray-100 px-1.5 py-0.5 text-[9px] font-medium text-cs-text-2 " title={`Refinanced by ${loanLabel(refinancedByLoan)}`}>
+ <span className="ml-1.5 inline-block rounded-full bg-cs-raised px-1.5 py-0.5 text-[9px] font-medium text-cs-text-2 " title={`Refinanced by ${loanLabel(refinancedByLoan)}`}>
  Refinanced
  </span>
  )}
@@ -582,7 +582,7 @@ export default function Loans() {
 
  {payoffModal && (
  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={closePayoffModal}>
- <div className="w-full max-w-sm max-h-[90vh] overflow-y-auto rounded-lg bg-white p-5 shadow-xl " onClick={e => e.stopPropagation()}>
+ <div className="w-full max-w-sm max-h-[90vh] overflow-y-auto rounded-lg bg-cs-surface p-5 shadow-xl " onClick={e => e.stopPropagation()}>
  <div className="flex items-center justify-between">
  <h3 className="text-sm font-semibold text-cs-text">Repay this loan early</h3>
  <button onClick={closePayoffModal} aria-label="Close dialog" className="text-cs-text-2 hover:text-cs-text-2 ">✕</button>

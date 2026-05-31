@@ -442,7 +442,7 @@ export default function CompCalculator() {
  )}
  </div>
 
- <div className="flex flex-wrap items-center gap-3 rounded-lg border border-cs-border bg-white p-3 ">
+ <div className="flex flex-wrap items-center gap-3 rounded-lg border border-cs-border bg-cs-surface p-3 ">
  <label className="flex items-center gap-2 text-xs font-medium text-cs-text">
  <span>Planned exit date</span>
  <input
@@ -593,7 +593,7 @@ export default function CompCalculator() {
  year={selectedYear ?? CURRENT_YEAR}
  />
 
- <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-cs-border bg-white p-3 ">
+ <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-cs-border bg-cs-surface p-3 ">
  <input
  type="checkbox"
  checked={deductOn}

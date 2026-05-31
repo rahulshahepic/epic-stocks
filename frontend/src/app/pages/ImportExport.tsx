@@ -289,13 +289,13 @@ export default function ImportExport() {
  </button>
  <button
  onClick={handleTemplateDownload}
- className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-cs-text-2 hover:bg-gray-200 "
+ className="rounded-md bg-cs-raised px-3 py-1.5 text-xs font-medium text-cs-text-2 hover:bg-stone-200 dark:hover:bg-stone-700 "
  >
  Download Blank Template
  </button>
  <button
  onClick={() => setShowGuide(v => !v)}
- className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-cs-text-2 hover:bg-gray-200 "
+ className="rounded-md bg-cs-raised px-3 py-1.5 text-xs font-medium text-cs-text-2 hover:bg-stone-200 dark:hover:bg-stone-700 "
  >
  {showGuide ? 'Hide column guide' : 'Column guide'}
  </button>

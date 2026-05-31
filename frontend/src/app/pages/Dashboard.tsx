@@ -1570,7 +1570,7 @@ export default function Dashboard() {
  className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
  dateMode === mode
  ? 'bg-cs-brand text-white'
- : 'bg-gray-100 text-cs-text-2 hover:bg-gray-200 '
+ : 'bg-cs-raised text-cs-text-2 hover:bg-stone-200 dark:hover:bg-stone-700 '
  }`}
  >
  {label}

@@ -122,7 +122,7 @@ export default function Unsubscribe() {
 
  {/* Token is valid — normal one-click unsubscribe */}
  {status?.valid && !done && (
- <div className="rounded-lg border border-cs-border bg-white p-5 text-left ">
+ <div className="rounded-lg border border-cs-border bg-cs-surface p-5 text-left ">
  <p className="mb-3 text-sm text-cs-text-2">
  Unsubscribe <strong>{email}</strong> from {typeLabel} emails?
  </p>
@@ -143,7 +143,7 @@ export default function Unsubscribe() {
 
  {/* Token is invalid — offer fallback based on auth state */}
  {status && !status.valid && !done && (
- <div className="rounded-lg border border-cs-border bg-white p-5 text-left ">
+ <div className="rounded-lg border border-cs-border bg-cs-surface p-5 text-left ">
  <p className="mb-2 text-sm font-medium text-cs-text-2">
  This unsubscribe link has expired.
  </p>

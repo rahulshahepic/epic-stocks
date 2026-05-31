@@ -489,7 +489,7 @@ export default function Admin() {
  value={emailLookup}
  onChange={e => setEmailLookup(e.target.value)}
  placeholder="Search by exact email..."
- className="min-w-0 flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-xs "
+ className="min-w-0 flex-1 rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text "
  required
  />
  <button
@@ -502,7 +502,7 @@ export default function Admin() {
  </form>
 
  {emailLookupResult && (
- <div className="mt-3 rounded-md border border-gray-100 p-3 text-xs ">
+ <div className="mt-3 rounded-md border border-cs-border p-3 text-xs ">
  <p className="font-medium text-cs-text">{emailLookupResult.email}</p>
  <div className="mt-2 space-y-1 text-cs-text-2">
  <p>Account: {emailLookupResult.has_account
@@ -583,14 +583,14 @@ export default function Admin() {
  value={searchInput}
  onChange={e => setSearchInput(e.target.value)}
  placeholder="Search by email or name..."
- className="mt-2 w-full rounded-md border border-gray-300 px-2 py-1.5 text-xs "
+ className="mt-2 w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text "
  />
  <div className="mt-3 space-y-2">
  {users.map(u => (
  <button
  key={u.id}
  onClick={() => openUserDetail(u)}
- className="flex w-full items-center justify-between rounded-md border border-gray-100 p-2 text-left text-xs transition-colors hover:bg-cs-raised "
+ className="flex w-full items-center justify-between rounded-md border border-cs-border p-2 text-left text-xs transition-colors hover:bg-cs-raised "
  >
  <div className="min-w-0 flex-1">
  <p className="truncate font-medium text-cs-text">
@@ -633,7 +633,7 @@ export default function Admin() {
  value={blockEmail}
  onChange={e => setBlockEmail(e.target.value)}
  placeholder="email@example.com"
- className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-xs "
+ className="w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text "
  required
  />
  <div className="flex gap-2">
@@ -642,7 +642,7 @@ export default function Admin() {
  value={blockReason}
  onChange={e => setBlockReason(e.target.value)}
  placeholder="Reason (optional)"
- className="min-w-0 flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-xs "
+ className="min-w-0 flex-1 rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text "
  />
  <button type="submit" className="shrink-0 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700">
  Block
@@ -653,7 +653,7 @@ export default function Admin() {
  {blocked.length > 0 && (
  <div className="mt-3 space-y-1">
  {blocked.map(b => (
- <div key={b.id} className="flex items-center justify-between rounded-md border border-gray-100 p-2 text-xs ">
+ <div key={b.id} className="flex items-center justify-between rounded-md border border-cs-border p-2 text-xs ">
  <div>
  <span className="font-medium text-cs-text">{b.email}</span>
  {b.reason && <span className="ml-2 text-cs-text-2">({b.reason})</span>}
@@ -691,7 +691,7 @@ export default function Admin() {
  )}
  <div className="mt-3 space-y-2">
  {errorLogs.map(e => (
- <div key={e.id} className="rounded-md border border-gray-100 p-2 text-xs ">
+ <div key={e.id} className="rounded-md border border-cs-border p-2 text-xs ">
  <div
  className="flex cursor-pointer items-start justify-between"
  onClick={() => setExpandedError(expandedError === e.id ? null : e.id)}
@@ -756,7 +756,7 @@ export default function Admin() {
  )}
 
  {/* Danger Zone */}
- <section className="rounded-lg border border-red-200 bg-white p-4 dark:border-red-900/60 ">
+ <section className="rounded-lg border border-red-200 bg-cs-surface p-4 dark:border-red-900/60 ">
  <h3 className="text-sm font-semibold text-red-700 dark:text-red-400">⚠ Danger Zone</h3>
 
  {/* Maintenance Mode Toggle */}
@@ -1035,7 +1035,7 @@ export default function Admin() {
  {/* User Detail Modal */}
  {selectedUser && (
  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setSelectedUser(null)}>
- <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-lg bg-white p-5 shadow-xl " onClick={e => e.stopPropagation()}>
+ <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-lg bg-cs-surface p-5 shadow-xl " onClick={e => e.stopPropagation()}>
  <div className="mb-4 flex items-center justify-between">
  <div>
  <h3 className="text-sm font-semibold text-cs-text">
@@ -1070,7 +1070,7 @@ export default function Admin() {
  </div>
 
  {/* Email & Notification Status */}
- <div className="rounded-md border border-gray-100 p-3 ">
+ <div className="rounded-md border border-cs-border p-3 ">
  <h4 className="mb-2 text-xs font-semibold text-cs-text">Email & Notifications</h4>
  <div className="space-y-1 text-cs-text-2">
  <p>Email notifications: {userDetail.email_notifications_enabled === null
@@ -1116,7 +1116,7 @@ export default function Admin() {
 
  {/* Invitations Sent */}
  {userDetail.invitations_sent.length > 0 && (
- <div className="rounded-md border border-gray-100 p-3 ">
+ <div className="rounded-md border border-cs-border p-3 ">
  <h4 className="mb-2 text-xs font-semibold text-cs-text">
  Invitations Sent ({userDetail.invitations_sent.length})
  </h4>
@@ -1137,7 +1137,7 @@ export default function Admin() {
 
  {/* Invitations Received */}
  {userDetail.invitations_received.length > 0 && (
- <div className="rounded-md border border-gray-100 p-3 ">
+ <div className="rounded-md border border-cs-border p-3 ">
  <h4 className="mb-2 text-xs font-semibold text-cs-text">
  Viewing Data From ({userDetail.invitations_received.length})
  </h4>
@@ -1152,7 +1152,7 @@ export default function Admin() {
  )}
 
  {/* Actions */}
- <div className="rounded-md border border-gray-100 p-3 ">
+ <div className="rounded-md border border-cs-border p-3 ">
  <h4 className="mb-2 text-xs font-semibold text-cs-text">Actions</h4>
  <div className="flex flex-wrap gap-2">
  <button
@@ -1276,7 +1276,7 @@ export default function Admin() {
  {/* Notify Modal */}
  {notifyModal && (
  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
- <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl ">
+ <div className="w-full max-w-sm rounded-lg bg-cs-surface p-5 shadow-xl ">
  <div className="mb-3 flex items-center justify-between">
  <div>
  <h3 className="text-sm font-semibold text-cs-text">
@@ -1308,7 +1308,7 @@ export default function Admin() {
  }
  setNotifyResult(null)
  }}
- className="w-full rounded-md border border-gray-300 bg-cs-surface px-2 py-1.5 text-xs "
+ className="w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text "
  >
  {Object.entries(notifyTemplates).map(([key, tpl]) => (
  <option key={key} value={key}>{tpl.label}</option>
@@ -1320,7 +1320,7 @@ export default function Admin() {
  value={notifyTitle}
  onChange={e => { setNotifyTitle(e.target.value); setNotifyTemplate('custom') }}
  placeholder="Title"
- className="w-full rounded-md border border-gray-300 bg-cs-surface px-2 py-1.5 text-xs "
+ className="w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text "
  />
  <textarea
  aria-label="Body"
@@ -1328,7 +1328,7 @@ export default function Admin() {
  onChange={e => { setNotifyBody(e.target.value); setNotifyTemplate('custom') }}
  placeholder="Body"
  rows={2}
- className="w-full rounded-md border border-gray-300 bg-cs-surface px-2 py-1.5 text-xs "
+ className="w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text "
  />
  <div className="flex items-center gap-2">
  <button
@@ -1341,7 +1341,7 @@ export default function Admin() {
  <button
  type="button"
  onClick={() => setNotifyModal(null)}
- className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-cs-text-2 hover:bg-gray-200 dark:hover:bg-gray-600"
+ className="rounded-md bg-cs-raised px-3 py-1.5 text-xs font-medium text-cs-text-2 hover:bg-stone-200 dark:hover:bg-stone-700"
  >
  Close
  </button>

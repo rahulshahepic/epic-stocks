@@ -3,13 +3,13 @@ import { createContext, useContext, useState, useCallback, useEffect, useRef } f
 type ToastType = 'error' | 'success' | 'info'
 
 interface Toast {
-  id: number
-  message: string
-  type: ToastType
+ id: number
+ message: string
+ type: ToastType
 }
 
 interface ToastContextValue {
-  toast: (message: string, type?: ToastType) => void
+ toast: (message: string, type?: ToastType) => void
 }
 
 const ToastContext = createContext<ToastContextValue>({ toast: () => {} })
@@ -19,53 +19,53 @@ export const useToast = () => useContext(ToastContext)
 let nextId = 0
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
-  const [toasts, setToasts] = useState<Toast[]>([])
-  const timers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map())
+ const [toasts, setToasts] = useState<Toast[]>([])
+ const timers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map())
 
-  const dismiss = useCallback((id: number) => {
-    const t = timers.current.get(id)
-    if (t) clearTimeout(t)
-    timers.current.delete(id)
-    setToasts((prev) => prev.filter((t) => t.id !== id))
-  }, [])
+ const dismiss = useCallback((id: number) => {
+ const t = timers.current.get(id)
+ if (t) clearTimeout(t)
+ timers.current.delete(id)
+ setToasts((prev) => prev.filter((t) => t.id !== id))
+ }, [])
 
-  const toast = useCallback((message: string, type: ToastType = 'error') => {
-    const id = ++nextId
-    setToasts((prev) => [...prev.slice(-2), { id, message, type }])
-    const timer = setTimeout(() => dismiss(id), 5000)
-    timers.current.set(id, timer)
-  }, [dismiss])
+ const toast = useCallback((message: string, type: ToastType = 'error') => {
+ const id = ++nextId
+ setToasts((prev) => [...prev.slice(-2), { id, message, type }])
+ const timer = setTimeout(() => dismiss(id), 5000)
+ timers.current.set(id, timer)
+ }, [dismiss])
 
-  useEffect(() => {
-    return () => timers.current.forEach((t) => clearTimeout(t))
-  }, [])
+ useEffect(() => {
+ return () => timers.current.forEach((t) => clearTimeout(t))
+ }, [])
 
-  const colors: Record<ToastType, string> = {
-    error:   'bg-rose-700 dark:bg-rose-600',
-    success: 'bg-emerald-700 dark:bg-emerald-700',
-    info:    'bg-sky-600 dark:bg-sky-500',
-  }
+ const colors: Record<ToastType, string> = {
+ error: 'bg-cs-brand',
+ success: 'bg-emerald-700',
+ info: 'bg-sky-600 dark:bg-sky-500',
+ }
 
-  return (
-    <ToastContext.Provider value={{ toast }}>
-      {children}
-      {/* (F) aria-live region so screen readers announce toasts */}
-      <div
-        aria-live="polite"
-        aria-atomic="false"
-        className="fixed bottom-4 left-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"
-      >
-        {toasts.map((t) => (
-          <div
-            key={t.id}
-            role="alert"
-            onClick={() => dismiss(t.id)}
-            className={`pointer-events-auto animate-slide-up rounded-lg px-4 py-3 text-sm font-medium text-white shadow-lg ${colors[t.type]}`}
-          >
-            {t.message}
-          </div>
-        ))}
-      </div>
-    </ToastContext.Provider>
-  )
+ return (
+ <ToastContext.Provider value={{ toast }}>
+ {children}
+ {/* (F) aria-live region so screen readers announce toasts */}
+ <div
+ aria-live="polite"
+ aria-atomic="false"
+ className="fixed bottom-4 left-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"
+ >
+ {toasts.map((t) => (
+ <div
+ key={t.id}
+ role="alert"
+ onClick={() => dismiss(t.id)}
+ className={`pointer-events-auto animate-slide-up rounded-lg px-4 py-3 text-sm font-medium text-white shadow-lg ${colors[t.type]}`}
+ >
+ {t.message}
+ </div>
+ ))}
+ </div>
+ </ToastContext.Provider>
+ )
 }

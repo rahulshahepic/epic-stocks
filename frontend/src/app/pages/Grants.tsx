@@ -445,14 +445,14 @@ export default function Grants() {
  <button
  type="button"
  onClick={() => setForm(f => ({ ...f, type: 'Purchase', dp_shares: f.dp_shares }))}
- className={`rounded-md px-3 py-1 text-xs font-medium ${form.type === 'Purchase' ? 'bg-cs-brand text-white' : 'bg-gray-100 text-cs-text-2 hover:bg-gray-200 '}`}
+ className={`rounded-md px-3 py-1 text-xs font-medium ${form.type === 'Purchase' ? 'bg-cs-brand text-white' : 'bg-cs-raised text-cs-text-2 hover:bg-stone-200 dark:hover:bg-stone-700 '}`}
  >
  Purchase
  </button>
  <button
  type="button"
  onClick={() => setForm(f => ({ ...f, type: 'Bonus', dp_shares: 0 }))}
- className={`rounded-md px-3 py-1 text-xs font-medium ${form.type === 'Bonus' ? 'bg-emerald-700 text-white' : 'bg-gray-100 text-cs-text-2 hover:bg-gray-200 '}`}
+ className={`rounded-md px-3 py-1 text-xs font-medium ${form.type === 'Bonus' ? 'bg-emerald-700 text-white' : 'bg-cs-raised text-cs-text-2 hover:bg-stone-200 dark:hover:bg-stone-700 '}`}
  >
  Bonus
  </button>
@@ -775,7 +775,7 @@ export default function Grants() {
  {/* Sell Shares Modal */}
  {sellModal && (
  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
- <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl ">
+ <div className="w-full max-w-sm rounded-lg bg-cs-surface p-5 shadow-xl ">
  <div className="mb-4 flex items-center justify-between">
  <h3 className="text-sm font-semibold text-cs-text">
  Sell Shares — {sellModal.grantType} {sellModal.grantYear}
@@ -848,7 +848,7 @@ export default function Grants() {
  {sellError && <p className="text-xs text-red-500">{sellError}</p>}
 
  <div className="flex justify-end gap-2 pt-1">
- <button onClick={closeSellModal} className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-cs-text-2 hover:bg-gray-200 dark:hover:bg-gray-600">
+ <button onClick={closeSellModal} className="rounded-md bg-cs-raised px-3 py-1.5 text-xs font-medium text-cs-text-2 hover:bg-stone-200 dark:hover:bg-stone-700">
  Cancel
  </button>
  <button

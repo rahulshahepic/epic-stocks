@@ -98,7 +98,7 @@ export function TrancheTable({
  }, 0)
  return (
  <div className="rounded-md border border-cs-border bg-cs-raised/50">
- <div className="border-b border-gray-200 px-3 py-1.5 ">
+ <div className="border-b border-cs-border px-3 py-1.5 ">
  <span className="text-[10px] font-semibold uppercase tracking-wide text-cs-muted">
  Lot Allocation{saleDate ? ` at ${saleDate}` : ''}
  </span>
@@ -131,7 +131,7 @@ export function TrancheTable({
  type="number" min="0" max={line.available_shares}
  value={manualAlloc[key] ?? line.allocated_shares}
  onChange={e => onManualChange(key, Math.min(line.available_shares, Math.max(0, parseInt(e.target.value) || 0)))}
- className="w-20 rounded border border-gray-300 bg-cs-surface px-1.5 py-0.5 text-right text-xs "
+ className="w-20 rounded border border-cs-border-strong bg-cs-surface px-1.5 py-0.5 text-right text-xs text-cs-text "
  />
  ) : (
  <span className={allocated > 0 ? 'tabular-nums font-medium' : 'text-gray-300 '}>{fmtNum(allocated)}</span>
@@ -150,7 +150,7 @@ export function TrancheTable({
  </tbody>
  {displayLines.length > 1 && (
  <tfoot>
- <tr className="border-t border-gray-200 font-medium ">
+ <tr className="border-t border-cs-border font-medium ">
  <td className="px-3 py-1 text-cs-text-2">Total</td>
  <td />
  <td className="px-3 py-1 text-right tabular-nums text-cs-text-2">{fmtNum(lines.reduce((s, l) => s + l.available_shares, 0))}</td>
@@ -330,7 +330,7 @@ export function TaxRateFields({ rates, onChange, onReset }: {
  type="number"
  value={rates.lt_holding_days}
  onChange={e => set('lt_holding_days', e.target.value)}
- className="mt-0.5 block w-full rounded-md border border-gray-300 bg-cs-surface px-1.5 py-1 text-[11px] "
+ className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-1.5 py-1 text-[11px] text-cs-text "
  />
  </label>
  </div>
@@ -348,7 +348,7 @@ function RateField({ label, value, onChange }: { label: string; value: number; o
  step="0.001"
  value={(value * 100).toFixed(2)}
  onChange={e => onChange(String(parseFloat(e.target.value) / 100))}
- className="block w-full rounded-md border border-gray-300 bg-white py-1 pl-1.5 pr-4 text-[11px] "
+ className="block w-full rounded-md border border-cs-border-strong bg-cs-surface py-1 pl-1.5 pr-4 text-[11px] text-cs-text "
  />
  <span className="pointer-events-none absolute inset-y-0 right-1 flex items-center text-[10px] text-cs-text-2">%</span>
  </div>
@@ -688,7 +688,7 @@ export default function Sales() {
  <div className="flex gap-1 rounded-md border border-cs-border bg-cs-raised p-0.5 ">
  {(['dollars', 'shares'] as const).map(m => (
  <button key={m} onClick={() => { setInputMode(m); setEstimate(null) }}
- className={`flex-1 rounded py-1 text-xs font-medium transition-colors ${inputMode === m ? 'bg-white shadow-sm text-cs-text ' : 'text-cs-muted'}`}>
+ className={`flex-1 rounded py-1 text-xs font-medium transition-colors ${inputMode === m ? 'bg-cs-surface shadow-sm text-cs-text ' : 'text-cs-muted'}`}>
  {m === 'dollars' ? '$ Target' : '# Shares'}
  </button>
  ))}
@@ -704,7 +704,7 @@ export default function Sales() {
  <input type="number" step="100" min="0" value={dollarTarget}
  onChange={e => setDollarTarget(e.target.value)}
  placeholder="0"
- className="block w-full rounded-md border border-gray-300 bg-white pl-5 pr-2 py-1.5 text-xs " />
+ className="block w-full rounded-md border border-cs-border-strong bg-cs-surface pl-5 pr-2 py-1.5 text-xs text-cs-text " />
  </div>
  </label>
  ) : (
@@ -760,7 +760,7 @@ export default function Sales() {
  <input type="number" step="0.01" min="0" value={actualTaxPaid}
  onChange={e => setActualTaxPaid(e.target.value)}
  placeholder="Leave blank to use estimate"
- className="block w-full rounded-md border border-gray-300 bg-white pl-5 pr-2 py-1.5 text-xs " />
+ className="block w-full rounded-md border border-cs-border-strong bg-cs-surface pl-5 pr-2 py-1.5 text-xs text-cs-text " />
  </div>
  </label>
  )}

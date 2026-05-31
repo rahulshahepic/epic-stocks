@@ -41,7 +41,7 @@ function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
  {...props}
  className={
  (props.className ?? '') +
- ' w-full rounded-md border border-gray-300 px-2 py-1.5 text-xs '
+ ' w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text '
  }
  />
  )
@@ -61,7 +61,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
  aria-modal="true"
  >
  <div
- className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg bg-white p-5 shadow-xl "
+ className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg bg-cs-surface p-5 shadow-xl "
  onClick={e => e.stopPropagation()}
  >
  <div className="mb-4 flex items-center justify-between">
@@ -648,7 +648,7 @@ function RefinancesTab({ blob, wrap, busy }: { blob: ContentBlob; wrap: WrapFn; 
  value={modal.draft.chain_kind}
  disabled={modal.mode === 'edit'}
  onChange={e => patch({ chain_kind: e.target.value as 'purchase' | 'tax' })}
- className="w-full rounded-md border border-gray-300 bg-cs-surface px-2 py-1.5 text-xs disabled:bg-stone-100 disabled:text-cs-muted "
+ className="w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text disabled:bg-cs-raised disabled:text-cs-muted "
  >
  <option value="purchase">purchase</option>
  <option value="tax">tax</option>

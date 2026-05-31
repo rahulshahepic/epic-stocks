@@ -723,7 +723,7 @@ export default function Retirement() {
  onBlur={e => {
  if (!vid) saveDOB(e.target.value)
  }}
- className="rounded border border-cs-border-strong bg-cs-surface px-2 py-1 text-sm tabular-nums text-cs-text focus:border-rose-400 focus:outline-none disabled:bg-stone-100 disabled:text-cs-muted "
+ className="rounded border border-cs-border-strong bg-cs-surface px-2 py-1 text-sm tabular-nums text-cs-text focus:border-rose-400 focus:outline-none disabled:bg-cs-raised disabled:text-cs-muted "
  />
  <span className="text-[10px] text-cs-muted">
  {vid
@@ -745,7 +745,7 @@ export default function Retirement() {
  exitOverriddenRef.current = false
  setRetirementDate(e.target.value)
  }}
- className="rounded border border-cs-border-strong bg-cs-surface px-2 py-1 text-sm tabular-nums text-cs-text focus:border-rose-400 focus:outline-none disabled:bg-stone-100 disabled:text-cs-muted "
+ className="rounded border border-cs-border-strong bg-cs-surface px-2 py-1 text-sm tabular-nums text-cs-text focus:border-rose-400 focus:outline-none disabled:bg-cs-raised disabled:text-cs-muted "
  />
  <span className="text-[10px] text-cs-muted">
  {exitPreviewLoading
@@ -779,7 +779,7 @@ export default function Retirement() {
  value={spouseDOB ?? ''}
  disabled={!!vid}
  onChange={e => setSpouseDOB(e.target.value || null)}
- className="rounded border border-cs-border-strong bg-cs-surface px-2 py-1 text-sm tabular-nums text-cs-text focus:border-rose-400 focus:outline-none disabled:bg-stone-100 disabled:text-cs-muted "
+ className="rounded border border-cs-border-strong bg-cs-surface px-2 py-1 text-sm tabular-nums text-cs-text focus:border-rose-400 focus:outline-none disabled:bg-cs-raised disabled:text-cs-muted "
  />
  <span className="text-[10px] text-cs-muted">
  {spouseDOB
@@ -910,7 +910,7 @@ export default function Retirement() {
  ? [{ yearsAfter: 0, stockPct: params.stockPct, bondPct: params.bondPct }]
  : [...params.glidePoints].sort((a, b) => a.yearsAfter - b.yearsAfter)
  const inputCls = (invalid: boolean) =>
- `w-16 rounded border px-1 py-0.5 tabular-nums focus:outline-none focus:border-rose-400 ${invalid ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/20' : 'border-stone-300 bg-white '} text-cs-text`
+ `w-16 rounded border px-1 py-0.5 tabular-nums focus:outline-none focus:border-rose-400 ${invalid ? 'border-rose-400 bg-rose-50 dark:bg-rose-950/20' : 'border-cs-border-strong bg-cs-surface '} text-cs-text`
  return (
  <div>
  <table className="w-full text-[11px]">

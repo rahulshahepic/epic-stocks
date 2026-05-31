@@ -17,7 +17,7 @@ const TYPE_COLORS: Record<string, string> = {
  'Vesting': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
  'Share Price': 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
  'Loan Payoff': 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
- 'Refinanced': 'bg-gray-100 text-cs-text-2 /60 ',
+ 'Refinanced': 'bg-cs-raised text-cs-text-2 dark:bg-stone-700/40 ',
  'Early Loan Payment': 'bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300',
  'Sale': 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
 }
@@ -270,7 +270,7 @@ export default function Events() {
  onClick={() => setTypeDropdownOpen(p => !p)}
  aria-expanded={typeDropdownOpen}
  aria-haspopup="listbox"
- className="flex items-center gap-1 rounded-md border border-gray-300 bg-cs-surface px-2 py-1 text-xs "
+ className="flex items-center gap-1 rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1 text-xs text-cs-text "
  >
  {typeFilter.size === 0
  ? `All types (${events.length})`
@@ -280,7 +280,7 @@ export default function Events() {
  <span className="text-cs-text-2">{typeDropdownOpen ? '▲' : '▼'}</span>
  </button>
  {typeDropdownOpen && (
- <div className="absolute right-0 z-10 mt-1 w-56 rounded-md border border-cs-border bg-white py-1 shadow-lg ">
+ <div className="absolute right-0 z-10 mt-1 w-56 rounded-md border border-cs-border bg-cs-surface py-1 shadow-lg ">
  <button
  onClick={() => { setTypeFilter(new Set()); setTypeDropdownOpen(false) }}
  className="w-full px-3 py-1.5 text-left text-xs text-cs-muted hover:bg-cs-raised "
@@ -368,7 +368,7 @@ export default function Events() {
  ref={(el) => { if (el) highlightRefs.current.set(i, el); else highlightRefs.current.delete(i) }}
  className={[
  'rounded-lg border border-cs-border p-3 text-xs ',
- e.event_type === 'Refinanced' ? 'bg-white opacity-50 ' : 'bg-cs-surface',
+ e.event_type === 'Refinanced' ? 'bg-cs-surface opacity-50 ' : 'bg-cs-surface',
  highlightedRows.has(i) ? 'ring-2 ring-inset ring-blue-400 animate-pulse' : '',
  ].join(' ')}
  onClick={() => setExpandedMobileRows(prev => { const next = new Set(prev); if (next.has(i)) next.delete(i); else next.add(i); return next })}
@@ -478,7 +478,7 @@ export default function Events() {
  }}
  className={[
  e.event_type === 'Refinanced'
- ? 'bg-white opacity-50 '
+ ? 'bg-cs-surface opacity-50 '
  : 'bg-cs-surface',
  highlightedRows.has(i) ? 'ring-2 ring-inset ring-blue-400 animate-pulse' : '',
  ].join(' ')}

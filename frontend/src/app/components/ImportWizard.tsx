@@ -329,7 +329,7 @@ function LoanReviewRow({ loan, onChange }: { loan: ReviewedLoan; onChange: (l: R
  <input
  type="number" step="0.01" value={loan.amount}
  onChange={e => onChange({ ...loan, amount: e.target.value })}
- className="w-full rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-xs "
+ className="w-full rounded border border-cs-border bg-cs-raised px-1.5 py-0.5 text-xs text-cs-text "
  placeholder="0.00"
  />
  </div>
@@ -338,7 +338,7 @@ function LoanReviewRow({ loan, onChange }: { loan: ReviewedLoan; onChange: (l: R
  <PercentField
  value={loan.interest_rate}
  onChange={v => onChange({ ...loan, interest_rate: v })}
- className="w-full rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-xs "
+ className="w-full rounded border border-cs-border bg-cs-raised px-1.5 py-0.5 text-xs text-cs-text "
  />
  </div>
  <div>
@@ -346,7 +346,7 @@ function LoanReviewRow({ loan, onChange }: { loan: ReviewedLoan; onChange: (l: R
  <input
  type="date" value={loan.due_date}
  onChange={e => onChange({ ...loan, due_date: e.target.value })}
- className="w-full rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-xs "
+ className="w-full rounded border border-cs-border bg-cs-raised px-1.5 py-0.5 text-xs text-cs-text "
  />
  </div>
  </div>
@@ -400,7 +400,7 @@ function RefiChainGroup({ label, loans, onChangeLoan }: {
  ? 'border-emerald-500 bg-emerald-500'
  : isFirst
  ? 'border-violet-400 bg-violet-400 dark:border-violet-500 dark:bg-violet-500'
- : 'border-violet-300 bg-white dark:border-violet-600 '
+ : 'border-violet-300 bg-cs-surface dark:border-violet-600 '
  }`} />
  </div>
  <div className="min-w-0 flex-1">
@@ -447,7 +447,7 @@ function RefiChainGroup({ label, loans, onChangeLoan }: {
  <input
  type="number" step="0.01" value={loan.amount}
  onChange={e => onChangeLoan({ ...loan, amount: e.target.value })}
- className="w-full rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-xs "
+ className="w-full rounded border border-cs-border bg-cs-raised px-1.5 py-0.5 text-xs text-cs-text "
  placeholder="0.00"
  />
  </div>
@@ -456,7 +456,7 @@ function RefiChainGroup({ label, loans, onChangeLoan }: {
  <PercentField
  value={loan.interest_rate}
  onChange={v => onChangeLoan({ ...loan, interest_rate: v })}
- className="w-full rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-xs "
+ className="w-full rounded border border-cs-border bg-cs-raised px-1.5 py-0.5 text-xs text-cs-text "
  />
  </div>
  <div>
@@ -464,7 +464,7 @@ function RefiChainGroup({ label, loans, onChangeLoan }: {
  <input
  type="date" value={loan.due_date}
  onChange={e => onChangeLoan({ ...loan, due_date: e.target.value })}
- className="w-full rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-xs "
+ className="w-full rounded border border-cs-border bg-cs-raised px-1.5 py-0.5 text-xs text-cs-text "
  />
  </div>
  </div>
@@ -1802,7 +1802,7 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
  className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
  grantDraft.type === t
  ? GRANT_COLORS[t]
- : 'bg-gray-100 text-cs-text-2 hover:bg-gray-200 '
+ : 'bg-cs-raised text-cs-text-2 hover:bg-stone-200 dark:hover:bg-stone-700 '
  }`}
  >
  {t}
@@ -1900,7 +1900,7 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
  setGrantDraft(d => ({ ...d, has_purchase_loan: false }))
  afterPurchaseLoan()
  }}
- className="rounded-md bg-gray-100 px-4 py-1.5 text-xs font-medium text-cs-text-2 hover:bg-gray-200 "
+ className="rounded-md bg-cs-raised px-4 py-1.5 text-xs font-medium text-cs-text-2 hover:bg-stone-200 dark:hover:bg-stone-700 "
  >
  No
  </button>
@@ -1967,7 +1967,7 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
  <button
  type="button"
  onClick={() => afterPurchaseLoan()}
- className="rounded-md bg-gray-100 px-4 py-1.5 text-xs font-medium text-cs-text-2 hover:bg-gray-200 "
+ className="rounded-md bg-cs-raised px-4 py-1.5 text-xs font-medium text-cs-text-2 hover:bg-stone-200 dark:hover:bg-stone-700 "
  >
  No
  </button>
@@ -2024,7 +2024,7 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
  }))
 
  return (
- <div key={vestDate} className="rounded-md border border-gray-200 p-3 ">
+ <div key={vestDate} className="rounded-md border border-cs-border p-3 ">
  <div className="flex items-center justify-between">
  <p className="text-xs font-medium text-cs-text-2">
  Vesting {fmtDate(vestDate)}
@@ -2101,7 +2101,7 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
  <button
  type="button"
  onClick={() => push('review')}
- className="rounded-md bg-gray-100 px-4 py-1.5 text-xs font-medium text-cs-text-2 hover:bg-gray-200 "
+ className="rounded-md bg-cs-raised px-4 py-1.5 text-xs font-medium text-cs-text-2 hover:bg-stone-200 dark:hover:bg-stone-700 "
  >
  No, review &amp; submit
  </button>
@@ -2157,7 +2157,7 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
  )}
 
  {/* Prices */}
- <div className="rounded-md border border-cs-border bg-white p-3 ">
+ <div className="rounded-md border border-cs-border bg-cs-surface p-3 ">
  <p className="text-xs font-medium text-cs-text-2">
  Prices ({s.prices.length})
  </p>
@@ -2171,7 +2171,7 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
  </div>
 
  {/* Grants */}
- <div className="rounded-md border border-cs-border bg-white p-3 ">
+ <div className="rounded-md border border-cs-border bg-cs-surface p-3 ">
  <p className="text-xs font-medium text-cs-text-2">
  Grants ({s.grants.length})
  </p>
@@ -2416,7 +2416,7 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
  {(['A', 'B', 'C'] as BonusSchedule[]).map(s => (
  <button key={s} type="button"
  onClick={() => setBonusField(i, { schedule: s })}
- className={`rounded-md px-3 py-1 text-xs font-medium ${row.schedule === s ? 'bg-emerald-700 text-white' : 'bg-gray-100 text-cs-text-2 hover:bg-gray-200 '}`}
+ className={`rounded-md px-3 py-1 text-xs font-medium ${row.schedule === s ? 'bg-emerald-700 text-white' : 'bg-cs-raised text-cs-text-2 hover:bg-stone-200 dark:hover:bg-stone-700 '}`}
  >
  {s}
  </button>
@@ -2628,7 +2628,7 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
  setReviewedLoans(prev => prev.map(l => l.loan_type === 'Tax' && !l.refinances_loan_number ? { ...l, enabled: false } : l))
  syncRefiAmounts()
  push('schedule_loans_refi')
- }} className="rounded-md bg-gray-100 px-4 py-1.5 text-xs font-medium text-cs-muted hover:bg-gray-200 ">
+ }} className="rounded-md bg-cs-raised px-4 py-1.5 text-xs font-medium text-cs-text-2 hover:bg-stone-200 dark:hover:bg-stone-700 ">
  Skip
  </button>
  </div>
@@ -2678,7 +2678,7 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
  ))
  recomputeInterestEstimates()
  push('schedule_loans_interest')
- }} className="rounded-md bg-gray-100 px-4 py-1.5 text-xs font-medium text-cs-muted hover:bg-gray-200 ">
+ }} className="rounded-md bg-cs-raised px-4 py-1.5 text-xs font-medium text-cs-text-2 hover:bg-stone-200 dark:hover:bg-stone-700 ">
  Skip
  </button>
  </div>
@@ -2732,7 +2732,7 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
  <button type="button" onClick={() => {
  setReviewedLoans(prev => prev.map(l => l.loan_type === 'Interest' ? { ...l, enabled: false } : l))
  push('schedule_settings')
- }} className="rounded-md bg-gray-100 px-4 py-1.5 text-xs font-medium text-cs-muted hover:bg-gray-200 ">
+ }} className="rounded-md bg-cs-raised px-4 py-1.5 text-xs font-medium text-cs-text-2 hover:bg-stone-200 dark:hover:bg-stone-700 ">
  Skip
  </button>
  </div>
@@ -2777,7 +2777,7 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
  type="button"
  disabled={submitting}
  onClick={() => handleScheduleReview(false)}
- className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-cs-text-2 hover:bg-gray-200 disabled:opacity-50 "
+ className="rounded-md bg-cs-raised px-3 py-1.5 text-xs font-medium text-cs-text-2 hover:bg-stone-200 dark:hover:bg-stone-700 disabled:opacity-50 "
  >
  Skip
  </button>

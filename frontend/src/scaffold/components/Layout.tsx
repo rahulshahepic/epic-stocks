@@ -8,148 +8,148 @@ import { useViewing } from '../contexts/ViewingContext.tsx'
 import { useAppContext } from '../contexts/AppContext.tsx'
 
 export default function Layout() {
-  const { logout } = useAuth()
-  const me = useMe()
-  const maintenance = useMaintenance()
-  const config = useConfig()
-  const { viewing, setViewing, clearViewing } = useViewing()
-  const { appName, navItems: appNavItems, viewerHiddenRoutes, epicModeHiddenRoutes } = useAppContext()
-  const epicMode = config?.epic_mode ?? false
-  const baseItems = epicMode
-    ? [...appNavItems.filter(item => !epicModeHiddenRoutes.has(item.to)), { to: '/settings', label: 'Settings' }]
-    : [...appNavItems, { to: '/settings', label: 'Settings' }]
-  const viewFilteredItems = viewing
-    ? baseItems.filter(item => !viewerHiddenRoutes.has(item.to))
-    : baseItems
-  const canContent = !viewing && (me?.is_admin || me?.is_content_admin)
-  const withContent = canContent ? [...viewFilteredItems, { to: '/content', label: 'Content' }] : viewFilteredItems
-  const navItems = me?.is_admin && !viewing
-    ? [...withContent, { to: '/admin', label: 'Admin' }]
-    : withContent
+ const { logout } = useAuth()
+ const me = useMe()
+ const maintenance = useMaintenance()
+ const config = useConfig()
+ const { viewing, setViewing, clearViewing } = useViewing()
+ const { appName, navItems: appNavItems, viewerHiddenRoutes, epicModeHiddenRoutes } = useAppContext()
+ const epicMode = config?.epic_mode ?? false
+ const baseItems = epicMode
+ ? [...appNavItems.filter(item => !epicModeHiddenRoutes.has(item.to)), { to: '/settings', label: 'Settings' }]
+ : [...appNavItems, { to: '/settings', label: 'Settings' }]
+ const viewFilteredItems = viewing
+ ? baseItems.filter(item => !viewerHiddenRoutes.has(item.to))
+ : baseItems
+ const canContent = !viewing && (me?.is_admin || me?.is_content_admin)
+ const withContent = canContent ? [...viewFilteredItems, { to: '/content', label: 'Content' }] : viewFilteredItems
+ const navItems = me?.is_admin && !viewing
+ ? [...withContent, { to: '/admin', label: 'Admin' }]
+ : withContent
 
-  const sharedAccounts = me?.shared_accounts ?? []
+ const sharedAccounts = me?.shared_accounts ?? []
 
-  // Clear stale viewing_context if the invitation is no longer valid for this user
-  useEffect(() => {
-    if (!me || !viewing) return
-    const valid = sharedAccounts.some(a => a.invitation_id === viewing.invitationId)
-    if (!valid) clearViewing()
-  }, [me, viewing, sharedAccounts, clearViewing])
+ // Clear stale viewing_context if the invitation is no longer valid for this user
+ useEffect(() => {
+ if (!me || !viewing) return
+ const valid = sharedAccounts.some(a => a.invitation_id === viewing.invitationId)
+ if (!valid) clearViewing()
+ }, [me, viewing, sharedAccounts, clearViewing])
 
-  // (B) Focus management on route changes
-  const location = useLocation()
-  const mainRef = useRef<HTMLElement>(null)
-  useEffect(() => {
-    mainRef.current?.focus()
-  }, [location.pathname])
+ // (B) Focus management on route changes
+ const location = useLocation()
+ const mainRef = useRef<HTMLElement>(null)
+ useEffect(() => {
+ mainRef.current?.focus()
+ }, [location.pathname])
 
-  return (
-    <div className="flex min-h-screen flex-col bg-stone-50 dark:bg-slate-950">
-      {/* (A) Skip-navigation link */}
-      <a href="#main-content" className="skip-nav">
-        Skip to main content
-      </a>
+ return (
+ <div className="flex min-h-screen flex-col bg-cs-base">
+ {/* (A) Skip-navigation link */}
+ <a href="#main-content" className="skip-nav">
+ Skip to main content
+ </a>
 
-      {maintenance && (
-        <div className="flex items-center justify-center gap-2 bg-amber-400 px-4 py-1.5 text-xs font-medium text-amber-950">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-amber-800" />
-          Maintenance in progress — financial data is temporarily unavailable
-        </div>
-      )}
+ {maintenance && (
+ <div className="flex items-center justify-center gap-2 bg-amber-400 px-4 py-1.5 text-xs font-medium text-amber-950">
+ <span className="h-2 w-2 animate-pulse rounded-full bg-amber-800" />
+ Maintenance in progress — financial data is temporarily unavailable
+ </div>
+ )}
 
-      {viewing && (
-        <div className="flex items-center justify-center gap-2 bg-blue-100 px-4 py-1.5 text-xs font-medium text-blue-900 dark:bg-blue-900/30 dark:text-blue-300">
-          Viewing {viewing.name}&rsquo;s data (read-only)
-          <button
-            onClick={clearViewing}
-            className="ml-2 rounded bg-blue-200 px-2 py-0.5 text-xs font-medium hover:bg-blue-300 dark:bg-blue-800 dark:hover:bg-blue-700"
-          >
-            Back to my data
-          </button>
-        </div>
-      )}
+ {viewing && (
+ <div className="flex items-center justify-center gap-2 bg-blue-100 px-4 py-1.5 text-xs font-medium text-blue-900 dark:bg-blue-900/30 dark:text-blue-300">
+ Viewing {viewing.name}&rsquo;s data (read-only)
+ <button
+ onClick={clearViewing}
+ className="ml-2 rounded bg-blue-200 px-2 py-0.5 text-xs font-medium hover:bg-blue-300 dark:bg-blue-800 dark:hover:bg-blue-700"
+ >
+ Back to my data
+ </button>
+ </div>
+ )}
 
-      <header className="border-b border-stone-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-          <span className="text-sm font-bold text-rose-700 dark:text-rose-400">
-            {appName}
-          </span>
-          <div className="flex items-center gap-3">
-            {sharedAccounts.length > 0 && (
-              <select
-                value={viewing?.invitationId ?? ''}
-                onChange={e => {
-                  const val = e.target.value
-                  if (!val) {
-                    clearViewing()
-                  } else {
-                    const acct = sharedAccounts.find(a => a.invitation_id === Number(val))
-                    if (acct) setViewing(acct.invitation_id, acct.inviter_name)
-                  }
-                }}
-                className="rounded border border-stone-300 bg-white px-2 py-1 text-xs text-stone-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                aria-label="Switch between your data and shared accounts"
-              >
-                <option value="">My Data</option>
-                {sharedAccounts.map(a => (
-                  <option key={a.invitation_id} value={a.invitation_id}>
-                    {a.inviter_name}&rsquo;s Data
-                  </option>
-                ))}
-              </select>
-            )}
-            {me && (
-              <span className="text-xs text-stone-500 dark:text-slate-400">
-                {me.name || me.email}
-              </span>
-            )}
-            <button
-              onClick={logout}
-              aria-label="Sign out of your account"
-              className="text-xs text-stone-600 hover:text-stone-800 dark:text-slate-400 dark:hover:text-slate-200"
-            >
-              Sign Out
-            </button>
-          </div>
-        </div>
+ <header className="border-b border-cs-border bg-cs-surface">
+ <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
+ <span className="text-sm font-bold text-cs-brand">
+ {appName}
+ </span>
+ <div className="flex items-center gap-3">
+ {sharedAccounts.length > 0 && (
+ <select
+ value={viewing?.invitationId ?? ''}
+ onChange={e => {
+ const val = e.target.value
+ if (!val) {
+ clearViewing()
+ } else {
+ const acct = sharedAccounts.find(a => a.invitation_id === Number(val))
+ if (acct) setViewing(acct.invitation_id, acct.inviter_name)
+ }
+ }}
+ className="rounded border border-cs-border-strong bg-cs-surface px-2 py-1 text-xs text-cs-text"
+ aria-label="Switch between your data and shared accounts"
+ >
+ <option value="">My Data</option>
+ {sharedAccounts.map(a => (
+ <option key={a.invitation_id} value={a.invitation_id}>
+ {a.inviter_name}&rsquo;s Data
+ </option>
+ ))}
+ </select>
+ )}
+ {me && (
+ <span className="text-xs text-cs-muted">
+ {me.name || me.email}
+ </span>
+ )}
+ <button
+ onClick={logout}
+ aria-label="Sign out of your account"
+ className="text-xs text-cs-text-2 hover:text-cs-text "
+ >
+ Sign Out
+ </button>
+ </div>
+ </div>
 
-        <nav aria-label="Main navigation" className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-4 pb-2">
-          {navItems.map(({ to, label }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={to === '/'}
-              className={({ isActive }) =>
-                `whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                  isActive
-                    ? 'bg-rose-700 text-white dark:bg-rose-600 dark:text-white'
-                    : 'text-stone-600 hover:bg-stone-100 hover:text-stone-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200'
-                }`
-              }
-            >
-              {label}
-            </NavLink>
-          ))}
-        </nav>
-      </header>
+ <nav aria-label="Main navigation" className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-4 pb-2">
+ {navItems.map(({ to, label }) => (
+ <NavLink
+ key={to}
+ to={to}
+ end={to === '/'}
+ className={({ isActive }) =>
+ `whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+ isActive
+ ? 'bg-cs-brand text-white'
+ : 'text-cs-text-2 hover:bg-cs-raised hover:text-cs-text'
+ }`
+ }
+ >
+ {label}
+ </NavLink>
+ ))}
+ </nav>
+ </header>
 
-      <main
-        id="main-content"
-        ref={mainRef}
-        tabIndex={-1}
-        className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 outline-none"
-      >
-        <Outlet />
-      </main>
+ <main
+ id="main-content"
+ ref={mainRef}
+ tabIndex={-1}
+ className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 outline-none"
+ >
+ <Outlet />
+ </main>
 
-      <footer className="border-t border-stone-200 py-4 text-center text-xs text-stone-600 dark:border-slate-800 dark:text-slate-400">
-        <Link
-          to="/privacy"
-          className="underline hover:text-stone-600 dark:hover:text-slate-300"
-        >
-          Privacy Policy
-        </Link>
-      </footer>
-    </div>
-  )
+ <footer className="border-t border-cs-border py-4 text-center text-xs text-cs-text-2">
+ <Link
+ to="/privacy"
+ className="underline hover:text-cs-text"
+ >
+ Privacy Policy
+ </Link>
+ </footer>
+ </div>
+ )
 }

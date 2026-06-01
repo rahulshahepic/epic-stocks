@@ -21,9 +21,9 @@ function stagingAssetsPlugin(): Plugin {
       icons: [
         { src: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
         { src: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
-        { src: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
-        { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
-        { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+        { src: '/apple-touch-icon-staging.png', sizes: '180x180', type: 'image/png' },
+        { src: '/icon-staging-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+        { src: '/icon-staging-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
       ],
     },
     null,
@@ -35,20 +35,26 @@ function stagingAssetsPlugin(): Plugin {
     transformIndexHtml: {
       order: 'post',
       handler(html) {
-        // Cache-bust all icon links with the commit SHA — applies to every build.
-        // Caddy's path matcher ignores query strings, so @nocache still matches.
         let result = html
-          .replace('href="/favicon.svg"', `href="/favicon.svg?v=${commitSha}"`)
-          .replace('href="/favicon-32x32.png"', `href="/favicon-32x32.png?v=${commitSha}"`)
-          .replace('href="/favicon-16x16.png"', `href="/favicon-16x16.png?v=${commitSha}"`)
-          .replace('href="/favicon.ico"', `href="/favicon.ico?v=${commitSha}"`)
-          .replace('href="/apple-touch-icon.png"', `href="/apple-touch-icon.png?v=${commitSha}"`)
 
+        // Staging path swaps must happen before SHA versioning so the
+        // patterns still match the original unversioned hrefs.
         if (isStaging) {
           result = result
             .replace('<title>Equity Tracker</title>', '<title>Equity Tracker (Staging)</title>')
             .replace('content="Equity"', 'content="Equity β"')
+            .replace('href="/apple-touch-icon.png"', 'href="/apple-touch-icon-staging.png"')
         }
+
+        // Cache-bust all icon links with the commit SHA — applies to every build.
+        // Caddy's path matcher ignores query strings, so @nocache still matches.
+        const appleIcon = isStaging ? '/apple-touch-icon-staging.png' : '/apple-touch-icon.png'
+        result = result
+          .replace('href="/favicon.svg"', `href="/favicon.svg?v=${commitSha}"`)
+          .replace('href="/favicon-32x32.png"', `href="/favicon-32x32.png?v=${commitSha}"`)
+          .replace('href="/favicon-16x16.png"', `href="/favicon-16x16.png?v=${commitSha}"`)
+          .replace('href="/favicon.ico"', `href="/favicon.ico?v=${commitSha}"`)
+          .replace(`href="${appleIcon}"`, `href="${appleIcon}?v=${commitSha}"`)
 
         return result
       },
@@ -60,6 +66,10 @@ function stagingAssetsPlugin(): Plugin {
       const stagingSvg = fs.readFileSync(path.resolve('public/favicon-staging.svg'), 'utf-8')
       fs.writeFileSync(path.join(outDir, 'favicon.svg'), stagingSvg)
       fs.writeFileSync(path.join(outDir, 'manifest.json'), stagingManifest)
+      // Copy staging PNGs (generated from favicon-staging.svg via scripts/gen-staging-icons.py)
+      for (const f of ['icon-staging-192.png', 'icon-staging-512.png', 'apple-touch-icon-staging.png']) {
+        fs.copyFileSync(path.resolve(`public/${f}`), path.join(outDir, f))
+      }
     },
   }
 }

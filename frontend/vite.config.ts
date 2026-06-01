@@ -16,7 +16,7 @@ function stagingAssetsPlugin(): Plugin {
       start_url: '/',
       display: 'standalone',
       background_color: '#111009',
-      theme_color: '#D97706',
+      theme_color: '#C41230',
       orientation: 'portrait-primary',
       icons: [
         { src: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
@@ -47,8 +47,6 @@ function stagingAssetsPlugin(): Plugin {
         if (isStaging) {
           result = result
             .replace('<title>Equity Tracker</title>', '<title>Equity Tracker (Staging)</title>')
-            .replace(/content="#C41230"/g, 'content="#D97706"')
-            .replace(/content="#E8334A"/g, 'content="#F59E0B"')
             .replace('content="Equity"', 'content="Equity β"')
         }
 

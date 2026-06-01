@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <filter id="barShadow" x="-5%" y="-5%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="5" stdDeviation="6" flood-color="#C41230" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+  <!-- Inverted: white background, red bars -->
+  <rect width="512" height="512" rx="108" fill="#FFFFFF"/>
+  <rect x="80"  y="322" width="208" height="70" rx="12" fill="#C41230" filter="url(#barShadow)"/>
+  <rect x="132" y="222" width="234" height="70" rx="12" fill="#C41230" filter="url(#barShadow)"/>
+  <rect x="184" y="122" width="260" height="70" rx="12" fill="#C41230" filter="url(#barShadow)"/>
+  <!-- Staging badge: red pill, top-right, above the bars -->
+  <rect x="348" y="30" width="134" height="76" rx="38" fill="#C41230"/>
+  <text x="415" y="82" font-family="system-ui,-apple-system,sans-serif" font-size="60" font-weight="900" text-anchor="middle" fill="white">S</text>
+</svg>

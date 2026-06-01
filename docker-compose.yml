@@ -33,6 +33,7 @@ services:
       context: .
       args:
         COMMIT_SHA: ${COMMIT_SHA:-dev}
+        APP_ENV: ${APP_ENV:-production}
     depends_on:
       db:
         condition: service_healthy

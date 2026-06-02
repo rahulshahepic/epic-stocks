@@ -824,6 +824,7 @@ export default function Retirement() {
  suffix="$M"
  hint="Pre-filled from your dashboard for the retirement date above — you can override it"
  />
+ {!params.advanced && (
  <NumInput
  label="Additional portfolio"
  value={params.taxableAdditional}
@@ -831,23 +832,33 @@ export default function Retirement() {
  setParams(prev => ({
  ...prev,
  taxableAdditional: v,
- // Simple-mode default: assume fully appreciated (basis = 0).
- // Conservative — most pre-existing brokerage held for years
- // has substantial unrealized gains. Open the advanced view
- // to set a real basis or split into 401(k)/Roth buckets.
- additionalBasis: prev.advanced ? prev.additionalBasis : 0,
+ additionalBasis: 0,
  }))
  }}
  min={0}
  step={0.1}
  suffix="$M"
- hint={params.advanced ? 'Pre-existing taxable brokerage' : 'Treated as fully-appreciated taxable; open below for buckets/basis'}
+ hint="Pre-existing taxable brokerage — retirement accounts default to $0; open below to split by account type"
  />
+ )}
  </div>
 
  <button
  type="button"
- onClick={() => update('advanced', !params.advanced)}
+ onClick={() => {
+ if (params.advanced) {
+ setParams(prev => ({
+ ...prev,
+ advanced: false,
+ taxableAdditional: prev.taxableAdditional + prev.traditional + prev.roth,
+ traditional: 0,
+ roth: 0,
+ additionalBasis: 0,
+ }))
+ } else {
+ update('advanced', true)
+ }
+ }}
  className="mt-3 inline-flex items-center gap-1 text-[11px] font-medium text-cs-brand hover:text-cs-brand-hover dark:text-rose-300 dark:hover:text-rose-200"
  >
  <span>{params.advanced ? '▾' : '▸'}</span>
@@ -861,7 +872,16 @@ export default function Retirement() {
  When you sell from your <strong>brokerage</strong>, you only owe tax on the growth — the original money you put in (your "cost basis") comes back tax-free. Your Epic exit money has full basis because it was just sold.
  <strong> 401(k)</strong> withdrawals are taxed like a paycheck. <strong>Roth</strong> withdrawals are completely tax-free.
  </p>
- <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+ <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+ <NumInput
+ label="Taxable brokerage"
+ value={params.taxableAdditional}
+ onChange={v => update('taxableAdditional', Math.max(0, v))}
+ min={0}
+ step={0.1}
+ suffix="$M"
+ hint="Pre-existing brokerage account"
+ />
  <NumInput
  label="What you originally paid (basis)"
  value={params.additionalBasis}
@@ -891,6 +911,9 @@ export default function Retirement() {
  suffix="$M"
  hint={`Locked until age ${RETIREMENT_ACCESS_AGE} · withdrawals are tax-free`}
  />
+ </div>
+ <div className="mt-2 flex justify-end text-[11px] text-cs-text-2">
+ Total: <strong className="ml-1 text-cs-text">${(params.taxableAdditional + params.traditional + params.roth).toFixed(2)}M</strong>
  </div>
  {bridgeYears > 0 && hasLockedAssets && (
  <p className="mt-2 text-[10px] text-amber-700 dark:text-amber-300">

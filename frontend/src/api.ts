@@ -280,10 +280,13 @@ export const api = {
   updateProfile: (body: { date_of_birth?: string | null }) => apiFetch<{ date_of_birth: string | null }>('/api/me/profile', { method: 'PATCH', body: JSON.stringify(body) }),
   getRetirementParams: () => apiFetch<{ params: Record<string, unknown> | null }>('/api/retirement/params'),
   saveRetirementParams: (params: Record<string, unknown>) => put<{ params: Record<string, unknown> }>('/api/retirement/params', { params }),
+  getCompEntries: () => apiFetch<{ entries: unknown }>('/api/retirement/comp-entries'),
+  saveCompEntries: (entries: unknown) => put<{ entries: unknown }>('/api/retirement/comp-entries', { entries }),
   getDashboardPrefs: () => apiFetch<{ prefs: Record<string, unknown> }>('/api/dashboard-prefs'),
   saveDashboardPrefs: (prefs: Record<string, unknown>) => put<{ prefs: Record<string, unknown> }>('/api/dashboard-prefs', { prefs }),
   getSharedProfile: (invId: number) => apiFetch<{ name: string | null; date_of_birth: string | null }>(`/api/sharing/view/${invId}/profile`),
   getSharedRetirementParams: (invId: number) => apiFetch<{ params: Record<string, unknown> | null }>(`/api/sharing/view/${invId}/retirement-params`),
+  getSharedCompEntries: (invId: number) => apiFetch<{ entries: unknown }>(`/api/sharing/view/${invId}/comp-entries`),
   getSharedDashboardPrefs: (invId: number) => apiFetch<{ prefs: Record<string, unknown> }>(`/api/sharing/view/${invId}/dashboard-prefs`),
 
   // Push notifications

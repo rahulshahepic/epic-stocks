@@ -339,13 +339,39 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
   )
  }
  if (row.afterExit) {
+  const hasPayAfterExit = row.salary > 0 || row.bonus > 0
+  if (!hasPayAfterExit) {
+   return (
+    <div className="rounded-lg border border-cs-border bg-cs-raised p-4 text-xs text-cs-text-2 ">
+     <p className="font-medium text-cs-text-2">After planned exit — no compensation realized in {year}.</p>
+     <p className="mt-1">Unvested shares are sold back at cost basis on exit; appreciation after your exit date is not realized.</p>
+    </div>
+   )
+  }
   return (
-   <div className="rounded-lg border border-cs-border bg-cs-raised p-4 text-xs text-cs-text-2 ">
-    <p className="font-medium text-cs-text-2">After planned exit — no compensation realized in {year}.</p>
-    <p className="mt-1">Unvested shares are sold back at cost basis on exit; appreciation after your exit date is not realized.</p>
+   <div className="rounded-lg border border-rose-300 bg-rose-50 p-4 dark:border-rose-700 dark:bg-rose-950/30">
+    <p className="text-xs font-semibold uppercase tracking-wide text-cs-brand">{row.year}</p>
+    <p className="mt-1 text-3xl font-bold tabular-nums text-cs-text">{fmt$(row.totalComp)}</p>
+    <p className="mt-0.5 text-[11px] text-cs-muted">total cash comp in {row.year} (after exit)</p>
+    <dl className="mt-4 space-y-1.5 text-xs">
+     {row.salary > 0 && (
+      <div className="flex justify-between gap-2">
+       <dt className="text-cs-text-2">Base salary{row.salaryIsProrated ? ' (prorated)' : ''}</dt>
+       <dd className="tabular-nums text-cs-text">{fmt$(row.salary)}</dd>
+      </div>
+     )}
+     {row.yearBonuses.map((b, i) => (
+      <div key={i} className="flex justify-between gap-2">
+       <dt className="text-cs-text-2">Bonus{b.note ? ` — ${b.note}` : ''}</dt>
+       <dd className="tabular-nums text-cs-text">{fmt$(b.amount)}</dd>
+      </div>
+     ))}
+    </dl>
    </div>
   )
  }
+
+ const hasCompEvents = row.salary > 0 || row.bonus > 0
  const gain = row.appreciation * row.principal
  const taxBenefit = row.interest * m
  const interestCost = useDeduction ? row.interest - taxBenefit : row.interest
@@ -362,8 +388,12 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
      </span>
     )}
    </div>
-   <p className="mt-1 text-3xl font-bold tabular-nums text-cs-text">{fmt$(row.comp)}</p>
-   <p className="mt-0.5 text-[11px] text-cs-muted">net Epic stock comp in {row.year}</p>
+   <p className="mt-1 text-3xl font-bold tabular-nums text-cs-text">
+    {fmt$(hasCompEvents ? row.totalTaxEquiv : row.comp)}
+   </p>
+   <p className="mt-0.5 text-[11px] text-cs-muted">
+    {hasCompEvents ? `pretax-equivalent total comp in ${row.year}` : `net Epic stock comp in ${row.year}`}
+   </p>
 
    <dl className="mt-4 space-y-1.5 text-xs">
     <div className="flex justify-between gap-2">
@@ -410,8 +440,8 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
      </div>
     )}
     <div className="flex justify-between gap-2 border-t border-rose-200 pt-1.5 dark:border-rose-800">
-     <dt className="font-semibold text-cs-text">Net comp</dt>
-     <dd className="font-semibold tabular-nums text-cs-text">{fmt$(row.comp)}</dd>
+     <dt className={hasCompEvents ? 'text-cs-text-2' : 'font-semibold text-cs-text'}>Net stock comp</dt>
+     <dd className={`tabular-nums ${hasCompEvents ? 'text-cs-text' : 'font-semibold text-cs-text'}`}>{fmt$(row.comp)}</dd>
     </div>
    </dl>
 
@@ -422,13 +452,13 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
     </div>
     <div className="flex justify-between gap-2">
      <dt className="text-cs-text-2">
-      {(row.salary > 0 || row.bonus > 0)
-       ? `Stock comp pretax equivalent (@ ${fmtPct(m, 1)})`
+      {hasCompEvents
+       ? `Stock comp pretax equiv (@ ${fmtPct(m, 1)})`
        : `Equivalent pretax salary (ordinary income ${fmtPct(m, 1)})`}
      </dt>
      <dd className="tabular-nums text-cs-text">{fmt$(row.taxEquiv)}</dd>
     </div>
-    {(row.salary > 0 || row.bonus > 0) && (
+    {hasCompEvents && (
      <>
       {row.salary > 0 && (
        <div className="flex justify-between gap-2 pl-3 text-[11px]">
@@ -443,42 +473,12 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
        </div>
       ))}
       <div className="flex justify-between gap-2 border-t border-rose-200 pt-1.5 font-semibold dark:border-rose-800">
-       <dt className="text-cs-text">Total equivalent pretax salary</dt>
-       <dd className="tabular-nums text-cs-text">{fmt$(row.taxEquiv + row.salary + row.bonus)}</dd>
+       <dt className="text-cs-text">Total pretax-equivalent</dt>
+       <dd className="tabular-nums text-cs-text">{fmt$(row.totalTaxEquiv)}</dd>
       </div>
      </>
     )}
    </dl>
-
-   {(row.salary > 0 || row.bonus > 0) && (
-    <dl className="mt-4 space-y-1.5 border-t border-rose-200 pt-3 text-xs dark:border-rose-800">
-     <p className="text-[10px] uppercase tracking-wide text-cs-muted">Total compensation</p>
-     <div className="flex justify-between gap-2">
-      <dt className="text-cs-text-2">Net Epic stock comp</dt>
-      <dd className="tabular-nums text-cs-text">{fmt$(row.comp)}</dd>
-     </div>
-     {row.salary > 0 && (
-      <div className="flex justify-between gap-2">
-       <dt className="text-cs-text-2">
-        Base salary{row.salaryIsProrated ? ' (prorated)' : ''}
-       </dt>
-       <dd className="tabular-nums text-cs-text">{fmt$(row.salary)}</dd>
-      </div>
-     )}
-     {row.yearBonuses.map((b, i) => (
-      <div key={i} className="flex justify-between gap-2">
-       <dt className="text-cs-text-2">
-        Bonus{b.note ? ` — ${b.note}` : ''}
-       </dt>
-       <dd className="tabular-nums text-cs-text">{fmt$(b.amount)}</dd>
-      </div>
-     ))}
-     <div className="flex justify-between gap-2 border-t border-rose-200 pt-1.5 font-semibold dark:border-rose-800">
-      <dt className="text-cs-text">Total comp</dt>
-      <dd className="tabular-nums text-cs-text">{fmt$(row.totalComp)}</dd>
-     </div>
-    </dl>
-   )}
 
    {(row.comp3y != null || row.comp5y != null) && (
     <dl className="mt-4 space-y-1.5 border-t border-rose-200 pt-3 text-xs dark:border-rose-800">
@@ -487,12 +487,16 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
       <div className="space-y-0.5">
        <p className="font-medium text-cs-text-2">3-year rolling average</p>
        <div className="flex justify-between gap-2 pl-2 text-[11px]">
-        <dt className="text-cs-text-2">Equiv. pretax salary</dt>
-        <dd className="font-medium tabular-nums text-cs-text">{fmt$(row.taxEquiv3y ?? 0)} / yr</dd>
+        <dt className="text-cs-text-2">{hasCompEvents ? 'Total pretax-equiv' : 'Equiv. pretax salary'}</dt>
+        <dd className="font-medium tabular-nums text-cs-text">
+         {fmt$(hasCompEvents ? (row.totalTaxEquiv3y ?? 0) : (row.taxEquiv3y ?? 0))} / yr
+        </dd>
        </div>
        <div className="flex justify-between gap-2 pl-2 text-[11px]">
-        <dt className="text-cs-muted">Net comp</dt>
-        <dd className="tabular-nums text-cs-muted">{fmt$(row.comp3y)} / yr</dd>
+        <dt className="text-cs-muted">{hasCompEvents ? 'Total comp (incl. salary)' : 'Net comp'}</dt>
+        <dd className="tabular-nums text-cs-muted">
+         {fmt$(hasCompEvents ? (row.totalComp3y ?? 0) : row.comp3y)} / yr
+        </dd>
        </div>
       </div>
      )}
@@ -500,12 +504,16 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
       <div className="space-y-0.5">
        <p className="font-medium text-cs-text-2">5-year rolling average</p>
        <div className="flex justify-between gap-2 pl-2 text-[11px]">
-        <dt className="text-cs-text-2">Equiv. pretax salary</dt>
-        <dd className="font-medium tabular-nums text-cs-text">{fmt$(row.taxEquiv5y ?? 0)} / yr</dd>
+        <dt className="text-cs-text-2">{hasCompEvents ? 'Total pretax-equiv' : 'Equiv. pretax salary'}</dt>
+        <dd className="font-medium tabular-nums text-cs-text">
+         {fmt$(hasCompEvents ? (row.totalTaxEquiv5y ?? 0) : (row.taxEquiv5y ?? 0))} / yr
+        </dd>
        </div>
        <div className="flex justify-between gap-2 pl-2 text-[11px]">
-        <dt className="text-cs-muted">Net comp</dt>
-        <dd className="tabular-nums text-cs-muted">{fmt$(row.comp5y)} / yr</dd>
+        <dt className="text-cs-muted">{hasCompEvents ? 'Total comp (incl. salary)' : 'Net comp'}</dt>
+        <dd className="tabular-nums text-cs-muted">
+         {fmt$(hasCompEvents ? (row.totalComp5y ?? 0) : row.comp5y)} / yr
+        </dd>
        </div>
       </div>
      )}

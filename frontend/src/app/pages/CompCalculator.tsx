@@ -146,6 +146,12 @@ interface YearRow {
  yearBonuses: Array<{ amount: number; note?: string }>
  bonus: number
  totalComp: number
+ totalTaxEquiv: number
+ // Filled in post-processing in the useMemo (requires access to surrounding rows)
+ totalComp3y: number | null
+ totalComp5y: number | null
+ totalTaxEquiv3y: number | null
+ totalTaxEquiv5y: number | null
 }
 
 function fmt$(n: number): string {
@@ -216,7 +222,12 @@ function computeYearRow(
    salaryIsProrated,
    yearBonuses,
    bonus,
-   totalComp: 0,
+   totalComp: salary + bonus,
+   totalTaxEquiv: salary + bonus,
+   totalComp3y: null,
+   totalComp5y: null,
+   totalTaxEquiv3y: null,
+   totalTaxEquiv5y: null,
   }
  }
 
@@ -243,6 +254,7 @@ function computeYearRow(
  const comp3y = rolling(3)
  const comp5y = rolling(5)
 
+ const taxEquiv = computeTaxEquivSalary(comp, c, m)
  return {
   year,
   principal,
@@ -252,7 +264,7 @@ function computeYearRow(
   comp,
   comp3y,
   comp5y,
-  taxEquiv: computeTaxEquivSalary(comp, c, m),
+  taxEquiv,
   taxEquiv3y: comp3y != null ? computeTaxEquivSalary(comp3y, c, m) : null,
   taxEquiv5y: comp5y != null ? computeTaxEquivSalary(comp5y, c, m) : null,
   isProjected: isYearProjected(data.prices, year),
@@ -262,6 +274,12 @@ function computeYearRow(
   yearBonuses,
   bonus,
   totalComp: comp + salary + bonus,
+  totalTaxEquiv: taxEquiv + salary + bonus,
+  // Rolling totals filled in post-processing (need sibling rows)
+  totalComp3y: null,
+  totalComp5y: null,
+  totalTaxEquiv3y: null,
+  totalTaxEquiv5y: null,
  }
 }
 
@@ -270,7 +288,7 @@ function computeYearRow(
 interface ChartTooltipPayload {
  payload: YearRow
 }
-function ChartTooltip({ active, payload, label, c, useDeduction, m, taxEquivView }: {
+function ChartTooltip({ active, payload, label, c, useDeduction, m, taxEquivView, showTotal }: {
  active?: boolean
  payload?: ChartTooltipPayload[]
  label?: number
@@ -278,21 +296,24 @@ function ChartTooltip({ active, payload, label, c, useDeduction, m, taxEquivView
  useDeduction: boolean
  m: number
  taxEquivView: boolean
+ showTotal: boolean
 }) {
  if (!active || !payload?.length) return null
  const row = payload[0].payload
  const interestCost = useDeduction ? row.interest * (1 - m) : row.interest
+ const mainValue = showTotal
+  ? (taxEquivView ? row.totalTaxEquiv : row.totalComp)
+  : (taxEquivView ? row.taxEquiv : row.comp)
+ const mainLabel = showTotal
+  ? (taxEquivView ? 'Total pretax equiv' : 'Total comp')
+  : (taxEquivView ? 'Tax equiv salary' : 'Net comp')
  return (
   <div
    className="rounded-md border px-2 py-1.5 text-[11px] shadow-sm"
    style={{ background: c.tooltipBg, color: c.tooltipText, borderColor: c.grid }}
   >
    <p className="font-semibold tabular-nums">{label}{row.isProjected ? ' · projected' : ''}</p>
-   {taxEquivView ? (
-    <p className="tabular-nums">Tax equiv salary: {fmt$(row.taxEquiv)}</p>
-   ) : (
-    <p className="tabular-nums">Net comp: {fmt$(row.comp)}</p>
-   )}
+   <p className="tabular-nums">{mainLabel}: {fmt$(mainValue)}</p>
    <p className="tabular-nums opacity-80">Appreciation: {fmtPct(row.appreciation)}</p>
    <p className="tabular-nums opacity-80">
     Interest{useDeduction ? ' (after deduction)' : ''}: {fmt$(interestCost)}
@@ -951,6 +972,7 @@ export default function CompCalculator() {
  const [show3y, setShow3y] = useState<boolean>(false)
  const [show5y, setShow5y] = useState<boolean>(false)
  const [taxEquivView, setTaxEquivView] = useState<boolean>(false)
+ const [showTotal, setShowTotal] = useState<boolean>(false)
  const [selectedYear, setSelectedYear] = useState<number | null>(null)
  const [explainerOpen, setExplainerOpen] = useState<boolean>(false)
  const [exitDate, setExitDate] = useState<string | null>(null)
@@ -1023,12 +1045,33 @@ export default function CompCalculator() {
   if (!years.size) return []
   const min = Math.min(...years)
   const max = Math.max(...years)
-  const out: YearRow[] = []
+  const raw: YearRow[] = []
   for (let y = min; y <= max; y++) {
    const row = computeYearRow(data, y, m, c, deductOn, exitDate, compEvents)
-   if (row) out.push(row)
+   if (row) raw.push(row)
   }
-  return out
+  // Post-process: compute rolling averages of salary+bonus and add to stock-comp rolling totals
+  return raw.map((row, i) => {
+   function sbAvg(w: number): number | null {
+    if (i < w - 1) return null
+    // Require consecutive years with no gaps
+    for (let j = i - w + 1; j < i; j++) {
+     if (raw[j + 1].year !== raw[j].year + 1) return null
+    }
+    let sum = 0
+    for (let j = i - w + 1; j <= i; j++) sum += raw[j].salary + raw[j].bonus
+    return sum / w
+   }
+   const sb3 = sbAvg(3)
+   const sb5 = sbAvg(5)
+   return {
+    ...row,
+    totalComp3y: row.comp3y != null ? row.comp3y + (sb3 ?? 0) : null,
+    totalComp5y: row.comp5y != null ? row.comp5y + (sb5 ?? 0) : null,
+    totalTaxEquiv3y: row.taxEquiv3y != null ? row.taxEquiv3y + (sb3 ?? 0) : null,
+    totalTaxEquiv5y: row.taxEquiv5y != null ? row.taxEquiv5y + (sb5 ?? 0) : null,
+   }
+  })
  }, [data, m, c, deductOn, exitDate, compEvents])
 
  useEffect(() => {
@@ -1127,7 +1170,9 @@ export default function CompCalculator() {
      <div className="rounded-lg border border-cs-border bg-cs-surface p-4 ">
       <div className="mb-2 flex flex-wrap items-center gap-2">
        <p className="text-xs font-medium text-cs-text-2">
-        {taxEquivView ? 'Tax-equivalent salary by year' : 'Net comp by year'}
+        {showTotal
+         ? (taxEquivView ? 'Total pretax-equivalent salary by year' : 'Total comp by year')
+         : (taxEquivView ? 'Tax-equivalent salary by year' : 'Net comp by year')}
        </p>
        <label className="ml-auto flex items-center gap-1.5 text-[11px] text-cs-text-2">
         <span>Year</span>
@@ -1156,6 +1201,18 @@ export default function CompCalculator() {
        >
         Tax equiv $
        </button>
+       {compEvents.length > 0 && (
+        <button
+         type="button"
+         onClick={() => setShowTotal(s => !s)}
+         title="Include salary and bonuses in chart"
+         className={`rounded-full border px-2.5 py-0.5 text-[10px] font-medium ${showTotal
+          ? 'border-rose-400 bg-rose-100 text-rose-800 dark:border-rose-600 dark:bg-rose-950/40 dark:text-rose-300'
+          : 'border-cs-border-strong bg-cs-surface text-cs-text-2 '}`}
+        >
+         Incl. salary
+        </button>
+       )}
        <button
         type="button"
         onClick={() => setShow3y(s => !s)}
@@ -1194,7 +1251,7 @@ export default function CompCalculator() {
          tick={{ fontSize: 10, fill: chartColors.axis }}
          tickFormatter={(v: number) => v >= 1000 || v <= -1000 ? `${Math.round(v / 1000)}k` : `${v}`}
         />
-        <Tooltip content={<ChartTooltip c={chartColors} useDeduction={deductOn} m={m} taxEquivView={taxEquivView} />} cursor={{ fill: 'rgba(225, 29, 72, 0.08)' }} />
+        <Tooltip content={<ChartTooltip c={chartColors} useDeduction={deductOn} m={m} taxEquivView={taxEquivView} showTotal={showTotal} />} cursor={{ fill: 'rgba(225, 29, 72, 0.08)' }} />
         <ReferenceLine y={0} stroke={chartColors.axis} strokeWidth={1} />
         {rows.some(r => r.year === CURRENT_YEAR) && (
          <ReferenceLine x={CURRENT_YEAR} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />
@@ -1202,7 +1259,11 @@ export default function CompCalculator() {
         {exitDate && (
          <ReferenceLine x={parseInt(exitDate.slice(0, 4))} stroke="#6366f1" strokeDasharray="4 4" label={{ value: 'Exit', fontSize: 10, fill: '#6366f1', position: 'insideTopRight' }} />
         )}
-        <Bar dataKey={taxEquivView ? 'taxEquiv' : 'comp'} name={taxEquivView ? 'Tax equiv salary' : 'Net comp'} radius={[2, 2, 0, 0]}>
+        <Bar
+         dataKey={showTotal ? (taxEquivView ? 'totalTaxEquiv' : 'totalComp') : (taxEquivView ? 'taxEquiv' : 'comp')}
+         name={showTotal ? (taxEquivView ? 'Total pretax equiv' : 'Total comp') : (taxEquivView ? 'Tax equiv salary' : 'Net comp')}
+         radius={[2, 2, 0, 0]}
+        >
          {rows.map(r => {
           const selected = r.year === selectedYear
           const baseFill = r.afterExit ? '#9ca3af' : (selected ? '#9f1239' : '#e11d48')
@@ -1220,10 +1281,10 @@ export default function CompCalculator() {
          })}
         </Bar>
         {show3y && (
-         <Line type="monotone" dataKey={taxEquivView ? 'taxEquiv3y' : 'comp3y'} name="3-year average" stroke="#0284c7" strokeWidth={2} dot={false} connectNulls />
+         <Line type="monotone" dataKey={showTotal ? (taxEquivView ? 'totalTaxEquiv3y' : 'totalComp3y') : (taxEquivView ? 'taxEquiv3y' : 'comp3y')} name="3-year average" stroke="#0284c7" strokeWidth={2} dot={false} connectNulls />
         )}
         {show5y && (
-         <Line type="monotone" dataKey={taxEquivView ? 'taxEquiv5y' : 'comp5y'} name="5-year average" stroke="#7c3aed" strokeWidth={2} dot={false} connectNulls />
+         <Line type="monotone" dataKey={showTotal ? (taxEquivView ? 'totalTaxEquiv5y' : 'totalComp5y') : (taxEquivView ? 'taxEquiv5y' : 'comp5y')} name="5-year average" stroke="#7c3aed" strokeWidth={2} dot={false} connectNulls />
         )}
        </ComposedChart>
       </ResponsiveContainer>

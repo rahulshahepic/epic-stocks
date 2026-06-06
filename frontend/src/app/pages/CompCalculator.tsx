@@ -400,9 +400,33 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
      <dd className="tabular-nums text-cs-text">{fmt$(afterTax)}</dd>
     </div>
     <div className="flex justify-between gap-2">
-     <dt className="text-cs-text-2">Equivalent pretax salary (ordinary income {fmtPct(m, 1)})</dt>
+     <dt className="text-cs-text-2">
+      {(row.salary > 0 || row.bonus > 0)
+       ? `Stock comp pretax equivalent (@ ${fmtPct(m, 1)})`
+       : `Equivalent pretax salary (ordinary income ${fmtPct(m, 1)})`}
+     </dt>
      <dd className="tabular-nums text-cs-text">{fmt$(row.taxEquiv)}</dd>
     </div>
+    {(row.salary > 0 || row.bonus > 0) && (
+     <>
+      {row.salary > 0 && (
+       <div className="flex justify-between gap-2 pl-3 text-[11px]">
+        <dt className="text-cs-muted">+ Base salary{row.salaryIsProrated ? ' (prorated)' : ''}</dt>
+        <dd className="tabular-nums text-cs-muted">{fmt$(row.salary)}</dd>
+       </div>
+      )}
+      {row.yearBonuses.map((b, i) => (
+       <div key={i} className="flex justify-between gap-2 pl-3 text-[11px]">
+        <dt className="text-cs-muted">+ Bonus{b.note ? ` — ${b.note}` : ''}</dt>
+        <dd className="tabular-nums text-cs-muted">{fmt$(b.amount)}</dd>
+       </div>
+      ))}
+      <div className="flex justify-between gap-2 border-t border-rose-200 pt-1.5 font-semibold dark:border-rose-800">
+       <dt className="text-cs-text">Total equivalent pretax salary</dt>
+       <dd className="tabular-nums text-cs-text">{fmt$(row.taxEquiv + row.salary + row.bonus)}</dd>
+      </div>
+     </>
+    )}
    </dl>
 
    {(row.salary > 0 || row.bonus > 0) && (
@@ -479,13 +503,16 @@ function parseDollar(raw: string): number | null {
  return isFinite(n) && n > 0 ? n : null
 }
 
-function CompEventsEditor({ events, readOnly, onAdd, onDelete }: {
+function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
  events: CompEvent[]
  readOnly: boolean
  onAdd: (event: CompEvent) => void
+ onEdit: (id: string, updated: CompEvent) => void
  onDelete: (id: string) => void
 }) {
  const [open, setOpen] = useState(false)
+
+ // Add-new state
  const [addingSalary, setAddingSalary] = useState(false)
  const [newSalDate, setNewSalDate] = useState(TODAY)
  const [newSalAmt, setNewSalAmt] = useState('')
@@ -493,6 +520,14 @@ function CompEventsEditor({ events, readOnly, onAdd, onDelete }: {
  const [newBonYear, setNewBonYear] = useState(String(CURRENT_YEAR))
  const [newBonAmt, setNewBonAmt] = useState('')
  const [newBonNote, setNewBonNote] = useState('')
+
+ // Inline-edit state
+ const [editingId, setEditingId] = useState<string | null>(null)
+ const [editSalDate, setEditSalDate] = useState('')
+ const [editSalAmt, setEditSalAmt] = useState('')
+ const [editBonYear, setEditBonYear] = useState('')
+ const [editBonAmt, setEditBonAmt] = useState('')
+ const [editBonNote, setEditBonNote] = useState('')
 
  const salaryEvents = events
   .filter((e): e is SalaryEvent => e.type === 'salary')
@@ -503,12 +538,36 @@ function CompEventsEditor({ events, readOnly, onAdd, onDelete }: {
 
  const hasAnyData = events.length > 0
 
+ // ── Smart-default openers ─────────────────────────────────────────────────
+
+ function openAddSalary() {
+  setEditingId(null)
+  const latest = salaryEvents[salaryEvents.length - 1]?.effective_date
+  if (latest) {
+   const [y, mo, d] = latest.split('-')
+   setNewSalDate(`${parseInt(y) + 1}-${mo}-${d}`)
+  } else {
+   setNewSalDate(TODAY)
+  }
+  setNewSalAmt('')
+  setAddingSalary(true)
+ }
+
+ function openAddBonus() {
+  setEditingId(null)
+  const latestYear = bonusEvents.length > 0 ? bonusEvents[0].year : CURRENT_YEAR - 1
+  setNewBonYear(String(latestYear + 1))
+  setNewBonAmt('')
+  setNewBonNote('')
+  setAddingBonus(true)
+ }
+
+ // ── Add submit ────────────────────────────────────────────────────────────
+
  function submitSalary() {
   const amount = parseDollar(newSalAmt)
   if (amount == null || !newSalDate) return
   onAdd({ id: crypto.randomUUID(), type: 'salary', effective_date: newSalDate, amount })
-  setNewSalAmt('')
-  setNewSalDate(TODAY)
   setAddingSalary(false)
  }
 
@@ -516,11 +575,40 @@ function CompEventsEditor({ events, readOnly, onAdd, onDelete }: {
   const amount = parseDollar(newBonAmt)
   const year = parseInt(newBonYear)
   if (amount == null || isNaN(year)) return
-  const note = newBonNote.trim() || undefined
-  onAdd({ id: crypto.randomUUID(), type: 'bonus', year, amount, note })
-  setNewBonAmt('')
-  setNewBonNote('')
+  onAdd({ id: crypto.randomUUID(), type: 'bonus', year, amount, note: newBonNote.trim() || undefined })
   setAddingBonus(false)
+ }
+
+ // ── Edit ──────────────────────────────────────────────────────────────────
+
+ function startEditSalary(e: SalaryEvent) {
+  setAddingSalary(false)
+  setEditingId(e.id)
+  setEditSalDate(e.effective_date)
+  setEditSalAmt(String(e.amount))
+ }
+
+ function startEditBonus(e: BonusEvent) {
+  setAddingBonus(false)
+  setEditingId(e.id)
+  setEditBonYear(String(e.year))
+  setEditBonAmt(String(e.amount))
+  setEditBonNote(e.note ?? '')
+ }
+
+ function saveEditSalary(id: string) {
+  const amount = parseDollar(editSalAmt)
+  if (amount == null || !editSalDate) return
+  onEdit(id, { id, type: 'salary', effective_date: editSalDate, amount })
+  setEditingId(null)
+ }
+
+ function saveEditBonus(id: string) {
+  const amount = parseDollar(editBonAmt)
+  const year = parseInt(editBonYear)
+  if (amount == null || isNaN(year)) return
+  onEdit(id, { id, type: 'bonus', year, amount, note: editBonNote.trim() || undefined })
+  setEditingId(null)
  }
 
  const inputCls = 'rounded border border-cs-border-strong bg-cs-surface px-2 py-0.5 text-xs text-cs-text placeholder-cs-muted focus:border-rose-400 focus:outline-none'
@@ -559,21 +647,72 @@ function CompEventsEditor({ events, readOnly, onAdd, onDelete }: {
       ) : (
        <div className="space-y-1.5">
         {salaryEvents.map(e => (
-         <div key={e.id} className="flex items-center justify-between gap-3">
-          <span className="text-xs text-cs-text-2">
-           Effective <span className="tabular-nums">{e.effective_date}</span>
-           {' — '}
-           <span className="tabular-nums text-cs-text">{fmt$(e.amount)}/yr</span>
-          </span>
-          {!readOnly && (
-           <button
-            type="button"
-            onClick={() => onDelete(e.id)}
-            className="flex-none text-cs-muted hover:text-red-500"
-            aria-label="Delete"
-           >
-            ×
-           </button>
+         <div key={e.id}>
+          {editingId === e.id ? (
+           <div className="flex flex-wrap items-end gap-2 py-0.5">
+            <label className="flex flex-col gap-0.5">
+             <span className="text-[10px] text-cs-muted">Effective date</span>
+             <input
+              type="date"
+              value={editSalDate}
+              onChange={ev => setEditSalDate(ev.target.value)}
+              className={inputCls}
+              autoFocus
+             />
+            </label>
+            <label className="flex flex-col gap-0.5">
+             <span className="text-[10px] text-cs-muted">Annual salary</span>
+             <input
+              type="text"
+              inputMode="numeric"
+              value={editSalAmt}
+              onChange={ev => setEditSalAmt(ev.target.value)}
+              onKeyDown={ev => { if (ev.key === 'Enter') saveEditSalary(e.id) }}
+              className={`w-32 ${inputCls}`}
+             />
+            </label>
+            <button
+             type="button"
+             onClick={() => saveEditSalary(e.id)}
+             className="rounded bg-rose-600 px-3 py-0.5 text-xs font-medium text-white hover:bg-rose-700"
+            >
+             Save
+            </button>
+            <button
+             type="button"
+             onClick={() => setEditingId(null)}
+             className="text-xs text-cs-muted hover:text-cs-text-2"
+            >
+             Cancel
+            </button>
+           </div>
+          ) : (
+           <div className="flex items-center justify-between gap-3">
+            <span className="text-xs text-cs-text-2">
+             Effective <span className="tabular-nums">{e.effective_date}</span>
+             {' — '}
+             <span className="tabular-nums text-cs-text">{fmt$(e.amount)}/yr</span>
+            </span>
+            {!readOnly && (
+             <div className="flex items-center gap-2">
+              <button
+               type="button"
+               onClick={() => startEditSalary(e)}
+               className="text-[11px] text-cs-muted hover:text-cs-text-2"
+              >
+               Edit
+              </button>
+              <button
+               type="button"
+               onClick={() => onDelete(e.id)}
+               className="text-cs-muted hover:text-red-500"
+               aria-label="Delete"
+              >
+               ×
+              </button>
+             </div>
+            )}
+           </div>
           )}
          </div>
         ))}
@@ -589,6 +728,7 @@ function CompEventsEditor({ events, readOnly, onAdd, onDelete }: {
            value={newSalDate}
            onChange={e => setNewSalDate(e.target.value)}
            className={inputCls}
+           autoFocus
           />
          </label>
          <label className="flex flex-col gap-0.5">
@@ -612,7 +752,7 @@ function CompEventsEditor({ events, readOnly, onAdd, onDelete }: {
          </button>
          <button
           type="button"
-          onClick={() => { setAddingSalary(false); setNewSalAmt('') }}
+          onClick={() => setAddingSalary(false)}
           className="text-xs text-cs-muted hover:text-cs-text-2"
          >
           Cancel
@@ -621,7 +761,7 @@ function CompEventsEditor({ events, readOnly, onAdd, onDelete }: {
        ) : (
         <button
          type="button"
-         onClick={() => setAddingSalary(true)}
+         onClick={openAddSalary}
          className="mt-2 text-[11px] text-cs-brand hover:underline"
         >
          + Add salary change
@@ -638,22 +778,83 @@ function CompEventsEditor({ events, readOnly, onAdd, onDelete }: {
       ) : (
        <div className="space-y-1.5">
         {bonusEvents.map(e => (
-         <div key={e.id} className="flex items-center justify-between gap-3">
-          <span className="text-xs text-cs-text-2">
-           <span className="tabular-nums">{e.year}</span>
-           {' — '}
-           <span className="tabular-nums text-cs-text">{fmt$(e.amount)}</span>
-           {e.note && <span className="text-cs-muted"> · {e.note}</span>}
-          </span>
-          {!readOnly && (
-           <button
-            type="button"
-            onClick={() => onDelete(e.id)}
-            className="flex-none text-cs-muted hover:text-red-500"
-            aria-label="Delete"
-           >
-            ×
-           </button>
+         <div key={e.id}>
+          {editingId === e.id ? (
+           <div className="mt-1 flex flex-wrap items-end gap-2 py-0.5">
+            <label className="flex flex-col gap-0.5">
+             <span className="text-[10px] text-cs-muted">Year</span>
+             <input
+              type="number"
+              value={editBonYear}
+              onChange={ev => setEditBonYear(ev.target.value)}
+              className={`w-20 ${inputCls}`}
+              autoFocus
+             />
+            </label>
+            <label className="flex flex-col gap-0.5">
+             <span className="text-[10px] text-cs-muted">Amount</span>
+             <input
+              type="text"
+              inputMode="numeric"
+              value={editBonAmt}
+              onChange={ev => setEditBonAmt(ev.target.value)}
+              onKeyDown={ev => { if (ev.key === 'Enter') saveEditBonus(e.id) }}
+              className={`w-32 ${inputCls}`}
+             />
+            </label>
+            <label className="flex flex-col gap-0.5">
+             <span className="text-[10px] text-cs-muted">Note (optional)</span>
+             <input
+              type="text"
+              value={editBonNote}
+              onChange={ev => setEditBonNote(ev.target.value)}
+              onKeyDown={ev => { if (ev.key === 'Enter') saveEditBonus(e.id) }}
+              className={`w-36 ${inputCls}`}
+             />
+            </label>
+            <button
+             type="button"
+             onClick={() => saveEditBonus(e.id)}
+             className="rounded bg-rose-600 px-3 py-0.5 text-xs font-medium text-white hover:bg-rose-700"
+            >
+             Save
+            </button>
+            <button
+             type="button"
+             onClick={() => setEditingId(null)}
+             className="text-xs text-cs-muted hover:text-cs-text-2"
+            >
+             Cancel
+            </button>
+           </div>
+          ) : (
+           <div className="flex items-center justify-between gap-3">
+            <span className="text-xs text-cs-text-2">
+             <span className="tabular-nums">{e.year}</span>
+             {' — '}
+             <span className="tabular-nums text-cs-text">{fmt$(e.amount)}</span>
+             {e.note && <span className="text-cs-muted"> · {e.note}</span>}
+            </span>
+            {!readOnly && (
+             <div className="flex items-center gap-2">
+              <button
+               type="button"
+               onClick={() => startEditBonus(e)}
+               className="text-[11px] text-cs-muted hover:text-cs-text-2"
+              >
+               Edit
+              </button>
+              <button
+               type="button"
+               onClick={() => onDelete(e.id)}
+               className="text-cs-muted hover:text-red-500"
+               aria-label="Delete"
+              >
+               ×
+              </button>
+             </div>
+            )}
+           </div>
           )}
          </div>
         ))}
@@ -669,6 +870,7 @@ function CompEventsEditor({ events, readOnly, onAdd, onDelete }: {
            value={newBonYear}
            onChange={e => setNewBonYear(e.target.value)}
            className={`w-20 ${inputCls}`}
+           autoFocus
           />
          </label>
          <label className="flex flex-col gap-0.5">
@@ -703,7 +905,7 @@ function CompEventsEditor({ events, readOnly, onAdd, onDelete }: {
          </button>
          <button
           type="button"
-          onClick={() => { setAddingBonus(false); setNewBonAmt(''); setNewBonNote('') }}
+          onClick={() => setAddingBonus(false)}
           className="text-xs text-cs-muted hover:text-cs-text-2"
          >
           Cancel
@@ -712,7 +914,7 @@ function CompEventsEditor({ events, readOnly, onAdd, onDelete }: {
        ) : (
         <button
          type="button"
-         onClick={() => setAddingBonus(true)}
+         onClick={openAddBonus}
          className="mt-2 text-[11px] text-cs-brand hover:underline"
         >
          + Add bonus
@@ -904,6 +1106,10 @@ export default function CompCalculator() {
     readOnly={!!vid}
     onAdd={event => {
      setCompEvents(prev => [...prev, event])
+     compEventsDirtyRef.current = true
+    }}
+    onEdit={(id, updated) => {
+     setCompEvents(prev => prev.map(e => e.id === id ? updated : e))
      compEventsDirtyRef.current = true
     }}
     onDelete={id => {

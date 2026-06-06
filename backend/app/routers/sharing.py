@@ -516,7 +516,7 @@ def shared_comp_entries(
 ):
     """Read-only: viewer sees the owner's saved salary/bonus entries."""
     owner = _get_shared_owner(invitation_id, user, db)
-    return {"entries": owner.comp_entries or {}}
+    return {"entries": owner.comp_entries or []}
 
 
 @router.get("/view/{invitation_id}/dashboard-prefs")

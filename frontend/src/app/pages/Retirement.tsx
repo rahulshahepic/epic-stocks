@@ -421,6 +421,7 @@ export default function Retirement() {
  const me = useMe()
  const [retirementDate, setRetirementDate] = useState<string>(TODAY)
  const [exitPreviewLoading, setExitPreviewLoading] = useState(false)
+ const [paramsLoaded, setParamsLoaded] = useState(false)
  const exitOverriddenRef = useRef(false)
  const defaultSpendOverriddenRef = useRef(false)
  const minSpendOverriddenRef = useRef(false)
@@ -460,6 +461,7 @@ export default function Retirement() {
  // per (vid) change so a manually-edited param isn't snapped back later.
  useEffect(() => {
  paramsLoadedRef.current = false
+ setParamsLoaded(false)
  const fetcher = vid ? api.getSharedRetirementParams(vid) : api.getRetirementParams()
  fetcher
  .then(({ params: saved }) => {
@@ -484,9 +486,11 @@ export default function Retirement() {
  if ('minSpend' in rawSaved) minSpendOverriddenRef.current = true
  }
  paramsLoadedRef.current = true
+ setParamsLoaded(true)
  })
  .catch(() => {
  paramsLoadedRef.current = true
+ setParamsLoaded(true)
  })
  }, [vid])
 
@@ -519,7 +523,10 @@ export default function Retirement() {
 
  // Pre-fill Epic exit value from previewExit at the chosen retirement date.
  // Uses the shared variant when viewing someone else's account.
+ // Only runs after saved params are loaded so we don't fetch (and show the
+ // loading indicator) when the user already has a saved epicExit value.
  useEffect(() => {
+ if (!paramsLoaded) return
  if (exitOverriddenRef.current) return
  let cancelled = false
  setExitPreviewLoading(true)
@@ -537,7 +544,7 @@ export default function Retirement() {
  return () => {
  cancelled = true
  }
- }, [retirementDate, vid])
+ }, [paramsLoaded, retirementDate, vid])
 
  // Pull state tax rates from the user's TaxSettings — federal is bracket-based
  // in the simulator (no user input needed), state is a flat rate from settings.
@@ -740,18 +747,17 @@ export default function Retirement() {
  <input
  type="date"
  value={retirementDate}
- disabled={!!vid}
  onChange={e => {
  exitOverriddenRef.current = false
  setRetirementDate(e.target.value)
  }}
- className="rounded border border-cs-border-strong bg-cs-surface px-2 py-1 text-sm tabular-nums text-cs-text focus:border-rose-400 focus:outline-none disabled:bg-cs-raised disabled:text-cs-muted "
+ className="rounded border border-cs-border-strong bg-cs-surface px-2 py-1 text-sm tabular-nums text-cs-text focus:border-rose-400 focus:outline-none "
  />
  <span className="text-[10px] text-cs-muted">
  {exitPreviewLoading
  ? 'Fetching exit preview…'
  : vid
- ? 'Set by the data owner'
+ ? 'Change to simulate a different exit date (not saved)'
  : 'Sets your exit amount and how old you\'ll be when retirement starts'}
  </span>
  </label>

@@ -30,6 +30,8 @@ class User(Base):
     date_of_birth: Mapped[date | None] = mapped_column(EncryptedDate, nullable=True, deferred=True)
     # JSON blob of saved retirement-sim parameters (one per user, latest wins).
     retirement_params: Mapped[dict | None] = mapped_column(EncryptedJSON, nullable=True, deferred=True)
+    # Per-year salary/bonus entries for total comp calculator. Keys are year strings.
+    comp_entries: Mapped[dict | None] = mapped_column(EncryptedJSON, nullable=True, deferred=True)
     # Owner's saved dashboard view preferences (date mode / specific date / range).
     # Plain JSON — display state only, no financial data.
     dashboard_prefs: Mapped[dict | None] = mapped_column(JSON, nullable=True)

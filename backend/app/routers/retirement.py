@@ -41,6 +41,29 @@ def save_my_retirement_params(
     return {"params": body.params}
 
 
+class _CompEntries(BaseModel):
+    # Keys are year strings, values are {salary: int|None, bonus: int|None}
+    entries: dict[str, Any]
+
+
+@retirement_router.get("/comp-entries")
+def get_comp_entries(user: User = Depends(get_current_user)):
+    return {"entries": user.comp_entries or {}}
+
+
+@retirement_router.put("/comp-entries")
+def save_comp_entries(
+    body: _CompEntries,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not isinstance(body.entries, dict):
+        raise HTTPException(status_code=422, detail="entries must be an object")
+    user.comp_entries = body.entries
+    db.commit()
+    return {"entries": body.entries}
+
+
 class _Prefs(BaseModel):
     prefs: dict[str, Any]
 

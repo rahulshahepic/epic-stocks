@@ -34,6 +34,8 @@ interface AllData {
  grants: GrantEntry[]
 }
 
+type CompEntries = Record<string, { salary?: number | null; bonus?: number | null }>
+
 interface YearRow {
  year: number
  principal: number
@@ -48,6 +50,9 @@ interface YearRow {
  taxEquiv5y: number | null
  isProjected: boolean
  afterExit: boolean
+ salary: number
+ bonus: number
+ totalComp: number
 }
 
 function fmt$(n: number): string {
@@ -85,6 +90,7 @@ function computeYearRow(
  c: number,
  useDeduction: boolean,
  exitDate: string | null,
+ compEntries: CompEntries,
 ): YearRow | null {
  const asOf = `${year}-12-31`
  const appreciation = annualizedAppreciation(data.prices, asOf, 1)
@@ -92,6 +98,9 @@ function computeYearRow(
 
  const exitYear = exitDate ? parseInt(exitDate.slice(0, 4)) : null
  const afterExit = exitYear != null && year > exitYear
+ const entry = compEntries[String(year)]
+ const salary = entry?.salary ?? 0
+ const bonus = entry?.bonus ?? 0
 
  if (afterExit) {
  return {
@@ -108,6 +117,9 @@ function computeYearRow(
  taxEquiv5y: null,
  isProjected: isYearProjected(data.prices, year),
  afterExit: true,
+ salary,
+ bonus,
+ totalComp: 0,
  }
  }
 
@@ -148,6 +160,9 @@ function computeYearRow(
  taxEquiv5y: comp5y != null ? computeTaxEquivSalary(comp5y, c, m) : null,
  isProjected: isYearProjected(data.prices, year),
  afterExit: false,
+ salary,
+ bonus,
+ totalComp: comp + salary + bonus,
  }
 }
 
@@ -287,6 +302,32 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
  </div>
  </dl>
 
+ {(row.salary > 0 || row.bonus > 0) && (
+ <dl className="mt-4 space-y-1.5 border-t border-rose-200 pt-3 text-xs dark:border-rose-800">
+ <p className="text-[10px] uppercase tracking-wide text-cs-muted">Total compensation</p>
+ <div className="flex justify-between gap-2">
+ <dt className="text-cs-text-2">Net Epic stock comp</dt>
+ <dd className="tabular-nums text-cs-text">{fmt$(row.comp)}</dd>
+ </div>
+ {row.salary > 0 && (
+ <div className="flex justify-between gap-2">
+ <dt className="text-cs-text-2">Base salary</dt>
+ <dd className="tabular-nums text-cs-text">{fmt$(row.salary)}</dd>
+ </div>
+ )}
+ {row.bonus > 0 && (
+ <div className="flex justify-between gap-2">
+ <dt className="text-cs-text-2">Bonus</dt>
+ <dd className="tabular-nums text-cs-text">{fmt$(row.bonus)}</dd>
+ </div>
+ )}
+ <div className="flex justify-between gap-2 border-t border-rose-200 pt-1.5 font-semibold dark:border-rose-800">
+ <dt className="text-cs-text">Total comp</dt>
+ <dd className="tabular-nums text-cs-text">{fmt$(row.totalComp)}</dd>
+ </div>
+ </dl>
+ )}
+
  {(row.comp3y != null || row.comp5y != null) && (
  <dl className="mt-4 space-y-1.5 border-t border-rose-200 pt-3 text-xs dark:border-rose-800">
  <p className="text-[10px] uppercase tracking-wide text-cs-muted">Smoothed across recent years</p>
@@ -322,6 +363,104 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
  )
 }
 
+function parseDollar(raw: string): number | null {
+ const cleaned = raw.replace(/[$,\s]/g, '')
+ if (cleaned === '' || cleaned === '-') return null
+ const n = parseFloat(cleaned)
+ return isFinite(n) ? n : null
+}
+
+function SalaryBonusTable({ rows, compEntries, readOnly, onChange }: {
+ rows: YearRow[]
+ compEntries: CompEntries
+ readOnly: boolean
+ onChange: (year: number, field: 'salary' | 'bonus', value: number | null) => void
+}) {
+ const [open, setOpen] = useState(false)
+ const yearsWithData = rows.filter(r => !r.afterExit)
+ const hasAnyData = yearsWithData.some(r => r.salary > 0 || r.bonus > 0)
+
+ return (
+ <div className="rounded-lg border border-cs-border bg-cs-raised ">
+ <button
+ type="button"
+ onClick={() => setOpen(o => !o)}
+ className="flex w-full items-center justify-between px-4 py-2.5 text-xs font-medium text-cs-text-2"
+ >
+ <span>
+ Salary & bonus
+ {hasAnyData && <span className="ml-2 rounded-full bg-cs-brand/10 px-1.5 py-0.5 text-[10px] text-cs-brand">data entered</span>}
+ </span>
+ <span className="text-cs-muted">{open ? '▲' : '▼'}</span>
+ </button>
+ {open && (
+ <div className="border-t border-cs-border px-4 pb-4 pt-3">
+ <p className="mb-3 text-[11px] text-cs-text-2">
+ {readOnly
+ ? 'Base salary and bonus by year. When filled in, the detail panel shows total compensation.'
+ : 'Enter your base salary and bonus for each year. When filled in, the detail panel shows total comp (Epic stock comp + salary + bonus). Saved automatically.'}
+ </p>
+ <div className="overflow-x-auto">
+ <table className="w-full text-xs">
+ <thead>
+ <tr className="border-b border-cs-border text-left">
+ <th className="pb-1.5 pr-3 font-medium text-cs-text-2">Year</th>
+ <th className="pb-1.5 pr-3 font-medium text-cs-text-2">Base salary</th>
+ <th className="pb-1.5 font-medium text-cs-text-2">Bonus</th>
+ </tr>
+ </thead>
+ <tbody className="divide-y divide-cs-border">
+ {yearsWithData.map(row => {
+ const entry = compEntries[String(row.year)] ?? {}
+ return (
+ <tr key={row.year}>
+ <td className="py-1.5 pr-3 tabular-nums text-cs-text-2">{row.year}</td>
+ <td className="py-1 pr-3">
+ {readOnly ? (
+ <span className="tabular-nums text-cs-text">
+ {entry.salary != null && entry.salary > 0 ? fmt$(entry.salary) : '—'}
+ </span>
+ ) : (
+ <input
+ type="text"
+ inputMode="numeric"
+ placeholder="$0"
+ defaultValue={entry.salary != null && entry.salary > 0 ? String(entry.salary) : ''}
+ key={`${row.year}-salary-${entry.salary ?? ''}`}
+ onBlur={e => onChange(row.year, 'salary', parseDollar(e.target.value))}
+ className="w-28 rounded border border-cs-border-strong bg-cs-surface px-2 py-0.5 tabular-nums text-cs-text placeholder-cs-muted focus:border-rose-400 focus:outline-none"
+ />
+ )}
+ </td>
+ <td className="py-1">
+ {readOnly ? (
+ <span className="tabular-nums text-cs-text">
+ {entry.bonus != null && entry.bonus > 0 ? fmt$(entry.bonus) : '—'}
+ </span>
+ ) : (
+ <input
+ type="text"
+ inputMode="numeric"
+ placeholder="$0"
+ defaultValue={entry.bonus != null && entry.bonus > 0 ? String(entry.bonus) : ''}
+ key={`${row.year}-bonus-${entry.bonus ?? ''}`}
+ onBlur={e => onChange(row.year, 'bonus', parseDollar(e.target.value))}
+ className="w-28 rounded border border-cs-border-strong bg-cs-surface px-2 py-0.5 tabular-nums text-cs-text placeholder-cs-muted focus:border-rose-400 focus:outline-none"
+ />
+ )}
+ </td>
+ </tr>
+ )
+ })}
+ </tbody>
+ </table>
+ </div>
+ </div>
+ )}
+ </div>
+ )
+}
+
 export default function CompCalculator() {
  const { viewing } = useViewing()
  const vid = viewing?.invitationId
@@ -346,6 +485,8 @@ export default function CompCalculator() {
  const [selectedYear, setSelectedYear] = useState<number | null>(null)
  const [explainerOpen, setExplainerOpen] = useState<boolean>(false)
  const [exitDate, setExitDate] = useState<string | null>(null)
+ const [compEntries, setCompEntries] = useState<CompEntries>({})
+ const [compEntriesDirty, setCompEntriesDirty] = useState(false)
  const retirementParamsRef = useRef<Record<string, unknown>>({})
 
  useEffect(() => {
@@ -364,6 +505,19 @@ export default function CompCalculator() {
  }
  }).catch(() => {})
  }, [vid])
+
+ useEffect(() => {
+ const load = vid ? api.getSharedCompEntries(vid) : api.getCompEntries()
+ load.then(r => setCompEntries(r.entries)).catch(() => {})
+ }, [vid])
+
+ useEffect(() => {
+ if (vid || !compEntriesDirty) return
+ const t = setTimeout(() => {
+ api.saveCompEntries(compEntries).catch(() => {})
+ }, 500)
+ return () => clearTimeout(t)
+ }, [compEntries, compEntriesDirty, vid])
 
  function handleExitDateChange(date: string | null) {
  setExitDate(date)
@@ -393,11 +547,11 @@ export default function CompCalculator() {
  const max = Math.max(...years)
  const out: YearRow[] = []
  for (let y = min; y <= max; y++) {
- const row = computeYearRow(data, y, m, c, deductOn, exitDate)
+ const row = computeYearRow(data, y, m, c, deductOn, exitDate, compEntries)
  if (row) out.push(row)
  }
  return out
- }, [data, m, c, deductOn, exitDate])
+ }, [data, m, c, deductOn, exitDate, compEntries])
 
  useEffect(() => {
  if (!rows.length) return
@@ -468,6 +622,21 @@ export default function CompCalculator() {
  : 'Optional · synced with Retirement tab · excludes unvested shares from comp calculations'}
  </p>
  </div>
+
+ {rows.length > 0 && (
+ <SalaryBonusTable
+ rows={rows}
+ compEntries={compEntries}
+ readOnly={!!vid}
+ onChange={(year, field, value) => {
+ setCompEntries(prev => ({
+ ...prev,
+ [String(year)]: { ...prev[String(year)], [field]: value },
+ }))
+ setCompEntriesDirty(true)
+ }}
+ />
+ )}
 
  {rows.length === 0 ? (
  <div className="rounded-lg border border-cs-border bg-cs-surface p-4 text-xs text-cs-muted ">

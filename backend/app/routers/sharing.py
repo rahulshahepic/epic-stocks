@@ -508,6 +508,17 @@ def shared_retirement_params(
     return {"params": owner.retirement_params}
 
 
+@router.get("/view/{invitation_id}/comp-entries")
+def shared_comp_entries(
+    invitation_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Read-only: viewer sees the owner's saved salary/bonus entries."""
+    owner = _get_shared_owner(invitation_id, user, db)
+    return {"entries": owner.comp_entries or {}}
+
+
 @router.get("/view/{invitation_id}/dashboard-prefs")
 def shared_dashboard_prefs(
     invitation_id: int,

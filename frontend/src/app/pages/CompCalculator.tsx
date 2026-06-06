@@ -400,9 +400,33 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
      <dd className="tabular-nums text-cs-text">{fmt$(afterTax)}</dd>
     </div>
     <div className="flex justify-between gap-2">
-     <dt className="text-cs-text-2">Equivalent pretax salary (ordinary income {fmtPct(m, 1)})</dt>
+     <dt className="text-cs-text-2">
+      {(row.salary > 0 || row.bonus > 0)
+       ? `Stock comp pretax equivalent (@ ${fmtPct(m, 1)})`
+       : `Equivalent pretax salary (ordinary income ${fmtPct(m, 1)})`}
+     </dt>
      <dd className="tabular-nums text-cs-text">{fmt$(row.taxEquiv)}</dd>
     </div>
+    {(row.salary > 0 || row.bonus > 0) && (
+     <>
+      {row.salary > 0 && (
+       <div className="flex justify-between gap-2 pl-3 text-[11px]">
+        <dt className="text-cs-muted">+ Base salary{row.salaryIsProrated ? ' (prorated)' : ''}</dt>
+        <dd className="tabular-nums text-cs-muted">{fmt$(row.salary)}</dd>
+       </div>
+      )}
+      {row.yearBonuses.map((b, i) => (
+       <div key={i} className="flex justify-between gap-2 pl-3 text-[11px]">
+        <dt className="text-cs-muted">+ Bonus{b.note ? ` — ${b.note}` : ''}</dt>
+        <dd className="tabular-nums text-cs-muted">{fmt$(b.amount)}</dd>
+       </div>
+      ))}
+      <div className="flex justify-between gap-2 border-t border-rose-200 pt-1.5 font-semibold dark:border-rose-800">
+       <dt className="text-cs-text">Total equivalent pretax salary</dt>
+       <dd className="tabular-nums text-cs-text">{fmt$(row.taxEquiv + row.salary + row.bonus)}</dd>
+      </div>
+     </>
+    )}
    </dl>
 
    {(row.salary > 0 || row.bonus > 0) && (

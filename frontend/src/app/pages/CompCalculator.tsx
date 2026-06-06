@@ -46,7 +46,7 @@ interface SalaryEvent {
 interface BonusEvent {
  id: string
  type: 'bonus'
- year: number
+ date: string    // YYYY-MM-DD — determines which year's row it appears in
  amount: number
  note?: string
 }
@@ -122,7 +122,7 @@ function hasSalaryProration(events: CompEvent[], year: number): boolean {
 }
 
 function bonusesForYear(events: CompEvent[], year: number): BonusEvent[] {
- return events.filter((e): e is BonusEvent => e.type === 'bonus' && e.year === year)
+ return events.filter((e): e is BonusEvent => e.type === 'bonus' && parseInt(e.date.slice(0, 4)) === year)
 }
 
 // ── Row types ─────────────────────────────────────────────────────────────────
@@ -143,7 +143,7 @@ interface YearRow {
  afterExit: boolean
  salary: number
  salaryIsProrated: boolean
- yearBonuses: Array<{ amount: number; note?: string }>
+ yearBonuses: Array<{ date: string; amount: number; note?: string }>
  bonus: number
  totalComp: number
  totalTaxEquiv: number
@@ -201,7 +201,7 @@ function computeYearRow(
  const salaryIsProrated = hasSalaryProration(compEvents, year)
  const yBonuses = bonusesForYear(compEvents, year)
  const bonus = yBonuses.reduce((s, e) => s + e.amount, 0)
- const yearBonuses = yBonuses.map(e => ({ amount: e.amount, note: e.note }))
+ const yearBonuses = yBonuses.map(e => ({ date: e.date, amount: e.amount, note: e.note }))
 
  if (afterExit) {
   return {
@@ -362,7 +362,7 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
      )}
      {row.yearBonuses.map((b, i) => (
       <div key={i} className="flex justify-between gap-2">
-       <dt className="text-cs-text-2">Bonus{b.note ? ` — ${b.note}` : ''}</dt>
+       <dt className="text-cs-text-2">Bonus {b.date}{b.note ? ` — ${b.note}` : ''}</dt>
        <dd className="tabular-nums text-cs-text">{fmt$(b.amount)}</dd>
       </div>
      ))}
@@ -468,7 +468,7 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
       )}
       {row.yearBonuses.map((b, i) => (
        <div key={i} className="flex justify-between gap-2 pl-3 text-[11px]">
-        <dt className="text-cs-muted">+ Bonus{b.note ? ` — ${b.note}` : ''}</dt>
+        <dt className="text-cs-muted">+ Bonus {b.date}{b.note ? ` — ${b.note}` : ''}</dt>
         <dd className="tabular-nums text-cs-muted">{fmt$(b.amount)}</dd>
        </div>
       ))}
@@ -546,7 +546,7 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
  const [newSalDate, setNewSalDate] = useState(TODAY)
  const [newSalAmt, setNewSalAmt] = useState('')
  const [addingBonus, setAddingBonus] = useState(false)
- const [newBonYear, setNewBonYear] = useState(String(CURRENT_YEAR))
+ const [newBonDate, setNewBonDate] = useState(TODAY)
  const [newBonAmt, setNewBonAmt] = useState('')
  const [newBonNote, setNewBonNote] = useState('')
 
@@ -554,7 +554,7 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
  const [editingId, setEditingId] = useState<string | null>(null)
  const [editSalDate, setEditSalDate] = useState('')
  const [editSalAmt, setEditSalAmt] = useState('')
- const [editBonYear, setEditBonYear] = useState('')
+ const [editBonDate, setEditBonDate] = useState('')
  const [editBonAmt, setEditBonAmt] = useState('')
  const [editBonNote, setEditBonNote] = useState('')
 
@@ -563,7 +563,7 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
   .sort((a, b) => a.effective_date.localeCompare(b.effective_date))
  const bonusEvents = events
   .filter((e): e is BonusEvent => e.type === 'bonus')
-  .sort((a, b) => b.year - a.year || b.amount - a.amount)
+  .sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount)
 
  const hasAnyData = events.length > 0
 
@@ -584,8 +584,9 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
 
  function openAddBonus() {
   setEditingId(null)
-  const latestYear = bonusEvents.length > 0 ? bonusEvents[0].year : CURRENT_YEAR - 1
-  setNewBonYear(String(latestYear + 1))
+  const latestDate = bonusEvents.length > 0 ? bonusEvents[0].date : `${CURRENT_YEAR - 1}-12-31`
+  const [y, mo, d] = latestDate.split('-')
+  setNewBonDate(`${parseInt(y) + 1}-${mo}-${d}`)
   setNewBonAmt('')
   setNewBonNote('')
   setAddingBonus(true)
@@ -602,9 +603,8 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
 
  function submitBonus() {
   const amount = parseDollar(newBonAmt)
-  const year = parseInt(newBonYear)
-  if (amount == null || isNaN(year)) return
-  onAdd({ id: crypto.randomUUID(), type: 'bonus', year, amount, note: newBonNote.trim() || undefined })
+  if (amount == null || !newBonDate) return
+  onAdd({ id: crypto.randomUUID(), type: 'bonus', date: newBonDate, amount, note: newBonNote.trim() || undefined })
   setAddingBonus(false)
  }
 
@@ -620,7 +620,7 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
  function startEditBonus(e: BonusEvent) {
   setAddingBonus(false)
   setEditingId(e.id)
-  setEditBonYear(String(e.year))
+  setEditBonDate(e.date)
   setEditBonAmt(String(e.amount))
   setEditBonNote(e.note ?? '')
  }
@@ -634,9 +634,8 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
 
  function saveEditBonus(id: string) {
   const amount = parseDollar(editBonAmt)
-  const year = parseInt(editBonYear)
-  if (amount == null || isNaN(year)) return
-  onEdit(id, { id, type: 'bonus', year, amount, note: editBonNote.trim() || undefined })
+  if (amount == null || !editBonDate) return
+  onEdit(id, { id, type: 'bonus', date: editBonDate, amount, note: editBonNote.trim() || undefined })
   setEditingId(null)
  }
 
@@ -665,7 +664,7 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
      <p className="text-[11px] text-cs-text-2">
       {readOnly
        ? 'Salary changes and bonuses recorded by the data owner. Salary is prorated when it changes mid-year.'
-       : 'Track salary changes (effective any date, prorated automatically) and year-end bonuses. When filled in, the year breakdown shows total comp. Saved automatically.'}
+       : 'Track salary changes (effective any date, prorated automatically) and bonuses (any date). When filled in, the year breakdown shows total comp. Saved automatically.'}
      </p>
 
      {/* Salary history */}
@@ -801,7 +800,7 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
 
      {/* Bonuses */}
      <div>
-      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-cs-muted">Year-end bonuses</p>
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-cs-muted">Bonuses</p>
       {bonusEvents.length === 0 ? (
        <p className="text-xs text-cs-muted">No bonuses recorded yet.</p>
       ) : (
@@ -811,12 +810,12 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
           {editingId === e.id ? (
            <div className="mt-1 flex flex-wrap items-end gap-2 py-0.5">
             <label className="flex flex-col gap-0.5">
-             <span className="text-[10px] text-cs-muted">Year</span>
+             <span className="text-[10px] text-cs-muted">Date</span>
              <input
-              type="number"
-              value={editBonYear}
-              onChange={ev => setEditBonYear(ev.target.value)}
-              className={`w-20 ${inputCls}`}
+              type="date"
+              value={editBonDate}
+              onChange={ev => setEditBonDate(ev.target.value)}
+              className={inputCls}
               autoFocus
              />
             </label>
@@ -859,7 +858,7 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
           ) : (
            <div className="flex items-center justify-between gap-3">
             <span className="text-xs text-cs-text-2">
-             <span className="tabular-nums">{e.year}</span>
+             <span className="tabular-nums">{e.date}</span>
              {' — '}
              <span className="tabular-nums text-cs-text">{fmt$(e.amount)}</span>
              {e.note && <span className="text-cs-muted"> · {e.note}</span>}
@@ -893,12 +892,12 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
        addingBonus ? (
         <div className="mt-3 flex flex-wrap items-end gap-2">
          <label className="flex flex-col gap-0.5">
-          <span className="text-[10px] text-cs-muted">Year</span>
+          <span className="text-[10px] text-cs-muted">Date</span>
           <input
-           type="number"
-           value={newBonYear}
-           onChange={e => setNewBonYear(e.target.value)}
-           className={`w-20 ${inputCls}`}
+           type="date"
+           value={newBonDate}
+           onChange={e => setNewBonDate(e.target.value)}
+           className={inputCls}
            autoFocus
           />
          </label>
@@ -1011,7 +1010,14 @@ export default function CompCalculator() {
    // Support both old dict format and new array format gracefully
    const raw = r.entries as unknown
    if (Array.isArray(raw)) {
-    setCompEvents(raw as CompEvent[])
+    // Migrate old bonus events that stored `year` (number) instead of `date` (YYYY-MM-DD)
+    const migrated = (raw as Array<Record<string, unknown>>).map(e => {
+     if (e.type === 'bonus' && typeof e.year === 'number' && !e.date) {
+      return { ...e, date: `${e.year}-12-31`, year: undefined }
+     }
+     return e
+    })
+    setCompEvents(migrated as unknown as CompEvent[])
    }
    // Old per-year dict format is silently dropped (no real data ever stored in it)
   }).catch(() => {})

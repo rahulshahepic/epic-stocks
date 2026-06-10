@@ -118,13 +118,20 @@ jobs:
         run: |
           docker compose -f docker-compose.e2e.yml up -d e2e-app
           echo "Waiting for backend health..."
+          ready=0
           for i in $(seq 1 60); do
             if curl -sf http://localhost:8000/api/health >/dev/null; then
               echo "Backend ready after ${i}s"
+              ready=1
               break
             fi
             sleep 1
           done
+          if [ $ready -eq 0 ]; then
+            echo "Backend did not become healthy within 60s — dumping logs:"
+            docker compose -f docker-compose.e2e.yml logs e2e-app
+            exit 1
+          fi
       - name: Run e2e tests
         env:
           E2E_BASE_URL: http://localhost:8000

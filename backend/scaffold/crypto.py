@@ -45,6 +45,11 @@ from sqlalchemy.types import TypeDecorator
 # ── Key-encryption key (KEK) ──────────────────────────────────────────────────
 # Set once in the environment, never changes in normal operations.
 _KEK: str = os.getenv("KEY_ENCRYPTION_KEY", "")
+if _KEK and len(_KEK) < 64:
+    raise RuntimeError(
+        "KEY_ENCRYPTION_KEY must be at least 64 hex characters (32 bytes). "
+        "Generate with: python -c \"import secrets; print(secrets.token_hex(32))\""
+    )
 
 # ── Operational master key ────────────────────────────────────────────────────
 # Loaded from system_settings on startup; updated in-memory when rotated.

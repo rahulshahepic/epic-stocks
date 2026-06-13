@@ -10,8 +10,8 @@ from starlette.testclient import TestClient
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 # Enable encryption for tests using the two-level key hierarchy.
-os.environ["KEY_ENCRYPTION_KEY"] = "test-kek-for-tests-do-not-use-in-prod"
-os.environ["LEGACY_MASTER_KEY"] = "test-master-key-for-encryption-tests"
+os.environ["KEY_ENCRYPTION_KEY"] = "74657374" * 8  # 64 hex chars = 32 bytes, test-only
+os.environ["LEGACY_MASTER_KEY"] = "6c656761" * 8  # 64 hex chars = 32 bytes, test-only
 os.environ["E2E_TEST"] = "1"
 
 import database

@@ -11,14 +11,21 @@ router = APIRouter(prefix="/api/push", tags=["push"])
 
 @router.post("/subscribe", response_model=PushSubscriptionOut, status_code=201)
 def subscribe(body: PushSubscriptionCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    existing = db.query(PushSubscription).filter(PushSubscription.endpoint == body.endpoint).first()
+    existing = db.query(PushSubscription).filter(
+        PushSubscription.endpoint == body.endpoint,
+        PushSubscription.user_id == user.id,
+    ).first()
     if existing:
-        existing.user_id = user.id
         existing.p256dh = body.keys.p256dh
         existing.auth = body.keys.auth
         db.commit()
         db.refresh(existing)
         return existing
+    # If another user owns this endpoint, remove it (browser re-registration)
+    stale = db.query(PushSubscription).filter(PushSubscription.endpoint == body.endpoint).first()
+    if stale:
+        db.delete(stale)
+        db.flush()
     sub = PushSubscription(
         user_id=user.id,
         endpoint=body.endpoint,

@@ -145,6 +145,9 @@ def write_events_to_excel(filepath, events, prices):
 
         def w(col, val):
             c = ws.cell(row=row, column=col)
+            # Sanitize user-controlled strings; exclude "=" since server intentionally writes formula cells
+            if isinstance(val, str) and val[:1] in ("+", "-", "@", "\t", "\r"):
+                val = "'" + val
             c.value = val
             c.fill = fill
             c.font = font

@@ -184,7 +184,7 @@ def import_excel(
         tmp.write(raw)
         tmp.flush()
         try:
-            wb = openpyxl.load_workbook(tmp.name)
+            wb = openpyxl.load_workbook(tmp.name, read_only=True, data_only=True)
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Failed to open Excel file: {e}")
 
@@ -897,8 +897,15 @@ def _write_headers(ws, headers):
         c.font = _HEADER_FONT
 
 
+def _safe_str(v):
+    """Prefix formula-initiating characters so spreadsheet apps treat the cell as text."""
+    if isinstance(v, str) and v[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + v
+    return v
+
+
 def _body_cell(ws, row, col, val, fmt=None):
-    c = ws.cell(row=row, column=col, value=val)
+    c = ws.cell(row=row, column=col, value=_safe_str(val))
     c.font = _BODY_FONT
     c.fill = _ALT_FILL if row % 2 == 0 else _WHITE_FILL
     if fmt:

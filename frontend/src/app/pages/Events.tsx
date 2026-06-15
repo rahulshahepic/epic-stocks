@@ -9,7 +9,7 @@ import { useIsMobile } from '../hooks/useIsMobile.ts'
 import { TaxCard } from './Sales.tsx'
 import React from 'react'
 
-const EVENT_TYPES = ['Exercise', 'Down payment exchange', 'Vesting', 'Share Price', 'Loan Payoff', 'Refinanced', 'Early Loan Payment', 'Sale']
+const EVENT_TYPES = ['Exercise', 'Down payment exchange', 'Vesting', 'Share Price', 'Loan Payoff', 'Early Loan Payment', 'Sale']
 
 const TYPE_COLORS: Record<string, string> = {
  'Exercise': 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
@@ -17,7 +17,6 @@ const TYPE_COLORS: Record<string, string> = {
  'Vesting': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
  'Share Price': 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
  'Loan Payoff': 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
- 'Refinanced': 'bg-cs-raised text-cs-text-2 dark:bg-stone-700/40 ',
  'Early Loan Payment': 'bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300',
  'Sale': 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
 }
@@ -367,8 +366,7 @@ export default function Events() {
  <div
  ref={(el) => { if (el) highlightRefs.current.set(i, el); else highlightRefs.current.delete(i) }}
  className={[
- 'rounded-lg border border-cs-border p-3 text-xs ',
- e.event_type === 'Refinanced' ? 'bg-cs-surface opacity-50 ' : 'bg-cs-surface',
+ 'rounded-lg border border-cs-border p-3 text-xs bg-cs-surface',
  highlightedRows.has(i) ? 'ring-2 ring-inset ring-blue-400 animate-pulse' : '',
  ].join(' ')}
  onClick={() => setExpandedMobileRows(prev => { const next = new Set(prev); if (next.has(i)) next.delete(i); else next.add(i); return next })}
@@ -477,9 +475,7 @@ export default function Events() {
  else highlightRefs.current.delete(i)
  }}
  className={[
- e.event_type === 'Refinanced'
- ? 'bg-cs-surface opacity-50 '
- : 'bg-cs-surface',
+ 'bg-cs-surface',
  highlightedRows.has(i) ? 'ring-2 ring-inset ring-blue-400 animate-pulse' : '',
  ].join(' ')}
  >

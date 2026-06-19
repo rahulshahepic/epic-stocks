@@ -243,15 +243,7 @@ def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales:
             if 0 <= idx < len(loans_db):
                 loan = loans_db[idx]
                 if loan.id in refinanced_loan_ids:
-                    enriched.append({
-                        **e,
-                        "event_type": "Refinanced",
-                        "loan_db_id": loan.id,
-                        "cash_due": 0.0,
-                        "covered_by_sale": False,
-                        "status": "refinanced",
-                        "refinanced": True,
-                    })
+                    pass  # Loan was replaced by a later refinance — no event on the old due date
                 else:
                     early_paid = payments_by_loan.get(loan.id, 0.0)
                     cash_due = round(max(0.0, loan.amount - early_paid), 2)

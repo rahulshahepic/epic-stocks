@@ -117,25 +117,31 @@ jobs:
       - name: Start backend
         run: |
           docker compose -f docker-compose.e2e.yml up -d e2e-app
-          echo "Waiting for backend health..."
-          ready=0
+          # Wait for the container's own internal healthcheck to reach "healthy".
+          # The container healthcheck runs curl inside Docker where localhost is
+          # always 127.0.0.1 (IPv4 only). This avoids the host-side ambiguity
+          # where Node 20 / curl may resolve localhost to ::1 (IPv6) while Docker
+          # only binds the port on 127.0.0.1. Two minutes covers slow Alembic
+          # migrations on resource-constrained runners.
+          CID=$(docker compose -f docker-compose.e2e.yml ps -q e2e-app)
+          echo "Waiting for backend container $CID to become healthy (up to 120s)..."
           for i in $(seq 1 60); do
-            if curl -sf http://localhost:8000/api/health >/dev/null; then
-              echo "Backend ready after ${i}s"
-              ready=1
+            status=$(docker inspect --format='{{.State.Health.Status}}' "$CID" 2>/dev/null || echo "starting")
+            if [ "$status" = "healthy" ]; then
+              echo "Backend healthy after $((i * 2))s"
               break
             fi
-            sleep 1
+            if [ "$i" -eq 60 ]; then
+              echo "Backend did not become healthy within 120s — dumping logs:"
+              docker compose -f docker-compose.e2e.yml logs e2e-app
+              exit 1
+            fi
+            sleep 2
           done
-          if [ $ready -eq 0 ]; then
-            echo "Backend did not become healthy within 60s — dumping logs:"
-            docker compose -f docker-compose.e2e.yml logs e2e-app
-            exit 1
-          fi
       - name: Run e2e tests
         env:
-          E2E_BASE_URL: http://localhost:8000
-          E2E_API_URL: http://localhost:8000
+          E2E_BASE_URL: http://127.0.0.1:8000
+          E2E_API_URL: http://127.0.0.1:8000
         run: cd frontend && time npx playwright test
       - name: Dump backend logs on failure
         if: failure()

@@ -9,6 +9,7 @@ import { TaxRateFields, TrancheTable, ratesFromDefaults, ratesFromSale, DEFAULT_
 import type { TaxRates } from './Sales.tsx'
 import type { TrancheAllocation } from '../../api.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
+import { GRANT_TYPE_NAMES } from '../grantTypes.ts'
 
 type LoanForm = Omit<LoanEntry, 'id' | 'version'>
 type Mode = 'list' | 'add' | 'edit'
@@ -297,8 +298,9 @@ export default function Loans() {
  onChange={e => setForm(f => ({ ...f, grant_type: e.target.value }))}
  className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text"
  >
- <option value="Purchase">Purchase</option>
- <option value="Bonus">Bonus</option>
+ {GRANT_TYPE_NAMES.map(name => (
+   <option key={name} value={name}>{name}</option>
+ ))}
  </select>
  </label>
  <label className="block">

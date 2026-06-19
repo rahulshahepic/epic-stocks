@@ -273,7 +273,7 @@ def _compute_payoff_sale(loan: Loan, user: User, db: Session) -> dict:
 
 @router.get("", response_model=list[LoanOut])
 def list_loans(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return db.query(Loan).filter(Loan.user_id == user.id).order_by(Loan.grant_year, Loan.loan_type).all()
+    return db.query(Loan).filter(Loan.user_id == user.id).order_by(Loan.grant_year, Loan.grant_type, Loan.loan_year, Loan.loan_type).all()
 
 
 @router.post("", response_model=LoanOut, status_code=201)

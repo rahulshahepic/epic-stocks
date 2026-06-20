@@ -1,5 +1,6 @@
 import os
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -13,6 +14,33 @@ import logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+def _allowed_redirect_origins() -> list[str]:
+    domain = os.getenv("DOMAIN", "")
+    if domain:
+        return [f"https://{domain}"]
+    return ["http://localhost", "http://127.0.0.1"]
+
+
+def _validate_redirect_uri(redirect_uri: str) -> None:
+    """Reject redirect_uri values that don't match the server's known origins.
+
+    Skip in E2E_TEST so tests can pass any URI; in production, only the
+    registered DOMAIN is accepted; in local dev, only localhost is accepted.
+    """
+    if os.getenv("E2E_TEST") == "1":
+        return
+    try:
+        parsed = urlparse(redirect_uri)
+        origin = f"{parsed.scheme}://{parsed.hostname}"
+        if parsed.port:
+            origin += f":{parsed.port}"
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid redirect_uri")
+    allowed = _allowed_redirect_origins()
+    if not any(origin == a or origin.startswith(a) for a in allowed):
+        raise HTTPException(status_code=400, detail="redirect_uri not allowed")
 
 
 def _notify_admin_new_user(user: User, db: Session):
@@ -81,8 +109,9 @@ def list_providers():
 # ── PKCE flow ───────────────────────────────────────────────────────────────────
 
 @router.get("/login")
-def login_start(provider: str, code_challenge: str, redirect_uri: str, state: str):
+def login_start(provider: str, code_challenge: str, redirect_uri: str, state: str, request: Request):
     """Return the IdP authorization URL for the given provider."""
+    _validate_redirect_uri(redirect_uri)
     from scaffold.providers.auth import get_provider
     try:
         p = get_provider(provider)
@@ -99,8 +128,12 @@ class CallbackRequest(BaseModel):
 
 
 @router.post("/callback")
-def auth_callback(body: CallbackRequest, response: Response, db: Session = Depends(get_db)):
+def auth_callback(body: CallbackRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     """Exchange PKCE authorization code for a JWT; set it as an HttpOnly session cookie."""
+    from scaffold.rate_limit import check_rate_ip
+    client_ip = request.client.host if request.client else "unknown"
+    check_rate_ip(client_ip, "auth_callback", max_calls=20, window_secs=900)
+    _validate_redirect_uri(body.redirect_uri)
     from scaffold.providers.auth import get_provider
     from scaffold.providers.auth.base import UserIdentity
     try:
@@ -167,6 +200,8 @@ if os.getenv("E2E_TEST") == "1":
     @router.post("/test-login")
     def test_login(body: TestLoginRequest, response: Response, db: Session = Depends(get_db)):
         """Create/update a user and set the session cookie. No Bearer token returned."""
+        if os.getenv("DOMAIN") or os.getenv("APP_ENV") == "production":
+            raise HTTPException(status_code=403, detail="Not available in production")
         from sqlalchemy.exc import IntegrityError
         blocked = db.query(BlockedEmail).filter(BlockedEmail.email == body.email.lower()).first()
         if blocked:

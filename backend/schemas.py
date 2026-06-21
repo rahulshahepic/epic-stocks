@@ -42,6 +42,8 @@ class GrantCreate(BaseModel):
     def shares_positive(cls, v: int) -> int:
         if v <= 0:
             raise ValueError("shares must be positive")
+        if v > 10_000_000:
+            raise ValueError("shares cannot exceed 10,000,000")
         return v
 
     @field_validator("price")
@@ -49,6 +51,8 @@ class GrantCreate(BaseModel):
     def price_non_negative(cls, v: float) -> float:
         if v < 0:
             raise ValueError("price cannot be negative")
+        if v > 1_000_000:
+            raise ValueError("price cannot exceed 1,000,000")
         return v
 
     @field_validator("periods")
@@ -56,6 +60,8 @@ class GrantCreate(BaseModel):
     def periods_positive(cls, v: int) -> int:
         if v <= 0:
             raise ValueError("periods must be positive")
+        if v > 1200:
+            raise ValueError("periods cannot exceed 1200")
         return v
 
 class GrantUpdate(BaseModel):
@@ -89,6 +95,8 @@ class GrantUpdate(BaseModel):
     def shares_positive(cls, v):
         if v is not None and v <= 0:
             raise ValueError("shares must be positive")
+        if v is not None and v > 10_000_000:
+            raise ValueError("shares cannot exceed 10,000,000")
         return v
 
     @field_validator("price")
@@ -96,6 +104,8 @@ class GrantUpdate(BaseModel):
     def price_non_negative(cls, v):
         if v is not None and v < 0:
             raise ValueError("price cannot be negative")
+        if v is not None and v > 1_000_000:
+            raise ValueError("price cannot exceed 1,000,000")
         return v
 
     @field_validator("periods")
@@ -103,6 +113,8 @@ class GrantUpdate(BaseModel):
     def periods_positive(cls, v):
         if v is not None and v <= 0:
             raise ValueError("periods must be positive")
+        if v is not None and v > 1200:
+            raise ValueError("periods cannot exceed 1200")
         return v
 
 class GrantOut(GrantCreate):
@@ -149,6 +161,8 @@ class LoanCreate(BaseModel):
     def amount_positive(cls, v: float) -> float:
         if v <= 0:
             raise ValueError("amount must be positive")
+        if v > 100_000_000:
+            raise ValueError("amount cannot exceed 100,000,000")
         return v
 
     @field_validator("interest_rate")
@@ -156,6 +170,8 @@ class LoanCreate(BaseModel):
     def rate_non_negative(cls, v: float) -> float:
         if v < 0:
             raise ValueError("interest_rate cannot be negative")
+        if v > 100:
+            raise ValueError("interest_rate cannot exceed 100 (100%)")
         return v
 
 class LoanUpdate(BaseModel):
@@ -196,6 +212,8 @@ class LoanUpdate(BaseModel):
     def amount_positive(cls, v):
         if v is not None and v <= 0:
             raise ValueError("amount must be positive")
+        if v is not None and v > 100_000_000:
+            raise ValueError("amount cannot exceed 100,000,000")
         return v
 
     @field_validator("interest_rate")
@@ -203,6 +221,8 @@ class LoanUpdate(BaseModel):
     def rate_non_negative(cls, v):
         if v is not None and v < 0:
             raise ValueError("interest_rate cannot be negative")
+        if v is not None and v > 100:
+            raise ValueError("interest_rate cannot exceed 100 (100%)")
         return v
 
 class LoanOut(LoanCreate):
@@ -222,6 +242,8 @@ class PriceCreate(BaseModel):
     def price_positive(cls, v: float) -> float:
         if v <= 0:
             raise ValueError("price must be positive")
+        if v > 1_000_000:
+            raise ValueError("price cannot exceed 1,000,000")
         return v
 
 class PriceUpdate(BaseModel):
@@ -234,6 +256,8 @@ class PriceUpdate(BaseModel):
     def price_positive(cls, v):
         if v is not None and v <= 0:
             raise ValueError("price must be positive")
+        if v is not None and v > 1_000_000:
+            raise ValueError("price cannot exceed 1,000,000")
         return v
 
 class PriceOut(PriceCreate):
@@ -292,6 +316,8 @@ class SaleCreate(BaseModel):
     def shares_positive(cls, v: int) -> int:
         if v <= 0:
             raise ValueError("shares must be positive")
+        if v > 10_000_000:
+            raise ValueError("shares cannot exceed 10,000,000")
         return v
 
     @field_validator("price_per_share")
@@ -299,6 +325,8 @@ class SaleCreate(BaseModel):
     def price_positive(cls, v: float) -> float:
         if v <= 0:
             raise ValueError("price_per_share must be positive")
+        if v > 1_000_000:
+            raise ValueError("price_per_share cannot exceed 1,000,000")
         return v
 
 _Date = date  # alias to avoid field-name shadowing Optional[date] = None in Pydantic v2
@@ -326,6 +354,8 @@ class SaleUpdate(BaseModel):
     def shares_positive(cls, v):
         if v is not None and v <= 0:
             raise ValueError("shares must be positive")
+        if v is not None and v > 10_000_000:
+            raise ValueError("shares cannot exceed 10,000,000")
         return v
 
     @field_validator("price_per_share")
@@ -333,6 +363,8 @@ class SaleUpdate(BaseModel):
     def price_positive(cls, v):
         if v is not None and v <= 0:
             raise ValueError("price_per_share must be positive")
+        if v is not None and v > 1_000_000:
+            raise ValueError("price_per_share cannot exceed 1,000,000")
         return v
 
 class SaleOut(SaleCreate):
@@ -353,6 +385,8 @@ class LoanPaymentCreate(BaseModel):
     def amount_positive(cls, v: float) -> float:
         if v <= 0:
             raise ValueError("amount must be positive")
+        if v > 100_000_000:
+            raise ValueError("amount cannot exceed 100,000,000")
         return v
 
 class LoanPaymentUpdate(BaseModel):
@@ -366,6 +400,8 @@ class LoanPaymentUpdate(BaseModel):
     def amount_positive(cls, v):
         if v is not None and v <= 0:
             raise ValueError("amount must be positive")
+        if v is not None and v > 100_000_000:
+            raise ValueError("amount cannot exceed 100,000,000")
         return v
 
 class LoanPaymentOut(LoanPaymentCreate):
@@ -604,6 +640,8 @@ class LoanRateCreate(BaseModel):
     def rate_non_negative(cls, v: float) -> float:
         if v < 0:
             raise ValueError("rate cannot be negative")
+        if v > 1:
+            raise ValueError("rate cannot exceed 1.0 (100%)")
         return v
 
     @model_validator(mode="after")
@@ -631,6 +669,8 @@ class LoanRateUpdate(BaseModel):
     def rate_non_negative(cls, v):
         if v is not None and v < 0:
             raise ValueError("rate cannot be negative")
+        if v is not None and v > 1:
+            raise ValueError("rate cannot exceed 1.0 (100%)")
         return v
 
 

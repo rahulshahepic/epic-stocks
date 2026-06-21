@@ -36,6 +36,23 @@ def check_rate(user_id: int, endpoint: str, max_calls: int, window_secs: int) ->
         _calls[key] = recent
 
 
+def check_rate_ip(ip: str, endpoint: str, max_calls: int, window_secs: int) -> None:
+    """Raise HTTP 429 if the IP has exceeded max_calls within window_secs for endpoint.
+
+    No-op when E2E_TEST=1.
+    """
+    if os.getenv("E2E_TEST") == "1":
+        return
+    key = (ip, endpoint)
+    now = time.monotonic()
+    with _lock:
+        recent = [t for t in _calls[key] if now - t < window_secs]
+        if len(recent) >= max_calls:
+            raise HTTPException(status_code=429, detail="Too many requests — please slow down")
+        recent.append(now)
+        _calls[key] = recent
+
+
 def check_rate_db(user_id: int, endpoint: str, max_calls: int, window_secs: int, db) -> None:
     """DB-backed rate limit shared across all replicas.
 

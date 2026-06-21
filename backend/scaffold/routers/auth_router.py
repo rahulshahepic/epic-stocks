@@ -38,9 +38,15 @@ def _validate_redirect_uri(redirect_uri: str) -> None:
             origin += f":{parsed.port}"
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid redirect_uri")
-    allowed = _allowed_redirect_origins()
-    if not any(origin == a or origin.startswith(a) for a in allowed):
-        raise HTTPException(status_code=400, detail="redirect_uri not allowed")
+    if os.getenv("DOMAIN"):
+        # Production: exact scheme+hostname+port match against the registered domain
+        allowed = _allowed_redirect_origins()
+        if origin not in allowed:
+            raise HTTPException(status_code=400, detail="redirect_uri not allowed")
+    else:
+        # Dev: allow any port on localhost / 127.0.0.1 only
+        if parsed.hostname not in ("localhost", "127.0.0.1"):
+            raise HTTPException(status_code=400, detail="redirect_uri not allowed")
 
 
 def _notify_admin_new_user(user: User, db: Session):
@@ -140,7 +146,8 @@ def auth_callback(body: CallbackRequest, request: Request, response: Response, d
         p = get_provider(body.provider)
         identity: UserIdentity = p.exchange_code(body.code, body.code_verifier, body.redirect_uri)
     except ValueError as e:
-        raise HTTPException(status_code=401, detail=str(e))
+        logger.warning("Auth callback error for provider %r: %s", body.provider, e)
+        raise HTTPException(status_code=401, detail="Authentication failed")
     user = _upsert_user(identity, db)
     token = create_token(user.id, user.session_version)
     set_session_cookies(response, token)

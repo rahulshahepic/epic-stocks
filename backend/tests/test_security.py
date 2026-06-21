@@ -227,3 +227,65 @@ def test_admin_endpoints_unauthenticated(client):
     for path in ["/api/admin/stats", "/api/admin/users", "/api/admin/blocked", "/api/admin/errors"]:
         resp = client.get(path)
         assert resp.status_code == 401, f"expected 401 for {path}"
+
+
+# ============================================================
+# AUTH ENDPOINT HARDENING (Issue #422)
+# ============================================================
+
+def test_redirect_uri_validation_allows_localhost():
+    import importlib
+    import scaffold.routers.auth_router as auth_mod
+    # In E2E_TEST mode validation is skipped — test the helper directly
+    # by temporarily clearing the flag.
+    original = os.environ.pop("E2E_TEST", None)
+    try:
+        auth_mod._validate_redirect_uri("http://localhost:5173/auth/callback")
+        auth_mod._validate_redirect_uri("http://127.0.0.1:3000/auth/callback")
+    finally:
+        if original is not None:
+            os.environ["E2E_TEST"] = original
+
+
+def test_redirect_uri_validation_rejects_external():
+    import scaffold.routers.auth_router as auth_mod
+    from fastapi import HTTPException
+    original = os.environ.pop("E2E_TEST", None)
+    try:
+        try:
+            auth_mod._validate_redirect_uri("https://evil.example.com/steal")
+            assert False, "expected HTTPException"
+        except HTTPException as exc:
+            assert exc.status_code == 400
+    finally:
+        if original is not None:
+            os.environ["E2E_TEST"] = original
+
+
+def test_redirect_uri_validation_with_domain(monkeypatch):
+    import scaffold.routers.auth_router as auth_mod
+    from fastapi import HTTPException
+    monkeypatch.delenv("E2E_TEST", raising=False)
+    monkeypatch.setenv("DOMAIN", "app.example.com")
+    # Matching domain is allowed
+    auth_mod._validate_redirect_uri("https://app.example.com/auth/callback")
+    # Different domain is rejected
+    try:
+        auth_mod._validate_redirect_uri("https://other.example.com/auth/callback")
+        assert False, "expected HTTPException"
+    except HTTPException as exc:
+        assert exc.status_code == 400
+
+
+def test_test_login_blocked_when_domain_set(client, monkeypatch):
+    """test-login must refuse when DOMAIN is set (accidental production enable guard)."""
+    monkeypatch.setenv("DOMAIN", "prod.example.com")
+    resp = client.post("/api/auth/test-login", json={"email": "x@example.com"})
+    assert resp.status_code == 403
+
+
+def test_test_login_blocked_when_app_env_production(client, monkeypatch):
+    """test-login must refuse when APP_ENV=production."""
+    monkeypatch.setenv("APP_ENV", "production")
+    resp = client.post("/api/auth/test-login", json={"email": "x@example.com"})
+    assert resp.status_code == 403

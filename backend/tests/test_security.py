@@ -277,6 +277,24 @@ def test_redirect_uri_validation_with_domain(monkeypatch):
         assert exc.status_code == 400
 
 
+def test_redirect_uri_suffix_attack_rejected(monkeypatch):
+    """Prefix-match bug: https://yourdomain.com.evil.com must not be accepted."""
+    import scaffold.routers.auth_router as auth_mod
+    from fastapi import HTTPException
+    monkeypatch.delenv("E2E_TEST", raising=False)
+    monkeypatch.setenv("DOMAIN", "app.example.com")
+    for evil in [
+        "https://app.example.com.evil.com/callback",
+        "https://app.example.com.evil.com",
+        "https://app.example.com:evil.com/callback",
+    ]:
+        try:
+            auth_mod._validate_redirect_uri(evil)
+            assert False, f"expected HTTPException for {evil!r}"
+        except HTTPException as exc:
+            assert exc.status_code == 400, f"wrong status for {evil!r}"
+
+
 def test_test_login_blocked_when_domain_set(client, monkeypatch):
     """test-login must refuse when DOMAIN is set (accidental production enable guard)."""
     monkeypatch.setenv("DOMAIN", "prod.example.com")

@@ -6,6 +6,7 @@ Redis cache is pre-warmed before users hit the app.
 
 Auth: Authorization: Bearer <CACHE_INVALIDATE_SECRET>
 """
+import hmac
 import os
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -18,7 +19,7 @@ def _check_auth(request: Request) -> None:
     if not secret:
         raise HTTPException(status_code=503, detail="Cache invalidation not configured")
     auth = request.headers.get("Authorization", "")
-    if auth != f"Bearer {secret}":
+    if not hmac.compare_digest(auth, f"Bearer {secret}"):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 

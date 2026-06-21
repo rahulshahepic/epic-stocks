@@ -4,7 +4,7 @@ import secrets
 import string
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
@@ -44,9 +44,13 @@ def _format_short_code(code: str) -> str:
 def invite_info(
     token: str | None = Query(None),
     code: str | None = Query(None),
+    request: Request = None,
     db: Session = Depends(get_db),
 ):
     """Look up invitation by token or code. Returns inviter name + status. No auth required."""
+    from scaffold.rate_limit import check_rate_ip
+    client_ip = request.client.host if request and request.client else "unknown"
+    check_rate_ip(client_ip, "sharing_invite_info", max_calls=20, window_secs=900)
     if not token and not code:
         raise HTTPException(400, "Provide token or code")
     inv = None
@@ -225,9 +229,13 @@ class AcceptRequest(BaseModel):
 @router.post("/accept")
 def accept_invite(
     body: AcceptRequest,
+    request: Request,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    from scaffold.rate_limit import check_rate_ip
+    client_ip = request.client.host if request.client else "unknown"
+    check_rate_ip(client_ip, "sharing_accept", max_calls=20, window_secs=900)
     if not body.token and not body.code:
         raise HTTPException(400, "Provide token or code")
 

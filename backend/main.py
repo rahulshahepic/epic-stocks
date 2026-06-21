@@ -483,13 +483,13 @@ _fastapi_app = FastAPI(title="Equity Vesting Tracker", lifespan=lifespan)
 
 
 def _is_admin_request(request: Request) -> bool:
-    """Return True if the request carries a valid admin JWT."""
+    """Return True if the request carries a valid admin session cookie."""
     try:
-        auth = request.headers.get("authorization", "")
-        if not auth.startswith("Bearer "):
+        from scaffold.auth import _token_from_request, _decode_token, get_admin_emails
+        token = _token_from_request(request)
+        if not token:
             return False
-        from scaffold.auth import _decode_token, get_admin_emails
-        payload = _decode_token(auth[7:])
+        payload = _decode_token(token)
         user_id = int(payload["sub"])
         db = database.SessionLocal()
         try:
@@ -511,14 +511,14 @@ async def global_exception_handler(request: Request, exc: Exception):
     # Persist to error_logs table (best-effort)
     try:
         from scaffold.models import ErrorLog
-        auth = request.headers.get("authorization", "")
         user_id = None
-        if auth.startswith("Bearer "):
-            try:
-                from scaffold.auth import _decode_token
-                user_id = int(_decode_token(auth[7:])["sub"])
-            except Exception:
-                pass
+        try:
+            from scaffold.auth import _token_from_request, _decode_token
+            token = _token_from_request(request)
+            if token:
+                user_id = int(_decode_token(token)["sub"])
+        except Exception:
+            pass
         db = database.SessionLocal()
         try:
             db.add(ErrorLog(

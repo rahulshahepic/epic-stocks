@@ -1339,7 +1339,7 @@ def export_holdings_report(
     content = buf.getvalue()
 
     from urllib.parse import quote
-    filename = f"Holdings_Report_{as_of}.xlsx"
+    filename = f"Holdings_Report_{as_of_date.isoformat()}.xlsx"
     encoded = quote(filename, safe="")
     return StreamingResponse(
         io.BytesIO(content),

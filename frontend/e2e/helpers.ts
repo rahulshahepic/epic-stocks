@@ -11,6 +11,14 @@ const API_BASE = process.env.E2E_API_URL ?? BASE_URL
  * the auth-aware shell, so its visibility is a reliable signal that the
  * session cookie has been read and React has hydrated. Without this, a
  * fast-following navigateTo() can race the auth bootstrap.
+ *
+ * Also waits for the app's one-time /api/config fetch (useConfig) to land.
+ * That fetch carries epic_mode and is cached at module scope for the life
+ * of the page, independent of any per-page "Loading..." indicator, so
+ * navigateTo() can't see it. Without waiting here, an epic_mode-gated
+ * assertion (e.g. the Sell/Edit button on Grants) can run while config is
+ * still null, rendering the pre-epic-mode default — a race that only
+ * surfaces under CI contention and disappears on Playwright's retry.
  */
 export async function loginAs(page: Page, email: string, name = 'Test User') {
   const resp = await page.request.post(`${API_BASE}/api/auth/test-login`, {
@@ -18,8 +26,10 @@ export async function loginAs(page: Page, email: string, name = 'Test User') {
   })
   const body = await resp.text().catch(() => '(unreadable)')
   expect(resp.ok(), `test-login ${email} → HTTP ${resp.status()}: ${body}`).toBeTruthy()
+  const configResponse = page.waitForResponse(r => r.url().includes('/api/config'), { timeout: 15_000 })
   await page.goto(BASE_URL)
   await expect(page.getByRole('navigation')).toBeVisible({ timeout: 15_000 })
+  await configResponse
 }
 
 /**

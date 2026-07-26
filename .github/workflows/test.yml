@@ -52,7 +52,10 @@ jobs:
       - name: Type-check
         run: cd frontend && time npx tsc -b --noEmit
       - name: npm audit
-        run: cd frontend && time npm audit --audit-level=high
+        # --omit=dev excludes build-tool transitive deps (vite, babel, playwright, etc.)
+        # from the audit. This app is a browser SPA — dev-only packages never reach
+        # production users, so new CVEs in build tooling should not block unrelated PRs.
+        run: cd frontend && time npm audit --audit-level=high --omit=dev
       - name: Run tests
         run: cd frontend && time npm run test
 

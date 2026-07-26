@@ -52,7 +52,11 @@ jobs:
       - name: Type-check
         run: cd frontend && time npx tsc -b --noEmit
       - name: npm audit
-        run: cd frontend && time npm audit --audit-level=high
+        # --omit=dev: dev-only tooling (eslint, vite, playwright, etc.) is never
+        # shipped to users, so a CVE there shouldn't block every PR the moment a
+        # new advisory is published for a build tool. Production deps are still
+        # fully audited.
+        run: cd frontend && time npm audit --audit-level=high --omit=dev
       - name: Run tests
         run: cd frontend && time npm run test
 

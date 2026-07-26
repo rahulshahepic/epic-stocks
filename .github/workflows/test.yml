@@ -55,7 +55,32 @@ jobs:
         # --omit=dev excludes build-tool transitive deps (vite, babel, playwright, etc.)
         # from the audit. This app is a browser SPA — dev-only packages never reach
         # production users, so new CVEs in build tooling should not block unrelated PRs.
-        run: cd frontend && time npm audit --audit-level=high --omit=dev
+        #
+        # GHSA-qwww-vcr4-c8h2 (react-router RSC Mode CSRF Bypass) is allowlisted below:
+        # it only affects React Router's RSC/framework mode, which this client-only SPA
+        # (BrowserRouter) does not use, and react-router-dom has no non-breaking fix yet
+        # (v8 only ships under the renamed "react-router" package). Remove the allowlist
+        # entry once react-router-dom publishes a >=8.3.0-equivalent fix.
+        run: |
+          cd frontend
+          npm audit --omit=dev --json > /tmp/npm-audit.json || true
+          ALLOWED='["https://github.com/advisories/GHSA-qwww-vcr4-c8h2"]'
+          UNADDRESSED=$(jq --argjson allowed "$ALLOWED" '
+            [.vulnerabilities[]
+              | select(.severity == "high" or .severity == "critical")
+              | .via[]
+              | select(type == "object")
+              | .url]
+            | unique
+            | . - $allowed
+          ' /tmp/npm-audit.json)
+          if [ "$UNADDRESSED" != "[]" ]; then
+            echo "Unaddressed high/critical advisories:" >&2
+            echo "$UNADDRESSED" >&2
+            npm audit --omit=dev --audit-level=high
+            exit 1
+          fi
+          echo "No unaddressed high/critical advisories (allowlisted: $ALLOWED)"
       - name: Run tests
         run: cd frontend && time npm run test
 

@@ -79,6 +79,7 @@ services:
       - EPIC_MODE=${EPIC_MODE:-}
       - CACHE_INVALIDATE_SECRET=${CACHE_INVALIDATE_SECRET:-}
       - APP_URL=${APP_URL:-}
+      - DOMAIN=${DOMAIN:-}
     expose:
       - "8000"
     deploy:

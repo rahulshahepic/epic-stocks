@@ -2,6 +2,7 @@ import sys
 import os
 from datetime import date, datetime
 from unittest.mock import patch, MagicMock
+import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from tests.conftest import register_user
@@ -177,6 +178,96 @@ def test_push_test_sends_notification(client):
 def test_push_test_requires_auth(client):
     resp = client.post("/api/push/test", json={})
     assert resp.status_code == 401
+
+
+# ============================================================
+# SEND_PUSH — payload must be encrypted per Web Push spec (RFC 8291)
+# ============================================================
+
+def _real_subscriber_keys():
+    """A syntactically valid p256dh/auth pair, as a real browser subscription would send.
+
+    SUB_DATA's keys are fixture strings, not points on the P-256 curve, so they
+    can't round-trip through real ECDH — fine for endpoint tests that mock
+    send_push, but not for verifying actual encryption here.
+    """
+    import base64
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives import serialization
+
+    priv = ec.generate_private_key(ec.SECP256R1())
+    pub_bytes = priv.public_key().public_bytes(
+        serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
+    )
+    p256dh = base64.urlsafe_b64encode(pub_bytes).rstrip(b"=").decode()
+    auth = base64.urlsafe_b64encode(os.urandom(16)).rstrip(b"=").decode()
+    return p256dh, auth
+
+
+def _real_vapid_private_key():
+    from py_vapid import Vapid
+    import base64
+    v = Vapid()
+    v.generate_keys()
+    raw = v.private_key.private_numbers().private_value.to_bytes(32, "big")
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
+
+def test_send_push_encrypts_payload():
+    """The POST body sent to the push endpoint must be aes128gcm-encrypted,
+    not the raw JSON payload — unencrypted pushes are silently dropped by
+    strict push services (notably iOS Safari's)."""
+    from scaffold.notifications import send_push
+    from scaffold.models import PushSubscription
+    import requests
+    import json as _json
+
+    p256dh, auth = _real_subscriber_keys()
+    sub = PushSubscription(endpoint="https://push.example.com/send/abc123", p256dh=p256dh, auth=auth)
+    payload = {"title": "Equity Tracker", "body": "Test notification — push is working!"}
+
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured["headers"] = kwargs.get("headers")
+        captured["data"] = kwargs.get("data")
+        resp = MagicMock()
+        resp.status_code = 201
+        return resp
+
+    with patch("scaffold.notifications.VAPID_PRIVATE_KEY", _real_vapid_private_key()):
+        with patch.object(requests, "post", fake_post):
+            ok = send_push(sub, payload)
+
+    assert ok is True
+    assert captured["headers"]["Content-Encoding"] == "aes128gcm"
+    assert "Authorization" in captured["headers"]  # VAPID JWT
+    raw_json = _json.dumps(payload).encode()
+    assert captured["data"] != raw_json
+    with pytest.raises(Exception):
+        _json.loads(captured["data"])
+
+
+def test_send_push_expired_subscription_returns_false():
+    from scaffold.notifications import send_push
+    from scaffold.models import PushSubscription
+    import requests
+
+    p256dh, auth = _real_subscriber_keys()
+    sub = PushSubscription(endpoint="https://push.example.com/send/gone", p256dh=p256dh, auth=auth)
+
+    def fake_post(url, **kwargs):
+        resp = MagicMock()
+        resp.status_code = 410
+        resp.text = "gone"
+        resp.reason = "Gone"
+        return resp
+
+    with patch("scaffold.notifications.VAPID_PRIVATE_KEY", _real_vapid_private_key()):
+        with patch.object(requests, "post", fake_post):
+            ok = send_push(sub, {"title": "x", "body": "y"})
+
+    assert ok is False
 
 
 # ============================================================

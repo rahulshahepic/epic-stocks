@@ -98,38 +98,28 @@ def send_push(subscription: PushSubscription, payload: dict) -> bool:
         logger.warning("VAPID_PRIVATE_KEY not set, skipping push")
         return False
     try:
-        from py_vapid import Vapid
-        import httpx
+        from pywebpush import webpush, WebPushException
 
-        vapid = Vapid.from_string(VAPID_PRIVATE_KEY)
-        headers = vapid.sign({
-            "sub": _vapid_claims_email(),
-            "aud": _get_origin(subscription.endpoint),
-        })
-        resp = httpx.post(
-            subscription.endpoint,
-            content=json.dumps(payload).encode(),
-            headers={
-                "Authorization": headers["Authorization"],
-                "TTL": "86400",
-                "Content-Type": "application/json",
-                "Urgency": "normal",
+        webpush(
+            subscription_info={
+                "endpoint": subscription.endpoint,
+                "keys": {"p256dh": subscription.p256dh, "auth": subscription.auth},
             },
+            data=json.dumps(payload),
+            vapid_private_key=VAPID_PRIVATE_KEY,
+            vapid_claims={"sub": _vapid_claims_email()},
+            ttl=86400,
             timeout=10,
         )
-        if resp.status_code in (404, 410):
-            return False  # subscription expired
-        resp.raise_for_status()
         return True
+    except WebPushException as e:
+        status = getattr(e.response, "status_code", None)
+        if status not in (404, 410):
+            logger.exception("Failed to send push notification")
+        return False  # 404/410 means the subscription expired; anything else is also treated as failed
     except Exception:
         logger.exception("Failed to send push notification")
         return False
-
-
-def _get_origin(url: str) -> str:
-    from urllib.parse import urlparse
-    p = urlparse(url)
-    return f"{p.scheme}://{p.netloc}"
 
 
 def _already_notified_today(user: User, today: date) -> bool:

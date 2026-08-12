@@ -58,7 +58,7 @@ The application computes an event timeline (vesting events, income, capital gain
 
 - Every database query filters by your authenticated user ID
 - You can only read, modify, or delete your own data through the standard API
-- The source code is open for you to verify this: every router in `backend/app/routers/` and `backend/scaffold/routers/` filters by `user_id`
+- The source code is open for you to verify this: every router in `backend/app/routers/` and `backend/scaffold/routers/` filters by `user_id`. Full source: [github.com/rahulshahepic/epic-stocks](https://github.com/rahulshahepic/epic-stocks)
 - **The one exception is the sharing feature** described below: if you choose to invite someone, they can view (but never modify) your financial data through dedicated read-only endpoints
 
 ## Who Can Access Your Data
@@ -165,7 +165,7 @@ Before entering your financial data, you should understand what protects you, wh
 
 **TLS (HTTPS) protects data in transit.** When you interact with this application over HTTPS, your data is encrypted between your browser and the server. An attacker monitoring your network cannot read your share counts, loan amounts, or prices as they travel over the wire. The included Caddy configuration provisions TLS certificates automatically. This is a well-understood, broadly trusted protection — but it only covers the network path. Once your data arrives at the server, TLS has done its job.
 
-**Open source protects through transparency.** The full source code for this application is published on GitHub. You can read exactly what data is collected, how it's stored, how queries are scoped to your user ID, and how encryption works. You can build the application from source yourself to verify that the binary matches the code. Open source does not prevent bad behavior, but it makes bad behavior discoverable. Anyone — you, a security researcher, a journalist — can audit the code at any time.
+**Open source protects through transparency.** The full source code for this application is published on GitHub at [github.com/rahulshahepic/epic-stocks](https://github.com/rahulshahepic/epic-stocks). You can read exactly what data is collected, how it's stored, how queries are scoped to your user ID, and how encryption works. You can build the application from source yourself to verify that the binary matches the code. Open source does not prevent bad behavior, but it makes bad behavior discoverable. Anyone — you, a security researcher, a journalist — can audit the code at any time.
 
 **This privacy policy protects through disclosure and accountability.** A written privacy policy creates a record of what the operator has committed to. If the operator violates their own policy, that violation has legal consequences in most jurisdictions. Consumer protection laws, contract law, and in some cases data protection regulations (GDPR, CCPA) give you recourse if your data is handled contrary to the stated policy.
 
@@ -210,8 +210,8 @@ The safest option is always to **self-host** and control the entire stack yourse
 
 ## Changes to This Policy
 
-This policy may be updated as the application evolves. Changes will be reflected in the `PRIVACY.md` file in the repository with an updated date.
+This policy may be updated as the application evolves. Changes will be reflected in the [`PRIVACY.md`](https://github.com/rahulshahepic/epic-stocks/blob/main/PRIVACY.md) file in the repository with an updated date.
 
 ## Contact
 
-This is an open-source project. For privacy questions or concerns, open an issue on the GitHub repository.
+This is an open-source project. For privacy questions or concerns, open an issue on the GitHub repository: [github.com/rahulshahepic/epic-stocks/issues](https://github.com/rahulshahepic/epic-stocks/issues).

@@ -89,7 +89,16 @@ export default function PrivacyPolicy() {
  <Section title="Data Isolation">
  <P>
  Every database query is filtered by your authenticated user ID. You can only read,
- modify, or delete your own data. The source code is open for you to verify this.
+ modify, or delete your own data. The source code is open for you to verify this:{' '}
+ <a
+ href="https://github.com/rahulshahepic/epic-stocks"
+ target="_blank"
+ rel="noopener noreferrer"
+ className="text-cs-brand hover:text-cs-brand-hover dark:hover:text-rose-300"
+ >
+ github.com/rahulshahepic/epic-stocks
+ </a>
+ .
  </P>
  <P>
  The one exception is the <strong>sharing feature</strong>: if you choose to invite
@@ -165,14 +174,31 @@ export default function PrivacyPolicy() {
  <Section title="Changes to This Policy">
  <P>
  This policy may be updated as the application evolves. Changes will be reflected here
- and in the <code className="rounded bg-cs-raised px-1 text-xs ">PRIVACY.md</code> file in the repository with an updated date.
+ and in the{' '}
+ <a
+ href="https://github.com/rahulshahepic/epic-stocks/blob/main/PRIVACY.md"
+ target="_blank"
+ rel="noopener noreferrer"
+ className="text-cs-brand hover:text-cs-brand-hover dark:hover:text-rose-300"
+ >
+ <code className="rounded bg-cs-raised px-1 text-xs ">PRIVACY.md</code>
+ </a>{' '}
+ file in the repository with an updated date.
  </P>
  </Section>
 
  <Section title="Contact">
  <P>
- This is an open-source project. For privacy questions or concerns, open an issue on
- the GitHub repository.
+ This is an open-source project. For privacy questions or concerns, open an issue on{' '}
+ <a
+ href="https://github.com/rahulshahepic/epic-stocks/issues"
+ target="_blank"
+ rel="noopener noreferrer"
+ className="text-cs-brand hover:text-cs-brand-hover dark:hover:text-rose-300"
+ >
+ the GitHub repository
+ </a>
+ .
  </P>
  </Section>
  </div>

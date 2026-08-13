@@ -185,6 +185,31 @@ describe('Dashboard', () => {
     expect(startInputs[0]).toHaveValue('2022-01-01')
   })
 
+  it('expands next event details when the Next Event card is tapped', async () => {
+    mockApi()
+    renderDashboard()
+
+    await waitFor(() => {
+      expect(screen.getByText(/2027-03-01/)).toBeInTheDocument()
+    })
+    expect(screen.queryByText('Vesting shares')).not.toBeInTheDocument()
+
+    const nextEventButton = screen.getByText(/2027-03-01/).closest('button')
+    expect(nextEventButton).toBeTruthy()
+    fireEvent.click(nextEventButton!)
+
+    await waitFor(() => {
+      expect(screen.getByText('Vesting shares')).toBeInTheDocument()
+    })
+    expect(screen.getByText('2,000')).toBeInTheDocument()
+
+    // Tapping again collapses the detail panel
+    fireEvent.click(nextEventButton!)
+    await waitFor(() => {
+      expect(screen.queryByText('Vesting shares')).not.toBeInTheDocument()
+    })
+  })
+
   it('renders without error when future price equals current price', async () => {
     mockApi(MOCK_PRICES_WITH_FUTURE_SAME)
     renderDashboard()

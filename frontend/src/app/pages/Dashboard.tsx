@@ -1016,9 +1016,9 @@ export default function Dashboard() {
  else break
  }
  // Next event after cardDate
- let nextEvent: { date: string; event_type: string } | null = null
+ let nextEvent: TimelineEvent | null = null
  for (const e of events) {
- if (e.date > cardDate) { nextEvent = { date: e.date, event_type: e.event_type }; break }
+ if (e.date > cardDate) { nextEvent = e; break }
  }
 
  const incomeRate = taxSettings
@@ -1132,7 +1132,8 @@ export default function Dashboard() {
  cash_received: cashReceived,
  interest_deduction_total: interestDeductionTotal,
  tax_savings_from_deduction: taxSavings,
- next_event: nextEvent,
+ next_event: nextEvent ? { date: nextEvent.date, event_type: nextEvent.event_type } : null,
+ next_event_detail: nextEvent,
  price_is_estimate: (() => {
  if (!prices) return false
  let isEst = false
@@ -1536,6 +1537,7 @@ export default function Dashboard() {
  interest_deduction_total: dash.interest_deduction_total ?? 0,
  tax_savings_from_deduction: dash.tax_savings_from_deduction ?? 0,
  next_event: dash.next_event,
+ next_event_detail: null as TimelineEvent | null,
  total_interest: 0,
  price_is_estimate: false,
  }
@@ -1620,8 +1622,43 @@ export default function Dashboard() {
  value={cv.next_event ? `${cv.next_event.date} — ${cv.next_event.event_type}` : 'None'}
  variant="event"
  subtitle="Your next vesting or price date"
+ onClick={cv.next_event_detail ? () => toggleBreakdown('nextEvent') : undefined}
+ expanded={openBreakdowns.has('nextEvent')}
  />
  </div>
+ {openBreakdowns.has('nextEvent') && cv.next_event_detail && (
+ <BreakdownShell title="Next Event">
+ <BreakdownRow label="Date" value={fmtFullDate(cv.next_event_detail.date)} />
+ <BreakdownRow label="Type" value={cv.next_event_detail.event_type} />
+ {cv.next_event_detail.grant_year != null && (
+ <BreakdownRow label="Grant" value={`${cv.next_event_detail.grant_year} ${cv.next_event_detail.grant_type ?? ''}`} />
+ )}
+ {!!cv.next_event_detail.vested_shares && (
+ <BreakdownRow label="Vesting shares" value={fmtNum(cv.next_event_detail.vested_shares)} />
+ )}
+ {!!cv.next_event_detail.granted_shares && (
+ <BreakdownRow label="Granted shares" value={fmtNum(cv.next_event_detail.granted_shares)} />
+ )}
+ {!!cv.next_event_detail.share_price && (
+ <BreakdownRow label="Share price" value={fmtPrice(cv.next_event_detail.share_price)} />
+ )}
+ {!!cv.next_event_detail.income && (
+ <BreakdownRow label="Income" value={fmt$(cv.next_event_detail.income)} />
+ )}
+ {!!cv.next_event_detail.total_cap_gains && (
+ <BreakdownRow label="Capital gains" value={fmt$(cv.next_event_detail.total_cap_gains)} />
+ )}
+ {!!cv.next_event_detail.amount && (
+ <BreakdownRow label="Amount" value={fmt$(cv.next_event_detail.amount)} />
+ )}
+ {!!cv.next_event_detail.cash_due && (
+ <BreakdownRow label="Cash due" value={fmt$(cv.next_event_detail.cash_due)} />
+ )}
+ {!!cv.next_event_detail.notes && (
+ <BreakdownRow label="Notes" value={cv.next_event_detail.notes} />
+ )}
+ </BreakdownShell>
+ )}
  {openBreakdowns.has('grants') && grantHoldings && grantHoldings.length > 0 && (
  <BreakdownShell title="Grants">
  {grantHoldings.map(h => (

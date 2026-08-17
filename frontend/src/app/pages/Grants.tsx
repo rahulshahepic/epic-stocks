@@ -415,7 +415,11 @@ export default function Grants() {
  }
  }
 
- if (loading) return <p className="p-6 text-center text-sm text-cs-text-2">Loading...</p>
+ // Also wait on config: epicMode below reads config?.epic_mode, and config is
+ // fetched independently of the grants list. Without this, the list can finish
+ // loading (and this placeholder can unmount) before epic_mode arrives, so the
+ // Sell/Edit button below renders for the pre-epic-mode state for one tick.
+ if (loading || !config) return <p className="p-6 text-center text-sm text-cs-text-2">Loading...</p>
  if (!grants) return <p className="p-6 text-center text-sm text-red-500">Failed to load grants</p>
 
  const showLoanSection = form.type === 'Purchase'

@@ -344,7 +344,7 @@ export default function Prices() {
  <p className="mb-1 text-xs font-medium text-cs-muted">
  New estimates ({growthPreview.length})
  </p>
- <div tabIndex={0} className="overflow-x-auto rounded-lg border border-cs-border">
+ <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-cs-border bg-cs-surface shadow-card">
  <table className="w-full text-left text-xs">
  <thead className="bg-cs-raised">
  <tr className="text-cs-text-2">
@@ -410,7 +410,7 @@ export default function Prices() {
  </button>
  <button
  onClick={() => { setGrowthError(''); setMode('growth') }}
- className="rounded-md bg-rose-700 px-2 py-1 text-xs font-medium text-white hover:bg-rose-800"
+ className="rounded-full bg-cs-brand px-3 py-1 text-xs font-semibold text-white hover:bg-cs-brand-hover"
  >
  + Estimate
  </button>
@@ -425,7 +425,7 @@ export default function Prices() {
  </p>
  )}
 
- <div tabIndex={0} className="overflow-x-auto rounded-lg border border-cs-border">
+ <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-cs-border bg-cs-surface shadow-card">
  <table className="w-full text-left text-xs">
  <thead className="bg-cs-raised">
  <tr className="text-cs-text-2">

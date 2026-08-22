@@ -122,9 +122,10 @@ describe('Dashboard', () => {
     renderDashboard()
 
     await waitFor(() => {
-      expect(screen.getByText('$8.50')).toBeInTheDocument()
+      expect(screen.getAllByText('$8.50').length).toBeGreaterThanOrEqual(1)
     })
-    expect(screen.getByText('150,000')).toBeInTheDocument()
+    // "150,000" appears both in the portfolio-value hero card and the Vested Shares card
+    expect(screen.getAllByText('150,000').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('$50,000')).toBeInTheDocument()
     expect(screen.getByText('$200,000')).toBeInTheDocument()
     expect(screen.getByText('$75,000')).toBeInTheDocument()
@@ -142,7 +143,8 @@ describe('Dashboard', () => {
     await waitFor(() => {
       expect(screen.getByText('Value Today')).toBeInTheDocument()
     })
-    expect(screen.getByText('$20,000')).toBeInTheDocument()
+    // "$20,000" appears both in the portfolio-value hero card and the Value Today card
+    expect(screen.getAllByText('$20,000').length).toBeGreaterThanOrEqual(1)
 
     // Total Cost Basis = 2000 * $1.99 + 1000 * $3.00 = $3,980 + $3,000 = $6,980
     expect(screen.getByText('Total Cost Basis')).toBeInTheDocument()

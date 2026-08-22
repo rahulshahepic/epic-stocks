@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Lora:ital,wght@0,600;1,500&display=swap');
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -14,6 +15,19 @@
   --cs-brand: #C41230;
   --cs-brand-hover: #A80F28;
   --cs-brand-subtle: #F7E8EB;
+
+  /* Chart accent palette — one fixed hue per series across the whole app */
+  --cs-chart-shares: #C41230;
+  --cs-chart-price: #D97706;
+  --cs-chart-income: #059669;
+  --cs-chart-gains: #7C3AED;
+  --cs-chart-tax: #EA580C;
+  --cs-chart-loan: #0EA5E9;
+
+  /* Elevation */
+  --cs-shadow-card: 0 1px 2px rgba(26, 20, 17, 0.04), 0 10px 28px -16px rgba(26, 20, 17, 0.16);
+  --cs-shadow-card-brand: 0 1px 2px rgba(164, 15, 40, 0.15), 0 16px 32px -14px rgba(164, 15, 40, 0.45);
+  --cs-shadow-pop: 0 8px 24px -8px rgba(26, 20, 17, 0.22);
 }
 
 .dark {
@@ -28,6 +42,17 @@
   --cs-brand: #E8334A;
   --cs-brand-hover: #D42A40;
   --cs-brand-subtle: rgba(232, 51, 74, 0.1);
+
+  --cs-chart-shares: #E8334A;
+  --cs-chart-price: #F0B429;
+  --cs-chart-income: #34D399;
+  --cs-chart-gains: #A78BFA;
+  --cs-chart-tax: #FB923C;
+  --cs-chart-loan: #38BDF8;
+
+  --cs-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 28px -16px rgba(0, 0, 0, 0.5);
+  --cs-shadow-card-brand: 0 1px 2px rgba(0, 0, 0, 0.35), 0 16px 32px -14px rgba(0, 0, 0, 0.6);
+  --cs-shadow-pop: 0 8px 24px -8px rgba(0, 0, 0, 0.5);
 }
 
 @theme inline {
@@ -42,6 +67,16 @@
   --color-cs-brand: var(--cs-brand);
   --color-cs-brand-hover: var(--cs-brand-hover);
   --color-cs-brand-subtle: var(--cs-brand-subtle);
+  --shadow-card: var(--cs-shadow-card);
+  --shadow-card-brand: var(--cs-shadow-card-brand);
+  --shadow-pop: var(--cs-shadow-pop);
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-serif: 'Lora', ui-serif, Georgia, serif;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-feature-settings: 'cv11', 'ss01';
 }
 
 /* ── Animations ─────────────────────────────────────────── */

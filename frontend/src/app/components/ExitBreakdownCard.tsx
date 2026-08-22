@@ -32,7 +32,7 @@ export default function ExitBreakdownCard({ s }: { s: ExitSummary }) {
  : ''
 
  return (
- <div className="rounded-lg border border-cs-border bg-cs-raised p-4 text-xs ">
+ <div className="rounded-xl border border-cs-border bg-cs-raised p-4 text-xs ">
  <h3 className="mb-3 text-sm font-semibold text-cs-text">Exit Breakdown</h3>
 
  <div className="space-y-1">

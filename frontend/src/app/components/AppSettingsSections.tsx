@@ -42,7 +42,7 @@ export default function AppSettingsSections() {
  <>
  {/* Stock Down Payment Preference */}
  {!config?.epic_mode && (
- <section className="rounded-lg border border-cs-border bg-cs-surface p-4 ">
+ <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
  <div className="flex items-center justify-between">
  <h3 className="text-sm font-medium text-cs-text">Stock down payment</h3>
  {!editingDp && (
@@ -110,7 +110,7 @@ export default function AppSettingsSections() {
  )}
 
  {/* Tax Rates */}
- <section className="rounded-lg border border-cs-border bg-cs-surface p-4 ">
+ <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
  <div className="flex items-center justify-between">
  <h3 className="text-sm font-medium text-cs-text">Tax Rates</h3>
  {!editingTax && (

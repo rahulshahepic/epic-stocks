@@ -17,6 +17,9 @@ import { api } from '../../api.ts'
 import { useDark } from '../../scaffold/hooks/useDark.ts'
 import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
 import { useMe, updateMeCache } from '../../scaffold/hooks/useMe.ts'
+import { HeroCard, IconTile, Eyebrow, type TileTone } from '../../scaffold/components/ui/Card.tsx'
+import { Segmented } from '../../scaffold/components/ui/Segmented.tsx'
+import { IconCompass, IconMountainFlag, IconTrendUp } from '../../scaffold/components/ui/icons.tsx'
 import {
  computeFanPercentiles,
  computeRiskOfRuinTable,
@@ -116,19 +119,17 @@ function StatCard({
  sub?: string
  variant?: 'good' | 'bad' | 'neutral'
 }) {
- const accent =
- variant === 'good'
- ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30'
- : variant === 'bad'
- ? 'border-rose-300 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/30'
- : 'border-cs-border bg-cs-surface '
+ const tone: TileTone = variant === 'good' ? 'emerald' : variant === 'bad' ? 'brand' : 'slate'
  return (
- <div className={`rounded-lg border p-3 ${accent}`}>
- <p className="text-[10px] font-semibold uppercase tracking-wider text-cs-muted">
+ <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+ <IconTile tone={tone} className="h-8 w-8 rounded-lg">
+ <IconTrendUp className="h-4 w-4" />
+ </IconTile>
+ <p className="mt-2.5 text-[10px] font-semibold uppercase tracking-wider text-cs-muted">
  {label}
  </p>
- <p className="mt-1 text-2xl font-bold tabular-nums text-cs-text">{value}</p>
- {sub && <p className="mt-0.5 text-[10px] text-cs-muted">{sub}</p>}
+ <p className="mt-0.5 text-xl font-bold tabular-nums text-cs-text">{value}</p>
+ {sub && <p className="mt-1 text-[10px] leading-tight text-cs-muted">{sub}</p>}
  </div>
  )
 }
@@ -659,8 +660,13 @@ export default function Retirement() {
 
  return (
  <div className="space-y-5">
- <div className="flex items-baseline justify-between gap-2">
- <h1 className="text-lg font-bold text-cs-text">Retirement Simulator</h1>
+ <div className="flex items-center justify-between gap-2">
+ <div className="flex items-center gap-2.5">
+ <IconTile tone="brand" className="h-9 w-9 rounded-xl">
+ <IconCompass className="h-5 w-5" />
+ </IconTile>
+ <h1 className="text-xl font-extrabold tracking-tight text-cs-text">Retirement Simulator</h1>
+ </div>
  <span className="text-[11px] text-cs-muted">
  {vid
  ? `Viewing ${viewing?.name ?? 'owner'}’s plan — your edits aren’t saved`
@@ -672,7 +678,7 @@ export default function Retirement() {
  </span>
  </div>
 
- <div className="rounded-lg border border-cs-border bg-cs-raised ">
+ <div className="rounded-xl border border-cs-border bg-cs-raised ">
  <button
  type="button"
  onClick={() => setExplainerOpen(o => !o)}
@@ -711,7 +717,7 @@ export default function Retirement() {
  </div>
 
  {/* Card 1: Who & when */}
- <div className="rounded-lg border border-cs-border bg-cs-surface p-4 ">
+ <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
  <p className="mb-3 text-xs font-semibold text-cs-text-2">
  {vid ? `${ownerName ?? 'Owner'}'s details` : 'Who & when'}
  </p>
@@ -815,7 +821,7 @@ export default function Retirement() {
  </div>
 
  {/* Card 2: Your money */}
- <div className="rounded-lg border border-cs-border bg-cs-surface p-4 ">
+ <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
  <p className="mb-3 text-xs font-semibold text-cs-text-2">Your money</p>
  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
  <NumInput
@@ -1096,7 +1102,7 @@ export default function Retirement() {
  </div>
  </div>
 
- <div className="rounded-lg border border-cs-border bg-cs-surface p-4 ">
+ <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
  <p className="mb-3 text-xs font-semibold text-cs-text-2">Spending</p>
  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
  <NumInput
@@ -1160,7 +1166,7 @@ export default function Retirement() {
  </div>
 
  {/* Card 4: Social Security */}
- <div className="rounded-lg border border-cs-border bg-cs-surface p-4 ">
+ <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
  <p className="mb-3 text-xs font-semibold text-cs-text-2">Social Security</p>
  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
  <NumInput
@@ -1293,7 +1299,7 @@ export default function Retirement() {
  </div>
 
  {/* Card 5: Market outlook */}
- <div className="rounded-lg border border-cs-border bg-cs-surface p-4 ">
+ <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
  <div className="mb-3 flex items-center gap-1.5">
  <p className="text-xs font-semibold text-cs-text-2">Market outlook</p>
  <InfoButton open={sigmaOpen} onToggle={() => setSigmaOpen(o => !o)} label="Market outlook" />
@@ -1314,25 +1320,12 @@ export default function Retirement() {
  </p>
  </div>
  )}
- <div className="flex flex-wrap gap-1.5">
- {SCENARIO_ORDER.map(s => {
- const active = params.scenario === s
- return (
- <button
- key={s}
- type="button"
- onClick={() => update('scenario', s)}
- className={`rounded-full border px-3 py-1 text-[11px] font-medium transition-colors ${
- active
- ? 'border-rose-500 bg-rose-100 text-rose-800 dark:border-rose-400 dark:bg-rose-950/40 dark:text-rose-300'
- : 'border-cs-border-strong bg-cs-surface text-cs-text-2 hover:bg-cs-raised '
- }`}
- >
- {SCENARIO_LABELS[s]}
- </button>
- )
- })}
- </div>
+ <Segmented
+ ariaLabel="Market outlook scenario"
+ options={SCENARIO_ORDER.map(s => ({ value: s, label: SCENARIO_LABELS[s] }))}
+ value={params.scenario}
+ onChange={v => update('scenario', v)}
+ />
  {params.scenario === 'custom' && (
  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
  <NumInput
@@ -1377,6 +1370,29 @@ export default function Retirement() {
 
  {result && (
  <>
+ {(() => {
+ const p10Row = finalRows.find(r => Math.round(r.q * 100) === 10)
+ const p90Row = finalRows.find(r => Math.round(r.q * 100) === 90)
+ return (
+ <HeroCard watermark={<IconMountainFlag className="h-28 w-28" />}>
+ <div className="flex items-center justify-between gap-2">
+ <Eyebrow className="text-white">Age {params.endAge} estimate range</Eyebrow>
+ <IconTile tone="brand" className="h-9 w-9 rounded-lg bg-white/15 text-white">
+ <IconCompass className="h-4 w-4" />
+ </IconTile>
+ </div>
+ <p className="mt-1 text-2xl font-extrabold tabular-nums tracking-tight sm:text-3xl">
+ {p10Row ? fmt$M(p10Row.value) : '—'} – {p90Row ? fmt$M(p90Row.value) : '—'}
+ </p>
+ <p className="text-xs text-white">10th–90th percentile, today&rsquo;s dollars</p>
+ <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-white">
+ <span><span className="font-semibold">{fmt$M(result.medianFinalM)}</span> typical (median)</span>
+ <span className="hidden h-1 w-1 rounded-full bg-white/60 sm:inline-block" />
+ <span><span className="font-semibold">{fmtPct(result.pctRuin)}</span> risk of running out</span>
+ </div>
+ </HeroCard>
+ )
+ })()}
  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
  <StatCard
  label="Ended richer than you started"
@@ -1403,7 +1419,7 @@ export default function Retirement() {
  />
  </div>
 
- <div className="rounded-lg border border-cs-border bg-cs-surface p-4 ">
+ <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
  <p className="mb-2 text-xs font-semibold text-cs-text-2">
  How your wealth could play out over time (today's dollars)
  </p>
@@ -1443,7 +1459,7 @@ export default function Retirement() {
  </div>
 
  {histData && (
- <div className="rounded-lg border border-cs-border bg-cs-surface p-4 ">
+ <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
  <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
  <p className="text-xs font-semibold text-cs-text-2">
  Where you end up at age {params.endAge} (today's dollars)
@@ -1486,7 +1502,7 @@ export default function Retirement() {
  </div>
  )}
 
- <div className="rounded-lg border border-cs-border bg-cs-surface p-4 ">
+ <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
  <p className="mb-2 text-xs font-semibold text-cs-text-2">
  Range of final outcomes at age {params.endAge} (today's dollars)
  </p>
@@ -1540,7 +1556,7 @@ export default function Retirement() {
  <div>
  <button
  onClick={() => setShowRuinTable(v => !v)}
- className="flex w-full items-center justify-between rounded-lg border border-cs-border bg-cs-surface px-4 py-3 text-xs font-medium text-cs-text-2 hover:bg-cs-raised "
+ className="flex w-full items-center justify-between rounded-xl border border-cs-border bg-cs-surface px-4 py-3 text-xs font-medium text-cs-text-2 shadow-card hover:bg-cs-raised "
  >
  <span>Risk of ruin — conditional analysis</span>
  <span className="text-cs-muted">{showRuinTable ? '▲' : '▼'}</span>
@@ -1552,7 +1568,7 @@ export default function Retirement() {
  )}
 
  {!hasRun && (
- <div className="rounded-lg border border-cs-border bg-cs-raised p-4 text-xs leading-relaxed text-cs-text-2 ">
+ <div className="rounded-xl border border-cs-border bg-cs-raised p-4 text-xs leading-relaxed text-cs-text-2 ">
  Set your numbers above and hit <strong>Run simulation</strong>. We'll simulate your retirement 100,000 times in your browser — takes a few seconds.
  </div>
  )}

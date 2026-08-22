@@ -372,7 +372,7 @@ export default function Loans() {
  <button
  onClick={() => handleSave(false)}
  disabled={saving}
- className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+ className="rounded-full bg-cs-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-cs-brand-hover disabled:opacity-50"
  >
  {saving ? 'Saving...' : 'Save'}
  </button>
@@ -414,7 +414,7 @@ export default function Loans() {
  >
  {regenerating ? 'Updating…' : 'Update repayment sales'}
  </button>
- <button onClick={openAdd} className="rounded-md bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700">
+ <button onClick={openAdd} className="rounded-full bg-cs-brand px-3 py-1 text-xs font-semibold text-white hover:bg-cs-brand-hover">
  + Loan
  </button>
  </div>
@@ -429,7 +429,7 @@ export default function Loans() {
  const isExpanded = expandedLoanId === l.id
  const refinancedByLoan = loans.find(other => other.refinances_loan_id === l.id)
  return (
- <div key={l.id} className="rounded-lg border border-cs-border bg-cs-surface p-3 text-xs ">
+ <div key={l.id} className="rounded-xl border border-cs-border bg-cs-surface p-3 text-xs shadow-card">
  {/* Line 1: Grant + Type + Action */}
  <div className="flex items-center justify-between">
  <div className="flex items-center gap-2">
@@ -489,7 +489,7 @@ export default function Loans() {
  )
  })}
  </div> : /* Desktop table layout */
- <div tabIndex={0} className="overflow-x-auto rounded-lg border border-cs-border">
+ <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-cs-border bg-cs-surface shadow-card">
  <table className="w-full text-left text-xs">
  <thead className="bg-cs-raised">
  <tr className="text-cs-text-2">

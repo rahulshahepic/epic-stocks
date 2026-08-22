@@ -278,7 +278,7 @@ export default function ImportExport() {
  </button>
 
  {/* Templates & Reference */}
- <div className="rounded-lg border border-cs-border bg-cs-surface p-4 ">
+ <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
  <p className="text-sm font-semibold text-cs-text">Templates &amp; Reference</p>
  <div className="mt-2 flex flex-wrap gap-2">
  <button

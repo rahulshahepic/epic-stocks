@@ -3,6 +3,9 @@ import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.ts'
 import { api } from '../../api.ts'
 import { useAppContext } from '../contexts/AppContext.tsx'
+import { HeroIllustration } from '../components/ui/icons.tsx'
+import { IconTile, Card, Eyebrow } from '../components/ui/Card.tsx'
+import { IconTrendUp, IconCompass, IconShield } from '../components/ui/icons.tsx'
 
 function generateCodeVerifier(): string {
  const array = new Uint8Array(64)
@@ -21,6 +24,27 @@ async function generateCodeChallenge(verifier: string): Promise<string> {
  .replace(/\//g, '_')
  .replace(/=/g, '')
 }
+
+const FEATURES = [
+ {
+ icon: <IconTrendUp />,
+ tone: 'brand' as const,
+ title: 'Real-time tracking',
+ body: 'See your equity, loans, and vesting in real time.',
+ },
+ {
+ icon: <IconCompass />,
+ tone: 'amber' as const,
+ title: 'Smart projections',
+ body: 'Model your future wealth and plan with confidence.',
+ },
+ {
+ icon: <IconShield />,
+ tone: 'emerald' as const,
+ title: 'Privacy first',
+ body: 'Your data stays private and secure, always.',
+ },
+]
 
 export default function Login() {
  const { isAuthenticated } = useAuth()
@@ -71,60 +95,82 @@ export default function Login() {
  }
 
  return (
- <div className="flex min-h-screen flex-col items-center justify-center bg-cs-base px-4">
- <div className="w-full max-w-sm text-center">
- <h1 className="mb-2 text-2xl font-bold text-cs-brand">
- {appName}
+ <div className="flex min-h-screen flex-col items-center bg-cs-base px-4 py-10">
+ <div className="w-full max-w-sm">
+ <div className="overflow-hidden rounded-2xl border border-cs-border bg-cs-surface shadow-card">
+ <HeroIllustration className="h-40 w-full" />
+ </div>
+
+ <div className="mt-7 text-center">
+ <h1 className="text-3xl font-extrabold tracking-tight text-cs-text">
+ Welcome to <span className="text-cs-brand">{appName}</span>
  </h1>
- <p className="mb-8 text-sm text-cs-text-2">
+ <p className="mx-auto mt-2 max-w-[26rem] text-sm leading-relaxed text-cs-text-2">
  {appTagline}
  </p>
+ </div>
+
+ <div className="mt-7 space-y-2.5">
+ {FEATURES.map(f => (
+ <div key={f.title} className="flex items-center gap-3 rounded-xl border border-cs-border bg-cs-surface px-3.5 py-3 shadow-card">
+ <IconTile tone={f.tone}>{f.icon}</IconTile>
+ <div className="min-w-0">
+ <p className="text-sm font-semibold text-cs-text">{f.title}</p>
+ <p className="text-xs leading-snug text-cs-text-2">{f.body}</p>
+ </div>
+ </div>
+ ))}
+ </div>
 
  {error && (
- <p role="alert" className="mb-4 rounded-lg bg-red-50 p-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-400">
+ <p role="alert" className="mt-6 rounded-xl bg-red-50 p-3 text-sm text-red-700 shadow-card dark:bg-red-900/30 dark:text-red-400">
  {error}
  </p>
  )}
 
- <div className="space-y-2">
- {providers.map(p => (
+ <div className="mt-7 space-y-2">
+ {providers.map((p, i) => (
  <button
  key={p.name}
  onClick={() => handleSignIn(p.name)}
  disabled={loading !== null}
- className="w-full rounded-lg border border-cs-border-strong bg-cs-surface px-4 py-2.5 text-sm font-medium text-cs-text shadow-sm transition hover:bg-cs-raised disabled:opacity-50"
+ className={`w-full rounded-xl px-4 py-3 text-sm font-semibold shadow-card transition disabled:opacity-50 ${
+ i === 0
+ ? 'bg-cs-brand text-white hover:bg-cs-brand-hover'
+ : 'border border-cs-border-strong bg-cs-surface text-cs-text hover:bg-cs-raised'
+ }`}
  >
  {loading === p.name ? 'Redirecting…' : `Sign in with ${p.label}`}
  </button>
  ))}
  {providers.length === 0 && (
- <p className="text-sm text-cs-text-2">No sign-in providers configured.</p>
+ <p className="text-center text-sm text-cs-text-2">No sign-in providers configured.</p>
  )}
  </div>
 
- <div className="mt-8 rounded-lg border border-cs-border bg-cs-surface p-4 text-left ">
- <p className="mb-2 text-xs font-medium text-cs-text-2">Your data &amp; privacy</p>
- <ul className="space-y-1.5 text-xs text-cs-text-2">
+ <Card className="mt-6 text-left">
+ <Eyebrow className="mb-2">Your data &amp; privacy</Eyebrow>
+ <ul className="space-y-1.5 text-xs leading-relaxed text-cs-text-2">
  <li>
- <span className="font-medium text-cs-text-2 ">Secure sign-in.</span>{' '}
+ <span className="font-medium text-cs-text">Secure sign-in.</span>{' '}
  We never handle your password — your identity provider verifies you and shares only your name and email with us.
  </li>
  <li>
- <span className="font-medium text-cs-text-2 ">Your data is encrypted with a unique per-user key.</span>{' '}
+ <span className="font-medium text-cs-text">Your data is encrypted with a unique per-user key.</span>{' '}
  Your financial data is stored encrypted using AES-256-GCM with a key unique to your account. You can export your data at any time.
  </li>
  <li>
- <span className="font-medium text-cs-text-2 ">We will never sell your data</span>{' '}
+ <span className="font-medium text-cs-text">We will never sell your data</span>{' '}
  to any third party, for any reason.
  </li>
  </ul>
- </div>
+ </Card>
 
- <p className="mt-4 text-xs text-cs-text-2">
+ <p className="mt-4 text-center text-xs text-cs-text-2">
  By using this site, you agree to our{' '}
  <Link
  to="/privacy"
- className="underline hover:text-cs-text"
+ className="font-medium text-cs-brand underline decoration-cs-brand/40 underline-offset-2 hover:text-cs-brand-hover"
  >
  Privacy Policy
  </Link>

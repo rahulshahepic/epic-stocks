@@ -1939,13 +1939,19 @@ export default function Dashboard() {
  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
  <button
  onClick={() => setExitBreakdownOpen(o => !o)}
- className="col-span-2 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-left dark:border-emerald-800 dark:bg-emerald-950/40"
+ aria-expanded={exitBreakdownOpen}
+ className="col-span-2 rounded-2xl border border-cs-border bg-cs-surface p-4 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-pop"
  >
- <p className="text-xs font-medium uppercase text-emerald-700 dark:text-emerald-300">Net Cash at Exit</p>
- <p className="mt-1 text-xl font-semibold text-cs-text">{fmt$(exitPreview.net_cash)}</p>
- <p className="mt-1 text-[11px] leading-tight text-cs-muted">
- {exitBreakdownOpen ? '▲ hide breakdown' : '▼ see breakdown'}
- </p>
+ <div className="flex items-center justify-between">
+ <IconTile tone="emerald" className="h-8 w-8 rounded-lg">
+ <IconTrendUp className="h-4 w-4" />
+ </IconTile>
+ <span className={`text-cs-muted transition-transform ${exitBreakdownOpen ? 'rotate-180' : ''}`} aria-hidden="true">
+ <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></svg>
+ </span>
+ </div>
+ <p className="mt-2.5 text-xs font-medium uppercase tracking-wide text-cs-text-2">Net Cash at Exit</p>
+ <p className="mt-0.5 text-xl font-bold tabular-nums text-cs-text">{fmt$(exitPreview.net_cash)}</p>
  </button>
  <Card label="Gross Proceeds" value={fmt$(exitPreview.gross_vested + exitPreview.unvested_cost_proceeds)} variant="gains" subtitle="Liquidated shares × price" />
  <Card label="Loans Paid Off" value={fmt$(exitPreview.outstanding_principal + exitPreview.outstanding_accrued_interest)} variant="loans" subtitle="Principal + accrued interest" />

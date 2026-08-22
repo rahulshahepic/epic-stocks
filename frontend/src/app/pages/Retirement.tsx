@@ -19,7 +19,7 @@ import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
 import { useMe, updateMeCache } from '../../scaffold/hooks/useMe.ts'
 import { HeroCard, IconTile, Eyebrow, type TileTone } from '../../scaffold/components/ui/Card.tsx'
 import { Segmented } from '../../scaffold/components/ui/Segmented.tsx'
-import { Sparkline, IconCompass, IconTrendUp } from '../../scaffold/components/ui/icons.tsx'
+import { IconCompass, IconMountainFlag, IconTrendUp } from '../../scaffold/components/ui/icons.tsx'
 import {
  computeFanPercentiles,
  computeRiskOfRuinTable,
@@ -1374,7 +1374,7 @@ export default function Retirement() {
  const p10Row = finalRows.find(r => Math.round(r.q * 100) === 10)
  const p90Row = finalRows.find(r => Math.round(r.q * 100) === 90)
  return (
- <HeroCard watermark={<Sparkline className="h-24 w-40" color="#fff" />}>
+ <HeroCard watermark={<IconMountainFlag className="h-28 w-28" />}>
  <div className="flex items-center justify-between gap-2">
  <Eyebrow className="text-white/70">Age {params.endAge} estimate range</Eyebrow>
  <IconTile tone="brand" className="h-9 w-9 rounded-lg bg-white/15 text-white">

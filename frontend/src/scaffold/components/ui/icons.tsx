@@ -64,6 +64,23 @@ export function IconBell({ className = base }: IconProps) {
   )
 }
 
+/**
+ * Mountain peak with a summit flag — echoes the welcome-screen hero
+ * illustration's skyline so the "journey to the top" motif carries through
+ * to the other place in the app that talks about a future destination
+ * (the projections hero).
+ */
+export function IconMountainFlag({ className = base }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path d="M3 19h8.5L8 12l-2.2 3.5L4.5 14 3 19Z" fill="currentColor" opacity={0.5} />
+      <path d="M8 19h13l-6.5-12L11 13l-2-3.2L8 19Z" fill="currentColor" />
+      <path d="M14.5 7 V3" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" />
+      <path d="M14.5 3.2 18 4.7l-3.5 1.5V3.2Z" fill="currentColor" />
+    </svg>
+  )
+}
+
 export function IconChevronLeft({ className = base }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">

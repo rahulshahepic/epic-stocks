@@ -132,6 +132,8 @@ const CARD_STYLES: Record<string, { bg: string; border: string; label: string }>
  tax: { bg: 'bg-orange-50 dark:bg-orange-950/40', border: 'border-orange-200 dark:border-orange-800', label: 'text-orange-700 dark:text-orange-300' },
  cash: { bg: 'bg-green-50 dark:bg-green-950/40', border: 'border-green-200 dark:border-green-800', label: 'text-green-700 dark:text-green-300' },
  unvested: { bg: 'bg-indigo-50 dark:bg-indigo-950/40', border: 'border-indigo-200 dark:border-indigo-800', label: 'text-indigo-700 dark:text-indigo-300' },
+ value: { bg: 'bg-teal-50 dark:bg-teal-950/40', border: 'border-teal-200 dark:border-teal-800', label: 'text-teal-700 dark:text-teal-300' },
+ costbasis: { bg: 'bg-slate-50 dark:bg-slate-950/40', border: 'border-slate-200 dark:border-slate-800', label: 'text-slate-700 dark:text-slate-300' },
 }
 
 function Card({ label, value, subvalue, variant, subtitle, onClick, expanded }: { label: string; value: string; subvalue?: string; variant: string; subtitle?: string; onClick?: () => void; expanded?: boolean }) {
@@ -1598,6 +1600,22 @@ export default function Dashboard() {
  <section className="space-y-3">
  <p className="text-[11px] font-semibold uppercase tracking-wide text-cs-muted">Your Shares</p>
  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+ <Card
+ label="Value Today"
+ value={grantHoldings ? fmt$(grantHoldings.reduce((s, h) => s + h.totalValue, 0)) : '—'}
+ variant="value"
+ subtitle="Vested at FMV + unvested at cost basis"
+ onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
+ expanded={openBreakdowns.has('grants')}
+ />
+ <Card
+ label="Total Cost Basis"
+ value={grantHoldings ? fmt$(grantHoldings.reduce((s, h) => s + (h.vestedShares + h.unvestedShares) * h.costBasis, 0)) : '—'}
+ variant="costbasis"
+ subtitle="What you paid for all held shares"
+ onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
+ expanded={openBreakdowns.has('grants')}
+ />
  <Card label={cv.price_is_estimate ? 'Share Price (est.)' : 'Share Price'} value={fmtPrice(cv.current_price)} variant="price" subtitle="Price per share on this date" />
  <Card
  label="Vested Shares"

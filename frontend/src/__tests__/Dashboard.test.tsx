@@ -53,6 +53,17 @@ const MOCK_PRICES_WITH_FUTURE_SAME = [
   { id: 3, effective_date: '2028-01-01', price: 2.50 },  // same as current
 ]
 
+const MOCK_GRANTS = [
+  {
+    id: 1, version: 1, year: 2020, type: 'Purchase', shares: 2000, price: 1.99,
+    vest_start: '2020-01-01', periods: 1, exercise_date: '2020-01-01', dp_shares: 0, election_83b: false,
+  },
+  {
+    id: 2, version: 1, year: 2030, type: 'Purchase', shares: 1000, price: 3.00,
+    vest_start: '2030-01-01', periods: 1, exercise_date: '2030-01-01', dp_shares: 0, election_83b: false,
+  },
+]
+
 const MOCK_LOANS = [
   {
     id: 1, version: 1, grant_year: 2020, grant_type: 'Purchase', loan_type: 'Purchase',
@@ -80,6 +91,9 @@ function mockApi(prices = MOCK_PRICES) {
     }
     if (url.includes('/api/loans')) {
       return new Response(JSON.stringify(MOCK_LOANS), { status: 200 })
+    }
+    if (url.includes('/api/grants')) {
+      return new Response(JSON.stringify(MOCK_GRANTS), { status: 200 })
     }
     if (url.includes('/api/sales')) {
       return new Response(JSON.stringify(MOCK_SALES), { status: 200 })
@@ -116,6 +130,23 @@ describe('Dashboard', () => {
     expect(screen.getByText('$75,000')).toBeInTheDocument()
     expect(screen.getByText(/2027-03-01/)).toBeInTheDocument()
     expect(screen.getByText(/Vesting/)).toBeInTheDocument()
+  })
+
+  it('shows Value Today (vested at FMV + unvested at cost basis) and Total Cost Basis', async () => {
+    mockApi()
+    renderDashboard()
+
+    // Grant 1: 2000 shares, fully vested since 2020, held at $8.50 FMV -> $17,000
+    // Grant 2: 1000 shares, not vested until 2030, valued at $3.00 cost basis -> $3,000
+    // Value Today = $17,000 + $3,000 = $20,000
+    await waitFor(() => {
+      expect(screen.getByText('Value Today')).toBeInTheDocument()
+    })
+    expect(screen.getByText('$20,000')).toBeInTheDocument()
+
+    // Total Cost Basis = 2000 * $1.99 + 1000 * $3.00 = $3,980 + $3,000 = $6,980
+    expect(screen.getByText('Total Cost Basis')).toBeInTheDocument()
+    expect(screen.getByText('$6,980')).toBeInTheDocument()
   })
 
   it('renders color-coded card labels', async () => {

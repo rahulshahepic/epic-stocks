@@ -44,6 +44,13 @@ export function HeroCard({
     <div
       className={`relative overflow-hidden rounded-2xl bg-gradient-to-br from-cs-brand to-cs-brand-hover p-5 text-white shadow-card-brand ${className}`}
     >
+      {/* Scrim: dark mode's brand red is bright enough that white text on its own
+          falls under WCAG AA (4.5:1) against it. A flat, uniform wash keeps every line
+          of text in this card safely above 4.5:1 in both themes, without darkening the
+          cs-brand token used everywhere else (buttons, nav pills). Text inside HeroCard
+          should stay solid `text-white` (no opacity modifiers) — that's what this scrim
+          is calibrated against. */}
+      <div className="pointer-events-none absolute inset-0 bg-black/15" />
       {watermark && (
         <div className="pointer-events-none absolute -right-4 -top-4 opacity-15">
           {watermark}
@@ -78,7 +85,11 @@ export function IconTile({ tone = 'brand', children, className }: { tone?: TileT
   )
 }
 
-/** Uppercase eyebrow label used above section headings and hero figures. */
+/**
+ * Uppercase eyebrow label used above section headings and hero figures.
+ * Full-opacity `text-cs-text-2` — not a translucent variant — since axe flagged
+ * an earlier `/80` version as failing WCAG AA color-contrast on the Login page.
+ */
 export function Eyebrow({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <p className={`text-xs font-semibold uppercase tracking-wide text-cs-text-2/80 ${className}`}>{children}</p>
+  return <p className={`text-xs font-semibold uppercase tracking-wide text-cs-text-2 ${className}`}>{children}</p>
 }

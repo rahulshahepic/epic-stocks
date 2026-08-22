@@ -96,7 +96,7 @@ export function IconChevronLeft({ className = base }: IconProps) {
  */
 export function HeroIllustration({ className = '' }: IconProps) {
   return (
-    <svg viewBox="0 0 320 200" fill="none" className={className} role="img" aria-label="">
+    <svg viewBox="0 0 320 200" fill="none" className={className} aria-hidden="true">
       <defs>
         <linearGradient id="hero-sky" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="var(--cs-brand-subtle)" />

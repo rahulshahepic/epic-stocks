@@ -4,7 +4,7 @@ import { useAuth } from '../hooks/useAuth.ts'
 import { api } from '../../api.ts'
 import { useAppContext } from '../contexts/AppContext.tsx'
 import { HeroIllustration } from '../components/ui/icons.tsx'
-import { IconTile, Card } from '../components/ui/Card.tsx'
+import { IconTile, Card, Eyebrow } from '../components/ui/Card.tsx'
 import { IconTrendUp, IconCompass, IconShield } from '../components/ui/icons.tsx'
 
 function generateCodeVerifier(): string {
@@ -149,7 +149,7 @@ export default function Login() {
  </div>
 
  <Card className="mt-6 text-left">
- <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-cs-text-2/80">Your data &amp; privacy</p>
+ <Eyebrow className="mb-2">Your data &amp; privacy</Eyebrow>
  <ul className="space-y-1.5 text-xs leading-relaxed text-cs-text-2">
  <li>
  <span className="font-medium text-cs-text">Secure sign-in.</span>{' '}

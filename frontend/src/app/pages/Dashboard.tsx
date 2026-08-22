@@ -1600,16 +1600,16 @@ export default function Dashboard() {
 
  {grantHoldings && (
  <HeroCard watermark={<Sparkline className="h-24 w-40" color="#fff" />}>
- <Eyebrow className="text-white/70">Portfolio value · as of {fmtFullDate(cardDate)}</Eyebrow>
+ <Eyebrow className="text-white">Portfolio value · as of {fmtFullDate(cardDate)}</Eyebrow>
  <p className="mt-1 text-3xl font-extrabold tabular-nums tracking-tight sm:text-4xl">
  {fmt$(grantHoldings.reduce((s, h) => s + h.totalValue, 0))}
  </p>
- <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-white/85">
- <span><span className="font-semibold text-white">{fmtNum(cv.total_shares)}</span> vested shares</span>
- <span className="hidden h-1 w-1 rounded-full bg-white/40 sm:inline-block" />
+ <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-white">
+ <span><span className="font-semibold">{fmtNum(cv.total_shares)}</span> vested shares</span>
+ <span className="hidden h-1 w-1 rounded-full bg-white/60 sm:inline-block" />
  <span>
- <span className="font-semibold text-white">{fmtPrice(cv.current_price)}</span> / share
- {cv.price_is_estimate && <span className="ml-1 text-white/60">(est.)</span>}
+ <span className="font-semibold">{fmtPrice(cv.current_price)}</span> / share
+ {cv.price_is_estimate && <span className="ml-1">(est.)</span>}
  </span>
  </div>
  </HeroCard>

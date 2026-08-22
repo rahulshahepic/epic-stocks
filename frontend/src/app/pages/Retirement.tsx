@@ -1376,7 +1376,7 @@ export default function Retirement() {
  return (
  <HeroCard watermark={<IconMountainFlag className="h-28 w-28" />}>
  <div className="flex items-center justify-between gap-2">
- <Eyebrow className="text-white/70">Age {params.endAge} estimate range</Eyebrow>
+ <Eyebrow className="text-white">Age {params.endAge} estimate range</Eyebrow>
  <IconTile tone="brand" className="h-9 w-9 rounded-lg bg-white/15 text-white">
  <IconCompass className="h-4 w-4" />
  </IconTile>
@@ -1384,11 +1384,11 @@ export default function Retirement() {
  <p className="mt-1 text-2xl font-extrabold tabular-nums tracking-tight sm:text-3xl">
  {p10Row ? fmt$M(p10Row.value) : '—'} – {p90Row ? fmt$M(p90Row.value) : '—'}
  </p>
- <p className="text-xs text-white/70">10th–90th percentile, today&rsquo;s dollars</p>
- <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-white/85">
- <span><span className="font-semibold text-white">{fmt$M(result.medianFinalM)}</span> typical (median)</span>
- <span className="hidden h-1 w-1 rounded-full bg-white/40 sm:inline-block" />
- <span><span className="font-semibold text-white">{fmtPct(result.pctRuin)}</span> risk of running out</span>
+ <p className="text-xs text-white">10th–90th percentile, today&rsquo;s dollars</p>
+ <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-white">
+ <span><span className="font-semibold">{fmt$M(result.medianFinalM)}</span> typical (median)</span>
+ <span className="hidden h-1 w-1 rounded-full bg-white/60 sm:inline-block" />
+ <span><span className="font-semibold">{fmtPct(result.pctRuin)}</span> risk of running out</span>
  </div>
  </HeroCard>
  )

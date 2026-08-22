@@ -1564,6 +1564,11 @@ export default function Dashboard() {
  const hasInterestLoans = loans?.some(l => l.loan_type === 'Interest' || l.loan_type === 'Purchase') ?? false
  const showDeductionCard = hasInterestDeduction || hasInterestLoans
 
+ // Computed once and shared by the hero card and the Value Today card below — they used to
+ // each call grantHoldings.reduce() independently, which is how the two could silently drift
+ // apart if only one call site got a future fix.
+ const totalValue = grantHoldings ? grantHoldings.reduce((s, h) => s + h.totalValue, 0) : 0
+
  return (
  <div className="space-y-6">
  {/* Date selector for card values */}
@@ -1610,14 +1615,11 @@ export default function Dashboard() {
 
  {!readOnly && <TipCarousel onApply={() => { reloadDash(); reloadEvents(); reloadTaxSettings() }} />}
 
- {grantHoldings && (() => {
- const totalValue = grantHoldings.reduce((s, h) => s + h.totalValue, 0)
- const netValue = totalValue - cv.total_loan_principal
- return (
+ {grantHoldings && (
  <HeroCard watermark={<Sparkline className="h-24 w-40" color="#fff" />}>
  <Eyebrow className="text-white">Net worth · as of {fmtFullDate(cardDate)}</Eyebrow>
  <p className="mt-1 text-3xl font-extrabold tabular-nums tracking-tight sm:text-4xl">
- {fmt$(netValue)}
+ {fmt$(totalValue - cv.total_loan_principal)}
  </p>
  <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-white">
  <span><span className="font-semibold">{fmtNum(cv.total_shares)}</span> vested shares</span>
@@ -1634,8 +1636,7 @@ export default function Dashboard() {
  )}
  </div>
  </HeroCard>
- )
- })()}
+ )}
 
  {/* (F) aria-live so screen readers announce summary updates when cardDate changes */}
  <div aria-live="polite" aria-atomic="true" className="space-y-3">
@@ -1646,7 +1647,7 @@ export default function Dashboard() {
  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
  <Card
  label={cardDate === TODAY ? 'Value Today' : `Value on ${fmtFullDate(cardDate)}`}
- value={grantHoldings ? fmt$(grantHoldings.reduce((s, h) => s + h.totalValue, 0)) : '—'}
+ value={grantHoldings ? fmt$(totalValue) : '—'}
  variant="value"
  subtitle="Vested at FMV + unvested at cost basis"
  onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}

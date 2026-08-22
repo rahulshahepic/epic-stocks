@@ -1171,14 +1171,26 @@ export default function Dashboard() {
  ? taxSettings.federal_income_rate + taxSettings.state_income_rate
  : 0
 
- // Per-grant sold shares from explicit lot overrides (lot_overrides carries grant attribution)
+ // Per-grant sold shares from explicit lot overrides (lot_overrides carries grant attribution).
+ // Loan payoff sales carry no lot_overrides but do carry loan_id — attribute those to the
+ // grant the loan belongs to, otherwise their shares never leave heldVested even after the
+ // loan (and the shares that paid it off) are gone.
+ const loanById = new Map(loans.map(l => [l.id, l]))
  const soldByGrant = new Map<string, number>()
  for (const s of (sales ?? [])) {
- if (s.date > effectiveDate || !s.lot_overrides) continue
+ if (s.date > effectiveDate) continue
+ if (s.lot_overrides) {
  for (const lot of s.lot_overrides) {
  if (lot.grant_year == null || lot.grant_type == null) continue
  const key = `${lot.grant_year}-${lot.grant_type}`
  soldByGrant.set(key, (soldByGrant.get(key) ?? 0) + lot.shares)
+ }
+ } else if (s.loan_id != null) {
+ const loan = loanById.get(s.loan_id)
+ if (loan) {
+ const key = `${loan.grant_year}-${loan.grant_type}`
+ soldByGrant.set(key, (soldByGrant.get(key) ?? 0) + s.shares)
+ }
  }
  }
 
@@ -1552,6 +1564,11 @@ export default function Dashboard() {
  const hasInterestLoans = loans?.some(l => l.loan_type === 'Interest' || l.loan_type === 'Purchase') ?? false
  const showDeductionCard = hasInterestDeduction || hasInterestLoans
 
+ // Computed once and shared by the hero card and the Value Today card below — they used to
+ // each call grantHoldings.reduce() independently, which is how the two could silently drift
+ // apart if only one call site got a future fix.
+ const totalValue = grantHoldings ? grantHoldings.reduce((s, h) => s + h.totalValue, 0) : 0
+
  return (
  <div className="space-y-6">
  {/* Date selector for card values */}
@@ -1600,9 +1617,9 @@ export default function Dashboard() {
 
  {grantHoldings && (
  <HeroCard watermark={<Sparkline className="h-24 w-40" color="#fff" />}>
- <Eyebrow className="text-white">Portfolio value · as of {fmtFullDate(cardDate)}</Eyebrow>
+ <Eyebrow className="text-white">Net worth · as of {fmtFullDate(cardDate)}</Eyebrow>
  <p className="mt-1 text-3xl font-extrabold tabular-nums tracking-tight sm:text-4xl">
- {fmt$(grantHoldings.reduce((s, h) => s + h.totalValue, 0))}
+ {fmt$(totalValue - cv.total_loan_principal)}
  </p>
  <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-white">
  <span><span className="font-semibold">{fmtNum(cv.total_shares)}</span> vested shares</span>
@@ -1611,6 +1628,12 @@ export default function Dashboard() {
  <span className="font-semibold">{fmtPrice(cv.current_price)}</span> / share
  {cv.price_is_estimate && <span className="ml-1">(est.)</span>}
  </span>
+ {cv.total_loan_principal > 0 && (
+ <>
+ <span className="hidden h-1 w-1 rounded-full bg-white/60 sm:inline-block" />
+ <span>{fmt$(totalValue)} in shares − {fmt$(cv.total_loan_principal)} loans</span>
+ </>
+ )}
  </div>
  </HeroCard>
  )}
@@ -1623,8 +1646,8 @@ export default function Dashboard() {
  <p className="text-[11px] font-semibold uppercase tracking-wide text-cs-muted">Your Shares</p>
  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
  <Card
- label="Value Today"
- value={grantHoldings ? fmt$(grantHoldings.reduce((s, h) => s + h.totalValue, 0)) : '—'}
+ label={cardDate === TODAY ? 'Value Today' : `Value on ${fmtFullDate(cardDate)}`}
+ value={grantHoldings ? fmt$(totalValue) : '—'}
  variant="value"
  subtitle="Vested at FMV + unvested at cost basis"
  onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}

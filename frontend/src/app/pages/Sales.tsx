@@ -794,7 +794,7 @@ export default function Sales() {
  <div className="flex items-center justify-between">
  <h2 className="text-lg font-semibold text-cs-text">Sales</h2>
  {!readOnly && (
- <button onClick={openAdd} className="rounded-md bg-rose-700 px-2 py-1 text-xs font-medium text-white hover:bg-rose-800">
+ <button onClick={openAdd} className="rounded-full bg-cs-brand px-3 py-1 text-xs font-semibold text-white hover:bg-cs-brand-hover">
  + Sale
  </button>
  )}
@@ -808,7 +808,7 @@ export default function Sales() {
  const isLoading = loadingTaxIds.has(s.id)
  const hasST = bd && bd.st_shares > 0
  return (
- <div key={s.id} className="rounded-lg border border-cs-border bg-cs-surface p-3 text-xs ">
+ <div key={s.id} className="rounded-xl border border-cs-border bg-cs-surface p-3 text-xs shadow-card">
  {/* Line 1: Date + Type + Edit */}
  <div className="flex items-center justify-between">
  <div className="flex items-center gap-2">
@@ -866,7 +866,7 @@ export default function Sales() {
  )
  })}
  </div> : /* Desktop table layout */
- <div tabIndex={0} className="overflow-x-auto rounded-lg border border-cs-border">
+ <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-cs-border bg-cs-surface shadow-card">
  <table className="w-full text-left text-xs">
  <thead className="bg-cs-raised">
  <tr className="text-cs-text-2">

@@ -11,6 +11,8 @@ import { useDark } from '../../scaffold/hooks/useDark.ts'
 import ImportWizard from '../components/ImportWizard.tsx'
 import TipCarousel from '../components/TipCarousel.tsx'
 import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
+import { HeroCard, IconTile, Eyebrow, type TileTone } from '../../scaffold/components/ui/Card.tsx'
+import { Sparkline, IconTrendUp, IconPieChart, IconDocument, IconCompass } from '../../scaffold/components/ui/icons.tsx'
 
 function fmt$(n: number) {
  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
@@ -72,7 +74,7 @@ function RangeControls({ range, setRange, maxDate }: { range: DateRange; setRang
  <button
  onClick={() => setRange({ mode: 'all', start: '', end: '' })}
  aria-pressed={isAll}
- className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+ className={`rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors ${
  isAll
  ? 'bg-cs-brand text-white'
  : 'bg-cs-raised text-cs-text-2 hover:bg-cs-border '
@@ -85,7 +87,7 @@ function RangeControls({ range, setRange, maxDate }: { range: DateRange; setRang
  aria-label="Range start date"
  value={range.mode === 'custom' ? range.start : ''}
  onChange={e => setRange({ mode: 'custom', start: e.target.value, end: range.end || maxDate })}
- className="h-6 rounded border border-cs-border-strong bg-cs-surface px-1 text-xs text-cs-text"
+ className="h-6 rounded-md border border-cs-border-strong bg-cs-surface px-1 text-xs text-cs-text"
  />
  <span className="text-xs text-cs-text-2">–</span>
  <input
@@ -93,7 +95,7 @@ function RangeControls({ range, setRange, maxDate }: { range: DateRange; setRang
  aria-label="Range end date"
  value={range.mode === 'custom' ? range.end : ''}
  onChange={e => setRange({ mode: 'custom', start: range.start || '0000-01-01', end: e.target.value })}
- className="h-6 rounded border border-cs-border-strong bg-cs-surface px-1 text-xs text-cs-text"
+ className="h-6 rounded-md border border-cs-border-strong bg-cs-surface px-1 text-xs text-cs-text"
  />
  </div>
  )
@@ -121,19 +123,19 @@ function useChartColors(): ChartColors {
  : { grid: '#EAE7E3', axis: '#6B5F58', tooltipBg: '#ffffff', tooltipText: '#1A1411' }
 }
 
-const CARD_STYLES: Record<string, { bg: string; border: string; label: string }> = {
- price: { bg: 'bg-amber-50 dark:bg-amber-950/40', border: 'border-amber-200 dark:border-amber-800', label: 'text-amber-700 dark:text-amber-300' },
- shares: { bg: 'bg-rose-50 dark:bg-rose-950/30', border: 'border-rose-200 dark:border-rose-800', label: 'text-cs-brand' },
- income: { bg: 'bg-emerald-50 dark:bg-emerald-950/40', border: 'border-emerald-200 dark:border-emerald-800', label: 'text-emerald-700 dark:text-emerald-300' },
- gains: { bg: 'bg-purple-50 dark:bg-purple-950/40', border: 'border-purple-200 dark:border-purple-800', label: 'text-purple-700 dark:text-purple-700' },
- loans: { bg: 'bg-red-50 dark:bg-red-950/40', border: 'border-red-200 dark:border-red-800', label: 'text-red-700 dark:text-red-400' },
- interest: { bg: 'bg-rose-50 dark:bg-rose-950/40', border: 'border-rose-200 dark:border-rose-800', label: 'text-cs-brand' },
- event: { bg: 'bg-sky-50 dark:bg-sky-950/40', border: 'border-sky-200 dark:border-sky-800', label: 'text-sky-700 dark:text-sky-400' },
- tax: { bg: 'bg-orange-50 dark:bg-orange-950/40', border: 'border-orange-200 dark:border-orange-800', label: 'text-orange-700 dark:text-orange-300' },
- cash: { bg: 'bg-green-50 dark:bg-green-950/40', border: 'border-green-200 dark:border-green-800', label: 'text-green-700 dark:text-green-300' },
- unvested: { bg: 'bg-indigo-50 dark:bg-indigo-950/40', border: 'border-indigo-200 dark:border-indigo-800', label: 'text-indigo-700 dark:text-indigo-300' },
- value: { bg: 'bg-teal-50 dark:bg-teal-950/40', border: 'border-teal-200 dark:border-teal-800', label: 'text-teal-700 dark:text-teal-300' },
- costbasis: { bg: 'bg-slate-50 dark:bg-slate-950/40', border: 'border-slate-200 dark:border-slate-800', label: 'text-slate-700 dark:text-slate-300' },
+const CARD_STYLES: Record<string, { tone: TileTone; icon: React.ReactNode }> = {
+ price: { tone: 'amber', icon: <IconTrendUp className="h-4 w-4" /> },
+ shares: { tone: 'brand', icon: <IconTrendUp className="h-4 w-4" /> },
+ income: { tone: 'emerald', icon: <IconDocument className="h-4 w-4" /> },
+ gains: { tone: 'violet', icon: <IconTrendUp className="h-4 w-4" /> },
+ loans: { tone: 'brand', icon: <IconPieChart className="h-4 w-4" /> },
+ interest: { tone: 'brand', icon: <IconPieChart className="h-4 w-4" /> },
+ event: { tone: 'sky', icon: <IconCompass className="h-4 w-4" /> },
+ tax: { tone: 'amber', icon: <IconDocument className="h-4 w-4" /> },
+ cash: { tone: 'emerald', icon: <IconTrendUp className="h-4 w-4" /> },
+ unvested: { tone: 'slate', icon: <IconPieChart className="h-4 w-4" /> },
+ value: { tone: 'brand', icon: <IconTrendUp className="h-4 w-4" /> },
+ costbasis: { tone: 'slate', icon: <IconDocument className="h-4 w-4" /> },
 }
 
 function Card({ label, value, subvalue, variant, subtitle, onClick, expanded }: { label: string; value: string; subvalue?: string; variant: string; subtitle?: string; onClick?: () => void; expanded?: boolean }) {
@@ -141,15 +143,18 @@ function Card({ label, value, subvalue, variant, subtitle, onClick, expanded }: 
  const clickable = !!onClick
  const content = (
  <>
- <p className={`text-xs font-medium uppercase ${s.label}`}>{label}</p>
- <p className="mt-1 text-xl font-semibold text-cs-text">{value}</p>
- {subvalue && <p className="mt-0.5 text-sm font-medium text-cs-text-2">{subvalue}</p>}
- {subtitle && <p className="mt-1 text-[11px] leading-tight text-cs-muted">{subtitle}</p>}
+ <div className="flex items-center justify-between">
+ <IconTile tone={s.tone} className="h-8 w-8 rounded-lg">{s.icon}</IconTile>
  {clickable && (
- <p className="mt-1 text-[10px] leading-tight text-cs-muted">
- {expanded ? '▲ hide breakdown' : '▼ see breakdown'}
- </p>
+ <span className={`text-cs-muted transition-transform ${expanded ? 'rotate-180' : ''}`} aria-hidden="true">
+ <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></svg>
+ </span>
  )}
+ </div>
+ <p className="mt-2.5 text-xs font-medium uppercase tracking-wide text-cs-text-2">{label}</p>
+ <p className="mt-0.5 text-xl font-bold tabular-nums text-cs-text">{value}</p>
+ {subvalue && <p className="mt-0.5 text-sm font-medium tabular-nums text-cs-text-2">{subvalue}</p>}
+ {subtitle && <p className="mt-1 text-[11px] leading-tight text-cs-muted">{subtitle}</p>}
  </>
  )
  if (clickable) {
@@ -158,13 +163,13 @@ function Card({ label, value, subvalue, variant, subtitle, onClick, expanded }: 
  type="button"
  onClick={onClick}
  aria-expanded={!!expanded}
- className={`rounded-lg border p-4 text-left transition hover:shadow-sm ${s.bg} ${s.border}`}
+ className="rounded-2xl border border-cs-border bg-cs-surface p-4 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-pop"
  >
  {content}
  </button>
  )
  }
- return <div className={`rounded-lg border p-4 ${s.bg} ${s.border}`}>{content}</div>
+ return <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">{content}</div>
 }
 
 function BreakdownRow({ label, value, sub, bold, tone }: { label: ReactNode; value: string; sub?: string; bold?: boolean; tone?: 'positive' | 'negative' }) {
@@ -186,7 +191,7 @@ function BreakdownRow({ label, value, sub, bold, tone }: { label: ReactNode; val
 
 function BreakdownShell({ title, children }: { title: string; children: ReactNode }) {
  return (
- <div className="rounded-lg border border-cs-border bg-cs-raised p-4 text-xs ">
+ <div className="rounded-xl border border-cs-border bg-cs-raised p-4 text-xs ">
  <h3 className="mb-2 text-sm font-semibold text-cs-text">{title}</h3>
  <div className="space-y-1">{children}</div>
  </div>
@@ -196,7 +201,7 @@ function BreakdownShell({ title, children }: { title: string; children: ReactNod
 /** Detail card shown below a chart when user clicks a data point */
 function DetailCard({ items, onClose }: { items: { label: string; value: string }[]; onClose: () => void }) {
  return (
- <div className="mt-2 rounded-lg border border-cs-border bg-cs-raised px-3 py-2 ">
+ <div className="mt-2 rounded-xl border border-cs-border bg-cs-raised px-3 py-2 ">
  <div className="flex items-start justify-between">
  <div className="flex flex-wrap gap-x-4 gap-y-0.5">
  {items.map(({ label, value }) => (
@@ -774,9 +779,9 @@ function ChartBox({ title, children, range, setRange, maxDate }: {
  range?: DateRange; setRange?: (r: DateRange) => void; maxDate?: string
 }) {
  return (
- <div className="rounded-lg border border-cs-border bg-cs-surface p-4 ">
+ <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card sm:p-5">
  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
- <h3 className="text-sm font-medium text-cs-text-2">{title}</h3>
+ <h3 className="text-sm font-semibold text-cs-text">{title}</h3>
  {range && setRange && <RangeControls range={range} setRange={setRange} maxDate={maxDate ?? '2099-12-31'} />}
  </div>
  {children}
@@ -1550,7 +1555,7 @@ export default function Dashboard() {
  return (
  <div className="space-y-6">
  {/* Date selector for card values */}
- <div className="rounded-lg border border-cs-border bg-cs-surface px-3 py-2 ">
+ <div className="rounded-xl border border-cs-border bg-cs-surface px-3 py-2.5 shadow-card">
  <div className="flex items-center gap-2">
  <span className="shrink-0 text-xs font-medium text-cs-muted">As of</span>
  <input
@@ -1592,6 +1597,23 @@ export default function Dashboard() {
  </div>
 
  {!readOnly && <TipCarousel onApply={() => { reloadDash(); reloadEvents(); reloadTaxSettings() }} />}
+
+ {grantHoldings && (
+ <HeroCard watermark={<Sparkline className="h-24 w-40" color="#fff" />}>
+ <Eyebrow className="text-white">Portfolio value · as of {fmtFullDate(cardDate)}</Eyebrow>
+ <p className="mt-1 text-3xl font-extrabold tabular-nums tracking-tight sm:text-4xl">
+ {fmt$(grantHoldings.reduce((s, h) => s + h.totalValue, 0))}
+ </p>
+ <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-white">
+ <span><span className="font-semibold">{fmtNum(cv.total_shares)}</span> vested shares</span>
+ <span className="hidden h-1 w-1 rounded-full bg-white/60 sm:inline-block" />
+ <span>
+ <span className="font-semibold">{fmtPrice(cv.current_price)}</span> / share
+ {cv.price_is_estimate && <span className="ml-1">(est.)</span>}
+ </span>
+ </div>
+ </HeroCard>
+ )}
 
  {/* (F) aria-live so screen readers announce summary updates when cardDate changes */}
  <div aria-live="polite" aria-atomic="true" className="space-y-3">
@@ -1917,13 +1939,19 @@ export default function Dashboard() {
  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
  <button
  onClick={() => setExitBreakdownOpen(o => !o)}
- className="col-span-2 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-left dark:border-emerald-800 dark:bg-emerald-950/40"
+ aria-expanded={exitBreakdownOpen}
+ className="col-span-2 rounded-2xl border border-cs-border bg-cs-surface p-4 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-pop"
  >
- <p className="text-xs font-medium uppercase text-emerald-700 dark:text-emerald-300">Net Cash at Exit</p>
- <p className="mt-1 text-xl font-semibold text-cs-text">{fmt$(exitPreview.net_cash)}</p>
- <p className="mt-1 text-[11px] leading-tight text-cs-muted">
- {exitBreakdownOpen ? '▲ hide breakdown' : '▼ see breakdown'}
- </p>
+ <div className="flex items-center justify-between">
+ <IconTile tone="emerald" className="h-8 w-8 rounded-lg">
+ <IconTrendUp className="h-4 w-4" />
+ </IconTile>
+ <span className={`text-cs-muted transition-transform ${exitBreakdownOpen ? 'rotate-180' : ''}`} aria-hidden="true">
+ <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></svg>
+ </span>
+ </div>
+ <p className="mt-2.5 text-xs font-medium uppercase tracking-wide text-cs-text-2">Net Cash at Exit</p>
+ <p className="mt-0.5 text-xl font-bold tabular-nums text-cs-text">{fmt$(exitPreview.net_cash)}</p>
  </button>
  <Card label="Gross Proceeds" value={fmt$(exitPreview.gross_vested + exitPreview.unvested_cost_proceeds)} variant="gains" subtitle="Liquidated shares × price" />
  <Card label="Loans Paid Off" value={fmt$(exitPreview.outstanding_principal + exitPreview.outstanding_accrued_interest)} variant="loans" subtitle="Principal + accrued interest" />

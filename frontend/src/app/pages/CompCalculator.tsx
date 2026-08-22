@@ -333,7 +333,7 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
 }) {
  if (!row) {
   return (
-   <div className="rounded-lg border border-cs-border bg-cs-raised p-4 text-xs text-cs-text-2 ">
+   <div className="rounded-xl border border-cs-border bg-cs-raised p-4 text-xs text-cs-text-2 ">
     Not enough price history to compute comp for {year}. Pick a different year on the chart, or add a Dec 31 price for {year - 1} and {year} in <em>Settings → Prices</em>.
    </div>
   )
@@ -342,7 +342,7 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
   const hasPayAfterExit = row.salary > 0 || row.bonus > 0
   if (!hasPayAfterExit) {
    return (
-    <div className="rounded-lg border border-cs-border bg-cs-raised p-4 text-xs text-cs-text-2 ">
+    <div className="rounded-xl border border-cs-border bg-cs-raised p-4 text-xs text-cs-text-2 ">
      <p className="font-medium text-cs-text-2">After planned exit — no compensation realized in {year}.</p>
      <p className="mt-1">Unvested shares are sold back at cost basis on exit; appreciation after your exit date is not realized.</p>
     </div>
@@ -642,7 +642,7 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
  const inputCls = 'rounded border border-cs-border-strong bg-cs-surface px-2 py-0.5 text-xs text-cs-text placeholder-cs-muted focus:border-rose-400 focus:outline-none'
 
  return (
-  <div className="rounded-lg border border-cs-border bg-cs-raised">
+  <div className="rounded-xl border border-cs-border bg-cs-raised">
    <button
     type="button"
     onClick={() => setOpen(o => !o)}
@@ -1104,9 +1104,9 @@ export default function CompCalculator() {
 
  return (
   <div className="space-y-5">
-   <h1 className="text-lg font-bold text-cs-text">Total Comp Calculator</h1>
+   <h1 className="text-xl font-extrabold tracking-tight text-cs-text">Total Comp Calculator</h1>
 
-   <div className="rounded-lg border border-cs-border bg-cs-raised ">
+   <div className="rounded-xl border border-cs-border bg-cs-raised ">
     <button
      type="button"
      onClick={() => setExplainerOpen(o => !o)}
@@ -1131,7 +1131,7 @@ export default function CompCalculator() {
     )}
    </div>
 
-   <div className="flex flex-wrap items-center gap-3 rounded-lg border border-cs-border bg-cs-surface p-3 ">
+   <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-cs-border bg-cs-surface shadow-card p-3 ">
     <label className="flex items-center gap-2 text-xs font-medium text-cs-text">
      <span>Planned exit date</span>
      <input
@@ -1176,12 +1176,12 @@ export default function CompCalculator() {
    />
 
    {rows.length === 0 ? (
-    <div className="rounded-lg border border-cs-border bg-cs-surface p-4 text-xs text-cs-muted ">
+    <div className="rounded-2xl border border-cs-border bg-cs-surface shadow-card p-4 text-xs text-cs-muted ">
      Not enough price history yet. Add Dec 31 prices for at least two consecutive years in <em>Settings → Prices</em> to see comp by year.
     </div>
    ) : (
     <>
-     <div className="rounded-lg border border-cs-border bg-cs-surface p-4 ">
+     <div className="rounded-2xl border border-cs-border bg-cs-surface shadow-card p-4 ">
       <div className="mb-2 flex flex-wrap items-center gap-2">
        <p className="text-xs font-medium text-cs-text-2">
         {showTotal
@@ -1317,7 +1317,7 @@ export default function CompCalculator() {
       year={selectedYear ?? CURRENT_YEAR}
      />
 
-     <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-cs-border bg-cs-surface p-3 ">
+     <label className="flex cursor-pointer items-center gap-2 rounded-2xl border border-cs-border bg-cs-surface shadow-card p-3 ">
       <input
        type="checkbox"
        checked={deductOn}
@@ -1332,7 +1332,7 @@ export default function CompCalculator() {
       </div>
      </label>
 
-     <div className="rounded-lg border border-cs-border bg-cs-raised p-4 text-xs leading-relaxed text-cs-text-2 ">
+     <div className="rounded-xl border border-cs-border bg-cs-raised p-4 text-xs leading-relaxed text-cs-text-2 ">
       <p>
        <strong>Equivalent pretax salary</strong> is what you'd need in pretax salary (taxed at your ordinary income rate of{' '}
        <strong>{fmtPct(m, 1)}</strong>) to net the same after-tax dollars as this comp (taxed at your blended long-term capital gains rate of <strong>{fmtPct(c, 1)}</strong>). Tweak rates in <em>Settings → Tax Rates</em>.

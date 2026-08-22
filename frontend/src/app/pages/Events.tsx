@@ -441,7 +441,7 @@ export default function Events() {
  )
  })}
  </div> : /* Desktop table layout */
- <div tabIndex={0} className="overflow-x-auto rounded-lg border border-cs-border">
+ <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-cs-border bg-cs-surface shadow-card">
  <table className="w-full text-left text-xs">
  <thead className="bg-cs-raised">
  <tr className="text-cs-text-2">

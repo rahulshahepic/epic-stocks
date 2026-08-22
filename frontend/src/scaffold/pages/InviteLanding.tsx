@@ -116,7 +116,7 @@ export default function InviteLanding() {
 
  {info?.valid && !isLoggedIn() && (
  <>
- <div className="mb-6 rounded-lg border border-cs-border bg-cs-surface p-4 text-left ">
+ <div className="mb-6 rounded-2xl border border-cs-border bg-cs-surface p-4 text-left shadow-card">
  <p className="mb-2 text-sm text-cs-text-2">
  <strong>{info.inviter_name}</strong> has invited you to view their equity vesting data.
  </p>

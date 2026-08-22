@@ -128,7 +128,7 @@ Summary cards showing everything that has happened through the selected date:
 
 | Card group | What it shows |
 |-----------|--------------|
-| **Your Shares** | Current share price, vested shares, unvested shares, next scheduled event |
+| **Your Shares** | Value today (vested shares at current FMV + unvested shares at cost basis), total cost basis, current share price, vested shares, unvested shares, next scheduled event |
 | **Earnings** | Total ordinary income recognized from vesting, total capital gains from sales, net cash received |
 | **Costs** | Outstanding loan principal, total interest accrued, estimated taxes paid |
 

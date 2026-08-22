@@ -73,6 +73,7 @@ const MOCK_LOANS = [
 ]
 
 beforeEach(() => {
+  localStorage.clear()
   localStorage.setItem('auth_token', 'test-token')
   vi.restoreAllMocks()
 })
@@ -143,12 +144,41 @@ describe('Dashboard', () => {
     await waitFor(() => {
       expect(screen.getByText('Value Today')).toBeInTheDocument()
     })
-    // "$20,000" appears both in the portfolio-value hero card and the Value Today card
-    expect(screen.getAllByText('$20,000').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('$20,000')).toBeInTheDocument()
 
     // Total Cost Basis = 2000 * $1.99 + 1000 * $3.00 = $3,980 + $3,000 = $6,980
     expect(screen.getByText('Total Cost Basis')).toBeInTheDocument()
     expect(screen.getByText('$6,980')).toBeInTheDocument()
+  })
+
+  it('hero card shows net worth (share value minus outstanding loan principal), not gross value', async () => {
+    mockApi()
+    renderDashboard()
+
+    // Value Today = $20,000 (see previous test); MOCK_LOANS has one outstanding $75,000 loan.
+    // Net worth = $20,000 - $75,000 = -$55,000, not the gross $20,000 share value.
+    await waitFor(() => {
+      expect(screen.getByText(/^Net worth/)).toBeInTheDocument()
+    })
+    expect(screen.getByText('-$55,000')).toBeInTheDocument()
+    expect(screen.getByText('$20,000 in shares − $75,000 loans')).toBeInTheDocument()
+  })
+
+  it('labels the value card with the selected date, not always "Today"', async () => {
+    mockApi()
+    renderDashboard()
+
+    await waitFor(() => {
+      expect(screen.getByText('Value Today')).toBeInTheDocument()
+    })
+
+    const dateInput = screen.getByDisplayValue(new Date().toISOString().slice(0, 10))
+    fireEvent.change(dateInput, { target: { value: '2021-03-01' } })
+
+    await waitFor(() => {
+      expect(screen.getByText('Value on Mar 1, 2021')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('Value Today')).not.toBeInTheDocument()
   })
 
   it('renders color-coded card labels', async () => {

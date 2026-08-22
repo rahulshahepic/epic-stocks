@@ -1598,11 +1598,14 @@ export default function Dashboard() {
 
  {!readOnly && <TipCarousel onApply={() => { reloadDash(); reloadEvents(); reloadTaxSettings() }} />}
 
- {grantHoldings && (
+ {grantHoldings && (() => {
+ const totalValue = grantHoldings.reduce((s, h) => s + h.totalValue, 0)
+ const netValue = totalValue - cv.total_loan_principal
+ return (
  <HeroCard watermark={<Sparkline className="h-24 w-40" color="#fff" />}>
- <Eyebrow className="text-white">Portfolio value · as of {fmtFullDate(cardDate)}</Eyebrow>
+ <Eyebrow className="text-white">Net worth · as of {fmtFullDate(cardDate)}</Eyebrow>
  <p className="mt-1 text-3xl font-extrabold tabular-nums tracking-tight sm:text-4xl">
- {fmt$(grantHoldings.reduce((s, h) => s + h.totalValue, 0))}
+ {fmt$(netValue)}
  </p>
  <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-white">
  <span><span className="font-semibold">{fmtNum(cv.total_shares)}</span> vested shares</span>
@@ -1611,9 +1614,16 @@ export default function Dashboard() {
  <span className="font-semibold">{fmtPrice(cv.current_price)}</span> / share
  {cv.price_is_estimate && <span className="ml-1">(est.)</span>}
  </span>
+ {cv.total_loan_principal > 0 && (
+ <>
+ <span className="hidden h-1 w-1 rounded-full bg-white/60 sm:inline-block" />
+ <span>{fmt$(totalValue)} in shares − {fmt$(cv.total_loan_principal)} loans</span>
+ </>
+ )}
  </div>
  </HeroCard>
- )}
+ )
+ })()}
 
  {/* (F) aria-live so screen readers announce summary updates when cardDate changes */}
  <div aria-live="polite" aria-atomic="true" className="space-y-3">
@@ -1623,7 +1633,7 @@ export default function Dashboard() {
  <p className="text-[11px] font-semibold uppercase tracking-wide text-cs-muted">Your Shares</p>
  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
  <Card
- label="Value Today"
+ label={cardDate === TODAY ? 'Value Today' : `Value on ${fmtFullDate(cardDate)}`}
  value={grantHoldings ? fmt$(grantHoldings.reduce((s, h) => s + h.totalValue, 0)) : '—'}
  variant="value"
  subtitle="Vested at FMV + unvested at cost basis"

@@ -76,7 +76,7 @@ export default function Layout() {
  </div>
  )}
 
- <header className="sticky top-0 z-40 border-b border-cs-border bg-cs-surface/90 backdrop-blur supports-[backdrop-filter]:bg-cs-surface/75">
+ <header className="sticky top-0 z-40 border-b border-cs-border bg-cs-surface/90 pt-[env(safe-area-inset-top)] backdrop-blur supports-[backdrop-filter]:bg-cs-surface/75">
  <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
  <span className="flex items-center gap-2 text-sm font-extrabold tracking-tight text-cs-brand">
  <span className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-cs-brand to-cs-brand-hover text-[11px] font-extrabold text-white">

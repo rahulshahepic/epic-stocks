@@ -76,9 +76,12 @@ export default function Layout() {
  </div>
  )}
 
- <header className="border-b border-cs-border bg-cs-surface">
+ <header className="sticky top-0 z-40 border-b border-cs-border bg-cs-surface/90 backdrop-blur supports-[backdrop-filter]:bg-cs-surface/75">
  <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
- <span className="text-sm font-bold text-cs-brand">
+ <span className="flex items-center gap-2 text-sm font-extrabold tracking-tight text-cs-brand">
+ <span className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-cs-brand to-cs-brand-hover text-[11px] font-extrabold text-white">
+ E
+ </span>
  {appName}
  </span>
  <div className="flex items-center gap-3">
@@ -120,16 +123,16 @@ export default function Layout() {
  </div>
  </div>
 
- <nav aria-label="Main navigation" className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-4 pb-2">
+ <nav aria-label="Main navigation" className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-4 pb-2.5">
  {navItems.map(({ to, label }) => (
  <NavLink
  key={to}
  to={to}
  end={to === '/'}
  className={({ isActive }) =>
- `whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+ `whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
  isActive
- ? 'bg-cs-brand text-white'
+ ? 'bg-cs-brand text-white shadow-sm'
  : 'text-cs-text-2 hover:bg-cs-raised hover:text-cs-text'
  }`
  }

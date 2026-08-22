@@ -278,7 +278,7 @@ export default function Admin() {
 
  {/* Stats */}
  {stats && (
- <section className="rounded-lg border border-cs-border bg-cs-surface p-4 ">
+ <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
  <h3 className="text-sm font-medium text-cs-text">Overview</h3>
  <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-3">
  <div>
@@ -311,7 +311,7 @@ export default function Admin() {
 
  {/* Smart Tips Report */}
  {tipsReport && (
- <section className="rounded-lg border border-cs-border bg-cs-surface p-4 ">
+ <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
  <h3 className="text-sm font-medium text-cs-text">Smart Tips</h3>
  {tipsReport.unique_users_accepted > 0 ? (
  <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
@@ -342,7 +342,7 @@ export default function Admin() {
  )}
 
  {/* System Health */}
- <section className="rounded-lg border border-cs-border bg-cs-surface p-4 ">
+ <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
  <div className="flex items-center justify-between">
  <h3 className="text-sm font-medium text-cs-text">System Health</h3>
  <div className="flex gap-1">
@@ -442,7 +442,7 @@ export default function Admin() {
  </section>
 
  {/* Database Breakdown */}
- <section className="rounded-lg border border-cs-border bg-cs-surface p-4 ">
+ <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
  <h3 className="text-sm font-medium text-cs-text">Database Tables</h3>
  {dbTables.length === 0 ? (
  <p className="mt-3 text-xs text-cs-text-2">
@@ -481,7 +481,7 @@ export default function Admin() {
  </section>
 
  {/* Email Lookup */}
- <section className="rounded-lg border border-cs-border bg-cs-surface p-4 ">
+ <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
  <h3 className="text-sm font-medium text-cs-text">Email Lookup</h3>
  <form onSubmit={handleEmailLookup} className="mt-2 flex gap-2">
  <input
@@ -574,7 +574,7 @@ export default function Admin() {
  </section>
 
  {/* Users */}
- <section className="rounded-lg border border-cs-border bg-cs-surface p-4 ">
+ <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
  <div className="flex items-center justify-between">
  <h3 className="text-sm font-medium text-cs-text">Users ({totalUsers})</h3>
  </div>
@@ -625,7 +625,7 @@ export default function Admin() {
  </section>
 
  {/* Blocked Emails */}
- <section className="rounded-lg border border-cs-border bg-cs-surface p-4 ">
+ <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
  <h3 className="text-sm font-medium text-cs-text">Blocked Emails</h3>
  <form onSubmit={handleBlock} className="mt-3 space-y-2">
  <input
@@ -672,7 +672,7 @@ export default function Admin() {
  </section>
 
  {/* Error Logs */}
- <section className="rounded-lg border border-cs-border bg-cs-surface p-4 ">
+ <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
  <div className="flex items-center justify-between">
  <h3 className="text-sm font-medium text-cs-text">
  Error Logs ({errorLogs.length})

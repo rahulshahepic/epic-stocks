@@ -123,7 +123,7 @@ export default function Login() {
  </div>
 
  {error && (
- <p role="alert" className="mt-6 rounded-lg bg-red-50 p-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-400">
+ <p role="alert" className="mt-6 rounded-xl bg-red-50 p-3 text-sm text-red-700 shadow-card dark:bg-red-900/30 dark:text-red-400">
  {error}
  </p>
  )}

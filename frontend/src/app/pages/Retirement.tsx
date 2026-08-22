@@ -1556,7 +1556,7 @@ export default function Retirement() {
  <div>
  <button
  onClick={() => setShowRuinTable(v => !v)}
- className="flex w-full items-center justify-between rounded-lg border border-cs-border bg-cs-surface px-4 py-3 text-xs font-medium text-cs-text-2 hover:bg-cs-raised "
+ className="flex w-full items-center justify-between rounded-xl border border-cs-border bg-cs-surface px-4 py-3 text-xs font-medium text-cs-text-2 shadow-card hover:bg-cs-raised "
  >
  <span>Risk of ruin — conditional analysis</span>
  <span className="text-cs-muted">{showRuinTable ? '▲' : '▼'}</span>

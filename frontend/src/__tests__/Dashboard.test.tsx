@@ -42,6 +42,17 @@ const MOCK_EVENTS = [
 
 const MOCK_SALES: never[] = []
 
+// An auto-generated loan payoff sale: liquidates all of Grant 1's shares to pay off
+// MOCK_LOANS[0]. Auto-payoff sales carry loan_id but no lot_overrides (see
+// backend/app/routers/loans.py _compute_payoff_sale), so grant attribution has to come
+// from the loan's grant_year/grant_type, not from lot_overrides.
+const MOCK_SALES_WITH_LOAN_PAYOFF = [
+  {
+    id: 1, version: 1, date: '2027-01-01', shares: 2000, price_per_share: 8.5,
+    notes: 'Auto-generated payoff sale for loan 123456', loan_id: 1, lot_overrides: null,
+  },
+]
+
 const MOCK_PRICES = [
   { id: 1, effective_date: '2020-12-31', price: 1.99 },
   { id: 2, effective_date: '2021-03-01', price: 2.50 },
@@ -78,7 +89,7 @@ beforeEach(() => {
   vi.restoreAllMocks()
 })
 
-function mockApi(prices = MOCK_PRICES) {
+function mockApi(prices = MOCK_PRICES, sales = MOCK_SALES) {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url
     if (url.includes('/api/dashboard')) {
@@ -97,7 +108,7 @@ function mockApi(prices = MOCK_PRICES) {
       return new Response(JSON.stringify(MOCK_GRANTS), { status: 200 })
     }
     if (url.includes('/api/sales')) {
-      return new Response(JSON.stringify(MOCK_SALES), { status: 200 })
+      return new Response(JSON.stringify(sales), { status: 200 })
     }
     return new Response('Not found', { status: 404 })
   })
@@ -179,6 +190,31 @@ describe('Dashboard', () => {
       expect(screen.getByText('Value on Mar 1, 2021')).toBeInTheDocument()
     })
     expect(screen.queryByText('Value Today')).not.toBeInTheDocument()
+  })
+
+  it('hero card reflects shares liquidated by an auto-generated loan payoff sale at a future date', async () => {
+    // MOCK_SALES_WITH_LOAN_PAYOFF liquidates Grant 1's 2000 shares on 2027-01-01 to pay off
+    // MOCK_LOANS[0]. That sale carries loan_id but no lot_overrides (matching how the backend's
+    // auto-generated payoff sales are shaped), so grant attribution must come from the loan.
+    mockApi(MOCK_PRICES, MOCK_SALES_WITH_LOAN_PAYOFF)
+    renderDashboard()
+
+    await waitFor(() => {
+      expect(screen.getByText(/^Net worth/)).toBeInTheDocument()
+    })
+
+    const dateInput = screen.getByDisplayValue(new Date().toISOString().slice(0, 10))
+    fireEvent.change(dateInput, { target: { value: '2027-01-02' } })
+
+    // After the payoff: Grant 1 is fully liquidated (no more vested value) and its loan is
+    // settled. Only Grant 2's $3,000 unvested cost-basis value remains — net worth must equal
+    // that, not the stale $20,000 gross total (which would mean the sold shares were never
+    // subtracted even though the loan they paid off was).
+    await waitFor(() => {
+      expect(screen.getByText('Value on Jan 2, 2027')).toBeInTheDocument()
+    })
+    expect(screen.getAllByText('$3,000').length).toBeGreaterThanOrEqual(2)
+    expect(screen.queryByText('$20,000')).not.toBeInTheDocument()
   })
 
   it('renders color-coded card labels', async () => {

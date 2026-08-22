@@ -1171,14 +1171,26 @@ export default function Dashboard() {
  ? taxSettings.federal_income_rate + taxSettings.state_income_rate
  : 0
 
- // Per-grant sold shares from explicit lot overrides (lot_overrides carries grant attribution)
+ // Per-grant sold shares from explicit lot overrides (lot_overrides carries grant attribution).
+ // Loan payoff sales carry no lot_overrides but do carry loan_id — attribute those to the
+ // grant the loan belongs to, otherwise their shares never leave heldVested even after the
+ // loan (and the shares that paid it off) are gone.
+ const loanById = new Map(loans.map(l => [l.id, l]))
  const soldByGrant = new Map<string, number>()
  for (const s of (sales ?? [])) {
- if (s.date > effectiveDate || !s.lot_overrides) continue
+ if (s.date > effectiveDate) continue
+ if (s.lot_overrides) {
  for (const lot of s.lot_overrides) {
  if (lot.grant_year == null || lot.grant_type == null) continue
  const key = `${lot.grant_year}-${lot.grant_type}`
  soldByGrant.set(key, (soldByGrant.get(key) ?? 0) + lot.shares)
+ }
+ } else if (s.loan_id != null) {
+ const loan = loanById.get(s.loan_id)
+ if (loan) {
+ const key = `${loan.grant_year}-${loan.grant_type}`
+ soldByGrant.set(key, (soldByGrant.get(key) ?? 0) + s.shares)
+ }
  }
  }
 

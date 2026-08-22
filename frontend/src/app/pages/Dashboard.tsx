@@ -1633,7 +1633,7 @@ export default function Dashboard() {
  <p className="text-[11px] font-semibold uppercase tracking-wide text-cs-muted">Your Shares</p>
  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
  <Card
- label="Value Today"
+ label={cardDate === TODAY ? 'Value Today' : `Value on ${fmtFullDate(cardDate)}`}
  value={grantHoldings ? fmt$(grantHoldings.reduce((s, h) => s + h.totalValue, 0)) : '—'}
  variant="value"
  subtitle="Vested at FMV + unvested at cost basis"

@@ -73,6 +73,7 @@ const MOCK_LOANS = [
 ]
 
 beforeEach(() => {
+  localStorage.clear()
   localStorage.setItem('auth_token', 'test-token')
   vi.restoreAllMocks()
 })
@@ -161,6 +162,23 @@ describe('Dashboard', () => {
     })
     expect(screen.getByText('-$55,000')).toBeInTheDocument()
     expect(screen.getByText('$20,000 in shares − $75,000 loans')).toBeInTheDocument()
+  })
+
+  it('labels the value card with the selected date, not always "Today"', async () => {
+    mockApi()
+    renderDashboard()
+
+    await waitFor(() => {
+      expect(screen.getByText('Value Today')).toBeInTheDocument()
+    })
+
+    const dateInput = screen.getByDisplayValue(new Date().toISOString().slice(0, 10))
+    fireEvent.change(dateInput, { target: { value: '2021-03-01' } })
+
+    await waitFor(() => {
+      expect(screen.getByText('Value on Mar 1, 2021')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('Value Today')).not.toBeInTheDocument()
   })
 
   it('renders color-coded card labels', async () => {

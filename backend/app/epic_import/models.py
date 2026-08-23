@@ -1,7 +1,7 @@
-"""Value types for the Epic statement importer.
+"""Value types for parsing Epic's files.
 
-Every derived field carries the id of the rule that produced it, so a wrong
-value in the reconciliation report points straight at the rule to fix.
+What comes out of the two documents, before any interpretation. The draft an
+import produces lives in draft.py; the rules that build it live in rules.py.
 """
 from dataclasses import dataclass, field
 from datetime import date
@@ -76,86 +76,3 @@ class ShareRow:
     @property
     def is_empty(self) -> bool:
         return not self.shares_granted
-
-
-@dataclass
-class ProposedGrant:
-    year: int
-    type: str
-    shares: int
-    price: float
-    vest_start: date
-    periods: int
-    exercise_date: date
-    dp_shares: int = 0
-    election_83b: bool = False
-    source_label: str = ""
-    # field name -> rule id that produced it
-    rules: dict[str, str] = field(default_factory=dict)
-    # fields the importer could not pin down from the files alone
-    uncertain: list[str] = field(default_factory=list)
-
-    @property
-    def key(self) -> tuple[int, str]:
-        return (self.year, self.type)
-
-
-@dataclass
-class ProposedLoan:
-    loan_number: str
-    grant_year: int
-    grant_type: str
-    loan_type: str
-    loan_year: int
-    amount: float
-    interest_rate: float
-    due_date: date
-    source_name: str = ""
-    rules: dict[str, str] = field(default_factory=dict)
-    uncertain: list[str] = field(default_factory=list)
-
-
-@dataclass
-class ProposedPrice:
-    effective_date: date
-    price: float
-    rules: dict[str, str] = field(default_factory=dict)
-    uncertain: list[str] = field(default_factory=list)
-
-
-@dataclass
-class Conventions:
-    """Date conventions the source files do not carry.
-
-    Defaults follow SPEC.md; reconcile.learn_conventions overrides them from a
-    user's existing data so a re-run stops reporting cosmetic date differences.
-    """
-    vest_month: int = 3
-    vest_day: int = 1
-    exercise_month: int = 12
-    exercise_day: int = 31
-    price_month: int = 3
-    price_day: int = 1
-
-    def as_dict(self) -> dict:
-        return {"vest_month": self.vest_month, "vest_day": self.vest_day,
-                "exercise_month": self.exercise_month, "exercise_day": self.exercise_day,
-                "price_month": self.price_month, "price_day": self.price_day}
-
-
-@dataclass
-class Proposal:
-    """What the importer thinks the user's data should look like."""
-    statement_date: date | None = None
-    grants: list[ProposedGrant] = field(default_factory=list)
-    loans: list[ProposedLoan] = field(default_factory=list)
-    prices: list[ProposedPrice] = field(default_factory=list)
-    findings: list[Finding] = field(default_factory=list)
-    conventions: Conventions = field(default_factory=Conventions)
-
-    def add(self, code: str, severity: str, subject: str, message: str) -> None:
-        self.findings.append(Finding(code, severity, subject, message))
-
-    @property
-    def has_errors(self) -> bool:
-        return any(f.severity == ERROR for f in self.findings)

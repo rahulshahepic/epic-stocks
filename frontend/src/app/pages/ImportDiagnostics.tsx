@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useMe } from '../../scaffold/hooks/useMe.ts'
-import { downloadMarkdown, epicImport, type DiffResponse, type Difference }
+import { downloadText, epicImport, type DiffResponse, type Difference }
   from '../epicImport.ts'
 import FindingList from '../components/FindingList.tsx'
 
@@ -91,9 +91,7 @@ export default function ImportDiagnostics() {
   }
 
   const report = result?.report
-  const conventionOnly = result
-    ? result.report_with_defaults.differences.length - result.report.differences.length
-    : 0
+  const statementDate = (result?.draft?.statement_date as string | null) ?? null
 
   return (
     <div className="space-y-4">
@@ -154,33 +152,27 @@ export default function ImportDiagnostics() {
               </p>
               <button
                 type="button"
-                onClick={() => downloadMarkdown(result.markdown, result.proposal.statement_date)}
+                onClick={() => downloadText(
+                  result.markdown, `import-diff-${statementDate ?? 'report'}.md`, 'text/markdown')}
                 className="rounded-md bg-cs-raised px-3 py-1.5 text-xs font-medium text-cs-text-2 hover:bg-stone-200 dark:hover:bg-stone-700"
               >
                 Download report (.md)
               </button>
             </div>
             <p className="mt-1 text-xs text-cs-muted">
-              Statement dated {result.proposal.statement_date ?? 'unknown'} ·{' '}
+              Statement dated {statementDate ?? 'unknown'} ·{' '}
               {report.counts.imported_grants} grants / {report.counts.imported_loans} loans /{' '}
               {report.counts.imported_prices} prices derived, against{' '}
               {report.counts.existing_grants} / {report.counts.existing_loans} /{' '}
               {report.counts.existing_prices} in the export.
             </p>
-            {conventionOnly > 0 && (
-              <p className="mt-1 text-xs text-cs-muted">
-                {conventionOnly} further difference(s) disappear once your own date
-                conventions are read from the export (vest day {report.conventions.vest_month}/
-                {report.conventions.vest_day}) — those were never real disagreements.
-              </p>
-            )}
             <DiffTable differences={report.differences} />
           </div>
 
           <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
             <p className="text-sm font-semibold text-cs-text">What the files themselves said</p>
-            <FindingList findings={result.proposal.findings} />
-            {result.proposal.findings.length === 0 && (
+            <FindingList findings={result.findings} />
+            {result.findings.length === 0 && (
               <p className="mt-2 text-xs text-cs-muted">Nothing to report — every cross-check passed.</p>
             )}
           </div>

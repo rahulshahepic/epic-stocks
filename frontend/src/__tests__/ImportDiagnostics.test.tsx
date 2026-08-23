@@ -9,27 +9,22 @@ const ADMIN = { id: 1, email: 'admin@test.com', name: 'Admin', is_admin: true, i
 const REGULAR = { id: 2, email: 'user@test.com', name: 'User', is_admin: false, is_content_admin: false }
 
 const DIFF = {
-  proposal: {
-    statement_date: '2024-02-01',
-    conventions: { vest_month: 3, vest_day: 1 },
-    grants: [], loans: [], prices: [],
-    findings: [
-      { code: 'G3', severity: 'warning', subject: '2022 Bonus Shares', message: 'Basis does not match the year price.' },
-    ],
-  },
+  draft: { statement_date: '2024-02-01', grants: [], prices: [] },
+  findings: [
+    { code: 'G3', severity: 'warning', subject: '2022 Bonus Shares',
+      message: 'Basis does not match the year price.' },
+  ],
   report: {
     differences: [
       { entity: 'grant', key: '2022 Purchase', field: 'shares', imported: '300,000',
         existing: '999', rule: 'G2', severity: 'error', note: '' },
     ],
-    conventions: { vest_month: 3, vest_day: 1 },
     counts: {
       imported_grants: 8, existing_grants: 8, imported_loans: 9,
       existing_loans: 9, imported_prices: 3, existing_prices: 3,
     },
     errors: 1, warnings: 0,
   },
-  report_with_defaults: { differences: [{}, {}, {}], conventions: {}, counts: {}, errors: 1, warnings: 2 },
   markdown: '# Epic import reconciliation\n',
 }
 
@@ -110,7 +105,6 @@ describe('ImportDiagnostics', () => {
     mockApi(ADMIN, {
       ...DIFF,
       report: { ...DIFF.report, differences: [], errors: 0, warnings: 0 },
-      report_with_defaults: { ...DIFF.report_with_defaults, differences: [] },
     })
     await renderPage()
     await userEvent.upload(await screen.findByLabelText(/Your export/), file('e.xlsx', 'application/vnd.ms-excel'))

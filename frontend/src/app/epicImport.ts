@@ -1,4 +1,11 @@
-/** Client for the Epic statement importer (/api/epic-import). */
+/**
+ * Client for the Epic file importer (/api/epic-import).
+ *
+ * The app never calls a language model. When a parse cannot be trusted, the
+ * server hands back a prompt for the user to paste into whichever assistant
+ * they already use; whatever comes back is posted here and checked again.
+ */
+import type { GrantEntry, LoanEntry, PriceEntry } from '../api.ts'
 
 export interface Finding {
   code: string
@@ -7,49 +14,34 @@ export interface Finding {
   message: string
 }
 
-export interface ProposedGrant {
-  year: number
-  type: string
-  shares: number
-  price: number
-  vest_start: string
-  periods: number
-  exercise_date: string
-  dp_shares: number
-  election_83b: boolean
-  source_label: string
-  rules: Record<string, string>
-  uncertain: string[]
+export interface DraftSummary {
+  grants: number
+  loans: number
+  prices: number
+  total_shares: number
+  total_loan_balance: number
+  grant_years: number[]
 }
 
-export interface ProposedLoan {
-  loan_number: string
-  grant_year: number
-  grant_type: string
-  loan_type: string
-  loan_year: number
-  amount: number
-  interest_rate: number
-  due_date: string
-  source_name: string
-  rules: Record<string, string>
-  uncertain: string[]
+/** The draft in the shape the wizard's own data loader consumes. */
+export interface WizardPrefill {
+  grants: GrantEntry[]
+  loans: LoanEntry[]
+  prices: PriceEntry[]
 }
 
-export interface ProposedPrice {
-  effective_date: string
-  price: number
-  rules: Record<string, string>
-  uncertain: string[]
-}
-
-export interface Proposal {
-  statement_date: string | null
-  conventions: Record<string, number>
-  grants: ProposedGrant[]
-  loans: ProposedLoan[]
-  prices: ProposedPrice[]
+export interface AnalyzeResponse {
+  draft: Record<string, unknown>
+  wizard_payload: Record<string, unknown>
+  wizard_prefill: WizardPrefill
   findings: Finding[]
+  /** True when we could not read the documents themselves — nothing else is trustworthy. */
+  blocked: boolean
+  /** True when nothing disagrees at all. */
+  reconciles: boolean
+  prompt: string
+  summary: DraftSummary
+  origin: 'parsed' | 'supplied'
 }
 
 export interface Difference {
@@ -65,41 +57,15 @@ export interface Difference {
 
 export interface ReconcileReport {
   differences: Difference[]
-  conventions: Record<string, number>
   counts: Record<string, number>
   errors: number
   warnings: number
 }
 
-export interface ImportPlan {
-  grants_created: string[]
-  grants_updated: number
-  loans_created: string[]
-  loans_updated: number
-  prices_created: string[]
-  loans_not_on_statement: string[]
-}
-
-export interface PreviewResponse {
-  proposal: Proposal
-  plan: ImportPlan
-  report: ReconcileReport
-}
-
-export interface ApplyResponse {
-  grants_created: number
-  grants_updated: number
-  loans_created: number
-  loans_updated: number
-  prices_created: number
-  loans_not_on_statement: string[]
-  findings: Finding[]
-}
-
 export interface DiffResponse {
-  proposal: Proposal
+  draft: Record<string, unknown>
+  findings: Finding[]
   report: ReconcileReport
-  report_with_defaults: ReconcileReport
   markdown: string
 }
 
@@ -107,18 +73,23 @@ export interface EpicFiles {
   shareCsv?: File | null
   statementPdf?: File | null
   exportXlsx?: File | null
+  revisedDraft?: File | null
 }
 
-function body({ shareCsv, statementPdf, exportXlsx }: EpicFiles): FormData {
-  const form = new FormData()
-  if (exportXlsx) form.append('export_xlsx', exportXlsx)
-  if (shareCsv) form.append('share_csv', shareCsv)
-  if (statementPdf) form.append('statement_pdf', statementPdf)
-  return form
+function form(files: EpicFiles, revisedJson?: string): FormData {
+  const body = new FormData()
+  if (files.exportXlsx) body.append('export_xlsx', files.exportXlsx)
+  if (files.shareCsv) body.append('share_csv', files.shareCsv)
+  if (files.statementPdf) body.append('statement_pdf', files.statementPdf)
+  if (files.revisedDraft) body.append('revised_draft', files.revisedDraft)
+  if (revisedJson) body.append('revised_json', revisedJson)
+  return body
 }
 
-async function post<T>(path: string, files: EpicFiles): Promise<T> {
-  const resp = await fetch(path, { method: 'POST', credentials: 'include', body: body(files) })
+async function post<T>(path: string, files: EpicFiles, revisedJson?: string): Promise<T> {
+  const resp = await fetch(path, {
+    method: 'POST', credentials: 'include', body: form(files, revisedJson),
+  })
   if (!resp.ok) {
     const parsed = await resp.json().catch(() => null)
     throw new Error(parsed?.detail || `Request failed (${resp.status})`)
@@ -127,25 +98,25 @@ async function post<T>(path: string, files: EpicFiles): Promise<T> {
 }
 
 export const epicImport = {
-  preview: (files: EpicFiles) => post<PreviewResponse>('/api/epic-import/preview', files),
-
-  apply: (files: EpicFiles, opts: { adoptSchedule?: boolean; overwritePrices?: boolean } = {}) => {
-    const q = new URLSearchParams({
-      adopt_schedule: String(!!opts.adoptSchedule),
-      overwrite_prices: String(!!opts.overwritePrices),
-    })
-    return post<ApplyResponse>(`/api/epic-import/apply?${q}`, files)
-  },
+  /** Round one reads the files; later rounds also carry whatever came back. */
+  analyze: (files: EpicFiles, revisedJson?: string) =>
+    post<AnalyzeResponse>('/api/epic-import/analyze', files, revisedJson),
 
   diff: (files: EpicFiles) => post<DiffResponse>('/api/epic-import/diff', files),
 }
 
-/** Save the reconciliation report as a Markdown file. */
-export function downloadMarkdown(markdown: string, statementDate: string | null) {
-  const url = URL.createObjectURL(new Blob([markdown], { type: 'text/markdown' }))
+export function severityOf(findings: Finding[]): { errors: number; warnings: number } {
+  return {
+    errors: findings.filter(f => f.severity === 'error').length,
+    warnings: findings.filter(f => f.severity === 'warning').length,
+  }
+}
+
+export function downloadText(text: string, filename: string, type = 'text/plain') {
+  const url = URL.createObjectURL(new Blob([text], { type }))
   const a = document.createElement('a')
   a.href = url
-  a.download = `import-diff-${statementDate || 'report'}.md`
+  a.download = filename
   a.click()
   URL.revokeObjectURL(url)
 }

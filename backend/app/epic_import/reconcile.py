@@ -1,36 +1,61 @@
-"""Compare what the importer derives from Epic's files against real data.
+"""Compare a draft against real data exported from the app.
 
-The importer will not be right first time. This module runs the derivation
-against a dataset the user exported from the app and reports every difference
-with the id of the rule that produced the value, so feedback comes back as
-"rule G5 is off by a year" rather than "the import is wrong".
+The importer will not be right first time. This diffs a draft against a dataset
+the user exported and reports every difference with the id of the rule behind
+the value, so feedback arrives as "S1 puts vest_start a year early" rather than
+"the import is wrong".
 
 Baseline rows are plain dicts in the shape the Excel export writes:
 
-    grant:  year type shares price vest_start periods exercise_date dp_shares election_83b
+    grant:  year type shares price vest_start periods exercise_date dp_shares
+            election_83b
     loan:   loan_number grant_year grant_type loan_type loan_year amount
             interest_rate due_date
     price:  effective_date price
 """
-from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date
 
-from .models import Conventions, Proposal
+from .draft import Draft
+from .models import Finding
 
-# Fields whose value is the point of the import — a difference here is a real bug.
+# Fields the import exists to get right — a difference here is a real bug.
 _MATERIAL = {"shares", "price", "amount", "interest_rate"}
-# Fields the source files do not carry at all; a difference is expected.
-_CONVENTIONAL = {"exercise_date", "dp_shares", "effective_date"}
+# Fields no source file carries; the company schedule or the user supplies them.
+_STRUCTURAL = {"vest_start", "periods", "exercise_date", "dp_shares"}
 
 _MONEY_TOL = 0.005
 _RATE_TOL = 1e-6
+
+# Which rule produced each field, for the report.
+_FIELD_RULE = {
+    "shares": "G2", "price": "G3", "election_83b": "G7",
+    "vest_start": "S1", "periods": "S1", "exercise_date": "S1", "dp_shares": "S1",
+    "amount": "L1", "interest_rate": "L1", "due_date": "L1",
+    "loan_type": "L2", "loan_year": "L2",
+    "grant_year": "L3", "grant_type": "L3",
+    "effective_date": "P1",
+}
+
+_RULE_HELP = {
+    "G1": "CSV row label -> grant year and type",
+    "G2": "Shares Granted -> grant.shares",
+    "G3": "Cost Basis / Shares Granted -> grant.price (with zero-basis detection)",
+    "G7": "83b Shares -> grant.election_83b",
+    "S1": "Company grant template -> vest_start, periods, exercise_date",
+    "L1": "Statement row -> loan number, amount, rate, due date",
+    "L2": "Loan name grammar -> loan_type, loan_year",
+    "L3": "Descriptor + loan type -> which grant the loan belongs to",
+    "L4": "Multi-grant loan name -> attributed to the bonus side",
+    "L5": "In your data but not on the statement",
+    "P1": "Purchase grant basis -> annual share price",
+}
 
 
 @dataclass
 class Difference:
     entity: str        # grant | loan | price
-    key: str           # "2020 Bonus", a loan number, or a year
+    key: str
     field: str         # "" when the whole record is missing on one side
     imported: str
     existing: str
@@ -47,7 +72,6 @@ class Difference:
 @dataclass
 class ReconcileReport:
     differences: list[Difference] = field(default_factory=list)
-    conventions: Conventions = field(default_factory=Conventions)
     counts: dict = field(default_factory=dict)
 
     @property
@@ -60,9 +84,7 @@ class ReconcileReport:
 
     def as_dict(self) -> dict:
         return {"differences": [d.as_dict() for d in self.differences],
-                "conventions": self.conventions.as_dict(),
-                "counts": self.counts,
-                "errors": self.errors, "warnings": self.warnings}
+                "counts": self.counts, "errors": self.errors, "warnings": self.warnings}
 
 
 def _d(v) -> date | None:
@@ -97,203 +119,137 @@ def _same(a, b) -> bool:
     return a == b
 
 
-def learn_conventions(grants: list[dict], prices: list[dict]) -> Conventions:
-    """Read the date conventions out of a user's existing data.
-
-    The source files carry no vest, exercise, or price-effective dates, so the
-    importer has to assume them. If the user already has data, their own
-    convention beats the SPEC default.
-    """
-    conv = Conventions()
-
-    def modal(rows, key):
-        pairs = [(d.month, d.day) for d in (_d(r.get(key)) for r in rows) if d]
-        return Counter(pairs).most_common(1)[0][0] if pairs else None
-
-    if (md := modal(grants, "vest_start")):
-        conv.vest_month, conv.vest_day = md
-    if (md := modal(grants, "exercise_date")):
-        conv.exercise_month, conv.exercise_day = md
-    # The first price is set at the first exercise rather than on the annual
-    # announcement date, so it is not representative of the convention.
-    if (md := modal(sorted(prices, key=lambda p: str(p.get("effective_date")))[1:],
-                    "effective_date")):
-        conv.price_month, conv.price_day = md
-    return conv
-
-
-def _severity(field_name: str, uncertain: list[str]) -> str:
+def _severity(field_name: str) -> str:
     if field_name in _MATERIAL:
         return "error"
-    if field_name in _CONVENTIONAL or field_name in uncertain:
-        return "info"
+    if field_name in _STRUCTURAL:
+        return "warning"
     return "warning"
 
 
-def _compare(entity: str, key: str, imported: dict, existing: dict,
-             rules: dict, uncertain: list[str], fields: list[str]) -> list[Difference]:
-    out = []
-    for f in fields:
-        a, b = imported.get(f), existing.get(f)
-        if _same(a, b):
-            continue
-        out.append(Difference(entity, key, f, _fmt(a), _fmt(b),
-                              rules.get(f, "?"), _severity(f, uncertain)))
-    return out
+def _compare(entity: str, key: str, mine: dict, theirs: dict) -> list[Difference]:
+    return [Difference(entity, key, f, _fmt(mine[f]), _fmt(theirs.get(f)),
+                       _FIELD_RULE.get(f, "?"), _severity(f))
+            for f in mine if not _same(mine[f], theirs.get(f))]
 
 
-_GRANT_FIELDS = ["shares", "price", "periods", "vest_start", "exercise_date",
-                 "dp_shares", "election_83b"]
-_LOAN_FIELDS = ["amount", "interest_rate", "due_date", "grant_year", "grant_type",
-                "loan_type", "loan_year"]
-
-
-def reconcile(proposal: Proposal, grants: list[dict], loans: list[dict],
+def reconcile(draft: Draft, grants: list[dict], loans: list[dict],
               prices: list[dict]) -> ReconcileReport:
-    """Diff a proposal against an existing dataset."""
-    report = ReconcileReport(conventions=proposal.conventions)
+    report = ReconcileReport()
     diffs = report.differences
 
-    # -- Grants: matched on (year, type) --
     existing_grants = {(int(g["year"]), str(g["type"]).strip()): g for g in grants}
-    for pg in proposal.grants:
-        eg = existing_grants.pop(pg.key, None)
-        key = f"{pg.year} {pg.type}"
+    for dg in draft.grants:
+        eg = existing_grants.pop(dg.key, None)
+        key = f"{dg.year} {dg.type}"
         if eg is None:
             diffs.append(Difference("grant", key, "", "present", "—", "G1", "error",
-                                    "The importer produced a grant that is not in your data."))
+                                    "Produced by the import but absent from your data."))
             continue
         diffs += _compare("grant", key, {
-            "shares": pg.shares, "price": pg.price, "periods": pg.periods,
-            "vest_start": pg.vest_start, "exercise_date": pg.exercise_date,
-            "dp_shares": pg.dp_shares, "election_83b": pg.election_83b,
+            "shares": dg.shares, "price": dg.price, "periods": dg.periods,
+            "vest_start": dg.vest_start, "exercise_date": dg.exercise_date,
+            "dp_shares": dg.dp_shares, "election_83b": dg.election_83b,
         }, {
             "shares": int(eg["shares"]), "price": float(eg["price"]),
             "periods": int(eg["periods"]), "vest_start": _d(eg["vest_start"]),
             "exercise_date": _d(eg["exercise_date"]),
             "dp_shares": int(eg.get("dp_shares") or 0),
             "election_83b": bool(eg.get("election_83b")),
-        }, pg.rules, pg.uncertain, _GRANT_FIELDS)
-    for key, eg in existing_grants.items():
-        diffs.append(Difference("grant", f"{key[0]} {key[1]}", "", "—", "present", "G1",
-                                "error", "In your data but the importer did not produce it."))
+        })
+    for (year, gtype), _ in existing_grants.items():
+        diffs.append(Difference("grant", f"{year} {gtype}", "", "—", "present", "G1",
+                                "error", "In your data but the import did not produce it."))
 
-    # -- Loans: matched on loan number, falling back to the grant/type/year tuple --
-    def loan_key(ln) -> str:
-        num = str(ln.get("loan_number") or "").strip() if isinstance(ln, dict) else ln.loan_number
-        if num:
-            return f"#{num}"
-        if isinstance(ln, dict):
-            return f"{ln['grant_year']}|{ln['grant_type']}|{ln['loan_type']}|{ln['loan_year']}"
-        return f"{ln.grant_year}|{ln.grant_type}|{ln.loan_type}|{ln.loan_year}"
+    def loan_key(num, gy, gt, lt, ly) -> str:
+        num = str(num or "").strip()
+        return f"#{num}" if num else f"{gy}|{gt}|{lt}|{ly}"
 
-    existing_loans = {loan_key(ln): ln for ln in loans}
-    for pl in proposal.loans:
-        el = existing_loans.pop(loan_key(pl), None)
-        key = pl.loan_number or loan_key(pl)
+    existing_loans = {loan_key(l.get("loan_number"), l["grant_year"], l["grant_type"],
+                               l["loan_type"], l["loan_year"]): l for l in loans}
+    for dg, dl in draft.all_loans:
+        k = loan_key(dl.loan_number, dg.year, dg.type, dl.loan_type, dl.loan_year)
+        el = existing_loans.pop(k, None)
+        key = dl.loan_number or k
         if el is None:
-            diffs.append(Difference("loan", key, "", f"{pl.amount:,.2f}", "—", "L1", "error",
-                                    f"{pl.source_name} — on the statement but not in your data."))
+            diffs.append(Difference("loan", key, "", f"{dl.amount:,.2f}", "—", "L1", "error",
+                                    "On the statement but not in your data."))
             continue
         diffs += _compare("loan", key, {
-            "amount": pl.amount, "interest_rate": pl.interest_rate,
-            "due_date": pl.due_date, "grant_year": pl.grant_year,
-            "grant_type": pl.grant_type, "loan_type": pl.loan_type,
-            "loan_year": pl.loan_year,
+            "amount": dl.amount, "interest_rate": dl.interest_rate,
+            "due_date": dl.due_date, "grant_year": dg.year, "grant_type": dg.type,
+            "loan_type": dl.loan_type, "loan_year": dl.loan_year,
         }, {
             "amount": float(el["amount"]), "interest_rate": float(el["interest_rate"]),
             "due_date": _d(el["due_date"]), "grant_year": int(el["grant_year"]),
             "grant_type": str(el["grant_type"]).strip(),
             "loan_type": str(el["loan_type"]).strip(), "loan_year": int(el["loan_year"]),
-        }, pl.rules, pl.uncertain, _LOAN_FIELDS)
-    for key, el in existing_loans.items():
-        diffs.append(Difference("loan", key.lstrip("#"), "", "—", f"{float(el['amount']):,.2f}",
+        })
+    for k, el in existing_loans.items():
+        diffs.append(Difference("loan", k.lstrip("#"), "", "—", f"{float(el['amount']):,.2f}",
                                 "L5", "warning",
-                                "In your data but not on this statement — paid off, refinanced, "
-                                "or the statement predates it."))
+                                "In your data but not on this statement — paid off, "
+                                "refinanced, or the statement predates it."))
 
-    # -- Prices: matched on year, since the effective date is a convention --
     existing_prices: dict[int, dict] = {}
     for p in prices:
         d = _d(p["effective_date"])
         if d:
             existing_prices.setdefault(d.year, p)
-    for pp in proposal.prices:
-        ep = existing_prices.pop(pp.effective_date.year, None)
-        key = str(pp.effective_date.year)
+    for dp in draft.prices:
+        ep = existing_prices.pop(dp.effective_date.year, None)
+        key = str(dp.effective_date.year)
         if ep is None:
-            diffs.append(Difference("price", key, "", f"{pp.price:,.2f}", "—", "P1", "error",
+            diffs.append(Difference("price", key, "", f"{dp.price:,.2f}", "—", "P1", "error",
                                     "Derived from a purchase grant but absent from your prices."))
             continue
-        diffs += _compare("price", key, {
-            "price": pp.price, "effective_date": pp.effective_date,
-        }, {
-            "price": float(ep["price"]), "effective_date": _d(ep["effective_date"]),
-        }, pp.rules, pp.uncertain, ["price", "effective_date"])
+        if not _same(dp.price, float(ep["price"])):
+            diffs.append(Difference("price", key, "price", _fmt(dp.price),
+                                    _fmt(float(ep["price"])), "P1", "error"))
     for year, ep in existing_prices.items():
-        diffs.append(Difference("price", str(year), "", "—", f"{float(ep['price']):,.2f}", "P1",
-                                "warning", "In your prices but no purchase grant implies it."))
+        diffs.append(Difference("price", str(year), "", "—", f"{float(ep['price']):,.2f}",
+                                "P1", "warning",
+                                "In your prices but no purchase grant implies it."))
 
     report.counts = {
-        "imported_grants": len(proposal.grants), "existing_grants": len(grants),
-        "imported_loans": len(proposal.loans), "existing_loans": len(loans),
-        "imported_prices": len(proposal.prices), "existing_prices": len(prices),
+        "imported_grants": len(draft.grants), "existing_grants": len(grants),
+        "imported_loans": len(draft.all_loans), "existing_loans": len(loans),
+        "imported_prices": len(draft.prices), "existing_prices": len(prices),
     }
     order = {"error": 0, "warning": 1, "info": 2}
     diffs.sort(key=lambda d: (order[d.severity], d.entity, d.key, d.field))
     return report
 
 
-_RULE_HELP = {
-    "G1": "CSV row label -> grant year and type",
-    "G2": "Shares Granted -> grant.shares",
-    "G3": "Cost Basis / Shares Granted -> grant.price (with zero-basis detection)",
-    "G4": "Vest-column increments -> grant.periods",
-    "G5": "Periods already elapsed -> grant.vest_start",
-    "G6": "Convention -> grant.exercise_date",
-    "G7": "83b Shares -> grant.election_83b",
-    "G8": "Not present in either file -> grant.dp_shares",
-    "L1": "Statement row -> loan number, amount, rate, due date",
-    "L2": "Loan name grammar -> loan_type, loan_year, grant descriptors",
-    "L3": "Descriptor + loan type -> grant_year, grant_type",
-    "L4": "Multi-grant loan name -> attributed to the bonus side",
-    "L5": "In your data but not on the statement",
-    "P1": "Purchase grant basis -> annual share price",
-    "P2": "Convention -> price.effective_date",
-}
-
-
-def render_markdown(proposal: Proposal, report: ReconcileReport,
-                    statement_date: date | None) -> str:
+def render_markdown(draft: Draft, findings: list[Finding],
+                    report: ReconcileReport) -> str:
     """A report the user can hand back verbatim as a bug report."""
-    lines = ["# Epic import reconciliation", ""]
-    lines.append(f"- Statement date: {statement_date or 'unknown'}")
-    lines.append(f"- Differences: {report.errors} error, {report.warnings} warning, "
-                 f"{len(report.differences) - report.errors - report.warnings} info")
+    lines = ["# Epic import reconciliation", "",
+             f"- Statement date: {draft.statement_date or 'unknown'}",
+             f"- Differences: {report.errors} error, {report.warnings} warning, "
+             f"{len(report.differences) - report.errors - report.warnings} info"]
     c = report.counts
     lines.append(f"- Grants {c.get('imported_grants')} imported vs {c.get('existing_grants')} "
                  f"existing · Loans {c.get('imported_loans')} vs {c.get('existing_loans')} · "
                  f"Prices {c.get('imported_prices')} vs {c.get('existing_prices')}")
-    lines.append(f"- Date conventions used: {report.conventions.as_dict()}")
     lines.append("")
 
-    if proposal.findings:
+    if findings:
         lines += ["## Findings from the files themselves", "",
                   "| Severity | Code | Subject | Message |", "|---|---|---|---|"]
-        for f in proposal.findings:
-            lines.append(f"| {f.severity} | {f.code} | {f.subject or '—'} | {f.message} |")
+        lines += [f"| {f.severity} | {f.code} | {f.subject or '—'} | {f.message} |"
+                  for f in findings]
         lines.append("")
 
     if not report.differences:
-        lines += ["## Differences", "", "None — the import reproduces the data exactly."]
-        return "\n".join(lines) + "\n"
+        return "\n".join(lines + ["## Differences", "",
+                                  "None — the import reproduces the data exactly."]) + "\n"
 
     lines += ["## Differences", "",
               "| Severity | Rule | Entity | Key | Field | Imported | Yours | Note |",
               "|---|---|---|---|---|---|---|---|"]
-    for d in report.differences:
-        lines.append(f"| {d.severity} | {d.rule} | {d.entity} | {d.key} | {d.field or '—'} | "
-                     f"{d.imported} | {d.existing} | {d.note} |")
+    lines += [f"| {d.severity} | {d.rule} | {d.entity} | {d.key} | {d.field or '—'} | "
+              f"{d.imported} | {d.existing} | {d.note} |" for d in report.differences]
 
     used = sorted({d.rule for d in report.differences} & set(_RULE_HELP))
     if used:

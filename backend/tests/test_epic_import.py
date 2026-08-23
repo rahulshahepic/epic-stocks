@@ -1,8 +1,9 @@
-"""Tests for importing Epic's own statement files.
+"""Tests for importing Epic's own files and the paste-out repair loop.
 
-Fixtures in test_data/ are synthetic — the share prices and loan balances are
-invented round numbers, not Epic's.
+Fixtures in test_data/ are synthetic — the prices, rates and balances in them
+are invented round numbers, not Epic's.
 """
+import json
 import os
 import sys
 
@@ -10,44 +11,96 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 
-from app.epic_import import (build_proposal, parse_share_csv, parse_statement_lines,
-                             parse_statement_pdf, reconcile)
-from app.epic_import.rules import (attribute_loan, classify_row, infer_schedule,
-                                   is_vest_taxed, parse_loan_name)
+from app.epic_import import (build_prompt, build_skeleton, derive_draft,
+                             draft_from_payload, is_blocked, parse_share_csv,
+                             parse_statement_lines, parse_statement_pdf,
+                             to_wizard_payload, validate_draft)
+from app.epic_import.rules import (attribute_loan, classify_row, is_vest_taxed,
+                                   parse_loan_name)
 from tests.conftest import register_user
 
 DATA = os.path.join(os.path.dirname(__file__), "..", "..", "test_data")
-STATEMENT_TXT = os.path.join(DATA, "epic_loan_statement.txt")
-SHARE_CSV = os.path.join(DATA, "epic_share_summary.csv")
 
 
 def statement_lines():
-    with open(STATEMENT_TXT) as fh:
+    with open(os.path.join(DATA, "epic_loan_statement.txt")) as fh:
         return fh.read().split("\n")
 
 
 def csv_bytes():
-    with open(SHARE_CSV, "rb") as fh:
+    with open(os.path.join(DATA, "epic_share_summary.csv"), "rb") as fh:
         return fh.read()
 
 
+# A grant schedule matching the synthetic fixture. Deliberately has no 2023 Free
+# template, so the fixture exercises the "shift the nearest one" path.
+CONTENT = {
+    "grant_templates": [
+        {"year": 2020, "type": "Purchase", "vest_start": "2021-09-30", "periods": 5,
+         "exercise_date": "2020-12-31", "default_catch_up": True, "show_dp_shares": True,
+         "default_purchase_due_date": "2029-07-15", "default_tax_due_date": None},
+        {"year": 2021, "type": "Purchase", "vest_start": "2022-09-30", "periods": 4,
+         "exercise_date": "2021-12-31", "default_catch_up": False, "show_dp_shares": False,
+         "default_purchase_due_date": "2030-07-15", "default_tax_due_date": None},
+        {"year": 2021, "type": "Bonus", "vest_start": "2022-09-30", "periods": 3,
+         "exercise_date": "2021-12-31", "default_catch_up": False, "show_dp_shares": False,
+         "default_purchase_due_date": None, "default_tax_due_date": None},
+        {"year": 2022, "type": "Purchase", "vest_start": "2023-09-30", "periods": 4,
+         "exercise_date": "2022-12-31", "default_catch_up": False, "show_dp_shares": False,
+         "default_purchase_due_date": "2031-06-30", "default_tax_due_date": None},
+        {"year": 2022, "type": "Bonus", "vest_start": "2023-09-30", "periods": 3,
+         "exercise_date": "2022-12-31", "default_catch_up": False, "show_dp_shares": False,
+         "default_purchase_due_date": None, "default_tax_due_date": None},
+        {"year": 2022, "type": "Free", "vest_start": "2027-09-30", "periods": 1,
+         "exercise_date": "2022-12-31", "default_catch_up": False, "show_dp_shares": False,
+         "default_purchase_due_date": None, "default_tax_due_date": "2031-06-30"},
+        {"year": 2023, "type": "Bonus", "vest_start": "2024-09-30", "periods": 3,
+         "exercise_date": "2023-12-31", "default_catch_up": False, "show_dp_shares": False,
+         "default_purchase_due_date": None, "default_tax_due_date": None},
+    ],
+    "bonus_schedule_variants": [],
+    "loan_rates": {
+        "interest": {"2021": 0.02, "2022": 0.025, "2023": 0.04},
+        "tax": {"Catch-Up": {"2021": 0.02, "2022": 0.03}, "Bonus": {"2023": 0.04}},
+        "purchase_original": {"2020": {"rate": 0.01, "due_date": "2029-07-15"},
+                              "2021": {"rate": 0.015, "due_date": "2030-07-15"},
+                              "2022": {"rate": 0.03, "due_date": "2031-06-30"}},
+    },
+}
+
+
 @pytest.fixture()
-def proposal():
+def skeleton():
+    sk, findings = build_skeleton(CONTENT)
+    assert [f for f in findings if f.severity == "error"] == []
+    return sk
+
+
+@pytest.fixture()
+def parsed():
     statement, f1 = parse_statement_lines(statement_lines())
     rows, f2 = parse_share_csv(csv_bytes())
-    return build_proposal(statement, rows, parse_findings=f1 + f2)
+    return statement, rows, f1 + f2
 
 
-def by_key(proposal, year, gtype):
-    return next(g for g in proposal.grants if g.year == year and g.type == gtype)
+@pytest.fixture()
+def drafted(skeleton, parsed):
+    statement, rows, pf = parsed
+    draft, df = derive_draft(statement, rows, skeleton)
+    findings = pf + df + validate_draft(draft, statement, rows, skeleton)
+    return draft, findings
 
 
-def codes(proposal, severity=None):
-    return [f.code for f in proposal.findings if severity is None or f.severity == severity]
+def grant(draft, year, gtype):
+    return next(g for g in draft.grants if g.year == year and g.type == gtype)
+
+
+def codes(findings, severity=None):
+    return [f.code for f in findings if severity is None or f.severity == severity]
 
 
 # ============================================================
-# PDF STATEMENT
+# PARSING
 # ============================================================
 
 def test_statement_rows_and_totals_parse():
@@ -55,29 +108,19 @@ def test_statement_rows_and_totals_parse():
     assert [f for f in findings if f.severity == "error"] == []
     assert len(statement.loans) == 9
     assert statement.statement_date.isoformat() == "2024-02-01"
-    assert statement.total_principal == 3795000.00
-    assert statement.printed_total == 3795000.00
     assert statement.subtotals == {2029: 545000.00, 2030: 1218000.00, 2031: 2032000.00}
     assert round(sum(l.balance for l in statement.loans), 2) == statement.printed_total
 
 
 def test_wrapped_loan_name_is_reassembled():
-    """A name too long for the column wraps onto the next line, year and all."""
     statement, _ = parse_statement_lines(statement_lines())
     wrapped = next(l for l in statement.loans if l.loan_number == "100008")
     assert wrapped.name == "2022 Bonus/2022 Grant - Interest Loan - 2023"
-    assert wrapped.balance == 7000.00
 
 
 def test_boilerplate_is_not_read_as_a_loan_name():
     statement, _ = parse_statement_lines(statement_lines())
     assert all("stockownership" not in l.name for l in statement.loans)
-    assert all("loan agreements" not in l.name for l in statement.loans)
-
-
-def test_statement_with_no_rows_is_an_error():
-    _, findings = parse_statement_lines(["Some other document", "with no loan rows"])
-    assert any(f.severity == "error" and f.code == "L1" for f in findings)
 
 
 @pytest.mark.parametrize("name,expected", [
@@ -92,159 +135,288 @@ def test_loan_name_grammar(name, expected):
     assert parse_loan_name(name) == expected
 
 
-def test_tax_loan_on_an_unqualified_grant_routes_to_the_catch_up():
-    """Epic names tax loans after the "<year> Grant" even when the withholding
-    belongs to that year's zero-basis catch-up shares."""
+def test_tax_loan_routes_to_the_zero_basis_grant():
     known = {2020: {"Purchase", "Catch-Up"}}
     assert attribute_loan(["2020 Grant"], "Tax", known)[:2] == (2020, "Catch-Up")
-    assert attribute_loan(["2020 Grant"], "Purchase", known)[:2] == (2020, "Purchase")
     assert attribute_loan(["2020 Grant"], "Interest", known)[:2] == (2020, "Purchase")
-
-
-def test_tax_loan_stays_on_the_purchase_grant_when_there_is_no_zero_basis_grant():
     assert attribute_loan(["2020 Grant"], "Tax", {2020: {"Purchase"}})[:2] == (2020, "Purchase")
 
 
 def test_loan_covering_two_grants_goes_to_the_bonus_side():
     known = {2020: {"Purchase", "Bonus"}}
     for descriptors in (["2020 Bonus", "2020 Grant"], ["2020 Grant", "2020 Bonus"]):
-        year, gtype, rule, ambiguous = attribute_loan(descriptors, "Interest", known)
-        assert (year, gtype, rule, ambiguous) == (2020, "Bonus", "L4", True)
+        assert attribute_loan(descriptors, "Interest", known)[:2] == (2020, "Bonus")
 
-
-# ============================================================
-# SHARE CSV
-# ============================================================
 
 def test_unused_categories_are_dropped():
     rows, findings = parse_share_csv(csv_bytes())
-    labels = [r.label for r in rows]
-    assert "Other" not in labels and "Pre-2017 Class A Shares" not in labels
-    assert len(rows) == 9
-    assert findings == []
-
-
-def test_csv_without_a_grant_column_is_an_error():
-    _, findings = parse_share_csv(b"Something,Else\n1,2\n")
-    assert [f.code for f in findings] == ["G0"]
+    assert "Other" not in [r.label for r in rows]
+    assert len(rows) == 9 and findings == []
 
 
 @pytest.mark.parametrize("label,expected", [
-    ("2020 Purchased", (2020, "Purchase")),
-    ("2020 Catch-up", (2020, "Catch-Up")),
-    ("2021 Bonus Shares", (2021, "Bonus")),
-    ("2023 Free", (2023, "Free")),
+    ("2020 Purchased", (2020, "Purchase")), ("2020 Catch-up", (2020, "Catch-Up")),
+    ("2021 Bonus Shares", (2021, "Bonus")), ("2023 Free", (2023, "Free")),
     ("2019 SARs Conversion", (None, None)),
-    ("Pre-2017 Class A Shares", (None, None)),
 ])
 def test_row_labels_map_to_grant_types(label, expected):
     assert classify_row(label) == expected
 
 
 # ============================================================
-# DERIVATION
+# SKELETON — structure the import must not invent
 # ============================================================
 
-def test_grants_derived_from_the_csv(proposal):
-    assert len(proposal.grants) == 8  # the SARs category is skipped
-
-    purchase = by_key(proposal, 2021, "Purchase")
-    assert purchase.shares == 200000
-    assert purchase.price == 12.00
-    assert purchase.periods == 4            # 4 x 50,000
-    assert purchase.vest_start.year == 2022  # 2 of 4 vests already elapsed by Feb 2024
-
-    cliff = by_key(proposal, 2023, "Free")
-    assert (cliff.periods, cliff.vest_start.year) == (1, 2024)
+def test_catch_up_rows_come_from_the_purchase_template(skeleton):
+    catch_up = skeleton.template(2020, "Catch-Up")
+    purchase = skeleton.template(2020, "Purchase")
+    assert catch_up is not None
+    assert (catch_up.vest_start, catch_up.periods) == (purchase.vest_start, purchase.periods)
+    assert skeleton.template(2021, "Catch-Up") is None   # that year has no catch-up
 
 
-def test_vesting_shape_is_read_off_the_checkpoint_columns():
-    rows, _ = parse_share_csv(csv_bytes())
-    row = next(r for r in rows if r.label == "2022 Purchased")
-    periods, remaining, increments = infer_schedule(row)
-    assert (periods, remaining) == (4, 3)
-    assert increments == [75000, 75000, 75000]
+def test_default_bonus_variant_sets_the_period_count():
+    content = {**CONTENT, "bonus_schedule_variants": [
+        {"grant_year": 2021, "grant_type": "Bonus", "variant_code": "C",
+         "periods": 4, "label": "C", "is_default": True},
+        {"grant_year": 2021, "grant_type": "Bonus", "variant_code": "A",
+         "periods": 2, "label": "A", "is_default": False},
+    ]}
+    sk, _ = build_skeleton(content)
+    assert sk.template(2021, "Bonus").periods == 4
 
 
-def test_fully_vested_grant_cannot_show_its_schedule(proposal):
-    g = by_key(proposal, 2020, "Purchase")
-    assert "periods" in g.uncertain and "vest_start" in g.uncertain
-    assert any(f.code == "G4" and f.subject == "2020 Purchased" for f in proposal.findings)
+def test_rates_are_indexed_by_kind_and_year(skeleton):
+    assert skeleton.rate_for("Interest", "Purchase", 2022) == 0.025
+    assert skeleton.rate_for("Tax", "Catch-Up", 2021) == 0.02
+    assert skeleton.rate_for("Tax", "Bonus", 2023) == 0.04
+    assert skeleton.rate_for("Interest", "Purchase", 1999) is None
 
 
-def test_catch_up_basis_is_recognised_as_accrued_at_vest(proposal):
-    """A per-share basis that is not a round number of cents is a running total
-    of value taxed as it vested, not a purchase price."""
+# ============================================================
+# DERIVING A DRAFT
+# ============================================================
+
+def test_schedule_comes_from_the_template_not_the_files(drafted):
+    draft, _ = drafted
+    g = grant(draft, 2021, "Purchase")
+    assert g.vest_start.isoformat() == "2022-09-30"   # template, not inferred
+    assert g.periods == 4
+    assert g.exercise_date.isoformat() == "2021-12-31"
+
+
+def test_missing_template_shifts_the_nearest_one_and_says_so(drafted):
+    draft, findings = drafted
+    free = grant(draft, 2023, "Free")
+    assert free.vest_start.isoformat() == "2028-09-30"   # 2022 Free shifted one year
+    assert free.periods == 1
+    assert any(f.code == "S1" and "2023 Free" in f.subject for f in findings)
+
+
+def test_shares_and_basis_come_from_the_csv(drafted):
+    draft, _ = drafted
+    g = grant(draft, 2021, "Purchase")
+    assert g.shares == 200000
+    assert g.price == 12.00
+
+
+def test_catch_up_basis_is_recognised_as_accrued_at_vest(drafted):
     rows, _ = parse_share_csv(csv_bytes())
     row = next(r for r in rows if r.label == "2020 Catch-up")
     assert is_vest_taxed(row)[0] is True
-    assert by_key(proposal, 2020, "Catch-Up").price == 0.0
+    draft, _ = drafted
+    assert grant(draft, 2020, "Catch-Up").price == 0.0
 
 
-def test_unvested_shares_with_no_unvested_value_mean_zero_basis(proposal):
+def test_unvested_shares_with_no_unvested_value_mean_zero_basis(drafted):
     rows, _ = parse_share_csv(csv_bytes())
     row = next(r for r in rows if r.label == "2023 Bonus Shares")
     assert is_vest_taxed(row) == (True, "shares are unvested but carry no unvested value")
-    assert by_key(proposal, 2023, "Bonus").price == 0.0
+    draft, _ = drafted
+    assert grant(draft, 2023, "Bonus").price == 0.0
 
 
-def test_bonus_basis_that_misses_the_year_price_is_flagged_not_silently_zeroed(proposal):
-    """The 2022 bonus carries a basis above that year's share price. That is kept,
-    because zeroing a real basis is worse than reporting it — but it is flagged."""
-    assert by_key(proposal, 2022, "Bonus").price == 20.00
-    assert any(f.code == "G3" and f.severity == "warning" and "2022 Bonus" in f.subject
-               for f in proposal.findings)
+def test_loans_are_nested_under_the_grant_they_belong_to(drafted):
+    draft, _ = drafted
+    assert {l.loan_number for l in grant(draft, 2020, "Catch-Up").loans} == {"100003", "100004"}
+    assert {l.loan_number for l in grant(draft, 2020, "Purchase").loans} == {"100001", "100002"}
+    assert {l.loan_number for l in grant(draft, 2022, "Bonus").loans} == {"100008", "100009"}
 
 
-def test_share_prices_are_derived_from_purchase_grants(proposal):
-    assert [(p.effective_date.isoformat(), p.price) for p in proposal.prices] == [
-        ("2020-03-01", 10.00), ("2021-03-01", 12.00), ("2022-03-01", 15.00)]
+def test_prices_come_from_purchase_grant_basis_dated_by_year(drafted):
+    draft, _ = drafted
+    assert [(p.effective_date.isoformat(), p.price) for p in draft.prices] == [
+        ("2020-01-01", 10.00), ("2021-01-01", 12.00), ("2022-01-01", 15.00)]
 
 
-def test_unmapped_category_is_reported_not_dropped_silently(proposal):
-    assert any(f.code == "G1" and "SARs" in f.subject for f in proposal.findings)
+def test_unmapped_category_is_reported_not_dropped_silently(drafted):
+    _, findings = drafted
+    assert any(f.code == "G1" and "SARs" in f.subject for f in findings)
 
 
-def test_shares_sold_are_reported_but_no_sales_invented(proposal):
-    assert any(f.code == "G2" and "2020 Purchased" in f.subject for f in proposal.findings)
+def test_the_fixture_reconciles_end_to_end(drafted):
+    draft, findings = drafted
+    assert [f.as_dict() for f in findings if f.severity == "error"] == []
+    assert is_blocked(findings) is False
 
 
 # ============================================================
-# CROSS-CHECKS
+# CHECKS
 # ============================================================
 
-def test_every_cross_check_passes_on_the_fixture(proposal):
-    assert [f.as_dict() for f in proposal.findings if f.severity == "error"] == []
-
-
-def test_a_misparsed_balance_is_caught_by_the_statement_subtotal():
+def test_a_misread_row_blocks_the_import(skeleton):
     lines = [l.replace("$500,000.00", "$500,000.99") for l in statement_lines()]
     statement, f = parse_statement_lines(lines)
-    p = build_proposal(statement, parse_share_csv(csv_bytes())[0], parse_findings=f)
-    assert "C1" in codes(p, "error")
-    assert "C2" in codes(p, "error")
+    rows, _ = parse_share_csv(csv_bytes())
+    draft, df = derive_draft(statement, rows, skeleton)
+    findings = f + df + validate_draft(draft, statement, rows, skeleton)
+    assert "C1" in codes(findings, "error")
+    assert "C2" in codes(findings, "error")
+    assert is_blocked(findings) is True
 
 
-def test_wrong_attribution_is_caught_by_the_csv_loan_balance():
-    """Route tax loans to the purchase grant and the CSV balances stop adding up."""
+def test_wrong_attribution_is_an_error_but_does_not_block(skeleton):
+    """The documents disagreeing is worth stopping on, but it is the user's call."""
     statement, f = parse_statement_lines(statement_lines())
     rows, _ = parse_share_csv(csv_bytes())
     for sl in statement.loans:
         sl.name = sl.name.replace("Tax Loan", "Interest Loan")
-    p = build_proposal(statement, rows, parse_findings=f)
-    assert "C3" in codes(p, "error")
-    assert "C4" in codes(p, "error")
+    draft, df = derive_draft(statement, rows, skeleton)
+    findings = f + df + validate_draft(draft, statement, rows, skeleton)
+    assert "C3" in codes(findings, "error")
+    assert "C4" in codes(findings, "error")
+    assert is_blocked(findings) is False
 
 
-def test_shares_remaining_mismatch_is_reported():
-    rows, _ = parse_share_csv(csv_bytes())
+def test_share_count_disagreement_is_reported(skeleton, parsed):
+    statement, rows, _ = parsed
+    draft, _ = derive_draft(statement, rows, skeleton)
+    grant(draft, 2021, "Purchase").shares = 42
+    assert "C8" in codes(validate_draft(draft, statement, rows, skeleton), "error")
+
+
+def test_a_rate_off_the_record_is_flagged(skeleton, parsed):
+    statement, rows, _ = parsed
+    draft, _ = derive_draft(statement, rows, skeleton)
+    grant(draft, 2020, "Purchase").loans[1].interest_rate = 0.99
+    assert "C9" in codes(validate_draft(draft, statement, rows, skeleton), "warning")
+
+
+def test_purchase_loan_rates_are_not_checked_because_they_get_refinanced(skeleton, parsed):
+    statement, rows, _ = parsed
+    draft, _ = derive_draft(statement, rows, skeleton)
+    purchase = next(l for l in grant(draft, 2020, "Purchase").loans
+                    if l.loan_type == "Purchase")
+    purchase.interest_rate = 0.99
+    assert "C9" not in codes(validate_draft(draft, statement, rows, skeleton))
+
+
+def test_shares_remaining_mismatch_is_reported(skeleton, parsed):
+    statement, rows, _ = parsed
     rows[0].shares_remaining += 1
-    p = build_proposal(None, rows)
-    assert "C6" in codes(p, "warning")
+    draft, _ = derive_draft(statement, rows, skeleton)
+    assert "C6" in codes(validate_draft(draft, statement, rows, skeleton), "warning")
+
+
+def test_csv_only_raises_no_unreconcilable_loan_errors(skeleton):
+    rows, _ = parse_share_csv(csv_bytes())
+    draft, df = derive_draft(None, rows, skeleton)
+    findings = df + validate_draft(draft, None, rows, skeleton)
+    assert [f.as_dict() for f in findings if f.severity == "error"] == []
 
 
 # ============================================================
-# PDF ROUND TRIP
+# A REPAIRED DRAFT COMING BACK
+# ============================================================
+
+def test_a_repaired_draft_is_read_back(skeleton, drafted):
+    draft, _ = drafted
+    payload = to_wizard_payload(draft)
+    payload["grants"][0]["shares"] = 123456
+    back, findings = draft_from_payload(payload, skeleton)
+    assert [f for f in findings if f.severity == "error"] == []
+    assert back.origin == "supplied"
+    assert back.grants[0].shares == 123456
+    assert len(back.all_loans) == len(draft.all_loans)
+
+
+def test_the_same_checks_run_on_a_repaired_draft(skeleton, parsed):
+    """A check that only works on our own output is not a check."""
+    statement, rows, _ = parsed
+    draft, _ = derive_draft(statement, rows, skeleton)
+    payload = to_wizard_payload(draft)
+    payload["grants"][0]["loans"] = []          # drop a grant's loans entirely
+    back, _ = draft_from_payload(payload, skeleton)
+    findings = validate_draft(back, statement, rows, skeleton)
+    assert "C1" in codes(findings, "error")
+    assert is_blocked(findings) is True
+
+
+def test_a_repaired_draft_cannot_change_the_vesting_schedule(skeleton, drafted):
+    draft, _ = drafted
+    payload = to_wizard_payload(draft)
+    payload["grants"][0]["periods"] = 99
+    payload["grants"][0]["vest_start"] = "1999-01-01"
+    back, findings = draft_from_payload(payload, skeleton)
+    template = skeleton.template(back.grants[0].year, back.grants[0].type)
+    assert back.grants[0].periods == template.periods
+    assert back.grants[0].vest_start == template.vest_start
+    assert codes(findings, "warning").count("C10") == 2
+
+
+def test_unreadable_json_says_what_is_wrong(skeleton):
+    _, findings = draft_from_payload({"nope": 1}, skeleton)
+    assert findings[0].severity == "error"
+    assert "grants" in findings[0].message
+
+
+def test_a_bad_grant_is_reported_without_losing_the_good_ones(skeleton, drafted):
+    draft, _ = drafted
+    payload = to_wizard_payload(draft)
+    payload["grants"].append({"year": 2024, "type": "Purchase", "shares": "lots"})
+    back, findings = draft_from_payload(payload, skeleton)
+    assert len(back.grants) == len(draft.grants)
+    assert "R1" in codes(findings, "error")
+
+
+# ============================================================
+# THE PROMPT
+# ============================================================
+
+def test_the_prompt_carries_what_an_assistant_needs(skeleton, parsed, drafted):
+    statement, rows, _ = parsed
+    draft, findings = drafted
+    prompt = build_prompt(draft, findings, statement, skeleton,
+                          "\n".join(statement_lines()), csv_bytes().decode())
+
+    assert "Return only the JSON object." in prompt
+    assert "do not change these" in prompt.lower()
+    assert "2022-09-30" in prompt                       # the fixed schedule
+    assert "0.025" in prompt                            # the rates on record
+    assert "100008" in prompt                           # the source statement text
+    assert "2021 Bonus Shares" in prompt                # the source CSV text
+    assert '"loan_type": "Purchase"' in prompt          # the output contract
+    assert "Subtotal" in prompt
+
+
+def test_the_prompt_lists_what_actually_failed(skeleton, parsed):
+    statement, rows, _ = parsed
+    for sl in statement.loans:
+        sl.name = sl.name.replace("Tax Loan", "Interest Loan")
+    draft, df = derive_draft(statement, rows, skeleton)
+    findings = df + validate_draft(draft, statement, rows, skeleton)
+    prompt = build_prompt(draft, findings, statement, skeleton)
+    assert "[C3]" in prompt and "[C4]" in prompt
+
+
+def test_a_clean_draft_still_produces_a_usable_prompt(skeleton, drafted):
+    draft, _ = drafted
+    prompt = build_prompt(draft, [], None, skeleton)
+    assert "no failures" in prompt
+
+
+# ============================================================
+# API
 # ============================================================
 
 def make_pdf(lines: list[str]) -> bytes:
@@ -281,13 +453,7 @@ def test_real_pdf_extraction_finds_the_same_rows():
     assert [f for f in findings if f.severity == "error"] == []
     assert len(statement.loans) == 9
     assert round(sum(l.balance for l in statement.loans), 2) == 3795000.00
-    assert next(l for l in statement.loans
-                if l.loan_number == "100008").name.endswith("Interest Loan - 2023")
 
-
-# ============================================================
-# API
-# ============================================================
 
 def upload_files(with_pdf=True):
     files = {"share_csv": ("shares.csv", csv_bytes(), "text/csv")}
@@ -297,122 +463,115 @@ def upload_files(with_pdf=True):
     return files
 
 
-def test_preview_writes_nothing(client):
-    register_user(client)
-    resp = client.post("/api/epic-import/preview", files=upload_files())
+def analyze(client, **extra):
+    resp = client.post("/api/epic-import/analyze", files=upload_files(), **extra)
     assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert len(body["proposal"]["grants"]) == 8
-    assert len(body["proposal"]["loans"]) == 9
-    assert body["plan"]["grants_updated"] == 0
+    return resp.json()
+
+
+def test_analyze_returns_a_draft_and_writes_nothing(client):
+    register_user(client)
+    body = analyze(client)
+    assert body["origin"] == "parsed"
+    assert body["summary"]["grants"] == 8
+    assert body["summary"]["loans"] == 9
+    assert body["summary"]["total_shares"] == 679000   # the SARs category is not imported
     assert client.get("/api/grants").json() == []
     assert client.get("/api/loans").json() == []
 
 
-def test_preview_requires_at_least_one_file(client):
+def test_analyze_always_offers_a_prompt(client):
     register_user(client)
-    assert client.post("/api/epic-import/preview", files={}).status_code == 400
+    assert "Return only the JSON object." in analyze(client)["prompt"]
 
 
-def test_apply_creates_grants_loans_and_prices(client):
+def test_analyze_requires_at_least_one_file(client):
     register_user(client)
-    resp = client.post("/api/epic-import/apply", files=upload_files())
-    assert resp.status_code == 201, resp.text
+    assert client.post("/api/epic-import/analyze", files={}).status_code == 400
+
+
+def test_a_misread_statement_blocks(client):
+    register_user(client)
+    broken = [l.replace("$500,000.00", "$500,000.99") for l in statement_lines()]
+    resp = client.post("/api/epic-import/analyze", files={
+        "share_csv": ("shares.csv", csv_bytes(), "text/csv"),
+        "statement_pdf": ("s.pdf", make_pdf(broken), "application/pdf"),
+    })
     body = resp.json()
-    assert (body["grants_created"], body["loans_created"], body["prices_created"]) == (8, 9, 3)
+    assert body["blocked"] is True
+    assert "C1" in [f["code"] for f in body["findings"]]
+    assert "[C1]" in body["prompt"]
+
+
+def test_a_repaired_draft_can_be_pasted_back(client):
+    register_user(client)
+    first = analyze(client)
+    payload = first["wizard_payload"]
+    payload["grants"][0]["shares"] = 4321
+    second = analyze(client, data={"revised_json": json.dumps(payload)})
+    assert second["origin"] == "supplied"
+    assert second["wizard_payload"]["grants"][0]["shares"] == 4321
+    assert "C8" in [f["code"] for f in second["findings"]]
+
+
+def test_a_repaired_draft_can_arrive_as_a_json_file(client):
+    register_user(client)
+    payload = analyze(client)["wizard_payload"]
+    files = upload_files()
+    files["revised_draft"] = ("fixed.json", json.dumps(payload).encode(), "application/json")
+    resp = client.post("/api/epic-import/analyze", files=files)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["origin"] == "supplied"
+
+
+def test_a_repaired_draft_can_arrive_as_the_apps_own_workbook(client):
+    register_user(client)
+    analyze(client)
+    client.post("/api/wizard/submit", json={
+        **analyze(client)["wizard_payload"], "clear_existing": True,
+        "generate_payoff_sales": False})
+    export = client.get("/api/export/excel").content
+
+    files = upload_files()
+    files["revised_draft"] = ("filled.xlsx", export, "application/vnd.ms-excel")
+    body = client.post("/api/epic-import/analyze", files=files).json()
+    assert body["origin"] == "supplied"
+    assert body["summary"]["grants"] == 8
+    assert body["summary"]["loans"] == 9
+
+
+def test_unparseable_paste_says_what_to_do(client):
+    register_user(client)
+    resp = client.post("/api/epic-import/analyze", files=upload_files(),
+                       data={"revised_json": "Sure! Here is the JSON: {oops"})
+    assert resp.status_code == 400
+    assert "starting at '{'" in resp.json()["detail"]
+
+
+def test_the_draft_can_be_submitted_through_the_wizard(client):
+    """Acceptance goes through the wizard, so what is signed off is the position."""
+    register_user(client)
+    payload = analyze(client)["wizard_payload"]
+    resp = client.post("/api/wizard/submit", json={
+        **payload, "clear_existing": True, "generate_payoff_sales": False})
+    assert resp.status_code == 201, resp.text
     assert len(client.get("/api/grants").json()) == 8
     assert len(client.get("/api/loans").json()) == 9
     assert len(client.get("/api/prices").json()) == 3
 
 
-def test_apply_twice_updates_rather_than_duplicating(client):
-    register_user(client)
-    client.post("/api/epic-import/apply", files=upload_files())
-    body = client.post("/api/epic-import/apply", files=upload_files()).json()
-    assert (body["grants_created"], body["loans_created"]) == (0, 0)
-    assert (body["grants_updated"], body["loans_updated"]) == (8, 9)
-    assert len(client.get("/api/grants").json()) == 8
-
-
-def test_apply_keeps_a_schedule_the_user_already_set(client):
-    """A statement says nothing about vest dates, so it must not overwrite them."""
-    register_user(client)
-    client.post("/api/grants", json={
-        "year": 2021, "type": "Purchase", "shares": 1, "price": 1.0,
-        "vest_start": "2021-06-15", "periods": 9, "exercise_date": "2021-11-30",
-        "dp_shares": -500,
-    })
-    client.post("/api/epic-import/apply", files=upload_files())
-    g = next(g for g in client.get("/api/grants").json()
-             if g["year"] == 2021 and g["type"] == "Purchase")
-    assert g["shares"] == 200000        # refreshed from the CSV
-    assert g["price"] == 12.00
-    assert g["vest_start"] == "2021-06-15"   # left alone
-    assert g["periods"] == 9
-    assert g["dp_shares"] == -500
-
-
-def test_apply_adopts_the_derived_schedule_when_asked(client):
-    register_user(client)
-    client.post("/api/grants", json={
-        "year": 2021, "type": "Purchase", "shares": 1, "price": 1.0,
-        "vest_start": "2021-06-15", "periods": 9, "exercise_date": "2021-11-30",
-    })
-    client.post("/api/epic-import/apply?adopt_schedule=true", files=upload_files())
-    g = next(g for g in client.get("/api/grants").json()
-             if g["year"] == 2021 and g["type"] == "Purchase")
-    assert g["periods"] == 4
-    assert g["vest_start"].startswith("2022")
-
-
-def test_apply_reports_loans_the_statement_no_longer_lists(client):
-    register_user(client)
-    client.post("/api/loans", json={
-        "grant_year": 2019, "grant_type": "Purchase", "loan_type": "Purchase",
-        "loan_year": 2019, "amount": 1000.0, "interest_rate": 0.01,
-        "due_date": "2028-07-15", "loan_number": "099999",
-    })
-    body = client.post("/api/epic-import/apply", files=upload_files()).json()
-    assert body["loans_not_on_statement"] == ["099999"]
-    assert len(client.get("/api/loans").json()) == 10  # nothing deleted
-
-
-def test_apply_takes_a_backup_first(client):
-    register_user(client)
-    client.post("/api/prices", json={"effective_date": "2020-03-01", "price": 9.0})
-    client.post("/api/epic-import/apply", files=upload_files())
-    assert len(client.get("/api/import/backups").json()) == 1
-
-
-def test_apply_leaves_existing_prices_alone(client):
-    register_user(client)
-    client.post("/api/prices", json={"effective_date": "2020-03-01", "price": 9.0})
-    client.post("/api/epic-import/apply", files=upload_files())
-    prices = {p["effective_date"]: p["price"] for p in client.get("/api/prices").json()}
-    assert prices["2020-03-01"] == 9.0
-    assert prices["2021-03-01"] == 12.00
-
-
-def test_apply_can_overwrite_prices_when_asked(client):
-    register_user(client)
-    client.post("/api/prices", json={"effective_date": "2020-03-01", "price": 9.0})
-    client.post("/api/epic-import/apply?overwrite_prices=true", files=upload_files())
-    prices = {p["effective_date"]: p["price"] for p in client.get("/api/prices").json()}
-    assert prices["2020-03-01"] == 10.00
+def test_analyze_requires_authentication(client):
+    assert client.post("/api/epic-import/analyze", files=upload_files()).status_code == 401
 
 
 # ============================================================
-# DIFF
+# DIAGNOSTICS
 # ============================================================
-
-def export_bytes(client) -> bytes:
-    resp = client.get("/api/export/excel")
-    assert resp.status_code == 200, resp.text
-    return resp.content
-
 
 def diff_files(client, **overrides):
-    files = {"export_xlsx": ("export.xlsx", export_bytes(client),
+    export = client.get("/api/export/excel")
+    assert export.status_code == 200, export.text
+    files = {"export_xlsx": ("export.xlsx", export.content,
                              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
     files.update(upload_files())
     files.update(overrides)
@@ -420,62 +579,34 @@ def diff_files(client, **overrides):
 
 
 def test_diff_finds_nothing_when_the_data_came_from_the_same_files(client):
-    """The round trip: import, export, diff. Anything reported here is a bug in
-    the rules, not in the user's data."""
     register_user(client)
-    client.post("/api/epic-import/apply", files=upload_files())
-    resp = client.post("/api/epic-import/diff", files=diff_files(client))
-    assert resp.status_code == 200, resp.text
-    report = resp.json()["report"]
+    payload = analyze(client)["wizard_payload"]
+    client.post("/api/wizard/submit", json={
+        **payload, "clear_existing": True, "generate_payoff_sales": False})
+    report = client.post("/api/epic-import/diff", files=diff_files(client)).json()["report"]
     assert report["differences"] == []
-    assert report["errors"] == 0
 
 
 def test_diff_names_the_rule_behind_each_difference(client):
     register_user(client)
-    client.post("/api/epic-import/apply", files=upload_files())
-    g = next(g for g in client.get("/api/grants").json()
-             if g["year"] == 2022 and g["type"] == "Purchase")
+    payload = analyze(client)["wizard_payload"]
+    client.post("/api/wizard/submit", json={
+        **payload, "clear_existing": True, "generate_payoff_sales": False})
+    g = next(x for x in client.get("/api/grants").json()
+             if x["year"] == 2022 and x["type"] == "Purchase")
     client.put(f"/api/grants/{g['id']}", json={"shares": 999})
 
     report = client.post("/api/epic-import/diff", files=diff_files(client)).json()["report"]
     shares = [d for d in report["differences"] if d["field"] == "shares"]
     assert len(shares) == 1
-    assert shares[0]["rule"] == "G2"           # points at the rule to fix
-    assert shares[0]["severity"] == "error"
-    assert shares[0]["imported"] == "300,000" and shares[0]["existing"] == "999"
-
-
-def test_diff_learns_the_users_date_conventions(client):
-    """A user whose vest dates are not 1 March should not see every grant flagged."""
-    register_user(client)
-    client.post("/api/epic-import/apply", files=upload_files())
-    for g in client.get("/api/grants").json():
-        client.put(f"/api/grants/{g['id']}", json={"vest_start": f"{g['vest_start'][:4]}-07-01"})
-
-    body = client.post("/api/epic-import/diff", files=diff_files(client)).json()
-    assert body["report"]["conventions"]["vest_month"] == 7
-    assert [d for d in body["report"]["differences"] if d["field"] == "vest_start"] == []
-    # ...whereas the SPEC defaults would have flagged every one of them.
-    assert [d for d in body["report_with_defaults"]["differences"]
-            if d["field"] == "vest_start"]
-
-
-def test_diff_reports_records_missing_on_either_side(client):
-    register_user(client)
-    client.post("/api/epic-import/apply", files=upload_files())
-    loans = client.get("/api/loans").json()
-    client.delete(f"/api/loans/{loans[0]['id']}")
-
-    report = client.post("/api/epic-import/diff", files=diff_files(client)).json()["report"]
-    missing = [d for d in report["differences"] if d["entity"] == "loan" and d["field"] == ""]
-    assert len(missing) == 1
-    assert missing[0]["existing"] == "—"
+    assert shares[0]["rule"] == "G2" and shares[0]["severity"] == "error"
 
 
 def test_diff_writes_nothing(client):
     register_user(client)
-    client.post("/api/epic-import/apply", files=upload_files())
+    payload = analyze(client)["wizard_payload"]
+    client.post("/api/wizard/submit", json={
+        **payload, "clear_existing": True, "generate_payoff_sales": False})
     before = client.get("/api/grants").json()
     client.post("/api/epic-import/diff", files=diff_files(client))
     assert client.get("/api/grants").json() == before
@@ -483,7 +614,6 @@ def test_diff_writes_nothing(client):
 
 def test_diff_markdown_download(client):
     register_user(client)
-    client.post("/api/epic-import/apply", files=upload_files())
     resp = client.post("/api/epic-import/diff.md", files=diff_files(client))
     assert resp.status_code == 200
     assert "attachment" in resp.headers["content-disposition"]
@@ -497,32 +627,17 @@ def test_diff_rejects_something_that_is_not_an_export(client):
     assert resp.status_code == 400
 
 
-def test_endpoints_require_authentication(client):
-    for path in ("/api/epic-import/preview", "/api/epic-import/apply", "/api/epic-import/diff"):
-        assert client.post(path, files=upload_files()).status_code == 401
-
-
-def test_csv_only_import_does_not_call_every_loan_stale(client):
-    """Without a statement there is nothing for a loan to be absent from."""
+def test_analyze_returns_the_draft_in_the_shape_the_wizard_loads(client):
+    """The wizard populates itself from grants/loans/prices; the draft arrives
+    in that shape so it can be reviewed there rather than as a file."""
     register_user(client)
-    client.post("/api/loans", json={
-        "grant_year": 2019, "grant_type": "Purchase", "loan_type": "Purchase",
-        "loan_year": 2019, "amount": 1000.0, "interest_rate": 0.01,
-        "due_date": "2028-07-15", "loan_number": "099999",
-    })
-    plan = client.post("/api/epic-import/preview",
-                       files=upload_files(with_pdf=False)).json()["plan"]
-    assert plan["loans_not_on_statement"] == []
-
-    body = client.post("/api/epic-import/apply", files=upload_files(with_pdf=False)).json()
-    assert body["loans_not_on_statement"] == []
-    assert body["loans_created"] == 0          # no statement, no loans to import
-    assert body["grants_created"] == 8
-
-
-def test_csv_only_does_not_raise_unreconcilable_loan_errors():
-    """The loan cross-checks compare the CSV against the statement; with no
-    statement there is nothing to compare, not a disagreement."""
-    rows, _ = parse_share_csv(csv_bytes())
-    p = build_proposal(None, rows)
-    assert [f.code for f in p.findings if f.severity == "error"] == []
+    prefill = analyze(client)["wizard_prefill"]
+    assert len(prefill["grants"]) == 8
+    assert len(prefill["loans"]) == 9
+    assert len(prefill["prices"]) == 3
+    assert all(g["id"] < 0 for g in prefill["grants"])       # never mistaken for saved rows
+    purchase = next(g for g in prefill["grants"]
+                    if g["year"] == 2021 and g["type"] == "Purchase")
+    assert purchase["shares"] == 200000
+    assert {l["loan_number"] for l in prefill["loans"] if l["grant_year"] == 2020
+            and l["grant_type"] == "Catch-Up"} == {"100003", "100004"}

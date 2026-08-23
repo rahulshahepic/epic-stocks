@@ -3,113 +3,168 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import EpicFileImport from '../app/components/EpicFileImport.tsx'
 
-const PREVIEW = {
-  proposal: {
-    statement_date: '2024-02-01',
-    conventions: {},
-    grants: [], loans: [], prices: [],
-    findings: [
-      { code: 'G4', severity: 'warning', subject: '2020 Purchased',
-        message: 'Fully vested in the CSV, so the vesting schedule is not visible.' },
-    ],
+const CLEAN = {
+  draft: { statement_date: '2024-02-01' },
+  wizard_payload: { grants: [], prices: [] },
+  wizard_prefill: { grants: [], loans: [], prices: [] },
+  findings: [],
+  blocked: false,
+  reconciles: true,
+  prompt: 'PASTE ME. Return only the JSON object.',
+  summary: {
+    grants: 8, loans: 9, prices: 3,
+    total_shares: 679000, total_loan_balance: 3795000, grant_years: [2020, 2021],
   },
-  plan: {
-    grants_created: ['2024 Purchase'], grants_updated: 7,
-    loans_created: ['100010'], loans_updated: 8,
-    prices_created: ['2024-03-01'], loans_not_on_statement: ['099999'],
-  },
-  report: { differences: [], conventions: {}, counts: {}, errors: 0, warnings: 0 },
+  origin: 'parsed',
 }
 
-const APPLIED = {
-  grants_created: 1, grants_updated: 7, loans_created: 1, loans_updated: 8,
-  prices_created: 1, loans_not_on_statement: ['099999'], findings: [],
+const DISAGREES = {
+  ...CLEAN,
+  findings: [
+    { code: 'C3', severity: 'error', subject: '2022 Purchased',
+      message: 'The share summary reports a loan balance of 2,000,000.00.' },
+  ],
+  reconciles: false,
 }
 
-function mockApi(preview: unknown = PREVIEW) {
-  const calls: string[] = []
-  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+const BLOCKED = {
+  ...DISAGREES,
+  blocked: true,
+  findings: [
+    { code: 'C1', severity: 'error', subject: '2031',
+      message: "The statement's own subtotal for 2031 is 2,032,000.00." },
+  ],
+}
+
+function mockApi(...responses: unknown[]) {
+  const calls: Array<{ url: string; body: FormData | null }> = []
+  let i = 0
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const url = typeof input === 'string' ? input : (input as Request).url
-    calls.push(url)
-    if (url.includes('/preview')) return new Response(JSON.stringify(preview), { status: 200 })
-    if (url.includes('/apply')) return new Response(JSON.stringify(APPLIED), { status: 201 })
-    return new Response('{}', { status: 200 })
+    if (url.includes('/api/content')) return new Response('{}', { status: 500 })
+    calls.push({ url, body: (init?.body as FormData) ?? null })
+    const body = responses[Math.min(i, responses.length - 1)]
+    i += 1
+    return new Response(JSON.stringify(body), { status: 200 })
   })
   return calls
 }
 
 const csv = () => new File(['a,b'], 'shares.csv', { type: 'text/csv' })
 
-async function uploadAndPreview() {
-  render(<EpicFileImport />)
+async function readFiles() {
   await userEvent.upload(screen.getByLabelText(/Share summary/i), csv())
-  await userEvent.click(screen.getByRole('button', { name: 'Preview' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Read my files' }))
 }
 
 describe('EpicFileImport', () => {
   afterEach(() => { vi.restoreAllMocks() })
 
-  it('will not preview until a file is chosen', () => {
-    mockApi()
+  it('will not read until a file is chosen', () => {
+    mockApi(CLEAN)
     render(<EpicFileImport />)
-    expect(screen.getByRole('button', { name: 'Preview' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Read my files' })).toBeDisabled()
   })
 
-  it('previews without writing anything', async () => {
-    const calls = mockApi()
-    await uploadAndPreview()
-    expect(await screen.findByText(/Statement dated 2024-02-01/)).toBeInTheDocument()
-    expect(calls.every(u => u.includes('/preview'))).toBe(true)
+  it('shows figures a person can recognise, not the file', async () => {
+    mockApi(CLEAN)
+    render(<EpicFileImport />)
+    await readFiles()
+    expect(await screen.findByText('679,000')).toBeInTheDocument()
+    expect(screen.getByText('$3,795,000')).toBeInTheDocument()
+    expect(screen.getByText(/Everything reconciles/)).toBeInTheDocument()
   })
 
-  it('shows what would change and what would be left alone', async () => {
-    mockApi()
-    await uploadAndPreview()
-    expect(await screen.findByText('1 new, 7 updated')).toBeInTheDocument()
-    expect(screen.getByText(/not on this\s+statement/)).toBeInTheDocument()
-    expect(screen.getByText(/Fully vested in the CSV/)).toBeInTheDocument()
+  it('offers no assistant help when nothing disagrees', async () => {
+    mockApi(CLEAN)
+    render(<EpicFileImport />)
+    await readFiles()
+    expect(await screen.findByRole('button', { name: 'Review and finish' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Copy prompt' })).not.toBeInTheDocument()
   })
 
-  it('leaves schedules and prices alone unless asked', async () => {
-    const calls = mockApi()
-    await uploadAndPreview()
-    await userEvent.click(await screen.findByRole('button', { name: 'Import' }))
-    await waitFor(() => expect(calls.some(u => u.includes('/apply'))).toBe(true))
-    const applyUrl = calls.find(u => u.includes('/apply'))!
-    expect(applyUrl).toContain('adopt_schedule=false')
-    expect(applyUrl).toContain('overwrite_prices=false')
+  it('offers the prompt when the two files disagree, but still lets you proceed', async () => {
+    mockApi(DISAGREES)
+    render(<EpicFileImport />)
+    await readFiles()
+    expect(await screen.findByText(/1 figure\(s\) do not agree/)).toBeInTheDocument()
+    expect(screen.getByText('C3')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Copy prompt' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Review anyway' })).toBeInTheDocument()
   })
 
-  it('passes the opt-ins through when they are ticked', async () => {
-    const calls = mockApi()
-    await uploadAndPreview()
-    await userEvent.click(await screen.findByLabelText(/Also update vesting schedules/))
-    await userEvent.click(screen.getByLabelText(/Overwrite share prices/))
-    await userEvent.click(screen.getByRole('button', { name: 'Import' }))
-    await waitFor(() => expect(calls.some(u => u.includes('/apply'))).toBe(true))
-    const applyUrl = calls.find(u => u.includes('/apply'))!
-    expect(applyUrl).toContain('adopt_schedule=true')
-    expect(applyUrl).toContain('overwrite_prices=true')
+  it('refuses to proceed when the statement itself was misread', async () => {
+    mockApi(BLOCKED)
+    render(<EpicFileImport />)
+    await readFiles()
+    expect(await screen.findByText(/does not add up to its own totals/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Copy prompt' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Review/ })).not.toBeInTheDocument()
   })
 
-  it('blocks the import when the files did not add up', async () => {
-    mockApi({
-      ...PREVIEW,
-      proposal: {
-        ...PREVIEW.proposal,
-        findings: [{ code: 'C3', severity: 'error', subject: '2020 Purchased',
-                     message: 'Loan balances do not reconcile.' }],
-      },
+  it('says the figures go wherever the user chooses, not to the app', async () => {
+    mockApi(BLOCKED)
+    render(<EpicFileImport />)
+    await readFiles()
+    expect(await screen.findByText(/this app does not send\s+them anywhere/)).toBeInTheDocument()
+  })
+
+  it('sends a pasted reply back to be checked the same way', async () => {
+    const calls = mockApi(BLOCKED, CLEAN)
+    render(<EpicFileImport />)
+    await readFiles()
+    await userEvent.type(await screen.findByLabelText(/Paste the reply/), 'grants-json')
+    await userEvent.click(screen.getByRole('button', { name: 'Check this' }))
+
+    await waitFor(() => expect(calls.length).toBe(2))
+    expect(calls[1].body?.get('revised_json')).toContain('grants')
+    expect(await screen.findByText(/Everything reconciles/)).toBeInTheDocument()
+  })
+
+  it('accepts the reply as a file too', async () => {
+    const calls = mockApi(BLOCKED, CLEAN)
+    render(<EpicFileImport />)
+    await readFiles()
+    await userEvent.upload(
+      await screen.findByLabelText(/Upload the reply as a file/),
+      new File(['{}'], 'fixed.json', { type: 'application/json' }),
+    )
+    await waitFor(() => expect(calls.length).toBe(2))
+    expect(calls[1].body?.get('revised_draft')).toBeTruthy()
+  })
+
+  it('keeps the loop going until it comes back clean', async () => {
+    const calls = mockApi(BLOCKED, DISAGREES, CLEAN)
+    render(<EpicFileImport />)
+    await readFiles()
+
+    await userEvent.type(await screen.findByLabelText(/Paste the reply/), 'a')
+    await userEvent.click(screen.getByRole('button', { name: 'Check this' }))
+    expect(await screen.findByText(/1 figure\(s\) do not agree/)).toBeInTheDocument()
+
+    await userEvent.type(screen.getByLabelText(/Paste the reply/), 'b')
+    await userEvent.click(screen.getByRole('button', { name: 'Check this' }))
+    expect(await screen.findByText(/Everything reconciles/)).toBeInTheDocument()
+    expect(calls.length).toBe(3)
+  })
+
+  it('hands off to the wizard rather than asking you to sign off on a file', async () => {
+    mockApi(CLEAN)
+    render(<EpicFileImport />)
+    await readFiles()
+    await userEvent.click(await screen.findByRole('button', { name: 'Review and finish' }))
+    expect(await screen.findByText('Review your import')).toBeInTheDocument()
+    expect(screen.getByText(/Nothing has been saved yet/)).toBeInTheDocument()
+  })
+
+  it('surfaces a server error instead of a blank panel', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = typeof input === 'string' ? input : (input as Request).url
+      if (url.includes('/api/content')) return new Response('{}', { status: 500 })
+      return new Response(JSON.stringify({ detail: 'That is not valid JSON' }), { status: 400 })
     })
-    await uploadAndPreview()
-    expect(await screen.findByRole('button', { name: 'Import' })).toBeDisabled()
-    expect(screen.getByText(/Fix the 1 error/)).toBeInTheDocument()
-  })
-
-  it('reports what was imported', async () => {
-    mockApi()
-    await uploadAndPreview()
-    await userEvent.click(await screen.findByRole('button', { name: 'Import' }))
-    expect(await screen.findByText(/1 grants added, 7 updated/)).toBeInTheDocument()
+    render(<EpicFileImport />)
+    await readFiles()
+    expect(await screen.findByText('That is not valid JSON')).toBeInTheDocument()
   })
 })

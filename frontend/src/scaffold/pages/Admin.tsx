@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import { LineChart, Line, ResponsiveContainer, Tooltip, YAxis, XAxis } from 'recharts'
 import { api } from '../../api.ts'
 import { useConfig } from '../hooks/useConfig.ts'
@@ -275,6 +276,20 @@ export default function Admin() {
  <h2 className="text-lg font-semibold text-cs-text">Admin</h2>
 
  {error && <p className="text-xs text-red-500">{error}</p>}
+
+ {/* Tools */}
+ <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+ <h3 className="text-sm font-medium text-cs-text">Tools</h3>
+ <Link
+ to="/import-diagnostics"
+ className="mt-2 inline-block rounded-md bg-rose-50 px-3 py-1.5 text-xs font-medium text-cs-brand hover:bg-rose-100 dark:bg-rose-900/40 dark:text-rose-300 dark:hover:bg-rose-900/50"
+ >
+ Import diagnostics
+ </Link>
+ <p className="mt-2 text-xs text-cs-muted">
+ Compare the Epic file importer against a real export. Read-only.
+ </p>
+ </section>
 
  {/* Stats */}
  {stats && (

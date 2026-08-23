@@ -1,0 +1,99 @@
+"""Parser for Epic's share-summary CSV export.
+
+Columns (header row, order not relied upon):
+    Grant, Shares Granted, Shares Sold, Shares Remaining, 83b Shares,
+    Cost Basis of Shares, Loan Balance, Loan Due Year,
+    Vest {n} - Vested Shares ..., Vest {n} - Unvested Value ...,
+    Annual Interest Due
+
+The "Vest n" columns are cumulative vested share counts at successive future
+checkpoints — the checkpoint dates are not in the file, which is why vest_start
+is derived rather than read (see rules.G5).
+"""
+import csv
+import io
+import re
+
+from .models import ERROR, Finding, ShareRow
+
+_VESTED = re.compile(r"^vest\s*(\d+)\s*-\s*vested\s*shares$", re.I)
+_UNVESTED = re.compile(r"^vest\s*(\d+)\s*-\s*unvested\s*value$", re.I)
+
+
+def _norm(s: str) -> str:
+    return re.sub(r"\s+", " ", (s or "").strip()).lower()
+
+
+def _num(v):
+    v = (v or "").strip().replace(",", "").replace("$", "")
+    if not v:
+        return None
+    try:
+        return float(v)
+    except ValueError:
+        return None
+
+
+def _int(v):
+    n = _num(v)
+    return None if n is None else int(round(n))
+
+
+def parse_share_csv(raw: bytes) -> tuple[list[ShareRow], list[Finding]]:
+    """Parse the CSV into ShareRows. Rows with no share count are dropped."""
+    findings: list[Finding] = []
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = raw.decode("latin-1")
+
+    reader = csv.reader(io.StringIO(text))
+    try:
+        header = next(reader)
+    except StopIteration:
+        return [], [Finding("G0", ERROR, "", "CSV is empty")]
+
+    idx = {_norm(h): i for i, h in enumerate(header)}
+    if "grant" not in idx:
+        return [], [Finding("G0", ERROR, "",
+                            "CSV has no 'Grant' column — is this an Epic share summary export?")]
+
+    vest_cols, unvest_cols = {}, {}
+    for h, i in idx.items():
+        m = _VESTED.match(h)
+        if m:
+            vest_cols[int(m.group(1))] = i
+        m = _UNVESTED.match(h)
+        if m:
+            unvest_cols[int(m.group(1))] = i
+
+    def cell(row, name):
+        i = idx.get(name)
+        return row[i] if i is not None and i < len(row) else ""
+
+    rows: list[ShareRow] = []
+    for row in reader:
+        if not row or not (row[idx["grant"]] if idx["grant"] < len(row) else "").strip():
+            continue
+        granted = _int(cell(row, "shares granted"))
+        if not granted:
+            continue  # unused grant category — Epic lists every category for every employee
+        rows.append(ShareRow(
+            label=row[idx["grant"]].strip(),
+            shares_granted=granted,
+            shares_sold=_int(cell(row, "shares sold")) or 0,
+            shares_remaining=_int(cell(row, "shares remaining")),
+            shares_83b=_int(cell(row, "83b shares")) or 0,
+            cost_basis=_num(cell(row, "cost basis of shares")),
+            loan_balance=_num(cell(row, "loan balance")),
+            loan_due_year=_int(cell(row, "loan due year")),
+            vested=[_int(row[vest_cols[n]]) or 0 for n in sorted(vest_cols)
+                    if vest_cols[n] < len(row)],
+            unvested_value=[_num(row[unvest_cols[n]]) or 0.0 for n in sorted(unvest_cols)
+                            if unvest_cols[n] < len(row)],
+            annual_interest_due=_num(cell(row, "annual interest due")),
+        ))
+
+    if not rows:
+        findings.append(Finding("G0", ERROR, "", "CSV has no rows with a share count"))
+    return rows, findings

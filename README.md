@@ -9,7 +9,7 @@ A mobile-first web app for tracking equity compensation — grants, vesting sche
 ## Table of Contents
 
 - [Understanding Your Equity](#understanding-your-equity) — key concepts explained
-- [For Users](#for-users) — getting started, dashboard, sales, loans, notifications, sharing
+- [For Users](#for-users) — getting started, importing, dashboard, sales, loans, notifications, sharing
 - [For Content Admins](#for-content-admins) — editing the grant program schedule and rates
 - [For Site Admins](#for-site-admins) — user management, system health, maintenance
 - [For Site Operators](#for-site-operators) — deployment, environment variables, development, API reference
@@ -85,6 +85,7 @@ Everything in the app is derived from these four tables at request time:
 
 2. **Enter your data** — the **Setup Wizard** appears automatically when you have no grants and is always accessible from the Import page. Three options:
    - **Setup Wizard** (recommended) — Epic's company-wide grant structure is pre-filled (vest dates, periods, exercise dates). Enter your share counts, annual market prices from Epic Stocks SharePoint, and loan details grant by grant. Catch-up grants are included by default for years ≤ 2021. The 2020 Bonus has an A/B/C vesting schedule selector matching your grant agreement. If you already have data, the wizard pre-loads your existing records on each screen and lets you update them — unmatched existing records appear at the bottom so you can choose to keep or remove them. Nothing is written until you confirm at the final step.
+   - **Import from Epic's files** — upload the share summary CSV and the Stock Loan Statement PDF exactly as Epic sends them. Share counts, cost basis, loan balances, interest rates and due dates are read straight out of them. See [Importing from Epic's files](#importing-from-epics-files) below.
    - **Import from Excel** — upload a `Vesting.xlsx` file (exported from this app or another user) to pre-fill the wizard. Confirm or adjust share counts before committing.
    - **Manual entry** — enter prices first, then add grants and loans one at a time.
 
@@ -415,9 +416,33 @@ The 83(b) flag is display-only — it doesn't change how events are computed. If
 
 ---
 
-### Exporting Your Data
+### Importing from Epic's files
 
 ![Import / Export](screenshots/import-export-mobile.png)
+
+Epic already gives you everything the app needs in two files. Go to **Import/Export → Import from Epic's files** and upload either or both:
+
+| File | What it provides |
+|------|------------------|
+| **Share summary (.csv)** | Shares granted and sold per grant, cost basis, 83(b) shares, and the cumulative vested share count at each future checkpoint |
+| **Stock Loan Statement (.pdf)** | Every loan: number, name, principal balance, interest rate and due date |
+
+**Preview first.** Nothing is written until you confirm. The preview shows what would be created and updated, plus anything the importer noticed — each note carries a short code (`G3`, `L4`, `C1`…) identifying the rule behind it.
+
+**It merges, it does not replace.** An annual statement refreshes balances and share counts; it says nothing about vest dates, down-payment shares, or sales. So:
+
+- Existing grants keep their vesting schedule, exercise date and down-payment shares. Only shares, cost basis and the 83(b) flag are refreshed. Tick **Also update vesting schedules** to override.
+- Share prices you already entered are kept; years you don't have yet are added. Tick **Overwrite share prices** to override.
+- Loans that have dropped off the statement (paid off or refinanced) are **reported, not deleted** — that history lives in the app.
+- Shares Epic reports as sold are reported but no sales are invented, because the CSV carries no sale dates or prices. Record those on the **Sales** page.
+
+**The files check each other.** Before proposing anything, the importer verifies the statement's own subtotals and total against the rows it parsed, and checks that the loans it attributes to each grant reproduce that grant's loan balance and annual interest in the CSV. If any of these disagree, the import is blocked rather than writing numbers that don't add up.
+
+**What is derived rather than read.** Neither file carries vest dates, exercise dates, or price effective dates. The importer assumes the conventions in [SPEC.md](SPEC.md) (vesting starts 1 March, exercise 31 December, prices effective 1 March) — or, if you already have data, reads your own conventions off it. It also infers each grant's number of vesting periods from the step size in the CSV's checkpoint columns; a grant that is already fully vested shows no steps, so its schedule is marked uncertain and your existing data wins.
+
+---
+
+### Exporting Your Data
 
 Go to **Import/Export → Download Vesting.xlsx** to export all your grants, prices, loans, and sales at any time. The same file can be re-imported to restore or transfer your data.
 
@@ -487,6 +512,19 @@ Click any user in the list to open a detail card:
 | **Enable / disable maintenance** | Toggles app-managed downtime. Financial API routes return 503; auth and admin remain accessible. Use before planned ops that affect financial data. |
 | **Rotate encryption key** | Generates a new master key, re-wraps all per-user keys, smoke-tests, and persists to the database. Propagates to all replicas automatically within seconds — no deploy or env var change needed. A snapshot of old keys is saved before any changes and restored automatically on failure. |
 | **Restore from snapshot** | Appears when an interrupted rotation left a snapshot in the database. Recovers from a crash without SSH access. |
+
+### Import diagnostics
+
+**Admin → Tools → Import diagnostics** (`/import-diagnostics`) checks the Epic file importer against real data. Upload:
+
+1. Your own `Vesting.xlsx` export, and
+2. The Epic share summary CSV and/or Stock Loan Statement PDF **from the same date**.
+
+The importer runs against the Epic files alone, and the result is diffed field by field against the export. Every difference is listed with the id of the rule that produced the value, so the report reads as "rule `G5` puts vest_start a year early" rather than "the import is wrong". Download it as Markdown and hand it back as a bug report.
+
+The page is read-only — it never touches the database, and it only ever reads the three files in the request, which is what makes it safe to run against a production export. It compares against the uploaded export, not against any stored user data, so it exposes no financial data the uploader did not already provide.
+
+The report runs the derivation twice: once with the SPEC date conventions and once with the conventions read out of your export. Differences that vanish between the two runs were never real disagreements, only date conventions, and are counted separately.
 
 ### Email Lookup
 
@@ -772,6 +810,12 @@ epic-stocks/
 │   │   ├── core.py          # Event generation logic (frozen)
 │   │   ├── sales_engine.py  # FIFO cost-basis + tax + gross-up calculations
 │   │   ├── excel_io.py      # Excel read/write (openpyxl)
+│   │   ├── epic_import/     # Import from Epic's own files
+│   │   │   ├── pdf_statement.py # Stock Loan Statement PDF -> loan rows (pdfplumber)
+│   │   │   ├── share_csv.py     # Share summary CSV -> grant rows
+│   │   │   ├── rules.py         # Named derivation rules + file cross-checks
+│   │   │   ├── reconcile.py     # Diff a proposal against exported data
+│   │   │   └── models.py        # Parsed/proposed value types
 │   │   ├── timeline_cache.py # L1 in-process memoized event computation
 │   │   ├── event_cache.py   # L2 Redis cache + background recompute
 │   │   ├── content_service.py # Seeder + load_content() for grant-program data
@@ -782,6 +826,7 @@ epic-stocks/
 │   │       ├── events.py    # Computed timeline + dashboard + preview-exit
 │   │       ├── flows.py     # Quick flows (new purchase, bonus, price)
 │   │       ├── import_export.py # Excel import/export + template
+│   │       ├── epic_import.py   # Epic CSV/PDF preview, apply (merge), and diff
 │   │       ├── sales.py     # Sales CRUD + tax breakdown
 │   │       ├── tips.py      # Smart Tips: scenario tax comparisons + acceptance recording
 │   │       ├── wizard.py    # Setup Wizard: parse-file, preview (dry-run diff), submit
@@ -796,8 +841,9 @@ epic-stocks/
 │   │   │   ├── contexts/    # ThemeContext, MaintenanceContext, ViewingContext, AppContext (injection interface)
 │   │   │   └── hooks/       # useAuth, useConfig, useDark, usePush, useMe
 │   │   ├── app/             # Equity tracking UI (replace when forking)
-│   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport, Content, CompCalculator, Retirement
-│   │   │   ├── components/  # ImportWizard, TipCarousel, AppSettingsSections
+│   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport, ImportDiagnostics, Content, CompCalculator, Retirement
+│   │   │   ├── components/  # ImportWizard, EpicFileImport, FindingList, TipCarousel, AppSettingsSections
+│   │   │   ├── epicImport.ts # Client for the Epic importer endpoints
 │   │   │   ├── hooks/       # useApiData, useDataSync, useContent
 │   │   │   └── AppProvider.tsx  # Injects app name, nav items, notify templates, privacy content into scaffold
 │   │   ├── App.tsx          # Router + layout wiring
@@ -885,6 +931,10 @@ All authenticated endpoints require a valid `session` cookie (set automatically 
 | POST | `/api/import/backups/{id}/restore` | Restore data from a backup snapshot |
 | GET | `/api/export/excel` | Download Vesting.xlsx with all data |
 | GET | `/api/export/holdings-report` | Download formatted Excel holdings report as of a given date |
+| POST | `/api/epic-import/preview` | Derive grants/loans/prices from Epic's CSV + PDF — writes nothing |
+| POST | `/api/epic-import/apply` | Merge the derived data (`adopt_schedule`, `overwrite_prices` opt-ins) |
+| POST | `/api/epic-import/diff` | Diff the derivation against an uploaded Excel export — read-only |
+| POST | `/api/epic-import/diff.md` | The same report as a downloadable Markdown file |
 | POST | `/api/wizard/parse-file` | Parse an uploaded Excel structure file for wizard pre-fill |
 | POST | `/api/wizard/preview` | Dry-run diff — returns added/updated/removed/unchanged status, no changes written |
 | POST | `/api/wizard/submit` | Apply wizard data — merge mode: upserts by natural key, deletes unmatched |
@@ -974,6 +1024,8 @@ The built-in privacy page (`/privacy`) lists the third-party services used by th
 ### Key Design Decisions
 
 - **Events are never stored.** Computed per-request from Grants + Prices + Loans. Eliminates sync issues entirely — changing a grant or price immediately recalculates everything.
+- **The Epic file importer merges; the Excel importer replaces.** An Epic statement is a periodic refresh of numbers, not a complete picture — it carries no vest dates, down-payment shares or sales, so overwriting with it would destroy data. `/api/import/excel` still replaces per sheet, because an export is a complete picture.
+- **Every derived field records the rule that produced it.** The source files don't carry vest dates or a purchase-vs-vest-taxed flag, so parts of the import are inference. Tagging each field with a rule id turns "the import is wrong" into "rule G5 is off by a year", which is what the diagnostics report is for.
 - **The wizard uses merge mode, not replace mode.** Grants are upserted by natural key (year + type) and prices by effective date. Records not in the wizard payload are deleted unless their ID appears in the preserve list. Auto-generated payoff sales are deleted and regenerated; manually-entered sales are never touched. Loan matching uses loan_number when available, falling back to (type, year).
 - **core.py is frozen.** The event generation logic is tested against known-good values: 89 events, cum_shares=558,500, cum_income=$144,325, cum_cap_gains=$1,224,195. Do not modify it.
 - **Excel import is per-sheet.** Only sheets present in the uploaded file are replaced. A backup snapshot is saved automatically before each import (last 3 kept per user). Restore via `GET /api/import/backups` + `POST /api/import/backups/{id}/restore`.

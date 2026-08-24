@@ -23,11 +23,11 @@ from scaffold.auth import get_current_user
 from scaffold.models import User
 from app.content_service import load_content
 from app.date_utils import to_date as _to_date
-from app.epic_import import (INFO, Draft, Finding, build_prompt, build_skeleton,
-                             derive_draft, draft_from_payload, extract_lines,
-                             is_blocked, parse_share_csv, parse_statement_lines,
-                             reconcile, render_markdown, to_wizard_payload,
-                             validate_draft)
+from app.epic_import import (Draft, build_prompt, build_skeleton, derive_draft,
+                             draft_from_payload, extract_lines, is_blocked,
+                             parse_share_csv, parse_statement_lines, reconcile,
+                             render_markdown, supersede_parse_findings,
+                             to_wizard_payload, validate_draft)
 from app.excel_io import (read_grants_from_excel, read_loans_from_excel,
                           read_prices_from_excel)
 
@@ -229,13 +229,7 @@ def analyze(
                                         detail="That file is neither JSON nor a workbook.")
 
     if payload is not None:
-        # A supplied draft supersedes whatever we managed to read, so complaints
-        # about the parse are history rather than outstanding problems. They stay
-        # visible as context — demoted, not dropped — otherwise a repaired draft
-        # can never come back clean and the loop never visibly converges.
-        findings = [Finding(x.code, INFO, x.subject,
-                            f"(before your correction) {x.message}")
-                    if x.severity != INFO else x for x in findings]
+        findings = supersede_parse_findings(findings)
         draft, f = draft_from_payload(payload, sk)
     else:
         draft, f = derive_draft(statement, rows, sk)

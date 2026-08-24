@@ -430,6 +430,18 @@ def validate_draft(draft: Draft, statement: Statement | None, rows: list[ShareRo
     return out
 
 
+def supersede_parse_findings(findings: list[Finding]) -> list[Finding]:
+    """Demote complaints about reading the files once a corrected draft arrives.
+
+    A supplied draft replaces whatever we managed to parse, so "could not read
+    this row" describes history rather than an outstanding problem. Kept visible
+    as context but no longer counted — otherwise a correct repair still reads as
+    failing and the loop can never terminate.
+    """
+    return [Finding(f.code, INFO, f.subject, f"(before your correction) {f.message}")
+            if f.severity != INFO else f for f in findings]
+
+
 def is_blocked(findings: list[Finding]) -> bool:
     """True when we misread the documents themselves — nothing downstream is trustworthy."""
     return any(f.code in BLOCKING_CHECKS and f.severity == ERROR for f in findings)

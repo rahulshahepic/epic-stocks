@@ -18,8 +18,8 @@ from .pdf_statement import extract_lines, parse_statement_lines, parse_statement
 from .share_csv import parse_share_csv
 from .skeleton import Skeleton, TemplateRow, build_skeleton
 from .draft import (BLOCKING_CHECKS, Draft, DraftGrant, DraftLoan, DraftPrice,
-                    derive_draft, draft_from_payload, is_blocked, to_wizard_payload,
-                    validate_draft)
+                    derive_draft, draft_from_payload, is_blocked, supersede_parse_findings,
+                    to_wizard_payload, validate_draft)
 from .prompt import build_prompt
 from .reconcile import Difference, ReconcileReport, reconcile, render_markdown
 
@@ -28,7 +28,7 @@ __all__ = [
     "extract_lines", "parse_statement_lines", "parse_statement_pdf", "parse_share_csv",
     "Skeleton", "TemplateRow", "build_skeleton",
     "BLOCKING_CHECKS", "Draft", "DraftGrant", "DraftLoan", "DraftPrice",
-    "derive_draft", "draft_from_payload", "is_blocked", "to_wizard_payload",
-    "validate_draft", "build_prompt",
+    "derive_draft", "draft_from_payload", "is_blocked", "supersede_parse_findings",
+    "to_wizard_payload", "validate_draft", "build_prompt",
     "Difference", "ReconcileReport", "reconcile", "render_markdown",
 ]

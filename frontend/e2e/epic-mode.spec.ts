@@ -34,7 +34,7 @@ async function setEpicMode(page: import('@playwright/test').Page, active: boolea
 async function importFixtureAs(page: import('@playwright/test').Page, email: string) {
   await loginAs(page, email, 'Test User')
   await navigateTo(page, 'Import')
-  const fileInput = page.locator('input[type="file"]')
+  const fileInput = page.locator('#import-file')
   await fileInput.setInputFiles(FIXTURE_PATH)
   await page.getByRole('button', { name: 'Import' }).click()
   await page.waitForLoadState('networkidle')

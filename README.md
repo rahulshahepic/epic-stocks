@@ -9,7 +9,7 @@ A mobile-first web app for tracking equity compensation — grants, vesting sche
 ## Table of Contents
 
 - [Understanding Your Equity](#understanding-your-equity) — key concepts explained
-- [For Users](#for-users) — getting started, dashboard, sales, loans, notifications, sharing
+- [For Users](#for-users) — getting started, importing, dashboard, sales, loans, notifications, sharing
 - [For Content Admins](#for-content-admins) — editing the grant program schedule and rates
 - [For Site Admins](#for-site-admins) — user management, system health, maintenance
 - [For Site Operators](#for-site-operators) — deployment, environment variables, development, API reference
@@ -85,6 +85,7 @@ Everything in the app is derived from these four tables at request time:
 
 2. **Enter your data** — the **Setup Wizard** appears automatically when you have no grants and is always accessible from the Import page. Three options:
    - **Setup Wizard** (recommended) — Epic's company-wide grant structure is pre-filled (vest dates, periods, exercise dates). Enter your share counts, annual market prices from Epic Stocks SharePoint, and loan details grant by grant. Catch-up grants are included by default for years ≤ 2021. The 2020 Bonus has an A/B/C vesting schedule selector matching your grant agreement. If you already have data, the wizard pre-loads your existing records on each screen and lets you update them — unmatched existing records appear at the bottom so you can choose to keep or remove them. Nothing is written until you confirm at the final step.
+   - **Import from Shareworks** — download **Data for Stock Workbook** and your latest **Stock Loan Statement** from the **Documents** tab in Shareworks, then upload them as-is. Share counts, cost basis, loan balances, interest rates and due dates are read straight out of them. See [Importing from Shareworks](#importing-from-shareworks) below.
    - **Import from Excel** — upload a `Vesting.xlsx` file (exported from this app or another user) to pre-fill the wizard. Confirm or adjust share counts before committing.
    - **Manual entry** — enter prices first, then add grants and loans one at a time.
 
@@ -415,9 +416,44 @@ The 83(b) flag is display-only — it doesn't change how events are computed. If
 
 ---
 
-### Exporting Your Data
+### Importing from Shareworks
 
 ![Import / Export](screenshots/import-export-mobile.png)
+
+Everything the tracker needs is already in two documents on Shareworks. Sign in there, open the **Documents** tab, and download:
+
+| Document | What is read from it |
+|----------|----------------------|
+| **Data for Stock Workbook** (.csv) | Shares granted and sold per grant, cost basis, 83(b) shares |
+| **Stock Loan Statement** (.pdf) — the latest one | Every loan: number, name, principal balance, interest rate, due date |
+
+Then go to **Import/Export → Import from Shareworks** and upload either or both, exactly as they downloaded. There is no need to open or edit them first.
+
+**Only your own figures come from the files.** Vest dates, vesting periods, exercise dates, loan rates and due dates are company-wide and come from the grant schedule a content admin maintains — see [For Content Admins](#for-content-admins). Nothing in an import can change them.
+
+**The files check each other.** Before anything is shown, the app verifies the statement adds up to its own printed subtotals and total, that the loans it attributes to each grant reproduce that grant's loan balance and annual interest in the CSV, and that share counts and rates agree with what is on record.
+
+#### When it does not add up
+
+The app never calls a language model and never sends your figures anywhere. Instead it hands you a prompt to paste into whichever assistant you already use — ChatGPT, Claude, whatever — containing the draft so far, exactly which figures failed to reconcile, the format to reply in, and the company schedule the assistant must not change. Attach your CSV and PDF to that chat, paste the reply back into the app, and it is checked exactly the same way. Repeat until it comes back clean.
+
+Your figures go to whichever assistant you choose, by your own hand and on your own account. The app is not in that loop.
+
+The reply can come back three ways: pasted into the box, uploaded as a `.json` file, or as a filled copy of the app's own `Vesting.xlsx` workbook.
+
+#### Signing off
+
+Acceptance happens in the **Setup Wizard**, prefilled with the draft — the same screens you would use to type the numbers yourself, showing grants, loans and prices as your own position. You never sign off on a file. Nothing is written until you finish the wizard.
+
+Two things worth knowing:
+
+- **Only arithmetic failures block.** If the statement does not match its own totals, part of it was misread and the import stops there. Everything else — the two files disagreeing, a rate that differs from the one on record — is shown and you decide. Epic's own paperwork sometimes disagrees with itself, and you should not be trapped in a loop over it.
+- **There is no automatic check on share counts.** The CSV's `Shares Granted` is the only source for them, so nothing can be reconciled against. Loan balances, interest and cost basis all have arithmetic checks; share counts have you. That is why sign-off shows rendered figures rather than a row of green ticks.
+- **Shares Epic reports as sold** are reported but no sales are invented — the CSV carries no sale dates or prices. Record those on the **Sales** page.
+
+---
+
+### Exporting Your Data
 
 Go to **Import/Export → Download Vesting.xlsx** to export all your grants, prices, loans, and sales at any time. The same file can be re-imported to restore or transfer your data.
 
@@ -487,6 +523,17 @@ Click any user in the list to open a detail card:
 | **Enable / disable maintenance** | Toggles app-managed downtime. Financial API routes return 503; auth and admin remain accessible. Use before planned ops that affect financial data. |
 | **Rotate encryption key** | Generates a new master key, re-wraps all per-user keys, smoke-tests, and persists to the database. Propagates to all replicas automatically within seconds — no deploy or env var change needed. A snapshot of old keys is saved before any changes and restored automatically on failure. |
 | **Restore from snapshot** | Appears when an interrupted rotation left a snapshot in the database. Recovers from a crash without SSH access. |
+
+### Import diagnostics
+
+**Admin → Tools → Import diagnostics** (`/import-diagnostics`) checks the Epic file importer against real data. Upload:
+
+1. Your own `Vesting.xlsx` export, and
+2. **Data for Stock Workbook** and/or the **Stock Loan Statement** from Shareworks, **from the same date**.
+
+The importer runs against the Shareworks files alone, and the result is diffed field by field against the export. Every difference is listed with the id of the rule that produced the value, so the report reads as "rule `G3` reads the cost basis wrong" rather than "the import is wrong". Download it as Markdown and hand it back as a bug report.
+
+The page is read-only — it never touches the database, and it only ever reads the three files in the request, which is what makes it safe to run against a production export. It compares against the uploaded export, not against any stored user data, so it exposes no financial data the uploader did not already provide.
 
 ### Email Lookup
 
@@ -772,6 +819,15 @@ epic-stocks/
 │   │   ├── core.py          # Event generation logic (frozen)
 │   │   ├── sales_engine.py  # FIFO cost-basis + tax + gross-up calculations
 │   │   ├── excel_io.py      # Excel read/write (openpyxl)
+│   │   ├── epic_import/     # Import from the Shareworks documents
+│   │   │   ├── pdf_statement.py # Stock Loan Statement PDF -> loan rows (pdfplumber)
+│   │   │   ├── share_csv.py     # Share summary CSV -> grant rows
+│   │   │   ├── skeleton.py      # Content tables -> structure an import may not invent
+│   │   │   ├── rules.py         # Named derivation rules (G*, L*, P*)
+│   │   │   ├── draft.py         # Draft type, derivation, and the checks (C1-C10)
+│   │   │   ├── prompt.py        # The brief a user pastes into their own assistant
+│   │   │   ├── reconcile.py     # Diff a draft against exported data
+│   │   │   └── models.py        # Parsed value types
 │   │   ├── timeline_cache.py # L1 in-process memoized event computation
 │   │   ├── event_cache.py   # L2 Redis cache + background recompute
 │   │   ├── content_service.py # Seeder + load_content() for grant-program data
@@ -782,6 +838,7 @@ epic-stocks/
 │   │       ├── events.py    # Computed timeline + dashboard + preview-exit
 │   │       ├── flows.py     # Quick flows (new purchase, bonus, price)
 │   │       ├── import_export.py # Excel import/export + template
+│   │       ├── epic_import.py   # Epic CSV/PDF analyze loop + diagnostics diff
 │   │       ├── sales.py     # Sales CRUD + tax breakdown
 │   │       ├── tips.py      # Smart Tips: scenario tax comparisons + acceptance recording
 │   │       ├── wizard.py    # Setup Wizard: parse-file, preview (dry-run diff), submit
@@ -796,8 +853,9 @@ epic-stocks/
 │   │   │   ├── contexts/    # ThemeContext, MaintenanceContext, ViewingContext, AppContext (injection interface)
 │   │   │   └── hooks/       # useAuth, useConfig, useDark, usePush, useMe
 │   │   ├── app/             # Equity tracking UI (replace when forking)
-│   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport, Content, CompCalculator, Retirement
-│   │   │   ├── components/  # ImportWizard, TipCarousel, AppSettingsSections
+│   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport, ImportDiagnostics, Content, CompCalculator, Retirement
+│   │   │   ├── components/  # ImportWizard, EpicFileImport, FindingList, TipCarousel, AppSettingsSections
+│   │   │   ├── epicImport.ts # Client for the Epic importer endpoints
 │   │   │   ├── hooks/       # useApiData, useDataSync, useContent
 │   │   │   └── AppProvider.tsx  # Injects app name, nav items, notify templates, privacy content into scaffold
 │   │   ├── App.tsx          # Router + layout wiring
@@ -885,6 +943,9 @@ All authenticated endpoints require a valid `session` cookie (set automatically 
 | POST | `/api/import/backups/{id}/restore` | Restore data from a backup snapshot |
 | GET | `/api/export/excel` | Download Vesting.xlsx with all data |
 | GET | `/api/export/holdings-report` | Download formatted Excel holdings report as of a given date |
+| POST | `/api/epic-import/analyze` | Read the Shareworks CSV + PDF, or check a repaired draft against them — returns a draft, what failed, and a prompt to paste out. Writes nothing |
+| POST | `/api/epic-import/diff` | Diff the derivation against an uploaded Excel export — read-only |
+| POST | `/api/epic-import/diff.md` | The same report as a downloadable Markdown file |
 | POST | `/api/wizard/parse-file` | Parse an uploaded Excel structure file for wizard pre-fill |
 | POST | `/api/wizard/preview` | Dry-run diff — returns added/updated/removed/unchanged status, no changes written |
 | POST | `/api/wizard/submit` | Apply wizard data — merge mode: upserts by natural key, deletes unmatched |
@@ -974,6 +1035,11 @@ The built-in privacy page (`/privacy`) lists the third-party services used by th
 ### Key Design Decisions
 
 - **Events are never stored.** Computed per-request from Grants + Prices + Loans. Eliminates sync issues entirely — changing a grant or price immediately recalculates everything.
+- **The app never calls a language model.** When a parse cannot be trusted it hands the user a prompt for their own assistant instead. That needs no API key, no cost cap, no billing, no secret to store, and no outbound request from the server — and the user's figures go where they choose rather than where the app decides. Whatever comes back is checked by exactly the same arithmetic that rejected the draft, so the repair path is no more trusted than the parser.
+- **Structure comes from the content tables; only figures come from the files.** Vest dates, periods, exercise dates, rates and due dates are company-wide, so an import fills numbers into a skeleton it cannot alter. Inferring a vesting schedule from a share summary was the one part of the import with no way to check itself, and it was wrong exactly where it had no evidence.
+- **Only arithmetic failures block an import.** A statement that does not match its own printed totals was misread, and nothing downstream can be trusted. Everything else is shown and overridable — Epic's own paperwork sometimes disagrees with itself, and a user should not be trapped in a repair loop by it.
+- **Sign-off happens in the wizard, not on a file.** An import ends by prefilling the Setup Wizard, so what a user confirms is their rendered position. Asking someone to eyeball a CSV or a JSON blob is not validation.
+- **Every derived field records the rule that produced it.** Tagging each field with a rule id turns "the import is wrong" into "rule G3 reads the cost basis wrong", which is what the diagnostics report is for.
 - **The wizard uses merge mode, not replace mode.** Grants are upserted by natural key (year + type) and prices by effective date. Records not in the wizard payload are deleted unless their ID appears in the preserve list. Auto-generated payoff sales are deleted and regenerated; manually-entered sales are never touched. Loan matching uses loan_number when available, falling back to (type, year).
 - **core.py is frozen.** The event generation logic is tested against known-good values: 89 events, cum_shares=558,500, cum_income=$144,325, cum_cap_gains=$1,224,195. Do not modify it.
 - **Excel import is per-sheet.** Only sheets present in the uploaded file are replaced. A backup snapshot is saved automatically before each import (last 3 kept per user). Restore via `GET /api/import/backups` + `POST /api/import/backups/{id}/restore`.

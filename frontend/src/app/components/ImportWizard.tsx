@@ -481,7 +481,14 @@ function RefiChainGroup({ label, loans, onChangeLoan }: {
 
 // ── Main wizard ───────────────────────────────────────────────────────────────
 
-export default function ImportWizard(props: { onComplete?: () => void; isPage?: boolean }) {
+type WizardPrefill = { grants: GrantEntry[]; loans: LoanEntry[]; prices: PriceEntry[] }
+
+export default function ImportWizard(props: {
+ onComplete?: () => void
+ isPage?: boolean
+ /** A draft to review instead of the user's saved data — see EpicFileImport. */
+ prefill?: WizardPrefill
+}) {
  const content = useContent()
  if (!content) {
  return (
@@ -493,9 +500,10 @@ export default function ImportWizard(props: { onComplete?: () => void; isPage?: 
  return <ImportWizardInner {...props} content={content} />
 }
 
-function ImportWizardInner({ onComplete, isPage = false, content }: {
+function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
  onComplete?: () => void
  isPage?: boolean
+ prefill?: WizardPrefill
  content: ContentBlob
 }) {
  // ── Content-derived constants (previously module-level hardcoded values) ──
@@ -886,9 +894,12 @@ function ImportWizardInner({ onComplete, isPage = false, content }: {
  async function enterScheduleMode() {
  setScheduleLoading(true)
  try {
- const [existingPrices, existingGrants, existingLoans] = await Promise.all([
- api.getPrices(), api.getGrants(), api.getLoans(),
- ])
+ // A prefilled draft stands in for the user's saved data, so the review
+ // screens look the same whether they typed the numbers or an import
+ // produced them. Nothing is written until they finish the wizard.
+ const [existingPrices, existingGrants, existingLoans] = prefill
+ ? [prefill.prices, prefill.grants, prefill.loans]
+ : await Promise.all([api.getPrices(), api.getGrants(), api.getLoans()])
  setAllExistingLoans(existingLoans)
 
  // Match prices by year of effective_date; orphan anything outside PRICE_YEARS

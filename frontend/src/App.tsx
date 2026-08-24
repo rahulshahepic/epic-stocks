@@ -18,6 +18,7 @@ import Grants from './app/pages/Grants.tsx'
 import Loans from './app/pages/Loans.tsx'
 import Prices from './app/pages/Prices.tsx'
 import ImportExport from './app/pages/ImportExport.tsx'
+import ImportDiagnostics from './app/pages/ImportDiagnostics.tsx'
 import ImportWizard from './app/components/ImportWizard.tsx'
 import Settings from './scaffold/pages/Settings.tsx'
 import Admin from './scaffold/pages/Admin.tsx'
@@ -75,6 +76,7 @@ export default function App() {
  <Route path="wizard" element={<FinancialRoute><div className="p-4"><ImportWizard isPage /></div></FinancialRoute>} />
  <Route path="settings" element={<FinancialRoute><Settings /></FinancialRoute>} />
  <Route path="admin" element={<Admin />} />
+ <Route path="import-diagnostics" element={<ImportDiagnostics />} />
  <Route path="content" element={<Content />} />
  </Route>
  </Routes>

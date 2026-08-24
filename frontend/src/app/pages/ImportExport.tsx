@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import EpicFileImport from '../components/EpicFileImport.tsx'
 
 
 const COLUMN_GUIDE = {
@@ -183,6 +184,8 @@ export default function ImportExport() {
  Step-by-step guided setup — enter grants, loans, and prices one at a time. We know Epic's grant schedule so you just fill in your numbers.
  </span>
  </button>
+
+ <EpicFileImport />
 
  {/* Import from Excel */}
  <div className="flex flex-col rounded-lg border-2 border-cs-border bg-cs-surface p-4 ">

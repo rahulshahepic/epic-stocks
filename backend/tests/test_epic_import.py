@@ -120,7 +120,7 @@ def test_wrapped_loan_name_is_reassembled():
 
 def test_boilerplate_is_not_read_as_a_loan_name():
     statement, _ = parse_statement_lines(statement_lines())
-    assert all("stockownership" not in l.name for l in statement.loans)
+    assert all("share plan team" not in l.name for l in statement.loans)
 
 
 @pytest.mark.parametrize("name,expected", [
@@ -157,7 +157,7 @@ def test_unused_categories_are_dropped():
 @pytest.mark.parametrize("label,expected", [
     ("2020 Purchased", (2020, "Purchase")), ("2020 Catch-up", (2020, "Catch-Up")),
     ("2021 Bonus Shares", (2021, "Bonus")), ("2023 Free", (2023, "Free")),
-    ("2019 SARs Conversion", (None, None)),
+    ("2019 Legacy Award Conversion", (None, None)),
 ])
 def test_row_labels_map_to_grant_types(label, expected):
     assert classify_row(label) == expected
@@ -251,7 +251,7 @@ def test_prices_come_from_purchase_grant_basis_dated_by_year(drafted):
 
 def test_unmapped_category_is_reported_not_dropped_silently(drafted):
     _, findings = drafted
-    assert any(f.code == "G1" and "SARs" in f.subject for f in findings)
+    assert any(f.code == "G1" and "Legacy Award" in f.subject for f in findings)
 
 
 def test_the_fixture_reconciles_end_to_end(drafted):
@@ -475,7 +475,7 @@ def test_analyze_returns_a_draft_and_writes_nothing(client):
     assert body["origin"] == "parsed"
     assert body["summary"]["grants"] == 8
     assert body["summary"]["loans"] == 9
-    assert body["summary"]["total_shares"] == 679000   # the SARs category is not imported
+    assert body["summary"]["total_shares"] == 679000   # the unmapped category is not imported
     assert client.get("/api/grants").json() == []
     assert client.get("/api/loans").json() == []
 

@@ -21,9 +21,11 @@ from .skeleton import Skeleton, TemplateRow
 _CENT = 0.005
 _RATE_TOL = 1e-6
 
-# Failing these means we misread the document itself, so nothing downstream can
-# be trusted. Everything else can legitimately disagree and is overridable.
-BLOCKING_CHECKS = {"C1", "C2"}
+# Failing these means we could not read a document correctly, so nothing
+# downstream can be trusted: G0 is a column the share summary is missing, C1/C2
+# are the statement not adding up to its own printed totals. Everything else is
+# the two documents disagreeing, which is the user's call to override.
+BLOCKING_CHECKS = {"G0", "C1", "C2"}
 
 
 def _d(v) -> date | None:
@@ -181,6 +183,15 @@ def derive_draft(statement: Statement | None, rows: list[ShareRow],
     for g in draft.grants:
         known.setdefault(g.year, set()).add(g.type)
     by_key = {g.key: g for g in draft.grants}
+
+    # With no grants reads there is nowhere for any loan to go. Say that once
+    # rather than repeating it for every row on the statement.
+    if statement and statement.loans and not draft.grants:
+        findings.append(Finding("L3", WARNING, "",
+                                f"No grants could be read from the share summary, so none "
+                                f"of the {len(statement.loans)} loans on the statement "
+                                f"could be attached to one."))
+        return draft, findings
 
     for sl in (statement.loans if statement else []):
         ltype, lyear, descriptors = parse_loan_name(sl.name)

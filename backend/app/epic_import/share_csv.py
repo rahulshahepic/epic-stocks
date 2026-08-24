@@ -14,7 +14,18 @@ import csv
 import io
 import re
 
-from .models import ERROR, Finding, ShareRow
+from .models import ERROR, WARNING, Finding, ShareRow
+
+# column -> what is lost without it
+_REQUIRED = {
+    "shares granted": "no grant would carry a share count",
+    "cost basis of shares": "every grant would be priced at zero",
+}
+_OPTIONAL = {
+    "loan balance": "loan attribution cannot be checked against the grant",
+    "annual interest due": "loan rates and balances cannot be cross-checked",
+    "shares remaining": "sold shares cannot be reconciled",
+}
 
 _VESTED = re.compile(r"^vest\s*(\d+)\s*-\s*vested\s*shares$", re.I)
 _UNVESTED = re.compile(r"^vest\s*(\d+)\s*-\s*unvested\s*value$", re.I)
@@ -57,6 +68,22 @@ def parse_share_csv(raw: bytes) -> tuple[list[ShareRow], list[Finding]]:
     if "grant" not in idx:
         return [], [Finding("G0", ERROR, "",
                             "CSV has no 'Grant' column — is this an Epic share summary export?")]
+
+    # A renamed column reads as an absent one, and an absent cost basis silently
+    # prices every grant at zero — which in this app turns every capital gain
+    # into ordinary income. Say so loudly rather than importing a wrong number.
+    for column, consequence in _REQUIRED.items():
+        if column not in idx:
+            findings.append(Finding("G0", ERROR, "",
+                                    f"The share summary has no '{column}' column, so "
+                                    f"{consequence}. It may have been renamed — the columns "
+                                    f"found were: {', '.join(header)}."))
+    if findings:
+        return [], findings
+    for column, consequence in _OPTIONAL.items():
+        if column not in idx:
+            findings.append(Finding("G0", WARNING, "",
+                                    f"No '{column}' column, so {consequence}."))
 
     vest_cols, unvest_cols = {}, {}
     for h, i in idx.items():

@@ -641,3 +641,72 @@ def test_analyze_returns_the_draft_in_the_shape_the_wizard_loads(client):
     assert purchase["shares"] == 200000
     assert {l["loan_number"] for l in prefill["loans"] if l["grant_year"] == 2020
             and l["grant_type"] == "Catch-Up"} == {"100003", "100004"}
+
+
+# ============================================================
+# REGRESSIONS FOUND BY DRIVING THE REPAIR LOOP END TO END
+# ============================================================
+
+def with_extra_column(lines):
+    """Epic adds a status column, so no statement row matches any more."""
+    import re as _re
+    return [_re.sub(r"( \d{1,2}/\d{1,2}/\d{4})$", r"\1 Active", l)
+            if _re.match(r"^\d{6} ", l) else l for l in lines]
+
+
+def test_a_repaired_draft_clears_the_parse_errors_it_fixes(client):
+    """A supplied draft supersedes the parse. Leaving the parse errors standing
+    means a perfect repair still reads as failing and the loop never converges."""
+    register_user(client)
+    good = analyze(client)["wizard_payload"]
+
+    broken = {"share_csv": ("shares.csv", csv_bytes(), "text/csv"),
+              "statement_pdf": ("s.pdf", make_pdf(with_extra_column(statement_lines())),
+                                "application/pdf")}
+    first = client.post("/api/epic-import/analyze", files=broken).json()
+    assert first["blocked"] is True
+    assert "L1" in [f["code"] for f in first["findings"]]
+
+    fixed = client.post("/api/epic-import/analyze", files=broken,
+                        data={"revised_json": json.dumps(good)}).json()
+    assert fixed["blocked"] is False
+    assert fixed["reconciles"] is True
+    assert [f for f in fixed["findings"] if f["severity"] == "error"] == []
+    # The parse complaint is kept as context, not dropped and not counted.
+    stale = next(f for f in fixed["findings"] if f["code"] == "L1")
+    assert stale["severity"] == "info"
+    assert "before your correction" in stale["message"]
+
+
+def test_a_renamed_csv_column_is_an_error_not_a_silent_zero(client):
+    """Without the cost basis column every grant prices at zero, which turns
+    every capital gain into ordinary income. That must never pass quietly."""
+    register_user(client)
+    renamed = csv_bytes().replace(b"Cost Basis of Shares", b"Total Cost Basis")
+    body = client.post("/api/epic-import/analyze", files={
+        "share_csv": ("shares.csv", renamed, "text/csv")}).json()
+
+    assert body["blocked"] is True
+    g0 = next(f for f in body["findings"] if f["code"] == "G0")
+    assert g0["severity"] == "error"
+    assert "priced at zero" in g0["message"]
+    assert "Total Cost Basis" in g0["message"]     # names the headers it did find
+    assert body["summary"]["grants"] == 0
+
+
+def test_a_missing_check_column_only_costs_us_that_check():
+    rows, findings = parse_share_csv(
+        csv_bytes().replace(b"Annual Interest Due", b"Yearly Interest"))
+    assert rows                                     # still usable
+    assert [f.code for f in findings] == ["G0"]
+    assert findings[0].severity == "warning"
+
+
+def test_no_grants_is_said_once_not_once_per_loan(skeleton):
+    """A CSV we cannot read leaves every loan homeless; saying so 54 times buries
+    the one finding that explains why."""
+    statement, _ = parse_statement_lines(statement_lines())
+    draft, findings = derive_draft(statement, [], skeleton)
+    homeless = [f for f in findings if f.code == "L3"]
+    assert len(homeless) == 1
+    assert "9 loans" in homeless[0].message

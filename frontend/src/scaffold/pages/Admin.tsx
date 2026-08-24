@@ -258,6 +258,17 @@ export default function Admin() {
  return d.toLocaleDateString('en-CA', { timeZone: 'UTC' }) + ' UTC'
  }
 
+ // Without this, the page renders immediately with stats/epicModeActive/etc.
+ // still null, so e2e's navigateTo() helper — which waits for a "Loading..."
+ // placeholder to appear then clear — finds nothing to wait on and returns
+ // before load()'s Promise.all resolves. Danger Zone buttons read from state
+ // set only once load() finishes (epicModeActive starts null and shows a
+ // "Loading" label until then), so a slow load() window left every read of
+ // those buttons racing the admin API calls with no synchronization point.
+ if (!stats && !error) {
+ return <p className="p-6 text-center text-sm text-cs-text-2">Loading...</p>
+ }
+
  if (error && !stats) {
  return (
  <div className="space-y-6">

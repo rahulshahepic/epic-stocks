@@ -72,7 +72,7 @@ describe('ImportDiagnostics', () => {
     await userEvent.upload(screen.getByLabelText(/Your export/), file('e.xlsx', 'application/vnd.ms-excel'))
     expect(compare).toBeDisabled()
 
-    await userEvent.upload(screen.getByLabelText(/share summary/i), file('s.csv', 'text/csv'))
+    await userEvent.upload(screen.getByLabelText(/Data for Stock Workbook/i), file('s.csv', 'text/csv'))
     expect(compare).toBeEnabled()
   })
 
@@ -80,7 +80,7 @@ describe('ImportDiagnostics', () => {
     mockApi(ADMIN)
     await renderPage()
     await userEvent.upload(await screen.findByLabelText(/Your export/), file('e.xlsx', 'application/vnd.ms-excel'))
-    await userEvent.upload(screen.getByLabelText(/share summary/i), file('s.csv', 'text/csv'))
+    await userEvent.upload(screen.getByLabelText(/Data for Stock Workbook/i), file('s.csv', 'text/csv'))
     await userEvent.click(screen.getByRole('button', { name: 'Compare' }))
 
     expect(await screen.findByText('G2')).toBeInTheDocument()
@@ -94,7 +94,7 @@ describe('ImportDiagnostics', () => {
     mockApi(ADMIN)
     await renderPage()
     await userEvent.upload(await screen.findByLabelText(/Your export/), file('e.xlsx', 'application/vnd.ms-excel'))
-    await userEvent.upload(screen.getByLabelText(/share summary/i), file('s.csv', 'text/csv'))
+    await userEvent.upload(screen.getByLabelText(/Data for Stock Workbook/i), file('s.csv', 'text/csv'))
     await userEvent.click(screen.getByRole('button', { name: 'Compare' }))
 
     expect(await screen.findByText('G3')).toBeInTheDocument()
@@ -108,7 +108,7 @@ describe('ImportDiagnostics', () => {
     })
     await renderPage()
     await userEvent.upload(await screen.findByLabelText(/Your export/), file('e.xlsx', 'application/vnd.ms-excel'))
-    await userEvent.upload(screen.getByLabelText(/share summary/i), file('s.csv', 'text/csv'))
+    await userEvent.upload(screen.getByLabelText(/Data for Stock Workbook/i), file('s.csv', 'text/csv'))
     await userEvent.click(screen.getByRole('button', { name: 'Compare' }))
 
     expect(await screen.findByText(/reproduces your data exactly/)).toBeInTheDocument()
@@ -123,7 +123,7 @@ describe('ImportDiagnostics', () => {
     })
     await renderPage()
     await userEvent.upload(await screen.findByLabelText(/Your export/), file('e.xlsx', 'application/vnd.ms-excel'))
-    await userEvent.upload(screen.getByLabelText(/share summary/i), file('s.csv', 'text/csv'))
+    await userEvent.upload(screen.getByLabelText(/Data for Stock Workbook/i), file('s.csv', 'text/csv'))
     await userEvent.click(screen.getByRole('button', { name: 'Compare' }))
 
     expect(await screen.findByText('The export has no Schedule sheet')).toBeInTheDocument()

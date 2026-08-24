@@ -197,8 +197,8 @@ def analyze(
     pdf_bytes = _read_upload(statement_pdf, "statement PDF", _PDF_MAGIC)
     if csv_bytes is None and pdf_bytes is None:
         raise HTTPException(status_code=400,
-                            detail="Upload the share summary CSV, the loan statement PDF, "
-                                   "or both")
+                            detail="Upload Data for Stock Workbook, your Stock Loan "
+                                   "Statement, or both")
 
     sk, findings = _skeleton(db)
     statement, rows, parse_findings, statement_text, csv_text = _parse_files(
@@ -318,8 +318,8 @@ def diff(
     pdf_bytes = _read_upload(statement_pdf, "statement PDF", _PDF_MAGIC)
     if csv_bytes is None and pdf_bytes is None:
         raise HTTPException(status_code=400,
-                            detail="Upload the share summary CSV, the loan statement PDF, "
-                                   "or both")
+                            detail="Upload Data for Stock Workbook, your Stock Loan "
+                                   "Statement, or both")
 
     sk, findings = _skeleton(db)
     statement, rows, parse_findings, _, _ = _parse_files(csv_bytes, pdf_bytes)

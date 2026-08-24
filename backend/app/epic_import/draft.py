@@ -188,7 +188,7 @@ def derive_draft(statement: Statement | None, rows: list[ShareRow],
     # rather than repeating it for every row on the statement.
     if statement and statement.loans and not draft.grants:
         findings.append(Finding("L3", WARNING, "",
-                                f"No grants could be read from the share summary, so none "
+                                f"No grants could be read from the stock workbook, so none "
                                 f"of the {len(statement.loans)} loans on the statement "
                                 f"could be attached to one."))
         return draft, findings
@@ -213,7 +213,7 @@ def derive_draft(statement: Statement | None, rows: list[ShareRow],
         if grant is None:
             findings.append(Finding("L3", WARNING, sl.loan_number,
                                     f"{sl.name!r} points at a {gyear} {gtype} grant that is "
-                                    f"not in the share summary."))
+                                    f"not in the stock workbook."))
             continue
         grant.loans.append(DraftLoan(
             loan_number=sl.loan_number, loan_type=ltype, loan_year=lyear or gyear,
@@ -362,34 +362,34 @@ def validate_draft(draft: Draft, statement: Statement | None, rows: list[ShareRo
         grant = by_key.get((year, gtype))
         if grant is None:
             out.append(Finding("C8", ERROR, row.label,
-                               f"The share summary lists {row.shares_granted:,} shares for "
+                               f"The stock workbook lists {row.shares_granted:,} shares for "
                                f"this grant but the draft has no {year} {gtype} grant."))
             continue
 
         if grant.shares != row.shares_granted:                              # C8
             out.append(Finding("C8", ERROR, row.label,
-                               f"Draft has {grant.shares:,} shares; the share summary says "
+                               f"Draft has {grant.shares:,} shares; the stock workbook says "
                                f"{row.shares_granted:,}."))
 
         if statement is not None and row.loan_balance is not None:          # C3
             got = round(sum(l.amount for l in grant.loans), 2)
             if abs(got - row.loan_balance) > _CENT:
                 out.append(Finding("C3", ERROR, row.label,
-                                   f"The share summary reports a loan balance of "
+                                   f"The stock workbook reports a loan balance of "
                                    f"{row.loan_balance:,.2f}; the loans on this grant add up "
                                    f"to {got:,.2f}."))
         if statement is not None and row.annual_interest_due is not None:   # C4
             got = round(sum(l.amount * l.interest_rate for l in grant.loans), 2)
             if abs(got - row.annual_interest_due) > 0.02:
                 out.append(Finding("C4", ERROR, row.label,
-                                   f"The share summary reports {row.annual_interest_due:,.2f} "
+                                   f"The stock workbook reports {row.annual_interest_due:,.2f} "
                                    f"of annual interest; the loans on this grant imply "
                                    f"{got:,.2f}."))
         if row.loan_due_year and grant.loans:                               # C7
             years = {l.due_date.year for l in grant.loans}
             if years != {row.loan_due_year}:
                 out.append(Finding("C7", WARNING, row.label,
-                                   f"The share summary says the loans are due in "
+                                   f"The stock workbook says the loans are due in "
                                    f"{row.loan_due_year}; the draft has {sorted(years)}."))
 
         ps = basis_per_share(row)                                           # C5

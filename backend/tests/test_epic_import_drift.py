@@ -206,7 +206,7 @@ def test_the_prompt_carries_what_a_repair_needs(case, skeleton):
     assert '"loan_type": "Purchase"' in prompt       # the output contract
     assert "Return only the JSON object." in prompt
     # The source material to repair from, whichever file the drift was in.
-    assert "## Share summary CSV" in prompt
+    assert "## Data for Stock Workbook" in prompt
     assert "## Stock Loan Statement" in prompt
 
 

@@ -85,7 +85,7 @@ Everything in the app is derived from these four tables at request time:
 
 2. **Enter your data** — the **Setup Wizard** appears automatically when you have no grants and is always accessible from the Import page. Three options:
    - **Setup Wizard** (recommended) — Epic's company-wide grant structure is pre-filled (vest dates, periods, exercise dates). Enter your share counts, annual market prices from Epic Stocks SharePoint, and loan details grant by grant. Catch-up grants are included by default for years ≤ 2021. The 2020 Bonus has an A/B/C vesting schedule selector matching your grant agreement. If you already have data, the wizard pre-loads your existing records on each screen and lets you update them — unmatched existing records appear at the bottom so you can choose to keep or remove them. Nothing is written until you confirm at the final step.
-   - **Import from Epic's files** — upload the share summary CSV and the Stock Loan Statement PDF exactly as Epic sends them. Share counts, cost basis, loan balances, interest rates and due dates are read straight out of them. See [Importing from Epic's files](#importing-from-epics-files) below.
+   - **Import from Shareworks** — download **Data for Stock Workbook** and your latest **Stock Loan Statement** from the **Documents** tab in Shareworks, then upload them as-is. Share counts, cost basis, loan balances, interest rates and due dates are read straight out of them. See [Importing from Shareworks](#importing-from-shareworks) below.
    - **Import from Excel** — upload a `Vesting.xlsx` file (exported from this app or another user) to pre-fill the wizard. Confirm or adjust share counts before committing.
    - **Manual entry** — enter prices first, then add grants and loans one at a time.
 
@@ -416,16 +416,18 @@ The 83(b) flag is display-only — it doesn't change how events are computed. If
 
 ---
 
-### Importing from Epic's files
+### Importing from Shareworks
 
 ![Import / Export](screenshots/import-export-mobile.png)
 
-Epic already sends you everything the tracker needs in two files. Go to **Import/Export → Import from Epic's files** and upload either or both:
+Everything the tracker needs is already in two documents on Shareworks. Sign in there, open the **Documents** tab, and download:
 
-| File | What is read from it |
-|------|----------------------|
-| **Share summary (.csv)** | Shares granted and sold per grant, cost basis, 83(b) shares |
-| **Stock Loan Statement (.pdf)** | Every loan: number, name, principal balance, interest rate, due date |
+| Document | What is read from it |
+|----------|----------------------|
+| **Data for Stock Workbook** (.csv) | Shares granted and sold per grant, cost basis, 83(b) shares |
+| **Stock Loan Statement** (.pdf) — the latest one | Every loan: number, name, principal balance, interest rate, due date |
+
+Then go to **Import/Export → Import from Shareworks** and upload either or both, exactly as they downloaded. There is no need to open or edit them first.
 
 **Only your own figures come from the files.** Vest dates, vesting periods, exercise dates, loan rates and due dates are company-wide and come from the grant schedule a content admin maintains — see [For Content Admins](#for-content-admins). Nothing in an import can change them.
 
@@ -527,9 +529,9 @@ Click any user in the list to open a detail card:
 **Admin → Tools → Import diagnostics** (`/import-diagnostics`) checks the Epic file importer against real data. Upload:
 
 1. Your own `Vesting.xlsx` export, and
-2. The Epic share summary CSV and/or Stock Loan Statement PDF **from the same date**.
+2. **Data for Stock Workbook** and/or the **Stock Loan Statement** from Shareworks, **from the same date**.
 
-The importer runs against the Epic files alone, and the result is diffed field by field against the export. Every difference is listed with the id of the rule that produced the value, so the report reads as "rule `G3` reads the cost basis wrong" rather than "the import is wrong". Download it as Markdown and hand it back as a bug report.
+The importer runs against the Shareworks files alone, and the result is diffed field by field against the export. Every difference is listed with the id of the rule that produced the value, so the report reads as "rule `G3` reads the cost basis wrong" rather than "the import is wrong". Download it as Markdown and hand it back as a bug report.
 
 The page is read-only — it never touches the database, and it only ever reads the three files in the request, which is what makes it safe to run against a production export. It compares against the uploaded export, not against any stored user data, so it exposes no financial data the uploader did not already provide.
 
@@ -817,7 +819,7 @@ epic-stocks/
 │   │   ├── core.py          # Event generation logic (frozen)
 │   │   ├── sales_engine.py  # FIFO cost-basis + tax + gross-up calculations
 │   │   ├── excel_io.py      # Excel read/write (openpyxl)
-│   │   ├── epic_import/     # Import from Epic's own files
+│   │   ├── epic_import/     # Import from the Shareworks documents
 │   │   │   ├── pdf_statement.py # Stock Loan Statement PDF -> loan rows (pdfplumber)
 │   │   │   ├── share_csv.py     # Share summary CSV -> grant rows
 │   │   │   ├── skeleton.py      # Content tables -> structure an import may not invent
@@ -941,7 +943,7 @@ All authenticated endpoints require a valid `session` cookie (set automatically 
 | POST | `/api/import/backups/{id}/restore` | Restore data from a backup snapshot |
 | GET | `/api/export/excel` | Download Vesting.xlsx with all data |
 | GET | `/api/export/holdings-report` | Download formatted Excel holdings report as of a given date |
-| POST | `/api/epic-import/analyze` | Read Epic's CSV + PDF, or check a repaired draft against them — returns a draft, what failed, and a prompt to paste out. Writes nothing |
+| POST | `/api/epic-import/analyze` | Read the Shareworks CSV + PDF, or check a repaired draft against them — returns a draft, what failed, and a prompt to paste out. Writes nothing |
 | POST | `/api/epic-import/diff` | Diff the derivation against an uploaded Excel export — read-only |
 | POST | `/api/epic-import/diff.md` | The same report as a downloadable Markdown file |
 | POST | `/api/wizard/parse-file` | Parse an uploaded Excel structure file for wizard pre-fill |

@@ -98,10 +98,11 @@ export default function ImportDiagnostics() {
       <div>
         <h2 className="text-lg font-semibold text-cs-text">Import diagnostics</h2>
         <p className="mt-1 text-xs text-cs-muted">
-          Checks the Epic importer against real data. Export your data from
-          Import&nbsp;/&nbsp;Export, then upload it here with the Epic files from the
-          same date. Every difference names the rule that produced it, so the report
-          can be handed back as a bug report. Nothing on this page writes anything.
+          Checks the importer against real data. Export your data from
+          Import&nbsp;/&nbsp;Export, then upload it here with the Shareworks files from
+          the same date. Every difference names the rule that produced it, so the
+          report can be handed back as a bug report. Nothing on this page writes
+          anything.
         </p>
       </div>
 
@@ -109,8 +110,8 @@ export default function ImportDiagnostics() {
         <div className="space-y-3">
           {([
             ['diag-export', 'Your export (Vesting.xlsx)', '.xlsx', setExportFile],
-            ['diag-csv', 'Epic share summary (.csv)', '.csv,text/csv', setCsv],
-            ['diag-pdf', 'Epic Stock Loan Statement (.pdf)', '.pdf,application/pdf', setPdf],
+            ['diag-csv', 'Data for Stock Workbook (.csv)', '.csv,text/csv', setCsv],
+            ['diag-pdf', 'Stock Loan Statement (.pdf)', '.pdf,application/pdf', setPdf],
           ] as const).map(([id, label, accept, setter]) => (
             <div key={id}>
               <label htmlFor={id} className="text-xs font-medium text-cs-text-2">{label}</label>

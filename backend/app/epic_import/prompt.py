@@ -51,7 +51,7 @@ Rules you must follow:
 
 1. Do NOT invent or alter vest_start, periods or exercise_date. They are company
    wide, they are listed below, and they are ignored if you send them.
-2. Every grant in the share summary that has a share count must appear exactly
+2. Every grant in the stock workbook that has a share count must appear exactly
    once. Match on year and type.
 3. interest_rate is a decimal fraction: 0.86% is 0.0086.
 4. price is the cost basis PER SHARE — divide the reported total cost basis by
@@ -120,7 +120,8 @@ def build_prompt(draft: Draft, findings: list[Finding], statement: Statement | N
         "files and produced a draft, but some figures do not reconcile. Please correct "
         "the draft and return it in the exact format below.",
         "",
-        "I have attached my original share summary CSV and Stock Loan Statement PDF. "
+        "I have attached the two files this came from, both downloaded from Shareworks: "
+        "Data for Stock Workbook (CSV) and my Stock Loan Statement (PDF). "
         "The text the tracker extracted from them is included at the bottom — if it "
         "disagrees with the attachments, trust the attachments.",
         "",
@@ -145,7 +146,7 @@ def build_prompt(draft: Draft, findings: list[Finding], statement: Statement | N
                       or "none readable"),
                   ""]
     if csv_text:
-        parts += ["## Share summary CSV (as uploaded)", "", "```csv", csv_text.strip(), "```", ""]
+        parts += ["## Data for Stock Workbook (as downloaded)", "", "```csv", csv_text.strip(), "```", ""]
     if statement_text:
         parts += ["## Stock Loan Statement (text extracted from the PDF)", "",
                   "```", statement_text.strip(), "```", ""]

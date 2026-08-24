@@ -67,7 +67,8 @@ def parse_share_csv(raw: bytes) -> tuple[list[ShareRow], list[Finding]]:
     idx = {_norm(h): i for i, h in enumerate(header)}
     if "grant" not in idx:
         return [], [Finding("G0", ERROR, "",
-                            "CSV has no 'Grant' column — is this an Epic share summary export?")]
+                            "CSV has no 'Grant' column — is this Data for Stock Workbook, "
+                            "downloaded from Shareworks?")]
 
     # A renamed column reads as an absent one, and an absent cost basis silently
     # prices every grant at zero — which in this app turns every capital gain
@@ -75,7 +76,7 @@ def parse_share_csv(raw: bytes) -> tuple[list[ShareRow], list[Finding]]:
     for column, consequence in _REQUIRED.items():
         if column not in idx:
             findings.append(Finding("G0", ERROR, "",
-                                    f"The share summary has no '{column}' column, so "
+                                    f"Data for Stock Workbook has no '{column}' column, so "
                                     f"{consequence}. It may have been renamed — the columns "
                                     f"found were: {', '.join(header)}."))
     if findings:

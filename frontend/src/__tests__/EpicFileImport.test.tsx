@@ -22,7 +22,7 @@ const DISAGREES = {
   ...CLEAN,
   findings: [
     { code: 'C3', severity: 'error', subject: '2022 Purchased',
-      message: 'The share summary reports a loan balance of 2,000,000.00.' },
+      message: 'The stock workbook reports a loan balance of 2,000,000.00.' },
   ],
   reconciles: false,
 }
@@ -53,7 +53,7 @@ function mockApi(...responses: unknown[]) {
 const csv = () => new File(['a,b'], 'shares.csv', { type: 'text/csv' })
 
 async function readFiles() {
-  await userEvent.upload(screen.getByLabelText(/Share summary/i), csv())
+  await userEvent.upload(screen.getByLabelText(/Data for Stock Workbook/i), csv())
   await userEvent.click(screen.getByRole('button', { name: 'Read my files' }))
 }
 

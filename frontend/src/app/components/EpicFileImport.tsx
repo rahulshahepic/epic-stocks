@@ -86,17 +86,22 @@ export default function EpicFileImport() {
 
   return (
     <div className="flex flex-col rounded-lg border-2 border-cs-border bg-cs-surface p-4">
-      <span className="text-sm font-semibold text-cs-text">Import from Epic&rsquo;s files</span>
+      <span className="text-sm font-semibold text-cs-text">Import from Shareworks</span>
       <span className="mt-1 text-xs text-cs-muted">
-        Upload the share summary CSV and the Stock Loan Statement PDF exactly as Epic
-        sends them. Vesting schedules come from the company grant schedule, so only
-        your own figures are read from the files.
+        In Shareworks, open the <strong>Documents</strong> tab and download two files:
+        your latest <strong>Stock Loan Statement</strong> and{' '}
+        <strong>Data for Stock Workbook</strong>. Upload them here exactly as they
+        download &mdash; no editing needed.
+      </span>
+      <span className="mt-2 text-xs text-cs-muted">
+        Vesting schedules come from the company grant schedule, so only your own
+        figures are read from the files.
       </span>
 
       <div className="mt-3 space-y-3">
         <div>
           <label htmlFor="epic-csv" className="text-xs font-medium text-cs-text-2">
-            Share summary (.csv)
+            Data for Stock Workbook (.csv)
           </label>
           <input
             id="epic-csv" type="file" accept=".csv,text/csv" disabled={busy}

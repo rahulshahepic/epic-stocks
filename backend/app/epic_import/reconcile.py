@@ -119,11 +119,15 @@ def _same(a, b) -> bool:
     return a == b
 
 
+# Neither file carries these, so a difference is expected rather than wrong.
+_NOT_IN_THE_FILES = {"dp_shares"}
+
+
 def _severity(field_name: str) -> str:
+    if field_name in _NOT_IN_THE_FILES:
+        return "info"
     if field_name in _MATERIAL:
         return "error"
-    if field_name in _STRUCTURAL:
-        return "warning"
     return "warning"
 
 
@@ -146,6 +150,8 @@ def reconcile(draft: Draft, grants: list[dict], loans: list[dict],
             diffs.append(Difference("grant", key, "", "present", "—", "G1", "error",
                                     "Produced by the import but absent from your data."))
             continue
+        notes = {"dp_shares": "Down-payment shares are in neither file, so an import "
+                              "leaves whatever you already have."}
         diffs += _compare("grant", key, {
             "shares": dg.shares, "price": dg.price, "periods": dg.periods,
             "vest_start": dg.vest_start, "exercise_date": dg.exercise_date,
@@ -161,20 +167,77 @@ def reconcile(draft: Draft, grants: list[dict], loans: list[dict],
         diffs.append(Difference("grant", f"{year} {gtype}", "", "—", "present", "G1",
                                 "error", "In your data but the import did not produce it."))
 
-    def loan_key(num, gy, gt, lt, ly) -> str:
-        num = str(num or "").strip()
-        return f"#{num}" if num else f"{gy}|{gt}|{lt}|{ly}"
+    # Loan numbers are not a reliable key. Data entered through the wizard carries
+    # generated numbers ("wiz-2018-I2020") rather than Epic's, so matching on the
+    # number alone reports every loan as both missing and extra. Fall back to the
+    # grant/type/year tuple, which both sides always have.
+    def tuple_of(gy, gt, lt, ly) -> tuple:
+        return (int(gy), str(gt).strip(), str(lt).strip(), int(ly))
 
-    existing_loans = {loan_key(l.get("loan_number"), l["grant_year"], l["grant_type"],
-                               l["loan_type"], l["loan_year"]): l for l in loans}
+    # A loan another loan refinances is a historical link in a chain; the
+    # statement only ever shows the current one.
+    superseded = {str(l.get("refinances_loan_number") or "").strip()
+                  for l in loans} - {""}
+
+    unmatched = list(loans)
+
+    def pick(candidates, amount):
+        """Prefer the current loan in a refinance chain, then the closest amount."""
+        tips = [i for i in candidates
+                if str(unmatched[i].get("loan_number") or "").strip() not in superseded]
+        pool = tips or candidates
+        return min(pool, key=lambda i: abs(float(unmatched[i]["amount"]) - amount))
+
+    def take(dl, dg):
+        """Returns (existing loan, how it was matched)."""
+        num = dl.loan_number.strip()
+        for i, el in enumerate(unmatched):
+            if num and str(el.get("loan_number") or "").strip() == num:
+                return unmatched.pop(i), "number"
+
+        # A refinanced purchase loan keeps the grant year in its name but is
+        # recorded under the year it was refinanced, so the loan year cannot be
+        # part of the match — and the original must not win over the loan that is
+        # actually outstanding, which is what the statement shows.
+        if dl.loan_type == "Purchase":
+            chain = [i for i, el in enumerate(unmatched)
+                     if int(el["grant_year"]) == dg.year
+                     and str(el["grant_type"]).strip() == dg.type
+                     and str(el["loan_type"]).strip() == "Purchase"]
+            if chain:
+                return unmatched.pop(pick(chain, dl.amount)), "chain"
+
+        want = tuple_of(dg.year, dg.type, dl.loan_type, dl.loan_year)
+        exact = [i for i, el in enumerate(unmatched)
+                 if tuple_of(el["grant_year"], el["grant_type"],
+                             el["loan_type"], el["loan_year"]) == want]
+        if exact:
+            return unmatched.pop(pick(exact, dl.amount)), "tuple"
+
+        # Same loan, filed against a different grant. Epic attributes a loan that
+        # covers two grants to the bonus side; a user may have filed it under the
+        # purchase grant. Match it so the disagreement reads as one row, not two.
+        cross = [i for i, el in enumerate(unmatched)
+                 if int(el["grant_year"]) == dg.year
+                 and str(el["loan_type"]).strip() == dl.loan_type
+                 and int(el["loan_year"]) == dl.loan_year]
+        if cross:
+            return unmatched.pop(pick(cross, dl.amount)), "cross-grant"
+        return None, None
+
     for dg, dl in draft.all_loans:
-        k = loan_key(dl.loan_number, dg.year, dg.type, dl.loan_type, dl.loan_year)
-        el = existing_loans.pop(k, None)
-        key = dl.loan_number or k
+        el, how = take(dl, dg)
+        key = dl.loan_number or f"{dg.year} {dg.type} {dl.loan_type}"
         if el is None:
             diffs.append(Difference("loan", key, "", f"{dl.amount:,.2f}", "—", "L1", "error",
                                     "On the statement but not in your data."))
             continue
+        if how != "number":
+            theirs = str(el.get("loan_number") or "").strip() or "—"
+            diffs.append(Difference("loan", key, "loan_number", dl.loan_number, theirs,
+                                    "L1", "info",
+                                    "Matched on grant, type and year. Importing would "
+                                    "replace the placeholder with Epic's own number."))
         diffs += _compare("loan", key, {
             "amount": dl.amount, "interest_rate": dl.interest_rate,
             "due_date": dl.due_date, "grant_year": dg.year, "grant_type": dg.type,
@@ -185,11 +248,20 @@ def reconcile(draft: Draft, grants: list[dict], loans: list[dict],
             "grant_type": str(el["grant_type"]).strip(),
             "loan_type": str(el["loan_type"]).strip(), "loan_year": int(el["loan_year"]),
         })
-    for k, el in existing_loans.items():
-        diffs.append(Difference("loan", k.lstrip("#"), "", "—", f"{float(el['amount']):,.2f}",
-                                "L5", "warning",
-                                "In your data but not on this statement — paid off, "
-                                "refinanced, or the statement predates it."))
+
+    for el in unmatched:
+        num = str(el.get("loan_number") or "").strip()
+        key = num or f"{el['grant_year']} {el['grant_type']} {el['loan_type']}"
+        if num in superseded:
+            diffs.append(Difference("loan", key, "", "—", f"{float(el['amount']):,.2f}",
+                                    "L5", "info",
+                                    "An earlier loan in a refinance chain — the statement "
+                                    "only lists the loan currently outstanding."))
+        else:
+            diffs.append(Difference("loan", key, "", "—", f"{float(el['amount']):,.2f}",
+                                    "L5", "warning",
+                                    "In your data but not on this statement — paid off, "
+                                    "refinanced, or the statement predates it."))
 
     existing_prices: dict[int, dict] = {}
     for p in prices:
@@ -206,10 +278,20 @@ def reconcile(draft: Draft, grants: list[dict], loans: list[dict],
         if not _same(dp.price, float(ep["price"])):
             diffs.append(Difference("price", key, "price", _fmt(dp.price),
                                     _fmt(float(ep["price"])), "P1", "error"))
-    for year, ep in existing_prices.items():
-        diffs.append(Difference("price", str(year), "", "—", f"{float(ep['price']):,.2f}",
-                                "P1", "warning",
-                                "In your prices but no purchase grant implies it."))
+    # Prices are derived from purchase grants, so the import only ever produces
+    # them for years a grant exists in. Anything later is a projection the user
+    # entered themselves — reporting it as a disagreement is a category error.
+    latest = max((p.effective_date.year for p in draft.prices), default=None)
+    for year, ep in sorted(existing_prices.items()):
+        if latest is not None and year > latest:
+            diffs.append(Difference("price", str(year), "", "—",
+                                    f"{float(ep['price']):,.2f}", "P1", "info",
+                                    "Later than any purchase grant — a projection of "
+                                    "your own, which an import does not replace."))
+        else:
+            diffs.append(Difference("price", str(year), "", "—",
+                                    f"{float(ep['price']):,.2f}", "P1", "warning",
+                                    "In your prices but no purchase grant implies it."))
 
     report.counts = {
         "imported_grants": len(draft.grants), "existing_grants": len(grants),

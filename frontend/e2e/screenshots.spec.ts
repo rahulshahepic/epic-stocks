@@ -86,6 +86,17 @@ test.describe('Screenshots', () => {
     await page.screenshot({ path: `${OUT}/import-export-mobile.png` })
   })
 
+  test('new user empty state - light - mobile', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' })
+    await page.setViewportSize(MOBILE)
+    await page.request.post(`${BASE}/api/auth/test-login`,
+      { data: { email: 'brand-new@e2e.test', name: 'New User' } })
+    await page.goto(BASE)
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(1500)
+    await page.screenshot({ path: `${OUT}/new-user-light-mobile.png`, fullPage: true })
+  })
+
   test('import diagnostics page - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     await page.goto(`${BASE}/import-diagnostics`)

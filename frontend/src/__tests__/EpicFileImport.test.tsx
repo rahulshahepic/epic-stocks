@@ -1,7 +1,11 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import EpicFileImport from '../app/components/EpicFileImport.tsx'
+import { resetContentCache, setContentCacheForTesting } from '../app/hooks/useContent.ts'
+import { MOCK_CONTENT } from './fixtures/content.ts'
+import type { ContentBlob } from '../api.ts'
 
 const CLEAN = {
   draft: { statement_date: '2024-02-01' },
@@ -52,6 +56,11 @@ function mockApi(...responses: unknown[]) {
 
 const csv = () => new File(['a,b'], 'shares.csv', { type: 'text/csv' })
 
+/** The card renders the wizard on handoff, and the wizard needs router context. */
+function renderCard() {
+  return render(<MemoryRouter><EpicFileImport /></MemoryRouter>)
+}
+
 async function readFiles() {
   await userEvent.upload(screen.getByLabelText(/Data for Stock Workbook/i), csv())
   await userEvent.click(screen.getByRole('button', { name: 'Read my files' }))
@@ -62,13 +71,13 @@ describe('EpicFileImport', () => {
 
   it('will not read until a file is chosen', () => {
     mockApi(CLEAN)
-    render(<EpicFileImport />)
+    renderCard()
     expect(screen.getByRole('button', { name: 'Read my files' })).toBeDisabled()
   })
 
   it('shows figures a person can recognise, not the file', async () => {
     mockApi(CLEAN)
-    render(<EpicFileImport />)
+    renderCard()
     await readFiles()
     expect(await screen.findByText('679,000')).toBeInTheDocument()
     expect(screen.getByText('$3,795,000')).toBeInTheDocument()
@@ -77,7 +86,7 @@ describe('EpicFileImport', () => {
 
   it('offers no assistant help when nothing disagrees', async () => {
     mockApi(CLEAN)
-    render(<EpicFileImport />)
+    renderCard()
     await readFiles()
     expect(await screen.findByRole('button', { name: 'Review and finish' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Copy prompt' })).not.toBeInTheDocument()
@@ -85,7 +94,7 @@ describe('EpicFileImport', () => {
 
   it('offers the prompt when the two files disagree, but still lets you proceed', async () => {
     mockApi(DISAGREES)
-    render(<EpicFileImport />)
+    renderCard()
     await readFiles()
     expect(await screen.findByText(/1 figure\(s\) do not agree/)).toBeInTheDocument()
     expect(screen.getByText('C3')).toBeInTheDocument()
@@ -95,7 +104,7 @@ describe('EpicFileImport', () => {
 
   it('refuses to proceed when the statement itself was misread', async () => {
     mockApi(BLOCKED)
-    render(<EpicFileImport />)
+    renderCard()
     await readFiles()
     expect(await screen.findByText(/does not add up to its own totals/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Copy prompt' })).toBeInTheDocument()
@@ -104,14 +113,14 @@ describe('EpicFileImport', () => {
 
   it('says the figures go wherever the user chooses, not to the app', async () => {
     mockApi(BLOCKED)
-    render(<EpicFileImport />)
+    renderCard()
     await readFiles()
     expect(await screen.findByText(/this app does not send\s+them anywhere/)).toBeInTheDocument()
   })
 
   it('sends a pasted reply back to be checked the same way', async () => {
     const calls = mockApi(BLOCKED, CLEAN)
-    render(<EpicFileImport />)
+    renderCard()
     await readFiles()
     await userEvent.type(await screen.findByLabelText(/Paste the reply/), 'grants-json')
     await userEvent.click(screen.getByRole('button', { name: 'Check this' }))
@@ -123,7 +132,7 @@ describe('EpicFileImport', () => {
 
   it('accepts the reply as a file too', async () => {
     const calls = mockApi(BLOCKED, CLEAN)
-    render(<EpicFileImport />)
+    renderCard()
     await readFiles()
     await userEvent.upload(
       await screen.findByLabelText(/Upload the reply as a file/),
@@ -135,7 +144,7 @@ describe('EpicFileImport', () => {
 
   it('keeps the loop going until it comes back clean', async () => {
     const calls = mockApi(BLOCKED, DISAGREES, CLEAN)
-    render(<EpicFileImport />)
+    renderCard()
     await readFiles()
 
     await userEvent.type(await screen.findByLabelText(/Paste the reply/), 'a')
@@ -150,7 +159,7 @@ describe('EpicFileImport', () => {
 
   it('hands off to the wizard rather than asking you to sign off on a file', async () => {
     mockApi(CLEAN)
-    render(<EpicFileImport />)
+    renderCard()
     await readFiles()
     await userEvent.click(await screen.findByRole('button', { name: 'Review and finish' }))
     expect(await screen.findByText('Review your import')).toBeInTheDocument()
@@ -163,8 +172,33 @@ describe('EpicFileImport', () => {
       if (url.includes('/api/content')) return new Response('{}', { status: 500 })
       return new Response(JSON.stringify({ detail: 'That is not valid JSON' }), { status: 400 })
     })
-    render(<EpicFileImport />)
+    renderCard()
     await readFiles()
     expect(await screen.findByText('That is not valid JSON')).toBeInTheDocument()
+  })
+})
+
+describe('EpicFileImport → wizard handoff', () => {
+  beforeEach(() => {
+    resetContentCache()
+    setContentCacheForTesting(MOCK_CONTENT as ContentBlob)
+  })
+  afterEach(() => { vi.restoreAllMocks(); resetContentCache() })
+
+  it('shows the reviewed figures, not a menu asking how to start', async () => {
+    // Someone who has just uploaded their documents has already chosen a path.
+    // Landing them back on "choose how you'd like to get started" strands them.
+    mockApi(CLEAN)
+    renderCard()
+    await userEvent.upload(screen.getByLabelText(/Data for Stock Workbook/i), csv())
+    await userEvent.click(screen.getByRole('button', { name: 'Read my files' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Review and finish' }))
+
+    expect(await screen.findByText('Review your import')).toBeInTheDocument()
+    // The wizard rendered, and it skipped straight past its own welcome menu.
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /Enter it myself/i })).not.toBeInTheDocument()
+    })
+    expect(screen.queryByText(/Choose how you|quickest way/i)).not.toBeInTheDocument()
   })
 })

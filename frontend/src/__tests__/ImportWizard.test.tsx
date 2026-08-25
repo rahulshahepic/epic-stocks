@@ -3,87 +3,23 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import ImportWizard from '../app/components/ImportWizard.tsx'
+
+const mockNavigate = vi.fn()
+vi.mock('react-router-dom', async () => ({
+  ...(await vi.importActual<typeof import('react-router-dom')>('react-router-dom')),
+  useNavigate: () => mockNavigate,
+}))
 import { resetContentCache, setContentCacheForTesting } from '../app/hooks/useContent.ts'
 import type { ContentBlob } from '../api.ts'
+import { MOCK_CONTENT } from './fixtures/content.ts'
 
 beforeEach(() => {
   localStorage.setItem('auth_token', 'test-token')
   vi.restoreAllMocks()
   resetContentCache()
   setContentCacheForTesting(MOCK_CONTENT as ContentBlob)
+  mockNavigate.mockClear()
 })
-
-// Matches the seeded Epic values in backend/app/content_service.py.
-const MOCK_CONTENT = {
-  grant_templates: [
-    { year: 2018, type: 'Purchase', vest_start: '2020-06-15', periods: 6, exercise_date: '2018-12-31', default_catch_up: true,  show_dp_shares: false, default_purchase_due_date: '2025-07-15', default_tax_due_date: null },
-    { year: 2019, type: 'Purchase', vest_start: '2021-06-15', periods: 6, exercise_date: '2019-12-31', default_catch_up: true,  show_dp_shares: false, default_purchase_due_date: '2026-07-15', default_tax_due_date: null },
-    { year: 2020, type: 'Purchase', vest_start: '2021-09-30', periods: 5, exercise_date: '2020-12-31', default_catch_up: true,  show_dp_shares: false, default_purchase_due_date: '2025-07-15', default_tax_due_date: null },
-    { year: 2020, type: 'Bonus',    vest_start: '2021-09-30', periods: 4, exercise_date: '2020-12-31', default_catch_up: false, show_dp_shares: false, default_purchase_due_date: null,         default_tax_due_date: '2025-07-15' },
-    { year: 2021, type: 'Purchase', vest_start: '2022-09-30', periods: 5, exercise_date: '2021-12-31', default_catch_up: true,  show_dp_shares: false, default_purchase_due_date: '2030-07-15', default_tax_due_date: null },
-    { year: 2021, type: 'Bonus',    vest_start: '2022-09-30', periods: 3, exercise_date: '2021-12-31', default_catch_up: false, show_dp_shares: false, default_purchase_due_date: null,         default_tax_due_date: null },
-    { year: 2022, type: 'Purchase', vest_start: '2023-09-30', periods: 4, exercise_date: '2022-12-31', default_catch_up: false, show_dp_shares: false, default_purchase_due_date: '2031-06-30', default_tax_due_date: null },
-    { year: 2022, type: 'Bonus',    vest_start: '2023-09-30', periods: 3, exercise_date: '2022-12-31', default_catch_up: false, show_dp_shares: false, default_purchase_due_date: null,         default_tax_due_date: null },
-    { year: 2022, type: 'Free',     vest_start: '2027-09-30', periods: 1, exercise_date: '2022-12-31', default_catch_up: false, show_dp_shares: false, default_purchase_due_date: null,         default_tax_due_date: '2031-06-30' },
-    { year: 2023, type: 'Purchase', vest_start: '2024-09-30', periods: 4, exercise_date: '2023-12-31', default_catch_up: false, show_dp_shares: true,  default_purchase_due_date: '2032-06-30', default_tax_due_date: null },
-    { year: 2023, type: 'Bonus',    vest_start: '2024-09-30', periods: 3, exercise_date: '2023-12-31', default_catch_up: false, show_dp_shares: false, default_purchase_due_date: null,         default_tax_due_date: null },
-    { year: 2024, type: 'Purchase', vest_start: '2025-09-30', periods: 4, exercise_date: '2024-12-31', default_catch_up: false, show_dp_shares: true,  default_purchase_due_date: '2033-06-30', default_tax_due_date: null },
-    { year: 2024, type: 'Bonus',    vest_start: '2025-09-30', periods: 3, exercise_date: '2024-12-31', default_catch_up: false, show_dp_shares: false, default_purchase_due_date: null,         default_tax_due_date: null },
-    { year: 2025, type: 'Purchase', vest_start: '2026-09-30', periods: 4, exercise_date: '2025-12-31', default_catch_up: false, show_dp_shares: true,  default_purchase_due_date: '2034-06-30', default_tax_due_date: null },
-    { year: 2025, type: 'Bonus',    vest_start: '2026-09-30', periods: 3, exercise_date: '2025-12-31', default_catch_up: false, show_dp_shares: false, default_purchase_due_date: null,         default_tax_due_date: null },
-  ],
-  bonus_schedule_variants: [
-    { grant_year: 2020, grant_type: 'Bonus', variant_code: 'A', periods: 2, label: 'A (2 years)', is_default: false },
-    { grant_year: 2020, grant_type: 'Bonus', variant_code: 'B', periods: 3, label: 'B (3 years)', is_default: false },
-    { grant_year: 2020, grant_type: 'Bonus', variant_code: 'C', periods: 4, label: 'C (4 years)', is_default: true  },
-  ],
-  loan_rates: {
-    interest: { '2020': 0.0086, '2021': 0.0091, '2022': 0.0328, '2023': 0.0437, '2024': 0.037, '2025': 0.0379 },
-    tax: {
-      'Catch-Up': { '2021': 0.0086, '2022': 0.0187, '2023': 0.0356, '2024': 0.043, '2025': 0.0407 },
-      'Bonus':    { '2021': 0.0086, '2022': 0.0293, '2023': 0.0385, '2024': 0.037 },
-    },
-    purchase_original: {
-      '2018': { rate: 0.0307, due_date: '2025-07-15' },
-      '2019': { rate: 0.0307, due_date: '2026-07-15' },
-      '2020': { rate: 0.0038, due_date: '2025-07-15' },
-      '2021': { rate: 0.0086, due_date: '2030-07-15' },
-      '2022': { rate: 0.0187, due_date: '2031-06-30' },
-      '2023': { rate: 0.0356, due_date: '2032-06-30' },
-      '2024': { rate: 0.037,  due_date: '2033-06-30' },
-      '2025': { rate: 0.0406, due_date: '2034-06-30' },
-    },
-  },
-  loan_refinances: {
-    purchase: {
-      '2018': [
-        { date: '2020-01-01', rate: 0.0169, loan_year: 2020, due_date: '2025-07-15' },
-        { date: '2020-06-01', rate: 0.0043, loan_year: 2020, due_date: '2025-07-15' },
-        { date: '2021-11-01', rate: 0.0086, loan_year: 2021, due_date: '2027-07-15' },
-      ],
-      '2019': [
-        { date: '2020-06-01', rate: 0.0043, loan_year: 2020, due_date: '2026-07-15' },
-        { date: '2021-11-01', rate: 0.0086, loan_year: 2021, due_date: '2028-07-15' },
-      ],
-      '2020': [
-        { date: '2021-11-01', rate: 0.0086, loan_year: 2021, due_date: '2029-07-15' },
-      ],
-    },
-    tax: {
-      '2020-Bonus-2021': [
-        { date: '2021-11-01', rate: 0.0086, loan_year: 2021, due_date: '2029-07-15', orig_due_date: '2024-07-15' },
-      ],
-    },
-  },
-  grant_program_settings: {
-    tax_fallback_federal: 0.37,
-    tax_fallback_state: 0.0765,
-    dp_min_percent: 0.10,
-    dp_min_cap: 20000,
-    price_years_start: 2018,
-    price_years_end: 2026,
-  },
-}
 
 function mockApi() {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
@@ -148,13 +84,24 @@ async function fillValidPurchaseGrant(user: ReturnType<typeof userEvent.setup>) 
 }
 
 describe('ImportWizard', () => {
-  it('renders welcome screen with three path options', () => {
+  it('leads with the Shareworks import and keeps the slower paths available', () => {
     mockApi()
     renderWizard()
     expect(screen.getByText("Let's set up your equity tracker.")).toBeInTheDocument()
-    expect(screen.getByText(/Setup Wizard/i)).toBeInTheDocument()
-    expect(screen.getByText(/Import from file/i)).toBeInTheDocument()
-    expect(screen.getByText(/Manual entry/i)).toBeInTheDocument()
+    // The fastest path is offered first and is the only one badged.
+    expect(screen.getByRole('button', { name: /Import from Shareworks/i })).toBeInTheDocument()
+    expect(screen.getByText('Fastest')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Enter it myself/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Import a Vesting.xlsx/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Manual entry/i })).toBeInTheDocument()
+  })
+
+  it('sends someone choosing the Shareworks path to the import page', async () => {
+    mockApi()
+    const user = userEvent.setup()
+    renderWizard()
+    await user.click(screen.getByRole('button', { name: /Import from Shareworks/i }))
+    expect(mockNavigate).toHaveBeenCalledWith('/import')
   })
 
   it('Manual entry goes to prices screen', async () => {
@@ -322,11 +269,11 @@ describe('ImportWizard', () => {
     expect(onComplete).toHaveBeenCalledOnce()
   })
 
-  it('Setup Wizard shows what-you-need screen', async () => {
+  it('the enter-it-myself path shows the what-you-need screen', async () => {
     mockApi()
     const user = userEvent.setup()
     renderWizard()
-    await user.click(screen.getByRole('button', { name: /Setup Wizard/i }))
+    await user.click(screen.getByRole('button', { name: /Enter it myself/i }))
     expect(screen.getByText("What you'll need")).toBeInTheDocument()
     expect(screen.getByText(/Epic stocks SharePoint/i)).toBeInTheDocument()
     expect(screen.getAllByText(/DocuSign or Shareworks/i).length).toBeGreaterThanOrEqual(1)
@@ -336,7 +283,7 @@ describe('ImportWizard', () => {
     mockApi()
     const user = userEvent.setup()
     renderWizard()
-    await user.click(screen.getByRole('button', { name: /Setup Wizard/i }))
+    await user.click(screen.getByRole('button', { name: /Enter it myself/i }))
     await user.click(screen.getByRole('button', { name: /Let's go/i }))
     // Now on prices screen
     expect(screen.getByText(/Annual share prices/i)).toBeInTheDocument()
@@ -350,7 +297,7 @@ describe('ImportWizard', () => {
     mockApi()
     const user = userEvent.setup()
     renderWizard()
-    await user.click(screen.getByRole('button', { name: /Setup Wizard/i }))
+    await user.click(screen.getByRole('button', { name: /Enter it myself/i }))
     await user.click(screen.getByRole('button', { name: /Let's go/i }))
     await user.click(screen.getByRole('button', { name: /Next: Enter grants/i }))
     // 2018–2025 purchase years should be present
@@ -363,7 +310,7 @@ describe('ImportWizard', () => {
     mockApi()
     const user = userEvent.setup()
     renderWizard()
-    await user.click(screen.getByRole('button', { name: /Setup Wizard/i }))
+    await user.click(screen.getByRole('button', { name: /Enter it myself/i }))
     await user.click(screen.getByRole('button', { name: /Let's go/i }))
     await user.click(screen.getByRole('button', { name: /Next: Enter grants/i }))
     expect(screen.getByText('Bonus & Free grants')).toBeInTheDocument()
@@ -378,7 +325,7 @@ describe('ImportWizard', () => {
     mockApi()
     const user = userEvent.setup()
     renderWizard()
-    await user.click(screen.getByRole('button', { name: /Setup Wizard/i }))
+    await user.click(screen.getByRole('button', { name: /Enter it myself/i }))
     await user.click(screen.getByRole('button', { name: /Let's go/i }))
     expect(screen.getByText(/Annual share prices/i)).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /Next: Enter grants/i }))
@@ -398,7 +345,7 @@ describe('ImportWizard', () => {
     const onComplete = vi.fn()
     const user = userEvent.setup()
     renderWizard(onComplete)
-    await user.click(screen.getByRole('button', { name: /Setup Wizard/i }))
+    await user.click(screen.getByRole('button', { name: /Enter it myself/i }))
     await waitFor(() => screen.getByRole('button', { name: /Let's go/i }))
     await user.click(screen.getByRole('button', { name: /Let's go/i }))
     await user.click(screen.getByRole('button', { name: /Next: Enter grants/i }))
@@ -415,12 +362,12 @@ describe('ImportWizard', () => {
     expect(onComplete).toHaveBeenCalledOnce()
   })
 
-  it('Import from file path shows file input', async () => {
+  it('the workbook path shows a file input', async () => {
     mockApi()
     const user = userEvent.setup()
     renderWizard()
-    await user.click(screen.getByRole('button', { name: /Import from file/i }))
-    expect(screen.getByText('Import from file')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Import a Vesting.xlsx/i }))
+    expect(screen.getByRole('heading', { name: /Import a Vesting.xlsx/i })).toBeInTheDocument()
     expect(screen.getByText(/Skip — enter manually/i)).toBeInTheDocument()
   })
 
@@ -438,7 +385,7 @@ describe('ImportWizard', () => {
     mockApi()
     const user = userEvent.setup()
     renderWizard()
-    await user.click(screen.getByRole('button', { name: /Setup Wizard/i }))
+    await user.click(screen.getByRole('button', { name: /Enter it myself/i }))
     await user.click(screen.getByRole('button', { name: /Let's go/i }))
     await user.click(screen.getByRole('button', { name: /Next: Enter grants/i }))
     // 2022 Bonus should appear in the Bonus & Free section (not the purchase section)
@@ -451,7 +398,7 @@ describe('ImportWizard', () => {
     mockApi()
     const user = userEvent.setup()
     renderWizard()
-    await user.click(screen.getByRole('button', { name: /Setup Wizard/i }))
+    await user.click(screen.getByRole('button', { name: /Enter it myself/i }))
     await user.click(screen.getByRole('button', { name: /Let's go/i }))
     await user.click(screen.getByRole('button', { name: /Next: Enter grants/i }))
     // The Bonus & Free section should not contain a standalone "2022 Free" badge
@@ -465,7 +412,7 @@ describe('ImportWizard', () => {
     mockApi()
     const user = userEvent.setup()
     renderWizard()
-    await user.click(screen.getByRole('button', { name: /Setup Wizard/i }))
+    await user.click(screen.getByRole('button', { name: /Enter it myself/i }))
     await user.click(screen.getByRole('button', { name: /Let's go/i }))
     await user.click(screen.getByRole('button', { name: /Next: Enter grants/i }))
     // Find the 2022 purchase checkbox and check it
@@ -514,7 +461,7 @@ describe('ImportWizard', () => {
     })
     const user = userEvent.setup()
     renderWizard()
-    await user.click(screen.getByRole('button', { name: /Setup Wizard/i }))
+    await user.click(screen.getByRole('button', { name: /Enter it myself/i }))
     // Should load without showing catch-up grants as orphans to be deleted
     await waitFor(() => screen.getByRole('button', { name: /Let's go/i }))
     await user.click(screen.getByRole('button', { name: /Let's go/i }))

@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 
-from app.epic_import import (build_prompt, build_skeleton, derive_draft,
+from app.epic_import import (build_prompt, build_skeleton, derive_draft, reconcile,
                              draft_from_payload, is_blocked, parse_share_csv,
                              parse_statement_lines, parse_statement_pdf,
                              to_wizard_payload, validate_draft)
@@ -710,3 +710,144 @@ def test_no_grants_is_said_once_not_once_per_loan(skeleton):
     homeless = [f for f in findings if f.code == "L3"]
     assert len(homeless) == 1
     assert "9 loans" in homeless[0].message
+
+
+# ============================================================
+# RECONCILING AGAINST DATA THAT WAS NOT ENTERED BY AN IMPORT
+# ============================================================
+
+def baseline_loan(**kw):
+    base = {"loan_number": "", "grant_year": 2021, "grant_type": "Purchase",
+            "loan_type": "Interest", "loan_year": 2022, "amount": 18000.0,
+            "interest_rate": 0.025, "due_date": "2030-07-15",
+            "refinances_loan_number": ""}
+    return {**base, **kw}
+
+
+def only(diffs, **match):
+    return [d for d in diffs if all(getattr(d, k) == v for k, v in match.items())]
+
+
+def test_a_loan_matches_on_its_grant_when_the_numbers_are_placeholders(skeleton, drafted):
+    """Data entered through the wizard carries generated loan numbers, so matching
+    on the number alone reports every loan as both missing and extra."""
+    draft, _ = drafted
+    report = reconcile(draft, [], [baseline_loan(loan_number="wiz-2021-I2022")], [])
+
+    # Neither reported missing on the statement side nor extra on the user's.
+    assert only(report.differences, key="100006", field="") == []
+    assert only(report.differences, key="wiz-2021-I2022") == []
+    swap = only(report.differences, entity="loan", field="loan_number")
+    assert len(swap) == 1 and swap[0].severity == "info"
+    assert swap[0].imported == "100006" and swap[0].existing == "wiz-2021-I2022"
+
+
+def test_a_refinanced_purchase_loan_matches_the_one_still_outstanding(skeleton, drafted):
+    """The statement shows the loan currently owed; the app keeps the whole chain.
+    Matching the original instead reports its old rate and due date as errors."""
+    draft, _ = drafted
+    chain = [
+        baseline_loan(loan_number="wiz-2021-orig", loan_type="Purchase", loan_year=2021,
+                      amount=1200000.0, interest_rate=0.0307, due_date="2025-07-15"),
+        baseline_loan(loan_number="wiz-2021-refi", loan_type="Purchase", loan_year=2023,
+                      amount=1200000.0, interest_rate=0.015, due_date="2030-07-15",
+                      refinances_loan_number="wiz-2021-orig"),
+    ]
+    report = reconcile(draft, [], chain, [])
+
+    assert only(report.differences, field="interest_rate") == []   # matched the tip
+    superseded = [d for d in report.differences if d.key == "wiz-2021-orig"]
+    assert len(superseded) == 1 and superseded[0].severity == "info"
+    assert "refinance chain" in superseded[0].note
+
+
+def test_a_loan_filed_against_a_different_grant_reads_as_one_row(skeleton, drafted):
+    """Epic puts a loan covering two grants on the bonus side; a user may have
+    filed it under the purchase grant. That is one disagreement, not two."""
+    draft, _ = drafted
+    mine = baseline_loan(loan_number="wiz-2022-I2023", grant_year=2022,
+                         grant_type="Purchase", loan_type="Interest", loan_year=2023,
+                         amount=7000.0, interest_rate=0.04, due_date="2031-06-30")
+    report = reconcile(draft, [], [mine], [])
+
+    assert only(report.differences, key="100008", field="") == []
+    assert only(report.differences, key="wiz-2022-I2023") == []
+    gt = only(report.differences, field="grant_type")
+    assert len(gt) == 1
+    assert (gt[0].imported, gt[0].existing) == ("Bonus", "Purchase")
+
+
+def test_a_price_past_the_last_purchase_grant_is_a_projection_not_a_gap(skeleton, drafted):
+    """Prices come from purchase grants, so later years are the user's own
+    forecasts — calling them missing is a category error."""
+    draft, _ = drafted
+    prices = [{"effective_date": "2030-01-01", "price": 9.66},
+              {"effective_date": "2019-01-01", "price": 8.0}]
+    report = reconcile(draft, [], [], prices)
+
+    later = only(report.differences, entity="price", key="2030")
+    assert len(later) == 1 and later[0].severity == "info"
+    assert "projection" in later[0].note
+    earlier = only(report.differences, entity="price", key="2019")
+    assert len(earlier) == 1 and earlier[0].severity == "warning"
+
+
+def test_down_payment_shares_are_context_not_a_disagreement(skeleton, drafted):
+    """Neither file carries them, so a difference is expected."""
+    draft, _ = drafted
+    g = grant(draft, 2021, "Purchase")
+    mine = [{"year": 2021, "type": "Purchase", "shares": g.shares, "price": g.price,
+             "periods": g.periods, "vest_start": g.vest_start,
+             "exercise_date": g.exercise_date, "dp_shares": -4717, "election_83b": False}]
+    dp = only(reconcile(draft, mine, [], []).differences, field="dp_shares")
+    assert len(dp) == 1 and dp[0].severity == "info"
+
+
+def test_an_import_does_not_wipe_down_payment_shares(client):
+    """They are in neither file, so deriving them as 0 and prefilling the wizard
+    with that would erase a real figure the moment someone accepted."""
+    register_user(client)
+    client.post("/api/grants", json={
+        "year": 2021, "type": "Purchase", "shares": 1, "price": 1.0,
+        "vest_start": "2022-09-30", "periods": 4, "exercise_date": "2021-12-31",
+        "dp_shares": -4717,
+    })
+    body = analyze(client)
+    kept = next(g for g in body["wizard_prefill"]["grants"]
+                if g["year"] == 2021 and g["type"] == "Purchase")
+    assert kept["dp_shares"] == -4717
+
+
+def test_a_bonus_basis_that_is_not_the_year_price_means_taxed_at_vest(skeleton, parsed):
+    """A fully vested bonus grant looks the same either way; the year's share
+    price is the only thing that separates a price paid from accumulated value."""
+    statement, rows, _ = parsed
+    draft, findings = derive_draft(statement, rows, skeleton)
+    # The fixture's 2022 bonus carries 20.00/share against a 15.00 share price.
+    assert grant(draft, 2022, "Bonus").price == 0.0
+    note = next(f for f in findings if f.code == "G3" and "2022 Bonus" in f.subject)
+    assert "not the 2022 share price" in note.message
+    # One that does match the year's price is left alone.
+    assert grant(draft, 2021, "Bonus").price == 12.00
+
+
+def test_an_import_does_not_wipe_price_projections(client):
+    """The wizard deletes prices its payload omits. A draft only covers years with
+    a purchase grant, so forecasts past that would vanish on accept."""
+    register_user(client)
+    client.post("/api/prices", json={"effective_date": "2030-01-01", "price": 9.66})
+    prefill = analyze(client)["wizard_prefill"]
+
+    years = {p["effective_date"][:4] for p in prefill["prices"]}
+    assert "2030" in years
+    kept = next(p for p in prefill["prices"] if p["effective_date"].startswith("2030"))
+    assert kept["id"] > 0          # the real row, so the wizard can preserve it
+
+
+def test_an_import_does_not_wipe_grants_the_files_never_mention(client):
+    register_user(client)
+    client.post("/api/grants", json={
+        "year": 2015, "type": "Bonus", "shares": 500, "price": 1.0,
+        "vest_start": "2016-09-30", "periods": 3, "exercise_date": "2015-12-31"})
+    prefill = analyze(client)["wizard_prefill"]
+    assert any(g["year"] == 2015 and g["id"] > 0 for g in prefill["grants"])

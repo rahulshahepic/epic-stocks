@@ -147,8 +147,16 @@ def derive_draft(statement: Statement | None, rows: list[ShareRow],
     draft = Draft(statement_date=statement.statement_date if statement else None)
 
     for row in rows:
-        year, gtype = classify_row(row.label)
-        row.year, row.grant_type = year, gtype
+        row.year, row.grant_type = classify_row(row.label)
+
+    # A purchase grant's per-share basis is that year's share price, so work
+    # those out first — they are what separates a bonus grant taxed at grant from
+    # one taxed as it vests.
+    price_by_year = {r.year: round(basis_per_share(r), 2) for r in rows
+                     if r.grant_type == "Purchase" and basis_per_share(r)}
+
+    for row in rows:
+        year, gtype = row.year, row.grant_type
         if year is None:
             findings.append(Finding("G1", WARNING, row.label,
                                     f"No grant type mapping for this category — "
@@ -157,6 +165,15 @@ def derive_draft(statement: Statement | None, rows: list[ShareRow],
 
         ps = basis_per_share(row) or 0.0
         vest_taxed, why = is_vest_taxed(row)
+        # A bonus grant whose basis is not that year's share price was taxed as it
+        # vested, so what Epic reports is accumulated value rather than a price
+        # paid. On a fully vested grant the two are otherwise indistinguishable —
+        # the year's price is the only thing that tells them apart.
+        if not vest_taxed and gtype != "Purchase" and ps and year in price_by_year:
+            if abs(ps - price_by_year[year]) > _CENT:
+                vest_taxed = True
+                why = (f"its basis of {ps:.2f}/share is not the {year} share price "
+                       f"of {price_by_year[year]:.2f}")
         if gtype == "Catch-Up" or vest_taxed:
             price = 0.0
             if ps:

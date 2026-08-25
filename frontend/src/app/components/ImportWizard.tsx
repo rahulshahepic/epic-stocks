@@ -1686,7 +1686,7 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
  <button
  type="button"
  onClick={() => { setTemplates([]); setPrices([{ effective_date: '', price: '' }]); push('prices') }}
- className="text-xs text-cs-muted underline hover:text-cs-text-2"
+ className="text-xs text-cs-text-2 underline hover:text-cs-text"
  >
  Manual entry — start from a blank slate
  </button>

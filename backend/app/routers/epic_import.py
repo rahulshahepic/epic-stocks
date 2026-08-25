@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from scaffold.auth import get_current_user
-from scaffold.models import User
+from scaffold.models import Grant, Price, User
 from app.content_service import load_content
 from app.date_utils import to_date as _to_date
 from app.epic_import import (Draft, build_prompt, build_skeleton, derive_draft,
@@ -124,10 +124,16 @@ def _payload_from_xlsx(raw: bytes) -> dict:
                         "price": p["price"]} for p in prices]}
 
 
-def _wizard_prefill(draft: Draft) -> dict:
+def _wizard_prefill(draft: Draft, db: Session | None = None,
+                    user_id: int | None = None) -> dict:
     """The draft in the flat shape the wizard's own data loader consumes.
 
     Ids are negative so nothing downstream mistakes these for saved rows.
+
+    Anything the user already has that the files do not cover is carried through
+    with its real id. The wizard deletes rows its payload omits, so a draft alone
+    would quietly remove price projections and grant categories the statement
+    knows nothing about the moment someone accepted the import.
     """
     grants, loans, prices = [], [], []
     for gi, g in enumerate(draft.grants, 1):
@@ -148,6 +154,25 @@ def _wizard_prefill(draft: Draft) -> dict:
     for pi, p in enumerate(draft.prices, 1):
         prices.append({"id": -pi, "effective_date": p.effective_date.isoformat(),
                        "price": p.price, "is_estimate": False, "version": 1})
+
+    if db is not None and user_id is not None:
+        covered_years = {p.effective_date.year for p in draft.prices}
+        for p in db.query(Price).filter(Price.user_id == user_id).all():
+            if p.effective_date.year not in covered_years:
+                prices.append({"id": p.id, "effective_date": p.effective_date.isoformat(),
+                               "price": p.price, "is_estimate": bool(p.is_estimate),
+                               "version": p.version or 1})
+        covered_grants = {g.key for g in draft.grants}
+        for g in db.query(Grant).filter(Grant.user_id == user_id).all():
+            if (g.year, g.type) not in covered_grants:
+                grants.append({"id": g.id, "year": g.year, "type": g.type,
+                               "shares": g.shares, "price": g.price,
+                               "vest_start": g.vest_start.isoformat(),
+                               "periods": g.periods,
+                               "exercise_date": g.exercise_date.isoformat(),
+                               "dp_shares": g.dp_shares or 0,
+                               "election_83b": bool(g.election_83b),
+                               "version": g.version or 1})
     return {"grants": grants, "loans": loans, "prices": prices}
 
 
@@ -237,6 +262,15 @@ def analyze(
     draft.statement_date = draft.statement_date or (
         statement.statement_date if statement else None)
 
+    # Down-payment shares appear in neither file. Deriving them as 0 and then
+    # prefilling the wizard with that would quietly wipe a real figure the moment
+    # someone accepted the import, so carry forward what the user already has.
+    existing_dp = {(g.year, g.type): (g.dp_shares or 0)
+                   for g in db.query(Grant).filter(Grant.user_id == user.id).all()}
+    for g in draft.grants:
+        if not g.dp_shares and existing_dp.get(g.key):
+            g.dp_shares = existing_dp[g.key]
+
     findings += validate_draft(draft, statement, rows, sk)
     blocked = is_blocked(findings)
     reconciles = not any(x.severity == "error" for x in findings)
@@ -244,7 +278,7 @@ def analyze(
     return AnalyzeResponse(
         draft=draft.as_dict(),
         wizard_payload=to_wizard_payload(draft),
-        wizard_prefill=_wizard_prefill(draft),
+        wizard_prefill=_wizard_prefill(draft, db, user.id),
         findings=[x.as_dict() for x in findings],
         blocked=blocked,
         reconciles=reconciles,
@@ -280,7 +314,8 @@ def _baseline_from_export(raw: bytes) -> tuple[list[dict], list[dict], list[dict
     loans = [{"loan_number": str(l["loan_number"] or "").strip(), "grant_year": l["grant_yr"],
               "grant_type": l["grant_type"], "loan_type": l["loan_type"],
               "loan_year": l["loan_year"], "amount": l["amount"],
-              "interest_rate": l["interest_rate"], "due_date": _to_date(l["due"])}
+              "interest_rate": l["interest_rate"], "due_date": _to_date(l["due"]),
+              "refinances_loan_number": l.get("refinances_loan_number") or ""}
              for l in loans_raw]
     prices = [{"effective_date": _to_date(p["date"]), "price": p["price"]} for p in prices_raw]
     for g in grants:

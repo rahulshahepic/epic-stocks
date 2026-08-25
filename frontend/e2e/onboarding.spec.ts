@@ -10,15 +10,17 @@ test.describe('Onboarding wizard', () => {
     await page.waitForLoadState('networkidle')
   })
 
-  test('new user sees wizard instead of empty state links', async ({ page }) => {
+  test('new user is led to the Shareworks import, with the slower paths kept', async ({ page }) => {
     await expect(page.getByText("Let's set up your equity tracker.")).toBeVisible()
-    await expect(page.getByRole('button', { name: /Import from file/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Import from Shareworks/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Enter it myself/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Import a Vesting.xlsx/i })).toBeVisible()
     await expect(page.getByRole('button', { name: /Manual entry/i })).toBeVisible()
   })
 
-  test('Import from file path shows upload screen', async ({ page }) => {
-    await page.getByRole('button', { name: /Import from file/i }).click()
-    await expect(page.getByText('Import from file')).toBeVisible()
+  test('the workbook path shows the upload screen', async ({ page }) => {
+    await page.getByRole('button', { name: /Import a Vesting.xlsx/i }).click()
+    await expect(page.getByRole('heading', { name: /Import a Vesting.xlsx/i })).toBeVisible()
   })
 
   test('manual flow: add grant → review → done → dashboard', async ({ page }) => {

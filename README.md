@@ -83,15 +83,15 @@ Everything in the app is derived from these four tables at request time:
    |-------|------|
    | ![Login](screenshots/login-light-mobile.png) | ![Login Dark](screenshots/login-dark-mobile.png) |
 
-2. **Enter your data** — the **Setup Wizard** appears automatically when you have no grants and is always accessible from the Import page. Three options:
-   - **Setup Wizard** (recommended) — Epic's company-wide grant structure is pre-filled (vest dates, periods, exercise dates). Enter your share counts, annual market prices from Epic Stocks SharePoint, and loan details grant by grant. Catch-up grants are included by default for years ≤ 2021. The 2020 Bonus has an A/B/C vesting schedule selector matching your grant agreement. If you already have data, the wizard pre-loads your existing records on each screen and lets you update them — unmatched existing records appear at the bottom so you can choose to keep or remove them. Nothing is written until you confirm at the final step.
-   - **Import from Shareworks** — download **Data for Stock Workbook** and your latest **Stock Loan Statement** from the **Documents** tab in Shareworks, then upload them as-is. Share counts, cost basis, loan balances, interest rates and due dates are read straight out of them. See [Importing from Shareworks](#importing-from-shareworks) below.
-   - **Import from Excel** — upload a `Vesting.xlsx` file (exported from this app or another user) to pre-fill the wizard. Confirm or adjust share counts before committing.
-   - **Manual entry** — enter prices first, then add grants and loans one at a time.
+2. **Enter your data** — with no grants yet, the setup screen appears automatically on the dashboard, and is always reachable from the Import page. Options, fastest first:
+   - **Import from Shareworks** (fastest) — download **Data for Stock Workbook** and your latest **Stock Loan Statement** from the **Documents** tab in Shareworks and upload them as-is. Share counts, cost basis, loan balances, interest rates and due dates are read straight out of them, and you check the result in the wizard before anything is saved. See [Importing from Shareworks](#importing-from-shareworks) below.
+   - **Enter it myself** — no documents to hand? Epic's company-wide grant structure is pre-filled (vest dates, periods, exercise dates), so you fill in your share counts, annual market prices and loan details grant by grant. Catch-up grants are included by default for years ≤ 2021. The 2020 Bonus has an A/B/C vesting schedule selector matching your grant agreement. If you already have data, the wizard pre-loads it on each screen — unmatched existing records appear at the bottom so you can keep or remove them. Nothing is written until you confirm at the final step.
+   - **Import a Vesting.xlsx** — already have an export from this app, or a workbook someone shared? Upload it to pre-fill the wizard.
+   - **Manual entry** — a blank slate, for grants that don't match the company schedule at all.
 
-   | Wizard welcome | Grant entry |
-   |----------------|-------------|
-   | ![Wizard Welcome](screenshots/wizard-welcome-light-mobile.png) | ![Wizard Grant Entry](screenshots/wizard-grant-entry-light-mobile.png) |
+   | New user | Grant entry |
+   |----------|-------------|
+   | ![Setup options](screenshots/new-user-light-mobile.png) | ![Wizard Grant Entry](screenshots/wizard-grant-entry-light-mobile.png) |
 
 3. **Add share prices** — go to **Prices** and enter the annual share price (Epic announces this each March). Without at least one price, no events can be computed. Use **+ Estimate** to project future prices at an annual % growth rate — useful for modeling expected increases before they're officially announced. Estimates appear in italics with an "est." badge and are automatically removed when the real price for that date is added.
 

@@ -672,15 +672,19 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
  const [reviewedLoans, setReviewedLoans] = useState<ReviewedLoan[]>([])
  const [allExistingLoans, setAllExistingLoans] = useState<LoanEntry[]>([])
 
- // Auto-enter schedule mode when navigated with ?mode=schedule (from Import page)
+ // Auto-enter schedule mode when navigated with ?mode=schedule (from Import
+ // page), or when handed a draft to review — someone who has just uploaded their
+ // Shareworks files has already chosen how to start, and asking again strands
+ // them on a menu instead of the figures they came to check.
  const autoScheduleTriggered = useRef(false)
  useEffect(() => {
- if (searchParams.get('mode') === 'schedule' && !autoScheduleTriggered.current) {
+ if (autoScheduleTriggered.current) return
+ if (prefill || searchParams.get('mode') === 'schedule') {
  autoScheduleTriggered.current = true
  enterScheduleMode()
  }
  // eslint-disable-next-line react-hooks/exhaustive-deps
- }, [searchParams])
+ }, [searchParams, prefill])
 
  // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -1624,57 +1628,68 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
  {isPage ? 'Setup Wizard' : "Let's set up your equity tracker."}
  </h2>
  <p className="mt-1 text-sm text-cs-brand">
- Choose how you'd like to get started.
+ The quickest way is to let your Shareworks documents fill this in.
  </p>
  </div>
 
  <div className="grid gap-3">
- {/* Option 1: Guided wizard — recommended */}
+ {/* Fastest path: the two documents Shareworks already has */}
+ <button
+ type="button"
+ onClick={() => navigate('/import')}
+ className="flex flex-col rounded-lg border-2 border-rose-400 bg-cs-surface p-4 text-left hover:border-rose-600 hover:shadow-md dark:border-rose-500 "
+ >
+ <div className="flex items-center gap-2">
+ <span className="text-sm font-semibold text-cs-brand">Import from Shareworks</span>
+ <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-cs-brand dark:bg-rose-900/50 dark:text-rose-300">
+ Fastest
+ </span>
+ </div>
+ <span className="mt-1 text-xs text-cs-muted">
+ Download two documents from the Documents tab in Shareworks and upload
+ them. Your shares, cost basis and every loan are read from them — you
+ check the result here before anything is saved.
+ </span>
+ </button>
+
+ {/* Fallback: type it in, guided by the company schedule */}
  <button
  type="button"
  onClick={enterScheduleMode}
  disabled={scheduleLoading}
- className="flex flex-col rounded-lg border-2 border-rose-400 bg-cs-surface p-4 text-left hover:border-rose-600 hover:shadow-md disabled:opacity-60 dark:border-rose-500 "
+ className="flex flex-col rounded-lg border-2 border-cs-border bg-cs-surface p-4 text-left hover:border-rose-400 hover:shadow-md disabled:opacity-60 "
  >
- <div className="flex items-center gap-2">
- <span className="text-sm font-semibold text-cs-brand">
- {scheduleLoading ? 'Loading your data…' : 'Setup Wizard'}
+ <span className="text-sm font-semibold text-cs-text">
+ {scheduleLoading ? 'Loading your data…' : 'Enter it myself'}
  </span>
- {!scheduleLoading && (
- <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-cs-brand dark:bg-rose-900/50 dark:text-rose-300">
- Recommended
- </span>
- )}
- </div>
  <span className="mt-1 text-xs text-cs-muted">
- We know Epic's grant schedule — enter your prices first, then just fill in your shares and loan details grant by grant.
+ No documents to hand? We know Epic's grant schedule — fill in your
+ shares and loan details grant by grant.
  </span>
  </button>
 
- {/* Option 2: Import from file */}
+ {/* Rarely the right choice; kept for anyone with a workbook already */}
  <button
  type="button"
  onClick={() => push('upload')}
  className="flex flex-col rounded-lg border-2 border-cs-border bg-cs-surface p-4 text-left hover:border-rose-400 hover:shadow-md "
  >
- <span className="text-sm font-semibold text-cs-text">Import from file</span>
+ <span className="text-sm font-semibold text-cs-text">Import a Vesting.xlsx</span>
  <span className="mt-1 text-xs text-cs-muted">
- Upload an Excel structure file to pre-fill your schedule.
- </span>
- </button>
-
- {/* Option 3: Manual entry */}
- <button
- type="button"
- onClick={() => { setTemplates([]); setPrices([{ effective_date: '', price: '' }]); push('prices') }}
- className="flex flex-col rounded-lg border-2 border-cs-border bg-cs-surface p-4 text-left hover:border-rose-400 hover:shadow-md "
- >
- <span className="text-sm font-semibold text-cs-text">Manual entry</span>
- <span className="mt-1 text-xs text-cs-muted">
- Enter everything yourself — prices, grants, loans.
+ Already have an export from this app, or a workbook someone shared?
  </span>
  </button>
  </div>
+
+ {/* Kept for grants that do not match the company schedule at all. Quiet on
+ purpose — it is almost never the right starting point. */}
+ <button
+ type="button"
+ onClick={() => { setTemplates([]); setPrices([{ effective_date: '', price: '' }]); push('prices') }}
+ className="text-xs text-cs-text-2 underline hover:text-cs-text"
+ >
+ Manual entry — start from a blank slate
+ </button>
 
  {isPage && (
  <p className="text-xs text-cs-muted">
@@ -1688,9 +1703,9 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
  {screen === 'upload' && (
  <div className="space-y-4">
  <BackBtn onClick={back} />
- <h2 className="text-base font-semibold text-cs-text">Import from file</h2>
+ <h2 className="text-base font-semibold text-cs-text">Import a Vesting.xlsx</h2>
  <p className="text-xs text-cs-muted">
- Upload an Excel file with a Schedule and/or Prices sheet. Missing share counts and amounts are fine — you'll fill those in next.
+ Upload an Excel file with a Schedule and/or Prices sheet. Missing share counts and amounts are fine — you'll fill those in next. To import from Shareworks instead, use Import&nbsp;/&nbsp;Export.
  </p>
 
 

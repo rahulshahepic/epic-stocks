@@ -168,24 +168,20 @@ export default function ImportExport() {
  <div className="space-y-4">
  <h2 className="text-lg font-semibold text-cs-text">Import / Export</h2>
 
- {/* Setup Wizard — primary recommended action */}
+ {/* The fastest path leads, because it is what most people should do. */}
+ <EpicFileImport />
+
+ {/* Fallback for anyone without the documents to hand. */}
  <button
  type="button"
  onClick={() => navigate('/wizard?mode=schedule')}
- className="flex w-full flex-col rounded-lg border-2 border-rose-400 bg-cs-surface p-4 text-left hover:border-rose-600 hover:shadow-md dark:border-rose-500 "
+ className="flex w-full flex-col rounded-lg border-2 border-cs-border bg-cs-surface p-4 text-left hover:border-rose-400 hover:shadow-md "
  >
- <div className="flex items-center gap-2">
- <span className="text-sm font-semibold text-cs-brand">Setup Wizard</span>
- <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-cs-brand dark:bg-rose-900/50 dark:text-rose-300">
- Recommended
- </span>
- </div>
+ <span className="text-sm font-semibold text-cs-text">Enter it myself</span>
  <span className="mt-1 text-xs text-cs-muted">
- Step-by-step guided setup — enter grants, loans, and prices one at a time. We know Epic's grant schedule so you just fill in your numbers.
+ No Shareworks documents to hand? Step through your grants one at a time — we know Epic's grant schedule, so you only fill in your own numbers.
  </span>
  </button>
-
- <EpicFileImport />
 
  {/* Import from Excel */}
  <div className="flex flex-col rounded-lg border-2 border-cs-border bg-cs-surface p-4 ">

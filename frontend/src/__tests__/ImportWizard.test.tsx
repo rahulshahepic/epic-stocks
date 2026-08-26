@@ -74,6 +74,40 @@ function renderWizard(onComplete = vi.fn()) {
   )
 }
 
+/** Render the wizard over an imported draft, the way EpicFileImport hands one over. */
+function renderWizardWithPrefill(loan: { interest_rate: number; due_date: string }) {
+  const prefill = {
+    grants: [{
+      id: -1, version: 1, year: 2018, type: 'Purchase', shares: 1000, price: 2.00,
+      vest_start: '2020-06-15', periods: 6, exercise_date: '2018-12-31',
+      dp_shares: 0, election_83b: false,
+    }],
+    loans: [{
+      id: -1001, version: 1, grant_year: 2018, grant_type: 'Purchase',
+      loan_type: 'Purchase', loan_year: 2018, amount: 100000,
+      interest_rate: loan.interest_rate, due_date: loan.due_date,
+      loan_number: '001468', refinances_loan_id: null,
+    }],
+    prices: [{ id: -1, version: 1, effective_date: '2018-01-01', price: 2.00 }],
+  }
+  return render(
+    <MemoryRouter>
+      <ImportWizard onComplete={vi.fn()} prefill={prefill} />
+    </MemoryRouter>
+  )
+}
+
+/** Walk an imported draft through to the refinance-chain screen. */
+async function gotoRefiScreen(user: ReturnType<typeof userEvent.setup>) {
+  await waitFor(() => screen.getByRole('button', { name: /Let's go/i }))
+  await user.click(screen.getByRole('button', { name: /Let's go/i }))
+  await user.click(screen.getByRole('button', { name: /Next: Enter grants/i }))
+  await user.click(screen.getByRole('button', { name: /Next: Review loans/i }))
+  await waitFor(() => expect(screen.getByRole('heading', { name: /Tax loans/i })).toBeInTheDocument())
+  await user.click(screen.getByRole('button', { name: /Next: Refinances/i }))
+  await waitFor(() => expect(screen.getByRole('heading', { name: /Refinance chains/i })).toBeInTheDocument())
+}
+
 /** Fill the manual-entry Purchase grant with values that pass Review-screen validation. */
 async function fillValidPurchaseGrant(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText(/Grant year/i) as HTMLInputElement, '2024')
@@ -595,4 +629,55 @@ describe('ImportWizard', () => {
     expect(submitted!.grants).toHaveLength(1)
     expect(submitted!.grants[0].loans).toEqual([])
   })
+
+  // ── Refinance chains inferred from the rate on the statement ──────────────
+  // Epic's documents never say when a loan was refinanced, so the rate the loan
+  // carries is what says how far down the company chain it went.
+
+  it('builds the whole 2018 chain when the loan carries the last refinance rate', async () => {
+    mockApi()
+    const user = userEvent.setup()
+    renderWizardWithPrefill({ interest_rate: 0.0086, due_date: '2027-07-15' })
+    await gotoRefiScreen(user)
+    expect(screen.getByText('2018 Purchase')).toBeInTheDocument()
+    // original 3.07% → 1.69% → 0.43% → 0.86%
+    for (const rate of ['3.07%', '1.69%', '0.43%', '0.86%']) {
+      expect(screen.getByText(rate)).toBeInTheDocument()
+    }
+    expect(screen.queryByText(/Read from your loan rates/i)).not.toBeInTheDocument()
+  })
+
+  it('builds no chain when the loan is still on the original rate', async () => {
+    mockApi()
+    const user = userEvent.setup()
+    renderWizardWithPrefill({ interest_rate: 0.0307, due_date: '2025-07-15' })
+    await gotoRefiScreen(user)
+    expect(screen.queryByText('2018 Purchase')).not.toBeInTheDocument()
+    expect(screen.getByText(/Read from your loan rates/i)).toBeInTheDocument()
+    expect(screen.getByText(/3.07% is the original rate/i)).toBeInTheDocument()
+  })
+
+  it('stops the chain at the refinance whose rate the loan carries', async () => {
+    mockApi()
+    const user = userEvent.setup()
+    renderWizardWithPrefill({ interest_rate: 0.0043, due_date: '2025-07-15' })
+    await gotoRefiScreen(user)
+    expect(screen.getByText('2018 Purchase')).toBeInTheDocument()
+    expect(screen.getByText('3.07%')).toBeInTheDocument()
+    expect(screen.getByText('1.69%')).toBeInTheDocument()
+    expect(screen.getByText('0.43%')).toBeInTheDocument()
+    // The Nov 2021 refinance is not this loan's — it never happened to them.
+    expect(screen.queryByText('0.86%')).not.toBeInTheDocument()
+    expect(screen.getByText(/1 later step on record was not applied/i)).toBeInTheDocument()
+  })
+
+  it('flags a rate that matches no refinance on record and applies none', async () => {
+    mockApi()
+    const user = userEvent.setup()
+    renderWizardWithPrefill({ interest_rate: 0.0123, due_date: '2027-07-15' })
+    await gotoRefiScreen(user)
+    expect(screen.queryByText('2018 Purchase')).not.toBeInTheDocument()
+    expect(screen.getByText(/matches none of the 3 refinances on record/i)).toBeInTheDocument()
+  })
+
 })

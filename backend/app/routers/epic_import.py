@@ -11,6 +11,7 @@ signs off on is their rendered position rather than a file.
 """
 import io
 import json
+import re
 
 import openpyxl
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -292,16 +293,105 @@ def analyze(
 # DIAGNOSTICS
 # ============================================================
 
-def _baseline_from_export(raw: bytes) -> tuple[list[dict], list[dict], list[dict]]:
+# The dashboard's holdings report is one formatted sheet, not a dataset: two
+# labelled sections with their own headers, and a share price rather than a price
+# history. These are the fields it simply has no column for.
+_REPORT_OMITS = frozenset({"prices", "loan_number", "periods", "vest_start",
+                           "dp_shares", "election_83b"})
+_GRANT_LABEL = re.compile(r"^(?P<year>\d{4})\s+(?P<type>[A-Za-z][A-Za-z -]*?)\s*$")
+
+
+def _holdings_report_baseline(ws) -> tuple[list[dict], list[dict]]:
+    """Read the "HOLDINGS BY GRANT" and "ACTIVE LOANS" sections of the report.
+
+    Anchored on the section headings rather than row numbers, so adding a row to
+    the title block or a column to the summary does not silently shift the read.
+    """
+    rows = [[c for c in r] for r in ws.iter_rows(values_only=True)]
+
+    def section(title: str) -> list[list]:
+        start = next((i for i, r in enumerate(rows)
+                      if str(r[0] or "").strip().upper() == title), None)
+        if start is None:
+            return []
+        out = []
+        for r in rows[start + 2:]:          # skip the heading and its column row
+            label = str(r[0] or "").strip()
+            if not label or label.upper() == "TOTAL":
+                break
+            out.append(r)
+        return out
+
+    def split(label: str) -> tuple[int, str] | None:
+        m = _GRANT_LABEL.match(str(label or "").strip())
+        return (int(m.group("year")), m.group("type").strip()) if m else None
+
+    grants = []
+    for r in section("HOLDINGS BY GRANT"):
+        key = split(r[0])
+        if key is None:
+            continue
+        vested, unvested = _num(r[3]), _num(r[4])
+        grants.append({"year": key[0], "type": key[1],
+                       "shares": int(round(vested + unvested)),
+                       "price": _num(r[2]), "exercise_date": _to_date(r[1]),
+                       "periods": 0, "vest_start": None,
+                       "dp_shares": 0, "election_83b": False})
+
+    loans = []
+    for r in section("ACTIVE LOANS"):
+        key = split(r[0])
+        if key is None:
+            continue
+        loans.append({"loan_number": "", "grant_year": key[0], "grant_type": key[1],
+                      "loan_type": str(r[1] or "").strip(), "loan_year": int(_num(r[2])),
+                      "due_date": _to_date(r[3]), "amount": _num(r[4]),
+                      "interest_rate": _num(r[5]), "refinances_loan_number": ""})
+    return grants, loans
+
+
+def _num(v) -> float:
+    if isinstance(v, (int, float)):
+        return float(v)
+    try:
+        return float(str(v).replace("$", "").replace(",", "").replace("%", "").strip())
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _baseline_from_export(raw: bytes):
+    """Read either export the app produces.
+
+    Returns (grants, loans, prices, omits, source). The Import tab's workbook is
+    the full dataset. The dashboard's holdings report is a formatted position
+    statement — readable, but missing whole columns, which `omits` names so the
+    reconciliation does not report the report's shape as the import's errors.
+    """
     try:
         wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Could not open the export: {e}")
     names = {s.lower(): s for s in wb.sheetnames}
+    if "holdings report" in names and "schedule" not in names:
+        try:
+            grants, loans = _holdings_report_baseline(wb[names["holdings report"]])
+        except Exception as e:
+            raise HTTPException(status_code=400,
+                                detail=f"Could not read that holdings report: {e}")
+        finally:
+            wb.close()
+        if not grants:
+            raise HTTPException(
+                status_code=400,
+                detail="That holdings report has no HOLDINGS BY GRANT section to read.")
+        return grants, loans, [], _REPORT_OMITS, "holdings report"
     if "schedule" not in names:
         wb.close()
-        raise HTTPException(status_code=400,
-                            detail="The export has no Schedule sheet — use Export from the app")
+        raise HTTPException(
+            status_code=400,
+            detail="That workbook is neither the Import tab's export nor a dashboard "
+                   "holdings report — it has no Schedule sheet and no Holdings Report "
+                   "sheet.")
     try:
         grants = read_grants_from_excel(wb[names["schedule"]])
         loans_raw = read_loans_from_excel(wb[names["loans"]]) if "loans" in names else []
@@ -321,7 +411,7 @@ def _baseline_from_export(raw: bytes) -> tuple[list[dict], list[dict], list[dict
     for g in grants:
         g["vest_start"] = _to_date(g["vest_start"])
         g["exercise_date"] = _to_date(g["exercise_date"])
-    return grants, loans, prices
+    return grants, loans, prices, frozenset(), "workbook"
 
 
 class DiffResponse(BaseModel):
@@ -362,8 +452,9 @@ def diff(
     draft, f = derive_draft(statement, rows, sk)
     findings += f + validate_draft(draft, statement, rows, sk)
 
-    grants, loans, prices = _baseline_from_export(export_bytes)
-    report = reconcile(draft, grants, loans, prices)
+    grants, loans, prices, omits, source = _baseline_from_export(export_bytes)
+    report = reconcile(draft, grants, loans, prices, omits)
+    report.counts["baseline"] = source
     return DiffResponse(draft=draft.as_dict(),
                         findings=[x.as_dict() for x in findings],
                         report=report.as_dict(),

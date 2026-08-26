@@ -83,7 +83,8 @@ test.describe('Screenshots', () => {
     await page.click('text=Import')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/import-export-mobile.png` })
+    // fullPage: the export card and its as-of date sit below the fold.
+    await page.screenshot({ path: `${OUT}/import-export-mobile.png`, fullPage: true })
   })
 
   test('new user empty state - light - mobile', async ({ page }) => {

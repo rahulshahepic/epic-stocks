@@ -3,13 +3,20 @@
 Fixtures in test_data/ are synthetic — the prices, rates and balances in them
 are invented round numbers, not Epic's.
 """
+import io
 import json
 import os
 import sys
+from datetime import date, datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import openpyxl
 import pytest
+
+
+def _as_date(v) -> date:
+    return v.date() if isinstance(v, datetime) else date.fromisoformat(str(v)[:10])
 
 from app.epic_import import (build_prompt, build_skeleton, derive_draft, reconcile,
                              draft_from_payload, is_blocked, parse_share_csv,
@@ -587,6 +594,101 @@ def test_diff_finds_nothing_when_the_data_came_from_the_same_files(client):
     assert report["differences"] == []
 
 
+def test_an_as_of_export_leaves_out_what_came_later(client):
+    """Reconciling against a document dated months ago needs the data of that
+    date. Nothing is versioned, so as-of is read off the dates each record has."""
+    register_user(client)
+    payload = analyze(client)["wizard_payload"]
+    client.post("/api/wizard/submit", json={
+        **payload, "clear_existing": True, "generate_payoff_sales": False})
+
+    everything = client.get("/api/export/excel")
+    assert everything.status_code == 200
+    early = client.get("/api/export/excel", params={"as_of": "2021-06-30"})
+    assert early.status_code == 200
+    assert "Vesting_2021-06-30.xlsx" in early.headers["content-disposition"]
+
+    def counts(resp):
+        wb = openpyxl.load_workbook(io.BytesIO(resp.content), data_only=True)
+        out = {n: wb[n].max_row - 1 for n in ("Schedule", "Loans", "Prices")}
+        wb.close()
+        return out
+
+    now, then = counts(everything), counts(early)
+    assert then["Schedule"] < now["Schedule"]
+    assert then["Loans"] < now["Loans"]
+    assert then["Prices"] < now["Prices"]
+
+    # Everything kept is genuinely on or before the date.
+    wb = openpyxl.load_workbook(io.BytesIO(early.content), data_only=True)
+    cutoff = date(2021, 6, 30)
+    for r in wb["Schedule"].iter_rows(min_row=2, values_only=True):
+        assert _as_date(r[6]) <= cutoff, r          # exercise_date
+    for r in wb["Loans"].iter_rows(min_row=2, values_only=True):
+        assert int(r[4]) <= cutoff.year, r          # loan_year
+    for r in wb["Prices"].iter_rows(min_row=2, values_only=True):
+        assert _as_date(r[0]) <= cutoff, r          # effective_date
+    wb.close()
+
+    # And an as-of export still reads as a diff baseline.
+    body = client.post("/api/epic-import/diff",
+                       files=diff_files(client, export_xlsx=(
+                           "export.xlsx", early.content,
+                           "application/vnd.openxmlformats-officedocument."
+                           "spreadsheetml.sheet"))).json()
+    assert body["report"]["counts"]["baseline"] == "workbook"
+
+
+def test_a_bad_as_of_date_is_rejected(client):
+    register_user(client)
+    assert client.get("/api/export/excel", params={"as_of": "last Tuesday"}).status_code == 400
+
+
+def test_the_dashboard_holdings_report_works_as_a_baseline(client):
+    """The dashboard export is a formatted position statement, not a dataset.
+    It is readable, and what it leaves out is said once rather than reported as
+    a difference on every row."""
+    register_user(client)
+    payload = analyze(client)["wizard_payload"]
+    client.post("/api/wizard/submit", json={
+        **payload, "clear_existing": True, "generate_payoff_sales": False})
+
+    report = client.get("/api/export/holdings-report", params={"as_of": "2026-02-01"})
+    assert report.status_code == 200, report.text
+    body = client.post("/api/epic-import/diff", files=diff_files(client, export_xlsx=(
+        "holdings.xlsx", report.content,
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))).json()
+
+    rep = body["report"]
+    assert rep["counts"]["baseline"] == "holdings report"
+    # Everything was actually read and matched, not quietly read as empty.
+    assert rep["counts"]["existing_grants"] == rep["counts"]["imported_grants"] > 0
+    assert rep["counts"]["existing_loans"] == rep["counts"]["imported_loans"] > 0
+    assert [d for d in rep["differences"] if d["field"] == ""] == []
+    # Nothing it cannot carry is reported as a per-row disagreement.
+    omitted = {"periods", "vest_start", "dp_shares", "election_83b", "loan_number"}
+    for d in rep["differences"]:
+        if d["field"] in omitted:
+            assert d["entity"] == "—" and d["severity"] == "info", d
+    assert [d for d in rep["differences"] if d["entity"] == "price"] == []
+    assert "prices" in {d["field"] for d in rep["differences"]}
+    assert "holdings report" in body["markdown"]
+
+
+def test_a_workbook_that_is_neither_export_is_refused(client):
+    register_user(client)
+    buf = io.BytesIO()
+    wb = openpyxl.Workbook()
+    wb.active.title = "Something Else"
+    wb.save(buf)
+    resp = client.post("/api/epic-import/diff", files=diff_files(
+        client, export_xlsx=("nope.xlsx", buf.getvalue(),
+                             "application/vnd.openxmlformats-officedocument."
+                             "spreadsheetml.sheet")))
+    assert resp.status_code == 400
+    assert "Holdings Report" in resp.json()["detail"]
+
+
 def test_diff_names_the_rule_behind_each_difference(client):
     register_user(client)
     payload = analyze(client)["wizard_payload"]
@@ -739,7 +841,107 @@ def test_a_loan_matches_on_its_grant_when_the_numbers_are_placeholders(skeleton,
     assert only(report.differences, key="wiz-2021-I2022") == []
     swap = only(report.differences, entity="loan", field="loan_number")
     assert len(swap) == 1 and swap[0].severity == "info"
-    assert swap[0].imported == "100006" and swap[0].existing == "wiz-2021-I2022"
+    assert report.counts["renumbered_loans"] == 1
+
+
+def test_taking_epics_loan_numbers_is_one_line_not_one_row_each(skeleton, drafted):
+    """Every wizard-entered loan swaps its placeholder for Epic's number. Listing
+    that per loan buries the real differences under dozens of rows saying the
+    import worked."""
+    draft, _ = drafted
+    mine = [baseline_loan(loan_number=f"wiz-{i}", grant_year=dg.year, grant_type=dg.type,
+                          loan_type=dl.loan_type, loan_year=dl.loan_year,
+                          amount=dl.amount, interest_rate=dl.interest_rate,
+                          due_date=dl.due_date.isoformat())
+            for i, (dg, dl) in enumerate(draft.all_loans)]
+    report = reconcile(draft, [], mine, [])
+
+    swap = only(report.differences, entity="loan", field="loan_number")
+    assert len(swap) == 1
+    assert report.counts["renumbered_loans"] == len(mine) > 1
+    assert str(len(mine)) in swap[0].note
+
+
+def test_a_purchase_balance_a_rounding_apart_is_not_an_error(skeleton, drafted):
+    """Epic states the principal outstanding to the penny; a user types the round
+    original. Calling that a bad read hides the reads that really are bad."""
+    draft, _ = drafted
+    dg, dl = next((dg, dl) for dg, dl in draft.all_loans if dl.loan_type == "Purchase")
+    near = reconcile(draft, [], [baseline_loan(
+        loan_number=dl.loan_number, grant_year=dg.year, grant_type=dg.type,
+        loan_type="Purchase", loan_year=dl.loan_year, amount=dl.amount - 3.70,
+        interest_rate=dl.interest_rate, due_date=dl.due_date.isoformat())], [])
+    rows = only(near.differences, key=dl.loan_number, field="amount")
+    assert len(rows) == 1 and rows[0].severity == "info"
+    assert "rounded" in rows[0].note
+
+    # A gap big enough to be the wrong row is still an error.
+    far = reconcile(draft, [], [baseline_loan(
+        loan_number=dl.loan_number, grant_year=dg.year, grant_type=dg.type,
+        loan_type="Purchase", loan_year=dl.loan_year, amount=dl.amount * 0.9,
+        interest_rate=dl.interest_rate, due_date=dl.due_date.isoformat())], [])
+    rows = only(far.differences, key=dl.loan_number, field="amount")
+    assert len(rows) == 1 and rows[0].severity == "error"
+
+
+def test_a_loan_year_the_statement_never_carried_is_not_a_disagreement(skeleton, drafted):
+    """"2020 Grant - Purchase Loan" is named the same however many times it has
+    been refinanced, so the statement cannot say which year it dates from."""
+    draft, _ = drafted
+    dg, dl = next((dg, dl) for dg, dl in draft.all_loans if dl.loan_type == "Purchase")
+    assert dl.year_on_statement is False
+    report = reconcile(draft, [], [baseline_loan(
+        loan_number=dl.loan_number, grant_year=dg.year, grant_type=dg.type,
+        loan_type="Purchase", loan_year=dl.loan_year + 2, amount=dl.amount,
+        interest_rate=dl.interest_rate, due_date=dl.due_date.isoformat())], [])
+    rows = only(report.differences, key=dl.loan_number, field="loan_year")
+    assert len(rows) == 1 and rows[0].severity == "info"
+
+    # An interest loan is named "- 2022", so there the year is the statement's word.
+    dg2, dl2 = next((dg, dl) for dg, dl in draft.all_loans if dl.loan_type == "Interest")
+    assert dl2.year_on_statement is True
+
+
+def test_a_loan_past_the_statements_reach_is_a_projection_not_a_gap(skeleton, drafted):
+    """Loans are drawn each year. One dated after the newest year on the statement
+    is the user projecting forward, exactly like a projected share price."""
+    draft, _ = drafted
+    reach = max(dl.loan_year for _, dl in draft.all_loans)
+    report = reconcile(draft, [], [
+        baseline_loan(loan_number="wiz-future", loan_year=reach + 1, amount=1234.0),
+        baseline_loan(loan_number="wiz-past", loan_year=reach - 9, amount=99.0),
+    ], [])
+
+    later = only(report.differences, key="wiz-future", field="")
+    assert len(later) == 1 and later[0].severity == "info"
+    # No Epic number on it, so it is the user's own.
+    assert "no Epic loan number" in later[0].note
+    earlier = only(report.differences, key="wiz-past", field="")
+    assert len(earlier) == 1 and earlier[0].severity == "warning"
+
+
+def test_a_later_loan_carrying_an_epic_number_is_not_called_a_projection(skeleton, drafted):
+    """A loan drawn after the statement was issued lands in the same branch as a
+    projection. Epic's numbers are all digits, so one of those means Epic issued
+    it — say which it is rather than assuming the user made it up."""
+    draft, _ = drafted
+    reach = max(dl.loan_year for _, dl in draft.all_loans)
+    report = reconcile(draft, [], [baseline_loan(loan_number="900001",
+                                                 loan_year=reach + 1, amount=1234.0)], [])
+    row = only(report.differences, key="900001", field="")
+    assert len(row) == 1 and row[0].severity == "info"
+    assert "newer statement" in row[0].note
+    assert "projection" not in row[0].note
+
+
+def test_a_statement_loan_you_do_not_have_is_a_warning_not_an_error(skeleton, drafted):
+    """The row is on the statement verbatim, so the rules did not invent it —
+    the user's data is behind, which is what an import is for."""
+    draft, _ = drafted
+    report = reconcile(draft, [], [], [])
+    missing = [d for d in report.differences if d.entity == "loan" and d.field == ""]
+    assert missing and all(d.severity == "warning" for d in missing)
+    assert all("importing would add it" in d.note for d in missing)
 
 
 def test_a_refinanced_purchase_loan_matches_the_one_still_outstanding(skeleton, drafted):

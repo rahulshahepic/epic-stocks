@@ -63,6 +63,7 @@ export default function ImportExport() {
  const [selectedFile, setSelectedFile] = useState<File | null>(null)
  const [generatePayoffSales, setGeneratePayoffSales] = useState(true)
  const [showGuide, setShowGuide] = useState(false)
+ const [exportAsOf, setExportAsOf] = useState('')
  const fileRef = useRef<HTMLInputElement>(null)
 
  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -112,13 +113,14 @@ export default function ImportExport() {
  setStatus('exporting')
  setError('')
  try {
- const resp = await fetch('/api/export/excel', { credentials: 'include' })
+ const qs = exportAsOf ? `?as_of=${encodeURIComponent(exportAsOf)}` : ''
+ const resp = await fetch(`/api/export/excel${qs}`, { credentials: 'include' })
  if (!resp.ok) throw new Error(`Export failed (${resp.status})`)
  const blob = await resp.blob()
  const url = URL.createObjectURL(blob)
  const a = document.createElement('a')
  a.href = url
- a.download = 'Vesting.xlsx'
+ a.download = exportAsOf ? `Vesting_${exportAsOf}.xlsx` : 'Vesting.xlsx'
  a.click()
  URL.revokeObjectURL(url)
  setStatus('idle')
@@ -262,19 +264,35 @@ export default function ImportExport() {
  </div>
 
  {/* Export to Excel */}
+ <div className="rounded-lg border-2 border-cs-border bg-cs-surface p-4">
  <button
  type="button"
  onClick={handleExport}
  disabled={status === 'exporting'}
- className="flex w-full flex-col rounded-lg border-2 border-cs-border bg-cs-surface p-4 text-left hover:border-rose-400 hover:shadow-md disabled:opacity-50 "
+ className="flex w-full flex-col text-left hover:opacity-80 disabled:opacity-50"
  >
  <span className="text-sm font-semibold text-cs-text">
  {status === 'exporting' ? 'Exporting...' : 'Export to Excel'}
  </span>
- <span className="mt-1 text-xs text-cs-muted">
+ <span className="mt-1 text-xs text-cs-text-2">
  Download your data as Vesting.xlsx — Schedule, Loans, Prices, and Events sheets.
  </span>
  </button>
+ <label className="mt-3 block border-t border-cs-border pt-3">
+ <span className="text-xs font-medium text-cs-text">As of a past date (optional)</span>
+ <input
+ type="date"
+ value={exportAsOf}
+ onChange={e => setExportAsOf(e.target.value)}
+ className="mt-1 w-full rounded-md border border-cs-border bg-cs-surface px-2 py-1.5 text-sm text-cs-text"
+ />
+ <span className="mt-1 block text-xs text-cs-text-2">
+ Leave blank for everything. Set it to the date of the Shareworks documents you
+ are checking against and the export leaves out grants, loans and prices dated
+ after that day.
+ </span>
+ </label>
+ </div>
 
  {/* Templates & Reference */}
  <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">

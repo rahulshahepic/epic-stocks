@@ -99,10 +99,12 @@ export default function ImportDiagnostics() {
         <h2 className="text-lg font-semibold text-cs-text">Import diagnostics</h2>
         <p className="mt-1 text-xs text-cs-muted">
           Checks the importer against real data. Export your data from
-          Import&nbsp;/&nbsp;Export, then upload it here with the Shareworks files from
-          the same date. Every difference names the rule that produced it, so the
-          report can be handed back as a bug report. Nothing on this page writes
-          anything.
+          Import&nbsp;/&nbsp;Export &mdash; set its <em>as of</em> date to match the
+          Shareworks documents, or the two are months apart &mdash; then upload it
+          here with those files. A dashboard holdings report works too, though it
+          carries no loan numbers or price history. Every difference names the rule
+          that produced it, so the report can be handed back as a bug report.
+          Nothing on this page writes anything.
         </p>
       </div>
 
@@ -165,7 +167,7 @@ export default function ImportDiagnostics() {
               {report.counts.imported_grants} grants / {report.counts.imported_loans} loans /{' '}
               {report.counts.imported_prices} prices derived, against{' '}
               {report.counts.existing_grants} / {report.counts.existing_loans} /{' '}
-              {report.counts.existing_prices} in the export.
+              {report.counts.existing_prices} in your {report.counts.baseline ?? 'export'}.
             </p>
             <DiffTable differences={report.differences} />
           </div>

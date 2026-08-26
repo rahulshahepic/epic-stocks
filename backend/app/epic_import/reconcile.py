@@ -46,7 +46,7 @@ _RULE_HELP = {
     "L1": "Statement row -> loan number, amount, rate, due date",
     "L2": "Loan name grammar -> loan_type, loan_year",
     "L3": "Descriptor + loan type -> which grant the loan belongs to",
-    "L4": "Multi-grant loan name -> attributed to the bonus side",
+    "L4": "Multi-grant loan name -> attributed to the purchase side",
     "L5": "In your data but not on the statement",
     "P1": "Purchase grant basis -> annual share price",
 }
@@ -122,6 +122,18 @@ def _same(a, b) -> bool:
 # Neither file carries these, so a difference is expected rather than wrong.
 _NOT_IN_THE_FILES = {"dp_shares"}
 
+# A money field read straight off a statement row is Epic's own figure. When it
+# sits this close to the user's, the two are the same number written differently
+# — Epic's balance to the penny against a hand-entered round original — not the
+# rules misreading the row. Anything a rule could get wrong (the wrong row, the
+# wrong grant) is out by far more than a hundredth of a percent.
+_ROUNDING = 1e-4
+
+
+def _rounding_apart(a: float, b: float) -> bool:
+    scale = max(abs(a), abs(b))
+    return scale > 0 and abs(a - b) / scale <= _ROUNDING
+
 
 def _severity(field_name: str) -> str:
     if field_name in _NOT_IN_THE_FILES:
@@ -131,14 +143,39 @@ def _severity(field_name: str) -> str:
     return "warning"
 
 
-def _compare(entity: str, key: str, mine: dict, theirs: dict) -> list[Difference]:
+def _compare(entity: str, key: str, mine: dict, theirs: dict,
+             notes: dict[str, str] | None = None) -> list[Difference]:
+    notes = notes or {}
     return [Difference(entity, key, f, _fmt(mine[f]), _fmt(theirs.get(f)),
-                       _FIELD_RULE.get(f, "?"), _severity(f))
+                       _FIELD_RULE.get(f, "?"), _severity(f), notes.get(f, ""))
             for f in mine if not _same(mine[f], theirs.get(f))]
 
 
+# What a baseline that is not the full workbook cannot be asked about. The
+# dashboard's holdings report is a document to read, not a dataset to round-trip:
+# it states a position, so it carries no loan numbers, no vesting schedule and one
+# share price rather than a history. Comparing against fields it never had would
+# report the report's own shape as the import's mistakes.
+_OMISSION_NOTE = {
+    "prices": "This export carries one share price, not a price history, so the "
+              "prices the import derives have nothing to compare against.",
+    "loan_number": "This export does not carry loan numbers, so loans matched on "
+                   "grant, type and year.",
+    "periods": "This export does not carry the vesting schedule.",
+    "vest_start": "This export does not carry the vesting schedule.",
+    "exercise_date": "This export does not carry exercise dates.",
+    "dp_shares": "This export does not carry down-payment shares.",
+    "election_83b": "This export does not carry the 83(b) election.",
+}
+
+
 def reconcile(draft: Draft, grants: list[dict], loans: list[dict],
-              prices: list[dict]) -> ReconcileReport:
+              prices: list[dict], omits: frozenset[str] = frozenset()) -> ReconcileReport:
+    """Diff a draft against exported data.
+
+    `omits` names the fields the export does not carry, so that what a leaner
+    export leaves out is stated once rather than reported as a difference per row.
+    """
     report = ReconcileReport()
     diffs = report.differences
 
@@ -150,19 +187,22 @@ def reconcile(draft: Draft, grants: list[dict], loans: list[dict],
             diffs.append(Difference("grant", key, "", "present", "—", "G1", "error",
                                     "Produced by the import but absent from your data."))
             continue
-        notes = {"dp_shares": "Down-payment shares are in neither file, so an import "
-                              "leaves whatever you already have."}
+        notes = {"dp_shares": "Down-payment shares are on neither file, so the draft "
+                              "shows 0 — accepting an import keeps the number you "
+                              "already have rather than writing this one."}
         diffs += _compare("grant", key, {
-            "shares": dg.shares, "price": dg.price, "periods": dg.periods,
-            "vest_start": dg.vest_start, "exercise_date": dg.exercise_date,
-            "dp_shares": dg.dp_shares, "election_83b": dg.election_83b,
+            k: v for k, v in {
+                "shares": dg.shares, "price": dg.price, "periods": dg.periods,
+                "vest_start": dg.vest_start, "exercise_date": dg.exercise_date,
+                "dp_shares": dg.dp_shares, "election_83b": dg.election_83b,
+            }.items() if k not in omits
         }, {
             "shares": int(eg["shares"]), "price": float(eg["price"]),
             "periods": int(eg["periods"]), "vest_start": _d(eg["vest_start"]),
             "exercise_date": _d(eg["exercise_date"]),
             "dp_shares": int(eg.get("dp_shares") or 0),
             "election_83b": bool(eg.get("election_83b")),
-        })
+        }, notes)
     for (year, gtype), _ in existing_grants.items():
         diffs.append(Difference("grant", f"{year} {gtype}", "", "—", "present", "G1",
                                 "error", "In your data but the import did not produce it."))
@@ -180,6 +220,9 @@ def reconcile(draft: Draft, grants: list[dict], loans: list[dict],
                   for l in loans} - {""}
 
     unmatched = list(loans)
+    # Epic's loan number replacing a wizard placeholder is what an import is for,
+    # not a disagreement. Collected here and reported as one line.
+    renumbered: list[tuple[str, str]] = []
 
     def pick(candidates, amount):
         """Prefer the current loan in a refinance chain, then the closest amount."""
@@ -229,16 +272,17 @@ def reconcile(draft: Draft, grants: list[dict], loans: list[dict],
         el, how = take(dl, dg)
         key = dl.loan_number or f"{dg.year} {dg.type} {dl.loan_type}"
         if el is None:
-            diffs.append(Difference("loan", key, "", f"{dl.amount:,.2f}", "—", "L1", "error",
-                                    "On the statement but not in your data."))
+            # The row is on the statement verbatim, so the import did not invent
+            # it: either the user's data predates it or it belongs to a grant
+            # they have not entered. Worth acting on, but not a rule misfiring.
+            diffs.append(Difference("loan", key, "", f"{dl.amount:,.2f}", "—", "L1",
+                                    "warning",
+                                    "Epic lists this loan and your data has no match for "
+                                    "it — importing would add it."))
             continue
         if how != "number":
-            theirs = str(el.get("loan_number") or "").strip() or "—"
-            diffs.append(Difference("loan", key, "loan_number", dl.loan_number, theirs,
-                                    "L1", "info",
-                                    "Matched on grant, type and year. Importing would "
-                                    "replace the placeholder with Epic's own number."))
-        diffs += _compare("loan", key, {
+            renumbered.append((key, str(el.get("loan_number") or "").strip() or "—"))
+        for d in _compare("loan", key, {
             "amount": dl.amount, "interest_rate": dl.interest_rate,
             "due_date": dl.due_date, "grant_year": dg.year, "grant_type": dg.type,
             "loan_type": dl.loan_type, "loan_year": dl.loan_year,
@@ -247,28 +291,68 @@ def reconcile(draft: Draft, grants: list[dict], loans: list[dict],
             "due_date": _d(el["due_date"]), "grant_year": int(el["grant_year"]),
             "grant_type": str(el["grant_type"]).strip(),
             "loan_type": str(el["loan_type"]).strip(), "loan_year": int(el["loan_year"]),
-        })
+        }):
+            if d.field in omits:
+                continue
+            if d.field == "amount" and _rounding_apart(dl.amount, float(el["amount"])):
+                d.severity = "info"
+                d.note = ("Epic's is the principal outstanding to the penny; yours is "
+                          "the same loan rounded. Importing takes Epic's.")
+            elif d.field == "grant_type" and how == "cross-grant":
+                d.note = ("Epic files this loan against a different grant than you "
+                          "do. The workbook's per-grant Loan Balance settles it: with "
+                          "C3 and C4 clear above, Epic's filing is the one that "
+                          "reconciles and yours is the one to change.")
+            elif d.field == "loan_year" and not dl.year_on_statement:
+                d.severity = "info"
+                d.note = ("The statement names this loan without a year, so the import "
+                          "falls back to the grant year — nothing in the files says "
+                          "which year the outstanding loan dates from.")
+            diffs.append(d)
 
+    # Loans are drawn each year, so the newest year the statement carries is as
+    # far as it reaches. A loan of the user's dated after that is one they have
+    # projected forward, the same way they project share prices.
+    reach = max((dl.loan_year for _, dl in draft.all_loans), default=None)
     for el in unmatched:
         num = str(el.get("loan_number") or "").strip()
         key = num or f"{el['grant_year']} {el['grant_type']} {el['loan_type']}"
+        amount = f"{float(el['amount']):,.2f}"
         if num in superseded:
-            diffs.append(Difference("loan", key, "", "—", f"{float(el['amount']):,.2f}",
-                                    "L5", "info",
+            diffs.append(Difference("loan", key, "", "—", amount, "L5", "info",
                                     "An earlier loan in a refinance chain — the statement "
                                     "only lists the loan currently outstanding."))
+        elif reach is not None and int(el["loan_year"]) > reach:
+            # Past what this statement can speak to. Whether that is the user
+            # projecting forward or a loan drawn since the statement was issued
+            # is not something the files can settle — but Epic's own numbers are
+            # all digits, so one of those means Epic issued it, while a wizard
+            # placeholder or no number at all means the user entered it.
+            origin = ("carries an Epic loan number, so it likely comes off a newer "
+                      "statement than the one uploaded"
+                      if num.isdigit() else
+                      "carries no Epic loan number, so it is one of your own — a "
+                      "projection, or entered by hand")
+            diffs.append(Difference("loan", key, "", "—", amount, "L5", "info",
+                                    f"Dated {el['loan_year']}, past the {reach} loans this "
+                                    f"statement reaches. It {origin}. Either way this "
+                                    f"statement cannot confirm it and an import leaves "
+                                    f"it alone."))
         else:
-            diffs.append(Difference("loan", key, "", "—", f"{float(el['amount']):,.2f}",
-                                    "L5", "warning",
+            diffs.append(Difference("loan", key, "", "—", amount, "L5", "warning",
                                     "In your data but not on this statement — paid off, "
                                     "refinanced, or the statement predates it."))
 
     existing_prices: dict[int, dict] = {}
+    if "prices" in omits:
+        prices = []
     for p in prices:
         d = _d(p["effective_date"])
         if d:
             existing_prices.setdefault(d.year, p)
     for dp in draft.prices:
+        if "prices" in omits:
+            break
         ep = existing_prices.pop(dp.effective_date.year, None)
         key = str(dp.effective_date.year)
         if ep is None:
@@ -293,7 +377,21 @@ def reconcile(draft: Draft, grants: list[dict], loans: list[dict],
                                     f"{float(ep['price']):,.2f}", "P1", "warning",
                                     "In your prices but no purchase grant implies it."))
 
+    for f in sorted(omits):
+        note = _OMISSION_NOTE.get(f, f"This export does not carry {f}.")
+        diffs.append(Difference("—", "—", f, "—", "not in this export",
+                                _FIELD_RULE.get(f, "L1"), "info", note))
+
+    if renumbered and "loan_number" not in omits:
+        diffs.append(Difference(
+            "loan", "—", "loan_number", f"{len(renumbered)} Epic numbers", "placeholders",
+            "L1", "info",
+            f"{len(renumbered)} of your loans matched on grant, type and year rather than "
+            f"on number, and would take Epic's own number in place of a wizard "
+            f"placeholder. That is the import doing its job, not a disagreement."))
+
     report.counts = {
+        "renumbered_loans": len(renumbered),
         "imported_grants": len(draft.grants), "existing_grants": len(grants),
         "imported_loans": len(draft.all_loans), "existing_loans": len(loans),
         "imported_prices": len(draft.prices), "existing_prices": len(prices),
@@ -311,6 +409,8 @@ def render_markdown(draft: Draft, findings: list[Finding],
              f"- Differences: {report.errors} error, {report.warnings} warning, "
              f"{len(report.differences) - report.errors - report.warnings} info"]
     c = report.counts
+    if c.get("baseline"):
+        lines.append(f"- Compared against: your {c['baseline']}")
     lines.append(f"- Grants {c.get('imported_grants')} imported vs {c.get('existing_grants')} "
                  f"existing · Loans {c.get('imported_loans')} vs {c.get('existing_loans')} · "
                  f"Prices {c.get('imported_prices')} vs {c.get('existing_prices')}")

@@ -47,6 +47,11 @@ class DraftLoan:
     amount: float
     interest_rate: float
     due_date: date
+    # False when the statement's name for the loan carried no year and the grant
+    # year was used instead. Purchase loans are named "2018 Grant - Purchase
+    # Loan" however many times they have been refinanced, so the statement
+    # cannot say which year the outstanding one dates from.
+    year_on_statement: bool = True
 
     def as_dict(self) -> dict:
         return {"loan_number": self.loan_number, "loan_type": self.loan_type,
@@ -235,6 +240,7 @@ def derive_draft(statement: Statement | None, rows: list[ShareRow],
         grant.loans.append(DraftLoan(
             loan_number=sl.loan_number, loan_type=ltype, loan_year=lyear or gyear,
             amount=sl.balance, interest_rate=sl.interest_rate, due_date=sl.due_date,
+            year_on_statement=lyear is not None,
         ))
 
     # Rule P1 — a purchase grant's per-share basis is that year's share price.

@@ -644,6 +644,7 @@ Each object supports:
 | `client_secret` | No | Omit for PKCE-only / native-app clients |
 | `scopes` | No | Defaults to `["openid","email","profile"]` |
 | `subject_claim` | No | Defaults to `"sub"`. Set to `"oid"` for Azure Entra ID |
+| `prompt` | No | OIDC `prompt` value. Defaults to `"select_account"` so users always get the account chooser instead of being silently re-signed-in as their last account. Set to `""` to omit it |
 
 Multiple providers show as separate "Sign in with X" buttons. Redirect URI to register in your IdP: `https://yourdomain.com/auth/callback`
 

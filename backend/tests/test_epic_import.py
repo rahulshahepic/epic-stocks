@@ -3,13 +3,20 @@
 Fixtures in test_data/ are synthetic — the prices, rates and balances in them
 are invented round numbers, not Epic's.
 """
+import io
 import json
 import os
 import sys
+from datetime import date, datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import openpyxl
 import pytest
+
+
+def _as_date(v) -> date:
+    return v.date() if isinstance(v, datetime) else date.fromisoformat(str(v)[:10])
 
 from app.epic_import import (build_prompt, build_skeleton, derive_draft, reconcile,
                              draft_from_payload, is_blocked, parse_share_csv,
@@ -585,6 +592,101 @@ def test_diff_finds_nothing_when_the_data_came_from_the_same_files(client):
         **payload, "clear_existing": True, "generate_payoff_sales": False})
     report = client.post("/api/epic-import/diff", files=diff_files(client)).json()["report"]
     assert report["differences"] == []
+
+
+def test_an_as_of_export_leaves_out_what_came_later(client):
+    """Reconciling against a document dated months ago needs the data of that
+    date. Nothing is versioned, so as-of is read off the dates each record has."""
+    register_user(client)
+    payload = analyze(client)["wizard_payload"]
+    client.post("/api/wizard/submit", json={
+        **payload, "clear_existing": True, "generate_payoff_sales": False})
+
+    everything = client.get("/api/export/excel")
+    assert everything.status_code == 200
+    early = client.get("/api/export/excel", params={"as_of": "2021-06-30"})
+    assert early.status_code == 200
+    assert "Vesting_2021-06-30.xlsx" in early.headers["content-disposition"]
+
+    def counts(resp):
+        wb = openpyxl.load_workbook(io.BytesIO(resp.content), data_only=True)
+        out = {n: wb[n].max_row - 1 for n in ("Schedule", "Loans", "Prices")}
+        wb.close()
+        return out
+
+    now, then = counts(everything), counts(early)
+    assert then["Schedule"] < now["Schedule"]
+    assert then["Loans"] < now["Loans"]
+    assert then["Prices"] < now["Prices"]
+
+    # Everything kept is genuinely on or before the date.
+    wb = openpyxl.load_workbook(io.BytesIO(early.content), data_only=True)
+    cutoff = date(2021, 6, 30)
+    for r in wb["Schedule"].iter_rows(min_row=2, values_only=True):
+        assert _as_date(r[6]) <= cutoff, r          # exercise_date
+    for r in wb["Loans"].iter_rows(min_row=2, values_only=True):
+        assert int(r[4]) <= cutoff.year, r          # loan_year
+    for r in wb["Prices"].iter_rows(min_row=2, values_only=True):
+        assert _as_date(r[0]) <= cutoff, r          # effective_date
+    wb.close()
+
+    # And an as-of export still reads as a diff baseline.
+    body = client.post("/api/epic-import/diff",
+                       files=diff_files(client, export_xlsx=(
+                           "export.xlsx", early.content,
+                           "application/vnd.openxmlformats-officedocument."
+                           "spreadsheetml.sheet"))).json()
+    assert body["report"]["counts"]["baseline"] == "workbook"
+
+
+def test_a_bad_as_of_date_is_rejected(client):
+    register_user(client)
+    assert client.get("/api/export/excel", params={"as_of": "last Tuesday"}).status_code == 400
+
+
+def test_the_dashboard_holdings_report_works_as_a_baseline(client):
+    """The dashboard export is a formatted position statement, not a dataset.
+    It is readable, and what it leaves out is said once rather than reported as
+    a difference on every row."""
+    register_user(client)
+    payload = analyze(client)["wizard_payload"]
+    client.post("/api/wizard/submit", json={
+        **payload, "clear_existing": True, "generate_payoff_sales": False})
+
+    report = client.get("/api/export/holdings-report", params={"as_of": "2026-02-01"})
+    assert report.status_code == 200, report.text
+    body = client.post("/api/epic-import/diff", files=diff_files(client, export_xlsx=(
+        "holdings.xlsx", report.content,
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))).json()
+
+    rep = body["report"]
+    assert rep["counts"]["baseline"] == "holdings report"
+    # Everything was actually read and matched, not quietly read as empty.
+    assert rep["counts"]["existing_grants"] == rep["counts"]["imported_grants"] > 0
+    assert rep["counts"]["existing_loans"] == rep["counts"]["imported_loans"] > 0
+    assert [d for d in rep["differences"] if d["field"] == ""] == []
+    # Nothing it cannot carry is reported as a per-row disagreement.
+    omitted = {"periods", "vest_start", "dp_shares", "election_83b", "loan_number"}
+    for d in rep["differences"]:
+        if d["field"] in omitted:
+            assert d["entity"] == "—" and d["severity"] == "info", d
+    assert [d for d in rep["differences"] if d["entity"] == "price"] == []
+    assert "prices" in {d["field"] for d in rep["differences"]}
+    assert "holdings report" in body["markdown"]
+
+
+def test_a_workbook_that_is_neither_export_is_refused(client):
+    register_user(client)
+    buf = io.BytesIO()
+    wb = openpyxl.Workbook()
+    wb.active.title = "Something Else"
+    wb.save(buf)
+    resp = client.post("/api/epic-import/diff", files=diff_files(
+        client, export_xlsx=("nope.xlsx", buf.getvalue(),
+                             "application/vnd.openxmlformats-officedocument."
+                             "spreadsheetml.sheet")))
+    assert resp.status_code == 400
+    assert "Holdings Report" in resp.json()["detail"]
 
 
 def test_diff_names_the_rule_behind_each_difference(client):

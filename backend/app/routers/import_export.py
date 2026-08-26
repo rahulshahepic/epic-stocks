@@ -914,17 +914,47 @@ def _body_cell(ws, row, col, val, fmt=None):
 
 @router.get("/export/excel")
 def export_excel(
+    as_of: str | None = Query(default=None, description="YYYY-MM-DD; omit for everything"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """The full dataset, optionally as it stood on a date.
+
+    Reconciling against a document dated months ago needs the data of that date,
+    not of today. Nothing here is versioned, so "as of" is read off the domain
+    dates each record already carries: a grant exists from its exercise date, a
+    price from its effective date, a sale or payment from the day it happened.
+    Loans carry no origination date, only the year they were drawn, so they are
+    filtered by year — the same rule the holdings report uses.
+    """
     from scaffold.rate_limit import check_rate
     check_rate(user.id, "export_excel", max_calls=10, window_secs=300)
+
+    as_of_date = None
+    if as_of:
+        try:
+            as_of_date = _to_date(as_of)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid date format, use YYYY-MM-DD")
 
     grants_db = db.query(Grant).filter(Grant.user_id == user.id).order_by(Grant.year).all()
     loans_db = db.query(Loan).filter(Loan.user_id == user.id).order_by(Loan.due_date).all()
     prices_db = db.query(Price).filter(Price.user_id == user.id).order_by(Price.effective_date).all()
     payments_db = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).order_by(LoanPayment.date).all()
     sales_db = db.query(Sale).filter(Sale.user_id == user.id).order_by(Sale.date).all()
+
+    stamp = f"_{as_of_date.isoformat()}" if as_of_date else ""
+    if as_of_date is not None:
+        grants_db = [g for g in grants_db if g.exercise_date <= as_of_date]
+        kept = {(g.year, g.type) for g in grants_db}
+        loans_db = [ln for ln in loans_db if ln.loan_year <= as_of_date.year
+                    and (ln.grant_year, ln.grant_type) in kept]
+        # A refinance link pointing outside the window resolves to no number
+        # through the lookup below, which is built from the loans that survive.
+        live = {ln.id for ln in loans_db}
+        prices_db = [p for p in prices_db if p.effective_date <= as_of_date]
+        payments_db = [lp for lp in payments_db if lp.date <= as_of_date and lp.loan_id in live]
+        sales_db = [sl for sl in sales_db if sl.date <= as_of_date]
 
     # Build loan_id → loan_number lookup for export
     loan_id_to_num = {ln.id: ln.loan_number or "" for ln in loans_db}
@@ -1035,7 +1065,7 @@ def export_excel(
     return StreamingResponse(
         io.BytesIO(content),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=Vesting.xlsx"},
+        headers={"Content-Disposition": f"attachment; filename=Vesting{stamp}.xlsx"},
     )
 
 

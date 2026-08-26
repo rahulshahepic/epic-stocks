@@ -528,8 +528,12 @@ Click any user in the list to open a detail card:
 
 **Admin → Tools → Import diagnostics** (`/import-diagnostics`) checks the Epic file importer against real data. Upload:
 
-1. Your own `Vesting.xlsx` export, and
+1. Your own export — either the `Vesting.xlsx` from **Import / Export** or a dashboard **holdings report** (see below), and
 2. **Data for Stock Workbook** and/or the **Stock Loan Statement** from Shareworks, **from the same date**.
+
+**Match the dates.** Shareworks documents are issued periodically, so the copy you have is usually months old, while an export is of today. Set the **as of** date on the Import / Export export to the statement date and the export leaves out grants, loans and prices dated after it — otherwise everything drawn in between reads as a difference. A grant is dated by its exercise date, a price by its effective date, a sale or payment by the day it happened; loans carry only the year they were drawn, so they are filtered by year.
+
+Either export works as a baseline. The `Vesting.xlsx` is the full dataset. The dashboard holdings report is a formatted position statement rather than a dataset — it carries no loan numbers, no vesting schedule, and one share price instead of a history — so the report says once what it could not compare instead of listing those as differences on every row.
 
 The importer runs against the Shareworks files alone, and the result is diffed field by field against the export. Every difference is listed with the id of the rule that produced the value, so the report reads as "rule `G3` reads the cost basis wrong" rather than "the import is wrong". Download it as Markdown and hand it back as a bug report.
 
@@ -941,7 +945,7 @@ All authenticated endpoints require a valid `session` cookie (set automatically 
 | GET | `/api/import/sample` | Download sample Excel file with fake data and cell comments |
 | GET | `/api/import/backups` | List import backup snapshots (last 3 per user) |
 | POST | `/api/import/backups/{id}/restore` | Restore data from a backup snapshot |
-| GET | `/api/export/excel` | Download Vesting.xlsx with all data |
+| GET | `/api/export/excel` | Download Vesting.xlsx with all data. `?as_of=YYYY-MM-DD` (optional) drops records dated after that day |
 | GET | `/api/export/holdings-report` | Download formatted Excel holdings report as of a given date |
 | POST | `/api/epic-import/analyze` | Read the Shareworks CSV + PDF, or check a repaired draft against them — returns a draft, what failed, and a prompt to paste out. Writes nothing |
 | POST | `/api/epic-import/diff` | Diff the derivation against an uploaded Excel export — read-only |

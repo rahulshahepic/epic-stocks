@@ -151,8 +151,31 @@ def _compare(entity: str, key: str, mine: dict, theirs: dict,
             for f in mine if not _same(mine[f], theirs.get(f))]
 
 
+# What a baseline that is not the full workbook cannot be asked about. The
+# dashboard's holdings report is a document to read, not a dataset to round-trip:
+# it states a position, so it carries no loan numbers, no vesting schedule and one
+# share price rather than a history. Comparing against fields it never had would
+# report the report's own shape as the import's mistakes.
+_OMISSION_NOTE = {
+    "prices": "This export carries one share price, not a price history, so the "
+              "prices the import derives have nothing to compare against.",
+    "loan_number": "This export does not carry loan numbers, so loans matched on "
+                   "grant, type and year.",
+    "periods": "This export does not carry the vesting schedule.",
+    "vest_start": "This export does not carry the vesting schedule.",
+    "exercise_date": "This export does not carry exercise dates.",
+    "dp_shares": "This export does not carry down-payment shares.",
+    "election_83b": "This export does not carry the 83(b) election.",
+}
+
+
 def reconcile(draft: Draft, grants: list[dict], loans: list[dict],
-              prices: list[dict]) -> ReconcileReport:
+              prices: list[dict], omits: frozenset[str] = frozenset()) -> ReconcileReport:
+    """Diff a draft against exported data.
+
+    `omits` names the fields the export does not carry, so that what a leaner
+    export leaves out is stated once rather than reported as a difference per row.
+    """
     report = ReconcileReport()
     diffs = report.differences
 
@@ -168,9 +191,11 @@ def reconcile(draft: Draft, grants: list[dict], loans: list[dict],
                               "shows 0 — accepting an import keeps the number you "
                               "already have rather than writing this one."}
         diffs += _compare("grant", key, {
-            "shares": dg.shares, "price": dg.price, "periods": dg.periods,
-            "vest_start": dg.vest_start, "exercise_date": dg.exercise_date,
-            "dp_shares": dg.dp_shares, "election_83b": dg.election_83b,
+            k: v for k, v in {
+                "shares": dg.shares, "price": dg.price, "periods": dg.periods,
+                "vest_start": dg.vest_start, "exercise_date": dg.exercise_date,
+                "dp_shares": dg.dp_shares, "election_83b": dg.election_83b,
+            }.items() if k not in omits
         }, {
             "shares": int(eg["shares"]), "price": float(eg["price"]),
             "periods": int(eg["periods"]), "vest_start": _d(eg["vest_start"]),
@@ -267,6 +292,8 @@ def reconcile(draft: Draft, grants: list[dict], loans: list[dict],
             "grant_type": str(el["grant_type"]).strip(),
             "loan_type": str(el["loan_type"]).strip(), "loan_year": int(el["loan_year"]),
         }):
+            if d.field in omits:
+                continue
             if d.field == "amount" and _rounding_apart(dl.amount, float(el["amount"])):
                 d.severity = "info"
                 d.note = ("Epic's is the principal outstanding to the penny; yours is "
@@ -317,11 +344,15 @@ def reconcile(draft: Draft, grants: list[dict], loans: list[dict],
                                     "refinanced, or the statement predates it."))
 
     existing_prices: dict[int, dict] = {}
+    if "prices" in omits:
+        prices = []
     for p in prices:
         d = _d(p["effective_date"])
         if d:
             existing_prices.setdefault(d.year, p)
     for dp in draft.prices:
+        if "prices" in omits:
+            break
         ep = existing_prices.pop(dp.effective_date.year, None)
         key = str(dp.effective_date.year)
         if ep is None:
@@ -346,7 +377,12 @@ def reconcile(draft: Draft, grants: list[dict], loans: list[dict],
                                     f"{float(ep['price']):,.2f}", "P1", "warning",
                                     "In your prices but no purchase grant implies it."))
 
-    if renumbered:
+    for f in sorted(omits):
+        note = _OMISSION_NOTE.get(f, f"This export does not carry {f}.")
+        diffs.append(Difference("—", "—", f, "—", "not in this export",
+                                _FIELD_RULE.get(f, "L1"), "info", note))
+
+    if renumbered and "loan_number" not in omits:
         diffs.append(Difference(
             "loan", "—", "loan_number", f"{len(renumbered)} Epic numbers", "placeholders",
             "L1", "info",
@@ -373,6 +409,8 @@ def render_markdown(draft: Draft, findings: list[Finding],
              f"- Differences: {report.errors} error, {report.warnings} warning, "
              f"{len(report.differences) - report.errors - report.warnings} info"]
     c = report.counts
+    if c.get("baseline"):
+        lines.append(f"- Compared against: your {c['baseline']}")
     lines.append(f"- Grants {c.get('imported_grants')} imported vs {c.get('existing_grants')} "
                  f"existing · Loans {c.get('imported_loans')} vs {c.get('existing_loans')} · "
                  f"Prices {c.get('imported_prices')} vs {c.get('existing_prices')}")

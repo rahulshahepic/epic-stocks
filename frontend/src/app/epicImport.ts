@@ -57,7 +57,7 @@ export interface Difference {
 
 export interface ReconcileReport {
   differences: Difference[]
-  counts: Record<string, number>
+  counts: Record<string, number | string>
   errors: number
   warnings: number
 }

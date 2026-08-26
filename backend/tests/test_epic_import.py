@@ -739,7 +739,92 @@ def test_a_loan_matches_on_its_grant_when_the_numbers_are_placeholders(skeleton,
     assert only(report.differences, key="wiz-2021-I2022") == []
     swap = only(report.differences, entity="loan", field="loan_number")
     assert len(swap) == 1 and swap[0].severity == "info"
-    assert swap[0].imported == "100006" and swap[0].existing == "wiz-2021-I2022"
+    assert report.counts["renumbered_loans"] == 1
+
+
+def test_taking_epics_loan_numbers_is_one_line_not_one_row_each(skeleton, drafted):
+    """Every wizard-entered loan swaps its placeholder for Epic's number. Listing
+    that per loan buries the real differences under dozens of rows saying the
+    import worked."""
+    draft, _ = drafted
+    mine = [baseline_loan(loan_number=f"wiz-{i}", grant_year=dg.year, grant_type=dg.type,
+                          loan_type=dl.loan_type, loan_year=dl.loan_year,
+                          amount=dl.amount, interest_rate=dl.interest_rate,
+                          due_date=dl.due_date.isoformat())
+            for i, (dg, dl) in enumerate(draft.all_loans)]
+    report = reconcile(draft, [], mine, [])
+
+    swap = only(report.differences, entity="loan", field="loan_number")
+    assert len(swap) == 1
+    assert report.counts["renumbered_loans"] == len(mine) > 1
+    assert str(len(mine)) in swap[0].note
+
+
+def test_a_purchase_balance_a_rounding_apart_is_not_an_error(skeleton, drafted):
+    """Epic states the principal outstanding to the penny; a user types the round
+    original. Calling that a bad read hides the reads that really are bad."""
+    draft, _ = drafted
+    dg, dl = next((dg, dl) for dg, dl in draft.all_loans if dl.loan_type == "Purchase")
+    near = reconcile(draft, [], [baseline_loan(
+        loan_number=dl.loan_number, grant_year=dg.year, grant_type=dg.type,
+        loan_type="Purchase", loan_year=dl.loan_year, amount=dl.amount - 3.70,
+        interest_rate=dl.interest_rate, due_date=dl.due_date.isoformat())], [])
+    rows = only(near.differences, key=dl.loan_number, field="amount")
+    assert len(rows) == 1 and rows[0].severity == "info"
+    assert "rounded" in rows[0].note
+
+    # A gap big enough to be the wrong row is still an error.
+    far = reconcile(draft, [], [baseline_loan(
+        loan_number=dl.loan_number, grant_year=dg.year, grant_type=dg.type,
+        loan_type="Purchase", loan_year=dl.loan_year, amount=dl.amount * 0.9,
+        interest_rate=dl.interest_rate, due_date=dl.due_date.isoformat())], [])
+    rows = only(far.differences, key=dl.loan_number, field="amount")
+    assert len(rows) == 1 and rows[0].severity == "error"
+
+
+def test_a_loan_year_the_statement_never_carried_is_not_a_disagreement(skeleton, drafted):
+    """"2020 Grant - Purchase Loan" is named the same however many times it has
+    been refinanced, so the statement cannot say which year it dates from."""
+    draft, _ = drafted
+    dg, dl = next((dg, dl) for dg, dl in draft.all_loans if dl.loan_type == "Purchase")
+    assert dl.year_on_statement is False
+    report = reconcile(draft, [], [baseline_loan(
+        loan_number=dl.loan_number, grant_year=dg.year, grant_type=dg.type,
+        loan_type="Purchase", loan_year=dl.loan_year + 2, amount=dl.amount,
+        interest_rate=dl.interest_rate, due_date=dl.due_date.isoformat())], [])
+    rows = only(report.differences, key=dl.loan_number, field="loan_year")
+    assert len(rows) == 1 and rows[0].severity == "info"
+
+    # An interest loan is named "- 2022", so there the year is the statement's word.
+    dg2, dl2 = next((dg, dl) for dg, dl in draft.all_loans if dl.loan_type == "Interest")
+    assert dl2.year_on_statement is True
+
+
+def test_a_loan_past_the_statements_reach_is_a_projection_not_a_gap(skeleton, drafted):
+    """Loans are drawn each year. One dated after the newest year on the statement
+    is the user projecting forward, exactly like a projected share price."""
+    draft, _ = drafted
+    reach = max(dl.loan_year for _, dl in draft.all_loans)
+    report = reconcile(draft, [], [
+        baseline_loan(loan_number="mine-future", loan_year=reach + 1, amount=1234.0),
+        baseline_loan(loan_number="mine-past", loan_year=reach - 9, amount=99.0),
+    ], [])
+
+    later = only(report.differences, key="mine-future", field="")
+    assert len(later) == 1 and later[0].severity == "info"
+    assert "projection" in later[0].note
+    earlier = only(report.differences, key="mine-past", field="")
+    assert len(earlier) == 1 and earlier[0].severity == "warning"
+
+
+def test_a_statement_loan_you_do_not_have_is_a_warning_not_an_error(skeleton, drafted):
+    """The row is on the statement verbatim, so the rules did not invent it —
+    the user's data is behind, which is what an import is for."""
+    draft, _ = drafted
+    report = reconcile(draft, [], [], [])
+    missing = [d for d in report.differences if d.entity == "loan" and d.field == ""]
+    assert missing and all(d.severity == "warning" for d in missing)
+    assert all("importing would add it" in d.note for d in missing)
 
 
 def test_a_refinanced_purchase_loan_matches_the_one_still_outstanding(skeleton, drafted):

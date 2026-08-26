@@ -806,15 +806,30 @@ def test_a_loan_past_the_statements_reach_is_a_projection_not_a_gap(skeleton, dr
     draft, _ = drafted
     reach = max(dl.loan_year for _, dl in draft.all_loans)
     report = reconcile(draft, [], [
-        baseline_loan(loan_number="mine-future", loan_year=reach + 1, amount=1234.0),
-        baseline_loan(loan_number="mine-past", loan_year=reach - 9, amount=99.0),
+        baseline_loan(loan_number="wiz-future", loan_year=reach + 1, amount=1234.0),
+        baseline_loan(loan_number="wiz-past", loan_year=reach - 9, amount=99.0),
     ], [])
 
-    later = only(report.differences, key="mine-future", field="")
+    later = only(report.differences, key="wiz-future", field="")
     assert len(later) == 1 and later[0].severity == "info"
-    assert "projection" in later[0].note
-    earlier = only(report.differences, key="mine-past", field="")
+    # No Epic number on it, so it is the user's own.
+    assert "no Epic loan number" in later[0].note
+    earlier = only(report.differences, key="wiz-past", field="")
     assert len(earlier) == 1 and earlier[0].severity == "warning"
+
+
+def test_a_later_loan_carrying_an_epic_number_is_not_called_a_projection(skeleton, drafted):
+    """A loan drawn after the statement was issued lands in the same branch as a
+    projection. Epic's numbers are all digits, so one of those means Epic issued
+    it — say which it is rather than assuming the user made it up."""
+    draft, _ = drafted
+    reach = max(dl.loan_year for _, dl in draft.all_loans)
+    report = reconcile(draft, [], [baseline_loan(loan_number="900001",
+                                                 loan_year=reach + 1, amount=1234.0)], [])
+    row = only(report.differences, key="900001", field="")
+    assert len(row) == 1 and row[0].severity == "info"
+    assert "newer statement" in row[0].note
+    assert "projection" not in row[0].note
 
 
 def test_a_statement_loan_you_do_not_have_is_a_warning_not_an_error(skeleton, drafted):

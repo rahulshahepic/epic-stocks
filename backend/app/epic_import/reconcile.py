@@ -296,10 +296,21 @@ def reconcile(draft: Draft, grants: list[dict], loans: list[dict],
                                     "An earlier loan in a refinance chain — the statement "
                                     "only lists the loan currently outstanding."))
         elif reach is not None and int(el["loan_year"]) > reach:
+            # Past what this statement can speak to. Whether that is the user
+            # projecting forward or a loan drawn since the statement was issued
+            # is not something the files can settle — but Epic's own numbers are
+            # all digits, so one of those means Epic issued it, while a wizard
+            # placeholder or no number at all means the user entered it.
+            origin = ("carries an Epic loan number, so it likely comes off a newer "
+                      "statement than the one uploaded"
+                      if num.isdigit() else
+                      "carries no Epic loan number, so it is one of your own — a "
+                      "projection, or entered by hand")
             diffs.append(Difference("loan", key, "", "—", amount, "L5", "info",
                                     f"Dated {el['loan_year']}, past the {reach} loans this "
-                                    f"statement reaches — a projection of your own, which "
-                                    f"an import does not replace."))
+                                    f"statement reaches. It {origin}. Either way this "
+                                    f"statement cannot confirm it and an import leaves "
+                                    f"it alone."))
         else:
             diffs.append(Difference("loan", key, "", "—", amount, "L5", "warning",
                                     "In your data but not on this statement — paid off, "

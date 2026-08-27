@@ -68,6 +68,12 @@ def renamed_category(lines, csv_raw):
     return lines, csv_raw.replace(b"2022 Purchased,", b"2022 Restricted Purchase,")
 
 
+def renamed_sold_column(lines, csv_raw):
+    """The sold-shares column is renamed. Without it there is nothing to tell a
+    down payment paid in stock from a sale, so it must be said out loud."""
+    return lines, csv_raw.replace(b"Shares Sold", b"Shares Disposed")
+
+
 def wider_loan_numbers(lines, csv_raw):
     """Loan numbers widen. Tolerated by design — a control case."""
     return [re.sub(r"^(\d{6}) ", r"99\1 ", l) for l in lines], csv_raw
@@ -93,6 +99,9 @@ CASES = {
     # Losing a grant orphans the loans that belong to it, so the statement
     # stops adding up — blocking is right, not over-strict.
     "renamed_category":     (renamed_category,     {"G1", "L3", "C1", "C2"}, True),
+    # Nothing downstream breaks without it — but a down payment paid in stock
+    # then reads as a sale, so silence is not an option.
+    "renamed_sold_column":  (renamed_sold_column,  {"G0"},                   False),
     "wider_loan_numbers":   (wider_loan_numbers,   set(),                    False),
     "extra_csv_column":     (extra_csv_column,     set(),                    False),
 }
@@ -215,3 +224,11 @@ def test_the_prompt_shows_the_headers_when_a_column_was_renamed(skeleton):
     prompt = prompt_for(renamed_basis_column, skeleton)
     assert "Total Cost Basis" in prompt
     assert "[G0]" in prompt
+
+
+def test_losing_the_sold_column_says_down_payments_cannot_be_told_from_sales(skeleton):
+    """Shares handed back for a down payment and shares sold share one column.
+    Without it, neither the import nor the user can tell which happened."""
+    _, findings = analyse(renamed_sold_column, skeleton)
+    g0 = next(f for f in findings if f.code == "G0" and "shares sold" in f.message)
+    assert g0.severity == "warning" and "down payments" in g0.message

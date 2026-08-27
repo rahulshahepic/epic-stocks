@@ -433,6 +433,8 @@ Then go to **Import/Export → Import from Shareworks** and upload either or bot
 
 **The files check each other.** Before anything is shown, the app verifies the statement adds up to its own printed subtotals and total, that the loans it attributes to each grant reproduce that grant's loan balance and annual interest in the CSV, and that share counts and rates agree with what is on record.
 
+**Shares Epic reports as sold are reconciled before they are called sales.** Epic's CSV puts shares handed back to cover a later purchase's down payment in the same `Shares Sold` column as shares actually sold, and never says which is which. The arithmetic does: the gap between a grant's cost basis and its purchase loan is the down payment, and one paid in stock is a whole number of shares at that year's price — the policy minimum rounded up to the next whole share. When those add up to exactly the shares reported gone, they are recorded as share exchanges at exercise (not taxable disposals, no sales created) and the import says which grants they paid for. Anything left over is reported as sold for you to enter on the Sales page. A larger-than-minimum down payment, or a loan that has been paid down since, reads as unexplained shares rather than being quietly reclassified.
+
 **Refinances are read from the rate you are paying.** Epic's documents never say when a loan was refinanced — a purchase loan is named "2018 Grant - Purchase Loan" however many times its terms have been rewritten. But a refinance is what changes the rate, so the rate on the statement is the rate of the last refinance the loan went through: the wizard matches it against the company-wide refinance chain (see [For Content Admins](#for-content-admins)) and builds only the steps up to it. A rate that matches the original one, or matches no step at all, means the loan was never refinanced and no chain is built. The refinance screen says which reading it took wherever that leaves out steps the company schedule has, and you can correct it there.
 
 #### When it does not add up
@@ -830,7 +832,7 @@ epic-stocks/
 │   │   │   ├── share_csv.py     # Share summary CSV -> grant rows
 │   │   │   ├── skeleton.py      # Content tables -> structure an import may not invent
 │   │   │   ├── rules.py         # Named derivation rules (G*, L*, P*)
-│   │   │   ├── draft.py         # Draft type, derivation, and the checks (C1-C10)
+│   │   │   ├── draft.py         # Draft type, derivation, and the checks (C1-C11)
 │   │   │   ├── prompt.py        # The brief a user pastes into their own assistant
 │   │   │   ├── reconcile.py     # Diff a draft against exported data
 │   │   │   └── models.py        # Parsed value types
@@ -1045,6 +1047,7 @@ The built-in privacy page (`/privacy`) lists the third-party services used by th
 - **The app never calls a language model.** When a parse cannot be trusted it hands the user a prompt for their own assistant instead. That needs no API key, no cost cap, no billing, no secret to store, and no outbound request from the server — and the user's figures go where they choose rather than where the app decides. Whatever comes back is checked by exactly the same arithmetic that rejected the draft, so the repair path is no more trusted than the parser.
 - **Structure comes from the content tables; only figures come from the files.** Vest dates, periods, exercise dates, rates and due dates are company-wide, so an import fills numbers into a skeleton it cannot alter. Inferring a vesting schedule from a share summary was the one part of the import with no way to check itself, and it was wrong exactly where it had no evidence.
 - **Only arithmetic failures block an import.** A statement that does not match its own printed totals was misread, and nothing downstream can be trusted. Everything else is shown and overridable — Epic's own paperwork sometimes disagrees with itself, and a user should not be trapped in a repair loop by it.
+- **Shares reported sold are reconciled, not assumed sold.** Epic reports a down-payment share exchange and a sale in the same column. Calling every one a sale invented taxable disposals; the down payment implied by each purchase loan is checkable arithmetic, and only an exact, unique match against the shares reported gone is acted on. Rule `G8`, checked back by `C11`.
 - **A refinance chain is inferred from the rate, not assumed.** The company-wide chain says what Epic did; the rate on a user's own statement says how much of it happened to them. Applying the whole chain to everyone silently invented history for anyone who did not refinance with the crowd, and rates are the one piece of evidence the documents do carry. `frontend/src/app/refiInference.ts`.
 - **Sign-off happens in the wizard, not on a file.** An import ends by prefilling the Setup Wizard, so what a user confirms is their rendered position. Asking someone to eyeball a CSV or a JSON blob is not validation.
 - **Every derived field records the rule that produced it.** Tagging each field with a rule id turns "the import is wrong" into "rule G3 reads the cost basis wrong", which is what the diagnostics report is for.

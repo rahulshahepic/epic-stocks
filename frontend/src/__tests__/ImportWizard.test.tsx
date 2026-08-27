@@ -75,12 +75,15 @@ function renderWizard(onComplete = vi.fn()) {
 }
 
 /** Render the wizard over an imported draft, the way EpicFileImport hands one over. */
-function renderWizardWithPrefill(loan: { interest_rate: number; due_date: string }) {
+function renderWizardWithPrefill(
+  loan: { interest_rate: number; due_date: string },
+  dp_shares = 0,
+) {
   const prefill = {
     grants: [{
       id: -1, version: 1, year: 2018, type: 'Purchase', shares: 1000, price: 2.00,
       vest_start: '2020-06-15', periods: 6, exercise_date: '2018-12-31',
-      dp_shares: 0, election_83b: false,
+      dp_shares, election_83b: false,
     }],
     loans: [{
       id: -1001, version: 1, grant_year: 2018, grant_type: 'Purchase',
@@ -678,6 +681,22 @@ describe('ImportWizard', () => {
     await gotoRefiScreen(user)
     expect(screen.queryByText('2018 Purchase')).not.toBeInTheDocument()
     expect(screen.getByText(/matches none of the 3 refinances on record/i)).toBeInTheDocument()
+  })
+
+
+  it('offers the DP shares field on a year the schedule does not flag when the import found one', async () => {
+    mockApi()
+    const user = userEvent.setup()
+    // 2018 predates the stock-exchange option, so the schedule has it switched
+    // off — but an import that read one off the loan must still show it.
+    renderWizardWithPrefill({ interest_rate: 0.0086, due_date: '2027-07-15' }, -260)
+    await waitFor(() => screen.getByRole('button', { name: /Let's go/i }))
+    await user.click(screen.getByRole('button', { name: /Let's go/i }))
+    await user.click(screen.getByRole('button', { name: /Next: Enter grants/i }))
+    const fields = screen.getAllByLabelText(/DP shares/i) as HTMLInputElement[]
+    const filled = fields.filter(f => f.value === '260')
+    expect(filled).toHaveLength(1)
+    expect(filled[0].disabled).toBe(false)
   })
 
 })

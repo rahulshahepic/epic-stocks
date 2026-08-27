@@ -25,6 +25,7 @@ _OPTIONAL = {
     "loan balance": "loan attribution cannot be checked against the grant",
     "annual interest due": "loan rates and balances cannot be cross-checked",
     "shares remaining": "sold shares cannot be reconciled",
+    "shares sold": "shares that have left a grant cannot be told from down payments",
 }
 
 _VESTED = re.compile(r"^vest\s*(\d+)\s*-\s*vested\s*shares$", re.I)
@@ -109,7 +110,7 @@ def parse_share_csv(raw: bytes) -> tuple[list[ShareRow], list[Finding]]:
         rows.append(ShareRow(
             label=row[idx["grant"]].strip(),
             shares_granted=granted,
-            shares_sold=_int(cell(row, "shares sold")) or 0,
+            shares_sold=(_int(cell(row, "shares sold")) or 0) if "shares sold" in idx else None,
             shares_remaining=_int(cell(row, "shares remaining")),
             shares_83b=_int(cell(row, "83b shares")) or 0,
             cost_basis=_num(cell(row, "cost basis of shares")),

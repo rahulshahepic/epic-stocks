@@ -1115,11 +1115,19 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
  return total
  }
 
+ /** Whether the down-payment-in-stock field applies to a purchase row: the years
+  * the company offered the exchange, plus any row already carrying a figure. An
+  * import can read one off the gap between cost basis and loan for a year the
+  * schedule does not flag, and hiding it would submit a number nobody saw. */
+ function dpAllowed(row: PurchaseGrantRow): boolean {
+ return DP_SHARES_YEARS.has(row.year) || Math.abs(parseInt(row.dp_shares) || 0) > 0
+ }
+
  /** Count dp_shares consumed by other purchase grants exercised before the target date. */
  function dpSharesConsumedBefore(exerciseDate: string, excludeYear: number): number {
  let consumed = 0
  for (const row of purchaseRows) {
- if (!row.participated || row.year === excludeYear || !DP_SHARES_YEARS.has(row.year)) continue
+ if (!row.participated || row.year === excludeYear || !dpAllowed(row)) continue
  if (row.exercise_date < exerciseDate) consumed += Math.abs(parseInt(row.dp_shares) || 0)
  }
  return consumed
@@ -2349,10 +2357,10 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
  onChange={v => setPurchaseField(i, { purchase_price: v }, true)} />
  <Field label="Shares" type="number" value={row.shares}
  onChange={v => setPurchaseField(i, { shares: v }, true)} />
- <Field label="DP shares" type="number" value={DP_SHARES_YEARS.has(row.year) ? row.dp_shares : '0'}
+ <Field label="DP shares" type="number" value={dpAllowed(row) ? row.dp_shares : '0'}
  onChange={v => setPurchaseField(i, { dp_shares: v })}
  hint={(() => {
- if (!DP_SHARES_YEARS.has(row.year)) return 'not available for this grant year'
+ if (!dpAllowed(row)) return 'not available for this grant year'
  const total = (parseFloat(row.purchase_price) || 0) * (parseInt(row.shares) || 0)
  const loanAmt = parseFloat(row.loan_amount) || 0
  const dp = total - loanAmt
@@ -2361,10 +2369,10 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
  if (dp > 0 && mp > 0) return `min ${Math.ceil(dp / mp).toLocaleString()} at $${mp}/sh`
  return 'shares exchanged at exercise'
  })()}
- disabled={!DP_SHARES_YEARS.has(row.year)}
- placeholder={!DP_SHARES_YEARS.has(row.year) ? 'not available' : '0'} />
+ disabled={!dpAllowed(row)}
+ placeholder={!dpAllowed(row) ? 'not available' : '0'} />
  </div>
- {DP_SHARES_YEARS.has(row.year) && Math.abs(parseInt(row.dp_shares) || 0) > 0 && (() => {
+ {dpAllowed(row) && Math.abs(parseInt(row.dp_shares) || 0) > 0 && (() => {
  const needed = Math.abs(parseInt(row.dp_shares) || 0)
  const vested = vestedSharesBeforeDate(row.exercise_date)
  const consumed = dpSharesConsumedBefore(row.exercise_date, row.year)
@@ -2545,7 +2553,7 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
 
  <NextBtn label="Next: Review loans →" onClick={enterLoansReview}
  disabled={purchaseRows.some(row => {
- if (!row.participated || !DP_SHARES_YEARS.has(row.year)) return false
+ if (!row.participated || !dpAllowed(row)) return false
  const needed = Math.abs(parseInt(row.dp_shares) || 0)
  if (needed <= 0) return false
  const vested = vestedSharesBeforeDate(row.exercise_date)

@@ -1,8 +1,8 @@
 """The structural facts an import must not invent.
 
-Vest dates, vesting periods, exercise dates, loan rates and due dates are
-company-wide: they live in the admin-managed content tables, not in the files a
-user uploads. Neither the deterministic parser nor an assistant helping a user
+Vest dates, vesting periods, exercise dates, loan rates, due dates and the
+down payment policy are company-wide: they live in the admin-managed content
+tables, not in the files a user uploads. Neither the deterministic parser nor an assistant helping a user
 repair a draft gets to supply them — both fill share counts, cost basis and
 balances into this skeleton.
 
@@ -52,6 +52,9 @@ class Skeleton:
     tax_rates: dict[tuple[str, int], float] = field(default_factory=dict)
     # year -> rate
     purchase_rates: dict[int, float] = field(default_factory=dict)
+    # Down payment policy: the minimum is this share of the purchase, capped.
+    dp_min_percent: float = 0.10
+    dp_min_cap: float = 20000.0
 
     def template(self, year: int, gtype: str) -> TemplateRow | None:
         return next((t for t in self.templates if t.key == (year, gtype)), None)
@@ -119,6 +122,12 @@ def build_skeleton(content: dict) -> tuple[Skeleton, list[Finding]]:
             sk.tax_rates[(gtype, int(year))] = float(rate)
     for year, entry in (rates.get("purchase_original") or {}).items():
         sk.purchase_rates[int(year)] = float(entry["rate"] if isinstance(entry, dict) else entry)
+
+    settings = content.get("grant_program_settings") or {}
+    if settings.get("dp_min_percent") is not None:
+        sk.dp_min_percent = float(settings["dp_min_percent"])
+    if settings.get("dp_min_cap") is not None:
+        sk.dp_min_cap = float(settings["dp_min_cap"])
 
     if sk.is_empty:
         findings.append(Finding("S1", WARNING, "",

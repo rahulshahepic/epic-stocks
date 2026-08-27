@@ -14,8 +14,9 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from .models import ERROR, INFO, WARNING, Finding, ShareRow, Statement
-from .rules import (attribute_loan, basis_per_share, classify_row, is_vest_taxed,
-                    parse_loan_name)
+from .rules import (attribute_loan, basis_per_share, classify_row,
+                    down_payment_in_stock, is_vest_taxed, parse_loan_name,
+                    reconcile_down_payments)
 from .skeleton import Skeleton, TemplateRow
 
 _CENT = 0.005
@@ -195,11 +196,6 @@ def derive_draft(statement: Statement | None, rows: list[ShareRow],
             vest_start=t.vest_start, periods=t.periods, exercise_date=t.exercise_date,
             dp_shares=0, election_83b=bool(row.shares_83b),
         ))
-        if row.shares_sold:
-            findings.append(Finding("G2", INFO, row.label,
-                                    f"Epic reports {row.shares_sold:,} shares sold from this grant. "
-                                    f"The CSV carries no sale dates or prices, so no sales are "
-                                    f"created — add them on the Sales page."))
 
     known: dict[int, set[str]] = {}
     for g in draft.grants:
@@ -243,6 +239,8 @@ def derive_draft(statement: Statement | None, rows: list[ShareRow],
             year_on_statement=lyear is not None,
         ))
 
+    _explain_shares_sold(draft, rows, sk, findings)
+
     # Rule P1 — a purchase grant's per-share basis is that year's share price.
     # Dated 1 January to match how the wizard keys prices by year.
     for g in sorted(draft.grants, key=lambda g: g.year):
@@ -253,6 +251,67 @@ def derive_draft(statement: Statement | None, rows: list[ShareRow],
                                 "No purchase grants with a cost basis, so no share prices "
                                 "could be worked out."))
     return draft, findings
+
+
+def _explain_shares_sold(draft: Draft, rows: list[ShareRow], sk: Skeleton,
+                         findings: list[Finding]) -> None:
+    """Rule G8. Account for the shares Epic reports gone from a grant.
+
+    Epic reports shares handed back to cover a later purchase's down payment in
+    the same "Shares Sold" column as shares actually sold. The difference
+    between a grant's cost basis and its purchase loan says what the down
+    payment was, and a down payment paid in stock is a whole number of shares —
+    so when those add up to exactly the shares reported gone, that is where they
+    went. Anything left over is reported as sold, which is all the CSV can
+    support: it carries no sale dates or prices.
+    """
+    sold_total = sum(r.shares_sold or 0 for r in rows)
+    if not sold_total:
+        return
+
+    candidates = []
+    for g in draft.grants:
+        if g.type != "Purchase" or g.price <= 0:
+            continue
+        purchase_loans = [l.amount for l in g.loans if l.loan_type == "Purchase"]
+        if not purchase_loans:
+            continue
+        dp = down_payment_in_stock(g.year, g.type, g.shares, g.price,
+                                   round(sum(purchase_loans), 2),
+                                   sk.dp_min_percent, sk.dp_min_cap)
+        if dp is not None:
+            candidates.append(dp)
+
+    chosen, outcome = reconcile_down_payments(candidates, sold_total)
+    if outcome == "reconciled":
+        by_key = {g.key: g for g in draft.grants}
+        for dp in chosen:
+            by_key[(dp.year, dp.grant_type)].dp_shares = -dp.shares
+        detail = ", ".join(f"{dp.year} {dp.grant_type} ({dp.shares:,} shares, "
+                           f"{dp.amount:,.2f})" for dp in chosen)
+        findings.append(Finding("G8", INFO, "",
+                                f"Epic reports {sold_total:,} shares gone from your grants. "
+                                f"They account exactly for the down payments on {detail}, so "
+                                f"they are recorded as share exchanges at exercise rather than "
+                                f"sales. An exchange is not a taxable disposal, and no sales "
+                                f"are created."))
+        return
+
+    if outcome == "ambiguous":
+        findings.append(Finding("G8", WARNING, "",
+                                f"Epic reports {sold_total:,} shares gone, and more than one "
+                                f"combination of down payments would account for them, so none "
+                                f"were applied. Set the down payment shares by hand in the "
+                                f"wizard if these were exchanges rather than sales."))
+
+    for row in rows:
+        if row.shares_sold:
+            findings.append(Finding("G2", INFO, row.label,
+                                    f"Epic reports {row.shares_sold:,} shares sold from this grant. "
+                                    f"The CSV carries no sale dates or prices, so no sales are "
+                                    f"created — add them on the Sales page. If they were handed "
+                                    f"back as a down payment on a later purchase, record that on "
+                                    f"the grant instead."))
 
 
 # ============================================================
@@ -443,6 +502,28 @@ def validate_draft(draft: Draft, statement: Statement | None, rows: list[ShareRo
                                f"Rate {loan.interest_rate:.4%} does not match the "
                                f"{loan.loan_year} {loan.loan_type.lower()} rate of "
                                f"{expected:.4%} on record."))
+
+    reported_sold = [r.shares_sold for r in rows if r.shares_sold is not None]
+    sold_total = sum(reported_sold)                                         # C11
+    dp_total = sum(abs(g.dp_shares) for g in draft.grants)
+    if reported_sold and dp_total > sold_total:
+        out.append(Finding("C11", WARNING, "",
+                           f"The draft hands back {dp_total:,} shares as down payments, but "
+                           f"the stock workbook reports only {sold_total:,} gone from your "
+                           f"grants."))
+    for g in draft.grants:                                                  # C11
+        if not g.dp_shares or g.price <= 0:
+            continue
+        purchase_loans = [l.amount for l in g.loans if l.loan_type == "Purchase"]
+        if not purchase_loans:
+            continue
+        gap = round(g.shares * g.price - sum(purchase_loans), 2)
+        expected = round(abs(g.dp_shares) * g.price, 2)
+        if abs(gap - expected) > _CENT:
+            out.append(Finding("C11", WARNING, f"{g.year} {g.type}",
+                               f"{abs(g.dp_shares):,} shares handed back come to "
+                               f"{expected:,.2f}, but the cost basis exceeds the purchase "
+                               f"loan by {gap:,.2f}."))
 
     for g in draft.grants:                                                  # C10
         t = sk.template(g.year, g.type)

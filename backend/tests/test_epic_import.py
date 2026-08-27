@@ -6,6 +6,7 @@ are invented round numbers, not Epic's.
 import io
 import json
 import os
+import re
 import sys
 from datetime import date, datetime
 
@@ -22,8 +23,9 @@ from app.epic_import import (build_prompt, build_skeleton, derive_draft, reconci
                              draft_from_payload, is_blocked, parse_share_csv,
                              parse_statement_lines, parse_statement_pdf,
                              to_wizard_payload, validate_draft)
-from app.epic_import.rules import (attribute_loan, classify_row, is_vest_taxed,
-                                   parse_loan_name)
+from app.epic_import.rules import (DownPayment, attribute_loan, classify_row,
+                                   down_payment_in_stock, is_vest_taxed,
+                                   parse_loan_name, reconcile_down_payments)
 from tests.conftest import register_user
 
 DATA = os.path.join(os.path.dirname(__file__), "..", "..", "test_data")
@@ -330,6 +332,224 @@ def test_csv_only_raises_no_unreconcilable_loan_errors(skeleton):
     draft, df = derive_draft(None, rows, skeleton)
     findings = df + validate_draft(draft, None, rows, skeleton)
     assert [f.as_dict() for f in findings if f.severity == "error"] == []
+
+
+# ============================================================
+# THE RULE INVENTORY
+# ============================================================
+# The ids are the vocabulary for reporting an import bug, so a rule the code can
+# report and the reference cannot explain is a bug in its own right. These pin
+# RULES.md, the diagnostics legend and the code to each other.
+
+MODULE = os.path.join(os.path.dirname(__file__), "..", "app", "epic_import")
+RULE_ID = r"[A-Z]\d+"
+
+
+def source_of(*names) -> str:
+    return "\n".join(open(os.path.join(MODULE, n)).read() for n in names)
+
+
+def documented_rules() -> set:
+    text = open(os.path.join(MODULE, "RULES.md")).read()
+    return set(re.findall(rf"^### `({RULE_ID})`", text, re.M))
+
+
+def reported_rules() -> set:
+    """Every id the importer can put in front of a user: findings from any module,
+    plus the ids the diagnostics report tags differences with."""
+    findings = set(re.findall(rf'Finding\("({RULE_ID})"',
+                              source_of(*[f for f in os.listdir(MODULE) if f.endswith(".py")])))
+    report = set(re.findall(rf'"({RULE_ID})"', source_of("reconcile.py")))
+    return findings | report
+
+
+def test_every_rule_the_import_can_report_is_documented():
+    missing = reported_rules() - documented_rules()
+    assert missing == set(), f"RULES.md does not explain {sorted(missing)}"
+
+
+def test_the_reference_documents_no_rule_the_code_does_not_have():
+    stale = documented_rules() - reported_rules()
+    assert stale == set(), f"RULES.md explains {sorted(stale)}, which nothing emits"
+
+
+def test_the_diagnostics_legend_explains_every_rule_it_can_print():
+    from app.epic_import.reconcile import _FIELD_RULE, _RULE_HELP
+    printable = set(_FIELD_RULE.values()) | set(
+        re.findall(rf'Difference\("[a-z]+", [^)]*?"({RULE_ID})"', source_of("reconcile.py")))
+    assert printable - set(_RULE_HELP) == set()
+
+
+def test_the_legend_matches_what_the_rules_actually_do():
+    """A legend that describes the opposite of the code is worse than none."""
+    from app.epic_import.reconcile import _RULE_HELP
+    assert "bonus side" in _RULE_HELP["L4"]
+    assert attribute_loan(["2020 Bonus", "2020 Grant"], "Interest",
+                          {2020: {"Purchase", "Bonus"}})[:2] == (2020, "Bonus")
+
+
+def test_blocking_checks_are_documented_as_blocking():
+    from app.epic_import.draft import BLOCKING_CHECKS
+    text = open(os.path.join(MODULE, "RULES.md")).read()
+    assert all(f"`{code}`" in text for code in BLOCKING_CHECKS)
+    for code in BLOCKING_CHECKS:
+        assert code in text.split("Only ")[1].split("block an import")[0]
+
+
+# ============================================================
+# DOWN PAYMENTS PAID IN STOCK (G8)
+# ============================================================
+
+def one_grant_files(shares, basis, loan, sold, rate=0.03):
+    """A minimal share summary + statement for a single 2022 purchase grant.
+
+    Small enough that the down payment arithmetic is the only thing moving:
+    the loan is the grant's whole balance, so the statement's own totals and
+    the CSV's loan balance follow from it.
+    """
+    interest = round(loan * rate, 2)
+    header = ("Grant,Shares Granted,Shares Sold,Shares Remaining,83b Shares,"
+              "Cost Basis of Shares,Loan Balance,Loan Due Year,Annual Interest Due")
+    row = (f"2022 Purchased,{shares},{sold},{shares - sold},,{basis},{loan},2031,{interest}")
+    lines = [
+        "Stock Loan Statement - February 1, 2024",
+        "900000001",
+        "Test Employee",
+        f"Total Principal Balance: ${loan:,.2f}",
+        "Loan Loan Principal Interest Interest Loan Due",
+        "Number Name Balance Rate (to Date) Date",
+        f"100007 2022 Grant - Purchase Loan ${loan:,.2f} {rate * 100:.2f}% $100.00 6/30/2031",
+        f"Subtotal ${loan:,.2f} 2031",
+        f"Total ${loan:,.2f} $100.00",
+    ]
+    return f"{header}\n{row}\n".encode(), lines
+
+
+def draft_from_files(skeleton, csv_raw, lines):
+    statement, f1 = parse_statement_lines(lines)
+    rows, f2 = parse_share_csv(csv_raw)
+    draft, f3 = derive_draft(statement, rows, skeleton)
+    return draft, f1 + f2 + f3 + validate_draft(draft, statement, rows, skeleton)
+
+
+# 300,000 shares at 15.00; the down payment minimum of 20,000 is 1,334 whole
+# shares (20,010.00), leaving a loan of 4,479,990.00.
+STOCK_DP = dict(shares=300_000, basis=4_500_000.0, loan=4_479_990.0, sold=1_334)
+
+
+def test_a_down_payment_in_whole_shares_is_read_from_the_loan(skeleton):
+    draft, findings = draft_from_files(skeleton, *one_grant_files(**STOCK_DP))
+    assert grant(draft, 2022, "Purchase").dp_shares == -1_334
+    assert "G8" in codes(findings, "info")
+    assert "G2" not in codes(findings)
+    assert [f.as_dict() for f in findings if f.severity == "error"] == []
+
+
+def test_the_down_payment_finding_names_the_grant_and_the_shares(skeleton):
+    _, findings = draft_from_files(skeleton, *one_grant_files(**STOCK_DP))
+    message = next(f.message for f in findings if f.code == "G8")
+    assert "1,334 shares" in message and "2022 Purchase" in message
+
+
+def test_shares_that_no_down_payment_accounts_for_are_still_reported_as_sold(skeleton):
+    draft, findings = draft_from_files(skeleton, *one_grant_files(**{**STOCK_DP, "sold": 5_000}))
+    assert grant(draft, 2022, "Purchase").dp_shares == 0
+    assert "G2" in codes(findings, "info")
+    assert "G8" not in codes(findings)
+
+
+def test_a_loan_paid_down_since_is_not_read_as_a_down_payment(skeleton):
+    # The gap is a whole number of shares (33,333 at 15.00) but far above the
+    # policy minimum — a paid-down loan, not a down payment.
+    draft, findings = draft_from_files(
+        skeleton, *one_grant_files(shares=300_000, basis=4_500_000.0,
+                                   loan=4_000_005.0, sold=33_333))
+    assert grant(draft, 2022, "Purchase").dp_shares == 0
+    assert "G2" in codes(findings, "info")
+
+
+def test_a_down_payment_in_cash_leaves_no_shares_to_explain(skeleton):
+    # 20,000.00 exactly: the minimum, but not a whole number of shares.
+    draft, findings = draft_from_files(
+        skeleton, *one_grant_files(shares=300_000, basis=4_500_000.0,
+                                   loan=4_480_000.0, sold=0))
+    assert grant(draft, 2022, "Purchase").dp_shares == 0
+    assert "G8" not in codes(findings) and "G2" not in codes(findings)
+
+
+def test_the_fixture_reports_its_sold_shares_because_they_reconcile_with_nothing(drafted):
+    draft, findings = drafted
+    assert all(g.dp_shares == 0 for g in draft.grants)
+    assert any(f.code == "G2" and "10,000" in f.message for f in findings)
+
+
+def test_a_supplied_draft_cannot_hand_back_more_shares_than_epic_reports_gone(skeleton):
+    csv_raw, lines = one_grant_files(**STOCK_DP)
+    statement, _ = parse_statement_lines(lines)
+    rows, _ = parse_share_csv(csv_raw)
+    payload = {"grants": [{"year": 2022, "type": "Purchase", "shares": 300_000,
+                           "price": 15.0, "dp_shares": -50_000, "loans": []}],
+               "prices": []}
+    draft, _ = draft_from_payload(payload, skeleton)
+    findings = validate_draft(draft, statement, rows, skeleton)
+    assert "C11" in codes(findings, "warning")
+
+
+def test_down_payment_shares_are_checked_against_the_loan_they_paid(skeleton):
+    csv_raw, lines = one_grant_files(**STOCK_DP)
+    statement, _ = parse_statement_lines(lines)
+    rows, _ = parse_share_csv(csv_raw)
+    payload = {"grants": [{"year": 2022, "type": "Purchase", "shares": 300_000,
+                           "price": 15.0, "dp_shares": -1_000,
+                           "loans": [{"loan_number": "100007", "loan_type": "Purchase",
+                                      "loan_year": 2022, "amount": 4_479_990.0,
+                                      "interest_rate": 0.03, "due_date": "2031-06-30"}]}],
+               "prices": []}
+    draft, _ = draft_from_payload(payload, skeleton)
+    findings = validate_draft(draft, statement, rows, skeleton)
+    assert any(f.code == "C11" and "2022 Purchase" == f.subject for f in findings)
+
+
+def test_the_repair_prompt_carries_the_down_payment_policy(skeleton, drafted):
+    draft, findings = drafted
+    prompt = build_prompt(draft, findings, None, skeleton)
+    assert "dp_shares" in prompt
+    assert "10%" in prompt and "20,000" in prompt
+
+
+@pytest.mark.parametrize("shares,basis,loan,expected", [
+    # The minimum rounded up to whole shares — a down payment paid in stock.
+    (300_000, 4_500_000.0, 4_479_990.0, 1_334),
+    # 10% of a small purchase, below the cap, landing on whole shares.
+    (10_000, 100_000.0, 90_000.0, 1_000),
+    # Not a whole number of shares: paid in cash.
+    (300_000, 4_500_000.0, 4_480_000.0, None),
+    # Whole shares, but far more than the minimum: a paid-down loan.
+    (300_000, 4_500_000.0, 4_000_005.0, None),
+    # No gap at all.
+    (300_000, 4_500_000.0, 4_500_000.0, None),
+])
+def test_down_payment_in_stock_reads_the_gap(shares, basis, loan, expected):
+    dp = down_payment_in_stock(2022, "Purchase", shares, basis / shares, loan, 0.10, 20_000.0)
+    assert (dp.shares if dp else None) == expected
+
+
+def test_down_payments_are_only_applied_on_an_exact_unique_match():
+    a = DownPayment(2023, "Purchase", 5_361, 19_996.53)
+    b = DownPayment(2024, "Purchase", 4_717, 20_000.08)
+    c = DownPayment(2025, "Purchase", 3_930, 20_003.70)
+    chosen, outcome = reconcile_down_payments([a, b, c], 8_647)
+    assert outcome == "reconciled" and [d.year for d in chosen] == [2024, 2025]
+    assert reconcile_down_payments([a, b, c], 9_000)[1] == "none"
+    assert reconcile_down_payments([], 8_647)[1] == "none"
+    assert reconcile_down_payments([a, b, c], 0)[1] == "none"
+
+
+def test_a_total_several_combinations_could_explain_is_left_alone():
+    twin_a = DownPayment(2023, "Purchase", 1_000, 10_000.0)
+    twin_b = DownPayment(2024, "Purchase", 1_000, 10_000.0)
+    chosen, outcome = reconcile_down_payments([twin_a, twin_b], 1_000)
+    assert outcome == "ambiguous" and chosen == []
 
 
 # ============================================================
@@ -994,8 +1214,9 @@ def test_a_price_past_the_last_purchase_grant_is_a_projection_not_a_gap(skeleton
     assert len(earlier) == 1 and earlier[0].severity == "warning"
 
 
-def test_down_payment_shares_are_context_not_a_disagreement(skeleton, drafted):
-    """Neither file carries them, so a difference is expected."""
+def test_down_payment_shares_the_files_could_not_explain_are_context(skeleton, drafted):
+    """Where rule G8 could read no down payment the draft carries 0, which is
+    "could not tell" rather than a figure to disagree with."""
     draft, _ = drafted
     g = grant(draft, 2021, "Purchase")
     mine = [{"year": 2021, "type": "Purchase", "shares": g.shares, "price": g.price,
@@ -1005,9 +1226,24 @@ def test_down_payment_shares_are_context_not_a_disagreement(skeleton, drafted):
     assert len(dp) == 1 and dp[0].severity == "info"
 
 
+def test_a_down_payment_read_off_the_loan_is_a_real_disagreement(skeleton):
+    """Where G8 did read one, a difference is the import disagreeing with your
+    record, reported against the rule that produced it."""
+    draft, _ = draft_from_files(skeleton, *one_grant_files(**STOCK_DP))
+    g = grant(draft, 2022, "Purchase")
+    assert g.dp_shares == -1_334
+    mine = [{"year": 2022, "type": "Purchase", "shares": g.shares, "price": g.price,
+             "periods": g.periods, "vest_start": g.vest_start,
+             "exercise_date": g.exercise_date, "dp_shares": -1_000,
+             "election_83b": False}]
+    dp = only(reconcile(draft, mine, [], []).differences, field="dp_shares")
+    assert len(dp) == 1 and dp[0].severity == "warning" and dp[0].rule == "G8"
+    assert "G8" in dp[0].note
+
+
 def test_an_import_does_not_wipe_down_payment_shares(client):
-    """They are in neither file, so deriving them as 0 and prefilling the wizard
-    with that would erase a real figure the moment someone accepted."""
+    """A draft carrying 0 means the files could not say, so prefilling the wizard
+    with it would erase a real figure the moment someone accepted."""
     register_user(client)
     client.post("/api/grants", json={
         "year": 2021, "type": "Purchase", "shares": 1, "price": 1.0,

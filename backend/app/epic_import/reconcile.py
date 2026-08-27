@@ -21,8 +21,6 @@ from .models import Finding
 
 # Fields the import exists to get right — a difference here is a real bug.
 _MATERIAL = {"shares", "price", "amount", "interest_rate"}
-# Fields no source file carries; the company schedule or the user supplies them.
-_STRUCTURAL = {"vest_start", "periods", "exercise_date", "dp_shares"}
 
 _MONEY_TOL = 0.005
 _RATE_TOL = 1e-6
@@ -30,7 +28,7 @@ _RATE_TOL = 1e-6
 # Which rule produced each field, for the report.
 _FIELD_RULE = {
     "shares": "G2", "price": "G3", "election_83b": "G7",
-    "vest_start": "S1", "periods": "S1", "exercise_date": "S1", "dp_shares": "S1",
+    "vest_start": "S1", "periods": "S1", "exercise_date": "S1", "dp_shares": "G8",
     "amount": "L1", "interest_rate": "L1", "due_date": "L1",
     "loan_type": "L2", "loan_year": "L2",
     "grant_year": "L3", "grant_type": "L3",
@@ -42,11 +40,12 @@ _RULE_HELP = {
     "G2": "Shares Granted -> grant.shares",
     "G3": "Cost Basis / Shares Granted -> grant.price (with zero-basis detection)",
     "G7": "83b Shares -> grant.election_83b",
+    "G8": "Cost basis - purchase loan -> down payment paid in stock",
     "S1": "Company grant template -> vest_start, periods, exercise_date",
     "L1": "Statement row -> loan number, amount, rate, due date",
     "L2": "Loan name grammar -> loan_type, loan_year",
     "L3": "Descriptor + loan type -> which grant the loan belongs to",
-    "L4": "Multi-grant loan name -> attributed to the purchase side",
+    "L4": "Multi-grant loan name -> attributed to the bonus side",
     "L5": "In your data but not on the statement",
     "P1": "Purchase grant basis -> annual share price",
 }
@@ -144,10 +143,15 @@ def _severity(field_name: str) -> str:
 
 
 def _compare(entity: str, key: str, mine: dict, theirs: dict,
-             notes: dict[str, str] | None = None) -> list[Difference]:
-    notes = notes or {}
+             notes: dict[str, str] | None = None,
+             severities: dict[str, str] | None = None) -> list[Difference]:
+    """`severities` raises or lowers a field's severity for this record only —
+    a field the files usually cannot speak to is a real difference on the rows
+    where a rule did read it."""
+    notes, severities = notes or {}, severities or {}
     return [Difference(entity, key, f, _fmt(mine[f]), _fmt(theirs.get(f)),
-                       _FIELD_RULE.get(f, "?"), _severity(f), notes.get(f, ""))
+                       _FIELD_RULE.get(f, "?"), severities.get(f, _severity(f)),
+                       notes.get(f, ""))
             for f in mine if not _same(mine[f], theirs.get(f))]
 
 
@@ -187,9 +191,17 @@ def reconcile(draft: Draft, grants: list[dict], loans: list[dict],
             diffs.append(Difference("grant", key, "", "present", "—", "G1", "error",
                                     "Produced by the import but absent from your data."))
             continue
-        notes = {"dp_shares": "Down-payment shares are on neither file, so the draft "
-                              "shows 0 — accepting an import keeps the number you "
-                              "already have rather than writing this one."}
+        # Rule G8 reads down-payment shares off the gap between cost basis and
+        # the purchase loan, but only when they account exactly for the shares
+        # the CSV reports gone. Where it read one, a difference is the import
+        # disagreeing with your record; where it did not, the draft carries 0
+        # and accepting an import keeps the number you already have.
+        read_a_dp = dg.dp_shares != 0
+        notes = {"dp_shares": (
+            "Read from the gap between cost basis and the purchase loan (rule G8)."
+            if read_a_dp else
+            "No down payment could be read from the files, so the draft shows 0 — "
+            "accepting an import keeps the number you already have.")}
         diffs += _compare("grant", key, {
             k: v for k, v in {
                 "shares": dg.shares, "price": dg.price, "periods": dg.periods,
@@ -202,7 +214,7 @@ def reconcile(draft: Draft, grants: list[dict], loans: list[dict],
             "exercise_date": _d(eg["exercise_date"]),
             "dp_shares": int(eg.get("dp_shares") or 0),
             "election_83b": bool(eg.get("election_83b")),
-        }, notes)
+        }, notes, {"dp_shares": "warning"} if read_a_dp else None)
     for (year, gtype), _ in existing_grants.items():
         diffs.append(Difference("grant", f"{year} {gtype}", "", "—", "present", "G1",
                                 "error", "In your data but the import did not produce it."))

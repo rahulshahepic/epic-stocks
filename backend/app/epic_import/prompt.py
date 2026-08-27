@@ -63,7 +63,14 @@ Rules you must follow:
    unqualified "<year> Grant" belong to that year's zero-basis grant (Catch-Up
    if there is one, otherwise Bonus). A loan naming two grants goes entirely to
    the bonus side.
-6. Use only figures present in the source material. Do not estimate anything.
+6. A purchase grant's loan is its cost basis less the down payment. When the
+   down payment works out to a whole number of shares at that year's price, and
+   it is the policy minimum listed below, it was paid by handing shares back:
+   set dp_shares to minus that number of shares. Those are the shares the CSV
+   reports as sold — Epic reports them against the grant they came out of, not
+   the grant being bought. Leave dp_shares at 0 when the arithmetic does not
+   land on whole shares.
+7. Use only figures present in the source material. Do not estimate anything.
 """
 
 _IDENTITIES = """\
@@ -76,6 +83,10 @@ Your answer must satisfy all of these. Check them before replying:
   D. For each grant, the sum of (loan amount x interest_rate) over its loans
      equals that grant's "Annual Interest Due" in the CSV.
   E. For each grant, shares equals "Shares Granted" in the CSV.
+  F. For each grant carrying dp_shares, cost basis minus the purchase loan
+     equals dp_shares x price. Across all grants, the shares handed back come
+     to no more than the total "Shares Sold" in the CSV; any remainder was
+     genuinely sold.
 
 If a check cannot be made to pass with the figures available, say so in a
 comment AFTER the JSON object rather than bending a number to fit.
@@ -89,6 +100,12 @@ def _schedule_table(sk: Skeleton) -> str:
         lines.append(f"{t.year} | {t.type:<9} | {t.vest_start} | {t.periods:>7} | "
                      f"{t.exercise_date}")
     return "\n".join(lines)
+
+
+def _dp_policy(sk: Skeleton) -> str:
+    return (f"The down payment is at least {sk.dp_min_percent:.0%} of the purchase, "
+            f"capped at {sk.dp_min_cap:,.0f}, rounded up to a whole number of shares "
+            f"when it is paid in stock.")
 
 
 def _rate_table(sk: Skeleton) -> str:
@@ -132,6 +149,7 @@ def build_prompt(draft: Draft, findings: list[Finding], statement: Statement | N
         "```", _schedule_table(sk), "```", "",
         "## Loan rates on record", "",
         "```", _rate_table(sk), "```", "",
+        "## Down payment policy (fixed)", "", _dp_policy(sk), "",
         "## What did not reconcile", "", _problem_list(findings), "",
         "## The draft so far", "",
         "```json", json.dumps(to_wizard_payload(draft), indent=2), "```", "",

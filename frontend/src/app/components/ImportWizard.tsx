@@ -9,6 +9,8 @@ import type {
 import { useApiData } from '../hooks/useApiData.ts'
 import { useContent } from '../hooks/useContent.ts'
 import { GRANT_COLORS, GRANT_DESCRIPTIONS, PRE_TAX_TYPES } from '../grantTypes.ts'
+import { inferRefiSteps } from '../refiInference.ts'
+import type { RefiInference } from '../refiInference.ts'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -955,9 +957,10 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
  : null
  // Historical chain = all purchase-type loans except the active one
  const historicalChainLoans = purchaseTypeLoans.filter(l => l.id !== activePurchaseLoan?.id)
- // Use the last refinance's terms as current loan defaults (not the original's).
- // The refi chain represents historical rate/due-date changes; the active loan
- // should reflect the most recent terms.
+ // The loan on record carries the terms the user is actually on, and its rate
+ // is what says how far down the refi chain it has got (see refiInference.ts).
+ // With no loan on record there is nothing to infer from, so the chain's last
+ // step stands in — that is what someone who refinanced with everyone else has.
  const origLoan = ORIGINAL_PURCHASE_LOANS[g.year]
  const refiChain = PURCHASE_REFI_CHAINS[g.year]
  const lastRefi = refiChain?.[refiChain.length - 1]
@@ -969,11 +972,10 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
  dp_shares: existing ? String(Math.abs(existing.dp_shares)) : '0',
  dp_cash: '',
  loan_amount: activePurchaseLoan ? String(activePurchaseLoan.amount) : '',
- loan_due_date: lastRefi?.dueDate
- ?? (activePurchaseLoan ? activePurchaseLoan.due_date
- : (origLoan?.dueDate ?? '')),
- interest_rate: lastRefi ? String(lastRefi.rate)
- : (activePurchaseLoan ? String(activePurchaseLoan.interest_rate)
+ loan_due_date: activePurchaseLoan?.due_date
+ || lastRefi?.dueDate || origLoan?.dueDate || '',
+ interest_rate: activePurchaseLoan ? String(activePurchaseLoan.interest_rate)
+ : (lastRefi ? String(lastRefi.rate)
  : (origLoan ? String(origLoan.rate) : '')),
  existing_purchase_loan_number: activePurchaseLoan?.loan_number ?? '',
  existing_refinance_loans: historicalChainLoans,
@@ -1113,11 +1115,19 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
  return total
  }
 
+ /** Whether the down-payment-in-stock field applies to a purchase row: the years
+  * the company offered the exchange, plus any row already carrying a figure. An
+  * import can read one off the gap between cost basis and loan for a year the
+  * schedule does not flag, and hiding it would submit a number nobody saw. */
+ function dpAllowed(row: PurchaseGrantRow): boolean {
+ return DP_SHARES_YEARS.has(row.year) || Math.abs(parseInt(row.dp_shares) || 0) > 0
+ }
+
  /** Count dp_shares consumed by other purchase grants exercised before the target date. */
  function dpSharesConsumedBefore(exerciseDate: string, excludeYear: number): number {
  let consumed = 0
  for (const row of purchaseRows) {
- if (!row.participated || row.year === excludeYear || !DP_SHARES_YEARS.has(row.year)) continue
+ if (!row.participated || row.year === excludeYear || !dpAllowed(row)) continue
  if (row.exercise_date < exerciseDate) consumed += Math.abs(parseInt(row.dp_shares) || 0)
  }
  return consumed
@@ -1222,6 +1232,31 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
  }
 
  // ── Loan generation for schedule_loans_review ──────────────────────────────
+
+ /** The part of a grant year's refi chain the purchase loan on record has been through.
+  *
+  * Epic's statement gives every loan's current rate but never says when it was
+  * refinanced, so the rate is what identifies the step. A user who already has
+  * refinance loans saved has their own history — leave it alone and keep the
+  * whole chain, as before.
+  */
+ function purchaseChainFor(row: PurchaseGrantRow | undefined): {
+ chain: typeof PURCHASE_REFI_CHAINS[number] | undefined
+ inference: RefiInference | null
+ } {
+ const full = row ? PURCHASE_REFI_CHAINS[row.year] : undefined
+ if (!row || !full) return { chain: undefined, inference: null }
+ if (row.existing_refinance_loans.length > 0) return { chain: full, inference: null }
+ const orig = ORIGINAL_PURCHASE_LOANS[row.year]
+ const inference = inferRefiSteps(full, orig, {
+ rate: parseFloat(row.interest_rate),
+ dueDate: row.loan_due_date,
+ })
+ return {
+ chain: inference.steps > 0 ? full.slice(0, inference.steps) : undefined,
+ inference,
+ }
+ }
 
  /** Compute interest on the purchase loan for a calendar year by summing each refi period. */
  function purchaseInterestForYear(
@@ -1363,8 +1398,8 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
  const due = row.loan_due_date || inheritedDueDate(gy)
  const exerciseYear = new Date(row.exercise_date + 'T00:00:00').getFullYear()
 
- // Refinance chain
- const refiChain = PURCHASE_REFI_CHAINS[gy]
+ // Refinance chain — only as far as the rate on record says it went
+ const { chain: refiChain } = purchaseChainFor(row)
  const origLoan = ORIGINAL_PURCHASE_LOANS[gy]
  if (refiChain && origLoan) {
  const origNum = `wiz-${gy}-orig`
@@ -1453,9 +1488,20 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
  const taxAmount = periodShares * vestPrice * incomeTaxRate
  const existKey = `${gy}-${grantType}-Tax-${vestYear}`
 
- // Check if this tax loan has a refinance chain
+ // Check if this tax loan has a refinance chain, and how far the loan on
+ // record went down it — a tax refinance changes the rate and the due date,
+ // so the loan's own terms say whether it happened (see refiInference.ts).
  const refiKey = `${gy}-${grantType}-${vestYear}`
- const taxRefi = TAX_LOAN_REFIS[refiKey]
+ const fullTaxRefi = TAX_LOAN_REFIS[refiKey]
+ const existingTax = existingByKey.get(existKey)
+ const taxSteps = fullTaxRefi
+ ? inferRefiSteps(
+ fullTaxRefi.map(r => ({ rate: r.rate, dueDate: r.newDueDate })),
+ { rate, dueDate: fullTaxRefi[0].origDueDate },
+ { rate: existingTax?.interest_rate, dueDate: existingTax?.due_date },
+ ).steps
+ : 0
+ const taxRefi = taxSteps > 0 ? fullTaxRefi!.slice(0, taxSteps) : null
  if (taxRefi) {
  // Generate original tax loan + refinance chain
  const origNum = `wiz-${gy}-${grantType[0]}-T${vestYear}-orig`
@@ -1559,7 +1605,7 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
  if (!row) continue
  const purchaseAmount = parseFloat(row.loan_amount) || 0
  const purchaseRate = parseFloat(row.interest_rate) || 0
- const refiChain = PURCHASE_REFI_CHAINS[gy]
+ const { chain: refiChain } = purchaseChainFor(row)
  const origLoan = ORIGINAL_PURCHASE_LOANS[gy]
 
  const priorLoans: { amount: number; rate: number }[] = []
@@ -2311,10 +2357,10 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
  onChange={v => setPurchaseField(i, { purchase_price: v }, true)} />
  <Field label="Shares" type="number" value={row.shares}
  onChange={v => setPurchaseField(i, { shares: v }, true)} />
- <Field label="DP shares" type="number" value={DP_SHARES_YEARS.has(row.year) ? row.dp_shares : '0'}
+ <Field label="DP shares" type="number" value={dpAllowed(row) ? row.dp_shares : '0'}
  onChange={v => setPurchaseField(i, { dp_shares: v })}
  hint={(() => {
- if (!DP_SHARES_YEARS.has(row.year)) return 'not available for this grant year'
+ if (!dpAllowed(row)) return 'not available for this grant year'
  const total = (parseFloat(row.purchase_price) || 0) * (parseInt(row.shares) || 0)
  const loanAmt = parseFloat(row.loan_amount) || 0
  const dp = total - loanAmt
@@ -2323,10 +2369,10 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
  if (dp > 0 && mp > 0) return `min ${Math.ceil(dp / mp).toLocaleString()} at $${mp}/sh`
  return 'shares exchanged at exercise'
  })()}
- disabled={!DP_SHARES_YEARS.has(row.year)}
- placeholder={!DP_SHARES_YEARS.has(row.year) ? 'not available' : '0'} />
+ disabled={!dpAllowed(row)}
+ placeholder={!dpAllowed(row) ? 'not available' : '0'} />
  </div>
- {DP_SHARES_YEARS.has(row.year) && Math.abs(parseInt(row.dp_shares) || 0) > 0 && (() => {
+ {dpAllowed(row) && Math.abs(parseInt(row.dp_shares) || 0) > 0 && (() => {
  const needed = Math.abs(parseInt(row.dp_shares) || 0)
  const vested = vestedSharesBeforeDate(row.exercise_date)
  const consumed = dpSharesConsumedBefore(row.exercise_date, row.year)
@@ -2507,7 +2553,7 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
 
  <NextBtn label="Next: Review loans →" onClick={enterLoansReview}
  disabled={purchaseRows.some(row => {
- if (!row.participated || !DP_SHARES_YEARS.has(row.year)) return false
+ if (!row.participated || !dpAllowed(row)) return false
  const needed = Math.abs(parseInt(row.dp_shares) || 0)
  if (needed <= 0) return false
  const vested = vestedSharesBeforeDate(row.exercise_date)
@@ -2675,6 +2721,40 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
  at the bottom. These rates are used to estimate interest loan amounts on the next page.
  </p>
  </div>
+ {(() => {
+ // Epic's documents carry no refinance dates, so the rate on each loan is
+ // what says how far down the chain it went. Say so wherever that reading
+ // left out steps the company schedule has, so it can be corrected here.
+ const notes = purchaseRows
+ .filter(r => r.participated && parseInt(r.shares) > 0 && PURCHASE_REFI_CHAINS[r.year])
+ .map(r => ({ row: r, full: PURCHASE_REFI_CHAINS[r.year], ...purchaseChainFor(r) }))
+ .filter(n => n.inference && (n.inference.steps < n.full.length || n.inference.basis === 'unmatched'))
+ if (notes.length === 0) return null
+ return (
+ <div className="rounded-md border border-cs-border bg-cs-raised p-2.5">
+ <p className="text-[11px] font-medium text-cs-text-2">
+ Read from your loan rates — Epic's documents never say when a loan was refinanced.
+ </p>
+ <ul className="mt-1 space-y-1">
+ {notes.map(({ row, full, inference }) => {
+ const pct = ((parseFloat(row.interest_rate) || 0) * 100).toFixed(2)
+ const steps = inference!.steps
+ const unmatched = inference!.basis === 'unmatched'
+ return (
+ <li key={row.year} className={`text-[11px] ${unmatched ? 'text-amber-600 dark:text-amber-400' : 'text-cs-muted'}`}>
+ <span className="font-medium">{row.year} purchase loan</span>{' — '}
+ {unmatched
+ ? `${pct}% matches none of the ${full.length} refinances on record, so none were applied. Check the rate if that looks wrong.`
+ : steps === 0
+ ? `${pct}% is the original rate, so no refinance was applied.`
+ : `${pct}% matches the ${fmtDate(full[steps - 1].date)} refinance, so the ${full.length - steps} later step${full.length - steps === 1 ? '' : 's'} on record ${full.length - steps === 1 ? 'was' : 'were'} not applied.`}
+ </li>
+ )
+ })}
+ </ul>
+ </div>
+ )
+ })()}
  {refiLoans.length > 0 ? (
  <div className="space-y-4">
  {(() => {

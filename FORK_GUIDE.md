@@ -70,6 +70,7 @@ Each provider object fields:
 - `discovery_url` — OIDC `.well-known/openid-configuration` URL
 - `scopes` — optional; defaults to `["openid","email","profile"]`
 - `subject_claim` — optional; defaults to `"sub"`. Use `"oid"` for Azure Entra ID
+- `prompt` — optional; defaults to `"select_account"` so the IdP always shows the account chooser rather than silently reusing the browser's existing session. Set to `""` to omit the parameter
 
 Register this redirect URI in your IdP: `https://yourdomain.com/auth/callback`
 

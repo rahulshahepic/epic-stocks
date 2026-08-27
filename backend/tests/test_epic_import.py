@@ -6,6 +6,7 @@ are invented round numbers, not Epic's.
 import io
 import json
 import os
+import re
 import sys
 from datetime import date, datetime
 
@@ -331,6 +332,68 @@ def test_csv_only_raises_no_unreconcilable_loan_errors(skeleton):
     draft, df = derive_draft(None, rows, skeleton)
     findings = df + validate_draft(draft, None, rows, skeleton)
     assert [f.as_dict() for f in findings if f.severity == "error"] == []
+
+
+# ============================================================
+# THE RULE INVENTORY
+# ============================================================
+# The ids are the vocabulary for reporting an import bug, so a rule the code can
+# report and the reference cannot explain is a bug in its own right. These pin
+# RULES.md, the diagnostics legend and the code to each other.
+
+MODULE = os.path.join(os.path.dirname(__file__), "..", "app", "epic_import")
+RULE_ID = r"[A-Z]\d+"
+
+
+def source_of(*names) -> str:
+    return "\n".join(open(os.path.join(MODULE, n)).read() for n in names)
+
+
+def documented_rules() -> set:
+    text = open(os.path.join(MODULE, "RULES.md")).read()
+    return set(re.findall(rf"^### `({RULE_ID})`", text, re.M))
+
+
+def reported_rules() -> set:
+    """Every id the importer can put in front of a user: findings from any module,
+    plus the ids the diagnostics report tags differences with."""
+    findings = set(re.findall(rf'Finding\("({RULE_ID})"',
+                              source_of(*[f for f in os.listdir(MODULE) if f.endswith(".py")])))
+    report = set(re.findall(rf'"({RULE_ID})"', source_of("reconcile.py")))
+    return findings | report
+
+
+def test_every_rule_the_import_can_report_is_documented():
+    missing = reported_rules() - documented_rules()
+    assert missing == set(), f"RULES.md does not explain {sorted(missing)}"
+
+
+def test_the_reference_documents_no_rule_the_code_does_not_have():
+    stale = documented_rules() - reported_rules()
+    assert stale == set(), f"RULES.md explains {sorted(stale)}, which nothing emits"
+
+
+def test_the_diagnostics_legend_explains_every_rule_it_can_print():
+    from app.epic_import.reconcile import _FIELD_RULE, _RULE_HELP
+    printable = set(_FIELD_RULE.values()) | set(
+        re.findall(rf'Difference\("[a-z]+", [^)]*?"({RULE_ID})"', source_of("reconcile.py")))
+    assert printable - set(_RULE_HELP) == set()
+
+
+def test_the_legend_matches_what_the_rules_actually_do():
+    """A legend that describes the opposite of the code is worse than none."""
+    from app.epic_import.reconcile import _RULE_HELP
+    assert "bonus side" in _RULE_HELP["L4"]
+    assert attribute_loan(["2020 Bonus", "2020 Grant"], "Interest",
+                          {2020: {"Purchase", "Bonus"}})[:2] == (2020, "Bonus")
+
+
+def test_blocking_checks_are_documented_as_blocking():
+    from app.epic_import.draft import BLOCKING_CHECKS
+    text = open(os.path.join(MODULE, "RULES.md")).read()
+    assert all(f"`{code}`" in text for code in BLOCKING_CHECKS)
+    for code in BLOCKING_CHECKS:
+        assert code in text.split("Only ")[1].split("block an import")[0]
 
 
 # ============================================================
@@ -1151,8 +1214,9 @@ def test_a_price_past_the_last_purchase_grant_is_a_projection_not_a_gap(skeleton
     assert len(earlier) == 1 and earlier[0].severity == "warning"
 
 
-def test_down_payment_shares_are_context_not_a_disagreement(skeleton, drafted):
-    """Neither file carries them, so a difference is expected."""
+def test_down_payment_shares_the_files_could_not_explain_are_context(skeleton, drafted):
+    """Where rule G8 could read no down payment the draft carries 0, which is
+    "could not tell" rather than a figure to disagree with."""
     draft, _ = drafted
     g = grant(draft, 2021, "Purchase")
     mine = [{"year": 2021, "type": "Purchase", "shares": g.shares, "price": g.price,
@@ -1162,9 +1226,24 @@ def test_down_payment_shares_are_context_not_a_disagreement(skeleton, drafted):
     assert len(dp) == 1 and dp[0].severity == "info"
 
 
+def test_a_down_payment_read_off_the_loan_is_a_real_disagreement(skeleton):
+    """Where G8 did read one, a difference is the import disagreeing with your
+    record, reported against the rule that produced it."""
+    draft, _ = draft_from_files(skeleton, *one_grant_files(**STOCK_DP))
+    g = grant(draft, 2022, "Purchase")
+    assert g.dp_shares == -1_334
+    mine = [{"year": 2022, "type": "Purchase", "shares": g.shares, "price": g.price,
+             "periods": g.periods, "vest_start": g.vest_start,
+             "exercise_date": g.exercise_date, "dp_shares": -1_000,
+             "election_83b": False}]
+    dp = only(reconcile(draft, mine, [], []).differences, field="dp_shares")
+    assert len(dp) == 1 and dp[0].severity == "warning" and dp[0].rule == "G8"
+    assert "G8" in dp[0].note
+
+
 def test_an_import_does_not_wipe_down_payment_shares(client):
-    """They are in neither file, so deriving them as 0 and prefilling the wizard
-    with that would erase a real figure the moment someone accepted."""
+    """A draft carrying 0 means the files could not say, so prefilling the wizard
+    with it would erase a real figure the moment someone accepted."""
     register_user(client)
     client.post("/api/grants", json={
         "year": 2021, "type": "Purchase", "shares": 1, "price": 1.0,

@@ -263,9 +263,11 @@ def analyze(
     draft.statement_date = draft.statement_date or (
         statement.statement_date if statement else None)
 
-    # Down-payment shares appear in neither file. Deriving them as 0 and then
-    # prefilling the wizard with that would quietly wipe a real figure the moment
-    # someone accepted the import, so carry forward what the user already has.
+    # Down-payment shares are only read where rule G8 can account for them
+    # exactly, so a draft carrying 0 means "could not tell", not "there were
+    # none". Prefilling the wizard with that would quietly wipe a real figure
+    # the moment someone accepted the import, so where the files did not say,
+    # carry forward what the user already has.
     existing_dp = {(g.year, g.type): (g.dp_shares or 0)
                    for g in db.query(Grant).filter(Grant.user_id == user.id).all()}
     for g in draft.grants:

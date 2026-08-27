@@ -8,7 +8,7 @@ Columns (header row, order not relied upon):
 
 The "Vest n" columns are cumulative vested share counts at successive future
 checkpoints — the checkpoint dates are not in the file, which is why vest_start
-is derived rather than read (see rules.G5).
+comes from the company schedule rather than being read (rule S1).
 """
 import csv
 import io

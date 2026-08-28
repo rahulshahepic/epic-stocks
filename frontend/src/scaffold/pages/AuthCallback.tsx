@@ -1,12 +1,21 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../../api.ts'
+import { clearPendingLogin, completeLogin, readPendingLogin } from '../oidc.ts'
+import { platform } from '../../platform/index.ts'
 
 export default function AuthCallback() {
  const navigate = useNavigate()
  const [error, setError] = useState<string | null>(null)
+ // The authorization code is single-use. Reading the stored PKCE material is
+ // async, so without this guard StrictMode's double-invoked effect can get two
+ // exchanges in flight before either clears the material, and the second fails.
+ const startedRef = useRef(false)
 
  useEffect(() => {
+ if (startedRef.current) return
+ startedRef.current = true
+
  const params = new URLSearchParams(window.location.search)
  const code = params.get('code')
  const state = params.get('state')
@@ -23,35 +32,34 @@ export default function AuthCallback() {
  return
  }
 
- const storedState = sessionStorage.getItem('auth_state')
- const verifier = sessionStorage.getItem('pkce_verifier')
- const provider = sessionStorage.getItem('auth_provider')
+ void (async () => {
+ const pending = await readPendingLogin()
 
- if (!state || state !== storedState) {
+ if (!state || state !== pending.state) {
  setError('Invalid state — possible CSRF attempt. Please try signing in again.')
  return
  }
 
- if (!verifier || !provider) {
+ if (!pending.verifier || !pending.provider) {
  setError('Session data missing. Please try signing in again.')
  return
  }
 
- sessionStorage.removeItem('pkce_verifier')
- sessionStorage.removeItem('auth_state')
- sessionStorage.removeItem('auth_provider')
+ await clearPendingLogin()
 
- const redirectUri = window.location.origin + '/auth/callback'
+ try {
+ await completeLogin(pending.provider, code, pending.verifier)
+ } catch (e) {
+ setError(e instanceof Error ? e.message : 'Authentication failed. Please try again.')
+ return
+ }
 
- api.exchangeCode(provider, code, verifier, redirectUri)
- .then(async () => {
- // The backend sets the HttpOnly session cookie in the response.
  // Check if there's a pending invitation to accept
- const inviteToken = sessionStorage.getItem('invite_token')
- const inviteCode = sessionStorage.getItem('invite_code')
+ const inviteToken = await platform.storage.get('invite_token')
+ const inviteCode = await platform.storage.get('invite_code')
  if (inviteToken || inviteCode) {
- sessionStorage.removeItem('invite_token')
- sessionStorage.removeItem('invite_code')
+ await platform.storage.remove('invite_token')
+ await platform.storage.remove('invite_code')
  try {
  await api.acceptInvite({
  token: inviteToken ?? undefined,
@@ -62,10 +70,7 @@ export default function AuthCallback() {
  }
  }
  navigate('/', { replace: true })
- })
- .catch(e => {
- setError(e instanceof Error ? e.message : 'Authentication failed. Please try again.')
- })
+ })()
  }, [navigate])
 
  if (error) {

@@ -5,7 +5,9 @@
  * server hands back a prompt for the user to paste into whichever assistant
  * they already use; whatever comes back is posted here and checked again.
  */
+import { apiFetch } from '../api.ts'
 import type { GrantEntry, LoanEntry, PriceEntry } from '../api.ts'
+import { platform } from '../platform/index.ts'
 
 export interface Finding {
   code: string
@@ -87,14 +89,7 @@ function form(files: EpicFiles, revisedJson?: string): FormData {
 }
 
 async function post<T>(path: string, files: EpicFiles, revisedJson?: string): Promise<T> {
-  const resp = await fetch(path, {
-    method: 'POST', credentials: 'include', body: form(files, revisedJson),
-  })
-  if (!resp.ok) {
-    const parsed = await resp.json().catch(() => null)
-    throw new Error(parsed?.detail || `Request failed (${resp.status})`)
-  }
-  return resp.json() as Promise<T>
+  return apiFetch<T>(path, { method: 'POST', body: form(files, revisedJson) }, 'Request failed')
 }
 
 export const epicImport = {
@@ -113,10 +108,5 @@ export function severityOf(findings: Finding[]): { errors: number; warnings: num
 }
 
 export function downloadText(text: string, filename: string, type = 'text/plain') {
-  const url = URL.createObjectURL(new Blob([text], { type }))
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
+  void platform.files.saveText(text, filename, type)
 }

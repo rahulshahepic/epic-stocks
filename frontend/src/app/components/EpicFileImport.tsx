@@ -2,6 +2,7 @@ import { useState } from 'react'
 import ImportWizard from './ImportWizard.tsx'
 import FindingList from './FindingList.tsx'
 import { downloadText, epicImport, severityOf, type AnalyzeResponse } from '../epicImport.ts'
+import { platform } from '../../platform/index.ts'
 
 type Stage = 'idle' | 'analyzing' | 'result' | 'review'
 
@@ -51,7 +52,9 @@ export default function EpicFileImport() {
   async function copyPrompt() {
     if (!result) return
     try {
-      await navigator.clipboard.writeText(result.prompt)
+      if (!await platform.files.copyText(result.prompt)) {
+        throw new Error('clipboard unavailable')
+      }
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { isLoggedIn } from '../../api.ts'
+import { apiFetchRaw, isLoggedIn } from '../../api.ts'
 
 // Don't hammer the server on rapid tab toggles — only refresh if it's been
 // at least this long since the last refresh.
@@ -19,7 +19,7 @@ export function useSessionRefresh() {
       const now = Date.now()
       if (now - lastRefreshRef.current < REFRESH_THROTTLE_MS) return
       lastRefreshRef.current = now
-      fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' }).catch(() => {})
+      apiFetchRaw('/api/auth/refresh', { method: 'POST' }).catch(() => {})
     }
 
     maybeRefresh()

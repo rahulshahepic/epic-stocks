@@ -1,0 +1,29 @@
+Stock Loan Statement - February 1, 2024
+900000001
+Test Employee
+Total Principal Balance: $3,795,000.00
+Loan Loan Principal Interest Interest Loan Due
+Number Name Balance Rate (to Date) Date
+100001 2020 Grant - Purchase Loan $500,000.00 1.00% $10.00 7/15/2029
+100002 2020 Grant - Interest Loan - 2021 $5,000.00 2.00% $20.00 7/15/2029
+100003 2020 Grant - Tax Loan - 2021 $30,000.00 2.00% $60.00 7/15/2029
+100004 2020 Grant - Tax Loan - 2022 $10,000.00 3.00% $30.00 7/15/2029
+Subtotal $545,000.00 2029
+Your loan agreements are the source of truth for due dates.
+Interest (to date) covers the current year only.
+Please email the share plan team with any questions.
+100005 2021 Grant - Purchase Loan $1,200,000.00 1.50% $50.00 7/15/2030
+100006 2021 Grant - Interest Loan - 2022 $18,000.00 2.50% $40.00 7/15/2030
+Subtotal $1,218,000.00 2030
+100007 2022 Grant - Purchase Loan $2,000,000.00 3.00% $100.00 6/30/2031
+100008 2022 Bonus/2022 Grant - Interest Loan - $7,000.00 4.00% $25.00 6/30/2031
+2023
+Your loan agreements are the source of truth for due dates.
+Interest (to date) covers the current year only.
+Please email the share plan team with any questions.
+100009 2022 Bonus - Tax Loan - 2023 $25,000.00 4.00% $80.00 6/30/2031
+Subtotal $2,032,000.00 2031
+Total $3,795,000.00 $415.00
+Your loan agreements are the source of truth for due dates.
+Interest (to date) covers the current year only.
+Please email the share plan team with any questions.

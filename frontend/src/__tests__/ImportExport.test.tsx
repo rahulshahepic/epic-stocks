@@ -17,11 +17,19 @@ describe('ImportExport', () => {
   it('renders all sections including template', () => {
     renderPage()
     expect(screen.getByText('Import / Export')).toBeInTheDocument()
-    expect(screen.getByText('Setup Wizard')).toBeInTheDocument()
+    expect(screen.getByText('Enter it myself')).toBeInTheDocument()
     expect(screen.getByText('Download Blank Template')).toBeInTheDocument()
     expect(screen.getByText('Download Sample (fake data)')).toBeInTheDocument()
     expect(screen.getByText('Import from Excel')).toBeInTheDocument()
     expect(screen.getByText('Export to Excel')).toBeInTheDocument()
+  })
+
+  it('leads with the Shareworks import, ahead of typing it in', () => {
+    renderPage()
+    const headings = screen.getAllByText(
+      /Import from Shareworks|Enter it myself|Import from Excel/)
+    expect(headings.map(h => h.textContent)).toEqual(
+      ['Import from Shareworks', 'Enter it myself', 'Import from Excel'])
   })
 
   it('shows confirmation dialog after file selection', async () => {
@@ -153,7 +161,8 @@ describe('ImportExport', () => {
   })
 })
 
-// Helper to find file input by accept attribute
+// The page has several file inputs (Excel import, Epic CSV, Epic PDF); this
+// helper targets the Excel one these tests are about.
 declare module '@testing-library/react' {
   interface Screen {
     getByAcceptingUpload(): HTMLInputElement
@@ -161,7 +170,7 @@ declare module '@testing-library/react' {
 }
 
 screen.getByAcceptingUpload = () => {
-  const input = document.querySelector('input[type="file"]') as HTMLInputElement
-  if (!input) throw new Error('No file input found')
+  const input = document.querySelector('input#import-file[type="file"]') as HTMLInputElement
+  if (!input) throw new Error('No Excel import file input found')
   return input
 }

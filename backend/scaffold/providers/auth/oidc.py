@@ -22,6 +22,11 @@ Configure via OIDC_PROVIDERS environment variable (JSON array):
 
 subject_claim defaults to "sub". Set to "oid" for Azure Entra ID, where the
 object ID is the stable per-user identifier across client apps.
+
+prompt defaults to "select_account" so a user who is signed into more than one
+account at the IdP always gets the account chooser instead of being silently
+logged straight back in as whoever they were before. Set it to "" to omit the
+parameter entirely, or to any other OIDC prompt value ("login", "consent", ...).
 """
 
 import json
@@ -67,6 +72,7 @@ class OIDCProviderConfig:
     label: str = ""
     scopes: list[str] = field(default_factory=lambda: ["openid", "email", "profile"])
     subject_claim: str = "sub"
+    prompt: str = "select_account"
 
     def __post_init__(self):
         if not self.label:
@@ -91,6 +97,10 @@ class OIDCProvider:
             "code_challenge_method": "S256",
             "response_mode": "query",
         }
+        # Without this the IdP silently reuses the browser's existing session, so
+        # signing out and back in never offers the account chooser.
+        if self.config.prompt:
+            params["prompt"] = self.config.prompt
         return self._oidc()["authorization_endpoint"] + "?" + urlencode(params)
 
     def exchange_code(self, code: str, code_verifier: str, redirect_uri: str) -> UserIdentity:

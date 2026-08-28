@@ -12,7 +12,7 @@ import database
 
 logger = logging.getLogger(__name__)
 from scaffold.routers import auth_router, admin, notifications, push, unsubscribe
-from app.routers import grants, loans, prices, events, flows, import_export, sales, cache as cache_router, tips, wizard, content, sharing
+from app.routers import grants, loans, prices, events, flows, import_export, epic_import, sales, cache as cache_router, tips, wizard, content, sharing
 from app.routers.retirement import retirement_router, dashboard_prefs_router
 from scaffold.auth import get_current_user
 from scaffold.crypto import encryption_enabled, decrypt_user_key, set_current_key
@@ -546,6 +546,7 @@ _fastapi_app.include_router(prices.router)
 _fastapi_app.include_router(events.router)
 _fastapi_app.include_router(flows.router)
 _fastapi_app.include_router(import_export.router)
+_fastapi_app.include_router(epic_import.router)
 _fastapi_app.include_router(push.router)
 _fastapi_app.include_router(admin.router)
 _fastapi_app.include_router(notifications.router)

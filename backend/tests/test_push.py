@@ -52,16 +52,51 @@ def test_unsubscribe_not_found(client):
 
 def test_push_status_not_subscribed(client):
     register_user(client)
-    resp = client.get("/api/push/status")
+    resp = client.post("/api/push/status", json={})
     assert resp.status_code == 200
-    assert resp.json() == {"subscribed": False, "subscription_count": 0}
+    assert resp.json() == {"registered_here": False, "total_devices": 0, "intent": False}
 
 
-def test_push_status_subscribed(client):
+def test_push_status_registered_here(client):
     register_user(client)
     client.post("/api/push/subscribe", json=SUB_DATA)
-    resp = client.get("/api/push/status")
-    assert resp.json() == {"subscribed": True, "subscription_count": 1}
+    resp = client.post("/api/push/status", json={"endpoint": SUB_DATA["endpoint"]})
+    assert resp.json() == {"registered_here": True, "total_devices": 1, "intent": True}
+
+
+def test_push_status_other_device_is_not_registered_here(client):
+    """The bug this replaces: a laptop subscription made a phone that had never
+    been asked look like push was already on."""
+    register_user(client)
+    client.post("/api/push/subscribe", json=SUB_DATA)
+
+    resp = client.post("/api/push/status", json={"endpoint": "https://push.example.com/send/other-device"})
+
+    body = resp.json()
+    assert body["registered_here"] is False
+    assert body["total_devices"] == 1
+
+
+def test_push_status_without_an_endpoint_is_never_registered_here(client):
+    """A device with no subscription of its own sends no endpoint."""
+    register_user(client)
+    client.post("/api/push/subscribe", json=SUB_DATA)
+
+    resp = client.post("/api/push/status", json={})
+
+    assert resp.json()["registered_here"] is False
+    assert resp.json()["total_devices"] == 1
+
+
+def test_push_status_counts_every_device(client):
+    register_user(client)
+    client.post("/api/push/subscribe", json=SUB_DATA)
+    second = {**SUB_DATA, "endpoint": "https://push.example.com/send/device-2"}
+    client.post("/api/push/subscribe", json=second)
+
+    resp = client.post("/api/push/status", json={"endpoint": second["endpoint"]})
+
+    assert resp.json() == {"registered_here": True, "total_devices": 2, "intent": True}
 
 
 def test_subscribe_requires_auth(client):
@@ -78,9 +113,10 @@ def test_user_isolation(client, make_client):
         resp = client2.request("DELETE", "/api/push/subscribe", json=SUB_DATA)
         assert resp.status_code == 404
 
-        # User2 shows no subscriptions
-        resp = client2.get("/api/push/status")
-        assert resp.json()["subscribed"] is False
+        # User2 shows no subscriptions, even for user1's endpoint
+        resp = client2.post("/api/push/status", json={"endpoint": SUB_DATA["endpoint"]})
+        assert resp.json()["registered_here"] is False
+        assert resp.json()["total_devices"] == 0
 
 
 # ============================================================
@@ -169,7 +205,8 @@ def test_push_test_no_subscriptions(client):
 def test_push_test_sends_notification(client):
     register_user(client)
     client.post("/api/push/subscribe", json=SUB_DATA)
-    with patch("scaffold.notifications.send_push", return_value=True):
+    from scaffold.notifications import PushResult
+    with patch("scaffold.notifications.send_push", return_value=PushResult.SENT):
         resp = client.post("/api/push/test", json={})
     assert resp.status_code == 200
     assert resp.json()["sent"] == 1
@@ -235,11 +272,12 @@ def test_send_push_encrypts_payload():
         resp.status_code = 201
         return resp
 
+    from scaffold.notifications import PushResult
     with patch("scaffold.notifications.VAPID_PRIVATE_KEY", _real_vapid_private_key()):
         with patch.object(requests, "post", fake_post):
-            ok = send_push(sub, payload)
+            result = send_push(sub, payload)
 
-    assert ok is True
+    assert result is PushResult.SENT
     assert captured["headers"]["Content-Encoding"] == "aes128gcm"
     assert "Authorization" in captured["headers"]  # VAPID JWT
     raw_json = _json.dumps(payload).encode()
@@ -248,26 +286,131 @@ def test_send_push_encrypts_payload():
         _json.loads(captured["data"])
 
 
-def test_send_push_expired_subscription_returns_false():
+def _send_with_status(status: int):
     from scaffold.notifications import send_push
     from scaffold.models import PushSubscription
     import requests
 
     p256dh, auth = _real_subscriber_keys()
-    sub = PushSubscription(endpoint="https://push.example.com/send/gone", p256dh=p256dh, auth=auth)
+    sub = PushSubscription(endpoint="https://push.example.com/send/x", p256dh=p256dh, auth=auth)
 
     def fake_post(url, **kwargs):
         resp = MagicMock()
-        resp.status_code = 410
-        resp.text = "gone"
-        resp.reason = "Gone"
+        resp.status_code = status
+        resp.text = "response body"
+        resp.reason = "Reason"
         return resp
 
     with patch("scaffold.notifications.VAPID_PRIVATE_KEY", _real_vapid_private_key()):
         with patch.object(requests, "post", fake_post):
-            ok = send_push(sub, {"title": "x", "body": "y"})
+            return send_push(sub, {"title": "x", "body": "y"})
 
-    assert ok is False
+
+@pytest.mark.parametrize("status", [404, 410])
+def test_send_push_reports_gone_for_dead_subscriptions(status):
+    from scaffold.notifications import PushResult
+    assert _send_with_status(status) is PushResult.GONE
+
+
+@pytest.mark.parametrize("status", [400, 401, 403, 429, 500, 502, 503])
+def test_send_push_reports_transient_failure_not_gone(status):
+    """Only the push service saying the subscription is dead may delete it.
+
+    Treating every failure as dead meant one timeout, one 500, or one 403 from
+    Apple silently unsubscribed the device for good.
+    """
+    from scaffold.notifications import PushResult
+    assert _send_with_status(status) is PushResult.FAILED
+
+
+def test_send_push_without_vapid_key_is_a_failure_not_gone():
+    """The worst case of the old behaviour: an unset key made every send
+    'fail', which deleted every subscription of every user in one pass."""
+    from scaffold.notifications import send_push, PushResult
+    from scaffold.models import PushSubscription
+
+    sub = PushSubscription(endpoint="https://push.example.com/send/x", p256dh="k", auth="a")
+    with patch("scaffold.notifications.VAPID_PRIVATE_KEY", ""):
+        assert send_push(sub, {"title": "x"}) is PushResult.FAILED
+
+
+def test_transient_failure_keeps_the_subscription(client):
+    from scaffold.notifications import PushResult
+    register_user(client)
+    client.post("/api/push/subscribe", json=SUB_DATA)
+
+    with patch("scaffold.notifications.send_push", return_value=PushResult.FAILED):
+        resp = client.post("/api/push/test", json={})
+
+    assert resp.json()["sent"] == 0
+    assert client.post("/api/push/status", json={}).json()["total_devices"] == 1
+
+
+def test_gone_subscription_is_removed(client):
+    from scaffold.notifications import PushResult
+    register_user(client)
+    client.post("/api/push/subscribe", json=SUB_DATA)
+
+    with patch("scaffold.notifications.send_push", return_value=PushResult.GONE):
+        resp = client.post("/api/push/test", json={})
+
+    assert resp.json()["sent"] == 0
+    assert client.post("/api/push/status", json={}).json()["total_devices"] == 0
+
+
+# ============================================================
+# PUSH INTENT — a user-level wish, never a device state
+# ============================================================
+
+def test_intent_defaults_to_false(client):
+    register_user(client)
+    assert client.post("/api/push/status", json={}).json()["intent"] is False
+
+
+def test_subscribing_records_intent(client):
+    """Enabling push on any device is the clearest statement of intent."""
+    register_user(client)
+    client.post("/api/push/subscribe", json=SUB_DATA)
+    assert client.post("/api/push/status", json={}).json()["intent"] is True
+
+
+def test_intent_can_be_set_and_cleared(client):
+    register_user(client)
+    assert client.put("/api/push/intent", json={"enabled": True}).json() == {"intent": True}
+    assert client.post("/api/push/status", json={}).json()["intent"] is True
+    assert client.put("/api/push/intent", json={"enabled": False}).json() == {"intent": False}
+    assert client.post("/api/push/status", json={}).json()["intent"] is False
+
+
+def test_clearing_intent_does_not_unsubscribe_devices(client):
+    """"Stop asking" is not "turn push off" — subscribed devices keep receiving."""
+    register_user(client)
+    client.post("/api/push/subscribe", json=SUB_DATA)
+
+    client.put("/api/push/intent", json={"enabled": False})
+
+    body = client.post("/api/push/status", json={"endpoint": SUB_DATA["endpoint"]}).json()
+    assert body["registered_here"] is True
+    assert body["total_devices"] == 1
+
+
+def test_unsubscribing_one_device_leaves_intent_alone(client):
+    """Turning it off on a phone must not stop the laptop being offered it."""
+    register_user(client)
+    client.post("/api/push/subscribe", json=SUB_DATA)
+    client.request("DELETE", "/api/push/subscribe", json=SUB_DATA)
+
+    body = client.post("/api/push/status", json={}).json()
+    assert body["total_devices"] == 0
+    assert body["intent"] is True
+
+
+def test_intent_requires_auth(client):
+    assert client.put("/api/push/intent", json={"enabled": True}).status_code == 401
+
+
+def test_status_requires_auth(client):
+    assert client.post("/api/push/status", json={}).status_code == 401
 
 
 # ============================================================
@@ -321,3 +464,65 @@ def test_get_events_with_advance_days(db_session):
     # Day before without advance_days should find nothing
     events = get_todays_events_for_user(user, db_session, today=target - timedelta(days=1), advance_days=0)
     assert len(events) == 0
+
+
+# ============================================================
+# DAILY JOB — pruning is the one thing that must not overreact
+# ============================================================
+
+def _user_with_events_and_subscription(client, db_session):
+    """A user who has both a push subscription and an event to be told about."""
+    from scaffold.models import User, Grant, Price
+
+    register_user(client)
+    client.post("/api/push/subscribe", json=SUB_DATA)
+    user = db_session.query(User).first()
+    db_session.add(Grant(
+        user_id=user.id, year=2020, type="Purchase", shares=100, price=5.0,
+        vest_start=date(2025, 3, 20), periods=5,
+        exercise_date=date(2030, 3, 20), dp_shares=0,
+    ))
+    db_session.add(Price(user_id=user.id, effective_date=date(2020, 1, 1), price=5.0))
+    db_session.commit()
+    return user
+
+
+def test_daily_job_keeps_subscriptions_when_a_send_fails(client, db_session):
+    """The regression that silently killed push: the daily job deleted a
+    subscription on any failure, so one timeout unsubscribed the device
+    permanently while the UI went on claiming push was enabled."""
+    from scaffold.models import PushSubscription
+    from scaffold.notifications import send_daily_notifications, PushResult
+
+    _user_with_events_and_subscription(client, db_session)
+
+    with patch("scaffold.notifications.send_push", return_value=PushResult.FAILED):
+        send_daily_notifications(today=date(2026, 3, 20))
+
+    assert db_session.query(PushSubscription).count() == 1
+
+
+def test_daily_job_removes_subscriptions_the_service_says_are_dead(client, db_session):
+    from scaffold.models import PushSubscription
+    from scaffold.notifications import send_daily_notifications, PushResult
+
+    _user_with_events_and_subscription(client, db_session)
+
+    with patch("scaffold.notifications.send_push", return_value=PushResult.GONE):
+        send_daily_notifications(today=date(2026, 3, 20))
+
+    assert db_session.query(PushSubscription).count() == 0
+
+
+def test_daily_job_with_no_vapid_key_does_not_wipe_every_subscription(client, db_session):
+    """Worst case of the old rule: an unset key made every send fail, which
+    deleted every subscription of every user in a single pass."""
+    from scaffold.models import PushSubscription
+    from scaffold.notifications import send_daily_notifications
+
+    _user_with_events_and_subscription(client, db_session)
+
+    with patch("scaffold.notifications.VAPID_PRIVATE_KEY", ""):
+        send_daily_notifications(today=date(2026, 3, 20))
+
+    assert db_session.query(PushSubscription).count() == 1

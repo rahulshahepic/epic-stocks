@@ -58,9 +58,28 @@ export interface FilesPlatform {
   copyText(text: string): Promise<boolean>
 }
 
+/**
+ * Device permission for showing notifications.
+ *
+ * 'unsupported' covers a device that has no Notification API at all — notably
+ * iOS Safari in a tab, where push only works once the app is installed to the
+ * Home Screen.
+ */
+export type PushPermission = 'unsupported' | 'default' | 'granted' | 'denied'
+
 export interface PushPlatform {
   /** Whether this device can receive push at all. */
   readonly supported: boolean
+  /**
+   * The device's current permission, read without prompting.
+   *
+   * 'denied' cannot be recovered from inside the page — the person has to
+   * change it in their device settings — so the UI must say so rather than
+   * offer a button that silently does nothing.
+   */
+  permission(): PushPermission
+  /** Whether the app is running as an installed app rather than in a tab. */
+  isInstalled(): boolean
   /** Register with the push service; the payload is posted to the backend. */
   register(vapidPublicKey: string): Promise<PushRegistration>
   /**

@@ -10,7 +10,9 @@ import type { Theme } from '../contexts/ThemeContext.tsx'
 
 export default function Settings() {
  const config = useConfig()
- const { subscribed, loading, supported, subscribe, unsubscribe } = usePush(config?.vapid_public_key ?? '')
+ const push = usePush(config?.vapid_public_key ?? '')
+ // Whether this device could do push at all, regardless of server config.
+ const pushSupported = push.state !== 'unsupported' && push.state !== 'needs-install'
  const { logout, logoutEverywhere } = useAuth()
  const [logoutEverywhereConfirm, setLogoutEverywhereConfirm] = useState(false)
  const { theme, setTheme } = useTheme()
@@ -101,7 +103,7 @@ export default function Settings() {
  </section>
 
  {/* Notifications */}
- {(!!config?.vapid_public_key || supported || config?.email_notifications_available) && (
+ {(!!config?.vapid_public_key || pushSupported || config?.email_notifications_available) && (
  <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
  <h3 className="text-sm font-medium text-cs-text">Notifications</h3>
  <p className="mt-1 text-xs text-cs-text-2">
@@ -109,34 +111,67 @@ export default function Settings() {
  </p>
 
  <div className="mt-3 space-y-3">
- {/* Push */}
- {!supported && config?.vapid_public_key ? (
- <p className="text-xs text-cs-text-2">
- Push notifications are not supported in this browser.
- </p>
- ) : supported && !config?.vapid_public_key ? (
+ {/* Push — always describes THIS device. A subscription can only be
+ created by the device it belongs to, so the account's other devices
+ are context, never the state of this toggle. */}
+ {!config?.vapid_public_key ? (
  <p className="text-xs text-cs-text-2">
  Push notifications are not configured on this server.
  </p>
- ) : supported && config?.vapid_public_key ? (
+ ) : (
+ <div>
  <div className="flex items-center justify-between">
  <span className="text-xs text-cs-text-2">Push notifications</span>
  <div className="flex items-center gap-2">
- {subscribed && (
- <span className="text-xs text-green-700 dark:text-green-300">Enabled</span>
+ {push.state === 'on' && (
+ <span className="text-xs text-green-700 dark:text-green-300">On this device</span>
  )}
+ {(push.state === 'on' || push.state === 'off') && (
  <button
- onClick={subscribed ? unsubscribe : subscribe}
- disabled={loading}
+ onClick={push.state === 'on' ? push.disable : push.enable}
+ disabled={push.loading}
  className={`rounded-md px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50 ${
- subscribed ? 'bg-gray-500 hover:bg-gray-600' : 'bg-cs-brand hover:bg-cs-brand-hover'
+ push.state === 'on' ? 'bg-gray-500 hover:bg-gray-600' : 'bg-cs-brand hover:bg-cs-brand-hover'
  }`}
  >
- {loading ? 'Loading...' : subscribed ? 'Disable' : 'Enable'}
+ {push.loading ? 'Loading...' : push.state === 'on' ? 'Disable' : 'Enable'}
  </button>
+ )}
  </div>
  </div>
- ) : null}
+
+ {push.state === 'blocked' && (
+ <p className="mt-1 text-xs text-cs-text-2">
+ Blocked for this app. Turn notifications back on in your device settings
+ to enable them here.
+ </p>
+ )}
+ {push.state === 'needs-install' && (
+ <p className="mt-1 text-xs text-cs-text-2">
+ Add this app to your home screen to enable notifications on this device.
+ </p>
+ )}
+ {push.state === 'unsupported' && (
+ <p className="mt-1 text-xs text-cs-text-2">
+ Not available on this device.
+ </p>
+ )}
+ {push.otherDevices > 0 && (
+ <p className="mt-1 text-xs text-cs-muted">
+ {push.state === 'on' ? 'Also on' : 'On'} {push.otherDevices} other{' '}
+ {push.otherDevices === 1 ? 'device' : 'devices'}.
+ </p>
+ )}
+ {push.state !== 'on' && push.intent && (
+ <button
+ onClick={() => push.setIntent(false)}
+ className="mt-1 text-xs text-cs-text-2 underline hover:text-cs-text"
+ >
+ Stop offering notifications on new devices
+ </button>
+ )}
+ </div>
+ )}
 
  {/* Email */}
  {config?.email_notifications_available && (
@@ -160,7 +195,7 @@ export default function Settings() {
  )}
 
  {/* Advance timing — shown when any notification is active */}
- {(subscribed || emailEnabled) && (
+ {(push.state === 'on' || emailEnabled) && (
  <div className="flex items-center justify-between border-t border-cs-border pt-3 ">
  <div>
  <span className="text-xs text-cs-text-2">Notify me</span>
@@ -181,7 +216,7 @@ export default function Settings() {
  )}
 
  {/* Test push button */}
- {subscribed && (
+ {push.state === 'on' && (
  <div className="flex items-center justify-between border-t border-cs-border pt-3 ">
  <div>
  <span className="text-xs text-cs-text-2">Test push</span>

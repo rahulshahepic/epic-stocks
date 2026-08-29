@@ -23,7 +23,7 @@ function mockFetch(responses: Record<string, unknown>) {
   })
 }
 
-function mockPushSupport() {
+function mockPushSupport(permission: NotificationPermission = 'default') {
   Object.defineProperty(navigator, 'serviceWorker', {
     value: { register: vi.fn(), ready: Promise.resolve({}), getRegistration: vi.fn() },
     writable: true,
@@ -34,7 +34,24 @@ function mockPushSupport() {
     writable: true,
     configurable: true,
   })
+  Object.defineProperty(window, 'Notification', {
+    value: Object.assign(class {}, { permission }),
+    writable: true,
+    configurable: true,
+  })
 }
+
+/** Remove the Notification API — iOS Safari in a tab, where push cannot work. */
+function mockPushUnsupported({ installed = false } = {}) {
+  // @ts-expect-error deleting a global for the unsupported case
+  delete window.Notification
+  Object.defineProperty(navigator, 'standalone', {
+    value: installed, writable: true, configurable: true,
+  })
+}
+
+const STATUS = (over: Partial<{ registered_here: boolean; total_devices: number; intent: boolean }> = {}) =>
+  ({ registered_here: false, total_devices: 0, intent: false, ...over })
 
 function renderPage() {
   return render(
@@ -56,14 +73,28 @@ describe('Settings', () => {
     expect(screen.getByText('Account')).toBeInTheDocument()
   })
 
-  it('shows not supported when no serviceWorker', async () => {
+  it('tells an uninstalled iOS device to add the app to the home screen', async () => {
+    mockPushUnsupported({ installed: false })
     mockFetch({
       '/api/config': { vapid_public_key: 'test-key', email_notifications_available: false },
-      '/api/push/status': { subscribed: false, subscription_count: 0 },
+      '/api/push/status': STATUS(),
     })
     renderPage()
     await waitFor(() => {
-      expect(screen.getByText(/not supported in this browser/)).toBeInTheDocument()
+      expect(screen.getByText(/add this app to your home screen/i)).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('button', { name: 'Enable' })).not.toBeInTheDocument()
+  })
+
+  it('says not available on an installed device that still lacks the API', async () => {
+    mockPushUnsupported({ installed: true })
+    mockFetch({
+      '/api/config': { vapid_public_key: 'test-key', email_notifications_available: false },
+      '/api/push/status': STATUS(),
+    })
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText(/not available on this device/i)).toBeInTheDocument()
     })
   })
 
@@ -71,7 +102,7 @@ describe('Settings', () => {
     mockPushSupport()
     mockFetch({
       '/api/config': { vapid_public_key: '', email_notifications_available: false },
-      '/api/push/status': { subscribed: false, subscription_count: 0 },
+      '/api/push/status': STATUS(),
     })
     renderPage()
 
@@ -80,11 +111,11 @@ describe('Settings', () => {
     })
   })
 
-  it('shows enable button when VAPID key present and not subscribed', async () => {
-    mockPushSupport()
+  it('offers Enable on a device that has not been asked', async () => {
+    mockPushSupport('default')
     mockFetch({
       '/api/config': { vapid_public_key: 'test-vapid-key', email_notifications_available: false },
-      '/api/push/status': { subscribed: false, subscription_count: 0 },
+      '/api/push/status': STATUS(),
     })
     renderPage()
 
@@ -94,17 +125,62 @@ describe('Settings', () => {
     })
   })
 
-  it('shows disable button when subscribed', async () => {
-    mockPushSupport()
+  it('shows On this device only when this device is registered', async () => {
+    mockPushSupport('granted')
     mockFetch({
       '/api/config': { vapid_public_key: 'test-vapid-key', email_notifications_available: false },
-      '/api/push/status': { subscribed: true, subscription_count: 1 },
+      '/api/push/status': STATUS({ registered_here: true, total_devices: 1, intent: true }),
     })
     renderPage()
 
     await waitFor(() => {
       expect(screen.getByText('Disable')).toBeInTheDocument()
-      expect(screen.getByText('Enabled')).toBeInTheDocument()
+      expect(screen.getByText('On this device')).toBeInTheDocument()
+    })
+  })
+
+  it("does not claim push is on because another device has it", async () => {
+    // The original bug: a laptop subscription made an iPhone that had never
+    // been asked render as Enabled, so nothing ever prompted.
+    mockPushSupport('default')
+    mockFetch({
+      '/api/config': { vapid_public_key: 'test-vapid-key', email_notifications_available: false },
+      '/api/push/status': STATUS({ registered_here: false, total_devices: 1, intent: true }),
+    })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Enable').length).toBeGreaterThan(0)
+    })
+    expect(screen.queryByText('On this device')).not.toBeInTheDocument()
+    expect(screen.queryByText('Disable')).not.toBeInTheDocument()
+    expect(screen.getByText(/on 1 other device/i)).toBeInTheDocument()
+  })
+
+  it('explains a blocked device instead of offering a dead button', async () => {
+    mockPushSupport('denied')
+    mockFetch({
+      '/api/config': { vapid_public_key: 'test-vapid-key', email_notifications_available: false },
+      '/api/push/status': STATUS(),
+    })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText(/turn notifications back on in your device settings/i)).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('button', { name: 'Enable' })).not.toBeInTheDocument()
+  })
+
+  it('mentions other devices alongside this one', async () => {
+    mockPushSupport('granted')
+    mockFetch({
+      '/api/config': { vapid_public_key: 'test-vapid-key', email_notifications_available: false },
+      '/api/push/status': STATUS({ registered_here: true, total_devices: 3, intent: true }),
+    })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText(/also on 2 other devices/i)).toBeInTheDocument()
     })
   })
 

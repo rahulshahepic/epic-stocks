@@ -97,6 +97,15 @@ export async function apiFetchBlob(
 
 // --- Types ---
 
+export interface PushStatus {
+  /** Whether the calling device itself has a live subscription. */
+  registered_here: boolean
+  /** How many devices this account has subscribed, including this one. */
+  total_devices: number
+  /** Whether the person wants push where their devices allow it. */
+  intent: boolean
+}
+
 export interface DashboardData {
   current_price: number
   total_shares: number
@@ -333,7 +342,12 @@ export const api = {
     post<{ id: number; endpoint: string }>('/api/push/subscribe', subscription),
   pushUnsubscribe: (subscription: PushRegistration) =>
     apiFetch<void>('/api/push/subscribe', { method: 'DELETE', body: JSON.stringify(subscription) }),
-  pushStatus: () => apiFetch<{ subscribed: boolean; subscription_count: number }>('/api/push/status'),
+  /** Device truth (registered_here) plus account context (total_devices, intent).
+   *  POST because the body carries this device's push endpoint, which we keep
+   *  out of URLs and therefore out of access logs. */
+  pushStatus: (endpoint?: string) =>
+    post<PushStatus>('/api/push/status', endpoint ? { endpoint } : {}),
+  pushSetIntent: (enabled: boolean) => put<{ intent: boolean }>('/api/push/intent', { enabled }),
   pushTest: () => post<{ sent: number }>('/api/push/test', {}),
 
   // Email notifications

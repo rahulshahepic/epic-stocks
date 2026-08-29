@@ -3,8 +3,9 @@ import {
  LineChart, Line, AreaChart, Area, BarChart, Bar,
  XAxis, YAxis, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts'
-import { api } from '../../api.ts'
+import { api, apiFetchBlob } from '../../api.ts'
 import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, GrantEntry, TaxSettings, SaleEntry, ExitPreview, DeductionPreview } from '../../api.ts'
+import { platform } from '../../platform/index.ts'
 import ExitBreakdownCard from '../components/ExitBreakdownCard.tsx'
 import { useApiData } from '../hooks/useApiData.ts'
 import { useDark } from '../../scaffold/hooks/useDark.ts'
@@ -1514,15 +1515,8 @@ export default function Dashboard() {
  const exportUrl = vid
  ? `/api/sharing/view/${vid}/export/excel`
  : `/api/export/holdings-report?as_of=${encodeURIComponent(cardDate)}`
- const resp = await fetch(exportUrl, { credentials: 'include' })
- if (!resp.ok) throw new Error(`Export failed (${resp.status})`)
- const blob = await resp.blob()
- const url = URL.createObjectURL(blob)
- const a = document.createElement('a')
- a.href = url
- a.download = `Holdings_Report_${cardDate}.xlsx`
- a.click()
- URL.revokeObjectURL(url)
+ const blob = await apiFetchBlob(exportUrl, 'Export failed')
+ await platform.files.saveBlob(blob, `Holdings_Report_${cardDate}.xlsx`)
  } catch { /* silent */ }
  setDownloading(false)
  }

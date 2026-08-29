@@ -1,3 +1,7 @@
+import { apiUrl } from './config.ts'
+import { platform } from './platform/index.ts'
+import type { PushRegistration } from './platform/index.ts'
+
 export class ConflictError extends Error {
   currentVersion: number
   constructor(currentVersion: number) {
@@ -7,23 +11,36 @@ export class ConflictError extends Error {
   }
 }
 
-/** True if the HttpOnly session cookie is present (indicated by the auth_hint cookie). */
+/** True if a session is believed to exist locally. Delegated to the platform. */
 export function isLoggedIn(): boolean {
-  return document.cookie.split(';').some(c => c.trim().startsWith('auth_hint='))
+  return platform.auth.isLoggedIn()
 }
 
-export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+/**
+ * Issue an API request. Resolves the path against API_BASE and applies whatever
+ * the platform uses to authenticate. Returns the raw Response with no status
+ * handling — callers that want the standard handling use apiFetch/apiFetchBlob.
+ */
+export async function apiFetchRaw(path: string, init?: RequestInit): Promise<Response> {
   const headers: Record<string, string> = {
     ...Object.fromEntries(new Headers(init?.headers).entries()),
+    ...platform.auth.authHeaders(),
   }
   if (init?.body && typeof init.body === 'string') {
     headers['Content-Type'] = 'application/json'
   }
 
-  const resp = await fetch(path, { ...init, headers, credentials: 'include' })
+  return fetch(apiUrl(path), { ...init, headers, credentials: platform.auth.credentials })
+}
 
+/**
+ * Shared non-2xx handling. `fallbackLabel` shapes the message when the server
+ * sends no detail, so callers can keep a specific message ("Export failed (500)")
+ * instead of a bare status.
+ */
+async function throwForStatus(resp: Response, fallbackLabel?: string): Promise<void> {
   if (resp.status === 401) {
-    window.location.href = '/login'
+    platform.auth.onUnauthorized()
     throw new Error('Unauthorized')
   }
 
@@ -37,7 +54,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   }
 
   if (!resp.ok) {
-    let detail = `Error ${resp.status}`
+    let detail = fallbackLabel ? `${fallbackLabel} (${resp.status})` : `Error ${resp.status}`
     try {
       const body = await resp.json()
       if (body?.detail) {
@@ -52,10 +69,30 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     } catch { /* no json body */ }
     throw new Error(detail)
   }
+}
+
+export async function apiFetch<T>(
+  path: string,
+  init?: RequestInit,
+  fallbackLabel?: string,
+): Promise<T> {
+  const resp = await apiFetchRaw(path, init)
+  await throwForStatus(resp, fallbackLabel)
 
   if (resp.status === 204) return undefined as T
 
   return resp.json()
+}
+
+/** Error-checked request returning the body as a Blob, for file downloads. */
+export async function apiFetchBlob(
+  path: string,
+  fallbackLabel?: string,
+  init?: RequestInit,
+): Promise<Blob> {
+  const resp = await apiFetchRaw(path, init)
+  await throwForStatus(resp, fallbackLabel)
+  return resp.blob()
 }
 
 // --- Types ---
@@ -218,7 +255,9 @@ export const api = {
     return apiFetch<{ authorization_url: string }>(`/api/auth/login?${params}`)
   },
   exchangeCode: (provider: string, code: string, codeVerifier: string, redirectUri: string) =>
-    post<{ access_token: string }>('/api/auth/callback', { provider, code, code_verifier: codeVerifier, redirect_uri: redirectUri }),
+    // The web flow gets its credential as an HttpOnly cookie; access_token is
+    // reserved for clients that cannot use cookies (a native shell).
+    post<{ ok: boolean; access_token?: string }>('/api/auth/callback', { provider, code, code_verifier: codeVerifier, redirect_uri: redirectUri }),
   refreshSession: () => post<{ ok: boolean }>('/api/auth/refresh', {}),
   logoutEverywhere: () => post<{ ok: boolean }>('/api/auth/logout-everywhere', {}),
 
@@ -290,9 +329,9 @@ export const api = {
   getSharedDashboardPrefs: (invId: number) => apiFetch<{ prefs: Record<string, unknown> }>(`/api/sharing/view/${invId}/dashboard-prefs`),
 
   // Push notifications
-  pushSubscribe: (subscription: PushSubscriptionJSON) =>
+  pushSubscribe: (subscription: PushRegistration) =>
     post<{ id: number; endpoint: string }>('/api/push/subscribe', subscription),
-  pushUnsubscribe: (subscription: PushSubscriptionJSON) =>
+  pushUnsubscribe: (subscription: PushRegistration) =>
     apiFetch<void>('/api/push/subscribe', { method: 'DELETE', body: JSON.stringify(subscription) }),
   pushStatus: () => apiFetch<{ subscribed: boolean; subscription_count: number }>('/api/push/status'),
   pushTest: () => post<{ sent: number }>('/api/push/test', {}),
@@ -475,16 +514,13 @@ export const api = {
   getSharedTaxSettings: (invId: number) => apiFetch<TaxSettings>(`/api/sharing/view/${invId}/tax-settings`),
   getSharedSaleTax: (invId: number, saleId: number) => apiFetch<TaxBreakdown>(`/api/sharing/view/${invId}/sales/${saleId}/tax`),
   getSharedPreviewExit: (invId: number, date: string) => apiFetch<ExitPreview | null>(`/api/sharing/view/${invId}/preview-exit?date=${encodeURIComponent(date)}`),
-  exportSharedExcel: (invId: number) => fetch(`/api/sharing/view/${invId}/export/excel`, { credentials: 'include' }),
+  exportSharedExcel: (invId: number) => apiFetchRaw(`/api/sharing/view/${invId}/export/excel`),
 
   /** Stream SSE events from the key-rotation endpoint.
    *  Calls onEvent for each parsed event object.  Resolves when the stream ends.
    */
   adminRotateKey: async (onEvent: (e: RotationEvent) => void): Promise<void> => {
-    const resp = await fetch('/api/admin/rotate-key', {
-      method: 'POST',
-      credentials: 'include',
-    })
+    const resp = await apiFetchRaw('/api/admin/rotate-key', { method: 'POST' })
     if (!resp.ok || !resp.body) {
       throw new Error(`HTTP ${resp.status}`)
     }

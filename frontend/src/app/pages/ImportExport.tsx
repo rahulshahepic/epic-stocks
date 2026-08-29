@@ -1,6 +1,8 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import EpicFileImport from '../components/EpicFileImport.tsx'
+import { apiFetch, apiFetchBlob } from '../../api.ts'
+import { platform } from '../../platform/index.ts'
 
 
 const COLUMN_GUIDE = {
@@ -88,16 +90,11 @@ export default function ImportExport() {
  try {
  const form = new FormData()
  form.append('file', selectedFile)
- const resp = await fetch(`/api/import/excel?generate_payoff_sales=${generatePayoffSales}`, {
- method: 'POST',
- credentials: 'include',
- body: form,
- })
- if (!resp.ok) {
- const body = await resp.json().catch(() => null)
- throw new Error(body?.detail || `Import failed (${resp.status})`)
- }
- const data: ImportResult = await resp.json()
+ const data = await apiFetch<ImportResult>(
+ `/api/import/excel?generate_payoff_sales=${generatePayoffSales}`,
+ { method: 'POST', body: form },
+ 'Import failed',
+ )
  setResult(data)
  setStatus('success')
  } catch (e: unknown) {
@@ -114,15 +111,8 @@ export default function ImportExport() {
  setError('')
  try {
  const qs = exportAsOf ? `?as_of=${encodeURIComponent(exportAsOf)}` : ''
- const resp = await fetch(`/api/export/excel${qs}`, { credentials: 'include' })
- if (!resp.ok) throw new Error(`Export failed (${resp.status})`)
- const blob = await resp.blob()
- const url = URL.createObjectURL(blob)
- const a = document.createElement('a')
- a.href = url
- a.download = exportAsOf ? `Vesting_${exportAsOf}.xlsx` : 'Vesting.xlsx'
- a.click()
- URL.revokeObjectURL(url)
+ const blob = await apiFetchBlob(`/api/export/excel${qs}`, 'Export failed')
+ await platform.files.saveBlob(blob, exportAsOf ? `Vesting_${exportAsOf}.xlsx` : 'Vesting.xlsx')
  setStatus('idle')
  } catch (e: unknown) {
  setError(e instanceof Error ? e.message : 'Export failed')
@@ -132,15 +122,8 @@ export default function ImportExport() {
 
  async function handleTemplateDownload() {
  try {
- const resp = await fetch('/api/import/template', { credentials: 'include' })
- if (!resp.ok) throw new Error(`Download failed (${resp.status})`)
- const blob = await resp.blob()
- const url = URL.createObjectURL(blob)
- const a = document.createElement('a')
- a.href = url
- a.download = 'Vesting_Template.xlsx'
- a.click()
- URL.revokeObjectURL(url)
+ const blob = await apiFetchBlob('/api/import/template', 'Download failed')
+ await platform.files.saveBlob(blob, 'Vesting_Template.xlsx')
  } catch (e: unknown) {
  setError(e instanceof Error ? e.message : 'Template download failed')
  setStatus('error')
@@ -149,15 +132,8 @@ export default function ImportExport() {
 
  async function handleSampleDownload() {
  try {
- const resp = await fetch('/api/import/sample', { credentials: 'include' })
- if (!resp.ok) throw new Error(`Download failed (${resp.status})`)
- const blob = await resp.blob()
- const url = URL.createObjectURL(blob)
- const a = document.createElement('a')
- a.href = url
- a.download = 'Vesting_Sample.xlsx'
- a.click()
- URL.revokeObjectURL(url)
+ const blob = await apiFetchBlob('/api/import/sample', 'Download failed')
+ await platform.files.saveBlob(blob, 'Vesting_Sample.xlsx')
  } catch (e: unknown) {
  setError(e instanceof Error ? e.message : 'Sample download failed')
  setStatus('error')

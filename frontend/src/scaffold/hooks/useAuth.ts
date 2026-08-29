@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
-import { isLoggedIn } from '../../api.ts'
+import { apiFetchRaw, isLoggedIn } from '../../api.ts'
+import { platform } from '../../platform/index.ts'
 import { resetMeCache } from './useMe.ts'
 import { resetConfigCache } from './useConfig.ts'
 
@@ -18,16 +19,18 @@ export function useAuth() {
 
   const logout = useCallback(async () => {
     clearLocalSessionState()
-    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {})
+    await apiFetchRaw('/api/auth/logout', { method: 'POST' }).catch(() => {})
+    await platform.auth.clearSession()
     setAuthenticated(false)
-    window.location.href = '/login'
+    platform.auth.onUnauthorized()
   }, [])
 
   const logoutEverywhere = useCallback(async () => {
     clearLocalSessionState()
-    await fetch('/api/auth/logout-everywhere', { method: 'POST', credentials: 'include' }).catch(() => {})
+    await apiFetchRaw('/api/auth/logout-everywhere', { method: 'POST' }).catch(() => {})
+    await platform.auth.clearSession()
     setAuthenticated(false)
-    window.location.href = '/login'
+    platform.auth.onUnauthorized()
   }, [])
 
   return { isAuthenticated: authenticated, logout, logoutEverywhere }

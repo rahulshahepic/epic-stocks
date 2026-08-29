@@ -2,28 +2,11 @@ import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth.ts'
 import { api } from '../../api.ts'
+import { startLogin } from '../oidc.ts'
 import { useAppContext } from '../contexts/AppContext.tsx'
 import { HeroIllustration } from '../components/ui/icons.tsx'
 import { IconTile, Card, Eyebrow } from '../components/ui/Card.tsx'
 import { IconTrendUp, IconCompass, IconShield } from '../components/ui/icons.tsx'
-
-function generateCodeVerifier(): string {
- const array = new Uint8Array(64)
- crypto.getRandomValues(array)
- return btoa(String.fromCharCode(...array))
- .replace(/\+/g, '-')
- .replace(/\//g, '_')
- .replace(/=/g, '')
-}
-
-async function generateCodeChallenge(verifier: string): Promise<string> {
- const data = new TextEncoder().encode(verifier)
- const digest = await crypto.subtle.digest('SHA-256', data)
- return btoa(String.fromCharCode(...new Uint8Array(digest)))
- .replace(/\+/g, '-')
- .replace(/\//g, '_')
- .replace(/=/g, '')
-}
 
 const FEATURES = [
  {
@@ -77,17 +60,7 @@ export default function Login() {
  setLoading(providerName)
  setError(null)
  try {
- const verifier = generateCodeVerifier()
- const challenge = await generateCodeChallenge(verifier)
- const state = crypto.randomUUID()
-
- sessionStorage.setItem('pkce_verifier', verifier)
- sessionStorage.setItem('auth_state', state)
- sessionStorage.setItem('auth_provider', providerName)
-
- const redirectUri = window.location.origin + '/auth/callback'
- const { authorization_url } = await api.getLoginUrl(providerName, challenge, redirectUri, state)
- window.location.href = authorization_url
+ await startLogin(providerName)
  } catch (e) {
  setLoading(null)
  setError(e instanceof Error ? e.message : 'Sign-in failed. Please try again.')

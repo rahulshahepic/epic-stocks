@@ -51,6 +51,11 @@ export default function Layout() {
  Skip to main content
  </a>
 
+ {/* Top chrome in one sticky group. The iOS safe-area inset belongs on the
+ topmost element of the page: while it sat on <header>, every banner
+ rendered above the header — staging, maintenance, viewing — sat
+ underneath the status bar instead of below it. */}
+ <div className="sticky top-0 z-40 bg-cs-surface/90 pt-[env(safe-area-inset-top)] backdrop-blur supports-[backdrop-filter]:bg-cs-surface/75">
  {import.meta.env.VITE_APP_ENV === 'staging' && (
  <div className="flex items-center justify-center gap-2 bg-amber-500 px-4 py-1.5 text-xs font-semibold text-white">
  <span className="h-2 w-2 rounded-full bg-white/60" />
@@ -65,8 +70,6 @@ export default function Layout() {
  </div>
  )}
 
- {!viewing && <PushNudge />}
-
  {viewing && (
  <div className="flex items-center justify-center gap-2 bg-blue-100 px-4 py-1.5 text-xs font-medium text-blue-900 dark:bg-blue-900/30 dark:text-blue-300">
  Viewing {viewing.name}&rsquo;s data (read-only)
@@ -79,7 +82,7 @@ export default function Layout() {
  </div>
  )}
 
- <header className="sticky top-0 z-40 border-b border-cs-border bg-cs-surface/90 pt-[env(safe-area-inset-top)] backdrop-blur supports-[backdrop-filter]:bg-cs-surface/75">
+ <header className="border-b border-cs-border">
  <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
  <span className="flex items-center gap-2 text-sm font-extrabold tracking-tight text-cs-brand">
  <span className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-cs-brand to-cs-brand-hover text-[11px] font-extrabold text-white">
@@ -145,6 +148,9 @@ export default function Layout() {
  ))}
  </nav>
  </header>
+ </div>
+
+ {!viewing && <PushNudge />}
 
  <main
  id="main-content"

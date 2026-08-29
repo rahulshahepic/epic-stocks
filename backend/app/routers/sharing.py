@@ -662,11 +662,11 @@ def _notify_inviter_accepted(inv: Invitation, db: Session):
             return
         invitee = db.get(User, inv.invitee_id) if inv.invitee_id else None
         who = invitee.name or invitee.email if invitee else (inv.invitee_account_email or inv.invitee_email)
-        subject = f"Equity Tracker: {who} accepted your invitation"
+        subject = f"Epic Stocks: {who} accepted your invitation"
         text = f"{who} has accepted your invitation to view your equity data."
         from html import escape as _esc
         html = f"""<div style="font-family: sans-serif; max-width: 480px;">
-  <h2 style="color: #4472C4;">Equity Tracker</h2>
+  <h2 style="color: #4472C4;">Epic Stocks</h2>
   <p><strong>{_esc(who)}</strong> has accepted your invitation to view your equity data.</p>
 </div>"""
 

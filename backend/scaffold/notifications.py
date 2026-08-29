@@ -276,7 +276,7 @@ def send_daily_notifications(today: date | None = None):
                 if viewer_id in email_user_ids:
                     from scaffold.email_sender import send_email, email_configured
                     if email_configured():
-                        send_email(viewer.email, f"Equity Tracker: {owner_str} has events today", body)
+                        send_email(viewer.email, f"Epic Stocks: {owner_str} has events today", body)
         except Exception:
             logger.exception("Error sending shared-data notifications")
 
@@ -308,10 +308,10 @@ def send_admin_new_user_notification(user: User):
 
     safe_email = _html.escape(user.email)
     safe_name = _html.escape(user.name or "N/A")
-    subject = f"Equity Tracker: New user signup — {user.email}"
+    subject = f"Epic Stocks: New user signup — {user.email}"
     text = f"New user registered:\n\nName: {user.name or 'N/A'}\nEmail: {user.email}\n"
     html = f"""<div style="font-family: sans-serif; max-width: 480px;">
-  <h2 style="color: #4472C4;">Equity Tracker — New User</h2>
+  <h2 style="color: #4472C4;">Epic Stocks — New User</h2>
   <p>A new user has registered:</p>
   <table style="border-collapse: collapse;">
     <tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">Name</td><td>{safe_name}</td></tr>
@@ -334,10 +334,10 @@ def send_admin_milestone_notification(total_users: int):
     if not admin_emails:
         return
 
-    subject = f"Equity Tracker: Milestone — {total_users} users!"
-    text = f"Congratulations! Your Equity Tracker instance now has {total_users} registered users."
+    subject = f"Epic Stocks: Milestone — {total_users} users!"
+    text = f"Congratulations! Your Epic Stocks instance now has {total_users} registered users."
     html = f"""<div style="font-family: sans-serif; max-width: 480px;">
-  <h2 style="color: #4472C4;">Equity Tracker — Milestone</h2>
+  <h2 style="color: #4472C4;">Epic Stocks — Milestone</h2>
   <p>Your instance now has <strong>{total_users}</strong> registered users!</p>
 </div>"""
 
@@ -393,7 +393,7 @@ def send_admin_daily_digest():
         total_loans = db.query(func.count(Loan.id)).scalar()
         total_prices = db.query(func.count(Price.id)).scalar()
 
-        subject = f"Equity Tracker: Daily digest — {total_users} users"
+        subject = f"Epic Stocks: Daily digest — {total_users} users"
         text = (
             f"Daily System Digest\n\n"
             f"Total users: {total_users}\n"
@@ -404,7 +404,7 @@ def send_admin_daily_digest():
             f"Total prices: {total_prices}\n"
         )
         html = f"""<div style="font-family: sans-serif; max-width: 480px;">
-  <h2 style="color: #4472C4;">Equity Tracker — Daily Digest</h2>
+  <h2 style="color: #4472C4;">Epic Stocks — Daily Digest</h2>
   <table style="border-collapse: collapse;">
     <tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">Total users</td><td>{total_users}</td></tr>
     <tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">New signups (24h)</td><td>{new_signups}</td></tr>

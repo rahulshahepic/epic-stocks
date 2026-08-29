@@ -165,7 +165,7 @@ These are the only values that need to be set in GitHub. Cryptographic secrets (
 | `VPS_HOST` | Variable | VPS hostname or IP |
 | `DOMAIN` | Variable | Your domain name |
 | `TRUSTED_PROXY_IPS` | Variable | Cloudflare IP ranges for real-IP forwarding |
-| `APP_ENV` | Variable | Set to `staging` in the staging GitHub environment to enable staging visual identity (amber icon, "Equity Tracker (Staging)" PWA name, amber header banner). Omit or set to `production` for production — defaults to `production` if absent. |
+| `APP_ENV` | Variable | Set to `staging` in the staging GitHub environment to enable staging visual identity (amber icon, "Epic Stocks (Staging)" PWA name, amber header banner). Omit or set to `production` for production — defaults to `production` if absent. |
 
 
 ### Multi-app network

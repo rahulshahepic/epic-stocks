@@ -25,12 +25,31 @@ function renderLogin() {
 describe('Login page', () => {
   it('renders the app title', () => {
     renderLogin()
-    expect(screen.getByText('Equity Tracker')).toBeInTheDocument()
+    expect(screen.getByText('Epic Stocks')).toBeInTheDocument()
   })
 
-  it('renders sign-in subtitle', () => {
+  it('says who the app is for', () => {
     renderLogin()
-    expect(screen.getByText(/sign in to manage/i)).toBeInTheDocument()
+    expect(screen.getByText(/for Epic employees tracking their own equity/i)).toBeInTheDocument()
+  })
+
+  it('badges the name as unofficial, so it never appears bare', () => {
+    renderLogin()
+    expect(screen.getByText('Unofficial')).toBeInTheDocument()
+  })
+
+  it('states that this is not an Epic site before sign-in', () => {
+    renderLogin()
+    expect(screen.getByText(/this is not an Epic site/i)).toBeInTheDocument()
+    expect(
+      screen.getByText(/not built, endorsed, or supported by Epic Systems Corporation/i)
+    ).toBeInTheDocument()
+  })
+
+  it('says the figures are estimates, not official Epic records', () => {
+    renderLogin()
+    expect(screen.getByText(/official grant, loan, and share-price records are the ones Epic gives/i))
+      .toBeInTheDocument()
   })
 
   it('shows provider buttons when providers are loaded', async () => {

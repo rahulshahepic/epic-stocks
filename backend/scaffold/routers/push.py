@@ -111,7 +111,7 @@ def push_test(user: User = Depends(get_current_user), db: Session = Depends(get_
     subs = db.query(PushSubscription).filter(PushSubscription.user_id == user.id).all()
     if not subs:
         raise HTTPException(status_code=404, detail="No push subscriptions found. Enable push notifications first.")
-    payload = {"title": "Equity Tracker", "body": "Test notification — push is working!", "data": {"url": "/settings"}}
+    payload = {"title": "Epic Stocks", "body": "Test notification — push is working!", "data": {"url": "/settings"}}
     from scaffold.notifications import PushResult
     sent = 0
     for sub in subs:

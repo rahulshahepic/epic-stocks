@@ -113,3 +113,20 @@ describe('Layout top chrome', () => {
     }
   })
 })
+
+describe('Layout footer', () => {
+  it('carries the not-affiliated line alongside the privacy link', async () => {
+    renderLayout()
+    expect(
+      await screen.findByText(/not affiliated with or endorsed by Epic Systems Corporation/i)
+    ).toBeInTheDocument()
+  })
+})
+
+describe('Layout wordmark', () => {
+  it('badges the app name as unofficial in the header', async () => {
+    renderLayout()
+    expect(await screen.findByText('Epic Stocks')).toBeInTheDocument()
+    expect(screen.getByText('Unofficial')).toBeInTheDocument()
+  })
+})

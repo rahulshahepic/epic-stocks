@@ -1,6 +1,25 @@
-# Equity Vesting Tracker
+# Epic Stocks (Unofficial)
 
-A mobile-first web app for tracking equity compensation — grants, vesting schedules, stock loans, share price history, and estimated tax impact over time. Built as a PWA so it works on any device, including your phone.
+A mobile-first web app for Epic employees to track their own equity compensation — grants, vesting schedules, stock loans, share price history, and estimated tax impact over time. Built as a PWA so it works on any device, including your phone.
+
+> **⚠️ Unofficial — this is not an Epic site.** Epic Stocks is an independent, personal
+> project. It is not built, endorsed, or supported by Epic Systems Corporation, and Epic is
+> not responsible for it. The name describes whose equity it tracks, not who makes it.
+>
+> Every figure it shows is an estimate computed from data you entered or imported yourself.
+> **Your official grant, loan, and share-price records are the ones Epic gives you — not these.**
+>
+> The app carries this itself, in three places, and none of them are optional:
+> 1. An **"Unofficial" badge beside the name** everywhere the name appears — header, login,
+>    invitation landing, unsubscribe page — so the name is never shown bare.
+> 2. The **full notice** on every page reachable before signing in (login, invitation
+>    landing, privacy policy), above the sign-in buttons, plus a one-line version in the
+>    signed-in footer.
+> 3. A **plain-language disclaimer in every user-facing email** — invitations especially,
+>    since an invite is a cold message asking someone to click a link and sign in with a
+>    work account, which is the shape of a phishing mail.
+>
+> If you fork or rename this, see [Renaming and the affiliation disclaimer](#renaming-and-the-affiliation-disclaimer).
 
 > **Epic campus deployment:** This app has an **Epic Mode** designed for deployment on Epic's internal campus network, which changes several behaviors (read-only historical data, Request Payoff flow, cache-invalidation webhook, Epic-specific env vars and admin controls). See **[EPIC_DEPLOYMENT.md](EPIC_DEPLOYMENT.md)** for details.
 
@@ -619,7 +638,7 @@ The backend creates `data/vesting.db` (SQLite) automatically on first run. The d
 | `VAPID_PRIVATE_KEY` | No | Required for push notifications. **Auto-generated on production deploy.** |
 | `EMAIL_PROVIDER` | No | `resend` (default) or `smtp` |
 | `RESEND_API_KEY` | No | Enables email notifications via Resend |
-| `RESEND_FROM` | No | Sender address for emails (e.g. `Equity Tracker <noreply@yourdomain.com>`) |
+| `RESEND_FROM` | No | Sender address for emails (e.g. `Epic Stocks <noreply@yourdomain.com>`) |
 | `SMTP_HOST` | No | SMTP server hostname (when `EMAIL_PROVIDER=smtp`) |
 | `SMTP_PORT` | No | SMTP port, default 587 |
 | `SMTP_USER` | No | SMTP username |
@@ -629,7 +648,7 @@ The backend creates `data/vesting.db` (SQLite) automatically on first run. The d
 | `ACME_EMAIL` | No (prod) | Email for Let's Encrypt certificate expiry notifications. Set as a GitHub Actions variable. |
 | `TRUSTED_PROXY_IPS` | No (prod) | Cloudflare IP ranges passed to Caddy for real-IP forwarding. Set as a GitHub Actions variable. |
 | `COMMIT_SHA` | No | Git commit SHA injected at Docker build time. Displayed as a 7-char short hash at the bottom of Admin and Settings pages. **Set automatically by the deploy workflow.** |
-| `APP_ENV` | No | Set to `staging` in the GitHub staging environment Variables tab to enable staging-specific UI: amber icon, PWA name "Equity Tracker (Staging)", and a persistent amber header banner. Defaults to `production` (no change). Injected as a Docker build arg at deploy time. |
+| `APP_ENV` | No | Set to `staging` in the GitHub staging environment Variables tab to enable staging-specific UI: amber icon, PWA name "Epic Stocks (Staging)", and a persistent amber header banner. Defaults to `production` (no change). Injected as a Docker build arg at deploy time. |
 
 ---
 
@@ -869,7 +888,7 @@ epic-stocks/
 │   │   ├── scaffold/        # Reusable UI layer (keep when forking)
 │   │   │   ├── oidc.ts      # Shared OIDC PKCE start/complete (used by Login + InviteLanding)
 │   │   │   ├── pages/       # Login, AuthCallback, Admin, Settings, PrivacyPolicy, InviteLanding, Unsubscribe
-│   │   │   ├── components/  # Layout shell, Toast
+│   │   │   ├── components/  # Layout shell, Toast, DisclaimerNotice + UnofficialBadge (affiliation notices)
 │   │   │   ├── contexts/    # ThemeContext, MaintenanceContext, ViewingContext, AppContext (injection interface)
 │   │   │   └── hooks/       # useAuth, useConfig, useDark, usePush, useMe
 │   │   ├── app/             # Equity tracking UI (replace when forking)
@@ -878,7 +897,7 @@ epic-stocks/
 │   │   │   ├── epicImport.ts # Client for the Epic importer endpoints
 │   │   │   ├── refiInference.ts # How far down a refinance chain a loan's rate says it got
 │   │   │   ├── hooks/       # useApiData, useDataSync, useContent
-│   │   │   └── AppProvider.tsx  # Injects app name, nav items, notify templates, privacy content into scaffold
+│   │   │   └── AppProvider.tsx  # Injects app name + unofficial badge, affiliation disclaimer, nav items, notify templates, privacy content into scaffold
 │   │   ├── App.tsx          # Router + layout wiring
 │   │   └── __tests__/       # Vitest tests
 │   ├── public/
@@ -1053,6 +1072,26 @@ This application stores sensitive financial data. Read **[PRIVACY.md](PRIVACY.md
 - **Data portability** — users can export all their data to Excel at any time.
 
 If you run an instance for others: use HTTPS, set `KEY_ENCRYPTION_KEY`, and keep your secrets safe. See **[OPERATIONS.md](OPERATIONS.md)** for the full security and ops checklist, including Cloudflare setup, SSH hardening, and VPS firewall rules.
+
+#### Renaming and the affiliation disclaimer
+
+The name and the disclaimer are app-level copy, not scaffold — nothing in `scaffold/`
+hard-codes either. Five strings in `frontend/src/app/AppProvider.tsx` carry them:
+
+| Field | Feeds |
+|-------|-------|
+| `appName` | Header wordmark, login and invitation headings, `<title>` (mirror it in `frontend/index.html` and `frontend/public/manifest.json`) |
+| `appNameBadge` | The `UnofficialBadge` pill beside the name, everywhere the name appears |
+| `appDisclaimerTitle`, `appDisclaimerBody` | The `DisclaimerNotice` block on the pre-login pages |
+| `appDisclaimerShort` | The one-line version in the signed-in footer |
+
+`APP_DISCLAIMER` in `backend/scaffold/email_sender.py` is the email copy. Setting
+`appNameBadge` or `appDisclaimerBody` to `undefined` renders that element nowhere.
+
+**Keep both if your fork is named after an employer, or reads as belonging to one.** A
+name like this one is the thing that creates the confusion, so the disclaimer is not a
+footnote — it is why the name is safe to use. The badge exists so the name cannot appear
+without it.
 
 The built-in privacy page (`/privacy`) lists the third-party services used by the reference deployment. If you use different infrastructure or identity providers, update the `privacyDataCollected` and `privacyThirdParties` props in `frontend/src/app/AppProvider.tsx` — no scaffold files need to change.
 

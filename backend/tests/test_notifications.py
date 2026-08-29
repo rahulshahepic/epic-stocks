@@ -98,7 +98,7 @@ def test_send_email_success():
     from scaffold.email_sender import send_email
     with patch.dict(os.environ, {
         "RESEND_API_KEY": "re_test_key",
-        "RESEND_FROM": "Equity Tracker <noreply@test.com>",
+        "RESEND_FROM": "Epic Stocks <noreply@test.com>",
     }):
         mock_response = MagicMock()
         mock_response.status_code = 200

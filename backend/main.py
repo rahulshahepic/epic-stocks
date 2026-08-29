@@ -7,6 +7,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from sqlalchemy.orm import Session
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import FileResponse
 import database
 
@@ -670,19 +671,55 @@ def delete_my_account(user=Depends(get_current_user), db: Session = Depends(get_
     db.commit()
 
 
+_STATIC_ROOT = STATIC_DIR.resolve()
+
+
+def spa_fallback(path: str):
+    """Serve a static file, else index.html so client-side routes deep-link.
+
+    Defined unconditionally (and registered below only in production, where the
+    build exists) so its behaviour stays testable without a built frontend.
+    """
+    # An /api path that reached the catch-all matched no router, so it does not
+    # exist. Serving index.html for it would answer a mistyped endpoint with
+    # 200 and an HTML body, which is a confusing way to debug a client.
+    if path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="Not found")
+    file = (STATIC_DIR / path).resolve()
+    if file.is_file() and str(file).startswith(str(_STATIC_ROOT) + os.sep):
+        return FileResponse(file)
+    return FileResponse(STATIC_DIR / "index.html")
+
+
 # Serve React build if the static directory exists (production)
 if STATIC_DIR.is_dir():
     _fastapi_app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
-
-    _STATIC_ROOT = STATIC_DIR.resolve()
-
-    @_fastapi_app.get("/{path:path}")
-    def spa_fallback(path: str):
-        file = (STATIC_DIR / path).resolve()
-        if file.is_file() and str(file).startswith(str(_STATIC_ROOT) + os.sep):
-            return FileResponse(file)
-        return FileResponse(STATIC_DIR / "index.html")
+    _fastapi_app.get("/{path:path}")(spa_fallback)
 
 
-# Wrap FastAPI app: maintenance check outermost, then epic-mode guard, then encryption
-app = MaintenanceMiddleware(EpicModeMiddleware(EncryptionMiddleware(_fastapi_app)))
+# Origins the native shells load their bundle from. A WebView serves the app
+# from a local origin rather than from this server, so its requests are
+# cross-origin and need CORS; these strings come from capacitor.config.ts in
+# this repo, not from the deployment, which is why they are constants and not
+# env vars. The PWA is deliberately absent: it is served from the same origin
+# as the API, so it never reaches CORS at all.
+NATIVE_APP_ORIGINS = [
+    "capacitor://localhost",  # iOS (WKWebView)
+    "https://localhost",      # Android
+]
+
+# Wrap FastAPI app: CORS outermost so preflights are answered and CORS headers
+# reach even the early responses from the maintenance and epic-mode guards —
+# without them a native client sees an opaque network error instead of the
+# actual status. Then maintenance check, epic-mode guard, and encryption.
+#
+# allow_credentials stays False: native clients authenticate with a Bearer
+# token, never a cookie, so there is no reason to let a cross-origin caller
+# send or receive credentials.
+app = CORSMiddleware(
+    MaintenanceMiddleware(EpicModeMiddleware(EncryptionMiddleware(_fastapi_app))),
+    allow_origins=NATIVE_APP_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+)

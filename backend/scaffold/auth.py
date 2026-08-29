@@ -117,8 +117,25 @@ def clear_session_cookies(response) -> None:
 
 
 def _token_from_request(request: Request) -> str | None:
-    """Extract JWT from the HttpOnly session cookie — the only supported auth mechanism."""
-    return request.cookies.get("session")
+    """Extract the JWT from the session cookie, or an Authorization: Bearer header.
+
+    The cookie is the web path and keeps precedence: it is HttpOnly, so script
+    on the page cannot read it, which is the stronger option wherever cookies
+    work at all. A native shell cannot use it — its WebView origin is not the
+    server's, so the cookie is never attached — and presents a Bearer token
+    instead. The browser never sends that header, so this does not change any
+    existing request.
+    """
+    cookie_token = request.cookies.get("session")
+    if cookie_token:
+        return cookie_token
+
+    header = request.headers.get("Authorization", "")
+    scheme, _, credential = header.partition(" ")
+    if scheme.lower() == "bearer" and credential.strip():
+        return credential.strip()
+
+    return None
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:

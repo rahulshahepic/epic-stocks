@@ -6,6 +6,7 @@ import { useMaintenance } from '../contexts/MaintenanceContext.tsx'
 import { useConfig } from '../hooks/useConfig.ts'
 import { useViewing } from '../contexts/ViewingContext.tsx'
 import { useAppContext } from '../contexts/AppContext.tsx'
+import PushNudge from './PushNudge.tsx'
 
 export default function Layout() {
  const { logout } = useAuth()
@@ -63,6 +64,8 @@ export default function Layout() {
  Maintenance in progress — financial data is temporarily unavailable
  </div>
  )}
+
+ {!viewing && <PushNudge />}
 
  {viewing && (
  <div className="flex items-center justify-center gap-2 bg-blue-100 px-4 py-1.5 text-xs font-medium text-blue-900 dark:bg-blue-900/30 dark:text-blue-300">

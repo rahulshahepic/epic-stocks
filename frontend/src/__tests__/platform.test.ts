@@ -90,8 +90,38 @@ describe('web platform — files', () => {
 })
 
 describe('web platform — push', () => {
+  afterEach(() => {
+    // @ts-expect-error restoring the global between cases
+    delete window.Notification
+  })
+
   it('is unsupported when the browser lacks PushManager', () => {
     // jsdom provides neither serviceWorker nor PushManager.
     expect(webPlatform.push.supported).toBe(false)
+  })
+
+  it('reports unsupported permission when there is no Notification API', () => {
+    // This is iOS Safari in a tab, where push cannot work at all.
+    expect(webPlatform.push.permission()).toBe('unsupported')
+  })
+
+  it.each(['default', 'granted', 'denied'] as const)('reads %s permission without prompting', p => {
+    const requestPermission = vi.fn()
+    Object.defineProperty(window, 'Notification', {
+      value: Object.assign(class {}, { permission: p, requestPermission }),
+      writable: true,
+      configurable: true,
+    })
+
+    expect(webPlatform.push.permission()).toBe(p)
+    expect(requestPermission).not.toHaveBeenCalled()
+  })
+
+  it('detects an installed app from navigator.standalone', () => {
+    Object.defineProperty(navigator, 'standalone', { value: true, writable: true, configurable: true })
+    expect(webPlatform.push.isInstalled()).toBe(true)
+
+    Object.defineProperty(navigator, 'standalone', { value: false, writable: true, configurable: true })
+    expect(webPlatform.push.isInstalled()).toBe(false)
   })
 })

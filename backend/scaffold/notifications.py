@@ -1,6 +1,7 @@
 """Notification logic — daily check for today's events, send push + email per user."""
 import html as _html
 import json
+from enum import Enum
 import logging
 import os
 from collections import Counter
@@ -93,10 +94,24 @@ def build_notification_payload(events: list[dict], target_date: date | None = No
     return payload
 
 
-def send_push(subscription: PushSubscription, payload: dict) -> bool:
+class PushResult(str, Enum):
+    """Outcome of one push send.
+
+    GONE is the only outcome that justifies deleting a subscription. Treating
+    every failure as GONE meant a single timeout, a 500 from the push service,
+    or a missing VAPID key silently unsubscribed the device for good — and in
+    the missing-key case, every device of every user in one pass.
+    """
+
+    SENT = "sent"
+    FAILED = "failed"   # transient — keep the subscription and try again next time
+    GONE = "gone"       # the push service says this subscription no longer exists
+
+
+def send_push(subscription: PushSubscription, payload: dict) -> PushResult:
     if not VAPID_PRIVATE_KEY:
         logger.warning("VAPID_PRIVATE_KEY not set, skipping push")
-        return False
+        return PushResult.FAILED
     try:
         from pywebpush import webpush, WebPushException
 
@@ -111,15 +126,16 @@ def send_push(subscription: PushSubscription, payload: dict) -> bool:
             ttl=86400,
             timeout=10,
         )
-        return True
+        return PushResult.SENT
     except WebPushException as e:
         status = getattr(e.response, "status_code", None)
-        if status not in (404, 410):
-            logger.exception("Failed to send push notification")
-        return False  # 404/410 means the subscription expired; anything else is also treated as failed
+        if status in (404, 410):
+            return PushResult.GONE
+        logger.exception("Failed to send push notification (status=%s)", status)
+        return PushResult.FAILED
     except Exception:
         logger.exception("Failed to send push notification")
-        return False
+        return PushResult.FAILED
 
 
 def _already_notified_today(user: User, today: date) -> bool:
@@ -176,8 +192,7 @@ def send_daily_notifications(today: date | None = None):
                 if payload:
                     subs = db.query(PushSubscription).filter(PushSubscription.user_id == user.id).all()
                     for sub in subs:
-                        ok = send_push(sub, payload)
-                        if not ok:
+                        if send_push(sub, payload) is PushResult.GONE:
                             db.delete(sub)
 
             # Email notifications
@@ -255,8 +270,7 @@ def send_daily_notifications(today: date | None = None):
                 if viewer_id in push_user_ids:
                     subs = db.query(PushSubscription).filter(PushSubscription.user_id == viewer_id).all()
                     for sub in subs:
-                        ok = send_push(sub, payload)
-                        if not ok:
+                        if send_push(sub, payload) is PushResult.GONE:
                             db.delete(sub)
 
                 if viewer_id in email_user_ids:

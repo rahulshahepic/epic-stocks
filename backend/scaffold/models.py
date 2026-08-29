@@ -32,6 +32,12 @@ class User(Base):
     retirement_params: Mapped[dict | None] = mapped_column(EncryptedJSON, nullable=True, deferred=True)
     # Per-year salary/bonus entries for total comp calculator. Keys are year strings.
     comp_entries: Mapped[dict | None] = mapped_column(EncryptedJSON, nullable=True, deferred=True)
+    # Whether this person wants push where their devices allow it. This is
+    # intent only, never state: a subscription can only be created by a device,
+    # after that device grants permission, so a user-level flag can never mean
+    # "push is on". It exists to decide whether to offer push on a device that
+    # has not been asked yet.
+    notify_push_intent: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     # Owner's saved dashboard view preferences (date mode / specific date / range).
     # Plain JSON — display state only, no financial data.
     dashboard_prefs: Mapped[dict | None] = mapped_column(JSON, nullable=True)

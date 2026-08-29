@@ -1,5 +1,6 @@
 import type {
-  AuthPlatform, FilesPlatform, Platform, PushRegistration, PushPlatform, StoragePlatform,
+  AuthPlatform, FilesPlatform, Platform, PushPermission, PushRegistration, PushPlatform,
+  StoragePlatform,
 } from './types.ts'
 
 const AUTH_HINT_COOKIE = 'auth_hint='
@@ -58,10 +59,31 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 
 const push: PushPlatform = {
   get supported() {
+    // Notification is the reliable discriminator on iOS: it is absent in a
+    // Safari tab, where push cannot work however present PushManager looks.
     return typeof navigator !== 'undefined'
       && 'serviceWorker' in navigator
       && typeof window !== 'undefined'
       && 'PushManager' in window
+      && 'Notification' in window
+  },
+  permission: (): PushPermission => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return 'unsupported'
+    try {
+      return Notification.permission
+    } catch {
+      return 'unsupported'
+    }
+  },
+  isInstalled: () => {
+    if (typeof window === 'undefined') return false
+    // iOS exposes navigator.standalone; everyone else answers display-mode.
+    const iosStandalone = (navigator as { standalone?: boolean }).standalone === true
+    try {
+      return iosStandalone || window.matchMedia('(display-mode: standalone)').matches
+    } catch {
+      return iosStandalone
+    }
   },
   register: async (vapidPublicKey: string): Promise<PushRegistration> => {
     const reg = await navigator.serviceWorker.register('/sw.js')

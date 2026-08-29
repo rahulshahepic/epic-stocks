@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { apiFetchRaw } from '../../api.ts'
 
 interface AppConfig {
   vapid_public_key: string
@@ -23,7 +24,7 @@ export function resetConfigCache() {
 
 function fetchConfig(): Promise<AppConfig> {
   if (inflight) return inflight
-  inflight = fetch('/api/config')
+  inflight = apiFetchRaw('/api/config')
     .then(r => r.json())
     .then(data => ({
       vapid_public_key: data.vapid_public_key || '',

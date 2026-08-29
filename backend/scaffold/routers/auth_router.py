@@ -131,6 +131,11 @@ class CallbackRequest(BaseModel):
     code: str
     code_verifier: str
     redirect_uri: str
+    # Cookie-less clients (a native shell, whose WebView origin is not the
+    # server's) ask for the JWT in the response body instead. Opting in rather
+    # than always returning it keeps the token out of reach of script on the
+    # web app, which has the HttpOnly cookie and never needs to read one.
+    return_token: bool = False
 
 
 @router.post("/callback")
@@ -151,6 +156,8 @@ def auth_callback(body: CallbackRequest, request: Request, response: Response, d
     user = _upsert_user(identity, db)
     token = create_token(user.id, user.session_version)
     set_session_cookies(response, token)
+    if body.return_token:
+        return {"ok": True, "access_token": token}
     return {"ok": True}
 
 

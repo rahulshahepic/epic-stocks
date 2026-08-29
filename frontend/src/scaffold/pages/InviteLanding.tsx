@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api, isLoggedIn } from '../../api.ts'
 import type { InviteInfoResult } from '../../api.ts'
+import { startLogin } from '../oidc.ts'
+import { platform } from '../../platform/index.ts'
 
 export default function InviteLanding() {
  const navigate = useNavigate()
@@ -51,8 +53,8 @@ export default function InviteLanding() {
  // If not logged in, store token and show login options
  useEffect(() => {
  if (info?.valid && !isLoggedIn()) {
- if (token) sessionStorage.setItem('invite_token', token)
- else if (code) sessionStorage.setItem('invite_code', code)
+ if (token) void platform.storage.set('invite_token', token)
+ else if (code) void platform.storage.set('invite_code', code)
  api.getProviders().then(setProviders).catch(() => setProviders([]))
  }
  }, [info, token, code])
@@ -60,23 +62,7 @@ export default function InviteLanding() {
  async function handleSignIn(providerName: string) {
  setLoading(true)
  try {
- const array = new Uint8Array(64)
- crypto.getRandomValues(array)
- const verifier = btoa(String.fromCharCode(...array))
- .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
- const data = new TextEncoder().encode(verifier)
- const digest = await crypto.subtle.digest('SHA-256', data)
- const challenge = btoa(String.fromCharCode(...new Uint8Array(digest)))
- .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
- const state = crypto.randomUUID()
-
- sessionStorage.setItem('pkce_verifier', verifier)
- sessionStorage.setItem('auth_state', state)
- sessionStorage.setItem('auth_provider', providerName)
-
- const redirectUri = window.location.origin + '/auth/callback'
- const { authorization_url } = await api.getLoginUrl(providerName, challenge, redirectUri, state)
- window.location.href = authorization_url
+ await startLogin(providerName)
  } catch {
  setLoading(false)
  setError('Sign-in failed. Please try again.')

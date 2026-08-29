@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { apiFetchRaw } from '../../api.ts'
 
 interface UnsubscribeStatus {
  valid: boolean
@@ -28,7 +29,7 @@ export default function Unsubscribe() {
  setLoading(false)
  return
  }
- fetch(`/api/unsubscribe?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}&type=${encodeURIComponent(type)}`)
+ apiFetchRaw(`/api/unsubscribe?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}&type=${encodeURIComponent(type)}`)
  .then(r => r.json())
  .then((data: UnsubscribeStatus) => {
  setStatus(data)
@@ -36,7 +37,7 @@ export default function Unsubscribe() {
  if (!data.valid) {
  // Token expired — check if the user is already logged in so we can
  // offer a one-click authenticated unsubscribe instead.
- fetch('/api/me').then(r => setIsLoggedIn(r.ok)).catch(() => setIsLoggedIn(false))
+ apiFetchRaw('/api/me').then(r => setIsLoggedIn(r.ok)).catch(() => setIsLoggedIn(false))
  }
  })
  .catch(() => setError('Could not verify unsubscribe link.'))
@@ -47,9 +48,8 @@ export default function Unsubscribe() {
  setProcessing(true)
  setError(null)
  try {
- const resp = await fetch('/api/unsubscribe', {
+ const resp = await apiFetchRaw('/api/unsubscribe', {
  method: 'POST',
- headers: { 'Content-Type': 'application/json' },
  body: JSON.stringify({ token, email, type }),
  })
  if (!resp.ok) {
@@ -68,7 +68,7 @@ export default function Unsubscribe() {
  setProcessing(true)
  setError(null)
  try {
- const resp = await fetch(`/api/unsubscribe/self?type=${encodeURIComponent(type)}`, {
+ const resp = await apiFetchRaw(`/api/unsubscribe/self?type=${encodeURIComponent(type)}`, {
  method: 'POST',
  })
  if (!resp.ok) {

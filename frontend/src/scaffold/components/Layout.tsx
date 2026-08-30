@@ -175,7 +175,7 @@ export default function Layout() {
  Privacy Policy
  </Link>
  {appDisclaimerShort && (
- <p className="mx-auto mt-2 max-w-md text-cs-muted">{appDisclaimerShort}</p>
+ <p className="mx-auto mt-2 max-w-md">{appDisclaimerShort}</p>
  )}
  </footer>
  </div>

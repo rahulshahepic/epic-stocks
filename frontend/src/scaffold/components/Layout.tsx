@@ -7,6 +7,7 @@ import { useConfig } from '../hooks/useConfig.ts'
 import { useViewing } from '../contexts/ViewingContext.tsx'
 import { useAppContext } from '../contexts/AppContext.tsx'
 import PushNudge from './PushNudge.tsx'
+import UnofficialBadge from './UnofficialBadge.tsx'
 
 export default function Layout() {
  const { logout } = useAuth()
@@ -14,7 +15,7 @@ export default function Layout() {
  const maintenance = useMaintenance()
  const config = useConfig()
  const { viewing, setViewing, clearViewing } = useViewing()
- const { appName, navItems: appNavItems, viewerHiddenRoutes, epicModeHiddenRoutes } = useAppContext()
+ const { appName, appDisclaimerShort, navItems: appNavItems, viewerHiddenRoutes, epicModeHiddenRoutes } = useAppContext()
  const epicMode = config?.epic_mode ?? false
  const baseItems = epicMode
  ? [...appNavItems.filter(item => !epicModeHiddenRoutes.has(item.to)), { to: '/settings', label: 'Settings' }]
@@ -83,14 +84,19 @@ export default function Layout() {
  )}
 
  <header className="border-b border-cs-border">
- <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
- <span className="flex items-center gap-2 text-sm font-extrabold tracking-tight text-cs-brand">
- <span className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-cs-brand to-cs-brand-hover text-[11px] font-extrabold text-white">
+ <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
+ <span className="flex min-w-0 shrink items-center gap-2 text-sm font-extrabold tracking-tight text-cs-brand">
+ <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-cs-brand to-cs-brand-hover text-[11px] font-extrabold text-white">
  E
  </span>
- {appName}
+ {/* Badge sits under the name rather than beside it: side by side, the two
+ push the account controls off a 375px viewport. */}
+ <span className="flex min-w-0 flex-col items-start leading-tight">
+ <span className="truncate">{appName}</span>
+ <UnofficialBadge className="mt-0.5" />
  </span>
- <div className="flex items-center gap-3">
+ </span>
+ <div className="flex min-w-0 shrink items-center gap-2">
  {sharedAccounts.length > 0 && (
  <select
  value={viewing?.invitationId ?? ''}
@@ -103,7 +109,7 @@ export default function Layout() {
  if (acct) setViewing(acct.invitation_id, acct.inviter_name)
  }
  }}
- className="rounded border border-cs-border-strong bg-cs-surface px-2 py-1 text-xs text-cs-text"
+ className="min-w-0 max-w-[6.5rem] shrink rounded border border-cs-border-strong bg-cs-surface px-2 py-1 text-xs text-cs-text"
  aria-label="Switch between your data and shared accounts"
  >
  <option value="">My Data</option>
@@ -115,14 +121,14 @@ export default function Layout() {
  </select>
  )}
  {me && (
- <span className="text-xs text-cs-muted">
+ <span className="min-w-0 break-words text-xs text-cs-muted">
  {me.name || me.email}
  </span>
  )}
  <button
  onClick={logout}
  aria-label="Sign out of your account"
- className="text-xs text-cs-text-2 hover:text-cs-text "
+ className="shrink-0 whitespace-nowrap text-xs text-cs-text-2 hover:text-cs-text "
  >
  Sign Out
  </button>
@@ -161,13 +167,16 @@ export default function Layout() {
  <Outlet />
  </main>
 
- <footer className="border-t border-cs-border py-4 text-center text-xs text-cs-text-2">
+ <footer className="border-t border-cs-border px-4 py-4 text-center text-xs text-cs-text-2">
  <Link
  to="/privacy"
  className="underline hover:text-cs-text"
  >
  Privacy Policy
  </Link>
+ {appDisclaimerShort && (
+ <p className="mx-auto mt-2 max-w-md">{appDisclaimerShort}</p>
+ )}
  </footer>
  </div>
  )

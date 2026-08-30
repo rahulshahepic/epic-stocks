@@ -1,4 +1,4 @@
-# Equity Vesting Tracker — Technical Reference
+# Epic Stocks — Technical Reference
 
 ## Data Model
 

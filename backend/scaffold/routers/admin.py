@@ -434,10 +434,10 @@ def admin_test_notify(
             try:
                 from html import escape as _esc
                 url = app_url()
-                link_html = f'<a href="{url}" style="color: #4472C4;">Open Equity Tracker</a>' if url else ""
+                link_html = f'<a href="{url}" style="color: #4472C4;">Open Epic Stocks</a>' if url else ""
                 html_body = (
                     f'<div style="font-family: sans-serif; max-width: 480px;">'
-                    f'<h2 style="color: #4472C4;">Equity Tracker</h2>'
+                    f'<h2 style="color: #4472C4;">Epic Stocks</h2>'
                     f'<h3 style="margin-bottom: 4px;">{_esc(body.title)}</h3>'
                     f'<p style="color: #374151;">{_esc(body.body)}</p>'
                     + (f'<p>{link_html}</p>' if link_html else "")

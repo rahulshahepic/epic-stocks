@@ -10,7 +10,7 @@ function stagingAssetsPlugin(): Plugin {
 
   const stagingManifest = JSON.stringify(
     {
-      name: 'Equity Tracker (Staging)',
+      name: 'Epic Stocks (Staging)',
       short_name: 'Equity β',
       description: 'Track equity vesting, loans, and capital gains',
       start_url: '/',
@@ -41,7 +41,7 @@ function stagingAssetsPlugin(): Plugin {
         // patterns still match the original unversioned hrefs.
         if (isStaging) {
           result = result
-            .replace('<title>Equity Tracker</title>', '<title>Equity Tracker (Staging)</title>')
+            .replace('<title>Epic Stocks (Unofficial)</title>', '<title>Epic Stocks (Staging)</title>')
             .replace('content="Equity"', 'content="Equity β"')
             .replace('href="/apple-touch-icon.png"', 'href="/apple-touch-icon-staging.png"')
         }

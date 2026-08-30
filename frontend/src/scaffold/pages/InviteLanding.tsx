@@ -4,9 +4,13 @@ import { api, isLoggedIn } from '../../api.ts'
 import type { InviteInfoResult } from '../../api.ts'
 import { startLogin } from '../oidc.ts'
 import { platform } from '../../platform/index.ts'
+import DisclaimerNotice from '../components/DisclaimerNotice.tsx'
+import UnofficialBadge from '../components/UnofficialBadge.tsx'
+import { useAppContext } from '../contexts/AppContext.tsx'
 
 export default function InviteLanding() {
  const navigate = useNavigate()
+ const { appName } = useAppContext()
  const [searchParams] = useSearchParams()
  const token = searchParams.get('token')
  const code = searchParams.get('code')
@@ -85,9 +89,12 @@ export default function InviteLanding() {
  return (
  <div className="flex min-h-screen flex-col items-center justify-center bg-cs-base px-4">
  <div className="w-full max-w-sm text-center">
- <h1 className="mb-2 text-2xl font-bold text-cs-brand">
- Equity Vesting Tracker
+ <h1 className="mb-1 text-2xl font-bold text-cs-brand">
+ {appName}
  </h1>
+ <UnofficialBadge className="mb-4" />
+
+ <DisclaimerNotice className="mb-5" />
 
  {error && (
  <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-400">

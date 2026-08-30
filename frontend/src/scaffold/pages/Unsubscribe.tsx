@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { apiFetchRaw } from '../../api.ts'
+import { useAppContext } from '../contexts/AppContext.tsx'
+import UnofficialBadge from '../components/UnofficialBadge.tsx'
 
 interface UnsubscribeStatus {
  valid: boolean
@@ -10,6 +12,7 @@ interface UnsubscribeStatus {
 }
 
 export default function Unsubscribe() {
+ const { appName } = useAppContext()
  const [searchParams] = useSearchParams()
  const token = searchParams.get('token') ?? ''
  const email = searchParams.get('email') ?? ''
@@ -99,9 +102,10 @@ export default function Unsubscribe() {
  return (
  <div className="flex min-h-screen flex-col items-center justify-center bg-cs-base px-4">
  <div className="w-full max-w-sm text-center">
- <h1 className="mb-2 text-2xl font-bold text-cs-brand">
- Equity Vesting Tracker
+ <h1 className="mb-1 text-2xl font-bold text-cs-brand">
+ {appName}
  </h1>
+ <UnofficialBadge className="mb-4" />
 
  {done && (
  <div className="mb-4 rounded-lg bg-green-50 p-4 text-sm text-green-800 dark:bg-green-900/30 dark:text-green-300">

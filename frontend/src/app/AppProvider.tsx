@@ -84,6 +84,36 @@ const PrivacyThirdParties = (
  </>
 )
 
+// ── Affiliation disclaimer ───────────────────────────────────────
+
+// The app is named after an employer that has nothing to do with it, so the
+// name never appears without the badge, and every page reachable before sign-in
+// carries the full notice. People arrive here from an invitation email and are
+// asked to sign in with a work account — they have to be able to tell whose app
+// this is before they do.
+
+const NAME_BADGE = 'Unofficial'
+
+const DISCLAIMER_TITLE = 'Unofficial — this is not an Epic site'
+
+const DISCLAIMER_SHORT =
+ 'An independent project — not affiliated with or endorsed by Epic Systems Corporation.'
+
+const DisclaimerBody = (
+ <>
+ <p>
+ Epic Stocks is an independent, personal project: a tool Epic employees can use to track
+ their own equity. It is not built, endorsed, or supported by Epic Systems Corporation,
+ and Epic is not responsible for it.
+ </p>
+ <p>
+ Every figure here is an estimate, computed from data you entered or imported yourself.
+ Your official grant, loan, and share-price records are the ones Epic gives you — not
+ these.
+ </p>
+ </>
+)
+
 // ── Nav items ─────────────────────────────────────────────────────────────────
 
 const NAV_ITEMS = [
@@ -101,10 +131,10 @@ const NAV_ITEMS = [
 // ── Admin notify templates ────────────────────────────────────────────────────
 
 const NOTIFY_TEMPLATES = {
- custom: { label: 'Custom', title: 'Test from admin', body: 'This is a test notification from the Equity Tracker admin panel.' },
- vesting: { label: 'Vesting event', title: 'Equity Tracker', body: 'You have 1 event today: 1 Vesting' },
- exercise: { label: 'Exercise event', title: 'Equity Tracker', body: 'You have 1 event today: 1 Exercise' },
- loan_repayment:{ label: 'Loan Repayment event', title: 'Equity Tracker', body: 'You have 1 event today: 1 Loan Repayment' },
+ custom: { label: 'Custom', title: 'Test from admin', body: 'This is a test notification from the Epic Stocks admin panel.' },
+ vesting: { label: 'Vesting event', title: 'Epic Stocks', body: 'You have 1 event today: 1 Vesting' },
+ exercise: { label: 'Exercise event', title: 'Epic Stocks', body: 'You have 1 event today: 1 Exercise' },
+ loan_repayment:{ label: 'Loan Repayment event', title: 'Epic Stocks', body: 'You have 1 event today: 1 Loan Repayment' },
 }
 
 // ── Provider ──────────────────────────────────────────────────────────────────
@@ -112,13 +142,17 @@ const NOTIFY_TEMPLATES = {
 export function AppProvider({ children }: { children: React.ReactNode }) {
  return (
  <AppContext.Provider value={{
- appName: 'Equity Tracker',
- appTagline: 'Sign in to manage your equity compensation',
+ appName: 'Epic Stocks',
+ appTagline: 'For Epic employees tracking their own equity — grants, vesting, stock loans, and taxes in one place.',
+ appNameBadge: NAME_BADGE,
+ appDisclaimerTitle: DISCLAIMER_TITLE,
+ appDisclaimerBody: DisclaimerBody,
+ appDisclaimerShort: DISCLAIMER_SHORT,
  navItems: NAV_ITEMS,
  viewerHiddenRoutes: new Set(['/import', '/wizard']),
  epicModeHiddenRoutes: new Set(['/import']),
  settingsSections: <AppSettingsSections />,
- privacyLastUpdated: '2026-05-08',
+ privacyLastUpdated: '2026-08-29',
  privacyDataCollected: PrivacyDataCollected,
  privacyThirdParties: PrivacyThirdParties,
  notifyTemplates: NOTIFY_TEMPLATES,

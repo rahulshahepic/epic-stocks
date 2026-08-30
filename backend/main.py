@@ -480,7 +480,7 @@ class EncryptionMiddleware:
             pass
 
 
-_fastapi_app = FastAPI(title="Equity Vesting Tracker", lifespan=lifespan)
+_fastapi_app = FastAPI(title="Epic Stocks", lifespan=lifespan)
 
 
 def _is_admin_request(request: Request) -> bool:

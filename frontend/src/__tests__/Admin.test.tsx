@@ -245,7 +245,7 @@ describe('Admin', () => {
 
     const titleInput = screen.getByRole('textbox', { name: 'Title' }) as HTMLInputElement
     const bodyInput = screen.getByRole('textbox', { name: 'Body' }) as HTMLTextAreaElement
-    expect(titleInput.value).toBe('Equity Tracker')
+    expect(titleInput.value).toBe('Epic Stocks')
     expect(bodyInput.value).toBe('You have 1 event today: 1 Vesting')
   })
 

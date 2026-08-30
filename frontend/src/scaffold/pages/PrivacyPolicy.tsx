@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useAppContext } from '../contexts/AppContext.tsx'
+import DisclaimerNotice from '../components/DisclaimerNotice.tsx'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
  return (
@@ -46,6 +47,8 @@ export default function PrivacyPolicy() {
  <p className="mb-8 text-xs text-cs-text-2">Last updated: {privacyLastUpdated}</p>
 
  <div className="rounded-lg bg-cs-surface p-6 shadow-sm md:p-8">
+ <DisclaimerNotice className="mb-6" />
+
  <P>
  {appName} is open-source software. This policy explains what data the application
  collects, how it's stored, and who can access it.

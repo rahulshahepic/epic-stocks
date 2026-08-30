@@ -427,6 +427,16 @@ class TestEmailFooters:
             assert "List-Unsubscribe-Post" in hdrs
             assert "One-Click" in hdrs["List-Unsubscribe-Post"]
 
+    def test_invitation_email_disclaims_epic_affiliation(self):
+        """An invite is a cold ask to sign in with a work account. It has to say
+        whose app this is, or it reads as phishing."""
+        with patch.dict(os.environ, {"APP_URL": "https://example.com"}):
+            from scaffold.email_sender import build_invitation_email
+            _, text, html, _ = build_invitation_email("Alice", "tok123", "ABCD-EFGH", "bob@test.com")
+            for body in (text, html):
+                assert "Epic Stocks is an independent, personal project" in body
+                assert "not built, endorsed, or supported by Epic Systems Corporation" in body
+
     def test_event_email_has_unsubscribe(self):
         with patch.dict(os.environ, {"APP_URL": "https://example.com"}):
             from scaffold.email_sender import build_event_email

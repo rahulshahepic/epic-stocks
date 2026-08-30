@@ -5,6 +5,8 @@ import { api } from '../../api.ts'
 import { startLogin } from '../oidc.ts'
 import { useAppContext } from '../contexts/AppContext.tsx'
 import { HeroIllustration } from '../components/ui/icons.tsx'
+import DisclaimerNotice from '../components/DisclaimerNotice.tsx'
+import UnofficialBadge from '../components/UnofficialBadge.tsx'
 import { IconTile, Card, Eyebrow } from '../components/ui/Card.tsx'
 import { IconTrendUp, IconCompass, IconShield } from '../components/ui/icons.tsx'
 
@@ -12,20 +14,20 @@ const FEATURES = [
  {
  icon: <IconTrendUp />,
  tone: 'brand' as const,
- title: 'Real-time tracking',
- body: 'See your equity, loans, and vesting in real time.',
+ title: 'Built around Epic grants',
+ body: 'Purchase, catch-up, free, and bonus grants, plus stock loans and payoffs.',
  },
  {
  icon: <IconCompass />,
  tone: 'amber' as const,
- title: 'Smart projections',
- body: 'Model your future wealth and plan with confidence.',
+ title: 'Plan before you sell',
+ body: 'Project vesting, income, and capital-gains tax on your own numbers.',
  },
  {
  icon: <IconShield />,
  tone: 'emerald' as const,
- title: 'Privacy first',
- body: 'Your data stays private and secure, always.',
+ title: 'Your data, not Epic’s',
+ body: 'You enter or import it, it is encrypted per user, and it is never sold.',
  },
 ]
 
@@ -76,12 +78,15 @@ export default function Login() {
 
  <div className="mt-7 text-center">
  <h1 className="text-3xl font-extrabold tracking-tight text-cs-text">
- Welcome to <span className="text-cs-brand">{appName}</span>
+ <span className="text-cs-brand">{appName}</span>
  </h1>
+ <UnofficialBadge className="mt-2" />
  <p className="mx-auto mt-2 max-w-[26rem] text-sm leading-relaxed text-cs-text-2">
  {appTagline}
  </p>
  </div>
+
+ <DisclaimerNotice className="mt-6" />
 
  <div className="mt-7 space-y-2.5">
  {FEATURES.map(f => (

@@ -1,8 +1,10 @@
 # Privacy Policy
 
-**Last updated:** 2026-05-08
+**Last updated:** 2026-08-29
 
-Equity Vesting Tracker ("Epic Stocks") is open-source software that you or your organization self-host. This policy explains what data the application collects, how it's stored, and who can access it.
+Epic Stocks is open-source software that you or your organization self-host. This policy explains what data the application collects, how it's stored, and who can access it.
+
+**Epic Stocks is an independent, personal project. It is not built, endorsed, or supported by Epic Systems Corporation, and Epic is not responsible for it.** The name describes whose equity the app tracks, not who makes it.
 
 ## We Will Never Sell Your Data
 

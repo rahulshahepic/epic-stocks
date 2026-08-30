@@ -329,6 +329,9 @@ test.describe('Screenshots', () => {
   // Seed plausible portfolio values + DOB so the screenshots reflect a real
   // retirement plan rather than a $237K exit ruining at year 1.
   async function seedRetirement(page: Page) {
+    // The Monte Carlo run below can take well over the 30s per-test default,
+    // which capped the 60s waitForSelector and failed these three outright.
+    test.setTimeout(150_000)
     await page.goto(`${BASE}/retirement`)
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)

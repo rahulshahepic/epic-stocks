@@ -11,6 +11,15 @@ def app_url() -> str:
     return os.getenv("APP_URL", "").rstrip("/")
 
 
+# An invitation email is a cold message asking someone to click a link and sign
+# in with a work account — the exact shape of a phishing mail. Say plainly whose
+# app this is, in every invitation, so the recipient can judge it.
+APP_DISCLAIMER = (
+    "Epic Stocks is an independent, personal project. It is not built, endorsed, "
+    "or supported by Epic Systems Corporation."
+)
+
+
 # ── Unsubscribe token helpers (HMAC-based, stateless) ─────────────────────
 
 def _unsubscribe_secret() -> bytes:
@@ -102,18 +111,19 @@ def build_event_email(events: list[dict], recipient_email: str = "") -> tuple[st
     counts = Counter(e["event_type"] for e in events)
     total = sum(counts.values())
     parts = [f"{count} {etype}" for etype, count in sorted(counts.items())]
-    subject = f"Equity Tracker: {total} event{'s' if total != 1 else ''} today"
+    subject = f"Epic Stocks: {total} event{'s' if total != 1 else ''} today"
     url = app_url()
     link_text = f' <a href="{url}">Log in to view details.</a>' if url else " Log in to view details."
     unsub_text = _unsubscribe_footer_text(recipient_email, "notify") if recipient_email else ""
     unsub_html = _unsubscribe_footer_html(recipient_email, "notify") if recipient_email else ""
     hdrs = list_unsubscribe_headers(recipient_email, "notify") if recipient_email else {}
-    text = f"You have {total} event{'s' if total != 1 else ''} today: {', '.join(parts)}\n\n{'Log in at ' + url if url else 'Log in to view details.'}{unsub_text}"
+    text = f"You have {total} event{'s' if total != 1 else ''} today: {', '.join(parts)}\n\n{'Log in at ' + url if url else 'Log in to view details.'}\n\n{APP_DISCLAIMER}{unsub_text}"
     html = f"""<div style="font-family: sans-serif; max-width: 480px;">
-  <h2 style="color: #4472C4;">Equity Tracker</h2>
+  <h2 style="color: #4472C4;">Epic Stocks</h2>
   <p>You have <strong>{total}</strong> event{'s' if total != 1 else ''} today:</p>
   <ul>{''.join(f'<li>{count} {etype}</li>' for etype, count in sorted(counts.items()))}</ul>
   <p>{link_text.strip()}</p>
+  <p style="font-size:12px;color:#888;">{APP_DISCLAIMER}</p>
   {unsub_html}
 </div>"""
     return subject, text, html, hdrs
@@ -135,7 +145,8 @@ def build_invitation_email(inviter_name: str, token: str, short_code: str, recip
         "You can sign in with any account (Google, Microsoft, etc.) — "
         "it does not need to match this email address.\n"
         "If you don't have an account yet, one will be created when you sign in.\n\n"
-        "If you didn't expect this invitation, you can safely ignore this email."
+        "If you didn't expect this invitation, you can safely ignore this email.\n\n"
+        + APP_DISCLAIMER
         + unsub_text
     )
     btn = (
@@ -144,7 +155,7 @@ def build_invitation_email(inviter_name: str, token: str, short_code: str, recip
     ) if link else ""
     safe_name = _esc(inviter_name)
     html = f"""<div style="font-family: sans-serif; max-width: 480px;">
-  <h2 style="color: #4472C4;">Equity Vesting Tracker</h2>
+  <h2 style="color: #4472C4;">Epic Stocks</h2>
   <p><strong>{safe_name}</strong> has invited you to view their equity vesting data.</p>
   {f'<p style="margin:24px 0;">{btn}</p>' if btn else ''}
   <p style="margin-top:16px;font-size:13px;color:#666;">
@@ -159,6 +170,9 @@ def build_invitation_email(inviter_name: str, token: str, short_code: str, recip
   </p>
   <p style="font-size:12px;color:#888;">
     If you didn&rsquo;t expect this invitation, you can safely ignore this email.
+  </p>
+  <p style="font-size:12px;color:#888;">
+    <strong>{APP_DISCLAIMER}</strong>
   </p>
   {unsub_html}
 </div>"""

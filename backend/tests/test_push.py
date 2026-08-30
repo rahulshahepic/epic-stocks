@@ -261,7 +261,7 @@ def test_send_push_encrypts_payload():
 
     p256dh, auth = _real_subscriber_keys()
     sub = PushSubscription(endpoint="https://push.example.com/send/abc123", p256dh=p256dh, auth=auth)
-    payload = {"title": "Equity Tracker", "body": "Test notification — push is working!"}
+    payload = {"title": "Epic Stocks", "body": "Test notification — push is working!"}
 
     captured = {}
 

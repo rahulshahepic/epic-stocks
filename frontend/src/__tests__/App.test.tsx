@@ -9,11 +9,11 @@ beforeEach(() => {
 describe('App routing', () => {
   it('redirects to login when not authenticated', () => {
     render(<App />)
-    expect(screen.getByText('Equity Tracker')).toBeInTheDocument()
+    expect(screen.getByText('Epic Stocks')).toBeInTheDocument()
   })
 
-  it('shows login page title', () => {
+  it('shows login page tagline', () => {
     render(<App />)
-    expect(screen.getByText(/sign in to manage/i)).toBeInTheDocument()
+    expect(screen.getByText(/for Epic employees tracking their own equity/i)).toBeInTheDocument()
   })
 })

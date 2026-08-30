@@ -16,6 +16,17 @@ export interface AppContextValue {
  appName: string
  /** Short tagline shown below the app name on the login page. */
  appTagline: string
+ /** Badge rendered beside the app name wherever the name appears. The app is
+ * named after an employer it has no affiliation with, so the name never
+ * appears bare — this pill travels with it. */
+ appNameBadge?: string
+ /** Heading of the affiliation disclaimer shown on pre-login pages. */
+ appDisclaimerTitle?: string
+ /** Body of the affiliation disclaimer shown on pre-login pages. Omit to
+ * render no disclaimer at all. */
+ appDisclaimerBody?: React.ReactNode
+ /** One-line version of the disclaimer, shown in the signed-in footer. */
+ appDisclaimerShort?: string
  /** Primary nav items. Admin and Content are appended automatically by Layout. */
  navItems: NavItem[]
  /** Routes hidden when a viewer is browsing someone else's data. */

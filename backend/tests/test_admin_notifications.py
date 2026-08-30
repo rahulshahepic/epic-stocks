@@ -11,7 +11,7 @@ from tests.conftest import register_user
 def _mock_resend_env():
     return patch.dict(os.environ, {
         "RESEND_API_KEY": "re_test_key",
-        "RESEND_FROM": "Equity Tracker <n@t.com>",
+        "RESEND_FROM": "Epic Stocks <n@t.com>",
     })
 
 

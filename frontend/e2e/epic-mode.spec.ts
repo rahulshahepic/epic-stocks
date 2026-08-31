@@ -103,7 +103,10 @@ test.describe('Epic Mode', () => {
     await loginAs(page, userEmail, 'Epic User')
     await navigateTo(page, 'Loans')
 
-    await expect(page.getByRole('button', { name: 'Calculate repayment' }).first()).toBeVisible()
+    // navigateTo already waited out slow config/loans fetches under CI contention
+    // (see its comment); this button depends on the same two fetches, so give it
+    // the same generous allowance instead of the 5s expect() default.
+    await expect(page.getByRole('button', { name: 'Calculate repayment' }).first()).toBeVisible({ timeout: 15_000 })
   })
 
   test('prices page shows view-only banner and hides add button when Epic Mode is on', async ({ page }) => {

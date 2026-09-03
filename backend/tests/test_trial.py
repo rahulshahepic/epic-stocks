@@ -30,6 +30,36 @@ def test_trial_analyze_computes_a_timeline_without_an_account(client):
     assert len(body["wizard_payload"]["prices"]) == 3
 
 
+def test_trial_analyze_returns_dashboard_shaped_data(client):
+    """The preview renders the real dashboard, so it needs the real shapes."""
+    body = client.post("/api/trial/analyze", files=upload_files()).json()
+
+    assert len(body["grants"]) == 8
+    assert len(body["loans"]) == 9
+    assert len(body["prices"]) == 3
+    # Negative ids — nothing here is a saved row.
+    assert all(g["id"] < 0 for g in body["grants"])
+    assert all(l["id"] < 0 for l in body["loans"])
+    assert all(p["id"] < 0 for p in body["prices"])
+    for key in ("year", "type", "shares", "price", "vest_start", "periods", "exercise_date"):
+        assert key in body["grants"][0]
+    for key in ("grant_year", "grant_type", "loan_type", "loan_year", "amount",
+                "interest_rate", "due_date"):
+        assert key in body["loans"][0]
+
+
+def test_trial_tax_defaults_match_a_brand_new_account(client):
+    """A preview that assumed different rates than signup gives would mislead."""
+    from scaffold.models import TaxSettings
+
+    defaults = client.post("/api/trial/analyze", files=upload_files()).json()["tax_defaults"]
+    cols = TaxSettings.__table__.columns
+    for name in ("federal_income_rate", "federal_lt_cg_rate", "federal_st_cg_rate",
+                 "niit_rate", "state_income_rate", "state_lt_cg_rate",
+                 "state_st_cg_rate", "lt_holding_days"):
+        assert defaults[name] == cols[name].default.arg
+
+
 def test_trial_analyze_requires_no_login(client):
     # No register_user() call anywhere in this test — that's the point.
     resp = client.post("/api/trial/analyze", files=upload_files())

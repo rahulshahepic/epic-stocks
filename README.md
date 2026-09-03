@@ -96,11 +96,19 @@ Everything in the app is derived from these four tables at request time:
 
 ### Getting Started
 
-Not ready to create an account? Go to **/try** and upload your **Data for Stock Workbook** and **Stock Loan Statement** straight from Shareworks — no sign-in, no email. The app parses them and shows your full computed vesting timeline right there in the browser tab. Nothing is written anywhere; refreshing the page clears it. If you like what you see, one button carries that same computed data into sign-up, so you don't re-upload — it lands in your new account already imported.
+Not ready to create an account? Go to **/try** and upload your **Data for Stock Workbook** and **Stock Loan Statement** straight from Shareworks — no sign-in, no email.
 
-| Light | Dark |
-|-------|------|
-| ![Try it](screenshots/try-light-mobile.png) | ![Try it Dark](screenshots/try-dark-mobile.png) |
+What you get is the app itself, running on your numbers in that browser tab:
+
+- a **Dashboard** tab — net worth, vested shares, share price, value, cost basis, income, capital gains, loan balance, estimated tax, next event, and the shares / income-and-gains / share-price charts;
+- an **Events** tab — the full computed timeline, with everything after your as-of date dimmed as projection;
+- an **as-of date control** (with Today and Last event shortcuts) that moves the whole position to any date you pick.
+
+Tax figures use the same default rates a new account starts with, read straight off the model, so nothing shifts underneath you when you sign up. Nothing is written anywhere — refreshing clears it. If you like what you see, one button carries the computed data into sign-up, so you don't re-upload; it lands in your new account already imported.
+
+| Upload | Preview dashboard | Preview events |
+|--------|-------------------|----------------|
+| ![Try it](screenshots/try-light-mobile.png) | ![Preview dashboard](screenshots/try-preview-light-mobile.png) | ![Preview events](screenshots/try-preview-events-light-mobile.png) |
 
 1. **Sign in** — click the sign-in button for your organization's identity provider (Google, Azure AD, or whatever your admin has configured). Your data is tied to that account; you can export everything at any time.
 
@@ -878,7 +886,7 @@ epic-stocks/
 │   │       ├── flows.py     # Quick flows (new purchase, bonus, price)
 │   │       ├── import_export.py # Excel import/export + template
 │   │       ├── epic_import.py   # Epic CSV/PDF analyze loop + diagnostics diff
-│   │       ├── trial.py     # No-account preview: same parsing, computed timeline, no DB writes
+│   │       ├── trial.py     # No-account preview: same parsing, computed timeline + dashboard data, no DB writes
 │   │       ├── sales.py     # Sales CRUD + tax breakdown
 │   │       ├── tips.py      # Smart Tips: scenario tax comparisons + acceptance recording
 │   │       ├── wizard.py    # Setup Wizard: parse-file, preview (dry-run diff), submit
@@ -899,8 +907,10 @@ epic-stocks/
 │   │   │   ├── contexts/    # ThemeContext, MaintenanceContext, ViewingContext, AppContext (injection interface)
 │   │   │   └── hooks/       # useAuth, useConfig, useDark, usePush, useMe
 │   │   ├── app/             # Equity tracking UI (replace when forking)
-│   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport, ImportDiagnostics, Content, CompCalculator, Retirement, Try (no-account preview)
+│   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport, ImportDiagnostics, Content, CompCalculator, Retirement, Try (no-account preview: upload → dashboard/events tabs)
 │   │   │   ├── components/  # ImportWizard, EpicFileImport, FindingList, TipCarousel, AppSettingsSections
+│   │   │   ├── components/charts.tsx  # Shares / income / price charts + date-range plumbing (Dashboard + /try)
+│   │   │   ├── components/StatCard.tsx # The dashboard stat tile (Dashboard + /try)
 │   │   │   ├── epicImport.ts # Client for the Epic importer endpoints
 │   │   │   ├── trialImport.ts # Client for the no-account trial preview + sessionStorage handoff to signup
 │   │   │   ├── refiInference.ts # How far down a refinance chain a loan's rate says it got
@@ -998,7 +1008,7 @@ Cross-origin requests are accepted only from the native shell origins (`capacito
 | POST | `/api/epic-import/analyze` | Read the Shareworks CSV + PDF, or check a repaired draft against them — returns a draft, what failed, and a prompt to paste out. Writes nothing |
 | POST | `/api/epic-import/diff` | Diff the derivation against an uploaded Excel export — read-only |
 | POST | `/api/epic-import/diff.md` | The same report as a downloadable Markdown file |
-| POST | `/api/trial/analyze` | No-account preview: read the Shareworks CSV + PDF and return a computed timeline. No auth, writes nothing, IP rate-limited |
+| POST | `/api/trial/analyze` | No-account preview: read the Shareworks CSV + PDF and return the computed timeline, dashboard-shaped grants/loans/prices, and the default tax rates. No auth, writes nothing, IP rate-limited |
 | POST | `/api/wizard/parse-file` | Parse an uploaded Excel structure file for wizard pre-fill |
 | POST | `/api/wizard/preview` | Dry-run diff — returns added/updated/removed/unchanged status, no changes written |
 | POST | `/api/wizard/submit` | Apply wizard data — merge mode: upserts by natural key, deletes unmatched |

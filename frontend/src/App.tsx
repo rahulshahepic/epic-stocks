@@ -8,6 +8,7 @@ import { ThemeProvider } from './scaffold/contexts/ThemeContext.tsx'
 import { MaintenanceProvider, useMaintenance } from './scaffold/contexts/MaintenanceContext.tsx'
 import { ViewingProvider } from './scaffold/contexts/ViewingContext.tsx'
 import Login from './scaffold/pages/Login.tsx'
+import Try from './app/pages/Try.tsx'
 import AuthCallback from './scaffold/pages/AuthCallback.tsx'
 import InviteLanding from './scaffold/pages/InviteLanding.tsx'
 import Unsubscribe from './scaffold/pages/Unsubscribe.tsx'
@@ -59,6 +60,7 @@ export default function App() {
  <ToastProvider>
  <Routes>
  <Route path="/login" element={<Login />} />
+ <Route path="/try" element={<Try />} />
  <Route path="/auth/callback" element={<AuthCallback />} />
  <Route path="/invite" element={<InviteLanding />} />
  <Route path="/unsubscribe" element={<Unsubscribe />} />

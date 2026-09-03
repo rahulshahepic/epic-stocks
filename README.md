@@ -96,6 +96,12 @@ Everything in the app is derived from these four tables at request time:
 
 ### Getting Started
 
+Not ready to create an account? Go to **/try** and upload your **Data for Stock Workbook** and **Stock Loan Statement** straight from Shareworks — no sign-in, no email. The app parses them and shows your full computed vesting timeline right there in the browser tab. Nothing is written anywhere; refreshing the page clears it. If you like what you see, one button carries that same computed data into sign-up, so you don't re-upload — it lands in your new account already imported.
+
+| Light | Dark |
+|-------|------|
+| ![Try it](screenshots/try-light-mobile.png) | ![Try it Dark](screenshots/try-dark-mobile.png) |
+
 1. **Sign in** — click the sign-in button for your organization's identity provider (Google, Azure AD, or whatever your admin has configured). Your data is tied to that account; you can export everything at any time.
 
    | Light | Dark |
@@ -872,6 +878,7 @@ epic-stocks/
 │   │       ├── flows.py     # Quick flows (new purchase, bonus, price)
 │   │       ├── import_export.py # Excel import/export + template
 │   │       ├── epic_import.py   # Epic CSV/PDF analyze loop + diagnostics diff
+│   │       ├── trial.py     # No-account preview: same parsing, computed timeline, no DB writes
 │   │       ├── sales.py     # Sales CRUD + tax breakdown
 │   │       ├── tips.py      # Smart Tips: scenario tax comparisons + acceptance recording
 │   │       ├── wizard.py    # Setup Wizard: parse-file, preview (dry-run diff), submit
@@ -892,9 +899,10 @@ epic-stocks/
 │   │   │   ├── contexts/    # ThemeContext, MaintenanceContext, ViewingContext, AppContext (injection interface)
 │   │   │   └── hooks/       # useAuth, useConfig, useDark, usePush, useMe
 │   │   ├── app/             # Equity tracking UI (replace when forking)
-│   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport, ImportDiagnostics, Content, CompCalculator, Retirement
+│   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport, ImportDiagnostics, Content, CompCalculator, Retirement, Try (no-account preview)
 │   │   │   ├── components/  # ImportWizard, EpicFileImport, FindingList, TipCarousel, AppSettingsSections
 │   │   │   ├── epicImport.ts # Client for the Epic importer endpoints
+│   │   │   ├── trialImport.ts # Client for the no-account trial preview + sessionStorage handoff to signup
 │   │   │   ├── refiInference.ts # How far down a refinance chain a loan's rate says it got
 │   │   │   ├── hooks/       # useApiData, useDataSync, useContent
 │   │   │   └── AppProvider.tsx  # Injects app name + unofficial badge, affiliation disclaimer, nav items, notify templates, privacy content into scaffold
@@ -990,6 +998,7 @@ Cross-origin requests are accepted only from the native shell origins (`capacito
 | POST | `/api/epic-import/analyze` | Read the Shareworks CSV + PDF, or check a repaired draft against them — returns a draft, what failed, and a prompt to paste out. Writes nothing |
 | POST | `/api/epic-import/diff` | Diff the derivation against an uploaded Excel export — read-only |
 | POST | `/api/epic-import/diff.md` | The same report as a downloadable Markdown file |
+| POST | `/api/trial/analyze` | No-account preview: read the Shareworks CSV + PDF and return a computed timeline. No auth, writes nothing, IP rate-limited |
 | POST | `/api/wizard/parse-file` | Parse an uploaded Excel structure file for wizard pre-fill |
 | POST | `/api/wizard/preview` | Dry-run diff — returns added/updated/removed/unchanged status, no changes written |
 | POST | `/api/wizard/submit` | Apply wizard data — merge mode: upserts by natural key, deletes unmatched |

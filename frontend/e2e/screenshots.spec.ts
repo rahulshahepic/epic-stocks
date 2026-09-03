@@ -159,6 +159,24 @@ test.describe('Screenshots', () => {
     await page.screenshot({ path: `${OUT}/login-dark-mobile.png`, fullPage: true })
   })
 
+  test('try page - light - mobile', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' })
+    await page.setViewportSize(MOBILE)
+    await page.goto(`${BASE}/try`)
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(800)
+    await page.screenshot({ path: `${OUT}/try-light-mobile.png`, fullPage: true })
+  })
+
+  test('try page - dark - mobile', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await page.setViewportSize(MOBILE)
+    await page.goto(`${BASE}/try`)
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(800)
+    await page.screenshot({ path: `${OUT}/try-dark-mobile.png`, fullPage: true })
+  })
+
   test('privacy policy page - light - mobile', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'light' })
     await page.setViewportSize(MOBILE)

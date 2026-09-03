@@ -92,4 +92,9 @@ describe('Login page', () => {
     renderLogin()
     expect(screen.getByText(/we will never sell your data/i)).toBeInTheDocument()
   })
+
+  it('offers a no-account trial to people not ready to sign up', () => {
+    renderLogin()
+    expect(screen.getByRole('link', { name: /try it with your own files/i })).toHaveAttribute('href', '/try')
+  })
 })

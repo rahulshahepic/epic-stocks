@@ -58,33 +58,72 @@ jobs:
         run: cd frontend && time npm ci
       - name: Type-check
         run: cd frontend && time npx tsc -b --noEmit
-      - name: npm audit
-        # --omit=dev excludes build-tool transitive deps (vite, babel, playwright, etc.)
-        # from the audit. This app is a browser SPA — dev-only packages never reach
-        # production users, so new CVEs in build tooling should not block unrelated PRs.
+      - name: Audit production dependencies
+        # Queries npm's Bulk Advisory endpoint directly rather than going through
+        # `npm audit`. npm retired /-/npm/v1/security/audits{,/quick} after
+        # 2026-07-15, and npm 10.x still falls back to that retired endpoint
+        # whenever a bulk request blips — so `npm audit` fails outright at whatever
+        # rate the registry hiccups, with nothing wrong in this repo. Talking to the
+        # replacement endpoint ourselves removes that fallback, and keeps the scope
+        # identical: the request carries production packages only, so build-tool
+        # CVEs (vite, babel, playwright) still cannot block an unrelated PR — this
+        # app is a browser SPA and dev-only packages never reach a user.
         #
-        # GHSA-qwww-vcr4-c8h2 (react-router RSC Mode CSRF Bypass) is allowlisted below:
-        # it only affects React Router's RSC/framework mode, which this client-only SPA
-        # (BrowserRouter) does not use, and react-router-dom has no non-breaking fix yet
-        # (v8 only ships under the renamed "react-router" package). Remove the allowlist
-        # entry once react-router-dom publishes a >=8.3.0-equivalent fix.
+        # GHSA-qwww-vcr4-c8h2 (react-router RSC Mode CSRF Bypass) is allowlisted:
+        # it only affects React Router's RSC/framework mode, which this client-only
+        # SPA (BrowserRouter) does not use, and react-router-dom has no non-breaking
+        # fix yet (v8 only ships under the renamed "react-router" package). Remove
+        # the entry once react-router-dom publishes a >=8.3.0-equivalent fix.
         run: |
           cd frontend
-          npm audit --omit=dev --json > /tmp/npm-audit.json || true
           ALLOWED='["https://github.com/advisories/GHSA-qwww-vcr4-c8h2"]'
+
+          # The endpoint takes a flat {name: [versions]} map. `npm query` reads the
+          # installed tree; --omit=dev does not filter it, so the per-node dev flag does.
+          npm query '*' --json > /tmp/npm-tree.json
+          jq '[.[] | select(.dev != true and .name != null and .version != null and .location != "")]
+              | group_by(.name)
+              | map({key: .[0].name, value: (map(.version) | unique)})
+              | from_entries' /tmp/npm-tree.json > /tmp/bulk-request.json
+
+          PKGS=$(jq 'length' /tmp/bulk-request.json)
+          echo "Auditing $PKGS production packages against the bulk advisory endpoint."
+
+          # An empty request comes back empty, which reads exactly like "all clear".
+          if [ "$PKGS" -lt 10 ]; then
+            echo "::error::Only $PKGS production packages resolved - the dependency tree did not read correctly, so this audit would be meaningless."
+            exit 1
+          fi
+
+          HTTP=$(curl -sS -X POST https://registry.npmjs.org/-/npm/v1/security/advisories/bulk \
+            -H 'Content-Type: application/json' -H 'npm-command: audit' \
+            --data @/tmp/bulk-request.json -o /tmp/bulk-response.json -w '%{http_code}' \
+            --retry 3 --retry-delay 5 --retry-all-errors --max-time 120) || HTTP="000"
+
+          # A gate that cannot see the advisories fails loudly rather than reporting a
+          # clean bill of health. The previous version piped the response straight into
+          # jq, so a registry error surfaced as "Cannot iterate over null" and a bare
+          # exit 5 - and an error shaped any other way would have passed silently.
+          if [ "$HTTP" != "200" ] || ! jq -e 'type == "object"' /tmp/bulk-response.json > /dev/null 2>&1; then
+            echo "::error::Advisory lookup failed (HTTP $HTTP) - refusing to report a clean audit."
+            head -c 500 /tmp/bulk-response.json || true
+            exit 1
+          fi
+
           UNADDRESSED=$(jq --argjson allowed "$ALLOWED" '
-            [.vulnerabilities[]
+            [ to_entries[] | .value[]
               | select(.severity == "high" or .severity == "critical")
-              | .via[]
-              | select(type == "object")
-              | .url]
+              | .url ]
             | unique
             | . - $allowed
-          ' /tmp/npm-audit.json)
+          ' /tmp/bulk-response.json)
+
           if [ "$UNADDRESSED" != "[]" ]; then
-            echo "Unaddressed high/critical advisories:" >&2
+            echo "Unaddressed high/critical advisories in production dependencies:" >&2
             echo "$UNADDRESSED" >&2
-            npm audit --omit=dev --audit-level=high
+            jq -r 'to_entries[] | .key as $pkg | .value[]
+                   | select(.severity == "high" or .severity == "critical")
+                   | "  \(.severity)  \($pkg)  \(.title)  \(.url)"' /tmp/bulk-response.json >&2
             exit 1
           fi
           echo "No unaddressed high/critical advisories (allowlisted: $ALLOWED)"

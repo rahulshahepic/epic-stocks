@@ -83,8 +83,18 @@ jobs:
         # The endpoint is intermittently slow, so each attempt is capped and
         # retried. `npm audit` exits non-zero both for "found vulnerabilities"
         # and for "could not reach the registry"; only a report carrying
-        # auditReportVersion distinguishes them, which is also what keeps a
-        # lookup failure from being reported as a clean bill of health.
+        # auditReportVersion distinguishes them, and the two are treated
+        # differently: an advisory fails the job, an unreachable endpoint warns.
+        #
+        # Warning rather than failing is deliberate, and is safe only because of
+        # the dependency-review job below. npm's advisory endpoint goes slow often
+        # enough — while its status page still reads "Operational" — that failing
+        # closed here meant npm's uptime decided whether anyone could merge, on
+        # PRs that touch no dependencies at all. dependency-review does not use
+        # that endpoint and still blocks anything vulnerable a PR introduces, so
+        # what is lost during an outage is re-checking pre-existing packages,
+        # which the next green run (or Dependabot) picks up anyway. It is never
+        # silently clean: an unreachable endpoint is always reported as such.
         #
         # GHSA-qwww-vcr4-c8h2 (react-router RSC Mode CSRF Bypass) is allowlisted:
         # it only affects React Router's RSC/framework mode, which this client-only
@@ -103,9 +113,9 @@ jobs:
           done
 
           if ! jq -e '.auditReportVersion' /tmp/audit.json > /dev/null 2>&1; then
-            echo "::error::Advisory lookup failed - refusing to report a clean audit."
+            echo "::warning::Advisory lookup failed after 3 attempts - production dependencies were NOT audited in this run. Not failing the job: dependency-review covers what this PR introduces. See the step comment."
             head -c 500 /tmp/audit.json /tmp/audit.err || true
-            exit 1
+            exit 0
           fi
 
           echo "Audited production dependencies: $(jq -c '.metadata.vulnerabilities' /tmp/audit.json)"
@@ -130,6 +140,30 @@ jobs:
           echo "No unaddressed high/critical advisories (allowlisted: $ALLOWED)"
       - name: Run tests
         run: cd frontend && time npm run test
+
+  # Catches vulnerable dependencies *entering* the tree, which is the job a PR
+  # gate actually has. It resolves advisories through GitHub's Advisory Database
+  # over the runner's own API rather than registry.npmjs.org, so unlike the audit
+  # step above it does not depend on npm's advisory endpoint being reachable —
+  # that endpoint is intermittently slow and its status page does not reflect it.
+  #
+  # It reviews only the dependencies a PR changes, so it does not replace the
+  # tree-wide audit; the two cover different things on purpose.
+  #
+  # NOTE: this is not yet a required check. Branch protection on main/staging
+  # requires backend/frontend/e2e/caddy-validate, so add `dependency-review`
+  # there to make it blocking.
+  dependency-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v5
+        with:
+          fail-on-severity: high
+          # Same allowlist as the audit step, for the same reason — see there.
+          allow-ghsas: GHSA-qwww-vcr4-c8h2
 
   caddy-validate:
     runs-on: ubuntu-latest

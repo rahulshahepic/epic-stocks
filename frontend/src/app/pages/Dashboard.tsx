@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import {
  AreaChart, Area, BarChart, Bar,
  XAxis, YAxis, ResponsiveContainer, CartesianGrid, ReferenceLine,
@@ -20,6 +21,53 @@ import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
 import { HeroCard, IconTile, Eyebrow } from '../../scaffold/components/ui/Card.tsx'
 import { Sparkline, IconTrendUp } from '../../scaffold/components/ui/icons.tsx'
 import { StatCard as Card } from '../components/StatCard.tsx'
+
+/**
+ * Nudge when the newest share price on file is from an earlier year.
+ *
+ * Epic announces a price each spring, and every figure on this page is computed
+ * from the newest one on file. Between announcements — or if someone simply has
+ * not added this year's yet — the whole position is valued at a price that can
+ * be a year or more old, with nothing on screen to say so. Dismissal is keyed to
+ * the stale year, so it stays gone until a new year makes it true again.
+ */
+function StalePriceBanner({ latest, readOnly }: { latest: PriceEntry; readOnly: boolean }) {
+  const key = `stale-price-dismissed-${latest.effective_date.slice(0, 4)}`
+  const [dismissed, setDismissed] = useState(() => {
+    try { return localStorage.getItem(key) === '1' } catch { return false }
+  })
+  if (dismissed) return null
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-950/30">
+      <p className="min-w-0 flex-1 text-xs leading-relaxed text-amber-900 dark:text-amber-200">
+        <span className="font-semibold">
+          Your newest share price is from {latest.effective_date.slice(0, 4)} ({fmtPrice(latest.price)}).
+        </span>{' '}
+        Everything here is valued at it, so your position probably reads low.
+        {!readOnly && ' Add this year\'s price to bring these figures up to date.'}
+      </p>
+      {!readOnly && (
+        <Link
+          to="/prices"
+          className="rounded-lg bg-cs-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-cs-brand-hover"
+        >
+          Add a price
+        </Link>
+      )}
+      <button
+        type="button"
+        onClick={() => {
+          setDismissed(true)
+          try { localStorage.setItem(key, '1') } catch { /* private mode */ }
+        }}
+        className="text-xs font-medium text-amber-800 hover:underline dark:text-amber-300"
+      >
+        Dismiss
+      </button>
+    </div>
+  )
+}
 
 function BreakdownRow({ label, value, sub, bold, tone }: { label: ReactNode; value: string; sub?: string; bold?: boolean; tone?: 'positive' | 'negative' }) {
  const toneClass = tone === 'negative'
@@ -570,6 +618,16 @@ export default function Dashboard() {
  }
  return last
  }, [events, prices])
+
+ // The newest non-estimated price, when it predates the current year. Estimates
+ // are projections the user made themselves, so they do not count as knowing
+ // this year's price.
+ const stalePrice = useMemo(() => {
+ const real = (prices ?? []).filter(p => !p.is_estimate)
+ if (real.length === 0) return null
+ const newest = real[real.length - 1]
+ return newest.effective_date.slice(0, 4) < TODAY.slice(0, 4) ? newest : null
+ }, [prices])
 
  // Date of the last real (non-projected) event
  const lastRealEventDate = useMemo(() => {
@@ -1180,6 +1238,8 @@ export default function Dashboard() {
  </div>
 
  {!readOnly && <TipCarousel onApply={() => { reloadDash(); reloadEvents(); reloadTaxSettings() }} />}
+
+ {stalePrice && <StalePriceBanner latest={stalePrice} readOnly={readOnly} />}
 
  {grantHoldings && (
  <HeroCard watermark={<Sparkline className="h-24 w-40" color="#fff" />}>

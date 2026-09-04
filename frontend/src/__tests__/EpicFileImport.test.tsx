@@ -8,7 +8,12 @@ import { MOCK_CONTENT } from './fixtures/content.ts'
 import type { ContentBlob } from '../api.ts'
 
 const CLEAN = {
-  draft: { statement_date: '2024-02-01' },
+  draft: {
+    statement_date: '2024-02-01',
+    prices: [{ effective_date: '2020-01-01', price: 1.99 },
+             { effective_date: '2021-01-01', price: 2.50 }],
+  },
+  price_is_stale: false,
   wizard_payload: { grants: [], prices: [] },
   wizard_prefill: { grants: [], loans: [], prices: [] },
   findings: [],
@@ -200,5 +205,40 @@ describe('EpicFileImport → wizard handoff', () => {
       expect(screen.queryByRole('button', { name: /Enter it myself/i })).not.toBeInTheDocument()
     })
     expect(screen.queryByText(/Choose how you|quickest way/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('EpicFileImport — current share price', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('asks for it when the files carry only older prices', async () => {
+    mockApi({ ...CLEAN, price_is_stale: true })
+    renderCard()
+    await readFiles()
+
+    expect(await screen.findByText(/newest price in your files/i)).toBeInTheDocument()
+    expect(screen.getByLabelText('Current share price')).toBeInTheDocument()
+  })
+
+  it('stays quiet when the files are already current', async () => {
+    mockApi(CLEAN)   // price_is_stale: false
+    renderCard()
+    await readFiles()
+
+    await screen.findByText(/Everything reconciles/)
+    expect(screen.queryByLabelText('Current share price')).not.toBeInTheDocument()
+  })
+
+  it('re-reads the files with the entered price, so it saves with the rest', async () => {
+    const calls = mockApi({ ...CLEAN, price_is_stale: true })
+    renderCard()
+    await readFiles()
+
+    await userEvent.type(await screen.findByLabelText('Current share price'), '7.25')
+    await userEvent.click(screen.getByRole('button', { name: 'Use this price' }))
+
+    await waitFor(() => expect(calls.length).toBe(2))
+    expect(calls[1].body?.get('current_price')).toBe('7.25')
+    expect(await screen.findByText(/entered for today/)).toBeInTheDocument()
   })
 })

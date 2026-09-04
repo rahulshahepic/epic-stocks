@@ -34,6 +34,8 @@ export interface WizardPrefill {
 
 export interface AnalyzeResponse {
   draft: Record<string, unknown>
+  /** True when the newest price in the files is from an earlier year. */
+  price_is_stale: boolean
   wizard_payload: Record<string, unknown>
   wizard_prefill: WizardPrefill
   findings: Finding[]
@@ -78,8 +80,9 @@ export interface EpicFiles {
   revisedDraft?: File | null
 }
 
-function form(files: EpicFiles, revisedJson?: string): FormData {
+function form(files: EpicFiles, revisedJson?: string, currentPrice?: number): FormData {
   const body = new FormData()
+  if (currentPrice != null && currentPrice > 0) body.append('current_price', String(currentPrice))
   if (files.exportXlsx) body.append('export_xlsx', files.exportXlsx)
   if (files.shareCsv) body.append('share_csv', files.shareCsv)
   if (files.statementPdf) body.append('statement_pdf', files.statementPdf)
@@ -88,14 +91,17 @@ function form(files: EpicFiles, revisedJson?: string): FormData {
   return body
 }
 
-async function post<T>(path: string, files: EpicFiles, revisedJson?: string): Promise<T> {
-  return apiFetch<T>(path, { method: 'POST', body: form(files, revisedJson) }, 'Request failed')
+async function post<T>(path: string, files: EpicFiles, revisedJson?: string,
+                       currentPrice?: number): Promise<T> {
+  return apiFetch<T>(path, { method: 'POST', body: form(files, revisedJson, currentPrice) },
+                     'Request failed')
 }
 
 export const epicImport = {
   /** Round one reads the files; later rounds also carry whatever came back. */
-  analyze: (files: EpicFiles, revisedJson?: string) =>
-    post<AnalyzeResponse>('/api/epic-import/analyze', files, revisedJson),
+  /** `currentPrice` supplies today's price when the files carry only older ones. */
+  analyze: (files: EpicFiles, revisedJson?: string, currentPrice?: number) =>
+    post<AnalyzeResponse>('/api/epic-import/analyze', files, revisedJson, currentPrice),
 
   diff: (files: EpicFiles) => post<DiffResponse>('/api/epic-import/diff', files),
 }

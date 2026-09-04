@@ -6,7 +6,10 @@ FROM mcr.microsoft.com/playwright:v1.56.0-jammy
 WORKDIR /app
 
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci
+# --no-audit: see .github/workflows/test.yml's frontend job for why — npm ci's
+# own audit report falls back to a retired endpoint and hangs/retries; CI
+# already audits production dependencies against the working endpoint.
+RUN npm ci --no-audit
 
 COPY frontend/ ./
 COPY test_data/ /test_data/

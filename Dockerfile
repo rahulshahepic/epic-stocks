@@ -2,7 +2,10 @@
 FROM node:20-slim AS frontend-build
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci
+# --no-audit: see .github/workflows/test.yml's frontend job for why — npm ci's
+# own audit report falls back to a retired endpoint and hangs/retries; CI
+# already audits production dependencies against the working endpoint.
+RUN npm ci --no-audit
 COPY frontend/ ./
 ARG COMMIT_SHA=dev
 ENV VITE_COMMIT_SHA=$COMMIT_SHA

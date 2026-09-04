@@ -55,7 +55,12 @@ jobs:
       - name: Cache status
         run: echo "npm cache-hit=${{ steps.setup-node.outputs.cache-hit }}"
       - name: Install deps
-        run: cd frontend && time npm ci
+        # --no-audit: npm ci's own built-in audit report still falls back to the
+        # retired /-/npm/v1/security/audits/quick endpoint (see the audit step
+        # below), which now hangs/retries instead of failing fast — costing
+        # several minutes per install for a check the next step already makes
+        # correctly against the bulk endpoint.
+        run: cd frontend && time npm ci --no-audit
       - name: Type-check
         run: cd frontend && time npx tsc -b --noEmit
       - name: Audit production dependencies
@@ -163,7 +168,8 @@ jobs:
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
       - name: Install frontend deps
-        run: cd frontend && time npm ci
+        # See the frontend job's Install deps step for why --no-audit.
+        run: cd frontend && time npm ci --no-audit
       - name: Cache playwright browsers
         id: pw-cache
         uses: actions/cache@v4

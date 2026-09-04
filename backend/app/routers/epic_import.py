@@ -12,6 +12,7 @@ signs off on is their rendered position rather than a file.
 import io
 import json
 import re
+from datetime import date
 
 import openpyxl
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -24,7 +25,7 @@ from scaffold.auth import get_current_user
 from scaffold.models import Grant, Price, User
 from app.content_service import load_content
 from app.date_utils import to_date as _to_date
-from app.epic_import import (Draft, build_prompt, build_skeleton, derive_draft,
+from app.epic_import import (Draft, DraftPrice, build_prompt, build_skeleton, derive_draft,
                              draft_from_payload, extract_lines, is_blocked,
                              parse_share_csv, parse_statement_lines, reconcile,
                              render_markdown, supersede_parse_findings,
@@ -191,6 +192,11 @@ def _summary(draft: Draft) -> dict:
 
 class AnalyzeResponse(BaseModel):
     draft: dict
+    # True when the newest price these files carry is from an earlier year. The
+    # documents only hold prices Epic has already announced, so between
+    # announcements a position valued from them alone reads low, with nothing to
+    # say so — the UI asks for the current one rather than imputing it.
+    price_is_stale: bool = False
     wizard_payload: dict
     wizard_prefill: dict
     findings: list[dict]
@@ -207,6 +213,7 @@ def analyze(
     statement_pdf: UploadFile | None = File(default=None),
     revised_draft: UploadFile | None = File(default=None),
     revised_json: str | None = Form(default=None),
+    current_price: float | None = Form(default=None),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -278,8 +285,19 @@ def analyze(
     blocked = is_blocked(findings)
     reconciles = not any(x.severity == "error" for x in findings)
 
+    # A supplied current price becomes an ordinary price point dated today, so it
+    # reaches the wizard (and from there the dashboard) like any announced price.
+    today_iso = date.today().isoformat()
+    latest = max((p.effective_date.isoformat() for p in draft.prices), default=None)
+    if (current_price is not None and current_price > 0
+            and latest is not None and today_iso > latest):
+        draft.prices.append(DraftPrice(effective_date=date.today(), price=current_price))
+        latest = today_iso
+    price_is_stale = latest is not None and latest[:4] < today_iso[:4]
+
     return AnalyzeResponse(
         draft=draft.as_dict(),
+        price_is_stale=price_is_stale,
         wizard_payload=to_wizard_payload(draft),
         wizard_prefill=_wizard_prefill(draft, db, user.id),
         findings=[x.as_dict() for x in findings],

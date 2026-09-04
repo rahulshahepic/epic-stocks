@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import Dashboard from '../app/pages/Dashboard.tsx'
 
@@ -56,6 +57,19 @@ const MOCK_SALES_WITH_LOAN_PAYOFF = [
 const MOCK_PRICES = [
   { id: 1, effective_date: '2020-12-31', price: 1.99 },
   { id: 2, effective_date: '2021-03-01', price: 2.50 },
+]
+
+const CURRENT_YEAR = new Date().toISOString().slice(0, 4)
+const MOCK_PRICES_CURRENT = [
+  { id: 1, effective_date: '2020-12-31', price: 1.99 },
+  { id: 2, effective_date: `${CURRENT_YEAR}-03-01`, price: 2.50 },
+]
+
+// An estimate is a projection the user made themselves, not knowledge of this
+// year's announced price.
+const MOCK_PRICES_ESTIMATE_ONLY = [
+  { id: 1, effective_date: '2020-12-31', price: 1.99 },
+  { id: 2, effective_date: `${CURRENT_YEAR}-03-01`, price: 2.50, is_estimate: true },
 ]
 
 const MOCK_PRICES_WITH_FUTURE_SAME = [
@@ -321,5 +335,39 @@ describe('Dashboard', () => {
     // All chart section headers should still be visible
     expect(screen.getByText('Shares Over Time')).toBeInTheDocument()
     expect(screen.getByText('Share Price History')).toBeInTheDocument()
+  })
+})
+
+describe('Dashboard stale-price banner', () => {
+  it('warns when the newest price predates this year', async () => {
+    mockApi()   // newest real price is from 2021
+    renderDashboard()
+    expect(await screen.findByText(/Your newest share price is from 2021/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Add a price' })).toHaveAttribute('href', '/prices')
+  })
+
+  it('stays quiet once this year has a price', async () => {
+    mockApi(MOCK_PRICES_CURRENT)
+    renderDashboard()
+    await screen.findByText(/Net worth/i)
+    expect(screen.queryByText(/Your newest share price is from/)).not.toBeInTheDocument()
+  })
+
+  it('does not treat the user\'s own estimate as knowing this year\'s price', async () => {
+    mockApi(MOCK_PRICES_ESTIMATE_ONLY)
+    renderDashboard()
+    expect(await screen.findByText(/Your newest share price is from 2020/)).toBeInTheDocument()
+  })
+
+  it('stays dismissed for that year once dismissed', async () => {
+    mockApi()
+    const { unmount } = renderDashboard()
+    await userEvent.click(await screen.findByRole('button', { name: 'Dismiss' }))
+    expect(screen.queryByText(/Your newest share price is from/)).not.toBeInTheDocument()
+
+    unmount()
+    renderDashboard()
+    await screen.findByText(/Net worth/i)
+    expect(screen.queryByText(/Your newest share price is from/)).not.toBeInTheDocument()
   })
 })

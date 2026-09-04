@@ -1289,3 +1289,51 @@ def test_an_import_does_not_wipe_grants_the_files_never_mention(client):
         "vest_start": "2016-09-30", "periods": 3, "exercise_date": "2015-12-31"})
     prefill = analyze(client)["wizard_prefill"]
     assert any(g["year"] == 2015 and g["id"] > 0 for g in prefill["grants"])
+
+
+# ── Current share price ──────────────────────────────────────────────────────
+# The documents carry only prices Epic has already announced. Between
+# announcements a position valued from them alone reads low, so the importer
+# reports staleness and accepts today's price rather than imputing one.
+
+def test_analyze_flags_a_stale_price(client):
+    register_user(client)
+    body = analyze(client)
+    latest = max(p["effective_date"] for p in body["draft"]["prices"])
+    assert latest[:4] < date.today().strftime("%Y")
+    assert body["price_is_stale"] is True
+
+
+def test_a_supplied_current_price_reaches_the_wizard(client):
+    register_user(client)
+    body = client.post("/api/epic-import/analyze", files=upload_files(),
+                       data={"current_price": "42.75"}).json()
+
+    today = date.today().isoformat()
+    assert body["price_is_stale"] is False
+    assert {"effective_date": today, "price": 42.75} in body["wizard_payload"]["prices"]
+    # And through the prefill the wizard actually renders from.
+    assert any(p["effective_date"] == today and p["price"] == 42.75
+               for p in body["wizard_prefill"]["prices"])
+
+
+def test_a_supplied_price_survives_into_saved_data(client):
+    """What the importer offers must be what signing off actually stores."""
+    register_user(client)
+    body = client.post("/api/epic-import/analyze", files=upload_files(),
+                       data={"current_price": "42.75"}).json()
+    resp = client.post("/api/wizard/submit", json={
+        **body["wizard_payload"], "clear_existing": True,
+        "generate_payoff_sales": False})
+    assert resp.status_code == 201, resp.text
+
+    saved = client.get("/api/prices").json()
+    today = date.today().isoformat()
+    assert any(p["effective_date"] == today and p["price"] == 42.75 for p in saved)
+
+
+def test_a_price_older_than_the_files_is_ignored(client):
+    register_user(client)
+    body = client.post("/api/epic-import/analyze", files=upload_files(),
+                       data={"current_price": "0"}).json()
+    assert len(body["draft"]["prices"]) == 3

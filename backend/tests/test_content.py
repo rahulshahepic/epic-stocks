@@ -35,8 +35,10 @@ def test_grant_templates_match_epic(client):
         (2019, "Purchase", "2021-06-15", 6, "2019-12-31", True,  False, "2026-07-15", None),
         (2020, "Purchase", "2021-09-30", 5, "2020-12-31", True,  False, "2025-07-15", None),
         (2020, "Bonus",    "2021-09-30", 4, "2020-12-31", False, False, None,         "2025-07-15"),
+        (2020, "Developer Bonus Shares", "2022-09-30", 5, "2020-12-31", False, False, None, None),
         (2021, "Purchase", "2022-09-30", 5, "2021-12-31", True,  False, "2030-07-15", None),
         (2021, "Bonus",    "2022-09-30", 3, "2021-12-31", False, False, None,         None),
+        (2021, "Developer Bonus Shares", "2022-09-30", 5, "2021-12-31", False, False, None, None),
         (2022, "Purchase", "2023-09-30", 4, "2022-12-31", False, False, "2031-06-30", None),
         (2022, "Bonus",    "2023-09-30", 3, "2022-12-31", False, False, None,         None),
         (2022, "Free",     "2027-09-30", 1, "2022-12-31", False, False, None,         "2031-06-30"),
@@ -64,10 +66,25 @@ def test_grant_templates_match_epic(client):
 def test_grant_types_are_code_not_content(client):
     data = _get(client)
     # grant_type_defs is no longer part of the /api/content blob —
-    # the four types live in backend/app/grant_types.py as code.
+    # the types live in backend/app/grant_types.py as code.
     assert "grant_type_defs" not in data
     from app.grant_types import GRANT_TYPE_NAMES
-    assert GRANT_TYPE_NAMES == ["Purchase", "Catch-Up", "Bonus", "Free"]
+    assert GRANT_TYPE_NAMES == [
+        "Purchase", "Catch-Up", "Bonus", "Free", "Developer Bonus Shares",
+    ]
+
+
+def test_developer_bonus_templates_vest_five_years_from_2022(client):
+    """Both the 2020 and 2021 cohorts vest 20% a year from the same first date."""
+    schedule = _get(client)["grant_templates"]
+    rows = [t for t in schedule if t["type"] == "Developer Bonus Shares"]
+    assert [t["year"] for t in rows] == [2020, 2021]
+    for row in rows:
+        assert row["vest_start"] == "2022-09-30"
+        assert row["periods"] == 5
+        assert row["default_purchase_due_date"] is None
+        assert row["default_catch_up"] is False
+        assert row["show_dp_shares"] is False
 
 
 def test_bonus_schedule_variants(client):

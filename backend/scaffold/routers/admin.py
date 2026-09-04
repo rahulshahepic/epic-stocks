@@ -101,6 +101,50 @@ def admin_stats(admin: User = Depends(get_admin_user), db: Session = Depends(get
     )
 
 
+class TrialFunnelDay(BaseModel):
+    day: str
+    previews: int
+    save_clicked: int
+    signups_from_trial: int
+
+
+class TrialFunnelReport(BaseModel):
+    days: list[TrialFunnelDay]
+    previews: int
+    save_clicked: int
+    signups_from_trial: int
+    conversion_rate: float | None = None
+
+
+@router.get("/trial-funnel", response_model=TrialFunnelReport)
+def trial_funnel(days: int = 30, admin: User = Depends(get_admin_user),
+                 db: Session = Depends(get_db)):
+    """How the no-account preview at /try converts into accounts.
+
+    Anonymous daily totals — the underlying table holds three integers per day
+    and nothing that identifies a visitor.
+    """
+    from scaffold.models import TrialDailyStat
+
+    days = max(1, min(days, 365))
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).date()
+    rows = (db.query(TrialDailyStat)
+            .filter(TrialDailyStat.day >= cutoff)
+            .order_by(TrialDailyStat.day.desc())
+            .all())
+
+    previews = sum(r.previews for r in rows)
+    return TrialFunnelReport(
+        days=[TrialFunnelDay(day=r.day.isoformat(), previews=r.previews,
+                             save_clicked=r.save_clicked,
+                             signups_from_trial=r.signups_from_trial) for r in rows],
+        previews=previews,
+        save_clicked=sum(r.save_clicked for r in rows),
+        signups_from_trial=sum(r.signups_from_trial for r in rows),
+        conversion_rate=(sum(r.signups_from_trial for r in rows) / previews) if previews else None,
+    )
+
+
 class UserListResponse(BaseModel):
     users: list[UserSummary]
     total: int

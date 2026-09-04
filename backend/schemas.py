@@ -2,6 +2,8 @@ from datetime import date
 from typing import Optional
 from pydantic import BaseModel, field_validator, model_validator
 
+from app.grant_types import TAX_LOAN_TEMPLATE_TYPES, TAX_LOAN_TEMPLATE_TYPES_TEXT
+
 LOAN_TYPES = {"Interest", "Tax", "Purchase"}
 
 
@@ -546,14 +548,14 @@ class GrantTemplateCreate(BaseModel):
         if self.default_purchase_due_date is not None and self.type != "Purchase":
             raise ValueError("default_purchase_due_date is only valid when type='Purchase'")
         # Tax-loan due date only makes sense on templates that can generate tax loans:
-        # Bonus/Free grants (when the user enters $0 cost basis) or Purchase templates
-        # with a catch-up sub-schedule.
+        # zero-basis grant templates (when the user enters $0 cost basis) or Purchase
+        # templates with a catch-up sub-schedule.
         if self.default_tax_due_date is not None and not (
-            self.type in ("Bonus", "Free") or self.default_catch_up
+            self.type in TAX_LOAN_TEMPLATE_TYPES or self.default_catch_up
         ):
             raise ValueError(
-                "default_tax_due_date is only valid for Bonus/Free templates "
-                "or Purchase templates with default_catch_up=True"
+                f"default_tax_due_date is only valid for {TAX_LOAN_TEMPLATE_TYPES_TEXT} "
+                "templates or Purchase templates with default_catch_up=True"
             )
         return self
 

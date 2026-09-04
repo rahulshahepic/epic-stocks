@@ -19,6 +19,7 @@ from scaffold.models import (
 )
 from scaffold.auth import get_current_user, get_content_admin_user
 from app.content_service import load_content
+from app.grant_types import TAX_LOAN_TEMPLATE_TYPES, TAX_LOAN_TEMPLATE_TYPES_TEXT
 from schemas import (
     GrantTemplateCreate,
     GrantTemplateUpdate,
@@ -90,12 +91,12 @@ def update_grant_template(
         db.rollback()
         raise HTTPException(422, "default_purchase_due_date is only valid when type='Purchase'")
     if row.default_tax_due_date is not None and not (
-        row.type in ("Bonus", "Free") or row.default_catch_up
+        row.type in TAX_LOAN_TEMPLATE_TYPES or row.default_catch_up
     ):
         db.rollback()
         raise HTTPException(
             422,
-            "default_tax_due_date is only valid for Bonus/Free templates "
+            f"default_tax_due_date is only valid for {TAX_LOAN_TEMPLATE_TYPES_TEXT} templates "
             "or Purchase templates with default_catch_up=True",
         )
     _commit_or_409(db, "Grant template constraint violation")

@@ -126,6 +126,17 @@ export default function Login() {
  )}
  </div>
 
+ <p className="mt-4 text-center text-sm text-cs-text-2">
+ Not ready for an account?{' '}
+ <Link
+ to="/try"
+ className="font-medium text-cs-brand underline decoration-cs-brand/40 underline-offset-2 hover:text-cs-brand-hover"
+ >
+ Try it with your own files
+ </Link>
+ .
+ </p>
+
  <Card className="mt-6 text-left">
  <Eyebrow className="mb-2">Your data &amp; privacy</Eyebrow>
  <ul className="space-y-1.5 text-xs leading-relaxed text-cs-text-2">

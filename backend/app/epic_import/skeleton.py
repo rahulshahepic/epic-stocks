@@ -30,7 +30,7 @@ def _date(v) -> date | None:
 class TemplateRow:
     """One (year, type) row of the company grant schedule."""
     year: int
-    type: str                      # Purchase | Catch-Up | Bonus | Free
+    type: str                      # see app/grant_types.py GRANT_TYPE_NAMES
     vest_start: date
     periods: int
     exercise_date: date

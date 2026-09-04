@@ -34,6 +34,8 @@ _CENT = 0.005
 _LABEL_RULES: list[tuple[re.Pattern, str]] = [
     (re.compile(r"^(\d{4})\s+purchased$", re.I), "Purchase"),
     (re.compile(r"^(\d{4})\s+catch[-\s]?up$", re.I), "Catch-Up"),
+    # Ahead of the plain bonus rule: "2020 Developer Bonus Shares" is its own grant.
+    (re.compile(r"^(\d{4})\s+developer\s+bonus\s+shares$", re.I), "Developer Bonus Shares"),
     (re.compile(r"^(\d{4})\s+bonus\s+shares$", re.I), "Bonus"),
     (re.compile(r"^(\d{4})\s+free$", re.I), "Free"),
 ]
@@ -54,7 +56,8 @@ def classify_row(label: str) -> tuple[int | None, str | None]:
 _LOAN_NAME = re.compile(
     r"^(?P<grants>.+?)\s*-\s*(?P<ltype>Purchase|Interest|Tax)\s+Loan"
     r"(?:\s*-\s*(?P<lyear>\d{4}))?\s*$", re.I)
-_DESCRIPTOR = re.compile(r"^(?P<year>\d{4})\s+(?P<kind>Grant|Bonus|Catch[-\s]?up|Free)$", re.I)
+_DESCRIPTOR = re.compile(
+    r"^(?P<year>\d{4})\s+(?P<kind>Developer\s+Bonus|Grant|Bonus|Catch[-\s]?up|Free)$", re.I)
 
 
 def parse_loan_name(name: str) -> tuple[str | None, int | None, list[str]]:
@@ -69,9 +72,9 @@ def parse_loan_name(name: str) -> tuple[str | None, int | None, list[str]]:
 
 
 def _descriptor_type(kind: str) -> str:
-    k = kind.lower().replace(" ", "-")
+    k = re.sub(r"\s+", "-", kind.lower().strip())
     return {"grant": "Purchase", "bonus": "Bonus", "catch-up": "Catch-Up",
-            "free": "Free"}.get(k, "Purchase")
+            "free": "Free", "developer-bonus": "Developer Bonus Shares"}.get(k, "Purchase")
 
 
 def attribute_loan(descriptors: list[str], loan_type: str,
@@ -92,7 +95,7 @@ def attribute_loan(descriptors: list[str], loan_type: str,
     ambiguous = len(parsed) > 1
     if ambiguous:
         # L4: a loan covering several grants is reported against the bonus side.
-        bonus = [p for p in parsed if p[1] == "Bonus"]
+        bonus = [p for p in parsed if p[1] in ("Bonus", "Developer Bonus Shares")]
         year, gtype = bonus[0] if bonus else parsed[0]
         rule = "L4"
     else:
@@ -102,7 +105,7 @@ def attribute_loan(descriptors: list[str], loan_type: str,
     # L3: tax withholding belongs to the zero-basis grant of that year. Epic names
     # those loans after the "<year> Grant" even when the shares are the Catch-Up.
     if gtype == "Purchase" and loan_type == "Tax":
-        for candidate in ("Catch-Up", "Bonus"):
+        for candidate in ("Catch-Up", "Bonus", "Developer Bonus Shares"):
             if candidate in known.get(year, set()):
                 return year, candidate, rule, ambiguous
     return year, gtype, rule, ambiguous

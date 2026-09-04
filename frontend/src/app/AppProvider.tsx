@@ -52,10 +52,22 @@ const PrivacyDataCollected = (
  the database — they exist only in memory during your request.
  </P>
  </Sub>
+ <Sub title="Anonymous counts (no account needed)">
+ <P>
+ The no-account preview at <strong>/try</strong> keeps three running totals per
+ calendar day: how many previews were computed, how many people pressed save, and
+ how many accounts were created carrying preview data. That is the entire record —
+ three numbers against a date. No IP address, no browser or device details, no
+ identifier of any kind, and nothing that could group one visitor's actions
+ together or link them to an account. They exist so the feature can be judged on
+ whether it helps anyone.
+ </P>
+ </Sub>
  <Sub title="What we don't collect">
  <Ul>
  <li>Passwords (authentication is handled entirely by your identity provider)</li>
- <li>Analytics or usage tracking</li>
+ <li>Per-person analytics or usage tracking — no profiles, no sessions, no journeys, no third-party analytics service. The only counting we do is the anonymous daily totals described above</li>
+ <li>The files you upload to the preview — they are read, computed from, and discarded; nothing from them is stored unless you sign up and save</li>
  <li>Cookies beyond the authentication session token</li>
  <li>Data from other users</li>
  <li>Any identity provider data beyond the profile fields listed above</li>

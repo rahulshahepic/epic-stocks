@@ -460,6 +460,7 @@ export const api = {
   adminMetrics: (hours = 72) => apiFetch<SystemMetricPoint[]>(`/api/admin/metrics?hours=${hours}`),
   adminDbTables: () => apiFetch<DbTableInfo[]>('/api/admin/db-tables'),
   adminTipsReport: () => apiFetch<TipsReport>('/api/admin/tips-report'),
+  adminTrialFunnel: (days = 30) => apiFetch<TrialFunnelReport>(`/api/admin/trial-funnel?days=${days}`),
 
   // Email & invitation admin
   adminEmailLookup: (email: string) =>
@@ -566,6 +567,15 @@ export interface TipsReport {
   unique_users_accepted: number
   total_estimated_savings: number
   by_type: TipTypeReport[]
+}
+
+/** Anonymous daily totals for the no-account preview funnel (/try). */
+export interface TrialFunnelReport {
+  days: { day: string; previews: number; save_clicked: number; signups_from_trial: number }[]
+  previews: number
+  save_clicked: number
+  signups_from_trial: number
+  conversion_rate: number | null
 }
 
 export interface AdminStats {

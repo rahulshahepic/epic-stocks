@@ -8,13 +8,17 @@ import type {
 
 import { useApiData } from '../hooks/useApiData.ts'
 import { useContent } from '../hooks/useContent.ts'
-import { GRANT_COLORS, GRANT_DESCRIPTIONS, PRE_TAX_TYPES } from '../grantTypes.ts'
+import {
+ GRANT_COLORS, GRANT_DESCRIPTIONS, GRANT_TYPE_NAMES, PRE_TAX_TYPES, ZERO_BASIS_TYPES,
+ isBonusRowType,
+} from '../grantTypes.ts'
+import type { GrantTypeName, BonusRowType } from '../grantTypes.ts'
 import { inferRefiSteps } from '../refiInference.ts'
 import type { RefiInference } from '../refiInference.ts'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type GrantType = 'Purchase' | 'Catch-Up' | 'Bonus' | 'Free'
+type GrantType = GrantTypeName
 
 interface WizardPrice {
  effective_date: string
@@ -121,7 +125,7 @@ function fmtDate(d: string) {
 
 interface KnownGrant {
  year: number
- type: 'Purchase' | 'Bonus' | 'Free'
+ type: 'Purchase' | BonusRowType
  vest_start: string
  periods: number
  exercise_date: string
@@ -148,7 +152,7 @@ interface CatchUpRow {
 }
 
 interface BonusGrantRow {
- year: number; type: 'Bonus' | 'Free'
+ year: number; type: BonusRowType
  purchase_price: string; shares: string
  isBonus2020: boolean; schedule: BonusSchedule
  vest_start: string; periods: number; exercise_date: string
@@ -511,7 +515,7 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
  // ── Content-derived constants (previously module-level hardcoded values) ──
  const EPIC_GRANT_SCHEDULE: KnownGrant[] = content.grant_templates.map(g => ({
  year: g.year,
- type: g.type as 'Purchase' | 'Bonus' | 'Free',
+ type: g.type as KnownGrant['type'],
  vest_start: g.vest_start,
  periods: g.periods,
  exercise_date: g.exercise_date,
@@ -612,11 +616,12 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
  function initBonusRows(): BonusGrantRow[] {
  const defaultBonusVariant =
  content.bonus_schedule_variants.find(v => v.is_default)?.variant_code as BonusSchedule | undefined
- return EPIC_GRANT_SCHEDULE.filter(g => g.type === 'Bonus' || g.type === 'Free').map(g => ({
- year: g.year, type: g.type as 'Bonus' | 'Free',
- // Free grants are by definition $0. Bonus rows take whatever the user enters —
- // $0 if the grant is taxable at vest (RSU-style), the FMV otherwise.
- purchase_price: g.type === 'Free' ? '0' : '', shares: '',
+ return EPIC_GRANT_SCHEDULE.filter(g => isBonusRowType(g.type)).map(g => ({
+ year: g.year, type: g.type as BonusRowType,
+ // Free and Developer Bonus Shares grants are by definition $0. Bonus rows take
+ // whatever the user enters — $0 if the grant is taxable at vest (RSU-style),
+ // the FMV otherwise.
+ purchase_price: ZERO_BASIS_TYPES.has(g.type) ? '0' : '', shares: '',
  isBonus2020: BONUS_VARIANT_KEYS.has(`${g.year}-${g.type}`),
  schedule: (defaultBonusVariant ?? 'C') as BonusSchedule,
  vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
@@ -996,12 +1001,12 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
 
  // Pre-populate bonus/free rows
  const newBonusRows: BonusGrantRow[] = EPIC_GRANT_SCHEDULE
- .filter(g => g.type === 'Bonus' || g.type === 'Free')
+ .filter(g => isBonusRowType(g.type))
  .map(g => {
  const existing = grantByKey.get(`${g.year}-${g.type}`)
  return {
- year: g.year, type: g.type as 'Bonus' | 'Free',
- purchase_price: existing ? String(existing.price) : (g.type === 'Free' ? '0' : ''),
+ year: g.year, type: g.type as BonusRowType,
+ purchase_price: existing ? String(existing.price) : (ZERO_BASIS_TYPES.has(g.type) ? '0' : ''),
  shares: existing ? String(existing.shares) : '',
  isBonus2020: BONUS_VARIANT_KEYS.has(`${g.year}-${g.type}`),
  schedule: ((content.bonus_schedule_variants.find(v => v.is_default)?.variant_code) ?? 'C') as BonusSchedule,
@@ -1206,7 +1211,7 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
  ...bonusRows
  .filter(r => parseInt(r.shares) > 0)
  .map(r => ({
- year: r.year, type: r.type as 'Bonus' | 'Free',
+ year: r.year, type: r.type as BonusRowType,
  shares: parseInt(r.shares) || 0,
  price: parseFloat(r.purchase_price) || 0,
  vest_start: r.vest_start, periods: r.periods, exercise_date: r.exercise_date,
@@ -1862,7 +1867,7 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
  <div>
  <span className="text-xs text-cs-muted">Grant type</span>
  <div className="mt-1 flex flex-wrap gap-1.5">
- {(['Purchase', 'Catch-Up', 'Bonus', 'Free'] as GrantType[]).map(t => (
+ {GRANT_TYPE_NAMES.map(t => (
  <button
  key={t}
  type="button"
@@ -2467,7 +2472,7 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
 
  {/* Bonus / Free grants — Free grants with a matching purchase year are shown inline above */}
  <div className="space-y-2">
- <p className="text-xs font-semibold text-cs-text-2">Bonus &amp; Free grants</p>
+ <p className="text-xs font-semibold text-cs-text-2">Bonus, Free &amp; Developer Bonus grants</p>
  <p className="text-[11px] text-cs-muted">Leave shares blank for years you didn't receive a bonus.</p>
  {bonusRows.map((row, i) => {
  // Free grants that have a matching purchase year are rendered inline above
@@ -2502,7 +2507,7 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
  <div className="grid grid-cols-2 gap-3">
  <Field label="Shares" type="number" value={row.shares}
  onChange={v => setBonusField(i, { shares: v })} />
- {row.type !== 'Free' && (
+ {!ZERO_BASIS_TYPES.has(row.type) && (
  <Field label="Cost basis ($/share)" type="number" step="0.01" value={row.purchase_price}
  onChange={v => setBonusField(i, { purchase_price: v })}
  hint="0 if taxable at vest as ordinary income" />
@@ -2642,7 +2647,7 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
  }))
  // Pre-fill bonus cost basis: 2020 bonus is $0, others use FMV at exercise
  setBonusRows(rows => rows.map(r => {
- if (r.purchase_price || r.type === 'Free') return r
+ if (r.purchase_price || ZERO_BASIS_TYPES.has(r.type)) return r
  if (r.year === 2020 && r.type === 'Bonus') return { ...r, purchase_price: '0' }
  const exerciseYear = new Date(r.exercise_date + 'T00:00:00').getFullYear()
  const match = prices.find(p => p.price && new Date(p.effective_date + 'T00:00:00').getFullYear() === exerciseYear)

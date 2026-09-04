@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import ImportWizard from './ImportWizard.tsx'
 import FindingList from './FindingList.tsx'
+import StalePriceNotice from './StalePriceNotice.tsx'
 import { downloadText, epicImport, severityOf, type AnalyzeResponse } from '../epicImport.ts'
 import { platform } from '../../platform/index.ts'
 
@@ -32,6 +33,8 @@ export default function EpicFileImport() {
   const [pasted, setPasted] = useState('')
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
+  const [repricing, setRepricing] = useState(false)
+  const [pricedAt, setPricedAt] = useState<number | null>(null)
 
   const files = { shareCsv: csv, statementPdf: pdf }
   const busy = stage === 'analyzing'
@@ -40,12 +43,26 @@ export default function EpicFileImport() {
     setStage('analyzing')
     setError('')
     try {
-      setResult(await epicImport.analyze({ ...files, revisedDraft }, revisedJson))
+      setResult(await epicImport.analyze({ ...files, revisedDraft }, revisedJson,
+                                         pricedAt ?? undefined))
       setStage('result')
       setPasted('')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not read those files')
       setStage(result ? 'result' : 'idle')
+    }
+  }
+
+  /** Re-read the same files with today's price folded in as a price point. */
+  async function applyCurrentPrice(price: number) {
+    setRepricing(true)
+    try {
+      setResult(await epicImport.analyze(files, undefined, price))
+      setPricedAt(price)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not apply that price')
+    } finally {
+      setRepricing(false)
     }
   }
 
@@ -83,6 +100,11 @@ export default function EpicFileImport() {
       </div>
     )
   }
+
+  const draftPrices = (result?.draft?.prices as { effective_date: string; price: number }[] | undefined) ?? []
+  const newest = draftPrices.length ? draftPrices[draftPrices.length - 1] : null
+  const latestPrice = newest?.price ?? 0
+  const latestDate = newest?.effective_date ?? ''
 
   const counts = result ? severityOf(result.findings) : { errors: 0, warnings: 0 }
   const needsHelp = !!result && (result.blocked || counts.errors > 0)
@@ -162,6 +184,21 @@ export default function EpicFileImport() {
           </p>
 
           <FindingList findings={result.findings} />
+
+          {result.price_is_stale && pricedAt == null && (
+            <div className="mt-3">
+              <StalePriceNotice
+                latestPrice={latestPrice} latestDate={latestDate}
+                onApply={applyCurrentPrice} busy={repricing}
+              />
+            </div>
+          )}
+          {pricedAt != null && (
+            <p className="mt-3 text-xs text-cs-muted">
+              Includes the {pricedAt.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 })} you
+              entered for today — it saves with the rest when you finish the wizard.
+            </p>
+          )}
 
           {!result.blocked && (
             <button

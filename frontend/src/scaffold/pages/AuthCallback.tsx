@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../../api.ts'
 import { clearPendingLogin, completeLogin, readPendingLogin } from '../oidc.ts'
 import { platform } from '../../platform/index.ts'
+import { pingConverted, takeStashedTrialPayload } from '../../app/trialImport.ts'
 
 export default function AuthCallback() {
  const navigate = useNavigate()
@@ -69,6 +70,20 @@ export default function AuthCallback() {
  // Acceptance failed (expired, already used, etc.) — continue to home
  }
  }
+
+ // A /try session stashed its computed grants/prices before sending the
+ // user here to sign up. A brand-new account has nothing to conflict
+ // with, so save it straight away instead of asking them to re-upload.
+ const trialPayload = await takeStashedTrialPayload()
+ if (trialPayload) {
+ try {
+ await api.wizardSubmit({ ...trialPayload, clear_existing: true })
+ pingConverted()
+ } catch {
+ // Save failed — they still have a working account; they can import again.
+ }
+ }
+
  navigate('/', { replace: true })
  })()
  }, [navigate])

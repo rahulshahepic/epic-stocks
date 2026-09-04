@@ -6,6 +6,13 @@ on:
 # incoming PR, and all merges to main must come from staging (enforced by
 # branch-check.yml). Re-running the same tests on the merge commit doubles CI
 # cost with no additional signal — the PR run already tested the same code.
+#
+# The consequence to know about: a cache written by a PR run is scoped to that
+# PR's ref, and other PRs can only restore caches written on their base branch.
+# With nothing running on staging, every restore here missed and every run
+# re-installed from scratch. warm-cache.yml now populates these caches on pushes
+# to staging/main — keep its cache keys byte-identical to the ones below, or the
+# restores go back to silently missing.
 jobs:
   backend:
     runs-on: ubuntu-latest
@@ -47,42 +54,116 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Cache status
         run: echo "npm cache-hit=${{ steps.setup-node.outputs.cache-hit }}"
+      - name: Update npm
+        # Node 20's bundled npm is 10.x, which still falls back to the retired
+        # /-/npm/v1/security/audits/quick endpoint (see --no-audit below). npm
+        # 11.0.0 removed that fallback entirely (npm/cli#7911); 11.19.1 is the
+        # newest 11.x release, still within Node 20's supported range
+        # (^20.17.0 || >=22.9.0) so nothing else about the toolchain changes.
+        run: npm install -g npm@11.19.1
       - name: Install deps
-        run: cd frontend && time npm ci
+        # --no-audit: even on npm 11, ci's own built-in audit report duplicates
+        # the check the next step already makes against the bulk endpoint —
+        # this just skips the redundant network round trip.
+        run: cd frontend && time npm ci --no-audit
       - name: Type-check
         run: cd frontend && time npx tsc -b --noEmit
-      - name: npm audit
-        # --omit=dev excludes build-tool transitive deps (vite, babel, playwright, etc.)
-        # from the audit. This app is a browser SPA — dev-only packages never reach
-        # production users, so new CVEs in build tooling should not block unrelated PRs.
+      - name: Audit production dependencies
+        # Scope: production packages only (--omit=dev), so build-tool CVEs (vite,
+        # babel, playwright) cannot block an unrelated PR — this app is a browser
+        # SPA and dev-only packages never reach a user.
         #
-        # GHSA-qwww-vcr4-c8h2 (react-router RSC Mode CSRF Bypass) is allowlisted below:
-        # it only affects React Router's RSC/framework mode, which this client-only SPA
-        # (BrowserRouter) does not use, and react-router-dom has no non-breaking fix yet
-        # (v8 only ships under the renamed "react-router" package). Remove the allowlist
-        # entry once react-router-dom publishes a >=8.3.0-equivalent fix.
+        # This goes through `npm audit` rather than posting to the advisory
+        # endpoint by hand. npm owns which endpoint is current: when the registry
+        # retired /-/npm/v1/security/audits{,/quick} after 2026-07-15, npm 11
+        # moved to the replacement (npm/cli#7911) and dropped the fallback that
+        # made npm 10 hang. Hand-rolling the request bought us nothing npm does
+        # not already do, and left us to track endpoint changes ourselves.
+        #
+        # The endpoint is intermittently slow, so each attempt is capped and
+        # retried. `npm audit` exits non-zero both for "found vulnerabilities"
+        # and for "could not reach the registry"; only a report carrying
+        # auditReportVersion distinguishes them, and the two are treated
+        # differently: an advisory fails the job, an unreachable endpoint warns.
+        #
+        # Warning rather than failing is deliberate, and is safe only because of
+        # the dependency-review job below. npm's advisory endpoint goes slow often
+        # enough — while its status page still reads "Operational" — that failing
+        # closed here meant npm's uptime decided whether anyone could merge, on
+        # PRs that touch no dependencies at all. dependency-review does not use
+        # that endpoint and still blocks anything vulnerable a PR introduces, so
+        # what is lost during an outage is re-checking pre-existing packages,
+        # which the next green run (or Dependabot) picks up anyway. It is never
+        # silently clean: an unreachable endpoint is always reported as such.
+        #
+        # GHSA-qwww-vcr4-c8h2 (react-router RSC Mode CSRF Bypass) is allowlisted:
+        # it only affects React Router's RSC/framework mode, which this client-only
+        # SPA (BrowserRouter) does not use, and react-router-dom has no non-breaking
+        # fix yet (v8 only ships under the renamed "react-router" package). Remove
+        # the entry once react-router-dom publishes a >=8.3.0-equivalent fix.
         run: |
           cd frontend
-          npm audit --omit=dev --json > /tmp/npm-audit.json || true
           ALLOWED='["https://github.com/advisories/GHSA-qwww-vcr4-c8h2"]'
+
+          for attempt in 1 2 3; do
+            timeout 60 npm audit --omit=dev --json > /tmp/audit.json 2>/tmp/audit.err || true
+            if jq -e '.auditReportVersion' /tmp/audit.json > /dev/null 2>&1; then break; fi
+            echo "Advisory lookup attempt $attempt returned no report; retrying." >&2
+            sleep $((attempt * 15))
+          done
+
+          if ! jq -e '.auditReportVersion' /tmp/audit.json > /dev/null 2>&1; then
+            echo "::warning::Advisory lookup failed after 3 attempts - production dependencies were NOT audited in this run. Not failing the job: dependency-review covers what this PR introduces. See the step comment."
+            head -c 500 /tmp/audit.json /tmp/audit.err || true
+            exit 0
+          fi
+
+          echo "Audited production dependencies: $(jq -c '.metadata.vulnerabilities' /tmp/audit.json)"
+
           UNADDRESSED=$(jq --argjson allowed "$ALLOWED" '
-            [.vulnerabilities[]
+            [ .vulnerabilities[]
               | select(.severity == "high" or .severity == "critical")
-              | .via[]
-              | select(type == "object")
-              | .url]
+              | .via[]? | objects | .url ]
             | unique
             | . - $allowed
-          ' /tmp/npm-audit.json)
+          ' /tmp/audit.json)
+
           if [ "$UNADDRESSED" != "[]" ]; then
-            echo "Unaddressed high/critical advisories:" >&2
+            echo "Unaddressed high/critical advisories in production dependencies:" >&2
             echo "$UNADDRESSED" >&2
-            npm audit --omit=dev --audit-level=high
+            jq -r '.vulnerabilities[]
+                   | select(.severity == "high" or .severity == "critical")
+                   | .name as $pkg | .via[]? | objects
+                   | "  \(.severity)  \($pkg)  \(.title)  \(.url)"' /tmp/audit.json >&2
             exit 1
           fi
           echo "No unaddressed high/critical advisories (allowlisted: $ALLOWED)"
       - name: Run tests
         run: cd frontend && time npm run test
+
+  # Catches vulnerable dependencies *entering* the tree, which is the job a PR
+  # gate actually has. It resolves advisories through GitHub's Advisory Database
+  # over the runner's own API rather than registry.npmjs.org, so unlike the audit
+  # step above it does not depend on npm's advisory endpoint being reachable —
+  # that endpoint is intermittently slow and its status page does not reflect it.
+  #
+  # It reviews only the dependencies a PR changes, so it does not replace the
+  # tree-wide audit; the two cover different things on purpose.
+  #
+  # NOTE: this is not yet a required check. Branch protection on main/staging
+  # requires backend/frontend/e2e/caddy-validate, so add `dependency-review`
+  # there to make it blocking.
+  dependency-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v5
+        with:
+          fail-on-severity: high
+          # Same allowlist as the audit step, for the same reason — see there.
+          allow-ghsas: GHSA-qwww-vcr4-c8h2
 
   caddy-validate:
     runs-on: ubuntu-latest
@@ -116,8 +197,12 @@ jobs:
           node-version: "20"
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
+      - name: Update npm
+        # See the frontend job's Update npm step for why.
+        run: npm install -g npm@11.19.1
       - name: Install frontend deps
-        run: cd frontend && time npm ci
+        # See the frontend job's Install deps step for why --no-audit.
+        run: cd frontend && time npm ci --no-audit
       - name: Cache playwright browsers
         id: pw-cache
         uses: actions/cache@v4

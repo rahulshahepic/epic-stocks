@@ -3,10 +3,17 @@
  * Skipped unless SCREENSHOT_EMAIL is set (requires backend running with E2E_TEST=1).
  */
 import { test, expect, type Page } from '@playwright/test'
+import * as path from 'path'
+import { fileURLToPath } from 'url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const BASE = process.env.SCREENSHOT_BASE_URL ?? 'http://localhost:5173'
 const EMAIL = process.env.SCREENSHOT_EMAIL ?? ''
 const OUT = '../screenshots'
+
+const TRIAL_CSV = path.resolve(__dirname, '../../test_data/epic_share_summary.csv')
+const TRIAL_PDF = path.resolve(__dirname, '../../test_data/epic_loan_statement.pdf')
 
 const MOBILE = { width: 375, height: 812 }
 const DESKTOP = { width: 1280, height: 800 }
@@ -175,6 +182,41 @@ test.describe('Screenshots', () => {
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(800)
     await page.screenshot({ path: `${OUT}/try-dark-mobile.png`, fullPage: true })
+  })
+
+  /** Upload the synthetic Shareworks fixtures and land on the computed preview. */
+  async function previewPage(page: Page, viewport: { width: number; height: number }, scheme: 'light' | 'dark') {
+    await page.emulateMedia({ colorScheme: scheme })
+    await page.setViewportSize(viewport)
+    await page.goto(`${BASE}/try`)
+    await page.waitForLoadState('networkidle')
+    await page.locator('#trial-csv').setInputFiles(TRIAL_CSV)
+    await page.locator('#trial-pdf').setInputFiles(TRIAL_PDF)
+    await page.getByRole('button', { name: 'See my numbers' }).click()
+    await page.getByText('Net worth', { exact: false }).first().waitFor({ timeout: 20000 })
+    await page.waitForTimeout(1500)
+  }
+
+  test('try preview dashboard - light - mobile', async ({ page }) => {
+    await previewPage(page, MOBILE, 'light')
+    await page.screenshot({ path: `${OUT}/try-preview-light-mobile.png`, fullPage: true })
+  })
+
+  test('try preview dashboard - dark - mobile', async ({ page }) => {
+    await previewPage(page, MOBILE, 'dark')
+    await page.screenshot({ path: `${OUT}/try-preview-dark-mobile.png`, fullPage: true })
+  })
+
+  test('try preview dashboard - light - desktop', async ({ page }) => {
+    await previewPage(page, DESKTOP, 'light')
+    await page.screenshot({ path: `${OUT}/try-preview-light-desktop.png`, fullPage: true })
+  })
+
+  test('try preview events - light - mobile', async ({ page }) => {
+    await previewPage(page, MOBILE, 'light')
+    await page.getByRole('button', { name: 'Events' }).click()
+    await page.waitForTimeout(600)
+    await page.screenshot({ path: `${OUT}/try-preview-events-light-mobile.png`, fullPage: true })
   })
 
   test('privacy policy page - light - mobile', async ({ page }) => {

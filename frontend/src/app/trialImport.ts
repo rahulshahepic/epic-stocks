@@ -7,7 +7,9 @@
  * decide to sign up and save it.
  */
 import { apiFetch } from '../api.ts'
-import type { TimelineEvent, WizardSubmitPayload } from '../api.ts'
+import type {
+  GrantEntry, LoanEntry, PriceEntry, TaxSettings, TimelineEvent, WizardSubmitPayload,
+} from '../api.ts'
 import { platform } from '../platform/index.ts'
 
 export interface TrialFinding {
@@ -28,8 +30,14 @@ export interface TrialSummary {
 
 export interface TrialAnalyzeResponse {
   wizard_payload: WizardSubmitPayload
+  /** The same shapes the signed-in app renders from — ids are negative, nothing is saved. */
+  grants: GrantEntry[]
+  loans: LoanEntry[]
+  prices: PriceEntry[]
   timeline: TimelineEvent[]
   summary: TrialSummary
+  /** The rates a new account starts with, so the preview matches what signing up gives. */
+  tax_defaults: TaxSettings
   findings: TrialFinding[]
   blocked: boolean
   reconciles: boolean

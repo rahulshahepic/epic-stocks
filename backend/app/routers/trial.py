@@ -17,13 +17,31 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
+from schemas import TaxSettingsRead
+from scaffold.models import TaxSettings
 from app.content_service import load_content
 from app.core import compute_timeline, generate_all_events
 from app.date_utils import to_date as _to_date
 from app.epic_import import build_skeleton, derive_draft, is_blocked, to_wizard_payload, validate_draft
-from app.routers.epic_import import _PDF_MAGIC, _parse_files, _read_upload, _summary
+from app.routers.epic_import import (_PDF_MAGIC, _parse_files, _read_upload, _summary,
+                                     _wizard_prefill)
 
 router = APIRouter(prefix="/api/trial", tags=["trial"])
+
+
+def _default_tax_settings() -> TaxSettingsRead:
+    """The rates a brand-new account starts with.
+
+    Read off the model's own column defaults rather than restated here, so the
+    figures someone sees before signing up cannot drift from the ones they get
+    the moment they do.
+    """
+    cols = TaxSettings.__table__.columns
+    return TaxSettingsRead(**{
+        name: cols[name].default.arg
+        for name in TaxSettingsRead.model_fields
+        if name in cols and cols[name].default is not None
+    })
 
 
 def _source_data(payload: dict):
@@ -60,8 +78,15 @@ def _serialize_event(e: dict) -> dict:
 
 class TrialAnalyzeResponse(BaseModel):
     wizard_payload: dict
+    # The same flat grant/loan/price shapes the signed-in app renders from, so
+    # the preview can show a real dashboard rather than a reduced summary. Ids
+    # are negative — nothing here is a saved row.
+    grants: list[dict]
+    loans: list[dict]
+    prices: list[dict]
     timeline: list[dict]
     summary: dict
+    tax_defaults: TaxSettingsRead
     findings: list[dict]
     blocked: bool
     reconciles: bool
@@ -102,11 +127,16 @@ def analyze(
     grants, prices, loans, initial_price = _source_data(wizard_payload)
     events = generate_all_events(grants, prices, loans)
     timeline = [_serialize_event(e) for e in compute_timeline(events, initial_price)]
+    prefill = _wizard_prefill(draft)
 
     return TrialAnalyzeResponse(
         wizard_payload=wizard_payload,
+        grants=prefill["grants"],
+        loans=prefill["loans"],
+        prices=prefill["prices"],
         timeline=timeline,
         summary=_summary(draft),
+        tax_defaults=_default_tax_settings(),
         findings=[x.as_dict() for x in findings],
         blocked=blocked,
         reconciles=reconciles,

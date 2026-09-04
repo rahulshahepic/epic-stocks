@@ -6,7 +6,11 @@ FROM mcr.microsoft.com/playwright:v1.56.0-jammy
 WORKDIR /app
 
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci
+# npm 11 removed the fallback to the retired audit endpoint (npm/cli#7911).
+# --no-audit: see .github/workflows/test.yml's frontend job for why — CI
+# already audits production dependencies against the working endpoint, so
+# npm ci's own report is redundant either way.
+RUN npm install -g npm@11.19.1 && npm ci --no-audit
 
 COPY frontend/ ./
 COPY test_data/ /test_data/

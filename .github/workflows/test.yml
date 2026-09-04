@@ -54,20 +54,37 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Cache status
         run: echo "npm cache-hit=${{ steps.setup-node.outputs.cache-hit }}"
+      - name: Update npm
+        # Node 20's bundled npm is 10.x, which still falls back to the retired
+        # /-/npm/v1/security/audits/quick endpoint (see --no-audit below). npm
+        # 11.0.0 removed that fallback entirely (npm/cli#7911); 11.19.1 is the
+        # newest 11.x release, still within Node 20's supported range
+        # (^20.17.0 || >=22.9.0) so nothing else about the toolchain changes.
+        run: npm install -g npm@11.19.1
       - name: Install deps
-        run: cd frontend && time npm ci
+        # --no-audit: even on npm 11, ci's own built-in audit report duplicates
+        # the check the next step already makes against the bulk endpoint —
+        # this just skips the redundant network round trip.
+        run: cd frontend && time npm ci --no-audit
       - name: Type-check
         run: cd frontend && time npx tsc -b --noEmit
       - name: Audit production dependencies
-        # Queries npm's Bulk Advisory endpoint directly rather than going through
-        # `npm audit`. npm retired /-/npm/v1/security/audits{,/quick} after
-        # 2026-07-15, and npm 10.x still falls back to that retired endpoint
-        # whenever a bulk request blips — so `npm audit` fails outright at whatever
-        # rate the registry hiccups, with nothing wrong in this repo. Talking to the
-        # replacement endpoint ourselves removes that fallback, and keeps the scope
-        # identical: the request carries production packages only, so build-tool
-        # CVEs (vite, babel, playwright) still cannot block an unrelated PR — this
-        # app is a browser SPA and dev-only packages never reach a user.
+        # Scope: production packages only (--omit=dev), so build-tool CVEs (vite,
+        # babel, playwright) cannot block an unrelated PR — this app is a browser
+        # SPA and dev-only packages never reach a user.
+        #
+        # This goes through `npm audit` rather than posting to the advisory
+        # endpoint by hand. npm owns which endpoint is current: when the registry
+        # retired /-/npm/v1/security/audits{,/quick} after 2026-07-15, npm 11
+        # moved to the replacement (npm/cli#7911) and dropped the fallback that
+        # made npm 10 hang. Hand-rolling the request bought us nothing npm does
+        # not already do, and left us to track endpoint changes ourselves.
+        #
+        # The endpoint is intermittently slow, so each attempt is capped and
+        # retried. `npm audit` exits non-zero both for "found vulnerabilities"
+        # and for "could not reach the registry"; only a report carrying
+        # auditReportVersion distinguishes them, which is also what keeps a
+        # lookup failure from being reported as a clean bill of health.
         #
         # GHSA-qwww-vcr4-c8h2 (react-router RSC Mode CSRF Bypass) is allowlisted:
         # it only affects React Router's RSC/framework mode, which this client-only
@@ -78,52 +95,36 @@ jobs:
           cd frontend
           ALLOWED='["https://github.com/advisories/GHSA-qwww-vcr4-c8h2"]'
 
-          # The endpoint takes a flat {name: [versions]} map. `npm query` reads the
-          # installed tree; --omit=dev does not filter it, so the per-node dev flag does.
-          npm query '*' --json > /tmp/npm-tree.json
-          jq '[.[] | select(.dev != true and .name != null and .version != null and .location != "")]
-              | group_by(.name)
-              | map({key: .[0].name, value: (map(.version) | unique)})
-              | from_entries' /tmp/npm-tree.json > /tmp/bulk-request.json
+          for attempt in 1 2 3; do
+            timeout 60 npm audit --omit=dev --json > /tmp/audit.json 2>/tmp/audit.err || true
+            if jq -e '.auditReportVersion' /tmp/audit.json > /dev/null 2>&1; then break; fi
+            echo "Advisory lookup attempt $attempt returned no report; retrying." >&2
+            sleep $((attempt * 15))
+          done
 
-          PKGS=$(jq 'length' /tmp/bulk-request.json)
-          echo "Auditing $PKGS production packages against the bulk advisory endpoint."
-
-          # An empty request comes back empty, which reads exactly like "all clear".
-          if [ "$PKGS" -lt 10 ]; then
-            echo "::error::Only $PKGS production packages resolved - the dependency tree did not read correctly, so this audit would be meaningless."
+          if ! jq -e '.auditReportVersion' /tmp/audit.json > /dev/null 2>&1; then
+            echo "::error::Advisory lookup failed - refusing to report a clean audit."
+            head -c 500 /tmp/audit.json /tmp/audit.err || true
             exit 1
           fi
 
-          HTTP=$(curl -sS -X POST https://registry.npmjs.org/-/npm/v1/security/advisories/bulk \
-            -H 'Content-Type: application/json' -H 'npm-command: audit' \
-            --data @/tmp/bulk-request.json -o /tmp/bulk-response.json -w '%{http_code}' \
-            --retry 3 --retry-delay 5 --retry-all-errors --max-time 120) || HTTP="000"
-
-          # A gate that cannot see the advisories fails loudly rather than reporting a
-          # clean bill of health. The previous version piped the response straight into
-          # jq, so a registry error surfaced as "Cannot iterate over null" and a bare
-          # exit 5 - and an error shaped any other way would have passed silently.
-          if [ "$HTTP" != "200" ] || ! jq -e 'type == "object"' /tmp/bulk-response.json > /dev/null 2>&1; then
-            echo "::error::Advisory lookup failed (HTTP $HTTP) - refusing to report a clean audit."
-            head -c 500 /tmp/bulk-response.json || true
-            exit 1
-          fi
+          echo "Audited production dependencies: $(jq -c '.metadata.vulnerabilities' /tmp/audit.json)"
 
           UNADDRESSED=$(jq --argjson allowed "$ALLOWED" '
-            [ to_entries[] | .value[]
+            [ .vulnerabilities[]
               | select(.severity == "high" or .severity == "critical")
-              | .url ]
+              | .via[]? | objects | .url ]
             | unique
             | . - $allowed
-          ' /tmp/bulk-response.json)
+          ' /tmp/audit.json)
 
           if [ "$UNADDRESSED" != "[]" ]; then
             echo "Unaddressed high/critical advisories in production dependencies:" >&2
             echo "$UNADDRESSED" >&2
-            jq -r 'to_entries[] | .key as $pkg | .value[]
+            jq -r '.vulnerabilities[]
                    | select(.severity == "high" or .severity == "critical")
-                   | "  \(.severity)  \($pkg)  \(.title)  \(.url)"' /tmp/bulk-response.json >&2
+                   | .name as $pkg | .via[]? | objects
+                   | "  \(.severity)  \($pkg)  \(.title)  \(.url)"' /tmp/audit.json >&2
             exit 1
           fi
           echo "No unaddressed high/critical advisories (allowlisted: $ALLOWED)"
@@ -162,8 +163,12 @@ jobs:
           node-version: "20"
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
+      - name: Update npm
+        # See the frontend job's Update npm step for why.
+        run: npm install -g npm@11.19.1
       - name: Install frontend deps
-        run: cd frontend && time npm ci
+        # See the frontend job's Install deps step for why --no-audit.
+        run: cd frontend && time npm ci --no-audit
       - name: Cache playwright browsers
         id: pw-cache
         uses: actions/cache@v4

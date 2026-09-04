@@ -39,7 +39,9 @@ found, because the usual cause is a rename.
 
 ### `G1` — row label → grant year and type
 Maps `2024 Purchased` → (2024, Purchase), `2019 Catch-up` → Catch-Up,
-`2023 Bonus Shares` → Bonus, `2022 Free` → Free. **Warning** for a category the
+`2023 Bonus Shares` → Bonus, `2022 Free` → Free, and
+`2020 Developer Bonus Shares` → Developer Bonus Shares. The developer pattern is
+tried before the plain bonus one, so the two do not collide. **Warning** for a category the
 mapping has never seen, naming the shares that were therefore not imported. Epic
 lists every category for every employee, so rows with no share count are skipped
 silently — only a populated row nobody can classify is reported.
@@ -99,16 +101,19 @@ when a name does not parse, quoting it and the shape expected. A purchase loan
 carries no year in its name, so the grant year is used.
 
 ### `L3` — descriptors + loan type → which grant the loan belongs to
-`2018 Grant` → that year's Purchase grant, `2020 Bonus` → Bonus, and so on. Tax
+`2018 Grant` → that year's Purchase grant, `2020 Bonus` → Bonus,
+`2020 Developer Bonus` → Developer Bonus Shares, and so on. Tax
 loans on an unqualified `<year> Grant` belong to that year's zero-basis grant —
-Catch-Up if there is one, otherwise Bonus — because that is what Epic withholds
+Catch-Up if there is one, then Bonus, then Developer Bonus Shares — because that
+is what Epic withholds
 against. **Warning** when the grant cannot be told, when the loan points at a
 grant the CSV does not have, and once (rather than per row) when no grants could
 be read at all.
 
 ### `L4` — a loan naming two grants → the bonus side
 `"2020 Bonus/2020 Grant - Interest Loan - 2024"` is attributed in full to the
-bonus side. **Info** on every such loan, so the attribution is visible rather
+bonus side — a Bonus or Developer Bonus Shares descriptor, whichever the name
+lists first. **Info** on every such loan, so the attribution is visible rather
 than assumed.
 
 ### `L5` — in your data but not on the statement

@@ -8,8 +8,9 @@ Three source-of-truth tables. Events are computed on the fly — never stored.
 ```
 id, user_id, year, type, shares, price, vest_start, periods, exercise_date, dp_shares
 ```
-- `type`: "Purchase", "Catch-Up", "Bonus", "Free"
-- `price`: purchase price per share (0 for Catch-Up, Bonus with zero basis, Free)
+- `type`: "Purchase", "Catch-Up", "Bonus", "Free", "Developer Bonus Shares"
+- `price`: purchase price per share (0 for Catch-Up, Bonus with zero basis, Free,
+  Developer Bonus Shares)
 - `vest_start`: date when first vesting period begins
 - `periods`: number of annual vesting periods
 - `exercise_date`: date the grant was exercised (typically 12/31 of grant year)
@@ -19,7 +20,7 @@ id, user_id, year, type, shares, price, vest_start, periods, exercise_date, dp_s
 ```
 id, user_id, grant_year, grant_type, loan_type, loan_year, amount, interest_rate, due_date, loan_number
 ```
-- `grant_type`: "Purchase", "Catch-Up", "Bonus" (which grant this loan is associated with)
+- `grant_type`: which grant this loan is associated with — any of the grant types above
 - `loan_type`: "Purchase", "Interest", "Tax"
 - `loan_number`: the 6-digit loan identifier from Epic's statements
 

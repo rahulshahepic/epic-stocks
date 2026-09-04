@@ -6,6 +6,13 @@ on:
 # incoming PR, and all merges to main must come from staging (enforced by
 # branch-check.yml). Re-running the same tests on the merge commit doubles CI
 # cost with no additional signal — the PR run already tested the same code.
+#
+# The consequence to know about: a cache written by a PR run is scoped to that
+# PR's ref, and other PRs can only restore caches written on their base branch.
+# With nothing running on staging, every restore here missed and every run
+# re-installed from scratch. warm-cache.yml now populates these caches on pushes
+# to staging/main — keep its cache keys byte-identical to the ones below, or the
+# restores go back to silently missing.
 jobs:
   backend:
     runs-on: ubuntu-latest

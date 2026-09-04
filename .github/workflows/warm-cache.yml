@@ -1,0 +1,75 @@
+name: Warm CI caches
+on:
+  push:
+    branches: [staging, main]
+  workflow_dispatch:
+
+# Why this exists
+# ---------------
+# test.yml runs only on `pull_request`, deliberately (see its header: re-running
+# the same tests on the merge commit costs double for no extra signal). But
+# GitHub scopes a cache written during a PR run to that PR's own ref: another PR
+# can only read caches written on its *base* branch. With nothing running on
+# staging, no cache was ever written there, so every PR started cold forever —
+# each run faithfully saving a cache into a scope nothing would ever read again.
+#
+# The symptom was `npm cache-hit=false` on runs whose package-lock.json had not
+# changed in weeks, and 323 npm packages installed three times per PR (frontend
+# job, e2e job, and again inside the e2e Docker image) for ~15 minutes of the
+# ~13 minute wall clock.
+#
+# So: warm the shared caches on the base branch, and run no tests here. One job
+# per merge to staging, in exchange for every later PR restoring instead of
+# installing. Keys must stay byte-identical to the ones in test.yml or the
+# restores silently miss again.
+concurrency:
+  group: warm-cache-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── npm: read by the `frontend` and `e2e` jobs ────────────────────────
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: Populate npm cache
+        run: cd frontend && time npm ci
+
+      # ── Playwright browsers: read by the `e2e` job ────────────────────────
+      # Same key as test.yml. actions/cache saves at post-job on a miss and
+      # skips the save when the key already exists, so re-running is cheap.
+      - name: Cache playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+      - name: Populate playwright browser cache
+        run: cd frontend && time npx playwright install chromium
+
+      # ── pip: read by the `backend` job ────────────────────────────────────
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+      - name: Populate pip cache
+        run: time pip install -r backend/requirements.txt pytest pytest-asyncio httpx
+
+      # ── Docker layers: read by the `e2e` job's image build ────────────────
+      # No `load: true` — nothing here runs the image, so skip the export to
+      # the local daemon and just write the layer cache.
+      - uses: docker/setup-buildx-action@v3
+      - name: Populate e2e image layer cache
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          cache-from: type=gha,scope=e2e-app
+          cache-to: type=gha,mode=max,scope=e2e-app

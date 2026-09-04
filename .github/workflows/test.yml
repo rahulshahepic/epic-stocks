@@ -54,12 +54,17 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Cache status
         run: echo "npm cache-hit=${{ steps.setup-node.outputs.cache-hit }}"
+      - name: Update npm
+        # Node 20's bundled npm is 10.x, which still falls back to the retired
+        # /-/npm/v1/security/audits/quick endpoint (see --no-audit below). npm
+        # 11.0.0 removed that fallback entirely (npm/cli#7911); 11.19.1 is the
+        # newest 11.x release, still within Node 20's supported range
+        # (^20.17.0 || >=22.9.0) so nothing else about the toolchain changes.
+        run: npm install -g npm@11.19.1
       - name: Install deps
-        # --no-audit: npm ci's own built-in audit report still falls back to the
-        # retired /-/npm/v1/security/audits/quick endpoint (see the audit step
-        # below), which now hangs/retries instead of failing fast — costing
-        # several minutes per install for a check the next step already makes
-        # correctly against the bulk endpoint.
+        # --no-audit: even on npm 11, ci's own built-in audit report duplicates
+        # the check the next step already makes against the bulk endpoint —
+        # this just skips the redundant network round trip.
         run: cd frontend && time npm ci --no-audit
       - name: Type-check
         run: cd frontend && time npx tsc -b --noEmit
@@ -167,6 +172,9 @@ jobs:
           node-version: "20"
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
+      - name: Update npm
+        # See the frontend job's Update npm step for why.
+        run: npm install -g npm@11.19.1
       - name: Install frontend deps
         # See the frontend job's Install deps step for why --no-audit.
         run: cd frontend && time npm ci --no-audit

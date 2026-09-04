@@ -771,7 +771,9 @@ The app uses a shared Caddy reverse proxy. Each deployed app writes a `caddy/app
 
 #### Branch strategy
 
-PRs to `main` must originate from the `staging` branch — enforced by `.github/workflows/branch-check.yml`. CI runs on every push to `main` and `staging`, and on every PR: backend tests (pytest), frontend tests (vitest + npm audit), Caddy config validation, and E2E tests (Playwright). `pip-audit` runs weekly via `.github/workflows/security-audit.yml`.
+PRs to `main` must originate from the `staging` branch — enforced by `.github/workflows/branch-check.yml`. CI (`.github/workflows/test.yml`) runs **on pull requests only** — backend tests (pytest), frontend tests (vitest + npm audit), Caddy config validation, and E2E tests (Playwright). It deliberately has no `push:` trigger: branch protection already requires those checks on the incoming PR, so re-running them on the merge commit would double the cost for no extra signal. `pip-audit` runs weekly via `.github/workflows/security-audit.yml`.
+
+**Cache warming.** Because CI runs only on PRs, the shared caches need populating separately: GitHub scopes a cache written during a PR run to that PR's own ref, and other PRs can restore only what was written on their *base* branch. `.github/workflows/warm-cache.yml` runs on pushes to `staging` and `main` and installs the dependencies without running any tests, so later PRs restore instead of reinstalling. Its cache keys must stay byte-identical to the ones in `test.yml` — if they drift, restores miss silently and every PR quietly goes back to installing 323 npm packages three times (once in `frontend`, once in `e2e`, once more inside the e2e Docker image).
 
 For the full ops guide — uptime monitoring, backup strategy, SSH hardening, and incident runbook — see **[OPERATIONS.md](OPERATIONS.md)**.
 

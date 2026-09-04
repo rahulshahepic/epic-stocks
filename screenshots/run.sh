@@ -6,10 +6,23 @@ cd "$(dirname "$0")/.."
 
 BACKEND_PID=0
 FRONTEND_PID=0
+
+# Kill a server and anything it spawned. `kill $PID` alone is not enough: a
+# launcher (npx, python -m) leaves the real server as a child, and an orphaned
+# child inherits this script's stdout. When run non-interactively —
+# `./screenshots/run.sh | tail`, or from CI — the reader then waits forever on
+# a pipe that the orphan is still holding open, long after every screenshot has
+# been written. Signal the whole process group so nothing survives to hold it.
+kill_tree() {
+  local pid=$1
+  [[ $pid -gt 0 ]] || return 0
+  kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+}
+
 cleanup() {
-  [[ $BACKEND_PID  -gt 0 ]] && kill "$BACKEND_PID"  2>/dev/null || true
-  [[ $FRONTEND_PID -gt 0 ]] && kill "$FRONTEND_PID" 2>/dev/null || true
-  rm -f "$TMPDB" /tmp/screenshot_token.txt
+  kill_tree "$BACKEND_PID"
+  kill_tree "$FRONTEND_PID"
+  rm -f "${TMPDB:-}" /tmp/screenshot_token.txt
 }
 trap cleanup EXIT
 
@@ -31,19 +44,33 @@ DATABASE_URL="sqlite:///$TMPDB" \
   OIDC_PROVIDERS='[{"name":"google","label":"Google","client_id":"demo.apps.googleusercontent.com","client_secret":"demo-secret","discovery_url":"https://accounts.google.com/.well-known/openid-configuration"}]' \
   ADMIN_EMAIL="demo@example.com;admin@e2e.test" \
   E2E_TEST=1 JWT_SECRET="screenshots-secret" \
-  "$PY" -m uvicorn main:app --host 127.0.0.1 --port 8000 --app-dir backend &
+  setsid "$PY" -m uvicorn main:app --host 127.0.0.1 --port 8000 --app-dir backend \
+  > /tmp/screenshots-backend.log 2>&1 &
 BACKEND_PID=$!
 
 echo "==> Starting frontend on :5173..."
 cd frontend
-npx vite --port 5173 --host 127.0.0.1 --strictPort &
+# The local binary rather than `npx vite`: npx adds a wrapper process, and $! is
+# then the wrapper, not the server that actually has to be killed.
+setsid ./node_modules/.bin/vite --port 5173 --host 127.0.0.1 --strictPort \
+  > /tmp/screenshots-frontend.log 2>&1 &
 FRONTEND_PID=$!
 cd ..
 
 # Wait for backend and frontend to be ready.
 echo "==> Waiting for services..."
-until curl -sf http://127.0.0.1:8000/api/health > /dev/null 2>&1; do sleep 1; done
-until curl -sf http://127.0.0.1:5173 > /dev/null 2>&1; do sleep 1; done
+wait_for() {
+  local url=$1 name=$2 log=$3
+  for _ in $(seq 1 60); do
+    curl -sf "$url" > /dev/null 2>&1 && return 0
+    sleep 1
+  done
+  echo "$name did not come up within 60s — last 40 lines of $log:" >&2
+  tail -40 "$log" >&2 || true
+  return 1
+}
+wait_for http://127.0.0.1:8000/api/health backend  /tmp/screenshots-backend.log
+wait_for http://127.0.0.1:5173            frontend /tmp/screenshots-frontend.log
 echo "    Both services ready."
 
 echo "==> Capturing screenshots..."

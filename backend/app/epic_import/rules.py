@@ -40,14 +40,30 @@ _LABEL_RULES: list[tuple[re.Pattern, str]] = [
     (re.compile(r"^(\d{4})\s+free$", re.I), "Free"),
 ]
 
+# Grant types Epic reports without a year anywhere in the label: one-time
+# awards (a new-hire bonus, granted once) rather than an annual program. There
+# is no year to parse out of the CSV, so derive_draft resolves it from the
+# company's own template for the type instead — there can only be one.
+_YEARLESS_LABEL_RULES: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"^developer\s+bonus\s+shares$", re.I), "Developer Bonus Shares"),
+]
+
 
 def classify_row(label: str) -> tuple[int | None, str | None]:
-    """Rule G1. Returns (year, grant type), or (None, None) for unmapped categories."""
+    """Rule G1. Returns (year, grant type).
+
+    Year is None with a type set for a one-time award reported with no year in
+    its label (see _YEARLESS_LABEL_RULES) — the caller resolves the year from
+    the company template. Both None means the category is not recognized at all.
+    """
     clean = re.sub(r"\s+", " ", label.strip())
     for pattern, gtype in _LABEL_RULES:
         m = pattern.match(clean)
         if m:
             return int(m.group(1)), gtype
+    for pattern, gtype in _YEARLESS_LABEL_RULES:
+        if pattern.match(clean):
+            return None, gtype
     return None, None
 
 

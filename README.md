@@ -541,6 +541,7 @@ Site admins are designated via the `ADMIN_EMAIL` environment variable (semicolon
 - **System Health** — CPU %, RAM %, and DB size with sparkline charts (24h / 72h / 7d / 30d windows). Sampled every 15 minutes; 30-day rolling retention.
 - **Database Tables** — per-table size breakdown (PostgreSQL only). Useful for diagnosing storage growth.
 - **Smart Tips Report** — aggregate-only view: total users who accepted a tip, total estimated savings, per-type breakdown. No individual financial data.
+- **No-account preview funnel** — how the `/try` preview converts: previews computed, saves pressed, signups that carried preview data, and the conversion rate, as anonymous daily totals over the last 30 days. The `trial_daily_stats` table holds exactly three integers keyed by date — no IP, no user agent, no per-visitor row — so this measures the feature without recording anything about a visitor. See the privacy policy's "Anonymous counts" section, which discloses it.
 - Per-user metadata: email, name, join date, last login, record counts, admin badge
 - Searchable and paginated user list, sorted by last active
 - **Build version** — a 7-character commit SHA at the bottom of the Admin page confirms exactly which build is running
@@ -886,7 +887,7 @@ epic-stocks/
 │   │       ├── flows.py     # Quick flows (new purchase, bonus, price)
 │   │       ├── import_export.py # Excel import/export + template
 │   │       ├── epic_import.py   # Epic CSV/PDF analyze loop + diagnostics diff
-│   │       ├── trial.py     # No-account preview: same parsing, computed timeline + dashboard data, no DB writes
+│   │       ├── trial.py     # No-account preview: computed timeline + dashboard data, plus anonymous funnel counters
 │   │       ├── sales.py     # Sales CRUD + tax breakdown
 │   │       ├── tips.py      # Smart Tips: scenario tax comparisons + acceptance recording
 │   │       ├── wizard.py    # Setup Wizard: parse-file, preview (dry-run diff), submit
@@ -1008,7 +1009,9 @@ Cross-origin requests are accepted only from the native shell origins (`capacito
 | POST | `/api/epic-import/analyze` | Read the Shareworks CSV + PDF, or check a repaired draft against them — returns a draft, what failed, and a prompt to paste out. Writes nothing |
 | POST | `/api/epic-import/diff` | Diff the derivation against an uploaded Excel export — read-only |
 | POST | `/api/epic-import/diff.md` | The same report as a downloadable Markdown file |
-| POST | `/api/trial/analyze` | No-account preview: read the Shareworks CSV + PDF and return the computed timeline, dashboard-shaped grants/loans/prices, and the default tax rates. No auth, writes nothing, IP rate-limited |
+| POST | `/api/trial/analyze` | No-account preview: read the Shareworks CSV + PDF and return the computed timeline, dashboard-shaped grants/loans/prices, and the default tax rates. No auth, stores none of the uploaded data, IP rate-limited |
+| POST | `/api/trial/save-intent` | Add one to today's "pressed save" count. No auth, no body, IP rate-limited |
+| POST | `/api/trial/converted` | Add one to today's "signed up carrying preview data" count. Requires auth |
 | POST | `/api/wizard/parse-file` | Parse an uploaded Excel structure file for wizard pre-fill |
 | POST | `/api/wizard/preview` | Dry-run diff — returns added/updated/removed/unchanged status, no changes written |
 | POST | `/api/wizard/submit` | Apply wizard data — merge mode: upserts by natural key, deletes unmatched |
@@ -1068,6 +1071,7 @@ Cross-origin requests are accepted only from the native shell origins (`capacito
 | GET/POST | `/api/admin/flexible-payoff` | Get/set flexible loan payoff method (admin only) |
 | POST | `/api/admin/users/{id}/content-admin` | Promote user to content admin (admin only) |
 | DELETE | `/api/admin/users/{id}/content-admin` | Revoke content admin role (admin only) |
+| GET | `/api/admin/trial-funnel` | Anonymous daily totals for the /try funnel — previews, saves, signups, conversion rate (`?days=`, default 30) |
 | GET | `/api/admin/tips-report` | Aggregate tip acceptance report (admin only) |
 | GET | `/api/admin/email-lookup?email=` | Comprehensive email lookup (admin only) |
 | GET | `/api/admin/users/{id}/detail` | User detail with email status, invitations (admin only) |

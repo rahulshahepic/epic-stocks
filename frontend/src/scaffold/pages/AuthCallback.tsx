@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../../api.ts'
 import { clearPendingLogin, completeLogin, readPendingLogin } from '../oidc.ts'
 import { platform } from '../../platform/index.ts'
-import { takeStashedTrialPayload } from '../../app/trialImport.ts'
+import { pingConverted, takeStashedTrialPayload } from '../../app/trialImport.ts'
 
 export default function AuthCallback() {
  const navigate = useNavigate()
@@ -78,6 +78,7 @@ export default function AuthCallback() {
  if (trialPayload) {
  try {
  await api.wizardSubmit({ ...trialPayload, clear_existing: true })
+ pingConverted()
  } catch {
  // Save failed — they still have a working account; they can import again.
  }

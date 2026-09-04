@@ -437,3 +437,19 @@ class GrantProgramSettings(Base):
     dp_min_percent: Mapped[float] = mapped_column(Float, nullable=False, default=0.10, server_default="0.1")
     dp_min_cap: Mapped[float] = mapped_column(Float, nullable=False, default=20000.0, server_default="20000")
     flexible_payoff_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
+
+
+class TrialDailyStat(Base):
+    """Anonymous daily counts for the no-account preview funnel.
+
+    Three integers per day and nothing else: no IP, no user agent, no
+    per-visitor row, nothing that could be tied back to a person. This is
+    arithmetic about the service, not a record of anyone using it — which is
+    the only kind of counting the privacy policy permits.
+    """
+    __tablename__ = "trial_daily_stats"
+
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    previews: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    save_clicked: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    signups_from_trial: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")

@@ -207,6 +207,28 @@ describe('Try — preview', () => {
     expect(JSON.parse(stashed as string)).toEqual(CLEAN.wizard_payload)
   })
 
+  it('counts the save press, carrying no payload with it', async () => {
+    const calls = mockFetch(CLEAN)
+    renderTry()
+    await upload()
+
+    await userEvent.click(await screen.findByRole('button', { name: /Save my numbers/i }))
+
+    const ping = calls.find(c => c.url.includes('/api/trial/save-intent'))
+    expect(ping).toBeDefined()
+    expect(ping?.body).toBeNull()   // a bare POST — nothing about the visitor
+  })
+
+  it('still navigates when the funnel count fails', async () => {
+    // Analyze succeeds, the ping 500s. Counting must never block the person.
+    mockFetch(CLEAN, new Response('nope', { status: 500 }))
+    renderTry()
+    await upload()
+
+    await userEvent.click(await screen.findByRole('button', { name: /Save my numbers/i }))
+    expect(await platform.storage.get('trial_wizard_payload')).not.toBeNull()
+  })
+
   it('offers the same save from the sticky header', async () => {
     mockFetch(CLEAN)
     renderTry()

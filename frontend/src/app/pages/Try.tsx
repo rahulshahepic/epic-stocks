@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { trialAnalyze, stashTrialPayload, type TrialAnalyzeResponse } from '../trialImport.ts'
+import { trialAnalyze, stashTrialPayload, pingSaveIntent, type TrialAnalyzeResponse } from '../trialImport.ts'
 import type { TimelineEvent } from '../../api.ts'
 import FindingList from '../components/FindingList.tsx'
 import { StatCard } from '../components/StatCard.tsx'
@@ -396,6 +396,7 @@ export default function Try() {
     setSaving(true)
     try {
       await stashTrialPayload(result.wizard_payload)
+      pingSaveIntent()
       navigate('/login')
     } catch {
       setSaving(false)

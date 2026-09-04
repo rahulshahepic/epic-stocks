@@ -154,6 +154,36 @@ describe('AuthCallback', () => {
     expect(await platform.storage.get('trial_wizard_payload')).toBeNull()
   })
 
+  it('counts the conversion once the trial data is actually saved', async () => {
+    vi.spyOn(api, 'exchangeCode').mockResolvedValue({ ok: true })
+    vi.spyOn(api, 'wizardSubmit').mockResolvedValue({ grants: 1, loans: 0, prices: 1, payoff_sales: 0 })
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }))
+    setCallbackUrl('?code=abc123&state=st-1')
+    await seedPendingLogin('st-1')
+    await platform.storage.set('trial_wizard_payload', JSON.stringify({ grants: [], prices: [] }))
+
+    renderCallback()
+
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/', { replace: true }))
+    await waitFor(() => expect(fetchSpy.mock.calls.some(
+      ([input]) => String(input).includes('/api/trial/converted'))).toBe(true))
+  })
+
+  it('does not count a conversion when saving the trial data failed', async () => {
+    vi.spyOn(api, 'exchangeCode').mockResolvedValue({ ok: true })
+    vi.spyOn(api, 'wizardSubmit').mockRejectedValue(new Error('save failed'))
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }))
+    setCallbackUrl('?code=abc123&state=st-1')
+    await seedPendingLogin('st-1')
+    await platform.storage.set('trial_wizard_payload', JSON.stringify({ grants: [], prices: [] }))
+
+    renderCallback()
+
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/', { replace: true }))
+    expect(fetchSpy.mock.calls.some(
+      ([input]) => String(input).includes('/api/trial/converted'))).toBe(false)
+  })
+
   it('still navigates home when saving the stashed /try import fails', async () => {
     vi.spyOn(api, 'exchangeCode').mockResolvedValue({ ok: true })
     vi.spyOn(api, 'wizardSubmit').mockRejectedValue(new Error('save failed'))

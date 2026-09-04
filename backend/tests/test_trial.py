@@ -4,6 +4,7 @@ Same synthetic fixtures as test_epic_import.py — no real Epic data.
 """
 import os
 import sys
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -115,3 +116,98 @@ def test_trial_analyze_is_rate_limited_per_ip(client, monkeypatch):
         assert resp.status_code == 200, resp.text
     resp = client.post("/api/trial/analyze", files=upload_files())
     assert resp.status_code == 429
+
+
+# ── Funnel counters ──────────────────────────────────────────────────────────
+# Three integers a day and nothing else. The tests below pin both halves of
+# that: that the counts are right, and that the row holds nothing about who
+# caused them.
+
+def test_previews_are_counted_per_day(client):
+    from scaffold.models import TrialDailyStat
+    from tests.conftest import TestSession
+
+    for _ in range(3):
+        assert client.post("/api/trial/analyze", files=upload_files()).status_code == 200
+
+    with TestSession() as db:
+        rows = db.query(TrialDailyStat).all()
+        assert len(rows) == 1
+        assert rows[0].previews == 3
+        assert rows[0].save_clicked == 0
+        assert rows[0].signups_from_trial == 0
+
+
+def test_save_intent_and_conversion_are_counted(client):
+    from scaffold.models import TrialDailyStat
+    from tests.conftest import TestSession, register_user
+
+    client.post("/api/trial/analyze", files=upload_files())
+    assert client.post("/api/trial/save-intent").status_code == 204
+
+    register_user(client)
+    assert client.post("/api/trial/converted").status_code == 204
+
+    with TestSession() as db:
+        row = db.query(TrialDailyStat).one()
+        assert (row.previews, row.save_clicked, row.signups_from_trial) == (1, 1, 1)
+
+
+def test_the_counter_row_holds_nothing_about_a_visitor(client):
+    """The privacy claim is only true while this stays a bare daily tally."""
+    from scaffold.models import TrialDailyStat
+
+    assert set(TrialDailyStat.__table__.columns.keys()) == {
+        "day", "previews", "save_clicked", "signups_from_trial"}
+
+
+def test_save_intent_needs_no_account(client):
+    assert client.post("/api/trial/save-intent").status_code == 204
+
+
+def test_conversion_count_needs_an_account(client):
+    assert client.post("/api/trial/converted").status_code == 401
+
+
+def test_counting_never_breaks_the_preview():
+    """A funnel counter is never worth failing the request it counts."""
+    from app.routers.trial import _bump
+
+    class BrokenSession:
+        def execute(self, *_a, **_kw):
+            raise RuntimeError("counter table is mid-migration")
+
+        def commit(self):
+            raise RuntimeError("unreachable")
+
+        def rollback(self):
+            pass
+
+    _bump(BrokenSession(), "previews")   # swallowed, not raised
+
+
+ADMIN_EMAIL = "admin@example.com"
+
+
+def test_admin_sees_the_funnel_with_a_conversion_rate(client):
+    for _ in range(4):
+        client.post("/api/trial/analyze", files=upload_files())
+    client.post("/api/trial/save-intent")
+
+    with patch.dict(os.environ, {"ADMIN_EMAIL": ADMIN_EMAIL}):
+        client.post("/api/auth/test-login", json={"email": ADMIN_EMAIL})
+        client.post("/api/trial/converted")
+        body = client.get("/api/admin/trial-funnel").json()
+    assert body["previews"] == 4
+    assert body["save_clicked"] == 1
+    assert body["signups_from_trial"] == 1
+    assert body["conversion_rate"] == 0.25
+    assert len(body["days"]) == 1
+
+
+def test_funnel_is_admin_only(client):
+    from tests.conftest import register_user
+
+    with patch.dict(os.environ, {"ADMIN_EMAIL": ADMIN_EMAIL}):
+        register_user(client, email="nobody@example.com", name="Nobody")
+        assert client.get("/api/admin/trial-funnel").status_code == 403

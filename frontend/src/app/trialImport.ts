@@ -50,6 +50,19 @@ export function trialAnalyze(shareCsv: File | null, statementPdf: File | null): 
   return apiFetch<TrialAnalyzeResponse>('/api/trial/analyze', { method: 'POST', body }, 'Could not read those files')
 }
 
+/**
+ * Funnel pings. Each adds one to an anonymous daily total on the server and
+ * carries nothing else — no identity, no payload. Fire-and-forget by design:
+ * a count that fails to record must never interrupt what the person was doing.
+ */
+export function pingSaveIntent(): void {
+  void apiFetch('/api/trial/save-intent', { method: 'POST' }).catch(() => {})
+}
+
+export function pingConverted(): void {
+  void apiFetch('/api/trial/converted', { method: 'POST' }).catch(() => {})
+}
+
 const STORAGE_KEY = 'trial_wizard_payload'
 
 /** Stashed before redirecting to sign-in so signup can save it without a re-upload. */

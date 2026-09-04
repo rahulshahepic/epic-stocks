@@ -166,10 +166,28 @@ def test_unused_categories_are_dropped():
 @pytest.mark.parametrize("label,expected", [
     ("2020 Purchased", (2020, "Purchase")), ("2020 Catch-up", (2020, "Catch-Up")),
     ("2021 Bonus Shares", (2021, "Bonus")), ("2023 Free", (2023, "Free")),
+    # The developer label must not be swallowed by the plain bonus rule.
+    ("2020 Developer Bonus Shares", (2020, "Developer Bonus Shares")),
+    ("2021 developer bonus shares", (2021, "Developer Bonus Shares")),
     ("2019 Legacy Award Conversion", (None, None)),
 ])
 def test_row_labels_map_to_grant_types(label, expected):
     assert classify_row(label) == expected
+
+
+def test_developer_bonus_loans_are_attributed_to_their_own_grant():
+    known = {2020: {"Purchase", "Bonus", "Developer Bonus Shares"}}
+    ltype, lyear, descriptors = parse_loan_name("2020 Developer Bonus - Tax Loan - 2023")
+    assert (ltype, lyear) == ("Tax", 2023)
+    assert attribute_loan(descriptors, ltype, known)[:2] == (2020, "Developer Bonus Shares")
+
+
+def test_unqualified_grant_tax_loan_prefers_catch_up_over_developer_bonus():
+    """L3 ordering is unchanged: the developer bonus is only the last resort."""
+    both = {2020: {"Purchase", "Catch-Up", "Developer Bonus Shares"}}
+    assert attribute_loan(["2020 Grant"], "Tax", both)[:2] == (2020, "Catch-Up")
+    only_dev = {2020: {"Purchase", "Developer Bonus Shares"}}
+    assert attribute_loan(["2020 Grant"], "Tax", only_dev)[:2] == (2020, "Developer Bonus Shares")
 
 
 # ============================================================

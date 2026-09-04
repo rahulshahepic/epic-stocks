@@ -23,7 +23,7 @@ markdown fences. It must have this shape:
   "grants": [
     {
       "year": 2021,
-      "type": "Purchase",          // Purchase | Catch-Up | Bonus | Free
+      "type": "Purchase",          // Purchase | Catch-Up | Bonus | Free | Developer Bonus Shares
       "shares": 100000,            // whole shares granted
       "price": 2.83,               // cost basis PER SHARE, 0 if taxed at vest
       "dp_shares": 0,              // shares handed back at exercise, negative or 0
@@ -57,12 +57,12 @@ Rules you must follow:
 4. price is the cost basis PER SHARE — divide the reported total cost basis by
    the shares granted. Use 0 when the grant is taxed as it vests (the reported
    per-share basis is not a round number of cents, or unvested shares carry no
-   unvested value). Catch-Up grants are always 0.
+   unvested value). Catch-Up, Free and Developer Bonus Shares grants are always 0.
 5. Attribute every loan on the statement to exactly one grant. Loan names follow
-   "<year> Grant|Bonus - Purchase|Interest|Tax Loan[ - <year>]". Tax loans on an
-   unqualified "<year> Grant" belong to that year's zero-basis grant (Catch-Up
-   if there is one, otherwise Bonus). A loan naming two grants goes entirely to
-   the bonus side.
+   "<year> Grant|Bonus|Developer Bonus - Purchase|Interest|Tax Loan[ - <year>]".
+   Tax loans on an unqualified "<year> Grant" belong to that year's zero-basis
+   grant (Catch-Up if there is one, then Bonus, then Developer Bonus Shares). A
+   loan naming two grants goes entirely to the bonus side.
 6. A purchase grant's loan is its cost basis less the down payment. When the
    down payment works out to a whole number of shares at that year's price, and
    it is the policy minimum listed below, it was paid by handing shares back:
@@ -93,11 +93,14 @@ comment AFTER the JSON object rather than bending a number to fit.
 """
 
 
+_TYPE_COL = 22  # wide enough for the longest grant type name
+
+
 def _schedule_table(sk: Skeleton) -> str:
-    lines = ["year | type      | vest_start | periods | exercise_date",
-             "-----|-----------|------------|---------|--------------"]
+    lines = [f"year | {'type':<{_TYPE_COL}} | vest_start | periods | exercise_date",
+             f"-----|{'-' * (_TYPE_COL + 2)}|------------|---------|--------------"]
     for t in sorted(sk.templates, key=lambda t: (t.year, t.type)):
-        lines.append(f"{t.year} | {t.type:<9} | {t.vest_start} | {t.periods:>7} | "
+        lines.append(f"{t.year} | {t.type:<{_TYPE_COL}} | {t.vest_start} | {t.periods:>7} | "
                      f"{t.exercise_date}")
     return "\n".join(lines)
 
@@ -109,14 +112,14 @@ def _dp_policy(sk: Skeleton) -> str:
 
 
 def _rate_table(sk: Skeleton) -> str:
-    lines = ["kind             | grant type | year | rate",
-             "-----------------|------------|------|--------"]
+    lines = [f"kind             | {'grant type':<{_TYPE_COL}} | year | rate",
+             f"-----------------|{'-' * (_TYPE_COL + 2)}|------|--------"]
     for year, rate in sorted(sk.interest_rates.items()):
-        lines.append(f"interest         | any        | {year} | {rate}")
+        lines.append(f"interest         | {'any':<{_TYPE_COL}} | {year} | {rate}")
     for (gtype, year), rate in sorted(sk.tax_rates.items()):
-        lines.append(f"tax              | {gtype:<10} | {year} | {rate}")
+        lines.append(f"tax              | {gtype:<{_TYPE_COL}} | {year} | {rate}")
     for year, rate in sorted(sk.purchase_rates.items()):
-        lines.append(f"purchase (orig.) | any        | {year} | {rate}")
+        lines.append(f"purchase (orig.) | {'any':<{_TYPE_COL}} | {year} | {rate}")
     return "\n".join(lines) if len(lines) > 2 else "(none on record)"
 
 

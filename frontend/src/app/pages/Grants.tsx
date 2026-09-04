@@ -8,6 +8,7 @@ import { TaxRateFields, ratesFromDefaults, ratesFromSale, DEFAULT_RATES } from '
 import type { TaxRates } from './Sales.tsx'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
+import { ZERO_BASIS_TYPES } from '../grantTypes.ts'
 
 type GrantForm = Omit<GrantEntry, 'id' | 'version'>
 type Mode = 'list' | 'add' | 'edit'
@@ -226,6 +227,19 @@ export default function Grants() {
  })
  broadcastChange('sales')
  }
+ } else if (ZERO_BASIS_TYPES.has(form.type)) {
+ // Cost basis is $0 by definition, so these vest as ordinary income.
+ await api.createGrant({
+ year: form.year,
+ type: form.type,
+ shares: form.shares,
+ price: 0,
+ vest_start: form.vest_start,
+ periods: form.periods,
+ exercise_date: form.exercise_date,
+ dp_shares: 0,
+ election_83b: !!form.election_83b,
+ })
  } else {
  await api.addBonus({
  year: form.year,
@@ -460,18 +474,27 @@ export default function Grants() {
  >
  Bonus
  </button>
+ <button
+ type="button"
+ onClick={() => setForm(f => ({ ...f, type: 'Developer Bonus Shares', price: 0, periods: 5, dp_shares: 0 }))}
+ className={`rounded-md px-3 py-1 text-xs font-medium ${form.type === 'Developer Bonus Shares' ? 'bg-violet-700 text-white' : 'bg-cs-raised text-cs-text-2 hover:bg-stone-200 dark:hover:bg-stone-700 '}`}
+ >
+ Developer Bonus
+ </button>
  </div>
  )}
 
  <div className="grid grid-cols-2 gap-3">
  <Field label="Year" type="number" value={form.year} onChange={v => setForm(f => ({ ...f, year: +v }))} />
  <Field label="Shares" type="number" value={form.shares} onChange={v => setForm(f => ({ ...f, shares: +v }))} />
+ {!ZERO_BASIS_TYPES.has(form.type) && (
  <Field
  label={form.type === 'Bonus' ? 'Price per share at grant (optional)' : 'Price per share at grant'}
  type="number" step="0.01"
  value={form.price}
  onChange={v => setForm(f => ({ ...f, price: +v }))}
  />
+ )}
  <Field label="Vest Start" type="date" value={form.vest_start} onChange={v => setForm(f => ({ ...f, vest_start: v }))} />
  <Field label="Vest Periods" type="number" value={form.periods} onChange={v => setForm(f => ({ ...f, periods: +v }))} />
  <Field label="Exercise Date" type="date" value={form.exercise_date} onChange={v => setForm(f => ({ ...f, exercise_date: v }))} />

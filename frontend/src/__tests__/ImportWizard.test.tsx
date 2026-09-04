@@ -350,7 +350,7 @@ describe('ImportWizard', () => {
     await user.click(screen.getByRole('button', { name: /Enter it myself/i }))
     await user.click(screen.getByRole('button', { name: /Let's go/i }))
     await user.click(screen.getByRole('button', { name: /Next: Enter grants/i }))
-    expect(screen.getByText('Bonus & Free grants')).toBeInTheDocument()
+    expect(screen.getByText('Bonus, Free & Developer Bonus grants')).toBeInTheDocument()
     // The vesting schedule label text is split across elements
     expect(screen.getByText(/Vesting schedule/i)).toBeInTheDocument()
     // A, B, C schedule buttons
@@ -426,7 +426,7 @@ describe('ImportWizard', () => {
     await user.click(screen.getByRole('button', { name: /Let's go/i }))
     await user.click(screen.getByRole('button', { name: /Next: Enter grants/i }))
     // 2022 Bonus should appear in the Bonus & Free section (not the purchase section)
-    const bonusSection = screen.getByText('Bonus & Free grants').closest('div')!
+    const bonusSection = screen.getByText('Bonus, Free & Developer Bonus grants').closest('div')!
     // Look for a "2022 Bonus" badge within that section
     expect(bonusSection.querySelector('.bg-emerald-700')).not.toBeNull()
   })
@@ -439,7 +439,7 @@ describe('ImportWizard', () => {
     await user.click(screen.getByRole('button', { name: /Let's go/i }))
     await user.click(screen.getByRole('button', { name: /Next: Enter grants/i }))
     // The Bonus & Free section should not contain a standalone "2022 Free" badge
-    const bonusSection = screen.getByText('Bonus & Free grants').closest('div')!
+    const bonusSection = screen.getByText('Bonus, Free & Developer Bonus grants').closest('div')!
     const amberBadges = Array.from(bonusSection.querySelectorAll('.bg-amber-600'))
     // None of the amber badges in the bonus section should contain "2022 Free"
     expect(amberBadges.some(el => el.textContent === '2022 Free')).toBe(false)

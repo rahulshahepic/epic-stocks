@@ -34,8 +34,12 @@ SEED_GRANT_TEMPLATES = [
     (2019, 'Purchase', '2021-06-15', 6, '2019-12-31', True,  '2026-07-15', None),
     (2020, 'Purchase', '2021-09-30', 5, '2020-12-31', True,  '2025-07-15', None),
     (2020, 'Bonus',    '2021-09-30', 4, '2020-12-31', False, None,         '2025-07-15'),
+    # Developer Bonus Shares were offered to 2020 and 2021 starters. Both cohorts
+    # vest 20% a year over 5 years from the same first vest date, 2022-09-30.
+    (2020, 'Developer Bonus Shares', '2022-09-30', 5, '2020-12-31', False, None, None),
     (2021, 'Purchase', '2022-09-30', 5, '2021-12-31', True,  '2030-07-15', None),
     (2021, 'Bonus',    '2022-09-30', 3, '2021-12-31', False, None,         None),
+    (2021, 'Developer Bonus Shares', '2022-09-30', 5, '2021-12-31', False, None, None),
     (2022, 'Purchase', '2023-09-30', 4, '2022-12-31', False, '2031-06-30', None),
     (2022, 'Bonus',    '2023-09-30', 3, '2022-12-31', False, None,         None),
     (2022, 'Free',     '2027-09-30', 1, '2022-12-31', False, None,         '2031-06-30'),

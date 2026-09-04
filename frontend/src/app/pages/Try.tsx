@@ -42,8 +42,8 @@ const LOCKED = [
     body: 'Turn the stock-loan program into one number you can hold against a salary offer.',
   },
   {
-    icon: <IconCompass />, tone: 'sky' as const, title: 'Sale & payoff planning',
-    body: 'Model a sale, see the tax on it, and plan which shares cover which loan.',
+    icon: <IconCompass />, tone: 'sky' as const, title: 'Sales you have already made',
+    body: 'This preview counts every share you were granted — it cannot subtract ones you have sold, so a position with past sales reads high here. An account records sales, their tax, and which shares cover which loan.',
   },
   {
     icon: <IconDocument />, tone: 'slate' as const, title: 'Your own tax rates',
@@ -54,8 +54,11 @@ const LOCKED = [
 interface AsOfValues {
   price: number
   shares: number
+  unvestedShares: number
   income: number
   capGains: number
+  vestedValue: number
+  unvestedValue: number
   value: number
   costBasis: number
   loanBalance: number
@@ -67,10 +70,15 @@ interface AsOfValues {
 /**
  * The position as of a date, from data held in memory.
  *
- * The signed-in dashboard computes the same figures with sales, early loan
- * payments and per-user tax rates folded in. A preview has none of those yet —
- * it is a freshly read pair of documents — so this is that same walk with the
- * branches that need an account left out.
+ * Shares are valued the way the signed-in dashboard values them: vested shares
+ * at the current price, unvested shares at what they cost. Valuing only the
+ * vested half while still subtracting every loan understates a real position by
+ * the entire unvested book — enough to report a negative net worth to someone
+ * whose position is well in the black.
+ *
+ * The dashboard folds in sales, early loan payments and per-user tax rates too.
+ * A preview is a freshly read pair of documents and has none of those, so this
+ * is that same walk with the branches that need an account left out.
  */
 function valuesAsOf(r: TrialAnalyzeResponse, asOf: string): AsOfValues {
   let last: TimelineEvent | null = null
@@ -79,7 +87,34 @@ function valuesAsOf(r: TrialAnalyzeResponse, asOf: string): AsOfValues {
     else break
   }
   const nextEvent = r.timeline.find(e => e.date > asOf) ?? null
+  const price = last?.share_price ?? 0
   const year = parseInt(asOf.slice(0, 4), 10)
+
+  let shares = 0
+  let unvestedShares = 0
+  let vestedValue = 0
+  let unvestedValue = 0
+  let costBasis = 0
+  for (const g of r.grants) {
+    let vested = 0
+    if (g.periods > 0) {
+      const base = Math.floor(g.shares / g.periods)
+      const rem = g.shares % g.periods
+      for (let p = 0; p < g.periods; p++) {
+        const vd = new Date(g.vest_start + 'T00:00:00')
+        vd.setFullYear(vd.getFullYear() + p)
+        if (vd.toISOString().slice(0, 10) <= asOf) vested += base + (p < rem ? 1 : 0)
+      }
+    }
+    const unvested = g.shares - vested
+    // dp_shares is negative where shares were handed over as a down payment.
+    const held = Math.max(0, vested + (g.dp_shares ?? 0))
+    shares += held
+    unvestedShares += unvested
+    vestedValue += held * price
+    unvestedValue += unvested * g.price
+    costBasis += g.shares * g.price
+  }
 
   const refinanced = new Set(
     r.loans.map(l => l.refinances_loan_id).filter((id): id is number => id != null)
@@ -95,17 +130,17 @@ function valuesAsOf(r: TrialAnalyzeResponse, asOf: string): AsOfValues {
     + r.timeline.filter(e => e.event_type === 'Vesting' && e.date <= asOf && e.income > 0)
       .reduce((sum, e) => sum + e.income * incomeRate, 0)
 
-  const shares = last?.cum_shares ?? 0
-  const price = last?.share_price ?? 0
-  const value = shares * price
-
+  const value = vestedValue + unvestedValue
   return {
     price,
     shares,
+    unvestedShares,
     income: last?.cum_income ?? 0,
     capGains: last?.cum_cap_gains ?? 0,
+    vestedValue,
+    unvestedValue,
     value,
-    costBasis: r.grants.reduce((sum, g) => sum + g.shares * g.price, 0),
+    costBasis,
     loanBalance,
     netWorth: value - loanBalance,
     estTax,
@@ -199,6 +234,56 @@ function AsOfControl({ asOf, setAsOf, lastEventDate }: {
   )
 }
 
+/**
+ * Ask for today's share price when the files predate it.
+ *
+ * The documents only carry prices Epic has already announced, and a new one
+ * lands each spring. Between announcements the newest price in the files can be
+ * a year or more old — and a stale price silently understates the whole
+ * position, with nothing on screen to say so. Rather than impute one, ask: the
+ * answer is re-run through the same computation as any other price.
+ */
+function StalePriceNotice({ latestPrice, latestDate, onApply, busy }: {
+  latestPrice: number; latestDate: string
+  onApply: (price: number) => void; busy: boolean
+}) {
+  const [entry, setEntry] = useState('')
+  const parsed = parseFloat(entry)
+  const valid = Number.isFinite(parsed) && parsed > 0
+
+  return (
+    <Card className="border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30">
+      <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+        These figures use the {latestDate.slice(0, 4)} price of {fmtPrice(latestPrice)}
+      </p>
+      <p className="mt-1 text-xs leading-relaxed text-amber-800 dark:text-amber-300">
+        That is the newest price in your files, and it is not this year's. Your
+        shares are almost certainly worth more than shown. Epic announces a new
+        price each spring — enter the current one and everything here is
+        recomputed against it.
+      </p>
+      <form
+        className="mt-3 flex flex-wrap items-center gap-2"
+        onSubmit={e => { e.preventDefault(); if (valid) onApply(parsed) }}
+      >
+        <label htmlFor="trial-current-price" className="sr-only">Current share price</label>
+        <input
+          id="trial-current-price" type="number" step="0.01" min="0" inputMode="decimal"
+          value={entry} onChange={e => setEntry(e.target.value)} disabled={busy}
+          placeholder="Current price"
+          className="h-9 w-36 rounded-lg border border-amber-300 bg-cs-surface px-2.5 text-sm text-cs-text dark:border-amber-700"
+        />
+        <button
+          type="submit" disabled={!valid || busy}
+          className="h-9 rounded-lg bg-cs-brand px-3.5 text-sm font-semibold text-white hover:bg-cs-brand-hover disabled:opacity-40"
+        >
+          {busy ? 'Recomputing…' : 'Use this price'}
+        </button>
+      </form>
+    </Card>
+  )
+}
+
 function DashboardTab({ result, asOf }: { result: TrialAnalyzeResponse; asOf: string }) {
   const c = useChartColors()
   // The preview shows every chart whole. Per-chart range pickers are a second
@@ -218,6 +303,8 @@ function DashboardTab({ result, asOf }: { result: TrialAnalyzeResponse; asOf: st
         <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-white">
           <span><span className="font-semibold">{fmtNum(v.shares)}</span> vested shares</span>
           <span className="hidden h-1 w-1 rounded-full bg-white/60 sm:inline-block" />
+          <span><span className="font-semibold">{fmtNum(v.unvestedShares)}</span> unvested</span>
+          <span className="hidden h-1 w-1 rounded-full bg-white/60 sm:inline-block" />
           <span><span className="font-semibold">{fmtPrice(v.price)}</span> / share</span>
         </div>
         <p className="mt-1 text-sm text-white">
@@ -227,8 +314,12 @@ function DashboardTab({ result, asOf }: { result: TrialAnalyzeResponse; asOf: st
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         <StatCard variant="price" label="Share price" value={fmtPrice(v.price)} />
-        <StatCard variant="shares" label="Vested shares" value={fmtNum(v.shares)} />
-        <StatCard variant="value" label="Value today" value={fmt$(v.value)} />
+        <StatCard variant="shares" label="Vested shares" value={fmtNum(v.shares)}
+                  subvalue={fmt$(v.vestedValue)} />
+        <StatCard variant="unvested" label="Unvested shares" value={fmtNum(v.unvestedShares)}
+                  subvalue={fmt$(v.unvestedValue)} subtitle="At cost basis" />
+        <StatCard variant="value" label="Total value" value={fmt$(v.value)}
+                  subtitle="Vested at FMV + unvested at cost basis" />
         <StatCard variant="costbasis" label="Cost basis" value={fmt$(v.costBasis)}
                   subtitle="All grants, vested or not" />
         <StatCard variant="income" label="Income to date" value={fmt$(v.income)} />
@@ -367,12 +458,14 @@ export default function Try() {
   const [asOf, setAsOf] = useState(TODAY)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [repricing, setRepricing] = useState(false)
+  const [pricedAt, setPricedAt] = useState<number | null>(null)
 
-  async function run() {
+  async function run(currentPrice?: number) {
     setStage('analyzing')
     setError('')
     try {
-      const r = await trialAnalyze(csv, pdf)
+      const r = await trialAnalyze(csv, pdf, currentPrice)
       setResult(r)
       setTab('dashboard')
       setAsOf(TODAY)
@@ -383,11 +476,26 @@ export default function Try() {
     }
   }
 
+  /** Re-read the same files with today's price folded in as a price point. */
+  async function applyCurrentPrice(price: number) {
+    setRepricing(true)
+    try {
+      const r = await trialAnalyze(csv, pdf, price)
+      setResult(r)
+      setPricedAt(price)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not apply that price')
+    } finally {
+      setRepricing(false)
+    }
+  }
+
   function startOver() {
     setCsv(null)
     setPdf(null)
     setResult(null)
     setError('')
+    setPricedAt(null)
     setStage('upload')
   }
 
@@ -508,6 +616,21 @@ export default function Try() {
               loop for exactly this kind of mismatch.
             </p>
           </Card>
+        )}
+
+        {result.price_is_stale && pricedAt == null && result.prices.length > 0 && (
+          <StalePriceNotice
+            latestPrice={result.prices[result.prices.length - 1].price}
+            latestDate={result.prices[result.prices.length - 1].effective_date}
+            onApply={applyCurrentPrice}
+            busy={repricing}
+          />
+        )}
+        {pricedAt != null && (
+          <p className="text-xs text-cs-muted">
+            Valued at the {fmtPrice(pricedAt)} you entered for today, not the older
+            price in your files.
+          </p>
         )}
 
         {tab === 'dashboard'

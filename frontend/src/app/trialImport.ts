@@ -29,6 +29,8 @@ export interface TrialSummary {
 }
 
 export interface TrialAnalyzeResponse {
+  /** True when the newest price in the files is from an earlier year. */
+  price_is_stale: boolean
   wizard_payload: WizardSubmitPayload
   /** The same shapes the signed-in app renders from — ids are negative, nothing is saved. */
   grants: GrantEntry[]
@@ -43,10 +45,16 @@ export interface TrialAnalyzeResponse {
   reconciles: boolean
 }
 
-export function trialAnalyze(shareCsv: File | null, statementPdf: File | null): Promise<TrialAnalyzeResponse> {
+export function trialAnalyze(
+  shareCsv: File | null,
+  statementPdf: File | null,
+  /** Today's share price, when the files only carry older ones. */
+  currentPrice?: number,
+): Promise<TrialAnalyzeResponse> {
   const body = new FormData()
   if (shareCsv) body.append('share_csv', shareCsv)
   if (statementPdf) body.append('statement_pdf', statementPdf)
+  if (currentPrice != null && currentPrice > 0) body.append('current_price', String(currentPrice))
   return apiFetch<TrialAnalyzeResponse>('/api/trial/analyze', { method: 'POST', body }, 'Could not read those files')
 }
 

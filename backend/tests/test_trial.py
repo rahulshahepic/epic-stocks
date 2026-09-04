@@ -4,6 +4,7 @@ Same synthetic fixtures as test_epic_import.py — no real Epic data.
 """
 import os
 import sys
+from datetime import date
 from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -211,3 +212,51 @@ def test_funnel_is_admin_only(client):
     with patch.dict(os.environ, {"ADMIN_EMAIL": ADMIN_EMAIL}):
         register_user(client, email="nobody@example.com", name="Nobody")
         assert client.get("/api/admin/trial-funnel").status_code == 403
+
+
+# ── Current share price ──────────────────────────────────────────────────────
+# The files carry only prices Epic has already announced. Between announcements
+# the newest one can be a year or more old, and valuing a position at it
+# understates the whole thing silently.
+
+def test_stale_price_is_flagged_so_the_ui_can_ask(client):
+    body = client.post("/api/trial/analyze", files=upload_files()).json()
+    latest = max(p["effective_date"] for p in body["prices"])
+    assert latest[:4] < date.today().strftime("%Y")
+    assert body["price_is_stale"] is True
+
+
+def test_a_supplied_price_is_used_everywhere_not_just_labelled(client):
+    """Charts read `prices`, cards read `timeline`. They must not disagree."""
+    before = client.post("/api/trial/analyze", files=upload_files()).json()
+    after = client.post("/api/trial/analyze", files=upload_files(),
+                        data={"current_price": "99.50"}).json()
+
+    today = date.today().isoformat()
+    assert len(after["prices"]) == len(before["prices"]) + 1
+    newest = after["prices"][-1]
+    assert (newest["effective_date"], newest["price"]) == (today, 99.50)
+
+    def price_today(body):
+        return [e for e in body["timeline"] if e["date"] <= today][-1]["share_price"]
+
+    assert price_today(after) == 99.50
+    assert price_today(after) != price_today(before)
+    # Capital gains move with it — the price is computed from, not pasted on.
+    assert after["timeline"][-1]["cum_cap_gains"] != before["timeline"][-1]["cum_cap_gains"]
+    # And the position is no longer stale once today's price is known.
+    assert after["price_is_stale"] is False
+
+
+def test_a_supplied_price_carries_into_signup(client):
+    """Someone who tells us today's price should not have to tell us again."""
+    body = client.post("/api/trial/analyze", files=upload_files(),
+                       data={"current_price": "99.50"}).json()
+    prices = body["wizard_payload"]["prices"]
+    assert {"effective_date": date.today().isoformat(), "price": 99.50} in prices
+
+
+def test_a_price_no_newer_than_the_files_is_ignored(client):
+    body = client.post("/api/trial/analyze", files=upload_files(),
+                       data={"current_price": "0"}).json()
+    assert len(body["prices"]) == 3

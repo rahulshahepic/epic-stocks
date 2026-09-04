@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { AppProvider } from '../app/AppProvider.tsx'
@@ -26,7 +26,13 @@ const CLEAN = {
     grants: [{ year: 2020, type: 'Bonus', shares: 400, price: 0, vest_start: '2021-09-30', periods: 4, exercise_date: '2020-12-31', dp_shares: 0, election_83b: false, loans: [] }],
     prices: [{ effective_date: PAST, price: 10 }],
   },
-  grants: [{ id: -1, year: 2020, type: 'Bonus', shares: 400, price: 5, vest_start: '2021-09-30', periods: 4, exercise_date: '2020-12-31', dp_shares: 0, election_83b: false, version: 1 }],
+  grants: [
+    // Fully vested by any plausible "today": 4 yearly periods from 2021.
+    { id: -1, year: 2020, type: 'Bonus', shares: 400, price: 5, vest_start: '2021-09-30', periods: 4, exercise_date: '2020-12-31', dp_shares: 0, election_83b: false, version: 1 },
+    // Never vested within the dates this suite uses — its 200 shares must still
+    // be valued, at their $8 cost basis, or net worth understates by $1,600.
+    { id: -2, year: 2024, type: 'Purchase', shares: 200, price: 8, vest_start: '2199-09-30', periods: 2, exercise_date: '2024-12-31', dp_shares: 0, election_83b: false, version: 1 },
+  ],
   loans: [{ id: -1001, grant_year: 2020, grant_type: 'Bonus', loan_type: 'Purchase', loan_year: 2020, amount: 700, interest_rate: 0.01, due_date: '2029-07-15', loan_number: 'L-1', refinances_loan_id: null, version: 1 }],
   prices: [
     { id: -1, effective_date: PAST, price: 10, is_estimate: false, version: 1 },
@@ -37,6 +43,7 @@ const CLEAN = {
     event({ date: FUTURE, share_price: 25, vested_shares: 100, cum_shares: 200, income: 2500, cum_income: 3500 }),
   ],
   summary: { grants: 1, loans: 1, prices: 2, total_shares: 400, total_loan_balance: 700, grant_years: [2020] },
+  price_is_stale: false,
   tax_defaults: {
     federal_income_rate: 0.37, federal_lt_cg_rate: 0.2, federal_st_cg_rate: 0.37,
     niit_rate: 0.038, state_income_rate: 0.0765, state_lt_cg_rate: 0.0536,
@@ -129,11 +136,61 @@ describe('Try — preview', () => {
     renderTry()
     await upload()
 
-    // Net worth hero: 100 shares × $10 − $700 of loans.
+    // Vested 400 × $10 = $4,000, plus unvested 200 at their $8 cost = $1,600,
+    // less $700 of loans.
     expect(await screen.findByText('Net worth · as of', { exact: false })).toBeInTheDocument()
-    expect(screen.getByText('$300')).toBeInTheDocument()
+    expect(screen.getByText('$4,900')).toBeInTheDocument()
     expect(screen.getByText('Vested shares')).toBeInTheDocument()
     expect(screen.getByText('Loan balance')).toBeInTheDocument()
+  })
+
+  it('values unvested shares at cost, not at zero', async () => {
+    // The regression this pins: valuing only vested shares while still
+    // subtracting every loan reported a *negative* net worth to a real user
+    // whose position was millions in the black.
+    mockFetch(CLEAN)
+    renderTry()
+    await upload()
+
+    expect(await screen.findByText('Unvested shares')).toBeInTheDocument()
+    // The count shows in both the hero line and its own card.
+    expect(screen.getAllByText('200').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getByText('$1,600')).toBeInTheDocument()       // 200 × $8 cost
+    expect(screen.getByText('$5,600')).toBeInTheDocument()       // 4,000 + 1,600
+    expect(screen.getByText('Vested at FMV + unvested at cost basis')).toBeInTheDocument()
+  })
+
+  it('asks for the current price when the files only carry older ones', async () => {
+    mockFetch({ ...CLEAN, price_is_stale: true })
+    renderTry()
+    await upload()
+
+    expect(await screen.findByText(/newest price in your files/i)).toBeInTheDocument()
+    expect(screen.getByLabelText('Current share price')).toBeInTheDocument()
+  })
+
+  it('does not ask for a price when the files are already current', async () => {
+    mockFetch(CLEAN)   // price_is_stale: false
+    renderTry()
+    await upload()
+
+    await screen.findByText('Net worth · as of', { exact: false })
+    expect(screen.queryByLabelText('Current share price')).not.toBeInTheDocument()
+  })
+
+  it('re-reads the files with the entered price rather than guessing one', async () => {
+    const calls = mockFetch({ ...CLEAN, price_is_stale: true })
+    renderTry()
+    await upload()
+
+    await userEvent.type(await screen.findByLabelText('Current share price'), '12.50')
+    await userEvent.click(screen.getByRole('button', { name: 'Use this price' }))
+
+    // A second analyze call, carrying the price — the server recomputes the whole
+    // timeline from it, so the charts and the cards cannot disagree.
+    await waitFor(() => expect(calls.length).toBe(2))
+    expect(calls[1].body?.get('current_price')).toBe('12.5')
+    expect(await screen.findByText(/Valued at the .* you entered for today/)).toBeInTheDocument()
   })
 
   it('says plainly that nothing has been saved', async () => {
@@ -148,12 +205,12 @@ describe('Try — preview', () => {
     renderTry()
     await upload()
 
-    // Default is today: only the past event counts.
-    expect(await screen.findByText('$300')).toBeInTheDocument()
+    // Today, at the $10 price: 4,000 vested + 1,600 unvested − 700 loans.
+    expect(await screen.findByText('$4,900')).toBeInTheDocument()
 
-    // Move past the future event: 200 shares × $25 − $700.
+    // Past the future price event, at $25: 10,000 vested + 1,600 − 700.
     fireEvent.change(screen.getByLabelText('As of'), { target: { value: '2099-12-31' } })
-    expect(await screen.findByText('$4,300')).toBeInTheDocument()
+    expect(await screen.findByText('$10,900')).toBeInTheDocument()
   })
 
   it('jumps to the last event with the shortcut', async () => {
@@ -162,7 +219,7 @@ describe('Try — preview', () => {
     await upload()
 
     await userEvent.click(await screen.findByRole('button', { name: 'Last event' }))
-    expect(await screen.findByText('$4,300')).toBeInTheDocument()
+    expect(await screen.findByText('$10,900')).toBeInTheDocument()
   })
 
   it('has a Today shortcut on the date control', async () => {
@@ -192,7 +249,7 @@ describe('Try — preview', () => {
     expect(await screen.findByText('Notifications')).toBeInTheDocument()
     expect(screen.getByText('Retirement simulator')).toBeInTheDocument()
     expect(screen.getByText('Total comp calculator')).toBeInTheDocument()
-    expect(screen.getByText('Sale & payoff planning')).toBeInTheDocument()
+    expect(screen.getByText('Sales you have already made')).toBeInTheDocument()
   })
 
   it('stashes the computed data and sends the user to sign in on save', async () => {

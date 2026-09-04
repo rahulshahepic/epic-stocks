@@ -17,7 +17,7 @@ there is no user yet.
 import logging
 from datetime import date as _date, datetime
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import insert, update
 from sqlalchemy.orm import Session
@@ -124,6 +124,9 @@ class TrialAnalyzeResponse(BaseModel):
     timeline: list[dict]
     summary: dict
     tax_defaults: TaxSettingsRead
+    # True when the newest price the files carry is from an earlier year, so the
+    # UI can ask for the current one rather than quietly valuing at a stale price.
+    price_is_stale: bool
     findings: list[dict]
     blocked: bool
     reconciles: bool
@@ -134,6 +137,7 @@ def analyze(
     request: Request,
     share_csv: UploadFile | None = File(default=None),
     statement_pdf: UploadFile | None = File(default=None),
+    current_price: float | None = Form(default=None),
     db: Session = Depends(get_db),
 ):
     from scaffold.rate_limit import check_rate_ip
@@ -161,10 +165,34 @@ def analyze(
     reconciles = not any(x.severity == "error" for x in findings)
 
     wizard_payload = to_wizard_payload(draft)
+
+    prefill = _wizard_prefill(draft)
+
+    # The files carry the prices Epic has already announced, and nothing newer.
+    # Valuing a position at a price a year or more stale understates it badly, so
+    # the preview lets someone supply the current one. It lands as an ordinary
+    # price point dated today, in *both* the payload the timeline is computed
+    # from and the price list the charts render — anything else would show a
+    # dashboard and a chart that disagree about what a share is worth.
+    today_iso = _date.today().isoformat()
+    if wizard_payload["prices"]:
+        latest = max(p["effective_date"] for p in wizard_payload["prices"])
+        if current_price is not None and current_price > 0 and today_iso > latest:
+            wizard_payload["prices"].append(
+                {"effective_date": today_iso, "price": current_price})
+            prefill["prices"].append({
+                "id": -(len(prefill["prices"]) + 1), "effective_date": today_iso,
+                "price": current_price, "is_estimate": False, "version": 1,
+            })
+
+    # Stale once the newest price held — including one just supplied — is from an
+    # earlier year than today.
+    price_is_stale = bool(wizard_payload["prices"]) and max(
+        p["effective_date"] for p in wizard_payload["prices"])[:4] < today_iso[:4]
+
     grants, prices, loans, initial_price = _source_data(wizard_payload)
     events = generate_all_events(grants, prices, loans)
     timeline = [_serialize_event(e) for e in compute_timeline(events, initial_price)]
-    prefill = _wizard_prefill(draft)
     _bump(db, "previews")
 
     return TrialAnalyzeResponse(
@@ -175,6 +203,7 @@ def analyze(
         timeline=timeline,
         summary=_summary(draft),
         tax_defaults=_default_tax_settings(),
+        price_is_stale=price_is_stale,
         findings=[x.as_dict() for x in findings],
         blocked=blocked,
         reconciles=reconciles,

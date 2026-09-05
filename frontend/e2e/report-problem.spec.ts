@@ -3,7 +3,7 @@
  * still has to be able to say so), and the admin end of it.
  */
 import { test, expect } from '@playwright/test'
-import { loginAs } from './helpers'
+import { loginAs, navigateTo } from './helpers'
 
 const ADMIN_EMAIL = 'admin@e2e.test'
 
@@ -43,19 +43,21 @@ test.describe('Reporting a problem', () => {
   })
 
   test('reaches the admin dashboard, and can be resolved there', async ({ page }) => {
-    await page.goto('/login')
-    await page.getByRole('button', { name: 'Report a problem' }).click()
-    const dialog = page.getByRole('dialog', { name: 'Report a problem' })
-    await dialog.getByPlaceholder('What were you doing when it broke?')
-      .fill('E2E: the events page will not load')
-    await dialog.getByRole('button', { name: 'Send report' }).click()
-    await expect(dialog.getByText(/went straight to the maintainer/)).toBeVisible()
-    await dialog.getByRole('button', { name: 'Close' }).click()
+    // Unique per run: reports accumulate in the database, and a retry against a
+    // dirty DB would otherwise match every earlier run's row.
+    const marker = `E2E report ${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+    // Submitting through the dialog is covered above; post it directly here so
+    // the budget goes on the admin page, which is the slow half of this test.
+    const resp = await page.request.post('/api/report', {
+      data: { message: marker, path: '/events', source: 'toast' },
+    })
+    expect(resp.ok(), `POST /api/report → ${resp.status()}`).toBeTruthy()
 
     await loginAs(page, ADMIN_EMAIL, 'Admin')
-    await page.goto('/admin')
+    await navigateTo(page, 'Admin')
 
-    const report = page.getByText('E2E: the events page will not load')
+    const report = page.getByText(marker)
     await expect(report).toBeVisible({ timeout: 15_000 })
 
     await report.click()

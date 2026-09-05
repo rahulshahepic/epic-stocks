@@ -5,10 +5,13 @@ needs to be able to tell us. What a report may carry is deliberately narrow:
 
   always      the message the person typed, the route they were on, the kind of
               failure (manual/toast/crash/import), the error_ref of the server
-              exception behind it, and the error text the UI already showed them
-  on request  their account (user_id/email), user agent, and the recent-activity
-              log the client keeps — only when they tick "include details",
-              which is off by default
+              exception behind it, the error text the UI already showed them,
+              and a reply address if they chose to type one into the optional
+              field — that one is volunteered, not collected
+  on request  their signed-in account (user_id, and their account email when
+              they typed none), user agent, and the recent-activity log the
+              client keeps — only when they tick "include details", which is
+              off by default
   never       financial data of any kind, request or response bodies, tokens
 
 The client is trusted to send no more than this; the caps here are what stops a
@@ -102,8 +105,8 @@ def submit_report(body: ReportRequest, request: Request, db: Session = Depends(g
     # a single global bucket.
     from scaffold.client_ip import client_ip as _client_ip
     client_ip = _client_ip(request)
-    from scaffold.rate_limit import check_rate, check_rate_ip
-    check_rate_ip(client_ip, "user_report", max_calls=30, window_secs=900)
+    from scaffold.rate_limit import check_rate, check_rate_ip_shared
+    check_rate_ip_shared(client_ip, "user_report", max_calls=200, window_secs=900)
     if user:
         check_rate(user.id, "user_report", max_calls=10, window_secs=900)
     include = bool(body.include_details)

@@ -18,7 +18,21 @@ The reference deployment uses **Cloudflare** in front of Caddy. Cloudflare's bui
    - IPv4: https://www.cloudflare.com/ips-v4
    - IPv6: https://www.cloudflare.com/ips-v6
    - This prevents attackers from bypassing Cloudflare by hitting your origin IP directly
-4. Caddy receives real client IPs via the `CF-Connecting-IP` header — no extra app config needed
+4. Set the GitHub Actions **variable** `CLIENT_IP_HEADER` to `CF-Connecting-IP`
+   - Cloudflare sends this header with exactly the original caller's address
+   - Step 3 is what makes it trustworthy: with the origin reachable only from
+     Cloudflare, nobody else can set it. **Do not set this variable without step 3** —
+     an exposed origin would let anyone forge an address and mint a fresh
+     rate-limit bucket per request
+   - The alternative is `TRUSTED_PROXY_HOPS=2` (Cloudflare + Caddy = two proxies).
+     It works, but it is counted rather than named, and the default of `1` resolves
+     every caller to a Cloudflare edge address instead — see below
+5. Verify it, do not assume it: sign in as an admin and open
+   `https://<your domain>/api/admin/client-ip`. `resolved_ip` must be the address you
+   are actually browsing from (check against e.g. `curl ifconfig.me`) and
+   `looks_correct` must be `true`. If it shows a Cloudflare address, every anonymous
+   rate limit in the app is keyed on the edge rather than the caller, which collapses
+   all visitors in a region into one shared bucket
 
 > **Self-hosting without Cloudflare?** The app has no general request-rate limiting beyond the admin test-notify cap. Add Caddy's [`rate_limit` directive](https://caddyserver.com/docs/caddyfile/directives/rate_limit) or `slowapi` FastAPI middleware before exposing to the internet.
 
@@ -33,6 +47,8 @@ The built-in privacy page (`/privacy`, `frontend/src/scaffold/pages/PrivacyPolic
 | Cloudflare active, nameservers updated | ✅ Done |
 | SSL/TLS Full (Strict) | ✅ Done |
 | VPS firewall locked to CF IPs only | ✅ Done |
+| `CLIENT_IP_HEADER=CF-Connecting-IP` set | ⬜ Check — see step 4 |
+| `/api/admin/client-ip` shows your real address | ⬜ Check — see step 5 |
 
 ---
 
@@ -190,6 +206,7 @@ These are the only values that need to be set in GitHub. Cryptographic secrets (
 | `VPS_HOST` | Variable | VPS hostname or IP |
 | `DOMAIN` | Variable | Your domain name |
 | `TRUSTED_PROXY_IPS` | Variable | Cloudflare IP ranges for real-IP forwarding |
+| `CLIENT_IP_HEADER` | Variable | Header carrying the caller's address. `CF-Connecting-IP` behind Cloudflare. Only safe with the origin firewalled to the proxy. |
 | `APP_ENV` | Variable | Set to `staging` in the staging GitHub environment to enable staging visual identity (amber icon, "Epic Stocks (Staging)" PWA name, amber header banner). Omit or set to `production` for production — defaults to `production` if absent. |
 
 

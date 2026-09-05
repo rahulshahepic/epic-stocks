@@ -14,6 +14,20 @@ from scaffold.crypto import encryption_enabled, decrypt_user_key, set_current_ke
 
 _JWT_SECRET_DEFAULT = "dev-secret-change-me"
 _is_test_env = os.getenv("E2E_TEST") == "1"
+
+# E2E_TEST is the master switch for "this is not a real deployment": it turns
+# off every rate limit, skips redirect_uri validation, drops the SSRF checks on
+# push endpoints, accepts a default JWT secret, and registers /api/auth/test-login,
+# which mints a session for any address asked for. Only that last one checked
+# whether it was running somewhere real. Set alongside a domain it is a full
+# authentication bypass, so refuse to start rather than serve one.
+if _is_test_env and (os.getenv("DOMAIN") or os.getenv("APP_ENV") == "production"):
+    raise RuntimeError(
+        "E2E_TEST=1 disables authentication, rate limiting and SSRF checks, and "
+        "must never be set on a deployment with DOMAIN or APP_ENV=production set. "
+        "Unset E2E_TEST."
+    )
+
 JWT_SECRET = os.getenv("JWT_SECRET", _JWT_SECRET_DEFAULT if _is_test_env else "")
 if not _is_test_env:
     if not JWT_SECRET or JWT_SECRET == _JWT_SECRET_DEFAULT or len(JWT_SECRET) < 32:

@@ -22,6 +22,15 @@ from .skeleton import Skeleton, TemplateRow
 _CENT = 0.005
 _RATE_TOL = 1e-6
 
+# The range a grant year may fall in, matching schemas.py so a draft cannot
+# carry a year the wizard would refuse to save. Both parsers feed years to
+# date arithmetic — shifting a company template onto the grant's year — and
+# date() spans years 1 to 9999, so an unbounded year is an exception rather
+# than a finding. A four-digit label ("9999 Purchased") is enough to reach it
+# from an anonymous upload, and a repaired payload can send any integer at all.
+MIN_GRANT_YEAR = 1900
+MAX_GRANT_YEAR = 2100
+
 # Failing these means we could not read a document correctly, so nothing
 # downstream can be trusted: G0 is a column the share summary is missing, C1/C2
 # are the statement not adding up to its own printed totals. Everything else is
@@ -119,9 +128,31 @@ class Draft:
 # DERIVE — the deterministic path
 # ============================================================
 
+def year_in_range(year) -> bool:
+    """True for a year this module will do date arithmetic on."""
+    return isinstance(year, int) and MIN_GRANT_YEAR <= year <= MAX_GRANT_YEAR
+
+
+def _shift_year(d: date, shift: int) -> date | None:
+    """`d` moved by `shift` years, or None when that is not a real date.
+
+    date.replace refuses 29 February in a common year and refuses to leave the
+    1..9999 range, and both are reachable from a template plus a supplied year.
+    """
+    try:
+        return d.replace(year=d.year + shift)
+    except (ValueError, OverflowError):
+        return None
+
+
 def _schedule_for(sk: Skeleton, year: int, gtype: str,
                   findings: list[Finding]) -> TemplateRow:
-    """Rule S1. The company schedule for this grant, or the nearest one shifted."""
+    """Rule S1. The company schedule for this grant, or the nearest one shifted.
+
+    Callers must have established that `year` is in range (`year_in_range`);
+    the shifting below is date arithmetic and has nowhere sensible to go for a
+    year outside it.
+    """
     row = sk.template(year, gtype)
     if row is not None:
         return row
@@ -129,16 +160,19 @@ def _schedule_for(sk: Skeleton, year: int, gtype: str,
     if same_type:
         near = min(same_type, key=lambda t: abs(t.year - year))
         shift = year - near.year
-        findings.append(Finding("S1", WARNING, f"{year} {gtype}",
-                                f"No grant template for this year, so the {near.year} "
-                                f"{gtype} schedule was shifted by {shift} year(s). "
-                                f"An admin should add a template for {year}."))
-        return TemplateRow(
-            year=year, type=gtype,
-            vest_start=near.vest_start.replace(year=near.vest_start.year + shift),
-            periods=near.periods,
-            exercise_date=near.exercise_date.replace(year=near.exercise_date.year + shift),
-        )
+        vest_start = _shift_year(near.vest_start, shift)
+        exercise_date = _shift_year(near.exercise_date, shift)
+        if vest_start is not None and exercise_date is not None:
+            findings.append(Finding("S1", WARNING, f"{year} {gtype}",
+                                    f"No grant template for this year, so the {near.year} "
+                                    f"{gtype} schedule was shifted by {shift} year(s). "
+                                    f"An admin should add a template for {year}."))
+            return TemplateRow(
+                year=year, type=gtype,
+                vest_start=vest_start,
+                periods=near.periods,
+                exercise_date=exercise_date,
+            )
     findings.append(Finding("S1", ERROR, f"{year} {gtype}",
                             "No grant template exists for this grant and none can be "
                             "adapted — an admin must add one before importing."))
@@ -193,6 +227,15 @@ def derive_draft(statement: Statement | None, rows: list[ShareRow],
                                         f"tell which applies, so {row.shares_granted:,} shares "
                                         f"were not imported."))
                 continue
+
+        if not year_in_range(year):
+            # The label grammar takes any four digits, and every schedule below
+            # is date arithmetic on this year.
+            findings.append(Finding("G1", WARNING, row.label,
+                                    f"Grant year {year} is outside {MIN_GRANT_YEAR}–"
+                                    f"{MAX_GRANT_YEAR} — {row.shares_granted:,} shares "
+                                    f"not imported."))
+            continue
 
         ps = basis_per_share(row) or 0.0
         vest_taxed, why = is_vest_taxed(row)
@@ -343,12 +386,33 @@ def _explain_shares_sold(draft: Draft, rows: list[ShareRow], sk: Skeleton,
 # SUPPLIED — a draft handed back after repair
 # ============================================================
 
+def _finite_int(v) -> int:
+    """int(v) that refuses NaN and infinity.
+
+    int(float('inf')) raises OverflowError, which is not in the (KeyError,
+    TypeError, ValueError) family the callers below catch, so it escaped as a
+    500. This whole payload is text someone pasted in from an assistant.
+    """
+    f = float(v)
+    if f != f or f in (float("inf"), float("-inf")):
+        raise ValueError("not a finite number")
+    return int(round(f))
+
+
 def draft_from_payload(payload: dict, sk: Skeleton) -> tuple[Draft, list[Finding]]:
-    """Read a draft returned by an assistant. Tolerant about shape, strict about types."""
+    """Read a draft returned by an assistant. Tolerant about shape, strict about types.
+
+    Nothing in here may raise: the payload is whatever an assistant handed the
+    user, pasted through unchanged, so every malformed shape has to come back
+    as a finding the repair loop can show and act on.
+    """
     findings: list[Finding] = []
-    draft = Draft(origin="supplied", statement_date=_d(payload.get("statement_date")))
+    # Before anything reads a key off it — a JSON array has no .get, and that
+    # was an exception rather than the message below.
     if not isinstance(payload, dict):
-        return draft, [Finding("R1", ERROR, "", "Expected a JSON object.")]
+        return Draft(origin="supplied"), [Finding("R1", ERROR, "", "Expected a JSON object.")]
+
+    draft = Draft(origin="supplied", statement_date=_d(payload.get("statement_date")))
 
     grants = payload.get("grants")
     if not isinstance(grants, list) or not grants:
@@ -362,14 +426,19 @@ def draft_from_payload(payload: dict, sk: Skeleton) -> tuple[Draft, list[Finding
             continue
         try:
             year, gtype = int(raw["year"]), str(raw["type"]).strip()
-            shares = int(round(float(raw["shares"])))
+            shares = _finite_int(raw["shares"])
             price = float(raw.get("price") or 0.0)
-        except (KeyError, TypeError, ValueError) as e:
+        except (KeyError, TypeError, ValueError, OverflowError) as e:
             findings.append(Finding("R1", ERROR, f"grants[{i}]",
                                     f"Missing or unreadable year/type/shares/price ({e})."))
             continue
         if shares <= 0:
             findings.append(Finding("R1", ERROR, f"{year} {gtype}", "shares must be positive."))
+            continue
+        if not year_in_range(year):
+            findings.append(Finding("R1", ERROR, f"grants[{i}]",
+                                    f"year {year} is outside {MIN_GRANT_YEAR}–"
+                                    f"{MAX_GRANT_YEAR}."))
             continue
 
         # Structure is never taken from the payload — C10 reports any attempt.
@@ -380,23 +449,41 @@ def draft_from_payload(payload: dict, sk: Skeleton) -> tuple[Draft, list[Finding
                 findings.append(Finding("C10", WARNING, f"{year} {gtype}",
                                         f"{label} was changed to {supplied}; the company "
                                         f"schedule says {ours} and that is what was used."))
-        if raw.get("periods") is not None and int(raw["periods"]) != t.periods:
-            findings.append(Finding("C10", WARNING, f"{year} {gtype}",
-                                    f"periods was changed to {raw['periods']}; the company "
-                                    f"schedule says {t.periods} and that is what was used."))
-
-        loans: list[DraftLoan] = []
-        for j, rl in enumerate(raw.get("loans") or []):
+        if raw.get("periods") is not None:
             try:
+                supplied_periods = _finite_int(raw["periods"])
+            except (TypeError, ValueError, OverflowError):
+                findings.append(Finding("R1", WARNING, f"{year} {gtype}",
+                                        f"periods {raw['periods']!r} is not a number; the "
+                                        f"company schedule's {t.periods} was used."))
+            else:
+                if supplied_periods != t.periods:
+                    findings.append(Finding("C10", WARNING, f"{year} {gtype}",
+                                            f"periods was changed to {supplied_periods}; the "
+                                            f"company schedule says {t.periods} and that is "
+                                            f"what was used."))
+
+        raw_loans = raw.get("loans") or []
+        if not isinstance(raw_loans, list):
+            findings.append(Finding("R1", ERROR, f"{year} {gtype}", "'loans' is not an array."))
+            raw_loans = []
+        loans: list[DraftLoan] = []
+        for j, rl in enumerate(raw_loans):
+            if not isinstance(rl, dict):
+                findings.append(Finding("R1", ERROR, f"{year} {gtype} loans[{j}]",
+                                        "Not an object."))
+                continue
+            try:
+                loan_year = _finite_int(rl.get("loan_year") or year)
                 loans.append(DraftLoan(
                     loan_number=str(rl.get("loan_number") or "").strip(),
                     loan_type=str(rl["loan_type"]).strip().capitalize(),
-                    loan_year=int(rl.get("loan_year") or year),
+                    loan_year=loan_year,
                     amount=float(rl["amount"]),
                     interest_rate=float(rl["interest_rate"]),
                     due_date=_d(rl["due_date"]),
                 ))
-            except (KeyError, TypeError, ValueError) as e:
+            except (KeyError, TypeError, ValueError, OverflowError) as e:
                 findings.append(Finding("R1", ERROR, f"{year} {gtype} loans[{j}]",
                                         f"Unreadable loan ({e})."))
                 continue
@@ -405,14 +492,29 @@ def draft_from_payload(payload: dict, sk: Skeleton) -> tuple[Draft, list[Finding
                                         "due_date is not a date."))
                 loans.pop()
 
+        try:
+            dp_shares = _finite_int(raw.get("dp_shares") or 0)
+        except (TypeError, ValueError, OverflowError):
+            findings.append(Finding("R1", WARNING, f"{year} {gtype}",
+                                    f"dp_shares {raw.get('dp_shares')!r} is not a number; "
+                                    f"0 was used."))
+            dp_shares = 0
+
         draft.grants.append(DraftGrant(
             year=year, type=gtype, shares=shares, price=price,
             vest_start=t.vest_start, periods=t.periods, exercise_date=t.exercise_date,
-            dp_shares=int(raw.get("dp_shares") or 0),
+            dp_shares=dp_shares,
             election_83b=bool(raw.get("election_83b")), loans=loans,
         ))
 
-    for i, raw in enumerate(payload.get("prices") or []):
+    raw_prices = payload.get("prices") or []
+    if not isinstance(raw_prices, list):
+        findings.append(Finding("R1", WARNING, "prices", "'prices' is not an array."))
+        raw_prices = []
+    for i, raw in enumerate(raw_prices):
+        if not isinstance(raw, dict):
+            findings.append(Finding("R1", WARNING, f"prices[{i}]", "Not an object."))
+            continue
         d, p = _d(raw.get("effective_date")), raw.get("price")
         if d is None or p in (None, ""):
             findings.append(Finding("R1", WARNING, f"prices[{i}]",
@@ -420,7 +522,7 @@ def draft_from_payload(payload: dict, sk: Skeleton) -> tuple[Draft, list[Finding
             continue
         try:
             draft.prices.append(DraftPrice(d, float(p)))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             findings.append(Finding("R1", WARNING, f"prices[{i}]", "Price is not a number."))
     return draft, findings
 

@@ -64,6 +64,11 @@ def parse_share_csv(raw: bytes) -> tuple[list[ShareRow], list[Finding]]:
         header = next(reader)
     except StopIteration:
         return [], [Finding("G0", ERROR, "", "CSV is empty")]
+    except csv.Error:
+        # A field over the module's 128 KB limit. This file arrives from an
+        # anonymous caller on the trial endpoint, so the error is a finding
+        # rather than an exception escaping as a 500.
+        return [], [Finding("G0", ERROR, "", "CSV is not readable — a field is far too long.")]
 
     idx = {_norm(h): i for i, h in enumerate(header)}
     if "grant" not in idx:
@@ -101,7 +106,11 @@ def parse_share_csv(raw: bytes) -> tuple[list[ShareRow], list[Finding]]:
         return row[i] if i is not None and i < len(row) else ""
 
     rows: list[ShareRow] = []
-    for row in reader:
+    try:
+        body = list(reader)
+    except csv.Error:
+        return [], [Finding("G0", ERROR, "", "CSV is not readable — a field is far too long.")]
+    for row in body:
         if not row or not (row[idx["grant"]] if idx["grant"] < len(row) else "").strip():
             continue
         granted = _int(cell(row, "shares granted"))

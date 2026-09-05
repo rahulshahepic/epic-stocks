@@ -13,6 +13,7 @@ from database import get_db
 from scaffold.models import User, Grant, Loan, Price, Sale, LoanPayment, ImportBackup, TaxSettings
 from scaffold.auth import get_current_user
 from scaffold.quota import check_row_count
+from scaffold.safe_workbook import WorkbookRejected, load_workbook_safely
 from app.excel_io import (FORMULA_LEADS, read_grants_from_excel, read_prices_from_excel, read_loans_from_excel,
                       read_loan_payments_from_excel, read_sales_from_excel, write_events_to_excel)
 from services.timeline_cache import get_timeline
@@ -181,13 +182,14 @@ def import_excel(
     if not raw.startswith(_XLSX_MAGIC):
         raise HTTPException(status_code=400, detail="File is not a valid Excel (.xlsx) file")
 
-    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=True) as tmp:
-        tmp.write(raw)
-        tmp.flush()
-        try:
-            wb = openpyxl.load_workbook(tmp.name, read_only=True, data_only=True)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Failed to open Excel file: {e}")
+    # read_only streams worksheet rows but still loads sharedStrings.xml whole,
+    # so the archive is measured first — see scaffold/safe_workbook.py.
+    try:
+        wb = load_workbook_safely(raw, read_only=True, data_only=True)
+    except WorkbookRejected as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Failed to open Excel file")
 
     sheet_names = [s.lower() for s in wb.sheetnames]
 

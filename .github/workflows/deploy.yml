@@ -107,6 +107,12 @@ jobs:
             fi
 
             write_env() {
+              # Create it unreadable to anyone else before a byte goes in: this
+              # file holds JWT_SECRET, KEY_ENCRYPTION_KEY and every database and
+              # provider password, and the default umask would leave it
+              # world-readable to every account on the host.
+              touch ${{ vars.DEPLOY_PATH }}/.env
+              chmod 600 ${{ vars.DEPLOY_PATH }}/.env
               cat > ${{ vars.DEPLOY_PATH }}/.env <<ENVEOF
             JWT_SECRET=${JWT_SECRET}
             OIDC_PROVIDERS=${{ secrets.OIDC_PROVIDERS }}
@@ -140,6 +146,8 @@ jobs:
             LEGACY_MASTER_KEY=${LEGACY_MASTER_KEY}
             ENVEOF
               sed -i 's/^[[:space:]]*//' ${{ vars.DEPLOY_PATH }}/.env
+              # sed -i writes through a temp file, so re-assert the mode.
+              chmod 600 ${{ vars.DEPLOY_PATH }}/.env
             }
             write_env
 

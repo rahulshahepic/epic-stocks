@@ -684,6 +684,9 @@ The backend creates `data/vesting.db` (SQLite) automatically on first run. The d
 | `APP_URL` | No | Public app URL included as a link in email notifications |
 | `ACME_EMAIL` | No (prod) | Email for Let's Encrypt certificate expiry notifications. Set as a GitHub Actions variable. |
 | `TRUSTED_PROXY_IPS` | No (prod) | Cloudflare IP ranges passed to Caddy for real-IP forwarding. Set as a GitHub Actions variable. |
+| `TRUSTED_PROXY_HOPS` | No | How many trusted reverse proxies sit in front of the app, so anonymous rate limits can be keyed on the real caller instead of the proxy. `0` (default) ignores `X-Forwarded-For` entirely — correct for a directly-exposed app. `1` for Caddy alone, `2` when Cloudflare proxies to Caddy. docker-compose defaults it to `1`. |
+| `INVITE_TOKEN_SECRET` | No | Key for the HMAC verifiers that replace plaintext invitation tokens in the database. Falls back to `JWT_SECRET`. Rotating it invalidates outstanding invitations and hides stored short codes — revoke and re-send. |
+| `PUSH_ALLOW_PRIVATE_ENDPOINTS` | No | Set to `1` for local development against a push relay on a private address. Never set in production: it disables the SSRF check on push subscription endpoints. |
 | `COMMIT_SHA` | No | Git commit SHA injected at Docker build time. Displayed as a 7-char short hash at the bottom of Admin and Settings pages. **Set automatically by the deploy workflow.** |
 | `APP_ENV` | No | Set to `staging` in the GitHub staging environment Variables tab to enable staging-specific UI: amber icon, PWA name "Epic Stocks (Staging)", and a persistent amber header banner. Defaults to `production` (no change). Injected as a Docker build arg at deploy time. |
 
@@ -770,6 +773,7 @@ Set secrets as GitHub Actions variables — the deploy workflow writes `.env` au
 | `VPS_HOST` | Variable | VPS hostname or IP |
 | `DOMAIN` | Variable | Your domain name |
 | `TRUSTED_PROXY_IPS` | Variable | Cloudflare IP ranges for real-IP forwarding |
+| `TRUSTED_PROXY_HOPS` | Variable | Reverse proxies in front of the app (default `1`; `2` with Cloudflare). Keys anonymous rate limits on the real caller. |
 
 Cryptographic secrets (JWT, encryption key, VAPID keys, Postgres password) are generated on the server on first deploy and stored in `/opt/epic-stocks/.secrets/`. They never appear in GitHub.
 
@@ -871,11 +875,16 @@ epic-stocks/
 │   ├── alembic/             # Alembic migrations (run automatically on startup)
 │   ├── scaffold/            # Reusable auth/infra layer (keep when forking)
 │   │   ├── auth.py          # JWT creation/verification + admin checks
-│   │   ├── crypto.py        # Per-user AES-256-GCM encryption
+│   │   ├── client_ip.py     # Real caller address behind a proxy (TRUSTED_PROXY_HOPS)
+│   │   ├── crypto.py        # Per-user AES-256-GCM encryption (fails closed without a key)
 │   │   ├── email_sender.py  # Email dispatch (delegates to providers/)
+│   │   ├── invite_tokens.py # HMAC verifiers + sealed short codes for invitations
 │   │   ├── maintenance.py   # Sentinel path for app-managed downtime
 │   │   ├── models.py        # SQLAlchemy models (User, BlockedEmail, SystemMetric, etc.)
 │   │   ├── notifications.py # Push + email notification logic
+│   │   ├── push_endpoints.py # SSRF guard on user-supplied push destinations
+│   │   ├── rate_limit.py    # Per-user/per-IP limits; Redis counters when available
+│   │   ├── user_deletion.py # The one place that erases a user (self-serve + admin)
 │   │   ├── providers/
 │   │   │   ├── auth/        # OIDC PKCE provider (joserfc for JWT/JWKS verification)
 │   │   │   └── email/       # Email providers: Resend, SMTP

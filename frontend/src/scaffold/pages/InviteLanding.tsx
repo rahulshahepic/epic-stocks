@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { ReportProblemLink } from '../components/ReportProblem.tsx'
 import { api, isLoggedIn } from '../../api.ts'
 import type { InviteInfoResult } from '../../api.ts'
 import { startLogin } from '../oidc.ts'
@@ -131,6 +132,13 @@ export default function InviteLanding() {
  </div>
  </>
  )}
+
+ {/* Another pre-login dead end: an invitation that will not open leaves
+ someone with no account and nothing to click. */}
+ <p className="mt-6 text-xs text-cs-text-2">
+ Something not working?{' '}
+ <ReportProblemLink className="font-medium text-cs-brand hover:text-cs-brand-hover" />
+ </p>
  </div>
  </div>
  )

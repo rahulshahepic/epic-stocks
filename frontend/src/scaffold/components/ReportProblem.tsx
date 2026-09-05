@@ -143,48 +143,54 @@ export function ReportDialog({
                 ref={textareaRef}
                 value={message}
                 onChange={e => setMessage(e.target.value)}
-                rows={4}
+                rows={3}
                 maxLength={2000}
                 placeholder="What were you doing when it broke?"
-                className="mt-1 w-full rounded-lg border border-cs-border bg-cs-surface p-2 text-sm text-cs-text"
+                className="mt-1 w-full resize-y rounded-lg border border-cs-border bg-cs-surface px-3 py-2 text-sm text-cs-text"
               />
             </label>
 
-            <label className="mt-3 block">
-              <span className="text-xs text-cs-muted">
-                Your email {signedIn ? '(optional)' : '(optional — so you can be reached about it)'}
-              </span>
+            <label className="mt-4 block">
+              <span className="text-xs text-cs-muted">Your email · optional</span>
               <input
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 placeholder="you@example.com"
-                className="mt-1 w-full rounded-lg border border-cs-border bg-cs-surface p-2 text-sm text-cs-text"
+                className="mt-1 w-full rounded-lg border border-cs-border bg-cs-surface px-3 py-2 text-sm text-cs-text"
               />
             </label>
 
-            <label className="mt-3 flex cursor-pointer items-start gap-2">
-              <input
-                type="checkbox"
-                checked={includeDetails}
-                onChange={e => setIncludeDetails(e.target.checked)}
-                className="mt-0.5 h-4 w-4 shrink-0 accent-cs-brand"
-              />
-              <span className="text-xs leading-relaxed text-cs-text-2">
-                <span className="font-medium text-cs-text">Include details that identify me.</span>{' '}
-                Attaches your account and browser, plus the last few pages you visited and
-                requests that failed. It makes a problem far easier to find. Never includes any
-                of your financial data. Off by default — without it, this report is anonymous.
-              </span>
-            </label>
+            <div className="mt-4 rounded-xl border border-cs-border bg-cs-raised p-3">
+              <label className="flex cursor-pointer items-start gap-2.5">
+                <input
+                  type="checkbox"
+                  checked={includeDetails}
+                  onChange={e => setIncludeDetails(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-cs-brand"
+                />
+                <span className="text-xs leading-snug text-cs-text">
+                  Include details that identify me
+                  <span className="mt-1 block text-cs-text-2">
+                    Your account, browser, and the last few pages and failed requests. Never
+                    your financial data.
+                  </span>
+                </span>
+              </label>
 
-            <button
-              type="button"
-              onClick={() => setShowPayload(v => !v)}
-              className="mt-2 text-xs text-cs-brand underline underline-offset-2"
-            >
-              {showPayload ? 'Hide' : 'Show'} exactly what gets sent
-            </button>
+              <div className="mt-2.5 flex items-center justify-between gap-3 border-t border-cs-border pt-2.5">
+                <span className="text-[11px] text-cs-muted">
+                  {includeDetails ? 'This report will identify you.' : 'This report is anonymous.'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowPayload(v => !v)}
+                  className="shrink-0 text-[11px] font-medium text-cs-brand underline underline-offset-2"
+                >
+                  {showPayload ? 'Hide' : 'Show'} what gets sent
+                </button>
+              </div>
+            </div>
             {showPayload && (
               <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-cs-raised p-2 font-mono text-[11px] leading-relaxed text-cs-text-2">
 {`message: ${message.trim() || '(empty)'}

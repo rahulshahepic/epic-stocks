@@ -35,7 +35,7 @@ test.describe('Reporting a problem', () => {
     await page.getByRole('button', { name: 'Report a problem' }).click()
     const dialog = page.getByRole('dialog', { name: 'Report a problem' })
 
-    await dialog.getByRole('button', { name: /Show exactly what gets sent/ }).click()
+    await dialog.getByRole('button', { name: /Show what gets sent/ }).click()
     await expect(dialog.getByText(/account, browser and recent activity: not included/)).toBeVisible()
 
     await dialog.getByRole('checkbox').check()

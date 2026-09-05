@@ -63,9 +63,16 @@ describe('the report dialog', () => {
     expect(body.client_log).toContain('/api/events → 500')
   })
 
-  it('starts with the details box unticked', () => {
+  it('starts with the details box unticked, and says the report is anonymous', () => {
     render(<ReportDialog onClose={() => {}} />)
     expect(screen.getByRole('checkbox')).not.toBeChecked()
+    expect(screen.getByText('This report is anonymous.')).toBeInTheDocument()
+  })
+
+  it('says so once the report will identify you', async () => {
+    render(<ReportDialog onClose={() => {}} />)
+    await userEvent.click(screen.getByRole('checkbox'))
+    expect(screen.getByText('This report will identify you.')).toBeInTheDocument()
   })
 
   it('carries the last server error ref without being asked', async () => {
@@ -92,7 +99,7 @@ describe('the report dialog', () => {
 
   it('shows the payload before it is sent, and says what is left out', async () => {
     render(<ReportDialog onClose={() => {}} />)
-    await userEvent.click(screen.getByRole('button', { name: /Show exactly what gets sent/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Show what gets sent/ }))
     expect(screen.getByText(/account, browser and recent activity: not included/)).toBeInTheDocument()
   })
 

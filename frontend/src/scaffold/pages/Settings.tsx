@@ -400,7 +400,9 @@ function SharingSection() {
  if (result.email_sent) {
  setSuccess('Invitation sent! They\'ll receive an email with a link and code.')
  } else {
- setSuccess(`Email could not be sent. Share this code with them instead: ${result.short_code}`)
+ setSuccess(result.short_code
+ ? `Email could not be sent. Share this code with them instead: ${result.short_code}`
+ : 'Email could not be sent. Revoke this invitation and send a new one.')
  }
  loadSent()
  } catch (err) {
@@ -498,7 +500,7 @@ function SharingSection() {
  {inv.invitee_name && <span className="ml-1 text-cs-muted">— {inv.invitee_name}</span>}
  <div className="mt-0.5 flex flex-wrap items-center gap-2">
  {statusBadge(inv.status)}
- {inv.status === 'pending' && (
+ {inv.status === 'pending' && inv.short_code && (
  <span className="font-mono text-cs-muted" title="Share this code manually if they didn't get the email">
  code: {inv.short_code}
  </span>

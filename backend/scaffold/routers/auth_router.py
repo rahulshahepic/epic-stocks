@@ -59,6 +59,21 @@ def _notify_admin_new_user(user: User, db: Session):
         logger.exception("Failed to send admin notification for new user")
 
 
+
+def _ensure_user_key(user, db) -> None:
+    """Give a pre-encryption account a data key on login.
+
+    Accounts created before KEY_ENCRYPTION_KEY was set have encrypted_key NULL.
+    Encrypted columns now fail closed, so such a user could not write at all;
+    minting the key at login is the one point where the account is in hand and
+    a commit is already happening. Rows already stored in plaintext stay
+    readable — they carry no $ENC$ prefix, so the decorators pass them through.
+    """
+    if encryption_enabled() and not user.encrypted_key:
+        user.encrypted_key = encrypt_user_key(generate_user_key())
+        db.commit()
+
+
 def _upsert_user(identity, db: Session) -> User:
     """Create or update a User from a provider UserIdentity. Returns the user."""
     if not identity.email_verified:
@@ -96,6 +111,8 @@ def _upsert_user(identity, db: Session) -> User:
         user.name = identity.name
         user.picture = identity.picture
         db.commit()
+
+    _ensure_user_key(user, db)
 
     user.is_admin = int(user.email.lower() in get_admin_emails())
     user.last_login = datetime.now(timezone.utc)
@@ -142,7 +159,8 @@ class CallbackRequest(BaseModel):
 def auth_callback(body: CallbackRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     """Exchange PKCE authorization code for a JWT; set it as an HttpOnly session cookie."""
     from scaffold.rate_limit import check_rate_ip
-    client_ip = request.client.host if request.client else "unknown"
+    from scaffold.client_ip import client_ip as _client_ip
+    client_ip = _client_ip(request)
     check_rate_ip(client_ip, "auth_callback", max_calls=20, window_secs=900)
     _validate_redirect_uri(body.redirect_uri)
     from scaffold.providers.auth import get_provider
@@ -245,6 +263,7 @@ if os.getenv("E2E_TEST") == "1":
                     is_new = False
                     continue  # re-query on next iteration
             break
+        _ensure_user_key(user, db)
         admin_emails = get_admin_emails()
         user.is_admin = int(body.email.lower() in {e.lower() for e in admin_emails})
         user.last_login = datetime.now(timezone.utc)

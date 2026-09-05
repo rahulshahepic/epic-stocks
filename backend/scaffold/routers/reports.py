@@ -93,12 +93,15 @@ def submit_report(body: ReportRequest, request: Request, db: Session = Depends(g
 
     user = _optional_user(request, db)
 
-    # Two limits, because they catch different things. Behind Caddy, uvicorn runs
-    # without --proxy-headers, so request.client.host is the proxy for everyone:
-    # the IP limit is one shared bucket and has to be loose enough that a real
-    # outage — when reports arrive in a burst — is not silenced by it. The
-    # per-user limit is the precise one, and cannot be shared or spoofed.
-    client_ip = request.client.host if request.client else "unknown"
+    # Two limits, because they catch different things. The IP limit is loose
+    # enough that a real outage — when reports arrive in a burst — is not
+    # silenced by it; the per-user limit is the precise one, and cannot be
+    # shared or spoofed. The address comes from scaffold.client_ip, which
+    # unwraps X-Forwarded-For only as far as TRUSTED_PROXY_HOPS allows; before
+    # that this was the proxy's address for every reporter, so the IP limit was
+    # a single global bucket.
+    from scaffold.client_ip import client_ip as _client_ip
+    client_ip = _client_ip(request)
     from scaffold.rate_limit import check_rate, check_rate_ip
     check_rate_ip(client_ip, "user_report", max_calls=30, window_secs=900)
     if user:

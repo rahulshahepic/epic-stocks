@@ -5,7 +5,7 @@ from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from tests.conftest import register_user
+from tests.conftest import register_user, user_key
 
 
 def _mock_resend_env():
@@ -34,13 +34,14 @@ def test_dedup_skips_already_notified_user(client, db_session):
     user = db_session.query(User).first()
 
     # Email is enabled by default for new users, no need to create preference
-    db_session.add(Grant(
-        user_id=user.id, year=2020, type="Purchase", shares=100, price=5.0,
-        vest_start=date(2025, 3, 20), periods=5,
-        exercise_date=date(2030, 3, 20), dp_shares=0,
-    ))
-    db_session.add(Price(user_id=user.id, effective_date=date(2020, 1, 1), price=5.0))
-    db_session.commit()
+    with user_key(user):
+        db_session.add(Grant(
+            user_id=user.id, year=2020, type="Purchase", shares=100, price=5.0,
+            vest_start=date(2025, 3, 20), periods=5,
+            exercise_date=date(2030, 3, 20), dp_shares=0,
+        ))
+        db_session.add(Price(user_id=user.id, effective_date=date(2020, 1, 1), price=5.0))
+        db_session.commit()
 
     today = date(2026, 3, 20)
 

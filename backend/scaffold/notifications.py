@@ -112,6 +112,13 @@ def send_push(subscription: PushSubscription, payload: dict) -> PushResult:
     if not VAPID_PRIVATE_KEY:
         logger.warning("VAPID_PRIVATE_KEY not set, skipping push")
         return PushResult.FAILED
+    # Re-checked here and not only at subscribe time: DNS moves. A host that
+    # was public when the subscription was stored can point at loopback or the
+    # metadata service months later, and subscriptions are long-lived.
+    from scaffold.push_endpoints import is_sendable
+    if not is_sendable(subscription.endpoint):
+        logger.warning("Refusing to send push to a non-public endpoint")
+        return PushResult.FAILED
     try:
         from pywebpush import webpush, WebPushException
 
@@ -176,9 +183,20 @@ def send_daily_notifications(today: date | None = None):
         # Build a map of user_id → advance_days preference
         all_prefs = {p.user_id: (p.advance_days or 0) for p in db.query(EmailPreference).filter(EmailPreference.user_id.in_(all_user_ids)).all()}
 
+        from scaffold.crypto import encryption_enabled, decrypt_user_key, set_current_key
+
         for user in users:
             if _already_notified_today(user, today):
                 continue
+
+            # This job runs outside any request, so EncryptionMiddleware has not
+            # put a key in context. Without this the user's own grants and prices
+            # read back as zeros and everyone gets a notification computed from
+            # nothing — the shared-data loop below already did this per owner.
+            if encryption_enabled() and user.encrypted_key:
+                set_current_key(decrypt_user_key(user.encrypted_key))
+            else:
+                set_current_key(None)
 
             advance_days = all_prefs.get(user.id, 0)
             target_date = today + timedelta(days=advance_days)
@@ -209,7 +227,6 @@ def send_daily_notifications(today: date | None = None):
         # about events in the inviter's data.
         try:
             from scaffold.models import Invitation
-            from scaffold.crypto import encryption_enabled, decrypt_user_key, set_current_key
 
             accepted_invs = db.query(Invitation).filter(
                 Invitation.status == "accepted",
@@ -284,6 +301,12 @@ def send_daily_notifications(today: date | None = None):
     except Exception:
         logger.exception("Error in daily notification check")
     finally:
+        # This job hops between users' keys; never leave one in the contextvar.
+        try:
+            from scaffold.crypto import set_current_key as _clear_key
+            _clear_key(None)
+        except Exception:
+            pass
         # Explicitly release the advisory lock so it doesn't persist on pooled connections
         if lock_acquired:
             try:

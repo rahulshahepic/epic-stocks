@@ -214,19 +214,8 @@ def admin_delete_user(user_id: int, admin: User = Depends(get_admin_user), db: S
     email = db.query(User.email).filter(User.id == user_id).scalar()
     if email and email.lower() in get_admin_emails():
         raise HTTPException(status_code=400, detail="Cannot delete an admin user")
-    # Use raw SQL to avoid any ORM session / encrypted-column complications.
-    # Deletes in FK-safe order; loans.refinances_loan_id self-FK nulled first.
-    db.execute(text("DELETE FROM sales WHERE user_id = :uid"), {"uid": user_id})
-    db.execute(text("DELETE FROM loan_payments WHERE user_id = :uid"), {"uid": user_id})
-    db.execute(text("UPDATE loans SET refinances_loan_id = NULL WHERE user_id = :uid"), {"uid": user_id})
-    db.execute(text("DELETE FROM loans WHERE user_id = :uid"), {"uid": user_id})
-    db.execute(text("DELETE FROM grants WHERE user_id = :uid"), {"uid": user_id})
-    db.execute(text("DELETE FROM prices WHERE user_id = :uid"), {"uid": user_id})
-    db.execute(text("DELETE FROM push_subscriptions WHERE user_id = :uid"), {"uid": user_id})
-    db.execute(text("DELETE FROM email_preferences WHERE user_id = :uid"), {"uid": user_id})
-    db.execute(text("DELETE FROM tax_settings WHERE user_id = :uid"), {"uid": user_id})
-    # import_backups has ondelete=CASCADE so the next statement handles it at DB level
-    db.execute(text("DELETE FROM users WHERE id = :uid"), {"uid": user_id})
+    from scaffold.user_deletion import delete_user
+    delete_user(db, user_id)
     db.commit()
 
 

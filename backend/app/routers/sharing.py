@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from scaffold.auth import get_current_user
 from scaffold.models import User, Invitation, InvitationOptOut, BlockedEmail, InviteSendingBlock
+from scaffold.invite_tokens import code_verifier, seal_code, token_verifier, unseal_code
 
 logger = logging.getLogger(__name__)
 
@@ -22,20 +23,42 @@ _CODE_CHARS = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
 
 
 def _generate_token() -> str:
+    """The raw token. Only its verifier is stored; this value is emailed once."""
     return secrets.token_urlsafe(48)
 
 
 def _generate_short_code(db: Session) -> str:
+    """The raw code. Uniqueness is checked against the stored verifier."""
     for _ in range(20):
         code = "".join(secrets.choice(_CODE_CHARS) for _ in range(8))
-        if not db.query(Invitation).filter(Invitation.short_code == code).first():
+        if not db.query(Invitation).filter(
+            Invitation.short_code == code_verifier(code)
+        ).first():
             return code
     raise RuntimeError("Failed to generate unique short code")
 
 
-def _format_short_code(code: str) -> str:
+def _normalize_code(code: str) -> str:
+    return code.replace("-", "").replace(" ", "").upper()
+
+
+def _format_short_code(code: str | None) -> str | None:
     """Format 8-char code as XXXX-XXXX for display."""
+    if not code:
+        return None
     return f"{code[:4]}-{code[4:]}" if len(code) == 8 else code
+
+
+def _find_by_token(db: Session, raw_token: str) -> Invitation | None:
+    return db.query(Invitation).filter(
+        Invitation.token == token_verifier(raw_token)
+    ).first()
+
+
+def _find_by_code(db: Session, raw_code: str) -> Invitation | None:
+    return db.query(Invitation).filter(
+        Invitation.short_code == code_verifier(_normalize_code(raw_code))
+    ).first()
 
 
 # ── Public endpoint (no auth required) ──────────────────────────────────────
@@ -49,16 +72,12 @@ def invite_info(
 ):
     """Look up invitation by token or code. Returns inviter name + status. No auth required."""
     from scaffold.rate_limit import check_rate_ip
-    client_ip = request.client.host if request and request.client else "unknown"
+    from scaffold.client_ip import client_ip as _client_ip
+    client_ip = _client_ip(request) if request else "unknown"
     check_rate_ip(client_ip, "sharing_invite_info", max_calls=20, window_secs=900)
     if not token and not code:
         raise HTTPException(400, "Provide token or code")
-    inv = None
-    if token:
-        inv = db.query(Invitation).filter(Invitation.token == token).first()
-    elif code:
-        clean = code.replace("-", "").replace(" ", "").upper()
-        inv = db.query(Invitation).filter(Invitation.short_code == clean).first()
+    inv = _find_by_token(db, token) if token else _find_by_code(db, code)
     if not inv:
         return {"valid": False, "reason": "Invitation not found"}
     if inv.status == "revoked":
@@ -136,11 +155,14 @@ def send_invite(
         db.flush()
 
     now = datetime.now(timezone.utc)
+    raw_token = _generate_token()
+    raw_code = _generate_short_code(db)
     inv = Invitation(
         inviter_id=user.id,
         invitee_email=email,
-        token=_generate_token(),
-        short_code=_generate_short_code(db),
+        token=token_verifier(raw_token),
+        short_code=code_verifier(raw_code),
+        short_code_sealed=seal_code(raw_code),
         status="pending",
         expires_at=now + timedelta(days=INVITE_EXPIRY_DAYS),
         last_sent_at=now,
@@ -149,7 +171,7 @@ def send_invite(
     db.commit()
     db.refresh(inv)
 
-    email_sent = _send_invitation_email(inv, user)
+    email_sent = _send_invitation_email(inv, user, raw_token, raw_code)
 
     result = _serialize_invitation(inv, db)
     result["email_sent"] = email_sent
@@ -196,7 +218,16 @@ def resend_invite(
     inv.last_sent_at = now
     db.commit()
 
-    email_sent = _send_invitation_email(inv, user)
+    # Only the token's verifier was kept, so the original link cannot be
+    # rebuilt. Issue a fresh token instead; the superseded link stops working,
+    # which is what re-issuing an invitation should mean. The short code is
+    # left alone — the inviter may have already read it out to someone.
+    raw_token = _generate_token()
+    inv.token = token_verifier(raw_token)
+    db.commit()
+
+    raw_code = unseal_code(inv.short_code_sealed)
+    email_sent = _send_invitation_email(inv, user, raw_token, raw_code)
     result = _serialize_invitation(inv, db)
     result["email_sent"] = email_sent
     return result
@@ -234,17 +265,13 @@ def accept_invite(
     db: Session = Depends(get_db),
 ):
     from scaffold.rate_limit import check_rate_ip
-    client_ip = request.client.host if request.client else "unknown"
+    from scaffold.client_ip import client_ip as _client_ip
+    client_ip = _client_ip(request)
     check_rate_ip(client_ip, "sharing_accept", max_calls=20, window_secs=900)
     if not body.token and not body.code:
         raise HTTPException(400, "Provide token or code")
 
-    inv = None
-    if body.token:
-        inv = db.query(Invitation).filter(Invitation.token == body.token).first()
-    elif body.code:
-        clean = body.code.replace("-", "").replace(" ", "").upper()
-        inv = db.query(Invitation).filter(Invitation.short_code == clean).first()
+    inv = _find_by_token(db, body.token) if body.token else _find_by_code(db, body.code)
 
     if not inv:
         raise HTTPException(404, "Invitation not found")
@@ -625,7 +652,7 @@ def _serialize_invitation(inv: Invitation, db: Session) -> dict:
         "id": inv.id,
         "invitee_email": inv.invitee_email,
         "status": inv.status,
-        "short_code": _format_short_code(inv.short_code),
+        "short_code": _format_short_code(unseal_code(inv.short_code_sealed)),
         "created_at": inv.created_at.isoformat() if inv.created_at else None,
         "expires_at": inv.expires_at.isoformat() if inv.expires_at else None,
         "accepted_at": inv.accepted_at.isoformat() if inv.accepted_at else None,
@@ -635,8 +662,13 @@ def _serialize_invitation(inv: Invitation, db: Session) -> dict:
     }
 
 
-def _send_invitation_email(inv: Invitation, inviter: User) -> bool:
-    """Send the invitation email (best-effort). Returns True if sent."""
+def _send_invitation_email(inv: Invitation, inviter: User, raw_token: str, raw_code: str | None) -> bool:
+    """Send the invitation email (best-effort). Returns True if sent.
+
+    The raw secrets are passed in rather than read off `inv`, which holds only
+    their verifiers — this is the one place they are used, and they are not
+    kept afterwards.
+    """
     try:
         from scaffold.email_sender import send_email, email_configured, build_invitation_email
         if not email_configured():
@@ -644,8 +676,8 @@ def _send_invitation_email(inv: Invitation, inviter: User) -> bool:
             return False
         subject, text, html, hdrs = build_invitation_email(
             inviter_name=inviter.name or inviter.email,
-            token=inv.token,
-            short_code=_format_short_code(inv.short_code),
+            token=raw_token,
+            short_code=_format_short_code(raw_code),
             recipient_email=inv.invitee_email,
         )
         return send_email(inv.invitee_email, subject, text, html, headers=hdrs)

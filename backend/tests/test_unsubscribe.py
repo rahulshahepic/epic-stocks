@@ -499,13 +499,17 @@ class TestUnsubscribeHostileInput:
         assert resp.status_code == 403
 
     def test_public_routes_are_rate_limited(self, client):
-        """Wired through scaffold.rate_limit, which is a no-op under E2E_TEST."""
+        """Wired through scaffold.rate_limit, which is a no-op under E2E_TEST.
+
+        The shared (Redis-backed) variant specifically: a per-process limit on
+        an anonymous route resets on every deploy and multiplies by worker.
+        """
         from unittest.mock import patch as upatch
-        with upatch("scaffold.rate_limit.check_rate_ip") as limiter:
+        with upatch("scaffold.rate_limit.check_rate_ip_shared") as limiter:
             client.get("/api/unsubscribe",
                        params={"token": "x", "email": "a@test.com", "type": "notify"})
             assert limiter.called, "GET /api/unsubscribe is not rate limited"
-        with upatch("scaffold.rate_limit.check_rate_ip") as limiter:
+        with upatch("scaffold.rate_limit.check_rate_ip_shared") as limiter:
             client.post("/api/unsubscribe",
                         json={"token": "x", "email": "a@test.com", "type": "notify"})
             assert limiter.called, "POST /api/unsubscribe is not rate limited"

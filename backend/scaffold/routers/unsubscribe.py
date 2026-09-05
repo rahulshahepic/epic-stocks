@@ -22,8 +22,9 @@ def _limit(request: Request, endpoint: str, max_calls: int, window_secs: int = 9
     supply of cheap requests that each touch the database on the other.
     """
     from scaffold.client_ip import client_ip as _client_ip
-    from scaffold.rate_limit import check_rate_ip
-    check_rate_ip(_client_ip(request), endpoint, max_calls=max_calls, window_secs=window_secs)
+    from scaffold.rate_limit import check_rate_ip_shared
+    check_rate_ip_shared(_client_ip(request), endpoint,
+                         max_calls=max_calls, window_secs=window_secs)
 
 
 class UnsubscribeRequest(BaseModel):

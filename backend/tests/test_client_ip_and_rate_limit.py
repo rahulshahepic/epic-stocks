@@ -223,3 +223,131 @@ def test_a_redis_outage_falls_back_to_the_database(monkeypatch, db_session):
     with pytest.raises(HTTPException) as exc:
         rate_limit.check_rate_db(11, "t_fallback", max_calls=2, window_secs=300, db=db_session)
     assert exc.value.status_code == 429
+
+
+# ── Which bucket an address is counted under ────────────────────────────────
+#
+# Redis fixes where the count lives. It does nothing about what the count is
+# keyed on, and that is the half that decides whether an anonymous limit means
+# anything: an IPv6 caller is handed a whole /64, so counting per address lets
+# one attacker hold 18 quintillion buckets while an IPv4 caller gets one.
+
+def test_ipv4_is_its_own_bucket():
+    assert rate_limit._ip_bucket("203.0.113.7") == "203.0.113.7"
+    assert rate_limit._ip_bucket("203.0.113.8") != rate_limit._ip_bucket("203.0.113.7")
+
+
+def test_ipv6_addresses_in_one_allocation_share_a_bucket():
+    """Rotating the low 64 bits is free, so it must not buy a fresh bucket."""
+    a = rate_limit._ip_bucket("2001:db8:1234:5678::1")
+    b = rate_limit._ip_bucket("2001:db8:1234:5678:ffff:ffff:ffff:ffff")
+    c = rate_limit._ip_bucket("2001:db8:1234:5678:dead:beef:cafe:0001")
+    assert a == b == c
+    assert a.endswith("/64")
+
+
+def test_separate_ipv6_allocations_stay_separate():
+    """Grouping must not go so wide that unrelated callers collide."""
+    assert (rate_limit._ip_bucket("2001:db8:1234:5678::1")
+            != rate_limit._ip_bucket("2001:db8:1234:9999::1"))
+
+
+def test_ipv4_mapped_ipv6_counts_as_the_ipv4():
+    """::ffff:203.0.113.7 is one caller, not a second bucket for them."""
+    assert rate_limit._ip_bucket("::ffff:203.0.113.7") == "203.0.113.7"
+
+
+def test_unparseable_address_keeps_sharing_one_bucket():
+    """client_ip's UNKNOWN is a deliberate shared bucket, not a free pass."""
+    assert rate_limit._ip_bucket(UNKNOWN) == UNKNOWN
+
+
+def test_ipv6_rotation_cannot_outrun_the_in_memory_limit(monkeypatch):
+    monkeypatch.delenv("E2E_TEST", raising=False)
+    monkeypatch.setattr(rate_limit, "_redis", lambda: None)
+    rate_limit._calls.clear()
+
+    # Five requests, each from a different address in the same /64.
+    for i in range(5):
+        rate_limit.check_rate_ip(f"2001:db8:abcd:1::{i}", "t_v6", max_calls=5, window_secs=60)
+    with pytest.raises(HTTPException) as exc:
+        rate_limit.check_rate_ip("2001:db8:abcd:1::99", "t_v6", max_calls=5, window_secs=60)
+    assert exc.value.status_code == 429
+    # A genuinely different allocation is untouched.
+    rate_limit.check_rate_ip("2001:db8:abcd:2::1", "t_v6", max_calls=5, window_secs=60)
+
+
+# ── The anonymous limit now survives a restart and spans replicas ───────────
+
+def test_anonymous_limit_uses_redis(monkeypatch):
+    monkeypatch.delenv("E2E_TEST", raising=False)
+    fake = _FakeRedis()
+    monkeypatch.setattr(rate_limit, "_redis", lambda: fake)
+    rate_limit._calls.clear()
+
+    for _ in range(3):
+        rate_limit.check_rate_ip_shared("203.0.113.9", "t_shared", max_calls=3, window_secs=300)
+    with pytest.raises(HTTPException) as exc:
+        rate_limit.check_rate_ip_shared("203.0.113.9", "t_shared", max_calls=3, window_secs=300)
+    assert exc.value.status_code == 429
+    assert any("t_shared:ip:203.0.113.9" in k for k in fake.store), fake.store
+
+
+def test_a_second_replica_shares_the_anonymous_count(monkeypatch):
+    """The per-process counter is what a deploy resets and a worker multiplies."""
+    monkeypatch.delenv("E2E_TEST", raising=False)
+    fake = _FakeRedis()
+    monkeypatch.setattr(rate_limit, "_redis", lambda: fake)
+
+    for _ in range(3):
+        rate_limit.check_rate_ip_shared("198.51.100.1", "t_replica", max_calls=3, window_secs=300)
+    # Standing in for another process: its in-memory table is empty, but the
+    # shared counter is not.
+    rate_limit._calls.clear()
+    with pytest.raises(HTTPException):
+        rate_limit.check_rate_ip_shared("198.51.100.1", "t_replica", max_calls=3, window_secs=300)
+
+
+def test_ipv6_rotation_cannot_outrun_the_shared_limit(monkeypatch):
+    monkeypatch.delenv("E2E_TEST", raising=False)
+    fake = _FakeRedis()
+    monkeypatch.setattr(rate_limit, "_redis", lambda: fake)
+
+    for i in range(3):
+        rate_limit.check_rate_ip_shared(f"2001:db8:5:5::{i}", "t_v6s", max_calls=3, window_secs=300)
+    with pytest.raises(HTTPException):
+        rate_limit.check_rate_ip_shared("2001:db8:5:5::ff", "t_v6s", max_calls=3, window_secs=300)
+
+
+def test_anonymous_limit_falls_back_when_redis_is_down(monkeypatch):
+    """A limiter that stops limiting when its store blips is worse than a leaky one."""
+    monkeypatch.delenv("E2E_TEST", raising=False)
+
+    class _Broken:
+        def pipeline(self):
+            raise ConnectionError("redis is down")
+
+    monkeypatch.setattr(rate_limit, "_redis", lambda: _Broken())
+    rate_limit._calls.clear()
+
+    for _ in range(3):
+        rate_limit.check_rate_ip_shared("203.0.113.55", "t_down", max_calls=3, window_secs=300)
+    with pytest.raises(HTTPException) as exc:
+        rate_limit.check_rate_ip_shared("203.0.113.55", "t_down", max_calls=3, window_secs=300)
+    assert exc.value.status_code == 429
+
+
+def test_unauthenticated_endpoints_use_the_shared_limiter():
+    """Wiring check: a per-process limit on these is the bug, not the fix."""
+    import inspect
+    import app.routers.trial as trial
+    import app.routers.sharing as sharing
+    import scaffold.routers.reports as reports
+    import scaffold.routers.unsubscribe as unsub
+    import scaffold.routers.auth_router as auth_router
+
+    for module in (trial, sharing, reports, unsub, auth_router):
+        src = inspect.getsource(module)
+        assert "check_rate_ip_shared" in src, f"{module.__name__} lost its shared limiter"
+        # The per-process variant must not linger on an anonymous route.
+        assert "check_rate_ip(" not in src, f"{module.__name__} still calls check_rate_ip"

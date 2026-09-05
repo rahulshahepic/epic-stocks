@@ -105,8 +105,8 @@ def submit_report(body: ReportRequest, request: Request, db: Session = Depends(g
     # a single global bucket.
     from scaffold.client_ip import client_ip as _client_ip
     client_ip = _client_ip(request)
-    from scaffold.rate_limit import check_rate, check_rate_ip
-    check_rate_ip(client_ip, "user_report", max_calls=30, window_secs=900)
+    from scaffold.rate_limit import check_rate, check_rate_ip_shared
+    check_rate_ip_shared(client_ip, "user_report", max_calls=30, window_secs=900)
     if user:
         check_rate(user.id, "user_report", max_calls=10, window_secs=900)
     include = bool(body.include_details)

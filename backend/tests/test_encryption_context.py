@@ -179,3 +179,52 @@ def test_login_provisions_a_key_for_a_pre_encryption_account(client, db_session)
     user = db_session.query(User).filter(User.email == "legacy@example.com").first()
     assert user.encrypted_key
     assert client.post("/api/prices", json=PRICE).status_code == 201
+
+
+# ── Sale columns that used to sit in plaintext ──────────────────────────────
+
+def _make_sale(client):
+    """A sale with a manual lot allocation, created through the API."""
+    assert client.post("/api/prices", json=PRICE).status_code == 201
+    body = {
+        "date": "2024-06-01",
+        "shares": 250,
+        "price_per_share": 42.0,
+        "notes": "",
+        "lot_overrides": [{
+            "vest_date": "2022-03-01", "grant_year": 2021,
+            "grant_type": "Purchase", "basis_price": 7.5, "shares": 250,
+        }],
+    }
+    return client.post("/api/sales", json=body)
+
+
+def test_sale_shares_and_lot_overrides_are_encrypted_at_rest(client, db_session):
+    """Both were plaintext while price_per_share beside them was encrypted.
+
+    lot_overrides carries basis_price and share counts — the same figures the
+    rest of the table is encrypted to protect.
+    """
+    register_user(client)
+    resp = _make_sale(client)
+    assert resp.status_code in (200, 201), resp.text
+
+    raw_shares, raw_lots = db_session.execute(
+        text("SELECT shares, lot_overrides FROM sales")
+    ).first()
+
+    assert str(raw_shares).startswith("$ENC$"), f"shares stored in plaintext: {raw_shares!r}"
+    assert str(raw_lots).startswith("$ENC$"), f"lot_overrides stored in plaintext: {raw_lots!r}"
+    assert "basis_price" not in str(raw_lots)
+    assert "7.5" not in str(raw_lots)
+
+
+def test_sale_round_trips_through_the_api(client):
+    register_user(client)
+    assert _make_sale(client).status_code in (200, 201)
+
+    sale = client.get("/api/sales").json()[0]
+
+    assert sale["shares"] == 250
+    assert sale["lot_overrides"][0]["basis_price"] == 7.5
+    assert sale["lot_overrides"][0]["shares"] == 250

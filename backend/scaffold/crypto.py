@@ -193,7 +193,7 @@ def backfill_plaintext_encryption(db) -> None:
 
     Columns covered (all were plaintext before the b3c4d5e6f7a8 migration):
       users.date_of_birth, users.retirement_params
-      sales.notes, sales.actual_tax_paid
+      sales.notes, sales.actual_tax_paid, sales.shares, sales.lot_overrides
       loan_payments.notes
       import_backups.data_json
     """
@@ -220,6 +220,8 @@ def backfill_plaintext_encryption(db) -> None:
         ("users",         "id", "id",      "retirement_params"),
         ("sales",         "id", "user_id", "notes"),
         ("sales",         "id", "user_id", "actual_tax_paid"),
+        ("sales",         "id", "user_id", "shares"),
+        ("sales",         "id", "user_id", "lot_overrides"),
         ("loan_payments", "id", "user_id", "notes"),
         ("import_backups","id", "user_id", "data_json"),
     ]

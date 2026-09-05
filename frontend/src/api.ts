@@ -999,7 +999,10 @@ export interface InvitationEntry {
   id: number
   invitee_email: string
   status: 'pending' | 'accepted' | 'declined' | 'revoked'
-  short_code: string
+  // Null when the server cannot recover the code — it is stored sealed under a
+  // key held in the environment, so a rotated secret makes it undisplayable.
+  // The invitation still works; it just has to be revoked and re-sent.
+  short_code: string | null
   created_at: string
   expires_at: string
   accepted_at: string | null

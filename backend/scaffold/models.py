@@ -150,7 +150,7 @@ class Sale(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     date: Mapped[date] = mapped_column(Date, nullable=False)
-    shares: Mapped[int] = mapped_column(Integer, nullable=False)
+    shares: Mapped[int] = mapped_column(EncryptedInt, nullable=False)
     price_per_share: Mapped[float] = mapped_column(EncryptedFloat, nullable=False)
     notes: Mapped[str] = mapped_column(EncryptedString, nullable=False, default="")
     # If set, this sale was generated to cover this loan's payoff.
@@ -166,7 +166,9 @@ class Sale(Base):
     state_st_cg_rate: Mapped[float | None] = mapped_column(EncryptedFloat, nullable=True)
     lt_holding_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Manual lot allocation: [{vest_date, grant_year, grant_type, basis_price, shares}, ...]
-    lot_overrides: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Encrypted: basis_price is a per-share dollar figure and shares is a holding size,
+    # which is exactly what the other columns on this table are encrypted to protect.
+    lot_overrides: Mapped[dict | None] = mapped_column(EncryptedJSON, nullable=True)
     # Groups related sales created together (e.g. payoff + cash-out from one plan)
     sale_plan_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # User-recorded actual tax paid; overrides estimated tax in display for past sales
@@ -339,8 +341,13 @@ class Invitation(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     inviter_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     invitee_email: Mapped[str] = mapped_column(String, nullable=False)
+    # HMAC verifiers, not the secrets themselves — see scaffold/invite_tokens.py.
+    # A read of this table yields nothing redeemable.
     token: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
     short_code: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    # The short code sealed under the server key, so the inviter can still be
+    # shown it. The token has no equivalent: it is never displayed.
+    short_code_sealed: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
     invitee_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     invitee_account_email: Mapped[str | None] = mapped_column(String, nullable=True)

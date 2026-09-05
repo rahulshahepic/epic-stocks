@@ -503,7 +503,7 @@ The **Import** page also keeps the last 3 backup snapshots from previous imports
 
 ### Reporting a Problem
 
-**Report a problem** sits in the footer of every page once you are signed in, and on the login and `/try` pages when you are not — someone who cannot get past sign-in is exactly the person who most needs to be able to say so. The app also offers it at the moment something fails:
+**Report a problem** sits in the footer of every page once you are signed in, and on every page you can reach without an account — login, invitation landing, and both stages of `/try` (the upload screen and the preview dashboard it computes). Someone who cannot get past sign-in, or who is looking at numbers the preview got wrong, is exactly the person who most needs to be able to say so. The app also offers it at the moment something fails:
 
 - **A red error toast** carries a **Report** button.
 - **A crash** shows a recovery screen with **Reload** and **Report this**, instead of a blank page.

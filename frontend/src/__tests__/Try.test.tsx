@@ -125,6 +125,12 @@ describe('Try — upload stage', () => {
     renderTry()
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login')
   })
+
+  it('offers a way to report a problem', () => {
+    mockFetch(CLEAN)
+    renderTry()
+    expect(screen.getByRole('button', { name: 'Report a problem' })).toBeInTheDocument()
+  })
 })
 
 describe('Try — preview', () => {
@@ -191,6 +197,14 @@ describe('Try — preview', () => {
     await waitFor(() => expect(calls.length).toBe(2))
     expect(calls[1].body?.get('current_price')).toBe('12.5')
     expect(await screen.findByText(/Valued at the .* you entered for today/)).toBeInTheDocument()
+  })
+
+  it('offers a way to report a problem with the numbers it just computed', async () => {
+    mockFetch(CLEAN)
+    renderTry()
+    await upload()
+    await screen.findByText('Net worth · as of', { exact: false })
+    expect(screen.getByRole('button', { name: 'Report a problem' })).toBeInTheDocument()
   })
 
   it('says plainly that nothing has been saved', async () => {

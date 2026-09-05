@@ -7,7 +7,7 @@ call POST /api/push/test, and the backend makes the request from inside the
 network. The reply body never comes back, but /push/test returns a count that
 distinguishes delivered from refused, which is enough to probe for open ports.
 
-Two checks, because either alone is bypassable:
+Three checks, because no one of them is enough on its own:
 
   * At subscribe time, so a bad endpoint is refused with a clear 422 rather
     than stored and silently dropped later.
@@ -15,6 +15,15 @@ Two checks, because either alone is bypassable:
     address when it was stored can resolve to 127.0.0.1 by the time the daily
     job runs — classic rebinding — and subscriptions outlive their check by
     months.
+  * Against a host allowlist, because the two checks above only establish
+    that the destination is *somewhere public*. A push endpoint always
+    belongs to one of a handful of browser vendors, so anything else is not
+    a push endpoint. PUSH_ALLOWED_HOSTS overrides the built-in list; "*"
+    turns the allowlist off for a deployment that needs a provider not
+    listed here.
+
+Redirects are the other half of this and cannot be handled from a URL check:
+see scaffold/push_transport.py.
 
 This does not replace network egress policy; it is the part that lives in the
 app. A deployment that can restrict outbound traffic to the push services it
@@ -28,6 +37,19 @@ from urllib.parse import urlsplit
 # Hosts allowed to be plain http:// — local development only. Anything else
 # must be https, which is also what the Web Push spec requires.
 _LOCAL_HTTP_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+# The push services browsers actually hand out endpoints for. Entries starting
+# with a dot match any subdomain (Edge hands out wns2-<region>.notify.windows.com,
+# Safari web.push.apple.com); the rest are exact hosts.
+DEFAULT_ALLOWED_PUSH_HOSTS = (
+    "fcm.googleapis.com",                    # Chrome, Edge (Chromium), Brave
+    "android.googleapis.com",                # older Chrome endpoints
+    "updates.push.services.mozilla.com",     # Firefox
+    ".push.services.mozilla.com",            # Firefox autopush shards
+    ".push.apple.com",                       # Safari / iOS web push
+    ".notify.windows.com",                   # Edge (WNS)
+    ".wns.windows.com",                      # Edge (WNS)
+)
 
 
 class PushEndpointRejected(ValueError):
@@ -46,6 +68,34 @@ def _allow_private() -> bool:
         os.getenv("E2E_TEST") == "1"
         or os.getenv("PUSH_ALLOW_PRIVATE_ENDPOINTS") == "1"
     )
+
+
+def _allowed_hosts() -> tuple[str, ...] | None:
+    """The host allowlist, or None when it has been switched off.
+
+    PUSH_ALLOWED_HOSTS is a comma-separated override; "*" disables the check
+    for a deployment whose browser vendor is not in the built-in list.
+    """
+    raw = os.getenv("PUSH_ALLOWED_HOSTS", "").strip()
+    if not raw:
+        return DEFAULT_ALLOWED_PUSH_HOSTS
+    if raw == "*":
+        return None
+    return tuple(h.strip().lower() for h in raw.split(",") if h.strip())
+
+
+def _host_allowed(host: str) -> bool:
+    allowed = _allowed_hosts()
+    if allowed is None:
+        return True
+    host = host.lower().rstrip(".")
+    for entry in allowed:
+        if entry.startswith("."):
+            if host.endswith(entry):
+                return True
+        elif host == entry:
+            return True
+    return False
 
 
 def _is_forbidden_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
@@ -110,6 +160,13 @@ def validate_push_endpoint(endpoint: str) -> str:
 
     if _allow_private():
         return endpoint
+
+    # A public address is not enough: a push endpoint belongs to a browser
+    # vendor's push service, and nothing else has any business being one.
+    if not _host_allowed(host):
+        raise PushEndpointRejected(
+            "endpoint is not a supported push service"
+        )
 
     for ip in _resolve(host):
         if _is_forbidden_ip(ip):

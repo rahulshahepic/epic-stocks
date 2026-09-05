@@ -16,6 +16,7 @@ from scaffold.routers import auth_router, admin, notifications, push, unsubscrib
 from app.routers import grants, loans, prices, events, flows, import_export, epic_import, sales, cache as cache_router, tips, wizard, content, sharing, trial
 from app.routers.retirement import retirement_router, dashboard_prefs_router
 from scaffold.auth import get_current_user
+from scaffold.body_limit import BodyLimitMiddleware
 from scaffold.crypto import encryption_enabled, decrypt_user_key, set_current_key
 from database import get_db
 
@@ -716,6 +717,29 @@ if STATIC_DIR.is_dir():
     _fastapi_app.get("/{path:path}")(spa_fallback)
 
 
+# ── Request body ceilings ───────────────────────────────────────────────────
+# One megabyte covers every JSON endpoint in the app with room to spare. The
+# multipart endpoints are the exceptions, and their ceiling is the sum of the
+# files each one accepts (5 MB apiece, enforced again per file in the handler)
+# plus a megabyte of part headers and boundaries.
+#
+# Caddy carries the same ceiling in front of the app; this is the copy that
+# still applies when something reaches the container directly, and the one
+# that can differ per path.
+_MB = 1024 * 1024
+_FILE_MB = 5 * _MB
+
+_BODY_LIMITS: tuple[tuple[str, int], ...] = (
+    # analyze and diff each take share_csv + statement_pdf + one more file
+    ("/api/epic-import/", 3 * _FILE_MB + _MB),
+    # share_csv + statement_pdf, and unauthenticated, so no more than it needs
+    ("/api/trial/analyze", 2 * _FILE_MB + _MB),
+    ("/api/import/excel", _FILE_MB + _MB),
+    ("/api/wizard/parse-file", _FILE_MB + _MB),
+)
+_DEFAULT_BODY_LIMIT = _MB
+
+
 # Origins the native shells load their bundle from. A WebView serves the app
 # from a local origin rather than from this server, so its requests are
 # cross-origin and need CORS; these strings come from capacitor.config.ts in
@@ -728,15 +752,20 @@ NATIVE_APP_ORIGINS = [
 ]
 
 # Wrap FastAPI app: CORS outermost so preflights are answered and CORS headers
-# reach even the early responses from the maintenance and epic-mode guards —
-# without them a native client sees an opaque network error instead of the
-# actual status. Then maintenance check, epic-mode guard, and encryption.
+# reach even the early responses from the body-size, maintenance and epic-mode
+# guards — without them a native client sees an opaque network error instead of
+# the actual status. Then the body ceiling, which has to come before anything
+# that reads the body, then maintenance, epic-mode guard, and encryption.
 #
 # allow_credentials stays False: native clients authenticate with a Bearer
 # token, never a cookie, so there is no reason to let a cross-origin caller
 # send or receive credentials.
 app = CORSMiddleware(
-    MaintenanceMiddleware(EpicModeMiddleware(EncryptionMiddleware(_fastapi_app))),
+    BodyLimitMiddleware(
+        MaintenanceMiddleware(EpicModeMiddleware(EncryptionMiddleware(_fastapi_app))),
+        limits=_BODY_LIMITS,
+        default=_DEFAULT_BODY_LIMIT,
+    ),
     allow_origins=NATIVE_APP_ORIGINS,
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],

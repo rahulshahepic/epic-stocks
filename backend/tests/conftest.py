@@ -115,3 +115,44 @@ def register_user(client, email="test@example.com", name="Test User"):
     """Log in as a user via the E2E test-login endpoint; sets the session cookie on client."""
     resp = client.post("/api/auth/test-login", json={"email": email, "name": name})
     assert resp.status_code == 200, f"test-login failed: {resp.text}"
+
+
+@contextmanager
+def push_transport(responder):
+    """Intercept push sends one layer below requests.Session.
+
+    Patching requests.post no longer reaches send_push: it hands pywebpush a
+    GuardedPushSession (scaffold/push_transport.py), and the guard — the part
+    that refuses to follow a redirect — lives in Session.request/Session.send.
+    Replacing the HTTP adapter instead leaves all of that running, so a test
+    sees exactly the requests that would have gone out on the wire.
+
+    `responder(request, calls)` returns (status, headers, body) for each
+    attempt; `calls` is the list of urllib3-level requests made so far, which
+    is what a redirect test asserts on.
+    """
+    import io
+    from unittest.mock import patch
+
+    import requests
+    import urllib3
+
+    calls: list[str] = []
+
+    def _send(self, request, **kwargs):
+        calls.append(request.url)
+        status, headers, body = responder(request, calls)
+        resp = requests.Response()
+        resp.status_code = status
+        resp.reason = "Testing"
+        resp.url = request.url
+        resp.request = request
+        headers = headers or {}
+        resp.headers.update(headers)
+        resp.raw = urllib3.HTTPResponse(
+            body=io.BytesIO(body), headers=headers, status=status, preload_content=False
+        )
+        return resp
+
+    with patch.object(requests.adapters.HTTPAdapter, "send", _send):
+        yield calls

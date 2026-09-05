@@ -68,6 +68,29 @@ test.describe('Reporting a problem', () => {
     await expect(report).toBeVisible()
   })
 
+  test('freezes the page behind it and gives the scroll position back', async ({ page }) => {
+    await page.goto('/login')
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+    await page.waitForTimeout(200)
+    // Read this after settling: clicking the trigger scrolls it into view, so a
+    // position sampled earlier is not the one the dialog opens at.
+    const before = await page.evaluate(() => window.scrollY)
+    expect(before).toBeGreaterThan(0)
+
+    await page.getByRole('button', { name: 'Report a problem' }).click()
+    await expect(page.getByRole('dialog', { name: 'Report a problem' })).toBeVisible()
+
+    await page.mouse.move(10, 400)
+    await page.mouse.wheel(0, 600)
+    await page.waitForTimeout(200)
+    expect(await page.evaluate(() => getComputedStyle(document.body).position)).toBe('fixed')
+
+    await page.getByRole('button', { name: 'Cancel' }).click()
+    await page.waitForTimeout(300)
+    expect(await page.evaluate(() => getComputedStyle(document.body).position)).toBe('static')
+    expect(await page.evaluate(() => window.scrollY)).toBe(before)
+  })
+
   test('the footer offers it on every page once signed in', async ({ page }) => {
     await loginAs(page, 'reporter@e2e.test', 'Reporter')
     await expect(page.getByRole('button', { name: 'Report a problem' })).toBeVisible()

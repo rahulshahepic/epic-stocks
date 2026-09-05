@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { isLoggedIn, submitReport } from '../../api.ts'
+import { useScrollLock } from '../hooks/useScrollLock.ts'
 import type { ReportSource } from '../../api.ts'
 import { getClientLog, getLastErrorRef, logRoute, resetReportLog, scrubPath } from '../reportLog.ts'
 
@@ -50,6 +51,9 @@ export function ReportDialog({
   const errorRef = prefill.errorRef ?? getLastErrorRef()
   const signedIn = isLoggedIn()
 
+  // Without this the page scrolls under the dialog on touch.
+  useScrollLock()
+
   useEffect(() => {
     textareaRef.current?.focus()
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -97,7 +101,7 @@ export function ReportDialog({
       aria-label="Report a problem"
     >
       <div
-        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-cs-surface p-5 shadow-xl"
+        className="max-h-[90vh] w-full max-w-md overflow-y-auto overscroll-contain rounded-2xl bg-cs-surface p-5 shadow-xl"
         onClick={e => e.stopPropagation()}
       >
         <div className="mb-3 flex items-center justify-between">

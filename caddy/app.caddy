@@ -6,6 +6,14 @@
 # Replace APPNAME and DOMAIN as needed.
 
 {$DOMAIN:stocks.example.com} {
+    # Refuse an oversized body at the edge, before it ever reaches the app and
+    # before the multipart parser spools it. 16 MB is the largest any endpoint
+    # accepts (three 5 MB files plus part headers); the app applies a tighter
+    # per-path ceiling of its own in scaffold/body_limit.py.
+    request_body {
+        max_size 16MB
+    }
+
     # Hashed assets — cache forever
     @hashed path /assets/*
     header @hashed Cache-Control "public, max-age=31536000, immutable"

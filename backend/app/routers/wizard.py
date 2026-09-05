@@ -13,6 +13,8 @@ from app.date_utils import to_date as _to_date
 
 router = APIRouter(prefix="/api/wizard", tags=["wizard"])
 
+_MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -66,7 +68,11 @@ def parse_file(
     _user: User = Depends(get_current_user),
 ):
     """Parse a structural xlsx file tolerantly — missing share counts and amounts are fine."""
-    content = file.file.read()
+    # BodyLimitMiddleware already caps the whole request; this is the per-file
+    # half of the same limit, so a single oversized part is named as such.
+    content = file.file.read(_MAX_UPLOAD_BYTES + 1)
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="That file is too large (max 5 MB)")
     try:
         wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
     except Exception:

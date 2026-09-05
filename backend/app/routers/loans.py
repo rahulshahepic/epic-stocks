@@ -269,6 +269,23 @@ def _compute_payoff_sale(loan: Loan, user: User, db: Session) -> dict:
     }
 
 
+def _check_refinance_target(loan_id: int | None, user: User, db: Session, self_id: int | None = None) -> None:
+    """Refuse a refinances_loan_id that is not this user's own loan.
+
+    A cross-account reference is not just a data leak: refinances_loan_id is a
+    plain FK, so a row pointing at someone else's loan makes *their* account
+    deletion and data reset fail on the constraint. Every path that accepts the
+    field goes through here — single create, bulk create and update alike.
+    """
+    if loan_id is None:
+        return
+    if self_id is not None and loan_id == self_id:
+        raise HTTPException(status_code=400, detail="A loan cannot refinance itself")
+    ref = db.query(Loan).filter(Loan.id == loan_id, Loan.user_id == user.id).first()
+    if not ref:
+        raise HTTPException(status_code=400, detail="refinances_loan_id references a loan that does not exist or belongs to another user")
+
+
 # --- Loans CRUD ---
 
 @router.get("", response_model=list[LoanOut])
@@ -283,10 +300,8 @@ def create_loan(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    _check_refinance_target(body.refinances_loan_id, user, db)
     if body.refinances_loan_id is not None:
-        ref = db.query(Loan).filter(Loan.id == body.refinances_loan_id, Loan.user_id == user.id).first()
-        if not ref:
-            raise HTTPException(status_code=400, detail="refinances_loan_id references a loan that does not exist or belongs to another user")
         # Remove any auto-generated payoff sale for the old loan — it never happened
         old_payoff_sale = db.query(Sale).filter(Sale.loan_id == body.refinances_loan_id, Sale.user_id == user.id).first()
         if old_payoff_sale:
@@ -319,6 +334,10 @@ def create_loan(
 
 @router.post("/bulk", response_model=list[LoanOut], status_code=201)
 def bulk_create_loans(items: list[LoanCreate], user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # Every reference is checked before anything is written, so a bad one in
+    # the middle of the batch does not leave the earlier rows behind.
+    for item in items:
+        _check_refinance_target(item.refinances_loan_id, user, db)
     loans = [Loan(**l.model_dump(), user_id=user.id) for l in items]
     db.add_all(loans)
     db.commit()
@@ -394,12 +413,8 @@ def update_loan(
     loan = db.query(Loan).filter(Loan.id == loan_id, Loan.user_id == user.id).first()
     if not loan:
         raise HTTPException(status_code=404, detail="Loan not found")
+    _check_refinance_target(body.refinances_loan_id, user, db, self_id=loan_id)
     if body.refinances_loan_id is not None:
-        ref = db.query(Loan).filter(Loan.id == body.refinances_loan_id, Loan.user_id == user.id).first()
-        if not ref:
-            raise HTTPException(status_code=400, detail="refinances_loan_id references a loan that does not exist or belongs to another user")
-        if body.refinances_loan_id == loan_id:
-            raise HTTPException(status_code=400, detail="A loan cannot refinance itself")
         # Remove auto-generated payoff sale for the old loan if this is a new refinance link
         if loan.refinances_loan_id != body.refinances_loan_id:
             old_payoff_sale = db.query(Sale).filter(Sale.loan_id == body.refinances_loan_id, Sale.user_id == user.id).first()

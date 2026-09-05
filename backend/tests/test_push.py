@@ -1,7 +1,7 @@
 import sys
 import os
 from datetime import date, datetime
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -258,8 +258,9 @@ def test_send_push_encrypts_payload():
     strict push services (notably iOS Safari's)."""
     from scaffold.notifications import send_push
     from scaffold.models import PushSubscription
-    import requests
     import json as _json
+
+    from tests.conftest import push_transport
 
     p256dh, auth = _real_subscriber_keys()
     sub = PushSubscription(endpoint="https://push.example.com/send/abc123", p256dh=p256dh, auth=auth)
@@ -267,16 +268,14 @@ def test_send_push_encrypts_payload():
 
     captured = {}
 
-    def fake_post(url, **kwargs):
-        captured["headers"] = kwargs.get("headers")
-        captured["data"] = kwargs.get("data")
-        resp = MagicMock()
-        resp.status_code = 201
-        return resp
+    def responder(request, _calls):
+        captured["headers"] = request.headers  # CaseInsensitiveDict, as sent
+        captured["data"] = request.body
+        return 201, {}, b""
 
     from scaffold.notifications import PushResult
     with patch("scaffold.notifications.VAPID_PRIVATE_KEY", _real_vapid_private_key()):
-        with patch.object(requests, "post", fake_post):
+        with push_transport(responder):
             result = send_push(sub, payload)
 
     assert result is PushResult.SENT
@@ -291,20 +290,14 @@ def test_send_push_encrypts_payload():
 def _send_with_status(status: int):
     from scaffold.notifications import send_push
     from scaffold.models import PushSubscription
-    import requests
+
+    from tests.conftest import push_transport
 
     p256dh, auth = _real_subscriber_keys()
     sub = PushSubscription(endpoint="https://push.example.com/send/x", p256dh=p256dh, auth=auth)
 
-    def fake_post(url, **kwargs):
-        resp = MagicMock()
-        resp.status_code = status
-        resp.text = "response body"
-        resp.reason = "Reason"
-        return resp
-
     with patch("scaffold.notifications.VAPID_PRIVATE_KEY", _real_vapid_private_key()):
-        with patch.object(requests, "post", fake_post):
+        with push_transport(lambda request, calls: (status, {}, b"response body")):
             return send_push(sub, {"title": "x", "body": "y"})
 
 

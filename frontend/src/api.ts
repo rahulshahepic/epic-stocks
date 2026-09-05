@@ -1,4 +1,5 @@
 import { apiUrl } from './config.ts'
+import { logApiFailure, noteErrorRef } from './scaffold/reportLog.ts'
 import { platform } from './platform/index.ts'
 import type { PushRegistration } from './platform/index.ts'
 
@@ -38,8 +39,20 @@ export async function apiFetchRaw(path: string, init?: RequestInit): Promise<Res
  * sends no detail, so callers can keep a specific message ("Export failed (500)")
  * instead of a bare status.
  */
-async function throwForStatus(resp: Response, fallbackLabel?: string): Promise<void> {
+async function throwForStatus(
+  resp: Response,
+  fallbackLabel?: string,
+  reqPath?: string,
+  method = 'GET',
+): Promise<void> {
+  if (resp.ok) return
+
+  // Record every failure in the report trail before handling it, so a person
+  // who reports a problem two clicks later still carries the evidence.
+  const failedPath = reqPath ?? resp.url ?? ''
+
   if (resp.status === 401) {
+    logApiFailure(method, failedPath, 401)
     platform.auth.onUnauthorized()
     throw new Error('Unauthorized')
   }
@@ -50,25 +63,30 @@ async function throwForStatus(resp: Response, fallbackLabel?: string): Promise<v
       const body = await resp.json()
       if (typeof body?.current_version === 'number') currentVersion = body.current_version
     } catch { /* no json body */ }
+    logApiFailure(method, failedPath, 409)
     throw new ConflictError(currentVersion)
   }
 
-  if (!resp.ok) {
-    let detail = fallbackLabel ? `${fallbackLabel} (${resp.status})` : `Error ${resp.status}`
-    try {
-      const body = await resp.json()
-      if (body?.detail) {
-        if (typeof body.detail === 'string') {
-          detail = body.detail
-        } else if (Array.isArray(body.detail)) {
-          detail = body.detail.map((e: { msg?: string }) => e.msg ?? JSON.stringify(e)).join('; ')
-        } else {
-          detail = JSON.stringify(body.detail)
-        }
+  let detail = fallbackLabel ? `${fallbackLabel} (${resp.status})` : `Error ${resp.status}`
+  let errorRef: string | null = null
+  try {
+    const body = await resp.json()
+    if (typeof body?.error_ref === 'string') {
+      errorRef = body.error_ref
+      noteErrorRef(errorRef)
+    }
+    if (body?.detail) {
+      if (typeof body.detail === 'string') {
+        detail = body.detail
+      } else if (Array.isArray(body.detail)) {
+        detail = body.detail.map((e: { msg?: string }) => e.msg ?? JSON.stringify(e)).join('; ')
+      } else {
+        detail = JSON.stringify(body.detail)
       }
-    } catch { /* no json body */ }
-    throw new Error(detail)
-  }
+    }
+  } catch { /* no json body */ }
+  logApiFailure(method, failedPath, resp.status, errorRef)
+  throw new Error(detail)
 }
 
 export async function apiFetch<T>(
@@ -77,7 +95,7 @@ export async function apiFetch<T>(
   fallbackLabel?: string,
 ): Promise<T> {
   const resp = await apiFetchRaw(path, init)
-  await throwForStatus(resp, fallbackLabel)
+  await throwForStatus(resp, fallbackLabel, path, init?.method)
 
   if (resp.status === 204) return undefined as T
 
@@ -91,7 +109,7 @@ export async function apiFetchBlob(
   init?: RequestInit,
 ): Promise<Blob> {
   const resp = await apiFetchRaw(path, init)
-  await throwForStatus(resp, fallbackLabel)
+  await throwForStatus(resp, fallbackLabel, path, init?.method)
   return resp.blob()
 }
 
@@ -253,6 +271,34 @@ function put<T>(path: string, body: object) {
 
 function del(path: string) {
   return apiFetch<void>(path, { method: 'DELETE' })
+}
+
+/** Where a report was raised from. Shapes nothing but the admin's triage. */
+export type ReportSource = 'manual' | 'toast' | 'crash' | 'import'
+
+export interface ReportPayload {
+  message: string
+  path?: string
+  source?: ReportSource
+  error_ref?: string | null
+  error_message?: string | null
+  include_details?: boolean
+  email?: string | null
+  user_agent?: string | null
+  app_version?: string | null
+  client_log?: string | null
+}
+
+/**
+ * Send a problem report. Deliberately outside the `api` object and unauthenticated:
+ * it has to work on the login page, and it has to work when the session is the
+ * thing that is broken.
+ */
+export function submitReport(body: ReportPayload) {
+  return apiFetch<{ id: number; error_ref: string | null }>('/api/report', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  }, 'Could not send report')
 }
 
 export const api = {
@@ -455,6 +501,11 @@ export const api = {
   adminUnblock: (id: number) => del(`/api/admin/blocked/${id}`),
   adminErrors: (limit = 50) => apiFetch<ErrorLogEntry[]>(`/api/admin/errors?limit=${limit}`),
   adminClearErrors: () => del('/api/admin/errors'),
+  adminReports: (status = '', limit = 50) =>
+    apiFetch<UserReportEntry[]>(`/api/admin/reports?limit=${limit}${status ? `&status=${status}` : ''}`),
+  adminSetReportStatus: (id: number, status: 'new' | 'resolved') =>
+    apiFetch<void>(`/api/admin/reports/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  adminDeleteReport: (id: number) => del(`/api/admin/reports/${id}`),
   adminTestNotify: (user_id: number, title: string, body: string) =>
     post<TestNotifyResult>('/api/admin/test-notify', { user_id, title, body }),
   adminMetrics: (hours = 72) => apiFetch<SystemMetricPoint[]>(`/api/admin/metrics?hours=${hours}`),
@@ -687,6 +738,25 @@ export interface UserDetail {
   sending_block_reason: string | null
   invitations_sent: InvitationSummary[]
   invitations_received: ReceivedInvitationSummary[]
+}
+
+/** A problem report submitted by a person, as the admin view sees it. */
+export interface UserReportEntry {
+  id: number
+  timestamp: string
+  message: string
+  path: string | null
+  source: ReportSource
+  error_ref: string | null
+  error_message: string | null
+  include_details: boolean
+  user_id: number | null
+  email: string | null
+  user_agent: string | null
+  app_version: string | null
+  client_log: string | null
+  status: 'new' | 'resolved'
+  error_traceback: string | null
 }
 
 export interface ErrorLogEntry {
@@ -929,7 +999,10 @@ export interface InvitationEntry {
   id: number
   invitee_email: string
   status: 'pending' | 'accepted' | 'declined' | 'revoked'
-  short_code: string
+  // Null when the server cannot recover the code — it is stored sealed under a
+  // key held in the environment, so a rotated secret makes it undisplayable.
+  // The invitation still works; it just has to be revoked and re-sent.
+  short_code: string | null
   created_at: string
   expires_at: string
   accepted_at: string | null

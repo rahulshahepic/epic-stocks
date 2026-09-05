@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
+import { ReportProblemLink } from '../components/ReportProblem.tsx'
 import { useAuth } from '../hooks/useAuth.ts'
 import { api } from '../../api.ts'
 import { startLogin } from '../oidc.ts'
@@ -164,6 +165,12 @@ export default function Login() {
  Privacy Policy
  </Link>
  .
+ </p>
+
+ {/* Someone who cannot get past this screen has no other way to say so. */}
+ <p className="mt-3 text-center text-xs text-cs-text-2">
+ Can't sign in, or something looks wrong?{' '}
+ <ReportProblemLink className="font-medium text-cs-brand hover:text-cs-brand-hover" />
  </p>
  </div>
  </div>

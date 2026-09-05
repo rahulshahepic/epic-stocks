@@ -2,7 +2,20 @@ from datetime import datetime, date, timezone
 from sqlalchemy import Integer, String, Float, BigInteger, Date, DateTime, ForeignKey, Boolean, JSON, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
-from scaffold.crypto import EncryptedFloat, EncryptedInt, EncryptedString, EncryptedDate, EncryptedJSON
+from scaffold.crypto import (
+    EncryptedFloat, EncryptedInt, EncryptedString, EncryptedDate, EncryptedJSON,
+    encryption_enabled, encrypt_user_key, generate_user_key,
+)
+
+
+def _new_user_key() -> str | None:
+    """Per-user data key for a row being inserted, or None when encryption is off.
+
+    A column default rather than something each caller remembers: a user without
+    a key writes plaintext, and that is exactly the failure the encrypted columns
+    exist to prevent.
+    """
+    return encrypt_user_key(generate_user_key()) if encryption_enabled() else None
 
 
 class User(Base):
@@ -14,7 +27,7 @@ class User(Base):
     google_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String, nullable=True)
     picture: Mapped[str] = mapped_column(String, nullable=True)
-    encrypted_key: Mapped[str | None] = mapped_column(String, nullable=True)
+    encrypted_key: Mapped[str | None] = mapped_column(String, nullable=True, default=_new_user_key)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_login: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     is_admin: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
@@ -137,7 +150,7 @@ class Sale(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     date: Mapped[date] = mapped_column(Date, nullable=False)
-    shares: Mapped[int] = mapped_column(Integer, nullable=False)
+    shares: Mapped[int] = mapped_column(EncryptedInt, nullable=False)
     price_per_share: Mapped[float] = mapped_column(EncryptedFloat, nullable=False)
     notes: Mapped[str] = mapped_column(EncryptedString, nullable=False, default="")
     # If set, this sale was generated to cover this loan's payoff.
@@ -153,7 +166,9 @@ class Sale(Base):
     state_st_cg_rate: Mapped[float | None] = mapped_column(EncryptedFloat, nullable=True)
     lt_holding_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Manual lot allocation: [{vest_date, grant_year, grant_type, basis_price, shares}, ...]
-    lot_overrides: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Encrypted: basis_price is a per-share dollar figure and shares is a holding size,
+    # which is exactly what the other columns on this table are encrypted to protect.
+    lot_overrides: Mapped[dict | None] = mapped_column(EncryptedJSON, nullable=True)
     # Groups related sales created together (e.g. payoff + cash-out from one plan)
     sale_plan_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # User-recorded actual tax paid; overrides estimated tax in display for past sales
@@ -230,6 +245,41 @@ class ErrorLog(Base):
     error_message: Mapped[str] = mapped_column(String, nullable=True)
     traceback: Mapped[str] = mapped_column(String, nullable=True)
     user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Short opaque id handed to the client in the 500 body. A user report that
+    # carries one points straight at this row.
+    error_ref: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+
+
+class UserReport(Base):
+    """A problem reported by a person, from inside or outside a session.
+
+    Deliberately not ErrorLog: error_logs is trimmed to the newest 500 rows
+    nightly, and a report someone took the trouble to write must not be swept
+    away by a burst of server exceptions. Never holds financial data — the
+    module docstring in scaffold/routers/reports.py defines what may be sent.
+    """
+    __tablename__ = "user_reports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    message: Mapped[str] = mapped_column(String, nullable=False)
+    # Where it happened and what shape of failure prompted it.
+    path: Mapped[str | None] = mapped_column(String, nullable=True)
+    source: Mapped[str] = mapped_column(String, nullable=False, server_default="manual")
+    error_ref: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    error_message: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Only populated when the reporter ticked "include details" (default off).
+    include_details: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    email: Mapped[str | None] = mapped_column(String, nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String, nullable=True)
+    app_version: Mapped[str | None] = mapped_column(String, nullable=True)
+    client_log: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Abuse control only — a salted hash, never the address itself. Behind a
+    # reverse proxy this is the proxy's address, so it only distinguishes
+    # reporters on a directly-exposed deployment.
+    ip_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="new", server_default="new", index=True)
 
 
 class SystemMetric(Base):
@@ -291,8 +341,13 @@ class Invitation(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     inviter_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     invitee_email: Mapped[str] = mapped_column(String, nullable=False)
+    # HMAC verifiers, not the secrets themselves — see scaffold/invite_tokens.py.
+    # A read of this table yields nothing redeemable.
     token: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
     short_code: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    # The short code sealed under the server key, so the inviter can still be
+    # shown it. The token has no equivalent: it is never displayed.
+    short_code_sealed: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
     invitee_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     invitee_account_email: Mapped[str | None] = mapped_column(String, nullable=True)

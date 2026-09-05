@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { ReportableError } from '../../scaffold/components/ReportProblem.tsx'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../../api.ts'
 import type {
@@ -1760,7 +1761,7 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
  </p>
 
 
- {uploadError && <p className="text-xs text-red-500">{uploadError}</p>}
+ <ReportableError message={uploadError} source="import" />
  <input
  ref={fileRef}
  type="file"
@@ -2193,7 +2194,7 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
  <div className="space-y-4">
  <BackBtn onClick={back} />
  <h2 className="text-base font-semibold text-cs-text">Review</h2>
- {submitError && <p className="text-xs text-red-500">{submitError}</p>}
+ <ReportableError message={submitError} source="import" />
 
  {/* Blocking issues (must fix) */}
  {s.blockingIssues.length > 0 && (
@@ -2861,7 +2862,7 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
  These affect how gains and deductions are calculated. You can change them on the Settings page anytime.
  </p>
  </div>
- {submitError && <p className="text-xs text-red-500">{submitError}</p>}
+ <ReportableError message={submitError} source="import" />
 
  <div className="rounded-md border border-cs-border p-4 space-y-1 ">
  <label className="flex items-start gap-3 cursor-pointer">

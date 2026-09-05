@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
+import { useReportProblem } from './ReportProblem.tsx'
 
 type ToastType = 'error' | 'success' | 'info'
 
@@ -21,6 +22,7 @@ let nextId = 0
 export function ToastProvider({ children }: { children: React.ReactNode }) {
  const [toasts, setToasts] = useState<Toast[]>([])
  const timers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map())
+ const { openReport } = useReportProblem()
 
  const dismiss = useCallback((id: number) => {
  const t = timers.current.get(id)
@@ -32,7 +34,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
  const toast = useCallback((message: string, type: ToastType = 'error') => {
  const id = ++nextId
  setToasts((prev) => [...prev.slice(-2), { id, message, type }])
- const timer = setTimeout(() => dismiss(id), 5000)
+ // An error toast carries a Report action, so give it long enough to be read
+ // and acted on rather than the usual glance.
+ const timer = setTimeout(() => dismiss(id), type === 'error' ? 9000 : 5000)
  timers.current.set(id, timer)
  }, [dismiss])
 
@@ -62,7 +66,24 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
  onClick={() => dismiss(t.id)}
  className={`pointer-events-auto animate-slide-up rounded-lg px-4 py-3 text-sm font-medium text-white shadow-lg ${colors[t.type]}`}
  >
- {t.message}
+ <div className="flex items-start justify-between gap-3">
+ <span className="min-w-0 flex-1">{t.message}</span>
+ {/* Something failing is the moment a person is willing to say so —
+ asking later, from a menu, gets far fewer reports. */}
+ {t.type === 'error' && (
+ <button
+ type="button"
+ onClick={(e) => {
+ e.stopPropagation()
+ dismiss(t.id)
+ openReport({ source: 'toast', errorMessage: t.message })
+ }}
+ className="shrink-0 rounded-md bg-white/20 px-2 py-1 text-xs font-semibold hover:bg-white/30"
+ >
+ Report
+ </button>
+ )}
+ </div>
  </div>
  ))}
  </div>

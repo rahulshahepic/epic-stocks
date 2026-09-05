@@ -501,6 +501,26 @@ Go to **Import/Export → Download Vesting.xlsx** to export all your grants, pri
 
 The **Import** page also keeps the last 3 backup snapshots from previous imports — you can restore any of them if an import goes wrong.
 
+### Reporting a Problem
+
+**Report a problem** sits in the footer of every page once you are signed in, and on every page you can reach without an account — login, invitation landing, and both stages of `/try` (the upload screen and the preview dashboard it computes). Someone who cannot get past sign-in, or who is looking at numbers the preview got wrong, is exactly the person who most needs to be able to say so. The app also offers it at the moment something fails:
+
+- **A red error toast** carries a **Report** button.
+- **A crash** shows a recovery screen with **Reload** and **Report this**, instead of a blank page.
+- **An import that comes back with errors** offers **Report this import problem**.
+
+Every report carries what you typed, the page you were on, and — when the failure came from the server — a short **reference id** that points at the exact stored traceback.
+
+**"Include details that identify me" is a checkbox, and it starts off.** Ticking it attaches your account, your browser, and the last few pages you visited plus any requests that failed. Leaving it off means the report is stored anonymously, even if you are signed in. Either way it never includes any of your financial data — no share counts, no prices, no loan amounts. Press **Show exactly what gets sent** to read the whole payload before it goes.
+
+Import reports carry only the rule ids that fired (`C1`, `G3`, …), never the finding text, because those messages quote figures from your own statement.
+
+Your email address is always optional, and is only there so you can be reached about what you reported.
+
+| Light | Dark |
+|-------|------|
+| ![Report a problem](screenshots/report-light-mobile.png) | ![Report a problem Dark](screenshots/report-dark-mobile.png) |
+
 ---
 
 ## For Content Admins
@@ -545,6 +565,7 @@ Site admins are designated via the `ADMIN_EMAIL` environment variable (semicolon
 - **No-account preview funnel** — how the `/try` preview converts: previews computed, saves pressed, signups that carried preview data, and the conversion rate, as anonymous daily totals over the last 30 days. The `trial_daily_stats` table holds exactly three integers keyed by date — no IP, no user agent, no per-visitor row — so this measures the feature without recording anything about a visitor. See the privacy policy's "Anonymous counts" section, which discloses it.
 - Per-user metadata: email, name, join date, last login, record counts, admin badge
 - Searchable and paginated user list, sorted by last active
+- **Problem Reports** — what people actually reported, newest first, with a **new** badge for untriaged ones. Each entry expands to the reporter's account and browser (only when they opted in), the client trail, and — when the report carries a reference id — the matching server traceback pulled from the error log. Mark resolved, reopen, or delete. Reports live in their own `user_reports` table, so the nightly trim of `error_logs` to 500 rows never sweeps them away. The daily admin digest email counts the open ones, and each new report emails the admins as it lands.
 - **Build version** — a 7-character commit SHA at the bottom of the Admin page confirms exactly which build is running
 
 > Admins **cannot** see any user's financial data (share counts, prices, loan amounts, computed events). Only aggregate counts and account metadata are exposed.
@@ -663,6 +684,9 @@ The backend creates `data/vesting.db` (SQLite) automatically on first run. The d
 | `APP_URL` | No | Public app URL included as a link in email notifications |
 | `ACME_EMAIL` | No (prod) | Email for Let's Encrypt certificate expiry notifications. Set as a GitHub Actions variable. |
 | `TRUSTED_PROXY_IPS` | No (prod) | Cloudflare IP ranges passed to Caddy for real-IP forwarding. Set as a GitHub Actions variable. |
+| `TRUSTED_PROXY_HOPS` | No | How many trusted reverse proxies sit in front of the app, so anonymous rate limits can be keyed on the real caller instead of the proxy. `0` (default) ignores `X-Forwarded-For` entirely — correct for a directly-exposed app. `1` for Caddy alone, `2` when Cloudflare proxies to Caddy. docker-compose defaults it to `1`. |
+| `INVITE_TOKEN_SECRET` | No | Key for the HMAC verifiers that replace plaintext invitation tokens in the database. Falls back to `JWT_SECRET`. Rotating it invalidates outstanding invitations and hides stored short codes — revoke and re-send. |
+| `PUSH_ALLOW_PRIVATE_ENDPOINTS` | No | Set to `1` for local development against a push relay on a private address. Never set in production: it disables the SSRF check on push subscription endpoints. |
 | `COMMIT_SHA` | No | Git commit SHA injected at Docker build time. Displayed as a 7-char short hash at the bottom of Admin and Settings pages. **Set automatically by the deploy workflow.** |
 | `APP_ENV` | No | Set to `staging` in the GitHub staging environment Variables tab to enable staging-specific UI: amber icon, PWA name "Epic Stocks (Staging)", and a persistent amber header banner. Defaults to `production` (no change). Injected as a Docker build arg at deploy time. |
 
@@ -749,6 +773,7 @@ Set secrets as GitHub Actions variables — the deploy workflow writes `.env` au
 | `VPS_HOST` | Variable | VPS hostname or IP |
 | `DOMAIN` | Variable | Your domain name |
 | `TRUSTED_PROXY_IPS` | Variable | Cloudflare IP ranges for real-IP forwarding |
+| `TRUSTED_PROXY_HOPS` | Variable | Reverse proxies in front of the app (default `1`; `2` with Cloudflare). Keys anonymous rate limits on the real caller. |
 
 Cryptographic secrets (JWT, encryption key, VAPID keys, Postgres password) are generated on the server on first deploy and stored in `/opt/epic-stocks/.secrets/`. They never appear in GitHub.
 
@@ -850,11 +875,16 @@ epic-stocks/
 │   ├── alembic/             # Alembic migrations (run automatically on startup)
 │   ├── scaffold/            # Reusable auth/infra layer (keep when forking)
 │   │   ├── auth.py          # JWT creation/verification + admin checks
-│   │   ├── crypto.py        # Per-user AES-256-GCM encryption
+│   │   ├── client_ip.py     # Real caller address behind a proxy (TRUSTED_PROXY_HOPS)
+│   │   ├── crypto.py        # Per-user AES-256-GCM encryption (fails closed without a key)
 │   │   ├── email_sender.py  # Email dispatch (delegates to providers/)
+│   │   ├── invite_tokens.py # HMAC verifiers + sealed short codes for invitations
 │   │   ├── maintenance.py   # Sentinel path for app-managed downtime
 │   │   ├── models.py        # SQLAlchemy models (User, BlockedEmail, SystemMetric, etc.)
 │   │   ├── notifications.py # Push + email notification logic
+│   │   ├── push_endpoints.py # SSRF guard on user-supplied push destinations
+│   │   ├── rate_limit.py    # Per-user/per-IP limits; Redis counters when available
+│   │   ├── user_deletion.py # The one place that erases a user (self-serve + admin)
 │   │   ├── providers/
 │   │   │   ├── auth/        # OIDC PKCE provider (joserfc for JWT/JWKS verification)
 │   │   │   └── email/       # Email providers: Resend, SMTP
@@ -863,6 +893,7 @@ epic-stocks/
 │   │       ├── admin.py         # Admin dashboard, user mgmt, blocklist, email lookup
 │   │       ├── notifications.py # Email notification preferences
 │   │       ├── push.py          # Push subscription management
+│   │       ├── reports.py       # Problem reports (no-auth POST) + what a report may carry
 │   │       ├── sharing.py       # Email invitations + shared data viewing
 │   │       └── unsubscribe.py   # Public (no-auth) email unsubscribe endpoints
 │   ├── app/                 # Equity tracking domain (replace when forking)
@@ -907,7 +938,8 @@ epic-stocks/
 │   │   ├── scaffold/        # Reusable UI layer (keep when forking)
 │   │   │   ├── oidc.ts      # Shared OIDC PKCE start/complete (used by Login + InviteLanding)
 │   │   │   ├── pages/       # Login, AuthCallback, Admin, Settings, PrivacyPolicy, InviteLanding, Unsubscribe
-│   │   │   ├── components/  # Layout shell, Toast, DisclaimerNotice + UnofficialBadge (affiliation notices)
+│   │   │   ├── components/  # Layout shell, Toast, ErrorBoundary + ReportProblem (problem reporting), DisclaimerNotice + UnofficialBadge (affiliation notices)
+│   │   │   ├── reportLog.ts # In-memory trail (routes, failed requests, JS errors) a report can attach
 │   │   │   ├── contexts/    # ThemeContext, MaintenanceContext, ViewingContext, AppContext (injection interface)
 │   │   │   └── hooks/       # useAuth, useConfig, useDark, usePush, useMe
 │   │   ├── app/             # Equity tracking UI (replace when forking)
@@ -1037,6 +1069,7 @@ Cross-origin requests are accepted only from the native shell origins (`capacito
 | **Unsubscribe** | | |
 | GET | `/api/unsubscribe?token=&email=&type=` | Verify unsubscribe token (no auth required) |
 | POST | `/api/unsubscribe` | Process unsubscribe — type is `invite` or `notify` (no auth required) |
+| POST | `/api/report` | Submit a problem report (no auth required — works signed out, and stays open during maintenance) |
 | **Sharing** | | |
 | GET | `/api/sharing/invite-info?token=&code=` | Validate invitation token/code (no auth required) |
 | POST | `/api/sharing/invite` | Send an invitation email |
@@ -1069,6 +1102,9 @@ Cross-origin requests are accepted only from the native shell origins (`capacito
 | POST | `/api/admin/test-notify` | Send a test notification to any user (admin only) |
 | GET | `/api/admin/errors` | List recent backend error logs (admin only) |
 | DELETE | `/api/admin/errors` | Clear error log (admin only) |
+| GET | `/api/admin/reports` | List problem reports, newest first. `?status=new\|resolved` (admin only) |
+| PATCH | `/api/admin/reports/{id}` | Mark a report resolved or reopen it (admin only) |
+| DELETE | `/api/admin/reports/{id}` | Delete a report (admin only) |
 | GET | `/api/admin/metrics?hours=72` | Time-series CPU/RAM/DB metrics history (admin only) |
 | GET | `/api/admin/db-tables` | Per-table DB size breakdown, PostgreSQL only (admin only) |
 | GET/POST | `/api/admin/flexible-payoff` | Get/set flexible loan payoff method (admin only) |

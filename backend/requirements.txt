@@ -1,18 +1,26 @@
-fastapi>=0.115.0
-uvicorn>=0.32.0
-sqlalchemy>=2.0.0
-alembic>=1.13.0
-psycopg2-binary>=2.9.0
-python-dateutil>=2.9.0
-openpyxl>=3.1.0
-pdfplumber>=0.11.0
-httpx>=0.27.0
-python-multipart>=0.0.12
-email-validator>=2.0.0
-cryptography>=42.0.0
-joserfc>=1.0.0
-py-vapid>=1.9.0
-pywebpush>=2.0.0
-psutil>=5.9.0
-redis>=5.0.0
-import-linter>=2.0
+# Pinned to exact versions. A range means two deploys a week apart can ship
+# different code from the same commit, which makes a regression impossible to
+# attribute and lets a compromised upstream release reach production without a
+# change here. Bump deliberately; CI builds the image and runs the suite.
+#
+# Direct dependencies only — transitive versions still float. Locking those too
+# means a hash-pinned lockfile (pip-compile --generate-hashes), which is the
+# next step rather than this one.
+fastapi==0.141.1
+uvicorn==0.52.4
+sqlalchemy==2.0.52
+alembic==1.19.2
+psycopg2-binary==2.9.12
+python-dateutil==2.9.0.post0
+openpyxl==3.1.5
+pdfplumber==0.11.10
+httpx==0.28.1
+python-multipart==0.0.32
+email-validator==2.3.0
+cryptography==50.0.1
+joserfc==1.7.5
+py-vapid==1.9.4
+pywebpush==2.5.0
+psutil==7.2.2
+redis==8.1.0
+import-linter==2.15

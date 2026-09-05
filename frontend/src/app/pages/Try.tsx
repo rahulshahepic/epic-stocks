@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { trialAnalyze, stashTrialPayload, pingSaveIntent, type TrialAnalyzeResponse } from '../trialImport.ts'
 import type { TimelineEvent } from '../../api.ts'
-import FindingList from '../components/FindingList.tsx'
+import FindingList, { ReportFindingsButton } from '../components/FindingList.tsx'
+import { ReportProblemLink } from '../../scaffold/components/ReportProblem.tsx'
 import StalePriceNotice from '../components/StalePriceNotice.tsx'
 import { StatCard } from '../components/StatCard.tsx'
 import {
@@ -498,6 +499,11 @@ export default function Try() {
             </Link>
             .
           </p>
+
+          <p className="mt-2 text-center text-xs text-cs-text-2">
+            Something look wrong?{' '}
+            <ReportProblemLink className="font-medium text-cs-brand hover:text-cs-brand-hover" />
+          </p>
         </div>
       </div>
     )
@@ -566,6 +572,9 @@ export default function Try() {
               Sign up to finish this in the full import wizard — it has a repair
               loop for exactly this kind of mismatch.
             </p>
+            <p className="mt-2">
+              <ReportFindingsButton findings={result.findings} blocked={result.blocked} />
+            </p>
           </Card>
         )}
 
@@ -592,7 +601,7 @@ export default function Try() {
 
         <DisclaimerNotice />
 
-        <p className="pb-4 text-center text-xs text-cs-text-2">
+        <p className="text-center text-xs text-cs-text-2">
           Already have an account?{' '}
           <Link
             to="/login"
@@ -601,6 +610,14 @@ export default function Try() {
             Sign in
           </Link>
           .
+        </p>
+
+        {/* The preview is a whole app's worth of numbers computed from someone's
+            own files, with no account behind it. If it gets them wrong, this is
+            the only way they can say so. */}
+        <p className="pb-4 text-center text-xs text-cs-text-2">
+          Numbers look wrong?{' '}
+          <ReportProblemLink className="font-medium text-cs-brand hover:text-cs-brand-hover" />
         </p>
       </main>
     </div>

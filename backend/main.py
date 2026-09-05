@@ -394,9 +394,14 @@ _EPIC_WRITE_METHODS = frozenset({"POST", "PUT", "DELETE", "PATCH"})
 _EPIC_BLOCKED_PREFIXES = ("/api/grants", "/api/prices", "/api/loans", "/api/import", "/api/wizard")
 # Prefixes whose writes are always allowed (user-initiated actions).
 _EPIC_ALLOWED_PREFIXES = (
-    "/api/loans/",  # sub-resources like /execute-payoff are user actions
     "/api/internal/",
 )
+# Loan sub-resources that are the user acting on their own position rather
+# than a write to the fact table. Named one by one: allowing everything under
+# "/api/loans/" let PUT and DELETE on /api/loans/{id}, and POST to
+# /api/loans/bulk, straight through the guard that stops POST /api/loans.
+_EPIC_ALLOWED_EXACT = frozenset({"/api/loans/regenerate-all-payoff-sales"})
+_EPIC_ALLOWED_SUFFIXES = ("/execute-payoff",)
 
 
 class EpicModeMiddleware:
@@ -417,7 +422,12 @@ class EpicModeMiddleware:
                 path = scope.get("path", "")
                 if path.startswith(_EPIC_BLOCKED_PREFIXES):
                     # /api/loans/{id}/execute-payoff and /api/internal/* are user actions
-                    if not path.startswith(_EPIC_ALLOWED_PREFIXES):
+                    allowed = (
+                        path.startswith(_EPIC_ALLOWED_PREFIXES)
+                        or path in _EPIC_ALLOWED_EXACT
+                        or path.endswith(_EPIC_ALLOWED_SUFFIXES)
+                    )
+                    if not allowed:
                         from scaffold.epic_mode import is_epic_mode
                         if is_epic_mode():
                             response = JSONResponse(
@@ -658,13 +668,15 @@ def status():
 
 
 @_fastapi_app.get("/api/config")
-def client_config():
+def client_config(request: Request):
     from scaffold.email_sender import email_configured
     from scaffold.epic_mode import is_epic_mode
     return {
         "vapid_public_key": os.environ.get("VAPID_PUBLIC_KEY", ""),
         "email_notifications_available": email_configured(),
-        "resend_from": os.environ.get("RESEND_FROM", ""),
+        # Only the admin page displays this, and this endpoint takes no auth,
+        # so the deployment's sending address is not handed to every visitor.
+        "resend_from": os.environ.get("RESEND_FROM", "") if _is_admin_request(request) else "",
 
         "epic_mode": is_epic_mode(),
     }

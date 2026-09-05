@@ -278,6 +278,52 @@ def test_epic_mode_allows_execute_payoff(client, db_session):
     assert resp.status_code == 201, resp.text
 
 
+def test_epic_mode_blocks_loan_update(client, db_session):
+    """PUT /api/loans/{id} is a fact-table write, not a user action.
+
+    Allowing everything under "/api/loans/" so that execute-payoff would pass
+    also opened update, delete and bulk-create — the three writes the guard on
+    POST /api/loans exists to stop.
+    """
+    register_user(client, "loanupd@example.com")
+    loan_id = _seed_purchase_with_loan(client)
+    _set_epic_mode(db_session, True)
+
+    resp = client.put(f"/api/loans/{loan_id}", json={"amount": 999999.0})
+    assert resp.status_code == 403, resp.text
+
+
+def test_epic_mode_blocks_loan_delete(client, db_session):
+    register_user(client, "loandel@example.com")
+    loan_id = _seed_purchase_with_loan(client)
+    _set_epic_mode(db_session, True)
+
+    resp = client.delete(f"/api/loans/{loan_id}")
+    assert resp.status_code == 403, resp.text
+
+
+def test_epic_mode_blocks_loan_bulk_create(client, db_session):
+    register_user(client, "loanbulk@example.com")
+    _set_epic_mode(db_session, True)
+
+    resp = client.post("/api/loans/bulk", json=[{
+        "grant_year": 2022, "grant_type": "Purchase", "loan_type": "Purchase",
+        "loan_year": 2022, "amount": 5000.0, "interest_rate": 0.05,
+        "due_date": "2030-01-01",
+    }])
+    assert resp.status_code == 403, resp.text
+
+
+def test_epic_mode_allows_regenerate_all_payoff_sales(client, db_session):
+    """The other loan sub-resource that is the user acting, not a fact write."""
+    register_user(client, "regenepic@example.com")
+    _seed_purchase_with_loan(client)
+    _set_epic_mode(db_session, True)
+
+    resp = client.post("/api/loans/regenerate-all-payoff-sales")
+    assert resp.status_code == 200, resp.text
+
+
 def test_epic_mode_allows_reads(client, db_session):
     """GET endpoints are always allowed in epic_mode."""
     register_user(client)

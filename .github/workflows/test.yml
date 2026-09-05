@@ -17,9 +17,9 @@ jobs:
   backend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
       - id: setup-python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
         with:
           python-version: "3.12"
           cache: "pip"
@@ -45,9 +45,9 @@ jobs:
   frontend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
       - id: setup-node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
         with:
           node-version: "20"
           cache: "npm"
@@ -158,8 +158,8 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/dependency-review-action@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294  # v5.0.0
         with:
           fail-on-severity: high
           # Same allowlist as the audit step, for the same reason — see there.
@@ -168,7 +168,7 @@ jobs:
   caddy-validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
       - name: Validate Caddyfile
         run: |
           docker run --rm \
@@ -185,14 +185,14 @@ jobs:
     # multi-GB base images reliably. Runner-based Playwright with a cached
     # ~/.cache/ms-playwright directory avoids that entirely.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
       - name: Start e2e-db (parallel with npm / buildx / image build)
         # Postgres has no dependency on the e2e-app image, so start it immediately.
         # By the time the e2e-app image finishes building, the db healthcheck has
         # already passed and `docker compose up e2e-app` doesn't wait on it.
         run: docker compose -f docker-compose.e2e.yml up -d e2e-db
       - id: setup-node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
         with:
           node-version: "20"
           cache: "npm"
@@ -205,7 +205,7 @@ jobs:
         run: cd frontend && time npm ci --no-audit
       - name: Cache playwright browsers
         id: pw-cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
         with:
           path: ~/.cache/ms-playwright
           key: pw-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
@@ -217,9 +217,9 @@ jobs:
         run: |
           echo "pw browser cache-hit=${{ steps.pw-cache.outputs.cache-hit }}"
           cd frontend && time npx playwright install chromium
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3.12.0
       - name: Build e2e-app image (cached)
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25  # v5.4.0
         with:
           context: .
           file: Dockerfile

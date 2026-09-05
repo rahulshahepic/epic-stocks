@@ -129,10 +129,13 @@ def invite_info(
     db: Session = Depends(get_db),
 ):
     """Look up invitation by token or code. Returns inviter name + status. No auth required."""
-    from scaffold.rate_limit import check_rate_ip
+    from scaffold.rate_limit import check_rate_ip_shared
     from scaffold.client_ip import client_ip as _client_ip
     client_ip = _client_ip(request) if request else "unknown"
-    check_rate_ip(client_ip, "sharing_invite_info", max_calls=20, window_secs=900)
+    # Guessing a short code is infeasible regardless (8 chars of a 32-symbol
+    # alphabet is ~1.1e12), so this only has to stop a flood — and it is shared
+    # by everyone on one office network.
+    check_rate_ip_shared(client_ip, "sharing_invite_info", max_calls=120, window_secs=900)
     if not token and not code:
         raise HTTPException(400, "Provide token or code")
     inv = _find_by_token(db, token) if token else _find_by_code(db, code)
@@ -322,10 +325,10 @@ def accept_invite(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    from scaffold.rate_limit import check_rate_ip
+    from scaffold.rate_limit import check_rate_ip_shared
     from scaffold.client_ip import client_ip as _client_ip
     client_ip = _client_ip(request)
-    check_rate_ip(client_ip, "sharing_accept", max_calls=20, window_secs=900)
+    check_rate_ip_shared(client_ip, "sharing_accept", max_calls=120, window_secs=900)
     if not body.token and not body.code:
         raise HTTPException(400, "Provide token or code")
 
@@ -737,6 +740,9 @@ def _send_invitation_email(inv: Invitation, inviter: User, raw_token: str, raw_c
             token=raw_token,
             short_code=_format_short_code(raw_code),
             recipient_email=inv.invitee_email,
+            # The account the invitation actually came from. The display name
+            # above is whatever the inviter set at their identity provider.
+            inviter_email=inviter.email,
         )
         return send_email(inv.invitee_email, subject, text, html, headers=hdrs)
     except Exception:
@@ -766,7 +772,7 @@ def _notify_inviter_accepted(inv: Invitation, db: Session):
 
         # Push notification with deep link to settings (sharing section)
         from scaffold.models import PushSubscription
-        from scaffold.notifications import send_push
+        from scaffold.notifications import PushResult, send_push
         subs = db.query(PushSubscription).filter(PushSubscription.user_id == inviter.id).all()
         payload = {
             "title": "Invitation Accepted",
@@ -774,8 +780,11 @@ def _notify_inviter_accepted(inv: Invitation, db: Session):
             "data": {"url": "/settings"},
         }
         for sub in subs:
-            ok = send_push(sub, payload)
-            if not ok:
+            # Only GONE means the push service dropped this subscription.
+            # `if not ok:` never fired at all — PushResult is a str Enum, so
+            # every member is truthy — and had it fired it would have deleted a
+            # live device over one timeout.
+            if send_push(sub, payload) is PushResult.GONE:
                 db.delete(sub)
         db.commit()
     except Exception:

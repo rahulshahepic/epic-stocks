@@ -14,7 +14,6 @@ import json
 import re
 from datetime import date
 
-import openpyxl
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -23,13 +22,15 @@ from sqlalchemy.orm import Session
 from database import get_db
 from scaffold.auth import get_current_user
 from scaffold.models import Grant, Price, User
+from scaffold.safe_workbook import WorkbookRejected, load_workbook_safely
 from app.content_service import load_content
 from app.date_utils import to_date as _to_date
-from app.epic_import import (Draft, DraftPrice, build_prompt, build_skeleton, derive_draft,
-                             draft_from_payload, extract_lines, is_blocked,
-                             parse_share_csv, parse_statement_lines, reconcile,
-                             render_markdown, supersede_parse_findings,
-                             to_wizard_payload, validate_draft)
+from app.epic_import import (Draft, DraftPrice, StatementParserBusy,
+                             StatementUnreadable, build_prompt,
+                             build_skeleton, derive_draft, draft_from_payload,
+                             extract_lines, is_blocked, parse_share_csv,
+                             parse_statement_lines, reconcile, render_markdown,
+                             supersede_parse_findings, to_wizard_payload, validate_draft)
 from app.excel_io import (read_grants_from_excel, read_loans_from_excel,
                           read_prices_from_excel)
 
@@ -65,6 +66,12 @@ def _parse_files(csv_bytes: bytes | None, pdf_bytes: bytes | None):
     if pdf_bytes is not None:
         try:
             lines = extract_lines(pdf_bytes)
+        except StatementUnreadable as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except StatementParserBusy as e:
+            # Shed load rather than queue: every slot is already parsing.
+            raise HTTPException(status_code=503, detail=str(e),
+                                headers={"Retry-After": "5"})
         except RuntimeError as e:
             raise HTTPException(status_code=503, detail=str(e))
         statement_text = "\n".join(lines)
@@ -84,9 +91,11 @@ def _parse_files(csv_bytes: bytes | None, pdf_bytes: bytes | None):
 def _payload_from_xlsx(raw: bytes) -> dict:
     """Read a filled copy of the app's own workbook into a draft payload."""
     try:
-        wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Could not open that workbook: {e}")
+        wb = load_workbook_safely(raw, data_only=True)
+    except WorkbookRejected as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Could not open that workbook.")
     names = {s.lower(): s for s in wb.sheetnames}
     if "schedule" not in names:
         wb.close()
@@ -96,8 +105,10 @@ def _payload_from_xlsx(raw: bytes) -> dict:
         grants = read_grants_from_excel(wb[names["schedule"]])
         loans = read_loans_from_excel(wb[names["loans"]]) if "loans" in names else []
         prices = read_prices_from_excel(wb[names["prices"]]) if "prices" in names else []
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Could not read that workbook: {e}")
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not read that workbook — check it matches the app's own export.")
     finally:
         wb.close()
 
@@ -249,6 +260,11 @@ def analyze(
                 status_code=400,
                 detail=f"That is not valid JSON ({e.msg} at line {e.lineno}). Paste the "
                        f"whole object the assistant produced, starting at '{{'.")
+        except RecursionError:
+            # Thousands of nested arrays. Valid JSON, and json.loads recurses
+            # on it until the interpreter's stack runs out.
+            raise HTTPException(status_code=400,
+                                detail="That JSON is nested too deeply to read.")
     elif revised_draft is not None and revised_draft.filename:
         raw = _read_upload(revised_draft, "revised draft")
         if raw is not None:
@@ -257,7 +273,7 @@ def analyze(
             else:
                 try:
                     payload = json.loads(raw.decode("utf-8-sig"))
-                except (UnicodeDecodeError, json.JSONDecodeError):
+                except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
                     raise HTTPException(status_code=400,
                                         detail="That file is neither JSON nor a workbook.")
 
@@ -388,16 +404,18 @@ def _baseline_from_export(raw: bytes):
     reconciliation does not report the report's shape as the import's errors.
     """
     try:
-        wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Could not open the export: {e}")
+        wb = load_workbook_safely(raw, data_only=True)
+    except WorkbookRejected as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Could not open the export.")
     names = {s.lower(): s for s in wb.sheetnames}
     if "holdings report" in names and "schedule" not in names:
         try:
             grants, loans = _holdings_report_baseline(wb[names["holdings report"]])
-        except Exception as e:
+        except Exception:
             raise HTTPException(status_code=400,
-                                detail=f"Could not read that holdings report: {e}")
+                                detail="Could not read that holdings report.")
         finally:
             wb.close()
         if not grants:
@@ -416,8 +434,8 @@ def _baseline_from_export(raw: bytes):
         grants = read_grants_from_excel(wb[names["schedule"]])
         loans_raw = read_loans_from_excel(wb[names["loans"]]) if "loans" in names else []
         prices_raw = read_prices_from_excel(wb[names["prices"]]) if "prices" in names else []
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Could not read the export: {e}")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Could not read the export.")
     finally:
         wb.close()
 

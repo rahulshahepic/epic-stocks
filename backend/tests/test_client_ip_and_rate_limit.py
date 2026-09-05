@@ -223,3 +223,334 @@ def test_a_redis_outage_falls_back_to_the_database(monkeypatch, db_session):
     with pytest.raises(HTTPException) as exc:
         rate_limit.check_rate_db(11, "t_fallback", max_calls=2, window_secs=300, db=db_session)
     assert exc.value.status_code == 429
+
+
+# ── Which bucket an address is counted under ────────────────────────────────
+#
+# Redis fixes where the count lives. It does nothing about what the count is
+# keyed on, and that is the half that decides whether an anonymous limit means
+# anything: an IPv6 caller is handed a whole /64, so counting per address lets
+# one attacker hold 18 quintillion buckets while an IPv4 caller gets one.
+
+def test_ipv4_is_its_own_bucket():
+    assert rate_limit._ip_bucket("203.0.113.7") == "203.0.113.7"
+    assert rate_limit._ip_bucket("203.0.113.8") != rate_limit._ip_bucket("203.0.113.7")
+
+
+def test_ipv6_addresses_in_one_allocation_share_a_bucket():
+    """Rotating the low 64 bits is free, so it must not buy a fresh bucket."""
+    a = rate_limit._ip_bucket("2001:db8:1234:5678::1")
+    b = rate_limit._ip_bucket("2001:db8:1234:5678:ffff:ffff:ffff:ffff")
+    c = rate_limit._ip_bucket("2001:db8:1234:5678:dead:beef:cafe:0001")
+    assert a == b == c
+    assert a.endswith("/64")
+
+
+def test_separate_ipv6_allocations_stay_separate():
+    """Grouping must not go so wide that unrelated callers collide."""
+    assert (rate_limit._ip_bucket("2001:db8:1234:5678::1")
+            != rate_limit._ip_bucket("2001:db8:1234:9999::1"))
+
+
+def test_ipv4_mapped_ipv6_counts_as_the_ipv4():
+    """::ffff:203.0.113.7 is one caller, not a second bucket for them."""
+    assert rate_limit._ip_bucket("::ffff:203.0.113.7") == "203.0.113.7"
+
+
+def test_unparseable_address_keeps_sharing_one_bucket():
+    """client_ip's UNKNOWN is a deliberate shared bucket, not a free pass."""
+    assert rate_limit._ip_bucket(UNKNOWN) == UNKNOWN
+
+
+def test_ipv6_rotation_cannot_outrun_the_in_memory_limit(monkeypatch):
+    monkeypatch.delenv("E2E_TEST", raising=False)
+    monkeypatch.setattr(rate_limit, "_redis", lambda: None)
+    rate_limit._calls.clear()
+
+    # Five requests, each from a different address in the same /64.
+    for i in range(5):
+        rate_limit.check_rate_ip(f"2001:db8:abcd:1::{i}", "t_v6", max_calls=5, window_secs=60)
+    with pytest.raises(HTTPException) as exc:
+        rate_limit.check_rate_ip("2001:db8:abcd:1::99", "t_v6", max_calls=5, window_secs=60)
+    assert exc.value.status_code == 429
+    # A genuinely different allocation is untouched.
+    rate_limit.check_rate_ip("2001:db8:abcd:2::1", "t_v6", max_calls=5, window_secs=60)
+
+
+# ── The anonymous limit now survives a restart and spans replicas ───────────
+
+def test_anonymous_limit_uses_redis(monkeypatch):
+    monkeypatch.delenv("E2E_TEST", raising=False)
+    fake = _FakeRedis()
+    monkeypatch.setattr(rate_limit, "_redis", lambda: fake)
+    rate_limit._calls.clear()
+
+    for _ in range(3):
+        rate_limit.check_rate_ip_shared("203.0.113.9", "t_shared", max_calls=3, window_secs=300)
+    with pytest.raises(HTTPException) as exc:
+        rate_limit.check_rate_ip_shared("203.0.113.9", "t_shared", max_calls=3, window_secs=300)
+    assert exc.value.status_code == 429
+    assert any("t_shared:ip:203.0.113.9" in k for k in fake.store), fake.store
+
+
+def test_a_second_replica_shares_the_anonymous_count(monkeypatch):
+    """The per-process counter is what a deploy resets and a worker multiplies."""
+    monkeypatch.delenv("E2E_TEST", raising=False)
+    fake = _FakeRedis()
+    monkeypatch.setattr(rate_limit, "_redis", lambda: fake)
+
+    for _ in range(3):
+        rate_limit.check_rate_ip_shared("198.51.100.1", "t_replica", max_calls=3, window_secs=300)
+    # Standing in for another process: its in-memory table is empty, but the
+    # shared counter is not.
+    rate_limit._calls.clear()
+    with pytest.raises(HTTPException):
+        rate_limit.check_rate_ip_shared("198.51.100.1", "t_replica", max_calls=3, window_secs=300)
+
+
+def test_ipv6_rotation_cannot_outrun_the_shared_limit(monkeypatch):
+    monkeypatch.delenv("E2E_TEST", raising=False)
+    fake = _FakeRedis()
+    monkeypatch.setattr(rate_limit, "_redis", lambda: fake)
+
+    for i in range(3):
+        rate_limit.check_rate_ip_shared(f"2001:db8:5:5::{i}", "t_v6s", max_calls=3, window_secs=300)
+    with pytest.raises(HTTPException):
+        rate_limit.check_rate_ip_shared("2001:db8:5:5::ff", "t_v6s", max_calls=3, window_secs=300)
+
+
+def test_anonymous_limit_falls_back_when_redis_is_down(monkeypatch):
+    """A limiter that stops limiting when its store blips is worse than a leaky one."""
+    monkeypatch.delenv("E2E_TEST", raising=False)
+
+    class _Broken:
+        def pipeline(self):
+            raise ConnectionError("redis is down")
+
+    monkeypatch.setattr(rate_limit, "_redis", lambda: _Broken())
+    rate_limit._calls.clear()
+
+    for _ in range(3):
+        rate_limit.check_rate_ip_shared("203.0.113.55", "t_down", max_calls=3, window_secs=300)
+    with pytest.raises(HTTPException) as exc:
+        rate_limit.check_rate_ip_shared("203.0.113.55", "t_down", max_calls=3, window_secs=300)
+    assert exc.value.status_code == 429
+
+
+def test_unauthenticated_endpoints_use_the_shared_limiter():
+    """Wiring check: a per-process limit on these is the bug, not the fix."""
+    import inspect
+    import app.routers.trial as trial
+    import app.routers.sharing as sharing
+    import scaffold.routers.reports as reports
+    import scaffold.routers.unsubscribe as unsub
+    import scaffold.routers.auth_router as auth_router
+
+    for module in (trial, sharing, reports, unsub, auth_router):
+        src = inspect.getsource(module)
+        assert "check_rate_ip_shared" in src, f"{module.__name__} lost its shared limiter"
+        # The per-process variant must not linger on an anonymous route.
+        assert "check_rate_ip(" not in src, f"{module.__name__} still calls check_rate_ip"
+
+
+# ── Behind Cloudflare ───────────────────────────────────────────────────────
+#
+# Chain: user -> Cloudflare -> Caddy -> app. Cloudflare appends the caller to
+# X-Forwarded-For and Caddy appends Cloudflare's edge address, so the caller is
+# the second entry from the right, not the first. TRUSTED_PROXY_HOPS defaults
+# to 1 in both docker-compose.yml and deploy.yml, and at 1 every caller on
+# earth resolves to a Cloudflare edge address — the anonymous limits collapse
+# into a handful of shared buckets and nothing says so.
+
+REAL_USER = "203.0.113.50"
+CF_EDGE = "172.71.10.5"
+CADDY = "10.9.0.2"
+
+
+def _cloudflare_request(cf_connecting_ip=REAL_USER, forwarded=None, peer=CADDY):
+    req = _Req(peer=peer, forwarded=forwarded or f"{REAL_USER}, {CF_EDGE}")
+    if cf_connecting_ip:
+        req.headers["CF-Connecting-IP"] = cf_connecting_ip
+    return req
+
+
+def test_one_hop_behind_cloudflare_resolves_the_edge_not_the_user(monkeypatch):
+    """The misconfiguration this is all about — pinned so it stays visible."""
+    monkeypatch.delenv("CLIENT_IP_HEADER", raising=False)
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "1")
+    assert client_ip(_cloudflare_request()) == CF_EDGE
+
+
+def test_two_hops_behind_cloudflare_resolves_the_user(monkeypatch):
+    monkeypatch.delenv("CLIENT_IP_HEADER", raising=False)
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "2")
+    assert client_ip(_cloudflare_request()) == REAL_USER
+
+
+def test_cf_connecting_ip_is_used_when_configured(monkeypatch):
+    """One address, no counting — the hop setting stops mattering."""
+    monkeypatch.setenv("CLIENT_IP_HEADER", "CF-Connecting-IP")
+    for hops in ("0", "1", "2", "3"):
+        monkeypatch.setenv("TRUSTED_PROXY_HOPS", hops)
+        assert client_ip(_cloudflare_request()) == REAL_USER, f"wrong at hops={hops}"
+
+
+def test_cf_connecting_ip_survives_a_client_supplied_forwarded_prefix(monkeypatch):
+    """Cloudflare preserves an XFF the client sent, then appends the real one."""
+    monkeypatch.setenv("CLIENT_IP_HEADER", "CF-Connecting-IP")
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "2")
+    req = _cloudflare_request(forwarded=f"9.9.9.9, {REAL_USER}, {CF_EDGE}")
+    assert client_ip(req) == REAL_USER
+
+
+def test_configured_header_falls_back_when_absent(monkeypatch):
+    """A request that never went through the proxy still gets the best answer."""
+    monkeypatch.setenv("CLIENT_IP_HEADER", "CF-Connecting-IP")
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "2")
+    req = _cloudflare_request(cf_connecting_ip=None)
+    assert client_ip(req) == REAL_USER  # via the hop fallback
+
+
+def test_garbage_in_the_configured_header_does_not_become_a_bucket(monkeypatch):
+    monkeypatch.setenv("CLIENT_IP_HEADER", "CF-Connecting-IP")
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "2")
+    req = _cloudflare_request(cf_connecting_ip="not-an-address")
+    assert client_ip(req) == REAL_USER  # falls through rather than trusting it
+
+
+def test_resolve_reports_where_the_address_came_from(monkeypatch):
+    from scaffold.client_ip import resolve_client_ip
+
+    monkeypatch.setenv("CLIENT_IP_HEADER", "CF-Connecting-IP")
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "2")
+    ip, source = resolve_client_ip(_cloudflare_request())
+    assert (ip, source) == (REAL_USER, "header:CF-Connecting-IP")
+
+    monkeypatch.delenv("CLIENT_IP_HEADER", raising=False)
+    ip, source = resolve_client_ip(_cloudflare_request())
+    assert (ip, source) == (REAL_USER, "x-forwarded-for[-2]")
+
+
+def test_every_cloudflare_user_would_share_one_bucket_at_one_hop(monkeypatch):
+    """Why the misconfiguration matters, not just that it happens."""
+    monkeypatch.delenv("CLIENT_IP_HEADER", raising=False)
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "1")
+    buckets = {
+        rate_limit._ip_bucket(client_ip(_cloudflare_request(
+            forwarded=f"203.0.113.{n}, {CF_EDGE}")))
+        for n in range(1, 40)
+    }
+    assert buckets == {CF_EDGE}, "39 distinct callers should have collapsed to the edge"
+
+    monkeypatch.setenv("CLIENT_IP_HEADER", "CF-Connecting-IP")
+    buckets = {
+        rate_limit._ip_bucket(client_ip(_cloudflare_request(
+            cf_connecting_ip=f"203.0.113.{n}", forwarded=f"203.0.113.{n}, {CF_EDGE}")))
+        for n in range(1, 40)
+    }
+    assert len(buckets) == 39, "each caller should get its own bucket"
+
+
+# ── Shared office networks are the normal case, not the abuse case ──────────
+#
+# The audience for this app all work at one company and a good share of them
+# browse from its network, which leaves through one address (IPv4 NAT does this
+# regardless of the IPv6 /64 grouping above). Everyone on it therefore shares
+# every anonymous budget, so a limit tuned for one person per address locks out
+# colleagues who have done nothing.
+
+def test_the_429_does_not_blame_a_caller_who_did_nothing(monkeypatch):
+    monkeypatch.delenv("E2E_TEST", raising=False)
+    monkeypatch.setattr(rate_limit, "_redis", lambda: None)
+    rate_limit._calls.clear()
+
+    for _ in range(2):
+        rate_limit.check_rate_ip("203.0.113.77", "t_msg", max_calls=2, window_secs=300)
+    with pytest.raises(HTTPException) as exc:
+        rate_limit.check_rate_ip("203.0.113.77", "t_msg", max_calls=2, window_secs=300)
+
+    detail = exc.value.detail
+    assert "your network" in detail
+    assert "first attempt" in detail
+    assert "slow down" not in detail, "the old wording blamed the wrong person"
+
+
+def test_the_429_says_when_to_come_back(monkeypatch):
+    monkeypatch.delenv("E2E_TEST", raising=False)
+    monkeypatch.setattr(rate_limit, "_redis", lambda: None)
+    rate_limit._calls.clear()
+
+    rate_limit.check_rate_ip("203.0.113.78", "t_retry", max_calls=1, window_secs=300)
+    with pytest.raises(HTTPException) as exc:
+        rate_limit.check_rate_ip("203.0.113.78", "t_retry", max_calls=1, window_secs=300)
+
+    retry_after = int(exc.value.headers["Retry-After"])
+    assert 0 < retry_after <= 301
+    assert "try again in" in exc.value.detail
+
+
+def test_retry_after_on_the_redis_path(monkeypatch):
+    monkeypatch.delenv("E2E_TEST", raising=False)
+    # One instance, not one per call — otherwise nothing accumulates.
+    fake = _FakeRedis()
+    monkeypatch.setattr(rate_limit, "_redis", lambda: fake)
+
+    rate_limit.check_rate_ip_shared("203.0.113.79", "t_ra", max_calls=1, window_secs=300)
+    with pytest.raises(HTTPException) as exc:
+        rate_limit.check_rate_ip_shared("203.0.113.79", "t_ra", max_calls=1, window_secs=300)
+    assert 0 < int(exc.value.headers["Retry-After"]) <= 300
+
+
+@pytest.mark.parametrize("seconds,expected", [
+    (5, "a minute"), (60, "a minute"), (120, "a few minutes"),
+    (300, "a few minutes"), (900, "about 15 minutes"),
+])
+def test_retry_wording_is_human(seconds, expected):
+    assert rate_limit._humanise(seconds) == expected
+
+
+def test_anonymous_budgets_leave_room_for_one_office():
+    """A floor on every IP-keyed budget, so none is re-tightened by accident.
+
+    Sign-in is the one that hurt most: /api/auth/callback is hit once per
+    sign-in, so at 20 per 15 minutes the twenty-first colleague on a shared
+    network could not log in at all.
+    """
+    import ast
+    import pathlib
+
+    backend = pathlib.Path(__file__).resolve().parent.parent
+    # An office of this many people should be able to use the app in one window
+    # without anybody hitting a wall.
+    FLOOR = 60
+
+    found = {}
+    for path in sorted(backend.glob("**/routers/*.py")):
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            name = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
+            if name not in ("check_rate_ip_shared", "_limit"):
+                continue
+            kwargs = {k.arg: k.value for k in node.keywords}
+            if "max_calls" not in kwargs or not isinstance(kwargs["max_calls"], ast.Constant):
+                continue
+            label = next((a.value for a in node.args if isinstance(a, ast.Constant)), path.name)
+            found[label] = kwargs["max_calls"].value
+
+    assert found, "no anonymous budgets found — did the call sites move?"
+    too_tight = {k: v for k, v in found.items() if v < FLOOR}
+    assert not too_tight, (
+        f"these anonymous limits are shared by everyone on one office network "
+        f"and are below {FLOOR}: {too_tight}"
+    )
+
+
+def test_sign_in_budget_is_the_most_generous():
+    """Whatever else is tuned, sign-in must not be the thing that breaks."""
+    import inspect
+    import scaffold.routers.auth_router as auth_router
+
+    src = inspect.getsource(auth_router)
+    assert 'max_calls=300' in src, "auth_callback budget changed — see the office-network note"

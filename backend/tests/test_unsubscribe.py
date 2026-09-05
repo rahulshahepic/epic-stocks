@@ -454,3 +454,98 @@ class TestEmailFooters:
             # No unsubscribe without recipient
             assert "unsubscribe" not in text.lower()
             assert hdrs == {}
+
+
+# ============================================================
+# Hostile input on the public unsubscribe routes
+# ============================================================
+
+class TestUnsubscribeHostileInput:
+    """These routes take an HMAC off a query string and need no session.
+
+    A token is arbitrary text, so anything the verifier cannot cope with is an
+    unauthenticated 500 — and each 500 writes an error_logs row that the
+    nightly trim uses to push a real traceback out of the 500-row window.
+    """
+
+    def test_non_ascii_token_is_rejected_not_crashed(self):
+        from scaffold.email_sender import verify_unsubscribe_token
+        # hmac.compare_digest raises TypeError on a str with non-ASCII in it.
+        assert verify_unsubscribe_token("é", "alice@test.com", "notify") is False
+        assert verify_unsubscribe_token("tokén", "alice@test.com", "invite") is False
+
+    def test_empty_and_none_token_rejected(self):
+        from scaffold.email_sender import verify_unsubscribe_token
+        assert verify_unsubscribe_token("", "alice@test.com", "notify") is False
+        assert verify_unsubscribe_token(None, "alice@test.com", "notify") is False
+
+    def test_valid_token_still_verifies(self):
+        """The guard must not have broken the thing it guards."""
+        from scaffold.email_sender import (generate_unsubscribe_token,
+                                           verify_unsubscribe_token)
+        token = generate_unsubscribe_token("alice@test.com", "notify")
+        assert verify_unsubscribe_token(token, "alice@test.com", "notify") is True
+        assert verify_unsubscribe_token(token, "alice@test.com", "invite") is False
+
+    def test_get_with_non_ascii_token_is_not_a_500(self, client):
+        resp = client.get("/api/unsubscribe",
+                          params={"token": "é", "email": "a@test.com", "type": "notify"})
+        assert resp.status_code == 200
+        assert resp.json()["valid"] is False
+
+    def test_post_with_non_ascii_token_is_not_a_500(self, client):
+        resp = client.post("/api/unsubscribe",
+                           json={"token": "é", "email": "a@test.com", "type": "notify"})
+        assert resp.status_code == 403
+
+    def test_public_routes_are_rate_limited(self, client):
+        """Wired through scaffold.rate_limit, which is a no-op under E2E_TEST.
+
+        The shared (Redis-backed) variant specifically: a per-process limit on
+        an anonymous route resets on every deploy and multiplies by worker.
+        """
+        from unittest.mock import patch as upatch
+        with upatch("scaffold.rate_limit.check_rate_ip_shared") as limiter:
+            client.get("/api/unsubscribe",
+                       params={"token": "x", "email": "a@test.com", "type": "notify"})
+            assert limiter.called, "GET /api/unsubscribe is not rate limited"
+        with upatch("scaffold.rate_limit.check_rate_ip_shared") as limiter:
+            client.post("/api/unsubscribe",
+                        json={"token": "x", "email": "a@test.com", "type": "notify"})
+            assert limiter.called, "POST /api/unsubscribe is not rate limited"
+
+
+class TestInvitationEmailProvenance:
+    """An invitation is a cold mail whose display name its sender chooses.
+
+    "Epic IT Security" is a valid Google display name, and the mail links to
+    the real login page, so the account it actually came from has to be visible
+    next to the name.
+    """
+
+    def test_body_shows_the_sending_account(self):
+        from scaffold.email_sender import build_invitation_email
+        with patch.dict(os.environ, {"APP_URL": "https://example.com"}):
+            _, text, html, _ = build_invitation_email(
+                "Epic IT Security", "tok", "ABCD-EFGH", "bob@test.com",
+                inviter_email="mallory@gmail.com",
+            )
+        assert "mallory@gmail.com" in text
+        assert "mallory@gmail.com" in html
+
+    def test_display_name_is_escaped_and_bounded(self):
+        from scaffold.email_sender import MAX_INVITER_NAME, build_invitation_email
+        with patch.dict(os.environ, {"APP_URL": "https://example.com"}):
+            _, _, html, _ = build_invitation_email(
+                "<script>alert(1)</script>" + "A" * 500, "tok", "ABCD-EFGH",
+                "bob@test.com", inviter_email="mallory@gmail.com",
+            )
+        assert "<script>" not in html
+        assert "A" * (MAX_INVITER_NAME + 1) not in html
+
+    def test_still_works_without_an_inviter_address(self):
+        from scaffold.email_sender import build_invitation_email
+        with patch.dict(os.environ, {"APP_URL": "https://example.com"}):
+            subject, text, html, _ = build_invitation_email(
+                "Alice", "tok", "ABCD-EFGH", "bob@test.com")
+        assert "Alice" in subject and "Alice" in text and "Alice" in html

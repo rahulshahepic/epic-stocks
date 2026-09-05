@@ -47,9 +47,22 @@ def generate_unsubscribe_token(email: str, category: str) -> str:
 
 
 def verify_unsubscribe_token(token: str, email: str, category: str) -> bool:
+    """Constant-time check of an unsubscribe link's HMAC.
+
+    The token comes off a query string, so it is arbitrary text.
+    hmac.compare_digest raises TypeError when handed a str with any non-ASCII
+    character in it, which turned `?token=é` into an unauthenticated 500 — and
+    every 500 writes an error_logs row that pushes a real traceback out of the
+    500-row window. Compared as bytes instead: a token that is not ASCII cannot
+    equal a hex digest, so it is simply wrong rather than exceptional.
+    """
     msg = f"{email.lower().strip()}:{category}".encode()
     expected = hmac.new(_unsubscribe_secret(), msg, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(token, expected)
+    try:
+        supplied = (token or "").encode("ascii")
+    except UnicodeEncodeError:
+        return False
+    return hmac.compare_digest(supplied, expected.encode("ascii"))
 
 
 def unsubscribe_url(email: str, category: str) -> str:
@@ -129,9 +142,29 @@ def build_event_email(events: list[dict], recipient_email: str = "") -> tuple[st
     return subject, text, html, hdrs
 
 
-def build_invitation_email(inviter_name: str, token: str, short_code: str, recipient_email: str = "") -> tuple[str, str, str, dict[str, str]]:
-    """Build subject, text body, HTML body, and headers for an invitation email."""
+# How much of a display name an invitation will show. The name comes from the
+# inviter's identity provider, so it is whatever they last set it to — long
+# enough to be a name, short enough that it cannot push the disclaimer and the
+# account address out of a mail client's preview.
+MAX_INVITER_NAME = 80
+
+
+def build_invitation_email(inviter_name: str, token: str, short_code: str,
+                           recipient_email: str = "", inviter_email: str = "") -> tuple[str, str, str, dict[str, str]]:
+    """Build subject, text body, HTML body, and headers for an invitation email.
+
+    An invitation is a cold email asking a stranger to click a link and sign in,
+    and `inviter_name` is a string its sender chose at their identity provider —
+    "Epic IT Security" is a valid Google display name. It is escaped, so this is
+    not injection, but a name alone is not something a recipient can judge. The
+    account address that actually sent it goes beside the name wherever the name
+    appears, and the name itself is bounded.
+    """
     from html import escape as _esc
+    inviter_name = (inviter_name or "").strip()[:MAX_INVITER_NAME] or "Someone"
+    inviter_email = (inviter_email or "").strip()
+    # "Name (account@example.com)" wherever there is an address to show.
+    who = f"{inviter_name} ({inviter_email})" if inviter_email else inviter_name
     url = app_url()
     link = f"{url}/invite?token={token}" if url else ""
     unsub_text = _unsubscribe_footer_text(recipient_email, "invite") if recipient_email else ""
@@ -139,7 +172,7 @@ def build_invitation_email(inviter_name: str, token: str, short_code: str, recip
     hdrs = list_unsubscribe_headers(recipient_email, "invite") if recipient_email else {}
     subject = f"{inviter_name} invited you to view their equity data"
     text = (
-        f"{inviter_name} has invited you to view their equity vesting data.\n\n"
+        f"{who} has invited you to view their equity vesting data.\n\n"
         + (f"Accept the invitation: {link}\n\n" if link else "")
         + f"Or sign in and enter this code: {short_code}\n\n"
         "You can sign in with any account (Google, Microsoft, etc.) — "
@@ -154,9 +187,11 @@ def build_invitation_email(inviter_name: str, token: str, short_code: str, recip
         'color:white;border-radius:8px;text-decoration:none;font-weight:600;">Accept Invitation</a>'
     ) if link else ""
     safe_name = _esc(inviter_name)
+    safe_from = (f' <span style="color:#666;">({_esc(inviter_email)})</span>'
+                 if inviter_email else "")
     html = f"""<div style="font-family: sans-serif; max-width: 480px;">
   <h2 style="color: #4472C4;">Epic Stocks</h2>
-  <p><strong>{safe_name}</strong> has invited you to view their equity vesting data.</p>
+  <p><strong>{safe_name}</strong>{safe_from} has invited you to view their equity vesting data.</p>
   {f'<p style="margin:24px 0;">{btn}</p>' if btn else ''}
   <p style="margin-top:16px;font-size:13px;color:#666;">
     Or enter this code manually after signing in:<br>

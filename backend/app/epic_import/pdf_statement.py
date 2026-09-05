@@ -12,7 +12,9 @@ Statement layout (one row per loan, grouped by due year with a subtotal):
 Long loan names wrap onto a following line; the trailing fragment belongs to
 the name, not to the next row.
 """
+import os
 import re
+import threading
 from datetime import date
 
 from .models import ERROR, WARNING, Finding, Statement, StatementLoan
@@ -44,38 +46,188 @@ _MONTHS = {m: i for i, m in enumerate(
      "august", "september", "october", "november", "december"], start=1)}
 
 
+class _Unreadable(ValueError):
+    """A matched row carried a figure that is not a figure. Reported, never raised out."""
+
+
 def _money(s: str) -> float:
-    """'$1,234.56' -> 1234.56;  '($5.00)' -> -5.00"""
+    """'$1,234.56' -> 1234.56;  '($5.00)' -> -5.00
+
+    The row grammar admits shapes float() will not take ("1.2.3"), and this
+    text comes out of a file an anonymous caller uploaded, so a bad figure is
+    a finding rather than an exception escaping as a 500.
+    """
     neg = s.strip().startswith("(") or s.strip().startswith("-")
-    v = float(re.sub(r"[^\d.]", "", s))
+    try:
+        v = float(re.sub(r"[^\d.]", "", s))
+    except ValueError as exc:
+        raise _Unreadable(f"{s!r} is not an amount") from exc
     return -v if neg else v
 
 
+def _rate(s: str) -> float:
+    try:
+        return float(s) / 100.0
+    except ValueError as exc:
+        raise _Unreadable(f"{s!r} is not an interest rate") from exc
+
+
 def _us_date(s: str) -> date:
-    m, d, y = (int(p) for p in s.split("/"))
-    return date(y, m, d)
+    """'7/15/2027' -> date. Raises _Unreadable on 13/40/2027 and friends."""
+    try:
+        m, d, y = (int(p) for p in s.split("/"))
+        return date(y, m, d)
+    except ValueError as exc:
+        raise _Unreadable(f"{s!r} is not a date") from exc
 
 
 def _long_date(s: str) -> date | None:
+    """'March 3, 2027' -> date. None for anything that is not one.
+
+    "February 30, 2027" and "March 3, 0000" both satisfy the pattern and both
+    make date() raise, so the construction is guarded rather than the shape.
+    """
     m = re.match(r"([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})", s.strip())
     if not m or m.group(1).lower() not in _MONTHS:
         return None
-    return date(int(m.group(3)), _MONTHS[m.group(1).lower()], int(m.group(2)))
+    try:
+        return date(int(m.group(3)), _MONTHS[m.group(1).lower()], int(m.group(2)))
+    except ValueError:
+        return None
+
+
+class StatementUnreadable(ValueError):
+    """The upload is not a PDF this server will spend more time on."""
+
+
+class StatementParserBusy(RuntimeError):
+    """Every parse slot is taken. Caller should answer 503, not 500."""
+
+
+# Extracting text is the most expensive thing an anonymous caller can ask this
+# server to do — POST /api/trial/analyze takes no session — and the cost is not
+# where you would guess. Measured against this parser:
+#
+#     a real statement (the test fixture)      1.4k chars    0.05 s     ~0 MB
+#     200 loan rows over 4 pages               13.6k chars   0.42 s     25 MB
+#     64 sparse pages                          5.1k chars    0.18 s      8 MB
+#     64 dense pages (a 36 KB upload)          486k chars     24 s    ~980 MB
+#     1 page, 400k show operators (183 KB)         —         OOM      >1.5 GB
+#
+# Pages are not the driver: 64 sparse pages cost nothing and one dense page can
+# exhaust the container, which is capped at 512 MB. Characters are the driver,
+# at roughly 2 KB of resident memory each, because every glyph becomes an
+# object. So the bound that matters is on text volume, and it has to be applied
+# *before* the page is interpreted — after that the memory is already spent.
+MAX_PDF_PAGES = 16
+# Text a statement may carry, counted from the show operators in the content
+# streams. Just under twice the 200-row statement above and ~18x the real
+# fixture — a statement would need several hundred loan rows to reach it — and
+# it holds a single parse near 65 MB, so a full set of parse slots stays inside
+# the container's 512 MB alongside the rest of the app.
+MAX_TEXT_CHARS = 25_000
+# Ceiling on the pre-flight's own decompression: content streams are deflated,
+# and the one-page case above expands 183 KB into 25 MB of operators.
+MAX_CONTENT_BYTES = 4 * 1024 * 1024
+# Backstop on the extracted result, for a PDF whose cost the pre-flight could
+# not see (an encoding it could not walk, say).
+MAX_STATEMENT_LINES = 20_000
+
+# Even a bounded parse is ~80 MB, and a sync endpoint runs in a threadpool of
+# 40 — enough concurrent parses to exhaust the container on their own. Slots
+# are taken without waiting so an overloaded server sheds load instead of
+# queueing 40 deep behind it.
+PDF_PARSE_SLOTS = max(1, int(os.getenv("PDF_PARSE_SLOTS", "3")))
+_parse_slots = threading.BoundedSemaphore(PDF_PARSE_SLOTS)
+
+# A PDF string: literal (...) with escapes, or hex <...>.
+_SHOW_STRING = re.compile(rb"\((?:[^()\\]|\\.)*\)|<[0-9A-Fa-f\s]*>", re.S)
+
+
+def _measure(pdf) -> None:
+    """Reject a PDF whose text volume would cost more than it is worth.
+
+    Reads and decompresses each page's content streams — cheap, and orders of
+    magnitude below interpreting them — and counts the bytes inside text-show
+    operators. That count is an upper bound on the glyphs pdfminer would build,
+    which is what the memory is actually spent on. Costs 1-80 ms where the
+    parse it guards costs seconds.
+    """
+    from pdfminer.pdftypes import resolve1
+
+    if len(pdf.pages) > MAX_PDF_PAGES:
+        raise StatementUnreadable(
+            f"That PDF has more than {MAX_PDF_PAGES} pages — a Stock Loan "
+            f"Statement is a few. Upload just the statement."
+        )
+
+    chars = 0
+    content = 0
+    for page in pdf.pages:
+        streams = page.page_obj.contents
+        if not isinstance(streams, list):
+            streams = [streams]
+        for stream in streams:
+            try:
+                data = resolve1(stream).get_data()
+            except Exception:
+                # An unreadable stream contributes nothing we can measure; the
+                # line backstop in extract_lines still covers the result.
+                continue
+            content += len(data)
+            if content > MAX_CONTENT_BYTES:
+                raise StatementUnreadable(
+                    "That PDF holds far more drawing data than a Stock Loan Statement."
+                )
+            for match in _SHOW_STRING.finditer(data):
+                chars += len(match.group(0)) - 2
+            if chars > MAX_TEXT_CHARS:
+                raise StatementUnreadable(
+                    "That PDF holds far more text than a Stock Loan Statement."
+                )
 
 
 def extract_lines(pdf_bytes: bytes) -> list[str]:
-    """Pull ordered text lines out of the PDF, one visual row per line."""
+    """Pull ordered text lines out of the PDF, one visual row per line.
+
+    Raises StatementUnreadable for a file that is not a readable PDF or is
+    costlier than this parser will take on, StatementParserBusy when every
+    parse slot is in use, and RuntimeError only when pdfplumber is missing.
+    """
     try:
         import pdfplumber
     except ImportError as e:  # pragma: no cover - dependency is in requirements.txt
         raise RuntimeError("pdfplumber is required to read loan statement PDFs") from e
 
     import io
-    lines: list[str] = []
-    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-        for page in pdf.pages:
-            lines.extend((page.extract_text() or "").split("\n"))
-    return lines
+
+    if not _parse_slots.acquire(blocking=False):
+        raise StatementParserBusy(
+            "The importer is busy reading other statements. Try again in a moment."
+        )
+    try:
+        lines: list[str] = []
+        try:
+            with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+                _measure(pdf)
+                for page in pdf.pages:
+                    lines.extend((page.extract_text() or "").split("\n"))
+                    if len(lines) > MAX_STATEMENT_LINES:
+                        raise StatementUnreadable(
+                            "That PDF holds far more text than a Stock Loan Statement."
+                        )
+        except StatementUnreadable:
+            raise
+        except RecursionError as exc:
+            # Deeply nested objects in a crafted PDF. Not something to retry.
+            raise StatementUnreadable("That PDF could not be read.") from exc
+        except Exception as exc:
+            # pdfminer raises its own family of errors on a malformed file, and
+            # anything that reaches here is the upload's fault, not the server's.
+            raise StatementUnreadable("That PDF could not be read.") from exc
+        return lines
+    finally:
+        _parse_slots.release()
 
 
 def parse_statement_lines(lines: list[str]) -> tuple[Statement, list[Finding]]:
@@ -93,33 +245,51 @@ def parse_statement_lines(lines: list[str]) -> tuple[Statement, list[Finding]]:
         m = _ROW.match(s)
         if m:
             num = m.group("num")
+            try:
+                loan = StatementLoan(
+                    loan_number=num,
+                    name=m.group("name").strip(),
+                    balance=_money(m.group("bal")),
+                    interest_rate=_rate(m.group("rate")),
+                    interest_to_date=_money(m.group("interest")),
+                    due_date=_us_date(m.group("due")),
+                )
+            except _Unreadable as exc:
+                findings.append(Finding("L1", WARNING, num,
+                                        f"Row skipped — {exc}."))
+                continue
             if num in seen_numbers:
                 findings.append(Finding("L1", WARNING, num,
                                         "Loan number appears more than once on the statement"))
             seen_numbers.add(num)
-            st.loans.append(StatementLoan(
-                loan_number=num,
-                name=m.group("name").strip(),
-                balance=_money(m.group("bal")),
-                interest_rate=float(m.group("rate")) / 100.0,
-                interest_to_date=_money(m.group("interest")),
-                due_date=_us_date(m.group("due")),
-            ))
+            st.loans.append(loan)
             continue
 
         m = _SUBTOTAL.match(s)
         if m:
-            st.subtotals[int(m.group("year"))] = _money(m.group("amt"))
+            try:
+                st.subtotals[int(m.group("year"))] = _money(m.group("amt"))
+            except _Unreadable as exc:
+                findings.append(Finding("L1", WARNING, m.group("year"),
+                                        f"Subtotal skipped — {exc}."))
             continue
 
         m = _TOTAL_PRINCIPAL.match(s)
         if m:
-            st.total_principal = _money(m.group("amt"))
+            try:
+                st.total_principal = _money(m.group("amt"))
+            except _Unreadable as exc:
+                findings.append(Finding("L1", WARNING, "",
+                                        f"Total principal skipped — {exc}."))
             continue
 
         m = _TOTAL.match(s)
         if m:
-            st.printed_total = _money(m.group("amt"))
+            try:
+                st.printed_total = _money(m.group("amt"))
+            except _Unreadable as exc:
+                findings.append(Finding("L1", WARNING, "",
+                                        f"Total skipped — {exc}."))
             continue
 
         m = _HEADER_DATE.match(s)

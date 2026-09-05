@@ -140,10 +140,16 @@ def analyze(
     current_price: float | None = Form(default=None),
     db: Session = Depends(get_db),
 ):
-    from scaffold.rate_limit import check_rate_ip
+    from scaffold.rate_limit import check_rate_ip_shared
     from scaffold.client_ip import client_ip as _client_ip
     client_ip = _client_ip(request)
-    check_rate_ip(client_ip, "trial_analyze", max_calls=10, window_secs=300)
+    # The expensive one, but no longer the unbounded one: a parse is capped at
+    # ~0.8s and ~65 MB and PDF_PARSE_SLOTS caps concurrency, so this budget is a
+    # courtesy layer rather than the thing standing between a caller and the
+    # container. At 10 per five minutes a shared office network gets ten
+    # previews between everyone on it, which the target audience would hit on
+    # day one. 60 is ~16% of one core sustained in the worst case.
+    check_rate_ip_shared(client_ip, "trial_analyze", max_calls=60, window_secs=300)
 
     csv_bytes = _read_upload(share_csv, "share CSV")
     pdf_bytes = _read_upload(statement_pdf, "statement PDF", _PDF_MAGIC)
@@ -222,10 +228,10 @@ def analyze(
 @router.post("/save-intent", status_code=204)
 def save_intent(request: Request, db: Session = Depends(get_db)):
     """Someone pressed save on a preview and is heading for sign-in."""
-    from scaffold.rate_limit import check_rate_ip
+    from scaffold.rate_limit import check_rate_ip_shared
     from scaffold.client_ip import client_ip as _client_ip
     client_ip = _client_ip(request)
-    check_rate_ip(client_ip, "trial_save_intent", max_calls=20, window_secs=300)
+    check_rate_ip_shared(client_ip, "trial_save_intent", max_calls=120, window_secs=300)
     _bump(db, "save_clicked")
     return Response(status_code=204)
 

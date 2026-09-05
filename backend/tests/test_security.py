@@ -324,3 +324,74 @@ def test_test_login_blocked_when_app_env_production(client, monkeypatch):
     monkeypatch.setenv("APP_ENV", "production")
     resp = client.post("/api/auth/test-login", json={"email": "x@example.com"})
     assert resp.status_code == 403
+
+
+# ============================================================
+# E2E_TEST must not be settable on a real deployment
+# ============================================================
+
+def _boot_with(env: dict) -> "subprocess.CompletedProcess":
+    """Import scaffold.auth in a fresh interpreter with `env` applied.
+
+    The guard runs at import time, so it cannot be exercised by reloading the
+    module in a process that has already imported it under test settings.
+    """
+    import subprocess
+    import sys as _sys
+    backend = os.path.join(os.path.dirname(__file__), "..")
+    child_env = {**os.environ, **env}
+    return subprocess.run(
+        [_sys.executable, "-c", "import scaffold.auth"],
+        cwd=backend, env=child_env, capture_output=True, text=True,
+    )
+
+
+def test_e2e_test_with_domain_refuses_to_start():
+    """E2E_TEST=1 turns off rate limits, SSRF checks and redirect validation,
+    and registers an endpoint that mints a session for any address asked for.
+    Only that last one used to check whether it was running somewhere real."""
+    result = _boot_with({"E2E_TEST": "1", "DOMAIN": "stocks.example.com"})
+    assert result.returncode != 0
+    assert "E2E_TEST" in result.stderr
+
+
+def test_e2e_test_with_app_env_production_refuses_to_start():
+    result = _boot_with({"E2E_TEST": "1", "APP_ENV": "production",
+                         "DOMAIN": ""})
+    assert result.returncode != 0
+    assert "E2E_TEST" in result.stderr
+
+
+def test_e2e_test_alone_still_starts():
+    """The test environment itself must keep working."""
+    result = _boot_with({"E2E_TEST": "1", "DOMAIN": "", "APP_ENV": ""})
+    assert result.returncode == 0, result.stderr
+
+
+def test_real_deployment_still_starts_with_a_strong_secret():
+    result = _boot_with({
+        "E2E_TEST": "", "DOMAIN": "stocks.example.com",
+        "JWT_SECRET": "a" * 64,
+    })
+    assert result.returncode == 0, result.stderr
+
+
+# ============================================================
+# /api/config exposure
+# ============================================================
+
+def test_config_hides_sending_address_from_anonymous_callers(client, monkeypatch):
+    """Only the admin page reads resend_from, and this endpoint takes no auth."""
+    monkeypatch.setenv("RESEND_FROM", "noreply@stocks.example.com")
+    resp = client.get("/api/config")
+    assert resp.status_code == 200
+    assert resp.json()["resend_from"] == ""
+
+
+def test_config_shows_sending_address_to_an_admin(client, monkeypatch):
+    from unittest.mock import patch as upatch
+    monkeypatch.setenv("RESEND_FROM", "noreply@stocks.example.com")
+    with upatch.dict(os.environ, {"ADMIN_EMAIL": "boss@example.com"}):
+        register_user(client, "boss@example.com")
+        resp = client.get("/api/config")
+    assert resp.json()["resend_from"] == "noreply@stocks.example.com"

@@ -438,20 +438,36 @@ class EncryptionMiddleware:
     def __init__(self, app):
         self.app = app
 
+    @staticmethod
+    def _token_from_scope(scope) -> str | None:
+        """Mirror scaffold.auth._token_from_request against the raw ASGI scope.
+
+        The key has to be set here, in the ASGI context, and not in the
+        get_current_user dependency: FastAPI runs sync dependencies in a
+        threadpool, which gets a *copy* of the context, so a contextvar written
+        there is invisible to the endpoint. A native shell sends a Bearer token
+        and no cookie, so reading only the cookie left those requests keyless —
+        writing plaintext and reading placeholders for real ciphertext.
+        """
+        headers = dict(scope.get("headers", []))
+        cookie_header = headers.get(b"cookie", b"").decode()
+        for part in cookie_header.split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == "session" and v:
+                return v
+        auth_header = headers.get(b"authorization", b"").decode()
+        scheme, _, credential = auth_header.partition(" ")
+        if scheme.lower() == "bearer" and credential.strip():
+            return credential.strip()
+        return None
+
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http" and encryption_enabled():
-            headers = dict(scope.get("headers", []))
-            cookie_header = headers.get(b"cookie", b"").decode()
             db = database.SessionLocal()
             try:
                 from scaffold.crypto import reload_master_key_if_stale
                 reload_master_key_if_stale(db)
-                token = None
-                for part in cookie_header.split(";"):
-                    k, _, v = part.strip().partition("=")
-                    if k == "session":
-                        token = v
-                        break
+                token = self._token_from_scope(scope)
                 if token:
                     self._try_set_key(token, db)
             finally:
@@ -657,29 +673,20 @@ def update_my_profile(
 @_fastapi_app.post("/api/me/reset", status_code=204)
 def reset_my_data(user=Depends(get_current_user), db: Session = Depends(get_db)):
     """Delete all financial data (grants, loans, prices, sales, loan payments) but keep the account."""
-    from scaffold.models import Grant, Loan, LoanPayment, Price, Sale
-    db.query(LoanPayment).filter(LoanPayment.user_id == user.id).delete()
-    db.query(Sale).filter(Sale.user_id == user.id).delete()
-    db.query(Grant).filter(Grant.user_id == user.id).delete()
-    db.query(Loan).filter(Loan.user_id == user.id).delete()
-    db.query(Price).filter(Price.user_id == user.id).delete()
+    from scaffold.user_deletion import delete_financial_data
+    user_id = user.id
+    db.expunge_all()  # the deletes below are raw SQL; drop stale ORM state first
+    delete_financial_data(db, user_id)
     db.commit()
 
 
 @_fastapi_app.delete("/api/me", status_code=204)
 def delete_my_account(user=Depends(get_current_user), db: Session = Depends(get_db)):
     """Permanently delete account and all associated data."""
-    from scaffold.models import User, Grant, Loan, Price, PushSubscription, EmailPreference, Invitation
-    db.query(Grant).filter(Grant.user_id == user.id).delete()
-    db.query(Loan).filter(Loan.user_id == user.id).delete()
-    db.query(Price).filter(Price.user_id == user.id).delete()
-    db.query(PushSubscription).filter(PushSubscription.user_id == user.id).delete()
-    db.query(EmailPreference).filter(EmailPreference.user_id == user.id).delete()
-    # Sent invitations cascade-delete via FK; clear invitee_id on received ones
-    db.query(Invitation).filter(Invitation.invitee_id == user.id).update(
-        {Invitation.invitee_id: None, Invitation.status: "declined"}, synchronize_session=False
-    )
-    db.query(User).filter(User.id == user.id).delete()
+    from scaffold.user_deletion import delete_user
+    user_id = user.id
+    db.expunge_all()
+    delete_user(db, user_id)
     db.commit()
 
 

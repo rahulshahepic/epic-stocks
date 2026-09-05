@@ -2,7 +2,20 @@ from datetime import datetime, date, timezone
 from sqlalchemy import Integer, String, Float, BigInteger, Date, DateTime, ForeignKey, Boolean, JSON, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
-from scaffold.crypto import EncryptedFloat, EncryptedInt, EncryptedString, EncryptedDate, EncryptedJSON
+from scaffold.crypto import (
+    EncryptedFloat, EncryptedInt, EncryptedString, EncryptedDate, EncryptedJSON,
+    encryption_enabled, encrypt_user_key, generate_user_key,
+)
+
+
+def _new_user_key() -> str | None:
+    """Per-user data key for a row being inserted, or None when encryption is off.
+
+    A column default rather than something each caller remembers: a user without
+    a key writes plaintext, and that is exactly the failure the encrypted columns
+    exist to prevent.
+    """
+    return encrypt_user_key(generate_user_key()) if encryption_enabled() else None
 
 
 class User(Base):
@@ -14,7 +27,7 @@ class User(Base):
     google_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String, nullable=True)
     picture: Mapped[str] = mapped_column(String, nullable=True)
-    encrypted_key: Mapped[str | None] = mapped_column(String, nullable=True)
+    encrypted_key: Mapped[str | None] = mapped_column(String, nullable=True, default=_new_user_key)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_login: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     is_admin: Mapped[int] = mapped_column(Integer, default=0, server_default="0")

@@ -5,7 +5,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from tests.conftest import register_user
+from tests.conftest import register_user, user_key
 
 
 SUB_DATA = {
@@ -156,15 +156,16 @@ def test_get_todays_events(db_session):
 
     # Add a grant that vests starting today
     target = date(2022, 3, 1)
-    grant = Grant(
-        user_id=user.id, year=2021, type="Purchase", shares=1000, price=2.0,
-        vest_start=target, periods=3, exercise_date=date(2021, 12, 31), dp_shares=0,
-    )
-    price = Price(user_id=user.id, effective_date=date(2021, 1, 1), price=2.0)
-    db_session.add_all([grant, price])
-    db_session.commit()
+    with user_key(user):
+        grant = Grant(
+            user_id=user.id, year=2021, type="Purchase", shares=1000, price=2.0,
+            vest_start=target, periods=3, exercise_date=date(2021, 12, 31), dp_shares=0,
+        )
+        price = Price(user_id=user.id, effective_date=date(2021, 1, 1), price=2.0)
+        db_session.add_all([grant, price])
+        db_session.commit()
 
-    events = get_todays_events_for_user(user, db_session, today=target)
+        events = get_todays_events_for_user(user, db_session, today=target)
     assert len(events) > 0
     assert all(e["event_type"] in {"Vesting", "Loan Repayment", "Exercise"} for e in events)
 
@@ -178,11 +179,12 @@ def test_get_todays_events_filters_share_price(db_session):
     db_session.commit()
 
     # Only prices, no grants — only Share Price events, which should be filtered out
-    price = Price(user_id=user.id, effective_date=date(2022, 1, 1), price=5.0)
-    db_session.add(price)
-    db_session.commit()
+    with user_key(user):
+        price = Price(user_id=user.id, effective_date=date(2022, 1, 1), price=5.0)
+        db_session.add(price)
+        db_session.commit()
 
-    events = get_todays_events_for_user(user, db_session, today=date(2022, 1, 1))
+        events = get_todays_events_for_user(user, db_session, today=date(2022, 1, 1))
     assert len(events) == 0  # Share Price events are not notifiable
 
 
@@ -449,20 +451,21 @@ def test_get_events_with_advance_days(db_session):
     db_session.commit()
 
     target = date(2022, 3, 1)
-    grant = Grant(
-        user_id=user.id, year=2021, type="Purchase", shares=1000, price=2.0,
-        vest_start=target, periods=3, exercise_date=date(2031, 12, 31), dp_shares=0,
-    )
-    price = Price(user_id=user.id, effective_date=date(2021, 1, 1), price=2.0)
-    db_session.add_all([grant, price])
-    db_session.commit()
+    with user_key(user):
+        grant = Grant(
+            user_id=user.id, year=2021, type="Purchase", shares=1000, price=2.0,
+            vest_start=target, periods=3, exercise_date=date(2031, 12, 31), dp_shares=0,
+        )
+        price = Price(user_id=user.id, effective_date=date(2021, 1, 1), price=2.0)
+        db_session.add_all([grant, price])
+        db_session.commit()
 
-    # Day before with advance_days=1 should find the event
-    events = get_todays_events_for_user(user, db_session, today=target - timedelta(days=1), advance_days=1)
-    assert len(events) > 0
+        # Day before with advance_days=1 should find the event
+        events = get_todays_events_for_user(user, db_session, today=target - timedelta(days=1), advance_days=1)
+        assert len(events) > 0
 
-    # Day before without advance_days should find nothing
-    events = get_todays_events_for_user(user, db_session, today=target - timedelta(days=1), advance_days=0)
+        # Day before without advance_days should find nothing
+        events = get_todays_events_for_user(user, db_session, today=target - timedelta(days=1), advance_days=0)
     assert len(events) == 0
 
 
@@ -477,13 +480,14 @@ def _user_with_events_and_subscription(client, db_session):
     register_user(client)
     client.post("/api/push/subscribe", json=SUB_DATA)
     user = db_session.query(User).first()
-    db_session.add(Grant(
-        user_id=user.id, year=2020, type="Purchase", shares=100, price=5.0,
-        vest_start=date(2025, 3, 20), periods=5,
-        exercise_date=date(2030, 3, 20), dp_shares=0,
-    ))
-    db_session.add(Price(user_id=user.id, effective_date=date(2020, 1, 1), price=5.0))
-    db_session.commit()
+    with user_key(user):
+        db_session.add(Grant(
+            user_id=user.id, year=2020, type="Purchase", shares=100, price=5.0,
+            vest_start=date(2025, 3, 20), periods=5,
+            exercise_date=date(2030, 3, 20), dp_shares=0,
+        ))
+        db_session.add(Price(user_id=user.id, effective_date=date(2020, 1, 1), price=5.0))
+        db_session.commit()
     return user
 
 

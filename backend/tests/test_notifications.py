@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from tests.conftest import register_user
+from tests.conftest import register_user, user_key
 
 
 # ============================================================
@@ -158,10 +158,11 @@ def test_sale_included_in_todays_events(client, db_session):
     register_user(client)
     user = db_session.query(User).first()
     today = date(2026, 3, 22)
-    db_session.add(Sale(user_id=user.id, date=today, shares=200, price_per_share=42.0, notes=""))
-    db_session.commit()
+    with user_key(user):
+        db_session.add(Sale(user_id=user.id, date=today, shares=200, price_per_share=42.0, notes=""))
+        db_session.commit()
 
-    events = get_todays_events_for_user(user, db_session, today)
+        events = get_todays_events_for_user(user, db_session, today)
     sale_events = [e for e in events if e["event_type"] == "Sale"]
     assert len(sale_events) == 1
     assert sale_events[0]["shares"] == 200
@@ -175,8 +176,9 @@ def test_future_sale_not_in_todays_events(client, db_session):
 
     register_user(client)
     user = db_session.query(User).first()
-    db_session.add(Sale(user_id=user.id, date=date(2026, 3, 23), shares=100, price_per_share=42.0, notes=""))
-    db_session.commit()
+    with user_key(user):
+        db_session.add(Sale(user_id=user.id, date=date(2026, 3, 23), shares=100, price_per_share=42.0, notes=""))
+        db_session.commit()
 
     events = get_todays_events_for_user(user, db_session, date(2026, 3, 22))
     assert not any(e["event_type"] == "Sale" for e in events)
@@ -202,15 +204,16 @@ def test_send_daily_notifications_with_email(client, db_session):
     register_user(client)
     user = db_session.query(User).first()
     # Email is enabled by default for new users, no need to create preference
-    db_session.add(Grant(
-        user_id=user.id, year=2020, type="Purchase", shares=100, price=5.0,
-        vest_start=date(2025, 3, 20), periods=5,
-        exercise_date=date(2030, 3, 20), dp_shares=0,
-    ))
-    db_session.add(Price(
-        user_id=user.id, effective_date=date(2020, 1, 1), price=5.0,
-    ))
-    db_session.commit()
+    with user_key(user):
+        db_session.add(Grant(
+            user_id=user.id, year=2020, type="Purchase", shares=100, price=5.0,
+            vest_start=date(2025, 3, 20), periods=5,
+            exercise_date=date(2030, 3, 20), dp_shares=0,
+        ))
+        db_session.add(Price(
+            user_id=user.id, effective_date=date(2020, 1, 1), price=5.0,
+        ))
+        db_session.commit()
 
     with patch.dict(os.environ, {"RESEND_API_KEY": "re_test_key", "RESEND_FROM": "n@t.com"}):
         mock_response = MagicMock()

@@ -93,6 +93,24 @@ def make_client(client):
     return _make
 
 
+@contextmanager
+def user_key(user):
+    """Put `user`'s data key in the encryption contextvar for the duration.
+
+    Tests that seed rows straight through db_session bypass the request path,
+    where EncryptionMiddleware sets the key. Encrypted columns fail closed
+    without one, so wrap direct seeding (and any read of what was seeded) in
+    this rather than letting the write land as plaintext.
+    """
+    from scaffold.crypto import encryption_enabled, decrypt_user_key, set_current_key
+    if encryption_enabled() and user.encrypted_key:
+        set_current_key(decrypt_user_key(user.encrypted_key))
+    try:
+        yield
+    finally:
+        set_current_key(None)
+
+
 def register_user(client, email="test@example.com", name="Test User"):
     """Log in as a user via the E2E test-login endpoint; sets the session cookie on client."""
     resp = client.post("/api/auth/test-login", json={"email": email, "name": name})

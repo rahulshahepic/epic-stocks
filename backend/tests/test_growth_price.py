@@ -7,7 +7,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from tests.conftest import register_user
+from tests.conftest import register_user, user_key
 
 
 TODAY = date.today()
@@ -171,9 +171,10 @@ class TestShadowCleanup:
         users = db_session.query(__import__('scaffold.models', fromlist=['User']).User).all()
         assert users
         user = users[0]
-        est = Price(user_id=user.id, effective_date=YESTERDAY, price=45.0, is_estimate=True)
-        db_session.add(est)
-        db_session.commit()
+        with user_key(user):
+            est = Price(user_id=user.id, effective_date=YESTERDAY, price=45.0, is_estimate=True)
+            db_session.add(est)
+            db_session.commit()
 
         # Verify it's there
         prices = client.get("/api/prices").json()
@@ -254,9 +255,10 @@ class TestGrowthPrice:
         from scaffold.models import Price
         users = db_session.query(__import__('scaffold.models', fromlist=['User']).User).all()
         user = users[0]
-        real = Price(user_id=user.id, effective_date=NEXT_YEAR, price=58.0, is_estimate=False)
-        db_session.add(real)
-        db_session.commit()
+        with user_key(user):
+            real = Price(user_id=user.id, effective_date=NEXT_YEAR, price=58.0, is_estimate=False)
+            db_session.add(real)
+            db_session.commit()
 
         # Growth estimator should not touch the real price
         _growth_price(client, 10.0, NEXT_YEAR, TWO_YEARS)
@@ -319,9 +321,10 @@ class TestEpicCleanup:
         from scaffold.models import Price
         users = db_session.query(__import__('scaffold.models', fromlist=['User']).User).all()
         user = users[0]
-        est = Price(user_id=user.id, effective_date=YESTERDAY, price=45.0, is_estimate=True)
-        db_session.add(est)
-        db_session.commit()
+        with user_key(user):
+            est = Price(user_id=user.id, effective_date=YESTERDAY, price=45.0, is_estimate=True)
+            db_session.add(est)
+            db_session.commit()
 
         # GET /api/prices should clean it up
         prices = client.get("/api/prices").json()
@@ -334,9 +337,10 @@ class TestEpicCleanup:
         from scaffold.models import Price
         users = db_session.query(__import__('scaffold.models', fromlist=['User']).User).all()
         user = users[0]
-        est = Price(user_id=user.id, effective_date=YESTERDAY, price=45.0, is_estimate=True)
-        db_session.add(est)
-        db_session.commit()
+        with user_key(user):
+            est = Price(user_id=user.id, effective_date=YESTERDAY, price=45.0, is_estimate=True)
+            db_session.add(est)
+            db_session.commit()
 
         prices = client.get("/api/prices").json()
         assert any(p["effective_date"] == str(YESTERDAY) and p["is_estimate"] for p in prices)
@@ -350,9 +354,10 @@ class TestEpicCleanup:
             return  # No users in this test — skip
 
         user = users[0]
-        est = Price(user_id=user.id, effective_date=YESTERDAY, price=45.0, is_estimate=True)
-        db_session.add(est)
-        db_session.commit()
+        with user_key(user):
+            est = Price(user_id=user.id, effective_date=YESTERDAY, price=45.0, is_estimate=True)
+            db_session.add(est)
+            db_session.commit()
 
         # Epic mode OFF: helper does nothing
         result = _cleanup_epic_past_estimates(db_session)
@@ -365,9 +370,10 @@ class TestEpicCleanup:
         from scaffold.models import Price
         users = db_session.query(__import__('scaffold.models', fromlist=['User']).User).all()
         user = users[0]
-        est = Price(user_id=user.id, effective_date=YESTERDAY, price=45.0, is_estimate=True)
-        db_session.add(est)
-        db_session.commit()
+        with user_key(user):
+            est = Price(user_id=user.id, effective_date=YESTERDAY, price=45.0, is_estimate=True)
+            db_session.add(est)
+            db_session.commit()
 
         from app.routers.prices import _cleanup_epic_past_estimates
         deleted = _cleanup_epic_past_estimates(db_session)
@@ -383,9 +389,10 @@ class TestEpicCleanup:
         from scaffold.models import Price
         users = db_session.query(__import__('scaffold.models', fromlist=['User']).User).all()
         user = users[0]
-        future_est = Price(user_id=user.id, effective_date=NEXT_YEAR, price=60.0, is_estimate=True)
-        db_session.add(future_est)
-        db_session.commit()
+        with user_key(user):
+            future_est = Price(user_id=user.id, effective_date=NEXT_YEAR, price=60.0, is_estimate=True)
+            db_session.add(future_est)
+            db_session.commit()
 
         prices = client.get("/api/prices").json()
         assert any(p["effective_date"] == str(NEXT_YEAR) and p["is_estimate"] for p in prices)

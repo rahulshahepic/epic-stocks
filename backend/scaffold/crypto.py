@@ -283,6 +283,47 @@ def get_current_key() -> bytearray | None:
     return _current_key.get()
 
 
+class EncryptionKeyMissing(RuntimeError):
+    """No per-user key in context for a column that is encrypted at rest.
+
+    Raised rather than silently falling back, because both fallbacks are worse
+    than a 500: writing would persist the user's financial data in plaintext,
+    and reading would hand the caller a placeholder (0.0, 0, None) that is
+    indistinguishable from a real value. The global exception handler turns
+    this into an error_ref the user can report.
+    """
+
+
+def _key_for_write(column: str) -> bytearray | None:
+    """Key to encrypt an outbound value with, or None when encryption is off."""
+    key = get_current_key()
+    if key:
+        return key
+    if encryption_enabled():
+        raise EncryptionKeyMissing(
+            f"{column}: encryption is configured but no user key is in context; "
+            "refusing to write plaintext"
+        )
+    return None
+
+
+def _key_for_read(value, column: str) -> bytearray | None:
+    """Key to decrypt an inbound value with.
+
+    Ciphertext without a key is always fatal — there is no correct value to
+    return — regardless of whether the KEK is currently configured.
+    """
+    key = get_current_key()
+    if key:
+        return key
+    if isinstance(value, str) and value.startswith(_ENC_PREFIX):
+        raise EncryptionKeyMissing(
+            f"{column}: value is encrypted but no user key is in context; "
+            "refusing to return a placeholder"
+        )
+    return None
+
+
 # ── Field-level encryption ────────────────────────────────────────────────────
 
 def encrypt_value(plaintext: str, key: bytes) -> str:
@@ -319,7 +360,11 @@ def _decrypt_with_kek(ciphertext: str) -> str:
     return _kek_aesgcm().decrypt(data[:12], data[12:], None).decode()
 
 
-# ── SQLAlchemy TypeDecorators ─────────────────────────────────────────────────
+# ── SQLAlchemy TypeDecorators ─────────────────────────────────────────────
+#
+# Every decorator fails closed: with encryption configured, a missing key
+# raises EncryptionKeyMissing instead of silently storing plaintext or
+# returning a placeholder for ciphertext it cannot read.
 
 class EncryptedFloat(TypeDecorator):
     """Float stored encrypted at rest. Transparent to application code."""
@@ -329,23 +374,18 @@ class EncryptedFloat(TypeDecorator):
     def process_bind_param(self, value, dialect):
         if value is None:
             return None
-        key = get_current_key()
-        if key:
-            return encrypt_value(str(value), key)
-        return str(value)
+        key = _key_for_write("EncryptedFloat")
+        return encrypt_value(str(value), key) if key else str(value)
 
     def process_result_value(self, value, dialect):
         if value is None:
             return None
         if isinstance(value, (int, float)):
             return float(value)
-        key = get_current_key()
+        key = _key_for_read(value, "EncryptedFloat")
         if key and value.startswith(_ENC_PREFIX):
             return float(decrypt_value(value, key))
-        try:
-            return float(value)
-        except (ValueError, TypeError):
-            return 0.0
+        return float(value)
 
 
 class EncryptedInt(TypeDecorator):
@@ -356,23 +396,18 @@ class EncryptedInt(TypeDecorator):
     def process_bind_param(self, value, dialect):
         if value is None:
             return None
-        key = get_current_key()
-        if key:
-            return encrypt_value(str(int(value)), key)
-        return str(int(value))
+        key = _key_for_write("EncryptedInt")
+        return encrypt_value(str(int(value)), key) if key else str(int(value))
 
     def process_result_value(self, value, dialect):
         if value is None:
             return None
         if isinstance(value, (int, float)):
             return int(value)
-        key = get_current_key()
+        key = _key_for_read(value, "EncryptedInt")
         if key and value.startswith(_ENC_PREFIX):
             return int(decrypt_value(value, key))
-        try:
-            return int(float(value))
-        except (ValueError, TypeError):
-            return 0
+        return int(float(value))
 
 
 class EncryptedString(TypeDecorator):
@@ -383,15 +418,13 @@ class EncryptedString(TypeDecorator):
     def process_bind_param(self, value, dialect):
         if value is None:
             return None
-        key = get_current_key()
-        if key:
-            return encrypt_value(value, key)
-        return value
+        key = _key_for_write("EncryptedString")
+        return encrypt_value(value, key) if key else value
 
     def process_result_value(self, value, dialect):
         if value is None:
             return None
-        key = get_current_key()
+        key = _key_for_read(value, "EncryptedString")
         if key and isinstance(value, str) and value.startswith(_ENC_PREFIX):
             return decrypt_value(value, key)
         return value
@@ -406,17 +439,15 @@ class EncryptedDate(TypeDecorator):
         if value is None:
             return None
         s = value.isoformat() if isinstance(value, date) else str(value)
-        key = get_current_key()
-        if key:
-            return encrypt_value(s, key)
-        return s
+        key = _key_for_write("EncryptedDate")
+        return encrypt_value(s, key) if key else s
 
     def process_result_value(self, value, dialect):
         if value is None:
             return None
         if isinstance(value, date):
             return value
-        key = get_current_key()
+        key = _key_for_read(value, "EncryptedDate")
         if key and isinstance(value, str) and value.startswith(_ENC_PREFIX):
             value = decrypt_value(value, key)
         try:
@@ -434,17 +465,15 @@ class EncryptedJSON(TypeDecorator):
         if value is None:
             return None
         s = value if isinstance(value, str) else json.dumps(value)
-        key = get_current_key()
-        if key:
-            return encrypt_value(s, key)
-        return s
+        key = _key_for_write("EncryptedJSON")
+        return encrypt_value(s, key) if key else s
 
     def process_result_value(self, value, dialect):
         if value is None:
             return None
         if isinstance(value, (dict, list)):
             return value
-        key = get_current_key()
+        key = _key_for_read(value, "EncryptedJSON")
         if key and isinstance(value, str) and value.startswith(_ENC_PREFIX):
             value = decrypt_value(value, key)
         try:

@@ -159,7 +159,8 @@ class CallbackRequest(BaseModel):
 def auth_callback(body: CallbackRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     """Exchange PKCE authorization code for a JWT; set it as an HttpOnly session cookie."""
     from scaffold.rate_limit import check_rate_ip
-    client_ip = request.client.host if request.client else "unknown"
+    from scaffold.client_ip import client_ip as _client_ip
+    client_ip = _client_ip(request)
     check_rate_ip(client_ip, "auth_callback", max_calls=20, window_secs=900)
     _validate_redirect_uri(body.redirect_uri)
     from scaffold.providers.auth import get_provider

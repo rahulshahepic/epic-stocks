@@ -129,6 +129,7 @@ jobs:
             REDIS_PASSWORD=${REDIS_PASSWORD}
             UNSUBSCRIBE_SECRET=${UNSUBSCRIBE_SECRET}
             TRUSTED_PROXY_IPS=${{ vars.TRUSTED_PROXY_IPS }}
+            TRUSTED_PROXY_HOPS=${{ vars.TRUSTED_PROXY_HOPS || '1' }}
 
             APP_ENV=${{ vars.APP_ENV || 'production' }}
             EPIC_MODE=${{ vars.EPIC_MODE }}

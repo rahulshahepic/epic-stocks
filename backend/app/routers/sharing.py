@@ -49,7 +49,8 @@ def invite_info(
 ):
     """Look up invitation by token or code. Returns inviter name + status. No auth required."""
     from scaffold.rate_limit import check_rate_ip
-    client_ip = request.client.host if request and request.client else "unknown"
+    from scaffold.client_ip import client_ip as _client_ip
+    client_ip = _client_ip(request) if request else "unknown"
     check_rate_ip(client_ip, "sharing_invite_info", max_calls=20, window_secs=900)
     if not token and not code:
         raise HTTPException(400, "Provide token or code")
@@ -234,7 +235,8 @@ def accept_invite(
     db: Session = Depends(get_db),
 ):
     from scaffold.rate_limit import check_rate_ip
-    client_ip = request.client.host if request.client else "unknown"
+    from scaffold.client_ip import client_ip as _client_ip
+    client_ip = _client_ip(request)
     check_rate_ip(client_ip, "sharing_accept", max_calls=20, window_secs=900)
     if not body.token and not body.code:
         raise HTTPException(400, "Provide token or code")

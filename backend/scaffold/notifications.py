@@ -112,6 +112,13 @@ def send_push(subscription: PushSubscription, payload: dict) -> PushResult:
     if not VAPID_PRIVATE_KEY:
         logger.warning("VAPID_PRIVATE_KEY not set, skipping push")
         return PushResult.FAILED
+    # Re-checked here and not only at subscribe time: DNS moves. A host that
+    # was public when the subscription was stored can point at loopback or the
+    # metadata service months later, and subscriptions are long-lived.
+    from scaffold.push_endpoints import is_sendable
+    if not is_sendable(subscription.endpoint):
+        logger.warning("Refusing to send push to a non-public endpoint")
+        return PushResult.FAILED
     try:
         from pywebpush import webpush, WebPushException
 

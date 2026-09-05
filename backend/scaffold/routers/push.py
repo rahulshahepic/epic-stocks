@@ -6,12 +6,27 @@ from database import get_db
 from scaffold.models import User, PushSubscription
 from schemas import PushSubscriptionCreate, PushSubscriptionOut
 from scaffold.auth import get_current_user
+from scaffold.push_endpoints import PushEndpointRejected, validate_push_endpoint
 
 router = APIRouter(prefix="/api/push", tags=["push"])
 
 
+def _checked_endpoint(endpoint: str) -> str:
+    """Refuse an endpoint the server must not be made to POST to.
+
+    The endpoint is a URL chosen by the caller and later fetched by this
+    server, so an unchecked one is an authenticated SSRF. 422 rather than 400:
+    it is a body-validation failure like any other.
+    """
+    try:
+        return validate_push_endpoint(endpoint)
+    except PushEndpointRejected as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
 @router.post("/subscribe", response_model=PushSubscriptionOut, status_code=201)
 def subscribe(body: PushSubscriptionCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _checked_endpoint(body.endpoint)
     existing = db.query(PushSubscription).filter(
         PushSubscription.endpoint == body.endpoint,
         PushSubscription.user_id == user.id,

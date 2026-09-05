@@ -351,3 +351,101 @@ def test_unauthenticated_endpoints_use_the_shared_limiter():
         assert "check_rate_ip_shared" in src, f"{module.__name__} lost its shared limiter"
         # The per-process variant must not linger on an anonymous route.
         assert "check_rate_ip(" not in src, f"{module.__name__} still calls check_rate_ip"
+
+
+# ── Behind Cloudflare ───────────────────────────────────────────────────────
+#
+# Chain: user -> Cloudflare -> Caddy -> app. Cloudflare appends the caller to
+# X-Forwarded-For and Caddy appends Cloudflare's edge address, so the caller is
+# the second entry from the right, not the first. TRUSTED_PROXY_HOPS defaults
+# to 1 in both docker-compose.yml and deploy.yml, and at 1 every caller on
+# earth resolves to a Cloudflare edge address — the anonymous limits collapse
+# into a handful of shared buckets and nothing says so.
+
+REAL_USER = "203.0.113.50"
+CF_EDGE = "172.71.10.5"
+CADDY = "10.9.0.2"
+
+
+def _cloudflare_request(cf_connecting_ip=REAL_USER, forwarded=None, peer=CADDY):
+    req = _Req(peer=peer, forwarded=forwarded or f"{REAL_USER}, {CF_EDGE}")
+    if cf_connecting_ip:
+        req.headers["CF-Connecting-IP"] = cf_connecting_ip
+    return req
+
+
+def test_one_hop_behind_cloudflare_resolves_the_edge_not_the_user(monkeypatch):
+    """The misconfiguration this is all about — pinned so it stays visible."""
+    monkeypatch.delenv("CLIENT_IP_HEADER", raising=False)
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "1")
+    assert client_ip(_cloudflare_request()) == CF_EDGE
+
+
+def test_two_hops_behind_cloudflare_resolves_the_user(monkeypatch):
+    monkeypatch.delenv("CLIENT_IP_HEADER", raising=False)
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "2")
+    assert client_ip(_cloudflare_request()) == REAL_USER
+
+
+def test_cf_connecting_ip_is_used_when_configured(monkeypatch):
+    """One address, no counting — the hop setting stops mattering."""
+    monkeypatch.setenv("CLIENT_IP_HEADER", "CF-Connecting-IP")
+    for hops in ("0", "1", "2", "3"):
+        monkeypatch.setenv("TRUSTED_PROXY_HOPS", hops)
+        assert client_ip(_cloudflare_request()) == REAL_USER, f"wrong at hops={hops}"
+
+
+def test_cf_connecting_ip_survives_a_client_supplied_forwarded_prefix(monkeypatch):
+    """Cloudflare preserves an XFF the client sent, then appends the real one."""
+    monkeypatch.setenv("CLIENT_IP_HEADER", "CF-Connecting-IP")
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "2")
+    req = _cloudflare_request(forwarded=f"9.9.9.9, {REAL_USER}, {CF_EDGE}")
+    assert client_ip(req) == REAL_USER
+
+
+def test_configured_header_falls_back_when_absent(monkeypatch):
+    """A request that never went through the proxy still gets the best answer."""
+    monkeypatch.setenv("CLIENT_IP_HEADER", "CF-Connecting-IP")
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "2")
+    req = _cloudflare_request(cf_connecting_ip=None)
+    assert client_ip(req) == REAL_USER  # via the hop fallback
+
+
+def test_garbage_in_the_configured_header_does_not_become_a_bucket(monkeypatch):
+    monkeypatch.setenv("CLIENT_IP_HEADER", "CF-Connecting-IP")
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "2")
+    req = _cloudflare_request(cf_connecting_ip="not-an-address")
+    assert client_ip(req) == REAL_USER  # falls through rather than trusting it
+
+
+def test_resolve_reports_where_the_address_came_from(monkeypatch):
+    from scaffold.client_ip import resolve_client_ip
+
+    monkeypatch.setenv("CLIENT_IP_HEADER", "CF-Connecting-IP")
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "2")
+    ip, source = resolve_client_ip(_cloudflare_request())
+    assert (ip, source) == (REAL_USER, "header:CF-Connecting-IP")
+
+    monkeypatch.delenv("CLIENT_IP_HEADER", raising=False)
+    ip, source = resolve_client_ip(_cloudflare_request())
+    assert (ip, source) == (REAL_USER, "x-forwarded-for[-2]")
+
+
+def test_every_cloudflare_user_would_share_one_bucket_at_one_hop(monkeypatch):
+    """Why the misconfiguration matters, not just that it happens."""
+    monkeypatch.delenv("CLIENT_IP_HEADER", raising=False)
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "1")
+    buckets = {
+        rate_limit._ip_bucket(client_ip(_cloudflare_request(
+            forwarded=f"203.0.113.{n}, {CF_EDGE}")))
+        for n in range(1, 40)
+    }
+    assert buckets == {CF_EDGE}, "39 distinct callers should have collapsed to the edge"
+
+    monkeypatch.setenv("CLIENT_IP_HEADER", "CF-Connecting-IP")
+    buckets = {
+        rate_limit._ip_bucket(client_ip(_cloudflare_request(
+            cf_connecting_ip=f"203.0.113.{n}", forwarded=f"203.0.113.{n}, {CF_EDGE}")))
+        for n in range(1, 40)
+    }
+    assert len(buckets) == 39, "each caller should get its own bucket"

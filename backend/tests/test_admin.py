@@ -687,3 +687,61 @@ def test_admin_test_notify_rate_limited(client, make_client, db_session):
     for k in ("test_notify_counts", "test_notify_target_counts"):
         db_session.execute(text(f"DELETE FROM system_settings WHERE key = '{k}'"))
     db_session.commit()
+
+
+# ============================================================
+# Client IP diagnostics
+# ============================================================
+
+def test_admin_client_ip_reports_a_misconfigured_proxy_chain(client, monkeypatch):
+    """Behind Cloudflare at one hop, the app resolves the edge, not the caller.
+
+    That failure is silent everywhere else, so the endpoint has to name it.
+    """
+    monkeypatch.delenv("CLIENT_IP_HEADER", raising=False)
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "1")
+    with _admin_env():
+        _register_admin(client)
+        resp = client.get("/api/admin/client-ip", headers={
+            "X-Forwarded-For": "203.0.113.50, 172.71.10.5",
+            "CF-Connecting-IP": "203.0.113.50",
+        })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["resolved_ip"] == "172.71.10.5"
+    assert data["looks_correct"] is False
+    assert "CF-Connecting-IP" in data["note"]
+
+
+def test_admin_client_ip_reports_a_correct_chain(client, monkeypatch):
+    monkeypatch.setenv("CLIENT_IP_HEADER", "CF-Connecting-IP")
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "2")
+    with _admin_env():
+        _register_admin(client)
+        resp = client.get("/api/admin/client-ip", headers={
+            "X-Forwarded-For": "203.0.113.50, 172.71.10.5",
+            "CF-Connecting-IP": "203.0.113.50",
+        })
+    data = resp.json()
+    assert data["resolved_ip"] == "203.0.113.50"
+    assert data["source"] == "header:CF-Connecting-IP"
+    assert data["looks_correct"] is True
+
+
+def test_admin_client_ip_echoes_only_address_headers(client, monkeypatch):
+    """It reflects request headers back, so it must not reflect the session."""
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "1")
+    with _admin_env():
+        _register_admin(client)
+        resp = client.get("/api/admin/client-ip", headers={
+            "X-Forwarded-For": "203.0.113.50, 172.71.10.5",
+            "X-Secret-Header": "should-not-appear",
+        })
+    body = resp.text
+    assert "should-not-appear" not in body
+    assert "cookie" not in {k.lower() for k in resp.json()["observed_headers"]}
+
+
+def test_admin_client_ip_requires_admin(client):
+    register_user(client, "notadmin@example.com")
+    assert client.get("/api/admin/client-ip").status_code == 403

@@ -3,7 +3,7 @@ import logging
 import os
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 logger = logging.getLogger(__name__)
@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from database import get_db
 from scaffold.models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, ErrorLog, UserReport, EmailPreference, SystemMetric, TaxSettings, LoanPayment, Sale, TipAcceptance, Invitation, InvitationOptOut, InviteSendingBlock
 from scaffold.auth import get_admin_user, get_admin_emails
+from scaffold.client_ip import UNKNOWN
 from scaffold.maintenance import is_maintenance_active, set_maintenance
 from scaffold.epic_mode import is_epic_mode, set_epic_mode
 
@@ -597,6 +598,77 @@ def admin_test_notify(
                 email_skipped_reason = "send failed (check server logs)"
 
     return TestNotifyResult(push_sent=push_sent, push_failed=push_failed, email_sent=email_sent, email_skipped_reason=email_skipped_reason)
+
+
+# ============================================================
+# Client IP diagnostics
+# ============================================================
+
+class ClientIpReport(BaseModel):
+    resolved_ip: str
+    rate_limit_bucket: str
+    source: str
+    client_ip_header: str | None
+    trusted_proxy_hops: int
+    observed_headers: dict[str, str]
+    socket_peer: str | None
+    looks_correct: bool
+    note: str
+
+
+@router.get("/client-ip", response_model=ClientIpReport)
+def admin_client_ip(request: Request, admin: User = Depends(get_admin_user)):
+    """What the app believes about the caller's address, and why.
+
+    Getting the proxy configuration wrong fails silently and in the worst
+    direction: behind Cloudflare with TRUSTED_PROXY_HOPS left at 1, every
+    caller resolves to a Cloudflare edge address and the anonymous rate limits
+    collapse into a handful of shared buckets. Nothing in a log makes that
+    obvious, so this endpoint states it outright — open it from your own
+    browser and check that resolved_ip is the address you actually browse from.
+
+    Only the address-bearing headers are echoed, never the whole request.
+    """
+    from scaffold.client_ip import configured_ip_header, resolve_client_ip, trusted_proxy_hops
+    from scaffold.rate_limit import _ip_bucket
+
+    resolved, source = resolve_client_ip(request)
+    header_name = configured_ip_header()
+    interesting = ("cf-connecting-ip", "x-forwarded-for", "x-real-ip", "true-client-ip")
+    observed = {k: v for k, v in request.headers.items() if k.lower() in interesting}
+    peer = request.client.host if request.client else None
+
+    # The failure this exists to catch: a resolved address that is the proxy's
+    # rather than a caller's.
+    forwarded = [p.strip() for p in observed.get("x-forwarded-for", "").split(",") if p.strip()]
+    resolved_is_last_hop = bool(forwarded) and resolved == forwarded[-1] and len(forwarded) > 1
+    looks_correct = resolved != UNKNOWN and resolved != peer and not resolved_is_last_hop
+
+    if resolved == UNKNOWN:
+        note = ("No address could be established, so every anonymous caller shares one "
+                "bucket. Check TRUSTED_PROXY_HOPS against the proxies actually in front.")
+    elif resolved_is_last_hop:
+        note = ("The resolved address is the last entry in X-Forwarded-For, which is the "
+                "nearest proxy rather than the caller. Behind Cloudflare set "
+                "CLIENT_IP_HEADER=CF-Connecting-IP, or raise TRUSTED_PROXY_HOPS to 2.")
+    elif resolved == peer:
+        note = ("The resolved address is the socket peer, which behind any reverse proxy "
+                "is the proxy itself. Set TRUSTED_PROXY_HOPS to the number of proxies in front.")
+    else:
+        note = ("Confirm resolved_ip is the address you are browsing from. If it is not, "
+                "the anonymous rate limits are keyed on the wrong thing.")
+
+    return ClientIpReport(
+        resolved_ip=resolved,
+        rate_limit_bucket=_ip_bucket(resolved),
+        source=source,
+        client_ip_header=header_name or None,
+        trusted_proxy_hops=trusted_proxy_hops(),
+        observed_headers=observed,
+        socket_peer=peer,
+        looks_correct=looks_correct,
+        note=note,
+    )
 
 
 # ============================================================

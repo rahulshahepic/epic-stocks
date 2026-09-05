@@ -79,6 +79,10 @@ services:
       # Caddy is always in front in this topology, so one hop is the floor;
       # set 2 when Cloudflare proxies to Caddy. See scaffold/client_ip.py.
       - TRUSTED_PROXY_HOPS=${TRUSTED_PROXY_HOPS:-1}
+      # Behind Cloudflare set this to CF-Connecting-IP, which carries exactly
+      # the original caller and removes the hop arithmetic. Only safe when the
+      # origin is firewalled to the proxy — see scaffold/client_ip.py.
+      - CLIENT_IP_HEADER=${CLIENT_IP_HEADER:-}
       - EPIC_MODE=${EPIC_MODE:-}
       - CACHE_INVALIDATE_SECRET=${CACHE_INVALIDATE_SECRET:-}
       - APP_URL=${APP_URL:-}

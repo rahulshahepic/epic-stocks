@@ -36,13 +36,36 @@ def _too_many() -> HTTPException:
     return HTTPException(status_code=429, detail="Too many requests — please slow down")
 
 
+_redis_client = None
+_redis_checked = False
+
+
 def _redis():
-    """The shared Redis client, or None when it is not configured or is down."""
-    try:
-        from app import event_cache
-        return event_cache._client
-    except Exception:
+    """A Redis client for the counters, or None when REDIS_URL is not set.
+
+    Connects on its own rather than borrowing app.event_cache's client:
+    scaffold is the forkable infra layer and must not import app (enforced by
+    .importlinter). A second pool against the same server costs a connection
+    and keeps the layering honest.
+    """
+    global _redis_client, _redis_checked
+    if _redis_checked:
+        return _redis_client
+    _redis_checked = True
+    url = os.getenv("REDIS_URL", "")
+    if not url:
         return None
+    try:
+        import redis
+        client = redis.Redis.from_url(
+            url, decode_responses=True, socket_connect_timeout=3, socket_timeout=3
+        )
+        client.ping()
+        _redis_client = client
+    except Exception:
+        logger.warning("Redis unavailable for rate limiting, using the DB fallback", exc_info=True)
+        _redis_client = None
+    return _redis_client
 
 
 def _check_rate_redis(client, key: str, max_calls: int, window_secs: int) -> bool:

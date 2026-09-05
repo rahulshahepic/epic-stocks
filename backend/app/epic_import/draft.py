@@ -163,11 +163,36 @@ def derive_draft(statement: Statement | None, rows: list[ShareRow],
 
     for row in rows:
         year, gtype = row.year, row.grant_type
-        if year is None:
+        if gtype is None:
             findings.append(Finding("G1", WARNING, row.label,
                                     f"No grant type mapping for this category — "
                                     f"{row.shares_granted:,} shares not imported."))
             continue
+        if year is None:
+            # A one-time award (rule G1): its label carries no year, so the
+            # year comes from the company's own template for this type.
+            candidate_years = sorted({t.year for t in sk.templates if t.type == gtype})
+            if len(candidate_years) == 1:
+                year = row.year = candidate_years[0]
+                findings.append(Finding("G1", INFO, row.label,
+                                        f"This category's label carries no year — a one-time "
+                                        f"award — so the {year} company template for {gtype} "
+                                        f"was used."))
+            elif not candidate_years:
+                findings.append(Finding("G1", ERROR, row.label,
+                                        f"This category's label carries no year, and there is "
+                                        f"no company template for {gtype} to infer one from — "
+                                        f"{row.shares_granted:,} shares not imported. An admin "
+                                        f"must add a template."))
+                continue
+            else:
+                findings.append(Finding("G1", WARNING, row.label,
+                                        f"This category's label carries no year, and more than "
+                                        f"one company template exists for {gtype} "
+                                        f"({', '.join(map(str, candidate_years))}) — cannot "
+                                        f"tell which applies, so {row.shares_granted:,} shares "
+                                        f"were not imported."))
+                continue
 
         ps = basis_per_share(row) or 0.0
         vest_taxed, why = is_vest_taxed(row)

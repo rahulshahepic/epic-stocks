@@ -23,6 +23,7 @@ from app.epic_import import (build_prompt, build_skeleton, derive_draft, reconci
                              draft_from_payload, is_blocked, parse_share_csv,
                              parse_statement_lines, parse_statement_pdf,
                              to_wizard_payload, validate_draft)
+from app.epic_import.models import ShareRow
 from app.epic_import.rules import (DownPayment, attribute_loan, classify_row,
                                    down_payment_in_stock, is_vest_taxed,
                                    parse_loan_name, reconcile_down_payments)
@@ -169,10 +170,54 @@ def test_unused_categories_are_dropped():
     # The developer label must not be swallowed by the plain bonus rule.
     ("2020 Developer Bonus Shares", (2020, "Developer Bonus Shares")),
     ("2021 developer bonus shares", (2021, "Developer Bonus Shares")),
+    # A one-time award (a new-hire bonus) carries no year at all in its label.
+    ("Developer Bonus Shares", (None, "Developer Bonus Shares")),
+    ("developer bonus shares", (None, "Developer Bonus Shares")),
     ("2019 Legacy Award Conversion", (None, None)),
 ])
 def test_row_labels_map_to_grant_types(label, expected):
     assert classify_row(label) == expected
+
+
+def _one_row(label, shares=17_750, basis=0.0):
+    return ShareRow(label=label, shares_granted=shares, shares_sold=0,
+                    shares_remaining=shares, shares_83b=0, cost_basis=basis,
+                    loan_balance=None, loan_due_year=None, vested=[],
+                    unvested_value=[], annual_interest_due=None)
+
+
+def _with_dev_bonus_templates(*years):
+    templates = list(CONTENT["grant_templates"]) + [
+        {"year": y, "type": "Developer Bonus Shares", "vest_start": f"{y + 1}-09-30",
+         "periods": 4, "exercise_date": f"{y}-12-31", "default_catch_up": False,
+         "show_dp_shares": False, "default_purchase_due_date": None,
+         "default_tax_due_date": None}
+        for y in years]
+    return {"grant_templates": templates, "bonus_schedule_variants": [],
+            "loan_rates": CONTENT["loan_rates"]}
+
+
+def test_yearless_developer_bonus_resolves_to_the_one_company_template():
+    sk, _ = build_skeleton(_with_dev_bonus_templates(2019))
+    draft, findings = derive_draft(None, [_one_row("Developer Bonus Shares")], sk)
+    assert len(draft.grants) == 1
+    g = draft.grants[0]
+    assert (g.year, g.type, g.shares) == (2019, "Developer Bonus Shares", 17_750)
+    assert any(f.code == "G1" and f.severity == "info" and "2019" in f.message
+              for f in findings)
+
+
+def test_yearless_developer_bonus_with_no_template_is_an_error(skeleton):
+    draft, findings = derive_draft(None, [_one_row("Developer Bonus Shares")], skeleton)
+    assert draft.grants == []
+    assert any(f.code == "G1" and f.severity == "error" for f in findings)
+
+
+def test_yearless_developer_bonus_with_multiple_templates_is_ambiguous():
+    sk, _ = build_skeleton(_with_dev_bonus_templates(2018, 2019))
+    draft, findings = derive_draft(None, [_one_row("Developer Bonus Shares")], sk)
+    assert draft.grants == []
+    assert any(f.code == "G1" and f.severity == "warning" for f in findings)
 
 
 def test_developer_bonus_loans_are_attributed_to_their_own_grant():

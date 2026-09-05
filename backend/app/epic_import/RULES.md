@@ -46,6 +46,14 @@ mapping has never seen, naming the shares that were therefore not imported. Epic
 lists every category for every employee, so rows with no share count are skipped
 silently — only a populated row nobody can classify is reported.
 
+A bare `Developer Bonus Shares`, with no year at all, is a one-time award (a
+new-hire bonus, granted once) rather than an annual program — there is nothing
+to parse a year out of. The year comes from the company's own template for
+that type instead: **info** when exactly one exists and is used, **error**
+when none exists (an admin must add one), **warning** when more than one
+exists and which applies cannot be told — in the last two cases the shares are
+not imported.
+
 ### `G2` — Shares Granted → `grant.shares`, and shares nothing accounts for
 Straight read. Nothing in either file can check a share count against anything
 else, which is why sign-off shows rendered figures rather than a row of ticks.

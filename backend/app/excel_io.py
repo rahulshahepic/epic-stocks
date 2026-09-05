@@ -109,6 +109,9 @@ def read_all_from_excel(filepath):
 # WRITER
 # ============================================================
 
+# Characters a spreadsheet treats as the start of a formula.
+FORMULA_LEADS = ("=", "+", "-", "@", "\t", "\r")
+
 _SCHED_ROW_OFFSET = 2
 _PRICE_ROW_OFFSET = 2
 _LOAN_ROW_OFFSET = 2
@@ -143,15 +146,20 @@ def write_events_to_excel(filepath, events, prices):
         src = evt.get('source') or {}
         src_type = src.get('type')
 
-        def w(col, val):
+        def w(col, val, formula=False):
             c = ws.cell(row=row, column=col)
-            # Sanitize user-controlled strings; exclude "=" since server intentionally writes formula cells
-            if isinstance(val, str) and val[:1] in ("+", "-", "@", "\t", "\r"):
+            # Everything is text unless the caller asks for a formula: a grant
+            # type starting with "=" is user input, not something to evaluate.
+            if not formula and isinstance(val, str) and val[:1] in FORMULA_LEADS:
                 val = "'" + val
             c.value = val
             c.fill = fill
             c.font = font
             c.number_format = col_nf.get(col, 'General')
+
+        def wf(col, val):
+            """Write a server-authored formula."""
+            w(col, val, formula=True)
 
         w(1, evt['date'])
         w(2, evt['grant_year'])
@@ -164,46 +172,46 @@ def write_events_to_excel(filepath, events, prices):
         pcr = src['prev_index'] + _PRICE_ROW_OFFSET if src_type == 'price' else None
 
         if evt['event_type'] == 'Exercise' and sr:
-            w(5, f'=Schedule!C{sr}')
-            w(6, f'=Schedule!D{sr}')
-            w(7, f'=IF(Schedule!D{sr}=0,0,Schedule!D{sr})')
+            wf(5, f'=Schedule!C{sr}')
+            wf(6, f'=Schedule!D{sr}')
+            wf(7, f'=IF(Schedule!D{sr}=0,0,Schedule!D{sr})')
             w(8, None)
         elif evt['event_type'] == 'Down payment exchange' and sr:
             w(5, None); w(6, None); w(7, None)
-            w(8, f'=Schedule!H{sr}')
+            wf(8, f'=Schedule!H{sr}')
         elif evt['event_type'] == 'Vesting' and sr:
             w(5, None)
-            w(6, f'=Schedule!D{sr}')
+            wf(6, f'=Schedule!D{sr}')
             w(7, None)
             w(8, evt['vested_shares'])
         elif evt['event_type'] == 'Loan Repayment' and lr:
             w(5, None); w(6, None); w(7, None)
-            w(8, f'=-ROUNDUP(Loans!F{lr}/K{row},0)')
+            wf(8, f'=-ROUNDUP(Loans!F{lr}/K{row},0)')
         else:
             w(5, evt['granted_shares'])
             w(6, evt['grant_price'])
             w(7, evt['exercise_price'])
             w(8, evt['vested_shares'])
 
-        w(9, f'=SUM(H$1:H{row})')
+        wf(9, f'=SUM(H$1:H{row})')
 
         if evt['event_type'] == 'Share Price' and cr and pcr:
-            w(10, f'=Prices!B{cr}-Prices!B{pcr}')
+            wf(10, f'=Prices!B{cr}-Prices!B{pcr}')
         else:
             w(10, evt['price_increase'])
 
         first_price_row = _PRICE_ROW_OFFSET
         if row == 2:
-            w(11, f'=Prices!B{first_price_row}')
+            wf(11, f'=Prices!B{first_price_row}')
         else:
-            w(11, f'=K{row - 1}+J{row}')
+            wf(11, f'=K{row - 1}+J{row}')
 
-        w(12, f'=IF(AND(H{row}>0,F{row}=0),H{row}*K{row},0)')
-        w(13, f'=SUM(L$2:L{row})')
-        w(14, f'=IF(AND(H{row}>0,F{row}>0),(K{row}-F{row})*H{row},0)')
-        w(15, f'=J{row}*I{row}')
-        w(16, f'=SUM(N{row}:O{row})')
-        w(17, f'=SUM(P$2:P{row})')
+        wf(12, f'=IF(AND(H{row}>0,F{row}=0),H{row}*K{row},0)')
+        wf(13, f'=SUM(L$2:L{row})')
+        wf(14, f'=IF(AND(H{row}>0,F{row}>0),(K{row}-F{row})*H{row},0)')
+        wf(15, f'=J{row}*I{row}')
+        wf(16, f'=SUM(N{row}:O{row})')
+        wf(17, f'=SUM(P$2:P{row})')
 
     wb.save(filepath)
     return len(events)

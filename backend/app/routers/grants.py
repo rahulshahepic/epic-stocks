@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from scaffold.models import User, Grant, Loan, Price
-from schemas import GrantCreate, GrantUpdate, GrantOut
+from schemas import GrantCreate, GrantUpdate, GrantOut, MAX_BULK_ITEMS
+from scaffold.quota import check_row_quota
 from scaffold.auth import get_current_user
 
 router = APIRouter(prefix="/api/grants", tags=["grants"])
@@ -83,6 +84,7 @@ def create_grant(body: GrantCreate, user: User = Depends(get_current_user), db: 
             db.query(Grant).filter(Grant.user_id == user.id).order_by(Grant.year).all()
         )
         _check_dp_shares(body.dp_shares, body.exercise_date, existing_grants, prices, loans)
+    check_row_quota(db, Grant, user.id)
     grant = Grant(**body.model_dump(), user_id=user.id)
     db.add(grant)
     db.commit()
@@ -94,6 +96,9 @@ def create_grant(body: GrantCreate, user: User = Depends(get_current_user), db: 
 
 @router.post("/bulk", response_model=list[GrantOut], status_code=201)
 def bulk_create_grants(items: list[GrantCreate], user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if len(items) > MAX_BULK_ITEMS:
+        raise HTTPException(status_code=422, detail=f"At most {MAX_BULK_ITEMS} grants can be created in one request")
+    check_row_quota(db, Grant, user.id, adding=len(items))
     dp_items = [g for g in items if g.dp_shares]
     if dp_items:
         prices, loans = _load_prices_and_loans(user, db)

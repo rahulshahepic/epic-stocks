@@ -8,6 +8,7 @@ from database import get_db
 from scaffold.models import User, Grant, Loan, Price, Sale, TaxSettings, GrantProgramSettings
 from schemas import GrantOut, LoanOut, PriceOut, GrowthPriceRequest
 from scaffold.auth import get_current_user
+from scaffold.quota import check_row_quota
 
 router = APIRouter(prefix="/api/flows", tags=["flows"])
 
@@ -168,6 +169,7 @@ def new_purchase(body: NewPurchaseRequest, user: User = Depends(get_current_user
         )
         _check_dp_shares(dp_shares, body.exercise_date, existing_grants, prices, loans_data)
 
+    check_row_quota(db, Grant, user.id)
     grant = Grant(
         user_id=user.id, year=body.year, type="Purchase",
         shares=body.shares, price=body.price,
@@ -178,6 +180,7 @@ def new_purchase(body: NewPurchaseRequest, user: User = Depends(get_current_user
 
     loan = None
     if loan_amount is not None:
+        check_row_quota(db, Loan, user.id)
         loan = Loan(
             user_id=user.id, grant_year=body.year, grant_type="Purchase",
             loan_type="Purchase", loan_year=body.year,
@@ -222,12 +225,13 @@ def annual_price(body: AnnualPriceRequest, user: User = Depends(get_current_user
     is_est = body.effective_date > date_cls.today()
     if is_epic_mode() and not is_est:
         raise HTTPException(status_code=422, detail="Only future-dated prices can be added in Epic mode")
+    check_row_quota(db, Price, user.id)
     price = Price(user_id=user.id, effective_date=body.effective_date, price=body.price, is_estimate=is_est)
     db.add(price)
     db.commit()
     db.refresh(price)
-    from app.event_cache import schedule_fan_out
-    schedule_fan_out()
+    from app.event_cache import schedule_recompute
+    schedule_recompute(user.id)
     return price
 
 
@@ -252,6 +256,9 @@ def growth_price(body: GrowthPriceRequest, user: User = Depends(get_current_user
         Price.effective_date <= body.through_date,
     ).delete(synchronize_session=False)
 
+    years = body.through_date.year - body.first_date.year + 1
+    check_row_quota(db, Price, user.id, adding=years)
+
     multiplier = 1 + body.annual_growth_pct / 100
     entries: list[Price] = []
     current_date = body.first_date
@@ -266,13 +273,14 @@ def growth_price(body: GrowthPriceRequest, user: User = Depends(get_current_user
     db.commit()
     for p in entries:
         db.refresh(p)
-    from app.event_cache import schedule_fan_out
-    schedule_fan_out()
+    from app.event_cache import schedule_recompute
+    schedule_recompute(user.id)
     return entries
 
 
 @router.post("/add-bonus", response_model=GrantOut, status_code=201)
 def add_bonus(body: AddBonusRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    check_row_quota(db, Grant, user.id)
     grant = Grant(
         user_id=user.id, year=body.year, type="Bonus",
         shares=body.shares, price=body.price,

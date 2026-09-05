@@ -9,7 +9,9 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from scaffold.models import User, Loan, Sale, LoanPayment, Price, Grant, TaxSettings
-from schemas import LoanCreate, LoanUpdate, LoanOut, LoanPaymentCreate, LoanPaymentUpdate, LoanPaymentOut, SaleOut
+from schemas import (LoanCreate, LoanUpdate, LoanOut, LoanPaymentCreate, LoanPaymentUpdate,
+                     LoanPaymentOut, SaleOut, MAX_BULK_ITEMS)
+from scaffold.quota import check_row_quota
 from scaffold.auth import get_current_user
 
 router = APIRouter(prefix="/api/loans", tags=["loans"])
@@ -300,6 +302,7 @@ def create_loan(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    check_row_quota(db, Loan, user.id)
     _check_refinance_target(body.refinances_loan_id, user, db)
     if body.refinances_loan_id is not None:
         # Remove any auto-generated payoff sale for the old loan — it never happened
@@ -334,6 +337,9 @@ def create_loan(
 
 @router.post("/bulk", response_model=list[LoanOut], status_code=201)
 def bulk_create_loans(items: list[LoanCreate], user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if len(items) > MAX_BULK_ITEMS:
+        raise HTTPException(status_code=422, detail=f"At most {MAX_BULK_ITEMS} loans can be created in one request")
+    check_row_quota(db, Loan, user.id, adding=len(items))
     # Every reference is checked before anything is written, so a bad one in
     # the middle of the batch does not leave the earlier rows behind.
     for item in items:
@@ -534,6 +540,7 @@ def create_loan_payment(body: LoanPaymentCreate, user: User = Depends(get_curren
     loan = db.query(Loan).filter(Loan.id == body.loan_id, Loan.user_id == user.id).first()
     if not loan:
         raise HTTPException(status_code=404, detail="Loan not found")
+    check_row_quota(db, LoanPayment, user.id)
     lp = LoanPayment(**body.model_dump(), user_id=user.id)
     db.add(lp)
     db.commit()

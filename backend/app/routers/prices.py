@@ -7,6 +7,7 @@ from database import get_db
 from scaffold.models import User, Price
 from schemas import PriceCreate, PriceUpdate, PriceOut
 from scaffold.auth import get_current_user
+from scaffold.quota import check_row_quota
 
 router = APIRouter(prefix="/api/prices", tags=["prices"])
 
@@ -58,20 +59,21 @@ def list_prices(user: User = Depends(get_current_user), db: Session = Depends(ge
         ).delete(synchronize_session=False)
     if shadow_deleted or epic_deleted:
         db.commit()
-        from app.event_cache import schedule_fan_out
-        schedule_fan_out()
+        from app.event_cache import schedule_recompute
+        schedule_recompute(user.id)
     return db.query(Price).filter(Price.user_id == user.id).order_by(Price.effective_date).all()
 
 
 @router.post("", response_model=PriceOut, status_code=201)
 def create_price(body: PriceCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    check_row_quota(db, Price, user.id)
     is_est = body.effective_date > date_cls.today()
     price = Price(**body.model_dump(), user_id=user.id, is_estimate=is_est)
     db.add(price)
     db.commit()
     db.refresh(price)
-    from app.event_cache import schedule_fan_out
-    schedule_fan_out()
+    from app.event_cache import schedule_recompute
+    schedule_recompute(user.id)
     return price
 
 
@@ -102,8 +104,8 @@ def update_price(price_id: int, body: PriceUpdate, user: User = Depends(get_curr
     price.version = price.version + 1
     db.commit()
     db.refresh(price)
-    from app.event_cache import schedule_fan_out
-    schedule_fan_out()
+    from app.event_cache import schedule_recompute
+    schedule_recompute(user.id)
     return price
 
 
@@ -114,5 +116,5 @@ def delete_price(price_id: int, user: User = Depends(get_current_user), db: Sess
         raise HTTPException(status_code=404, detail="Price not found")
     db.delete(price)
     db.commit()
-    from app.event_cache import schedule_fan_out
-    schedule_fan_out()
+    from app.event_cache import schedule_recompute
+    schedule_recompute(user.id)

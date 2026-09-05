@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import ImportWizard from './ImportWizard.tsx'
-import FindingList from './FindingList.tsx'
+import FindingList, { ReportFindingsButton } from './FindingList.tsx'
+import { ReportableError } from '../../scaffold/components/ReportProblem.tsx'
 import StalePriceNotice from './StalePriceNotice.tsx'
 import { downloadText, epicImport, severityOf, type AnalyzeResponse } from '../epicImport.ts'
 import { platform } from '../../platform/index.ts'
@@ -154,7 +155,11 @@ export default function EpicFileImport() {
 
       {error && (
         <div className="mt-3 rounded-md bg-red-50 p-3 dark:bg-red-900/30">
-          <p className="whitespace-pre-wrap text-xs text-red-600 dark:text-red-400">{error}</p>
+          <ReportableError
+            message={error}
+            source="import"
+            className="whitespace-pre-wrap text-xs text-red-600 dark:text-red-400"
+          />
         </div>
       )}
 
@@ -184,6 +189,12 @@ export default function EpicFileImport() {
           </p>
 
           <FindingList findings={result.findings} />
+
+          {(result.blocked || counts.errors > 0 || counts.warnings > 0) && (
+            <p className="mt-2">
+              <ReportFindingsButton findings={result.findings} blocked={result.blocked} />
+            </p>
+          )}
 
           {result.price_is_stale && pricedAt == null && (
             <div className="mt-3">

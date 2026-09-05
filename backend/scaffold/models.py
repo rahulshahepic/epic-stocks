@@ -230,6 +230,41 @@ class ErrorLog(Base):
     error_message: Mapped[str] = mapped_column(String, nullable=True)
     traceback: Mapped[str] = mapped_column(String, nullable=True)
     user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Short opaque id handed to the client in the 500 body. A user report that
+    # carries one points straight at this row.
+    error_ref: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+
+
+class UserReport(Base):
+    """A problem reported by a person, from inside or outside a session.
+
+    Deliberately not ErrorLog: error_logs is trimmed to the newest 500 rows
+    nightly, and a report someone took the trouble to write must not be swept
+    away by a burst of server exceptions. Never holds financial data — the
+    module docstring in scaffold/routers/reports.py defines what may be sent.
+    """
+    __tablename__ = "user_reports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    message: Mapped[str] = mapped_column(String, nullable=False)
+    # Where it happened and what shape of failure prompted it.
+    path: Mapped[str | None] = mapped_column(String, nullable=True)
+    source: Mapped[str] = mapped_column(String, nullable=False, server_default="manual")
+    error_ref: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    error_message: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Only populated when the reporter ticked "include details" (default off).
+    include_details: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    email: Mapped[str | None] = mapped_column(String, nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String, nullable=True)
+    app_version: Mapped[str | None] = mapped_column(String, nullable=True)
+    client_log: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Abuse control only — a salted hash, never the address itself. Behind a
+    # reverse proxy this is the proxy's address, so it only distinguishes
+    # reporters on a directly-exposed deployment.
+    ip_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="new", server_default="new", index=True)
 
 
 class SystemMetric(Base):

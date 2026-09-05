@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { trialAnalyze, stashTrialPayload, pingSaveIntent, type TrialAnalyzeResponse } from '../trialImport.ts'
 import type { TimelineEvent } from '../../api.ts'
-import FindingList from '../components/FindingList.tsx'
+import FindingList, { ReportFindingsButton } from '../components/FindingList.tsx'
 import StalePriceNotice from '../components/StalePriceNotice.tsx'
 import { StatCard } from '../components/StatCard.tsx'
 import {
@@ -565,6 +565,9 @@ export default function Try() {
             <p className="mt-3 text-xs text-cs-muted">
               Sign up to finish this in the full import wizard — it has a repair
               loop for exactly this kind of mismatch.
+            </p>
+            <p className="mt-2">
+              <ReportFindingsButton findings={result.findings} blocked={result.blocked} />
             </p>
           </Card>
         )}

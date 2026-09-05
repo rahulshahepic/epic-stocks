@@ -44,6 +44,18 @@ The Retirement Simulator and other personalisation features also save the follow
 - **Notification preferences** — whether email notifications are enabled, your advance-warning days setting, your registered Web Push subscriptions, and per-inviter notification opt-ins on shared accounts.
 - **Optimization tip acceptance** — which optimization tips you have accepted on the Dashboard, plus the savings estimate at the time of acceptance.
 
+### Problem Reports (sent by you, only when you choose to)
+
+When you use **Report a problem**, the report stores what you typed, the page you were on, which kind of failure prompted it, the error text the app had already shown you, the build version, and a reference id pointing at the matching server-side error log. If you fill in the optional email field, that is stored too, so you can be contacted about what you reported.
+
+**Identifying details are opt-in.** The "Include details that identify me" checkbox starts unticked. Only if you tick it does the report also store your account, your browser's user-agent string, and a short in-memory trail of the last few pages you visited and requests that failed. With the box unticked, the report is stored with no account attached, even if you were signed in when you sent it.
+
+**No financial data is ever included in a report** — no share counts, no prices, no loan amounts, no computed figures. Reports raised from a failed import carry only the identifiers of the rules that fired (`C1`, `G3`, and so on), never the text of those findings, because that text quotes figures from your own statement. The dialog shows the full payload before you send it.
+
+A one-way hash of your IP address is stored with each report, to rate-limit abuse of an endpoint that has to work without a login. The address itself is not stored, and the hash cannot be turned back into one.
+
+Reports are readable by the site operator, who is emailed when one arrives, and can be deleted by them once handled.
+
 ### Computed Data (never stored)
 
 The application computes an event timeline (vesting events, income, capital gains) from your grants, loans, and prices on every request. **Computed events are never written to the database.** They exist only in memory during your request.

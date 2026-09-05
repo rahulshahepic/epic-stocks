@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 
 from database import get_db
-from scaffold.models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, ErrorLog, EmailPreference, SystemMetric, TaxSettings, LoanPayment, Sale, TipAcceptance, Invitation, InvitationOptOut, InviteSendingBlock
+from scaffold.models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, ErrorLog, UserReport, EmailPreference, SystemMetric, TaxSettings, LoanPayment, Sale, TipAcceptance, Invitation, InvitationOptOut, InviteSendingBlock
 from scaffold.auth import get_admin_user, get_admin_emails
 from scaffold.maintenance import is_maintenance_active, set_maintenance
 from scaffold.epic_mode import is_epic_mode, set_epic_mode
@@ -36,6 +36,7 @@ class AdminStats(BaseModel):
     cpu_percent: float | None = None
     ram_used_mb: float | None = None
     ram_total_mb: float | None = None
+    new_reports: int = 0
 
 
 class UserSummary(BaseModel):
@@ -71,6 +72,7 @@ def admin_stats(admin: User = Depends(get_admin_user), db: Session = Depends(get
     total_grants = db.query(func.count(Grant.id)).scalar()
     total_loans = db.query(func.count(Loan.id)).scalar()
     total_prices = db.query(func.count(Price.id)).scalar()
+    new_reports = db.query(func.count(UserReport.id)).filter(UserReport.status == "new").scalar() or 0
 
     import database as _db_module
     if _db_module._is_sqlite:
@@ -94,6 +96,7 @@ def admin_stats(admin: User = Depends(get_admin_user), db: Session = Depends(get
         total_grants=total_grants,
         total_loans=total_loans,
         total_prices=total_prices,
+        new_reports=new_reports,
         db_size_bytes=db_size,
         cpu_percent=latest.cpu_percent if latest else None,
         ram_used_mb=latest.ram_used_mb if latest else None,
@@ -296,6 +299,93 @@ def admin_errors(
 @router.delete("/errors", status_code=204)
 def clear_errors(admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
     db.query(ErrorLog).delete()
+    db.commit()
+
+
+class UserReportOut(BaseModel):
+    id: int
+    timestamp: str
+    message: str
+    path: str | None
+    source: str
+    error_ref: str | None
+    error_message: str | None
+    include_details: bool
+    user_id: int | None
+    email: str | None
+    user_agent: str | None
+    app_version: str | None
+    client_log: str | None
+    status: str
+    # Traceback of the server exception this report points at, when it carries a
+    # ref that still matches a row in error_logs.
+    error_traceback: str | None = None
+
+
+class ReportStatusUpdate(BaseModel):
+    status: str
+
+
+@router.get("/reports", response_model=list[UserReportOut])
+def admin_reports(
+    limit: int = 50,
+    status: str | None = None,
+    admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    q = db.query(UserReport)
+    if status:
+        q = q.filter(UserReport.status == status)
+    entries = q.order_by(UserReport.timestamp.desc()).limit(limit).all()
+
+    refs = {e.error_ref for e in entries if e.error_ref}
+    tracebacks: dict[str, str] = {}
+    if refs:
+        for log in db.query(ErrorLog).filter(ErrorLog.error_ref.in_(refs)).all():
+            if log.error_ref and log.error_ref not in tracebacks:
+                tracebacks[log.error_ref] = log.traceback or ""
+
+    return [UserReportOut(
+        id=e.id,
+        timestamp=e.timestamp.isoformat() if e.timestamp else "",
+        message=e.message,
+        path=e.path,
+        source=e.source,
+        error_ref=e.error_ref,
+        error_message=e.error_message,
+        include_details=bool(e.include_details),
+        user_id=e.user_id,
+        email=e.email,
+        user_agent=e.user_agent,
+        app_version=e.app_version,
+        client_log=e.client_log,
+        status=e.status,
+        error_traceback=tracebacks.get(e.error_ref) if e.error_ref else None,
+    ) for e in entries]
+
+
+@router.patch("/reports/{report_id}", status_code=204)
+def update_report_status(
+    report_id: int,
+    body: ReportStatusUpdate,
+    admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    if body.status not in ("new", "resolved"):
+        raise HTTPException(status_code=400, detail="Invalid status")
+    entry = db.get(UserReport, report_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Report not found")
+    entry.status = body.status
+    db.commit()
+
+
+@router.delete("/reports/{report_id}", status_code=204)
+def delete_report(report_id: int, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    entry = db.get(UserReport, report_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Report not found")
+    db.delete(entry)
     db.commit()
 
 

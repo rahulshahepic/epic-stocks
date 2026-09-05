@@ -3,6 +3,8 @@ import { isLoggedIn } from './api.ts'
 import { AppProvider } from './app/AppProvider.tsx'
 import { useSessionRefresh } from './scaffold/hooks/useSessionRefresh.ts'
 import Layout from './scaffold/components/Layout.tsx'
+import ErrorBoundary from './scaffold/components/ErrorBoundary.tsx'
+import { ReportProvider } from './scaffold/components/ReportProblem.tsx'
 import { ToastProvider } from './scaffold/components/Toast.tsx'
 import { ThemeProvider } from './scaffold/contexts/ThemeContext.tsx'
 import { MaintenanceProvider, useMaintenance } from './scaffold/contexts/MaintenanceContext.tsx'
@@ -57,7 +59,11 @@ export default function App() {
  <ThemeProvider>
  <BrowserRouter>
  <MaintenanceProvider>
+ {/* Report first: the crash screen and the error toasts both raise reports
+ through it, so it has to sit outside them. */}
+ <ReportProvider>
  <ToastProvider>
+ <ErrorBoundary>
  <Routes>
  <Route path="/login" element={<Login />} />
  <Route path="/try" element={<Try />} />
@@ -82,7 +88,9 @@ export default function App() {
  <Route path="content" element={<Content />} />
  </Route>
  </Routes>
+ </ErrorBoundary>
  </ToastProvider>
+ </ReportProvider>
  </MaintenanceProvider>
  </BrowserRouter>
  </ThemeProvider>

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { ReportProblemLink } from './ReportProblem.tsx'
 import { useAuth } from '../hooks/useAuth.ts'
 import { useMe } from '../hooks/useMe.ts'
 import { useMaintenance } from '../contexts/MaintenanceContext.tsx'
@@ -174,6 +175,8 @@ export default function Layout() {
  >
  Privacy Policy
  </Link>
+ <span className="mx-2 text-cs-muted">·</span>
+ <ReportProblemLink />
  {appDisclaimerShort && (
  <p className="mx-auto mt-2 max-w-md">{appDisclaimerShort}</p>
  )}

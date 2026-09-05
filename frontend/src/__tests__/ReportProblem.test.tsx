@@ -63,6 +63,17 @@ describe('the report dialog', () => {
     expect(body.client_log).toContain('/api/events → 500')
   })
 
+  it('freezes the page behind it, and lets go on close', () => {
+    const { unmount } = render(<ReportDialog onClose={() => {}} />)
+    // overflow:hidden alone does not hold on iOS Safari, so the body is pinned.
+    expect(document.body.style.position).toBe('fixed')
+    expect(document.body.style.overflow).toBe('hidden')
+
+    unmount()
+    expect(document.body.style.position).toBe('')
+    expect(document.body.style.overflow).toBe('')
+  })
+
   it('starts with the details box unticked, and says the report is anonymous', () => {
     render(<ReportDialog onClose={() => {}} />)
     expect(screen.getByRole('checkbox')).not.toBeChecked()

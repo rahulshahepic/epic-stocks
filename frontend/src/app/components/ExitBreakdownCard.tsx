@@ -1,16 +1,5 @@
 import type { ExitSummary } from '../../api.ts'
-
-function fmt$(n: number) {
- return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
-}
-
-function fmtPrice(n: number) {
- return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
-function fmtNum(n: number | null) {
- return n != null ? n.toLocaleString('en-US') : '—'
-}
+import { fmt$, fmtNum, fmtPrice } from '../format.ts'
 
 function Row({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
  return (

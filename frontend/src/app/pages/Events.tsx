@@ -8,6 +8,7 @@ import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
 import { useIsMobile } from '../hooks/useIsMobile.ts'
 import { TaxCard } from './Sales.tsx'
 import React from 'react'
+import { fmt$, fmtNum, fmtPct, fmtPrice } from '../format.ts'
 
 const EVENT_TYPES = ['Exercise', 'Down payment exchange', 'Vesting', 'Share Price', 'Loan Payoff', 'Early Loan Payment', 'Sale']
 
@@ -19,22 +20,6 @@ const TYPE_COLORS: Record<string, string> = {
  'Loan Payoff': 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
  'Early Loan Payment': 'bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300',
  'Sale': 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
-}
-
-function fmt$(n: number) {
- return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
-}
-
-function fmtPrice(n: number) {
- return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
-function fmtPct(r: number) {
- return (r * 100).toFixed(2) + '%'
-}
-
-function fmtNum(n: number | null) {
- return n != null ? n.toLocaleString('en-US') : '—'
 }
 
 const TODAY = new Date().toISOString().slice(0, 10)

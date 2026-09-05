@@ -8,8 +8,9 @@ import StalePriceNotice from '../components/StalePriceNotice.tsx'
 import { StatCard } from '../components/StatCard.tsx'
 import {
   ChartBox, IncomeCapGainsChart, PriceChart, SharesChart, TODAY,
-  fmt$, fmtFullDate, fmtNum, fmtPrice, useChartColors, type DateRange,
+  useChartColors, type DateRange,
 } from '../components/charts.tsx'
+import { fmt$, fmtFullDate, fmtNum, fmtPrice } from '../format.ts'
 import { useAppContext } from '../../scaffold/contexts/AppContext.tsx'
 import DisclaimerNotice from '../../scaffold/components/DisclaimerNotice.tsx'
 import UnofficialBadge from '../../scaffold/components/UnofficialBadge.tsx'

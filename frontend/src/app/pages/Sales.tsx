@@ -6,6 +6,7 @@ import { useApiData } from '../hooks/useApiData.ts'
 import { broadcastChange, useDataSync } from '../hooks/useDataSync.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
+import { fmtNum, fmtPct, fmtPrice as fmtUSD } from '../format.ts'
 
 export type TaxRates = {
  federal_income_rate: number
@@ -181,18 +182,6 @@ function priceAt(date: string, prices: PriceEntry[]): number {
  else break
  }
  return last
-}
-
-function fmtUSD(n: number) {
- return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
-function fmtPct(r: number) {
- return (r * 100).toFixed(2) + '%'
-}
-
-function fmtNum(n: number) {
- return n.toLocaleString('en-US')
 }
 
 function PencilIcon() {

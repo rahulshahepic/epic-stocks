@@ -23,6 +23,7 @@ import {
  ordinaryRate,
  capGainsRate,
 } from './CompCalculator.math.ts'
+import { fmt$, fmtPct } from '../format.ts'
 
 interface AllData {
  loans: LoanEntry[]
@@ -152,17 +153,6 @@ interface YearRow {
  totalComp5y: number | null
  totalTaxEquiv3y: number | null
  totalTaxEquiv5y: number | null
-}
-
-function fmt$(n: number): string {
- if (!isFinite(n)) return '—'
- const sign = n < 0 ? '-' : ''
- const abs = Math.abs(n)
- return sign + abs.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
-}
-
-function fmtPct(n: number, digits = 2): string {
- return (n * 100).toFixed(digits) + '%'
 }
 
 const TODAY = new Date().toISOString().slice(0, 10)

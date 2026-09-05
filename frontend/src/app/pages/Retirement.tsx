@@ -46,6 +46,7 @@ import {
  type SimParams,
  type SimResult,
 } from './Retirement.math.ts'
+import { fmt$M, fmtPct } from '../format.ts'
 
 const SCENARIO_ORDER: Scenario[] = ['historical', 'moderate', 'cautious', 'custom']
 // .year is yyyymm — extract just the calendar year for display.
@@ -54,20 +55,6 @@ const HISTORY_LAST_YEAR = Math.floor(HISTORICAL_RETURNS[HISTORICAL_RETURNS.lengt
 
 // Input is in $M. Renders dynamically across the full range so a $80K p10 reads
 // "$80K" rather than "$0.08M" — every label on this page goes through here.
-function fmt$M(n: number, digits: number = 2): string {
- if (!isFinite(n)) return '—'
- const a = Math.abs(n)
- if (a === 0) return '$0'
- if (a >= 100) return `$${n.toFixed(0)}M`
- if (a >= 10) return `$${n.toFixed(1)}M`
- if (a >= 1) return `$${n.toFixed(digits)}M`
- if (a >= 0.001) return `$${(n * 1000).toFixed(0)}K`
- return `$${(n * 1_000_000).toFixed(0)}`
-}
-
-function fmtPct(n: number, digits: number = 1): string {
- return (n * 100).toFixed(digits) + '%'
-}
 
 interface ChartColors {
  grid: string

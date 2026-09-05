@@ -3,10 +3,7 @@ import { api } from '../../api.ts'
 import type { SmartTip, TaxSettings } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { IconTile } from '../../scaffold/components/ui/Card.tsx'
-
-function fmt$(n: number) {
- return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
-}
+import { fmt$ } from '../format.ts'
 
 const TIP_ICONS: Record<SmartTip['type'], string> = {
  deduction: '💸',

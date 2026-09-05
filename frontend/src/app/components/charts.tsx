@@ -5,6 +5,7 @@ import {
 } from 'recharts'
 import type { TimelineEvent, PriceEntry } from '../../api.ts'
 import { useDark } from '../../scaffold/hooks/useDark.ts'
+import { fmt$, fmtDate, fmtFullDate, fmtNum, fmtPrice } from '../format.ts'
 
 /**
  * Chart primitives shared by the Dashboard and the no-account preview (/try).
@@ -14,28 +15,6 @@ import { useDark } from '../../scaffold/hooks/useDark.ts'
  * data in memory (the preview) and one holding data from the API (the
  * dashboard) render identically.
  */
-
-export function fmt$(n: number) {
- return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
-}
-
-export function fmtPrice(n: number) {
- return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 })
-}
-
-export function fmtNum(n: number) {
- return n.toLocaleString('en-US')
-}
-
-export function fmtDate(d: string) {
- const m = d.slice(5, 7)
- const y = d.slice(2, 4)
- return `${m}/${y}` // "2021-03-01" → "03/21"
-}
-
-export function fmtFullDate(d: string) {
- return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-}
 
 /** Compute ~maxTicks evenly-spaced numeric indices for a dataset of length len. */
 export function numericTicks(len: number, maxTicks = 6): number[] {

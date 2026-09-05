@@ -10,6 +10,7 @@ import type { TaxRates } from './Sales.tsx'
 import type { TrancheAllocation } from '../../api.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 import { GRANT_TYPE_NAMES } from '../grantTypes.ts'
+import { fmt$ } from '../format.ts'
 
 type LoanForm = Omit<LoanEntry, 'id' | 'version'>
 type Mode = 'list' | 'add' | 'edit'
@@ -49,10 +50,6 @@ function ConflictBanner({ onReload, onDiscard }: { onReload: () => void; onDisca
  </div>
  </div>
  )
-}
-
-function fmt$(n: number) {
- return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 }
 
 const LOAN_TYPES = ['Interest', 'Tax', 'Purchase']

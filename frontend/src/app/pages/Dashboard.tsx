@@ -6,10 +6,11 @@ import {
 } from 'recharts'
 import {
  ChartBox, DetailCard, IncomeCapGainsChart, PriceChart, SharesChart,
- TODAY, filterByDateRange, fmt$, fmtDate, fmtFullDate, fmtNum, fmtPrice, numericTicks,
+ TODAY, filterByDateRange, numericTicks,
  smartInterval, todayIndex, useChartColors,
  type ChartColors, type DateRange,
 } from '../components/charts.tsx'
+import { fmt$, fmtDate, fmtFullDate, fmtNum, fmtPrice } from '../format.ts'
 import { api, apiFetchBlob } from '../../api.ts'
 import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, GrantEntry, TaxSettings, SaleEntry, ExitPreview, DeductionPreview } from '../../api.ts'
 import { platform } from '../../platform/index.ts'

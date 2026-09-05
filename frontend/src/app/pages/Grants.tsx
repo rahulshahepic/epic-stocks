@@ -9,6 +9,7 @@ import type { TaxRates } from './Sales.tsx'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
 import { ZERO_BASIS_TYPES } from '../grantTypes.ts'
+import { fmtNum, fmtPrice } from '../format.ts'
 
 type GrantForm = Omit<GrantEntry, 'id' | 'version'>
 type Mode = 'list' | 'add' | 'edit'
@@ -41,14 +42,6 @@ function ConflictBanner({ onReload, onDiscard }: { onReload: () => void; onDisca
  </div>
  </div>
  )
-}
-
-function fmtPrice(n: number) {
- return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
-function fmtNum(n: number) {
- return n.toLocaleString('en-US')
 }
 
 function priceAt(date: string, prices: PriceEntry[] | null | undefined): number {

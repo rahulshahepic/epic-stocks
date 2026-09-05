@@ -4,6 +4,7 @@ import type { PriceEntry } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
+import { fmtPrice } from '../format.ts'
 
 type PriceForm = { effective_date: string; price: number }
 type Mode = 'list' | 'add' | 'edit' | 'growth'
@@ -22,10 +23,6 @@ function nextJan1(): string {
 
 function addYears(iso: string, n: number): string {
  return `${+iso.slice(0, 4) + n}${iso.slice(4)}`
-}
-
-function fmt$(n: number) {
- return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
 }
 
 function daysApart(a: string, b: string): number {
@@ -244,7 +241,7 @@ export default function Prices() {
  />
  <span className="text-xs text-amber-800 dark:text-amber-300">
  Also delete {nearbyEstimates.length} estimated price{nearbyEstimates.length > 1 ? 's' : ''} within 31 days (this real price replaces them):{' '}
- {nearbyEstimates.map(p => `${p.effective_date} (${fmt$(p.price)})`).join(', ')}
+ {nearbyEstimates.map(p => `${p.effective_date} (${fmtPrice(p.price)})`).join(', ')}
  </span>
  </label>
  )}
@@ -286,7 +283,7 @@ export default function Prices() {
  </div>
  <p className="text-xs text-cs-muted">
  Project future share prices as annual % growth from the current price
- {basePrice > 0 ? ` (${fmt$(basePrice)})` : ''}.
+ {basePrice > 0 ? ` (${fmtPrice(basePrice)})` : ''}.
  </p>
  {growthError && <p className="text-xs text-red-500">{growthError}</p>}
  <div className="grid grid-cols-3 gap-3">
@@ -332,7 +329,7 @@ export default function Prices() {
  <ul className="space-y-0.5">
  {estimatesToReplace.map(p => (
  <li key={p.id} className="text-xs text-amber-700 dark:text-amber-300">
- {p.effective_date} — {fmt$(p.price)}
+ {p.effective_date} — {fmtPrice(p.price)}
  </li>
  ))}
  </ul>
@@ -360,8 +357,8 @@ export default function Prices() {
  return (
  <tr key={row.date} className="bg-cs-surface">
  <td className="px-3 py-2 text-cs-text-2">{row.date}</td>
- <td className="px-3 py-2 text-right font-medium text-amber-700 dark:text-amber-300">{fmt$(row.price)}</td>
- <td className="px-3 py-2 text-right text-emerald-700 dark:text-emerald-300">+{fmt$(change)}</td>
+ <td className="px-3 py-2 text-right font-medium text-amber-700 dark:text-amber-300">{fmtPrice(row.price)}</td>
+ <td className="px-3 py-2 text-right text-emerald-700 dark:text-emerald-300">+{fmtPrice(change)}</td>
  </tr>
  )
  })}
@@ -449,7 +446,7 @@ export default function Prices() {
  )}
  </td>
  <td className={`px-3 py-2 text-right font-medium ${isEst ? 'italic text-amber-700 dark:text-amber-300' : 'text-amber-700 dark:text-amber-300'}`}>
- {fmt$(p.price)}
+ {fmtPrice(p.price)}
  </td>
  <td className="px-3 py-2 text-right">
  {canEdit && (

@@ -121,23 +121,38 @@ def send_push(subscription: PushSubscription, payload: dict) -> PushResult:
         return PushResult.FAILED
     try:
         from pywebpush import webpush, WebPushException
+        from scaffold.push_transport import push_session
 
-        webpush(
-            subscription_info={
-                "endpoint": subscription.endpoint,
-                "keys": {"p256dh": subscription.p256dh, "auth": subscription.auth},
-            },
-            data=json.dumps(payload),
-            vapid_private_key=VAPID_PRIVATE_KEY,
-            vapid_claims={"sub": _vapid_claims_email()},
-            ttl=86400,
-            timeout=10,
-        )
+        # requests follows redirects by default, and a 3xx target is a URL
+        # nothing ever validated — a push service answering
+        # "302 Location: http://169.254.169.254/" would otherwise walk the
+        # request straight past every check above. The session refuses to
+        # follow one and re-validates each URL on its way out.
+        with push_session() as session:
+            webpush(
+                subscription_info={
+                    "endpoint": subscription.endpoint,
+                    "keys": {"p256dh": subscription.p256dh, "auth": subscription.auth},
+                },
+                data=json.dumps(payload),
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims={"sub": _vapid_claims_email()},
+                ttl=86400,
+                timeout=10,
+                requests_session=session,
+            )
         return PushResult.SENT
     except WebPushException as e:
         status = getattr(e.response, "status_code", None)
         if status in (404, 410):
             return PushResult.GONE
+        if status is not None and 300 <= int(status) < 400:
+            # Not followed, and not GONE either: a redirect says nothing about
+            # whether the device is still registered.
+            logger.warning(
+                "Push service answered %s with a redirect; not following it", status
+            )
+            return PushResult.FAILED
         logger.exception("Failed to send push notification (status=%s)", status)
         return PushResult.FAILED
     except Exception:

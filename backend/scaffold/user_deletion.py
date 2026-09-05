@@ -31,6 +31,7 @@ USER_OWNED_TABLES: list[tuple[str, str]] = [
     ("import_backups", "user_id"),
     ("tip_acceptances", "user_id"),
     ("invite_sending_blocks", "user_id"),
+    ("invite_send_events", "user_id"),
 ]
 
 # Financial data only — what POST /api/me/reset clears, keeping the account.

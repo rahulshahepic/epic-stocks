@@ -157,9 +157,26 @@ def test_events_isolated_per_user(client, make_client):
 # ============================================================
 
 def test_upload_rejects_oversized_file(client):
+    """Over the path's whole-request ceiling: refused above the app entirely.
+
+    BodyLimitMiddleware answers before the multipart parser runs, so nothing is
+    spooled and no handler is entered — which is the point of the ceiling.
+    """
     register_user(client)
-    # XLSX magic bytes but 6 MB of content
+    # XLSX magic bytes but 6 MB of content, on a path whose ceiling is 6 MB
     big_content = b"PK\x03\x04" + b"x" * (6 * 1024 * 1024)
+    resp = client.post(
+        "/api/import/excel",
+        files={"file": ("big.xlsx", io.BytesIO(big_content), "application/octet-stream")},
+    )
+    assert resp.status_code == 413
+    assert "large" in resp.json()["detail"].lower()
+
+
+def test_upload_rejects_a_file_over_the_per_file_limit(client):
+    """Under the request ceiling, over the handler's own 5 MB file limit."""
+    register_user(client)
+    big_content = b"PK\x03\x04" + b"x" * (5 * 1024 * 1024 + 1024)
     resp = client.post(
         "/api/import/excel",
         files={"file": ("big.xlsx", io.BytesIO(big_content), "application/octet-stream")},

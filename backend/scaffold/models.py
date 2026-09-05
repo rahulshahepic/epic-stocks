@@ -375,6 +375,23 @@ class InvitationOptOut(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+class InviteSendEvent(Base):
+    """One invitation email this user caused to be sent.
+
+    Separate from `invitations` because an invitation row is not a record of a
+    send. Revoking an invitation and inviting the same address again deletes
+    the old row — the unique constraint on (inviter_id, invitee_email) leaves
+    no choice — and with the row went the evidence of the email already sent,
+    so the daily limit counted one send where eleven had gone out. Rows here
+    are only ever appended, and pruned once they fall out of the window.
+    """
+    __tablename__ = "invite_send_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    sent_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+
+
 class InviteSendingBlock(Base):
     """Users blocked from sending new invitations (admin-managed)."""
     __tablename__ = "invite_sending_blocks"

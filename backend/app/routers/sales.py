@@ -9,6 +9,7 @@ from database import get_db
 from scaffold.models import User, Grant, Loan, Price, Sale, TaxSettings, GrantProgramSettings
 from schemas import SaleCreate, SaleUpdate, SaleOut, TaxSettingsRead, TaxSettingsUpdate, TaxBreakdown
 from scaffold.auth import get_current_user
+from scaffold.quota import check_row_quota
 from app.sales_engine import compute_sale_tax, build_fifo_lots, compute_grossup_shares, build_lots_from_overrides
 
 
@@ -219,6 +220,7 @@ def create_sale(body: SaleCreate, user: User = Depends(get_current_user), db: Se
         # Cash-out sale: enforce loan repayment rule
         _check_cash_out_allowed(user, body.date, db)
 
+    check_row_quota(db, Sale, user.id)
     sale = Sale(**body.model_dump(), user_id=user.id)
     db.add(sale)
     db.commit()

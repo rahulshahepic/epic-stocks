@@ -52,6 +52,21 @@ All responses include:
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |
 | `Permissions-Policy` | `geolocation=(), camera=(), microphone=()` |
 
+### Request body ceiling (Caddyfile + app)
+
+Caddy refuses any request body over **16 MB** (`request_body { max_size 16MB }`),
+so an oversized upload is rejected at the edge and never reaches the app. If you
+add an endpoint that legitimately accepts more, raise it in both `caddy/Caddyfile`
+and `caddy/app.caddy`.
+
+The app enforces its own, tighter ceiling per path in
+`backend/scaffold/body_limit.py` — 1 MB for JSON endpoints, and the sum of the
+files each multipart endpoint accepts. Both are needed: the proxy limit is where
+a flood should die, and the app limit is the one that still applies to anything
+that reaches the container directly. The app's ceiling is applied in the ASGI
+layer, *before* the multipart parser spools anything, so an anonymous caller
+cannot make the server write megabytes to disk on the way to a 401.
+
 ### Problem reports (`backend/scaffold/routers/reports.py`)
 
 `POST /api/report` is unauthenticated by design — someone who cannot sign in must still be able to report it. What that costs, and what pays for it:

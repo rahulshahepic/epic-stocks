@@ -9,7 +9,9 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from scaffold.models import User, Loan, Sale, LoanPayment, Price, Grant, TaxSettings
-from schemas import LoanCreate, LoanUpdate, LoanOut, LoanPaymentCreate, LoanPaymentUpdate, LoanPaymentOut, SaleOut
+from schemas import (LoanCreate, LoanUpdate, LoanOut, LoanPaymentCreate, LoanPaymentUpdate,
+                     LoanPaymentOut, SaleOut, MAX_BULK_ITEMS)
+from scaffold.quota import check_row_quota
 from scaffold.auth import get_current_user
 
 router = APIRouter(prefix="/api/loans", tags=["loans"])
@@ -269,6 +271,23 @@ def _compute_payoff_sale(loan: Loan, user: User, db: Session) -> dict:
     }
 
 
+def _check_refinance_target(loan_id: int | None, user: User, db: Session, self_id: int | None = None) -> None:
+    """Refuse a refinances_loan_id that is not this user's own loan.
+
+    A cross-account reference is not just a data leak: refinances_loan_id is a
+    plain FK, so a row pointing at someone else's loan makes *their* account
+    deletion and data reset fail on the constraint. Every path that accepts the
+    field goes through here — single create, bulk create and update alike.
+    """
+    if loan_id is None:
+        return
+    if self_id is not None and loan_id == self_id:
+        raise HTTPException(status_code=400, detail="A loan cannot refinance itself")
+    ref = db.query(Loan).filter(Loan.id == loan_id, Loan.user_id == user.id).first()
+    if not ref:
+        raise HTTPException(status_code=400, detail="refinances_loan_id references a loan that does not exist or belongs to another user")
+
+
 # --- Loans CRUD ---
 
 @router.get("", response_model=list[LoanOut])
@@ -283,10 +302,9 @@ def create_loan(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    check_row_quota(db, Loan, user.id)
+    _check_refinance_target(body.refinances_loan_id, user, db)
     if body.refinances_loan_id is not None:
-        ref = db.query(Loan).filter(Loan.id == body.refinances_loan_id, Loan.user_id == user.id).first()
-        if not ref:
-            raise HTTPException(status_code=400, detail="refinances_loan_id references a loan that does not exist or belongs to another user")
         # Remove any auto-generated payoff sale for the old loan — it never happened
         old_payoff_sale = db.query(Sale).filter(Sale.loan_id == body.refinances_loan_id, Sale.user_id == user.id).first()
         if old_payoff_sale:
@@ -319,6 +337,13 @@ def create_loan(
 
 @router.post("/bulk", response_model=list[LoanOut], status_code=201)
 def bulk_create_loans(items: list[LoanCreate], user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if len(items) > MAX_BULK_ITEMS:
+        raise HTTPException(status_code=422, detail=f"At most {MAX_BULK_ITEMS} loans can be created in one request")
+    check_row_quota(db, Loan, user.id, adding=len(items))
+    # Every reference is checked before anything is written, so a bad one in
+    # the middle of the batch does not leave the earlier rows behind.
+    for item in items:
+        _check_refinance_target(item.refinances_loan_id, user, db)
     loans = [Loan(**l.model_dump(), user_id=user.id) for l in items]
     db.add_all(loans)
     db.commit()
@@ -394,12 +419,8 @@ def update_loan(
     loan = db.query(Loan).filter(Loan.id == loan_id, Loan.user_id == user.id).first()
     if not loan:
         raise HTTPException(status_code=404, detail="Loan not found")
+    _check_refinance_target(body.refinances_loan_id, user, db, self_id=loan_id)
     if body.refinances_loan_id is not None:
-        ref = db.query(Loan).filter(Loan.id == body.refinances_loan_id, Loan.user_id == user.id).first()
-        if not ref:
-            raise HTTPException(status_code=400, detail="refinances_loan_id references a loan that does not exist or belongs to another user")
-        if body.refinances_loan_id == loan_id:
-            raise HTTPException(status_code=400, detail="A loan cannot refinance itself")
         # Remove auto-generated payoff sale for the old loan if this is a new refinance link
         if loan.refinances_loan_id != body.refinances_loan_id:
             old_payoff_sale = db.query(Sale).filter(Sale.loan_id == body.refinances_loan_id, Sale.user_id == user.id).first()
@@ -519,6 +540,7 @@ def create_loan_payment(body: LoanPaymentCreate, user: User = Depends(get_curren
     loan = db.query(Loan).filter(Loan.id == body.loan_id, Loan.user_id == user.id).first()
     if not loan:
         raise HTTPException(status_code=404, detail="Loan not found")
+    check_row_quota(db, LoanPayment, user.id)
     lp = LoanPayment(**body.model_dump(), user_id=user.id)
     db.add(lp)
     db.commit()

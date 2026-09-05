@@ -126,6 +126,24 @@ def check_rate_ip(ip: str, endpoint: str, max_calls: int, window_secs: int) -> N
         _calls[key] = recent
 
 
+def check_rate_shared(user_id: int, endpoint: str, max_calls: int, window_secs: int) -> None:
+    """Rate limit shared across replicas when Redis is up, per-process otherwise.
+
+    Same guarantee as check_rate_db minus the DB fallback, so it is safe to
+    call from places that hold no session — middleware, for one, where opening
+    a session and committing a counter row on every write request would cost
+    more than the limit saves.
+
+    No-op when E2E_TEST=1.
+    """
+    if os.getenv("E2E_TEST") == "1":
+        return
+    client = _redis()
+    if client is not None and _check_rate_redis(client, f"{endpoint}:{user_id}", max_calls, window_secs):
+        return
+    check_rate(user_id, endpoint, max_calls, window_secs)
+
+
 def check_rate_db(user_id: int, endpoint: str, max_calls: int, window_secs: int, db) -> None:
     """Rate limit shared across all replicas.
 

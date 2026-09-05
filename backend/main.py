@@ -16,6 +16,7 @@ from scaffold.routers import auth_router, admin, notifications, push, unsubscrib
 from app.routers import grants, loans, prices, events, flows, import_export, epic_import, sales, cache as cache_router, tips, wizard, content, sharing, trial
 from app.routers.retirement import retirement_router, dashboard_prefs_router
 from scaffold.auth import get_current_user
+from scaffold.body_limit import BodyLimitMiddleware
 from scaffold.crypto import encryption_enabled, decrypt_user_key, set_current_key
 from database import get_db
 
@@ -428,6 +429,58 @@ class EpicModeMiddleware:
         await self.app(scope, receive, send)
 
 
+# A signed-in account's writes, per minute. Far above any real session — a
+# wizard save or an import is one request — and far below the rate it takes to
+# grow the database on purpose.
+_MUTATION_LIMIT = int(os.getenv("MUTATION_RATE_LIMIT", "120"))
+_MUTATION_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+# Auth keeps its own limits and has no user to key on yet.
+_MUTATION_EXEMPT_PREFIXES = ("/api/auth/",)
+
+
+class MutationRateLimitMiddleware:
+    """Cap how fast one account can write.
+
+    Field length caps and row quotas bound what a single write stores; this
+    bounds how many writes arrive. Requests with no user token pass through —
+    the endpoints that take them (reports, unsubscribe) carry IP-keyed limits
+    of their own.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if (
+            scope["type"] == "http"
+            and scope.get("method") in _MUTATION_METHODS
+            and scope.get("path", "").startswith("/api/")
+            and not scope.get("path", "").startswith(_MUTATION_EXEMPT_PREFIXES)
+        ):
+            user_id = _user_id_from_scope(scope)
+            if user_id is not None:
+                from scaffold.rate_limit import check_rate_shared
+                try:
+                    check_rate_shared(user_id, "mutations", _MUTATION_LIMIT, 60)
+                except HTTPException as exc:
+                    response = JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+                    await response(scope, receive, send)
+                    return
+        await self.app(scope, receive, send)
+
+
+def _user_id_from_scope(scope) -> int | None:
+    """The signed-in user's id from the request's token, or None."""
+    token = EncryptionMiddleware._token_from_scope(scope)
+    if not token:
+        return None
+    try:
+        from scaffold.auth import _decode_token
+        return int(_decode_token(token)["sub"])
+    except Exception:
+        return None
+
+
 class EncryptionMiddleware:
     """Pure ASGI middleware that sets per-user encryption key in contextvar.
 
@@ -716,6 +769,29 @@ if STATIC_DIR.is_dir():
     _fastapi_app.get("/{path:path}")(spa_fallback)
 
 
+# ── Request body ceilings ───────────────────────────────────────────────────
+# One megabyte covers every JSON endpoint in the app with room to spare. The
+# multipart endpoints are the exceptions, and their ceiling is the sum of the
+# files each one accepts (5 MB apiece, enforced again per file in the handler)
+# plus a megabyte of part headers and boundaries.
+#
+# Caddy carries the same ceiling in front of the app; this is the copy that
+# still applies when something reaches the container directly, and the one
+# that can differ per path.
+_MB = 1024 * 1024
+_FILE_MB = 5 * _MB
+
+_BODY_LIMITS: tuple[tuple[str, int], ...] = (
+    # analyze and diff each take share_csv + statement_pdf + one more file
+    ("/api/epic-import/", 3 * _FILE_MB + _MB),
+    # share_csv + statement_pdf, and unauthenticated, so no more than it needs
+    ("/api/trial/analyze", 2 * _FILE_MB + _MB),
+    ("/api/import/excel", _FILE_MB + _MB),
+    ("/api/wizard/parse-file", _FILE_MB + _MB),
+)
+_DEFAULT_BODY_LIMIT = _MB
+
+
 # Origins the native shells load their bundle from. A WebView serves the app
 # from a local origin rather than from this server, so its requests are
 # cross-origin and need CORS; these strings come from capacitor.config.ts in
@@ -728,15 +804,23 @@ NATIVE_APP_ORIGINS = [
 ]
 
 # Wrap FastAPI app: CORS outermost so preflights are answered and CORS headers
-# reach even the early responses from the maintenance and epic-mode guards —
-# without them a native client sees an opaque network error instead of the
-# actual status. Then maintenance check, epic-mode guard, and encryption.
+# reach even the early responses from the body-size, maintenance and epic-mode
+# guards — without them a native client sees an opaque network error instead of
+# the actual status. Then the body ceiling, which has to come before anything
+# that reads the body, then maintenance, epic-mode guard, the per-account
+# write limit, and encryption.
 #
 # allow_credentials stays False: native clients authenticate with a Bearer
 # token, never a cookie, so there is no reason to let a cross-origin caller
 # send or receive credentials.
 app = CORSMiddleware(
-    MaintenanceMiddleware(EpicModeMiddleware(EncryptionMiddleware(_fastapi_app))),
+    BodyLimitMiddleware(
+        MaintenanceMiddleware(
+            EpicModeMiddleware(MutationRateLimitMiddleware(EncryptionMiddleware(_fastapi_app)))
+        ),
+        limits=_BODY_LIMITS,
+        default=_DEFAULT_BODY_LIMIT,
+    ),
     allow_origins=NATIVE_APP_ORIGINS,
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],

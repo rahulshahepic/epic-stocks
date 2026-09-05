@@ -6,6 +6,27 @@ from app.grant_types import TAX_LOAN_TEMPLATE_TYPES, TAX_LOAN_TEMPLATE_TYPES_TEX
 
 LOAN_TYPES = {"Interest", "Tax", "Purchase"}
 
+# Bounds on free-text and list inputs. The per-request body limit caps one
+# write; these cap what a run of valid writes can accumulate in the database,
+# where encrypted columns store several times the bytes they are given.
+MAX_LABEL_LEN = 100       # types, loan numbers, short identifiers
+MAX_NOTES_LEN = 2000      # free-form notes
+MAX_BULK_ITEMS = 500      # items in one bulk create
+MAX_LOT_OVERRIDES = 500   # manual lots on one sale
+
+
+def bounded(v, limit: int, name: str):
+    """Reject a string longer than limit. None and non-strings pass through."""
+    if isinstance(v, str) and len(v) > limit:
+        raise ValueError(f"{name} cannot exceed {limit} characters")
+    return v
+
+
+def bounded_list(v, limit: int, name: str):
+    if isinstance(v, list) and len(v) > limit:
+        raise ValueError(f"{name} cannot exceed {limit} items")
+    return v
+
 
 # Auth
 class AuthResponse(BaseModel):
@@ -30,7 +51,7 @@ class GrantCreate(BaseModel):
     def type_not_empty(cls, v: str) -> str:
         if not v or not v.strip():
             raise ValueError("type cannot be empty")
-        return v
+        return bounded(v, MAX_LABEL_LEN, "type")
 
     @field_validator("year")
     @classmethod
@@ -83,7 +104,7 @@ class GrantUpdate(BaseModel):
     def type_not_empty(cls, v):
         if v is not None and (not v or not v.strip()):
             raise ValueError("type cannot be empty")
-        return v
+        return bounded(v, MAX_LABEL_LEN, "type")
 
     @field_validator("year")
     @classmethod
@@ -142,7 +163,12 @@ class LoanCreate(BaseModel):
     def grant_type_not_empty(cls, v: str) -> str:
         if not v or not v.strip():
             raise ValueError("grant_type cannot be empty")
-        return v
+        return bounded(v, MAX_LABEL_LEN, "grant_type")
+
+    @field_validator("loan_number")
+    @classmethod
+    def loan_number_bounded(cls, v):
+        return bounded(v, MAX_LABEL_LEN, "loan_number")
 
     @field_validator("loan_type")
     @classmethod
@@ -193,7 +219,12 @@ class LoanUpdate(BaseModel):
     def grant_type_not_empty(cls, v):
         if v is not None and (not v or not v.strip()):
             raise ValueError("grant_type cannot be empty")
-        return v
+        return bounded(v, MAX_LABEL_LEN, "grant_type")
+
+    @field_validator("loan_number")
+    @classmethod
+    def loan_number_bounded(cls, v):
+        return bounded(v, MAX_LABEL_LEN, "loan_number")
 
     @field_validator("loan_type")
     @classmethod
@@ -331,6 +362,16 @@ class SaleCreate(BaseModel):
             raise ValueError("price_per_share cannot exceed 1,000,000")
         return v
 
+    @field_validator("notes")
+    @classmethod
+    def notes_bounded(cls, v):
+        return bounded(v, MAX_NOTES_LEN, "notes")
+
+    @field_validator("lot_overrides")
+    @classmethod
+    def lot_overrides_bounded(cls, v):
+        return bounded_list(v, MAX_LOT_OVERRIDES, "lot_overrides")
+
 _Date = date  # alias to avoid field-name shadowing Optional[date] = None in Pydantic v2
 
 class SaleUpdate(BaseModel):
@@ -369,6 +410,16 @@ class SaleUpdate(BaseModel):
             raise ValueError("price_per_share cannot exceed 1,000,000")
         return v
 
+    @field_validator("notes")
+    @classmethod
+    def notes_bounded(cls, v):
+        return bounded(v, MAX_NOTES_LEN, "notes")
+
+    @field_validator("lot_overrides")
+    @classmethod
+    def lot_overrides_bounded(cls, v):
+        return bounded_list(v, MAX_LOT_OVERRIDES, "lot_overrides")
+
 class SaleOut(SaleCreate):
     id: int
     version: int = 1
@@ -391,6 +442,11 @@ class LoanPaymentCreate(BaseModel):
             raise ValueError("amount cannot exceed 100,000,000")
         return v
 
+    @field_validator("notes")
+    @classmethod
+    def notes_bounded(cls, v):
+        return bounded(v, MAX_NOTES_LEN, "notes")
+
 class LoanPaymentUpdate(BaseModel):
     date: Optional[_Date] = None
     amount: Optional[float] = None
@@ -405,6 +461,11 @@ class LoanPaymentUpdate(BaseModel):
         if v is not None and v > 100_000_000:
             raise ValueError("amount cannot exceed 100,000,000")
         return v
+
+    @field_validator("notes")
+    @classmethod
+    def notes_bounded(cls, v):
+        return bounded(v, MAX_NOTES_LEN, "notes")
 
 class LoanPaymentOut(LoanPaymentCreate):
     id: int
@@ -523,7 +584,7 @@ class GrantTemplateCreate(BaseModel):
     def type_not_empty(cls, v: str) -> str:
         if not v or not v.strip():
             raise ValueError("type cannot be empty")
-        return v
+        return bounded(v, MAX_LABEL_LEN, "type")
 
     @field_validator("vest_start", "exercise_date", "default_purchase_due_date", "default_tax_due_date")
     @classmethod

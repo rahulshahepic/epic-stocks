@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from scaffold.auth import get_current_user
-from scaffold.models import User, Invitation, InvitationOptOut, BlockedEmail, InviteSendingBlock
+from scaffold.models import (User, Invitation, InvitationOptOut, BlockedEmail,
+                             InviteSendEvent, InviteSendingBlock)
 from scaffold.invite_tokens import code_verifier, seal_code, token_verifier, unseal_code
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,63 @@ router = APIRouter(prefix="/api/sharing", tags=["sharing"])
 INVITE_EXPIRY_DAYS = 7
 # Unambiguous charset for short codes (no 0/O/1/I/l)
 _CODE_CHARS = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+
+
+# At most this many invitation emails — new invitations and resends alike —
+# may leave one account in 24 hours.
+INVITE_DAILY_LIMIT = 10
+_INVITE_WINDOW = timedelta(hours=24)
+# Namespace for the per-user advisory lock; xor'd with the user id.
+_INVITE_LOCK_NS = 0x1E5E4D00
+
+
+def _reserve_invite_send(db: Session, user_id: int) -> None:
+    """Consume one of this account's daily invitation emails, or raise 429.
+
+    Counted in its own table rather than over `invitations`, because an
+    invitation row is not a record of a send. Sending to an address, revoking,
+    and sending again deletes the earlier row — the unique constraint on
+    (inviter_id, invitee_email) requires it — and the row that was deleted was
+    the one being counted. Eleven emails went out with one row to show for it.
+
+    Call it once every validation has passed and immediately before the send,
+    so a refused request spends nothing. Attempts are counted, not deliveries:
+    the limit exists to bound what this account can aim at other people's
+    inboxes, and an attempt is what does the aiming.
+    """
+    from sqlalchemy import text
+    import database as _database
+
+    if not _database._is_sqlite:
+        # Hold the counter for this user against the rest of this transaction,
+        # so two concurrent requests cannot both read the same count and both
+        # decide there is room. SQLite serializes writers on its own.
+        db.execute(
+            text("SELECT pg_advisory_xact_lock(:k)"),
+            {"k": _INVITE_LOCK_NS ^ user_id},
+        )
+
+    now = datetime.now(timezone.utc)
+
+    # Rows well outside the window are never read again. Pruned before the
+    # count, not after the insert, so the delete and the add do not land in the
+    # same flush.
+    db.query(InviteSendEvent).filter(
+        InviteSendEvent.user_id == user_id,
+        InviteSendEvent.sent_at < now - 2 * _INVITE_WINDOW,
+    ).delete(synchronize_session="fetch")
+
+    sent = db.query(InviteSendEvent).filter(
+        InviteSendEvent.user_id == user_id,
+        InviteSendEvent.sent_at >= now - _INVITE_WINDOW,
+    ).count()
+    if sent >= INVITE_DAILY_LIMIT:
+        raise HTTPException(
+            429, f"You can send at most {INVITE_DAILY_LIMIT} invitations per 24 hours"
+        )
+
+    db.add(InviteSendEvent(user_id=user_id, sent_at=now))
+    db.commit()
 
 
 def _generate_token() -> str:
@@ -116,16 +174,6 @@ def send_invite(
     if db.query(InviteSendingBlock).filter(InviteSendingBlock.user_id == user.id).first():
         raise HTTPException(403, "Your ability to send invitations has been restricted. Contact an administrator.")
 
-    # Rate-limit: max 10 new invitations per 24 hours per user
-    _INVITE_DAILY_LIMIT = 10
-    cutoff_24h = datetime.now(timezone.utc) - timedelta(hours=24)
-    recent_count = db.query(Invitation).filter(
-        Invitation.inviter_id == user.id,
-        Invitation.last_sent_at >= cutoff_24h,
-    ).count()
-    if recent_count >= _INVITE_DAILY_LIMIT:
-        raise HTTPException(429, f"You can send at most {_INVITE_DAILY_LIMIT} invitations per 24 hours")
-
     # Check if email is blocked
     if db.query(BlockedEmail).filter(BlockedEmail.email == email).first():
         raise HTTPException(422, "This email address cannot receive invitations")
@@ -144,6 +192,11 @@ def send_invite(
         if existing.status == "accepted":
             raise HTTPException(409, "This person already has access to your data")
         raise HTTPException(409, "An invitation to this email is already pending")
+
+    # Spend one of today's sends before anything is written: over the limit,
+    # this raises and no invitation row is left behind for an email that never
+    # went out.
+    _reserve_invite_send(db, user.id)
 
     # If there was a revoked/declined invitation, remove it so the unique constraint allows a new one
     old = db.query(Invitation).filter(
@@ -214,6 +267,11 @@ def resend_invite(
         last = inv.last_sent_at.replace(tzinfo=timezone.utc) if inv.last_sent_at.tzinfo is None else inv.last_sent_at
         if (now - last).total_seconds() < 3600:
             raise HTTPException(429, "Please wait before resending this invitation")
+
+    # A resend is a send: it comes out of the same daily budget, and it is
+    # reserved before the invitation is touched so a refusal changes nothing.
+    _reserve_invite_send(db, user.id)
+
     inv.expires_at = now + timedelta(days=INVITE_EXPIRY_DAYS)
     inv.last_sent_at = now
     db.commit()

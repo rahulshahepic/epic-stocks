@@ -73,8 +73,28 @@ def _note_call_locked(key: tuple, now: float) -> None:
         _sweep_locked(now)
 
 
-def _too_many() -> HTTPException:
-    return HTTPException(status_code=429, detail="Too many requests — please slow down")
+def _humanise(seconds: int) -> str:
+    if seconds <= 60:
+        return "a minute"
+    minutes = (seconds + 59) // 60
+    return "a few minutes" if minutes <= 5 else f"about {minutes} minutes"
+
+
+def _too_many(retry_after: int | None = None) -> HTTPException:
+    """429 with a message that fits who actually receives it.
+
+    An office, a campus or a VPN leaves through one address, so the person
+    reading this has very often made a single request and done nothing wrong —
+    "please slow down" is both wrong and unactionable for them. Say that the
+    limit is per network, and say when to try again.
+    """
+    detail = "Too many requests from your network"
+    if retry_after and retry_after > 0:
+        detail += f" — try again in {_humanise(retry_after)}"
+    detail += (". Shared and office connections all count as one caller here, "
+               "so this can happen even on your first attempt.")
+    headers = {"Retry-After": str(retry_after)} if retry_after and retry_after > 0 else None
+    return HTTPException(status_code=429, detail=detail, headers=headers)
 
 
 # The smallest IPv6 block a caller cannot trivially expand. Providers hand out a
@@ -149,7 +169,8 @@ def _check_rate_redis(client, key: str, max_calls: int, window_secs: int) -> boo
     dies between the two.
     """
     try:
-        window_start = int(time.time()) // window_secs
+        now = int(time.time())
+        window_start = now // window_secs
         full_key = f"ratelimit:{key}:{window_start}"
         pipe = client.pipeline()
         pipe.incr(full_key)
@@ -159,7 +180,8 @@ def _check_rate_redis(client, key: str, max_calls: int, window_secs: int) -> boo
         logger.warning("Redis rate limit unavailable, falling back", exc_info=True)
         return False
     if int(count) > max_calls:
-        raise _too_many()
+        # Fixed window: everything resets at the next boundary.
+        raise _too_many((window_start + 1) * window_secs - now)
     return True
 
 
@@ -176,7 +198,8 @@ def check_rate(user_id: int, endpoint: str, max_calls: int, window_secs: int) ->
         _note_call_locked(key, now)
         recent = [t for t in _calls[key] if now - t < window_secs]
         if len(recent) >= max_calls:
-            raise _too_many()
+            # A slot opens when the oldest call still counted ages out.
+            raise _too_many(int(window_secs - (now - recent[0])) + 1)
         recent.append(now)
         _calls[key] = recent
 
@@ -198,7 +221,8 @@ def check_rate_ip(ip: str, endpoint: str, max_calls: int, window_secs: int) -> N
         _note_call_locked(key, now)
         recent = [t for t in _calls[key] if now - t < window_secs]
         if len(recent) >= max_calls:
-            raise _too_many()
+            # A slot opens when the oldest call still counted ages out.
+            raise _too_many(int(window_secs - (now - recent[0])) + 1)
         recent.append(now)
         _calls[key] = recent
 
@@ -278,7 +302,7 @@ def check_rate_db(user_id: int, endpoint: str, max_calls: int, window_secs: int,
     # Prune entries outside the current window
     counts = {k: v for k, v in counts.items() if k.endswith(f":{window_start}")}
     if counts.get(full_key, 0) >= max_calls:
-        raise _too_many()
+        raise _too_many(window_start + window_secs - now_ts)
     counts[full_key] = counts.get(full_key, 0) + 1
     serialized = json.dumps(counts)
     if row is not None:

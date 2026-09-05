@@ -449,3 +449,108 @@ def test_every_cloudflare_user_would_share_one_bucket_at_one_hop(monkeypatch):
         for n in range(1, 40)
     }
     assert len(buckets) == 39, "each caller should get its own bucket"
+
+
+# ── Shared office networks are the normal case, not the abuse case ──────────
+#
+# The audience for this app all work at one company and a good share of them
+# browse from its network, which leaves through one address (IPv4 NAT does this
+# regardless of the IPv6 /64 grouping above). Everyone on it therefore shares
+# every anonymous budget, so a limit tuned for one person per address locks out
+# colleagues who have done nothing.
+
+def test_the_429_does_not_blame_a_caller_who_did_nothing(monkeypatch):
+    monkeypatch.delenv("E2E_TEST", raising=False)
+    monkeypatch.setattr(rate_limit, "_redis", lambda: None)
+    rate_limit._calls.clear()
+
+    for _ in range(2):
+        rate_limit.check_rate_ip("203.0.113.77", "t_msg", max_calls=2, window_secs=300)
+    with pytest.raises(HTTPException) as exc:
+        rate_limit.check_rate_ip("203.0.113.77", "t_msg", max_calls=2, window_secs=300)
+
+    detail = exc.value.detail
+    assert "your network" in detail
+    assert "first attempt" in detail
+    assert "slow down" not in detail, "the old wording blamed the wrong person"
+
+
+def test_the_429_says_when_to_come_back(monkeypatch):
+    monkeypatch.delenv("E2E_TEST", raising=False)
+    monkeypatch.setattr(rate_limit, "_redis", lambda: None)
+    rate_limit._calls.clear()
+
+    rate_limit.check_rate_ip("203.0.113.78", "t_retry", max_calls=1, window_secs=300)
+    with pytest.raises(HTTPException) as exc:
+        rate_limit.check_rate_ip("203.0.113.78", "t_retry", max_calls=1, window_secs=300)
+
+    retry_after = int(exc.value.headers["Retry-After"])
+    assert 0 < retry_after <= 301
+    assert "try again in" in exc.value.detail
+
+
+def test_retry_after_on_the_redis_path(monkeypatch):
+    monkeypatch.delenv("E2E_TEST", raising=False)
+    # One instance, not one per call — otherwise nothing accumulates.
+    fake = _FakeRedis()
+    monkeypatch.setattr(rate_limit, "_redis", lambda: fake)
+
+    rate_limit.check_rate_ip_shared("203.0.113.79", "t_ra", max_calls=1, window_secs=300)
+    with pytest.raises(HTTPException) as exc:
+        rate_limit.check_rate_ip_shared("203.0.113.79", "t_ra", max_calls=1, window_secs=300)
+    assert 0 < int(exc.value.headers["Retry-After"]) <= 300
+
+
+@pytest.mark.parametrize("seconds,expected", [
+    (5, "a minute"), (60, "a minute"), (120, "a few minutes"),
+    (300, "a few minutes"), (900, "about 15 minutes"),
+])
+def test_retry_wording_is_human(seconds, expected):
+    assert rate_limit._humanise(seconds) == expected
+
+
+def test_anonymous_budgets_leave_room_for_one_office():
+    """A floor on every IP-keyed budget, so none is re-tightened by accident.
+
+    Sign-in is the one that hurt most: /api/auth/callback is hit once per
+    sign-in, so at 20 per 15 minutes the twenty-first colleague on a shared
+    network could not log in at all.
+    """
+    import ast
+    import pathlib
+
+    backend = pathlib.Path(__file__).resolve().parent.parent
+    # An office of this many people should be able to use the app in one window
+    # without anybody hitting a wall.
+    FLOOR = 60
+
+    found = {}
+    for path in sorted(backend.glob("**/routers/*.py")):
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            name = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
+            if name not in ("check_rate_ip_shared", "_limit"):
+                continue
+            kwargs = {k.arg: k.value for k in node.keywords}
+            if "max_calls" not in kwargs or not isinstance(kwargs["max_calls"], ast.Constant):
+                continue
+            label = next((a.value for a in node.args if isinstance(a, ast.Constant)), path.name)
+            found[label] = kwargs["max_calls"].value
+
+    assert found, "no anonymous budgets found — did the call sites move?"
+    too_tight = {k: v for k, v in found.items() if v < FLOOR}
+    assert not too_tight, (
+        f"these anonymous limits are shared by everyone on one office network "
+        f"and are below {FLOOR}: {too_tight}"
+    )
+
+
+def test_sign_in_budget_is_the_most_generous():
+    """Whatever else is tuned, sign-in must not be the thing that breaks."""
+    import inspect
+    import scaffold.routers.auth_router as auth_router
+
+    src = inspect.getsource(auth_router)
+    assert 'max_calls=300' in src, "auth_callback budget changed — see the office-network note"

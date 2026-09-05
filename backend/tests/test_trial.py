@@ -111,12 +111,31 @@ def test_trial_wizard_payload_round_trips_through_signup(client):
 
 
 def test_trial_analyze_is_rate_limited_per_ip(client, monkeypatch):
+    """The endpoint honours the limiter.
+
+    Deliberately not pinned to the configured budget: that number is tuned for
+    a shared office network, where everyone leaves through one address, and it
+    is raised whenever that turns out to be too tight. What must not change is
+    that the limit is wired up and that exceeding it is a 429.
+    """
     monkeypatch.delenv("E2E_TEST", raising=False)
-    for _ in range(10):
-        resp = client.post("/api/trial/analyze", files=upload_files())
-        assert resp.status_code == 200, resp.text
+    from scaffold import rate_limit
+
+    real = rate_limit.check_rate_ip_shared
+    monkeypatch.setattr(
+        rate_limit, "check_rate_ip_shared",
+        lambda ip, endpoint, max_calls, window_secs: real(ip, endpoint, 3, window_secs),
+    )
+    monkeypatch.setattr(rate_limit, "_redis", lambda: None)
+    rate_limit._calls.clear()
+
+    for _ in range(3):
+        assert client.post("/api/trial/analyze", files=upload_files()).status_code == 200
     resp = client.post("/api/trial/analyze", files=upload_files())
     assert resp.status_code == 429
+    # And it tells a blameless caller on a shared network what happened.
+    assert "your network" in resp.json()["detail"]
+    assert resp.headers.get("Retry-After")
 
 
 # ── Funnel counters ──────────────────────────────────────────────────────────

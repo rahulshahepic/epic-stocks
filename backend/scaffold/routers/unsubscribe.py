@@ -20,6 +20,10 @@ def _limit(request: Request, endpoint: str, max_calls: int, window_secs: int = 9
     Both take an HMAC token off the URL and are reachable with no session, so
     without a limit they are free to hammer: a token oracle on one side, and a
     supply of cheap requests that each touch the database on the other.
+
+    The token is a SHA-256 HMAC, so guessing it is infeasible at any rate this
+    would permit; the budget only has to stop a flood, and it is shared by
+    everyone leaving one office network through one address.
     """
     from scaffold.client_ip import client_ip as _client_ip
     from scaffold.rate_limit import check_rate_ip_shared
@@ -46,7 +50,7 @@ def check_unsubscribe(token: str, email: str, type: str, request: Request,
     """Verify an unsubscribe token. No auth required."""
     from scaffold.email_sender import verify_unsubscribe_token
 
-    _limit(request, "unsubscribe_check", max_calls=30)
+    _limit(request, "unsubscribe_check", max_calls=120)
     email = email.lower().strip()
     if type not in ("invite", "notify"):
         return UnsubscribeStatus(valid=False, email=email, type=type)
@@ -64,7 +68,7 @@ def process_unsubscribe(body: UnsubscribeRequest, request: Request,
     """Process an unsubscribe request. No auth required."""
     from scaffold.email_sender import verify_unsubscribe_token
 
-    _limit(request, "unsubscribe_post", max_calls=30)
+    _limit(request, "unsubscribe_post", max_calls=120)
     email = body.email.lower().strip()
     if body.type not in ("invite", "notify"):
         raise HTTPException(400, "Invalid unsubscribe type")

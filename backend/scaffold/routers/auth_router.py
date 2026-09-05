@@ -161,7 +161,13 @@ def auth_callback(body: CallbackRequest, request: Request, response: Response, d
     from scaffold.rate_limit import check_rate_ip_shared
     from scaffold.client_ip import client_ip as _client_ip
     client_ip = _client_ip(request)
-    check_rate_ip_shared(client_ip, "auth_callback", max_calls=20, window_secs=900)
+    # Every sign-in lands here, and an office leaves through one address, so
+    # this budget is shared by everyone on it. At 20 the twenty-first colleague
+    # to sign in within the window simply could not log in — on a campus network
+    # the morning after the app is shared around, that is everyone. The server
+    # cost is one token exchange with the IdP, and the real protection against
+    # replaying a code is that it is single-use and PKCE-bound, not this.
+    check_rate_ip_shared(client_ip, "auth_callback", max_calls=300, window_secs=900)
     _validate_redirect_uri(body.redirect_uri)
     from scaffold.providers.auth import get_provider
     from scaffold.providers.auth.base import UserIdentity

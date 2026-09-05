@@ -137,11 +137,78 @@ def _do_recompute(user_id: int) -> None:
         db.close()
 
 
+# One dispatcher thread drains a coalescing queue into a bounded pool, so any
+# number of invalidations costs a fixed number of threads. Without this a burst
+# of mutations spawned one thread each, and every price change spawned a
+# ten-worker fan-out of its own.
+_MAX_WORKERS = int(os.getenv("EVENT_CACHE_WORKERS", "4"))
+_IDLE_EXIT_SECS = 300
+
+_queue_lock = threading.Lock()
+_wake = threading.Event()
+_pending: set[int] = set()
+_fan_out_pending = False
+_dispatcher: Optional[threading.Thread] = None
+_pool: Optional[ThreadPoolExecutor] = None
+
+
+def _start_dispatcher_locked() -> None:
+    global _dispatcher
+    if _dispatcher is None or not _dispatcher.is_alive():
+        _dispatcher = threading.Thread(target=_dispatch, daemon=True, name="event-cache-dispatch")
+        _dispatcher.start()
+
+
+def _all_user_ids() -> list[int]:
+    from database import SessionLocal
+    from scaffold.models import User as UserModel
+    db = SessionLocal()
+    try:
+        return [row[0] for row in db.query(UserModel.id).all()]
+    finally:
+        db.close()
+
+
+def _dispatch() -> None:
+    global _dispatcher, _fan_out_pending, _pool
+    while True:
+        _wake.wait(timeout=_IDLE_EXIT_SECS)
+        with _queue_lock:
+            _wake.clear()
+            fan_out, _fan_out_pending = _fan_out_pending, False
+            batch = _pending.copy()
+            _pending.clear()
+            if not fan_out and not batch:
+                _dispatcher = None  # nothing left; the next schedule_* restarts us
+                return
+        if fan_out:
+            try:
+                batch.update(_all_user_ids())
+            except Exception:
+                logger.warning("Fan-out user lookup failed", exc_info=True)
+        if not batch:
+            continue
+        if _pool is None:
+            _pool = ThreadPoolExecutor(max_workers=_MAX_WORKERS, thread_name_prefix="event-cache")
+        # Block until the batch is done: one batch at a time keeps the pool,
+        # the DB connections and the recompute load bounded.
+        try:
+            list(_pool.map(_do_recompute, batch))
+        except Exception:
+            logger.warning("Recompute batch failed", exc_info=True)
+
+
 def schedule_recompute(user_id: int) -> None:
-    """Trigger async recompute for one user after their grants or loans change."""
+    """Queue an async recompute for one user after their grants or loans change.
+
+    Repeated calls for the same user coalesce into one pending recompute.
+    """
     if not _client:
         return
-    threading.Thread(target=_do_recompute, args=(user_id,), daemon=True).start()
+    with _queue_lock:
+        _pending.add(user_id)
+        _start_dispatcher_locked()
+        _wake.set()
 
 
 def redis_info() -> dict:
@@ -166,19 +233,15 @@ def redis_info() -> dict:
 
 
 def schedule_fan_out() -> None:
-    """Trigger async recompute for all users after any price change."""
+    """Queue an async recompute for every user.
+
+    Concurrent calls collapse into a single pending fan-out; the user list is
+    read once, when the dispatcher picks the work up.
+    """
     if not _client:
         return
-
-    def _work():
-        from database import SessionLocal
-        from scaffold.models import User as UserModel
-        db = SessionLocal()
-        try:
-            user_ids = [row[0] for row in db.query(UserModel.id).all()]
-        finally:
-            db.close()
-        with ThreadPoolExecutor(max_workers=10) as pool:
-            pool.map(_do_recompute, user_ids)
-
-    threading.Thread(target=_work, daemon=True).start()
+    global _fan_out_pending
+    with _queue_lock:
+        _fan_out_pending = True
+        _start_dispatcher_locked()
+        _wake.set()

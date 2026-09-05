@@ -429,6 +429,58 @@ class EpicModeMiddleware:
         await self.app(scope, receive, send)
 
 
+# A signed-in account's writes, per minute. Far above any real session — a
+# wizard save or an import is one request — and far below the rate it takes to
+# grow the database on purpose.
+_MUTATION_LIMIT = int(os.getenv("MUTATION_RATE_LIMIT", "120"))
+_MUTATION_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+# Auth keeps its own limits and has no user to key on yet.
+_MUTATION_EXEMPT_PREFIXES = ("/api/auth/",)
+
+
+class MutationRateLimitMiddleware:
+    """Cap how fast one account can write.
+
+    Field length caps and row quotas bound what a single write stores; this
+    bounds how many writes arrive. Requests with no user token pass through —
+    the endpoints that take them (reports, unsubscribe) carry IP-keyed limits
+    of their own.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if (
+            scope["type"] == "http"
+            and scope.get("method") in _MUTATION_METHODS
+            and scope.get("path", "").startswith("/api/")
+            and not scope.get("path", "").startswith(_MUTATION_EXEMPT_PREFIXES)
+        ):
+            user_id = _user_id_from_scope(scope)
+            if user_id is not None:
+                from scaffold.rate_limit import check_rate_shared
+                try:
+                    check_rate_shared(user_id, "mutations", _MUTATION_LIMIT, 60)
+                except HTTPException as exc:
+                    response = JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+                    await response(scope, receive, send)
+                    return
+        await self.app(scope, receive, send)
+
+
+def _user_id_from_scope(scope) -> int | None:
+    """The signed-in user's id from the request's token, or None."""
+    token = EncryptionMiddleware._token_from_scope(scope)
+    if not token:
+        return None
+    try:
+        from scaffold.auth import _decode_token
+        return int(_decode_token(token)["sub"])
+    except Exception:
+        return None
+
+
 class EncryptionMiddleware:
     """Pure ASGI middleware that sets per-user encryption key in contextvar.
 
@@ -755,14 +807,17 @@ NATIVE_APP_ORIGINS = [
 # reach even the early responses from the body-size, maintenance and epic-mode
 # guards — without them a native client sees an opaque network error instead of
 # the actual status. Then the body ceiling, which has to come before anything
-# that reads the body, then maintenance, epic-mode guard, and encryption.
+# that reads the body, then maintenance, epic-mode guard, the per-account
+# write limit, and encryption.
 #
 # allow_credentials stays False: native clients authenticate with a Bearer
 # token, never a cookie, so there is no reason to let a cross-origin caller
 # send or receive credentials.
 app = CORSMiddleware(
     BodyLimitMiddleware(
-        MaintenanceMiddleware(EpicModeMiddleware(EncryptionMiddleware(_fastapi_app))),
+        MaintenanceMiddleware(
+            EpicModeMiddleware(MutationRateLimitMiddleware(EncryptionMiddleware(_fastapi_app)))
+        ),
         limits=_BODY_LIMITS,
         default=_DEFAULT_BODY_LIMIT,
     ),

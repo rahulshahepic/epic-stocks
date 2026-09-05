@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 from database import get_db
 from scaffold.models import User, Grant, Loan, Price, Sale, LoanPayment, ImportBackup, TaxSettings
 from scaffold.auth import get_current_user
-from app.excel_io import (read_grants_from_excel, read_prices_from_excel, read_loans_from_excel,
+from scaffold.quota import check_row_count
+from app.excel_io import (FORMULA_LEADS, read_grants_from_excel, read_prices_from_excel, read_loans_from_excel,
                       read_loan_payments_from_excel, read_sales_from_excel, write_events_to_excel)
 from services.timeline_cache import get_timeline
 from app.date_utils import to_date as _to_date
@@ -253,6 +254,12 @@ def import_excel(
 
     if all_errors:
         raise HTTPException(status_code=400, detail="Validation errors:\n" + "\n".join(all_errors))
+
+    check_row_count(Grant, len(grants_raw))
+    check_row_count(Price, len(prices_raw))
+    check_row_count(Loan, len(loans_raw))
+    check_row_count(LoanPayment, len(loan_payments_raw))
+    check_row_count(Sale, len(sales_raw))
 
     # Snapshot current data before wiping (keep last 3 backups per user)
     _save_import_backup(user.id, has_schedule, has_prices, has_loans, has_loan_payments, has_sales, db)
@@ -899,7 +906,7 @@ def _write_headers(ws, headers):
 
 def _safe_str(v):
     """Prefix formula-initiating characters so spreadsheet apps treat the cell as text."""
-    if isinstance(v, str) and v[:1] in ("=", "+", "-", "@", "\t", "\r"):
+    if isinstance(v, str) and v[:1] in FORMULA_LEADS:
         return "'" + v
     return v
 
@@ -1089,7 +1096,7 @@ def _report_header(ws, row, headers):
 
 
 def _report_cell(ws, row, col, val, fmt=None):
-    c = ws.cell(row=row, column=col, value=val)
+    c = ws.cell(row=row, column=col, value=_safe_str(val))
     c.font = _BODY_FONT
     c.fill = _ALT_FILL if row % 2 == 0 else _WHITE_FILL
     if fmt:

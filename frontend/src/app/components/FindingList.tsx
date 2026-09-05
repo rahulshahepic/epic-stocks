@@ -1,3 +1,4 @@
+import { useReportProblem } from '../../scaffold/components/ReportProblem.tsx'
 import type { Finding } from '../epicImport.ts'
 
 const TONE: Record<string, string> = {
@@ -23,5 +24,53 @@ export default function FindingList({ findings }: { findings: Finding[] }) {
         </li>
       ))}
     </ul>
+  )
+}
+
+
+/**
+ * Summarise findings as rule ids and severities — never their messages, which
+ * quote figures from the person's own statement. The ids are what RULES.md is
+ * indexed by, so they are the whole of what a fix needs.
+ */
+export function summariseFindings(findings: Finding[], blocked = false): string {
+  const counts = new Map<string, number>()
+  for (const f of findings) {
+    const key = `${f.code}(${f.severity})`
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+  }
+  const codes = [...counts.entries()]
+    .map(([key, n]) => (n > 1 ? `${key} ×${n}` : key))
+    .join(', ')
+  return `${blocked ? 'blocked import' : 'import findings'}: ${codes || 'none'}`
+}
+
+/**
+ * Offered wherever an import comes back wrong. An import that misreads a file is
+ * the failure most worth hearing about — it is invisible in the server logs,
+ * because nothing threw.
+ */
+export function ReportFindingsButton({
+  findings,
+  blocked = false,
+  className = '',
+}: {
+  findings: Finding[]
+  blocked?: boolean
+  className?: string
+}) {
+  const { openReport } = useReportProblem()
+  return (
+    <button
+      type="button"
+      onClick={() => openReport({
+        source: 'import',
+        errorMessage: summariseFindings(findings, blocked),
+        message: 'The import got this wrong: ',
+      })}
+      className={`text-xs font-medium text-cs-brand underline underline-offset-2 hover:text-cs-brand-hover ${className}`}
+    >
+      Report this import problem
+    </button>
   )
 }

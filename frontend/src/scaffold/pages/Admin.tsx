@@ -5,7 +5,7 @@ import { api } from '../../api.ts'
 import { useConfig } from '../hooks/useConfig.ts'
 import { useAppContext } from '../contexts/AppContext.tsx'
 import type {
- AdminStats, AdminUser, BlockedEmailEntry, ErrorLogEntry, TestNotifyResult,
+ AdminStats, AdminUser, BlockedEmailEntry, ErrorLogEntry, UserReportEntry, TestNotifyResult,
  SystemMetricPoint, DbTableInfo, RotationEvent, TipsReport, TrialFunnelReport,
  UserDetail, EmailLookupResult,
 } from '../../api.ts'
@@ -58,6 +58,9 @@ export default function Admin() {
  const [blocked, setBlocked] = useState<BlockedEmailEntry[]>([])
  const [errorLogs, setErrorLogs] = useState<ErrorLogEntry[]>([])
  const [expandedError, setExpandedError] = useState<number | null>(null)
+ const [reports, setReports] = useState<UserReportEntry[]>([])
+ const [expandedReport, setExpandedReport] = useState<number | null>(null)
+ const [showResolvedReports, setShowResolvedReports] = useState(false)
  const [error, setError] = useState('')
  const [blockEmail, setBlockEmail] = useState('')
  const [blockReason, setBlockReason] = useState('')
@@ -121,6 +124,13 @@ export default function Admin() {
  } catch { /* ignore */ }
  }, [])
 
+ const loadReports = useCallback(async () => {
+ try {
+ const rs = await api.adminReports()
+ setReports(Array.isArray(rs) ? rs : [])
+ } catch { /* ignore */ }
+ }, [])
+
  const loadMetrics = useCallback(async (hours: number) => {
  try {
  const [m, t] = await Promise.all([api.adminMetrics(hours), api.adminDbTables()])
@@ -158,6 +168,7 @@ export default function Admin() {
  }, [loadUsers, loadErrors])
 
  useEffect(() => { load() }, [load])
+ useEffect(() => { loadReports() }, [loadReports])
  useEffect(() => { loadMetrics(metricHours) }, [metricHours, loadMetrics])
 
  useEffect(() => {
@@ -166,6 +177,9 @@ export default function Admin() {
  }, [searchInput])
 
  useEffect(() => { loadUsers(search) }, [search, loadUsers])
+
+ const newReportCount = reports.filter(r => r.status === 'new').length
+ const visibleReports = showResolvedReports ? reports : reports.filter(r => r.status === 'new')
 
  async function handleBlock(e: React.FormEvent) {
  e.preventDefault()
@@ -755,6 +769,101 @@ export default function Admin() {
  {blocked.length === 0 && (
  <p className="mt-3 text-xs text-cs-text-2">No blocked emails.</p>
  )}
+ </section>
+
+ {/* Problem reports — what people actually told us */}
+ <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+ <div className="flex items-center justify-between">
+ <h3 className="text-sm font-medium text-cs-text">
+ Problem Reports ({visibleReports.length})
+ {newReportCount > 0 && (
+ <span className="ml-2 rounded-full bg-cs-brand px-2 py-0.5 text-[10px] font-semibold text-white">
+ {newReportCount} new
+ </span>
+ )}
+ </h3>
+ <button
+ onClick={() => setShowResolvedReports(v => !v)}
+ className="text-xs text-cs-text-2 underline hover:text-cs-text"
+ >
+ {showResolvedReports ? 'Hide resolved' : 'Show resolved'}
+ </button>
+ </div>
+ {visibleReports.length === 0 && (
+ <p className="mt-3 text-xs text-cs-text-2">Nothing reported.</p>
+ )}
+ <div className="mt-3 space-y-2">
+ {visibleReports.map(r => (
+ <div
+ key={r.id}
+ className={`rounded-md border p-2 text-xs ${
+ r.status === 'resolved' ? 'border-cs-border opacity-60' : 'border-cs-border-strong'}`}
+ >
+ <div
+ className="flex cursor-pointer items-start justify-between gap-2"
+ onClick={() => setExpandedReport(expandedReport === r.id ? null : r.id)}
+ >
+ <div className="min-w-0 flex-1">
+ <span className="font-mono font-medium text-cs-brand">{r.source}</span>
+ {r.path && <span className="ml-2 text-cs-muted">{r.path}</span>}
+ {r.error_ref && (
+ <span className="ml-2 font-mono text-cs-text-2">ref:{r.error_ref}</span>
+ )}
+ {!r.include_details && (
+ <span className="ml-2 text-cs-muted">anonymous</span>
+ )}
+ <p className="mt-0.5 whitespace-pre-wrap text-cs-text">{r.message}</p>
+ </div>
+ <span className="shrink-0 text-cs-text-2">
+ {new Date(r.timestamp).toLocaleString('en-GB', { timeZone: 'UTC', hour12: false })} UTC
+ </span>
+ </div>
+
+ {expandedReport === r.id && (
+ <div className="mt-2 space-y-2">
+ <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[11px] text-cs-text-2">
+ {r.email && (<><dt className="font-medium">Email</dt><dd>{r.email}</dd></>)}
+ {r.user_id != null && (<><dt className="font-medium">User</dt><dd>uid:{r.user_id}</dd></>)}
+ {r.app_version && (<><dt className="font-medium">Build</dt><dd className="font-mono">{r.app_version}</dd></>)}
+ {r.error_message && (<><dt className="font-medium">Shown</dt><dd>{r.error_message}</dd></>)}
+ {r.user_agent && (<><dt className="font-medium">Browser</dt><dd className="break-all">{r.user_agent}</dd></>)}
+ </dl>
+ {r.client_log && (
+ <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded bg-cs-raised p-2 font-mono text-[10px] text-cs-text-2">
+ {r.client_log}
+ </pre>
+ )}
+ {r.error_traceback && (
+ <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded bg-cs-raised p-2 font-mono text-[10px] text-cs-text-2">
+ {r.error_traceback}
+ </pre>
+ )}
+ <div className="flex gap-3">
+ <button
+ onClick={async () => {
+ const next = r.status === 'resolved' ? 'new' : 'resolved'
+ await api.adminSetReportStatus(r.id, next)
+ setReports(prev => prev.map(x => x.id === r.id ? { ...x, status: next } : x))
+ }}
+ className="text-xs text-cs-brand hover:underline"
+ >
+ {r.status === 'resolved' ? 'Reopen' : 'Mark resolved'}
+ </button>
+ <button
+ onClick={async () => {
+ await api.adminDeleteReport(r.id)
+ setReports(prev => prev.filter(x => x.id !== r.id))
+ }}
+ className="text-xs text-red-500 hover:text-red-700 dark:text-red-400"
+ >
+ Delete
+ </button>
+ </div>
+ </div>
+ )}
+ </div>
+ ))}
+ </div>
  </section>
 
  {/* Error Logs */}

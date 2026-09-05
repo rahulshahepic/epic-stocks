@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useReportProblem } from '../components/ReportProblem.tsx'
 import { api } from '../../api.ts'
 import { clearPendingLogin, completeLogin, readPendingLogin } from '../oidc.ts'
 import { platform } from '../../platform/index.ts'
@@ -7,6 +8,7 @@ import { pingConverted, takeStashedTrialPayload } from '../../app/trialImport.ts
 
 export default function AuthCallback() {
  const navigate = useNavigate()
+ const { openReport } = useReportProblem()
  const [error, setError] = useState<string | null>(null)
  // The authorization code is single-use. Reading the stored PKCE material is
  // async, so without this guard StrictMode's double-invoked effect can get two
@@ -101,6 +103,16 @@ export default function AuthCallback() {
  >
  Back to sign-in
  </a>
+ {/* A sign-in that fails here strands someone outside the app entirely. */}
+ <p className="mt-4 text-xs text-cs-text-2">
+ <button
+ type="button"
+ onClick={() => openReport({ source: 'manual', errorMessage: error })}
+ className="underline hover:text-cs-text"
+ >
+ Report this
+ </button>
+ </p>
  </div>
  </div>
  )

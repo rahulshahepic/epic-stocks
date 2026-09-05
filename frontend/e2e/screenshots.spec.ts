@@ -166,6 +166,32 @@ test.describe('Screenshots', () => {
     await page.screenshot({ path: `${OUT}/login-dark-mobile.png`, fullPage: true })
   })
 
+  // The report dialog, from the pre-login side — the case that matters most,
+  // because it is the one a person reaches when they cannot get in at all.
+  test('report dialog - light - mobile', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' })
+    await page.setViewportSize(MOBILE)
+    await page.goto(`${BASE}/login`)
+    await page.waitForLoadState('networkidle')
+    await page.getByRole('button', { name: 'Report a problem' }).click()
+    await page.getByPlaceholder('What were you doing when it broke?')
+      .fill('Signing in with Google sends me back to this page every time.')
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: `${OUT}/report-light-mobile.png` })
+  })
+
+  test('report dialog - dark - mobile', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await page.setViewportSize(MOBILE)
+    await page.goto(`${BASE}/login`)
+    await page.waitForLoadState('networkidle')
+    await page.getByRole('button', { name: 'Report a problem' }).click()
+    await page.getByPlaceholder('What were you doing when it broke?')
+      .fill('Signing in with Google sends me back to this page every time.')
+    await page.waitForTimeout(500)
+    await page.screenshot({ path: `${OUT}/report-dark-mobile.png` })
+  })
+
   test('try page - light - mobile', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'light' })
     await page.setViewportSize(MOBILE)

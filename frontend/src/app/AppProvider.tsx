@@ -52,6 +52,28 @@ const PrivacyDataCollected = (
  the database — they exist only in memory during your request.
  </P>
  </Sub>
+ <Sub title="Problem reports (sent by you, only when you choose to)">
+ <P>
+ A report you send with <strong>Report a problem</strong> stores what you typed,
+ the page you were on, the kind of failure that prompted it, the error text the
+ app had already shown you, the build version, and a reference id pointing at the
+ matching server-side error log. The optional email field is stored only if you
+ fill it in, so you can be reached about what you reported.
+ </P>
+ <P>
+ Identifying details are opt-in: the "include details that identify me" box starts
+ unticked, and only ticking it attaches your account, your browser's user-agent,
+ and a short trail of the last few pages you visited and requests that failed.
+ Leave it off and the report is stored with no account attached, even if you were
+ signed in. No financial data is ever included — reports about a failed import
+ carry only the rule ids that fired, never the finding text, which quotes figures
+ from your own statement. The dialog shows you the whole payload before it sends.
+ </P>
+ <P>
+ A one-way hash of your IP address is kept with each report to rate-limit abuse of
+ an endpoint that has to work without a login. The address itself is never stored.
+ </P>
+ </Sub>
  <Sub title="Anonymous counts (no account needed)">
  <P>
  The no-account preview at <strong>/try</strong> keeps three running totals per
@@ -164,7 +186,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
  viewerHiddenRoutes: new Set(['/import', '/wizard']),
  epicModeHiddenRoutes: new Set(['/import']),
  settingsSections: <AppSettingsSections />,
- privacyLastUpdated: '2026-08-29',
+ privacyLastUpdated: '2026-09-05',
  privacyDataCollected: PrivacyDataCollected,
  privacyThirdParties: PrivacyThirdParties,
  notifyTemplates: NOTIFY_TEMPLATES,

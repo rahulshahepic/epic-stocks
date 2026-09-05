@@ -392,6 +392,8 @@ def send_admin_daily_digest():
         total_grants = db.query(func.count(Grant.id)).scalar()
         total_loans = db.query(func.count(Loan.id)).scalar()
         total_prices = db.query(func.count(Price.id)).scalar()
+        from scaffold.models import UserReport
+        open_reports = db.query(func.count(UserReport.id)).filter(UserReport.status == "new").scalar() or 0
 
         subject = f"Epic Stocks: Daily digest — {total_users} users"
         text = (
@@ -402,6 +404,7 @@ def send_admin_daily_digest():
             f"Total grants: {total_grants}\n"
             f"Total loans: {total_loans}\n"
             f"Total prices: {total_prices}\n"
+            f"Open problem reports: {open_reports}\n"
         )
         html = f"""<div style="font-family: sans-serif; max-width: 480px;">
   <h2 style="color: #4472C4;">Epic Stocks — Daily Digest</h2>
@@ -412,6 +415,7 @@ def send_admin_daily_digest():
     <tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">Total grants</td><td>{total_grants}</td></tr>
     <tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">Total loans</td><td>{total_loans}</td></tr>
     <tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">Total prices</td><td>{total_prices}</td></tr>
+    <tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">Open problem reports</td><td>{open_reports}</td></tr>
   </table>
 </div>"""
 

@@ -52,6 +52,16 @@ All responses include:
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |
 | `Permissions-Policy` | `geolocation=(), camera=(), microphone=()` |
 
+### Problem reports (`backend/scaffold/routers/reports.py`)
+
+`POST /api/report` is unauthenticated by design — someone who cannot sign in must still be able to report it. What that costs, and what pays for it:
+
+- Message capped at 2000 characters, client log at 8 KB, user agent at 400 — everything over the cap is truncated, not rejected.
+- Two rate limits: **30 per 15 min per client IP** and **10 per 15 min per authenticated user**. Note that uvicorn runs without `--proxy-headers`, so behind Caddy `request.client.host` is the proxy for every request and the IP bucket is effectively global. That is why it is loose: an outage produces a burst of reports, and the limit must not silence it. The per-user limit is the precise one.
+- The stored `ip_hash` is an HMAC, never the address, and behind a reverse proxy it is the proxy's address — it only distinguishes reporters on a directly-exposed deployment.
+- Reports are stored in `user_reports`. Unlike `error_logs`, that table is **not** trimmed by the nightly job, so it grows with real usage — watch it in **Admin → Database Tables** and delete handled reports.
+- Each report emails every address in `ADMIN_EMAIL` when email is configured. Sending is best-effort: a mailer failure is logged and never fails the submission.
+
 ### File upload hardening (`backend/app/routers/import_export.py`)
 
 - Reject files larger than **5 MB** before parsing

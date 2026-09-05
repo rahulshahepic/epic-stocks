@@ -12,7 +12,7 @@ from starlette.responses import FileResponse
 import database
 
 logger = logging.getLogger(__name__)
-from scaffold.routers import auth_router, admin, notifications, push, unsubscribe
+from scaffold.routers import auth_router, admin, notifications, push, unsubscribe, reports
 from app.routers import grants, loans, prices, events, flows, import_export, epic_import, sales, cache as cache_router, tips, wizard, content, sharing, trial
 from app.routers.retirement import retirement_router, dashboard_prefs_router
 from scaffold.auth import get_current_user
@@ -339,7 +339,9 @@ def _start_nightly_maintenance():
 
 
 # API routes that are always accessible during maintenance (all HTTP methods).
-_MAINT_ALLOWED_EXACT = frozenset({"/api/health", "/api/status", "/api/config", "/api/sharing/invite-info"})
+# /api/report stays open during maintenance: downtime is when people most want
+# to report something, and a report touches no encrypted financial table.
+_MAINT_ALLOWED_EXACT = frozenset({"/api/health", "/api/status", "/api/config", "/api/sharing/invite-info", "/api/report"})
 _MAINT_ALLOWED_PREFIX = ("/api/auth/", "/api/admin/", "/api/push/", "/api/notifications/")
 # GET /api/me is needed for nav (profile info, is_admin flag).
 # Mutating methods on /api/me (DELETE = account deletion) must be blocked —
@@ -505,9 +507,16 @@ def _is_admin_request(request: Request) -> bool:
 
 @_fastapi_app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    import secrets
     import traceback as tb
     tb_str = tb.format_exc()
-    logger.error("Unhandled error on %s %s: %s", request.method, request.url.path, exc, exc_info=True)
+    # Correlation id: handed to the client in the response body and stored on the
+    # log row, so a problem report that quotes it lands on this exact traceback.
+    error_ref = secrets.token_hex(4)
+    logger.error(
+        "Unhandled error on %s %s [ref %s]: %s",
+        request.method, request.url.path, error_ref, exc, exc_info=True,
+    )
 
     # Persist to error_logs table (best-effort)
     try:
@@ -529,6 +538,7 @@ async def global_exception_handler(request: Request, exc: Exception):
                 error_message=str(exc) or type(exc).__name__,
                 traceback=tb_str,
                 user_id=user_id,
+                error_ref=error_ref,
             ))
             db.commit()
         finally:
@@ -537,7 +547,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         pass
 
     detail = (str(exc) or type(exc).__name__) if _is_admin_request(request) else "Internal server error"
-    return JSONResponse(status_code=500, content={"detail": detail})
+    return JSONResponse(status_code=500, content={"detail": detail, "error_ref": error_ref})
 
 
 _fastapi_app.include_router(auth_router.router)
@@ -560,6 +570,7 @@ _fastapi_app.include_router(tips.router)
 _fastapi_app.include_router(wizard.router)
 _fastapi_app.include_router(sharing.router)
 _fastapi_app.include_router(unsubscribe.router)
+_fastapi_app.include_router(reports.router)
 _fastapi_app.include_router(content.router)
 _fastapi_app.include_router(retirement_router)
 _fastapi_app.include_router(dashboard_prefs_router)

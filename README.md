@@ -501,6 +501,26 @@ Go to **Import/Export → Download Vesting.xlsx** to export all your grants, pri
 
 The **Import** page also keeps the last 3 backup snapshots from previous imports — you can restore any of them if an import goes wrong.
 
+### Reporting a Problem
+
+**Report a problem** sits in the footer of every page once you are signed in, and on the login and `/try` pages when you are not — someone who cannot get past sign-in is exactly the person who most needs to be able to say so. The app also offers it at the moment something fails:
+
+- **A red error toast** carries a **Report** button.
+- **A crash** shows a recovery screen with **Reload** and **Report this**, instead of a blank page.
+- **An import that comes back with errors** offers **Report this import problem**.
+
+Every report carries what you typed, the page you were on, and — when the failure came from the server — a short **reference id** that points at the exact stored traceback.
+
+**"Include details that identify me" is a checkbox, and it starts off.** Ticking it attaches your account, your browser, and the last few pages you visited plus any requests that failed. Leaving it off means the report is stored anonymously, even if you are signed in. Either way it never includes any of your financial data — no share counts, no prices, no loan amounts. Press **Show exactly what gets sent** to read the whole payload before it goes.
+
+Import reports carry only the rule ids that fired (`C1`, `G3`, …), never the finding text, because those messages quote figures from your own statement.
+
+Your email address is always optional, and is only there so you can be reached about what you reported.
+
+| Light | Dark |
+|-------|------|
+| ![Report a problem](screenshots/report-light-mobile.png) | ![Report a problem Dark](screenshots/report-dark-mobile.png) |
+
 ---
 
 ## For Content Admins
@@ -545,6 +565,7 @@ Site admins are designated via the `ADMIN_EMAIL` environment variable (semicolon
 - **No-account preview funnel** — how the `/try` preview converts: previews computed, saves pressed, signups that carried preview data, and the conversion rate, as anonymous daily totals over the last 30 days. The `trial_daily_stats` table holds exactly three integers keyed by date — no IP, no user agent, no per-visitor row — so this measures the feature without recording anything about a visitor. See the privacy policy's "Anonymous counts" section, which discloses it.
 - Per-user metadata: email, name, join date, last login, record counts, admin badge
 - Searchable and paginated user list, sorted by last active
+- **Problem Reports** — what people actually reported, newest first, with a **new** badge for untriaged ones. Each entry expands to the reporter's account and browser (only when they opted in), the client trail, and — when the report carries a reference id — the matching server traceback pulled from the error log. Mark resolved, reopen, or delete. Reports live in their own `user_reports` table, so the nightly trim of `error_logs` to 500 rows never sweeps them away. The daily admin digest email counts the open ones, and each new report emails the admins as it lands.
 - **Build version** — a 7-character commit SHA at the bottom of the Admin page confirms exactly which build is running
 
 > Admins **cannot** see any user's financial data (share counts, prices, loan amounts, computed events). Only aggregate counts and account metadata are exposed.
@@ -863,6 +884,7 @@ epic-stocks/
 │   │       ├── admin.py         # Admin dashboard, user mgmt, blocklist, email lookup
 │   │       ├── notifications.py # Email notification preferences
 │   │       ├── push.py          # Push subscription management
+│   │       ├── reports.py       # Problem reports (no-auth POST) + what a report may carry
 │   │       ├── sharing.py       # Email invitations + shared data viewing
 │   │       └── unsubscribe.py   # Public (no-auth) email unsubscribe endpoints
 │   ├── app/                 # Equity tracking domain (replace when forking)
@@ -907,7 +929,8 @@ epic-stocks/
 │   │   ├── scaffold/        # Reusable UI layer (keep when forking)
 │   │   │   ├── oidc.ts      # Shared OIDC PKCE start/complete (used by Login + InviteLanding)
 │   │   │   ├── pages/       # Login, AuthCallback, Admin, Settings, PrivacyPolicy, InviteLanding, Unsubscribe
-│   │   │   ├── components/  # Layout shell, Toast, DisclaimerNotice + UnofficialBadge (affiliation notices)
+│   │   │   ├── components/  # Layout shell, Toast, ErrorBoundary + ReportProblem (problem reporting), DisclaimerNotice + UnofficialBadge (affiliation notices)
+│   │   │   ├── reportLog.ts # In-memory trail (routes, failed requests, JS errors) a report can attach
 │   │   │   ├── contexts/    # ThemeContext, MaintenanceContext, ViewingContext, AppContext (injection interface)
 │   │   │   └── hooks/       # useAuth, useConfig, useDark, usePush, useMe
 │   │   ├── app/             # Equity tracking UI (replace when forking)
@@ -1037,6 +1060,7 @@ Cross-origin requests are accepted only from the native shell origins (`capacito
 | **Unsubscribe** | | |
 | GET | `/api/unsubscribe?token=&email=&type=` | Verify unsubscribe token (no auth required) |
 | POST | `/api/unsubscribe` | Process unsubscribe — type is `invite` or `notify` (no auth required) |
+| POST | `/api/report` | Submit a problem report (no auth required — works signed out, and stays open during maintenance) |
 | **Sharing** | | |
 | GET | `/api/sharing/invite-info?token=&code=` | Validate invitation token/code (no auth required) |
 | POST | `/api/sharing/invite` | Send an invitation email |
@@ -1069,6 +1093,9 @@ Cross-origin requests are accepted only from the native shell origins (`capacito
 | POST | `/api/admin/test-notify` | Send a test notification to any user (admin only) |
 | GET | `/api/admin/errors` | List recent backend error logs (admin only) |
 | DELETE | `/api/admin/errors` | Clear error log (admin only) |
+| GET | `/api/admin/reports` | List problem reports, newest first. `?status=new\|resolved` (admin only) |
+| PATCH | `/api/admin/reports/{id}` | Mark a report resolved or reopen it (admin only) |
+| DELETE | `/api/admin/reports/{id}` | Delete a report (admin only) |
 | GET | `/api/admin/metrics?hours=72` | Time-series CPU/RAM/DB metrics history (admin only) |
 | GET | `/api/admin/db-tables` | Per-table DB size breakdown, PostgreSQL only (admin only) |
 | GET/POST | `/api/admin/flexible-payoff` | Get/set flexible loan payoff method (admin only) |

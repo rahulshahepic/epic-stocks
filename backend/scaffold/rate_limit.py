@@ -31,6 +31,34 @@ logger = logging.getLogger(__name__)
 _calls: dict[tuple, list[float]] = defaultdict(list)
 _lock = Lock()
 
+# The in-memory limiters key on (caller, endpoint) and nothing ever removed a
+# key once its window passed. Keyed on an address that is one line of the
+# unbounded IPv6 space, on endpoints an anonymous caller can reach, that is a
+# slow memory leak an attacker sets the pace of. Sweep on a schedule instead of
+# on every call: the cost is one pass over the dict, not one per request.
+_SWEEP_EVERY = 1000
+_MAX_AGE = 3600
+_since_sweep = 0
+
+
+def _sweep_locked(now: float) -> None:
+    """Drop keys whose most recent call is older than any window in use.
+
+    Caller holds _lock.
+    """
+    stale = [k for k, times in _calls.items() if not times or now - times[-1] > _MAX_AGE]
+    for k in stale:
+        del _calls[k]
+
+
+def _note_call_locked(key: tuple, now: float) -> None:
+    """Count one call against `key`, sweeping the table now and then."""
+    global _since_sweep
+    _since_sweep += 1
+    if _since_sweep >= _SWEEP_EVERY:
+        _since_sweep = 0
+        _sweep_locked(now)
+
 
 def _too_many() -> HTTPException:
     return HTTPException(status_code=429, detail="Too many requests — please slow down")
@@ -102,6 +130,7 @@ def check_rate(user_id: int, endpoint: str, max_calls: int, window_secs: int) ->
     key = (user_id, endpoint)
     now = time.monotonic()
     with _lock:
+        _note_call_locked(key, now)
         recent = [t for t in _calls[key] if now - t < window_secs]
         if len(recent) >= max_calls:
             raise _too_many()
@@ -119,6 +148,7 @@ def check_rate_ip(ip: str, endpoint: str, max_calls: int, window_secs: int) -> N
     key = (ip, endpoint)
     now = time.monotonic()
     with _lock:
+        _note_call_locked(key, now)
         recent = [t for t in _calls[key] if now - t < window_secs]
         if len(recent) >= max_calls:
             raise _too_many()

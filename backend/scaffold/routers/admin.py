@@ -528,18 +528,25 @@ def admin_test_notify(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    from scaffold.notifications import send_push
+    from scaffold.notifications import PushResult, send_push
     payload = {"title": body.title, "body": body.body}
     subs = db.query(PushSubscription).filter(PushSubscription.user_id == user.id).all()
     push_sent = push_failed = 0
+    removed = 0
     for sub in subs:
-        ok = send_push(sub, payload)
-        if ok:
+        # PushResult is a str Enum, so every member is truthy — `if ok:` counted
+        # a timeout as a success and never deleted anything. Only GONE means the
+        # push service has actually dropped the subscription; a transient
+        # failure keeps it, exactly as the daily job does.
+        result = send_push(sub, payload)
+        if result is PushResult.SENT:
             push_sent += 1
         else:
             push_failed += 1
-            db.delete(sub)
-    if push_failed:
+            if result is PushResult.GONE:
+                db.delete(sub)
+                removed += 1
+    if removed:
         db.commit()
 
     email_sent = False

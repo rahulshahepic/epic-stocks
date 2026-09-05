@@ -1,14 +1,13 @@
 """Wizard endpoints: tolerant structural file parsing and merge-aware bulk data save."""
-import io
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
-import openpyxl
 
 from database import get_db
 from scaffold.models import User, Grant, Loan, Price, Sale, LoanPayment
 from scaffold.auth import get_current_user
+from scaffold.safe_workbook import WorkbookRejected, load_workbook_safely
 from app.date_utils import to_date as _to_date
 from schemas import MAX_BULK_ITEMS, MAX_LABEL_LEN, bounded, bounded_list
 from scaffold.quota import check_row_count, check_row_quota
@@ -75,8 +74,12 @@ def parse_file(
     content = file.file.read(_MAX_UPLOAD_BYTES + 1)
     if len(content) > _MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=400, detail="That file is too large (max 5 MB)")
+    # The 5 MB cap bounds the upload, not what it expands to — see
+    # scaffold/safe_workbook.py. Measure the archive before openpyxl builds it.
     try:
-        wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+        wb = load_workbook_safely(content, data_only=True)
+    except WorkbookRejected as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     except Exception:
         raise HTTPException(status_code=422, detail="Could not parse file as Excel (.xlsx)")
 

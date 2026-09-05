@@ -44,27 +44,77 @@ _MONTHS = {m: i for i, m in enumerate(
      "august", "september", "october", "november", "december"], start=1)}
 
 
+class _Unreadable(ValueError):
+    """A matched row carried a figure that is not a figure. Reported, never raised out."""
+
+
 def _money(s: str) -> float:
-    """'$1,234.56' -> 1234.56;  '($5.00)' -> -5.00"""
+    """'$1,234.56' -> 1234.56;  '($5.00)' -> -5.00
+
+    The row grammar admits shapes float() will not take ("1.2.3"), and this
+    text comes out of a file an anonymous caller uploaded, so a bad figure is
+    a finding rather than an exception escaping as a 500.
+    """
     neg = s.strip().startswith("(") or s.strip().startswith("-")
-    v = float(re.sub(r"[^\d.]", "", s))
+    try:
+        v = float(re.sub(r"[^\d.]", "", s))
+    except ValueError as exc:
+        raise _Unreadable(f"{s!r} is not an amount") from exc
     return -v if neg else v
 
 
+def _rate(s: str) -> float:
+    try:
+        return float(s) / 100.0
+    except ValueError as exc:
+        raise _Unreadable(f"{s!r} is not an interest rate") from exc
+
+
 def _us_date(s: str) -> date:
-    m, d, y = (int(p) for p in s.split("/"))
-    return date(y, m, d)
+    """'7/15/2027' -> date. Raises _Unreadable on 13/40/2027 and friends."""
+    try:
+        m, d, y = (int(p) for p in s.split("/"))
+        return date(y, m, d)
+    except ValueError as exc:
+        raise _Unreadable(f"{s!r} is not a date") from exc
 
 
 def _long_date(s: str) -> date | None:
+    """'March 3, 2027' -> date. None for anything that is not one.
+
+    "February 30, 2027" and "March 3, 0000" both satisfy the pattern and both
+    make date() raise, so the construction is guarded rather than the shape.
+    """
     m = re.match(r"([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})", s.strip())
     if not m or m.group(1).lower() not in _MONTHS:
         return None
-    return date(int(m.group(3)), _MONTHS[m.group(1).lower()], int(m.group(2)))
+    try:
+        return date(int(m.group(3)), _MONTHS[m.group(1).lower()], int(m.group(2)))
+    except ValueError:
+        return None
+
+
+class StatementUnreadable(ValueError):
+    """The upload is not a PDF this server will spend more time on."""
+
+
+# A Stock Loan Statement is a few pages. Text extraction is the most expensive
+# thing an anonymous caller can ask this server to do (POST /api/trial/analyze
+# takes no session), and pdfminer's cost is per page and unbounded by file
+# size — a 5 MB upload can declare thousands of them. Stop well past any real
+# statement and far short of anything worth doing on purpose.
+MAX_PDF_PAGES = 64
+# Lines are the other axis: one crafted page can carry an enormous text layer.
+MAX_STATEMENT_LINES = 20_000
 
 
 def extract_lines(pdf_bytes: bytes) -> list[str]:
-    """Pull ordered text lines out of the PDF, one visual row per line."""
+    """Pull ordered text lines out of the PDF, one visual row per line.
+
+    Raises StatementUnreadable for a file that is not a readable PDF or is
+    larger than this parser will take on; RuntimeError only when pdfplumber
+    itself is missing.
+    """
     try:
         import pdfplumber
     except ImportError as e:  # pragma: no cover - dependency is in requirements.txt
@@ -72,9 +122,28 @@ def extract_lines(pdf_bytes: bytes) -> list[str]:
 
     import io
     lines: list[str] = []
-    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-        for page in pdf.pages:
-            lines.extend((page.extract_text() or "").split("\n"))
+    try:
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            if len(pdf.pages) > MAX_PDF_PAGES:
+                raise StatementUnreadable(
+                    f"That PDF has more than {MAX_PDF_PAGES} pages — a Stock Loan "
+                    f"Statement is a few. Upload just the statement."
+                )
+            for page in pdf.pages:
+                lines.extend((page.extract_text() or "").split("\n"))
+                if len(lines) > MAX_STATEMENT_LINES:
+                    raise StatementUnreadable(
+                        "That PDF holds far more text than a Stock Loan Statement."
+                    )
+    except StatementUnreadable:
+        raise
+    except RecursionError as exc:
+        # Deeply nested objects in a crafted PDF. Not something to retry.
+        raise StatementUnreadable("That PDF could not be read.") from exc
+    except Exception as exc:
+        # pdfminer raises its own family of errors on a malformed file, and
+        # anything that reaches here is the upload's fault, not the server's.
+        raise StatementUnreadable("That PDF could not be read.") from exc
     return lines
 
 
@@ -93,33 +162,51 @@ def parse_statement_lines(lines: list[str]) -> tuple[Statement, list[Finding]]:
         m = _ROW.match(s)
         if m:
             num = m.group("num")
+            try:
+                loan = StatementLoan(
+                    loan_number=num,
+                    name=m.group("name").strip(),
+                    balance=_money(m.group("bal")),
+                    interest_rate=_rate(m.group("rate")),
+                    interest_to_date=_money(m.group("interest")),
+                    due_date=_us_date(m.group("due")),
+                )
+            except _Unreadable as exc:
+                findings.append(Finding("L1", WARNING, num,
+                                        f"Row skipped — {exc}."))
+                continue
             if num in seen_numbers:
                 findings.append(Finding("L1", WARNING, num,
                                         "Loan number appears more than once on the statement"))
             seen_numbers.add(num)
-            st.loans.append(StatementLoan(
-                loan_number=num,
-                name=m.group("name").strip(),
-                balance=_money(m.group("bal")),
-                interest_rate=float(m.group("rate")) / 100.0,
-                interest_to_date=_money(m.group("interest")),
-                due_date=_us_date(m.group("due")),
-            ))
+            st.loans.append(loan)
             continue
 
         m = _SUBTOTAL.match(s)
         if m:
-            st.subtotals[int(m.group("year"))] = _money(m.group("amt"))
+            try:
+                st.subtotals[int(m.group("year"))] = _money(m.group("amt"))
+            except _Unreadable as exc:
+                findings.append(Finding("L1", WARNING, m.group("year"),
+                                        f"Subtotal skipped — {exc}."))
             continue
 
         m = _TOTAL_PRINCIPAL.match(s)
         if m:
-            st.total_principal = _money(m.group("amt"))
+            try:
+                st.total_principal = _money(m.group("amt"))
+            except _Unreadable as exc:
+                findings.append(Finding("L1", WARNING, "",
+                                        f"Total principal skipped — {exc}."))
             continue
 
         m = _TOTAL.match(s)
         if m:
-            st.printed_total = _money(m.group("amt"))
+            try:
+                st.printed_total = _money(m.group("amt"))
+            except _Unreadable as exc:
+                findings.append(Finding("L1", WARNING, "",
+                                        f"Total skipped — {exc}."))
             continue
 
         m = _HEADER_DATE.match(s)

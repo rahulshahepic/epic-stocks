@@ -737,6 +737,9 @@ def _send_invitation_email(inv: Invitation, inviter: User, raw_token: str, raw_c
             token=raw_token,
             short_code=_format_short_code(raw_code),
             recipient_email=inv.invitee_email,
+            # The account the invitation actually came from. The display name
+            # above is whatever the inviter set at their identity provider.
+            inviter_email=inviter.email,
         )
         return send_email(inv.invitee_email, subject, text, html, headers=hdrs)
     except Exception:
@@ -766,7 +769,7 @@ def _notify_inviter_accepted(inv: Invitation, db: Session):
 
         # Push notification with deep link to settings (sharing section)
         from scaffold.models import PushSubscription
-        from scaffold.notifications import send_push
+        from scaffold.notifications import PushResult, send_push
         subs = db.query(PushSubscription).filter(PushSubscription.user_id == inviter.id).all()
         payload = {
             "title": "Invitation Accepted",
@@ -774,8 +777,11 @@ def _notify_inviter_accepted(inv: Invitation, db: Session):
             "data": {"url": "/settings"},
         }
         for sub in subs:
-            ok = send_push(sub, payload)
-            if not ok:
+            # Only GONE means the push service dropped this subscription.
+            # `if not ok:` never fired at all — PushResult is a str Enum, so
+            # every member is truthy — and had it fired it would have deleted a
+            # live device over one timeout.
+            if send_push(sub, payload) is PushResult.GONE:
                 db.delete(sub)
         db.commit()
     except Exception:

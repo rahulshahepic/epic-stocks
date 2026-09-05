@@ -509,7 +509,9 @@ def test_admin_test_notify_push(client, db_session, make_client):
         db_session.add(sub)
         db_session.commit()
 
-        with upatch("scaffold.notifications.send_push", return_value=True) as mock_push:
+        from scaffold.notifications import PushResult
+
+        with upatch("scaffold.notifications.send_push", return_value=PushResult.SENT) as mock_push:
             resp = client.post(
                 "/api/admin/test-notify",
                 json={"user_id": target_id, "title": "Hello", "body": "World"},
@@ -523,9 +525,10 @@ def test_admin_test_notify_push(client, db_session, make_client):
 
 
 def test_admin_test_notify_expired_sub_deleted(client, db_session, make_client):
-    """Expired push subscription (send_push returns False) is deleted."""
+    """A subscription the push service reports GONE is deleted."""
     from unittest.mock import patch as upatch
     from scaffold.models import PushSubscription
+    from scaffold.notifications import PushResult
 
     with _admin_env():
         _register_admin(client)
@@ -541,7 +544,7 @@ def test_admin_test_notify_expired_sub_deleted(client, db_session, make_client):
         db_session.add(sub)
         db_session.commit()
 
-        with upatch("scaffold.notifications.send_push", return_value=False):
+        with upatch("scaffold.notifications.send_push", return_value=PushResult.GONE):
             resp = client.post(
                 "/api/admin/test-notify",
                 json={"user_id": target_id, "title": "Hi", "body": "Test"},
@@ -556,6 +559,46 @@ def test_admin_test_notify_expired_sub_deleted(client, db_session, make_client):
             PushSubscription.user_id == target_id
         ).count()
         assert remaining == 0
+
+
+def test_admin_test_notify_transient_failure_keeps_sub(client, db_session, make_client):
+    """A push that merely failed is counted, never unsubscribed.
+
+    PushResult is a str Enum, so every member is truthy and the old `if ok:`
+    could not tell SENT from FAILED. Deleting on anything but GONE means one
+    timeout, or a missing VAPID key, silently unregisters a live device.
+    """
+    from unittest.mock import patch as upatch
+    from scaffold.models import PushSubscription
+    from scaffold.notifications import PushResult
+
+    with _admin_env():
+        _register_admin(client)
+        with make_client("flaky@test.com") as client_target:
+            target_id = client_target.get("/api/me").json()["id"]
+
+        db_session.add(PushSubscription(
+            user_id=target_id,
+            endpoint="https://example.com/push/flaky",
+            p256dh="key",
+            auth="auth",
+        ))
+        db_session.commit()
+
+        with upatch("scaffold.notifications.send_push", return_value=PushResult.FAILED):
+            resp = client.post(
+                "/api/admin/test-notify",
+                json={"user_id": target_id, "title": "Hi", "body": "Test"},
+            )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["push_sent"] == 0
+        assert data["push_failed"] == 1
+
+        remaining = db_session.query(PushSubscription).filter(
+            PushSubscription.user_id == target_id
+        ).count()
+        assert remaining == 1, "a transient failure must not unsubscribe the device"
 
 
 def test_admin_test_notify_user_not_found(client):

@@ -507,3 +507,53 @@ class TestMultiUser:
             assert len(received) == 2
             me = carol.get("/api/me").json()
             assert len(me["shared_accounts"]) == 2
+
+
+class TestAcceptanceNotification:
+    """The push a inviter gets when someone accepts.
+
+    PushResult is a str Enum, so every member is truthy and the old
+    `if not ok:` never fired. Had it fired, it would have deleted a live
+    subscription over a single timeout.
+    """
+
+    def _accepted_invite_with_push(self, client, db_session, make_client, result):
+        from unittest.mock import patch as upatch
+        from scaffold.models import PushSubscription
+
+        register_user(client, "alice@test.com", "Alice")
+        alice_id = client.get("/api/me").json()["id"]
+        db_session.add(PushSubscription(
+            user_id=alice_id, endpoint="https://example.com/push/alice",
+            p256dh="key", auth="auth",
+        ))
+        db_session.commit()
+
+        inv = _invite(client, "bob@test.com").json()
+        code = inv["short_code"]
+        with make_client("bob@test.com") as bob:
+            with upatch("scaffold.notifications.send_push", return_value=result):
+                resp = bob.post("/api/sharing/accept", json={"code": code})
+        assert resp.status_code == 200, resp.text
+
+        return db_session.query(PushSubscription).filter(
+            PushSubscription.user_id == alice_id
+        ).count()
+
+    def test_transient_failure_keeps_the_subscription(self, client, db_session, make_client):
+        from scaffold.notifications import PushResult
+        remaining = self._accepted_invite_with_push(
+            client, db_session, make_client, PushResult.FAILED)
+        assert remaining == 1, "a timeout must not unsubscribe the inviter's device"
+
+    def test_gone_subscription_is_removed(self, client, db_session, make_client):
+        from scaffold.notifications import PushResult
+        remaining = self._accepted_invite_with_push(
+            client, db_session, make_client, PushResult.GONE)
+        assert remaining == 0
+
+    def test_successful_send_keeps_the_subscription(self, client, db_session, make_client):
+        from scaffold.notifications import PushResult
+        remaining = self._accepted_invite_with_push(
+            client, db_session, make_client, PushResult.SENT)
+        assert remaining == 1

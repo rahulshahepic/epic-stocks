@@ -13,7 +13,7 @@ they read correctly in the meantime because the decorators pass through any
 value without the $ENC$ prefix.
 
 Revision ID: a2b3c4d5e6f7
-Revises: z5a6b7c8d9e0
+Revises: e1f2a3b4c5d6
 Create Date: 2026-09-05 00:00:00.000000
 
 """
@@ -24,7 +24,7 @@ import sqlalchemy as sa
 
 
 revision: str = 'a2b3c4d5e6f7'
-down_revision: Union[str, Sequence[str], None] = 'z5a6b7c8d9e0'
+down_revision: Union[str, Sequence[str], None] = 'e1f2a3b4c5d6'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

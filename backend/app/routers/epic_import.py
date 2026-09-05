@@ -25,7 +25,8 @@ from scaffold.models import Grant, Price, User
 from scaffold.safe_workbook import WorkbookRejected, load_workbook_safely
 from app.content_service import load_content
 from app.date_utils import to_date as _to_date
-from app.epic_import import (Draft, DraftPrice, StatementUnreadable, build_prompt,
+from app.epic_import import (Draft, DraftPrice, StatementParserBusy,
+                             StatementUnreadable, build_prompt,
                              build_skeleton, derive_draft, draft_from_payload,
                              extract_lines, is_blocked, parse_share_csv,
                              parse_statement_lines, reconcile, render_markdown,
@@ -67,6 +68,10 @@ def _parse_files(csv_bytes: bytes | None, pdf_bytes: bytes | None):
             lines = extract_lines(pdf_bytes)
         except StatementUnreadable as e:
             raise HTTPException(status_code=400, detail=str(e))
+        except StatementParserBusy as e:
+            # Shed load rather than queue: every slot is already parsing.
+            raise HTTPException(status_code=503, detail=str(e),
+                                headers={"Retry-After": "5"})
         except RuntimeError as e:
             raise HTTPException(status_code=503, detail=str(e))
         statement_text = "\n".join(lines)

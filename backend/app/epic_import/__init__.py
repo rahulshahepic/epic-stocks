@@ -14,8 +14,8 @@ comes back is validated by the same checks.
     reconcile                                     draft vs. an exported dataset
 """
 from .models import ERROR, INFO, WARNING, Finding, ShareRow, Statement, StatementLoan
-from .pdf_statement import (StatementUnreadable, extract_lines, parse_statement_lines,
-                            parse_statement_pdf)
+from .pdf_statement import (StatementParserBusy, StatementUnreadable, extract_lines,
+                            parse_statement_lines, parse_statement_pdf)
 from .share_csv import parse_share_csv
 from .skeleton import Skeleton, TemplateRow, build_skeleton
 from .draft import (BLOCKING_CHECKS, Draft, DraftGrant, DraftLoan, DraftPrice,
@@ -26,7 +26,7 @@ from .reconcile import Difference, ReconcileReport, reconcile, render_markdown
 
 __all__ = [
     "ERROR", "INFO", "WARNING", "Finding", "ShareRow", "Statement", "StatementLoan",
-    "StatementUnreadable", "extract_lines", "parse_statement_lines",
+    "StatementParserBusy", "StatementUnreadable", "extract_lines", "parse_statement_lines",
     "parse_statement_pdf", "parse_share_csv",
     "Skeleton", "TemplateRow", "build_skeleton",
     "BLOCKING_CHECKS", "Draft", "DraftGrant", "DraftLoan", "DraftPrice",

@@ -429,3 +429,147 @@ def test_deeply_nested_json_is_rejected_not_crashed(client):
                              "text/csv")},
     )
     assert resp.status_code == 400
+
+
+# ── PDF cost, which is not where you would guess ─────────────────────────────
+#
+# Pages are not the driver. Measured against this parser before these bounds
+# existed: 64 sparse pages cost 0.18s and 8 MB, while 64 dense pages — a 36 KB
+# upload — cost 24s and ~980 MB, and one page carrying 400k show operators
+# exhausted a 1.5 GB ceiling outright. The container is capped at 512 MB, so a
+# single unauthenticated 36 KB request was enough to end it. Characters are
+# what cost memory, at roughly 2 KB each, so that is what gets bounded, and it
+# has to happen before the page is interpreted.
+
+def _pdf(pages_content: list[str]) -> bytes:
+    """A minimal PDF with exact page count and content streams."""
+    import zlib
+    objs, out = [], bytearray(b"%PDF-1.4\n")
+    n = len(pages_content)
+    kids = " ".join(f"{4 + 2 * i} 0 R" for i in range(n))
+    objs.append(b"<< /Type /Catalog /Pages 2 0 R >>")
+    objs.append(f"<< /Type /Pages /Kids [{kids}] /Count {n} >>".encode())
+    objs.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+    for i, content in enumerate(pages_content):
+        objs.append(
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources "
+            f"<< /Font << /F1 3 0 R >> >> /Contents {5 + 2 * i} 0 R >>".encode())
+        data = zlib.compress(content.encode())
+        objs.append(b"<< /Length %d /Filter /FlateDecode >>\nstream\n" % len(data)
+                    + data + b"\nendstream")
+    offsets = []
+    for i, body in enumerate(objs, 1):
+        offsets.append(len(out))
+        out += f"{i} 0 obj\n".encode() + body + b"\nendobj\n"
+    xref = len(out)
+    out += f"xref\n0 {len(objs) + 1}\n0000000000 65535 f \n".encode()
+    for off in offsets:
+        out += f"{off:010d} 00000 n \n".encode()
+    out += (f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R >>\n"
+            f"startxref\n{xref}\n%%EOF\n").encode()
+    return bytes(out)
+
+
+def _text_page(lines: int, per_line: int = 80) -> str:
+    ops = ["BT /F1 8 Tf"]
+    for i in range(lines):
+        ops.append(f"1 0 0 1 20 {760 - (i % 95) * 8} Tm ({'A' * per_line}) Tj")
+    ops.append("ET")
+    return "\n".join(ops)
+
+
+def test_dense_pdf_inside_the_page_cap_is_still_rejected():
+    """The case a page limit alone misses.
+
+    16 pages is under MAX_PDF_PAGES, but dense enough to have cost ~250 MB.
+    """
+    from app.epic_import.pdf_statement import MAX_PDF_PAGES, MAX_TEXT_CHARS, extract_lines
+    from app.epic_import import StatementUnreadable
+
+    pdf = _pdf([_text_page(95) for _ in range(MAX_PDF_PAGES)])
+    with pytest.raises(StatementUnreadable) as exc:
+        extract_lines(pdf)
+    assert "more text" in str(exc.value)
+
+
+def test_too_many_pages_rejected():
+    from app.epic_import.pdf_statement import MAX_PDF_PAGES, extract_lines
+    from app.epic_import import StatementUnreadable
+
+    pdf = _pdf([_text_page(1) for _ in range(MAX_PDF_PAGES + 1)])
+    with pytest.raises(StatementUnreadable) as exc:
+        extract_lines(pdf)
+    assert "pages" in str(exc.value)
+
+
+def test_content_stream_bomb_rejected():
+    """One page whose content stream expands far beyond its upload size."""
+    from app.epic_import.pdf_statement import extract_lines
+    from app.epic_import import StatementUnreadable
+
+    # ~25 MB of operators, deflating to a couple of hundred KB.
+    pdf = _pdf([_text_page(400_000, per_line=40)])
+    with pytest.raises(StatementUnreadable) as exc:
+        extract_lines(pdf)
+    assert "drawing data" in str(exc.value)
+
+
+def test_a_realistic_statement_still_parses():
+    """The bounds are worthless if they reject the documents they exist for."""
+    from app.epic_import import parse_statement_lines
+    from app.epic_import.pdf_statement import extract_lines
+
+    row = "100001 2020 Grant - Purchase Loan $500,000.00 1.00% $10.00 7/15/2029"
+    ops = ["BT /F1 9 Tf",
+           "1 0 0 1 20 770 Tm (Stock Loan Statement - February 1, 2024) Tj"]
+    for i in range(40):
+        ops.append(f"1 0 0 1 20 {750 - i * 11} Tm ({row}) Tj")
+    ops.append("ET")
+    lines = extract_lines(_pdf(["\n".join(ops)] * 3))
+    st, _ = parse_statement_lines(lines)
+    assert len(st.loans) >= 1
+    assert st.statement_date is not None
+
+
+def test_parse_slots_shed_load_instead_of_queueing():
+    """A bounded parse is still ~65 MB, and a sync endpoint has 40 threads."""
+    import app.epic_import.pdf_statement as ps
+    from app.epic_import import StatementParserBusy
+
+    held = [ps._parse_slots.acquire(blocking=False) for _ in range(ps.PDF_PARSE_SLOTS)]
+    try:
+        assert all(held), "could not take every parse slot"
+        with pytest.raises(StatementParserBusy):
+            extract = ps.extract_lines
+            extract(_pdf([_text_page(1)]))
+    finally:
+        for got in held:
+            if got:
+                ps._parse_slots.release()
+
+
+def test_parse_slot_is_released_after_a_rejection():
+    """A refused PDF must not leak the slot it took."""
+    import app.epic_import.pdf_statement as ps
+    from app.epic_import import StatementUnreadable
+
+    for _ in range(ps.PDF_PARSE_SLOTS + 2):
+        with pytest.raises(StatementUnreadable):
+            ps.extract_lines(_pdf([_text_page(1) for _ in range(ps.MAX_PDF_PAGES + 1)]))
+    # Every slot must still be free.
+    got = [ps._parse_slots.acquire(blocking=False) for _ in range(ps.PDF_PARSE_SLOTS)]
+    for g in got:
+        if g:
+            ps._parse_slots.release()
+    assert all(got), "a rejected parse leaked its slot"
+
+
+def test_trial_endpoint_rejects_a_dense_pdf_without_parsing_it(client):
+    """End to end, on the route that takes no session at all."""
+    from app.epic_import.pdf_statement import MAX_PDF_PAGES
+
+    pdf = _pdf([_text_page(95) for _ in range(MAX_PDF_PAGES)])
+    resp = client.post("/api/trial/analyze",
+                       files={"statement_pdf": ("s.pdf", pdf, "application/pdf")})
+    assert resp.status_code == 400
+    assert "more text" in resp.json()["detail"]

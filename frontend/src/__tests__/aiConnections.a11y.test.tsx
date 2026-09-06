@@ -67,7 +67,10 @@ describe('AI connections accessibility', () => {
     vi.spyOn(api, 'getAiConnections').mockResolvedValue(CONNECTED)
     vi.spyOn(api, 'getAiActivity').mockResolvedValue(ACTIVITY)
     const { container } = render(<AiConnectionsSection />)
-    await screen.findByText('ChatGPT')
+    // A scope label rather than "ChatGPT", which also names a tab: waiting on
+    // that resolves before the connections list has rendered, so the audit
+    // would cover a loading state rather than the finished page.
+    await screen.findByText(/Equity — grants, vesting/)
 
     const found = await violations(container)
     expect(summarise(found)).toBe('')

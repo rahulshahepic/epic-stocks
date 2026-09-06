@@ -62,8 +62,11 @@ describe('AiConnectionsSection', () => {
     vi.spyOn(api, 'getAiConnections').mockResolvedValue(CONNECTED)
     render(<AiConnectionsSection />)
 
-    expect(await screen.findByText('ChatGPT')).toBeInTheDocument()
-    expect(screen.getByText(/Equity — grants, vesting/)).toBeInTheDocument()
+    // Wait on a scope label, not on "ChatGPT": that also names the walkthrough
+    // tab, so findByText resolves against the tab before the fetch has
+    // returned and the assertions below then race the loading state. (Once the
+    // list does arrive there are two matches, so it would throw instead.)
+    expect(await screen.findByText(/Equity — grants, vesting/)).toBeInTheDocument()
     expect(screen.getByText(/Salary and retirement settings/)).toBeInTheDocument()
     expect(screen.getByText(/last used/)).toBeInTheDocument()
   })
@@ -141,7 +144,10 @@ describe('AiConnectionsSection', () => {
     vi.spyOn(api, 'getAiConnections').mockResolvedValue(CONNECTED)
     vi.spyOn(api, 'getAiActivity').mockRejectedValue(new Error('boom'))
     render(<AiConnectionsSection />)
-    expect(await screen.findByText('ChatGPT')).toBeInTheDocument()
+    // The connections list, not the tab of the same name — otherwise this
+    // passes without the list ever having loaded.
+    expect(await screen.findByText(/Equity — grants, vesting/)).toBeInTheDocument()
+    expect(screen.queryByText('Recent activity')).not.toBeInTheDocument()
   })
 
   it('is explicit that this is read-only', async () => {

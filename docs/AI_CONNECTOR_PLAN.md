@@ -408,6 +408,14 @@ FORK_GUIDE for the OAuth configuration. Mandatory, not a follow-up.
 
 **Ship after Phase 4.** That is a complete, useful, read-only connector.
 
+**Phase 5 — assistant-assisted import. DONE.** `get_import_guide` and
+`stage_import`, behind a new `import:propose` scope. The design that made this
+work was refusing to make it a write: `epic_import/prompt.py` already built a
+brief for a user to paste into a chat, so the connector closes that loop, and
+acceptance still goes through the wizard. The tool stages a proposal; the app
+picks it up. That keeps the rule intact and puts a human diff in front of
+figures an assistant transcribed, which is where it belongs.
+
 **Later, if wanted:**
 - Writes: preview-before-commit (`confirm: false` returns a diff and a
   short-lived `change_token`; committing needs a second call), a snapshot before

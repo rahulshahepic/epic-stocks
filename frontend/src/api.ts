@@ -11,6 +11,16 @@ export interface AiConnection {
   last_used_at: string | null
 }
 
+export interface ImportProposal {
+  client_name: string
+  created_at: string
+  blocked: boolean
+  grants: number
+  prices: number
+  findings: { code: string; severity: 'error' | 'warning' | 'info'; subject: string; message: string }[]
+  wizard_prefill: { grants: GrantEntry[]; loans: LoanEntry[]; prices: PriceEntry[] }
+}
+
 export interface AiActivityEntry {
   id: number
   client_name: string
@@ -602,6 +612,11 @@ export const api = {
   // AI connections a user has authorized against their own account.
   getAiConnections: () => apiFetch<AiConnection[]>('/api/oauth/connections'),
   getAiActivity: () => apiFetch<AiActivityEntry[]>('/api/oauth/activity'),
+
+  // An import an AI assistant prepared. It changes nothing until the user
+  // accepts it in the wizard.
+  getImportProposal: () => apiFetch<ImportProposal | null>('/api/import/proposal'),
+  dismissImportProposal: () => apiFetch<void>('/api/import/proposal', { method: 'DELETE' }),
   disconnectAi: (id: number) =>
     apiFetch<void>(`/api/oauth/connections/${id}`, { method: 'DELETE' }),
 

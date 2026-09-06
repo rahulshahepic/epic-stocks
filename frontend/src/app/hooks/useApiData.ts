@@ -29,6 +29,15 @@ export function useApiData<T>(fetcher: () => Promise<T>) {
   }, [fetcher, toast])
 
   useEffect(() => {
+    // `load` sets loading/error before it fetches, which this rule reads as a
+    // cascading render. On mount it is neither: both are already at those
+    // values, so React bails out without re-rendering. When `fetcher` changes
+    // — the account being viewed switched — the reset is the point: it puts the
+    // spinner back while the new account's data is on its way. Deriving
+    // `loading` instead would mean tracking which fetcher the settled state
+    // belongs to, in a hook every page depends on, to remove one render that
+    // the interface wants.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load()
     return () => { cancelRef.current.cancelled = true }
   }, [load])

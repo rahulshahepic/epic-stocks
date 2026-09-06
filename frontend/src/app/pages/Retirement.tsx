@@ -208,21 +208,18 @@ interface NumInputProps {
   info?: ReactNode
 }
 function NumInput({ label, value, onChange, step, min, max, suffix, hint, info }: NumInputProps) {
-  // Use local string state so leading zeros (e.g. "025") don't get stuck when
-  // parseFloat collapses them back to the same numeric prop and React's
-  // controlled input bails out of a DOM update.
-  const [text, setText] = useState<string>(() => (Number.isFinite(value) ? String(value) : '0'))
+  // While the field has focus its own text drives it, so leading zeros (e.g.
+  // "025") survive rather than being collapsed by parseFloat into the same
+  // numeric prop, which React's controlled input would refuse to redraw. The
+  // rest of the time the prop drives, so a value changed elsewhere shows up
+  // without an effect copying it across.
+  const [text, setText] = useState('')
   const [focused, setFocused] = useState(false)
   const [infoOpen, setInfoOpen] = useState(false)
   const inputId = useId()
 
-  useEffect(() => {
-    if (focused) return
-    const parsed = parseFloat(text)
-    if (!Number.isFinite(parsed) || parsed !== value) {
-      setText(Number.isFinite(value) ? String(value) : '0')
-    }
-  }, [value, focused, text])
+  const asText = (n: number) => (Number.isFinite(n) ? String(n) : '0')
+  const shown = focused ? text : asText(value)
 
   // Note: the InfoButton lives OUTSIDE the <label> so testing-library doesn't
   // associate it with the input via label-contains-control matching (that
@@ -242,19 +239,14 @@ function NumInput({ label, value, onChange, step, min, max, suffix, hint, info }
         step={step ?? 'any'}
         min={min}
         max={max}
-        value={text}
-        onFocus={() => setFocused(true)}
+        value={shown}
+        onFocus={() => { setText(asText(value)); setFocused(true) }}
         onChange={e => {
           setText(e.target.value)
           const v = parseFloat(e.target.value)
           onChange(Number.isFinite(v) ? v : 0)
         }}
-        onBlur={() => {
-          setFocused(false)
-          const parsed = parseFloat(text)
-          if (Number.isFinite(parsed)) setText(String(parsed))
-          else setText(Number.isFinite(value) ? String(value) : '0')
-        }}
+        onBlur={() => setFocused(false)}
         className="rounded border border-cs-border-strong bg-cs-surface px-2 py-1 text-sm tabular-nums text-cs-text focus:border-rose-400 focus:outline-none "
       />
       {hint && <span className="text-[10px] text-cs-muted">{hint}</span>}

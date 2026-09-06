@@ -24,10 +24,8 @@ export function useContent(): ContentBlob | null {
   const [content, setContent] = useState<ContentBlob | null>(cached)
 
   useEffect(() => {
-    if (cached) {
-      setContent(cached)
-      return
-    }
+    // useState already seeded from `cached`; re-setting it here only re-rendered.
+    if (cached) return
     if (!inflight) {
       inflight = api.getContent()
         .then(data => {

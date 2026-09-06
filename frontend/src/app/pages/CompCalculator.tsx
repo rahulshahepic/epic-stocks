@@ -965,7 +965,10 @@ export default function CompCalculator() {
   }, [vid])
   const { data, loading, error } = useApiData<AllData>(fetcher)
 
-  const [deductOn, setDeductOn] = useState<boolean>(false)
+  // The account's setting is the default; a toggle on this page overrides it for
+  // this session only. Copying the setting into state with an effect meant the
+  // page rendered once with the wrong answer before correcting itself.
+  const [deductOverride, setDeductOverride] = useState<boolean | null>(null)
   const [show3y, setShow3y] = useState<boolean>(false)
   const [show5y, setShow5y] = useState<boolean>(false)
   const [taxEquivView, setTaxEquivView] = useState<boolean>(false)
@@ -977,9 +980,7 @@ export default function CompCalculator() {
   const compEventsDirtyRef = useRef(false)
   const retirementParamsRef = useRef<Record<string, unknown>>({})
 
-  useEffect(() => {
-    if (data?.taxSettings) setDeductOn(data.taxSettings.deduct_investment_interest)
-  }, [data])
+  const deductOn = deductOverride ?? data?.taxSettings?.deduct_investment_interest ?? false
 
   useEffect(() => {
     const load = vid
@@ -1078,18 +1079,20 @@ export default function CompCalculator() {
     })
   }, [data, m, c, deductOn, exitDate, compEvents])
 
-  useEffect(() => {
-    if (!rows.length) return
-    if (selectedYear != null && rows.some(r => r.year === selectedYear)) return
-    const current = rows.find(r => r.year === CURRENT_YEAR)
-    setSelectedYear(current ? current.year : rows[rows.length - 1].year)
-  }, [rows, selectedYear])
+  // Which year the table is showing. Until the reader picks one — or when the
+  // one they picked is no longer in `rows` — this year is shown, or the last.
+  // Settling that here rather than in an effect means the first paint already
+  // has a row selected instead of correcting itself a frame later.
+  const defaultYear = rows.find(r => r.year === CURRENT_YEAR)?.year ?? rows[rows.length - 1]?.year ?? null
+  const shownYear = selectedYear != null && rows.some(r => r.year === selectedYear)
+    ? selectedYear
+    : defaultYear
 
   if (loading) return <p className="text-xs text-cs-muted">Loading…</p>
   if (error) return <p className="text-xs text-red-600 dark:text-red-400">Error: {error}</p>
   if (!data) return null
 
-  const selectedRow = selectedYear != null ? rows.find(r => r.year === selectedYear) ?? null : null
+  const selectedRow = shownYear != null ? rows.find(r => r.year === shownYear) ?? null : null
   const hasProjected = rows.some(r => r.isProjected)
 
   return (
@@ -1181,7 +1184,7 @@ export default function CompCalculator() {
               <label className="ml-auto flex items-center gap-1.5 text-[11px] text-cs-text-2">
                 <span>Year</span>
                 <select
-                  value={selectedYear ?? ''}
+                  value={shownYear ?? ''}
                   onChange={e => {
                     const y = parseInt(e.target.value)
                     if (!isNaN(y)) setSelectedYear(y)
@@ -1269,7 +1272,7 @@ export default function CompCalculator() {
                   radius={[2, 2, 0, 0]}
                 >
                   {rows.map(r => {
-                    const selected = r.year === selectedYear
+                    const selected = r.year === shownYear
                     const baseFill = r.afterExit ? '#9ca3af' : (selected ? '#9f1239' : '#e11d48')
                     const faded = r.isProjected || r.afterExit
                     return (
@@ -1304,14 +1307,14 @@ export default function CompCalculator() {
             m={m}
             c={c}
             useDeduction={deductOn}
-            year={selectedYear ?? CURRENT_YEAR}
+            year={shownYear ?? CURRENT_YEAR}
           />
 
           <label className="flex cursor-pointer items-center gap-2 rounded-2xl border border-cs-border bg-cs-surface shadow-card p-3 ">
             <input
               type="checkbox"
               checked={deductOn}
-              onChange={e => setDeductOn(e.target.checked)}
+              onChange={e => setDeductOverride(e.target.checked)}
               className="rounded"
             />
             <div>

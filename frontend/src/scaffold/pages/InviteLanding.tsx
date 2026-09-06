@@ -16,30 +16,35 @@ export default function InviteLanding() {
   const token = searchParams.get('token')
   const code = searchParams.get('code')
   const [info, setInfo] = useState<InviteInfoResult | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [accepting, setAccepting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [lookupError, setLookupError] = useState<string | null>(null)
   const [providers, setProviders] = useState<Array<{ name: string; label: string }>>([])
 
+  // With nothing to look up there is no request to wait on and nothing to
+  // report but that fact, so both follow from the URL rather than from state.
+  const missingInvite = !token && !code
+  const [fetching, setFetching] = useState(true)
+  const loading = fetching && !missingInvite
+  const error = missingInvite ? 'No invitation token or code provided.' : lookupError
+
   useEffect(() => {
-    if (!token && !code) {
-      setError('No invitation token or code provided.')
-      setLoading(false)
-      return
-    }
+    if (missingInvite) return
     api.getInviteInfo({ token: token ?? undefined, code: code ?? undefined })
       .then(data => {
         setInfo(data)
-        if (!data.valid) setError(data.reason ?? 'Invalid invitation')
+        if (!data.valid) setLookupError(data.reason ?? 'Invalid invitation')
       })
-      .catch(() => setError('Could not verify invitation'))
-      .finally(() => setLoading(false))
-  }, [token, code])
+      .catch(() => setLookupError('Could not verify invitation'))
+      .finally(() => setFetching(false))
+  }, [token, code, missingInvite])
 
-  // If logged in and info is valid, auto-accept
+  // Auto-accepting runs from the moment a valid invitation meets a signed-in
+  // visitor until it fails, which is exactly what these three already say — so
+  // it is derived rather than tracked, and the failure below ends it by
+  // recording the error.
+  const accepting = !!info?.valid && isLoggedIn() && !lookupError
+
   useEffect(() => {
     if (!info?.valid || !isLoggedIn()) return
-    setAccepting(true)
     api.acceptInvite({ token: token ?? undefined, code: code ?? undefined })
       .then(() => {
         navigate('/', { replace: true })
@@ -49,8 +54,7 @@ export default function InviteLanding() {
         if (msg.includes('already')) {
           navigate('/', { replace: true })
         } else {
-          setError(msg)
-          setAccepting(false)
+          setLookupError(msg)
         }
       })
   }, [info, token, code, navigate])
@@ -65,12 +69,12 @@ export default function InviteLanding() {
   }, [info, token, code])
 
   async function handleSignIn(providerName: string) {
-    setLoading(true)
+    setFetching(true)
     try {
       await startLogin(providerName)
     } catch {
-      setLoading(false)
-      setError('Sign-in failed. Please try again.')
+      setFetching(false)
+      setLookupError('Sign-in failed. Please try again.')
     }
   }
 

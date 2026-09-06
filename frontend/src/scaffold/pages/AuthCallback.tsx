@@ -9,42 +9,38 @@ import { pingConverted, takeStashedTrialPayload } from '../../app/trialImport.ts
 export default function AuthCallback() {
   const navigate = useNavigate()
   const { openReport } = useReportProblem()
-  const [error, setError] = useState<string | null>(null)
+  const [exchangeError, setExchangeError] = useState<string | null>(null)
   // The authorization code is single-use. Reading the stored PKCE material is
   // async, so without this guard StrictMode's double-invoked effect can get two
   // exchanges in flight before either clears the material, and the second fails.
   const startedRef = useRef(false)
 
+  // What came back on the URL is fixed for the life of this page, so it is read
+  // during render rather than copied into state by an effect.
+  const params = new URLSearchParams(window.location.search)
+  const code = params.get('code')
+  const state = params.get('state')
+  const idpError = params.get('error')
+  const urlError = idpError
+    ? (params.get('error_description') || idpError)
+    : (code ? null : 'No authorization code received.')
+  const error = urlError ?? exchangeError
+
   useEffect(() => {
+    if (urlError || !code) return
     if (startedRef.current) return
     startedRef.current = true
-
-    const params = new URLSearchParams(window.location.search)
-    const code = params.get('code')
-    const state = params.get('state')
-    const idpError = params.get('error')
-    const idpErrorDesc = params.get('error_description')
-
-    if (idpError) {
-      setError(idpErrorDesc || idpError)
-      return
-    }
-
-    if (!code) {
-      setError('No authorization code received.')
-      return
-    }
 
     void (async () => {
       const pending = await readPendingLogin()
 
       if (!state || state !== pending.state) {
-        setError('Invalid state — possible CSRF attempt. Please try signing in again.')
+        setExchangeError('Invalid state — possible CSRF attempt. Please try signing in again.')
         return
       }
 
       if (!pending.verifier || !pending.provider) {
-        setError('Session data missing. Please try signing in again.')
+        setExchangeError('Session data missing. Please try signing in again.')
         return
       }
 
@@ -53,7 +49,7 @@ export default function AuthCallback() {
       try {
         await completeLogin(pending.provider, code, pending.verifier)
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Authentication failed. Please try again.')
+        setExchangeError(e instanceof Error ? e.message : 'Authentication failed. Please try again.')
         return
       }
 
@@ -88,7 +84,7 @@ export default function AuthCallback() {
 
       navigate('/', { replace: true })
     })()
-  }, [navigate])
+  }, [navigate, code, state, urlError])
 
   if (error) {
     return (

@@ -161,6 +161,45 @@ def test_payoff_uses_same_tranche_when_flexible_disabled(client, db_session):
     assert not any(lot["grant_year"] == 2020 for lot in tax["lots"])
 
 
+def test_events_tax_matches_sale_tax_for_same_tranche_payoff(client, db_session):
+    """/api/events must report the same estimated_tax for a payoff sale as
+    /api/sales/{id}/tax — the timeline's own duplicate computation used to key
+    the same-tranche restriction off lot_selection_method (the ordinary-sale
+    setting, default 'lifo', never 'same_tranche') instead of whether the
+    payoff itself resolves to same-tranche. That let a payoff sale on a newer,
+    higher cost-basis grant pull cheaper lots from an older grant under a
+    'fifo' ordinary lot order, wildly overstating the gain and tax the
+    timeline showed versus what the sale itself actually owes.
+    """
+    register_user(client)
+    _setup_data(client)  # 2018 Purchase @ $5/sh, 2020 Purchase @ $8/sh, price $20 from 2020-01-01
+    # Ordinary (non-payoff) sales use FIFO — oldest, cheapest lots first.
+    _set_payoff_method(client, "lifo")  # irrelevant: flexible payoff stays OFF
+    resp = client.put("/api/tax-settings", json={"lot_selection_method": "fifo"})
+    assert resp.status_code == 200
+
+    # Loan tied to the newer, higher-basis 2020 grant. Flexible payoff is off,
+    # so this payoff sale must draw only from the 2020 tranche ($8 basis).
+    resp = client.post("/api/loans?generate_payoff_sale=true", json={
+        "grant_year": 2020, "grant_type": "Purchase",
+        "loan_type": "Interest", "loan_year": 2021,
+        "amount": 10000.0, "interest_rate": 0.03,
+        "due_date": "2025-01-01",
+    })
+    assert resp.status_code == 201
+
+    sales = client.get("/api/sales").json()
+    assert len(sales) == 1
+    sale_id = sales[0]["id"]
+
+    authoritative = client.get(f"/api/sales/{sale_id}/tax").json()
+    assert all(lot["grant_year"] == 2020 for lot in authoritative["lots"])
+
+    events = client.get("/api/events").json()
+    sale_event = next(e for e in events if e.get("sale_id") == sale_id)
+    assert sale_event["estimated_tax"] == authoritative["estimated_tax"]
+
+
 def test_payoff_uses_flexible_method_when_enabled_and_eligible(client, db_session):
     """With flexible enabled and sufficient coverage, payoff uses user's method."""
     register_user(client)
@@ -246,6 +285,73 @@ def test_regenerate_creates_missing_payoff_sales(client, db_session):
     loan_ids = {s["loan_id"] for s in sales_after}
     assert purchase_loan["id"] in loan_ids
     assert interest_loan["id"] in loan_ids
+
+
+def test_adding_a_price_refreshes_stale_future_payoff_sales(client, db_session):
+    """A future payoff sale is sized against whatever price is current when it's
+    generated. Adding a newer price (the account's normal 'set this year's
+    valuation' action) must re-price and re-size that sale — otherwise it
+    keeps selling at a stale price even though the account's own latest known
+    price has moved, which is exactly what happened to produce a wildly wrong
+    Cash Received total.
+    """
+    register_user(client)
+    _setup_data(client)  # price $20 from 2020-01-01
+
+    resp = client.post("/api/loans?generate_payoff_sale=true", json={
+        "grant_year": 2018, "grant_type": "Purchase",
+        "loan_type": "Interest", "loan_year": 2019,
+        "amount": 10000.0, "interest_rate": 0.03,
+        "due_date": "2030-01-01",
+    })
+    assert resp.status_code == 201
+    loan_id = resp.json()["id"]
+
+    sales_before = client.get("/api/sales").json()
+    assert len(sales_before) == 1
+    sale_before = sales_before[0]
+    assert sale_before["price_per_share"] == 20.0
+
+    # A newer, higher price is added for a year before the loan is due.
+    resp = client.post("/api/prices", json={"effective_date": "2029-01-01", "price": 40.0})
+    assert resp.status_code == 201
+
+    sales_after = client.get("/api/sales").json()
+    assert len(sales_after) == 1  # updated in place, not duplicated
+    sale_after = sales_after[0]
+    assert sale_after["id"] == sale_before["id"]
+    assert sale_after["loan_id"] == loan_id
+    assert sale_after["price_per_share"] == 40.0
+    # Same cash to raise at a higher price means fewer shares needed.
+    assert sale_after["shares"] < sale_before["shares"]
+
+
+def test_adding_a_price_does_not_create_sales_for_loans_that_have_none(client, db_session):
+    """A price change must only refresh payoff sales that already exist — it
+    must not silently generate a brand-new payoff sale for a future loan the
+    user (or an import) deliberately left without one. Regression test for a
+    CI break: importing fixture.xlsx (21 loans, 0 payoff sales, by design)
+    and then adding a price started auto-creating a payoff sale per loan,
+    inflating the event count far past what every other fixture-based test
+    expects.
+    """
+    register_user(client)
+    _setup_data(client)  # price $20 from 2020-01-01
+
+    resp = client.post("/api/loans?generate_payoff_sale=false", json={
+        "grant_year": 2018, "grant_type": "Purchase",
+        "loan_type": "Interest", "loan_year": 2019,
+        "amount": 10000.0, "interest_rate": 0.03,
+        "due_date": "2030-01-01",
+    })
+    assert resp.status_code == 201
+
+    assert client.get("/api/sales").json() == []
+
+    resp = client.post("/api/prices", json={"effective_date": "2029-01-01", "price": 40.0})
+    assert resp.status_code == 201
+
+    assert client.get("/api/sales").json() == []
 
 
 def test_regenerate_skips_refinanced_loans(client, db_session):

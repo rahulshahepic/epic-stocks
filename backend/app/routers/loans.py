@@ -451,9 +451,22 @@ def update_loan(
     return loan
 
 
-@router.post("/regenerate-all-payoff-sales")
-def regenerate_all_payoff_sales(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Recompute payoff sale share counts for all future loans, creating missing sales."""
+def _regenerate_future_payoff_sales(user: User, db: Session, create_missing: bool = True) -> dict:
+    """Recompute payoff sale share counts and prices for all future loans.
+
+    Shared by the manual regenerate endpoint and by anything that changes a
+    projection input (e.g. a new price point) that existing future payoff
+    sales were sized against — otherwise those sales keep selling at
+    whatever price was current when they were generated, even after a newer
+    price makes that stale.
+
+    create_missing controls whether a loan with no payoff sale yet gets one:
+    True for the explicit "regenerate all" action, False when this runs as a
+    side effect of a price change — a loan the user deliberately left without
+    an auto-generated sale (e.g. plenty of accounts import loans without
+    payoff sales at all) shouldn't suddenly grow one just because a price was
+    added; only sales that already exist get kept in sync.
+    """
     from datetime import date as date_type
     today = date_type.today()
     future_loans = db.query(Loan).filter(Loan.user_id == user.id, Loan.due_date >= today).all()
@@ -466,6 +479,8 @@ def regenerate_all_payoff_sales(user: User = Depends(get_current_user), db: Sess
         if loan.id in refinanced_ids:
             continue
         existing_sale = db.query(Sale).filter(Sale.loan_id == loan.id, Sale.user_id == user.id).first()
+        if not existing_sale and not create_missing:
+            continue
         suggestion = _compute_payoff_sale(loan, user, db)
         if existing_sale:
             existing_sale.date = suggestion["date"]
@@ -487,8 +502,15 @@ def regenerate_all_payoff_sales(user: User = Depends(get_current_user), db: Sess
             ))
             created += 1
     db.commit()
-    event_cache.schedule_recompute(user.id)
     return {"updated": updated, "created": created}
+
+
+@router.post("/regenerate-all-payoff-sales")
+def regenerate_all_payoff_sales(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Recompute payoff sale share counts for all future loans, creating missing sales."""
+    result = _regenerate_future_payoff_sales(user, db, create_missing=True)
+    event_cache.schedule_recompute(user.id)
+    return result
 
 
 @router.delete("/{loan_id}", status_code=204)

@@ -7,6 +7,7 @@ import type { TimelineEvent, PriceEntry } from '../../api.ts'
 import { TODAY, filterByDateRange, numericTicks, todayIndex } from './chartAxes.ts'
 import type { ChartColors, DateRange } from './chartAxes.ts'
 import { fmt$, fmtDate, fmtFullDate, fmtNum, fmtPrice } from '../format.ts'
+import { Card } from '../../scaffold/components/ui/Card.tsx'
 
 /**
  * Chart primitives shared by the Dashboard and the no-account preview (/try).
@@ -320,12 +321,12 @@ export function ChartBox({ title, children, range, setRange, maxDate }: {
   range?: DateRange; setRange?: (r: DateRange) => void; maxDate?: string
 }) {
   return (
-    <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card sm:p-5">
+    <Card>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-cs-text">{title}</h3>
         {range && setRange && <RangeControls range={range} setRange={setRange} maxDate={maxDate ?? '2099-12-31'} />}
       </div>
       {children}
-    </div>
+    </Card>
   )
 }

@@ -1,25 +1,27 @@
 import type { ReactNode } from 'react'
+import { cardClass, type CardPad } from './cardShell.ts'
 
 /**
  * Base surface card — the app's default content container.
- * `padded` controls the standard content inset; pass false when a child
- * needs edge-to-edge content (e.g. a chart that manages its own padding).
+ * `pad` picks the content inset; `pad="none"` is for a child that needs to
+ * reach the edge (a chart, or a table that scrolls inside the card).
  */
 export function Card({
   children,
   className = '',
-  padded = true,
+  pad = 'responsive',
   as: Tag = 'div',
+  tabIndex,
 }: {
   children: ReactNode
   className?: string
-  padded?: boolean
+  pad?: CardPad
   as?: 'div' | 'section'
+  /** A card that scrolls its own content needs to be reachable by keyboard. */
+  tabIndex?: number
 }) {
   return (
-    <Tag
-      className={`rounded-2xl border border-cs-border bg-cs-surface shadow-card ${padded ? 'p-4 sm:p-5' : ''} ${className}`}
-    >
+    <Tag className={cardClass(pad, className)} tabIndex={tabIndex}>
       {children}
     </Tag>
   )

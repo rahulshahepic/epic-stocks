@@ -6,6 +6,7 @@ import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 import { useViewing } from '../../scaffold/contexts/viewing.ts'
 import { fmtPrice } from '../format.ts'
 import { Field } from '../../scaffold/components/ui/Field.tsx'
+import { Card } from '../../scaffold/components/ui/Card.tsx'
 
 type PriceForm = { effective_date: string; price: number }
 type Mode = 'list' | 'add' | 'edit' | 'growth'
@@ -308,7 +309,7 @@ export default function Prices() {
             <p className="mb-1 text-xs font-medium text-cs-muted">
               New estimates ({growthPreview.length})
             </p>
-            <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-cs-border bg-cs-surface shadow-card">
+            <Card pad="none" className="overflow-x-auto" tabIndex={0}>
               <table className="w-full text-left text-xs">
                 <thead className="bg-cs-raised">
                   <tr className="text-cs-text-2">
@@ -331,7 +332,7 @@ export default function Prices() {
                   })}
                 </tbody>
               </table>
-            </div>
+            </Card>
           </div>
         )}
 
@@ -389,7 +390,7 @@ export default function Prices() {
         </p>
       )}
 
-      <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-cs-border bg-cs-surface shadow-card">
+      <Card pad="none" className="overflow-x-auto" tabIndex={0}>
         <table className="w-full text-left text-xs">
           <thead className="bg-cs-raised">
             <tr className="text-cs-text-2">
@@ -433,7 +434,7 @@ export default function Prices() {
             )}
           </tbody>
         </table>
-      </div>
+      </Card>
       <p className="text-xs text-cs-text-2">
         {prices.length} price entr{prices.length === 1 ? 'y' : 'ies'}
         {estimateCount > 0 && ` (${estimateCount} estimated)`}

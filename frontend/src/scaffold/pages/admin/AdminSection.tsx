@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Card } from '../../components/ui/Card.tsx'
 
 /**
  * The card every admin panel sits in. Written out eleven times before this,
@@ -11,7 +12,7 @@ export function AdminSection({ title, action, children }: {
   children: ReactNode
 }) {
   return (
-    <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+    <Card as="section" pad="md">
       {action ? (
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium text-cs-text">{title}</h3>
@@ -21,6 +22,6 @@ export function AdminSection({ title, action, children }: {
         <h3 className="text-sm font-medium text-cs-text">{title}</h3>
       )}
       {children}
-    </section>
+    </Card>
   )
 }

@@ -1,4 +1,5 @@
-import { IconTile, type TileTone } from '../../scaffold/components/ui/Card.tsx'
+import { Card, IconTile, type TileTone } from '../../scaffold/components/ui/Card.tsx'
+import { cardClass } from '../../scaffold/components/ui/cardShell.ts'
 import { IconTrendUp, IconPieChart, IconDocument, IconCompass } from '../../scaffold/components/ui/icons.tsx'
 
 /**
@@ -47,11 +48,11 @@ export function StatCard({ label, value, subvalue, variant, subtitle, onClick, e
         type="button"
         onClick={onClick}
         aria-expanded={!!expanded}
-        className="rounded-2xl border border-cs-border bg-cs-surface p-4 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-pop"
+        className={cardClass('md', 'text-left transition hover:-translate-y-0.5 hover:shadow-pop')}
       >
         {content}
       </button>
     )
   }
-  return <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">{content}</div>
+  return <Card pad="md">{content}</Card>
 }

@@ -19,6 +19,7 @@ import ImportWizard from '../components/ImportWizard.tsx'
 import TipCarousel from '../components/TipCarousel.tsx'
 import { useViewing } from '../../scaffold/contexts/viewing.ts'
 import { HeroCard, IconTile, Eyebrow } from '../../scaffold/components/ui/Card.tsx'
+import { cardClass } from '../../scaffold/components/ui/cardShell.ts'
 import { Sparkline, IconTrendUp } from '../../scaffold/components/ui/icons.tsx'
 import { StatCard as Card } from '../components/StatCard.tsx'
 
@@ -443,7 +444,7 @@ export default function Dashboard() {
                 <button
                   onClick={() => setExitBreakdownOpen(o => !o)}
                   aria-expanded={exitBreakdownOpen}
-                  className="col-span-2 rounded-2xl border border-cs-border bg-cs-surface p-4 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-pop"
+                  className={cardClass('md', 'col-span-2 text-left transition hover:-translate-y-0.5 hover:shadow-pop')}
                 >
                   <div className="flex items-center justify-between">
                     <IconTile tone="emerald" className="h-8 w-8 rounded-lg">

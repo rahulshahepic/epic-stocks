@@ -73,9 +73,9 @@ export default function Login() {
   return (
     <div className="flex min-h-screen flex-col items-center bg-cs-base px-4 py-10">
       <div className="w-full max-w-sm">
-        <div className="overflow-hidden rounded-2xl border border-cs-border bg-cs-surface shadow-card">
+        <Card pad="none" className="overflow-hidden">
           <HeroIllustration className="h-40 w-full" />
-        </div>
+        </Card>
 
         <div className="mt-7 text-center">
           <h1 className="text-3xl font-extrabold tracking-tight text-cs-text">

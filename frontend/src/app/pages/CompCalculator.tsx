@@ -24,6 +24,8 @@ import {
   capGainsRate,
 } from './CompCalculator.math.ts'
 import { fmt$, fmtPct } from '../format.ts'
+import { Card } from '../../scaffold/components/ui/Card.tsx'
+import { cardClass } from '../../scaffold/components/ui/cardShell.ts'
 
 interface AllData {
   loans: LoanEntry[]
@@ -1124,7 +1126,7 @@ export default function CompCalculator() {
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-cs-border bg-cs-surface shadow-card p-3 ">
+      <Card pad="sm" className="flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-xs font-medium text-cs-text">
           <span>Planned exit date</span>
           <input
@@ -1149,7 +1151,7 @@ export default function CompCalculator() {
             ? 'Comp reduced for shares that would not vest before this date. Synced with Retirement tab.'
             : 'Optional · synced with Retirement tab · excludes unvested shares from comp calculations'}
         </p>
-      </div>
+      </Card>
 
       <CompEventsEditor
         events={compEvents}
@@ -1169,12 +1171,12 @@ export default function CompCalculator() {
       />
 
       {rows.length === 0 ? (
-        <div className="rounded-2xl border border-cs-border bg-cs-surface shadow-card p-4 text-xs text-cs-muted ">
+        <Card pad="md" className="text-xs text-cs-muted">
           Not enough price history yet. Add Dec 31 prices for at least two consecutive years in <em>Settings → Prices</em> to see comp by year.
-        </div>
+        </Card>
       ) : (
         <>
-          <div className="rounded-2xl border border-cs-border bg-cs-surface shadow-card p-4 ">
+          <Card pad="md">
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <p className="text-xs font-medium text-cs-text-2">
                 {showTotal
@@ -1300,7 +1302,7 @@ export default function CompCalculator() {
               {hasProjected ? ' Striped, lighter bars use estimated prices.' : ''}
               {rows.some(r => r.afterExit) ? ' Gray bars are after your planned exit (comp not realized).' : ''}
             </p>
-          </div>
+          </Card>
 
           <YearDetailPanel
             row={selectedRow}
@@ -1310,7 +1312,7 @@ export default function CompCalculator() {
             year={shownYear ?? CURRENT_YEAR}
           />
 
-          <label className="flex cursor-pointer items-center gap-2 rounded-2xl border border-cs-border bg-cs-surface shadow-card p-3 ">
+          <label className={cardClass('sm', 'flex cursor-pointer items-center gap-2')}>
             <input
               type="checkbox"
               checked={deductOn}

@@ -12,6 +12,7 @@ import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 import { GRANT_TYPE_NAMES } from '../grantTypes.ts'
 import { fmt$ } from '../format.ts'
 import { Field, SelectField, FIELD_INPUT_CLASS } from '../../scaffold/components/ui/Field.tsx'
+import { ConflictBanner } from '../../scaffold/components/ui/ConflictBanner.tsx'
 
 type LoanForm = Omit<LoanEntry, 'id' | 'version'>
 type Mode = 'list' | 'add' | 'edit'
@@ -33,24 +34,6 @@ function loanLabel(l: LoanEntry, refinancedIds?: Set<number>) {
   const rate = `${(l.interest_rate * 100).toFixed(2)}%`
   const refinanced = refinancedIds?.has(l.id) ? ' [refinanced]' : ''
   return `${l.grant_year} ${l.grant_type} ${l.loan_type}${num} – ${rate} – ${l.due_date}${refinanced}`
-}
-
-function ConflictBanner({ onReload, onDiscard }: { onReload: () => void; onDiscard: () => void }) {
-  return (
-    <div className="rounded-md border border-yellow-300 bg-yellow-50 p-3 dark:border-yellow-700 dark:bg-yellow-900/20">
-      <p className="text-xs font-medium text-yellow-800 dark:text-yellow-300">
-        This record was changed on another device. Reload to see the latest version, or discard your changes.
-      </p>
-      <div className="mt-2 flex gap-2">
-        <button onClick={onReload} className="rounded-md bg-yellow-600 px-2 py-1 text-xs font-medium text-white hover:bg-yellow-700">
-          Reload latest
-        </button>
-        <button onClick={onDiscard} className="rounded-md bg-gray-200 px-2 py-1 text-xs font-medium text-cs-text-2 hover:bg-gray-300 dark:hover:bg-gray-600">
-          Discard my changes
-        </button>
-      </div>
-    </div>
-  )
 }
 
 const LOAN_TYPES = ['Interest', 'Tax', 'Purchase']

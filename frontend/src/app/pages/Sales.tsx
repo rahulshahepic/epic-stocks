@@ -8,6 +8,7 @@ import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
 import { fmtNum, fmtPct, fmtPrice as fmtUSD } from '../format.ts'
 import { Field, FIELD_INPUT_CLASS } from '../../scaffold/components/ui/Field.tsx'
+import { ConflictBanner } from '../../scaffold/components/ui/ConflictBanner.tsx'
 
 export type TaxRates = {
   federal_income_rate: number
@@ -603,15 +604,10 @@ export default function Sales() {
           <button onClick={() => { setMode('list'); resetForm() }} className="text-xs text-cs-muted hover:text-cs-text-2 ">Cancel</button>
         </div>
         {conflict && (
-          <div className="rounded-md border border-yellow-300 bg-yellow-50 p-3 dark:border-yellow-700 dark:bg-yellow-900/20">
-            <p className="text-xs font-medium text-yellow-800 dark:text-yellow-300">
-              This record was changed on another device.
-            </p>
-            <div className="mt-2 flex gap-2">
-              <button onClick={() => { reload(); setMode('list'); resetForm() }} className="rounded-md bg-yellow-600 px-2 py-1 text-xs font-medium text-white hover:bg-yellow-700">Reload latest</button>
-              <button onClick={() => { setMode('list'); resetForm() }} className="rounded-md bg-gray-200 px-2 py-1 text-xs font-medium text-cs-text-2 hover:bg-gray-300 ">Discard</button>
-            </div>
-          </div>
+          <ConflictBanner
+            onReload={() => { reload(); setMode('list'); resetForm() }}
+            onDiscard={() => { setMode('list'); resetForm() }}
+          />
         )}
         {error && <p className="text-xs text-red-500">{error}</p>}
 

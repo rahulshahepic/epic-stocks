@@ -148,34 +148,38 @@ export function AiConnectionsSection() {
         </div>
 
         {guide === 'claude' ? (
-          <ol className="mt-2.5 space-y-1.5 text-xs text-cs-text-2">
-            <Step n={1}>Open Claude → Settings → Connectors</Step>
-            <Step n={2}>Click <strong className="font-medium text-cs-text">Add custom connector</strong></Step>
-            <Step n={3}>Paste the address above</Step>
-            <Step n={4}>Sign in here and approve</Step>
-            <p className="pt-1 text-cs-muted">
+          <div>
+            <ol className="mt-2.5 space-y-1.5 text-xs text-cs-text-2">
+              <Step n={1}>Open Claude → Settings → Connectors</Step>
+              <Step n={2}>Click <strong className="font-medium text-cs-text">Add custom connector</strong></Step>
+              <Step n={3}>Paste the address above</Step>
+              <Step n={4}>Sign in here and approve</Step>
+            </ol>
+            <p className="pt-1.5 text-xs text-cs-muted">
               Needs a paid Claude plan. Works on web, desktop and mobile.
             </p>
-          </ol>
+          </div>
         ) : (
-          <ol className="mt-2.5 space-y-1.5 text-xs text-cs-text-2">
-            <Step n={1}>
-              Open ChatGPT <strong className="font-medium text-cs-text">on the web</strong> → Settings →{' '}
-              <strong className="font-medium text-cs-text">Security and login</strong> → turn on{' '}
-              <strong className="font-medium text-cs-text">Developer mode</strong>
-            </Step>
-            <Step n={2}>Go to Plugins and click <strong className="font-medium text-cs-text">+</strong></Step>
-            <Step n={3}>Give it a name, then paste the address above as the endpoint</Step>
-            <Step n={4}>Sign in here and approve</Step>
-            <Step n={5}>Review the tools it found and create the connection</Step>
-            <p className="pt-1 text-cs-muted">
+          <div>
+            <ol className="mt-2.5 space-y-1.5 text-xs text-cs-text-2">
+              <Step n={1}>
+                Open ChatGPT <strong className="font-medium text-cs-text">on the web</strong> → Settings →{' '}
+                <strong className="font-medium text-cs-text">Security and login</strong> → turn on{' '}
+                <strong className="font-medium text-cs-text">Developer mode</strong>
+              </Step>
+              <Step n={2}>Go to Plugins and click <strong className="font-medium text-cs-text">+</strong></Step>
+              <Step n={3}>Give it a name, then paste the address above as the endpoint</Step>
+              <Step n={4}>Sign in here and approve</Step>
+              <Step n={5}>Review the tools it found and create the connection</Step>
+            </ol>
+            <p className="pt-1.5 text-xs text-cs-muted">
               Developer mode sounds alarming and is not — it is just the switch
               that allows connectors outside OpenAI&apos;s own directory. Needs a
               paid plan, and the connector can only be <em>added</em> from a
               browser; it works everywhere once added. On a work account an
               admin may have to enable developer mode first.
             </p>
-          </ol>
+          </div>
         )}
 
         <p className="mt-2 text-xs text-cs-muted">

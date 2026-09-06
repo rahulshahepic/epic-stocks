@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import quote, urlencode, urlparse
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -216,6 +216,22 @@ def _csrf_for(session_token: str, request_token: str) -> str:
         b"oauth-consent\x00" + session_token.encode() + b"\x00" + request_token.encode(),
         hashlib.sha256,
     ).hexdigest()
+
+
+@router.get("/consent.css")
+def consent_stylesheet():
+    """The consent screen's stylesheet.
+
+    A real file rather than an inline <style> block because the deployment's
+    CSP is `style-src 'self'`, which blocks inline styles — the screen rendered
+    as unstyled browser defaults on staging until this existed. Public and
+    immutable, so it caches hard.
+    """
+    return Response(
+        content=consent_page.STYLESHEET,
+        media_type="text/css",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 @router.get("/authorize")

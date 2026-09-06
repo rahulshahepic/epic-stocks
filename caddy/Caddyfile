@@ -76,6 +76,26 @@
 </html>` 503
     }
 
+    # The OAuth consent screen, which finishes by redirecting the browser to
+    # the AI provider that started the flow. The site-wide policy below sets
+    # `form-action 'self'`, and Chromium checks that against redirects as well
+    # as against the form's own action — so approving a connection would be
+    # blocked there even though everything server-side is correct. This path
+    # therefore gets a policy without form-action. Nothing much is lost: the
+    # redirect target is matched exactly against what the client registered,
+    # which providers may register at all is the admin allowlist, and the page
+    # carries no script of its own.
+    @oauth path /oauth/*
+    handle @oauth {
+        header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+        header Content-Security-Policy "default-src 'none'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"
+        header X-Content-Type-Options "nosniff"
+        header X-Frame-Options "DENY"
+        header Referrer-Policy "strict-origin-when-cross-origin"
+        header Permissions-Policy "geolocation=(), camera=(), microphone=()"
+        reverse_proxy app:8000
+    }
+
     # Normal operation
     handle {
         header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"

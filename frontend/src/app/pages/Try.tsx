@@ -6,10 +6,8 @@ import FindingList, { ReportFindingsButton } from '../components/FindingList.tsx
 import { ReportProblemLink } from '../../scaffold/components/ReportProblem.tsx'
 import StalePriceNotice from '../components/StalePriceNotice.tsx'
 import { StatCard } from '../components/StatCard.tsx'
-import {
-  ChartBox, IncomeCapGainsChart, PriceChart, SharesChart, TODAY,
-  useChartColors, type DateRange,
-} from '../components/charts.tsx'
+import { ChartBox, IncomeCapGainsChart, PriceChart, SharesChart } from '../components/charts.tsx'
+import { TODAY, useChartColors, type DateRange } from '../components/chartAxes.ts'
 import { fmt$, fmtFullDate, fmtNum, fmtPrice } from '../format.ts'
 import { useAppContext } from '../../scaffold/contexts/AppContext.tsx'
 import DisclaimerNotice from '../../scaffold/components/DisclaimerNotice.tsx'

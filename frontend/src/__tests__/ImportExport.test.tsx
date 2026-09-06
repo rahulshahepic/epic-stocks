@@ -4,6 +4,14 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import ImportExport from '../app/pages/ImportExport.tsx'
 
+// The page has several file inputs (Excel import, Epic CSV, Epic PDF); this
+// helper targets the Excel one these tests are about.
+function getExcelUploadInput(): HTMLInputElement {
+  const input = document.querySelector('input#import-file[type="file"]') as HTMLInputElement
+  if (!input) throw new Error('No Excel import file input found')
+  return input
+}
+
 beforeEach(() => {
   localStorage.setItem('auth_token', 'test-token')
   vi.restoreAllMocks()
@@ -34,7 +42,7 @@ describe('ImportExport', () => {
 
   it('shows confirmation dialog after file selection', async () => {
     renderPage()
-    const input = screen.getByAcceptingUpload()
+    const input = getExcelUploadInput()
     const file = new File(['test'], 'Vesting.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     await userEvent.upload(input, file)
 
@@ -45,7 +53,7 @@ describe('ImportExport', () => {
 
   it('cancel clears confirmation', async () => {
     renderPage()
-    const input = screen.getByAcceptingUpload()
+    const input = getExcelUploadInput()
     const file = new File(['test'], 'Vesting.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     await userEvent.upload(input, file)
 
@@ -58,7 +66,7 @@ describe('ImportExport', () => {
       new Response(JSON.stringify({ grants: 12, loans: 21, prices: 8, sheets_imported: ['Schedule', 'Loans', 'Prices'] }), { status: 201 })
     )
     renderPage()
-    const input = screen.getByAcceptingUpload()
+    const input = getExcelUploadInput()
     const file = new File(['test'], 'Vesting.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     await userEvent.upload(input, file)
     await userEvent.click(screen.getByText('Import'))
@@ -73,7 +81,7 @@ describe('ImportExport', () => {
       new Response(JSON.stringify({ detail: 'Bad file format' }), { status: 400 })
     )
     renderPage()
-    const input = screen.getByAcceptingUpload()
+    const input = getExcelUploadInput()
     const file = new File(['test'], 'Vesting.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     await userEvent.upload(input, file)
     await userEvent.click(screen.getByText('Import'))
@@ -161,16 +169,3 @@ describe('ImportExport', () => {
   })
 })
 
-// The page has several file inputs (Excel import, Epic CSV, Epic PDF); this
-// helper targets the Excel one these tests are about.
-declare module '@testing-library/react' {
-  interface Screen {
-    getByAcceptingUpload(): HTMLInputElement
-  }
-}
-
-screen.getByAcceptingUpload = () => {
-  const input = document.querySelector('input#import-file[type="file"]') as HTMLInputElement
-  if (!input) throw new Error('No Excel import file input found')
-  return input
-}

@@ -389,9 +389,11 @@ describe('Retirement page', () => {
     // is the supported way to set a value on them.
     fireEvent.change(dateInput, { target: { value: '2031-04-15' } })
     await waitFor(() => {
-      const calls = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls
-      const matches = calls.filter(([input, init]: any) => {
-        const url = typeof input === 'string' ? input : input?.url ?? String(input)
+      const calls = (globalThis.fetch as unknown as {
+        mock: { calls: [RequestInfo | URL, RequestInit | undefined][] }
+      }).mock.calls
+      const matches = calls.filter(([input, init]) => {
+        const url = typeof input === 'string' ? input : (input as Request).url ?? String(input)
         return url.includes('/api/retirement/params') && (init?.method ?? '').toUpperCase() === 'PUT'
       })
       const withDate = matches

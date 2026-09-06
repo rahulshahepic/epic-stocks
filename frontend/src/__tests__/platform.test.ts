@@ -75,7 +75,7 @@ describe('web platform — files', () => {
 
     await webPlatform.files.saveText('# hi', 'prompt.md', 'text/markdown')
 
-    const blob = createObjectURL.mock.calls[0][0] as unknown as Blob
+    const blob = (createObjectURL.mock.calls as unknown[][])[0][0] as Blob
     expect(blob.type).toBe('text/markdown')
   })
 

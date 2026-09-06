@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest'
-import type { ContentBlob } from '../api.ts'
 import { MOCK_CONTENT } from './fixtures/content.ts'
 import {
   buildScheduleRows, deriveSchedule, initPurchaseRows,
@@ -14,7 +13,7 @@ import type {
   BonusGrantRow, CatchUpRow, PurchaseGrantRow, ReviewedLoan,
 } from '../app/components/importWizard/types.ts'
 
-const schedule = deriveSchedule(MOCK_CONTENT as ContentBlob)
+const schedule = deriveSchedule(MOCK_CONTENT)
 
 // Invented round numbers — never real Epic figures.
 function purchaseRow(over: Partial<PurchaseGrantRow> = {}): PurchaseGrantRow {

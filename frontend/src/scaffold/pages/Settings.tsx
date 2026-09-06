@@ -2,11 +2,11 @@ import { useState, useEffect, useCallback } from 'react'
 import { useConfig } from '../hooks/useConfig.ts'
 import { usePush } from '../hooks/usePush.ts'
 import { useAuth } from '../hooks/useAuth.ts'
-import { useTheme } from '../contexts/ThemeContext.tsx'
+import { useTheme } from '../contexts/theme.ts'
 import { useAppContext } from '../contexts/AppContext.tsx'
 import { api } from '../../api.ts'
 import type { InvitationEntry, ReceivedInvitation } from '../../api.ts'
-import type { Theme } from '../contexts/ThemeContext.tsx'
+import type { Theme } from '../contexts/theme.ts'
 
 export default function Settings() {
   const config = useConfig()

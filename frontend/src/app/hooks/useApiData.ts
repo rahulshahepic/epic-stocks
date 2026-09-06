@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useToast } from '../../scaffold/components/Toast.tsx'
+import { useToast } from '../../scaffold/components/toastContext.ts'
 
 export function useApiData<T>(fetcher: () => Promise<T>) {
   const [data, setData] = useState<T | null>(null)

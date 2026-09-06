@@ -4,12 +4,11 @@ import {
   AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts'
+import { ChartBox, DetailCard, IncomeCapGainsChart, PriceChart, SharesChart } from '../components/charts.tsx'
 import {
-  ChartBox, DetailCard, IncomeCapGainsChart, PriceChart, SharesChart,
-  TODAY, filterByDateRange, numericTicks,
-  smartInterval, todayIndex, useChartColors,
+  TODAY, filterByDateRange, numericTicks, smartInterval, todayIndex, useChartColors,
   type ChartColors, type DateRange,
-} from '../components/charts.tsx'
+} from '../components/chartAxes.ts'
 import { fmt$, fmtDate, fmtFullDate, fmtNum, fmtPrice } from '../format.ts'
 import { api, apiFetchBlob } from '../../api.ts'
 import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, GrantEntry, TaxSettings, SaleEntry, ExitPreview, DeductionPreview } from '../../api.ts'
@@ -18,7 +17,7 @@ import ExitBreakdownCard from '../components/ExitBreakdownCard.tsx'
 import { useApiData } from '../hooks/useApiData.ts'
 import ImportWizard from '../components/ImportWizard.tsx'
 import TipCarousel from '../components/TipCarousel.tsx'
-import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
+import { useViewing } from '../../scaffold/contexts/viewing.ts'
 import { HeroCard, IconTile, Eyebrow } from '../../scaffold/components/ui/Card.tsx'
 import { Sparkline, IconTrendUp } from '../../scaffold/components/ui/icons.tsx'
 import { StatCard as Card } from '../components/StatCard.tsx'
@@ -783,7 +782,7 @@ export default function Dashboard() {
         return isEst
       })(),
     }
-  }, [events, loans, sales, taxSettings, dash, cardDate, prices])
+  }, [events, loans, sales, taxSettings, cardDate, prices])
 
   // Per-grant holdings breakdown as of cardDate
   const grantHoldings = useMemo(() => {

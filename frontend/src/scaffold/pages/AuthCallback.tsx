@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useReportProblem } from '../components/ReportProblem.tsx'
+import { useReportProblem } from '../components/reportContext.ts'
 import { api } from '../../api.ts'
 import { clearPendingLogin, completeLogin, readPendingLogin } from '../oidc.ts'
 import { platform } from '../../platform/index.ts'

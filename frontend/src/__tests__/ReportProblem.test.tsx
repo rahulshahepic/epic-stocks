@@ -7,7 +7,7 @@ import ErrorBoundary from '../scaffold/components/ErrorBoundary.tsx'
 import { logApiFailure, noteErrorRef, resetReportLog } from '../scaffold/reportLog.ts'
 
 function lastReportBody(spy: ReturnType<typeof vi.spyOn>) {
-  const call = spy.mock.calls.find(([url]) =>
+  const call = spy.mock.calls.find(([url]: unknown[]) =>
     String(typeof url === 'string' ? url : (url as Request).url).includes('/api/report'))
   if (!call) throw new Error('no report was sent')
   return JSON.parse(String((call[1] as RequestInit).body))

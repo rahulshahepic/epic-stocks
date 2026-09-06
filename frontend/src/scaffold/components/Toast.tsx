@@ -1,21 +1,12 @@
-import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
-import { useReportProblem } from './ReportProblem.tsx'
-
-type ToastType = 'error' | 'success' | 'info'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { ToastContext, type ToastType } from './toastContext.ts'
+import { useReportProblem } from './reportContext.ts'
 
 interface Toast {
   id: number
   message: string
   type: ToastType
 }
-
-interface ToastContextValue {
-  toast: (message: string, type?: ToastType) => void
-}
-
-const ToastContext = createContext<ToastContextValue>({ toast: () => {} })
-
-export const useToast = () => useContext(ToastContext)
 
 let nextId = 0
 
@@ -41,7 +32,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, [dismiss])
 
   useEffect(() => {
-    return () => timers.current.forEach((t) => clearTimeout(t))
+    const pending = timers.current
+    return () => pending.forEach((t) => clearTimeout(t))
   }, [])
 
   const colors: Record<ToastType, string> = {

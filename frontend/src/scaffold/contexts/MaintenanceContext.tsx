@@ -1,11 +1,6 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../../api.ts'
-
-const MaintenanceContext = createContext(false)
-
-export function useMaintenance() {
-  return useContext(MaintenanceContext)
-}
+import { MaintenanceContext } from './maintenance.ts'
 
 export function MaintenanceProvider({ children }: { children: React.ReactNode }) {
   const [maintenance, setMaintenance] = useState(false)

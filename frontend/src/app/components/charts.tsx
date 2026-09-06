@@ -4,7 +4,8 @@ import {
   XAxis, YAxis, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts'
 import type { TimelineEvent, PriceEntry } from '../../api.ts'
-import { useDark } from '../../scaffold/hooks/useDark.ts'
+import { TODAY, filterByDateRange, numericTicks, todayIndex } from './chartAxes.ts'
+import type { ChartColors, DateRange } from './chartAxes.ts'
 import { fmt$, fmtDate, fmtFullDate, fmtNum, fmtPrice } from '../format.ts'
 
 /**
@@ -15,37 +16,6 @@ import { fmt$, fmtDate, fmtFullDate, fmtNum, fmtPrice } from '../format.ts'
  * data in memory (the preview) and one holding data from the API (the
  * dashboard) render identically.
  */
-
-/** Compute ~maxTicks evenly-spaced numeric indices for a dataset of length len. */
-export function numericTicks(len: number, maxTicks = 6): number[] {
-  if (len === 0) return []
-  if (len <= maxTicks) return Array.from({ length: len }, (_, i) => i)
-  return Array.from({ length: maxTicks }, (_, k) => Math.round(k * (len - 1) / (maxTicks - 1)))
-}
-
-/** @deprecated use numericTicks instead */
-export function smartInterval(len: number, maxTicks = 6): number {
-  if (len <= maxTicks) return 0
-  return Math.ceil(len / maxTicks) - 1
-}
-
-export const TODAY = new Date().toISOString().slice(0, 10)
-
-export type RangeMode = 'all' | 'custom'
-
-export interface DateRange {
-  mode: RangeMode
-  start: string
-  end: string
-}
-
-export function filterByDateRange<T>(items: T[], range: DateRange, dateKey: keyof T): T[] {
-  if (range.mode === 'all') return items
-  return items.filter(item => {
-    const d = item[dateKey] as string
-    return d >= range.start && d <= range.end
-  })
-}
 
 export function RangeControls({ range, setRange, maxDate }: { range: DateRange; setRange: (r: DateRange) => void; maxDate: string }) {
   const isAll = range.mode === 'all'
@@ -82,27 +52,6 @@ export function RangeControls({ range, setRange, maxDate }: { range: DateRange; 
 }
 
 /** Find the index of the data point closest to today for the ReferenceLine. */
-export function todayIndex(data: { _date: string }[]): number | null {
-  for (let i = 0; i < data.length; i++) {
-    if (data[i]._date >= TODAY) return i
-  }
-  return null
-}
-
-export interface ChartColors {
-  grid: string
-  axis: string
-  tooltipBg: string
-  tooltipText: string
-}
-
-export function useChartColors(): ChartColors {
-  const dark = useDark()
-  return dark
-    ? { grid: '#252220', axis: '#A8998F', tooltipBg: '#1C1917', tooltipText: '#F2EDE8' }
-    : { grid: '#EAE7E3', axis: '#6B5F58', tooltipBg: '#ffffff', tooltipText: '#1A1411' }
-}
-
 export function DetailCard({ items, onClose }: { items: { label: string; value: string }[]; onClose: () => void }) {
   return (
     <div className="mt-2 rounded-xl border border-cs-border bg-cs-raised px-3 py-2 ">
@@ -201,7 +150,8 @@ export function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { eve
     let cumFuturePriceIncrease = 0
     let cumSurplusIncome = 0
     let cumSurplusCg = 0
-    return filtered.map((e, i) => {
+    const points = []
+    for (const [i, e] of filtered.entries()) {
       if (hasFuturePrices && e.date > TODAY) {
         const vs = (e.vested_shares ?? 0)
         if (e.event_type === 'Share Price') {
@@ -215,18 +165,18 @@ export function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { eve
           }
         }
       }
-      const cumCg = e.cum_cap_gains
-      return {
+      points.push({
         _idx: i,
         _date: e.date,
         _label: fmtDate(e.date),
         _event: e,
         income: e.cum_income - cumSurplusIncome,
-        gains: cumCg - cumSurplusCg,
+        gains: e.cum_cap_gains - cumSurplusCg,
         projExtraIncome: hasFuturePrices && cumSurplusIncome > 0 ? cumSurplusIncome : null as number | null,
         projExtra: hasFuturePrices && cumSurplusCg > 0 ? cumSurplusCg : null as number | null,
-      }
-    })
+      })
+    }
+    return points
   }, [events, range, hasFuturePrices])
 
   const tIdx = todayIndex(data)

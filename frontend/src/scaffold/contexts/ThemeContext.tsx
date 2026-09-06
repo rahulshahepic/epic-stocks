@@ -1,18 +1,5 @@
-import { createContext, useContext, useState, useEffect } from 'react'
-
-export type Theme = 'light' | 'dark' | 'auto'
-
-interface ThemeContextValue {
-  theme: Theme
-  setTheme: (t: Theme) => void
-  isDark: boolean
-}
-
-const ThemeContext = createContext<ThemeContextValue>({
-  theme: 'auto',
-  setTheme: () => {},
-  isDark: false,
-})
+import { useState, useEffect } from 'react'
+import { ThemeContext, type Theme } from './theme.ts'
 
 function getStoredTheme(): Theme {
   try { return (localStorage.getItem('theme') as Theme) || 'auto' } catch { return 'auto' }
@@ -49,8 +36,4 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       {children}
     </ThemeContext.Provider>
   )
-}
-
-export function useTheme(): ThemeContextValue {
-  return useContext(ThemeContext)
 }

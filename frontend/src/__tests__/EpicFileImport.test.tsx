@@ -5,7 +5,6 @@ import { MemoryRouter } from 'react-router-dom'
 import EpicFileImport from '../app/components/EpicFileImport.tsx'
 import { resetContentCache, setContentCacheForTesting } from '../app/hooks/useContent.ts'
 import { MOCK_CONTENT } from './fixtures/content.ts'
-import type { ContentBlob } from '../api.ts'
 
 const CLEAN = {
   draft: {
@@ -186,7 +185,7 @@ describe('EpicFileImport', () => {
 describe('EpicFileImport → wizard handoff', () => {
   beforeEach(() => {
     resetContentCache()
-    setContentCacheForTesting(MOCK_CONTENT as ContentBlob)
+    setContentCacheForTesting(MOCK_CONTENT)
   })
   afterEach(() => { vi.restoreAllMocks(); resetContentCache() })
 

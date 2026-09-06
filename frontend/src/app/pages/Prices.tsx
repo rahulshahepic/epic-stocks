@@ -3,7 +3,7 @@ import { api } from '../../api.ts'
 import type { PriceEntry } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
-import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
+import { useViewing } from '../../scaffold/contexts/viewing.ts'
 import { fmtPrice } from '../format.ts'
 import { Field } from '../../scaffold/components/ui/Field.tsx'
 

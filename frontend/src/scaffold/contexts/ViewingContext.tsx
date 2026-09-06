@@ -1,22 +1,5 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
-
-interface ViewingState {
-  invitationId: number
-  name: string
-}
-
-interface ViewingContextValue {
-  /** null = viewing own data; set = viewing someone else's data */
-  viewing: ViewingState | null
-  setViewing: (invitationId: number, name: string) => void
-  clearViewing: () => void
-}
-
-const ViewingContext = createContext<ViewingContextValue>({
-  viewing: null,
-  setViewing: () => {},
-  clearViewing: () => {},
-})
+import { useState, useCallback, type ReactNode } from 'react'
+import { ViewingContext, type ViewingState } from './viewing.ts'
 
 export function ViewingProvider({ children }: { children: ReactNode }) {
   const [viewing, setViewingState] = useState<ViewingState | null>(() => {
@@ -42,8 +25,4 @@ export function ViewingProvider({ children }: { children: ReactNode }) {
       {children}
     </ViewingContext.Provider>
   )
-}
-
-export function useViewing() {
-  return useContext(ViewingContext)
 }

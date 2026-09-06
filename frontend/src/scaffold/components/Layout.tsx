@@ -3,9 +3,9 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { ReportProblemLink } from './ReportProblem.tsx'
 import { useAuth } from '../hooks/useAuth.ts'
 import { useMe } from '../hooks/useMe.ts'
-import { useMaintenance } from '../contexts/MaintenanceContext.tsx'
+import { useMaintenance } from '../contexts/maintenance.ts'
 import { useConfig } from '../hooks/useConfig.ts'
-import { useViewing } from '../contexts/ViewingContext.tsx'
+import { useViewing } from '../contexts/viewing.ts'
 import { useAppContext } from '../contexts/AppContext.tsx'
 import PushNudge from './PushNudge.tsx'
 import UnofficialBadge from './UnofficialBadge.tsx'
@@ -32,12 +32,14 @@ export default function Layout() {
 
   const sharedAccounts = me?.shared_accounts ?? []
 
-  // Clear stale viewing_context if the invitation is no longer valid for this user
+  // Clear stale viewing_context if the invitation is no longer valid for this user.
+  // The list is read inside the effect: `?? []` makes a new array on every render,
+  // so as a dependency it never compared equal and the effect ran every time.
   useEffect(() => {
     if (!me || !viewing) return
-    const valid = sharedAccounts.some(a => a.invitation_id === viewing.invitationId)
+    const valid = (me.shared_accounts ?? []).some(a => a.invitation_id === viewing.invitationId)
     if (!valid) clearViewing()
-  }, [me, viewing, sharedAccounts, clearViewing])
+  }, [me, viewing, clearViewing])
 
   // (B) Focus management on route changes
   const location = useLocation()

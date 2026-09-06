@@ -7,7 +7,7 @@ import { api } from '../../api.ts'
 import type { GrantEntry, LoanEntry, LoanPaymentEntry, PriceEntry, SaleEntry, TaxSettings, DashboardData } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { useDark } from '../../scaffold/hooks/useDark.ts'
-import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
+import { useViewing } from '../../scaffold/contexts/viewing.ts'
 import {
   outstandingPrincipalAt,
   averageOutstandingPrincipal,

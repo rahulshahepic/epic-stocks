@@ -9,7 +9,7 @@ beforeEach(() => {
   sessionStorage.clear()
   vi.restoreAllMocks()
   // Default: fetch returns empty providers list
-  vi.spyOn(global, 'fetch').mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }))
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify([]), { status: 200 }))
 })
 
 function renderLogin() {
@@ -53,7 +53,7 @@ describe('Login page', () => {
   })
 
   it('shows provider buttons when providers are loaded', async () => {
-    vi.spyOn(global, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify([{ name: 'google', label: 'Google' }]), { status: 200 })
     )
     renderLogin()
@@ -63,7 +63,7 @@ describe('Login page', () => {
   })
 
   it('shows multiple provider buttons', async () => {
-    vi.spyOn(global, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify([
         { name: 'google', label: 'Google' },
         { name: 'azure', label: 'Azure AD' },

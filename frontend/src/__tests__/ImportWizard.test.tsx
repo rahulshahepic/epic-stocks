@@ -10,14 +10,13 @@ vi.mock('react-router-dom', async () => ({
   useNavigate: () => mockNavigate,
 }))
 import { resetContentCache, setContentCacheForTesting } from '../app/hooks/useContent.ts'
-import type { ContentBlob } from '../api.ts'
 import { MOCK_CONTENT } from './fixtures/content.ts'
 
 beforeEach(() => {
   localStorage.setItem('auth_token', 'test-token')
   vi.restoreAllMocks()
   resetContentCache()
-  setContentCacheForTesting(MOCK_CONTENT as ContentBlob)
+  setContentCacheForTesting(MOCK_CONTENT)
   mockNavigate.mockClear()
 })
 

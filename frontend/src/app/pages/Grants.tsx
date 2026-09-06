@@ -4,10 +4,10 @@ import { api, ConflictError } from '../../api.ts'
 import type { GrantEntry, LoanEntry, PriceEntry, SaleEntry, TaxSettings, SaleEstimate } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { broadcastChange, useDataSync } from '../hooks/useDataSync.ts'
-import { TaxRateFields, ratesFromDefaults, ratesFromSale, DEFAULT_RATES } from './Sales.tsx'
-import type { TaxRates } from './Sales.tsx'
+import { TaxRateFields } from './Sales.tsx'
+import { DEFAULT_RATES, ratesFromDefaults, ratesFromSale, type TaxRates } from './salesTaxRates.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
-import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
+import { useViewing } from '../../scaffold/contexts/viewing.ts'
 import { ZERO_BASIS_TYPES } from '../grantTypes.ts'
 import { fmtNum, fmtPrice } from '../format.ts'
 import { Field, FIELD_INPUT_CLASS } from '../../scaffold/components/ui/Field.tsx'
@@ -349,13 +349,14 @@ export default function Grants() {
     setSellError('')
   }
 
-  // When sale date changes, update price to the rate in effect on that date
+  // When the sale date changes, snap the price to the rate in effect on that date.
+  // Deliberately keyed on sellDate alone: adding `prices` or `sellModal` would
+  // re-run this on an unrelated reload and overwrite a price the user has typed.
   useEffect(() => {
     if (!sellModal || !sellDate) return
     setSellPrice(String(priceAt(sellDate, prices) || ''))
   }, [sellDate]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!sellModal) return
     const price = parseFloat(sellPrice)

@@ -15,7 +15,7 @@ import {
 } from 'recharts'
 import { api } from '../../api.ts'
 import { useDark } from '../../scaffold/hooks/useDark.ts'
-import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
+import { useViewing } from '../../scaffold/contexts/viewing.ts'
 import { useMe, updateMeCache } from '../../scaffold/hooks/useMe.ts'
 import { HeroCard, IconTile, Eyebrow, type TileTone } from '../../scaffold/components/ui/Card.tsx'
 import { Segmented } from '../../scaffold/components/ui/Segmented.tsx'
@@ -334,6 +334,16 @@ function buildFanData(rows: FanPercentiles[]): FanRow[] {
   }))
 }
 
+/** One "best 5% … worst 5%" line of the fan tooltip. */
+function FanRowLine({ k, v }: { k: string; v: number }) {
+  return (
+    <div className="flex justify-between gap-4 tabular-nums">
+      <span className="text-cs-muted">{k}</span>
+      <span>{fmt$M(v)}</span>
+    </div>
+  )
+}
+
 function FanTooltip({
   active,
   payload,
@@ -345,25 +355,19 @@ function FanTooltip({
 }) {
   if (!active || !payload?.length) return null
   const row = payload[0].payload
-  const Row = ({ k, v }: { k: string; v: number }) => (
-    <div className="flex justify-between gap-4 tabular-nums">
-      <span className="text-cs-muted">{k}</span>
-      <span>{fmt$M(v)}</span>
-    </div>
-  )
   return (
     <div
       className="rounded-md border px-2.5 py-2 text-[11px] shadow-md"
       style={{ background: c.tooltipBg, color: c.tooltipText, borderColor: c.grid }}
     >
       <p className="mb-1 font-semibold tabular-nums">Age {row.age} (year {row.year})</p>
-      <Row k="best 5%" v={row.pct.p95} />
-      <Row k="best 10%" v={row.pct.p90} />
-      <Row k="best 25%" v={row.pct.p75} />
-      <Row k="typical" v={row.pct.p50} />
-      <Row k="worst 25%" v={row.pct.p25} />
-      <Row k="worst 10%" v={row.pct.p10} />
-      <Row k="worst 5%" v={row.pct.p5} />
+      <FanRowLine k="best 5%" v={row.pct.p95} />
+      <FanRowLine k="best 10%" v={row.pct.p90} />
+      <FanRowLine k="best 25%" v={row.pct.p75} />
+      <FanRowLine k="typical" v={row.pct.p50} />
+      <FanRowLine k="worst 25%" v={row.pct.p25} />
+      <FanRowLine k="worst 10%" v={row.pct.p10} />
+      <FanRowLine k="worst 5%" v={row.pct.p5} />
     </div>
   )
 }

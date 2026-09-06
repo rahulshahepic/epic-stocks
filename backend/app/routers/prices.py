@@ -1,6 +1,5 @@
 from datetime import date as date_cls
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -9,6 +8,7 @@ from schemas import PriceCreate, PriceUpdate, PriceOut
 from scaffold.auth import get_current_user
 from scaffold.quota import check_row_quota
 from app import event_cache
+from scaffold.crud import apply_update, get_owned, version_conflict
 
 router = APIRouter(prefix="/api/prices", tags=["prices"])
 
@@ -78,29 +78,19 @@ def create_price(body: PriceCreate, user: User = Depends(get_current_user), db: 
 
 @router.get("/{price_id}", response_model=PriceOut)
 def get_price(price_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    price = db.query(Price).filter(Price.id == price_id, Price.user_id == user.id).first()
-    if not price:
-        raise HTTPException(status_code=404, detail="Price not found")
+    price = get_owned(db, Price, price_id, user, "Price")
     return price
 
 
 @router.put("/{price_id}", response_model=PriceOut)
 def update_price(price_id: int, body: PriceUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    price = db.query(Price).filter(Price.id == price_id, Price.user_id == user.id).first()
-    if not price:
-        raise HTTPException(status_code=404, detail="Price not found")
-    submitted_version = body.version
-    if submitted_version is not None and price.version != submitted_version:
-        return JSONResponse(
-            status_code=409,
-            content={"detail": "modified_elsewhere", "current_version": price.version},
-        )
-    updates = {k: v for k, v in body.model_dump(exclude_unset=True).items() if k != "version"}
-    for k, v in updates.items():
-        setattr(price, k, v)
+    price = get_owned(db, Price, price_id, user, "Price")
+    stale = version_conflict(price, body.version)
+    if stale:
+        return stale
+    updates = apply_update(price, body)
     if "effective_date" in updates:
         price.is_estimate = price.effective_date > date_cls.today()
-    price.version = price.version + 1
     db.commit()
     db.refresh(price)
     event_cache.schedule_recompute(user.id)
@@ -109,9 +99,7 @@ def update_price(price_id: int, body: PriceUpdate, user: User = Depends(get_curr
 
 @router.delete("/{price_id}", status_code=204)
 def delete_price(price_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    price = db.query(Price).filter(Price.id == price_id, Price.user_id == user.id).first()
-    if not price:
-        raise HTTPException(status_code=404, detail="Price not found")
+    price = get_owned(db, Price, price_id, user, "Price")
     db.delete(price)
     db.commit()
     event_cache.schedule_recompute(user.id)

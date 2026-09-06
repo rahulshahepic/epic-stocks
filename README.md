@@ -882,6 +882,7 @@ epic-stocks/
 │   ├── scaffold/            # Reusable auth/infra layer (keep when forking)
 │   │   ├── auth.py          # JWT creation/verification + admin checks
 │   │   ├── client_ip.py     # Real caller address behind a proxy (TRUSTED_PROXY_HOPS)
+│   │   ├── crud.py          # get-or-404, the optimistic-lock 409, and the update-and-bump every user-owned endpoint does
 │   │   ├── crypto.py        # Per-user AES-256-GCM encryption (fails closed without a key)
 │   │   ├── email_sender.py  # Email dispatch (delegates to providers/)
 │   │   ├── invite_tokens.py # HMAC verifiers + sealed short codes for invitations

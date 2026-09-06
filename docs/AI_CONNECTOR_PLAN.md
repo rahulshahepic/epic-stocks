@@ -253,9 +253,10 @@ Mitigations, all of them:
 - The consent screen names the client and shows the **redirect origin** it will
   return to, not just the display name it chose for itself.
 - Redirect URIs are matched **exactly** against what was registered, and
-  registration is restricted to hosts in `MCP_ALLOWED_REDIRECT_HOSTS` (default:
-  `chatgpt.com`, `claude.ai`, `claude.com`, plus `localhost` for development).
-  Cheap, and it removes the whole open-redirect class.
+  registration is restricted to the providers an admin has enabled (seeded with
+  ChatGPT and Claude, plus loopback for development). Cheap, and it removes the
+  whole open-redirect class. **Built as an admin setting, not an env var** —
+  see §12.
 - `E2E_TEST=1` must **not** relax any of this. It already skips `redirect_uri`
   validation for the OIDC login flow; the OAuth server needs its own validation
   path the switch does not reach. Test it.
@@ -413,10 +414,15 @@ FORK_GUIDE for the OAuth configuration. Mandatory, not a follow-up.
 
 | Var | Required | Default | Meaning |
 |---|---|---|---|
-| `MCP_ENABLED` | no | `1` | Deploy-level kill switch. Off, `/mcp` and `/oauth/*` are not registered at all |
-| `MCP_ALLOWED_REDIRECT_HOSTS` | no | `chatgpt.com;claude.ai;claude.com` | Semicolon-delimited, matching the `ADMIN_EMAIL` convention |
-| `MCP_RATE_LIMIT` | no | `300` | Connector calls per user per minute |
-| `MCP_ACCESS_TOKEN_MINUTES` | no | `60` | |
+| `MCP_ACCESS_TOKEN_MINUTES` | no | `60` | Connector access token lifetime |
+
+**Not environment variables.** Whether AI connections are on, and which
+providers may connect, were specified above as `MCP_ENABLED` and
+`MCP_ALLOWED_REDIRECT_HOSTS` and are not: they are policy an admin changes from
+the admin page, stored in `system_settings` and `oauth_redirect_hosts` and
+seeded on. "Stop accepting connections from ChatGPT" should not be a redeploy,
+and the deployment rule in CLAUDE.md is that anything needing to happen on the
+server belongs in code rather than in a hand-edited environment.
 
 No new secret: the OAuth server signs with the existing `JWT_SECRET`.
 

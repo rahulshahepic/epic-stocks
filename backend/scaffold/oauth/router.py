@@ -15,7 +15,6 @@ row quota on grants, the exact redirect matching, and the nightly prune of
 clients nobody ever connected.
 """
 import logging
-import os
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote, urlencode, urlparse
 
@@ -39,6 +38,7 @@ from .clients import (
     MAX_CLIENT_NAME_LEN, MAX_REDIRECT_URIS, RegistrationError, authenticate_client,
     client_redirect_uris, get_client, redirect_uri_registered, register_client,
 )
+from .settings import host_allowed, mcp_enabled
 from .models import OAuthAuthCode, OAuthGrant
 from .tokens import (
     AUTH_CODE_TTL, REFRESH_TTL, canonical_resource, code_verifier, issuer,
@@ -60,7 +60,18 @@ MAX_GRANTS_PER_USER = ROW_QUOTAS["OAuthGrant"]
 
 
 def _enabled() -> bool:
-    return os.getenv("MCP_ENABLED", "1") != "0"
+    """Whether AI connections are on. Admin-controlled, not deployment config."""
+    return mcp_enabled()
+
+
+def _provider_still_allowed(redirect_uri: str) -> bool:
+    """Whether the provider this client returns to is still switched on.
+
+    Checked at authorize *and* at refresh, not only at registration. An admin
+    who turns ChatGPT off means it, and a client registered while it was on
+    would otherwise keep working for as long as its refresh token lasted.
+    """
+    return host_allowed(urlparse(redirect_uri).hostname or "")
 
 
 # ── discovery ───────────────────────────────────────────────────────────────
@@ -126,6 +137,8 @@ def _registration_error(message: str, code: str = "invalid_client_metadata") -> 
 @router.post("/register")
 def register(body: RegisterRequest, request: Request, db: Session = Depends(get_db)):
     """RFC 7591. Anonymous by design — it is what makes Claude on a phone work."""
+    if not _enabled():
+        return _registration_error("AI connections are turned off on this server", "access_denied")
     check_rate_ip_shared(client_ip(request), "oauth_register", 60, 3600)
 
     try:
@@ -225,6 +238,12 @@ def authorize(request: Request, db: Session = Depends(get_db)):
         return _error_page(
             "Invalid redirect address",
             "The address this application asked to return you to is not one it registered.",
+        )
+
+    if not _provider_still_allowed(redirect_uri):
+        return _error_page(
+            "Connections from here are turned off",
+            "An administrator has disabled AI connections from this provider.",
         )
 
     state = q.get("state")
@@ -551,6 +570,12 @@ def _refresh(db: Session, request: Request, raw_refresh: str | None,
         return _token_error("invalid_client", "Unknown client", 401)
     if not authenticate_client(client, presented_secret):
         return _token_error("invalid_client", "Client authentication failed", 401)
+    if not any(_provider_still_allowed(uri) for uri in client_redirect_uris(client)):
+        # Switched off since this connection was made. Drop it rather than
+        # letting it live out its refresh window.
+        db.delete(grant)
+        db.commit()
+        return _token_error("invalid_grant", "AI connections from this provider are turned off")
 
     user = db.get(User, grant.user_id)
     if user is None:

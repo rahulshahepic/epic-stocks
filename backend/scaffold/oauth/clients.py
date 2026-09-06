@@ -5,7 +5,7 @@ a phone connect without anyone copying a client id around. It also means a
 stranger can register a client naming any redirect URI they like, which is the
 open-redirect and confused-deputy surface. Three things close it:
 
-  * the host must be on an allowlist (MCP_ALLOWED_REDIRECT_HOSTS),
+  * the host must be on the allowlist an admin maintains (settings.py),
   * redirect URIs are matched exactly at authorize time, never by prefix,
   * consent is shown every time, and it shows the origin the browser will be
     returned to rather than the display name the client chose for itself.
@@ -22,9 +22,8 @@ from urllib.parse import urlparse
 from sqlalchemy.orm import Session
 
 from .models import OAuthClient
+from .settings import allowed_redirect_hosts, host_allowed
 from .tokens import client_secret_verifier, new_secret
-
-_DEFAULT_ALLOWED_HOSTS = "chatgpt.com;claude.ai;claude.com"
 
 MAX_REDIRECT_URIS = 5
 MAX_CLIENT_NAME_LEN = 120
@@ -32,12 +31,6 @@ MAX_CLIENT_NAME_LEN = 120
 
 class RegistrationError(ValueError):
     """Registration was refused. The message reaches the client."""
-
-
-def allowed_redirect_hosts() -> set[str]:
-    """Read at call time, semicolon-delimited, matching the ADMIN_EMAIL convention."""
-    raw = os.getenv("MCP_ALLOWED_REDIRECT_HOSTS", _DEFAULT_ALLOWED_HOSTS)
-    return {h.strip().lower() for h in raw.split(";") if h.strip()}
 
 
 def _is_loopback(host: str) -> bool:
@@ -70,18 +63,24 @@ def validate_redirect_uri(uri: str) -> None:
 
     if _is_loopback(host):
         # OAuth 2.1 allows http for loopback, which is how a locally run MCP
-        # client authorizes during development.
+        # client authorizes during development. Never on a real deployment,
+        # where an attacker's "localhost" is the victim's own machine.
         if parsed.scheme not in ("http", "https"):
             raise RegistrationError("redirect_uri must be http or https")
-        if "localhost" not in allowed_redirect_hosts() and os.getenv("DOMAIN"):
+        if os.getenv("DOMAIN") and not host_allowed(host):
             raise RegistrationError("Loopback redirect URIs are not accepted on this server")
         return
 
     if parsed.scheme != "https":
         raise RegistrationError("redirect_uri must use https")
 
-    allowed = allowed_redirect_hosts()
-    if not any(host == a or host.endswith("." + a) for a in allowed):
+    if not host_allowed(host):
+        allowed = allowed_redirect_hosts()
+        if not allowed:
+            raise RegistrationError(
+                "This server is not accepting AI connections from anywhere. "
+                "An administrator has to add a provider first."
+            )
         raise RegistrationError(
             f"This server does not accept connections from {host}. "
             f"Allowed: {', '.join(sorted(allowed))}"

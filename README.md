@@ -632,6 +632,21 @@ Click any user in the list to open a detail card:
 | **Rotate encryption key** | Generates a new master key, re-wraps all per-user keys, smoke-tests, and persists to the database. Propagates to all replicas automatically within seconds — no deploy or env var change needed. A snapshot of old keys is saved before any changes and restored automatically on failure. |
 | **Restore from snapshot** | Appears when an interrupted rotation left a snapshot in the database. Recovers from a crash without SSH access. |
 
+### AI Connections (admin)
+
+Admin → **AI Connections** controls whether people can connect ChatGPT or Claude to their own accounts, and which providers are allowed to. Both were environment variables at first, which made "stop accepting connections from ChatGPT" a redeploy; they are policy, so they live in the database.
+
+- **Allow AI connections** — the master switch. Off, nobody can authorize a new connection and every `/mcp` call gets a 503. It is a pause, not a disconnect: existing connections are left in place and start working again when you turn it back on. Disconnecting everyone would be a worse surprise than the pause.
+- **Providers** — the allowlist of hosts an AI client may be redirected back to after authorizing. Seeded with ChatGPT (`chatgpt.com`) and Claude (`claude.ai`, `claude.com`), both on. Claude is two hostnames under one label so there is one thing to switch off, not two.
+
+This allowlist is a security control, not a convenience. Dynamic client registration is anonymous — it has to be, or Claude on a phone cannot connect — so without it a stranger could register a client whose redirect URI points at their own server and try to walk a signed-in user through the consent screen. Adding a host means trusting that provider with any account that authorizes it.
+
+Switching a provider off blocks new authorizations immediately and ends existing connections at their next token refresh, within the hour — not whenever their refresh token would have expired. Removing a host does the same permanently.
+
+Paste a URL or type a bare hostname; either is stored as the hostname.
+
+---
+
 ### Import diagnostics
 
 **Admin → Tools → Import diagnostics** (`/import-diagnostics`) checks the Epic file importer against real data. Upload:
@@ -736,9 +751,7 @@ The backend creates `data/vesting.db` (SQLite) automatically on first run. The d
 | `INVITE_TOKEN_SECRET` | No | Key for the HMAC verifiers that replace plaintext invitation tokens in the database. Falls back to `JWT_SECRET`. Rotating it invalidates outstanding invitations and hides stored short codes — revoke and re-send. |
 | `PUSH_ALLOW_PRIVATE_ENDPOINTS` | No | Set to `1` for local development against a push relay on a private address. Never set in production: it disables the SSRF check on push subscription endpoints. |
 | `PUSH_ALLOWED_HOSTS` | No | Comma-separated hosts that may be used as push endpoints. Defaults to the browser push services (FCM, Mozilla autopush, Apple, WNS); an entry starting with `.` matches any subdomain. Set to `*` to accept any public host — only needed for a browser whose push service is not in the built-in list. |
-| `MCP_ENABLED` | No | AI connections (the OAuth server at `/oauth/*` and the MCP server at `/mcp`). Default on; set to `0` and neither is registered at all. |
-| `MCP_ALLOWED_REDIRECT_HOSTS` | No | Semicolon-delimited hosts an AI client may register a redirect URI on. Default `chatgpt.com;claude.ai;claude.com`. Dynamic client registration is anonymous, so this allowlist is what stops a stranger registering a client that returns authorization codes to their own server. |
-| `MCP_ACCESS_TOKEN_MINUTES` | No | Lifetime of a connector access token. Default `60`; refresh tokens carry the connection beyond that. |
+| `MCP_ACCESS_TOKEN_MINUTES` | No | Lifetime of a connector access token. Default `60`; refresh tokens carry the connection beyond that. Whether AI connections are on, and which providers may connect, are **not** environment variables — they are admin settings, see [AI Connections](#ai-connections-admin). |
 | `COMMIT_SHA` | No | Git commit SHA injected at Docker build time. Displayed as a 7-char short hash at the bottom of Admin and Settings pages. **Set automatically by the deploy workflow.** |
 | `APP_ENV` | No | Set to `staging` in the GitHub staging environment Variables tab to enable staging-specific UI: amber icon, PWA name "Epic Stocks (Staging)", and a persistent amber header banner. Defaults to `production` (no change). Injected as a Docker build arg at deploy time. |
 
@@ -1128,7 +1141,7 @@ Cross-origin requests are accepted only from the native shell origins (`capacito
 | **AI connectors** | | |
 | GET | `/.well-known/oauth-protected-resource` | RFC 9728. How an MCP client discovers who issues tokens for `/mcp`. No auth |
 | GET | `/.well-known/oauth-authorization-server` | RFC 8414. What this authorization server supports. No auth |
-| POST | `/oauth/register` | RFC 7591 dynamic client registration. Anonymous — it is what lets Claude on a phone connect. Redirect hosts limited by `MCP_ALLOWED_REDIRECT_HOSTS` |
+| POST | `/oauth/register` | RFC 7591 dynamic client registration. Anonymous — it is what lets Claude on a phone connect. Redirect hosts limited to the providers enabled in [AI Connections](#ai-connections-admin) |
 | GET/POST | `/oauth/authorize` | Consent screen, server-rendered. Needs an app session; a signed-out user is sent through `/login?next=` and returned here |
 | POST | `/oauth/token` | `authorization_code` and `refresh_token`. PKCE `S256` required; refresh tokens rotate on use |
 | POST | `/oauth/revoke` | RFC 7009. Always 200 |

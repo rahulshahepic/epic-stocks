@@ -17,12 +17,13 @@ tracebacks live in. A confused assistant must not be able to evict them.
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
 
 from database import get_db
 from scaffold.oauth.resource import Connector, require_connector
+from scaffold.oauth.settings import mcp_enabled
 from . import read_tools  # noqa: F401  — importing is what registers the tools
 from .tools import REGISTRY, ToolContext, as_result, visible_to
 
@@ -61,6 +62,19 @@ def _tool_failure(request_id: Any, message: str) -> dict:
     })
 
 
+def _refuse_when_disabled():
+    """AI connections are an admin switch, so this is checked per request.
+
+    503 rather than 404: the endpoint exists and is expected back, which is
+    what a client should retry against rather than forget.
+    """
+    if not mcp_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail="AI connections are turned off on this server",
+        )
+
+
 @router.get("/mcp")
 def mcp_get():
     return JSONResponse(
@@ -70,7 +84,7 @@ def mcp_get():
     )
 
 
-@router.post("/mcp")
+@router.post("/mcp", dependencies=[Depends(_refuse_when_disabled)])
 async def mcp_post(request: Request, connector: Connector = Depends(require_connector),
                    db: Session = Depends(get_db)):
     try:

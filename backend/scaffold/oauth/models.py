@@ -9,6 +9,9 @@ a single indexed equality match.
 oauth_clients has no user_id on purpose: dynamic client registration happens
 before anyone signs in, so a client row belongs to nobody. Grants and codes do
 belong to a user, and are listed in USER_OWNED_TABLES.
+
+oauth_redirect_hosts is admin policy, not user data: which AI providers may
+connect to this deployment at all.
 """
 from datetime import datetime, timezone
 
@@ -92,3 +95,25 @@ class OAuthGrant(Base):
     refresh_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class OAuthRedirectHost(Base):
+    """A provider an assistant may be sent back to after authorizing.
+
+    Dynamic client registration is anonymous, so without an allowlist a stranger
+    could register a client whose redirect URI points at their own server and
+    then phish a signed-in user through the consent screen. This table is that
+    allowlist, and it is admin policy rather than deployment configuration —
+    turning ChatGPT off should not need a redeploy.
+
+    `label` groups hosts by the product a person recognises: Claude is two
+    hosts, and an admin should see one thing to switch off, not two.
+    """
+
+    __tablename__ = "oauth_redirect_hosts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    label: Mapped[str] = mapped_column(String, nullable=False)
+    host: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    enabled: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1", default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)

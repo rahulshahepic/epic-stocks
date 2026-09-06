@@ -6,7 +6,7 @@ import secrets
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
@@ -712,6 +712,140 @@ def get_epic_mode(admin: User = Depends(get_admin_user)):
 def set_epic_mode_endpoint(body: EpicModeRequest, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
     set_epic_mode(db, body.active)
     return EpicModeStatus(active=body.active)
+
+
+# ============================================================
+# AI connections (MCP)
+# ============================================================
+
+class McpHostOut(BaseModel):
+    id: int
+    label: str
+    host: str
+    enabled: bool
+
+
+class McpStatus(BaseModel):
+    enabled: bool
+    hosts: list[McpHostOut]
+    connections: int
+
+
+class McpEnabledRequest(BaseModel):
+    enabled: bool
+
+
+class McpHostCreate(BaseModel):
+    label: str = Field(min_length=1, max_length=60)
+    host: str = Field(min_length=1, max_length=253)
+
+
+class McpHostUpdate(BaseModel):
+    enabled: bool
+
+
+def _mcp_status(db: Session) -> McpStatus:
+    from scaffold.oauth.models import OAuthGrant, OAuthRedirectHost
+    from scaffold.oauth.settings import mcp_enabled
+
+    rows = db.query(OAuthRedirectHost).order_by(
+        OAuthRedirectHost.label, OAuthRedirectHost.host
+    ).all()
+    return McpStatus(
+        enabled=mcp_enabled(),
+        hosts=[
+            McpHostOut(id=r.id, label=r.label, host=r.host, enabled=bool(r.enabled))
+            for r in rows
+        ],
+        connections=db.query(OAuthGrant).count(),
+    )
+
+
+def _normalize_host(raw: str) -> str:
+    """A bare hostname, however it was typed.
+
+    Admins paste URLs. Accepting "https://chatgpt.com/" and storing
+    "chatgpt.com" is the difference between the allowlist working and an admin
+    concluding the feature is broken.
+    """
+    from urllib.parse import urlparse
+
+    value = (raw or "").strip().lower()
+    if "//" in value:
+        value = urlparse(value).hostname or ""
+    value = value.split("/")[0].strip().strip(".")
+    if value.startswith("*."):
+        value = value[2:]
+    if not value or " " in value or "." not in value:
+        raise HTTPException(422, f"'{raw}' is not a hostname — try something like chatgpt.com")
+    return value
+
+
+@router.get("/mcp", response_model=McpStatus)
+def get_mcp_settings(admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    return _mcp_status(db)
+
+
+@router.post("/mcp", response_model=McpStatus)
+def set_mcp_enabled_endpoint(body: McpEnabledRequest, admin: User = Depends(get_admin_user),
+                             db: Session = Depends(get_db)):
+    """The master switch. Off, no new connections and every /mcp call gets 503.
+
+    Existing grants are left alone: this is a pause, and revoking everyone's
+    connections because an admin wanted to stop new ones for an afternoon would
+    be a worse surprise than the pause itself.
+    """
+    from scaffold.oauth.settings import set_mcp_enabled
+    set_mcp_enabled(db, body.enabled)
+    return _mcp_status(db)
+
+
+@router.post("/mcp/hosts", response_model=McpStatus, status_code=201)
+def add_mcp_host(body: McpHostCreate, admin: User = Depends(get_admin_user),
+                 db: Session = Depends(get_db)):
+    from scaffold.oauth.models import OAuthRedirectHost
+    from scaffold.oauth.settings import invalidate
+
+    host = _normalize_host(body.host)
+    if db.query(OAuthRedirectHost).filter(OAuthRedirectHost.host == host).first():
+        raise HTTPException(409, f"{host} is already on the list")
+    db.add(OAuthRedirectHost(label=body.label.strip(), host=host, enabled=1))
+    db.commit()
+    invalidate()
+    return _mcp_status(db)
+
+
+@router.patch("/mcp/hosts/{host_id}", response_model=McpStatus)
+def toggle_mcp_host(host_id: int, body: McpHostUpdate, admin: User = Depends(get_admin_user),
+                    db: Session = Depends(get_db)):
+    """Switching a provider off stops new authorizations and kills existing
+    connections at their next token refresh — within the hour, not whenever
+    their refresh token would have expired."""
+    from scaffold.oauth.models import OAuthRedirectHost
+    from scaffold.oauth.settings import invalidate
+
+    row = db.get(OAuthRedirectHost, host_id)
+    if row is None:
+        raise HTTPException(404, "Host not found")
+    row.enabled = 1 if body.enabled else 0
+    db.commit()
+    invalidate()
+    return _mcp_status(db)
+
+
+@router.delete("/mcp/hosts/{host_id}", response_model=McpStatus)
+def delete_mcp_host(host_id: int, admin: User = Depends(get_admin_user),
+                    db: Session = Depends(get_db)):
+    from scaffold.oauth.models import OAuthRedirectHost
+    from scaffold.oauth.settings import invalidate
+
+    row = db.get(OAuthRedirectHost, host_id)
+    if row is None:
+        raise HTTPException(404, "Host not found")
+    db.delete(row)
+    db.commit()
+    invalidate()
+    return _mcp_status(db)
 
 
 # ============================================================

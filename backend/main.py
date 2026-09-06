@@ -75,6 +75,7 @@ def _bootstrap_system():
     """Ensure system_settings seed rows and master key are initialized on every boot."""
     from scaffold.crypto import initialize_master_key, backfill_plaintext_encryption
     from app.content_service import seed_content_if_empty
+    from scaffold.oauth.settings import seed_defaults as seed_mcp_defaults
     db = database.SessionLocal()
     try:
         initialize_master_key(db)
@@ -88,6 +89,13 @@ def _bootstrap_system():
         seed_content_if_empty(db)
     except Exception:
         logger.exception("Failed to seed wizard content")
+    try:
+        # The migration seeds these for an existing database; this covers a
+        # fresh one, and the test suite, which builds its schema with
+        # create_all and never runs migrations.
+        seed_mcp_defaults(db)
+    except Exception:
+        logger.exception("Failed to seed AI connection settings")
     finally:
         db.close()
 
@@ -661,11 +669,14 @@ _fastapi_app.include_router(dashboard_prefs_router)
 # not later: spa_fallback is mounted at /{path:path} and answers anything it
 # catches with index.html and a 200. These paths are not under /api/, so a
 # registration that landed after the mount would hand an MCP client HTML.
-if oauth_router._enabled():
-    _fastapi_app.include_router(oauth_well_known_router)
-    _fastapi_app.include_router(oauth_router.router)
-    _fastapi_app.include_router(oauth_router.api_router)
-    _fastapi_app.include_router(mcp_transport.router)
+# Registered unconditionally. Whether AI connections are available is an admin
+# setting now, checked per request, so it can be switched without a redeploy —
+# and a router that only exists on some boots is the kind of thing that makes a
+# 404 impossible to tell apart from a routing bug.
+_fastapi_app.include_router(oauth_well_known_router)
+_fastapi_app.include_router(oauth_router.router)
+_fastapi_app.include_router(oauth_router.api_router)
+_fastapi_app.include_router(mcp_transport.router)
 
 
 @_fastapi_app.get("/api/health")

@@ -27,6 +27,7 @@ function mockFetch(responses: Record<string, unknown>) {
     if (url.includes('/api/admin/db-tables')) return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
     if (url.includes('/api/admin/errors')) return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
     if (url.includes('/api/admin/epic-mode')) return new Response(JSON.stringify({ active: false }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    if (url.includes('/api/admin/mcp')) return new Response(JSON.stringify({ enabled: true, hosts: [{ id: 1, label: 'ChatGPT', host: 'chatgpt.com', enabled: true }], connections: 0 }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     if (url.includes('/api/admin/tips-report')) return new Response(JSON.stringify({ unique_users_accepted: 0, total_estimated_savings: 0, by_type: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     return new Response('{}', { status: 200 })
   })

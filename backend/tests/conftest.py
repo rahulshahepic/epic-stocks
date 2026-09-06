@@ -44,6 +44,11 @@ def setup_db():
     Base.metadata.create_all(bind=TEST_ENGINE)
     yield
     Base.metadata.drop_all(bind=TEST_ENGINE)
+    # Settings read from the database are cached with a short TTL. The rows
+    # they were read from have just been dropped, so a test that lands inside
+    # that window would otherwise see the previous test's admin settings.
+    from scaffold.oauth.settings import invalidate
+    invalidate()
 
 
 @pytest.fixture()

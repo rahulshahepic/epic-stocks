@@ -3,6 +3,19 @@ import { logApiFailure, noteErrorRef } from './scaffold/reportLog.ts'
 import { platform } from './platform/index.ts'
 import type { PushRegistration } from './platform/index.ts'
 
+export interface McpHost {
+  id: number
+  label: string
+  host: string
+  enabled: boolean
+}
+
+export interface McpSettings {
+  enabled: boolean
+  hosts: McpHost[]
+  connections: number
+}
+
 export class ConflictError extends Error {
   currentVersion: number
   constructor(currentVersion: number) {
@@ -542,6 +555,20 @@ export const api = {
   adminGetFlexiblePayoff: () => apiFetch<{ active: boolean }>('/api/admin/flexible-payoff'),
   adminSetFlexiblePayoff: (active: boolean) =>
     post<{ active: boolean }>('/api/admin/flexible-payoff', { active }),
+  // AI connections (MCP). Which providers may connect, and whether any may —
+  // admin policy, so it lives in the database rather than the environment.
+  adminGetMcp: () => apiFetch<McpSettings>('/api/admin/mcp'),
+  adminSetMcpEnabled: (enabled: boolean) =>
+    post<McpSettings>('/api/admin/mcp', { enabled }),
+  adminAddMcpHost: (label: string, host: string) =>
+    post<McpSettings>('/api/admin/mcp/hosts', { label, host }),
+  adminToggleMcpHost: (id: number, enabled: boolean) =>
+    apiFetch<McpSettings>(`/api/admin/mcp/hosts/${id}`, {
+      method: 'PATCH', body: JSON.stringify({ enabled }),
+    }),
+  adminDeleteMcpHost: (id: number) =>
+    apiFetch<McpSettings>(`/api/admin/mcp/hosts/${id}`, { method: 'DELETE' }),
+
   adminRotationStatus: () =>
     apiFetch<{ snapshot_exists: boolean; maintenance_active: boolean }>('/api/admin/rotation-status'),
   adminRotationRestore: () =>

@@ -955,6 +955,7 @@ epic-stocks/
 │   │   ├── scaffold/        # Reusable UI layer (keep when forking)
 │   │   │   ├── oidc.ts      # Shared OIDC PKCE start/complete (used by Login + InviteLanding)
 │   │   │   ├── pages/       # Login, AuthCallback, Admin, Settings, PrivacyPolicy, InviteLanding, Unsubscribe
+│   │   │   ├── pages/admin/ # The admin page's panels, one file each (Overview, SystemHealth, Users, DangerZone, …) plus its two dialogs
 │   │   │   ├── components/  # Layout shell, Toast, ErrorBoundary + ReportProblem (problem reporting), DisclaimerNotice + UnofficialBadge (affiliation notices)
 │   │   │   ├── components/ui/ # The shared primitives: Card, ChartCard, Segmented, icons, ConflictBanner (the 409 "changed elsewhere" notice), and Field/SelectField/PercentField (one input style for the whole app)
 │   │   │   ├── reportLog.ts # In-memory trail (routes, failed requests, JS errors) a report can attach

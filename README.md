@@ -965,6 +965,8 @@ epic-stocks/
 │   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport, ImportDiagnostics, Content, CompCalculator, Retirement, Try (no-account preview: upload → dashboard/events tabs)
 │   │   │   ├── components/  # ImportWizard, EpicFileImport, FindingList, TipCarousel, AppSettingsSections
 │   │   │   ├── components/importWizard/ # The wizard's parts: types, schedule (Epic's grant schedule → rows), rows (row maths), loans (tax/interest/refi generation), submit (validation + payload), fields.tsx (inputs, buttons, loan rows), screens/
+│   │   │   ├── pages/Dashboard.math.ts # The dashboard's sums as pure functions — card values, per-grant holdings, active loans, breakdowns
+│   │   │   ├── pages/dashboard/ # The dashboard's card rows (ShareCards, EarningsCards, CostCards), its Breakdown row and its charts
 │   │   │   ├── components/charts.tsx  # Shares / income / price charts + date-range plumbing (Dashboard + /try)
 │   │   │   ├── components/StatCard.tsx # The dashboard stat tile (Dashboard + /try)
 │   │   │   ├── format.ts    # The one set of money / number / percent / date formatters

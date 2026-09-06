@@ -28,29 +28,60 @@ async function authedPage(page: Page, viewport: { width: number; height: number 
   await page.waitForTimeout(1500)
 }
 
+/**
+ * Capture, with the page scrolled back to the top when the shot is fullPage.
+ *
+ * The top chrome is `sticky top-0`, and a fullPage capture does not reset the
+ * scroll — it stitches from wherever the page happens to be. So whatever
+ * Playwright scrolled to in order to fill a field or click a button is where
+ * the sticky header renders in the image. On the retirement shots that put
+ * the whole nav bar halfway down the page, slicing through the Social
+ * Security section, with a blank strip left at the top where it belongs.
+ *
+ * A viewport-sized shot keeps its scroll: there, what is on screen is the
+ * point of the screenshot.
+ */
+async function shoot(page: Page, name: string, opts: { fullPage?: boolean } = {}) {
+  if (opts.fullPage) {
+    // Waits for a painted frame rather than guessing at a delay — the sticky
+    // header only moves back on the next layout.
+    await page.evaluate(() => new Promise<void>(resolve => {
+      window.scrollTo(0, 0)
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    }))
+  }
+  await page.screenshot({ path: `${OUT}/${name}.png`, ...opts })
+}
+
 test.describe('Screenshots', () => {
+  // These seed data, wait for networkidle and capture whole pages, so they run
+  // far longer than an assertion test. A dozen of them sat at 29.3-30.1s
+  // against the config's 30s, which is not a passing test so much as one that
+  // has not failed yet — the next 300ms spent anywhere would have done it.
+  test.describe.configure({ timeout: 120_000 })
+
   test.beforeEach(() => {
     test.skip(!EMAIL, 'Set SCREENSHOT_EMAIL env var to run screenshot tests')
   })
 
   test('dashboard - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
-    await page.screenshot({ path: `${OUT}/dashboard-light-mobile.png` })
+    await shoot(page, 'dashboard-light-mobile')
   })
 
   test('dashboard - dark - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'dark')
-    await page.screenshot({ path: `${OUT}/dashboard-dark-mobile.png` })
+    await shoot(page, 'dashboard-dark-mobile')
   })
 
   test('dashboard - light - desktop', async ({ page }) => {
     await authedPage(page, DESKTOP, 'light')
-    await page.screenshot({ path: `${OUT}/dashboard-light-desktop.png` })
+    await shoot(page, 'dashboard-light-desktop')
   })
 
   test('dashboard - dark - desktop', async ({ page }) => {
     await authedPage(page, DESKTOP, 'dark')
-    await page.screenshot({ path: `${OUT}/dashboard-dark-desktop.png` })
+    await shoot(page, 'dashboard-dark-desktop')
   })
 
   test('admin - light - mobile', async ({ page }) => {
@@ -58,7 +89,7 @@ test.describe('Screenshots', () => {
     await page.click('text=Admin')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(1000)
-    await page.screenshot({ path: `${OUT}/admin-light-mobile.png` })
+    await shoot(page, 'admin-light-mobile')
   })
 
   test('admin - dark - mobile', async ({ page }) => {
@@ -66,7 +97,7 @@ test.describe('Screenshots', () => {
     await page.click('text=Admin')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(1000)
-    await page.screenshot({ path: `${OUT}/admin-dark-mobile.png` })
+    await shoot(page, 'admin-dark-mobile')
   })
 
   test('events page - light - mobile', async ({ page }) => {
@@ -74,7 +105,7 @@ test.describe('Screenshots', () => {
     await page.click('text=Events')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/events-light-mobile.png` })
+    await shoot(page, 'events-light-mobile')
   })
 
   test('events page - dark - mobile', async ({ page }) => {
@@ -82,7 +113,7 @@ test.describe('Screenshots', () => {
     await page.click('text=Events')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/events-dark-mobile.png` })
+    await shoot(page, 'events-dark-mobile')
   })
 
   test('import-export page - light - mobile', async ({ page }) => {
@@ -91,7 +122,7 @@ test.describe('Screenshots', () => {
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
     // fullPage: the export card and its as-of date sit below the fold.
-    await page.screenshot({ path: `${OUT}/import-export-mobile.png`, fullPage: true })
+    await shoot(page, 'import-export-mobile', { fullPage: true })
   })
 
   test('new user empty state - light - mobile', async ({ page }) => {
@@ -102,7 +133,7 @@ test.describe('Screenshots', () => {
     await page.goto(BASE)
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(1500)
-    await page.screenshot({ path: `${OUT}/new-user-light-mobile.png`, fullPage: true })
+    await shoot(page, 'new-user-light-mobile', { fullPage: true })
   })
 
   test('import diagnostics page - light - mobile', async ({ page }) => {
@@ -110,7 +141,7 @@ test.describe('Screenshots', () => {
     await page.goto(`${BASE}/import-diagnostics`)
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/import-diagnostics-light-mobile.png`, fullPage: true })
+    await shoot(page, 'import-diagnostics-light-mobile', { fullPage: true })
   })
 
   test('sales page - light - mobile', async ({ page }) => {
@@ -118,7 +149,7 @@ test.describe('Screenshots', () => {
     await page.click('text=Sales')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/sales-light-mobile.png`, fullPage: true })
+    await shoot(page, 'sales-light-mobile', { fullPage: true })
   })
 
   test('sales page - dark - mobile', async ({ page }) => {
@@ -126,7 +157,7 @@ test.describe('Screenshots', () => {
     await page.click('text=Sales')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/sales-dark-mobile.png`, fullPage: true })
+    await shoot(page, 'sales-dark-mobile', { fullPage: true })
   })
 
   test('settings page - light - mobile', async ({ page }) => {
@@ -134,7 +165,7 @@ test.describe('Screenshots', () => {
     await page.click('text=Settings')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/settings-light-mobile.png` })
+    await shoot(page, 'settings-light-mobile')
   })
 
   test('settings page - dark - mobile', async ({ page }) => {
@@ -142,7 +173,7 @@ test.describe('Screenshots', () => {
     await page.click('text=Settings')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/settings-dark-mobile.png` })
+    await shoot(page, 'settings-dark-mobile')
   })
 
   test('login page - light - mobile', async ({ page }) => {
@@ -153,7 +184,7 @@ test.describe('Screenshots', () => {
     // wait for privacy blurb to appear (doesn't need external Google script)
     await page.waitForTimeout(800)
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/login-light-mobile.png`, fullPage: true })
+    await shoot(page, 'login-light-mobile', { fullPage: true })
   })
 
   test('login page - dark - mobile', async ({ page }) => {
@@ -163,7 +194,7 @@ test.describe('Screenshots', () => {
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(800)
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/login-dark-mobile.png`, fullPage: true })
+    await shoot(page, 'login-dark-mobile', { fullPage: true })
   })
 
   // The report dialog, from the pre-login side — the case that matters most,
@@ -177,7 +208,7 @@ test.describe('Screenshots', () => {
     await page.getByPlaceholder('What were you doing when it broke?')
       .fill('Signing in with Google sends me back to this page every time.')
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/report-light-mobile.png` })
+    await shoot(page, 'report-light-mobile')
   })
 
   test('report dialog - dark - mobile', async ({ page }) => {
@@ -189,7 +220,7 @@ test.describe('Screenshots', () => {
     await page.getByPlaceholder('What were you doing when it broke?')
       .fill('Signing in with Google sends me back to this page every time.')
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/report-dark-mobile.png` })
+    await shoot(page, 'report-dark-mobile')
   })
 
   test('try page - light - mobile', async ({ page }) => {
@@ -198,7 +229,7 @@ test.describe('Screenshots', () => {
     await page.goto(`${BASE}/try`)
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(800)
-    await page.screenshot({ path: `${OUT}/try-light-mobile.png`, fullPage: true })
+    await shoot(page, 'try-light-mobile', { fullPage: true })
   })
 
   test('try page - dark - mobile', async ({ page }) => {
@@ -207,7 +238,7 @@ test.describe('Screenshots', () => {
     await page.goto(`${BASE}/try`)
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(800)
-    await page.screenshot({ path: `${OUT}/try-dark-mobile.png`, fullPage: true })
+    await shoot(page, 'try-dark-mobile', { fullPage: true })
   })
 
   /** Upload the synthetic Shareworks fixtures and land on the computed preview. */
@@ -225,24 +256,24 @@ test.describe('Screenshots', () => {
 
   test('try preview dashboard - light - mobile', async ({ page }) => {
     await previewPage(page, MOBILE, 'light')
-    await page.screenshot({ path: `${OUT}/try-preview-light-mobile.png`, fullPage: true })
+    await shoot(page, 'try-preview-light-mobile', { fullPage: true })
   })
 
   test('try preview dashboard - dark - mobile', async ({ page }) => {
     await previewPage(page, MOBILE, 'dark')
-    await page.screenshot({ path: `${OUT}/try-preview-dark-mobile.png`, fullPage: true })
+    await shoot(page, 'try-preview-dark-mobile', { fullPage: true })
   })
 
   test('try preview dashboard - light - desktop', async ({ page }) => {
     await previewPage(page, DESKTOP, 'light')
-    await page.screenshot({ path: `${OUT}/try-preview-light-desktop.png`, fullPage: true })
+    await shoot(page, 'try-preview-light-desktop', { fullPage: true })
   })
 
   test('try preview events - light - mobile', async ({ page }) => {
     await previewPage(page, MOBILE, 'light')
     await page.getByRole('button', { name: 'Events' }).click()
     await page.waitForTimeout(600)
-    await page.screenshot({ path: `${OUT}/try-preview-events-light-mobile.png`, fullPage: true })
+    await shoot(page, 'try-preview-events-light-mobile', { fullPage: true })
   })
 
   test('privacy policy page - light - mobile', async ({ page }) => {
@@ -250,7 +281,7 @@ test.describe('Screenshots', () => {
     await page.setViewportSize(MOBILE)
     await page.goto(`${BASE}/privacy`)
     await page.waitForLoadState('networkidle')
-    await page.screenshot({ path: `${OUT}/privacy-light-mobile.png` })
+    await shoot(page, 'privacy-light-mobile')
   })
 
   test('grants - epic mode - light - mobile', async ({ page }) => {
@@ -262,7 +293,7 @@ test.describe('Screenshots', () => {
     await page.click('text=Grants')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/grants-epic-mode-light-mobile.png`, fullPage: true })
+    await shoot(page, 'grants-epic-mode-light-mobile', { fullPage: true })
     await page.request.post(`${BASE}/api/admin/epic-mode`, { data: { active: false } })
   })
 
@@ -274,7 +305,7 @@ test.describe('Screenshots', () => {
     await page.click('text=Grants')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/grants-epic-mode-dark-mobile.png`, fullPage: true })
+    await shoot(page, 'grants-epic-mode-dark-mobile', { fullPage: true })
     await page.request.post(`${BASE}/api/admin/epic-mode`, { data: { active: false } })
   })
 
@@ -284,7 +315,7 @@ test.describe('Screenshots', () => {
     await page.goto(`${BASE}/wizard`)
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/wizard-welcome-light-mobile.png`, fullPage: true })
+    await shoot(page, 'wizard-welcome-light-mobile', { fullPage: true })
   })
 
   test('wizard - welcome - dark - mobile', async ({ page }) => {
@@ -292,7 +323,7 @@ test.describe('Screenshots', () => {
     await page.goto(`${BASE}/wizard`)
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/wizard-welcome-dark-mobile.png`, fullPage: true })
+    await shoot(page, 'wizard-welcome-dark-mobile', { fullPage: true })
   })
 
   test('wizard - grant entry - light - mobile', async ({ page }) => {
@@ -304,7 +335,7 @@ test.describe('Screenshots', () => {
     await page.waitForTimeout(300)
     await page.click('text=Next: Add grants')
     await page.waitForTimeout(300)
-    await page.screenshot({ path: `${OUT}/wizard-grant-entry-light-mobile.png`, fullPage: true })
+    await shoot(page, 'wizard-grant-entry-light-mobile', { fullPage: true })
   })
 
   test('wizard page - light - mobile', async ({ page }) => {
@@ -312,7 +343,7 @@ test.describe('Screenshots', () => {
     await page.goto(`${BASE}/wizard`)
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/wizard-page-light-mobile.png`, fullPage: true })
+    await shoot(page, 'wizard-page-light-mobile', { fullPage: true })
   })
 
   test('settings sharing section - light - mobile', async ({ page }) => {
@@ -323,7 +354,7 @@ test.describe('Screenshots', () => {
     const sharingHeading = page.locator('h2, h3').filter({ hasText: 'Sharing' }).first()
     await sharingHeading.scrollIntoViewIfNeeded()
     await expect(sharingHeading).toBeInViewport()
-    await page.screenshot({ path: `${OUT}/settings-sharing-light-mobile.png` })
+    await shoot(page, 'settings-sharing-light-mobile')
   })
 
   test('settings sharing section - dark - mobile', async ({ page }) => {
@@ -334,7 +365,7 @@ test.describe('Screenshots', () => {
     const sharingHeading = page.locator('h2, h3').filter({ hasText: 'Sharing' }).first()
     await sharingHeading.scrollIntoViewIfNeeded()
     await expect(sharingHeading).toBeInViewport()
-    await page.screenshot({ path: `${OUT}/settings-sharing-dark-mobile.png` })
+    await shoot(page, 'settings-sharing-dark-mobile')
   })
 
   test('invite landing page - light - mobile', async ({ page }) => {
@@ -343,7 +374,7 @@ test.describe('Screenshots', () => {
     await page.goto(`${BASE}/invite?code=XXXX-YYYY`)
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(800)
-    await page.screenshot({ path: `${OUT}/invite-landing-light-mobile.png`, fullPage: true })
+    await shoot(page, 'invite-landing-light-mobile', { fullPage: true })
   })
 
   test('content - light - mobile', async ({ page }) => {
@@ -351,7 +382,7 @@ test.describe('Screenshots', () => {
     await page.getByRole('link', { name: 'Content', exact: true }).click()
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/content-light-mobile.png`, fullPage: true })
+    await shoot(page, 'content-light-mobile', { fullPage: true })
   })
 
   test('content - dark - mobile', async ({ page }) => {
@@ -359,7 +390,7 @@ test.describe('Screenshots', () => {
     await page.getByRole('link', { name: 'Content', exact: true }).click()
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/content-dark-mobile.png`, fullPage: true })
+    await shoot(page, 'content-dark-mobile', { fullPage: true })
   })
 
   test('content - light - desktop', async ({ page }) => {
@@ -367,7 +398,7 @@ test.describe('Screenshots', () => {
     await page.getByRole('link', { name: 'Content', exact: true }).click()
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/content-light-desktop.png`, fullPage: true })
+    await shoot(page, 'content-light-desktop', { fullPage: true })
   })
 
   test('content - dark - desktop', async ({ page }) => {
@@ -375,7 +406,7 @@ test.describe('Screenshots', () => {
     await page.getByRole('link', { name: 'Content', exact: true }).click()
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/content-dark-desktop.png`, fullPage: true })
+    await shoot(page, 'content-dark-desktop', { fullPage: true })
   })
 
   test('comp calculator - light - mobile', async ({ page }) => {
@@ -383,7 +414,7 @@ test.describe('Screenshots', () => {
     await page.goto(`${BASE}/comp-calculator`)
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/comp-calculator-light-mobile.png`, fullPage: true })
+    await shoot(page, 'comp-calculator-light-mobile', { fullPage: true })
   })
 
   test('comp calculator - light - desktop', async ({ page }) => {
@@ -391,7 +422,7 @@ test.describe('Screenshots', () => {
     await page.goto(`${BASE}/comp-calculator`)
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/comp-calculator-light-desktop.png`, fullPage: true })
+    await shoot(page, 'comp-calculator-light-desktop', { fullPage: true })
   })
 
   test('comp calculator - dark - mobile', async ({ page }) => {
@@ -399,7 +430,7 @@ test.describe('Screenshots', () => {
     await page.goto(`${BASE}/comp-calculator`)
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/comp-calculator-dark-mobile.png`, fullPage: true })
+    await shoot(page, 'comp-calculator-dark-mobile', { fullPage: true })
   })
 
   test('comp calculator - rolling avg - light - desktop', async ({ page }) => {
@@ -409,7 +440,7 @@ test.describe('Screenshots', () => {
     await page.click('text=3-year average')
     await page.click('text=5-year average')
     await page.waitForTimeout(300)
-    await page.screenshot({ path: `${OUT}/comp-calculator-rolling-light-desktop.png`, fullPage: true })
+    await shoot(page, 'comp-calculator-rolling-light-desktop', { fullPage: true })
   })
 
   // Seed plausible portfolio values + DOB so the screenshots reflect a real
@@ -442,19 +473,19 @@ test.describe('Screenshots', () => {
   test('retirement - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     await seedRetirement(page)
-    await page.screenshot({ path: `${OUT}/retirement-light-mobile.png`, fullPage: true })
+    await shoot(page, 'retirement-light-mobile', { fullPage: true })
   })
 
   test('retirement - light - desktop', async ({ page }) => {
     await authedPage(page, DESKTOP, 'light')
     await seedRetirement(page)
-    await page.screenshot({ path: `${OUT}/retirement-light-desktop.png`, fullPage: true })
+    await shoot(page, 'retirement-light-desktop', { fullPage: true })
   })
 
   test('retirement - dark - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'dark')
     await seedRetirement(page)
-    await page.screenshot({ path: `${OUT}/retirement-dark-mobile.png`, fullPage: true })
+    await shoot(page, 'retirement-dark-mobile', { fullPage: true })
   })
 
   test('loans - epic mode - light - mobile', async ({ page }) => {
@@ -465,7 +496,7 @@ test.describe('Screenshots', () => {
     await page.click('text=Loans')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
-    await page.screenshot({ path: `${OUT}/loans-epic-mode-light-mobile.png`, fullPage: true })
+    await shoot(page, 'loans-epic-mode-light-mobile', { fullPage: true })
     await page.request.post(`${BASE}/api/admin/epic-mode`, { data: { active: false } })
   })
 })

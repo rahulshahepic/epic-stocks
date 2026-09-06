@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api, type AiConnection } from '../../api.ts'
+import { api, type AiActivityEntry, type AiConnection } from '../../api.ts'
 import { Card } from './ui/Card.tsx'
 
 /**
@@ -16,6 +16,23 @@ import { Card } from './ui/Card.tsx'
 const SCOPE_LABELS: Record<string, string> = {
   'equity:read': 'Equity — grants, vesting, prices, loans, sales, tax',
   'comp:read': 'Salary and retirement settings',
+}
+
+function formatWhen(value: string | null): string {
+  if (!value) return ''
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return parsed.toLocaleString(undefined, {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+  })
+}
+
+function describe(entry: AiActivityEntry): string {
+  if (entry.event === 'connected') return 'connected'
+  if (entry.event === 'disconnected') return 'disconnected'
+  if (entry.outcome === 'denied') return `${entry.tool} — not permitted`
+  if (entry.outcome === 'error') return `${entry.tool} — failed`
+  return entry.tool ?? 'read'
 }
 
 function formatDate(value: string | null): string {
@@ -38,6 +55,8 @@ function Step({ n, children }: { n: number; children: React.ReactNode }) {
 
 export function AiConnectionsSection() {
   const [connections, setConnections] = useState<AiConnection[] | null>(null)
+  const [activity, setActivity] = useState<AiActivityEntry[]>([])
+  const [showActivity, setShowActivity] = useState(false)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
   const [guide, setGuide] = useState<'chatgpt' | 'claude'>('claude')
@@ -49,6 +68,9 @@ export function AiConnectionsSection() {
     api.getAiConnections()
       .then(setConnections)
       .catch(() => setError('Could not load your AI connections'))
+    // Best-effort: the activity list is useful context, not a reason to fail
+    // the whole section if it cannot be fetched.
+    api.getAiActivity().then(setActivity).catch(() => setActivity([]))
   }, [])
 
   useEffect(load, [load])
@@ -223,6 +245,39 @@ export function AiConnectionsSection() {
           </p>
         )}
       </div>
+
+      {/* What they actually read. Tool names and times only — nothing here
+          records your figures, so this cannot show them. */}
+      {activity.length > 0 && (
+        <div className="mt-4 border-t border-cs-border pt-3">
+          <button
+            onClick={() => setShowActivity((open) => !open)}
+            className="flex w-full items-center justify-between text-left"
+          >
+            <span className="text-xs font-medium text-cs-text">Recent activity</span>
+            <span className="text-xs text-cs-muted">{showActivity ? 'Hide' : 'Show'}</span>
+          </button>
+          {showActivity && (
+            <>
+              <p className="mt-1 text-xs text-cs-muted">
+                What each assistant asked for, and when. The times and the names
+                of what was read — never your figures, which are not recorded.
+              </p>
+              <ul className="mt-1.5 space-y-1">
+                {activity.map((entry) => (
+                  <li key={entry.id} className="flex justify-between gap-3 text-xs">
+                    <span className="min-w-0 truncate text-cs-text-2">
+                      <span className="text-cs-muted">{entry.client_name}</span>{' '}
+                      {describe(entry)}
+                    </span>
+                    <span className="shrink-0 text-cs-muted">{formatWhen(entry.at)}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
     </Card>
   )
 }

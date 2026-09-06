@@ -848,6 +848,126 @@ def delete_mcp_host(host_id: int, admin: User = Depends(get_admin_user),
     return _mcp_status(db)
 
 
+class McpUserUsage(BaseModel):
+    user_id: int
+    email: str
+    connections: int
+    clients: list[str]
+    last_used_at: str | None
+    calls_7d: int
+    calls_30d: int
+
+
+class McpToolUsage(BaseModel):
+    tool: str
+    calls_7d: int
+    calls_30d: int
+
+
+class McpUsageReport(BaseModel):
+    users: list[McpUserUsage]
+    tools: list[McpToolUsage]
+    calls_24h: int
+    calls_7d: int
+    calls_30d: int
+    errors_7d: int
+    denied_7d: int
+    audit_rows: int
+
+
+@router.get("/mcp/usage", response_model=McpUsageReport)
+def mcp_usage(admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    """Who is using AI connections, and how much.
+
+    Counts and tool names only. The audit table holds no financial data, so
+    there is none here either — the same line admin endpoints already hold.
+    """
+    from sqlalchemy import func as _func
+
+    from scaffold.oauth.audit import DENIED, ERROR, TOOL_CALL
+    from scaffold.oauth.models import McpAudit, OAuthGrant
+
+    now = datetime.now(timezone.utc)
+    day, week, month = now - timedelta(days=1), now - timedelta(days=7), now - timedelta(days=30)
+
+    def _calls(since, extra=None):
+        query = db.query(_func.count(McpAudit.id)).filter(
+            McpAudit.event == TOOL_CALL, McpAudit.created_at >= since
+        )
+        return (query.filter(extra) if extra is not None else query).scalar() or 0
+
+    per_user: dict[int, dict] = {}
+    for grant in db.query(OAuthGrant).all():
+        entry = per_user.setdefault(grant.user_id, {
+            "connections": 0, "clients": [], "last_used_at": None,
+        })
+        entry["connections"] += 1
+        if grant.client_name and grant.client_name not in entry["clients"]:
+            entry["clients"].append(grant.client_name)
+        if grant.last_used_at and (
+            entry["last_used_at"] is None or grant.last_used_at > entry["last_used_at"]
+        ):
+            entry["last_used_at"] = grant.last_used_at
+
+    # An account that has since disconnected still shows its usage — hiding it
+    # would mean the record disappears exactly when someone looks into it.
+    for user_id, in db.query(McpAudit.user_id).filter(
+        McpAudit.created_at >= month
+    ).distinct().all():
+        per_user.setdefault(user_id, {"connections": 0, "clients": [], "last_used_at": None})
+
+    def _user_calls(user_id: int, since) -> int:
+        return db.query(_func.count(McpAudit.id)).filter(
+            McpAudit.user_id == user_id,
+            McpAudit.event == TOOL_CALL,
+            McpAudit.created_at >= since,
+        ).scalar() or 0
+
+    emails = {u.id: u.email for u in db.query(User).filter(User.id.in_(per_user)).all()}
+    users = [
+        McpUserUsage(
+            user_id=user_id,
+            email=emails.get(user_id, "(deleted)"),
+            connections=entry["connections"],
+            clients=entry["clients"],
+            last_used_at=entry["last_used_at"].isoformat() if entry["last_used_at"] else None,
+            calls_7d=_user_calls(user_id, week),
+            calls_30d=_user_calls(user_id, month),
+        )
+        for user_id, entry in per_user.items()
+    ]
+    users.sort(key=lambda u: (-u.calls_30d, u.email))
+
+    tool_rows = db.query(
+        McpAudit.tool, _func.count(McpAudit.id)
+    ).filter(
+        McpAudit.event == TOOL_CALL, McpAudit.created_at >= month, McpAudit.tool.isnot(None)
+    ).group_by(McpAudit.tool).all()
+    tools = [
+        McpToolUsage(
+            tool=tool,
+            calls_7d=db.query(_func.count(McpAudit.id)).filter(
+                McpAudit.tool == tool, McpAudit.event == TOOL_CALL,
+                McpAudit.created_at >= week,
+            ).scalar() or 0,
+            calls_30d=count,
+        )
+        for tool, count in tool_rows
+    ]
+    tools.sort(key=lambda t: -t.calls_30d)
+
+    return McpUsageReport(
+        users=users,
+        tools=tools,
+        calls_24h=_calls(day),
+        calls_7d=_calls(week),
+        calls_30d=_calls(month),
+        errors_7d=_calls(week, McpAudit.outcome == ERROR),
+        denied_7d=_calls(week, McpAudit.outcome == DENIED),
+        audit_rows=db.query(_func.count(McpAudit.id)).scalar() or 0,
+    )
+
+
 # ============================================================
 # Flexible loan payoff methods
 # ============================================================

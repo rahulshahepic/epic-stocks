@@ -347,6 +347,14 @@ def _start_nightly_maintenance():
                 logger.warning("Nightly estimate cleanup failed", exc_info=True)
             finally:
                 db.close()
+            try:
+                db = database.SessionLocal()
+                from scaffold.oauth.cleanup import prune as prune_connectors
+                prune_connectors(db)
+            except Exception:
+                logger.warning("Nightly connector cleanup failed", exc_info=True)
+            finally:
+                db.close()
 
     return asyncio.ensure_future(_loop())
 

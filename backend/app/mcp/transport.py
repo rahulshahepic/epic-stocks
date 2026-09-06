@@ -22,14 +22,29 @@ from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
 
 from database import get_db
+from scaffold.oauth import audit
 from scaffold.oauth.resource import Connector, require_connector
 from scaffold.oauth.settings import mcp_enabled
+from scaffold.rate_limit import check_rate_shared
 from . import read_tools  # noqa: F401  — importing is what registers the tools
 from .tools import REGISTRY, ToolContext, as_result, visible_to
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["mcp"])
+
+# Per-minute ceilings on /mcp. Two of them, because one user may have both
+# ChatGPT and Claude connected and a runaway loop in one must not starve the
+# other — the per-connection limit stops that, and the per-account limit is
+# what actually bounds a single user's cost to the server.
+#
+# Nothing else covers this endpoint: MutationRateLimitMiddleware only inspects
+# /api/ paths, and the IP-keyed limits on /oauth/* would be useless here anyway
+# because every request arrives from the provider's own servers, not the
+# user's. list_events recomputes a timeline, so an unlimited connector is a
+# real cost.
+PER_CONNECTION_LIMIT = 120
+PER_ACCOUNT_LIMIT = 300
 
 PROTOCOL_VERSION = "2025-06-18"
 SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26")
@@ -84,9 +99,16 @@ def mcp_get():
     )
 
 
+def _enforce_rate_limits(connector: Connector) -> None:
+    """Raise 429 when this connection, or this account, is calling too fast."""
+    check_rate_shared(connector.grant.id, "mcp_connection", PER_CONNECTION_LIMIT, 60)
+    check_rate_shared(connector.user.id, "mcp_account", PER_ACCOUNT_LIMIT, 60)
+
+
 @router.post("/mcp", dependencies=[Depends(_refuse_when_disabled)])
 async def mcp_post(request: Request, connector: Connector = Depends(require_connector),
                    db: Session = Depends(get_db)):
+    _enforce_rate_limits(connector)
     try:
         body = await request.json()
     except Exception:
@@ -164,7 +186,20 @@ def _call_tool(params: dict, request_id: Any, ctx: ToolContext) -> dict:
     tool = REGISTRY.get(name)
     if tool is None:
         return _error(request_id, INVALID_PARAMS, f"Unknown tool '{name}'")
+
+    # Recorded before it runs, so a read cannot happen without a record of it.
+    # A failure here refuses the call rather than serving data off the books.
+    entry = audit.start_tool_call(
+        ctx.db,
+        user_id=connector.user.id,
+        grant_id=connector.grant.id,
+        client_name=connector.grant.client_name,
+        tool=name,
+        scope=tool.scope,
+    )
+
     if tool.scope not in connector.scopes:
+        audit.finish_tool_call(ctx.db, entry, audit.DENIED)
         return _tool_failure(
             request_id,
             f"This connection was not granted the '{tool.scope}' permission. "
@@ -176,7 +211,14 @@ def _call_tool(params: dict, request_id: Any, ctx: ToolContext) -> dict:
         arguments = {}
 
     try:
-        return _result(request_id, as_result(tool.handler(ctx, arguments)))
+        answer = _result(request_id, as_result(tool.handler(ctx, arguments)))
     except ValueError as exc:
         # A bad argument is a finding the model can act on, not a crash.
+        audit.finish_tool_call(ctx.db, entry, audit.ERROR)
         return _tool_failure(request_id, str(exc))
+    except Exception:
+        audit.finish_tool_call(ctx.db, entry, audit.ERROR)
+        raise
+
+    audit.finish_tool_call(ctx.db, entry, audit.OK)
+    return answer

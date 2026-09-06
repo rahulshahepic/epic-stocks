@@ -37,6 +37,10 @@ USER_OWNED_TABLES: list[tuple[str, str]] = [
     # so this is the deletion that matters most here.
     ("oauth_grants", "user_id"),
     ("oauth_auth_codes", "user_id"),
+    # The account's own record of what its assistants read. Deleted with the
+    # account rather than de-linked: it is that person's activity, not a
+    # diagnostic someone else needs to keep.
+    ("mcp_audit", "user_id"),
 ]
 
 # Financial data only — what POST /api/me/reset clears, keeping the account.

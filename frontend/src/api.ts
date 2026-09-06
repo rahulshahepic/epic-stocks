@@ -11,6 +11,42 @@ export interface AiConnection {
   last_used_at: string | null
 }
 
+export interface AiActivityEntry {
+  id: number
+  client_name: string
+  event: 'tool_call' | 'connected' | 'disconnected'
+  tool: string | null
+  outcome: string
+  at: string | null
+}
+
+export interface McpUserUsage {
+  user_id: number
+  email: string
+  connections: number
+  clients: string[]
+  last_used_at: string | null
+  calls_7d: number
+  calls_30d: number
+}
+
+export interface McpToolUsage {
+  tool: string
+  calls_7d: number
+  calls_30d: number
+}
+
+export interface McpUsageReport {
+  users: McpUserUsage[]
+  tools: McpToolUsage[]
+  calls_24h: number
+  calls_7d: number
+  calls_30d: number
+  errors_7d: number
+  denied_7d: number
+  audit_rows: number
+}
+
 export interface McpHost {
   id: number
   label: string
@@ -565,12 +601,14 @@ export const api = {
     post<{ active: boolean }>('/api/admin/flexible-payoff', { active }),
   // AI connections a user has authorized against their own account.
   getAiConnections: () => apiFetch<AiConnection[]>('/api/oauth/connections'),
+  getAiActivity: () => apiFetch<AiActivityEntry[]>('/api/oauth/activity'),
   disconnectAi: (id: number) =>
     apiFetch<void>(`/api/oauth/connections/${id}`, { method: 'DELETE' }),
 
   // AI connections (MCP). Which providers may connect, and whether any may —
   // admin policy, so it lives in the database rather than the environment.
   adminGetMcp: () => apiFetch<McpSettings>('/api/admin/mcp'),
+  adminGetMcpUsage: () => apiFetch<McpUsageReport>('/api/admin/mcp/usage'),
   adminSetMcpEnabled: (enabled: boolean) =>
     post<McpSettings>('/api/admin/mcp', { enabled }),
   adminAddMcpHost: (label: string, host: string) =>

@@ -14,8 +14,16 @@ const CONNECTED = [
   },
 ]
 
+const ACTIVITY = [
+  { id: 3, client_name: 'ChatGPT', event: 'tool_call' as const, tool: 'get_compensation', outcome: 'ok', at: '2026-09-05T18:30:00Z' },
+  { id: 2, client_name: 'ChatGPT', event: 'tool_call' as const, tool: 'list_grants', outcome: 'denied', at: '2026-09-05T18:29:00Z' },
+  { id: 1, client_name: 'ChatGPT', event: 'connected' as const, tool: null, outcome: 'ok', at: '2026-09-01T10:00:00Z' },
+]
+
 beforeEach(() => {
   vi.restoreAllMocks()
+  // Every test needs this; the ones that care override it.
+  vi.spyOn(api, 'getAiActivity').mockResolvedValue([])
 })
 
 describe('AiConnectionsSection', () => {
@@ -96,6 +104,44 @@ describe('AiConnectionsSection', () => {
     vi.spyOn(api, 'getAiConnections').mockRejectedValue(new Error('boom'))
     render(<AiConnectionsSection />)
     expect(await screen.findByText(/Could not load your AI connections/)).toBeInTheDocument()
+  })
+
+  it('shows what an assistant actually read, once expanded', async () => {
+    vi.spyOn(api, 'getAiConnections').mockResolvedValue(CONNECTED)
+    vi.spyOn(api, 'getAiActivity').mockResolvedValue(ACTIVITY)
+    render(<AiConnectionsSection />)
+
+    // Collapsed by default — it is context, not the point of the section.
+    await screen.findByText('Recent activity')
+    expect(screen.queryByText('get_compensation')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByText('Recent activity'))
+    expect(screen.getByText('get_compensation')).toBeInTheDocument()
+    expect(screen.getByText(/list_grants — not permitted/)).toBeInTheDocument()
+    expect(screen.getByText('connected')).toBeInTheDocument()
+  })
+
+  it('says the log holds no figures, because it does not', async () => {
+    vi.spyOn(api, 'getAiConnections').mockResolvedValue(CONNECTED)
+    vi.spyOn(api, 'getAiActivity').mockResolvedValue(ACTIVITY)
+    render(<AiConnectionsSection />)
+
+    await userEvent.click(await screen.findByText('Recent activity'))
+    expect(screen.getByText(/never your figures/)).toBeInTheDocument()
+  })
+
+  it('hides the activity block entirely when there is nothing to show', async () => {
+    vi.spyOn(api, 'getAiConnections').mockResolvedValue([])
+    render(<AiConnectionsSection />)
+    await screen.findByText('Nothing connected yet.')
+    expect(screen.queryByText('Recent activity')).not.toBeInTheDocument()
+  })
+
+  it('keeps working when the activity call fails', async () => {
+    vi.spyOn(api, 'getAiConnections').mockResolvedValue(CONNECTED)
+    vi.spyOn(api, 'getAiActivity').mockRejectedValue(new Error('boom'))
+    render(<AiConnectionsSection />)
+    expect(await screen.findByText('ChatGPT')).toBeInTheDocument()
   })
 
   it('is explicit that this is read-only', async () => {

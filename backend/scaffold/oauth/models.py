@@ -117,3 +117,42 @@ class OAuthRedirectHost(Base):
     host: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
     enabled: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1", default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class McpAudit(Base):
+    """What an AI assistant did, and when.
+
+    The point of the whole feature is sending someone's financial data to an
+    outside company, so "a connection was used at some point" — which is all
+    `oauth_grants.last_used_at` says — is not enough for either party. A user
+    should be able to see whether their assistant read their salary or only
+    their vesting dates, and an operator looking into a report should have more
+    than one timestamp.
+
+    **No financial data, ever.** Tool names and scopes, never arguments,
+    figures or results — the same rule problem reports live under, for the same
+    reason: the values would be the user's own share counts and prices. A test
+    walks the columns to keep it that way.
+
+    grant_id is a plain integer with no foreign key on purpose. Disconnecting
+    deletes the grant, and the record of what that connection did has to
+    outlive it — an audit trail that disappears when someone revokes access is
+    an audit trail that is missing exactly when it is wanted.
+    """
+
+    __tablename__ = "mcp_audit"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    grant_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    client_name: Mapped[str] = mapped_column(String, nullable=False, server_default="")
+    # "tool_call", "connected" or "disconnected".
+    event: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    tool: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    scope: Mapped[str | None] = mapped_column(String, nullable=True)
+    # "pending" until the call returns. A row left pending means the process
+    # died mid-call, which is worth being able to see.
+    outcome: Mapped[str] = mapped_column(String, nullable=False, server_default="pending")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)

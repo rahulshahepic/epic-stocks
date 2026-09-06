@@ -296,3 +296,90 @@ def test_the_client_config_says_whether_to_offer_connections(admin):
     assert admin.get("/api/config").json()["ai_connections"] is True
     admin.post("/api/admin/mcp", json={"enabled": False})
     assert admin.get("/api/config").json()["ai_connections"] is False
+
+
+# ── usage metrics ───────────────────────────────────────────────────────────
+
+def test_usage_reports_who_is_connected_and_how_much(admin):
+    from tests.test_mcp_tools import Mcp, seed
+
+    seed(admin)
+    view = Mcp(admin)
+    view.call("get_dashboard")
+    view.call("get_dashboard")
+    view.call("list_grants")
+
+    report = admin.get("/api/admin/mcp/usage").json()
+
+    assert report["calls_24h"] == 3
+    assert report["calls_7d"] == 3
+    assert report["calls_30d"] == 3
+
+    person = report["users"][0]
+    assert person["email"] == "admin@example.com"
+    assert person["connections"] == 1
+    assert person["clients"] == ["ChatGPT"]
+    assert person["calls_7d"] == 3
+    assert person["last_used_at"]
+
+    by_tool = {t["tool"]: t["calls_30d"] for t in report["tools"]}
+    assert by_tool == {"get_dashboard": 2, "list_grants": 1}
+    assert report["tools"][0]["tool"] == "get_dashboard", "busiest first"
+
+
+def test_usage_counts_errors_and_refusals_separately(client, monkeypatch):
+    from tests.test_mcp_tools import Mcp, seed
+
+    as_admin(client, monkeypatch=monkeypatch)
+    seed(client)
+    view = Mcp(client, scope="equity:read")
+    view.error("explain", topic="nonsense")
+    view.error("get_compensation")
+
+    report = client.get("/api/admin/mcp/usage").json()
+    assert report["errors_7d"] == 1
+    assert report["denied_7d"] == 1
+
+
+def test_usage_survives_a_disconnection(admin, db_session):
+    """Hiding a disconnected account's usage would make the record vanish
+    exactly when someone looks into it."""
+    from scaffold.oauth.models import OAuthGrant
+    from tests.test_mcp_tools import Mcp, seed
+
+    seed(admin)
+    Mcp(admin).call("get_dashboard")
+    grant_id = db_session.query(OAuthGrant).one().id
+    admin.delete(f"/api/oauth/connections/{grant_id}")
+
+    report = admin.get("/api/admin/mcp/usage").json()
+    assert report["calls_30d"] == 1
+    person = report["users"][0]
+    assert person["connections"] == 0
+    assert person["calls_30d"] == 1
+
+
+def test_usage_is_admin_only(client):
+    register_user(client, "nobody@example.com")
+    assert client.get("/api/admin/mcp/usage").status_code == 403
+
+
+def test_usage_reports_nothing_gracefully_on_a_quiet_deployment(admin):
+    report = admin.get("/api/admin/mcp/usage").json()
+    assert report["users"] == []
+    assert report["tools"] == []
+    assert report["calls_30d"] == 0
+    assert report["audit_rows"] == 0
+
+
+def test_usage_exposes_no_financial_data(admin):
+    """Admin endpoints never expose financial data, and the audit table has
+    none to expose — this pins that the report did not add any."""
+    from tests.test_mcp_tools import Mcp, seed
+
+    seed(admin)
+    Mcp(admin).call("estimate_sale", price_per_share=4.0, shares=100)
+
+    body = admin.get("/api/admin/mcp/usage").text
+    for figure in ('"400', '"price', '"shares', '"amount', '"balance'):
+        assert figure not in body

@@ -11,8 +11,8 @@ arrives at them from the same handful of provider egress addresses. A tight
 IP-keyed limit would collapse all of them into one bucket and lock everyone out
 — the same failure the anonymous-budget rule warns about, one step further
 along. So the limits here are flood guards only, and the real bounds are the
-row quota on grants, the exact redirect matching, and the nightly prune of
-clients nobody ever connected.
+row quota on grants, the exact redirect matching, and the nightly prune in
+scaffold/oauth/cleanup.py.
 """
 import logging
 from datetime import datetime, timedelta, timezone
@@ -39,6 +39,7 @@ from .clients import (
     client_redirect_uris, get_client, redirect_uri_registered, register_client,
 )
 from .settings import host_allowed, mcp_enabled
+from . import audit
 from .models import OAuthAuthCode, OAuthGrant
 from .tokens import (
     AUTH_CODE_TTL, REFRESH_TTL, canonical_resource, code_verifier, issuer,
@@ -547,6 +548,8 @@ def _exchange_code(db: Session, request: Request, raw_code: str | None,
     client.last_used_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(grant)
+    audit.record(db, user_id=user.id, grant_id=grant.id,
+                 client_name=grant.client_name, event=audit.CONNECTED)
     return _issue(db, request, grant, user)
 
 
@@ -613,8 +616,11 @@ def revoke(request: Request, token: str = Form(...),
         except (ValueError, KeyError, TypeError):
             grant = None
     if grant is not None:
+        user_id, grant_id, name = grant.user_id, grant.id, grant.client_name
         db.delete(grant)
         db.commit()
+        audit.record(db, user_id=user_id, grant_id=grant_id,
+                     client_name=name, event=audit.DISCONNECTED)
     return JSONResponse({}, status_code=200)
 
 
@@ -637,6 +643,34 @@ def list_connections(user: User = Depends(get_current_user), db: Session = Depen
     ]
 
 
+MAX_ACTIVITY_ROWS = 50
+
+
+@api_router.get("/activity")
+def my_activity(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """What this account's assistants have done lately.
+
+    Tool names and times, never figures — the audit table holds no financial
+    data, so there is none to show. Enough to answer "did it read my salary?".
+    """
+    from .models import McpAudit
+
+    rows = db.query(McpAudit).filter(
+        McpAudit.user_id == user.id
+    ).order_by(McpAudit.created_at.desc(), McpAudit.id.desc()).limit(MAX_ACTIVITY_ROWS).all()
+    return [
+        {
+            "id": r.id,
+            "client_name": r.client_name or "AI assistant",
+            "event": r.event,
+            "tool": r.tool,
+            "outcome": r.outcome,
+            "at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in rows
+    ]
+
+
 @api_router.delete("/connections/{grant_id}", status_code=204)
 def disconnect(grant_id: int, user: User = Depends(get_current_user),
                db: Session = Depends(get_db)):
@@ -646,5 +680,8 @@ def disconnect(grant_id: int, user: User = Depends(get_current_user),
     ).first()
     if grant is None:
         raise HTTPException(404, "Connection not found")
+    name = grant.client_name
     db.delete(grant)
     db.commit()
+    audit.record(db, user_id=user.id, grant_id=grant_id,
+                 client_name=name, event=audit.DISCONNECTED)

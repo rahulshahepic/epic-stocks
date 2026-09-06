@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, type McpHost, type McpSettings } from '../../../api.ts'
+import { api, type McpHost, type McpSettings, type McpUsageReport } from '../../../api.ts'
 import { AdminSection } from './AdminSection.tsx'
 
 /**
@@ -15,12 +15,21 @@ import { AdminSection } from './AdminSection.tsx'
  */
 export function AiConnections({ onError }: { onError: (message: string) => void }) {
   const [settings, setSettings] = useState<McpSettings | null>(null)
+  const [usage, setUsage] = useState<McpUsageReport | null>(null)
   const [busy, setBusy] = useState(false)
   const [label, setLabel] = useState('')
   const [host, setHost] = useState('')
 
   useEffect(() => {
     api.adminGetMcp().then(setSettings).catch(() => onError('Failed to load AI connection settings'))
+    // Best-effort: usage is context, not a reason to lose the controls.
+    api.adminGetMcpUsage()
+      // Same defensiveness as the settings above: an unexpected shape should
+      // cost this block, not the controls it sits under.
+      .then((report) => setUsage(
+        Array.isArray(report?.users) && Array.isArray(report?.tools) ? report : null,
+      ))
+      .catch(() => setUsage(null))
   }, [onError])
 
   async function run(action: () => Promise<McpSettings>, failure: string) {
@@ -155,6 +164,85 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
           Add
         </button>
       </form>
+
+      {usage && (
+        <>
+          <hr className="my-4 border-cs-border" />
+          <p className="text-xs font-medium text-cs-text">Usage</p>
+
+          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <Stat label="Calls 24h" value={usage.calls_24h} />
+            <Stat label="Calls 7d" value={usage.calls_7d} />
+            <Stat label="Calls 30d" value={usage.calls_30d} />
+            <Stat label="Audit rows" value={usage.audit_rows} />
+          </div>
+          {(usage.errors_7d > 0 || usage.denied_7d > 0) && (
+            <p className="mt-1.5 text-xs text-cs-muted">
+              Last 7 days: {usage.errors_7d} failed, {usage.denied_7d} refused for
+              missing permission.
+            </p>
+          )}
+
+          {usage.users.length > 0 && (
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="text-cs-muted">
+                  <tr>
+                    <th className="pb-1 pr-3 font-medium">Account</th>
+                    <th className="pb-1 pr-3 font-medium">Assistants</th>
+                    <th className="pb-1 pr-3 font-medium">Last used</th>
+                    <th className="pb-1 pr-3 text-right font-medium">7d</th>
+                    <th className="pb-1 text-right font-medium">30d</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-cs-border">
+                  {usage.users.map((person) => (
+                    <tr key={person.user_id}>
+                      <td className="py-1 pr-3 text-cs-text">{person.email}</td>
+                      <td className="py-1 pr-3 text-cs-text-2">
+                        {person.clients.length > 0 ? person.clients.join(', ') : '—'}
+                        {person.connections === 0 && (
+                          <span className="text-cs-muted"> (disconnected)</span>
+                        )}
+                      </td>
+                      <td className="py-1 pr-3 text-cs-muted">
+                        {person.last_used_at
+                          ? new Date(person.last_used_at).toLocaleDateString()
+                          : 'never'}
+                      </td>
+                      <td className="py-1 pr-3 text-right text-cs-text-2">{person.calls_7d}</td>
+                      <td className="py-1 text-right text-cs-text-2">{person.calls_30d}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {usage.tools.length > 0 && (
+            <div className="mt-3">
+              <p className="text-xs text-cs-muted">Most used tools (30 days)</p>
+              <ul className="mt-1 space-y-0.5">
+                {usage.tools.slice(0, 8).map((tool) => (
+                  <li key={tool.tool} className="flex justify-between text-xs">
+                    <code className="font-mono text-cs-text-2">{tool.tool}</code>
+                    <span className="text-cs-muted">{tool.calls_30d}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
+      )}
     </AdminSection>
+  )
+}
+
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md bg-cs-raised px-2 py-1.5">
+      <p className="text-xs text-cs-muted">{label}</p>
+      <p className="text-sm font-semibold text-cs-text">{value.toLocaleString()}</p>
+    </div>
   )
 }

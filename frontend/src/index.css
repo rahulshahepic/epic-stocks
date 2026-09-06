@@ -74,7 +74,19 @@
   --font-serif: 'Lora', ui-serif, Georgia, serif;
 }
 
+/* Paint the overscroll/rubber-band area with the app background instead of the
+   UA default white. html's background propagates to the canvas, so it must be
+   set here — a min-h-screen wrapper only covers the viewport. */
+html {
+  background-color: var(--cs-base);
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+
 body {
+  background-color: var(--cs-base);
   font-family: var(--font-sans);
   font-feature-settings: 'cv11', 'ss01';
 }

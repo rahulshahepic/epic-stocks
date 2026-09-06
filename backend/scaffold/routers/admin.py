@@ -6,7 +6,7 @@ import secrets
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
@@ -712,6 +712,260 @@ def get_epic_mode(admin: User = Depends(get_admin_user)):
 def set_epic_mode_endpoint(body: EpicModeRequest, admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
     set_epic_mode(db, body.active)
     return EpicModeStatus(active=body.active)
+
+
+# ============================================================
+# AI connections (MCP)
+# ============================================================
+
+class McpHostOut(BaseModel):
+    id: int
+    label: str
+    host: str
+    enabled: bool
+
+
+class McpStatus(BaseModel):
+    enabled: bool
+    hosts: list[McpHostOut]
+    connections: int
+
+
+class McpEnabledRequest(BaseModel):
+    enabled: bool
+
+
+class McpHostCreate(BaseModel):
+    label: str = Field(min_length=1, max_length=60)
+    host: str = Field(min_length=1, max_length=253)
+
+
+class McpHostUpdate(BaseModel):
+    enabled: bool
+
+
+def _mcp_status(db: Session) -> McpStatus:
+    from scaffold.oauth.models import OAuthGrant, OAuthRedirectHost
+    from scaffold.oauth.settings import mcp_enabled
+
+    rows = db.query(OAuthRedirectHost).order_by(
+        OAuthRedirectHost.label, OAuthRedirectHost.host
+    ).all()
+    return McpStatus(
+        enabled=mcp_enabled(),
+        hosts=[
+            McpHostOut(id=r.id, label=r.label, host=r.host, enabled=bool(r.enabled))
+            for r in rows
+        ],
+        connections=db.query(OAuthGrant).count(),
+    )
+
+
+def _normalize_host(raw: str) -> str:
+    """A bare hostname, however it was typed.
+
+    Admins paste URLs. Accepting "https://chatgpt.com/" and storing
+    "chatgpt.com" is the difference between the allowlist working and an admin
+    concluding the feature is broken.
+    """
+    from urllib.parse import urlparse
+
+    value = (raw or "").strip().lower()
+    if "//" in value:
+        value = urlparse(value).hostname or ""
+    value = value.split("/")[0].strip().strip(".")
+    if value.startswith("*."):
+        value = value[2:]
+    if not value or " " in value or "." not in value:
+        raise HTTPException(422, f"'{raw}' is not a hostname — try something like chatgpt.com")
+    return value
+
+
+@router.get("/mcp", response_model=McpStatus)
+def get_mcp_settings(admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    return _mcp_status(db)
+
+
+@router.post("/mcp", response_model=McpStatus)
+def set_mcp_enabled_endpoint(body: McpEnabledRequest, admin: User = Depends(get_admin_user),
+                             db: Session = Depends(get_db)):
+    """The master switch. Off, no new connections and every /mcp call gets 503.
+
+    Existing grants are left alone: this is a pause, and revoking everyone's
+    connections because an admin wanted to stop new ones for an afternoon would
+    be a worse surprise than the pause itself.
+    """
+    from scaffold.oauth.settings import set_mcp_enabled
+    set_mcp_enabled(db, body.enabled)
+    return _mcp_status(db)
+
+
+@router.post("/mcp/hosts", response_model=McpStatus, status_code=201)
+def add_mcp_host(body: McpHostCreate, admin: User = Depends(get_admin_user),
+                 db: Session = Depends(get_db)):
+    from scaffold.oauth.models import OAuthRedirectHost
+    from scaffold.oauth.settings import invalidate
+
+    host = _normalize_host(body.host)
+    if db.query(OAuthRedirectHost).filter(OAuthRedirectHost.host == host).first():
+        raise HTTPException(409, f"{host} is already on the list")
+    db.add(OAuthRedirectHost(label=body.label.strip(), host=host, enabled=1))
+    db.commit()
+    invalidate()
+    return _mcp_status(db)
+
+
+@router.patch("/mcp/hosts/{host_id}", response_model=McpStatus)
+def toggle_mcp_host(host_id: int, body: McpHostUpdate, admin: User = Depends(get_admin_user),
+                    db: Session = Depends(get_db)):
+    """Switching a provider off stops new authorizations and kills existing
+    connections at their next token refresh — within the hour, not whenever
+    their refresh token would have expired."""
+    from scaffold.oauth.models import OAuthRedirectHost
+    from scaffold.oauth.settings import invalidate
+
+    row = db.get(OAuthRedirectHost, host_id)
+    if row is None:
+        raise HTTPException(404, "Host not found")
+    row.enabled = 1 if body.enabled else 0
+    db.commit()
+    invalidate()
+    return _mcp_status(db)
+
+
+@router.delete("/mcp/hosts/{host_id}", response_model=McpStatus)
+def delete_mcp_host(host_id: int, admin: User = Depends(get_admin_user),
+                    db: Session = Depends(get_db)):
+    from scaffold.oauth.models import OAuthRedirectHost
+    from scaffold.oauth.settings import invalidate
+
+    row = db.get(OAuthRedirectHost, host_id)
+    if row is None:
+        raise HTTPException(404, "Host not found")
+    db.delete(row)
+    db.commit()
+    invalidate()
+    return _mcp_status(db)
+
+
+class McpUserUsage(BaseModel):
+    user_id: int
+    email: str
+    connections: int
+    clients: list[str]
+    last_used_at: str | None
+    calls_7d: int
+    calls_30d: int
+
+
+class McpToolUsage(BaseModel):
+    tool: str
+    calls_7d: int
+    calls_30d: int
+
+
+class McpUsageReport(BaseModel):
+    users: list[McpUserUsage]
+    tools: list[McpToolUsage]
+    calls_24h: int
+    calls_7d: int
+    calls_30d: int
+    errors_7d: int
+    denied_7d: int
+    audit_rows: int
+
+
+@router.get("/mcp/usage", response_model=McpUsageReport)
+def mcp_usage(admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    """Who is using AI connections, and how much.
+
+    Counts and tool names only. The audit table holds no financial data, so
+    there is none here either — the same line admin endpoints already hold.
+    """
+    from sqlalchemy import func as _func
+
+    from scaffold.oauth.audit import DENIED, ERROR, TOOL_CALL
+    from scaffold.oauth.models import McpAudit, OAuthGrant
+
+    now = datetime.now(timezone.utc)
+    day, week, month = now - timedelta(days=1), now - timedelta(days=7), now - timedelta(days=30)
+
+    def _calls(since, extra=None):
+        query = db.query(_func.count(McpAudit.id)).filter(
+            McpAudit.event == TOOL_CALL, McpAudit.created_at >= since
+        )
+        return (query.filter(extra) if extra is not None else query).scalar() or 0
+
+    per_user: dict[int, dict] = {}
+    for grant in db.query(OAuthGrant).all():
+        entry = per_user.setdefault(grant.user_id, {
+            "connections": 0, "clients": [], "last_used_at": None,
+        })
+        entry["connections"] += 1
+        if grant.client_name and grant.client_name not in entry["clients"]:
+            entry["clients"].append(grant.client_name)
+        if grant.last_used_at and (
+            entry["last_used_at"] is None or grant.last_used_at > entry["last_used_at"]
+        ):
+            entry["last_used_at"] = grant.last_used_at
+
+    # An account that has since disconnected still shows its usage — hiding it
+    # would mean the record disappears exactly when someone looks into it.
+    for user_id, in db.query(McpAudit.user_id).filter(
+        McpAudit.created_at >= month
+    ).distinct().all():
+        per_user.setdefault(user_id, {"connections": 0, "clients": [], "last_used_at": None})
+
+    def _user_calls(user_id: int, since) -> int:
+        return db.query(_func.count(McpAudit.id)).filter(
+            McpAudit.user_id == user_id,
+            McpAudit.event == TOOL_CALL,
+            McpAudit.created_at >= since,
+        ).scalar() or 0
+
+    emails = {u.id: u.email for u in db.query(User).filter(User.id.in_(per_user)).all()}
+    users = [
+        McpUserUsage(
+            user_id=user_id,
+            email=emails.get(user_id, "(deleted)"),
+            connections=entry["connections"],
+            clients=entry["clients"],
+            last_used_at=entry["last_used_at"].isoformat() if entry["last_used_at"] else None,
+            calls_7d=_user_calls(user_id, week),
+            calls_30d=_user_calls(user_id, month),
+        )
+        for user_id, entry in per_user.items()
+    ]
+    users.sort(key=lambda u: (-u.calls_30d, u.email))
+
+    tool_rows = db.query(
+        McpAudit.tool, _func.count(McpAudit.id)
+    ).filter(
+        McpAudit.event == TOOL_CALL, McpAudit.created_at >= month, McpAudit.tool.isnot(None)
+    ).group_by(McpAudit.tool).all()
+    tools = [
+        McpToolUsage(
+            tool=tool,
+            calls_7d=db.query(_func.count(McpAudit.id)).filter(
+                McpAudit.tool == tool, McpAudit.event == TOOL_CALL,
+                McpAudit.created_at >= week,
+            ).scalar() or 0,
+            calls_30d=count,
+        )
+        for tool, count in tool_rows
+    ]
+    tools.sort(key=lambda t: -t.calls_30d)
+
+    return McpUsageReport(
+        users=users,
+        tools=tools,
+        calls_24h=_calls(day),
+        calls_7d=_calls(week),
+        calls_30d=_calls(month),
+        errors_7d=_calls(week, McpAudit.outcome == ERROR),
+        denied_7d=_calls(week, McpAudit.outcome == DENIED),
+        audit_rows=db.query(_func.count(McpAudit.id)).scalar() or 0,
+    )
 
 
 # ============================================================

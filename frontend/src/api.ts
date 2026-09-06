@@ -3,6 +3,63 @@ import { logApiFailure, noteErrorRef } from './scaffold/reportLog.ts'
 import { platform } from './platform/index.ts'
 import type { PushRegistration } from './platform/index.ts'
 
+export interface AiConnection {
+  id: number
+  client_name: string
+  scopes: string[]
+  created_at: string | null
+  last_used_at: string | null
+}
+
+export interface AiActivityEntry {
+  id: number
+  client_name: string
+  event: 'tool_call' | 'connected' | 'disconnected'
+  tool: string | null
+  outcome: string
+  at: string | null
+}
+
+export interface McpUserUsage {
+  user_id: number
+  email: string
+  connections: number
+  clients: string[]
+  last_used_at: string | null
+  calls_7d: number
+  calls_30d: number
+}
+
+export interface McpToolUsage {
+  tool: string
+  calls_7d: number
+  calls_30d: number
+}
+
+export interface McpUsageReport {
+  users: McpUserUsage[]
+  tools: McpToolUsage[]
+  calls_24h: number
+  calls_7d: number
+  calls_30d: number
+  errors_7d: number
+  denied_7d: number
+  audit_rows: number
+}
+
+export interface McpHost {
+  id: number
+  label: string
+  host: string
+  enabled: boolean
+}
+
+export interface McpSettings {
+  enabled: boolean
+  hosts: McpHost[]
+  connections: number
+}
+
 export class ConflictError extends Error {
   currentVersion: number
   constructor(currentVersion: number) {
@@ -542,6 +599,27 @@ export const api = {
   adminGetFlexiblePayoff: () => apiFetch<{ active: boolean }>('/api/admin/flexible-payoff'),
   adminSetFlexiblePayoff: (active: boolean) =>
     post<{ active: boolean }>('/api/admin/flexible-payoff', { active }),
+  // AI connections a user has authorized against their own account.
+  getAiConnections: () => apiFetch<AiConnection[]>('/api/oauth/connections'),
+  getAiActivity: () => apiFetch<AiActivityEntry[]>('/api/oauth/activity'),
+  disconnectAi: (id: number) =>
+    apiFetch<void>(`/api/oauth/connections/${id}`, { method: 'DELETE' }),
+
+  // AI connections (MCP). Which providers may connect, and whether any may —
+  // admin policy, so it lives in the database rather than the environment.
+  adminGetMcp: () => apiFetch<McpSettings>('/api/admin/mcp'),
+  adminGetMcpUsage: () => apiFetch<McpUsageReport>('/api/admin/mcp/usage'),
+  adminSetMcpEnabled: (enabled: boolean) =>
+    post<McpSettings>('/api/admin/mcp', { enabled }),
+  adminAddMcpHost: (label: string, host: string) =>
+    post<McpSettings>('/api/admin/mcp/hosts', { label, host }),
+  adminToggleMcpHost: (id: number, enabled: boolean) =>
+    apiFetch<McpSettings>(`/api/admin/mcp/hosts/${id}`, {
+      method: 'PATCH', body: JSON.stringify({ enabled }),
+    }),
+  adminDeleteMcpHost: (id: number) =>
+    apiFetch<McpSettings>(`/api/admin/mcp/hosts/${id}`, { method: 'DELETE' }),
+
   adminRotationStatus: () =>
     apiFetch<{ snapshot_exists: boolean; maintenance_active: boolean }>('/api/admin/rotation-status'),
   adminRotationRestore: () =>

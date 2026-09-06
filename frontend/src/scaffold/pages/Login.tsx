@@ -4,6 +4,7 @@ import { ReportProblemLink } from '../components/ReportProblem.tsx'
 import { useAuth } from '../hooks/useAuth.ts'
 import { api } from '../../api.ts'
 import { startLogin } from '../oidc.ts'
+import { safeNext, stashNext } from '../postLogin.ts'
 import { useAppContext } from '../contexts/AppContext.tsx'
 import { HeroIllustration } from '../components/ui/icons.tsx'
 import DisclaimerNotice from '../components/DisclaimerNotice.tsx'
@@ -40,13 +41,20 @@ export default function Login() {
   const [loading, setLoading] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  // Where to go once signed in. Set when something bounced the user here
+  // mid-flow — today that is the OAuth consent screen, which is a server route
+  // and so needs a navigation rather than a router push.
+  const next = safeNext(new URLSearchParams(window.location.search).get('next'))
+
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/', { replace: true })
+      if (next) window.location.assign(next)
+      else navigate('/', { replace: true })
       return
     }
+    void stashNext(next)
     api.getProviders().then(setProviders).catch(() => setProviders([]))
-  }, [isAuthenticated, navigate])
+  }, [isAuthenticated, navigate, next])
 
   // When the browser restores this page from bfcache (user hit Back after being
   // redirected to the IdP), the component state is frozen with loading set to the

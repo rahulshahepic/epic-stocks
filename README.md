@@ -28,7 +28,7 @@ A mobile-first web app for Epic employees to track their own equity compensation
 ## Table of Contents
 
 - [Understanding Your Equity](#understanding-your-equity) — key concepts explained
-- [For Users](#for-users) — getting started, importing, dashboard, sales, loans, notifications, sharing
+- [For Users](#for-users) — getting started, importing, dashboard, sales, loans, notifications, AI connections, sharing
 - [For Content Admins](#for-content-admins) — editing the grant program schedule and rates
 - [For Site Admins](#for-site-admins) — user management, system health, maintenance
 - [For Site Operators](#for-site-operators) — deployment, environment variables, development, API reference
@@ -420,9 +420,61 @@ Go to **Settings → Notifications** to configure.
 
 **Sign Out** (Settings → Account) clears the session on this device only — other browsers or devices stay signed in.
 
-**Sign Out Everywhere** (Settings → Account) revokes every active session for your account in one action. Use this if you've signed in on a device you no longer have access to, or if you want to force every browser to re-authenticate. After confirming, every existing session token is invalidated immediately and you'll be sent to the login page.
+**Sign Out Everywhere** (Settings → Account) revokes every active session for your account in one action. Use this if you've signed in on a device you no longer have access to, or if you want to force every browser to re-authenticate. After confirming, every existing session token is invalidated immediately and you'll be sent to the login page. Any AI connection (below) is cut loose at the same time — a connector is a signed-in thing, and losing a phone should disconnect the assistant along with the browsers.
 
 Sessions otherwise last 30 days, with a sliding refresh — the app silently extends your session each time you open it, so an installed PWA stays signed in indefinitely as long as you keep using it.
+
+---
+
+### Connecting Your Own AI
+
+You can let ChatGPT or Claude read your equity data, so you can ask about vesting and tax alongside the rest of your finances. It is off until you connect it, read-only, and you can disconnect it at any time.
+
+**What this does and does not do.** The assistant can read your grants, vesting timeline, prices, loans, sales and tax estimates, and your salary and retirement settings if you allow that. It cannot change anything. Connecting means your figures are sent to OpenAI or Anthropic when the assistant asks for them — the same as pasting them into a chat, but without the pasting.
+
+**What it can read:**
+
+| Tool | What it answers |
+|------|-----------------|
+| `get_dashboard` | Shares held and vested, current price, portfolio value, loan balance, income and gains to date |
+| `list_events` | The computed timeline — vesting, price changes, loan payments, payoffs, sales — filterable by date and type |
+| `list_grants` | Every grant: year, type, shares, purchase price, vesting schedule |
+| `list_loans` | Loans against equity, with early payments and balance outstanding |
+| `list_prices` | Share price history, with the user's own future estimates flagged as estimates |
+| `list_sales` | Sales recorded and planned |
+| `estimate_sale` | Models a sale without recording it — by share count, or working back from cash needed after tax |
+| `get_tax_breakdown` | The full working for one sale: lots consumed, income, short- and long-term gains |
+| `explain` | How this scheme works — vesting, grant types, tax, lots, the two prices. Worth asking for first; several ordinary RSU rules do not apply here |
+| `get_compensation` | Salary and bonus history (needs the compensation permission) |
+| `get_retirement_params` | Saved retirement simulator settings (needs the compensation permission) |
+
+**In Claude** — Pro, Max, Team or Enterprise; works on web, desktop and mobile:
+
+1. Settings → Connectors → **Add custom connector**
+2. Paste `https://<your-domain>/mcp`
+3. Sign in and approve
+
+**In ChatGPT** — Plus, Pro, Business, Enterprise or Edu. Adding a connector is **web only**; once added it works everywhere:
+
+1. Settings → **Security and login** → turn on **Developer mode**. It sounds alarming and is not — it is the switch that lets you add connectors that are not in OpenAI's directory.
+2. Plugins → **+** → give it a name and description
+3. Paste `https://<your-domain>/mcp` as the endpoint
+4. Sign in and approve
+5. Review the tools it found and create the connection
+
+Then name the connector when you ask a question. Both assistants do better when told which tool to use than when left to guess.
+
+If your ChatGPT is provided by your employer, a workspace admin may have to enable developer mode before step 1. A personal account works either way.
+
+**Disconnecting.** Settings → AI Connections lists every connection with what it may read and when it was last used. Disconnecting takes effect on the assistant's next request, not at the next token expiry. Signing out everywhere disconnects all of them too.
+
+**Recent activity.** The same section keeps a log of what each assistant asked for and when — tool names and times, so you can tell whether it read your salary or only your vesting dates. It records **no figures at all**: your share counts, prices and balances are never written to it, so it cannot leak them. Entries are kept for 90 days.
+
+| AI Connections (light) | ChatGPT walkthrough (dark) |
+|------------------------|----------------------------|
+| ![AI Connections settings](screenshots/settings-ai-connections-light-mobile.png) | ![ChatGPT walkthrough](screenshots/settings-ai-connections-dark-mobile.png) |
+
+The section is hidden entirely if an administrator has switched AI connections off — instructions for something that cannot work are worse than no instructions.
 
 ---
 
@@ -588,6 +640,27 @@ Click any user in the list to open a detail card:
 | **Rotate encryption key** | Generates a new master key, re-wraps all per-user keys, smoke-tests, and persists to the database. Propagates to all replicas automatically within seconds — no deploy or env var change needed. A snapshot of old keys is saved before any changes and restored automatically on failure. |
 | **Restore from snapshot** | Appears when an interrupted rotation left a snapshot in the database. Recovers from a crash without SSH access. |
 
+### AI Connections (admin)
+
+Admin → **AI Connections** controls whether people can connect ChatGPT or Claude to their own accounts, and which providers are allowed to. Both were environment variables at first, which made "stop accepting connections from ChatGPT" a redeploy; they are policy, so they live in the database.
+
+- **Allow AI connections** — the master switch. Off, nobody can authorize a new connection and every `/mcp` call gets a 503. It is a pause, not a disconnect: existing connections are left in place and start working again when you turn it back on. Disconnecting everyone would be a worse surprise than the pause.
+- **Providers** — the allowlist of hosts an AI client may be redirected back to after authorizing. Seeded with ChatGPT (`chatgpt.com`) and Claude (`claude.ai`, `claude.com`), both on. Claude is two hostnames under one label so there is one thing to switch off, not two.
+
+This allowlist is a security control, not a convenience. Dynamic client registration is anonymous — it has to be, or Claude on a phone cannot connect — so without it a stranger could register a client whose redirect URI points at their own server and try to walk a signed-in user through the consent screen. Adding a host means trusting that provider with any account that authorizes it.
+
+Switching a provider off blocks new authorizations immediately and ends existing connections at their next token refresh, within the hour — not whenever their refresh token would have expired. Removing a host does the same permanently.
+
+Paste a URL or type a bare hostname; either is stored as the hostname.
+
+**Usage.** The same panel reports calls in the last 24 hours, 7 and 30 days; failures and permission refusals over 7 days; a per-account table (assistants connected, last used, calls over 7/30 days); and the most-used tools. An account that has since disconnected still appears — hiding it would make the record vanish exactly when someone is looking into it. Counts and tool names only: the audit table holds no financial data, so this cannot show any.
+
+**Rate limits.** `/mcp` is capped per connection and per account (120 and 300 calls a minute, in `backend/app/mcp/transport.py`). Both are needed: the per-connection limit stops one runaway assistant starving another the same user has connected, and the per-account limit is what bounds one user's cost to the server. Nothing else covers this endpoint — the mutation rate limiter only inspects `/api/` paths, and an IP-keyed limit would count OpenAI's and Anthropic's servers rather than the user's.
+
+**Retention.** A nightly job removes client registrations that never became a connection after 7 days, expired authorization codes, and audit entries past 90 days (or beyond 5,000 per account). Registration is anonymous by necessity, so without that first sweep the table would grow on its own.
+
+---
+
 ### Import diagnostics
 
 **Admin → Tools → Import diagnostics** (`/import-diagnostics`) checks the Epic file importer against real data. Upload:
@@ -630,7 +703,7 @@ Blocked emails are checked at login time (case-insensitive). A blocked user cann
 |-------|-----------|
 | Backend | Python 3.12, FastAPI, SQLAlchemy, PostgreSQL (Alembic migrations) |
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS 4, Recharts |
-| Auth | OIDC PKCE (any provider) → BFF session cookie (HttpOnly, XSS-safe) |
+| Auth | OIDC PKCE (any provider) → BFF session cookie (HttpOnly, XSS-safe); OAuth 2.1 authorization server + MCP server for AI connectors |
 | Deploy | Docker Compose + Caddy (auto-HTTPS) + Cloudflare (DDoS protection) |
 | Tests | pytest (backend), Vitest + RTL (frontend), Playwright (E2E) |
 
@@ -692,6 +765,7 @@ The backend creates `data/vesting.db` (SQLite) automatically on first run. The d
 | `INVITE_TOKEN_SECRET` | No | Key for the HMAC verifiers that replace plaintext invitation tokens in the database. Falls back to `JWT_SECRET`. Rotating it invalidates outstanding invitations and hides stored short codes — revoke and re-send. |
 | `PUSH_ALLOW_PRIVATE_ENDPOINTS` | No | Set to `1` for local development against a push relay on a private address. Never set in production: it disables the SSRF check on push subscription endpoints. |
 | `PUSH_ALLOWED_HOSTS` | No | Comma-separated hosts that may be used as push endpoints. Defaults to the browser push services (FCM, Mozilla autopush, Apple, WNS); an entry starting with `.` matches any subdomain. Set to `*` to accept any public host — only needed for a browser whose push service is not in the built-in list. |
+| `MCP_ACCESS_TOKEN_MINUTES` | No | Lifetime of a connector access token. Default `60`; refresh tokens carry the connection beyond that. Whether AI connections are on, and which providers may connect, are **not** environment variables — they are admin settings, see [AI Connections](#ai-connections-admin). |
 | `COMMIT_SHA` | No | Git commit SHA injected at Docker build time. Displayed as a 7-char short hash at the bottom of Admin and Settings pages. **Set automatically by the deploy workflow.** |
 | `APP_ENV` | No | Set to `staging` in the GitHub staging environment Variables tab to enable staging-specific UI: amber icon, PWA name "Epic Stocks (Staging)", and a persistent amber header banner. Defaults to `production` (no change). Injected as a Docker build arg at deploy time. |
 
@@ -1014,6 +1088,8 @@ All authenticated endpoints accept a valid `session` cookie (set automatically b
 
 The Bearer header exists for a client that cannot use cookies — a native shell, whose WebView origin is not this server's, so the cookie is never attached. Such a client obtains the token by passing `return_token: true` to `POST /api/auth/callback`; the web app never asks, so no readable copy of the credential is handed to script on the page. Bearer tokens carry the same `session_version` check as cookies, so "sign out everywhere" revokes both.
 
+**Connector tokens are a separate kind.** A token issued by `/oauth/token` for an AI assistant carries `typ: "mcp"` and is accepted only at `/mcp`; a session token is accepted only at `/api/*`. Presenting either in the other's place is a 401. Without that split, one leaked assistant credential would be a full account session, admin endpoints included. Connector tokens are additionally bound to this server by an audience claim and checked against their grant row on every request, so disconnecting takes effect immediately rather than at the next expiry.
+
 Cross-origin requests are accepted only from the native shell origins (`capacitor://localhost`, `https://localhost`) with credentials disallowed — those clients authenticate by Bearer, never by cookie. The PWA is served from the same origin as the API and never reaches CORS at all.
 
 | Method | Path | Description |
@@ -1076,6 +1152,18 @@ Cross-origin requests are accepted only from the native shell origins (`capacito
 | GET/PUT | `/api/tax-settings` | Get/set tax rate configuration and lot selection preferences |
 | GET | `/api/tips` | Smart tips: scenario-based tax savings recommendations |
 | POST | `/api/tips/accept` | Record acceptance of a tip recommendation |
+| **AI connectors** | | |
+| GET | `/.well-known/oauth-protected-resource` | RFC 9728. How an MCP client discovers who issues tokens for `/mcp`. No auth |
+| GET | `/.well-known/oauth-authorization-server` | RFC 8414. What this authorization server supports. No auth |
+| POST | `/oauth/register` | RFC 7591 dynamic client registration. Anonymous — it is what lets Claude on a phone connect. Redirect hosts limited to the providers enabled in [AI Connections](#ai-connections-admin) |
+| GET/POST | `/oauth/authorize` | Consent screen, server-rendered. Needs an app session; a signed-out user is sent through `/login?next=` and returned here |
+| POST | `/oauth/token` | `authorization_code` and `refresh_token`. PKCE `S256` required; refresh tokens rotate on use |
+| POST | `/oauth/revoke` | RFC 7009. Always 200 |
+| POST | `/mcp` | The MCP server: JSON-RPC over Streamable HTTP (`initialize`, `tools/list`, `tools/call`, `ping`). Eleven read tools, listed under [Connecting Your Own AI](#connecting-your-own-ai). Requires a connector token, never a session one |
+| GET | `/api/oauth/connections` | This account's live AI connections, for Settings |
+| DELETE | `/api/oauth/connections/{id}` | Disconnect. Deleting the grant row is the revocation — it takes effect on the next request |
+| GET | `/api/oauth/activity` | This account's last 50 connector events — tool names, outcomes and times, never figures |
+| GET | `/api/admin/mcp/usage` | Admin: connector usage per account and per tool, plus totals. Counts only |
 | **Grant-program content** | | |
 | GET | `/api/content` | Global grant-program content blob — any logged-in user |
 | POST/PUT/DELETE | `/api/content/grant-templates[/{id}]` | CRUD grant templates (content admin) |

@@ -4,13 +4,12 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
-from scaffold.models import User, Grant, Loan, Price, LoanPayment, Sale, TaxSettings, TipAcceptance
+from scaffold.models import User, LoanPayment, Sale, TaxSettings, TipAcceptance
 from scaffold.auth import get_current_user
 from app.core import generate_all_events, compute_timeline
 from app.routers.events import (
     _user_source_data, _enrich_timeline, _annotate_sale_taxes,
-    _apply_interest_deduction, _last_vesting_date, _build_interest_pool,
-    _TAXABLE_EVENT_TYPES,
+    _apply_interest_deduction, _last_vesting_date,
 )
 
 router = APIRouter(prefix="/api/tips", tags=["tips"])

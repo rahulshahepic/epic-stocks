@@ -313,7 +313,7 @@ function DashboardTab({ result, asOf }: { result: TrialAnalyzeResponse; asOf: st
 function EventsTab({ result, asOf }: { result: TrialAnalyzeResponse; asOf: string }) {
   const future = result.timeline.filter(e => e.date > asOf).length
   return (
-    <Card padded={false}>
+    <Card pad="none">
       <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 pt-4 sm:px-5 sm:pt-5">
         <h2 className="text-sm font-semibold text-cs-text">
           {result.timeline.length} computed events

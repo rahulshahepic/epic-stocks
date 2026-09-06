@@ -1,6 +1,7 @@
 """Tests for admin notifications, dedup, and new notification features."""
-import sys, os
-from datetime import date, datetime, timezone, timedelta
+import sys
+import os
+from datetime import date, datetime, timezone
 from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -27,7 +28,7 @@ def _mock_resend_post():
 # ============================================================
 
 def test_dedup_skips_already_notified_user(client, db_session):
-    from scaffold.models import User, Grant, Price, EmailPreference
+    from scaffold.models import User, Grant, Price
     from scaffold.notifications import send_daily_notifications
 
     register_user(client)
@@ -58,7 +59,7 @@ def test_dedup_skips_already_notified_user(client, db_session):
 
 
 def test_dedup_allows_next_day(client, db_session):
-    from scaffold.models import User, Grant, Price, EmailPreference
+    from scaffold.models import User
     from scaffold.notifications import _already_notified_today
 
     register_user(client)
@@ -111,7 +112,6 @@ def test_admin_no_notification_without_resend(client, db_session):
 
 def test_milestone_notification_at_10_users(client, db_session, make_client):
     from scaffold.notifications import check_user_milestone
-    from scaffold.models import User
 
     for i in range(9):
         with make_client(f"user{i}@test.com"):

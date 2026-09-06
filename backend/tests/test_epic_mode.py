@@ -3,14 +3,14 @@ execute-payoff, and cache invalidation webhook."""
 import os
 import sys
 from datetime import date
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from tests.conftest import register_user
-from app.sales_engine import build_fifo_lots, compute_grossup_shares
+from app.sales_engine import build_fifo_lots
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────

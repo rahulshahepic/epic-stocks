@@ -12,6 +12,7 @@ import { ZERO_BASIS_TYPES } from '../grantTypes.ts'
 import { fmtNum, fmtPrice } from '../format.ts'
 import { Field, FIELD_INPUT_CLASS } from '../../scaffold/components/ui/Field.tsx'
 import { ConflictBanner } from '../../scaffold/components/ui/ConflictBanner.tsx'
+import { Card } from '../../scaffold/components/ui/Card.tsx'
 
 type GrantForm = Omit<GrantEntry, 'id' | 'version'>
 type Mode = 'list' | 'add' | 'edit'
@@ -683,7 +684,7 @@ export default function Grants() {
           )
         })}
       </div> : /* Desktop table layout */
-        <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-cs-border bg-cs-surface shadow-card">
+        <Card pad="none" className="overflow-x-auto" tabIndex={0}>
           <table className="w-full text-left text-xs">
             <thead className="bg-cs-raised">
               <tr className="text-cs-text-2">
@@ -767,7 +768,7 @@ export default function Grants() {
               })}
             </tbody>
           </table>
-        </div>}
+        </Card>}
       {grants.length === 0 && (
         <p className="px-3 py-6 text-center text-xs text-cs-text-2">
           {epicMode

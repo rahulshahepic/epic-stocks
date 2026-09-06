@@ -5,7 +5,7 @@ Does NOT modify core.py.
 """
 import math
 from collections import deque
-from datetime import date, datetime
+from datetime import date
 
 from app.date_utils import to_date as _to_date
 

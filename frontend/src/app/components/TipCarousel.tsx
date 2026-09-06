@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react'
 import { api } from '../../api.ts'
 import type { SmartTip, TaxSettings } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
-import { IconTile } from '../../scaffold/components/ui/Card.tsx'
+import { Card, IconTile } from '../../scaffold/components/ui/Card.tsx'
 import { fmt$ } from '../format.ts'
 
 const TIP_ICONS: Record<SmartTip['type'], string> = {
@@ -63,7 +63,7 @@ export default function TipCarousel({ onApply }: Props) {
   const canNext = index < tips.length - 1
 
   return (
-    <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+    <Card pad="md">
       <div className="flex items-start gap-3">
         <IconTile tone="amber" className="h-10 w-10 shrink-0 rounded-xl text-lg leading-none">
           <span aria-hidden="true">{TIP_ICONS[tip.type]}</span>
@@ -129,6 +129,6 @@ export default function TipCarousel({ onApply }: Props) {
           ))}
         </div>
       )}
-    </div>
+    </Card>
   )
 }

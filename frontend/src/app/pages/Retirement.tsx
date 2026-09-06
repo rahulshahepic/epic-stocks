@@ -17,7 +17,7 @@ import { api } from '../../api.ts'
 import { useDark } from '../../scaffold/hooks/useDark.ts'
 import { useViewing } from '../../scaffold/contexts/viewing.ts'
 import { useMe, updateMeCache } from '../../scaffold/hooks/useMe.ts'
-import { HeroCard, IconTile, Eyebrow, type TileTone } from '../../scaffold/components/ui/Card.tsx'
+import { Card, HeroCard, IconTile, Eyebrow, type TileTone } from '../../scaffold/components/ui/Card.tsx'
 import { Segmented } from '../../scaffold/components/ui/Segmented.tsx'
 import { IconCompass, IconMountainFlag, IconTrendUp } from '../../scaffold/components/ui/icons.tsx'
 import {
@@ -108,7 +108,7 @@ function StatCard({
 }) {
   const tone: TileTone = variant === 'good' ? 'emerald' : variant === 'bad' ? 'brand' : 'slate'
   return (
-    <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+    <Card pad="md">
       <IconTile tone={tone} className="h-8 w-8 rounded-lg">
         <IconTrendUp className="h-4 w-4" />
       </IconTile>
@@ -117,7 +117,7 @@ function StatCard({
       </p>
       <p className="mt-0.5 text-xl font-bold tabular-nums text-cs-text">{value}</p>
       {sub && <p className="mt-1 text-[10px] leading-tight text-cs-muted">{sub}</p>}
-    </div>
+    </Card>
   )
 }
 
@@ -700,7 +700,7 @@ export default function Retirement() {
       </div>
 
       {/* Card 1: Who & when */}
-      <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+      <Card pad="md">
         <p className="mb-3 text-xs font-semibold text-cs-text-2">
           {vid ? `${ownerName ?? 'Owner'}'s details` : 'Who & when'}
         </p>
@@ -801,10 +801,10 @@ export default function Retirement() {
             </p>
           )}
         </div>
-      </div>
+      </Card>
 
       {/* Card 2: Your money */}
-      <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+      <Card pad="md">
         <p className="mb-3 text-xs font-semibold text-cs-text-2">Your money</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
           <NumInput
@@ -1088,9 +1088,9 @@ export default function Retirement() {
             All-accounts also rebalances taxable brokerage, realizing capital gains.
           </p>
         </div>
-      </div>
+      </Card>
 
-      <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+      <Card pad="md">
         <p className="mb-3 text-xs font-semibold text-cs-text-2">Spending</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
           <NumInput
@@ -1151,10 +1151,10 @@ export default function Retirement() {
           Your capital gains rate is {fmtPct(params.stateLTCGRate, 2)} (from <em>Settings → Tax Rates</em>).
           <br /><span className="text-cs-muted">Wisconsin-specific: Social Security isn't taxed at the state level. 401(k) withdrawals use WI's progressive income brackets.</span>
         </p>
-      </div>
+      </Card>
 
       {/* Card 4: Social Security */}
-      <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+      <Card pad="md">
         <p className="mb-3 text-xs font-semibold text-cs-text-2">Social Security</p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <NumInput
@@ -1284,10 +1284,10 @@ export default function Retirement() {
             </div>
           </div>
         )}
-      </div>
+      </Card>
 
       {/* Card 5: Market outlook */}
-      <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+      <Card pad="md">
         <div className="mb-3 flex items-center gap-1.5">
           <p className="text-xs font-semibold text-cs-text-2">Market outlook</p>
           <InfoButton open={sigmaOpen} onToggle={() => setSigmaOpen(o => !o)} label="Market outlook" />
@@ -1338,7 +1338,7 @@ export default function Retirement() {
           Stationary block bootstrap of U.S. {HISTORY_FIRST_YEAR}&ndash;{HISTORY_LAST_YEAR} real returns ({HISTORICAL_RETURNS.length} months, ~10yr mean block).
           {' '}Stocks shift {fmtPct(resolveScenarioShifts(params).stockShift, 1)}, bonds shift {fmtPct(resolveScenarioShifts(params).bondShift, 1)}.
         </p>
-      </div>
+      </Card>
 
       <div className="flex flex-wrap items-center gap-3">
         <button
@@ -1407,7 +1407,7 @@ export default function Retirement() {
             />
           </div>
 
-          <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+          <Card pad="md">
             <p className="mb-2 text-xs font-semibold text-cs-text-2">
               How your wealth could play out over time (today's dollars)
             </p>
@@ -1444,10 +1444,10 @@ export default function Retirement() {
               <Legend swatch={c.start} label={`starting wealth (${fmt$M(result.startingTotal)})`} dashed />
               <span className="ml-auto">your age →</span>
             </div>
-          </div>
+          </Card>
 
           {histData && (
-            <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+            <Card pad="md">
               <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
                 <p className="text-xs font-semibold text-cs-text-2">
                   Where you end up at age {params.endAge} (today's dollars)
@@ -1487,10 +1487,10 @@ export default function Retirement() {
                 <Legend swatch={c.bad} label="ended poorer" />
                 <Legend swatch={c.start} label={`starting wealth (${fmt$M(result.startingTotal)})`} dashed />
               </div>
-            </div>
+            </Card>
           )}
 
-          <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+          <Card pad="md">
             <p className="mb-2 text-xs font-semibold text-cs-text-2">
               Range of final outcomes at age {params.endAge} (today's dollars)
             </p>
@@ -1538,7 +1538,7 @@ export default function Retirement() {
             <p className="mt-1.5 text-[10px] text-cs-muted">
               Runs that ran out of money show as $0.
             </p>
-          </div>
+          </Card>
 
           {ruinTable && (
             <div>

@@ -9,6 +9,7 @@ import { useIsMobile } from '../hooks/useIsMobile.ts'
 import { TaxCard } from './Sales.tsx'
 import React from 'react'
 import { fmt$, fmtNum, fmtPct, fmtPrice } from '../format.ts'
+import { Card } from '../../scaffold/components/ui/Card.tsx'
 
 const EVENT_TYPES = ['Exercise', 'Down payment exchange', 'Vesting', 'Share Price', 'Loan Payoff', 'Early Loan Payment', 'Sale']
 
@@ -426,7 +427,7 @@ export default function Events() {
           )
         })}
       </div> : /* Desktop table layout */
-        <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-cs-border bg-cs-surface shadow-card">
+        <Card pad="none" className="overflow-x-auto" tabIndex={0}>
           <table className="w-full text-left text-xs">
             <thead className="bg-cs-raised">
               <tr className="text-cs-text-2">
@@ -582,7 +583,7 @@ export default function Events() {
               })}
             </tbody>
           </table>
-        </div>}
+        </Card>}
       <p className="text-xs text-cs-text-2">{filtered.length} events &nbsp;·&nbsp; * on-paper growth — you only owe tax when you sell</p>
     </div>
   )

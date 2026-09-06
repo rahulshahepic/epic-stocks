@@ -2,7 +2,7 @@
 import sys
 import os
 import math
-from datetime import date, datetime
+from datetime import date
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from tests.conftest import register_user
@@ -288,7 +288,6 @@ def test_fifo_purchase_grant_sorts_before_later_rsu():
         "grant_price": 2.0,
         "share_price": 5.0,
         "vested_shares": 100,
-        "grant_type": "Purchase",
     }
     rsu_vesting = {
         "date": rsu_vest,
@@ -1009,7 +1008,7 @@ def test_lifo_multi_sale_lot_tracking():
     Old sentinel bug: would have left Lot 2 "available" for Sale 2 and
     shown $0 tax (loss on Lot 2), making LIFO appear falsely cheaper.
     """
-    from app.routers.events import _annotate_sale_taxes, _sort_key
+    from app.routers.events import _annotate_sale_taxes
     from datetime import datetime as dt
 
     vesting_tl = [

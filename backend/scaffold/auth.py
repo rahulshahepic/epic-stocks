@@ -162,7 +162,7 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
         token_sv = int(payload.get("sv", 0))
         siat = int(payload.get("siat", 0))
     except (ValueError, KeyError):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from None
     if siat and time.time() - siat > ABSOLUTE_SESSION_HOURS * 3600:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired — please log in again")
     user = db.get(User, user_id)

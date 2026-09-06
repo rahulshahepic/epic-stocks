@@ -11,6 +11,8 @@ import hashlib
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from tests.conftest import register_user
+import subprocess
+import pytest
 
 
 # ============================================================
@@ -251,7 +253,6 @@ def test_admin_endpoints_unauthenticated(client):
 # ============================================================
 
 def test_redirect_uri_validation_allows_localhost():
-    import importlib
     import scaffold.routers.auth_router as auth_mod
     # In E2E_TEST mode validation is skipped — test the helper directly
     # by temporarily clearing the flag.
@@ -269,11 +270,9 @@ def test_redirect_uri_validation_rejects_external():
     from fastapi import HTTPException
     original = os.environ.pop("E2E_TEST", None)
     try:
-        try:
+        with pytest.raises(HTTPException) as exc:
             auth_mod._validate_redirect_uri("https://evil.example.com/steal")
-            assert False, "expected HTTPException"
-        except HTTPException as exc:
-            assert exc.status_code == 400
+        assert exc.value.status_code == 400
     finally:
         if original is not None:
             os.environ["E2E_TEST"] = original
@@ -287,11 +286,9 @@ def test_redirect_uri_validation_with_domain(monkeypatch):
     # Matching domain is allowed
     auth_mod._validate_redirect_uri("https://app.example.com/auth/callback")
     # Different domain is rejected
-    try:
+    with pytest.raises(HTTPException) as exc:
         auth_mod._validate_redirect_uri("https://other.example.com/auth/callback")
-        assert False, "expected HTTPException"
-    except HTTPException as exc:
-        assert exc.status_code == 400
+    assert exc.value.status_code == 400
 
 
 def test_redirect_uri_suffix_attack_rejected(monkeypatch):
@@ -305,11 +302,9 @@ def test_redirect_uri_suffix_attack_rejected(monkeypatch):
         "https://app.example.com.evil.com",
         "https://app.example.com:evil.com/callback",
     ]:
-        try:
+        with pytest.raises(HTTPException) as exc:
             auth_mod._validate_redirect_uri(evil)
-            assert False, f"expected HTTPException for {evil!r}"
-        except HTTPException as exc:
-            assert exc.status_code == 400, f"wrong status for {evil!r}"
+        assert exc.value.status_code == 400, f"wrong status for {evil!r}"
 
 
 def test_test_login_blocked_when_domain_set(client, monkeypatch):
@@ -336,7 +331,6 @@ def _boot_with(env: dict) -> "subprocess.CompletedProcess":
     The guard runs at import time, so it cannot be exercised by reloading the
     module in a process that has already imported it under test settings.
     """
-    import subprocess
     import sys as _sys
     backend = os.path.join(os.path.dirname(__file__), "..")
     child_env = {**os.environ, **env}

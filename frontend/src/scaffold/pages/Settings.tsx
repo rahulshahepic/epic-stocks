@@ -7,6 +7,7 @@ import { useAppContext } from '../contexts/AppContext.tsx'
 import { api } from '../../api.ts'
 import type { InvitationEntry, ReceivedInvitation } from '../../api.ts'
 import type { Theme } from '../contexts/theme.ts'
+import { Card } from '../components/ui/Card.tsx'
 
 export default function Settings() {
   const config = useConfig()
@@ -78,7 +79,7 @@ export default function Settings() {
       <h2 className="text-lg font-semibold text-cs-text">Settings</h2>
 
       {/* Display Settings */}
-      <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+      <Card as="section" pad="md">
         <h3 className="text-sm font-medium text-cs-text">Display</h3>
         <p className="mt-1 text-xs text-cs-text-2">
           Choose your preferred color scheme.
@@ -100,11 +101,11 @@ export default function Settings() {
             </button>
           ))}
         </div>
-      </section>
+      </Card>
 
       {/* Notifications */}
       {(!!config?.vapid_public_key || pushSupported || config?.email_notifications_available) && (
-        <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+        <Card as="section" pad="md">
           <h3 className="text-sm font-medium text-cs-text">Notifications</h3>
           <p className="mt-1 text-xs text-cs-text-2">
             Get notified when you have vesting, exercise, or loan repayment events.
@@ -234,7 +235,7 @@ export default function Settings() {
 
             <p aria-live="polite" className="text-xs text-cs-text-2">{pushTestResult ?? ''}</p>
           </div>
-        </section>
+        </Card>
       )}
 
       {/* App-specific settings injected here */}
@@ -244,7 +245,7 @@ export default function Settings() {
       <SharingSection />
 
       {/* Account Management */}
-      <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+      <Card as="section" pad="md">
         <h3 className="text-sm font-medium text-cs-text">Account</h3>
         <p className="mt-1 text-xs text-cs-text-2">
           Signed in with Google. All your data is stored securely on the server.
@@ -362,7 +363,7 @@ export default function Settings() {
             )}
           </div>
         </div>
-      </section>
+      </Card>
 
       {import.meta.env.VITE_COMMIT_SHA && import.meta.env.VITE_COMMIT_SHA !== 'dev' && (
         <p className="text-center text-xs text-cs-text-2">
@@ -458,7 +459,7 @@ function SharingSection() {
   }
 
   return (
-    <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+    <Card as="section" pad="md">
       <h3 className="text-sm font-medium text-cs-text">Sharing</h3>
       <p className="mt-1 text-xs text-cs-text-2">
         Invite people to view your equity data, or enter a code you received.
@@ -573,6 +574,6 @@ function SharingSection() {
           {accepting ? 'Accepting…' : 'Accept'}
         </button>
       </form>
-    </section>
+    </Card>
   )
 }

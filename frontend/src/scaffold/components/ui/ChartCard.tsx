@@ -18,7 +18,7 @@ export function ChartCard({
   children: ReactNode
 }) {
   return (
-    <Card padded={false} className="p-4 sm:p-5">
+    <Card>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-cs-text">{title}</h3>
         {controls}

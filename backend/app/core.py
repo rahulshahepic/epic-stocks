@@ -2,7 +2,6 @@
 Core event generation — pure functions, no I/O dependencies.
 Operates on plain dicts. Drop into any app.
 """
-from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
 

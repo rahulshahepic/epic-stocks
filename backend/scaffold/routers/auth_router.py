@@ -37,7 +37,7 @@ def _validate_redirect_uri(redirect_uri: str) -> None:
         if parsed.port:
             origin += f":{parsed.port}"
     except Exception:
-        raise HTTPException(status_code=400, detail="Invalid redirect_uri")
+        raise HTTPException(status_code=400, detail="Invalid redirect_uri") from None
     if os.getenv("DOMAIN"):
         # Production: exact scheme+hostname+port match against the registered domain
         allowed = _allowed_redirect_origins()
@@ -139,7 +139,7 @@ def login_start(provider: str, code_challenge: str, redirect_uri: str, state: st
     try:
         p = get_provider(provider)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return {"authorization_url": p.get_authorization_url(state, code_challenge, redirect_uri)}
 
 
@@ -176,7 +176,7 @@ def auth_callback(body: CallbackRequest, request: Request, response: Response, d
         identity: UserIdentity = p.exchange_code(body.code, body.code_verifier, body.redirect_uri)
     except ValueError as e:
         logger.warning("Auth callback error for provider %r: %s", body.provider, e)
-        raise HTTPException(status_code=401, detail="Authentication failed")
+        raise HTTPException(status_code=401, detail="Authentication failed") from e
     user = _upsert_user(identity, db)
     token = create_token(user.id, user.session_version)
     set_session_cookies(response, token)

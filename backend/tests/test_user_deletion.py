@@ -14,7 +14,6 @@ import sys
 import os
 from datetime import date
 
-import pytest
 from sqlalchemy import text
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))

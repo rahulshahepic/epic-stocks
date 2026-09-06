@@ -8,6 +8,7 @@ import { platform } from '../../platform/index.ts'
 import DisclaimerNotice from '../components/DisclaimerNotice.tsx'
 import UnofficialBadge from '../components/UnofficialBadge.tsx'
 import { useAppContext } from '../contexts/AppContext.tsx'
+import { Card } from '../components/ui/Card.tsx'
 
 export default function InviteLanding() {
   const navigate = useNavigate()
@@ -114,14 +115,14 @@ export default function InviteLanding() {
 
         {info?.valid && !isLoggedIn() && (
           <>
-            <div className="mb-6 rounded-2xl border border-cs-border bg-cs-surface p-4 text-left shadow-card">
+            <Card pad="md" className="mb-6 text-left">
               <p className="mb-2 text-sm text-cs-text-2">
                 <strong>{info.inviter_name}</strong> has invited you to view their equity vesting data.
               </p>
               <p className="text-xs text-cs-muted">
                 Sign in with any account to accept this invitation. Your sign-in account does not need to match the email this was sent to.
               </p>
-            </div>
+            </Card>
 
             <div className="space-y-2">
               {providers.map(p => (

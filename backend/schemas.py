@@ -33,7 +33,7 @@ def _validate_iso_date(v: str) -> str:
     try:
         _d.fromisoformat(v)
     except Exception:
-        raise ValueError("must be YYYY-MM-DD")
+        raise ValueError("must be YYYY-MM-DD") from None
     return v
 
 

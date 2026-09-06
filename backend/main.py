@@ -1,6 +1,5 @@
 import logging
 import os
-import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -11,7 +10,6 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import FileResponse
 import database
 
-logger = logging.getLogger(__name__)
 from scaffold.routers import auth_router, admin, notifications, push, unsubscribe, reports
 from app.routers import grants, loans, prices, events, flows, import_export, epic_import, sales, cache as cache_router, tips, wizard, content, sharing, trial
 from app.routers.retirement import retirement_router, dashboard_prefs_router
@@ -19,6 +17,9 @@ from scaffold.auth import get_current_user
 from scaffold.body_limit import BodyLimitMiddleware
 from scaffold.crypto import encryption_enabled, decrypt_user_key, set_current_key
 from database import get_db
+from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -172,7 +173,7 @@ def _sample_metrics():
         cutoff = datetime.now(timezone.utc) - timedelta(days=30)
         db.query(SystemMetric).filter(
             SystemMetric.timestamp < cutoff,
-            SystemMetric.aggregated == False,  # noqa: E712
+            SystemMetric.aggregated == False,
         ).delete(synchronize_session=False)
 
         # Trim error_logs to the most recent 500 entries
@@ -229,7 +230,7 @@ def _aggregate_old_metrics():
         # Purge aggregated rows older than 1 year
         db.query(SystemMetric).filter(
             SystemMetric.timestamp < cutoff_purge,
-            SystemMetric.aggregated == True,  # noqa: E712
+            SystemMetric.aggregated == True,
         ).delete(synchronize_session=False)
 
         # Find distinct UTC days that still have raw rows in the 30-day→1-year window
@@ -238,7 +239,7 @@ def _aggregate_old_metrics():
             .filter(
                 SystemMetric.timestamp < cutoff_raw,
                 SystemMetric.timestamp >= cutoff_purge,
-                SystemMetric.aggregated == False,  # noqa: E712
+                SystemMetric.aggregated == False,
             )
             .group_by(func.date(SystemMetric.timestamp))
             .all()
@@ -249,19 +250,19 @@ def _aggregate_old_metrics():
 
             # If an aggregated row already exists for this day, just clean up stray raw rows
             already = db.query(SystemMetric).filter(
-                SystemMetric.aggregated == True,  # noqa: E712
+                SystemMetric.aggregated == True,
                 func.date(SystemMetric.timestamp) == day,
             ).first()
             if already:
                 db.query(SystemMetric).filter(
                     func.date(SystemMetric.timestamp) == day,
-                    SystemMetric.aggregated == False,  # noqa: E712
+                    SystemMetric.aggregated == False,
                 ).delete(synchronize_session=False)
                 continue
 
             rows = db.query(SystemMetric).filter(
                 func.date(SystemMetric.timestamp) == day,
-                SystemMetric.aggregated == False,  # noqa: E712
+                SystemMetric.aggregated == False,
             ).all()
             if not rows:
                 continue
@@ -286,7 +287,7 @@ def _aggregate_old_metrics():
 
             db.query(SystemMetric).filter(
                 func.date(SystemMetric.timestamp) == day,
-                SystemMetric.aggregated == False,  # noqa: E712
+                SystemMetric.aggregated == False,
             ).delete(synchronize_session=False)
 
         db.commit()
@@ -708,8 +709,6 @@ def current_user_info(user=Depends(get_current_user), db: Session = Depends(get_
     }
 
 
-from pydantic import BaseModel, Field
-
 
 class _ProfileUpdate(BaseModel):
     date_of_birth: str | None = Field(default=None, description="ISO date or empty string to clear")
@@ -730,7 +729,7 @@ def update_my_profile(
             try:
                 user.date_of_birth = _date.fromisoformat(body.date_of_birth)
             except ValueError:
-                raise HTTPException(status_code=422, detail="Invalid date format")
+                raise HTTPException(status_code=422, detail="Invalid date format") from None
     db.commit()
     return {"date_of_birth": user.date_of_birth.isoformat() if user.date_of_birth else None}
 

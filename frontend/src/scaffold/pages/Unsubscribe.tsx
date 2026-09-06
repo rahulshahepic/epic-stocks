@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { apiFetchRaw } from '../../api.ts'
 import { useAppContext } from '../contexts/AppContext.tsx'
 import UnofficialBadge from '../components/UnofficialBadge.tsx'
+import { Card } from '../components/ui/Card.tsx'
 
 interface UnsubscribeStatus {
   valid: boolean
@@ -126,7 +127,7 @@ export default function Unsubscribe() {
 
         {/* Token is valid — normal one-click unsubscribe */}
         {status?.valid && !done && (
-          <div className="rounded-2xl border border-cs-border bg-cs-surface p-5 text-left shadow-card">
+          <Card pad="lg" className="text-left">
             <p className="mb-3 text-sm text-cs-text-2">
               Unsubscribe <strong>{email}</strong> from {typeLabel} emails?
             </p>
@@ -142,12 +143,12 @@ export default function Unsubscribe() {
             >
               {processing ? 'Processing...' : 'Unsubscribe'}
             </button>
-          </div>
+          </Card>
         )}
 
         {/* Token is invalid — offer fallback based on auth state */}
         {status && !status.valid && !done && (
-          <div className="rounded-2xl border border-cs-border bg-cs-surface p-5 text-left shadow-card">
+          <Card pad="lg" className="text-left">
             <p className="mb-2 text-sm font-medium text-cs-text-2">
               This unsubscribe link has expired.
             </p>
@@ -181,7 +182,7 @@ export default function Unsubscribe() {
                 </a>
               </>
             )}
-          </div>
+          </Card>
         )}
       </div>
     </div>

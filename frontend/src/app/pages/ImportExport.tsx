@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import EpicFileImport from '../components/EpicFileImport.tsx'
 import { apiFetch, apiFetchBlob } from '../../api.ts'
 import { platform } from '../../platform/index.ts'
+import { Card } from '../../scaffold/components/ui/Card.tsx'
 
 
 const COLUMN_GUIDE = {
@@ -271,7 +272,7 @@ export default function ImportExport() {
       </div>
 
       {/* Templates & Reference */}
-      <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+      <Card pad="md">
         <p className="text-sm font-semibold text-cs-text">Templates &amp; Reference</p>
         <div className="mt-2 flex flex-wrap gap-2">
           <button
@@ -311,7 +312,7 @@ export default function ImportExport() {
             ))}
           </div>
         )}
-      </div>
+      </Card>
     </div>
   )
 }

@@ -1,3 +1,46 @@
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
 asyncio_mode = "auto"
+
+# Ruff. The backend had no linter at all until this: only pytest and the
+# import-boundary contracts ran in CI, which is how 68 unused imports and
+# variables accumulated.
+#
+# The selection is deliberately narrow — dead code and real mistakes, not
+# style. Rules left out on purpose, so the next person does not have to
+# re-derive why:
+#   E7  — E741 flags `l` as a loop variable in 69 places (`for l in loans`),
+#         and E712 flags `col == True`, which SQLAlchemy requires to build
+#         the SQL. Both would be churn, one of them wrong.
+#   I   — import sorting, 265 files' worth of reordering for no defect caught.
+#   UP  — `Optional[X]` → `X | None` across 160 annotations; worth doing, but
+#         as its own change, not smuggled into a lint gate.
+#   DTZ — naive datetimes, 60+ hits. This app reasons about vesting *dates*,
+#         not instants; making them timezone-aware is a design question.
+[tool.ruff]
+target-version = "py311"
+extend-exclude = ["backend/alembic/versions"]
+
+[tool.ruff.lint]
+select = ["F", "E4", "E9", "B", "RUF100"]
+ignore = [
+    # `Depends()`, `Query()` and `File()` in argument defaults is how FastAPI
+    # declares dependencies — the entire framework is written this way.
+    "B008",
+    # Both hits are a helper defined inside a loop and called within that same
+    # iteration, so the late binding the rule warns about never happens.
+    "B023",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests deliberately assert on broad exception types and build throwaway values.
+"backend/tests/*" = ["B017"]
+# These import *after* running setup that the import depends on, which is the
+# whole point: env.py puts the project on sys.path first, and conftest.py swaps
+# the database engine before anything can import the app against the real one.
+"backend/alembic/env.py" = ["E402"]
+"backend/tests/conftest.py" = ["E402"]
+# Imports sitting below a helper rather than above it. Harmless, and moving them
+# by hand is churn in a 1,400-line test module.
+"backend/tests/test_epic_import.py" = ["E402"]
+"backend/tests/test_sales.py" = ["E402"]

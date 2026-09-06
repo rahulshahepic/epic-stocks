@@ -188,9 +188,9 @@ def import_excel(
     try:
         wb = load_workbook_safely(raw, read_only=True, data_only=True)
     except WorkbookRejected as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception:
-        raise HTTPException(status_code=400, detail="Failed to open Excel file")
+        raise HTTPException(status_code=400, detail="Failed to open Excel file") from None
 
     sheet_names = [s.lower() for s in wb.sheetnames]
 
@@ -230,7 +230,7 @@ def import_excel(
             sales_raw = read_sales_from_excel(_ws("sales"))
     except Exception as e:
         wb.close()
-        raise HTTPException(status_code=400, detail=f"Failed to parse Excel file: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to parse Excel file: {e}") from e
     finally:
         wb.close()
 
@@ -249,7 +249,7 @@ def import_excel(
 
     # Check for duplicate (year, type) within the imported grants
     seen_grants: set[tuple] = set()
-    for i, g in enumerate(grants_raw):
+    for g in grants_raw:
         key = (_to_year(g["year"]), str(g.get("type", "")).strip())
         if key in seen_grants:
             all_errors.append(f"Duplicate grant: {key[1]} {key[0]} appears more than once in the Schedule sheet")
@@ -752,7 +752,7 @@ def download_sample():
     ]
     fmts = [None, None, "#,##0", "\\$#,##0.00", "mm/dd/yyyy", None, "mm/dd/yyyy", "#,##0", None]
     for r, row_data in enumerate(sched_rows, 2):
-        for c, (val, fmt) in enumerate(zip(row_data, fmts), 1):
+        for c, (val, fmt) in enumerate(zip(row_data, fmts, strict=True), 1):
             _body_cell(ws, r, c, val, fmt)
 
     # Annotate first data row
@@ -816,7 +816,7 @@ def download_sample():
     ]
     loan_fmts = [None, None, None, None, None, "\\$#,##0.00", "0.00%", "mm/dd/yyyy", None]
     for r, row_data in enumerate(loan_rows, 2):
-        for c, (val, fmt) in enumerate(zip(row_data, loan_fmts), 1):
+        for c, (val, fmt) in enumerate(zip(row_data, loan_fmts, strict=True), 1):
             _body_cell(ws_loans, r, c, val, fmt)
 
     loan_first_notes = [
@@ -943,7 +943,7 @@ def export_excel(
         try:
             as_of_date = _to_date(as_of)
         except Exception:
-            raise HTTPException(status_code=400, detail="Invalid date format, use YYYY-MM-DD")
+            raise HTTPException(status_code=400, detail="Invalid date format, use YYYY-MM-DD") from None
 
     grants_db = db.query(Grant).filter(Grant.user_id == user.id).order_by(Grant.year).all()
     loans_db = db.query(Loan).filter(Loan.user_id == user.id).order_by(Loan.due_date).all()
@@ -1117,12 +1117,12 @@ def export_holdings_report(
 
     from dateutil.relativedelta import relativedelta
     from openpyxl.utils import get_column_letter
-    from openpyxl.styles import Alignment, Border, Side
+    from openpyxl.styles import Border, Side
 
     try:
         as_of_date = _to_date(as_of)
     except Exception:
-        raise HTTPException(status_code=400, detail="Invalid date format, use YYYY-MM-DD")
+        raise HTTPException(status_code=400, detail="Invalid date format, use YYYY-MM-DD") from None
 
     as_of_year = as_of_date.year
 
@@ -1157,7 +1157,6 @@ def export_holdings_report(
 
     # Current share price as of date
     current_price = 0.0
-    as_of_str = as_of_date.isoformat()
     for ev in timeline:
         ev_date = ev["date"]
         if isinstance(ev_date, datetime):
@@ -1184,10 +1183,6 @@ def export_holdings_report(
     for lp in payments_db:
         if lp.date <= as_of_date:
             early_paid[lp.loan_id] = early_paid.get(lp.loan_id, 0) + lp.amount
-
-    thin_border = Border(
-        bottom=Side(style="thin", color="FFD0D0D0"),
-    )
 
     wb = openpyxl.Workbook()
     ws = wb.active

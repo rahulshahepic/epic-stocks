@@ -3,8 +3,6 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from datetime import date
-from sqlalchemy import text
 
 from tests.conftest import register_user
 
@@ -201,9 +199,7 @@ def test_payoff_falls_back_to_same_tranche_when_insufficient_coverage(client, db
     })
     assert loan_resp.status_code == 201
 
-    # Payoff sale is created (falls back to same_tranche, computes from tiny grant)
-    sales = client.get("/api/sales").json()
-    # Sale may or may not be created depending on whether enough shares exist,
+    # A payoff sale may or may not be created depending on whether enough shares exist,
     # but the system shouldn't crash — just verify no unhandled error
     assert loan_resp.status_code == 201
 

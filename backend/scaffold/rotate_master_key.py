@@ -115,7 +115,7 @@ def rotate_master(engine, old_master: str, new_master: str, dry_run: bool) -> No
                     f"  ERROR: cannot decrypt key for {email} (id={user_id}): {exc}",
                     file=sys.stderr,
                 )
-                raise SystemExit(1)
+                raise SystemExit(1) from exc
 
             new_enc_key = encrypt_user_key(raw_key, new_master)
             print(f"  [{user_id}] {email}: key re-wrapped")
@@ -153,7 +153,7 @@ def encrypt_plaintext(engine, new_master: str, dry_run: bool) -> None:
                         f"with the supplied --new-key: {exc}",
                         file=sys.stderr,
                     )
-                    raise SystemExit(1)
+                    raise SystemExit(1) from exc
             else:
                 raw_key = AESGCM.generate_key(bit_length=256)
                 new_enc_key = encrypt_user_key(raw_key, new_master)

@@ -4,6 +4,7 @@ import { useMe } from '../../scaffold/hooks/useMe.ts'
 import { downloadText, epicImport, type DiffResponse, type Difference }
   from '../epicImport.ts'
 import FindingList from '../components/FindingList.tsx'
+import { Card } from '../../scaffold/components/ui/Card.tsx'
 
 const SEVERITY_TONE: Record<string, string> = {
   error: 'text-red-700 dark:text-red-400',
@@ -108,7 +109,7 @@ export default function ImportDiagnostics() {
         </p>
       </div>
 
-      <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+      <Card pad="md">
         <div className="space-y-3">
           {([
             ['diag-export', 'Your export (Vesting.xlsx)', '.xlsx', setExportFile],
@@ -143,11 +144,11 @@ export default function ImportDiagnostics() {
             <p className="whitespace-pre-wrap text-xs text-red-600 dark:text-red-400">{error}</p>
           </div>
         )}
-      </div>
+      </Card>
 
       {result && report && (
         <>
-          <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+          <Card pad="md">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <p className="text-sm font-semibold text-cs-text">
                 {report.errors} error · {report.warnings} warning ·{' '}
@@ -170,17 +171,17 @@ export default function ImportDiagnostics() {
               {report.counts.existing_prices} in your {report.counts.baseline ?? 'export'}.
             </p>
             <DiffTable differences={report.differences} />
-          </div>
+          </Card>
 
-          <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+          <Card pad="md">
             <p className="text-sm font-semibold text-cs-text">What the files themselves said</p>
             <FindingList findings={result.findings} />
             {result.findings.length === 0 && (
               <p className="mt-2 text-xs text-cs-muted">Nothing to report — every cross-check passed.</p>
             )}
-          </div>
+          </Card>
 
-          <div className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+          <Card pad="md">
             <button
               type="button"
               onClick={() => setShowRaw(v => !v)}
@@ -193,7 +194,7 @@ export default function ImportDiagnostics() {
                 {result.markdown}
               </pre>
             )}
-          </div>
+          </Card>
         </>
       )}
     </div>

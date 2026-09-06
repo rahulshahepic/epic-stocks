@@ -3,6 +3,7 @@ import { api } from '../../api.ts'
 import type { TaxSettings } from '../../api.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 import { FIELD_INPUT_CLASS } from '../../scaffold/components/ui/Field.tsx'
+import { Card } from '../../scaffold/components/ui/Card.tsx'
 
 const WI_DEFAULTS: TaxSettings = {
   federal_income_rate: 0.37,
@@ -43,7 +44,7 @@ export default function AppSettingsSections() {
     <>
       {/* Stock Down Payment Preference */}
       {!config?.epic_mode && (
-        <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+        <Card as="section" pad="md">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-cs-text">Stock down payment</h3>
             {!editingDp && (
@@ -107,11 +108,11 @@ export default function AppSettingsSections() {
               </div>
             </div>
           )}
-        </section>
+        </Card>
       )}
 
       {/* Tax Rates */}
-      <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+      <Card as="section" pad="md">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium text-cs-text">Tax Rates</h3>
           {!editingTax && (
@@ -334,7 +335,7 @@ export default function AppSettingsSections() {
             </div>
           </div>
         )}
-      </section>
+      </Card>
     </>
   )
 }

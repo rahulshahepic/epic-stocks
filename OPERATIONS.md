@@ -36,6 +36,51 @@ The reference deployment uses **Cloudflare** in front of Caddy. Cloudflare's bui
 
 > **Self-hosting without Cloudflare?** The app has no general request-rate limiting beyond the admin test-notify cap. Add Caddy's [`rate_limit` directive](https://caddyserver.com/docs/caddyfile/directives/rate_limit) or `slowapi` FastAPI middleware before exposing to the internet.
 
+### Cloudflare's AI-bot blocking breaks AI connectors
+
+Cloudflare blocks known AI agents — including OpenAI's `ChatGPT-User` — with a
+**403 before the request reaches the origin**. It carves out `/.well-known/*`
+and `/mcp` automatically, but **not `/oauth/*`**. The result is a connector that
+gets through discovery and then fails at the first real step:
+
+> Error creating connector — Dynamic client registration failed: registration
+> endpoint returned 403
+
+Nothing in the application logs shows it, because nothing reaches the
+application. Confirm it from any machine:
+
+```bash
+# 403 with body "Your request was blocked." and no `via: 1.1 Caddy` header
+curl -i -X POST https://<your domain>/oauth/register \
+  -H 'Content-Type: application/json' \
+  -A 'ChatGPT-User/1.0; +https://openai.com/bot' \
+  -d '{"client_name":"probe","redirect_uris":["https://chatgpt.com/cb"]}'
+
+# The same request without that user agent returns 201
+```
+
+The absence of `via: 1.1 Caddy` is the tell: our own responses always carry it,
+so a 403 without it came from the edge.
+
+**Fix — Cloudflare dashboard → Security → WAF → Custom rules.** Add a *Skip*
+rule, ordered above the bot rules:
+
+| Field | Value |
+|-------|-------|
+| Rule name | `Allow AI connector OAuth` |
+| Expression | `(starts_with(http.request.uri.path, "/oauth/")) or (http.request.uri.path eq "/mcp") or (starts_with(http.request.uri.path, "/.well-known/"))` |
+| Action | Skip → All remaining custom rules, Managed rules, **Bot Fight Mode / AI bot blocking** |
+
+Scope it to those paths and no further. The rest of the site keeps its AI-bot
+blocking, and the paths being opened are ones designed to face unauthenticated
+callers: `/oauth/register` is anonymous by necessity (it is what lets Claude on
+a phone connect), `/oauth/token` requires PKCE, and `/mcp` requires a connector
+token. Their own bounds are described in the README's AI Connections section.
+
+If a deployment does **not** want AI connectors at all, the better lever is the
+admin switch (Admin → AI Connections → *Allow AI connections*), which turns the
+feature off in the app rather than leaving it half-reachable at the edge.
+
 ### Privacy page for self-hosters
 
 The built-in privacy page (`/privacy`, `frontend/src/scaffold/pages/PrivacyPolicy.tsx`) lists the third-party services used by the reference deployment: **Hetzner, Cloudflare, Porkbun, Resend**, and whichever OIDC providers are configured. If you use different infrastructure or identity providers, edit that file to reflect your own services before going to users.
@@ -49,6 +94,7 @@ The built-in privacy page (`/privacy`, `frontend/src/scaffold/pages/PrivacyPolic
 | VPS firewall locked to CF IPs only | ✅ Done |
 | `CLIENT_IP_HEADER=CF-Connecting-IP` set | ⬜ Check — see step 4 |
 | `/api/admin/client-ip` shows your real address | ⬜ Check — see step 5 |
+| WAF skip rule for `/oauth/*` (AI connectors) | ⬜ Needed — ChatGPT registration 403s without it |
 
 ---
 

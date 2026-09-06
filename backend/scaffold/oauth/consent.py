@@ -5,8 +5,14 @@ user decides what an outside party may read, and it should not depend on the
 app's client-side router, its auth guard, or a bundle load to say so
 truthfully. It also keeps the authorization request out of the SPA's URL.
 
-Styling is deliberately self-contained and matches the app's light/dark
-palette. There is no script on the page.
+The stylesheet is served from /oauth/consent.css rather than inlined in a
+<style> block: the deployment's Content-Security-Policy is `style-src 'self'`,
+which blocks an inline style outright, and the page rendered as unstyled
+browser defaults on staging because of it. Adding a hash to the CSP would work
+until the next time this file is edited. There is no script on the page.
+
+Colours are the app's own tokens rather than a generic palette, so the screen
+reads as part of the product a user just signed in to.
 """
 import html
 
@@ -15,53 +21,73 @@ def _esc(value: str) -> str:
     return html.escape(value or "", quote=True)
 
 
-_STYLE = """
-:root { color-scheme: light dark; }
+STYLESHEET_PATH = "/oauth/consent.css"
+
+# The app's own tokens, so this does not look like a different product.
+STYLESHEET = """
+:root {
+  color-scheme: light dark;
+  --base: #F8F6F4; --surface: #FFFFFF; --raised: #F0EDE9;
+  --border: #EAE7E3; --border-strong: #C8C3BC;
+  --text: #1A1411; --text-2: #6B5F58; --muted: #78716C;
+  --brand: #C41230; --brand-hover: #A80F28;
+  --ok: #15803D;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --base: #111009; --surface: #1C1917; --raised: #252220;
+    --border: rgba(255,255,255,.07); --border-strong: rgba(255,255,255,.14);
+    --text: #F2EDE8; --text-2: #A8998F; --muted: #9E9089;
+    --brand: #E8334A; --brand-hover: #D42A40;
+    --ok: #34D399;
+  }
+}
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: #f9fafb; color: #111827;
+  background: var(--base); color: var(--text);
   display: flex; align-items: center; justify-content: center;
   min-height: 100vh; padding: 1rem; line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 .card {
-  width: 100%; max-width: 26rem; background: #fff; border: 1px solid #e5e7eb;
-  border-radius: 0.75rem; padding: 1.5rem;
+  width: 100%; max-width: 24rem; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 1rem; padding: 1.5rem;
+  box-shadow: 0 1px 2px rgba(26,20,17,.04), 0 10px 28px -16px rgba(26,20,17,.16);
 }
-h1 { font-size: 1.125rem; font-weight: 600; margin-bottom: 0.25rem; }
-.origin { font-size: 0.8125rem; color: #6b7280; margin-bottom: 1.25rem; word-break: break-all; }
-.origin code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-ul { list-style: none; margin: 0 0 1.25rem; }
-li { display: flex; gap: 0.625rem; padding: 0.5rem 0; font-size: 0.9375rem; align-items: flex-start; }
-li svg { flex: none; margin-top: 0.1875rem; }
+h1 { font-size: 1.0625rem; font-weight: 600; line-height: 1.35; margin-bottom: .375rem; }
+.origin { font-size: .8125rem; color: var(--muted); margin-bottom: 1.25rem; word-break: break-all; }
+.origin code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--raised); border-radius: .25rem; padding: .0625rem .25rem;
+}
+ul { list-style: none; margin: 0 0 1rem; }
+li {
+  display: flex; gap: .625rem; padding: .4375rem 0; font-size: .875rem;
+  align-items: flex-start; color: var(--text-2);
+}
+li svg { flex: none; margin-top: .1875rem; }
 .note {
-  font-size: 0.8125rem; color: #6b7280; background: #f3f4f6;
-  border-radius: 0.5rem; padding: 0.625rem 0.75rem; margin-bottom: 1.25rem;
+  font-size: .8125rem; color: var(--text-2); background: var(--raised);
+  border-radius: .625rem; padding: .625rem .75rem; margin-bottom: 1rem;
 }
-.who { font-size: 0.8125rem; color: #6b7280; margin-bottom: 1.25rem; }
-.actions { display: flex; gap: 0.625rem; }
+.who { font-size: .8125rem; color: var(--muted); margin-bottom: 1.25rem; word-break: break-all; }
+.actions { display: flex; gap: .5rem; }
 button {
-  flex: 1; font: inherit; font-weight: 500; padding: 0.625rem 1rem;
-  border-radius: 0.5rem; cursor: pointer; border: 1px solid transparent;
+  flex: 1; font: inherit; font-size: .875rem; font-weight: 600;
+  padding: .625rem 1rem; border-radius: .625rem; cursor: pointer;
+  border: 1px solid transparent; transition: background-color .12s ease;
 }
-.allow { background: #2563eb; color: #fff; }
-.allow:hover { background: #1d4ed8; }
-.deny { background: #fff; color: #374151; border-color: #d1d5db; }
-.deny:hover { background: #f9fafb; }
-.err { font-size: 0.9375rem; }
-.err h1 { margin-bottom: 0.75rem; }
-@media (prefers-color-scheme: dark) {
-  body { background: #0b0f19; color: #e5e7eb; }
-  .card { background: #111827; border-color: #1f2937; }
-  .origin, .who, .note { color: #9ca3af; }
-  .note { background: #1f2937; }
-  .deny { background: #1f2937; color: #e5e7eb; border-color: #374151; }
-  .deny:hover { background: #263141; }
-}
+.allow { background: var(--brand); color: #fff; }
+.allow:hover { background: var(--brand-hover); }
+.deny { background: var(--surface); color: var(--text-2); border-color: var(--border-strong); }
+.deny:hover { background: var(--raised); }
+.err { font-size: .875rem; color: var(--text-2); }
+.err h1 { margin-bottom: .5rem; color: var(--text); }
 """
 
 _CHECK = (
-    '<svg width="16" height="16" viewBox="0 0 20 20" fill="#16a34a" aria-hidden="true">'
+    '<svg width="15" height="15" viewBox="0 0 20 20" fill="var(--ok)" aria-hidden="true">'
     '<path fill-rule="evenodd" d="M16.7 5.3a1 1 0 010 1.4l-7.5 7.5a1 1 0 01-1.4 0L3.3 9.7a1 1 0 '
     '011.4-1.4l3.8 3.8 6.8-6.8a1 1 0 011.4 0z" clip-rule="evenodd"/></svg>'
 )
@@ -71,7 +97,8 @@ def _page(title: str, body: str) -> str:
     return (
         "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">"
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-        f"<title>{_esc(title)}</title><style>{_STYLE}</style></head>"
+        f"<title>{_esc(title)}</title>"
+        f"<link rel=\"stylesheet\" href=\"{STYLESHEET_PATH}\"></head>"
         f"<body><div class=\"card\">{body}</div></body></html>"
     )
 
@@ -87,7 +114,7 @@ def render_consent(*, client_name: str, redirect_origin: str, account_email: str
         "<p class=\"note\">It will not be able to change anything — this connection is "
         "read-only. You can disconnect it at any time in Settings.</p>"
         f"<p class=\"who\">Signed in as {_esc(account_email)}</p>"
-        "<form method=\"post\">"
+        "<form method=\"post\" action=\"/oauth/authorize\">"
         f"<input type=\"hidden\" name=\"request\" value=\"{_esc(request_token)}\">"
         f"<input type=\"hidden\" name=\"csrf\" value=\"{_esc(csrf)}\">"
         "<div class=\"actions\">"

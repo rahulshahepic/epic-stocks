@@ -26,7 +26,6 @@ from scaffold.invite_tokens import (
     token_verifier,
     unseal_code,
 )
-from scaffold.models import Invitation
 from tests.conftest import register_user
 
 
@@ -36,7 +35,6 @@ def sent_invites(monkeypatch):
     import app.routers.sharing as sharing
 
     captured = []
-    original = sharing._send_invitation_email
 
     def _capture(inv, inviter, raw_token, raw_code):
         captured.append({"id": inv.id, "token": raw_token, "code": raw_code})

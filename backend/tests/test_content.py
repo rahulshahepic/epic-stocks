@@ -50,7 +50,7 @@ def test_grant_templates_match_epic(client):
         (2025, "Bonus",    "2026-09-30", 3, "2025-12-31", False, False, None,         None),
     ]
     assert len(schedule) == len(expected)
-    for actual, (year, typ, vs, periods, ed, dcu, sdp, pdd, tdd) in zip(schedule, expected):
+    for actual, (year, typ, vs, periods, ed, dcu, sdp, pdd, tdd) in zip(schedule, expected, strict=True):
         assert actual["year"] == year
         assert actual["type"] == typ
         assert actual["vest_start"] == vs
@@ -245,7 +245,6 @@ def test_admin_can_write_content(client):
 
 
 def test_content_admin_can_write_content(client, make_client, db_session):
-    from scaffold.models import User
     # Admin promotes a regular user
     _login_admin(client)
     try:

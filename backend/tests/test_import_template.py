@@ -1,5 +1,7 @@
 """Tests for template download, partial import, and import validation."""
-import sys, os, io
+import sys
+import os
+import io
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import openpyxl

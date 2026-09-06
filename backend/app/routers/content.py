@@ -49,7 +49,7 @@ def _commit_or_409(db: Session, msg: str = "Constraint violation"):
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail=msg)
+        raise HTTPException(status_code=409, detail=msg) from None
 
 
 # ── Grant templates ────────────────────────────────────────────────────────

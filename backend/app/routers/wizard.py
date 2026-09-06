@@ -80,9 +80,9 @@ def parse_file(
     try:
         wb = load_workbook_safely(content, data_only=True)
     except WorkbookRejected as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception:
-        raise HTTPException(status_code=422, detail="Could not parse file as Excel (.xlsx)")
+        raise HTTPException(status_code=422, detail="Could not parse file as Excel (.xlsx)") from None
 
     grants: list[ParsedGrantTemplate] = []
     if "Schedule" in wb.sheetnames:

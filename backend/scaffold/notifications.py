@@ -296,7 +296,6 @@ def send_daily_notifications(today: date | None = None):
                 payload: dict = {"title": "Shared Data Events", "body": body}
 
                 # Deep link: single owner → dashboard (where account switcher shows them)
-                inv_ids = viewer_invitations.get(viewer_id, [])
                 payload["data"] = {"url": "/"}
 
                 if viewer_id in push_user_ids:

@@ -145,7 +145,6 @@ class TestUnsubscribeAPI:
         assert resp.json()["success"] is True
 
         # Email should now be on the opt-out list
-        from scaffold.models import InvitationOptOut
         from tests.conftest import TEST_ENGINE
         from sqlalchemy import text
         with TEST_ENGINE.connect() as conn:

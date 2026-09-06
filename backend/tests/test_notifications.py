@@ -1,5 +1,6 @@
 """Tests for email notification preferences and notification logic."""
-import sys, os
+import sys
+import os
 from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -198,7 +199,7 @@ def test_sale_in_notification_payload():
 
 def test_send_daily_notifications_with_email(client, db_session):
     """Integration: user with email pref enabled gets email for today's events."""
-    from scaffold.models import User, Grant, Price, EmailPreference
+    from scaffold.models import User, Grant, Price
     from datetime import date
 
     register_user(client)

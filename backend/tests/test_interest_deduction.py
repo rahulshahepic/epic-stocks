@@ -237,16 +237,18 @@ def test_dashboard_tax_paid_decreases_with_deduction(client):
     """Tax paid should decrease (by tax savings) when deduction is applied."""
     _setup_basic(client)
 
-    tax_before = client.get("/api/dashboard").json()["total_tax_paid"]
+    dash_before = client.get("/api/dashboard").json()
+    tax_before = dash_before["total_tax_paid"]
+    cash_before = dash_before["cash_received"]
     client.put("/api/tax-settings", json=TAX_SETTINGS_WITH_DEDUCTION)
     dash_after = client.get("/api/dashboard").json()
 
     assert dash_after["total_tax_paid"] < tax_before
     assert dash_after["tax_savings_from_deduction"] > 0
-    # Cash received should be unchanged by the deduction
-    cash_before = client.get("/api/dashboard")  # re-use disabled state
-    # Just check cash_received is present and is a number
+    # Cash received is what the sales actually paid out, so a deduction that
+    # only moves tax must leave it alone.
     assert isinstance(dash_after["cash_received"], (int, float))
+    assert dash_after["cash_received"] == cash_before
 
 
 def test_dashboard_no_deduction_fields_when_disabled(client):

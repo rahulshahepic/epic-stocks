@@ -3,7 +3,6 @@ import math
 from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -516,8 +515,7 @@ def list_loan_payments(
 
 @lp_router.post("", response_model=LoanPaymentOut, status_code=201)
 def create_loan_payment(body: LoanPaymentCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    # Validate loan belongs to user
-    loan = get_owned(db, Loan, body.loan_id, user, "Loan")
+    get_owned(db, Loan, body.loan_id, user, "Loan")  # 404s if it is not theirs
     check_row_quota(db, LoanPayment, user.id)
     lp = LoanPayment(**body.model_dump(), user_id=user.id)
     db.add(lp)

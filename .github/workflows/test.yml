@@ -29,12 +29,22 @@ jobs:
       - name: Install deps
         run: |
           echo "::group::pip install"
-          time pip install -r backend/requirements.txt pytest pytest-asyncio httpx
+          time pip install -r backend/requirements.txt pytest pytest-asyncio httpx ruff==0.16.6
           echo "::endgroup::"
       - name: Check import boundaries
         run: |
           echo "::group::import-linter"
           cd backend && time lint-imports
+          echo "::endgroup::"
+      - name: Lint
+        # The backend had no linter until this step, only the import contracts
+        # above — which is how 68 unused imports and variables, two tests that
+        # asserted nothing, and three `assert False` in the security suite
+        # (stripped entirely by `python -O`) went unnoticed. Config and the
+        # reasoning for what is and isn't enabled live in pyproject.toml.
+        run: |
+          echo "::group::ruff"
+          time ruff check .
           echo "::endgroup::"
       - name: Run tests
         run: |

@@ -80,8 +80,12 @@ def list_unsubscribe_headers(email: str, category: str) -> dict[str, str]:
     url = unsubscribe_url(email, category)
     if not url:
         return {}
-    # POST URL for one-click unsubscribe (RFC 8058)
-    post_url = app_url().rstrip("/") + "/api/unsubscribe"
+    # NOTE: List-Unsubscribe-Post tells the mail client it may POST to the URI in
+    # List-Unsubscribe, and that URI is the SPA page — so a one-click unsubscribe
+    # from Gmail or Outlook POSTs to static file serving and silently does
+    # nothing. POST /api/unsubscribe exists but wants a JSON body, not RFC 8058's
+    # form-encoded one. Making one-click actually work is a deliberate change to
+    # outbound email, so it is not made here.
     return {
         "List-Unsubscribe": f"<{url}>",
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",

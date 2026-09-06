@@ -13,6 +13,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from app.mcp.tools import REGISTRY
 from scaffold.oauth.models import OAuthGrant, OAuthRedirectHost
 from tests.conftest import register_user
 from tests.test_oauth_server import (REDIRECT, authorize, connect,
@@ -374,12 +375,36 @@ def test_usage_reports_nothing_gracefully_on_a_quiet_deployment(admin):
 
 def test_usage_exposes_no_financial_data(admin):
     """Admin endpoints never expose financial data, and the audit table has
-    none to expose — this pins that the report did not add any."""
+    none to expose — this pins that the report did not add any.
+
+    Asserted against the shape rather than by searching the body for "400" and
+    the like. That search could not really fail (a JSON number renders as
+    `:400`, never `"400`) and what it could match was a timestamp's digits, so
+    it was flaky and vacuous at once.
+    """
     from tests.test_mcp_tools import Mcp, seed
 
     seed(admin)
     Mcp(admin).call("estimate_sale", price_per_share=4.0, shares=100)
 
-    body = admin.get("/api/admin/mcp/usage").text
-    for figure in ('"400', '"price', '"shares', '"amount', '"balance'):
-        assert figure not in body
+    report = admin.get("/api/admin/mcp/usage").json()
+    assert set(report) == {
+        "users", "tools", "calls_24h", "calls_7d", "calls_30d",
+        "errors_7d", "denied_7d", "audit_rows",
+    }
+    for key in ("calls_24h", "calls_7d", "calls_30d", "errors_7d", "denied_7d", "audit_rows"):
+        assert isinstance(report[key], int)
+
+    for person in report["users"]:
+        assert set(person) == {
+            "user_id", "email", "connections", "clients", "last_used_at",
+            "calls_7d", "calls_30d",
+        }
+        # Counts and identity only: nothing here is a figure from the account.
+        assert isinstance(person["connections"], int)
+        assert all(isinstance(name, str) for name in person["clients"])
+
+    for tool in report["tools"]:
+        assert set(tool) == {"tool", "calls_7d", "calls_30d"}
+        assert tool["tool"] in REGISTRY
+        assert isinstance(tool["calls_30d"], int)

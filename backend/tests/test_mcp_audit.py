@@ -129,12 +129,27 @@ def test_the_audit_table_carries_no_financial_columns():
     }, "a column was added to mcp_audit — does it carry financial data?"
 
 
+# The columns that hold text rather than structure. These are the ones a figure
+# could ever leak into; id, user_id, grant_id and created_at are the row's own
+# bookkeeping.
+_TEXT_COLUMNS = ("client_name", "event", "tool", "scope", "outcome")
+
+
 def test_no_figures_reach_the_audit_row(mcp, db_session):
+    """The call carried a price and a share count; neither may be stored.
+
+    Asserted as an exact value rather than by searching for "4.0" and "100" in
+    the whole row. That search also read created_at, whose microseconds contain
+    arbitrary digits — "…:34.049650" contains "4.0" — so it failed roughly one
+    run in ten depending on the clock. Exact equality is both deterministic and
+    stricter: anything new appearing in these columns fails immediately, and
+    test_the_audit_table_carries_no_financial_columns covers new columns.
+    """
     mcp.call("estimate_sale", price_per_share=4.0, shares=100)
     row = db_session.query(McpAudit).filter(McpAudit.tool == "estimate_sale").one()
-    written = " ".join(str(getattr(row, c)) for c in McpAudit.__table__.columns.keys())
-    for figure in ("4.0", "100", "400"):
-        assert figure not in written.replace(str(row.id), "").replace(str(row.user_id), "")
+
+    stored = [str(getattr(row, c) or "") for c in _TEXT_COLUMNS]
+    assert stored == ["ChatGPT", "tool_call", "estimate_sale", "equity:read", "ok"]
 
 
 def test_deleting_the_account_removes_its_trail(mcp, db_session, client):

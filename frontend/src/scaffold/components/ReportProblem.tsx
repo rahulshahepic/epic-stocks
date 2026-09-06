@@ -197,7 +197,7 @@ export function ReportDialog({
             </div>
             {showPayload && (
               <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-cs-raised p-2 font-mono text-[11px] leading-relaxed text-cs-text-2">
-{`message: ${message.trim() || '(empty)'}
+                {`message: ${message.trim() || '(empty)'}
 page: ${prefill.path ?? scrubPath(window.location.pathname)}
 source: ${prefill.source ?? 'manual'}
 error ref: ${errorRef ?? '(none)'}

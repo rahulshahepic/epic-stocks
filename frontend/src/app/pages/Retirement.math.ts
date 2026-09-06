@@ -1720,7 +1720,7 @@ export const DEFAULT_PARAMS: SimParams = {
 // broken down. They can override basis explicitly in the advanced view.
 // `refillTaxDrag` is dropped (replaced by the bracket-based tax engine).
 export function migrateLoadedParams(saved: Record<string, unknown>): Partial<SimParams> {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   const { additional, refillTaxDrag, ...rest } = saved as Record<string, unknown>
   const out: Record<string, unknown> = { ...rest }
   if (typeof additional === 'number') {

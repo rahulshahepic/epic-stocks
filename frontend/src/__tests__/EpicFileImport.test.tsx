@@ -11,7 +11,7 @@ const CLEAN = {
   draft: {
     statement_date: '2024-02-01',
     prices: [{ effective_date: '2020-01-01', price: 1.99 },
-             { effective_date: '2021-01-01', price: 2.50 }],
+      { effective_date: '2021-01-01', price: 2.50 }],
   },
   price_is_stale: false,
   wizard_payload: { grants: [], prices: [] },

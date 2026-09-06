@@ -31,69 +31,69 @@ import CompCalculator from './app/pages/CompCalculator.tsx'
 import Retirement from './app/pages/Retirement.tsx'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
- useSessionRefresh()
- return isLoggedIn() ? <>{children}</> : <Navigate to="/login" replace />
+  useSessionRefresh()
+  return isLoggedIn() ? <>{children}</> : <Navigate to="/login" replace />
 }
 
 // Wraps financial pages — shows a placeholder during maintenance instead of
 // attempting to load encrypted data that the app can't serve right now.
 function FinancialRoute({ children }: { children: React.ReactNode }) {
- const maintenance = useMaintenance()
- if (!maintenance) return <>{children}</>
- return (
- <div className="flex flex-col items-center justify-center py-24 text-center">
- <div className="mb-4 h-3 w-3 animate-pulse rounded-full bg-amber-400" />
- <p className="text-sm font-semibold text-cs-text-2">
- Maintenance in progress
- </p>
- <p className="mt-1 text-xs text-cs-muted">
- Financial data is temporarily unavailable. Check back shortly.
- </p>
- </div>
- )
+  const maintenance = useMaintenance()
+  if (!maintenance) return <>{children}</>
+  return (
+    <div className="flex flex-col items-center justify-center py-24 text-center">
+      <div className="mb-4 h-3 w-3 animate-pulse rounded-full bg-amber-400" />
+      <p className="text-sm font-semibold text-cs-text-2">
+        Maintenance in progress
+      </p>
+      <p className="mt-1 text-xs text-cs-muted">
+        Financial data is temporarily unavailable. Check back shortly.
+      </p>
+    </div>
+  )
 }
 
 export default function App() {
- return (
- <AppProvider>
- <ThemeProvider>
- <BrowserRouter>
- <MaintenanceProvider>
- {/* Report first: the crash screen and the error toasts both raise reports
+  return (
+    <AppProvider>
+      <ThemeProvider>
+        <BrowserRouter>
+          <MaintenanceProvider>
+            {/* Report first: the crash screen and the error toasts both raise reports
  through it, so it has to sit outside them. */}
- <ReportProvider>
- <ToastProvider>
- <ErrorBoundary>
- <Routes>
- <Route path="/login" element={<Login />} />
- <Route path="/try" element={<Try />} />
- <Route path="/auth/callback" element={<AuthCallback />} />
- <Route path="/invite" element={<InviteLanding />} />
- <Route path="/unsubscribe" element={<Unsubscribe />} />
- <Route path="/privacy" element={<PrivacyPolicy />} />
- <Route element={<RequireAuth><ViewingProvider><Layout /></ViewingProvider></RequireAuth>}>
- <Route index element={<FinancialRoute><Dashboard /></FinancialRoute>} />
- <Route path="events" element={<FinancialRoute><Events /></FinancialRoute>} />
- <Route path="grants" element={<FinancialRoute><Grants /></FinancialRoute>} />
- <Route path="sales" element={<FinancialRoute><Sales /></FinancialRoute>} />
- <Route path="loans" element={<FinancialRoute><Loans /></FinancialRoute>} />
- <Route path="comp-calculator" element={<FinancialRoute><CompCalculator /></FinancialRoute>} />
- <Route path="retirement" element={<FinancialRoute><Retirement /></FinancialRoute>} />
- <Route path="prices" element={<FinancialRoute><Prices /></FinancialRoute>} />
- <Route path="import" element={<FinancialRoute><ImportExport /></FinancialRoute>} />
- <Route path="wizard" element={<FinancialRoute><div className="p-4"><ImportWizard isPage /></div></FinancialRoute>} />
- <Route path="settings" element={<FinancialRoute><Settings /></FinancialRoute>} />
- <Route path="admin" element={<Admin />} />
- <Route path="import-diagnostics" element={<ImportDiagnostics />} />
- <Route path="content" element={<Content />} />
- </Route>
- </Routes>
- </ErrorBoundary>
- </ToastProvider>
- </ReportProvider>
- </MaintenanceProvider>
- </BrowserRouter>
- </ThemeProvider>
- </AppProvider>
- )
+            <ReportProvider>
+              <ToastProvider>
+                <ErrorBoundary>
+                  <Routes>
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/try" element={<Try />} />
+                    <Route path="/auth/callback" element={<AuthCallback />} />
+                    <Route path="/invite" element={<InviteLanding />} />
+                    <Route path="/unsubscribe" element={<Unsubscribe />} />
+                    <Route path="/privacy" element={<PrivacyPolicy />} />
+                    <Route element={<RequireAuth><ViewingProvider><Layout /></ViewingProvider></RequireAuth>}>
+                      <Route index element={<FinancialRoute><Dashboard /></FinancialRoute>} />
+                      <Route path="events" element={<FinancialRoute><Events /></FinancialRoute>} />
+                      <Route path="grants" element={<FinancialRoute><Grants /></FinancialRoute>} />
+                      <Route path="sales" element={<FinancialRoute><Sales /></FinancialRoute>} />
+                      <Route path="loans" element={<FinancialRoute><Loans /></FinancialRoute>} />
+                      <Route path="comp-calculator" element={<FinancialRoute><CompCalculator /></FinancialRoute>} />
+                      <Route path="retirement" element={<FinancialRoute><Retirement /></FinancialRoute>} />
+                      <Route path="prices" element={<FinancialRoute><Prices /></FinancialRoute>} />
+                      <Route path="import" element={<FinancialRoute><ImportExport /></FinancialRoute>} />
+                      <Route path="wizard" element={<FinancialRoute><div className="p-4"><ImportWizard isPage /></div></FinancialRoute>} />
+                      <Route path="settings" element={<FinancialRoute><Settings /></FinancialRoute>} />
+                      <Route path="admin" element={<Admin />} />
+                      <Route path="import-diagnostics" element={<ImportDiagnostics />} />
+                      <Route path="content" element={<Content />} />
+                    </Route>
+                  </Routes>
+                </ErrorBoundary>
+              </ToastProvider>
+            </ReportProvider>
+          </MaintenanceProvider>
+        </BrowserRouter>
+      </ThemeProvider>
+    </AppProvider>
+  )
 }

@@ -7,123 +7,123 @@ import { platform } from '../../platform/index.ts'
 import { pingConverted, takeStashedTrialPayload } from '../../app/trialImport.ts'
 
 export default function AuthCallback() {
- const navigate = useNavigate()
- const { openReport } = useReportProblem()
- const [error, setError] = useState<string | null>(null)
- // The authorization code is single-use. Reading the stored PKCE material is
- // async, so without this guard StrictMode's double-invoked effect can get two
- // exchanges in flight before either clears the material, and the second fails.
- const startedRef = useRef(false)
+  const navigate = useNavigate()
+  const { openReport } = useReportProblem()
+  const [error, setError] = useState<string | null>(null)
+  // The authorization code is single-use. Reading the stored PKCE material is
+  // async, so without this guard StrictMode's double-invoked effect can get two
+  // exchanges in flight before either clears the material, and the second fails.
+  const startedRef = useRef(false)
 
- useEffect(() => {
- if (startedRef.current) return
- startedRef.current = true
+  useEffect(() => {
+    if (startedRef.current) return
+    startedRef.current = true
 
- const params = new URLSearchParams(window.location.search)
- const code = params.get('code')
- const state = params.get('state')
- const idpError = params.get('error')
- const idpErrorDesc = params.get('error_description')
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('code')
+    const state = params.get('state')
+    const idpError = params.get('error')
+    const idpErrorDesc = params.get('error_description')
 
- if (idpError) {
- setError(idpErrorDesc || idpError)
- return
- }
+    if (idpError) {
+      setError(idpErrorDesc || idpError)
+      return
+    }
 
- if (!code) {
- setError('No authorization code received.')
- return
- }
+    if (!code) {
+      setError('No authorization code received.')
+      return
+    }
 
- void (async () => {
- const pending = await readPendingLogin()
+    void (async () => {
+      const pending = await readPendingLogin()
 
- if (!state || state !== pending.state) {
- setError('Invalid state — possible CSRF attempt. Please try signing in again.')
- return
- }
+      if (!state || state !== pending.state) {
+        setError('Invalid state — possible CSRF attempt. Please try signing in again.')
+        return
+      }
 
- if (!pending.verifier || !pending.provider) {
- setError('Session data missing. Please try signing in again.')
- return
- }
+      if (!pending.verifier || !pending.provider) {
+        setError('Session data missing. Please try signing in again.')
+        return
+      }
 
- await clearPendingLogin()
+      await clearPendingLogin()
 
- try {
- await completeLogin(pending.provider, code, pending.verifier)
- } catch (e) {
- setError(e instanceof Error ? e.message : 'Authentication failed. Please try again.')
- return
- }
+      try {
+        await completeLogin(pending.provider, code, pending.verifier)
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Authentication failed. Please try again.')
+        return
+      }
 
- // Check if there's a pending invitation to accept
- const inviteToken = await platform.storage.get('invite_token')
- const inviteCode = await platform.storage.get('invite_code')
- if (inviteToken || inviteCode) {
- await platform.storage.remove('invite_token')
- await platform.storage.remove('invite_code')
- try {
- await api.acceptInvite({
- token: inviteToken ?? undefined,
- code: inviteCode ?? undefined,
- })
- } catch {
- // Acceptance failed (expired, already used, etc.) — continue to home
- }
- }
+      // Check if there's a pending invitation to accept
+      const inviteToken = await platform.storage.get('invite_token')
+      const inviteCode = await platform.storage.get('invite_code')
+      if (inviteToken || inviteCode) {
+        await platform.storage.remove('invite_token')
+        await platform.storage.remove('invite_code')
+        try {
+          await api.acceptInvite({
+            token: inviteToken ?? undefined,
+            code: inviteCode ?? undefined,
+          })
+        } catch {
+          // Acceptance failed (expired, already used, etc.) — continue to home
+        }
+      }
 
- // A /try session stashed its computed grants/prices before sending the
- // user here to sign up. A brand-new account has nothing to conflict
- // with, so save it straight away instead of asking them to re-upload.
- const trialPayload = await takeStashedTrialPayload()
- if (trialPayload) {
- try {
- await api.wizardSubmit({ ...trialPayload, clear_existing: true })
- pingConverted()
- } catch {
- // Save failed — they still have a working account; they can import again.
- }
- }
+      // A /try session stashed its computed grants/prices before sending the
+      // user here to sign up. A brand-new account has nothing to conflict
+      // with, so save it straight away instead of asking them to re-upload.
+      const trialPayload = await takeStashedTrialPayload()
+      if (trialPayload) {
+        try {
+          await api.wizardSubmit({ ...trialPayload, clear_existing: true })
+          pingConverted()
+        } catch {
+          // Save failed — they still have a working account; they can import again.
+        }
+      }
 
- navigate('/', { replace: true })
- })()
- }, [navigate])
+      navigate('/', { replace: true })
+    })()
+  }, [navigate])
 
- if (error) {
- return (
- <div className="flex min-h-screen flex-col items-center justify-center bg-cs-base px-4">
- <div className="w-full max-w-sm text-center">
- <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-400">
- {error}
- </p>
- <a
- href="/login"
- className="text-sm text-cs-brand underline hover:text-rose-800 "
- >
- Back to sign-in
- </a>
- {/* A sign-in that fails here strands someone outside the app entirely. */}
- <p className="mt-4 text-xs text-cs-text-2">
- <button
- type="button"
- onClick={() => openReport({ source: 'manual', errorMessage: error })}
- className="underline hover:text-cs-text"
- >
- Report this
- </button>
- </p>
- </div>
- </div>
- )
- }
+  if (error) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-cs-base px-4">
+        <div className="w-full max-w-sm text-center">
+          <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-400">
+            {error}
+          </p>
+          <a
+            href="/login"
+            className="text-sm text-cs-brand underline hover:text-rose-800 "
+          >
+            Back to sign-in
+          </a>
+          {/* A sign-in that fails here strands someone outside the app entirely. */}
+          <p className="mt-4 text-xs text-cs-text-2">
+            <button
+              type="button"
+              onClick={() => openReport({ source: 'manual', errorMessage: error })}
+              className="underline hover:text-cs-text"
+            >
+              Report this
+            </button>
+          </p>
+        </div>
+      </div>
+    )
+  }
 
- return (
- <div className="flex min-h-screen flex-col items-center justify-center bg-cs-base px-4">
- <div className="w-full max-w-sm text-center">
- <div className="mb-4 h-3 w-3 mx-auto animate-pulse rounded-full bg-rose-500" />
- <p className="text-sm text-cs-text-2">Completing sign-in…</p>
- </div>
- </div>
- )
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center bg-cs-base px-4">
+      <div className="w-full max-w-sm text-center">
+        <div className="mb-4 h-3 w-3 mx-auto animate-pulse rounded-full bg-rose-500" />
+        <p className="text-sm text-cs-text-2">Completing sign-in…</p>
+      </div>
+    </div>
+  )
 }

@@ -10,934 +10,934 @@ import { fmtNum, fmtPct, fmtPrice as fmtUSD } from '../format.ts'
 import { Field, FIELD_INPUT_CLASS } from '../../scaffold/components/ui/Field.tsx'
 
 export type TaxRates = {
- federal_income_rate: number
- federal_lt_cg_rate: number
- federal_st_cg_rate: number
- niit_rate: number
- state_income_rate: number
- state_lt_cg_rate: number
- state_st_cg_rate: number
- lt_holding_days: number
+  federal_income_rate: number
+  federal_lt_cg_rate: number
+  federal_st_cg_rate: number
+  niit_rate: number
+  state_income_rate: number
+  state_lt_cg_rate: number
+  state_st_cg_rate: number
+  lt_holding_days: number
 }
 
 export const DEFAULT_RATES: TaxRates = {
- federal_income_rate: 0.37,
- federal_lt_cg_rate: 0.20,
- federal_st_cg_rate: 0.37,
- niit_rate: 0.038,
- state_income_rate: 0.0765,
- state_lt_cg_rate: 0.0536,
- state_st_cg_rate: 0.0765,
- lt_holding_days: 365,
+  federal_income_rate: 0.37,
+  federal_lt_cg_rate: 0.20,
+  federal_st_cg_rate: 0.37,
+  niit_rate: 0.038,
+  state_income_rate: 0.0765,
+  state_lt_cg_rate: 0.0536,
+  state_st_cg_rate: 0.0765,
+  lt_holding_days: 365,
 }
 
 export function ratesFromDefaults(ts: TaxSettings | null | undefined): TaxRates {
- if (!ts) return DEFAULT_RATES
- return {
- federal_income_rate: ts.federal_income_rate,
- federal_lt_cg_rate: ts.federal_lt_cg_rate,
- federal_st_cg_rate: ts.federal_st_cg_rate,
- niit_rate: ts.niit_rate,
- state_income_rate: ts.state_income_rate,
- state_lt_cg_rate: ts.state_lt_cg_rate,
- state_st_cg_rate: ts.state_st_cg_rate,
- lt_holding_days: ts.lt_holding_days,
- }
+  if (!ts) return DEFAULT_RATES
+  return {
+    federal_income_rate: ts.federal_income_rate,
+    federal_lt_cg_rate: ts.federal_lt_cg_rate,
+    federal_st_cg_rate: ts.federal_st_cg_rate,
+    niit_rate: ts.niit_rate,
+    state_income_rate: ts.state_income_rate,
+    state_lt_cg_rate: ts.state_lt_cg_rate,
+    state_st_cg_rate: ts.state_st_cg_rate,
+    lt_holding_days: ts.lt_holding_days,
+  }
 }
 
 export function ratesFromSale(sale: SaleEntry, defaults: TaxSettings | null | undefined): TaxRates {
- const d = ratesFromDefaults(defaults)
- return {
- federal_income_rate: sale.federal_income_rate ?? d.federal_income_rate,
- federal_lt_cg_rate: sale.federal_lt_cg_rate ?? d.federal_lt_cg_rate,
- federal_st_cg_rate: sale.federal_st_cg_rate ?? d.federal_st_cg_rate,
- niit_rate: sale.niit_rate ?? d.niit_rate,
- state_income_rate: sale.state_income_rate ?? d.state_income_rate,
- state_lt_cg_rate: sale.state_lt_cg_rate ?? d.state_lt_cg_rate,
- state_st_cg_rate: sale.state_st_cg_rate ?? d.state_st_cg_rate,
- lt_holding_days: sale.lt_holding_days ?? d.lt_holding_days,
- }
+  const d = ratesFromDefaults(defaults)
+  return {
+    federal_income_rate: sale.federal_income_rate ?? d.federal_income_rate,
+    federal_lt_cg_rate: sale.federal_lt_cg_rate ?? d.federal_lt_cg_rate,
+    federal_st_cg_rate: sale.federal_st_cg_rate ?? d.federal_st_cg_rate,
+    niit_rate: sale.niit_rate ?? d.niit_rate,
+    state_income_rate: sale.state_income_rate ?? d.state_income_rate,
+    state_lt_cg_rate: sale.state_lt_cg_rate ?? d.state_lt_cg_rate,
+    state_st_cg_rate: sale.state_st_cg_rate ?? d.state_st_cg_rate,
+    lt_holding_days: sale.lt_holding_days ?? d.lt_holding_days,
+  }
 }
 
 type SaleMethod = 'fifo' | 'lifo' | 'epic_lifo' | 'manual_tranche'
 
 type SaleForm = {
- date: string
- shares: number
- price_per_share: number
- notes: string
- loan_id: number | null
+  date: string
+  shares: number
+  price_per_share: number
+  notes: string
+  loan_id: number | null
 }
 type Mode = 'list' | 'add' | 'edit'
 
 function buildLotOverrides(
- lines: TrancheLine[],
- manualAlloc: Record<string, number>,
+  lines: TrancheLine[],
+  manualAlloc: Record<string, number>,
 ): Array<{ vest_date: string; grant_year: number | null; grant_type: string | null; basis_price: number; shares: number }> {
- return lines
- .map(line => {
- const key = `${line.vest_date}|${line.grant_year}|${line.grant_type}`
- const shares = manualAlloc[key] ?? line.allocated_shares
- if (shares <= 0) return null
- return { vest_date: line.vest_date, grant_year: line.grant_year, grant_type: line.grant_type, basis_price: line.basis_price, shares }
- })
- .filter((x): x is NonNullable<typeof x> => x !== null)
+  return lines
+    .map(line => {
+      const key = `${line.vest_date}|${line.grant_year}|${line.grant_type}`
+      const shares = manualAlloc[key] ?? line.allocated_shares
+      if (shares <= 0) return null
+      return { vest_date: line.vest_date, grant_year: line.grant_year, grant_type: line.grant_type, basis_price: line.basis_price, shares }
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null)
 }
 
 export function TrancheTable({
- lines, loading, manual, manualAlloc, onManualChange, date: saleDate,
+  lines, loading, manual, manualAlloc, onManualChange, date: saleDate,
 }: {
- lines: TrancheLine[]; loading: boolean; manual: boolean
- manualAlloc: Record<string, number>; onManualChange: (key: string, shares: number) => void; date: string
+  lines: TrancheLine[]; loading: boolean; manual: boolean
+  manualAlloc: Record<string, number>; onManualChange: (key: string, shares: number) => void; date: string
 }) {
- if (loading) return <p className="px-1 text-xs text-cs-text-2">Loading lots…</p>
- if (!lines.length) return <p className="px-1 text-xs text-cs-text-2">No vested shares at this date</p>
- const displayLines = manual ? lines : lines.filter(l => l.allocated_shares > 0)
- if (!manual && displayLines.length === 0) return null
- const totalAlloc = lines.reduce((s, l) => {
- const key = `${l.vest_date}|${l.grant_year}|${l.grant_type}`
- return s + (manual ? (manualAlloc[key] ?? l.allocated_shares) : l.allocated_shares)
- }, 0)
- return (
- <div className="rounded-md border border-cs-border bg-cs-raised/50">
- <div className="border-b border-cs-border px-3 py-1.5 ">
- <span className="text-[10px] font-semibold uppercase tracking-wide text-cs-muted">
- Lot Allocation{saleDate ? ` at ${saleDate}` : ''}
- </span>
- </div>
- <table className="w-full text-xs">
- <thead>
- <tr className="text-[10px] text-cs-text-2">
- <th className="px-3 py-1 text-left font-medium">Grant</th>
- <th className="px-3 py-1 text-right font-medium">Basis</th>
- <th className="px-3 py-1 text-right font-medium">Avail</th>
- <th className="px-3 py-1 text-right font-medium">{manual ? 'Sell ✎' : 'Allocated'}</th>
- <th className="px-3 py-1 text-right font-medium">Type</th>
- </tr>
- </thead>
- <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
- {displayLines.map(line => {
- const key = `${line.vest_date}|${line.grant_year}|${line.grant_type}`
- const allocated = manual ? (manualAlloc[key] ?? line.allocated_shares) : line.allocated_shares
- return (
- <tr key={key} className="text-cs-text-2">
- <td className="px-3 py-1">
- <span>{line.grant_year ?? '—'} {line.grant_type ?? ''}</span>
- <span className="ml-1 text-[10px] text-cs-text-2">{line.vest_date}</span>
- </td>
- <td className="px-3 py-1 text-right tabular-nums">{fmtUSD(line.basis_price)}</td>
- <td className="px-3 py-1 text-right tabular-nums">{fmtNum(line.available_shares)}</td>
- <td className="px-3 py-1 text-right">
- {manual ? (
- <input
- type="number" min="0" max={line.available_shares}
- value={manualAlloc[key] ?? line.allocated_shares}
- onChange={e => onManualChange(key, Math.min(line.available_shares, Math.max(0, parseInt(e.target.value) || 0)))}
- className="w-20 rounded border border-cs-border-strong bg-cs-surface px-1.5 py-0.5 text-right text-xs text-cs-text "
- />
- ) : (
- <span className={allocated > 0 ? 'tabular-nums font-medium' : 'text-gray-300 '}>{fmtNum(allocated)}</span>
- )}
- </td>
- <td className="px-3 py-1 text-right">
- {allocated > 0 ? (
- <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${line.is_lt ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'}`}>
- {line.is_lt ? 'Long-term' : 'Short-term'}
- </span>
- ) : <span className="text-gray-300 ">—</span>}
- </td>
- </tr>
- )
- })}
- </tbody>
- {displayLines.length > 1 && (
- <tfoot>
- <tr className="border-t border-cs-border font-medium ">
- <td className="px-3 py-1 text-cs-text-2">Total</td>
- <td />
- <td className="px-3 py-1 text-right tabular-nums text-cs-text-2">{fmtNum(lines.reduce((s, l) => s + l.available_shares, 0))}</td>
- <td className="px-3 py-1 text-right tabular-nums text-cs-text-2">{fmtNum(totalAlloc)}</td>
- <td />
- </tr>
- </tfoot>
- )}
- </table>
- </div>
- )
+  if (loading) return <p className="px-1 text-xs text-cs-text-2">Loading lots…</p>
+  if (!lines.length) return <p className="px-1 text-xs text-cs-text-2">No vested shares at this date</p>
+  const displayLines = manual ? lines : lines.filter(l => l.allocated_shares > 0)
+  if (!manual && displayLines.length === 0) return null
+  const totalAlloc = lines.reduce((s, l) => {
+    const key = `${l.vest_date}|${l.grant_year}|${l.grant_type}`
+    return s + (manual ? (manualAlloc[key] ?? l.allocated_shares) : l.allocated_shares)
+  }, 0)
+  return (
+    <div className="rounded-md border border-cs-border bg-cs-raised/50">
+      <div className="border-b border-cs-border px-3 py-1.5 ">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-cs-muted">
+          Lot Allocation{saleDate ? ` at ${saleDate}` : ''}
+        </span>
+      </div>
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-[10px] text-cs-text-2">
+            <th className="px-3 py-1 text-left font-medium">Grant</th>
+            <th className="px-3 py-1 text-right font-medium">Basis</th>
+            <th className="px-3 py-1 text-right font-medium">Avail</th>
+            <th className="px-3 py-1 text-right font-medium">{manual ? 'Sell ✎' : 'Allocated'}</th>
+            <th className="px-3 py-1 text-right font-medium">Type</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+          {displayLines.map(line => {
+            const key = `${line.vest_date}|${line.grant_year}|${line.grant_type}`
+            const allocated = manual ? (manualAlloc[key] ?? line.allocated_shares) : line.allocated_shares
+            return (
+              <tr key={key} className="text-cs-text-2">
+                <td className="px-3 py-1">
+                  <span>{line.grant_year ?? '—'} {line.grant_type ?? ''}</span>
+                  <span className="ml-1 text-[10px] text-cs-text-2">{line.vest_date}</span>
+                </td>
+                <td className="px-3 py-1 text-right tabular-nums">{fmtUSD(line.basis_price)}</td>
+                <td className="px-3 py-1 text-right tabular-nums">{fmtNum(line.available_shares)}</td>
+                <td className="px-3 py-1 text-right">
+                  {manual ? (
+                    <input
+                      type="number" min="0" max={line.available_shares}
+                      value={manualAlloc[key] ?? line.allocated_shares}
+                      onChange={e => onManualChange(key, Math.min(line.available_shares, Math.max(0, parseInt(e.target.value) || 0)))}
+                      className="w-20 rounded border border-cs-border-strong bg-cs-surface px-1.5 py-0.5 text-right text-xs text-cs-text "
+                    />
+                  ) : (
+                    <span className={allocated > 0 ? 'tabular-nums font-medium' : 'text-gray-300 '}>{fmtNum(allocated)}</span>
+                  )}
+                </td>
+                <td className="px-3 py-1 text-right">
+                  {allocated > 0 ? (
+                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${line.is_lt ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'}`}>
+                      {line.is_lt ? 'Long-term' : 'Short-term'}
+                    </span>
+                  ) : <span className="text-gray-300 ">—</span>}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+        {displayLines.length > 1 && (
+          <tfoot>
+            <tr className="border-t border-cs-border font-medium ">
+              <td className="px-3 py-1 text-cs-text-2">Total</td>
+              <td />
+              <td className="px-3 py-1 text-right tabular-nums text-cs-text-2">{fmtNum(lines.reduce((s, l) => s + l.available_shares, 0))}</td>
+              <td className="px-3 py-1 text-right tabular-nums text-cs-text-2">{fmtNum(totalAlloc)}</td>
+              <td />
+            </tr>
+          </tfoot>
+        )}
+      </table>
+    </div>
+  )
 }
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
 const emptyForm: SaleForm = {
- date: TODAY,
- shares: 0,
- price_per_share: 0,
- notes: '',
- loan_id: null,
+  date: TODAY,
+  shares: 0,
+  price_per_share: 0,
+  notes: '',
+  loan_id: null,
 }
 
 function priceAt(date: string, prices: PriceEntry[]): number {
- let last = 0
- for (const p of prices) {
- if (p.effective_date <= date) last = p.price
- else break
- }
- return last
+  let last = 0
+  for (const p of prices) {
+    if (p.effective_date <= date) last = p.price
+    else break
+  }
+  return last
 }
 
 function PencilIcon() {
- return (
- <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
- <path d="M2.695 14.763l-1.262 3.154a.5.5 0 00.65.65l3.155-1.262a4 4 0 001.343-.885L17.5 5.5a2.121 2.121 0 00-3-3L3.58 13.42a4 4 0 00-.885 1.343z" />
- </svg>
- )
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
+      <path d="M2.695 14.763l-1.262 3.154a.5.5 0 00.65.65l3.155-1.262a4 4 0 001.343-.885L17.5 5.5a2.121 2.121 0 00-3-3L3.58 13.42a4 4 0 00-.885 1.343z" />
+    </svg>
+  )
 }
 
 export function TaxCard({ breakdown }: { breakdown: TaxBreakdown }) {
- const hasLT = breakdown.lt_shares > 0
- const hasST = breakdown.st_shares > 0
- const hasUnvested = breakdown.unvested_shares > 0
- const lots = breakdown.lots ?? []
- return (
- <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-xs dark:border-green-800 dark:bg-green-900/20">
- <h3 className="mb-3 text-sm font-semibold text-cs-text">Estimated Tax Breakdown</h3>
- {hasUnvested && (
- <div className="mb-3 rounded-md border border-yellow-300 bg-yellow-50 px-3 py-2 text-yellow-800 dark:border-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300">
- Warning: {fmtNum(breakdown.unvested_shares)} shares may not yet be vested and could be taxed as ordinary income.
- </div>
- )}
- {lots.length > 0 && (
- <div className="mb-3">
- <table className="w-full">
- <thead>
- <tr className="text-cs-text-2">
- <th className="pb-1 text-left font-normal">Grant</th>
- <th className="pb-1 text-right font-normal">Shares</th>
- <th className="pb-1 text-right font-normal">Long-term</th>
- <th className="pb-1 text-right font-normal">Short-term</th>
- </tr>
- </thead>
- <tbody className="divide-y divide-green-100 dark:divide-green-900/40">
- {lots.map((lot, i) => (
- <tr key={i} className="text-cs-text-2">
- <td className="py-0.5">{lot.grant_year ?? '—'} {lot.grant_type ?? ''}</td>
- <td className="py-0.5 text-right tabular-nums">{fmtNum(lot.shares)}</td>
- <td className="py-0.5 text-right tabular-nums">{lot.lt_shares > 0 ? fmtNum(lot.lt_shares) : '—'}</td>
- <td className="py-0.5 text-right tabular-nums">{lot.st_shares > 0 ? <span className="text-amber-700 dark:text-amber-300">{fmtNum(lot.st_shares)}</span> : '—'}</td>
- </tr>
- ))}
- </tbody>
- </table>
- <div className="mt-2 border-t border-green-200 dark:border-green-700" />
- </div>
- )}
- <div className="space-y-1">
- <Row label="Total from sale" value={fmtUSD(breakdown.gross_proceeds)} />
- {(hasLT || hasST) && <Row label="Cost basis" value={fmtUSD(breakdown.cost_basis)} />}
- {(hasLT || hasST) && <Row label="Net gain" value={fmtUSD(breakdown.net_gain)} bold />}
- {hasLT && (
- <Row
- label={` Long-term (${fmtNum(breakdown.lt_shares)} shares) × ${fmtPct(breakdown.lt_rate)}`}
- value={fmtUSD(breakdown.lt_gain) + ' → ' + fmtUSD(breakdown.lt_tax)}
- />
- )}
- {hasST && (
- <Row
- label={` Short-term (${fmtNum(breakdown.st_shares)} shares) × ${fmtPct(breakdown.st_rate)}`}
- value={fmtUSD(breakdown.st_gain) + ' → ' + fmtUSD(breakdown.st_tax)}
- />
- )}
- {hasUnvested && (
- <Row
- label={` Unvested (${fmtNum(breakdown.unvested_shares)} shares) × ${fmtPct(breakdown.unvested_rate)}`}
- value={fmtUSD(breakdown.unvested_proceeds) + ' → ' + fmtUSD(breakdown.unvested_tax)}
- />
- )}
- <div className="my-2 border-t border-green-200 dark:border-green-700" />
- <Row label="Estimated total tax" value={fmtUSD(breakdown.estimated_tax)} bold />
- <Row label="Net after tax" value={fmtUSD(breakdown.net_proceeds)} bold />
- </div>
- </div>
- )
+  const hasLT = breakdown.lt_shares > 0
+  const hasST = breakdown.st_shares > 0
+  const hasUnvested = breakdown.unvested_shares > 0
+  const lots = breakdown.lots ?? []
+  return (
+    <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-xs dark:border-green-800 dark:bg-green-900/20">
+      <h3 className="mb-3 text-sm font-semibold text-cs-text">Estimated Tax Breakdown</h3>
+      {hasUnvested && (
+        <div className="mb-3 rounded-md border border-yellow-300 bg-yellow-50 px-3 py-2 text-yellow-800 dark:border-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300">
+          Warning: {fmtNum(breakdown.unvested_shares)} shares may not yet be vested and could be taxed as ordinary income.
+        </div>
+      )}
+      {lots.length > 0 && (
+        <div className="mb-3">
+          <table className="w-full">
+            <thead>
+              <tr className="text-cs-text-2">
+                <th className="pb-1 text-left font-normal">Grant</th>
+                <th className="pb-1 text-right font-normal">Shares</th>
+                <th className="pb-1 text-right font-normal">Long-term</th>
+                <th className="pb-1 text-right font-normal">Short-term</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-green-100 dark:divide-green-900/40">
+              {lots.map((lot, i) => (
+                <tr key={i} className="text-cs-text-2">
+                  <td className="py-0.5">{lot.grant_year ?? '—'} {lot.grant_type ?? ''}</td>
+                  <td className="py-0.5 text-right tabular-nums">{fmtNum(lot.shares)}</td>
+                  <td className="py-0.5 text-right tabular-nums">{lot.lt_shares > 0 ? fmtNum(lot.lt_shares) : '—'}</td>
+                  <td className="py-0.5 text-right tabular-nums">{lot.st_shares > 0 ? <span className="text-amber-700 dark:text-amber-300">{fmtNum(lot.st_shares)}</span> : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="mt-2 border-t border-green-200 dark:border-green-700" />
+        </div>
+      )}
+      <div className="space-y-1">
+        <Row label="Total from sale" value={fmtUSD(breakdown.gross_proceeds)} />
+        {(hasLT || hasST) && <Row label="Cost basis" value={fmtUSD(breakdown.cost_basis)} />}
+        {(hasLT || hasST) && <Row label="Net gain" value={fmtUSD(breakdown.net_gain)} bold />}
+        {hasLT && (
+          <Row
+            label={` Long-term (${fmtNum(breakdown.lt_shares)} shares) × ${fmtPct(breakdown.lt_rate)}`}
+            value={fmtUSD(breakdown.lt_gain) + ' → ' + fmtUSD(breakdown.lt_tax)}
+          />
+        )}
+        {hasST && (
+          <Row
+            label={` Short-term (${fmtNum(breakdown.st_shares)} shares) × ${fmtPct(breakdown.st_rate)}`}
+            value={fmtUSD(breakdown.st_gain) + ' → ' + fmtUSD(breakdown.st_tax)}
+          />
+        )}
+        {hasUnvested && (
+          <Row
+            label={` Unvested (${fmtNum(breakdown.unvested_shares)} shares) × ${fmtPct(breakdown.unvested_rate)}`}
+            value={fmtUSD(breakdown.unvested_proceeds) + ' → ' + fmtUSD(breakdown.unvested_tax)}
+          />
+        )}
+        <div className="my-2 border-t border-green-200 dark:border-green-700" />
+        <Row label="Estimated total tax" value={fmtUSD(breakdown.estimated_tax)} bold />
+        <Row label="Net after tax" value={fmtUSD(breakdown.net_proceeds)} bold />
+      </div>
+    </div>
+  )
 }
 
 function Row({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
- return (
- <div className={`flex justify-between gap-4 ${bold ? 'font-semibold text-cs-text' : 'text-cs-text-2'}`}>
- <span>{label}</span>
- <span className="tabular-nums">{value}</span>
- </div>
- )
+  return (
+    <div className={`flex justify-between gap-4 ${bold ? 'font-semibold text-cs-text' : 'text-cs-text-2'}`}>
+      <span>{label}</span>
+      <span className="tabular-nums">{value}</span>
+    </div>
+  )
 }
 
 export function TaxRateFields({ rates, onChange, onReset }: {
- rates: TaxRates
- onChange: (r: TaxRates) => void
- onReset?: () => void
+  rates: TaxRates
+  onChange: (r: TaxRates) => void
+  onReset?: () => void
 }) {
- function set(key: keyof TaxRates, val: string) {
- onChange({ ...rates, [key]: key === 'lt_holding_days' ? parseInt(val) || 0 : parseFloat(val) || 0 })
- }
- return (
- <div className="space-y-2">
- <div className="flex items-center justify-between">
- <span className="text-xs font-medium text-cs-text-2">Tax rates for this sale</span>
- {onReset && (
- <button type="button" onClick={onReset} className="text-[10px] text-rose-600 hover:text-cs-brand">
- Reset to defaults
- </button>
- )}
- </div>
- <div className="grid grid-cols-4 gap-2">
- <RateField label="Federal income" value={rates.federal_income_rate} onChange={v => set('federal_income_rate', v)} />
- <RateField label="Federal long-term gains" value={rates.federal_lt_cg_rate} onChange={v => set('federal_lt_cg_rate', v)} />
- <RateField label="Federal short-term gains" value={rates.federal_st_cg_rate} onChange={v => set('federal_st_cg_rate', v)} />
- <RateField label="Net investment income tax" value={rates.niit_rate} onChange={v => set('niit_rate', v)} />
- <RateField label="State income" value={rates.state_income_rate} onChange={v => set('state_income_rate', v)} />
- <RateField label="State long-term gains" value={rates.state_lt_cg_rate} onChange={v => set('state_lt_cg_rate', v)} />
- <RateField label="State short-term gains" value={rates.state_st_cg_rate} onChange={v => set('state_st_cg_rate', v)} />
- <label className="block">
- <span className="text-[10px] text-cs-muted">Long-term holding (days)</span>
- <input
- type="number"
- value={rates.lt_holding_days}
- onChange={e => set('lt_holding_days', e.target.value)}
- className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-1.5 py-1 text-[11px] text-cs-text "
- />
- </label>
- </div>
- </div>
- )
+  function set(key: keyof TaxRates, val: string) {
+    onChange({ ...rates, [key]: key === 'lt_holding_days' ? parseInt(val) || 0 : parseFloat(val) || 0 })
+  }
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-cs-text-2">Tax rates for this sale</span>
+        {onReset && (
+          <button type="button" onClick={onReset} className="text-[10px] text-rose-600 hover:text-cs-brand">
+            Reset to defaults
+          </button>
+        )}
+      </div>
+      <div className="grid grid-cols-4 gap-2">
+        <RateField label="Federal income" value={rates.federal_income_rate} onChange={v => set('federal_income_rate', v)} />
+        <RateField label="Federal long-term gains" value={rates.federal_lt_cg_rate} onChange={v => set('federal_lt_cg_rate', v)} />
+        <RateField label="Federal short-term gains" value={rates.federal_st_cg_rate} onChange={v => set('federal_st_cg_rate', v)} />
+        <RateField label="Net investment income tax" value={rates.niit_rate} onChange={v => set('niit_rate', v)} />
+        <RateField label="State income" value={rates.state_income_rate} onChange={v => set('state_income_rate', v)} />
+        <RateField label="State long-term gains" value={rates.state_lt_cg_rate} onChange={v => set('state_lt_cg_rate', v)} />
+        <RateField label="State short-term gains" value={rates.state_st_cg_rate} onChange={v => set('state_st_cg_rate', v)} />
+        <label className="block">
+          <span className="text-[10px] text-cs-muted">Long-term holding (days)</span>
+          <input
+            type="number"
+            value={rates.lt_holding_days}
+            onChange={e => set('lt_holding_days', e.target.value)}
+            className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-1.5 py-1 text-[11px] text-cs-text "
+          />
+        </label>
+      </div>
+    </div>
+  )
 }
 
 function RateField({ label, value, onChange }: { label: string; value: number; onChange: (v: string) => void }) {
- return (
- <label className="block">
- <span className="text-[10px] text-cs-muted">{label}</span>
- <div className="relative mt-0.5">
- <input
- type="number"
- step="0.001"
- value={(value * 100).toFixed(2)}
- onChange={e => onChange(String(parseFloat(e.target.value) / 100))}
- className="block w-full rounded-md border border-cs-border-strong bg-cs-surface py-1 pl-1.5 pr-4 text-[11px] text-cs-text "
- />
- <span className="pointer-events-none absolute inset-y-0 right-1 flex items-center text-[10px] text-cs-text-2">%</span>
- </div>
- </label>
- )
+  return (
+    <label className="block">
+      <span className="text-[10px] text-cs-muted">{label}</span>
+      <div className="relative mt-0.5">
+        <input
+          type="number"
+          step="0.001"
+          value={(value * 100).toFixed(2)}
+          onChange={e => onChange(String(parseFloat(e.target.value) / 100))}
+          className="block w-full rounded-md border border-cs-border-strong bg-cs-surface py-1 pl-1.5 pr-4 text-[11px] text-cs-text "
+        />
+        <span className="pointer-events-none absolute inset-y-0 right-1 flex items-center text-[10px] text-cs-text-2">%</span>
+      </div>
+    </label>
+  )
 }
 
 export default function Sales() {
- const { viewing } = useViewing()
- const vid = viewing?.invitationId
- const readOnly = !!viewing
+  const { viewing } = useViewing()
+  const vid = viewing?.invitationId
+  const readOnly = !!viewing
 
- const config = useConfig()
- const epicMode = !!config?.epic_mode || readOnly
- const isMobile = useIsMobile()
- const fetchSales = useCallback(() => vid ? api.getSharedSales(vid) : api.getSales(), [vid])
- const { data: sales, loading, reload } = useApiData<SaleEntry[]>(fetchSales)
- const fetchTaxSettings = useCallback(() => vid ? api.getSharedTaxSettings(vid) : api.getTaxSettings(), [vid])
- const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
- const fetchPrices = useCallback(() => vid ? api.getSharedPrices(vid) : api.getPrices(), [vid])
- const { data: prices } = useApiData<PriceEntry[]>(fetchPrices)
+  const config = useConfig()
+  const epicMode = !!config?.epic_mode || readOnly
+  const isMobile = useIsMobile()
+  const fetchSales = useCallback(() => vid ? api.getSharedSales(vid) : api.getSales(), [vid])
+  const { data: sales, loading, reload } = useApiData<SaleEntry[]>(fetchSales)
+  const fetchTaxSettings = useCallback(() => vid ? api.getSharedTaxSettings(vid) : api.getTaxSettings(), [vid])
+  const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
+  const fetchPrices = useCallback(() => vid ? api.getSharedPrices(vid) : api.getPrices(), [vid])
+  const { data: prices } = useApiData<PriceEntry[]>(fetchPrices)
 
- const [mode, setMode] = useState<Mode>('list')
- const [form, setForm] = useState<SaleForm>(emptyForm)
- const [taxRates, setTaxRates] = useState<TaxRates>(DEFAULT_RATES)
- const [editId, setEditId] = useState<number | null>(null)
- const [editVersion, setEditVersion] = useState(1)
- const [saving, setSaving] = useState(false)
- const [error, setError] = useState('')
- const [conflict, setConflict] = useState(false)
+  const [mode, setMode] = useState<Mode>('list')
+  const [form, setForm] = useState<SaleForm>(emptyForm)
+  const [taxRates, setTaxRates] = useState<TaxRates>(DEFAULT_RATES)
+  const [editId, setEditId] = useState<number | null>(null)
+  const [editVersion, setEditVersion] = useState(1)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [conflict, setConflict] = useState(false)
 
- // Per-row tax state: cached breakdowns and expanded/loading sets
- const [breakdowns, setBreakdowns] = useState<Map<number, TaxBreakdown>>(new Map())
- const [expanded, setExpanded] = useState<Set<number>>(new Set())
- const [loadingTaxIds, setLoadingTaxIds] = useState<Set<number>>(new Set())
- // Fetch all tax breakdowns in one request when sales load (own data only)
- useEffect(() => {
- if (!sales || readOnly) return
- api.getAllSaleTaxes()
- .then(all => setBreakdowns(new Map(Object.entries(all).map(([k, v]) => [Number(k), v]))))
- .catch(() => {})
- }, [sales, readOnly])
+  // Per-row tax state: cached breakdowns and expanded/loading sets
+  const [breakdowns, setBreakdowns] = useState<Map<number, TaxBreakdown>>(new Map())
+  const [expanded, setExpanded] = useState<Set<number>>(new Set())
+  const [loadingTaxIds, setLoadingTaxIds] = useState<Set<number>>(new Set())
+  // Fetch all tax breakdowns in one request when sales load (own data only)
+  useEffect(() => {
+    if (!sales || readOnly) return
+    api.getAllSaleTaxes()
+      .then(all => setBreakdowns(new Map(Object.entries(all).map(([k, v]) => [Number(k), v]))))
+      .catch(() => {})
+  }, [sales, readOnly])
 
- useDataSync('sales', reload)
+  useDataSync('sales', reload)
 
- type InputMode = 'dollars' | 'shares'
- const [inputMode, setInputMode] = useState<InputMode>('dollars')
- const [dollarTarget, setDollarTarget] = useState('')
- const [estimate, setEstimate] = useState<SaleEstimate | null>(null)
- const [estimateLoading, setEstimateLoading] = useState(false)
- const estimateTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  type InputMode = 'dollars' | 'shares'
+  const [inputMode, setInputMode] = useState<InputMode>('dollars')
+  const [dollarTarget, setDollarTarget] = useState('')
+  const [estimate, setEstimate] = useState<SaleEstimate | null>(null)
+  const [estimateLoading, setEstimateLoading] = useState(false)
+  const estimateTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
- // Lot selection method + tranche allocation
- const [method, setMethod] = useState<SaleMethod>('epic_lifo')
- const [trancheAlloc, setTrancheAlloc] = useState<TrancheAllocation | null>(null)
- const [trancheLoading, setTrancheLoading] = useState(false)
- const [manualAlloc, setManualAlloc] = useState<Record<string, number>>({})
- const trancheTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Lot selection method + tranche allocation
+  const [method, setMethod] = useState<SaleMethod>('epic_lifo')
+  const [trancheAlloc, setTrancheAlloc] = useState<TrancheAllocation | null>(null)
+  const [trancheLoading, setTrancheLoading] = useState(false)
+  const [manualAlloc, setManualAlloc] = useState<Record<string, number>>({})
+  const trancheTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
- // Actual tax paid (recording mode only)
- const [actualTaxPaid, setActualTaxPaid] = useState('')
+  // Actual tax paid (recording mode only)
+  const [actualTaxPaid, setActualTaxPaid] = useState('')
 
- // In Epic mode, price per share is always derived from the prices table
- useEffect(() => {
- if (!epicMode || !prices || mode === 'list') return
- setForm(f => ({ ...f, price_per_share: priceAt(f.date, prices) }))
- }, [form.date, epicMode, prices, mode])
+  // In Epic mode, price per share is always derived from the prices table
+  useEffect(() => {
+    if (!epicMode || !prices || mode === 'list') return
+    setForm(f => ({ ...f, price_per_share: priceAt(f.date, prices) }))
+  }, [form.date, epicMode, prices, mode])
 
- // Tranche allocation — debounced 300ms, triggered by date/shares/method
- useEffect(() => {
- if (mode === 'list' || !form.date || form.shares <= 0) {
- setTrancheAlloc(null)
- return
- }
- if (trancheTimer.current) clearTimeout(trancheTimer.current)
- trancheTimer.current = setTimeout(async () => {
- setTrancheLoading(true)
- try {
- const result = await api.getTrancheAllocation({ sale_date: form.date, shares: form.shares, method })
- setTrancheAlloc(result)
- } catch {
- setTrancheAlloc(null)
- } finally {
- setTrancheLoading(false)
- }
- }, 300)
- }, [form.date, form.shares, method, mode])
+  // Tranche allocation — debounced 300ms, triggered by date/shares/method
+  useEffect(() => {
+    if (mode === 'list' || !form.date || form.shares <= 0) {
+      setTrancheAlloc(null)
+      return
+    }
+    if (trancheTimer.current) clearTimeout(trancheTimer.current)
+    trancheTimer.current = setTimeout(async () => {
+      setTrancheLoading(true)
+      try {
+        const result = await api.getTrancheAllocation({ sale_date: form.date, shares: form.shares, method })
+        setTrancheAlloc(result)
+      } catch {
+        setTrancheAlloc(null)
+      } finally {
+        setTrancheLoading(false)
+      }
+    }, 300)
+  }, [form.date, form.shares, method, mode])
 
- // Live estimate — debounced 400ms, triggered by dollar target or share count + price change
- useEffect(() => {
- if (mode === 'list') return
- const price = form.price_per_share
- if (price <= 0) { setEstimate(null); return }
+  // Live estimate — debounced 400ms, triggered by dollar target or share count + price change
+  useEffect(() => {
+    if (mode === 'list') return
+    const price = form.price_per_share
+    if (price <= 0) { setEstimate(null); return }
 
- let targetCash: number | null = null
- let exactShares: number | null = null
- if (inputMode === 'dollars') {
- const v = parseFloat(dollarTarget)
- if (!dollarTarget || isNaN(v) || v <= 0) { setEstimate(null); return }
- targetCash = v
- } else {
- const s = form.shares
- if (!s || s <= 0) { setEstimate(null); return }
- exactShares = s
- }
+    let targetCash: number | null = null
+    let exactShares: number | null = null
+    if (inputMode === 'dollars') {
+      const v = parseFloat(dollarTarget)
+      if (!dollarTarget || isNaN(v) || v <= 0) { setEstimate(null); return }
+      targetCash = v
+    } else {
+      const s = form.shares
+      if (!s || s <= 0) { setEstimate(null); return }
+      exactShares = s
+    }
 
- if (estimateTimer.current) clearTimeout(estimateTimer.current)
- estimateTimer.current = setTimeout(async () => {
- setEstimateLoading(true)
- try {
- const result = await api.estimateSale({
- price_per_share: price,
- ...(exactShares != null ? { shares: exactShares } : { target_net_cash: targetCash! }),
- sale_date: form.date,
- })
- setEstimate(result)
- if (inputMode === 'dollars') {
- setForm(f => ({ ...f, shares: result.shares_needed }))
- }
- } catch {
- setEstimate(null)
- } finally {
- setEstimateLoading(false)
- }
- }, 400)
- }, [dollarTarget, form.shares, form.price_per_share, form.date, inputMode, mode])
+    if (estimateTimer.current) clearTimeout(estimateTimer.current)
+    estimateTimer.current = setTimeout(async () => {
+      setEstimateLoading(true)
+      try {
+        const result = await api.estimateSale({
+          price_per_share: price,
+          ...(exactShares != null ? { shares: exactShares } : { target_net_cash: targetCash! }),
+          sale_date: form.date,
+        })
+        setEstimate(result)
+        if (inputMode === 'dollars') {
+          setForm(f => ({ ...f, shares: result.shares_needed }))
+        }
+      } catch {
+        setEstimate(null)
+      } finally {
+        setEstimateLoading(false)
+      }
+    }, 400)
+  }, [dollarTarget, form.shares, form.price_per_share, form.date, inputMode, mode])
 
- function resetForm() {
- setForm(emptyForm)
- setTaxRates(ratesFromDefaults(taxSettings))
- setEditId(null)
- setEditVersion(1)
- setError('')
- setConflict(false)
- setDollarTarget('')
- setEstimate(null)
- setTrancheAlloc(null)
- setManualAlloc({})
- setActualTaxPaid('')
- setInputMode('dollars')
- }
+  function resetForm() {
+    setForm(emptyForm)
+    setTaxRates(ratesFromDefaults(taxSettings))
+    setEditId(null)
+    setEditVersion(1)
+    setError('')
+    setConflict(false)
+    setDollarTarget('')
+    setEstimate(null)
+    setTrancheAlloc(null)
+    setManualAlloc({})
+    setActualTaxPaid('')
+    setInputMode('dollars')
+  }
 
- function openAdd() {
- resetForm()
- setTaxRates(ratesFromDefaults(taxSettings))
- const m = taxSettings?.lot_selection_method
- setMethod(m && ['fifo', 'lifo', 'epic_lifo', 'manual_tranche'].includes(m) ? m as SaleMethod : 'epic_lifo')
- setMode('add')
- }
+  function openAdd() {
+    resetForm()
+    setTaxRates(ratesFromDefaults(taxSettings))
+    const m = taxSettings?.lot_selection_method
+    setMethod(m && ['fifo', 'lifo', 'epic_lifo', 'manual_tranche'].includes(m) ? m as SaleMethod : 'epic_lifo')
+    setMode('add')
+  }
 
- function openEdit(s: SaleEntry) {
- const {
- id, version,
- federal_income_rate, federal_lt_cg_rate, federal_st_cg_rate,
- niit_rate, state_income_rate, state_lt_cg_rate, state_st_cg_rate, lt_holding_days,
- lot_overrides, actual_tax_paid, sale_plan_id: _sp,
- ...rest
- } = s
- setForm(rest as SaleForm)
- setTaxRates(ratesFromSale(s, taxSettings))
- setEditId(id)
- setEditVersion(version)
- setError('')
- setConflict(false)
- // Determine method from lot_overrides
- if (lot_overrides && lot_overrides.length > 0) {
- setMethod('manual_tranche')
- const alloc: Record<string, number> = {}
- for (const ov of lot_overrides) {
- alloc[`${ov.vest_date}|${ov.grant_year}|${ov.grant_type}`] = ov.shares
- }
- setManualAlloc(alloc)
- } else {
- const isPayoffSale = (rest as SaleForm).loan_id != null
- const m = isPayoffSale && taxSettings?.flexible_payoff_enabled
- ? taxSettings?.loan_payoff_method
- : taxSettings?.lot_selection_method
- setMethod(m && ['fifo', 'lifo', 'epic_lifo', 'manual_tranche'].includes(m) ? m as SaleMethod : 'epic_lifo')
- setManualAlloc({})
- }
- setActualTaxPaid(actual_tax_paid != null ? String(actual_tax_paid) : '')
- setInputMode('shares')
- setMode('edit')
- }
+  function openEdit(s: SaleEntry) {
+    const {
+      id, version,
+      federal_income_rate, federal_lt_cg_rate, federal_st_cg_rate,
+      niit_rate, state_income_rate, state_lt_cg_rate, state_st_cg_rate, lt_holding_days,
+      lot_overrides, actual_tax_paid, sale_plan_id: _sp,
+      ...rest
+    } = s
+    setForm(rest as SaleForm)
+    setTaxRates(ratesFromSale(s, taxSettings))
+    setEditId(id)
+    setEditVersion(version)
+    setError('')
+    setConflict(false)
+    // Determine method from lot_overrides
+    if (lot_overrides && lot_overrides.length > 0) {
+      setMethod('manual_tranche')
+      const alloc: Record<string, number> = {}
+      for (const ov of lot_overrides) {
+        alloc[`${ov.vest_date}|${ov.grant_year}|${ov.grant_type}`] = ov.shares
+      }
+      setManualAlloc(alloc)
+    } else {
+      const isPayoffSale = (rest as SaleForm).loan_id != null
+      const m = isPayoffSale && taxSettings?.flexible_payoff_enabled
+        ? taxSettings?.loan_payoff_method
+        : taxSettings?.lot_selection_method
+      setMethod(m && ['fifo', 'lifo', 'epic_lifo', 'manual_tranche'].includes(m) ? m as SaleMethod : 'epic_lifo')
+      setManualAlloc({})
+    }
+    setActualTaxPaid(actual_tax_paid != null ? String(actual_tax_paid) : '')
+    setInputMode('shares')
+    setMode('edit')
+  }
 
- async function toggleTax(id: number) {
- // If already loaded, just toggle visibility
- if (breakdowns.has(id)) {
- setExpanded(prev => {
- const next = new Set(prev)
- if (next.has(id)) next.delete(id)
- else next.add(id)
- return next
- })
- return
- }
- // Load then expand
- setLoadingTaxIds(prev => new Set(prev).add(id))
- try {
- const tax = await (vid ? api.getSharedSaleTax(vid, id) : api.getSaleTax(id))
- setBreakdowns(prev => new Map(prev).set(id, tax))
- setExpanded(prev => new Set(prev).add(id))
- } catch {
- // silently ignore — cell stays as "—"
- } finally {
- setLoadingTaxIds(prev => { const next = new Set(prev); next.delete(id); return next })
- }
- }
+  async function toggleTax(id: number) {
+    // If already loaded, just toggle visibility
+    if (breakdowns.has(id)) {
+      setExpanded(prev => {
+        const next = new Set(prev)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        return next
+      })
+      return
+    }
+    // Load then expand
+    setLoadingTaxIds(prev => new Set(prev).add(id))
+    try {
+      const tax = await (vid ? api.getSharedSaleTax(vid, id) : api.getSaleTax(id))
+      setBreakdowns(prev => new Map(prev).set(id, tax))
+      setExpanded(prev => new Set(prev).add(id))
+    } catch {
+      // silently ignore — cell stays as "—"
+    } finally {
+      setLoadingTaxIds(prev => { const next = new Set(prev); next.delete(id); return next })
+    }
+  }
 
- async function handleSave() {
- setSaving(true)
- setError('')
- try {
- let saved: SaleEntry
- const lotOverrides = method === 'manual_tranche' && trancheAlloc
- ? buildLotOverrides(trancheAlloc.lines, manualAlloc)
- : null
- const payload = {
- ...form,
- ...taxRates,
- lot_overrides: lotOverrides,
- actual_tax_paid: actualTaxPaid !== '' ? parseFloat(actualTaxPaid) || null : null,
- }
- if (mode === 'add') {
- saved = await api.createSale(payload)
- } else if (mode === 'edit' && editId != null) {
- saved = await api.updateSale(editId, { ...payload, version: editVersion })
- } else {
- return
- }
- broadcastChange('sales')
- setBreakdowns(prev => { const next = new Map(prev); next.delete(saved.id); return next })
- try {
- const tax = await api.getSaleTax(saved.id)
- setBreakdowns(prev => new Map(prev).set(saved.id, tax))
- setExpanded(prev => new Set(prev).add(saved.id))
- } catch {
- // silently ignore — breakdown won't auto-expand
- }
- reload()
- setMode('list')
- resetForm()
- } catch (e: unknown) {
- if (e instanceof ConflictError) {
- setConflict(true)
- } else {
- setError(e instanceof Error ? e.message : 'Save failed')
- }
- } finally {
- setSaving(false)
- }
- }
+  async function handleSave() {
+    setSaving(true)
+    setError('')
+    try {
+      let saved: SaleEntry
+      const lotOverrides = method === 'manual_tranche' && trancheAlloc
+        ? buildLotOverrides(trancheAlloc.lines, manualAlloc)
+        : null
+      const payload = {
+        ...form,
+        ...taxRates,
+        lot_overrides: lotOverrides,
+        actual_tax_paid: actualTaxPaid !== '' ? parseFloat(actualTaxPaid) || null : null,
+      }
+      if (mode === 'add') {
+        saved = await api.createSale(payload)
+      } else if (mode === 'edit' && editId != null) {
+        saved = await api.updateSale(editId, { ...payload, version: editVersion })
+      } else {
+        return
+      }
+      broadcastChange('sales')
+      setBreakdowns(prev => { const next = new Map(prev); next.delete(saved.id); return next })
+      try {
+        const tax = await api.getSaleTax(saved.id)
+        setBreakdowns(prev => new Map(prev).set(saved.id, tax))
+        setExpanded(prev => new Set(prev).add(saved.id))
+      } catch {
+        // silently ignore — breakdown won't auto-expand
+      }
+      reload()
+      setMode('list')
+      resetForm()
+    } catch (e: unknown) {
+      if (e instanceof ConflictError) {
+        setConflict(true)
+      } else {
+        setError(e instanceof Error ? e.message : 'Save failed')
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
 
- async function handleDelete(id: number) {
- if (!confirm('Delete this sale?')) return
- await api.deleteSale(id)
- broadcastChange('sales')
- setBreakdowns(prev => { const next = new Map(prev); next.delete(id); return next })
- setExpanded(prev => { const next = new Set(prev); next.delete(id); return next })
- reload()
- setMode('list')
- resetForm()
- }
+  async function handleDelete(id: number) {
+    if (!confirm('Delete this sale?')) return
+    await api.deleteSale(id)
+    broadcastChange('sales')
+    setBreakdowns(prev => { const next = new Map(prev); next.delete(id); return next })
+    setExpanded(prev => { const next = new Set(prev); next.delete(id); return next })
+    reload()
+    setMode('list')
+    resetForm()
+  }
 
- if (loading) return <p className="p-6 text-center text-sm text-cs-text-2">Loading...</p>
- if (!sales) return <p className="p-6 text-center text-sm text-red-500">Failed to load sales</p>
+  if (loading) return <p className="p-6 text-center text-sm text-cs-text-2">Loading...</p>
+  if (!sales) return <p className="p-6 text-center text-sm text-red-500">Failed to load sales</p>
 
- if (mode !== 'list') {
- const isPayoff = form.loan_id != null
- const isRecording = !epicMode && form.date < TODAY
- const isPlanAdd = mode === 'add' && !isRecording
- const title = mode === 'add' ? (isRecording ? 'Record Sale' : 'Plan Sale') : 'Edit Sale'
- const showMethodSelector = !isPayoff || (isPayoff && taxSettings?.flexible_payoff_enabled === true)
- const showTranche = (trancheAlloc !== null || trancheLoading) && form.shares > 0
+  if (mode !== 'list') {
+    const isPayoff = form.loan_id != null
+    const isRecording = !epicMode && form.date < TODAY
+    const isPlanAdd = mode === 'add' && !isRecording
+    const title = mode === 'add' ? (isRecording ? 'Record Sale' : 'Plan Sale') : 'Edit Sale'
+    const showMethodSelector = !isPayoff || (isPayoff && taxSettings?.flexible_payoff_enabled === true)
+    const showTranche = (trancheAlloc !== null || trancheLoading) && form.shares > 0
 
- return (
- <div className="space-y-4">
- <div className="flex items-center justify-between">
- <h2 className="text-lg font-semibold text-cs-text">{title}</h2>
- <button onClick={() => { setMode('list'); resetForm() }} className="text-xs text-cs-muted hover:text-cs-text-2 ">Cancel</button>
- </div>
- {conflict && (
- <div className="rounded-md border border-yellow-300 bg-yellow-50 p-3 dark:border-yellow-700 dark:bg-yellow-900/20">
- <p className="text-xs font-medium text-yellow-800 dark:text-yellow-300">
- This record was changed on another device.
- </p>
- <div className="mt-2 flex gap-2">
- <button onClick={() => { reload(); setMode('list'); resetForm() }} className="rounded-md bg-yellow-600 px-2 py-1 text-xs font-medium text-white hover:bg-yellow-700">Reload latest</button>
- <button onClick={() => { setMode('list'); resetForm() }} className="rounded-md bg-gray-200 px-2 py-1 text-xs font-medium text-cs-text-2 hover:bg-gray-300 ">Discard</button>
- </div>
- </div>
- )}
- {error && <p className="text-xs text-red-500">{error}</p>}
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-cs-text">{title}</h2>
+          <button onClick={() => { setMode('list'); resetForm() }} className="text-xs text-cs-muted hover:text-cs-text-2 ">Cancel</button>
+        </div>
+        {conflict && (
+          <div className="rounded-md border border-yellow-300 bg-yellow-50 p-3 dark:border-yellow-700 dark:bg-yellow-900/20">
+            <p className="text-xs font-medium text-yellow-800 dark:text-yellow-300">
+              This record was changed on another device.
+            </p>
+            <div className="mt-2 flex gap-2">
+              <button onClick={() => { reload(); setMode('list'); resetForm() }} className="rounded-md bg-yellow-600 px-2 py-1 text-xs font-medium text-white hover:bg-yellow-700">Reload latest</button>
+              <button onClick={() => { setMode('list'); resetForm() }} className="rounded-md bg-gray-200 px-2 py-1 text-xs font-medium text-cs-text-2 hover:bg-gray-300 ">Discard</button>
+            </div>
+          </div>
+        )}
+        {error && <p className="text-xs text-red-500">{error}</p>}
 
- {/* Date + price */}
- <div className="grid grid-cols-2 gap-3">
- <Field label="Sale Date" type="date" value={form.date} min={epicMode ? TODAY : undefined}
- onChange={v => setForm(f => ({ ...f, date: v }))} />
- <label className="block">
- <span className="text-xs text-cs-muted">Price per Share</span>
- {epicMode ? (
- <div className="mt-0.5 rounded-md border border-cs-border bg-cs-raised px-2 py-1.5 text-xs text-cs-text-2 ">
- {form.price_per_share > 0 ? fmtUSD(form.price_per_share) : <span className="text-cs-text-2">No price for this date</span>}
- </div>
- ) : (
- <input type="number" step="0.01" value={form.price_per_share}
- onChange={e => setForm(f => ({ ...f, price_per_share: +e.target.value }))}
- className={FIELD_INPUT_CLASS} />
- )}
- </label>
- </div>
+        {/* Date + price */}
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Sale Date" type="date" value={form.date} min={epicMode ? TODAY : undefined}
+            onChange={v => setForm(f => ({ ...f, date: v }))} />
+          <label className="block">
+            <span className="text-xs text-cs-muted">Price per Share</span>
+            {epicMode ? (
+              <div className="mt-0.5 rounded-md border border-cs-border bg-cs-raised px-2 py-1.5 text-xs text-cs-text-2 ">
+                {form.price_per_share > 0 ? fmtUSD(form.price_per_share) : <span className="text-cs-text-2">No price for this date</span>}
+              </div>
+            ) : (
+              <input type="number" step="0.01" value={form.price_per_share}
+                onChange={e => setForm(f => ({ ...f, price_per_share: +e.target.value }))}
+                className={FIELD_INPUT_CLASS} />
+            )}
+          </label>
+        </div>
 
- {/* Lot selection method */}
- {showMethodSelector && (
- <label className="block">
- <span className="text-xs text-cs-muted">Which shares to sell first</span>
- <select
- value={method}
- onChange={e => { setMethod(e.target.value as SaleMethod); setManualAlloc({}) }}
- className={FIELD_INPUT_CLASS}
- >
- <option value="epic_lifo">Epic default — keep long-held shares for the lower tax rate</option>
- <option value="fifo">Oldest shares first</option>
- <option value="lifo">Newest shares first</option>
- <option value="manual_tranche">Let me pick each batch</option>
- </select>
- {isPayoff && (
- <p className="mt-1 text-[11px] text-cs-muted">
- This sale repays a loan. If you don't have enough shares, the app will pull from the matching grant no matter what you pick here.
- </p>
- )}
- </label>
- )}
+        {/* Lot selection method */}
+        {showMethodSelector && (
+          <label className="block">
+            <span className="text-xs text-cs-muted">Which shares to sell first</span>
+            <select
+              value={method}
+              onChange={e => { setMethod(e.target.value as SaleMethod); setManualAlloc({}) }}
+              className={FIELD_INPUT_CLASS}
+            >
+              <option value="epic_lifo">Epic default — keep long-held shares for the lower tax rate</option>
+              <option value="fifo">Oldest shares first</option>
+              <option value="lifo">Newest shares first</option>
+              <option value="manual_tranche">Let me pick each batch</option>
+            </select>
+            {isPayoff && (
+              <p className="mt-1 text-[11px] text-cs-muted">
+                This sale repays a loan. If you don't have enough shares, the app will pull from the matching grant no matter what you pick here.
+              </p>
+            )}
+          </label>
+        )}
 
- {/* Input mode toggle (add mode only) */}
- {mode === 'add' && (
- <div className="flex gap-1 rounded-md border border-cs-border bg-cs-raised p-0.5 ">
- {(['dollars', 'shares'] as const).map(m => (
- <button key={m} onClick={() => { setInputMode(m); setEstimate(null) }}
- className={`flex-1 rounded py-1 text-xs font-medium transition-colors ${inputMode === m ? 'bg-cs-surface shadow-sm text-cs-text ' : 'text-cs-muted'}`}>
- {m === 'dollars' ? '$ Target' : '# Shares'}
- </button>
- ))}
- </div>
- )}
+        {/* Input mode toggle (add mode only) */}
+        {mode === 'add' && (
+          <div className="flex gap-1 rounded-md border border-cs-border bg-cs-raised p-0.5 ">
+            {(['dollars', 'shares'] as const).map(m => (
+              <button key={m} onClick={() => { setInputMode(m); setEstimate(null) }}
+                className={`flex-1 rounded py-1 text-xs font-medium transition-colors ${inputMode === m ? 'bg-cs-surface shadow-sm text-cs-text ' : 'text-cs-muted'}`}>
+                {m === 'dollars' ? '$ Target' : '# Shares'}
+              </button>
+            ))}
+          </div>
+        )}
 
- {/* Amount input */}
- {mode === 'add' && inputMode === 'dollars' ? (
- <label className="block">
- <span className="text-xs text-cs-muted">Target net cash (post-tax)</span>
- <div className="relative mt-0.5">
- <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-xs text-cs-text-2">$</span>
- <input type="number" step="100" min="0" value={dollarTarget}
- onChange={e => setDollarTarget(e.target.value)}
- placeholder="0"
- className="block w-full rounded-md border border-cs-border-strong bg-cs-surface pl-5 pr-2 py-1.5 text-xs text-cs-text " />
- </div>
- </label>
- ) : (
- <Field label="Shares to sell" type="number" value={form.shares}
- onChange={v => setForm(f => ({ ...f, shares: +v }))} />
- )}
+        {/* Amount input */}
+        {mode === 'add' && inputMode === 'dollars' ? (
+          <label className="block">
+            <span className="text-xs text-cs-muted">Target net cash (post-tax)</span>
+            <div className="relative mt-0.5">
+              <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-xs text-cs-text-2">$</span>
+              <input type="number" step="100" min="0" value={dollarTarget}
+                onChange={e => setDollarTarget(e.target.value)}
+                placeholder="0"
+                className="block w-full rounded-md border border-cs-border-strong bg-cs-surface pl-5 pr-2 py-1.5 text-xs text-cs-text " />
+            </div>
+          </label>
+        ) : (
+          <Field label="Shares to sell" type="number" value={form.shares}
+            onChange={v => setForm(f => ({ ...f, shares: +v }))} />
+        )}
 
- {/* Tranche table */}
- {showTranche && (
- <TrancheTable
- lines={trancheAlloc?.lines ?? []}
- loading={trancheLoading && !trancheAlloc}
- manual={method === 'manual_tranche'}
- manualAlloc={manualAlloc}
- onManualChange={(key, shares) => setManualAlloc(prev => ({ ...prev, [key]: shares }))}
- date={form.date}
- />
- )}
+        {/* Tranche table */}
+        {showTranche && (
+          <TrancheTable
+            lines={trancheAlloc?.lines ?? []}
+            loading={trancheLoading && !trancheAlloc}
+            manual={method === 'manual_tranche'}
+            manualAlloc={manualAlloc}
+            onManualChange={(key, shares) => setManualAlloc(prev => ({ ...prev, [key]: shares }))}
+            date={form.date}
+          />
+        )}
 
- {/* Live estimate */}
- {(estimate || estimateLoading) && (
- <div className="rounded-md border border-indigo-100 bg-rose-50 px-3 py-2.5 dark:border-indigo-900 dark:bg-rose-950/30">
- {estimateLoading ? (
- <p className="text-xs text-rose-400">Calculating…</p>
- ) : estimate && (
- <div className="space-y-1 text-xs">
- {isPlanAdd && inputMode === 'dollars' && (
- <Row label="Shares needed" value={fmtNum(estimate.shares_needed)} />
- )}
- <Row label="Total from sale" value={fmtUSD(estimate.gross_proceeds)} />
- <Row label="Est. tax" value={fmtUSD(estimate.estimated_tax)} />
- <Row label="Net cash" value={fmtUSD(estimate.net_proceeds)} bold />
- </div>
- )}
- </div>
- )}
+        {/* Live estimate */}
+        {(estimate || estimateLoading) && (
+          <div className="rounded-md border border-indigo-100 bg-rose-50 px-3 py-2.5 dark:border-indigo-900 dark:bg-rose-950/30">
+            {estimateLoading ? (
+              <p className="text-xs text-rose-400">Calculating…</p>
+            ) : estimate && (
+              <div className="space-y-1 text-xs">
+                {isPlanAdd && inputMode === 'dollars' && (
+                  <Row label="Shares needed" value={fmtNum(estimate.shares_needed)} />
+                )}
+                <Row label="Total from sale" value={fmtUSD(estimate.gross_proceeds)} />
+                <Row label="Est. tax" value={fmtUSD(estimate.estimated_tax)} />
+                <Row label="Net cash" value={fmtUSD(estimate.net_proceeds)} bold />
+              </div>
+            )}
+          </div>
+        )}
 
- {/* Tax rates (non-epic mode) */}
- {!epicMode && (
- <TaxRateFields
- rates={taxRates}
- onChange={setTaxRates}
- onReset={() => setTaxRates(ratesFromDefaults(taxSettings))}
- />
- )}
+        {/* Tax rates (non-epic mode) */}
+        {!epicMode && (
+          <TaxRateFields
+            rates={taxRates}
+            onChange={setTaxRates}
+            onReset={() => setTaxRates(ratesFromDefaults(taxSettings))}
+          />
+        )}
 
- {/* Actual tax paid — recording only */}
- {isRecording && (
- <label className="block">
- <span className="text-xs text-cs-muted">Actual tax paid (optional — overrides estimate)</span>
- <div className="relative mt-0.5">
- <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-xs text-cs-text-2">$</span>
- <input type="number" step="0.01" min="0" value={actualTaxPaid}
- onChange={e => setActualTaxPaid(e.target.value)}
- placeholder="Leave blank to use estimate"
- className="block w-full rounded-md border border-cs-border-strong bg-cs-surface pl-5 pr-2 py-1.5 text-xs text-cs-text " />
- </div>
- </label>
- )}
+        {/* Actual tax paid — recording only */}
+        {isRecording && (
+          <label className="block">
+            <span className="text-xs text-cs-muted">Actual tax paid (optional — overrides estimate)</span>
+            <div className="relative mt-0.5">
+              <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-xs text-cs-text-2">$</span>
+              <input type="number" step="0.01" min="0" value={actualTaxPaid}
+                onChange={e => setActualTaxPaid(e.target.value)}
+                placeholder="Leave blank to use estimate"
+                className="block w-full rounded-md border border-cs-border-strong bg-cs-surface pl-5 pr-2 py-1.5 text-xs text-cs-text " />
+            </div>
+          </label>
+        )}
 
- <Field label="Notes (optional)" type="text" value={form.notes}
- onChange={v => setForm(f => ({ ...f, notes: v }))} />
+        <Field label="Notes (optional)" type="text" value={form.notes}
+          onChange={v => setForm(f => ({ ...f, notes: v }))} />
 
- <div className="flex items-center justify-between pt-2">
- <button
- onClick={handleSave}
- disabled={saving || form.shares <= 0}
- className="rounded-md bg-cs-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-cs-brand-hover disabled:opacity-50"
- >
- {saving ? 'Saving…' : mode === 'add' ? (isRecording ? 'Record sale' : 'Plan sale') : 'Save'}
- </button>
- {mode === 'edit' && editId != null && (
- <button
- onClick={() => handleDelete(editId)}
- className="text-xs text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
- >
- Delete sale
- </button>
- )}
- </div>
- </div>
- )
- }
+        <div className="flex items-center justify-between pt-2">
+          <button
+            onClick={handleSave}
+            disabled={saving || form.shares <= 0}
+            className="rounded-md bg-cs-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-cs-brand-hover disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : mode === 'add' ? (isRecording ? 'Record sale' : 'Plan sale') : 'Save'}
+          </button>
+          {mode === 'edit' && editId != null && (
+            <button
+              onClick={() => handleDelete(editId)}
+              className="text-xs text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+            >
+              Delete sale
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
 
- return (
- <div className="space-y-4">
- <div className="flex items-center justify-between">
- <h2 className="text-lg font-semibold text-cs-text">Sales</h2>
- {!readOnly && (
- <button onClick={openAdd} className="rounded-full bg-cs-brand px-3 py-1 text-xs font-semibold text-white hover:bg-cs-brand-hover">
- + Sale
- </button>
- )}
- </div>
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-cs-text">Sales</h2>
+        {!readOnly && (
+          <button onClick={openAdd} className="rounded-full bg-cs-brand px-3 py-1 text-xs font-semibold text-white hover:bg-cs-brand-hover">
+            + Sale
+          </button>
+        )}
+      </div>
 
- {/* Mobile card layout */}
- {isMobile ? <div className="space-y-2">
- {sales.map(s => {
- const bd = breakdowns.get(s.id)
- const isExpanded = expanded.has(s.id)
- const isLoading = loadingTaxIds.has(s.id)
- const hasST = bd && bd.st_shares > 0
- return (
- <div key={s.id} className="rounded-xl border border-cs-border bg-cs-surface p-3 text-xs shadow-card">
- {/* Line 1: Date + Type + Edit */}
- <div className="flex items-center justify-between">
- <div className="flex items-center gap-2">
- <span className="text-cs-text-2">{s.date}</span>
- {s.loan_id != null ? (
- <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-medium text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">Repayment</span>
- ) : (
- <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">Cash sale</span>
- )}
- </div>
- {!readOnly && (
- <button onClick={() => openEdit(s)} className="text-rose-400 hover:text-cs-brand dark:hover:text-rose-300" aria-label="Edit sale">
- <PencilIcon />
- </button>
- )}
- </div>
- {/* Line 2: Shares + Price */}
- <div className="mt-1 text-cs-text-2">
- <span className="tabular-nums">{fmtNum(s.shares)}</span> shares @ <span className="tabular-nums">{fmtUSD(s.price_per_share)}</span>
- </div>
- {/* Line 3: Gross + Tax */}
- <div className="mt-1 flex items-center justify-between">
- <span className="tabular-nums font-medium text-cs-text">Gross: {fmtUSD(s.shares * s.price_per_share)}</span>
- <button
- onClick={() => toggleTax(s.id)}
- aria-expanded={isExpanded}
- aria-label={`${isExpanded ? 'Hide' : 'Show'} tax breakdown`}
- className="inline-flex items-center gap-1"
- >
- {isLoading ? (
- <span className="text-cs-text-2">...</span>
- ) : bd ? (
- <>
- <span className="text-cs-muted">Tax:</span>
- {hasST && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">Short-term</span>}
- <span className={`tabular-nums font-medium underline decoration-dotted ${hasST ? 'text-amber-700 dark:text-amber-300' : 'text-cs-text'}`}>{fmtUSD(bd.estimated_tax)}</span>
- </>
- ) : (
- <>
- <span className="text-cs-muted">Tax:</span>
- <span className="text-cs-text-2 underline decoration-dotted">&mdash;</span>
- </>
- )}
- <span className="text-cs-muted">{isExpanded ? '\u25B2' : '\u25BC'}</span>
- </button>
- </div>
- {/* Expanded tax breakdown */}
- {isExpanded && bd && (
- <div className="mt-2 border-t border-cs-border pt-2 ">
- {s.notes && <p className="mb-2 text-xs text-cs-muted">Note: {s.notes}</p>}
- <TaxCard breakdown={bd} />
- </div>
- )}
- </div>
- )
- })}
- </div> : /* Desktop table layout */
- <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-cs-border bg-cs-surface shadow-card">
- <table className="w-full text-left text-xs">
- <thead className="bg-cs-raised">
- <tr className="text-cs-text-2">
- <th className="px-3 py-2">Date</th>
- <th className="px-3 py-2">Type</th>
- <th className="px-3 py-2 text-right">Shares</th>
- <th className="px-3 py-2 text-right">Price/Share</th>
- <th className="px-3 py-2 text-right">Total from sale</th>
- <th className="px-3 py-2 text-right">Tax</th>
- {!readOnly && <th className="px-3 py-2"></th>}
- </tr>
- </thead>
- <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
- {sales.map(s => {
- const bd = breakdowns.get(s.id)
- const isExpanded = expanded.has(s.id)
- const isLoading = loadingTaxIds.has(s.id)
- const hasST = bd && bd.st_shares > 0
- return (
- <>
- <tr key={s.id} className="bg-cs-surface">
- <td className="px-3 py-2 text-cs-text-2">{s.date}</td>
- <td className="px-3 py-2">
- {s.loan_id != null ? (
- <span className="inline-block rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-medium text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">
- Repayment
- </span>
- ) : (
- <span className="inline-block rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">
- Cash sale
- </span>
- )}
- </td>
- <td className="px-3 py-2 text-right text-cs-text-2">{fmtNum(s.shares)}</td>
- <td className="px-3 py-2 text-right text-cs-text-2">{fmtUSD(s.price_per_share)}</td>
- <td className="px-3 py-2 text-right font-medium text-cs-text">
- {fmtUSD(s.shares * s.price_per_share)}
- </td>
- <td className="px-3 py-2 text-right">
- <button
- onClick={() => toggleTax(s.id)}
- aria-expanded={isExpanded}
- aria-label={`${isExpanded ? 'Hide' : 'Show'} tax breakdown`}
- className="inline-flex items-center gap-1 text-right"
- >
- {isLoading ? (
- <span className="text-cs-text-2">...</span>
- ) : bd ? (
- <>
- {hasST && (
- <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
- Short-term
- </span>
- )}
- <span className={`font-medium underline decoration-dotted ${hasST ? 'text-amber-700 dark:text-amber-300' : 'text-cs-text'}`}>
- {fmtUSD(bd.estimated_tax)}
- </span>
- </>
- ) : (
- <span className="text-cs-text-2 underline decoration-dotted">&mdash;</span>
- )}
- </button>
- </td>
- {!readOnly && (
- <td className="px-3 py-2 text-right">
- <button
- onClick={() => openEdit(s)}
- className="text-rose-400 hover:text-cs-brand dark:hover:text-rose-300"
- aria-label="Edit sale"
- >
- <PencilIcon />
- </button>
- </td>
- )}
- </tr>
- {isExpanded && bd && (
- <tr key={`${s.id}-tax`} className="bg-cs-surface">
- <td colSpan={readOnly ? 6 : 7} className="px-3 pb-3 pt-0">
- {s.notes && (
- <p className="mb-2 text-xs text-cs-muted">Note: {s.notes}</p>
- )}
- <TaxCard breakdown={bd} />
- </td>
- </tr>
- )}
- </>
- )
- })}
- </tbody>
- </table>
- </div>}
- {sales.length === 0 && (
- <p className="px-3 py-6 text-center text-xs text-cs-text-2">
- {readOnly
- ? 'No sales yet.'
- : <>No sales yet. Tap <span className="font-medium">+ Sale</span> above to plan or record one.</>}
- </p>
- )}
- <p className="text-xs text-cs-text-2">{sales.length} sales</p>
- </div>
- )
+      {/* Mobile card layout */}
+      {isMobile ? <div className="space-y-2">
+        {sales.map(s => {
+          const bd = breakdowns.get(s.id)
+          const isExpanded = expanded.has(s.id)
+          const isLoading = loadingTaxIds.has(s.id)
+          const hasST = bd && bd.st_shares > 0
+          return (
+            <div key={s.id} className="rounded-xl border border-cs-border bg-cs-surface p-3 text-xs shadow-card">
+              {/* Line 1: Date + Type + Edit */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-cs-text-2">{s.date}</span>
+                  {s.loan_id != null ? (
+                    <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-medium text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">Repayment</span>
+                  ) : (
+                    <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">Cash sale</span>
+                  )}
+                </div>
+                {!readOnly && (
+                  <button onClick={() => openEdit(s)} className="text-rose-400 hover:text-cs-brand dark:hover:text-rose-300" aria-label="Edit sale">
+                    <PencilIcon />
+                  </button>
+                )}
+              </div>
+              {/* Line 2: Shares + Price */}
+              <div className="mt-1 text-cs-text-2">
+                <span className="tabular-nums">{fmtNum(s.shares)}</span> shares @ <span className="tabular-nums">{fmtUSD(s.price_per_share)}</span>
+              </div>
+              {/* Line 3: Gross + Tax */}
+              <div className="mt-1 flex items-center justify-between">
+                <span className="tabular-nums font-medium text-cs-text">Gross: {fmtUSD(s.shares * s.price_per_share)}</span>
+                <button
+                  onClick={() => toggleTax(s.id)}
+                  aria-expanded={isExpanded}
+                  aria-label={`${isExpanded ? 'Hide' : 'Show'} tax breakdown`}
+                  className="inline-flex items-center gap-1"
+                >
+                  {isLoading ? (
+                    <span className="text-cs-text-2">...</span>
+                  ) : bd ? (
+                    <>
+                      <span className="text-cs-muted">Tax:</span>
+                      {hasST && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">Short-term</span>}
+                      <span className={`tabular-nums font-medium underline decoration-dotted ${hasST ? 'text-amber-700 dark:text-amber-300' : 'text-cs-text'}`}>{fmtUSD(bd.estimated_tax)}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-cs-muted">Tax:</span>
+                      <span className="text-cs-text-2 underline decoration-dotted">&mdash;</span>
+                    </>
+                  )}
+                  <span className="text-cs-muted">{isExpanded ? '\u25B2' : '\u25BC'}</span>
+                </button>
+              </div>
+              {/* Expanded tax breakdown */}
+              {isExpanded && bd && (
+                <div className="mt-2 border-t border-cs-border pt-2 ">
+                  {s.notes && <p className="mb-2 text-xs text-cs-muted">Note: {s.notes}</p>}
+                  <TaxCard breakdown={bd} />
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div> : /* Desktop table layout */
+        <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-cs-border bg-cs-surface shadow-card">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-cs-raised">
+              <tr className="text-cs-text-2">
+                <th className="px-3 py-2">Date</th>
+                <th className="px-3 py-2">Type</th>
+                <th className="px-3 py-2 text-right">Shares</th>
+                <th className="px-3 py-2 text-right">Price/Share</th>
+                <th className="px-3 py-2 text-right">Total from sale</th>
+                <th className="px-3 py-2 text-right">Tax</th>
+                {!readOnly && <th className="px-3 py-2"></th>}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              {sales.map(s => {
+                const bd = breakdowns.get(s.id)
+                const isExpanded = expanded.has(s.id)
+                const isLoading = loadingTaxIds.has(s.id)
+                const hasST = bd && bd.st_shares > 0
+                return (
+                  <>
+                    <tr key={s.id} className="bg-cs-surface">
+                      <td className="px-3 py-2 text-cs-text-2">{s.date}</td>
+                      <td className="px-3 py-2">
+                        {s.loan_id != null ? (
+                          <span className="inline-block rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-medium text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">
+                            Repayment
+                          </span>
+                        ) : (
+                          <span className="inline-block rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">
+                            Cash sale
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right text-cs-text-2">{fmtNum(s.shares)}</td>
+                      <td className="px-3 py-2 text-right text-cs-text-2">{fmtUSD(s.price_per_share)}</td>
+                      <td className="px-3 py-2 text-right font-medium text-cs-text">
+                        {fmtUSD(s.shares * s.price_per_share)}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <button
+                          onClick={() => toggleTax(s.id)}
+                          aria-expanded={isExpanded}
+                          aria-label={`${isExpanded ? 'Hide' : 'Show'} tax breakdown`}
+                          className="inline-flex items-center gap-1 text-right"
+                        >
+                          {isLoading ? (
+                            <span className="text-cs-text-2">...</span>
+                          ) : bd ? (
+                            <>
+                              {hasST && (
+                                <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                                  Short-term
+                                </span>
+                              )}
+                              <span className={`font-medium underline decoration-dotted ${hasST ? 'text-amber-700 dark:text-amber-300' : 'text-cs-text'}`}>
+                                {fmtUSD(bd.estimated_tax)}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-cs-text-2 underline decoration-dotted">&mdash;</span>
+                          )}
+                        </button>
+                      </td>
+                      {!readOnly && (
+                        <td className="px-3 py-2 text-right">
+                          <button
+                            onClick={() => openEdit(s)}
+                            className="text-rose-400 hover:text-cs-brand dark:hover:text-rose-300"
+                            aria-label="Edit sale"
+                          >
+                            <PencilIcon />
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                    {isExpanded && bd && (
+                      <tr key={`${s.id}-tax`} className="bg-cs-surface">
+                        <td colSpan={readOnly ? 6 : 7} className="px-3 pb-3 pt-0">
+                          {s.notes && (
+                            <p className="mb-2 text-xs text-cs-muted">Note: {s.notes}</p>
+                          )}
+                          <TaxCard breakdown={bd} />
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>}
+      {sales.length === 0 && (
+        <p className="px-3 py-6 text-center text-xs text-cs-text-2">
+          {readOnly
+            ? 'No sales yet.'
+            : <>No sales yet. Tap <span className="font-medium">+ Sale</span> above to plan or record one.</>}
+        </p>
+      )}
+      <p className="text-xs text-cs-text-2">{sales.length} sales</p>
+    </div>
+  )
 }

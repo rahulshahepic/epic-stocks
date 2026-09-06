@@ -17,7 +17,7 @@ export default function FindingList({ findings }: { findings: Finding[] }) {
     <ul className="mt-3 space-y-2">
       {sorted.map((f, i) => (
         <li key={`${f.code}-${f.subject}-${i}`}
-            className={`rounded-md border p-2 text-xs ${TONE[f.severity]}`}>
+          className={`rounded-md border p-2 text-xs ${TONE[f.severity]}`}>
           <span className="font-mono font-semibold">{f.code}</span>
           {f.subject && <span className="ml-2 font-medium">{f.subject}</span>}
           <p className="mt-1 leading-relaxed">{f.message}</p>

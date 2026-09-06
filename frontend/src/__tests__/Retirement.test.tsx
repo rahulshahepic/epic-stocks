@@ -69,22 +69,22 @@ function mockApi(opts: {
       const body = nc == null
         ? null
         : {
-            date: '2026-05-07',
-            vested_shares: 1000,
-            share_price: 100,
-            gross_vested: 100000,
-            unvested_cost_proceeds: 0,
-            liquidation_tax: 0,
-            outstanding_principal: 0,
-            outstanding_accrued_interest: 0,
-            prior_sales: [],
-            prior_sales_net: 0,
-            income_tax: 0,
-            deduction_savings: 0,
-            deduction_years: [],
-            deduction_excluded_years: [],
-            net_cash: nc,
-          }
+          date: '2026-05-07',
+          vested_shares: 1000,
+          share_price: 100,
+          gross_vested: 100000,
+          unvested_cost_proceeds: 0,
+          liquidation_tax: 0,
+          outstanding_principal: 0,
+          outstanding_accrued_interest: 0,
+          prior_sales: [],
+          prior_sales_net: 0,
+          income_tax: 0,
+          deduction_savings: 0,
+          deduction_years: [],
+          deduction_excluded_years: [],
+          net_cash: nc,
+        }
       return new Response(JSON.stringify(body), { status: 200 })
     }
     if (url.includes('/api/tax-settings')) {

@@ -1,71 +1,130 @@
 # AI Connector — two-way API access for ChatGPT and Claude
 
 Status: **proposal, not built.** This document is the design and the build order.
-Nothing in it ships until the open questions at the end are answered.
+
+Decisions taken (Rahul, this round):
+- **Read-only first.** Get it working, then decide about writes.
+- **Everyone.** This is a user-facing feature, not an admin toy.
+- **No special handling for share prices.** A user sending their own figures to
+  their own assistant is their business, and people already do it. Prices flow
+  through the connector like any other field.
+- **Own account only for now**, but the design must extend to shared accounts
+  without a rewrite. §8 is how.
 
 ## 1. The idea
 
 Let a user point their own AI assistant at their own Epic Stocks account, so they
 can ask "what vests before March and what's the tax if I sell it" in ChatGPT
-alongside their brokerage data, and say "my salary went up to X in 2027" and have
-it land in the Total Comp Calculator without opening the app.
+alongside their brokerage data, or have Claude reason about their vesting
+schedule next to the rest of their finances.
 
-Read *and* write, one connection, opt-in, revocable, and off by default.
+Read now, write later, one connection, opt-in, revocable.
 
 ## 2. Decision: one remote MCP server, protected by our own OAuth 2.1
 
 Build a Model Context Protocol server at `https://<domain>/mcp`, Streamable HTTP
 transport, and make the app its own OAuth 2.1 authorization server so the
-connector can be authorized without the user ever pasting a credential.
+connector is authorized with a normal sign-in and consent screen — no pasted
+credentials.
 
-That single endpoint is reachable by **both** targets:
-
-| Client | How the user connects | Requires |
-|---|---|---|
-| ChatGPT (Plus/Pro/Business) | Settings → Apps → Advanced → Developer mode, then "Add custom connector", paste the URL | Public HTTPS, Streamable HTTP or SSE, OAuth or none |
-| Claude (Pro/Max/Team/Enterprise) | Settings → Connectors → "Add custom connector", paste the URL | Public HTTPS, remote MCP, OAuth 2.1; Dynamic Client Registration needed for mobile |
-| Claude Code / Desktop, Cursor, others | `claude mcp add --transport http ...` | Same |
-
-The app is already deployed at a public HTTPS domain behind Caddy, so the
-hosting precondition is met with no infrastructure change.
+That single endpoint is reachable by both targets, and by everything else that
+speaks MCP (Claude Code, Cursor, and whatever ships next year). §3 covers what
+connecting actually looks like for a user.
 
 ### Why not the alternatives
 
 - **Custom GPT Actions (OpenAPI + OAuth).** ChatGPT only, and the user has to
-  build a GPT. But it needs the *same* OAuth server as MCP, and FastAPI already
-  emits an OpenAPI document — so once §5 is done this is nearly free. Keep it as
-  a documented bonus path, not the primary one.
-- **Personal access tokens.** Far simpler, and works with local stdio shims. But
-  a long-lived bearer token for a financial account, pasted into a chat client,
-  is a credential the user will eventually leak, and neither ChatGPT nor Claude
-  web accepts one for a custom connector anyway. Skipped. Revisit only if a
-  user asks for local-shim access.
+  build a GPT. It needs the *same* OAuth server as MCP, and FastAPI already
+  emits an OpenAPI document — so once §5 is done it is nearly free. Keep it as a
+  documented bonus path, not the primary one.
+- **Personal access tokens.** Simpler, and works with local stdio shims. But
+  neither ChatGPT nor Claude accepts one for a custom connector, and a
+  long-lived bearer token for a financial account is a credential a user will
+  eventually paste somewhere public. Skipped unless someone asks for local-shim
+  access.
 - **Reusing the existing session JWT as the connector credential.** Actively
-  dangerous — see §5.2. Rejected.
+  dangerous — see §6.2. Rejected.
 
-## 3. Threat model, and the three rules this feature lives under
+## 3. What connecting actually costs a user
 
-Connecting sends this user's equity data to OpenAI or Anthropic. That is the
-user's decision to make, but the app has to make it an *informed* one and keep
-the blast radius small.
+### Claude — easy
 
-1. **A connector token is not a session token.** It must never be usable against
-   `/api/*`, and a session cookie or session JWT must never be usable against
-   `/mcp`. Enforced in both directions, with a test for each. This is the single
-   highest-risk part of the build.
-2. **Epic share prices leave the building only on an explicit tick.** Per-share
-   dollar values are confidential Epic financial data. The consent screen gets a
-   separate, default-off checkbox: *"Include Epic share prices. This sends
-   confidential company figures to <provider>."* Unticked, price-bearing fields
-   are redacted from every tool result — share counts, dates, vesting and loan
-   balances still flow, so the connector stays useful.
-3. **Every write is previewed, snapshotted, and undoable.** Models
-   mis-transcribe numbers. §7.
+Settings → Connectors → **Add custom connector** → paste
+`https://<domain>/mcp` → sign in and approve. Done, about 30 seconds. No
+developer mode, no toggles, works on Claude web, desktop and mobile. Available
+on Pro, Max, Team and Enterprise. On Team/Enterprise an Owner adds the connector
+once and members enable it individually.
+
+Dynamic client registration is what makes mobile work, which is why §6.1 has it.
+
+### ChatGPT — a one-time hurdle, then easy
+
+1. Be on a paid plan — Plus, Pro, Business, Enterprise or Edu. **Web only**;
+   custom connectors are not addable from the mobile app.
+2. Settings → **Security and login** → turn on **Developer mode**.
+3. Plugins → **+** → give it a name and description → paste
+   `https://<domain>/mcp` as a public HTTPS endpoint.
+4. Sign in through our OAuth screen and approve.
+5. Review the discovered tools and create the connection.
+
+Then, in a conversation, pick it from the composer's Developer mode tool or
+name it explicitly. ChatGPT is noticeably better when asked to use the connector
+by name rather than left to guess.
+
+Two frictions worth naming honestly:
+
+- **"Developer mode" sits under "Security and login".** It is a two-minute,
+  one-time step, but for a non-technical colleague it *reads* like something
+  you're not supposed to touch. The Connections page (§9) has to walk them
+  through it with screenshots and say plainly that it is normal and safe.
+- **A Business/Enterprise workspace admin must enable developer mode for the
+  workspace.** A colleague whose ChatGPT is provisioned by their employer may
+  simply not be able to connect. They can use a personal Plus account instead.
+
+### Would publishing to the ChatGPT app directory fix this?
+
+**For the user experience: yes, materially.** Directory apps install without
+developer mode, are discoverable, and are invoked by `@name`. That removes the
+whole hurdle above.
+
+**For us: no, and I don't recommend it.** The submission bar is real:
+
+- Identity verification of an individual or organisation on the OpenAI platform
+  dashboard, plus published support contact details.
+- A published privacy policy covering data categories, purposes, recipients,
+  retention and user controls. We have `PRIVACY.md`; it would need review
+  against that checklist.
+- Human review with automated policy checks. One version under review at a time.
+  Published listings use a reviewed **metadata snapshot** — changing tool names
+  or descriptions means re-scanning, resubmitting and republishing. That is
+  standing overhead on a project that currently ships whenever.
+- Screenshots of the app working inside ChatGPT, captured in developer mode.
+
+And three specific problems for *this* app:
+
+1. **The directory is a public storefront.** An app that does nothing unless you
+   already hold an account on one private instance is a weak fit for it, and
+   "serves a clear purpose for common user intents" is an explicit review
+   criterion.
+2. **Financial-adjacent categories draw scrutiny.** Unregulated financial
+   services are on the prohibited list. An equity tracker is not a financial
+   service, but it is close enough to earn a careful reviewer.
+3. **The name.** The README already says *Epic Stocks (Unofficial)*. A publicly
+   listed OpenAI directory app named after Epic, handling Epic equity, built by
+   an Epic employee but unaffiliated with the company, is exactly the artefact
+   that gets a legal department's attention. Review policy also requires
+   original IP and no impersonation. This is a question to settle with Epic
+   before it is a question to settle with OpenAI.
+
+**Recommendation:** ship the custom connector, invest in the Connections page
+instructions, and leave the directory alone. Claude users get a genuinely easy
+path today; ChatGPT users get two minutes of one-time setup. Revisit only if
+real users ask for it *and* the naming question is resolved.
 
 ## 4. Where the code goes
 
 ```
-backend/scaffold/oauth/              # the authorization server (scaffold: reusable, not Epic-specific)
+backend/scaffold/oauth/              # authorization server — reusable, not Epic-specific
     __init__.py
     models.py                        # OAuthClient, OAuthGrant, OAuthAuthCode
     metadata.py                      # RFC 9728 + RFC 8414 well-known documents
@@ -73,31 +132,66 @@ backend/scaffold/oauth/              # the authorization server (scaffold: reusa
     authorize.py                     # GET/POST /oauth/authorize + consent
     token.py                         # POST /oauth/token, /oauth/revoke
     tokens.py                        # mint/verify connector access tokens
-backend/app/mcp/                     # the MCP server (app: knows about grants and loans)
+backend/app/mcp/                     # the MCP server — knows about grants and loans
     __init__.py
     transport.py                     # JSON-RPC over Streamable HTTP at /mcp
-    tools.py                         # tool registry: schema + handler + annotations
+    tools.py                         # registry: schema + handler + annotations
     read_tools.py
-    write_tools.py
-    redact.py                        # price redaction when the scope is absent
+    accounts.py                      # resolve_account() — the shared-data seam, §8
     audit.py
-frontend/src/scaffold/pages/Connections.tsx    # consent screen + manage connections
+frontend/src/scaffold/pages/Connections.tsx
 ```
 
 `backend/app/core.py` is not touched. Tools call the same service functions the
 existing routers call; no event-computation logic is duplicated.
 
-## 5. Auth
+## 5. The tool surface (read-only)
 
-### 5.1 Endpoints
+Action-oriented and narrow, per OpenAI's guidance — `list_grants`, not
+`query_data(table=…)`. Every tool carries `readOnlyHint: true`, and every tool
+takes the optional `account` parameter described in §8.
+
+| Tool | Backs onto | Scope |
+|---|---|---|
+| `get_dashboard` | `GET /api/dashboard` | `equity:read` |
+| `list_events(from, to, kinds)` | `GET /api/events` — the computed timeline | `equity:read` |
+| `list_grants` | `GET /api/grants` | `equity:read` |
+| `list_loans` | `GET /api/loans` | `equity:read` |
+| `list_sales` | `GET /api/sales` | `equity:read` |
+| `list_prices` | `GET /api/prices` | `equity:read` |
+| `estimate_sale(shares, date, price)` | `GET /api/sales/estimate` | `equity:read` |
+| `get_tax_breakdown(sale_id)` | `GET /api/sales/{id}/tax` | `equity:read` |
+| `get_compensation()` | `GET /api/retirement/comp-entries` | `comp:read` |
+| `get_retirement_params()` | `GET /api/retirement/params` | `comp:read` |
+| `explain(topic)` | `GET /api/content` — vesting rules, grant types | `equity:read` |
+
+`explain` matters more than it looks: without it an assistant guesses at how
+Epic's scheme works. With it, it reads the same content the app shows.
+
+**Not exposed, deliberately:** anything under `/api/admin/*`; sharing and
+invitations (an assistant must not be able to mail other people); account
+deletion and reset; the Epic file importers (acceptance goes through the wizard
+by design); push subscriptions.
+
+**Writes are a later phase.** When they come they need preview-before-commit, a
+snapshot, an undo and an audit trail — sketched in §11 so today's design does
+not paint them into a corner.
+
+**Optional later — `search` and `fetch`.** ChatGPT only treats a connector as a
+citable knowledge source if it implements those two standard schemas returning
+absolute, user-openable URLs. A follow-up, not a blocker.
+
+## 6. Auth
+
+### 6.1 Endpoints
 
 | Endpoint | Spec | Notes |
 |---|---|---|
 | `GET /.well-known/oauth-protected-resource` | RFC 9728 | Names `/mcp` as the resource and this app as its authorization server |
 | `GET /.well-known/oauth-authorization-server` | RFC 8414 | Advertises endpoints, `S256` PKCE, supported scopes |
-| `POST /oauth/register` | RFC 7591 | Dynamic client registration. Anonymous — rate-limited per §5.5 |
+| `POST /oauth/register` | RFC 7591 | Dynamic client registration — required for Claude mobile. Anonymous, rate-limited per §6.5 |
 | `GET /oauth/authorize` | OAuth 2.1 | Requires an app session; bounces through the existing OIDC login if absent, then renders consent |
-| `POST /oauth/authorize` | | The user's Allow/Deny plus the scope ticks |
+| `POST /oauth/authorize` | | The user's Allow/Deny plus scope ticks |
 | `POST /oauth/token` | OAuth 2.1 | `authorization_code` + `refresh_token`, PKCE `S256` mandatory |
 | `POST /oauth/revoke` | RFC 7009 | |
 | `POST /mcp` | MCP 2025-06-18 | 401 carries `WWW-Authenticate: Bearer resource_metadata="…"` |
@@ -107,18 +201,17 @@ response body is enough and SSE is not implemented.
 
 **Registration order matters.** `spa_fallback` is mounted at `/{path:path}` and
 returns `index.html` with a 200 for anything unmatched. The well-known routes
-and `/mcp` are not under `/api/`, so if they are registered after the mount an
+and `/mcp` are not under `/api/`, so if they are registered after that mount an
 MCP client gets HTML and a baffling error. Include the routers alongside the
 others at `main.py:633`, and pin it with a test that fetches
 `/.well-known/oauth-protected-resource` and asserts JSON.
 
-### 5.2 Token separation — the part to get right
+### 6.2 Token separation — the part to get right
 
 `scaffold/auth.py:_token_from_request` already accepts `Authorization: Bearer`
 for the native shell, and `get_current_user` accepts any JWT this app signed. If
-connector tokens are minted by the existing `create_token`, then a stolen
-connector token is a full session, including `/api/admin/*` for an admin
-account.
+connector tokens come from the existing `create_token`, a stolen connector token
+is a full session — admin endpoints included, for an admin account.
 
 So:
 
@@ -126,7 +219,7 @@ So:
   `typ: "mcp"`, plus `aud` (the canonical `/mcp` URI), `scope`, and `gid` (the
   grant row id). Lifetime **1 hour**; refresh tokens do the rest.
 - `get_current_user` **rejects** any token whose `typ` is not `"session"`.
-  Existing session tokens have no `typ` claim, so absent-or-`"session"` passes —
+  Existing session tokens carry no `typ` claim, so absent-or-`"session"` passes —
   no migration, no forced re-login.
 - The MCP dependency rejects any token whose `typ` is not `"mcp"`, validates
   `aud` against this server's canonical URI (RFC 8707 audience binding), and
@@ -140,17 +233,17 @@ So:
 Two tests, both required: a session token 401s at `/mcp`; an MCP token 401s at
 `/api/grants`.
 
-### 5.3 Encryption context
+### 6.3 Encryption context
 
 `EncryptionMiddleware` sets the per-user key in the ASGI context by decoding the
 bearer token itself (`_token_from_scope`). It will not recognise an MCP token
-shape, so without a change every MCP read of an encrypted column raises and
-every write raises `EncryptionKeyMissing`. **Teach `_token_from_scope` about
-`typ: "mcp"` in the same commit as §5.2** — this is the failure that only shows
-up on a deployment with `KEY_ENCRYPTION_KEY` set, i.e. production and not the
-test suite. Add a test that runs the MCP path with encryption enabled.
+shape, so without a change every MCP read of an encrypted column raises.
+**Teach `_token_from_scope` about `typ: "mcp"` in the same commit as §6.2** —
+this is the failure that only appears on a deployment with `KEY_ENCRYPTION_KEY`
+set, which means production and not the test suite. Add a test that runs the MCP
+path with encryption enabled.
 
-### 5.4 Consent, and the confused-deputy problem
+### 6.4 Consent, and the confused-deputy problem
 
 Dynamic client registration lets anyone register a client with any redirect URI.
 Mitigations, all of them:
@@ -159,213 +252,169 @@ Mitigations, all of them:
   registered client, ever.
 - The consent screen names the client and shows the **redirect origin** it will
   return to, not just the display name it chose for itself.
-- Redirect URIs are matched **exactly** against what was registered, and the
-  registration itself is restricted to hosts in `MCP_ALLOWED_REDIRECT_HOSTS`
-  (default: `chatgpt.com`, `claude.ai`, `claude.com`, plus `localhost` for
-  development). This app has a small, known audience; an allowlist costs
-  nothing and removes the whole open-redirect class.
+- Redirect URIs are matched **exactly** against what was registered, and
+  registration is restricted to hosts in `MCP_ALLOWED_REDIRECT_HOSTS` (default:
+  `chatgpt.com`, `claude.ai`, `claude.com`, plus `localhost` for development).
+  Cheap, and it removes the whole open-redirect class.
 - `E2E_TEST=1` must **not** relax any of this. It already skips `redirect_uri`
   validation for the OIDC login flow; the OAuth server needs its own validation
-  path that the switch does not reach. Test it.
+  path the switch does not reach. Test it.
 
-### 5.5 Rate limits
+### 6.5 Rate limits and bounds
 
 - `/oauth/register` and `/oauth/token` are anonymous: `check_rate_ip_shared`
   with `client_ip()`, never `check_rate_ip` and never `request.client.host`.
-  Sized for a shared office network per the existing budget rule, and the 429
-  names the network and carries `Retry-After`.
-- `/mcp` is authenticated: `check_rate` on the user id, with its own budget
-  separate from `MUTATION_RATE_LIMIT` so a chatty assistant cannot starve the
-  user's own app session. Suggest `MCP_RATE_LIMIT` (default 300/min read,
-  writes additionally counted against the existing mutation limiter).
+  Sized for a shared office network per the existing budget rule; the 429 names
+  the network and carries `Retry-After`.
+- `/mcp` is authenticated: `check_rate` on the user id with its own budget, so a
+  chatty assistant cannot starve the user's own app session.
 - `/mcp` gets an entry in `scaffold/body_limit.py`.
-- A row ceiling in `scaffold/quota.py` for `OAuthGrant` (say 20 connections) and
-  `OAuthAuthCode`, per the bounded-fields rule. Auth codes expire in 60s and are
-  single-use; the nightly maintenance job prunes them.
+- Row ceilings in `scaffold/quota.py` for `OAuthGrant` (20 connections) and
+  `OAuthAuthCode`. Auth codes expire in 60s, are single-use, and the nightly
+  maintenance job prunes them.
+- `OAuthClient`, `OAuthGrant` and `OAuthAuthCode` all carry `user_id`, so they
+  go in `USER_OWNED_TABLES` in `scaffold/user_deletion.py` — the metadata test
+  fails the suite until they do.
 
-## 6. The tool surface
-
-Action-oriented and narrow, per OpenAI's guidance — `list_grants`, not
-`query_data(table=…)`. Every read tool carries `readOnlyHint: true`; every write
-tool carries `destructiveHint` honestly.
-
-**Read** (scope `equity:read` unless noted)
-
-| Tool | Backs onto |
-|---|---|
-| `get_dashboard` | `GET /api/dashboard` |
-| `list_events(from, to, kinds)` | `GET /api/events` — the computed timeline |
-| `list_grants`, `list_loans`, `list_sales` | the respective routers |
-| `list_prices` | `GET /api/prices` — **`prices:read` only** |
-| `estimate_sale(shares, date, price)` | `GET /api/sales/estimate` |
-| `get_tax_breakdown(sale_id)` | `GET /api/sales/{id}/tax` |
-| `get_compensation()` | `GET /api/retirement/comp-entries` — `comp:read` |
-| `get_retirement_params()` | `GET /api/retirement/params` — `comp:read` |
-| `explain(topic)` | `GET /api/content` — vesting rules, grant types, so the assistant reasons about Epic's actual scheme instead of guessing |
-
-**Write** (each takes `confirm: bool = false`; see §7)
-
-| Tool | Scope |
-|---|---|
-| `add_grant`, `update_grant`, `delete_grant` | `equity:write` |
-| `add_price`, `update_price` | `prices:write` |
-| `add_loan`, `record_loan_payment` | `equity:write` |
-| `record_sale` | `equity:write` |
-| `set_compensation(year, salary, bonus, …)` | `comp:write` |
-| `set_retirement_params(…)` | `comp:write` |
-| `undo_last_change()` | whichever write scope is held |
-
-**Not exposed, deliberately:** anything under `/api/admin/*`, sharing and
-invitations (an assistant should not be able to mail other people), account
-deletion and reset, the Epic file importers (they are a wizard, and acceptance
-goes through the wizard by design), push subscriptions.
-
-**Optional later — `search` and `fetch`.** ChatGPT only treats a connector as a
-citable knowledge source if it implements those two standard schemas returning
-absolute user-openable URLs. Worth doing in a follow-up so answers cite back
-into the app; not needed to make the connector work.
-
-## 7. Write safety
-
-Three layers, all server-side, because a client-side "are you sure" is the
-model's to skip:
-
-1. **Preview by default.** A write tool called with `confirm: false` (the
-   default) commits nothing and returns a rendered diff plus a `change_token`.
-   Committing requires a second call with `confirm: true` and that token, which
-   expires in 5 minutes. The assistant therefore has to show the user the diff
-   before it can act, in every client, with no reliance on client behaviour.
-2. **Snapshot before the first write of a connection-day**, reusing the existing
-   `ImportBackup` model — it already stores an encrypted JSON snapshot of
-   grants, prices and loans and already has a restore endpoint. `undo_last_change`
-   restores it. No new backup machinery.
-3. **Audit.** A new `mcp_audit` table: timestamp, user, grant id, client name,
-   tool name, scope, affected row ids, and outcome. **No amounts, no prices, no
-   share counts** — same rule as problem reports, for the same reason. Surfaced
-   on the Connections page as "last 50 actions" and in the admin dashboard as
-   counts only. This also knocks out the "Audit logging" line in the CLAUDE.md
-   remaining-work table for the surface where it matters most.
-
-Cache invalidation goes through `schedule_recompute` exactly as the routers do —
-no new threading.
-
-## 8. Scopes
+## 7. Scopes
 
 ```
-equity:read   grants, loans, sales, events, dashboard, tax
-equity:write  create/update/delete the above
-prices:read   per-share dollar values          ← default OFF, warned
-prices:write  entering prices
-comp:read     salary, bonus, retirement params ← default OFF
-comp:write
+equity:read   grants, loans, sales, prices, events, dashboard, tax
+comp:read     salary, bonus, retirement params
 ```
 
-Consent screen presents them as four plain-English ticks, read-only preselected:
+Both preselected on the consent screen. Reserved for later, advertised in the
+metadata document but not yet grantable: `equity:write`, `comp:write`,
+`shared:read`.
+
+Consent screen:
 
 > **ChatGPT wants to connect to Epic Stocks**
 > returning to `chatgpt.com`
-> - [x] Read your equity — grants, vesting, loans, sales, tax estimates
-> - [ ] Make changes — add grants, record sales, enter loan payments
-> - [ ] Read and write Epic share prices — *these are confidential Epic figures and will be sent to OpenAI*
-> - [ ] Read and write your salary and retirement settings
+> - [x] Read your equity — grants, vesting, prices, loans, sales, tax estimates
+> - [x] Read your salary and retirement settings
+>
+> It will not be able to change anything.
 
-With `prices:read` withheld, `redact.py` strips per-share values from every
-result and substitutes `null` with a `"redacted": "prices"` marker so the
-assistant explains the gap rather than inventing a number.
+That last line is true in this phase and is worth saying, because it is the
+thing a user is actually nervous about.
+
+## 8. The shared-data seam
+
+Own-account-only today, but built so shared accounts are an additive change
+rather than a refactor. Three pieces, all of them in from the start:
+
+1. **Every tool takes an optional `account` parameter**, default `"me"`. It is
+   in the published schema from day one, documented as "`me` today; other values
+   reserved". A client that omits it keeps working forever.
+2. **One resolver.** `backend/app/mcp/accounts.py:resolve_account(user, ref, db)`
+   returns the `User` whose rows the tool reads. Today it accepts only `"me"`
+   and returns the caller; anything else is a tool error naming the supported
+   values. No tool ever touches `user.id` directly — they all go through it.
+3. **The hard part is already solved.** Reading someone else's rows needs
+   *their* encryption key in context, not the caller's, and
+   `sharing.py:_get_shared_owner` already does exactly that: it fetches the
+   owner's `encrypted_key` by raw SQL so no TypeDecorator runs with the wrong
+   key, calls `set_current_key`, then loads the row. Extending
+   `resolve_account` means delegating to that same helper for an invitation
+   reference — not inventing anything.
+
+So the future change is: accept `account: "<invitation-id>"` in
+`resolve_account`, call `_get_shared_owner`, add the `shared:read` scope to the
+consent screen, and add `list_shared_accounts` so the assistant can discover
+what it may ask for. No tool signature changes, no token changes, no migration.
 
 ## 9. Settings UI — "AI Connections"
 
-New page at `/settings/connections`, linked from Settings:
+New page at `/settings/connections`, linked from Settings. This page is the
+feature as far as most users are concerned, so it gets real effort:
 
-- One-paragraph explanation, the server URL with a copy button, and
-  step-by-step instructions for ChatGPT and for Claude (including that ChatGPT
-  needs developer mode enabled and a paid plan).
-- A clear statement of what leaves the app and to whom.
-- The list of connected clients: name, scopes, when connected, last used, and a
-  **Disconnect** button that revokes instantly.
-- Recent connector activity from `mcp_audit`.
-- A global kill switch: "Turn off AI access" — revokes everything and blocks new
+- One-paragraph explanation, the server URL with a copy button, and a plain
+  statement of what leaves the app and to whom.
+- **Two tabbed walkthroughs, ChatGPT and Claude**, matching §3 step for step,
+  with screenshots. The ChatGPT one says outright that Developer mode lives
+  under "Security and login", that it is normal, that it is web-only, and that a
+  work account may need an admin to enable it.
+- Connected clients: name, scopes, when connected, last used, **Disconnect**
+  (revokes instantly).
+- Recent connector activity from the audit table.
+- A kill switch: "Turn off AI access" — revokes everything and blocks new
   authorizations until re-enabled.
 
-Mobile-first, Tailwind, matching the existing Settings page. Screenshots via
-`./screenshots/run.sh` after, per the UI checklist.
+Mobile-first, Tailwind, matching the existing Settings page. `npx tsc -b
+--noEmit` before committing, `./screenshots/run.sh` after.
 
-## 10. Build order
+## 10. Audit
 
-Each phase is independently shippable and gated on its own tests.
+A `mcp_audit` table: timestamp, user, grant id, client name, tool name, scope,
+account reference, and outcome. **No amounts, no prices, no share counts** —
+same rule as problem reports, and a test asserting on row contents. Shown on the
+Connections page as recent activity, and in the admin dashboard as counts only.
 
-**Phase 1 — OAuth 2.1 authorization server.** Models + migration, both
+This also knocks out the "Audit logging" line in the CLAUDE.md remaining-work
+table for the surface where it matters most.
+
+## 11. Build order
+
+**Phase 1 — OAuth 2.1 authorization server.** Models + Alembic migration, both
 well-knowns, DCR with the redirect allowlist, authorize with consent, token with
-PKCE and rotation, revoke. Token type separation (§5.2) and the
-`EncryptionMiddleware` change (§5.3) land here.
+PKCE and rotation, revoke. Token type separation (§6.2) and the
+`EncryptionMiddleware` change (§6.3) land here.
 *Tests:* full authorization-code round trip; PKCE downgrade rejected; redirect
 URI mismatch rejected; unregistered redirect host rejected; auth code
 single-use and expiring; refresh rotation invalidates the old token; session
 token rejected at `/mcp` and MCP token rejected at `/api/grants`; revoke is
-immediate; `E2E_TEST=1` does not relax redirect validation.
+immediate; `E2E_TEST=1` does not relax redirect validation; user deletion
+removes OAuth rows.
 
-**Phase 2 — MCP transport and read tools.** JSON-RPC handling for `initialize`,
+**Phase 2 — MCP transport and the read tools.** JSON-RPC for `initialize`,
 `notifications/initialized`, `tools/list`, `tools/call`, `ping`; protocol
-version negotiation; the read tools; scope enforcement; price redaction.
+version negotiation; the §5 tools; scope enforcement; `resolve_account`.
 Hand-roll the JSON-RPC layer rather than adding the `mcp` SDK — it is a small,
 fully specified surface and the repo already hand-rolls its JWTs; revisit if the
 protocol surface grows.
 *Tests:* handshake; `tools/list` matches the registry; each tool against
-`fixture.xlsx` data; a tool called without its scope 403s; prices redacted
-without `prices:read`; a malformed JSON-RPC body is an error object, never a
-500 — the same rule the Epic importers live under, and for the same reason
-(unhandled exceptions write `error_logs` rows that push real tracebacks out).
-**Ship here.** This alone is a working read-only connector in both products.
+`fixture.xlsx` data; a tool called without its scope 403s; `account` other than
+`"me"` is a clean tool error, not a crash; a malformed JSON-RPC body returns an
+error object, never a 500 — the same rule the Epic importers live under, and for
+the same reason (unhandled exceptions write `error_logs` rows that push real
+tracebacks out of the 500-row window).
 
-**Phase 3 — write tools.** Confirm/preview, `change_token`, snapshot, undo,
-audit table, quotas.
-*Tests:* `confirm: false` mutates nothing; a stale or reused `change_token` is
-rejected; each write path; undo restores; audit rows carry no financial values
-(assert on the row contents).
+**Phase 3 — Connections UI and audit.** The page, the walkthroughs, the kill
+switch, the audit table. Vitest, an E2E pass through `./e2e.sh`, screenshots.
 
-**Phase 4 — Connections UI.** The page, the kill switch, the consent screen
-styling. Vitest + an E2E run through `./e2e.sh`, plus `npx tsc -b --noEmit`
-before committing and `./screenshots/run.sh` after.
+**Phase 4 — docs.** README: a "Connecting your own AI" user section, the new env
+vars in the table, the new files in the structure section, admin notes.
+FORK_GUIDE for the OAuth configuration. Mandatory, not a follow-up.
 
-**Phase 5 — docs.** README: a "Connecting your own AI" user section, the new env
-vars in the table, the new files in the structure section, the new admin notes.
-FORK_GUIDE for the OAuth configuration. This is mandatory, not a follow-up.
+**Ship after Phase 4.** That is a complete, useful, read-only connector.
 
-**Optional Phase 6.** `search`/`fetch` for ChatGPT citations; a documented
-Custom GPT Action path off the same OAuth server.
+**Later, if wanted:**
+- Writes: preview-before-commit (`confirm: false` returns a diff and a
+  short-lived `change_token`; committing needs a second call), a snapshot before
+  the first write of a session reusing the existing `ImportBackup` model and its
+  restore path, `undo_last_change`, and the write scopes.
+- Shared accounts, per §8.
+- `search`/`fetch` for ChatGPT citations.
+- A documented Custom GPT Action path off the same OAuth server.
 
-## 11. New environment variables
+## 12. New environment variables
 
 | Var | Required | Default | Meaning |
 |---|---|---|---|
-| `MCP_ENABLED` | no | `0` | Master switch. Off, `/mcp` and `/oauth/*` are not registered at all |
+| `MCP_ENABLED` | no | `1` | Deploy-level kill switch. Off, `/mcp` and `/oauth/*` are not registered at all |
 | `MCP_ALLOWED_REDIRECT_HOSTS` | no | `chatgpt.com;claude.ai;claude.com` | Semicolon-delimited, matching the `ADMIN_EMAIL` convention |
 | `MCP_RATE_LIMIT` | no | `300` | Connector calls per user per minute |
 | `MCP_ACCESS_TOKEN_MINUTES` | no | `60` | |
 
 No new secret: the OAuth server signs with the existing `JWT_SECRET`.
 
-## 12. Side finding, unrelated to this feature
+## 13. Side finding, unrelated to this feature
 
 `FastAPI(title="Epic Stocks", lifespan=lifespan)` at `main.py:565` passes no
 `docs_url`/`openapi_url`, so `/docs`, `/redoc` and `/openapi.json` are public and
 enumerate the whole API including every admin endpoint. No data leaks, but it is
 free reconnaissance. Suggest `docs_url=None, redoc_url=None, openapi_url=None`
-in production and gated on `E2E_TEST` or an admin session otherwise. Worth
-fixing regardless of whether this feature is built — and note that if the Custom
-GPT Action path in Phase 6 is ever wanted, it needs a *deliberately* published,
-narrowed OpenAPI document rather than the full one.
-
-## 13. Open questions
-
-1. **Prices:** is the default-off tick with an explicit warning the right call,
-   or should per-share values be withheld from connectors outright?
-2. **Writes:** ship Phase 3 at all, or stop at read-only? Read-only removes most
-   of the risk and probably delivers most of the value.
-3. **Who gets it:** everyone, or admin-enabled per account while it settles?
-   `MCP_ENABLED` as specified is global; a per-user flag is a small addition.
-4. **Shared data:** should a connector see accounts shared *with* the user
-   (`/api/sharing/view/*`), or only their own? Own-only is the safe default and
-   what this plan assumes.
-5. **Scope of build:** all five phases, or Phases 1–2 first and decide after
-   using it?
+in production. Worth fixing regardless — and note that if the Custom GPT Action
+path is ever wanted, it needs a *deliberately* published, narrowed OpenAPI
+document rather than the full one.

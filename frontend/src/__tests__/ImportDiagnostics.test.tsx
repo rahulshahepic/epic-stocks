@@ -30,7 +30,7 @@ const DIFF = {
 
 function mockApi(me: typeof ADMIN, diff: unknown = DIFF) {
   const posts: string[] = []
-  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : (input as Request).url
     if (url.includes('/api/me')) return new Response(JSON.stringify(me), { status: 200 })
     if (url.includes('/api/epic-import/diff')) {

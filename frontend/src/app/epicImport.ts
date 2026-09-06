@@ -92,9 +92,9 @@ function form(files: EpicFiles, revisedJson?: string, currentPrice?: number): Fo
 }
 
 async function post<T>(path: string, files: EpicFiles, revisedJson?: string,
-                       currentPrice?: number): Promise<T> {
+  currentPrice?: number): Promise<T> {
   return apiFetch<T>(path, { method: 'POST', body: form(files, revisedJson, currentPrice) },
-                     'Request failed')
+    'Request failed')
 }
 
 export const epicImport = {

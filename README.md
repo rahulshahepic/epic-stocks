@@ -803,7 +803,7 @@ The app uses a shared Caddy reverse proxy. Each deployed app writes a `caddy/app
 
 #### Branch strategy
 
-PRs to `main` must originate from the `staging` branch — enforced by `.github/workflows/branch-check.yml`. CI (`.github/workflows/test.yml`) runs **on pull requests only** — backend tests (pytest), frontend tests (vitest + npm audit), Caddy config validation, and E2E tests (Playwright). It deliberately has no `push:` trigger: branch protection already requires those checks on the incoming PR, so re-running them on the merge commit would double the cost for no extra signal. `pip-audit` runs weekly via `.github/workflows/security-audit.yml`.
+PRs to `main` must originate from the `staging` branch — enforced by `.github/workflows/branch-check.yml`. CI (`.github/workflows/test.yml`) runs **on pull requests only** — backend tests (pytest), frontend type-check (`tsc -b`, tests included), lint (`eslint`, zero findings expected), frontend tests (vitest + npm audit), Caddy config validation, and E2E tests (Playwright). It deliberately has no `push:` trigger: branch protection already requires those checks on the incoming PR, so re-running them on the merge commit would double the cost for no extra signal. `pip-audit` runs weekly via `.github/workflows/security-audit.yml`.
 
 **Cache warming.** Because CI runs only on PRs, the shared caches need populating separately: GitHub scopes a cache written during a PR run to that PR's own ref, and other PRs can restore only what was written on their *base* branch. `.github/workflows/warm-cache.yml` runs on pushes to `staging` and `main` and installs the dependencies without running any tests, so later PRs restore instead of reinstalling. Its cache keys must stay byte-identical to the ones in `test.yml` — if they drift, restores miss silently and every PR quietly goes back to installing 323 npm packages three times (once in `frontend`, once in `e2e`, once more inside the e2e Docker image).
 
@@ -825,8 +825,11 @@ cd frontend && npm test
 # Frontend unit tests — watch mode
 cd frontend && npm run test:watch
 
-# Lint frontend
+# Lint frontend (CI gates on this; `-- --fix` re-indents and applies safe fixes)
 cd frontend && npm run lint
+
+# Type-check frontend, tests included
+cd frontend && npx tsc -b --noEmit
 
 # All unit tests
 pytest backend/tests/ -v && cd frontend && npm test
@@ -882,6 +885,7 @@ epic-stocks/
 │   ├── scaffold/            # Reusable auth/infra layer (keep when forking)
 │   │   ├── auth.py          # JWT creation/verification + admin checks
 │   │   ├── client_ip.py     # Real caller address behind a proxy (TRUSTED_PROXY_HOPS)
+│   │   ├── crud.py          # get-or-404, the optimistic-lock 409, and the update-and-bump every user-owned endpoint does
 │   │   ├── crypto.py        # Per-user AES-256-GCM encryption (fails closed without a key)
 │   │   ├── email_sender.py  # Email dispatch (delegates to providers/)
 │   │   ├── invite_tokens.py # HMAC verifiers + sealed short codes for invitations
@@ -949,14 +953,17 @@ epic-stocks/
 │   │   │   ├── oidc.ts      # Shared OIDC PKCE start/complete (used by Login + InviteLanding)
 │   │   │   ├── pages/       # Login, AuthCallback, Admin, Settings, PrivacyPolicy, InviteLanding, Unsubscribe
 │   │   │   ├── components/  # Layout shell, Toast, ErrorBoundary + ReportProblem (problem reporting), DisclaimerNotice + UnofficialBadge (affiliation notices)
+│   │   │   ├── components/ui/ # The shared primitives: Card, ChartCard, Segmented, icons, ConflictBanner (the 409 "changed elsewhere" notice), and Field/SelectField/PercentField (one input style for the whole app)
 │   │   │   ├── reportLog.ts # In-memory trail (routes, failed requests, JS errors) a report can attach
 │   │   │   ├── contexts/    # ThemeContext, MaintenanceContext, ViewingContext, AppContext (injection interface)
 │   │   │   └── hooks/       # useAuth, useConfig, useDark, usePush, useMe
 │   │   ├── app/             # Equity tracking UI (replace when forking)
 │   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport, ImportDiagnostics, Content, CompCalculator, Retirement, Try (no-account preview: upload → dashboard/events tabs)
 │   │   │   ├── components/  # ImportWizard, EpicFileImport, FindingList, TipCarousel, AppSettingsSections
+│   │   │   ├── components/importWizard/ # The wizard's parts: types, schedule (Epic's grant schedule → rows), rows (row maths), loans (tax/interest/refi generation), submit (validation + payload), fields.tsx (inputs, buttons, loan rows), screens/
 │   │   │   ├── components/charts.tsx  # Shares / income / price charts + date-range plumbing (Dashboard + /try)
 │   │   │   ├── components/StatCard.tsx # The dashboard stat tile (Dashboard + /try)
+│   │   │   ├── format.ts    # The one set of money / number / percent / date formatters
 │   │   │   ├── epicImport.ts # Client for the Epic importer endpoints
 │   │   │   ├── trialImport.ts # Client for the no-account trial preview + sessionStorage handoff to signup
 │   │   │   ├── refiInference.ts # How far down a refinance chain a loan's rate says it got
@@ -981,7 +988,7 @@ epic-stocks/
 ├── .env.example             # Environment variable template
 ├── .github/workflows/
 │   ├── deploy.yml           # Deploy to VPS on push to main
-│   ├── test.yml             # CI: pytest, vitest, npm audit, Caddy validate, E2E
+│   ├── test.yml             # CI: pytest, tsc, eslint, vitest, npm audit, Caddy validate, E2E
 │   ├── security-audit.yml   # Weekly pip-audit (scheduled + workflow_dispatch)
 │   └── branch-check.yml     # Enforce PRs to main come from staging
 ├── Dockerfile               # Multi-stage build (frontend + backend)

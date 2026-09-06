@@ -45,7 +45,7 @@ export default function EpicFileImport() {
     setError('')
     try {
       setResult(await epicImport.analyze({ ...files, revisedDraft }, revisedJson,
-                                         pricedAt ?? undefined))
+        pricedAt ?? undefined))
       setStage('result')
       setPasted('')
     } catch (e) {
@@ -180,7 +180,7 @@ export default function EpicFileImport() {
           <p className={`mt-3 text-xs font-medium ${
             result.blocked ? 'text-red-600 dark:text-red-400'
               : counts.errors > 0 ? 'text-amber-700 dark:text-amber-400'
-              : 'text-green-700 dark:text-green-400'}`}>
+                : 'text-green-700 dark:text-green-400'}`}>
             {result.blocked
               ? 'The statement does not add up to its own totals — some of it was misread.'
               : counts.errors > 0

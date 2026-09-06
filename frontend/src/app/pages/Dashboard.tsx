@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
- AreaChart, Area, BarChart, Bar,
- XAxis, YAxis, ResponsiveContainer, CartesianGrid, ReferenceLine,
+  AreaChart, Area, BarChart, Bar,
+  XAxis, YAxis, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts'
+import { ChartBox, DetailCard, IncomeCapGainsChart, PriceChart, SharesChart } from '../components/charts.tsx'
 import {
- ChartBox, DetailCard, IncomeCapGainsChart, PriceChart, SharesChart,
- TODAY, filterByDateRange, fmt$, fmtDate, fmtFullDate, fmtNum, fmtPrice, numericTicks,
- smartInterval, todayIndex, useChartColors,
- type ChartColors, type DateRange,
-} from '../components/charts.tsx'
+  TODAY, filterByDateRange, numericTicks, smartInterval, todayIndex, useChartColors,
+  type ChartColors, type DateRange,
+} from '../components/chartAxes.ts'
+import { fmt$, fmtDate, fmtFullDate, fmtNum, fmtPrice } from '../format.ts'
 import { api, apiFetchBlob } from '../../api.ts'
 import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, GrantEntry, TaxSettings, SaleEntry, ExitPreview, DeductionPreview } from '../../api.ts'
 import { platform } from '../../platform/index.ts'
@@ -17,7 +17,7 @@ import ExitBreakdownCard from '../components/ExitBreakdownCard.tsx'
 import { useApiData } from '../hooks/useApiData.ts'
 import ImportWizard from '../components/ImportWizard.tsx'
 import TipCarousel from '../components/TipCarousel.tsx'
-import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
+import { useViewing } from '../../scaffold/contexts/viewing.ts'
 import { HeroCard, IconTile, Eyebrow } from '../../scaffold/components/ui/Card.tsx'
 import { Sparkline, IconTrendUp } from '../../scaffold/components/ui/icons.tsx'
 import { StatCard as Card } from '../components/StatCard.tsx'
@@ -70,1655 +70,1655 @@ function StalePriceBanner({ latest, readOnly }: { latest: PriceEntry; readOnly: 
 }
 
 function BreakdownRow({ label, value, sub, bold, tone }: { label: ReactNode; value: string; sub?: string; bold?: boolean; tone?: 'positive' | 'negative' }) {
- const toneClass = tone === 'negative'
- ? 'text-red-700 dark:text-red-400'
- : tone === 'positive'
- ? 'text-emerald-700 dark:text-emerald-400'
- : ''
- return (
- <div className="space-y-0.5">
- <div className={`flex justify-between gap-4 text-xs ${bold ? 'font-semibold text-cs-text' : 'text-cs-text-2'}`}>
- <span>{label}</span>
- <span className={`tabular-nums ${toneClass}`}>{value}</span>
- </div>
- {sub && <p className="pl-2 text-[10px] text-cs-muted">{sub}</p>}
- </div>
- )
+  const toneClass = tone === 'negative'
+    ? 'text-red-700 dark:text-red-400'
+    : tone === 'positive'
+      ? 'text-emerald-700 dark:text-emerald-400'
+      : ''
+  return (
+    <div className="space-y-0.5">
+      <div className={`flex justify-between gap-4 text-xs ${bold ? 'font-semibold text-cs-text' : 'text-cs-text-2'}`}>
+        <span>{label}</span>
+        <span className={`tabular-nums ${toneClass}`}>{value}</span>
+      </div>
+      {sub && <p className="pl-2 text-[10px] text-cs-muted">{sub}</p>}
+    </div>
+  )
 }
 
 function BreakdownShell({ title, children }: { title: string; children: ReactNode }) {
- return (
- <div className="rounded-xl border border-cs-border bg-cs-raised p-4 text-xs ">
- <h3 className="mb-2 text-sm font-semibold text-cs-text">{title}</h3>
- <div className="space-y-1">{children}</div>
- </div>
- )
+  return (
+    <div className="rounded-xl border border-cs-border bg-cs-raised p-4 text-xs ">
+      <h3 className="mb-2 text-sm font-semibold text-cs-text">{title}</h3>
+      <div className="space-y-1">{children}</div>
+    </div>
+  )
 }
 
 /** Detail card shown below a chart when user clicks a data point */
 
 const WI_TAX_DEFAULTS: TaxSettings = {
- federal_income_rate: 0.37,
- federal_lt_cg_rate: 0.20,
- federal_st_cg_rate: 0.37,
- niit_rate: 0.038,
- state_income_rate: 0.0765,
- state_lt_cg_rate: 0.0536,
- state_st_cg_rate: 0.0765,
- lt_holding_days: 365,
- lot_selection_method: 'lifo',
- loan_payoff_method: 'epic_lifo',
- flexible_payoff_enabled: false,
- prefer_stock_dp: false,
- deduct_investment_interest: false,
- deduction_excluded_years: null,
- taxable_years: [],
+  federal_income_rate: 0.37,
+  federal_lt_cg_rate: 0.20,
+  federal_st_cg_rate: 0.37,
+  niit_rate: 0.038,
+  state_income_rate: 0.0765,
+  state_lt_cg_rate: 0.0536,
+  state_st_cg_rate: 0.0765,
+  lt_holding_days: 365,
+  lot_selection_method: 'lifo',
+  loan_payoff_method: 'epic_lifo',
+  flexible_payoff_enabled: false,
+  prefer_stock_dp: false,
+  deduct_investment_interest: false,
+  deduction_excluded_years: null,
+  taxable_years: [],
 }
 
 function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices }: {
- events: TimelineEvent[]
- loans: LoanEntry[]
- taxSettings: TaxSettings
- c: ChartColors
- range: DateRange
- hasFuturePrices: boolean
+  events: TimelineEvent[]
+  loans: LoanEntry[]
+  taxSettings: TaxSettings
+  c: ChartColors
+  range: DateRange
+  hasFuturePrices: boolean
 }) {
- const [selected, setSelected] = useState<number | null>(null)
+  const [selected, setSelected] = useState<number | null>(null)
 
- const data = useMemo(() => {
- const incomeRate = taxSettings.federal_income_rate + taxSettings.state_income_rate
- const ltCgRate = taxSettings.federal_lt_cg_rate + taxSettings.niit_rate + taxSettings.state_lt_cg_rate
+  const data = useMemo(() => {
+    const incomeRate = taxSettings.federal_income_rate + taxSettings.state_income_rate
+    const ltCgRate = taxSettings.federal_lt_cg_rate + taxSettings.niit_rate + taxSettings.state_lt_cg_rate
 
- // Build sorted list of Tax loans for running total computation
- const sortedTaxLoans = [...loans]
- .filter(l => l.loan_type === 'Tax')
- .sort((a, b) => a.loan_year - b.loan_year)
- let taxLoanIdx = 0
- let cumTaxPaid = 0
+    // Build sorted list of Tax loans for running total computation
+    const sortedTaxLoans = [...loans]
+      .filter(l => l.loan_type === 'Tax')
+      .sort((a, b) => a.loan_year - b.loan_year)
+    let taxLoanIdx = 0
+    let cumTaxPaid = 0
 
- // Track price-driven surplus (same approach as IncomeCapGainsChart)
- let cumFuturePriceIncrease = 0
- let cumSurplusIncome = 0
- let cumSurplusCg = 0
+    // Track price-driven surplus (same approach as IncomeCapGainsChart)
+    let cumFuturePriceIncrease = 0
+    let cumSurplusIncome = 0
+    let cumSurplusCg = 0
 
- const filtered = filterByDateRange(events, range, 'date')
- return filtered.map((e, i) => {
- // Accumulate tax loan payments up to this event's year (tax paid when loan was taken, not when due)
- const eYear = parseInt(e.date.slice(0, 4), 10)
- while (taxLoanIdx < sortedTaxLoans.length && sortedTaxLoans[taxLoanIdx].loan_year <= eYear) {
- cumTaxPaid += sortedTaxLoans[taxLoanIdx].amount
- taxLoanIdx++
- }
- // Accumulate Sale estimated taxes at the sale date
- if (e.event_type === 'Sale' && e.estimated_tax) {
- cumTaxPaid += e.estimated_tax
- }
- // Accumulate income tax on vesting events (RSU vesting without 83b) and grant events with income
- if (e.income > 0 && ((e.event_type === 'Vesting' && !e.election_83b) || e.event_type === 'Grant')) {
- cumTaxPaid += e.income * incomeRate
- }
+    const filtered = filterByDateRange(events, range, 'date')
+    return filtered.map((e, i) => {
+      // Accumulate tax loan payments up to this event's year (tax paid when loan was taken, not when due)
+      const eYear = parseInt(e.date.slice(0, 4), 10)
+      while (taxLoanIdx < sortedTaxLoans.length && sortedTaxLoans[taxLoanIdx].loan_year <= eYear) {
+        cumTaxPaid += sortedTaxLoans[taxLoanIdx].amount
+        taxLoanIdx++
+      }
+      // Accumulate Sale estimated taxes at the sale date
+      if (e.event_type === 'Sale' && e.estimated_tax) {
+        cumTaxPaid += e.estimated_tax
+      }
+      // Accumulate income tax on vesting events (RSU vesting without 83b) and grant events with income
+      if (e.income > 0 && ((e.event_type === 'Vesting' && !e.election_83b) || e.event_type === 'Grant')) {
+        cumTaxPaid += e.income * incomeRate
+      }
 
- // Track future price surplus (same logic as IncomeCapGainsChart)
- if (hasFuturePrices && e.date > TODAY) {
- const vs = e.vested_shares ?? 0
- if (e.event_type === 'Share Price') {
- cumFuturePriceIncrease += e.price_increase
- cumSurplusCg += e.price_cap_gains
- } else if (cumFuturePriceIncrease > 0 && vs > 0) {
- if ((e.grant_price ?? 0) === 0) {
- cumSurplusIncome += cumFuturePriceIncrease * vs
- } else {
- cumSurplusCg += cumFuturePriceIncrease * vs
- }
- }
- }
+      // Track future price surplus (same logic as IncomeCapGainsChart)
+      if (hasFuturePrices && e.date > TODAY) {
+        const vs = e.vested_shares ?? 0
+        if (e.event_type === 'Share Price') {
+          cumFuturePriceIncrease += e.price_increase
+          cumSurplusCg += e.price_cap_gains
+        } else if (cumFuturePriceIncrease > 0 && vs > 0) {
+          if ((e.grant_price ?? 0) === 0) {
+            cumSurplusIncome += cumFuturePriceIncrease * vs
+          } else {
+            cumSurplusCg += cumFuturePriceIncrease * vs
+          }
+        }
+      }
 
- const effectiveCumCg = e.cum_cap_gains
+      const effectiveCumCg = e.cum_cap_gains
 
- // "Sure" tax = tax on base income + base vesting cap gains (no price surplus)
- const taxSure = Math.round(
- (e.cum_income - cumSurplusIncome) * incomeRate +
- (effectiveCumCg - cumSurplusCg) * ltCgRate
- )
+      // "Sure" tax = tax on base income + base vesting cap gains (no price surplus)
+      const taxSure = Math.round(
+        (e.cum_income - cumSurplusIncome) * incomeRate +
+        (effectiveCumCg - cumSurplusCg) * ltCgRate
+      )
 
- // "Half" tax = tax on price-driven surplus (uncertain - depends on future price)
- const hasSurplus = hasFuturePrices && (cumSurplusIncome + cumSurplusCg) > 0
- const taxHalf = hasSurplus
- ? Math.round(cumSurplusIncome * incomeRate + cumSurplusCg * ltCgRate)
- : null as number | null
+      // "Half" tax = tax on price-driven surplus (uncertain - depends on future price)
+      const hasSurplus = hasFuturePrices && (cumSurplusIncome + cumSurplusCg) > 0
+      const taxHalf = hasSurplus
+        ? Math.round(cumSurplusIncome * incomeRate + cumSurplusCg * ltCgRate)
+        : null as number | null
 
- return {
- _idx: i,
- _date: e.date,
- _label: fmtDate(e.date),
- _event: e,
- taxSure,
- taxHalf,
- taxPaid: cumTaxPaid > 0 ? cumTaxPaid : null as number | null,
- }
- })
- }, [events, loans, taxSettings, range, hasFuturePrices])
+      return {
+        _idx: i,
+        _date: e.date,
+        _label: fmtDate(e.date),
+        _event: e,
+        taxSure,
+        taxHalf,
+        taxPaid: cumTaxPaid > 0 ? cumTaxPaid : null as number | null,
+      }
+    })
+  }, [events, loans, taxSettings, range, hasFuturePrices])
 
- const tIdx = todayIndex(data)
- const sel = selected !== null && selected < data.length ? data[selected] : null
+  const tIdx = todayIndex(data)
+  const sel = selected !== null && selected < data.length ? data[selected] : null
 
- return (
- <>
- <ResponsiveContainer width="100%" height={250}>
- <AreaChart data={data} onClick={(state) => {
- if (state?.activeTooltipIndex != null) setSelected(Number(state.activeTooltipIndex))
- }}>
- <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
- <XAxis dataKey="_idx" type="number" domain={[0, Math.max(0, data.length - 1)]} ticks={numericTicks(data.length)} tickFormatter={(i: number) => data[i]?._label ?? ''} tick={{ fontSize: 10, fill: c.axis }} padding={{ right: 10 }} />
- <YAxis tick={{ fontSize: 10, fill: c.axis }} />
- <text x="50%" y={16} textAnchor="middle" fontSize={10} fill={c.axis}>
- <tspan fill="#fb923c">&#9632;</tspan> Est. Tax (Sure){' '}
- {hasFuturePrices && <><tspan fill="#fed7aa">&#9632;</tspan> +Projected{' '}</>}
- <tspan fill="#ef4444">&#9632;</tspan> Paid
- </text>
- {tIdx !== null && <ReferenceLine x={tIdx} stroke="#60a5fa" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#60a5fa', position: 'top' }} />}
- {selected !== null && selected < data.length && (
- <ReferenceLine x={selected} stroke="#fb923c" strokeWidth={1.5} zIndex={600} />
- )}
- {/* Stacked: sure tax + projected half tax */}
- <Area type="monotone" dataKey="taxSure" stackId="tax" fill="#fb923c" fillOpacity={0.7} stroke="#ea580c" name="Est. Tax (Sure)" dot={false} />
- {hasFuturePrices && (
- <Area type="monotone" dataKey="taxHalf" stackId="tax" fill="#fed7aa" fillOpacity={0.5} stroke="#fed7aa" strokeDasharray="6 3" name="Est. Tax (Projected)" dot={false} />
- )}
- {/* Paid area overlaid (not stacked) — fills the tax-loan-covered region */}
- <Area type="monotone" dataKey="taxPaid" fill="#fca5a5" fillOpacity={0.45} stroke="#ef4444" strokeWidth={2} dot={false} name="Tax Paid" connectNulls />
- </AreaChart>
- </ResponsiveContainer>
- {sel && (
- <DetailCard
- onClose={() => setSelected(null)}
- items={[
- { label: '', value: fmtFullDate(sel._date) },
- { label: 'est. tax (sure)', value: fmt$(sel.taxSure) },
- ...(sel.taxHalf ? [{ label: 'est. tax (projected)', value: fmt$(sel.taxHalf) }] : []),
- ...(sel.taxPaid ? [{ label: 'tax paid', value: fmt$(sel.taxPaid) }] : []),
- ]}
- />
- )}
- </>
- )
+  return (
+    <>
+      <ResponsiveContainer width="100%" height={250}>
+        <AreaChart data={data} onClick={(state) => {
+          if (state?.activeTooltipIndex != null) setSelected(Number(state.activeTooltipIndex))
+        }}>
+          <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
+          <XAxis dataKey="_idx" type="number" domain={[0, Math.max(0, data.length - 1)]} ticks={numericTicks(data.length)} tickFormatter={(i: number) => data[i]?._label ?? ''} tick={{ fontSize: 10, fill: c.axis }} padding={{ right: 10 }} />
+          <YAxis tick={{ fontSize: 10, fill: c.axis }} />
+          <text x="50%" y={16} textAnchor="middle" fontSize={10} fill={c.axis}>
+            <tspan fill="#fb923c">&#9632;</tspan> Est. Tax (Sure){' '}
+            {hasFuturePrices && <><tspan fill="#fed7aa">&#9632;</tspan> +Projected{' '}</>}
+            <tspan fill="#ef4444">&#9632;</tspan> Paid
+          </text>
+          {tIdx !== null && <ReferenceLine x={tIdx} stroke="#60a5fa" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#60a5fa', position: 'top' }} />}
+          {selected !== null && selected < data.length && (
+            <ReferenceLine x={selected} stroke="#fb923c" strokeWidth={1.5} zIndex={600} />
+          )}
+          {/* Stacked: sure tax + projected half tax */}
+          <Area type="monotone" dataKey="taxSure" stackId="tax" fill="#fb923c" fillOpacity={0.7} stroke="#ea580c" name="Est. Tax (Sure)" dot={false} />
+          {hasFuturePrices && (
+            <Area type="monotone" dataKey="taxHalf" stackId="tax" fill="#fed7aa" fillOpacity={0.5} stroke="#fed7aa" strokeDasharray="6 3" name="Est. Tax (Projected)" dot={false} />
+          )}
+          {/* Paid area overlaid (not stacked) — fills the tax-loan-covered region */}
+          <Area type="monotone" dataKey="taxPaid" fill="#fca5a5" fillOpacity={0.45} stroke="#ef4444" strokeWidth={2} dot={false} name="Tax Paid" connectNulls />
+        </AreaChart>
+      </ResponsiveContainer>
+      {sel && (
+        <DetailCard
+          onClose={() => setSelected(null)}
+          items={[
+            { label: '', value: fmtFullDate(sel._date) },
+            { label: 'est. tax (sure)', value: fmt$(sel.taxSure) },
+            ...(sel.taxHalf ? [{ label: 'est. tax (projected)', value: fmt$(sel.taxHalf) }] : []),
+            ...(sel.taxPaid ? [{ label: 'tax paid', value: fmt$(sel.taxPaid) }] : []),
+          ]}
+        />
+      )}
+    </>
+  )
 }
 
 function InterestChart({ loans, c, range }: { loans: LoanEntry[]; c: ChartColors; range: DateRange }) {
- const [selected, setSelected] = useState<number | null>(null)
+  const [selected, setSelected] = useState<number | null>(null)
 
- const data = useMemo(() => {
- const purchaseLoans = loans.filter(l => l.loan_type === 'Purchase')
- const interestLoans = loans.filter(l => l.loan_type === 'Interest')
+  const data = useMemo(() => {
+    const purchaseLoans = loans.filter(l => l.loan_type === 'Purchase')
+    const interestLoans = loans.filter(l => l.loan_type === 'Interest')
 
- if (purchaseLoans.length === 0 && interestLoans.length === 0) return []
+    if (purchaseLoans.length === 0 && interestLoans.length === 0) return []
 
- // Latest known interest rate (highest loan_year interest loan, fallback to purchase rate)
- const latestInterestLoan = [...interestLoans].sort((a, b) => b.loan_year - a.loan_year)[0]
- const latestRate = latestInterestLoan?.interest_rate
- ?? (purchaseLoans.length ? Math.max(...purchaseLoans.map(l => l.interest_rate)) : 0)
+    // Latest known interest rate (highest loan_year interest loan, fallback to purchase rate)
+    const latestInterestLoan = [...interestLoans].sort((a, b) => b.loan_year - a.loan_year)[0]
+    const latestRate = latestInterestLoan?.interest_rate
+      ?? (purchaseLoans.length ? Math.max(...purchaseLoans.map(l => l.interest_rate)) : 0)
 
- // Year range
- const allYears = new Set<number>()
- for (const l of loans) {
- allYears.add(l.loan_year)
- allYears.add(new Date(l.due_date + 'T00:00:00').getFullYear())
- }
- if (allYears.size === 0) return []
- const minYear = Math.min(...allYears)
- const maxYear = Math.max(...allYears)
+    // Year range
+    const allYears = new Set<number>()
+    for (const l of loans) {
+      allYears.add(l.loan_year)
+      allYears.add(new Date(l.due_date + 'T00:00:00').getFullYear())
+    }
+    if (allYears.size === 0) return []
+    const minYear = Math.min(...allYears)
+    const maxYear = Math.max(...allYears)
 
- const yearData: { year: number; guaranteedNew: number; projectedNew: number }[] = []
+    const yearData: { year: number; guaranteedNew: number; projectedNew: number }[] = []
 
- for (let year = minYear; year <= maxYear; year++) {
- let guaranteedNew = 0
- let projectedNew = 0
+    for (let year = minYear; year <= maxYear; year++) {
+      let guaranteedNew = 0
+      let projectedNew = 0
 
- // Existing Interest loans for this year → guaranteed
- for (const l of interestLoans) {
- if (l.loan_year === year) guaranteedNew += l.amount
- }
+      // Existing Interest loans for this year → guaranteed
+      for (const l of interestLoans) {
+        if (l.loan_year === year) guaranteedNew += l.amount
+      }
 
- // Projected interest from Purchase loans for years not yet in DB → guaranteed
- for (const p of purchaseLoans) {
- const dueYear = new Date(p.due_date + 'T00:00:00').getFullYear()
- if (year > p.loan_year && year <= dueYear) {
- const alreadyExists = interestLoans.some(
- l => l.grant_year === p.grant_year && l.grant_type === p.grant_type && l.loan_year === year
- )
- if (!alreadyExists) guaranteedNew += p.amount * p.interest_rate
- }
- }
+      // Projected interest from Purchase loans for years not yet in DB → guaranteed
+      for (const p of purchaseLoans) {
+        const dueYear = new Date(p.due_date + 'T00:00:00').getFullYear()
+        if (year > p.loan_year && year <= dueYear) {
+          const alreadyExists = interestLoans.some(
+            l => l.grant_year === p.grant_year && l.grant_type === p.grant_type && l.loan_year === year
+          )
+          if (!alreadyExists) guaranteedNew += p.amount * p.interest_rate
+        }
+      }
 
- // Projected interest generated by existing Interest loans (second-order, at latest rate)
- if (latestRate > 0) {
- for (const il of interestLoans) {
- const parentPurchase = purchaseLoans.find(
- p => p.grant_year === il.grant_year && p.grant_type === il.grant_type
- )
- const dueYear = parentPurchase
- ? new Date(parentPurchase.due_date + 'T00:00:00').getFullYear()
- : new Date(il.due_date + 'T00:00:00').getFullYear()
- if (year > il.loan_year && year <= dueYear) {
- projectedNew += il.amount * latestRate
- }
- }
+      // Projected interest generated by existing Interest loans (second-order, at latest rate)
+      if (latestRate > 0) {
+        for (const il of interestLoans) {
+          const parentPurchase = purchaseLoans.find(
+            p => p.grant_year === il.grant_year && p.grant_type === il.grant_type
+          )
+          const dueYear = parentPurchase
+            ? new Date(parentPurchase.due_date + 'T00:00:00').getFullYear()
+            : new Date(il.due_date + 'T00:00:00').getFullYear()
+          if (year > il.loan_year && year <= dueYear) {
+            projectedNew += il.amount * latestRate
+          }
+        }
 
- // Projected interest from future (not-yet-in-DB) interest loans (at latest rate)
- for (const p of purchaseLoans) {
- const dueYear = new Date(p.due_date + 'T00:00:00').getFullYear()
- for (let intYear = p.loan_year + 1; intYear < year && intYear <= dueYear; intYear++) {
- const existsInDB = interestLoans.some(
- l => l.grant_year === p.grant_year && l.grant_type === p.grant_type && l.loan_year === intYear
- )
- if (!existsInDB && year <= dueYear) {
- projectedNew += p.amount * p.interest_rate * latestRate
- }
- }
- }
- }
+        // Projected interest from future (not-yet-in-DB) interest loans (at latest rate)
+        for (const p of purchaseLoans) {
+          const dueYear = new Date(p.due_date + 'T00:00:00').getFullYear()
+          for (let intYear = p.loan_year + 1; intYear < year && intYear <= dueYear; intYear++) {
+            const existsInDB = interestLoans.some(
+              l => l.grant_year === p.grant_year && l.grant_type === p.grant_type && l.loan_year === intYear
+            )
+            if (!existsInDB && year <= dueYear) {
+              projectedNew += p.amount * p.interest_rate * latestRate
+            }
+          }
+        }
+      }
 
- yearData.push({ year, guaranteedNew, projectedNew })
- }
+      yearData.push({ year, guaranteedNew, projectedNew })
+    }
 
- // Cumulative
- let cumGuaranteed = 0
- let cumProjected = 0
- return yearData.map(d => {
- cumGuaranteed += d.guaranteedNew
- cumProjected += d.projectedNew
- return {
- _date: `${d.year}-01-01`,
- _label: String(d.year),
- guaranteed: cumGuaranteed,
- projected: cumProjected > 0 ? cumProjected : null as number | null,
- }
- })
- }, [loans])
+    // Cumulative
+    let cumGuaranteed = 0
+    let cumProjected = 0
+    return yearData.map(d => {
+      cumGuaranteed += d.guaranteedNew
+      cumProjected += d.projectedNew
+      return {
+        _date: `${d.year}-01-01`,
+        _label: String(d.year),
+        guaranteed: cumGuaranteed,
+        projected: cumProjected > 0 ? cumProjected : null as number | null,
+      }
+    })
+  }, [loans])
 
- if (data.length === 0) return null
+  if (data.length === 0) return null
 
- const displayed = filterByDateRange(data, range, '_date')
- const tIdx = todayIndex(displayed)
- const sel = selected !== null && selected < displayed.length ? displayed[selected] : null
- const hasProjected = displayed.some(d => d.projected !== null && d.projected > 0)
+  const displayed = filterByDateRange(data, range, '_date')
+  const tIdx = todayIndex(displayed)
+  const sel = selected !== null && selected < displayed.length ? displayed[selected] : null
+  const hasProjected = displayed.some(d => d.projected !== null && d.projected > 0)
 
- return (
- <>
- <div className="mb-2 text-center text-[10px]" style={{ color: c.axis }}>
- <span className="text-[#fb7185]">&#9632;</span> Recorded + Guaranteed{' '}
- {hasProjected && <><span className="text-[#fda4af]">&#9632;</span> + Est. interest-on-interest</>}
- </div>
- <ResponsiveContainer width="100%" height={220}>
- <AreaChart data={displayed} onClick={(state) => {
- if (state?.activeTooltipIndex != null) setSelected(Number(state.activeTooltipIndex))
- }}>
- <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
- <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(displayed.length)} />
- <YAxis tick={{ fontSize: 10, fill: c.axis }} />
- {tIdx !== null && <ReferenceLine x={displayed[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
- {selected !== null && selected < displayed.length && (
- <ReferenceLine x={displayed[selected]._label} stroke="#fb7185" strokeWidth={1.5} zIndex={600} />
- )}
- <Area type="monotone" dataKey="guaranteed" stackId="i" fill="#fb7185" fillOpacity={0.7} stroke="#e11d48" name="Guaranteed" dot={false} />
- {hasProjected && (
- <Area type="monotone" dataKey="projected" stackId="i" fill="#fda4af" fillOpacity={0.4} stroke="#fda4af" strokeDasharray="6 3" name="Est. interest-on-interest" dot={false} />
- )}
- </AreaChart>
- </ResponsiveContainer>
- {sel && (
- <DetailCard
- onClose={() => setSelected(null)}
- items={[
- { label: '', value: String(sel._label) },
- { label: 'cumulative interest', value: fmt$(sel.guaranteed + (sel.projected ?? 0)) },
- ...(sel.projected ? [{ label: 'of which est.', value: fmt$(sel.projected) }] : []),
- ]}
- />
- )}
- </>
- )
+  return (
+    <>
+      <div className="mb-2 text-center text-[10px]" style={{ color: c.axis }}>
+        <span className="text-[#fb7185]">&#9632;</span> Recorded + Guaranteed{' '}
+        {hasProjected && <><span className="text-[#fda4af]">&#9632;</span> + Est. interest-on-interest</>}
+      </div>
+      <ResponsiveContainer width="100%" height={220}>
+        <AreaChart data={displayed} onClick={(state) => {
+          if (state?.activeTooltipIndex != null) setSelected(Number(state.activeTooltipIndex))
+        }}>
+          <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
+          <XAxis dataKey="_label" tick={{ fontSize: 10, fill: c.axis }} interval={smartInterval(displayed.length)} />
+          <YAxis tick={{ fontSize: 10, fill: c.axis }} />
+          {tIdx !== null && <ReferenceLine x={displayed[tIdx]._label} stroke="#f59e0b" strokeDasharray="4 4" zIndex={600} label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />}
+          {selected !== null && selected < displayed.length && (
+            <ReferenceLine x={displayed[selected]._label} stroke="#fb7185" strokeWidth={1.5} zIndex={600} />
+          )}
+          <Area type="monotone" dataKey="guaranteed" stackId="i" fill="#fb7185" fillOpacity={0.7} stroke="#e11d48" name="Guaranteed" dot={false} />
+          {hasProjected && (
+            <Area type="monotone" dataKey="projected" stackId="i" fill="#fda4af" fillOpacity={0.4} stroke="#fda4af" strokeDasharray="6 3" name="Est. interest-on-interest" dot={false} />
+          )}
+        </AreaChart>
+      </ResponsiveContainer>
+      {sel && (
+        <DetailCard
+          onClose={() => setSelected(null)}
+          items={[
+            { label: '', value: String(sel._label) },
+            { label: 'cumulative interest', value: fmt$(sel.guaranteed + (sel.projected ?? 0)) },
+            ...(sel.projected ? [{ label: 'of which est.', value: fmt$(sel.projected) }] : []),
+          ]}
+        />
+      )}
+    </>
+  )
 }
 
 function LoanChart({ loanPaymentByYear, c, range, setRange, maxDate }: {
- loanPaymentByYear: { year: string; payoff_sale: number; cash_in: number }[]
- c: ChartColors
- range: DateRange; setRange: (r: DateRange) => void; maxDate: string
+  loanPaymentByYear: { year: string; payoff_sale: number; cash_in: number }[]
+  c: ChartColors
+  range: DateRange; setRange: (r: DateRange) => void; maxDate: string
 }) {
- if (!loanPaymentByYear || loanPaymentByYear.length === 0) return null
- const displayed = range.mode === 'all' ? loanPaymentByYear
- : loanPaymentByYear.filter(d => {
- const y = d.year + '-01-01'
- return y >= range.start && y <= range.end
- })
- return (
- <ChartBox title="Loan Payments by Due Year" range={range} setRange={setRange} maxDate={maxDate}>
- <div className="mb-2 text-center text-[10px]" style={{ color: c.axis }}>
- <span className="text-[#4ade80]">&#9632;</span> Payoff sale{' '}
- <span className="text-[#fb923c]">&#9632;</span> Cash in
- </div>
- <ResponsiveContainer width="100%" height={220}>
- <BarChart data={displayed}>
- <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
- <XAxis dataKey="year" tick={{ fontSize: 10, fill: c.axis }} />
- <YAxis tick={{ fontSize: 10, fill: c.axis }} />
- <Bar dataKey="payoff_sale" stackId="a" fill="#4ade80" name="Payoff sale" radius={[0, 0, 0, 0]} />
- <Bar dataKey="cash_in" stackId="a" fill="#fb923c" name="Cash in" radius={[4, 4, 0, 0]} />
- </BarChart>
- </ResponsiveContainer>
- </ChartBox>
- )
+  if (!loanPaymentByYear || loanPaymentByYear.length === 0) return null
+  const displayed = range.mode === 'all' ? loanPaymentByYear
+    : loanPaymentByYear.filter(d => {
+      const y = d.year + '-01-01'
+      return y >= range.start && y <= range.end
+    })
+  return (
+    <ChartBox title="Loan Payments by Due Year" range={range} setRange={setRange} maxDate={maxDate}>
+      <div className="mb-2 text-center text-[10px]" style={{ color: c.axis }}>
+        <span className="text-[#4ade80]">&#9632;</span> Payoff sale{' '}
+        <span className="text-[#fb923c]">&#9632;</span> Cash in
+      </div>
+      <ResponsiveContainer width="100%" height={220}>
+        <BarChart data={displayed}>
+          <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
+          <XAxis dataKey="year" tick={{ fontSize: 10, fill: c.axis }} />
+          <YAxis tick={{ fontSize: 10, fill: c.axis }} />
+          <Bar dataKey="payoff_sale" stackId="a" fill="#4ade80" name="Payoff sale" radius={[0, 0, 0, 0]} />
+          <Bar dataKey="cash_in" stackId="a" fill="#fb923c" name="Cash in" radius={[4, 4, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </ChartBox>
+  )
 }
 
 export default function Dashboard() {
- const { viewing } = useViewing()
- const vid = viewing?.invitationId
- const readOnly = !!viewing
-
- const fetchDashboard = useCallback(() => vid ? api.getSharedDashboard(vid) : api.getDashboard(), [vid])
- const fetchEvents = useCallback(() => vid ? api.getSharedEvents(vid) : api.getEvents(), [vid])
- const fetchPrices = useCallback(() => vid ? api.getSharedPrices(vid) : api.getPrices(), [vid])
- const fetchLoans = useCallback(() => vid ? api.getSharedLoans(vid) : api.getLoans(), [vid])
- const fetchGrants = useCallback(() => vid ? api.getSharedGrants(vid) : api.getGrants(), [vid])
- const fetchTaxSettings = useCallback(() => vid ? api.getSharedTaxSettings(vid) : api.getTaxSettings(), [vid])
- const fetchSales = useCallback(() => vid ? api.getSharedSales(vid) : api.getSales(), [vid])
-
- const { data: dash, loading: dashLoading, reload: reloadDash } = useApiData<DashboardData>(fetchDashboard)
- const { data: events, reload: reloadEvents } = useApiData<TimelineEvent[]>(fetchEvents)
- const { data: prices } = useApiData<PriceEntry[]>(fetchPrices)
- const { data: loans } = useApiData<LoanEntry[]>(fetchLoans)
- const { data: grantsData } = useApiData<GrantEntry[]>(fetchGrants)
- const { data: taxSettings, reload: reloadTaxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
- const { data: sales } = useApiData<SaleEntry[]>(fetchSales)
- const c = useChartColors()
- const [rangeInterest, setRangeInterest] = useState<DateRange>({ mode: 'all', start: '', end: '' })
- const [rangeLoan, setRangeLoan] = useState<DateRange>({ mode: 'all', start: '', end: '' })
- const [range, setRange] = useState<DateRange>(() => {
- try {
- const saved = localStorage.getItem('dashboard_range')
- if (saved) return JSON.parse(saved) as DateRange
- } catch {}
- return { mode: 'all', start: '', end: '' }
- })
- const [dateMode, setDateMode] = useState<'today' | 'last-event' | 'custom'>(() => {
- const saved = localStorage.getItem('dashboard_dateMode')
- if (saved === 'today' || saved === 'last-event' || saved === 'custom') return saved
- return 'today'
- })
- const [cardDate, setCardDate] = useState<string>(() => {
- const mode = localStorage.getItem('dashboard_dateMode')
- if (!mode || mode === 'today') return TODAY
- if (mode === 'last-event') return TODAY // resolved after events load via effect
- return localStorage.getItem('dashboard_cardDate') ?? TODAY
- })
- const [exitBreakdownOpen, setExitBreakdownOpen] = useState(false)
- const [openBreakdowns, setOpenBreakdowns] = useState<Set<string>>(() => {
- try {
- const saved = localStorage.getItem('dashboard_openBreakdowns')
- if (saved) return new Set(JSON.parse(saved) as string[])
- } catch {}
- const initial = new Set<string>()
- if (localStorage.getItem('dashboard_holdingsOpen') === 'true') initial.add('grants')
- if (localStorage.getItem('dashboard_loansOpen') === 'true') initial.add('activeLoans')
- return initial
- })
- const toggleBreakdown = useCallback((key: string) => {
- setOpenBreakdowns(prev => {
- const next = new Set(prev)
- if (next.has(key)) next.delete(key); else next.add(key)
- return next
- })
- }, [])
- useEffect(() => {
- if (vid) return // viewer changes are in-memory only
- localStorage.setItem('dashboard_openBreakdowns', JSON.stringify([...openBreakdowns]))
- }, [openBreakdowns, vid])
-
- // Load an exit preview for the current cardDate (only meaningful for today or later).
- const showExitPreview = cardDate >= TODAY
- const [exitPreview, setExitPreview] = useState<ExitPreview | null | 'loading'>(null)
-
- useEffect(() => {
- if (!showExitPreview) {
- setExitPreview(null)
- return
- }
- setExitPreview('loading')
- const timer = setTimeout(() => {
- const fetcher = vid ? api.getSharedPreviewExit(vid, cardDate) : api.previewExit(cardDate)
- fetcher
- .then(result => setExitPreview(result))
- .catch(() => setExitPreview(null))
- }, 200)
- return () => clearTimeout(timer)
- }, [cardDate, showExitPreview, vid])
-
- // Investment interest deduction preview
- const [pendingDeduction, setPendingDeduction] = useState<boolean | null>(null)
- const [deductionPreview, setDeductionPreview] = useState<DeductionPreview | null | 'loading'>(null)
- const [savingDeduction, setSavingDeduction] = useState(false)
-
- // Reset pending when saved setting reloads
- useEffect(() => { setPendingDeduction(null) }, [taxSettings])
-
- const savedDeduction = taxSettings?.deduct_investment_interest ?? false
- const pendingDeductionChanged = pendingDeduction !== null && pendingDeduction !== savedDeduction
-
- // When toggling on for the first time (no existing exclusions), tell the
- // preview to auto-exclude past years so the number matches what Apply will do.
- const shouldExcludePast = pendingDeduction === true && !savedDeduction && !taxSettings?.deduction_excluded_years?.length
-
- useEffect(() => {
- if (!pendingDeductionChanged || pendingDeduction === null) {
- setDeductionPreview(null)
- return
- }
- setDeductionPreview('loading')
- const timer = setTimeout(() => {
- api.previewDeduction(pendingDeduction, shouldExcludePast)
- .then(result => setDeductionPreview(result))
- .catch(() => setDeductionPreview(null))
- }, 400)
- return () => clearTimeout(timer)
- }, [pendingDeductionChanged, pendingDeduction, shouldExcludePast])
-
- async function applyDeduction(enabled: boolean) {
- setSavingDeduction(true)
- try {
- const update: Partial<TaxSettings> = { deduct_investment_interest: enabled }
- // When first enabling and no year customization exists yet,
- // auto-exclude past years (you can't retroactively itemize)
- if (enabled && taxSettings && !taxSettings.deduction_excluded_years?.length) {
- const thisYear = new Date().getFullYear()
- const pastYears = (taxSettings.taxable_years ?? []).filter(y => y < thisYear)
- if (pastYears.length > 0) {
- update.deduction_excluded_years = pastYears
- }
- }
- await api.updateTaxSettings(update)
- reloadDash()
- reloadEvents()
- reloadTaxSettings()
- } finally {
- setSavingDeduction(false)
- }
- }
-
- useEffect(() => {
- if (vid) return
- localStorage.setItem('dashboard_range', JSON.stringify(range))
- }, [range, vid])
-
- useEffect(() => {
- if (vid) return
- localStorage.setItem('dashboard_dateMode', dateMode)
- if (dateMode === 'custom') localStorage.setItem('dashboard_cardDate', cardDate)
- }, [dateMode, cardDate, vid])
-
- // Load owner's saved dashboard prefs when viewing — used as the initial state
- // for date-mode / cardDate / range / openBreakdowns. Local changes the viewer
- // makes from here are in-memory only (the gates above prevent persistence).
- // Owner's own dashboard saves to the server too, so the next viewer fetch
- // reflects the owner's latest choice. Runs once per viewing context change.
- const ownerPrefsAppliedRef = useRef<number | null>(null)
- useEffect(() => {
- if (!vid) {
- ownerPrefsAppliedRef.current = null
- return
- }
- if (ownerPrefsAppliedRef.current === vid) return
- api.getSharedDashboardPrefs(vid)
- .then(({ prefs }) => {
- ownerPrefsAppliedRef.current = vid
- const m = (prefs as Record<string, unknown>).dateMode
- if (m === 'today' || m === 'last-event' || m === 'custom') setDateMode(m)
- const cd = (prefs as Record<string, unknown>).cardDate
- if (typeof cd === 'string' && cd.length === 10) setCardDate(cd)
- const rg = (prefs as Record<string, unknown>).range
- if (rg && typeof rg === 'object' && 'mode' in rg) setRange(rg as DateRange)
- const ob = (prefs as Record<string, unknown>).openBreakdowns
- if (Array.isArray(ob)) setOpenBreakdowns(new Set(ob.filter(x => typeof x === 'string') as string[]))
- })
- .catch(() => {})
- }, [vid])
-
- // Sync owner's dashboard prefs to the server (debounced) so shared viewers
- // see the owner's latest choices. Skipped while viewing (viewer changes don't
- // overwrite the owner's persisted prefs).
- useEffect(() => {
- if (vid) return
- const t = setTimeout(() => {
- api.saveDashboardPrefs({
- dateMode,
- cardDate,
- range,
- openBreakdowns: [...openBreakdowns],
- } as Record<string, unknown>).catch(() => {})
- }, 400)
- return () => clearTimeout(t)
- }, [vid, dateMode, cardDate, range, openBreakdowns])
-
- // Only show projected/dashed styling when a future price actually differs from the current price
- const hasFuturePrices = useMemo(() => {
- if (!prices) return false
- const futurePrices = prices.filter(p => p.effective_date > TODAY)
- if (!futurePrices.length) return false
- const pastPrices = prices.filter(p => p.effective_date <= TODAY)
- const currentPrice = pastPrices.length ? pastPrices[pastPrices.length - 1].price : 0
- return futurePrices.some(p => Math.abs(p.price - currentPrice) > 0.005)
- }, [prices])
-
- // Last event/price date for default end in range picker
- const maxDate = useMemo(() => {
- let last = TODAY
- if (events?.length) last = events[events.length - 1].date > last ? events[events.length - 1].date : last
- if (prices?.length) {
- const lp = prices[prices.length - 1].effective_date
- if (lp > last) last = lp
- }
- return last
- }, [events, prices])
-
- // The newest non-estimated price, when it predates the current year. Estimates
- // are projections the user made themselves, so they do not count as knowing
- // this year's price.
- const stalePrice = useMemo(() => {
- const real = (prices ?? []).filter(p => !p.is_estimate)
- if (real.length === 0) return null
- const newest = real[real.length - 1]
- return newest.effective_date.slice(0, 4) < TODAY.slice(0, 4) ? newest : null
- }, [prices])
-
- // Date of the last real (non-projected) event
- const lastRealEventDate = useMemo(() => {
- if (!events?.length) return TODAY
- return events[events.length - 1].date
- }, [events])
-
- // Keep cardDate in sync when using a dynamic mode
- useEffect(() => {
- if (dateMode === 'today') setCardDate(TODAY)
- else if (dateMode === 'last-event') setCardDate(lastRealEventDate)
- }, [dateMode, lastRealEventDate])
-
- // Card values computed from local data as of cardDate
- const cardValues = useMemo(() => {
- if (!events || !loans) return null
-
- const effectiveDate = cardDate
-
- // Last event at or before effectiveDate
- let lastEvent: TimelineEvent | null = null
- for (const e of events) {
- if (e.date <= effectiveDate) lastEvent = e
- else break
- }
- // Next event after cardDate
- let nextEvent: TimelineEvent | null = null
- for (const e of events) {
- if (e.date > cardDate) { nextEvent = e; break }
- }
-
- const incomeRate = taxSettings
- ? taxSettings.federal_income_rate + taxSettings.state_income_rate
- : 0
- const taxPaid =
- loans.filter(l => l.loan_type === 'Tax' && l.loan_year <= parseInt(effectiveDate.slice(0, 4), 10))
- .reduce((sum, l) => sum + l.amount, 0)
- + events.filter(e => e.event_type === 'Sale' && e.date <= effectiveDate)
- .reduce((sum, e) => sum + (e.estimated_tax ?? 0), 0)
- + events
- .filter(e =>
- e.income > 0 &&
- e.date <= effectiveDate &&
- ((e.event_type === 'Vesting' && !e.election_83b) || e.event_type === 'Grant')
- )
- .reduce((sum, e) => sum + e.income * incomeRate, 0)
-
- // Outstanding loan principal just before (or at) the liq date, ignoring the virtual liq sale
- const outstandingPrincipal = (() => {
- const refDate = effectiveDate
- const refYear = parseInt(refDate.slice(0, 4), 10)
- const settledIds = new Set(
- (sales ?? []).filter(s => s.loan_id !== null && s.date <= refDate).map(s => s.loan_id)
- )
- const refinancedIds = new Set(loans.map(l => l.refinances_loan_id).filter((id): id is number => id !== null))
- const earlyPaidByLoan = new Map<number, number>()
- events.filter(e => e.event_type === 'Early Loan Payment' && e.date <= refDate && e.loan_id != null)
- .forEach(e => { earlyPaidByLoan.set(e.loan_id!, (earlyPaidByLoan.get(e.loan_id!) ?? 0) + (e.amount ?? 0)) })
- return loans
- .filter(l => l.loan_year <= refYear && !settledIds.has(l.id) && !refinancedIds.has(l.id))
- .reduce((sum, l) => sum + Math.max(0, l.amount - (earlyPaidByLoan.get(l.id) ?? 0)), 0)
- })()
-
- // Map sale_id -> estimated_tax from timeline events so we can subtract it below
- const saleTaxBySaleId = new Map<number, number>()
- for (const e of events) {
- if (e.event_type === 'Sale' && e.sale_id != null && e.estimated_tax != null) {
- saleTaxBySaleId.set(e.sale_id, e.estimated_tax)
- }
- }
-
- // Build loan amount map for payoff sale deductions
- const loanAmountById = new Map<number, number>()
- for (const l of loans) loanAmountById.set(l.id, l.amount)
- const earlyPaidByLoan = new Map<number, number>()
- for (const e of events) {
- if (e.event_type === 'Early Loan Payment' && e.loan_id != null && e.date <= effectiveDate) {
- earlyPaidByLoan.set(e.loan_id, (earlyPaidByLoan.get(e.loan_id) ?? 0) + (e.amount ?? 0))
- }
- }
- const cashReceived = sales
- ? sales.filter(s => s.date <= effectiveDate)
- .reduce((sum, s) => {
- const proceeds = s.shares * s.price_per_share
- const tax = saleTaxBySaleId.get(s.id) ?? 0
- const loanCovered = s.loan_id != null
- ? Math.max(0, (loanAmountById.get(s.loan_id) ?? 0) - (earlyPaidByLoan.get(s.loan_id) ?? 0))
- : 0
- return sum + proceeds - loanCovered - tax
- }, 0)
- : 0
-
- const adjCumCg = lastEvent?.cum_cap_gains ?? 0
- const stcgRate = taxSettings
- ? taxSettings.federal_st_cg_rate + taxSettings.niit_rate + taxSettings.state_st_cg_rate
- : 0
- const ltcgRate = taxSettings
- ? taxSettings.federal_lt_cg_rate + taxSettings.niit_rate + taxSettings.state_lt_cg_rate
- : 0
- let interestDeductionTotal = 0
- let taxSavings = 0
- for (const e of events) {
- if (e.date > effectiveDate) break
- interestDeductionTotal += e.interest_deduction_applied ?? 0
- taxSavings += (e.interest_deduction_on_stcg ?? 0) * stcgRate
- + (e.interest_deduction_on_ltcg ?? 0) * ltcgRate
- }
- return {
- current_price: lastEvent?.share_price ?? 0,
- total_shares: lastEvent?.cum_shares ?? 0,
- total_income: lastEvent?.cum_income ?? 0,
- total_cap_gains: adjCumCg,
- total_interest: (() => {
- const effYear = parseInt(effectiveDate.slice(0, 4), 10)
- const purchaseLoans = loans.filter(l => l.loan_type === 'Purchase')
- const interestLoans = loans.filter(l => l.loan_type === 'Interest')
- let total = interestLoans
- .filter(l => l.loan_year <= effYear)
- .reduce((sum, l) => sum + l.amount, 0)
- for (const p of purchaseLoans) {
- const dueYear = new Date(p.due_date + 'T00:00:00').getFullYear()
- const relatedInterestLoans = interestLoans.filter(
- l => l.grant_year === p.grant_year && l.grant_type === p.grant_type
- )
- for (let yr = p.loan_year + 1; yr <= Math.min(effYear, dueYear); yr++) {
- const exists = relatedInterestLoans.some(l => l.loan_year === yr)
- if (!exists) {
- total += p.amount * p.interest_rate
- // Also project interest accruing on outstanding interest loans for this year
- for (const il of relatedInterestLoans) {
- if (il.loan_year < yr) total += il.amount * il.interest_rate
- }
- }
- }
- }
- return total
- })(),
- total_loan_principal: outstandingPrincipal,
- total_tax_paid: taxPaid - taxSavings,
- cash_received: cashReceived,
- interest_deduction_total: interestDeductionTotal,
- tax_savings_from_deduction: taxSavings,
- next_event: nextEvent ? { date: nextEvent.date, event_type: nextEvent.event_type } : null,
- next_event_detail: nextEvent,
- price_is_estimate: (() => {
- if (!prices) return false
- let isEst = false
- for (const p of prices) {
- if (p.effective_date <= effectiveDate) isEst = !!p.is_estimate
- else break
- }
- return isEst
- })(),
- }
- }, [events, loans, sales, taxSettings, dash, cardDate, prices])
-
- // Per-grant holdings breakdown as of cardDate
- const grantHoldings = useMemo(() => {
- if (!grantsData || !events || !loans) return null
-
- const effectiveDate = cardDate
- const effYear = parseInt(effectiveDate.slice(0, 4), 10)
-
- // Current share price as of effectiveDate
- let currentPrice = 0
- for (const e of events) {
- if (e.date <= effectiveDate) currentPrice = e.share_price
- else break
- }
-
- const incomeRate = taxSettings
- ? taxSettings.federal_income_rate + taxSettings.state_income_rate
- : 0
-
- // Per-grant sold shares from explicit lot overrides (lot_overrides carries grant attribution).
- // Loan payoff sales carry no lot_overrides but do carry loan_id — attribute those to the
- // grant the loan belongs to, otherwise their shares never leave heldVested even after the
- // loan (and the shares that paid it off) are gone.
- const loanById = new Map(loans.map(l => [l.id, l]))
- const soldByGrant = new Map<string, number>()
- for (const s of (sales ?? [])) {
- if (s.date > effectiveDate) continue
- if (s.lot_overrides) {
- for (const lot of s.lot_overrides) {
- if (lot.grant_year == null || lot.grant_type == null) continue
- const key = `${lot.grant_year}-${lot.grant_type}`
- soldByGrant.set(key, (soldByGrant.get(key) ?? 0) + lot.shares)
- }
- } else if (s.loan_id != null) {
- const loan = loanById.get(s.loan_id)
- if (loan) {
- const key = `${loan.grant_year}-${loan.grant_type}`
- soldByGrant.set(key, (soldByGrant.get(key) ?? 0) + s.shares)
- }
- }
- }
-
- // Build settled/refinanced loan sets (mirrors outstandingPrincipal logic)
- const settledIds = new Set(
- (sales ?? []).filter(s => s.loan_id !== null && s.date <= effectiveDate).map(s => s.loan_id)
- )
- const refinancedIds = new Set(
- loans.map(l => l.refinances_loan_id).filter((id): id is number => id !== null)
- )
- const earlyPaidByLoan = new Map<number, number>()
- events.filter(e => e.event_type === 'Early Loan Payment' && e.date <= effectiveDate && e.loan_id != null)
- .forEach(e => earlyPaidByLoan.set(e.loan_id!, (earlyPaidByLoan.get(e.loan_id!) ?? 0) + (e.amount ?? 0)))
-
- return grantsData.map(g => {
- // Vested shares from schedule
- let vested = 0
- if (g.periods > 0) {
- const vs = new Date(g.vest_start + 'T00:00:00')
- const base = Math.floor(g.shares / g.periods)
- const rem = g.shares % g.periods
- for (let p = 0; p < g.periods; p++) {
- const vd = new Date(vs)
- vd.setFullYear(vd.getFullYear() + p)
- if (vd.toISOString().slice(0, 10) <= effectiveDate) {
- vested += base + (p < rem ? 1 : 0)
- }
- }
- }
- const unvested = g.shares - vested
- // dp_shares are negative when shares were exchanged as a down payment; subtract
- // lot-attributed sales where the user recorded per-lot allocation
- const soldViaLots = soldByGrant.get(`${g.year}-${g.type}`) ?? 0
- const heldVested = Math.max(0, vested + (g.dp_shares ?? 0) - soldViaLots)
-
- // Outstanding loans for this grant
- const grantLoans = loans.filter(l =>
- l.grant_year === g.year && l.grant_type === g.type &&
- l.loan_year <= effYear &&
- !settledIds.has(l.id) && !refinancedIds.has(l.id)
- )
- const totalLoan = grantLoans.reduce(
- (sum, l) => sum + Math.max(0, l.amount - (earlyPaidByLoan.get(l.id) ?? 0)), 0
- )
-
- // Taxes: tax loans + income tax from vesting
- const taxLoanTotal = loans.filter(l =>
- l.loan_type === 'Tax' && l.grant_year === g.year && l.grant_type === g.type &&
- l.loan_year <= effYear
- ).reduce((sum, l) => sum + l.amount, 0)
-
- const vestingIncomeTax = events
- .filter(e =>
- e.grant_year === g.year && e.grant_type === g.type &&
- e.income > 0 && e.date <= effectiveDate &&
- ((e.event_type === 'Vesting' && !e.election_83b) || e.event_type === 'Grant')
- )
- .reduce((sum, e) => sum + e.income * incomeRate, 0)
-
- const vestedValue = heldVested * currentPrice
- const unvestedValue = unvested * g.price
- return {
- year: g.year,
- type: g.type,
- exerciseDate: g.exercise_date,
- costBasis: g.price,
- vestedShares: heldVested,
- unvestedShares: unvested,
- vestedValue,
- unvestedValue,
- totalValue: vestedValue + unvestedValue,
- totalTax: taxLoanTotal + vestingIncomeTax,
- totalLoan,
- }
- })
- }, [grantsData, events, loans, sales, taxSettings, cardDate])
-
- // Active (non-settled, non-refinanced) loans as of cardDate
- const activeLoans = useMemo(() => {
- if (!loans || !events) return null
-
- const effectiveDate = cardDate
- const effYear = parseInt(effectiveDate.slice(0, 4), 10)
-
- const settledIds = new Set(
- (sales ?? []).filter(s => s.loan_id !== null && s.date <= effectiveDate).map(s => s.loan_id)
- )
- const refinancedIds = new Set(
- loans.map(l => l.refinances_loan_id).filter((id): id is number => id !== null)
- )
- const earlyPaidByLoan = new Map<number, number>()
- events.filter(e => e.event_type === 'Early Loan Payment' && e.date <= effectiveDate && e.loan_id != null)
- .forEach(e => earlyPaidByLoan.set(e.loan_id!, (earlyPaidByLoan.get(e.loan_id!) ?? 0) + (e.amount ?? 0)))
-
- return loans
- .filter(l =>
- l.loan_year <= effYear &&
- !settledIds.has(l.id) &&
- !refinancedIds.has(l.id)
- )
- .map(l => ({
- id: l.id,
- grantYear: l.grant_year,
- grantType: l.grant_type,
- loanType: l.loan_type,
- loanYear: l.loan_year,
- dueDate: l.due_date,
- balance: Math.max(0, l.amount - (earlyPaidByLoan.get(l.id) ?? 0)),
- interestRate: l.interest_rate,
- }))
- .filter(l => l.balance > 0)
- }, [loans, events, sales, cardDate])
-
- // Breakdown data (Cash/Income/Cap Gains/Interest/Tax) computed as of cardDate.
- const breakdowns = useMemo(() => {
- if (!events || !loans) return null
- const effectiveDate = cardDate
- const effYear = parseInt(effectiveDate.slice(0, 4), 10)
-
- // --- Cash Received: per-sale contribution ---
- const saleTaxBySaleId = new Map<number, number>()
- for (const e of events) {
- if (e.event_type === 'Sale' && e.sale_id != null && e.estimated_tax != null) {
- saleTaxBySaleId.set(e.sale_id, e.estimated_tax)
- }
- }
- const loanAmountById = new Map<number, number>()
- for (const l of loans) loanAmountById.set(l.id, l.amount)
- const earlyPaidByLoan = new Map<number, number>()
- for (const e of events) {
- if (e.event_type === 'Early Loan Payment' && e.loan_id != null && e.date <= effectiveDate) {
- earlyPaidByLoan.set(e.loan_id, (earlyPaidByLoan.get(e.loan_id) ?? 0) + (e.amount ?? 0))
- }
- }
- const loanById = new Map<number, LoanEntry>()
- for (const l of loans) loanById.set(l.id, l)
- const cashSales = (sales ?? [])
- .filter(s => s.date <= effectiveDate)
- .map(s => {
- const proceeds = s.shares * s.price_per_share
- const tax = saleTaxBySaleId.get(s.id) ?? 0
- const loanPayoff = s.loan_id != null
- ? Math.max(0, (loanAmountById.get(s.loan_id) ?? 0) - (earlyPaidByLoan.get(s.loan_id) ?? 0))
- : 0
- const loan = s.loan_id != null ? loanById.get(s.loan_id) : null
- return {
- id: s.id,
- date: s.date,
- shares: s.shares,
- price: s.price_per_share,
- proceeds,
- tax,
- loanPayoff,
- loanLabel: loan ? `${loan.grant_year} ${loan.grant_type} ${loan.loan_type}` : null,
- net: proceeds - tax - loanPayoff,
- }
- })
- .sort((a, b) => a.date.localeCompare(b.date))
- const cashTotals = cashSales.reduce(
- (acc, s) => ({
- proceeds: acc.proceeds + s.proceeds,
- tax: acc.tax + s.tax,
- loanPayoff: acc.loanPayoff + s.loanPayoff,
- net: acc.net + s.net,
- }),
- { proceeds: 0, tax: 0, loanPayoff: 0, net: 0 },
- )
-
- // --- Total Income: vesting events grouped by grant ---
- type IncomeGroup = { key: string; year: number; type: string; income: number; events: number }
- const incomeByGrant = new Map<string, IncomeGroup>()
- let incomeTotal = 0
- for (const e of events) {
- if (e.date > effectiveDate) break
- if (e.income > 0 && ((e.event_type === 'Vesting' && !e.election_83b) || e.event_type === 'Grant')) {
- const key = `${e.grant_year}|${e.grant_type}`
- const grp = incomeByGrant.get(key) ?? {
- key,
- year: e.grant_year ?? 0,
- type: e.grant_type ?? '',
- income: 0,
- events: 0,
- }
- grp.income += e.income
- grp.events += 1
- incomeByGrant.set(key, grp)
- incomeTotal += e.income
- }
- }
- const incomeGroups = [...incomeByGrant.values()].sort(
- (a, b) => a.year - b.year || a.type.localeCompare(b.type),
- )
-
- // --- Total Cap Gains: split vesting (RSU cost-basis delta) vs price appreciation ---
- type CgGroup = { key: string; year: number; type: string; amount: number }
- const vestingCgByGrant = new Map<string, CgGroup>()
- let vestingCgTotal = 0
- let priceCgTotal = 0
- for (const e of events) {
- if (e.date > effectiveDate) break
- if (e.vesting_cap_gains && e.vesting_cap_gains !== 0) {
- const key = `${e.grant_year}|${e.grant_type}`
- const grp = vestingCgByGrant.get(key) ?? {
- key,
- year: e.grant_year ?? 0,
- type: e.grant_type ?? '',
- amount: 0,
- }
- grp.amount += e.vesting_cap_gains
- vestingCgByGrant.set(key, grp)
- vestingCgTotal += e.vesting_cap_gains
- }
- if (e.price_cap_gains) priceCgTotal += e.price_cap_gains
- }
- const vestingCgGroups = [...vestingCgByGrant.values()].sort(
- (a, b) => a.year - b.year || a.type.localeCompare(b.type),
- )
-
- // --- Total Interest: per-loan accrual ---
- type InterestRow = { id: number; label: string; amount: number; note?: string }
- const interestRows: InterestRow[] = []
- let interestTotal = 0
- const interestLoans = loans.filter(l => l.loan_type === 'Interest')
- const purchaseLoans = loans.filter(l => l.loan_type === 'Purchase')
- // Interest loans booked on or before effYear: they ARE the accrued interest.
- for (const l of interestLoans) {
- if (l.loan_year > effYear) continue
- interestRows.push({
- id: l.id,
- label: `${l.grant_year} ${l.grant_type} interest booked ${l.loan_year}`,
- amount: l.amount,
- })
- interestTotal += l.amount
- }
- // Purchase loans accrue interest each year after loan_year up to min(effYear, dueYear)
- // in years where no explicit Interest loan replaces it.
- for (const p of purchaseLoans) {
- const dueYear = new Date(p.due_date + 'T00:00:00').getFullYear()
- const related = interestLoans.filter(
- l => l.grant_year === p.grant_year && l.grant_type === p.grant_type,
- )
- let accrued = 0
- let years = 0
- for (let yr = p.loan_year + 1; yr <= Math.min(effYear, dueYear); yr++) {
- const exists = related.some(l => l.loan_year === yr)
- if (!exists) {
- accrued += p.amount * p.interest_rate
- // Interest-on-interest for already-booked Interest loans this year
- for (const il of related) {
- if (il.loan_year < yr) accrued += il.amount * il.interest_rate
- }
- years += 1
- }
- }
- if (accrued > 0) {
- interestRows.push({
- id: p.id,
- label: `${p.grant_year} ${p.grant_type} estimated`,
- amount: accrued,
- note: `${(p.interest_rate * 100).toFixed(2)}% × ${years} yr`,
- })
- interestTotal += accrued
- }
- }
- interestRows.sort((a, b) => a.label.localeCompare(b.label))
-
- // --- Tax Paid: income tax + CG tax + deduction savings ---
- const incomeRate = taxSettings
- ? taxSettings.federal_income_rate + taxSettings.state_income_rate
- : 0
- const taxLoansSum = loans
- .filter(l => l.loan_type === 'Tax' && l.loan_year <= effYear)
- .reduce((sum, l) => sum + l.amount, 0)
- const vestingIncomeTax = events
- .filter(e =>
- e.income > 0 &&
- e.date <= effectiveDate &&
- ((e.event_type === 'Vesting' && !e.election_83b) || e.event_type === 'Grant'),
- )
- .reduce((sum, e) => sum + e.income * incomeRate, 0)
- const cgTaxFromSales = events
- .filter(e => e.event_type === 'Sale' && e.date <= effectiveDate)
- .reduce((sum, e) => sum + (e.estimated_tax ?? 0), 0)
- const stcgRate = taxSettings
- ? taxSettings.federal_st_cg_rate + taxSettings.niit_rate + taxSettings.state_st_cg_rate
- : 0
- const ltcgRate = taxSettings
- ? taxSettings.federal_lt_cg_rate + taxSettings.niit_rate + taxSettings.state_lt_cg_rate
- : 0
- let deductionSavings = 0
- for (const e of events) {
- if (e.date > effectiveDate) break
- deductionSavings += (e.interest_deduction_on_stcg ?? 0) * stcgRate
- + (e.interest_deduction_on_ltcg ?? 0) * ltcgRate
- }
-
- return {
- cash: { sales: cashSales, totals: cashTotals },
- income: { groups: incomeGroups, total: incomeTotal },
- capGains: {
- vestingGroups: vestingCgGroups,
- vestingTotal: vestingCgTotal,
- priceTotal: priceCgTotal,
- total: vestingCgTotal + priceCgTotal,
- },
- interest: { rows: interestRows, total: interestTotal },
- tax: {
- taxLoans: taxLoansSum,
- vestingIncomeTax,
- cgTaxFromSales,
- deductionSavings,
- total: taxLoansSum + vestingIncomeTax + cgTaxFromSales - deductionSavings,
- },
- }
- }, [events, loans, sales, taxSettings, cardDate])
-
- const [downloading, setDownloading] = useState(false)
- async function downloadReport() {
- setDownloading(true)
- try {
- const exportUrl = vid
- ? `/api/sharing/view/${vid}/export/excel`
- : `/api/export/holdings-report?as_of=${encodeURIComponent(cardDate)}`
- const blob = await apiFetchBlob(exportUrl, 'Export failed')
- await platform.files.saveBlob(blob, `Holdings_Report_${cardDate}.xlsx`)
- } catch { /* silent */ }
- setDownloading(false)
- }
-
- if (dashLoading) {
- return <p className="p-6 text-center text-sm text-cs-text-2">Loading...</p>
- }
-
- if (!dash) {
- return <p className="p-6 text-center text-sm text-red-500">Failed to load dashboard</p>
- }
-
- const isEmpty = !events || events.length === 0
-
- if (isEmpty && !readOnly) {
- return <ImportWizard onComplete={reloadEvents} />
- }
-
- if (isEmpty && readOnly) {
- return <p className="py-12 text-center text-sm text-cs-muted">This user has no data yet.</p>
- }
-
- const cv = cardValues ?? {
- current_price: dash.current_price,
- total_shares: dash.total_shares,
- total_income: dash.total_income,
- total_cap_gains: dash.total_cap_gains,
- total_loan_principal: dash.total_loan_principal,
- total_tax_paid: dash.total_tax_paid ?? 0,
- cash_received: dash.cash_received ?? 0,
- interest_deduction_total: dash.interest_deduction_total ?? 0,
- tax_savings_from_deduction: dash.tax_savings_from_deduction ?? 0,
- next_event: dash.next_event,
- next_event_detail: null as TimelineEvent | null,
- total_interest: 0,
- price_is_estimate: false,
- }
- const hasInterestDeduction = (cv.interest_deduction_total ?? 0) > 0
- const hasInterestLoans = loans?.some(l => l.loan_type === 'Interest' || l.loan_type === 'Purchase') ?? false
- const showDeductionCard = hasInterestDeduction || hasInterestLoans
-
- // Computed once and shared by the hero card and the Value Today card below — they used to
- // each call grantHoldings.reduce() independently, which is how the two could silently drift
- // apart if only one call site got a future fix.
- const totalValue = grantHoldings ? grantHoldings.reduce((s, h) => s + h.totalValue, 0) : 0
-
- return (
- <div className="space-y-6">
- {/* Date selector for card values */}
- <div className="rounded-xl border border-cs-border bg-cs-surface px-3 py-2.5 shadow-card">
- <div className="flex items-center gap-2">
- <span className="shrink-0 text-xs font-medium text-cs-muted">As of</span>
- <input
- type="date"
- value={cardDate}
- max={maxDate}
- onChange={e => { setDateMode('custom'); setCardDate(e.target.value) }}
- className="h-7 flex-1 rounded border border-cs-border-strong bg-cs-surface px-2 text-xs text-cs-text"
- />
- </div>
- <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
- <span className="shrink-0 text-xs text-cs-muted">Jump to:</span>
- {([
- { label: 'Today', mode: 'today' as const },
- { label: 'Last event', mode: 'last-event' as const, title: 'Jump to your last scheduled event' },
- ]).map(({ label, mode, title }) => (
- <button
- key={label}
- onClick={() => setDateMode(mode)}
- title={title}
- className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
- dateMode === mode
- ? 'bg-cs-brand text-white'
- : 'bg-cs-raised text-cs-text-2 hover:bg-stone-200 dark:hover:bg-stone-700 '
- }`}
- >
- {label}
- </button>
- ))}
- <button
- onClick={downloadReport}
- disabled={downloading}
- title="Download holdings report as Excel"
- className="ml-auto text-xs text-cs-muted hover:text-cs-text-2 disabled:opacity-50 "
- >
- {downloading ? '…' : 'Export'}
- </button>
- </div>
- </div>
-
- {!readOnly && <TipCarousel onApply={() => { reloadDash(); reloadEvents(); reloadTaxSettings() }} />}
-
- {stalePrice && <StalePriceBanner latest={stalePrice} readOnly={readOnly} />}
-
- {grantHoldings && (
- <HeroCard watermark={<Sparkline className="h-24 w-40" color="#fff" />}>
- <Eyebrow className="text-white">Net worth · as of {fmtFullDate(cardDate)}</Eyebrow>
- <p className="mt-1 text-3xl font-extrabold tabular-nums tracking-tight sm:text-4xl">
- {fmt$(totalValue - cv.total_loan_principal)}
- </p>
- <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-white">
- <span><span className="font-semibold">{fmtNum(cv.total_shares)}</span> vested shares</span>
- <span className="hidden h-1 w-1 rounded-full bg-white/60 sm:inline-block" />
- <span>
- <span className="font-semibold">{fmtPrice(cv.current_price)}</span> / share
- {cv.price_is_estimate && <span className="ml-1">(est.)</span>}
- </span>
- {cv.total_loan_principal > 0 && (
- <>
- <span className="hidden h-1 w-1 rounded-full bg-white/60 sm:inline-block" />
- <span>{fmt$(totalValue)} in shares − {fmt$(cv.total_loan_principal)} loans</span>
- </>
- )}
- </div>
- </HeroCard>
- )}
-
- {/* (F) aria-live so screen readers announce summary updates when cardDate changes */}
- <div aria-live="polite" aria-atomic="true" className="space-y-3">
- <p className="text-[11px] font-semibold uppercase tracking-wide text-cs-muted">Up to this date</p>
-
- <section className="space-y-3">
- <p className="text-[11px] font-semibold uppercase tracking-wide text-cs-muted">Your Shares</p>
- <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
- <Card
- label={cardDate === TODAY ? 'Value Today' : `Value on ${fmtFullDate(cardDate)}`}
- value={grantHoldings ? fmt$(totalValue) : '—'}
- variant="value"
- subtitle="Vested at FMV + unvested at cost basis"
- onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
- expanded={openBreakdowns.has('grants')}
- />
- <Card
- label="Total Cost Basis"
- value={grantHoldings ? fmt$(grantHoldings.reduce((s, h) => s + (h.vestedShares + h.unvestedShares) * h.costBasis, 0)) : '—'}
- variant="costbasis"
- subtitle="What you paid for all held shares"
- onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
- expanded={openBreakdowns.has('grants')}
- />
- <Card label={cv.price_is_estimate ? 'Share Price (est.)' : 'Share Price'} value={fmtPrice(cv.current_price)} variant="price" subtitle="Price per share on this date" />
- <Card
- label="Vested Shares"
- value={fmtNum(cv.total_shares)}
- subvalue={fmt$(cv.total_shares * cv.current_price) + (cv.price_is_estimate ? ' (est.)' : '')}
- variant="shares"
- subtitle={`Value at ${fmtPrice(cv.current_price)}/share`}
- onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
- expanded={openBreakdowns.has('grants')}
- />
- <Card
- label="Unvested Shares"
- value={fmtNum(grantHoldings?.reduce((s, h) => s + h.unvestedShares, 0) ?? 0)}
- subvalue={grantHoldings ? fmt$(grantHoldings.reduce((s, h) => s + h.unvestedShares * h.costBasis, 0)) : undefined}
- variant="unvested"
- subtitle="Value at purchase price"
- onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
- expanded={openBreakdowns.has('grants')}
- />
- <Card
- label="Next Event"
- value={cv.next_event ? `${cv.next_event.date} — ${cv.next_event.event_type}` : 'None'}
- variant="event"
- subtitle="Your next vesting or price date"
- onClick={cv.next_event_detail ? () => toggleBreakdown('nextEvent') : undefined}
- expanded={openBreakdowns.has('nextEvent')}
- />
- </div>
- {openBreakdowns.has('nextEvent') && cv.next_event_detail && (
- <BreakdownShell title="Next Event">
- <BreakdownRow label="Date" value={fmtFullDate(cv.next_event_detail.date)} />
- <BreakdownRow label="Type" value={cv.next_event_detail.event_type} />
- {cv.next_event_detail.grant_year != null && (
- <BreakdownRow label="Grant" value={`${cv.next_event_detail.grant_year} ${cv.next_event_detail.grant_type ?? ''}`} />
- )}
- {!!cv.next_event_detail.vested_shares && (
- <BreakdownRow label="Vesting shares" value={fmtNum(cv.next_event_detail.vested_shares)} />
- )}
- {!!cv.next_event_detail.granted_shares && (
- <BreakdownRow label="Granted shares" value={fmtNum(cv.next_event_detail.granted_shares)} />
- )}
- {!!cv.next_event_detail.share_price && (
- <BreakdownRow label="Share price" value={fmtPrice(cv.next_event_detail.share_price)} />
- )}
- {!!cv.next_event_detail.income && (
- <BreakdownRow label="Income" value={fmt$(cv.next_event_detail.income)} />
- )}
- {!!cv.next_event_detail.total_cap_gains && (
- <BreakdownRow label="Capital gains" value={fmt$(cv.next_event_detail.total_cap_gains)} />
- )}
- {!!cv.next_event_detail.amount && (
- <BreakdownRow label="Amount" value={fmt$(cv.next_event_detail.amount)} />
- )}
- {!!cv.next_event_detail.cash_due && (
- <BreakdownRow label="Cash due" value={fmt$(cv.next_event_detail.cash_due)} />
- )}
- {!!cv.next_event_detail.notes && (
- <BreakdownRow label="Notes" value={cv.next_event_detail.notes} />
- )}
- </BreakdownShell>
- )}
- {openBreakdowns.has('grants') && grantHoldings && grantHoldings.length > 0 && (
- <BreakdownShell title="Grants">
- {grantHoldings.map(h => (
- <div key={`${h.year}-${h.type}`} className="rounded border border-cs-border bg-cs-surface px-3 py-2 ">
- <p className="text-xs font-semibold text-cs-text">{h.year} {h.type}</p>
- <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] sm:grid-cols-3">
- <span className="text-cs-muted">Purchased <span className="font-medium text-cs-text">{fmtFullDate(h.exerciseDate)}</span></span>
- <span className="text-cs-muted">Cost basis <span className="font-medium text-cs-text">{fmtPrice(h.costBasis)}</span></span>
- <span className="text-cs-muted">Vested <span className="font-medium text-cs-text">{fmtNum(h.vestedShares)}</span></span>
- <span className="text-cs-muted">Vested value <span className="font-medium text-cs-text">{fmt$(h.vestedValue)}</span></span>
- <span className="text-cs-muted">Unvested <span className="font-medium text-cs-text">{fmtNum(h.unvestedShares)}</span></span>
- <span className="text-cs-muted">Unvested value <span className="font-medium text-cs-text">{fmt$(h.unvestedValue)}</span></span>
- <span className="text-cs-muted">Total value <span className="font-medium text-cs-text">{fmt$(h.totalValue)}</span></span>
- <span className="text-cs-muted">Taxes <span className="font-medium text-cs-text">{fmt$(h.totalTax)}</span></span>
- <span className="text-cs-muted">Loans <span className="font-medium text-cs-text">{fmt$(h.totalLoan)}</span></span>
- </div>
- </div>
- ))}
- </BreakdownShell>
- )}
- </section>
-
- <section className="space-y-3">
- <p className="text-[11px] font-semibold uppercase tracking-wide text-cs-muted">Earnings</p>
- <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
- <Card
- label="Total Income"
- value={fmt$(cv.total_income)}
- variant="income"
- subtitle="Taxed as ordinary income at vest"
- onClick={breakdowns && breakdowns.income.groups.length > 0 ? () => toggleBreakdown('income') : undefined}
- expanded={openBreakdowns.has('income')}
- />
- <Card
- label="Total capital gains"
- value={fmt$(cv.total_cap_gains)}
- variant="gains"
- subtitle="Growth since your grants"
- onClick={breakdowns && (breakdowns.capGains.vestingGroups.length > 0 || breakdowns.capGains.priceTotal !== 0) ? () => toggleBreakdown('capGains') : undefined}
- expanded={openBreakdowns.has('capGains')}
- />
- <Card
- label="Cash Received"
- value={fmt$(cv.cash_received)}
- variant="cash"
- subtitle="Net proceeds from sales through this date"
- onClick={breakdowns && breakdowns.cash.sales.length > 0 ? () => toggleBreakdown('cash') : undefined}
- expanded={openBreakdowns.has('cash')}
- />
- </div>
- {openBreakdowns.has('income') && breakdowns && breakdowns.income.groups.length > 0 && (
- <BreakdownShell title="Total Income breakdown">
- {breakdowns.income.groups.map(g => (
- <BreakdownRow
- key={g.key}
- label={`${g.year} ${g.type}`}
- value={fmt$(g.income)}
- sub={`${g.events} vesting event${g.events === 1 ? '' : 's'}`}
- />
- ))}
- <div className="my-1 border-t border-cs-border-strong" />
- <BreakdownRow label="Total" value={fmt$(breakdowns.income.total)} bold />
- <p className="mt-2 text-[10px] text-cs-muted">
- Ordinary income recognized at each vest (grant-price × shares for RSUs, share-price × shares for bonus/free grants without 83(b)).
- </p>
- </BreakdownShell>
- )}
- {openBreakdowns.has('capGains') && breakdowns && (breakdowns.capGains.vestingGroups.length > 0 || breakdowns.capGains.priceTotal !== 0) && (
- <BreakdownShell title="Total capital gains breakdown">
- {breakdowns.capGains.vestingGroups.length > 0 && (
- <>
- <p className="text-[10px] font-medium uppercase tracking-wider text-cs-muted">Gains at vest (share price − what you paid)</p>
- {breakdowns.capGains.vestingGroups.map(g => (
- <BreakdownRow key={g.key} label={`${g.year} ${g.type}`} value={fmt$(g.amount)} />
- ))}
- <BreakdownRow label="Vesting gains subtotal" value={fmt$(breakdowns.capGains.vestingTotal)} bold />
- </>
- )}
- {breakdowns.capGains.priceTotal !== 0 && (
- <>
- {breakdowns.capGains.vestingGroups.length > 0 && <div className="my-1 border-t border-cs-border-strong" />}
- <p className="text-[10px] font-medium uppercase tracking-wider text-cs-muted">Price appreciation on holdings</p>
- <BreakdownRow
- label="Share-price changes × shares held"
- value={fmt$(breakdowns.capGains.priceTotal)}
- sub="Unrealized gain from share-price increases on shares you already held"
- />
- </>
- )}
- <div className="my-1 border-t border-cs-border-strong" />
- <BreakdownRow label="Total" value={fmt$(breakdowns.capGains.total)} bold />
- </BreakdownShell>
- )}
- {openBreakdowns.has('cash') && breakdowns && breakdowns.cash.sales.length > 0 && (
- <BreakdownShell title="Cash Received breakdown">
- {breakdowns.cash.sales.map(s => (
- <BreakdownRow
- key={s.id}
- label={`${s.date} ${fmtNum(s.shares)} sh × ${fmtPrice(s.price)}`}
- value={fmt$(s.net)}
- sub={[
- `${fmt$(s.proceeds)} proceeds`,
- s.tax > 0 ? `− ${fmt$(s.tax)} est. CG tax` : null,
- s.loanPayoff > 0 ? `− ${fmt$(s.loanPayoff)} loan payoff${s.loanLabel ? ` (${s.loanLabel})` : ''}` : null,
- ].filter(Boolean).join(' ')}
- tone={s.net < 0 ? 'negative' : undefined}
- />
- ))}
- <div className="my-1 border-t border-cs-border-strong" />
- <BreakdownRow label="Gross proceeds" value={fmt$(breakdowns.cash.totals.proceeds)} />
- {breakdowns.cash.totals.tax > 0 && (
- <BreakdownRow label="Est. CG tax on sales" value={`−${fmt$(breakdowns.cash.totals.tax)}`} />
- )}
- {breakdowns.cash.totals.loanPayoff > 0 && (
- <BreakdownRow label="Loan principal paid off from sales" value={`−${fmt$(breakdowns.cash.totals.loanPayoff)}`} />
- )}
- <BreakdownRow label="Cash received" value={fmt$(breakdowns.cash.totals.net)} bold tone={breakdowns.cash.totals.net < 0 ? 'negative' : undefined} />
- {breakdowns.cash.totals.net < 0 && (
- <p className="mt-2 text-[10px] text-cs-muted">
- Negative means payoff sales didn't cover their loan plus estimated CG tax — usually because tax rates or lot methods changed after the sale was sized.
- </p>
- )}
- </BreakdownShell>
- )}
- </section>
-
- <section className="space-y-3">
- <p className="text-[11px] font-semibold uppercase tracking-wide text-cs-muted">Costs</p>
- <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
- <Card
- label="Loan Principal"
- value={fmt$(cv.total_loan_principal)}
- variant="loans"
- subtitle="Total amount borrowed"
- onClick={activeLoans && activeLoans.length > 0 ? () => toggleBreakdown('activeLoans') : undefined}
- expanded={openBreakdowns.has('activeLoans')}
- />
- <Card
- label="Total Interest"
- value={fmt$(cv.total_interest)}
- variant="interest"
- subtitle="Interest accrued on loans"
- onClick={breakdowns && breakdowns.interest.rows.length > 0 ? () => toggleBreakdown('interest') : undefined}
- expanded={openBreakdowns.has('interest')}
- />
- <Card
- label={hasInterestDeduction ? 'Tax Paid (after int. ded.)' : 'Tax Paid'}
- value={fmt$(cv.total_tax_paid)}
- variant="tax"
- subtitle="Taxes withheld through this date"
- onClick={breakdowns && (breakdowns.tax.taxLoans > 0 || breakdowns.tax.vestingIncomeTax > 0 || breakdowns.tax.cgTaxFromSales > 0) ? () => toggleBreakdown('tax') : undefined}
- expanded={openBreakdowns.has('tax')}
- />
- </div>
- {openBreakdowns.has('activeLoans') && activeLoans && activeLoans.length > 0 && (
- <BreakdownShell title={`Active Loans (${activeLoans.length})`}>
- <div className="hidden px-1 pb-1 text-[10px] font-medium uppercase tracking-wide text-cs-muted sm:grid sm:grid-cols-5 sm:gap-x-2 ">
- <span>Grant</span><span>Type</span><span>Balance</span><span>Rate</span><span>Due</span>
- </div>
- {activeLoans.map(l => (
- <div key={l.id} className="rounded border border-cs-border bg-cs-surface px-3 py-2 text-[11px] ">
- <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 sm:hidden">
- <span className="text-cs-muted">{l.grantYear} {l.grantType} <span className="text-cs-muted">· {l.loanType}</span></span>
- <span className="text-right font-medium text-cs-text">{fmt$(l.balance)}</span>
- <span className="text-cs-muted">Rate <span className="font-medium text-cs-text">{(l.interestRate * 100).toFixed(2)}%</span></span>
- <span className="text-right text-cs-muted">Due <span className="font-medium text-cs-text">{fmtFullDate(l.dueDate)}</span></span>
- </div>
- <div className="hidden sm:grid sm:grid-cols-5 sm:gap-x-2">
- <span className="font-medium text-cs-text">{l.grantYear} {l.grantType}</span>
- <span className="text-cs-text-2">{l.loanType}</span>
- <span className="font-medium text-cs-text">{fmt$(l.balance)}</span>
- <span className="text-cs-text-2">{(l.interestRate * 100).toFixed(2)}%</span>
- <span className="text-cs-text-2">{fmtFullDate(l.dueDate)}</span>
- </div>
- </div>
- ))}
- </BreakdownShell>
- )}
- {openBreakdowns.has('interest') && breakdowns && breakdowns.interest.rows.length > 0 && (
- <BreakdownShell title="Total Interest breakdown">
- {breakdowns.interest.rows.map(r => (
- <BreakdownRow key={r.id} label={r.label} value={fmt$(r.amount)} sub={r.note} />
- ))}
- <div className="my-1 border-t border-cs-border-strong" />
- <BreakdownRow label="Total" value={fmt$(breakdowns.interest.total)} bold />
- <p className="mt-2 text-[10px] text-cs-muted">
- "Booked" rows are Interest-type loans you've already recorded; "estimated" rows project future interest on Purchase loans each year until due.
- </p>
- </BreakdownShell>
- )}
- {openBreakdowns.has('tax') && breakdowns && (breakdowns.tax.taxLoans > 0 || breakdowns.tax.vestingIncomeTax > 0 || breakdowns.tax.cgTaxFromSales > 0) && (
- <BreakdownShell title="Tax Paid breakdown">
- {breakdowns.tax.taxLoans > 0 && (
- <BreakdownRow
- label="Income tax withheld at vest (Tax loans)"
- value={fmt$(breakdowns.tax.taxLoans)}
- sub="Sum of Tax-type loan rows (actual amounts withheld)"
- />
- )}
- {breakdowns.tax.vestingIncomeTax > 0 && (
- <BreakdownRow
- label="Income tax estimated on vesting"
- value={fmt$(breakdowns.tax.vestingIncomeTax)}
- sub="Σ(income × federal+state income rate) across vesting events"
- />
- )}
- {breakdowns.tax.cgTaxFromSales > 0 && (
- <BreakdownRow
- label="Est. capital gains tax on sales"
- value={fmt$(breakdowns.tax.cgTaxFromSales)}
- sub="Sum of estimated_tax across recorded sales"
- />
- )}
- {breakdowns.tax.deductionSavings > 0 && (
- <BreakdownRow
- label="Interest deduction savings"
- value={`−${fmt$(breakdowns.tax.deductionSavings)}`}
- sub="Loan interest subtracted from capital gains before tax (IRS Form 4952)"
- tone="positive"
- />
- )}
- <div className="my-1 border-t border-cs-border-strong" />
- <BreakdownRow label="Total" value={fmt$(breakdowns.tax.total)} bold />
- </BreakdownShell>
- )}
- </section>
- </div>
-
- {showExitPreview && (
- <div aria-live="polite" aria-atomic="true" className="space-y-2">
- <p className="text-[11px] font-semibold uppercase tracking-wide text-cs-muted">
- If you exited on this date
- </p>
- {exitPreview === 'loading' ? (
- <p className="text-xs text-cs-muted">Calculating…</p>
- ) : exitPreview ? (
- <>
- <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
- <button
- onClick={() => setExitBreakdownOpen(o => !o)}
- aria-expanded={exitBreakdownOpen}
- className="col-span-2 rounded-2xl border border-cs-border bg-cs-surface p-4 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-pop"
- >
- <div className="flex items-center justify-between">
- <IconTile tone="emerald" className="h-8 w-8 rounded-lg">
- <IconTrendUp className="h-4 w-4" />
- </IconTile>
- <span className={`text-cs-muted transition-transform ${exitBreakdownOpen ? 'rotate-180' : ''}`} aria-hidden="true">
- <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></svg>
- </span>
- </div>
- <p className="mt-2.5 text-xs font-medium uppercase tracking-wide text-cs-text-2">Net Cash at Exit</p>
- <p className="mt-0.5 text-xl font-bold tabular-nums text-cs-text">{fmt$(exitPreview.net_cash)}</p>
- </button>
- <Card label="Gross Proceeds" value={fmt$(exitPreview.gross_vested + exitPreview.unvested_cost_proceeds)} variant="gains" subtitle="Liquidated shares × price" />
- <Card label="Loans Paid Off" value={fmt$(exitPreview.outstanding_principal + exitPreview.outstanding_accrued_interest)} variant="loans" subtitle="Principal + accrued interest" />
- <Card label="Est. Divest Tax" value={fmt$(exitPreview.liquidation_tax)} variant="tax" subtitle="Capital gains on liquidation" />
- </div>
- {exitBreakdownOpen && <ExitBreakdownCard s={exitPreview} />}
- </>
- ) : (
- <p className="text-xs text-cs-muted">No price data for this date</p>
- )}
- </div>
- )}
-
- {showDeductionCard && !readOnly && (() => {
- const displayEnabled = pendingDeduction ?? savedDeduction
- const currentSavings = cardValues?.tax_savings_from_deduction ?? dash.tax_savings_from_deduction ?? 0
- const previewSavings = pendingDeductionChanged
- ? (deductionPreview === 'loading' ? null : deductionPreview?.tax_savings_from_deduction ?? null)
- : null
- const delta = pendingDeductionChanged
- ? (deductionPreview === 'loading' ? '…' : previewSavings !== null
- ? (displayEnabled ? `+${fmt$(previewSavings)}` : `−${fmt$(currentSavings)}`)
- : null)
- : (displayEnabled ? fmt$(currentSavings) : null)
- const excludedYears = new Set(taxSettings?.deduction_excluded_years ?? [])
- const allYears = [...(taxSettings?.taxable_years ?? [])].sort((a, b) => a - b)
- const appliedYears = allYears.filter(y => !excludedYears.has(y))
- const appliedLabel = appliedYears.length === 0
- ? 'No years applied.'
- : appliedYears.length === allYears.length
- ? `Applied to all years (${appliedYears[0]}–${appliedYears[appliedYears.length - 1]}).`
- : appliedYears.length <= 4
- ? `Applied to ${appliedYears.join(', ')}.`
- : `Applied to ${appliedYears[0]}–${appliedYears[appliedYears.length - 1]} (${excludedYears.size} yr${excludedYears.size !== 1 ? 's' : ''} excluded).`
- return (
- <div className="rounded-md bg-cs-raised px-3 py-2 text-xs">
- <div className="flex items-center gap-3">
- <span className="text-cs-muted">Interest deduction</span>
- <span className={`flex-1 font-semibold tabular-nums ${pendingDeductionChanged ? (displayEnabled ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400') : 'text-cs-text-2'}`}>
- {delta ?? '—'}
- </span>
- {pendingDeductionChanged && (
- <>
- <button
- onClick={() => applyDeduction(pendingDeduction!)}
- disabled={savingDeduction || deductionPreview === 'loading'}
- className="rounded bg-rose-700 px-2.5 py-1 font-medium text-white hover:bg-rose-800 disabled:opacity-60"
- >
- {savingDeduction ? '…' : 'Apply'}
- </button>
- <button
- onClick={() => setPendingDeduction(null)}
- disabled={savingDeduction}
- className="text-cs-muted hover:text-cs-text-2 disabled:opacity-50 "
- >
- ✕
- </button>
- </>
- )}
- <button
- role="switch"
- aria-checked={displayEnabled}
- onClick={() => setPendingDeduction(!displayEnabled)}
- disabled={savingDeduction}
- className={`relative shrink-0 h-6 w-11 rounded-full transition-colors focus:outline-none disabled:opacity-50 ${displayEnabled ? 'bg-purple-600 dark:bg-purple-500' : 'bg-cs-border-strong '}`}
- >
- <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${displayEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
- </button>
- </div>
- {savedDeduction && !pendingDeductionChanged && (
- <p className="mt-1 text-[10px] text-cs-muted">
- {appliedLabel}{' '}
- <a href="/settings" className="underline hover:text-cs-text">
- Customize years
- </a>
- </p>
- )}
- </div>
- )
- })()}
-
- <div className="grid gap-4 md:grid-cols-2">
- {events && events.length > 0 && (
- <ChartBox title="Shares Over Time" range={range} setRange={setRange} maxDate={maxDate}>
- <SharesChart events={events} c={c} range={range} hasFuturePrices={hasFuturePrices} />
- </ChartBox>
- )}
- {events && events.length > 0 && (
- <ChartBox title="Income vs capital gains" range={range} setRange={setRange} maxDate={maxDate}>
- <IncomeCapGainsChart events={events} c={c} range={range} hasFuturePrices={hasFuturePrices} />
- </ChartBox>
- )}
- {prices && prices.length > 0 && (
- <ChartBox title="Share Price History" range={range} setRange={setRange} maxDate={maxDate}>
- <PriceChart prices={prices} c={c} range={range} hasFuturePrices={hasFuturePrices} />
- </ChartBox>
- )}
- {events && events.length > 0 && loans !== undefined && (
- <ChartBox title="Estimated Tax Liability" range={range} setRange={setRange} maxDate={maxDate}>
- <TaxChart
- events={events}
- loans={loans ?? []}
- taxSettings={taxSettings ?? WI_TAX_DEFAULTS}
- c={c}
- range={range}
- hasFuturePrices={hasFuturePrices}
- />
- </ChartBox>
- )}
- {loans && loans.some(l => l.loan_type === 'Interest' || l.loan_type === 'Purchase') && (
- <ChartBox title="Interest Over Time" range={rangeInterest} setRange={setRangeInterest} maxDate={maxDate}>
- <InterestChart loans={loans} c={c} range={rangeInterest} />
- </ChartBox>
- )}
- {dash.loan_payment_by_year && dash.loan_payment_by_year.length > 0 && (
- <LoanChart loanPaymentByYear={dash.loan_payment_by_year} c={c} range={rangeLoan} setRange={setRangeLoan} maxDate={maxDate} />
- )}
- </div>
- </div>
- )
+  const { viewing } = useViewing()
+  const vid = viewing?.invitationId
+  const readOnly = !!viewing
+
+  const fetchDashboard = useCallback(() => vid ? api.getSharedDashboard(vid) : api.getDashboard(), [vid])
+  const fetchEvents = useCallback(() => vid ? api.getSharedEvents(vid) : api.getEvents(), [vid])
+  const fetchPrices = useCallback(() => vid ? api.getSharedPrices(vid) : api.getPrices(), [vid])
+  const fetchLoans = useCallback(() => vid ? api.getSharedLoans(vid) : api.getLoans(), [vid])
+  const fetchGrants = useCallback(() => vid ? api.getSharedGrants(vid) : api.getGrants(), [vid])
+  const fetchTaxSettings = useCallback(() => vid ? api.getSharedTaxSettings(vid) : api.getTaxSettings(), [vid])
+  const fetchSales = useCallback(() => vid ? api.getSharedSales(vid) : api.getSales(), [vid])
+
+  const { data: dash, loading: dashLoading, reload: reloadDash } = useApiData<DashboardData>(fetchDashboard)
+  const { data: events, reload: reloadEvents } = useApiData<TimelineEvent[]>(fetchEvents)
+  const { data: prices } = useApiData<PriceEntry[]>(fetchPrices)
+  const { data: loans } = useApiData<LoanEntry[]>(fetchLoans)
+  const { data: grantsData } = useApiData<GrantEntry[]>(fetchGrants)
+  const { data: taxSettings, reload: reloadTaxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
+  const { data: sales } = useApiData<SaleEntry[]>(fetchSales)
+  const c = useChartColors()
+  const [rangeInterest, setRangeInterest] = useState<DateRange>({ mode: 'all', start: '', end: '' })
+  const [rangeLoan, setRangeLoan] = useState<DateRange>({ mode: 'all', start: '', end: '' })
+  const [range, setRange] = useState<DateRange>(() => {
+    try {
+      const saved = localStorage.getItem('dashboard_range')
+      if (saved) return JSON.parse(saved) as DateRange
+    } catch {}
+    return { mode: 'all', start: '', end: '' }
+  })
+  const [dateMode, setDateMode] = useState<'today' | 'last-event' | 'custom'>(() => {
+    const saved = localStorage.getItem('dashboard_dateMode')
+    if (saved === 'today' || saved === 'last-event' || saved === 'custom') return saved
+    return 'today'
+  })
+  const [cardDate, setCardDate] = useState<string>(() => {
+    const mode = localStorage.getItem('dashboard_dateMode')
+    if (!mode || mode === 'today') return TODAY
+    if (mode === 'last-event') return TODAY // resolved after events load via effect
+    return localStorage.getItem('dashboard_cardDate') ?? TODAY
+  })
+  const [exitBreakdownOpen, setExitBreakdownOpen] = useState(false)
+  const [openBreakdowns, setOpenBreakdowns] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('dashboard_openBreakdowns')
+      if (saved) return new Set(JSON.parse(saved) as string[])
+    } catch {}
+    const initial = new Set<string>()
+    if (localStorage.getItem('dashboard_holdingsOpen') === 'true') initial.add('grants')
+    if (localStorage.getItem('dashboard_loansOpen') === 'true') initial.add('activeLoans')
+    return initial
+  })
+  const toggleBreakdown = useCallback((key: string) => {
+    setOpenBreakdowns(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key); else next.add(key)
+      return next
+    })
+  }, [])
+  useEffect(() => {
+    if (vid) return // viewer changes are in-memory only
+    localStorage.setItem('dashboard_openBreakdowns', JSON.stringify([...openBreakdowns]))
+  }, [openBreakdowns, vid])
+
+  // Load an exit preview for the current cardDate (only meaningful for today or later).
+  const showExitPreview = cardDate >= TODAY
+  const [exitPreview, setExitPreview] = useState<ExitPreview | null | 'loading'>(null)
+
+  useEffect(() => {
+    if (!showExitPreview) {
+      setExitPreview(null)
+      return
+    }
+    setExitPreview('loading')
+    const timer = setTimeout(() => {
+      const fetcher = vid ? api.getSharedPreviewExit(vid, cardDate) : api.previewExit(cardDate)
+      fetcher
+        .then(result => setExitPreview(result))
+        .catch(() => setExitPreview(null))
+    }, 200)
+    return () => clearTimeout(timer)
+  }, [cardDate, showExitPreview, vid])
+
+  // Investment interest deduction preview
+  const [pendingDeduction, setPendingDeduction] = useState<boolean | null>(null)
+  const [deductionPreview, setDeductionPreview] = useState<DeductionPreview | null | 'loading'>(null)
+  const [savingDeduction, setSavingDeduction] = useState(false)
+
+  // Reset pending when saved setting reloads
+  useEffect(() => { setPendingDeduction(null) }, [taxSettings])
+
+  const savedDeduction = taxSettings?.deduct_investment_interest ?? false
+  const pendingDeductionChanged = pendingDeduction !== null && pendingDeduction !== savedDeduction
+
+  // When toggling on for the first time (no existing exclusions), tell the
+  // preview to auto-exclude past years so the number matches what Apply will do.
+  const shouldExcludePast = pendingDeduction === true && !savedDeduction && !taxSettings?.deduction_excluded_years?.length
+
+  useEffect(() => {
+    if (!pendingDeductionChanged || pendingDeduction === null) {
+      setDeductionPreview(null)
+      return
+    }
+    setDeductionPreview('loading')
+    const timer = setTimeout(() => {
+      api.previewDeduction(pendingDeduction, shouldExcludePast)
+        .then(result => setDeductionPreview(result))
+        .catch(() => setDeductionPreview(null))
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [pendingDeductionChanged, pendingDeduction, shouldExcludePast])
+
+  async function applyDeduction(enabled: boolean) {
+    setSavingDeduction(true)
+    try {
+      const update: Partial<TaxSettings> = { deduct_investment_interest: enabled }
+      // When first enabling and no year customization exists yet,
+      // auto-exclude past years (you can't retroactively itemize)
+      if (enabled && taxSettings && !taxSettings.deduction_excluded_years?.length) {
+        const thisYear = new Date().getFullYear()
+        const pastYears = (taxSettings.taxable_years ?? []).filter(y => y < thisYear)
+        if (pastYears.length > 0) {
+          update.deduction_excluded_years = pastYears
+        }
+      }
+      await api.updateTaxSettings(update)
+      reloadDash()
+      reloadEvents()
+      reloadTaxSettings()
+    } finally {
+      setSavingDeduction(false)
+    }
+  }
+
+  useEffect(() => {
+    if (vid) return
+    localStorage.setItem('dashboard_range', JSON.stringify(range))
+  }, [range, vid])
+
+  useEffect(() => {
+    if (vid) return
+    localStorage.setItem('dashboard_dateMode', dateMode)
+    if (dateMode === 'custom') localStorage.setItem('dashboard_cardDate', cardDate)
+  }, [dateMode, cardDate, vid])
+
+  // Load owner's saved dashboard prefs when viewing — used as the initial state
+  // for date-mode / cardDate / range / openBreakdowns. Local changes the viewer
+  // makes from here are in-memory only (the gates above prevent persistence).
+  // Owner's own dashboard saves to the server too, so the next viewer fetch
+  // reflects the owner's latest choice. Runs once per viewing context change.
+  const ownerPrefsAppliedRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (!vid) {
+      ownerPrefsAppliedRef.current = null
+      return
+    }
+    if (ownerPrefsAppliedRef.current === vid) return
+    api.getSharedDashboardPrefs(vid)
+      .then(({ prefs }) => {
+        ownerPrefsAppliedRef.current = vid
+        const m = (prefs as Record<string, unknown>).dateMode
+        if (m === 'today' || m === 'last-event' || m === 'custom') setDateMode(m)
+        const cd = (prefs as Record<string, unknown>).cardDate
+        if (typeof cd === 'string' && cd.length === 10) setCardDate(cd)
+        const rg = (prefs as Record<string, unknown>).range
+        if (rg && typeof rg === 'object' && 'mode' in rg) setRange(rg as DateRange)
+        const ob = (prefs as Record<string, unknown>).openBreakdowns
+        if (Array.isArray(ob)) setOpenBreakdowns(new Set(ob.filter(x => typeof x === 'string') as string[]))
+      })
+      .catch(() => {})
+  }, [vid])
+
+  // Sync owner's dashboard prefs to the server (debounced) so shared viewers
+  // see the owner's latest choices. Skipped while viewing (viewer changes don't
+  // overwrite the owner's persisted prefs).
+  useEffect(() => {
+    if (vid) return
+    const t = setTimeout(() => {
+      api.saveDashboardPrefs({
+        dateMode,
+        cardDate,
+        range,
+        openBreakdowns: [...openBreakdowns],
+      } as Record<string, unknown>).catch(() => {})
+    }, 400)
+    return () => clearTimeout(t)
+  }, [vid, dateMode, cardDate, range, openBreakdowns])
+
+  // Only show projected/dashed styling when a future price actually differs from the current price
+  const hasFuturePrices = useMemo(() => {
+    if (!prices) return false
+    const futurePrices = prices.filter(p => p.effective_date > TODAY)
+    if (!futurePrices.length) return false
+    const pastPrices = prices.filter(p => p.effective_date <= TODAY)
+    const currentPrice = pastPrices.length ? pastPrices[pastPrices.length - 1].price : 0
+    return futurePrices.some(p => Math.abs(p.price - currentPrice) > 0.005)
+  }, [prices])
+
+  // Last event/price date for default end in range picker
+  const maxDate = useMemo(() => {
+    let last = TODAY
+    if (events?.length) last = events[events.length - 1].date > last ? events[events.length - 1].date : last
+    if (prices?.length) {
+      const lp = prices[prices.length - 1].effective_date
+      if (lp > last) last = lp
+    }
+    return last
+  }, [events, prices])
+
+  // The newest non-estimated price, when it predates the current year. Estimates
+  // are projections the user made themselves, so they do not count as knowing
+  // this year's price.
+  const stalePrice = useMemo(() => {
+    const real = (prices ?? []).filter(p => !p.is_estimate)
+    if (real.length === 0) return null
+    const newest = real[real.length - 1]
+    return newest.effective_date.slice(0, 4) < TODAY.slice(0, 4) ? newest : null
+  }, [prices])
+
+  // Date of the last real (non-projected) event
+  const lastRealEventDate = useMemo(() => {
+    if (!events?.length) return TODAY
+    return events[events.length - 1].date
+  }, [events])
+
+  // Keep cardDate in sync when using a dynamic mode
+  useEffect(() => {
+    if (dateMode === 'today') setCardDate(TODAY)
+    else if (dateMode === 'last-event') setCardDate(lastRealEventDate)
+  }, [dateMode, lastRealEventDate])
+
+  // Card values computed from local data as of cardDate
+  const cardValues = useMemo(() => {
+    if (!events || !loans) return null
+
+    const effectiveDate = cardDate
+
+    // Last event at or before effectiveDate
+    let lastEvent: TimelineEvent | null = null
+    for (const e of events) {
+      if (e.date <= effectiveDate) lastEvent = e
+      else break
+    }
+    // Next event after cardDate
+    let nextEvent: TimelineEvent | null = null
+    for (const e of events) {
+      if (e.date > cardDate) { nextEvent = e; break }
+    }
+
+    const incomeRate = taxSettings
+      ? taxSettings.federal_income_rate + taxSettings.state_income_rate
+      : 0
+    const taxPaid =
+      loans.filter(l => l.loan_type === 'Tax' && l.loan_year <= parseInt(effectiveDate.slice(0, 4), 10))
+        .reduce((sum, l) => sum + l.amount, 0)
+        + events.filter(e => e.event_type === 'Sale' && e.date <= effectiveDate)
+          .reduce((sum, e) => sum + (e.estimated_tax ?? 0), 0)
+          + events
+            .filter(e =>
+              e.income > 0 &&
+              e.date <= effectiveDate &&
+              ((e.event_type === 'Vesting' && !e.election_83b) || e.event_type === 'Grant')
+            )
+            .reduce((sum, e) => sum + e.income * incomeRate, 0)
+
+    // Outstanding loan principal just before (or at) the liq date, ignoring the virtual liq sale
+    const outstandingPrincipal = (() => {
+      const refDate = effectiveDate
+      const refYear = parseInt(refDate.slice(0, 4), 10)
+      const settledIds = new Set(
+        (sales ?? []).filter(s => s.loan_id !== null && s.date <= refDate).map(s => s.loan_id)
+      )
+      const refinancedIds = new Set(loans.map(l => l.refinances_loan_id).filter((id): id is number => id !== null))
+      const earlyPaidByLoan = new Map<number, number>()
+      events.filter(e => e.event_type === 'Early Loan Payment' && e.date <= refDate && e.loan_id != null)
+        .forEach(e => { earlyPaidByLoan.set(e.loan_id!, (earlyPaidByLoan.get(e.loan_id!) ?? 0) + (e.amount ?? 0)) })
+      return loans
+        .filter(l => l.loan_year <= refYear && !settledIds.has(l.id) && !refinancedIds.has(l.id))
+        .reduce((sum, l) => sum + Math.max(0, l.amount - (earlyPaidByLoan.get(l.id) ?? 0)), 0)
+    })()
+
+    // Map sale_id -> estimated_tax from timeline events so we can subtract it below
+    const saleTaxBySaleId = new Map<number, number>()
+    for (const e of events) {
+      if (e.event_type === 'Sale' && e.sale_id != null && e.estimated_tax != null) {
+        saleTaxBySaleId.set(e.sale_id, e.estimated_tax)
+      }
+    }
+
+    // Build loan amount map for payoff sale deductions
+    const loanAmountById = new Map<number, number>()
+    for (const l of loans) loanAmountById.set(l.id, l.amount)
+    const earlyPaidByLoan = new Map<number, number>()
+    for (const e of events) {
+      if (e.event_type === 'Early Loan Payment' && e.loan_id != null && e.date <= effectiveDate) {
+        earlyPaidByLoan.set(e.loan_id, (earlyPaidByLoan.get(e.loan_id) ?? 0) + (e.amount ?? 0))
+      }
+    }
+    const cashReceived = sales
+      ? sales.filter(s => s.date <= effectiveDate)
+        .reduce((sum, s) => {
+          const proceeds = s.shares * s.price_per_share
+          const tax = saleTaxBySaleId.get(s.id) ?? 0
+          const loanCovered = s.loan_id != null
+            ? Math.max(0, (loanAmountById.get(s.loan_id) ?? 0) - (earlyPaidByLoan.get(s.loan_id) ?? 0))
+            : 0
+          return sum + proceeds - loanCovered - tax
+        }, 0)
+      : 0
+
+    const adjCumCg = lastEvent?.cum_cap_gains ?? 0
+    const stcgRate = taxSettings
+      ? taxSettings.federal_st_cg_rate + taxSettings.niit_rate + taxSettings.state_st_cg_rate
+      : 0
+    const ltcgRate = taxSettings
+      ? taxSettings.federal_lt_cg_rate + taxSettings.niit_rate + taxSettings.state_lt_cg_rate
+      : 0
+    let interestDeductionTotal = 0
+    let taxSavings = 0
+    for (const e of events) {
+      if (e.date > effectiveDate) break
+      interestDeductionTotal += e.interest_deduction_applied ?? 0
+      taxSavings += (e.interest_deduction_on_stcg ?? 0) * stcgRate
+        + (e.interest_deduction_on_ltcg ?? 0) * ltcgRate
+    }
+    return {
+      current_price: lastEvent?.share_price ?? 0,
+      total_shares: lastEvent?.cum_shares ?? 0,
+      total_income: lastEvent?.cum_income ?? 0,
+      total_cap_gains: adjCumCg,
+      total_interest: (() => {
+        const effYear = parseInt(effectiveDate.slice(0, 4), 10)
+        const purchaseLoans = loans.filter(l => l.loan_type === 'Purchase')
+        const interestLoans = loans.filter(l => l.loan_type === 'Interest')
+        let total = interestLoans
+          .filter(l => l.loan_year <= effYear)
+          .reduce((sum, l) => sum + l.amount, 0)
+        for (const p of purchaseLoans) {
+          const dueYear = new Date(p.due_date + 'T00:00:00').getFullYear()
+          const relatedInterestLoans = interestLoans.filter(
+            l => l.grant_year === p.grant_year && l.grant_type === p.grant_type
+          )
+          for (let yr = p.loan_year + 1; yr <= Math.min(effYear, dueYear); yr++) {
+            const exists = relatedInterestLoans.some(l => l.loan_year === yr)
+            if (!exists) {
+              total += p.amount * p.interest_rate
+              // Also project interest accruing on outstanding interest loans for this year
+              for (const il of relatedInterestLoans) {
+                if (il.loan_year < yr) total += il.amount * il.interest_rate
+              }
+            }
+          }
+        }
+        return total
+      })(),
+      total_loan_principal: outstandingPrincipal,
+      total_tax_paid: taxPaid - taxSavings,
+      cash_received: cashReceived,
+      interest_deduction_total: interestDeductionTotal,
+      tax_savings_from_deduction: taxSavings,
+      next_event: nextEvent ? { date: nextEvent.date, event_type: nextEvent.event_type } : null,
+      next_event_detail: nextEvent,
+      price_is_estimate: (() => {
+        if (!prices) return false
+        let isEst = false
+        for (const p of prices) {
+          if (p.effective_date <= effectiveDate) isEst = !!p.is_estimate
+          else break
+        }
+        return isEst
+      })(),
+    }
+  }, [events, loans, sales, taxSettings, cardDate, prices])
+
+  // Per-grant holdings breakdown as of cardDate
+  const grantHoldings = useMemo(() => {
+    if (!grantsData || !events || !loans) return null
+
+    const effectiveDate = cardDate
+    const effYear = parseInt(effectiveDate.slice(0, 4), 10)
+
+    // Current share price as of effectiveDate
+    let currentPrice = 0
+    for (const e of events) {
+      if (e.date <= effectiveDate) currentPrice = e.share_price
+      else break
+    }
+
+    const incomeRate = taxSettings
+      ? taxSettings.federal_income_rate + taxSettings.state_income_rate
+      : 0
+
+    // Per-grant sold shares from explicit lot overrides (lot_overrides carries grant attribution).
+    // Loan payoff sales carry no lot_overrides but do carry loan_id — attribute those to the
+    // grant the loan belongs to, otherwise their shares never leave heldVested even after the
+    // loan (and the shares that paid it off) are gone.
+    const loanById = new Map(loans.map(l => [l.id, l]))
+    const soldByGrant = new Map<string, number>()
+    for (const s of (sales ?? [])) {
+      if (s.date > effectiveDate) continue
+      if (s.lot_overrides) {
+        for (const lot of s.lot_overrides) {
+          if (lot.grant_year == null || lot.grant_type == null) continue
+          const key = `${lot.grant_year}-${lot.grant_type}`
+          soldByGrant.set(key, (soldByGrant.get(key) ?? 0) + lot.shares)
+        }
+      } else if (s.loan_id != null) {
+        const loan = loanById.get(s.loan_id)
+        if (loan) {
+          const key = `${loan.grant_year}-${loan.grant_type}`
+          soldByGrant.set(key, (soldByGrant.get(key) ?? 0) + s.shares)
+        }
+      }
+    }
+
+    // Build settled/refinanced loan sets (mirrors outstandingPrincipal logic)
+    const settledIds = new Set(
+      (sales ?? []).filter(s => s.loan_id !== null && s.date <= effectiveDate).map(s => s.loan_id)
+    )
+    const refinancedIds = new Set(
+      loans.map(l => l.refinances_loan_id).filter((id): id is number => id !== null)
+    )
+    const earlyPaidByLoan = new Map<number, number>()
+    events.filter(e => e.event_type === 'Early Loan Payment' && e.date <= effectiveDate && e.loan_id != null)
+      .forEach(e => earlyPaidByLoan.set(e.loan_id!, (earlyPaidByLoan.get(e.loan_id!) ?? 0) + (e.amount ?? 0)))
+
+    return grantsData.map(g => {
+      // Vested shares from schedule
+      let vested = 0
+      if (g.periods > 0) {
+        const vs = new Date(g.vest_start + 'T00:00:00')
+        const base = Math.floor(g.shares / g.periods)
+        const rem = g.shares % g.periods
+        for (let p = 0; p < g.periods; p++) {
+          const vd = new Date(vs)
+          vd.setFullYear(vd.getFullYear() + p)
+          if (vd.toISOString().slice(0, 10) <= effectiveDate) {
+            vested += base + (p < rem ? 1 : 0)
+          }
+        }
+      }
+      const unvested = g.shares - vested
+      // dp_shares are negative when shares were exchanged as a down payment; subtract
+      // lot-attributed sales where the user recorded per-lot allocation
+      const soldViaLots = soldByGrant.get(`${g.year}-${g.type}`) ?? 0
+      const heldVested = Math.max(0, vested + (g.dp_shares ?? 0) - soldViaLots)
+
+      // Outstanding loans for this grant
+      const grantLoans = loans.filter(l =>
+        l.grant_year === g.year && l.grant_type === g.type &&
+        l.loan_year <= effYear &&
+        !settledIds.has(l.id) && !refinancedIds.has(l.id)
+      )
+      const totalLoan = grantLoans.reduce(
+        (sum, l) => sum + Math.max(0, l.amount - (earlyPaidByLoan.get(l.id) ?? 0)), 0
+      )
+
+      // Taxes: tax loans + income tax from vesting
+      const taxLoanTotal = loans.filter(l =>
+        l.loan_type === 'Tax' && l.grant_year === g.year && l.grant_type === g.type &&
+        l.loan_year <= effYear
+      ).reduce((sum, l) => sum + l.amount, 0)
+
+      const vestingIncomeTax = events
+        .filter(e =>
+          e.grant_year === g.year && e.grant_type === g.type &&
+          e.income > 0 && e.date <= effectiveDate &&
+          ((e.event_type === 'Vesting' && !e.election_83b) || e.event_type === 'Grant')
+        )
+        .reduce((sum, e) => sum + e.income * incomeRate, 0)
+
+      const vestedValue = heldVested * currentPrice
+      const unvestedValue = unvested * g.price
+      return {
+        year: g.year,
+        type: g.type,
+        exerciseDate: g.exercise_date,
+        costBasis: g.price,
+        vestedShares: heldVested,
+        unvestedShares: unvested,
+        vestedValue,
+        unvestedValue,
+        totalValue: vestedValue + unvestedValue,
+        totalTax: taxLoanTotal + vestingIncomeTax,
+        totalLoan,
+      }
+    })
+  }, [grantsData, events, loans, sales, taxSettings, cardDate])
+
+  // Active (non-settled, non-refinanced) loans as of cardDate
+  const activeLoans = useMemo(() => {
+    if (!loans || !events) return null
+
+    const effectiveDate = cardDate
+    const effYear = parseInt(effectiveDate.slice(0, 4), 10)
+
+    const settledIds = new Set(
+      (sales ?? []).filter(s => s.loan_id !== null && s.date <= effectiveDate).map(s => s.loan_id)
+    )
+    const refinancedIds = new Set(
+      loans.map(l => l.refinances_loan_id).filter((id): id is number => id !== null)
+    )
+    const earlyPaidByLoan = new Map<number, number>()
+    events.filter(e => e.event_type === 'Early Loan Payment' && e.date <= effectiveDate && e.loan_id != null)
+      .forEach(e => earlyPaidByLoan.set(e.loan_id!, (earlyPaidByLoan.get(e.loan_id!) ?? 0) + (e.amount ?? 0)))
+
+    return loans
+      .filter(l =>
+        l.loan_year <= effYear &&
+        !settledIds.has(l.id) &&
+        !refinancedIds.has(l.id)
+      )
+      .map(l => ({
+        id: l.id,
+        grantYear: l.grant_year,
+        grantType: l.grant_type,
+        loanType: l.loan_type,
+        loanYear: l.loan_year,
+        dueDate: l.due_date,
+        balance: Math.max(0, l.amount - (earlyPaidByLoan.get(l.id) ?? 0)),
+        interestRate: l.interest_rate,
+      }))
+      .filter(l => l.balance > 0)
+  }, [loans, events, sales, cardDate])
+
+  // Breakdown data (Cash/Income/Cap Gains/Interest/Tax) computed as of cardDate.
+  const breakdowns = useMemo(() => {
+    if (!events || !loans) return null
+    const effectiveDate = cardDate
+    const effYear = parseInt(effectiveDate.slice(0, 4), 10)
+
+    // --- Cash Received: per-sale contribution ---
+    const saleTaxBySaleId = new Map<number, number>()
+    for (const e of events) {
+      if (e.event_type === 'Sale' && e.sale_id != null && e.estimated_tax != null) {
+        saleTaxBySaleId.set(e.sale_id, e.estimated_tax)
+      }
+    }
+    const loanAmountById = new Map<number, number>()
+    for (const l of loans) loanAmountById.set(l.id, l.amount)
+    const earlyPaidByLoan = new Map<number, number>()
+    for (const e of events) {
+      if (e.event_type === 'Early Loan Payment' && e.loan_id != null && e.date <= effectiveDate) {
+        earlyPaidByLoan.set(e.loan_id, (earlyPaidByLoan.get(e.loan_id) ?? 0) + (e.amount ?? 0))
+      }
+    }
+    const loanById = new Map<number, LoanEntry>()
+    for (const l of loans) loanById.set(l.id, l)
+    const cashSales = (sales ?? [])
+      .filter(s => s.date <= effectiveDate)
+      .map(s => {
+        const proceeds = s.shares * s.price_per_share
+        const tax = saleTaxBySaleId.get(s.id) ?? 0
+        const loanPayoff = s.loan_id != null
+          ? Math.max(0, (loanAmountById.get(s.loan_id) ?? 0) - (earlyPaidByLoan.get(s.loan_id) ?? 0))
+          : 0
+        const loan = s.loan_id != null ? loanById.get(s.loan_id) : null
+        return {
+          id: s.id,
+          date: s.date,
+          shares: s.shares,
+          price: s.price_per_share,
+          proceeds,
+          tax,
+          loanPayoff,
+          loanLabel: loan ? `${loan.grant_year} ${loan.grant_type} ${loan.loan_type}` : null,
+          net: proceeds - tax - loanPayoff,
+        }
+      })
+      .sort((a, b) => a.date.localeCompare(b.date))
+    const cashTotals = cashSales.reduce(
+      (acc, s) => ({
+        proceeds: acc.proceeds + s.proceeds,
+        tax: acc.tax + s.tax,
+        loanPayoff: acc.loanPayoff + s.loanPayoff,
+        net: acc.net + s.net,
+      }),
+      { proceeds: 0, tax: 0, loanPayoff: 0, net: 0 },
+    )
+
+    // --- Total Income: vesting events grouped by grant ---
+    type IncomeGroup = { key: string; year: number; type: string; income: number; events: number }
+    const incomeByGrant = new Map<string, IncomeGroup>()
+    let incomeTotal = 0
+    for (const e of events) {
+      if (e.date > effectiveDate) break
+      if (e.income > 0 && ((e.event_type === 'Vesting' && !e.election_83b) || e.event_type === 'Grant')) {
+        const key = `${e.grant_year}|${e.grant_type}`
+        const grp = incomeByGrant.get(key) ?? {
+          key,
+          year: e.grant_year ?? 0,
+          type: e.grant_type ?? '',
+          income: 0,
+          events: 0,
+        }
+        grp.income += e.income
+        grp.events += 1
+        incomeByGrant.set(key, grp)
+        incomeTotal += e.income
+      }
+    }
+    const incomeGroups = [...incomeByGrant.values()].sort(
+      (a, b) => a.year - b.year || a.type.localeCompare(b.type),
+    )
+
+    // --- Total Cap Gains: split vesting (RSU cost-basis delta) vs price appreciation ---
+    type CgGroup = { key: string; year: number; type: string; amount: number }
+    const vestingCgByGrant = new Map<string, CgGroup>()
+    let vestingCgTotal = 0
+    let priceCgTotal = 0
+    for (const e of events) {
+      if (e.date > effectiveDate) break
+      if (e.vesting_cap_gains && e.vesting_cap_gains !== 0) {
+        const key = `${e.grant_year}|${e.grant_type}`
+        const grp = vestingCgByGrant.get(key) ?? {
+          key,
+          year: e.grant_year ?? 0,
+          type: e.grant_type ?? '',
+          amount: 0,
+        }
+        grp.amount += e.vesting_cap_gains
+        vestingCgByGrant.set(key, grp)
+        vestingCgTotal += e.vesting_cap_gains
+      }
+      if (e.price_cap_gains) priceCgTotal += e.price_cap_gains
+    }
+    const vestingCgGroups = [...vestingCgByGrant.values()].sort(
+      (a, b) => a.year - b.year || a.type.localeCompare(b.type),
+    )
+
+    // --- Total Interest: per-loan accrual ---
+    type InterestRow = { id: number; label: string; amount: number; note?: string }
+    const interestRows: InterestRow[] = []
+    let interestTotal = 0
+    const interestLoans = loans.filter(l => l.loan_type === 'Interest')
+    const purchaseLoans = loans.filter(l => l.loan_type === 'Purchase')
+    // Interest loans booked on or before effYear: they ARE the accrued interest.
+    for (const l of interestLoans) {
+      if (l.loan_year > effYear) continue
+      interestRows.push({
+        id: l.id,
+        label: `${l.grant_year} ${l.grant_type} interest booked ${l.loan_year}`,
+        amount: l.amount,
+      })
+      interestTotal += l.amount
+    }
+    // Purchase loans accrue interest each year after loan_year up to min(effYear, dueYear)
+    // in years where no explicit Interest loan replaces it.
+    for (const p of purchaseLoans) {
+      const dueYear = new Date(p.due_date + 'T00:00:00').getFullYear()
+      const related = interestLoans.filter(
+        l => l.grant_year === p.grant_year && l.grant_type === p.grant_type,
+      )
+      let accrued = 0
+      let years = 0
+      for (let yr = p.loan_year + 1; yr <= Math.min(effYear, dueYear); yr++) {
+        const exists = related.some(l => l.loan_year === yr)
+        if (!exists) {
+          accrued += p.amount * p.interest_rate
+          // Interest-on-interest for already-booked Interest loans this year
+          for (const il of related) {
+            if (il.loan_year < yr) accrued += il.amount * il.interest_rate
+          }
+          years += 1
+        }
+      }
+      if (accrued > 0) {
+        interestRows.push({
+          id: p.id,
+          label: `${p.grant_year} ${p.grant_type} estimated`,
+          amount: accrued,
+          note: `${(p.interest_rate * 100).toFixed(2)}% × ${years} yr`,
+        })
+        interestTotal += accrued
+      }
+    }
+    interestRows.sort((a, b) => a.label.localeCompare(b.label))
+
+    // --- Tax Paid: income tax + CG tax + deduction savings ---
+    const incomeRate = taxSettings
+      ? taxSettings.federal_income_rate + taxSettings.state_income_rate
+      : 0
+    const taxLoansSum = loans
+      .filter(l => l.loan_type === 'Tax' && l.loan_year <= effYear)
+      .reduce((sum, l) => sum + l.amount, 0)
+    const vestingIncomeTax = events
+      .filter(e =>
+        e.income > 0 &&
+        e.date <= effectiveDate &&
+        ((e.event_type === 'Vesting' && !e.election_83b) || e.event_type === 'Grant'),
+      )
+      .reduce((sum, e) => sum + e.income * incomeRate, 0)
+    const cgTaxFromSales = events
+      .filter(e => e.event_type === 'Sale' && e.date <= effectiveDate)
+      .reduce((sum, e) => sum + (e.estimated_tax ?? 0), 0)
+    const stcgRate = taxSettings
+      ? taxSettings.federal_st_cg_rate + taxSettings.niit_rate + taxSettings.state_st_cg_rate
+      : 0
+    const ltcgRate = taxSettings
+      ? taxSettings.federal_lt_cg_rate + taxSettings.niit_rate + taxSettings.state_lt_cg_rate
+      : 0
+    let deductionSavings = 0
+    for (const e of events) {
+      if (e.date > effectiveDate) break
+      deductionSavings += (e.interest_deduction_on_stcg ?? 0) * stcgRate
+        + (e.interest_deduction_on_ltcg ?? 0) * ltcgRate
+    }
+
+    return {
+      cash: { sales: cashSales, totals: cashTotals },
+      income: { groups: incomeGroups, total: incomeTotal },
+      capGains: {
+        vestingGroups: vestingCgGroups,
+        vestingTotal: vestingCgTotal,
+        priceTotal: priceCgTotal,
+        total: vestingCgTotal + priceCgTotal,
+      },
+      interest: { rows: interestRows, total: interestTotal },
+      tax: {
+        taxLoans: taxLoansSum,
+        vestingIncomeTax,
+        cgTaxFromSales,
+        deductionSavings,
+        total: taxLoansSum + vestingIncomeTax + cgTaxFromSales - deductionSavings,
+      },
+    }
+  }, [events, loans, sales, taxSettings, cardDate])
+
+  const [downloading, setDownloading] = useState(false)
+  async function downloadReport() {
+    setDownloading(true)
+    try {
+      const exportUrl = vid
+        ? `/api/sharing/view/${vid}/export/excel`
+        : `/api/export/holdings-report?as_of=${encodeURIComponent(cardDate)}`
+      const blob = await apiFetchBlob(exportUrl, 'Export failed')
+      await platform.files.saveBlob(blob, `Holdings_Report_${cardDate}.xlsx`)
+    } catch { /* silent */ }
+    setDownloading(false)
+  }
+
+  if (dashLoading) {
+    return <p className="p-6 text-center text-sm text-cs-text-2">Loading...</p>
+  }
+
+  if (!dash) {
+    return <p className="p-6 text-center text-sm text-red-500">Failed to load dashboard</p>
+  }
+
+  const isEmpty = !events || events.length === 0
+
+  if (isEmpty && !readOnly) {
+    return <ImportWizard onComplete={reloadEvents} />
+  }
+
+  if (isEmpty && readOnly) {
+    return <p className="py-12 text-center text-sm text-cs-muted">This user has no data yet.</p>
+  }
+
+  const cv = cardValues ?? {
+    current_price: dash.current_price,
+    total_shares: dash.total_shares,
+    total_income: dash.total_income,
+    total_cap_gains: dash.total_cap_gains,
+    total_loan_principal: dash.total_loan_principal,
+    total_tax_paid: dash.total_tax_paid ?? 0,
+    cash_received: dash.cash_received ?? 0,
+    interest_deduction_total: dash.interest_deduction_total ?? 0,
+    tax_savings_from_deduction: dash.tax_savings_from_deduction ?? 0,
+    next_event: dash.next_event,
+    next_event_detail: null as TimelineEvent | null,
+    total_interest: 0,
+    price_is_estimate: false,
+  }
+  const hasInterestDeduction = (cv.interest_deduction_total ?? 0) > 0
+  const hasInterestLoans = loans?.some(l => l.loan_type === 'Interest' || l.loan_type === 'Purchase') ?? false
+  const showDeductionCard = hasInterestDeduction || hasInterestLoans
+
+  // Computed once and shared by the hero card and the Value Today card below — they used to
+  // each call grantHoldings.reduce() independently, which is how the two could silently drift
+  // apart if only one call site got a future fix.
+  const totalValue = grantHoldings ? grantHoldings.reduce((s, h) => s + h.totalValue, 0) : 0
+
+  return (
+    <div className="space-y-6">
+      {/* Date selector for card values */}
+      <div className="rounded-xl border border-cs-border bg-cs-surface px-3 py-2.5 shadow-card">
+        <div className="flex items-center gap-2">
+          <span className="shrink-0 text-xs font-medium text-cs-muted">As of</span>
+          <input
+            type="date"
+            value={cardDate}
+            max={maxDate}
+            onChange={e => { setDateMode('custom'); setCardDate(e.target.value) }}
+            className="h-7 flex-1 rounded border border-cs-border-strong bg-cs-surface px-2 text-xs text-cs-text"
+          />
+        </div>
+        <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+          <span className="shrink-0 text-xs text-cs-muted">Jump to:</span>
+          {([
+            { label: 'Today', mode: 'today' as const },
+            { label: 'Last event', mode: 'last-event' as const, title: 'Jump to your last scheduled event' },
+          ]).map(({ label, mode, title }) => (
+            <button
+              key={label}
+              onClick={() => setDateMode(mode)}
+              title={title}
+              className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
+                dateMode === mode
+                  ? 'bg-cs-brand text-white'
+                  : 'bg-cs-raised text-cs-text-2 hover:bg-stone-200 dark:hover:bg-stone-700 '
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+          <button
+            onClick={downloadReport}
+            disabled={downloading}
+            title="Download holdings report as Excel"
+            className="ml-auto text-xs text-cs-muted hover:text-cs-text-2 disabled:opacity-50 "
+          >
+            {downloading ? '…' : 'Export'}
+          </button>
+        </div>
+      </div>
+
+      {!readOnly && <TipCarousel onApply={() => { reloadDash(); reloadEvents(); reloadTaxSettings() }} />}
+
+      {stalePrice && <StalePriceBanner latest={stalePrice} readOnly={readOnly} />}
+
+      {grantHoldings && (
+        <HeroCard watermark={<Sparkline className="h-24 w-40" color="#fff" />}>
+          <Eyebrow className="text-white">Net worth · as of {fmtFullDate(cardDate)}</Eyebrow>
+          <p className="mt-1 text-3xl font-extrabold tabular-nums tracking-tight sm:text-4xl">
+            {fmt$(totalValue - cv.total_loan_principal)}
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-white">
+            <span><span className="font-semibold">{fmtNum(cv.total_shares)}</span> vested shares</span>
+            <span className="hidden h-1 w-1 rounded-full bg-white/60 sm:inline-block" />
+            <span>
+              <span className="font-semibold">{fmtPrice(cv.current_price)}</span> / share
+              {cv.price_is_estimate && <span className="ml-1">(est.)</span>}
+            </span>
+            {cv.total_loan_principal > 0 && (
+              <>
+                <span className="hidden h-1 w-1 rounded-full bg-white/60 sm:inline-block" />
+                <span>{fmt$(totalValue)} in shares − {fmt$(cv.total_loan_principal)} loans</span>
+              </>
+            )}
+          </div>
+        </HeroCard>
+      )}
+
+      {/* (F) aria-live so screen readers announce summary updates when cardDate changes */}
+      <div aria-live="polite" aria-atomic="true" className="space-y-3">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-cs-muted">Up to this date</p>
+
+        <section className="space-y-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-cs-muted">Your Shares</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <Card
+              label={cardDate === TODAY ? 'Value Today' : `Value on ${fmtFullDate(cardDate)}`}
+              value={grantHoldings ? fmt$(totalValue) : '—'}
+              variant="value"
+              subtitle="Vested at FMV + unvested at cost basis"
+              onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
+              expanded={openBreakdowns.has('grants')}
+            />
+            <Card
+              label="Total Cost Basis"
+              value={grantHoldings ? fmt$(grantHoldings.reduce((s, h) => s + (h.vestedShares + h.unvestedShares) * h.costBasis, 0)) : '—'}
+              variant="costbasis"
+              subtitle="What you paid for all held shares"
+              onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
+              expanded={openBreakdowns.has('grants')}
+            />
+            <Card label={cv.price_is_estimate ? 'Share Price (est.)' : 'Share Price'} value={fmtPrice(cv.current_price)} variant="price" subtitle="Price per share on this date" />
+            <Card
+              label="Vested Shares"
+              value={fmtNum(cv.total_shares)}
+              subvalue={fmt$(cv.total_shares * cv.current_price) + (cv.price_is_estimate ? ' (est.)' : '')}
+              variant="shares"
+              subtitle={`Value at ${fmtPrice(cv.current_price)}/share`}
+              onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
+              expanded={openBreakdowns.has('grants')}
+            />
+            <Card
+              label="Unvested Shares"
+              value={fmtNum(grantHoldings?.reduce((s, h) => s + h.unvestedShares, 0) ?? 0)}
+              subvalue={grantHoldings ? fmt$(grantHoldings.reduce((s, h) => s + h.unvestedShares * h.costBasis, 0)) : undefined}
+              variant="unvested"
+              subtitle="Value at purchase price"
+              onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
+              expanded={openBreakdowns.has('grants')}
+            />
+            <Card
+              label="Next Event"
+              value={cv.next_event ? `${cv.next_event.date} — ${cv.next_event.event_type}` : 'None'}
+              variant="event"
+              subtitle="Your next vesting or price date"
+              onClick={cv.next_event_detail ? () => toggleBreakdown('nextEvent') : undefined}
+              expanded={openBreakdowns.has('nextEvent')}
+            />
+          </div>
+          {openBreakdowns.has('nextEvent') && cv.next_event_detail && (
+            <BreakdownShell title="Next Event">
+              <BreakdownRow label="Date" value={fmtFullDate(cv.next_event_detail.date)} />
+              <BreakdownRow label="Type" value={cv.next_event_detail.event_type} />
+              {cv.next_event_detail.grant_year != null && (
+                <BreakdownRow label="Grant" value={`${cv.next_event_detail.grant_year} ${cv.next_event_detail.grant_type ?? ''}`} />
+              )}
+              {!!cv.next_event_detail.vested_shares && (
+                <BreakdownRow label="Vesting shares" value={fmtNum(cv.next_event_detail.vested_shares)} />
+              )}
+              {!!cv.next_event_detail.granted_shares && (
+                <BreakdownRow label="Granted shares" value={fmtNum(cv.next_event_detail.granted_shares)} />
+              )}
+              {!!cv.next_event_detail.share_price && (
+                <BreakdownRow label="Share price" value={fmtPrice(cv.next_event_detail.share_price)} />
+              )}
+              {!!cv.next_event_detail.income && (
+                <BreakdownRow label="Income" value={fmt$(cv.next_event_detail.income)} />
+              )}
+              {!!cv.next_event_detail.total_cap_gains && (
+                <BreakdownRow label="Capital gains" value={fmt$(cv.next_event_detail.total_cap_gains)} />
+              )}
+              {!!cv.next_event_detail.amount && (
+                <BreakdownRow label="Amount" value={fmt$(cv.next_event_detail.amount)} />
+              )}
+              {!!cv.next_event_detail.cash_due && (
+                <BreakdownRow label="Cash due" value={fmt$(cv.next_event_detail.cash_due)} />
+              )}
+              {!!cv.next_event_detail.notes && (
+                <BreakdownRow label="Notes" value={cv.next_event_detail.notes} />
+              )}
+            </BreakdownShell>
+          )}
+          {openBreakdowns.has('grants') && grantHoldings && grantHoldings.length > 0 && (
+            <BreakdownShell title="Grants">
+              {grantHoldings.map(h => (
+                <div key={`${h.year}-${h.type}`} className="rounded border border-cs-border bg-cs-surface px-3 py-2 ">
+                  <p className="text-xs font-semibold text-cs-text">{h.year} {h.type}</p>
+                  <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] sm:grid-cols-3">
+                    <span className="text-cs-muted">Purchased <span className="font-medium text-cs-text">{fmtFullDate(h.exerciseDate)}</span></span>
+                    <span className="text-cs-muted">Cost basis <span className="font-medium text-cs-text">{fmtPrice(h.costBasis)}</span></span>
+                    <span className="text-cs-muted">Vested <span className="font-medium text-cs-text">{fmtNum(h.vestedShares)}</span></span>
+                    <span className="text-cs-muted">Vested value <span className="font-medium text-cs-text">{fmt$(h.vestedValue)}</span></span>
+                    <span className="text-cs-muted">Unvested <span className="font-medium text-cs-text">{fmtNum(h.unvestedShares)}</span></span>
+                    <span className="text-cs-muted">Unvested value <span className="font-medium text-cs-text">{fmt$(h.unvestedValue)}</span></span>
+                    <span className="text-cs-muted">Total value <span className="font-medium text-cs-text">{fmt$(h.totalValue)}</span></span>
+                    <span className="text-cs-muted">Taxes <span className="font-medium text-cs-text">{fmt$(h.totalTax)}</span></span>
+                    <span className="text-cs-muted">Loans <span className="font-medium text-cs-text">{fmt$(h.totalLoan)}</span></span>
+                  </div>
+                </div>
+              ))}
+            </BreakdownShell>
+          )}
+        </section>
+
+        <section className="space-y-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-cs-muted">Earnings</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <Card
+              label="Total Income"
+              value={fmt$(cv.total_income)}
+              variant="income"
+              subtitle="Taxed as ordinary income at vest"
+              onClick={breakdowns && breakdowns.income.groups.length > 0 ? () => toggleBreakdown('income') : undefined}
+              expanded={openBreakdowns.has('income')}
+            />
+            <Card
+              label="Total capital gains"
+              value={fmt$(cv.total_cap_gains)}
+              variant="gains"
+              subtitle="Growth since your grants"
+              onClick={breakdowns && (breakdowns.capGains.vestingGroups.length > 0 || breakdowns.capGains.priceTotal !== 0) ? () => toggleBreakdown('capGains') : undefined}
+              expanded={openBreakdowns.has('capGains')}
+            />
+            <Card
+              label="Cash Received"
+              value={fmt$(cv.cash_received)}
+              variant="cash"
+              subtitle="Net proceeds from sales through this date"
+              onClick={breakdowns && breakdowns.cash.sales.length > 0 ? () => toggleBreakdown('cash') : undefined}
+              expanded={openBreakdowns.has('cash')}
+            />
+          </div>
+          {openBreakdowns.has('income') && breakdowns && breakdowns.income.groups.length > 0 && (
+            <BreakdownShell title="Total Income breakdown">
+              {breakdowns.income.groups.map(g => (
+                <BreakdownRow
+                  key={g.key}
+                  label={`${g.year} ${g.type}`}
+                  value={fmt$(g.income)}
+                  sub={`${g.events} vesting event${g.events === 1 ? '' : 's'}`}
+                />
+              ))}
+              <div className="my-1 border-t border-cs-border-strong" />
+              <BreakdownRow label="Total" value={fmt$(breakdowns.income.total)} bold />
+              <p className="mt-2 text-[10px] text-cs-muted">
+                Ordinary income recognized at each vest (grant-price × shares for RSUs, share-price × shares for bonus/free grants without 83(b)).
+              </p>
+            </BreakdownShell>
+          )}
+          {openBreakdowns.has('capGains') && breakdowns && (breakdowns.capGains.vestingGroups.length > 0 || breakdowns.capGains.priceTotal !== 0) && (
+            <BreakdownShell title="Total capital gains breakdown">
+              {breakdowns.capGains.vestingGroups.length > 0 && (
+                <>
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-cs-muted">Gains at vest (share price − what you paid)</p>
+                  {breakdowns.capGains.vestingGroups.map(g => (
+                    <BreakdownRow key={g.key} label={`${g.year} ${g.type}`} value={fmt$(g.amount)} />
+                  ))}
+                  <BreakdownRow label="Vesting gains subtotal" value={fmt$(breakdowns.capGains.vestingTotal)} bold />
+                </>
+              )}
+              {breakdowns.capGains.priceTotal !== 0 && (
+                <>
+                  {breakdowns.capGains.vestingGroups.length > 0 && <div className="my-1 border-t border-cs-border-strong" />}
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-cs-muted">Price appreciation on holdings</p>
+                  <BreakdownRow
+                    label="Share-price changes × shares held"
+                    value={fmt$(breakdowns.capGains.priceTotal)}
+                    sub="Unrealized gain from share-price increases on shares you already held"
+                  />
+                </>
+              )}
+              <div className="my-1 border-t border-cs-border-strong" />
+              <BreakdownRow label="Total" value={fmt$(breakdowns.capGains.total)} bold />
+            </BreakdownShell>
+          )}
+          {openBreakdowns.has('cash') && breakdowns && breakdowns.cash.sales.length > 0 && (
+            <BreakdownShell title="Cash Received breakdown">
+              {breakdowns.cash.sales.map(s => (
+                <BreakdownRow
+                  key={s.id}
+                  label={`${s.date} ${fmtNum(s.shares)} sh × ${fmtPrice(s.price)}`}
+                  value={fmt$(s.net)}
+                  sub={[
+                    `${fmt$(s.proceeds)} proceeds`,
+                    s.tax > 0 ? `− ${fmt$(s.tax)} est. CG tax` : null,
+                    s.loanPayoff > 0 ? `− ${fmt$(s.loanPayoff)} loan payoff${s.loanLabel ? ` (${s.loanLabel})` : ''}` : null,
+                  ].filter(Boolean).join(' ')}
+                  tone={s.net < 0 ? 'negative' : undefined}
+                />
+              ))}
+              <div className="my-1 border-t border-cs-border-strong" />
+              <BreakdownRow label="Gross proceeds" value={fmt$(breakdowns.cash.totals.proceeds)} />
+              {breakdowns.cash.totals.tax > 0 && (
+                <BreakdownRow label="Est. CG tax on sales" value={`−${fmt$(breakdowns.cash.totals.tax)}`} />
+              )}
+              {breakdowns.cash.totals.loanPayoff > 0 && (
+                <BreakdownRow label="Loan principal paid off from sales" value={`−${fmt$(breakdowns.cash.totals.loanPayoff)}`} />
+              )}
+              <BreakdownRow label="Cash received" value={fmt$(breakdowns.cash.totals.net)} bold tone={breakdowns.cash.totals.net < 0 ? 'negative' : undefined} />
+              {breakdowns.cash.totals.net < 0 && (
+                <p className="mt-2 text-[10px] text-cs-muted">
+                  Negative means payoff sales didn't cover their loan plus estimated CG tax — usually because tax rates or lot methods changed after the sale was sized.
+                </p>
+              )}
+            </BreakdownShell>
+          )}
+        </section>
+
+        <section className="space-y-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-cs-muted">Costs</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <Card
+              label="Loan Principal"
+              value={fmt$(cv.total_loan_principal)}
+              variant="loans"
+              subtitle="Total amount borrowed"
+              onClick={activeLoans && activeLoans.length > 0 ? () => toggleBreakdown('activeLoans') : undefined}
+              expanded={openBreakdowns.has('activeLoans')}
+            />
+            <Card
+              label="Total Interest"
+              value={fmt$(cv.total_interest)}
+              variant="interest"
+              subtitle="Interest accrued on loans"
+              onClick={breakdowns && breakdowns.interest.rows.length > 0 ? () => toggleBreakdown('interest') : undefined}
+              expanded={openBreakdowns.has('interest')}
+            />
+            <Card
+              label={hasInterestDeduction ? 'Tax Paid (after int. ded.)' : 'Tax Paid'}
+              value={fmt$(cv.total_tax_paid)}
+              variant="tax"
+              subtitle="Taxes withheld through this date"
+              onClick={breakdowns && (breakdowns.tax.taxLoans > 0 || breakdowns.tax.vestingIncomeTax > 0 || breakdowns.tax.cgTaxFromSales > 0) ? () => toggleBreakdown('tax') : undefined}
+              expanded={openBreakdowns.has('tax')}
+            />
+          </div>
+          {openBreakdowns.has('activeLoans') && activeLoans && activeLoans.length > 0 && (
+            <BreakdownShell title={`Active Loans (${activeLoans.length})`}>
+              <div className="hidden px-1 pb-1 text-[10px] font-medium uppercase tracking-wide text-cs-muted sm:grid sm:grid-cols-5 sm:gap-x-2 ">
+                <span>Grant</span><span>Type</span><span>Balance</span><span>Rate</span><span>Due</span>
+              </div>
+              {activeLoans.map(l => (
+                <div key={l.id} className="rounded border border-cs-border bg-cs-surface px-3 py-2 text-[11px] ">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 sm:hidden">
+                    <span className="text-cs-muted">{l.grantYear} {l.grantType} <span className="text-cs-muted">· {l.loanType}</span></span>
+                    <span className="text-right font-medium text-cs-text">{fmt$(l.balance)}</span>
+                    <span className="text-cs-muted">Rate <span className="font-medium text-cs-text">{(l.interestRate * 100).toFixed(2)}%</span></span>
+                    <span className="text-right text-cs-muted">Due <span className="font-medium text-cs-text">{fmtFullDate(l.dueDate)}</span></span>
+                  </div>
+                  <div className="hidden sm:grid sm:grid-cols-5 sm:gap-x-2">
+                    <span className="font-medium text-cs-text">{l.grantYear} {l.grantType}</span>
+                    <span className="text-cs-text-2">{l.loanType}</span>
+                    <span className="font-medium text-cs-text">{fmt$(l.balance)}</span>
+                    <span className="text-cs-text-2">{(l.interestRate * 100).toFixed(2)}%</span>
+                    <span className="text-cs-text-2">{fmtFullDate(l.dueDate)}</span>
+                  </div>
+                </div>
+              ))}
+            </BreakdownShell>
+          )}
+          {openBreakdowns.has('interest') && breakdowns && breakdowns.interest.rows.length > 0 && (
+            <BreakdownShell title="Total Interest breakdown">
+              {breakdowns.interest.rows.map(r => (
+                <BreakdownRow key={r.id} label={r.label} value={fmt$(r.amount)} sub={r.note} />
+              ))}
+              <div className="my-1 border-t border-cs-border-strong" />
+              <BreakdownRow label="Total" value={fmt$(breakdowns.interest.total)} bold />
+              <p className="mt-2 text-[10px] text-cs-muted">
+                "Booked" rows are Interest-type loans you've already recorded; "estimated" rows project future interest on Purchase loans each year until due.
+              </p>
+            </BreakdownShell>
+          )}
+          {openBreakdowns.has('tax') && breakdowns && (breakdowns.tax.taxLoans > 0 || breakdowns.tax.vestingIncomeTax > 0 || breakdowns.tax.cgTaxFromSales > 0) && (
+            <BreakdownShell title="Tax Paid breakdown">
+              {breakdowns.tax.taxLoans > 0 && (
+                <BreakdownRow
+                  label="Income tax withheld at vest (Tax loans)"
+                  value={fmt$(breakdowns.tax.taxLoans)}
+                  sub="Sum of Tax-type loan rows (actual amounts withheld)"
+                />
+              )}
+              {breakdowns.tax.vestingIncomeTax > 0 && (
+                <BreakdownRow
+                  label="Income tax estimated on vesting"
+                  value={fmt$(breakdowns.tax.vestingIncomeTax)}
+                  sub="Σ(income × federal+state income rate) across vesting events"
+                />
+              )}
+              {breakdowns.tax.cgTaxFromSales > 0 && (
+                <BreakdownRow
+                  label="Est. capital gains tax on sales"
+                  value={fmt$(breakdowns.tax.cgTaxFromSales)}
+                  sub="Sum of estimated_tax across recorded sales"
+                />
+              )}
+              {breakdowns.tax.deductionSavings > 0 && (
+                <BreakdownRow
+                  label="Interest deduction savings"
+                  value={`−${fmt$(breakdowns.tax.deductionSavings)}`}
+                  sub="Loan interest subtracted from capital gains before tax (IRS Form 4952)"
+                  tone="positive"
+                />
+              )}
+              <div className="my-1 border-t border-cs-border-strong" />
+              <BreakdownRow label="Total" value={fmt$(breakdowns.tax.total)} bold />
+            </BreakdownShell>
+          )}
+        </section>
+      </div>
+
+      {showExitPreview && (
+        <div aria-live="polite" aria-atomic="true" className="space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-cs-muted">
+            If you exited on this date
+          </p>
+          {exitPreview === 'loading' ? (
+            <p className="text-xs text-cs-muted">Calculating…</p>
+          ) : exitPreview ? (
+            <>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <button
+                  onClick={() => setExitBreakdownOpen(o => !o)}
+                  aria-expanded={exitBreakdownOpen}
+                  className="col-span-2 rounded-2xl border border-cs-border bg-cs-surface p-4 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-pop"
+                >
+                  <div className="flex items-center justify-between">
+                    <IconTile tone="emerald" className="h-8 w-8 rounded-lg">
+                      <IconTrendUp className="h-4 w-4" />
+                    </IconTile>
+                    <span className={`text-cs-muted transition-transform ${exitBreakdownOpen ? 'rotate-180' : ''}`} aria-hidden="true">
+                      <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></svg>
+                    </span>
+                  </div>
+                  <p className="mt-2.5 text-xs font-medium uppercase tracking-wide text-cs-text-2">Net Cash at Exit</p>
+                  <p className="mt-0.5 text-xl font-bold tabular-nums text-cs-text">{fmt$(exitPreview.net_cash)}</p>
+                </button>
+                <Card label="Gross Proceeds" value={fmt$(exitPreview.gross_vested + exitPreview.unvested_cost_proceeds)} variant="gains" subtitle="Liquidated shares × price" />
+                <Card label="Loans Paid Off" value={fmt$(exitPreview.outstanding_principal + exitPreview.outstanding_accrued_interest)} variant="loans" subtitle="Principal + accrued interest" />
+                <Card label="Est. Divest Tax" value={fmt$(exitPreview.liquidation_tax)} variant="tax" subtitle="Capital gains on liquidation" />
+              </div>
+              {exitBreakdownOpen && <ExitBreakdownCard s={exitPreview} />}
+            </>
+          ) : (
+            <p className="text-xs text-cs-muted">No price data for this date</p>
+          )}
+        </div>
+      )}
+
+      {showDeductionCard && !readOnly && (() => {
+        const displayEnabled = pendingDeduction ?? savedDeduction
+        const currentSavings = cardValues?.tax_savings_from_deduction ?? dash.tax_savings_from_deduction ?? 0
+        const previewSavings = pendingDeductionChanged
+          ? (deductionPreview === 'loading' ? null : deductionPreview?.tax_savings_from_deduction ?? null)
+          : null
+        const delta = pendingDeductionChanged
+          ? (deductionPreview === 'loading' ? '…' : previewSavings !== null
+            ? (displayEnabled ? `+${fmt$(previewSavings)}` : `−${fmt$(currentSavings)}`)
+            : null)
+          : (displayEnabled ? fmt$(currentSavings) : null)
+        const excludedYears = new Set(taxSettings?.deduction_excluded_years ?? [])
+        const allYears = [...(taxSettings?.taxable_years ?? [])].sort((a, b) => a - b)
+        const appliedYears = allYears.filter(y => !excludedYears.has(y))
+        const appliedLabel = appliedYears.length === 0
+          ? 'No years applied.'
+          : appliedYears.length === allYears.length
+            ? `Applied to all years (${appliedYears[0]}–${appliedYears[appliedYears.length - 1]}).`
+            : appliedYears.length <= 4
+              ? `Applied to ${appliedYears.join(', ')}.`
+              : `Applied to ${appliedYears[0]}–${appliedYears[appliedYears.length - 1]} (${excludedYears.size} yr${excludedYears.size !== 1 ? 's' : ''} excluded).`
+        return (
+          <div className="rounded-md bg-cs-raised px-3 py-2 text-xs">
+            <div className="flex items-center gap-3">
+              <span className="text-cs-muted">Interest deduction</span>
+              <span className={`flex-1 font-semibold tabular-nums ${pendingDeductionChanged ? (displayEnabled ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400') : 'text-cs-text-2'}`}>
+                {delta ?? '—'}
+              </span>
+              {pendingDeductionChanged && (
+                <>
+                  <button
+                    onClick={() => applyDeduction(pendingDeduction!)}
+                    disabled={savingDeduction || deductionPreview === 'loading'}
+                    className="rounded bg-rose-700 px-2.5 py-1 font-medium text-white hover:bg-rose-800 disabled:opacity-60"
+                  >
+                    {savingDeduction ? '…' : 'Apply'}
+                  </button>
+                  <button
+                    onClick={() => setPendingDeduction(null)}
+                    disabled={savingDeduction}
+                    className="text-cs-muted hover:text-cs-text-2 disabled:opacity-50 "
+                  >
+                    ✕
+                  </button>
+                </>
+              )}
+              <button
+                role="switch"
+                aria-checked={displayEnabled}
+                onClick={() => setPendingDeduction(!displayEnabled)}
+                disabled={savingDeduction}
+                className={`relative shrink-0 h-6 w-11 rounded-full transition-colors focus:outline-none disabled:opacity-50 ${displayEnabled ? 'bg-purple-600 dark:bg-purple-500' : 'bg-cs-border-strong '}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${displayEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+              </button>
+            </div>
+            {savedDeduction && !pendingDeductionChanged && (
+              <p className="mt-1 text-[10px] text-cs-muted">
+                {appliedLabel}{' '}
+                <a href="/settings" className="underline hover:text-cs-text">
+                  Customize years
+                </a>
+              </p>
+            )}
+          </div>
+        )
+      })()}
+
+      <div className="grid gap-4 md:grid-cols-2">
+        {events && events.length > 0 && (
+          <ChartBox title="Shares Over Time" range={range} setRange={setRange} maxDate={maxDate}>
+            <SharesChart events={events} c={c} range={range} hasFuturePrices={hasFuturePrices} />
+          </ChartBox>
+        )}
+        {events && events.length > 0 && (
+          <ChartBox title="Income vs capital gains" range={range} setRange={setRange} maxDate={maxDate}>
+            <IncomeCapGainsChart events={events} c={c} range={range} hasFuturePrices={hasFuturePrices} />
+          </ChartBox>
+        )}
+        {prices && prices.length > 0 && (
+          <ChartBox title="Share Price History" range={range} setRange={setRange} maxDate={maxDate}>
+            <PriceChart prices={prices} c={c} range={range} hasFuturePrices={hasFuturePrices} />
+          </ChartBox>
+        )}
+        {events && events.length > 0 && loans !== undefined && (
+          <ChartBox title="Estimated Tax Liability" range={range} setRange={setRange} maxDate={maxDate}>
+            <TaxChart
+              events={events}
+              loans={loans ?? []}
+              taxSettings={taxSettings ?? WI_TAX_DEFAULTS}
+              c={c}
+              range={range}
+              hasFuturePrices={hasFuturePrices}
+            />
+          </ChartBox>
+        )}
+        {loans && loans.some(l => l.loan_type === 'Interest' || l.loan_type === 'Purchase') && (
+          <ChartBox title="Interest Over Time" range={rangeInterest} setRange={setRangeInterest} maxDate={maxDate}>
+            <InterestChart loans={loans} c={c} range={rangeInterest} />
+          </ChartBox>
+        )}
+        {dash.loan_payment_by_year && dash.loan_payment_by_year.length > 0 && (
+          <LoanChart loanPaymentByYear={dash.loan_payment_by_year} c={c} range={rangeLoan} setRange={setRangeLoan} maxDate={maxDate} />
+        )}
+      </div>
+    </div>
+  )
 }

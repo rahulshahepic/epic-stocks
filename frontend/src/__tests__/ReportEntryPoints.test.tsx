@@ -2,9 +2,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import { ToastProvider, useToast } from '../scaffold/components/Toast.tsx'
+import { ToastProvider } from '../scaffold/components/Toast.tsx'
+import { useToast } from '../scaffold/components/toastContext.ts'
 import { ReportProvider, ReportableError } from '../scaffold/components/ReportProblem.tsx'
-import { ReportFindingsButton, summariseFindings } from '../app/components/FindingList.tsx'
+import { ReportFindingsButton } from '../app/components/FindingList.tsx'
+import { summariseFindings } from '../app/components/findingSummary.ts'
 import type { Finding } from '../app/epicImport.ts'
 
 beforeEach(() => {

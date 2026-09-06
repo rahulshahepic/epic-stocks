@@ -67,7 +67,13 @@ jobs:
         # this just skips the redundant network round trip.
         run: cd frontend && time npm ci --no-audit
       - name: Type-check
+        # tsc -b walks all three projects, tests included (tsconfig.test.json).
         run: cd frontend && time npx tsc -b --noEmit
+      - name: Lint
+        # The suite was never gated here, which is how 55 findings accumulated —
+        # among them a component rebuilt on every render and an effect that ran
+        # on every render. Zero at the time this step was added; keep it there.
+        run: cd frontend && time npm run lint
       - name: Audit production dependencies
         # Scope: production packages only (--omit=dev), so build-tool CVEs (vite,
         # babel, playwright) cannot block an unrelated PR — this app is a browser

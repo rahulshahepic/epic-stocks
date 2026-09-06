@@ -3,7 +3,6 @@ import math
 from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -13,6 +12,8 @@ from schemas import (LoanCreate, LoanUpdate, LoanOut, LoanPaymentCreate, LoanPay
                      LoanPaymentOut, SaleOut, MAX_BULK_ITEMS)
 from scaffold.quota import check_row_quota
 from scaffold.auth import get_current_user
+from app import event_cache
+from scaffold.crud import apply_update, get_owned, version_conflict
 
 router = APIRouter(prefix="/api/loans", tags=["loans"])
 lp_router = APIRouter(prefix="/api/loan-payments", tags=["loan-payments"])
@@ -330,8 +331,7 @@ def create_loan(
             db.add(sale)
             db.commit()
 
-    from app.event_cache import schedule_recompute
-    schedule_recompute(user.id)
+    event_cache.schedule_recompute(user.id)
     return loan
 
 
@@ -349,24 +349,19 @@ def bulk_create_loans(items: list[LoanCreate], user: User = Depends(get_current_
     db.commit()
     for l in loans:
         db.refresh(l)
-    from app.event_cache import schedule_recompute
-    schedule_recompute(user.id)
+    event_cache.schedule_recompute(user.id)
     return loans
 
 
 @router.get("/{loan_id}", response_model=LoanOut)
 def get_loan(loan_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    loan = db.query(Loan).filter(Loan.id == loan_id, Loan.user_id == user.id).first()
-    if not loan:
-        raise HTTPException(status_code=404, detail="Loan not found")
+    loan = get_owned(db, Loan, loan_id, user, "Loan")
     return loan
 
 
 @router.get("/{loan_id}/payoff-sale-suggestion")
 def get_payoff_sale_suggestion(loan_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    loan = db.query(Loan).filter(Loan.id == loan_id, Loan.user_id == user.id).first()
-    if not loan:
-        raise HTTPException(status_code=404, detail="Loan not found")
+    loan = get_owned(db, Loan, loan_id, user, "Loan")
     return _compute_payoff_sale(loan, user, db)
 
 
@@ -376,9 +371,7 @@ def execute_payoff(loan_id: int, user: User = Depends(get_current_user), db: Ses
     Execute an early loan payoff: compute the suggested sale and persist it.
     Idempotent — if a payoff sale already exists for this loan, returns it unchanged.
     """
-    loan = db.query(Loan).filter(Loan.id == loan_id, Loan.user_id == user.id).first()
-    if not loan:
-        raise HTTPException(status_code=404, detail="Loan not found")
+    loan = get_owned(db, Loan, loan_id, user, "Loan")
 
     existing = db.query(Sale).filter(Sale.loan_id == loan.id, Sale.user_id == user.id).first()
     if existing:
@@ -416,9 +409,7 @@ def update_loan(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    loan = db.query(Loan).filter(Loan.id == loan_id, Loan.user_id == user.id).first()
-    if not loan:
-        raise HTTPException(status_code=404, detail="Loan not found")
+    loan = get_owned(db, Loan, loan_id, user, "Loan")
     _check_refinance_target(body.refinances_loan_id, user, db, self_id=loan_id)
     if body.refinances_loan_id is not None:
         # Remove auto-generated payoff sale for the old loan if this is a new refinance link
@@ -426,16 +417,10 @@ def update_loan(
             old_payoff_sale = db.query(Sale).filter(Sale.loan_id == body.refinances_loan_id, Sale.user_id == user.id).first()
             if old_payoff_sale:
                 db.delete(old_payoff_sale)
-    submitted_version = body.version
-    if submitted_version is not None and loan.version != submitted_version:
-        return JSONResponse(
-            status_code=409,
-            content={"detail": "modified_elsewhere", "current_version": loan.version},
-        )
-    updates = {k: v for k, v in body.model_dump(exclude_unset=True).items() if k != "version"}
-    for k, v in updates.items():
-        setattr(loan, k, v)
-    loan.version = loan.version + 1
+    stale = version_conflict(loan, body.version)
+    if stale:
+        return stale
+    apply_update(loan, body)
     db.commit()
     db.refresh(loan)
 
@@ -463,8 +448,7 @@ def update_loan(
             ))
             db.commit()
 
-    from app.event_cache import schedule_recompute
-    schedule_recompute(user.id)
+    event_cache.schedule_recompute(user.id)
     return loan
 
 
@@ -504,20 +488,16 @@ def regenerate_all_payoff_sales(user: User = Depends(get_current_user), db: Sess
             ))
             created += 1
     db.commit()
-    from app.event_cache import schedule_recompute
-    schedule_recompute(user.id)
+    event_cache.schedule_recompute(user.id)
     return {"updated": updated, "created": created}
 
 
 @router.delete("/{loan_id}", status_code=204)
 def delete_loan(loan_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    loan = db.query(Loan).filter(Loan.id == loan_id, Loan.user_id == user.id).first()
-    if not loan:
-        raise HTTPException(status_code=404, detail="Loan not found")
+    loan = get_owned(db, Loan, loan_id, user, "Loan")
     db.delete(loan)
     db.commit()
-    from app.event_cache import schedule_recompute
-    schedule_recompute(user.id)
+    event_cache.schedule_recompute(user.id)
 
 
 # --- Loan Payments CRUD ---
@@ -537,9 +517,7 @@ def list_loan_payments(
 @lp_router.post("", response_model=LoanPaymentOut, status_code=201)
 def create_loan_payment(body: LoanPaymentCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     # Validate loan belongs to user
-    loan = db.query(Loan).filter(Loan.id == body.loan_id, Loan.user_id == user.id).first()
-    if not loan:
-        raise HTTPException(status_code=404, detail="Loan not found")
+    loan = get_owned(db, Loan, body.loan_id, user, "Loan")
     check_row_quota(db, LoanPayment, user.id)
     lp = LoanPayment(**body.model_dump(), user_id=user.id)
     db.add(lp)
@@ -553,19 +531,11 @@ def update_loan_payment(
     lp_id: int, body: LoanPaymentUpdate,
     user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
-    lp = db.query(LoanPayment).filter(LoanPayment.id == lp_id, LoanPayment.user_id == user.id).first()
-    if not lp:
-        raise HTTPException(status_code=404, detail="Loan payment not found")
-    submitted_version = body.version
-    if submitted_version is not None and lp.version != submitted_version:
-        return JSONResponse(
-            status_code=409,
-            content={"detail": "modified_elsewhere", "current_version": lp.version},
-        )
-    updates = {k: v for k, v in body.model_dump(exclude_unset=True).items() if k != "version"}
-    for k, v in updates.items():
-        setattr(lp, k, v)
-    lp.version = lp.version + 1
+    lp = get_owned(db, LoanPayment, lp_id, user, "Loan payment")
+    stale = version_conflict(lp, body.version)
+    if stale:
+        return stale
+    apply_update(lp, body)
     db.commit()
     db.refresh(lp)
     return lp
@@ -573,8 +543,6 @@ def update_loan_payment(
 
 @lp_router.delete("/{lp_id}", status_code=204)
 def delete_loan_payment(lp_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    lp = db.query(LoanPayment).filter(LoanPayment.id == lp_id, LoanPayment.user_id == user.id).first()
-    if not lp:
-        raise HTTPException(status_code=404, detail="Loan payment not found")
+    lp = get_owned(db, LoanPayment, lp_id, user, "Loan payment")
     db.delete(lp)
     db.commit()

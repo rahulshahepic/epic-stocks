@@ -9,6 +9,7 @@ from scaffold.models import User, Grant, Loan, Price, Sale, TaxSettings, GrantPr
 from schemas import GrantOut, LoanOut, PriceOut, GrowthPriceRequest
 from scaffold.auth import get_current_user
 from scaffold.quota import check_row_quota
+from app import event_cache
 
 router = APIRouter(prefix="/api/flows", tags=["flows"])
 
@@ -214,8 +215,7 @@ def new_purchase(body: NewPurchaseRequest, user: User = Depends(get_current_user
     if loan:
         result["loan"] = LoanOut.model_validate(loan)
 
-    from app.event_cache import schedule_recompute
-    schedule_recompute(user.id)
+    event_cache.schedule_recompute(user.id)
     return result
 
 
@@ -230,8 +230,7 @@ def annual_price(body: AnnualPriceRequest, user: User = Depends(get_current_user
     db.add(price)
     db.commit()
     db.refresh(price)
-    from app.event_cache import schedule_recompute
-    schedule_recompute(user.id)
+    event_cache.schedule_recompute(user.id)
     return price
 
 
@@ -273,8 +272,7 @@ def growth_price(body: GrowthPriceRequest, user: User = Depends(get_current_user
     db.commit()
     for p in entries:
         db.refresh(p)
-    from app.event_cache import schedule_recompute
-    schedule_recompute(user.id)
+    event_cache.schedule_recompute(user.id)
     return entries
 
 
@@ -291,6 +289,5 @@ def add_bonus(body: AddBonusRequest, user: User = Depends(get_current_user), db:
     db.add(grant)
     db.commit()
     db.refresh(grant)
-    from app.event_cache import schedule_recompute
-    schedule_recompute(user.id)
+    event_cache.schedule_recompute(user.id)
     return grant

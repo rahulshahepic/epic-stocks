@@ -5,1552 +5,1552 @@ import { api } from '../../api.ts'
 import { useConfig } from '../hooks/useConfig.ts'
 import { useAppContext } from '../contexts/AppContext.tsx'
 import type {
- AdminStats, AdminUser, BlockedEmailEntry, ErrorLogEntry, UserReportEntry, TestNotifyResult,
- SystemMetricPoint, DbTableInfo, RotationEvent, TipsReport, TrialFunnelReport,
- UserDetail, EmailLookupResult,
+  AdminStats, AdminUser, BlockedEmailEntry, ErrorLogEntry, UserReportEntry, TestNotifyResult,
+  SystemMetricPoint, DbTableInfo, RotationEvent, TipsReport, TrialFunnelReport,
+  UserDetail, EmailLookupResult,
 } from '../../api.ts'
 
 const METRIC_WINDOWS = [
- { label: '24h', hours: 24 },
- { label: '72h', hours: 72 },
- { label: '7d', hours: 168 },
- { label: '30d', hours: 720 },
+  { label: '24h', hours: 24 },
+  { label: '72h', hours: 72 },
+  { label: '7d', hours: 168 },
+  { label: '30d', hours: 720 },
 ]
 
 function Sparkline({ data, dataKey, color, formatter }: {
- data: SystemMetricPoint[]
- dataKey: keyof SystemMetricPoint
- color: string
- formatter?: (v: number) => string
+  data: SystemMetricPoint[]
+  dataKey: keyof SystemMetricPoint
+  color: string
+  formatter?: (v: number) => string
 }) {
- if (data.length === 0) {
- return <div className="flex h-16 items-center justify-center text-xs text-cs-text-2">collecting…</div>
- }
- return (
- <ResponsiveContainer width="100%" height={64}>
- <LineChart data={data}>
- <XAxis dataKey="timestamp" hide />
- <YAxis domain={['auto', 'auto']} hide />
- <Tooltip
- contentStyle={{ fontSize: 10, padding: '2px 6px' }}
- labelFormatter={(label) => new Date(label as string).toLocaleString('en-GB', { timeZone: 'UTC', hour12: false }) + ' UTC'}
- formatter={(v) => [formatter ? formatter(v as number) : String(v), '']}
- />
- <Line
- type="monotone"
- dataKey={dataKey as string}
- stroke={color}
- dot={data.length === 1 ? { r: 3, fill: color } : false}
- strokeWidth={1.5}
- isAnimationActive={false}
- />
- </LineChart>
- </ResponsiveContainer>
- )
+  if (data.length === 0) {
+    return <div className="flex h-16 items-center justify-center text-xs text-cs-text-2">collecting…</div>
+  }
+  return (
+    <ResponsiveContainer width="100%" height={64}>
+      <LineChart data={data}>
+        <XAxis dataKey="timestamp" hide />
+        <YAxis domain={['auto', 'auto']} hide />
+        <Tooltip
+          contentStyle={{ fontSize: 10, padding: '2px 6px' }}
+          labelFormatter={(label) => new Date(label as string).toLocaleString('en-GB', { timeZone: 'UTC', hour12: false }) + ' UTC'}
+          formatter={(v) => [formatter ? formatter(v as number) : String(v), '']}
+        />
+        <Line
+          type="monotone"
+          dataKey={dataKey as string}
+          stroke={color}
+          dot={data.length === 1 ? { r: 3, fill: color } : false}
+          strokeWidth={1.5}
+          isAnimationActive={false}
+        />
+      </LineChart>
+    </ResponsiveContainer>
+  )
 }
 
 export default function Admin() {
- const config = useConfig()
- const { notifyTemplates } = useAppContext()
- const [stats, setStats] = useState<AdminStats | null>(null)
- const [users, setUsers] = useState<AdminUser[]>([])
- const [totalUsers, setTotalUsers] = useState(0)
- const [blocked, setBlocked] = useState<BlockedEmailEntry[]>([])
- const [errorLogs, setErrorLogs] = useState<ErrorLogEntry[]>([])
- const [expandedError, setExpandedError] = useState<number | null>(null)
- const [reports, setReports] = useState<UserReportEntry[]>([])
- const [expandedReport, setExpandedReport] = useState<number | null>(null)
- const [showResolvedReports, setShowResolvedReports] = useState(false)
- const [error, setError] = useState('')
- const [blockEmail, setBlockEmail] = useState('')
- const [blockReason, setBlockReason] = useState('')
- const [confirmDelete, setConfirmDelete] = useState<number | null>(null)
- const [search, setSearch] = useState('')
- const [searchInput, setSearchInput] = useState('')
- const [notifyModal, setNotifyModal] = useState<{ userId: number; userName: string } | null>(null)
- const [notifyTemplate, setNotifyTemplate] = useState('custom')
- const [notifyTitle, setNotifyTitle] = useState('')
- const [notifyBody, setNotifyBody] = useState('')
- const [notifySending, setNotifySending] = useState(false)
- const [notifyResult, setNotifyResult] = useState<TestNotifyResult | null>(null)
-
- // User detail card state
- const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null)
- const [userDetail, setUserDetail] = useState<UserDetail | null>(null)
- const [userDetailLoading, setUserDetailLoading] = useState(false)
- const [userDetailAction, setUserDetailAction] = useState('')
-
- // Email lookup state
- const [emailLookup, setEmailLookup] = useState('')
- const [emailLookupResult, setEmailLookupResult] = useState<EmailLookupResult | null>(null)
- const [emailLookupLoading, setEmailLookupLoading] = useState(false)
-
- // Metrics state
- const [metrics, setMetrics] = useState<SystemMetricPoint[]>([])
- const [metricHours, setMetricHours] = useState(72)
- const [dbTables, setDbTables] = useState<DbTableInfo[]>([])
- const [tipsReport, setTipsReport] = useState<TipsReport | null>(null)
- const [funnel, setFunnel] = useState<TrialFunnelReport | null>(null)
-
- // Danger Zone state
- const [maintenanceActive, setMaintenanceActive] = useState<boolean | null>(null)
- const [maintenanceLoading, setMaintenanceLoading] = useState(false)
- const [epicModeActive, setEpicModeActive] = useState<boolean | null>(null)
- const [epicModeLoading, setEpicModeLoading] = useState(false)
- const [flexiblePayoffActive, setFlexiblePayoffActive] = useState<boolean | null>(null)
- const [flexiblePayoffLoading, setFlexiblePayoffLoading] = useState(false)
- const [rotationOpen, setRotationOpen] = useState(false)
- const [rotationConfirm, setRotationConfirm] = useState(false)
- const [rotationRunning, setRotationRunning] = useState(false)
- const [rotationLog, setRotationLog] = useState<RotationEvent[]>([])
- const rotationLogRef = useRef<HTMLDivElement>(null)
- const [snapshotExists, setSnapshotExists] = useState(false)
- const [restoring, setRestoring] = useState(false)
-
- const loadUsers = useCallback(async (q = '') => {
- try {
- const res = await api.adminUsers(q)
- setUsers(res.users)
- setTotalUsers(res.total)
- } catch {
- setError(prev => prev || 'Failed to load users')
- }
- }, [])
-
- const loadErrors = useCallback(async () => {
- try {
- const logs = await api.adminErrors()
- setErrorLogs(Array.isArray(logs) ? logs : [])
- } catch { /* ignore */ }
- }, [])
-
- const loadReports = useCallback(async () => {
- try {
- const rs = await api.adminReports()
- setReports(Array.isArray(rs) ? rs : [])
- } catch { /* ignore */ }
- }, [])
-
- const loadMetrics = useCallback(async (hours: number) => {
- try {
- const [m, t] = await Promise.all([api.adminMetrics(hours), api.adminDbTables()])
- setMetrics(m)
- setDbTables(t)
- } catch { /* ignore */ }
- }, [])
-
- const load = useCallback(async () => {
- try {
- const [s, b, m, rs, em, fp, tr, tf] = await Promise.all([
- api.adminStats(),
- api.adminListBlocked(),
- api.adminGetMaintenance(),
- api.adminRotationStatus(),
- api.adminGetEpicMode(),
- api.adminGetFlexiblePayoff(),
- api.adminTipsReport(),
- api.adminTrialFunnel(),
- ])
- setStats(s)
- setBlocked(b)
- setMaintenanceActive(m.active)
- setSnapshotExists(rs.snapshot_exists)
- setEpicModeActive(em.active)
- setFlexiblePayoffActive(fp.active)
- setTipsReport(tr)
- setFunnel(tf)
- setError('')
- loadUsers()
- loadErrors()
- } catch {
- setError('Failed to load admin data. You may not have admin access.')
- }
- }, [loadUsers, loadErrors])
-
- useEffect(() => { load() }, [load])
- useEffect(() => { loadReports() }, [loadReports])
- useEffect(() => { loadMetrics(metricHours) }, [metricHours, loadMetrics])
-
- useEffect(() => {
- const timer = setTimeout(() => { setSearch(searchInput) }, 300)
- return () => clearTimeout(timer)
- }, [searchInput])
-
- useEffect(() => { loadUsers(search) }, [search, loadUsers])
-
- const newReportCount = reports.filter(r => r.status === 'new').length
- const visibleReports = showResolvedReports ? reports : reports.filter(r => r.status === 'new')
-
- async function handleBlock(e: React.FormEvent) {
- e.preventDefault()
- if (!blockEmail.trim()) return
- try {
- await api.adminBlockEmail(blockEmail.trim(), blockReason.trim())
- setBlockEmail('')
- setBlockReason('')
- load()
- } catch {
- setError('Failed to block email')
- }
- }
-
- async function handleUnblock(id: number) {
- await api.adminUnblock(id)
- load()
- }
-
- async function handleTestNotify(e: React.FormEvent) {
- e.preventDefault()
- if (!notifyModal) return
- setNotifySending(true)
- setNotifyResult(null)
- try {
- const result = await api.adminTestNotify(notifyModal.userId, notifyTitle, notifyBody)
- setNotifyResult(result)
- loadErrors()
- } catch (err) {
- setError(err instanceof Error ? err.message : 'Failed to send notification')
- } finally {
- setNotifySending(false)
- }
- }
-
- function openNotifyModal(u: { id: number; name?: string | null; email: string }) {
- const firstKey = Object.keys(notifyTemplates)[0] ?? 'custom'
- const firstTpl = notifyTemplates[firstKey]
- setNotifyModal({ userId: u.id, userName: u.name ?? u.email })
- setNotifyTemplate(firstKey)
- setNotifyTitle(firstTpl?.title ?? '')
- setNotifyBody(firstTpl?.body ?? '')
- setNotifyResult(null)
- }
-
- async function openUserDetail(u: AdminUser) {
- setSelectedUser(u)
- setUserDetail(null)
- setUserDetailLoading(true)
- setUserDetailAction('')
- try {
- const detail = await api.adminUserDetail(u.id)
- setUserDetail(detail)
- } catch {
- setError('Failed to load user details')
- } finally {
- setUserDetailLoading(false)
- }
- }
-
- async function reloadUserDetail() {
- if (!selectedUser) return
- try {
- const detail = await api.adminUserDetail(selectedUser.id)
- setUserDetail(detail)
- } catch { /* ignore */ }
- }
-
- async function handleEmailLookup(e: React.FormEvent) {
- e.preventDefault()
- if (!emailLookup.trim()) return
- setEmailLookupLoading(true)
- setEmailLookupResult(null)
- try {
- const result = await api.adminEmailLookup(emailLookup.trim())
- setEmailLookupResult(result)
- } catch {
- setError('Email lookup failed')
- } finally {
- setEmailLookupLoading(false)
- }
- }
-
- function formatBytes(bytes: number) {
- if (bytes < 1024) return `${bytes} B`
- if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
- return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
- }
-
- function formatDate(iso: string | null) {
- if (!iso) return 'Never'
- const d = new Date(iso)
- return d.toLocaleDateString('en-CA', { timeZone: 'UTC' }) + ' UTC'
- }
-
- // Without this, the page renders immediately with stats/epicModeActive/etc.
- // still null, so e2e's navigateTo() helper — which waits for a "Loading..."
- // placeholder to appear then clear — finds nothing to wait on and returns
- // before load()'s Promise.all resolves. Danger Zone buttons read from state
- // set only once load() finishes (epicModeActive starts null and shows a
- // "Loading" label until then), so a slow load() window left every read of
- // those buttons racing the admin API calls with no synchronization point.
- if (!stats && !error) {
- return <p className="p-6 text-center text-sm text-cs-text-2">Loading...</p>
- }
-
- if (error && !stats) {
- return (
- <div className="space-y-6">
- <h2 className="text-lg font-semibold text-cs-text">Admin</h2>
- <p className="text-sm text-red-500">{error}</p>
- </div>
- )
- }
-
- const ramPercent = stats?.ram_used_mb && stats?.ram_total_mb
- ? Math.round((stats.ram_used_mb / stats.ram_total_mb) * 100)
- : null
-
- return (
- <div className="space-y-6">
- <h2 className="text-lg font-semibold text-cs-text">Admin</h2>
-
- {error && <p className="text-xs text-red-500">{error}</p>}
-
- {/* Tools */}
- <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
- <h3 className="text-sm font-medium text-cs-text">Tools</h3>
- <Link
- to="/import-diagnostics"
- className="mt-2 inline-block rounded-md bg-rose-50 px-3 py-1.5 text-xs font-medium text-cs-brand hover:bg-rose-100 dark:bg-rose-900/40 dark:text-rose-300 dark:hover:bg-rose-900/50"
- >
- Import diagnostics
- </Link>
- <p className="mt-2 text-xs text-cs-muted">
- Compare the Epic file importer against a real export. Read-only.
- </p>
- </section>
-
- {/* Stats */}
- {stats && (
- <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
- <h3 className="text-sm font-medium text-cs-text">Overview</h3>
- <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-3">
- <div>
- <span className="text-cs-muted">Users</span>
- <p className="text-lg font-semibold text-cs-text">{stats.total_users}</p>
- </div>
- <div>
- <span className="text-cs-muted">Active (30d)</span>
- <p className="text-lg font-semibold text-cs-text">{stats.active_users_30d}</p>
- </div>
- <div>
- <span className="text-cs-muted">Grants</span>
- <p className="text-lg font-semibold text-cs-text">{stats.total_grants}</p>
- </div>
- <div>
- <span className="text-cs-muted">Loans</span>
- <p className="text-lg font-semibold text-cs-text">{stats.total_loans}</p>
- </div>
- <div>
- <span className="text-cs-muted">Prices</span>
- <p className="text-lg font-semibold text-cs-text">{stats.total_prices}</p>
- </div>
- <div>
- <span className="text-cs-muted">DB Size</span>
- <p className="text-lg font-semibold text-cs-text">{formatBytes(stats.db_size_bytes)}</p>
- </div>
- </div>
- </section>
- )}
-
- {/* Smart Tips Report */}
- {tipsReport && (
- <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
- <h3 className="text-sm font-medium text-cs-text">Smart Tips</h3>
- {tipsReport.unique_users_accepted > 0 ? (
- <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
- <div>
- <span className="text-cs-muted">Users accepted</span>
- <p className="text-lg font-semibold text-cs-text">{tipsReport.unique_users_accepted}</p>
- </div>
- <div>
- <span className="text-cs-muted">Est. total savings</span>
- <p className="text-lg font-semibold text-cs-text">
- {(tipsReport.total_estimated_savings ?? 0).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
- </p>
- </div>
- {tipsReport.by_type.map(t => (
- <div key={t.type}>
- <span className="text-cs-muted capitalize">{t.type.replace('_', ' ')}</span>
- <p className="text-lg font-semibold text-cs-text">{t.unique_users}</p>
- <p className="text-xs text-cs-muted">
- {t.total_savings.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })} saved
- </p>
- </div>
- ))}
- </div>
- ) : (
- <p className="mt-3 text-xs text-cs-muted">No tips accepted yet.</p>
- )}
- </section>
- )}
-
- {funnel && (
- <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
- <h3 className="text-sm font-medium text-cs-text">No-account preview (/try)</h3>
- <p className="mt-1 text-xs text-cs-muted">
- Anonymous daily totals over the last 30 days — three counters per day, nothing about who caused them.
- </p>
- {funnel.previews > 0 ? (
- <>
- <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
- <div>
- <span className="text-cs-muted">Previews computed</span>
- <p className="text-lg font-semibold text-cs-text">{funnel.previews.toLocaleString()}</p>
- </div>
- <div>
- <span className="text-cs-muted">Pressed save</span>
- <p className="text-lg font-semibold text-cs-text">{funnel.save_clicked.toLocaleString()}</p>
- </div>
- <div>
- <span className="text-cs-muted">Signed up with it</span>
- <p className="text-lg font-semibold text-cs-text">{funnel.signups_from_trial.toLocaleString()}</p>
- </div>
- <div>
- <span className="text-cs-muted">Conversion</span>
- <p className="text-lg font-semibold text-cs-text">
- {funnel.conversion_rate != null ? `${(funnel.conversion_rate * 100).toFixed(1)}%` : '—'}
- </p>
- </div>
- </div>
- <div className="mt-3 overflow-x-auto">
- <table className="w-full min-w-[320px] text-left text-xs">
- <thead>
- <tr className="text-cs-muted">
- <th className="pb-1 pr-3 font-medium">Day</th>
- <th className="pb-1 pr-3 text-right font-medium">Previews</th>
- <th className="pb-1 pr-3 text-right font-medium">Saved</th>
- <th className="pb-1 text-right font-medium">Signed up</th>
- </tr>
- </thead>
- <tbody>
- {funnel.days.map(d => (
- <tr key={d.day} className="border-t border-cs-border">
- <td className="py-1 pr-3 text-cs-text-2">{d.day}</td>
- <td className="py-1 pr-3 text-right tabular-nums text-cs-text">{d.previews}</td>
- <td className="py-1 pr-3 text-right tabular-nums text-cs-text">{d.save_clicked}</td>
- <td className="py-1 text-right tabular-nums text-cs-text">{d.signups_from_trial}</td>
- </tr>
- ))}
- </tbody>
- </table>
- </div>
- </>
- ) : (
- <p className="mt-3 text-xs text-cs-muted">No previews computed yet.</p>
- )}
- </section>
- )}
-
- {/* System Health */}
- <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
- <div className="flex items-center justify-between">
- <h3 className="text-sm font-medium text-cs-text">System Health</h3>
- <div className="flex gap-1">
- {METRIC_WINDOWS.map(w => (
- <button
- key={w.hours}
- onClick={() => setMetricHours(w.hours)}
- className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
- metricHours === w.hours
- ? 'bg-cs-brand text-white'
- : 'text-cs-muted hover:text-cs-text dark:hover:text-gray-100'
- }`}
- >
- {w.label}
- </button>
- ))}
- </div>
- </div>
-
- {/* Current readings */}
- {stats && (
- <div className="mt-3 grid grid-cols-3 gap-3 text-xs">
- <div>
- <span className="text-cs-muted">CPU</span>
- <p className="text-lg font-semibold text-cs-text">
- {stats.cpu_percent != null ? `${stats.cpu_percent.toFixed(0)}%` : '—'}
- </p>
- </div>
- <div>
- <span className="text-cs-muted">RAM</span>
- <p className="text-lg font-semibold text-cs-text">
- {ramPercent != null ? `${ramPercent}%` : '—'}
- </p>
- {stats.ram_used_mb != null && stats.ram_total_mb != null && (
- <p className="text-cs-text-2">
- {(stats.ram_used_mb / 1024).toFixed(1)} / {(stats.ram_total_mb / 1024).toFixed(1)} GB
- </p>
- )}
- </div>
- <div>
- <span className="text-cs-muted">DB</span>
- <p className="text-lg font-semibold text-cs-text">{formatBytes(stats.db_size_bytes)}</p>
- </div>
- </div>
- )}
-
- {/* Sparklines */}
- <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
- <div>
- <p className="mb-1 text-xs text-cs-muted">CPU %</p>
- <Sparkline
- data={metrics}
- dataKey="cpu_percent"
- color="#6366f1"
- formatter={v => `${v.toFixed(1)}%`}
- />
- </div>
- <div>
- <p className="mb-1 text-xs text-cs-muted">RAM %</p>
- <Sparkline
- data={metrics.map(m => ({ ...m, ram_percent: Math.round((m.ram_used_mb / m.ram_total_mb) * 100) }))}
- dataKey={'ram_percent' as keyof SystemMetricPoint}
- color="#10b981"
- formatter={v => `${v.toFixed(0)}%`}
- />
- </div>
- <div>
- <p className="mb-1 text-xs text-cs-muted">DB size</p>
- <Sparkline
- data={metrics}
- dataKey="db_size_bytes"
- color="#f59e0b"
- formatter={v => formatBytes(v)}
- />
- </div>
- {metrics.some(m => m.cache_l1_hits != null) && (
- <div>
- <p className="mb-1 text-xs text-cs-muted">Cache hit rate</p>
- <Sparkline
- data={metrics.map((m, i) => {
- const prev = i > 0 ? metrics[i - 1] : null
- // Use per-interval deltas so restarts and zero-traffic points don't flatten the chart.
- // Negative deltas (counter reset on restart) are clamped to 0.
- const dl1 = Math.max(0, (m.cache_l1_hits ?? 0) - (prev?.cache_l1_hits ?? 0))
- const dl2 = Math.max(0, (m.cache_l2_hits ?? 0) - (prev?.cache_l2_hits ?? 0))
- const dm = Math.max(0, (m.cache_misses ?? 0) - (prev?.cache_misses ?? 0))
- const total = dl1 + dl2 + dm
- return { ...m, cache_hit_rate: total > 0 ? Math.round((dl1 + dl2) / total * 100) : null }
- })}
- dataKey={'cache_hit_rate' as keyof SystemMetricPoint}
- color="#8b5cf6"
- formatter={v => `${v.toFixed(0)}%`}
- />
- </div>
- )}
- </div>
- </section>
-
- {/* Database Breakdown */}
- <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
- <h3 className="text-sm font-medium text-cs-text">Database Tables</h3>
- {dbTables.length === 0 ? (
- <p className="mt-3 text-xs text-cs-text-2">
- Table breakdown is only available on PostgreSQL.
- </p>
- ) : (
- <>
- <div tabIndex={0} className="mt-3 overflow-x-auto">
- <table className="w-full text-xs">
- <thead>
- <tr className="border-b border-cs-border text-left text-cs-text-2 ">
- <th className="pb-1.5 font-medium">Table</th>
- <th className="pb-1.5 text-right font-medium">Size</th>
- <th className="pb-1.5 text-right font-medium">~Rows</th>
- </tr>
- </thead>
- <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
- {dbTables.map(t => (
- <tr key={t.table_name}>
- <td className="py-1.5 font-mono text-cs-text">{t.table_name}</td>
- <td className="py-1.5 text-right text-cs-text-2">{formatBytes(t.size_bytes)}</td>
- <td className="py-1.5 text-right text-cs-muted">
- {t.row_estimate < 0 ? '?' : t.row_estimate.toLocaleString()}
- </td>
- </tr>
- ))}
- </tbody>
- </table>
- </div>
- <p className="mt-2 text-xs text-cs-text-2">
- PostgreSQL baseline (~7–8 MB) is included in DB size — system catalogs, template databases, and WAL overhead.
- Row counts are pg_class estimates; they may lag until after a VACUUM ANALYZE.
- </p>
- </>
- )}
- </section>
-
- {/* Email Lookup */}
- <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
- <h3 className="text-sm font-medium text-cs-text">Email Lookup</h3>
- <form onSubmit={handleEmailLookup} className="mt-2 flex gap-2">
- <input
- type="email"
- value={emailLookup}
- onChange={e => setEmailLookup(e.target.value)}
- placeholder="Search by exact email..."
- className="min-w-0 flex-1 rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text "
- required
- />
- <button
- type="submit"
- disabled={emailLookupLoading}
- className="shrink-0 rounded-md bg-cs-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-cs-brand-hover disabled:opacity-50"
- >
- {emailLookupLoading ? '...' : 'Lookup'}
- </button>
- </form>
-
- {emailLookupResult && (
- <div className="mt-3 rounded-md border border-cs-border p-3 text-xs ">
- <p className="font-medium text-cs-text">{emailLookupResult.email}</p>
- <div className="mt-2 space-y-1 text-cs-text-2">
- <p>Account: {emailLookupResult.has_account
- ? <span className="text-green-600 dark:text-green-400">Yes — {emailLookupResult.user_name ?? 'No name'} (id:{emailLookupResult.user_id})</span>
- : <span className="text-cs-muted">No account</span>}
- </p>
- <p>Email notifications: {emailLookupResult.email_notifications_enabled === null
- ? 'N/A' : emailLookupResult.email_notifications_enabled
- ? <span className="text-green-600 dark:text-green-400">Enabled</span>
- : <span className="text-red-500">Disabled</span>}
- </p>
- <p>Invitation opt-out: {emailLookupResult.invitation_opt_out
- ? <span className="text-red-500">Yes</span>
- : <span className="text-green-600 dark:text-green-400">No</span>}
- {emailLookupResult.invitation_opt_out && emailLookupResult.opt_out_id && (
- <button
- onClick={async () => {
- await api.adminClearOptOut(emailLookupResult.opt_out_id!)
- handleEmailLookup({ preventDefault: () => {} } as React.FormEvent)
- }}
- className="ml-2 text-rose-600 hover:text-rose-800 underline "
- >clear</button>
- )}
- </p>
- <p>Blocked from receiving: {emailLookupResult.blocked_from_receiving
- ? <span className="text-red-500">Yes{emailLookupResult.blocked_reason ? ` — ${emailLookupResult.blocked_reason}` : ''}</span>
- : <span className="text-green-600 dark:text-green-400">No</span>}
- {emailLookupResult.blocked_from_receiving && emailLookupResult.blocked_id && (
- <button
- onClick={async () => {
- await api.adminUnblock(emailLookupResult.blocked_id!)
- handleEmailLookup({ preventDefault: () => {} } as React.FormEvent)
- load()
- }}
- className="ml-2 text-rose-600 hover:text-rose-800 underline "
- >unblock</button>
- )}
- </p>
- {emailLookupResult.has_account && (
- <>
- <p>Sending blocked: {emailLookupResult.sending_blocked
- ? <span className="text-red-500">Yes{emailLookupResult.sending_block_reason ? ` — ${emailLookupResult.sending_block_reason}` : ''}</span>
- : <span className="text-green-600 dark:text-green-400">No</span>}
- {emailLookupResult.sending_blocked && emailLookupResult.user_id && (
- <button
- onClick={async () => {
- await api.adminUnblockSending(emailLookupResult.user_id!)
- handleEmailLookup({ preventDefault: () => {} } as React.FormEvent)
- }}
- className="ml-2 text-rose-600 hover:text-rose-800 underline "
- >unblock</button>
- )}
- </p>
- <p>Invitations sent: {emailLookupResult.invitations_sent} · Received: {emailLookupResult.invitations_received}</p>
- {emailLookupResult.email_notifications_enabled === false && emailLookupResult.user_id && (
- <button
- onClick={async () => {
- await api.adminReenableEmail(emailLookupResult.user_id!)
- handleEmailLookup({ preventDefault: () => {} } as React.FormEvent)
- }}
- className="mt-1 text-rose-600 hover:text-rose-800 underline "
- >Re-enable email notifications</button>
- )}
- </>
- )}
- </div>
- </div>
- )}
- </section>
-
- {/* Users */}
- <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
- <div className="flex items-center justify-between">
- <h3 className="text-sm font-medium text-cs-text">Users ({totalUsers})</h3>
- </div>
- <input
- type="text"
- value={searchInput}
- onChange={e => setSearchInput(e.target.value)}
- placeholder="Search by email or name..."
- className="mt-2 w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text "
- />
- <div className="mt-3 space-y-2">
- {users.map(u => (
- <button
- key={u.id}
- onClick={() => openUserDetail(u)}
- className="flex w-full items-center justify-between rounded-md border border-cs-border p-2 text-left text-xs transition-colors hover:bg-cs-raised "
- >
- <div className="min-w-0 flex-1">
- <p className="truncate font-medium text-cs-text">
- {u.email}
- {u.is_admin && (
- <span className="ml-1.5 inline-block rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-cs-brand dark:bg-rose-900/40 dark:text-rose-300">
- Admin
- </span>
- )}
- {!u.is_admin && u.is_content_admin && (
- <span className="ml-1.5 inline-block rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
- Content admin
- </span>
- )}
- </p>
- <p className="text-cs-muted">
- {u.name ?? 'No name'} · Joined {formatDate(u.created_at)} · Last login {formatDate(u.last_login)}
- </p>
- <p className="text-cs-text-2">
- {u.grant_count} grants · {u.loan_count} loans · {u.price_count} prices
- </p>
- </div>
- <span className="ml-2 shrink-0 text-cs-muted">&#9656;</span>
- </button>
- ))}
- {users.length === 0 && (
- <p className="text-xs text-cs-text-2">
- {search ? 'No users match your search.' : 'No users.'}
- </p>
- )}
- </div>
- </section>
-
- {/* Blocked Emails */}
- <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
- <h3 className="text-sm font-medium text-cs-text">Blocked Emails</h3>
- <form onSubmit={handleBlock} className="mt-3 space-y-2">
- <input
- type="email"
- value={blockEmail}
- onChange={e => setBlockEmail(e.target.value)}
- placeholder="email@example.com"
- className="w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text "
- required
- />
- <div className="flex gap-2">
- <input
- type="text"
- value={blockReason}
- onChange={e => setBlockReason(e.target.value)}
- placeholder="Reason (optional)"
- className="min-w-0 flex-1 rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text "
- />
- <button type="submit" className="shrink-0 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700">
- Block
- </button>
- </div>
- </form>
-
- {blocked.length > 0 && (
- <div className="mt-3 space-y-1">
- {blocked.map(b => (
- <div key={b.id} className="flex items-center justify-between rounded-md border border-cs-border p-2 text-xs ">
- <div>
- <span className="font-medium text-cs-text">{b.email}</span>
- {b.reason && <span className="ml-2 text-cs-text-2">({b.reason})</span>}
- </div>
- <button onClick={() => handleUnblock(b.id)} className="rounded px-2 py-1 text-xs text-cs-brand hover:bg-rose-50 dark:hover:bg-rose-900/30">
- Unblock
- </button>
- </div>
- ))}
- </div>
- )}
-
- {blocked.length === 0 && (
- <p className="mt-3 text-xs text-cs-text-2">No blocked emails.</p>
- )}
- </section>
-
- {/* Problem reports — what people actually told us */}
- <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
- <div className="flex items-center justify-between">
- <h3 className="text-sm font-medium text-cs-text">
- Problem Reports ({visibleReports.length})
- {newReportCount > 0 && (
- <span className="ml-2 rounded-full bg-cs-brand px-2 py-0.5 text-[10px] font-semibold text-white">
- {newReportCount} new
- </span>
- )}
- </h3>
- <button
- onClick={() => setShowResolvedReports(v => !v)}
- className="text-xs text-cs-text-2 underline hover:text-cs-text"
- >
- {showResolvedReports ? 'Hide resolved' : 'Show resolved'}
- </button>
- </div>
- {visibleReports.length === 0 && (
- <p className="mt-3 text-xs text-cs-text-2">Nothing reported.</p>
- )}
- <div className="mt-3 space-y-2">
- {visibleReports.map(r => (
- <div
- key={r.id}
- className={`rounded-md border p-2 text-xs ${
- r.status === 'resolved' ? 'border-cs-border opacity-60' : 'border-cs-border-strong'}`}
- >
- <div
- className="flex cursor-pointer items-start justify-between gap-2"
- onClick={() => setExpandedReport(expandedReport === r.id ? null : r.id)}
- >
- <div className="min-w-0 flex-1">
- <span className="font-mono font-medium text-cs-brand">{r.source}</span>
- {r.path && <span className="ml-2 text-cs-muted">{r.path}</span>}
- {r.error_ref && (
- <span className="ml-2 font-mono text-cs-text-2">ref:{r.error_ref}</span>
- )}
- {!r.include_details && (
- <span className="ml-2 text-cs-muted">anonymous</span>
- )}
- <p className="mt-0.5 whitespace-pre-wrap text-cs-text">{r.message}</p>
- </div>
- <span className="shrink-0 text-cs-text-2">
- {new Date(r.timestamp).toLocaleString('en-GB', { timeZone: 'UTC', hour12: false })} UTC
- </span>
- </div>
-
- {expandedReport === r.id && (
- <div className="mt-2 space-y-2">
- <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[11px] text-cs-text-2">
- {r.email && (<><dt className="font-medium">Email</dt><dd>{r.email}</dd></>)}
- {r.user_id != null && (<><dt className="font-medium">User</dt><dd>uid:{r.user_id}</dd></>)}
- {r.app_version && (<><dt className="font-medium">Build</dt><dd className="font-mono">{r.app_version}</dd></>)}
- {r.error_message && (<><dt className="font-medium">Shown</dt><dd>{r.error_message}</dd></>)}
- {r.user_agent && (<><dt className="font-medium">Browser</dt><dd className="break-all">{r.user_agent}</dd></>)}
- </dl>
- {r.client_log && (
- <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded bg-cs-raised p-2 font-mono text-[10px] text-cs-text-2">
- {r.client_log}
- </pre>
- )}
- {r.error_traceback && (
- <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded bg-cs-raised p-2 font-mono text-[10px] text-cs-text-2">
- {r.error_traceback}
- </pre>
- )}
- <div className="flex gap-3">
- <button
- onClick={async () => {
- const next = r.status === 'resolved' ? 'new' : 'resolved'
- await api.adminSetReportStatus(r.id, next)
- setReports(prev => prev.map(x => x.id === r.id ? { ...x, status: next } : x))
- }}
- className="text-xs text-cs-brand hover:underline"
- >
- {r.status === 'resolved' ? 'Reopen' : 'Mark resolved'}
- </button>
- <button
- onClick={async () => {
- await api.adminDeleteReport(r.id)
- setReports(prev => prev.filter(x => x.id !== r.id))
- }}
- className="text-xs text-red-500 hover:text-red-700 dark:text-red-400"
- >
- Delete
- </button>
- </div>
- </div>
- )}
- </div>
- ))}
- </div>
- </section>
-
- {/* Error Logs */}
- <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
- <div className="flex items-center justify-between">
- <h3 className="text-sm font-medium text-cs-text">
- Error Logs ({errorLogs.length})
- </h3>
- {errorLogs.length > 0 && (
- <button
- onClick={async () => { await api.adminClearErrors(); setErrorLogs([]) }}
- className="text-xs text-red-500 hover:text-red-700 dark:text-red-400"
- >
- Clear all
- </button>
- )}
- </div>
- {errorLogs.length === 0 && (
- <p className="mt-3 text-xs text-cs-text-2">No errors logged.</p>
- )}
- <div className="mt-3 space-y-2">
- {errorLogs.map(e => (
- <div key={e.id} className="rounded-md border border-cs-border p-2 text-xs ">
- <div
- className="flex cursor-pointer items-start justify-between"
- onClick={() => setExpandedError(expandedError === e.id ? null : e.id)}
- >
- <div className="min-w-0 flex-1">
- <span className="font-mono font-medium text-red-600 dark:text-red-400">
- {e.error_type}
- </span>
- <span className="ml-2 text-cs-muted">
- {e.method} {e.path}
- </span>
- {e.user_id && (
- <span className="ml-2 text-cs-text-2">uid:{e.user_id}</span>
- )}
- <p className="mt-0.5 truncate text-cs-text-2">{e.error_message}</p>
- </div>
- <span className="ml-2 shrink-0 text-cs-text-2">
- {new Date(e.timestamp).toLocaleString('en-GB', { timeZone: 'UTC', hour12: false })} UTC
- </span>
- </div>
- {expandedError === e.id && e.traceback && (
- <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all rounded bg-cs-raised p-2 font-mono text-[10px] text-cs-text-2 ">
- {e.traceback}
- </pre>
- )}
- </div>
- ))}
- </div>
- </section>
-
- {/* Interrupted rotation recovery banner */}
- {snapshotExists && (
- <div className="rounded-lg border border-red-400 bg-red-50 p-4 dark:border-red-600 dark:bg-red-950">
- <p className="text-sm font-semibold text-red-800 dark:text-red-200">
- Key rotation was interrupted
- </p>
- <p className="mt-1 text-xs text-red-700 dark:text-red-300">
- A rotation snapshot exists on disk. The database may have keys wrapped with the new
- master key while the app is still using the old one. Financial data is inaccessible
- until you restore from the snapshot or complete the rotation.
- </p>
- <button
- disabled={restoring}
- onClick={async () => {
- setRestoring(true)
- try {
- const res = await api.adminRotationRestore()
- setSnapshotExists(false)
- setMaintenanceActive(false)
- alert(`Restored ${res.restored} user key(s) from snapshot. Maintenance mode cleared.`)
- } catch (e) {
- alert(`Restore failed: ${e instanceof Error ? e.message : String(e)}`)
- } finally {
- setRestoring(false)
- }
- }}
- className="mt-3 rounded-md bg-red-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-800 disabled:opacity-50"
- >
- {restoring ? 'Restoring…' : 'Restore from snapshot'}
- </button>
- </div>
- )}
-
- {/* Danger Zone */}
- <section className="rounded-lg border border-red-200 bg-cs-surface p-4 dark:border-red-900/60 ">
- <h3 className="text-sm font-semibold text-red-700 dark:text-red-400">⚠ Danger Zone</h3>
-
- {/* Maintenance Mode Toggle */}
- <div className="mt-4">
- <div className="flex items-center justify-between">
- <div>
- <p className="text-xs font-medium text-cs-text">Maintenance Mode</p>
- <p className="text-xs text-cs-muted">
- Financial data becomes unavailable; auth and admin remain accessible.
- </p>
- </div>
- <button
- disabled={maintenanceActive === null || maintenanceLoading}
- onClick={async () => {
- setMaintenanceLoading(true)
- try {
- const res = await api.adminSetMaintenance(!maintenanceActive)
- setMaintenanceActive(res.active)
- } catch {
- setError('Failed to toggle maintenance mode')
- } finally {
- setMaintenanceLoading(false)
- }
- }}
- className={`ml-4 shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors disabled:opacity-50 ${
- maintenanceActive
- ? 'bg-green-600 hover:bg-green-700'
- : 'bg-red-600 hover:bg-red-700'
- }`}
- >
- {maintenanceLoading
- ? '…'
- : maintenanceActive === null
- ? 'Loading'
- : maintenanceActive
- ? 'Disable Maintenance'
- : 'Enable Maintenance'}
- </button>
- </div>
- {maintenanceActive && (
- <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-300">
- Site is currently in maintenance mode. Users see a 503 page.
- </p>
- )}
- </div>
-
- <hr className="my-4 border-red-100 dark:border-red-900/40" />
-
- {/* Epic Mode Toggle */}
- <div className="mt-4">
- <div className="flex items-center justify-between">
- <div>
- <p className="text-xs font-medium text-cs-text">Epic Mode</p>
- <p className="text-xs text-cs-muted">
- Users can view their data but cannot add or edit grants, prices, or loans.
- </p>
- </div>
- <button
- disabled={epicModeActive === null || epicModeLoading}
- onClick={async () => {
- setEpicModeLoading(true)
- try {
- const res = await api.adminSetEpicMode(!epicModeActive)
- setEpicModeActive(res.active)
- } catch {
- setError('Failed to toggle Epic Mode')
- } finally {
- setEpicModeLoading(false)
- }
- }}
- className={`ml-4 shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors disabled:opacity-50 ${
- epicModeActive
- ? 'bg-green-600 hover:bg-green-700'
- : 'bg-cs-brand hover:bg-cs-brand-hover'
- }`}
- >
- {epicModeLoading
- ? '…'
- : epicModeActive === null
- ? 'Loading'
- : epicModeActive
- ? 'Disable Epic Mode'
- : 'Enable Epic Mode'}
- </button>
- </div>
- {epicModeActive && (
- <p className="mt-1.5 text-xs text-cs-brand">
- Epic Mode is active. Grant/price/loan writes are blocked for all users.
- </p>
- )}
- </div>
-
- <hr className="my-4 border-red-100 dark:border-red-900/40" />
-
- {/* Flexible Loan Payoff Methods */}
- <div className="mt-4">
- <div className="flex items-center justify-between">
- <div>
- <p className="text-xs font-medium text-cs-text">Flexible Loan Payoff Methods</p>
- <p className="text-xs text-cs-muted">
- When enabled, users with sufficient stock coverage can choose Epic LIFO, LIFO, FIFO, or manual lot
- selection for payoff sales instead of the default same-tranche method.
- </p>
- </div>
- <button
- disabled={flexiblePayoffActive === null || flexiblePayoffLoading}
- onClick={async () => {
- setFlexiblePayoffLoading(true)
- try {
- const res = await api.adminSetFlexiblePayoff(!flexiblePayoffActive)
- setFlexiblePayoffActive(res.active)
- } catch {
- setError('Failed to toggle flexible payoff')
- } finally {
- setFlexiblePayoffLoading(false)
- }
- }}
- className={`ml-4 shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors disabled:opacity-50 ${
- flexiblePayoffActive
- ? 'bg-green-600 hover:bg-green-700'
- : 'bg-cs-brand hover:bg-cs-brand-hover'
- }`}
- >
- {flexiblePayoffLoading
- ? '…'
- : flexiblePayoffActive === null
- ? 'Loading'
- : flexiblePayoffActive
- ? 'Disable'
- : 'Enable'}
- </button>
- </div>
- </div>
-
- <hr className="my-4 border-red-100 dark:border-red-900/40" />
-
- {/* Encryption Key Rotation */}
- <div>
- <button
- onClick={() => { setRotationOpen(o => !o); setRotationConfirm(false) }}
- className="text-xs font-medium text-red-700 underline-offset-2 hover:underline dark:text-red-400"
- >
- {rotationOpen ? 'Hide' : 'Rotate Encryption Master Key'}
- </button>
-
- {rotationOpen && (
- <div className="mt-3 space-y-3">
- <p className="text-xs text-cs-text-2">
- Generates a new master key, re-wraps all user encryption keys, and saves
- the new key to disk. Triggers a brief maintenance window automatically.
- No deploy needed — the new key is live immediately.
- </p>
-
- {rotationLog.length > 0 && (
- <div
- ref={rotationLogRef}
- className="max-h-48 overflow-y-auto rounded-md border border-cs-border bg-cs-raised p-2 text-xs font-mono "
- >
- {rotationLog.map((e, i) => (
- <div
- key={i}
- className={
- e.step === 'error'
- ? 'text-red-600 dark:text-red-400'
- : e.step === 'rollback'
- ? 'text-amber-700 dark:text-amber-300'
- : e.step === 'done'
- ? 'text-green-700 dark:text-green-300 font-semibold'
- : 'text-cs-text-2'
- }
- >
- {e.step === 'done' || e.step === 'persist' || e.step === 'smoke'
- ? '✓ '
- : e.step === 'error'
- ? '✗ '
- : e.step === 'rollback'
- ? '↩ '
- : '› '}
- {e.msg}
- </div>
- ))}
- </div>
- )}
-
- {(() => {
- const lastStep = rotationLog[rotationLog.length - 1]?.step
- if (lastStep === 'done') {
- return (
- <p className="text-xs font-medium text-green-700 dark:text-green-300">
- Rotation complete. New key is live — no deploy needed.
- </p>
- )
- }
- if (lastStep === 'error') {
- return (
- <div className="space-y-2">
- <p className="text-xs text-red-600 dark:text-red-400">
- Rotation failed — all changes were rolled back, no data was modified.
- </p>
- <button
- onClick={() => { setRotationLog([]); setRotationConfirm(false) }}
- className="rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
- >
- Try Again
- </button>
- </div>
- )
- }
- if (rotationRunning) return null
- if (!rotationConfirm) {
- return (
- <button
- onClick={() => setRotationConfirm(true)}
- className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
- >
- Rotate Master Key
- </button>
- )
- }
- return (
- <div className="flex items-center gap-2">
- <span className="text-xs text-cs-text-2">Are you sure?</span>
- <button
- onClick={async () => {
- setRotationConfirm(false)
- setRotationRunning(true)
- setRotationLog([])
- try {
- await api.adminRotateKey(event => {
- setRotationLog(prev => {
- const next = [...prev, event]
- setTimeout(() => {
- rotationLogRef.current?.scrollTo({ top: 999999, behavior: 'smooth' })
- }, 0)
- return next
- })
- })
- } catch (err) {
- setRotationLog(prev => [
- ...prev,
- { step: 'error', msg: err instanceof Error ? err.message : 'Unknown error' },
- ])
- } finally {
- setRotationRunning(false)
- // Refresh maintenance + snapshot status
- api.adminRotationStatus().then(rs => {
- setMaintenanceActive(rs.maintenance_active)
- setSnapshotExists(rs.snapshot_exists)
- }).catch(() => {})
- }
- }}
- className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
- >
- Yes, Rotate
- </button>
- <button
- onClick={() => setRotationConfirm(false)}
- className="text-xs text-cs-muted hover:text-cs-text-2 "
- >
- Cancel
- </button>
- </div>
- )
- })()}
- </div>
- )}
- </div>
- </section>
-
- {import.meta.env.VITE_COMMIT_SHA && import.meta.env.VITE_COMMIT_SHA !== 'dev' && (
- <p className="text-center text-xs text-cs-text-2">
- {import.meta.env.VITE_COMMIT_SHA.slice(0, 7)}
- </p>
- )}
-
- {/* User Detail Modal */}
- {selectedUser && (
- <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setSelectedUser(null)}>
- <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-lg bg-cs-surface p-5 shadow-xl " onClick={e => e.stopPropagation()}>
- <div className="mb-4 flex items-center justify-between">
- <div>
- <h3 className="text-sm font-semibold text-cs-text">
- {selectedUser.email}
- </h3>
- <p className="text-xs text-cs-text-2">
- {selectedUser.name ?? 'No name'}
- {selectedUser.is_admin && (
- <span className="ml-1.5 inline-block rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-cs-brand dark:bg-rose-900/40 dark:text-rose-300">
- Admin
- </span>
- )}
- </p>
- </div>
- <button onClick={() => setSelectedUser(null)} aria-label="Close" className="text-cs-text-2 hover:text-cs-text-2 ">✕</button>
- </div>
-
- {userDetailLoading && (
- <div className="flex items-center justify-center py-8">
- <div className="h-3 w-3 animate-pulse rounded-full bg-rose-500" />
- </div>
- )}
-
- {userDetail && (
- <div className="space-y-4 text-xs">
- {/* User Info */}
- <div className="grid grid-cols-2 gap-2 text-cs-text-2">
- <p>Joined: {formatDate(userDetail.created_at)}</p>
- <p>Last login: {formatDate(userDetail.last_login)}</p>
- <p>{userDetail.grant_count} grants · {userDetail.loan_count} loans · {userDetail.price_count} prices</p>
- <p>{userDetail.push_subscriptions} push subscription{userDetail.push_subscriptions !== 1 ? 's' : ''}</p>
- </div>
-
- {/* Email & Notification Status */}
- <div className="rounded-md border border-cs-border p-3 ">
- <h4 className="mb-2 text-xs font-semibold text-cs-text">Email & Notifications</h4>
- <div className="space-y-1 text-cs-text-2">
- <p>Email notifications: {userDetail.email_notifications_enabled === null
- ? 'Not configured'
- : userDetail.email_notifications_enabled
- ? <span className="text-green-600 dark:text-green-400">Enabled</span>
- : <span className="text-red-500">Disabled (unsubscribed)</span>}
- {userDetail.email_notifications_enabled === false && (
- <button
- onClick={async () => {
- setUserDetailAction('reenable-email')
- await api.adminReenableEmail(userDetail.id)
- await reloadUserDetail()
- setUserDetailAction('')
- }}
- disabled={!!userDetailAction}
- className="ml-2 text-rose-600 hover:text-rose-800 underline "
- >re-enable</button>
- )}
- </p>
- <p>Invitation opt-out: {userDetail.invitation_opt_out
- ? <span className="text-red-500">Yes</span>
- : <span className="text-green-600 dark:text-green-400">No</span>}
- {userDetail.invitation_opt_out && (
- <button
- onClick={async () => {
- setUserDetailAction('clear-optout')
- await api.adminClearOptOutByEmail(userDetail.email)
- await reloadUserDetail()
- setUserDetailAction('')
- }}
- disabled={!!userDetailAction}
- className="ml-2 text-rose-600 hover:text-rose-800 underline "
- >clear</button>
- )}
- </p>
- <p>Sending invitations: {userDetail.sending_blocked
- ? <span className="text-red-500">Blocked{userDetail.sending_block_reason ? ` — ${userDetail.sending_block_reason}` : ''}</span>
- : <span className="text-green-600 dark:text-green-400">Allowed</span>}
- </p>
- </div>
- </div>
-
- {/* Invitations Sent */}
- {userDetail.invitations_sent.length > 0 && (
- <div className="rounded-md border border-cs-border p-3 ">
- <h4 className="mb-2 text-xs font-semibold text-cs-text">
- Invitations Sent ({userDetail.invitations_sent.length})
- </h4>
- <div className="space-y-1">
- {userDetail.invitations_sent.map(inv => (
- <div key={inv.id} className="flex items-center justify-between text-cs-text-2">
- <span className="truncate">{inv.invitee_email}</span>
- <span className={`ml-2 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
- inv.status === 'accepted' ? 'bg-green-50 text-green-700 dark:bg-green-900/40 dark:text-green-300'
- : inv.status === 'pending' ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
- : 'bg-cs-raised text-cs-text-2 '
- }`}>{inv.status}</span>
- </div>
- ))}
- </div>
- </div>
- )}
-
- {/* Invitations Received */}
- {userDetail.invitations_received.length > 0 && (
- <div className="rounded-md border border-cs-border p-3 ">
- <h4 className="mb-2 text-xs font-semibold text-cs-text">
- Viewing Data From ({userDetail.invitations_received.length})
- </h4>
- <div className="space-y-1">
- {userDetail.invitations_received.map(inv => (
- <div key={inv.id} className="text-cs-text-2">
- {inv.inviter_name ?? inv.inviter_email}
- </div>
- ))}
- </div>
- </div>
- )}
-
- {/* Actions */}
- <div className="rounded-md border border-cs-border p-3 ">
- <h4 className="mb-2 text-xs font-semibold text-cs-text">Actions</h4>
- <div className="flex flex-wrap gap-2">
- <button
- onClick={() => { openNotifyModal({ id: userDetail.id, name: userDetail.name, email: userDetail.email }) }}
- className="rounded px-3 py-1.5 text-xs font-medium text-white bg-rose-600 hover:bg-rose-700"
- >
- Send Notification
- </button>
-
- {userDetail.sending_blocked ? (
- <button
- onClick={async () => {
- setUserDetailAction('unblock-sending')
- await api.adminUnblockSending(userDetail.id)
- await reloadUserDetail()
- setUserDetailAction('')
- }}
- disabled={!!userDetailAction}
- className="rounded px-3 py-1.5 text-xs font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
- >
- Unblock Sending
- </button>
- ) : (
- <button
- onClick={async () => {
- const reason = prompt('Reason for blocking (optional):')
- if (reason === null) return
- setUserDetailAction('block-sending')
- await api.adminBlockSending(userDetail.id, reason)
- await reloadUserDetail()
- setUserDetailAction('')
- }}
- disabled={!!userDetailAction}
- className="rounded px-3 py-1.5 text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50"
- >
- Block Sending
- </button>
- )}
-
- {(userDetail.invitations_sent.some(i => i.status === 'pending' || i.status === 'accepted') ||
- userDetail.invitations_received.length > 0) && (
- <button
- onClick={async () => {
- if (!confirm('Reset all invitations? This revokes sent invitations and removes shared access.')) return
- setUserDetailAction('reset-invitations')
- try {
- const result = await api.adminResetInvitations(userDetail.id)
- alert(`Revoked ${result.revoked_sent} sent, removed ${result.access_removed} received.`)
- await reloadUserDetail()
- } catch (err) {
- setError(err instanceof Error ? err.message : 'Failed to reset invitations')
- } finally {
- setUserDetailAction('')
- }
- }}
- disabled={!!userDetailAction}
- className="rounded px-3 py-1.5 text-xs font-medium text-white bg-orange-600 hover:bg-orange-700 disabled:opacity-50"
- >
- Reset Invitations
- </button>
- )}
-
- {!userDetail.is_admin && (
- <button
- onClick={async () => {
- setUserDetailAction('toggle-content-admin')
- try {
- await api.setContentAdmin(userDetail.id, !selectedUser!.is_content_admin)
- await loadUsers(search)
- await reloadUserDetail()
- const refreshed = await api.adminUsers(search)
- const updated = refreshed.users.find(x => x.id === userDetail.id)
- if (updated) setSelectedUser(updated)
- } catch (err) {
- setError(err instanceof Error ? err.message : 'Failed to toggle content admin')
- } finally {
- setUserDetailAction('')
- }
- }}
- disabled={!!userDetailAction}
- className="rounded px-3 py-1.5 text-xs font-medium text-white bg-sky-600 hover:bg-sky-700 disabled:opacity-50"
- >
- {selectedUser?.is_content_admin ? 'Revoke Content Admin' : 'Make Content Admin'}
- </button>
- )}
-
- {!userDetail.is_admin && (
- <button
- onClick={async () => {
- if (confirmDelete !== userDetail.id) {
- setConfirmDelete(userDetail.id)
- return
- }
- try {
- await api.adminDeleteUser(userDetail.id)
- setSelectedUser(null)
- setConfirmDelete(null)
- loadUsers(search)
- } catch (err) {
- setError(err instanceof Error ? err.message : 'Failed to delete user')
- }
- }}
- className={`rounded px-3 py-1.5 text-xs font-medium text-white ${
- confirmDelete === userDetail.id ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-400 hover:bg-gray-500'
- }`}
- >
- {confirmDelete === userDetail.id ? 'Confirm Delete' : 'Delete User'}
- </button>
- )}
- </div>
- {userDetailAction && (
- <p className="mt-2 text-xs text-cs-muted">Processing...</p>
- )}
- </div>
- </div>
- )}
- </div>
- </div>
- )}
-
- {/* Notify Modal */}
- {notifyModal && (
- <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
- <div className="w-full max-w-sm rounded-lg bg-cs-surface p-5 shadow-xl ">
- <div className="mb-3 flex items-center justify-between">
- <div>
- <h3 className="text-sm font-semibold text-cs-text">
- Notify — {notifyModal.userName}
- </h3>
- <p className="text-xs text-cs-text-2">
- Email from: {config?.resend_from || <span className="text-red-500">RESEND_FROM not set</span>}
- </p>
- </div>
- <button
- onClick={() => setNotifyModal(null)}
- aria-label="Close dialog"
- className="text-cs-text-2 hover:text-cs-text-2 "
- >
- ✕
- </button>
- </div>
- <form onSubmit={handleTestNotify} className="space-y-2">
- <select
- aria-label="Template"
- value={notifyTemplate}
- onChange={e => {
- const tpl = e.target.value
- const tmpl = notifyTemplates[tpl]
- setNotifyTemplate(tpl)
- if (tmpl) {
- setNotifyTitle(tmpl.title)
- setNotifyBody(tmpl.body)
- }
- setNotifyResult(null)
- }}
- className="w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text "
- >
- {Object.entries(notifyTemplates).map(([key, tpl]) => (
- <option key={key} value={key}>{tpl.label}</option>
- ))}
- </select>
- <input
- type="text"
- aria-label="Title"
- value={notifyTitle}
- onChange={e => { setNotifyTitle(e.target.value); setNotifyTemplate('custom') }}
- placeholder="Title"
- className="w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text "
- />
- <textarea
- aria-label="Body"
- value={notifyBody}
- onChange={e => { setNotifyBody(e.target.value); setNotifyTemplate('custom') }}
- placeholder="Body"
- rows={2}
- className="w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text "
- />
- <div className="flex items-center gap-2">
- <button
- type="submit"
- disabled={notifySending}
- className="rounded-md bg-cs-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-cs-brand-hover disabled:opacity-50"
- >
- {notifySending ? 'Sending…' : 'Send'}
- </button>
- <button
- type="button"
- onClick={() => setNotifyModal(null)}
- className="rounded-md bg-cs-raised px-3 py-1.5 text-xs font-medium text-cs-text-2 hover:bg-stone-200 dark:hover:bg-stone-700"
- >
- Close
- </button>
- </div>
- {notifyResult && (
- <p className="text-xs text-green-700 dark:text-green-300">
- Push: {notifyResult.push_sent} sent{notifyResult.push_failed > 0 ? `, ${notifyResult.push_failed} expired` : ''}.{' '}
- Email: {notifyResult.email_sent ? 'sent' : `not sent${notifyResult.email_skipped_reason ? ` — ${notifyResult.email_skipped_reason}` : ''}`}.
- </p>
- )}
- </form>
- </div>
- </div>
- )}
- </div>
- )
+  const config = useConfig()
+  const { notifyTemplates } = useAppContext()
+  const [stats, setStats] = useState<AdminStats | null>(null)
+  const [users, setUsers] = useState<AdminUser[]>([])
+  const [totalUsers, setTotalUsers] = useState(0)
+  const [blocked, setBlocked] = useState<BlockedEmailEntry[]>([])
+  const [errorLogs, setErrorLogs] = useState<ErrorLogEntry[]>([])
+  const [expandedError, setExpandedError] = useState<number | null>(null)
+  const [reports, setReports] = useState<UserReportEntry[]>([])
+  const [expandedReport, setExpandedReport] = useState<number | null>(null)
+  const [showResolvedReports, setShowResolvedReports] = useState(false)
+  const [error, setError] = useState('')
+  const [blockEmail, setBlockEmail] = useState('')
+  const [blockReason, setBlockReason] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null)
+  const [search, setSearch] = useState('')
+  const [searchInput, setSearchInput] = useState('')
+  const [notifyModal, setNotifyModal] = useState<{ userId: number; userName: string } | null>(null)
+  const [notifyTemplate, setNotifyTemplate] = useState('custom')
+  const [notifyTitle, setNotifyTitle] = useState('')
+  const [notifyBody, setNotifyBody] = useState('')
+  const [notifySending, setNotifySending] = useState(false)
+  const [notifyResult, setNotifyResult] = useState<TestNotifyResult | null>(null)
+
+  // User detail card state
+  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null)
+  const [userDetail, setUserDetail] = useState<UserDetail | null>(null)
+  const [userDetailLoading, setUserDetailLoading] = useState(false)
+  const [userDetailAction, setUserDetailAction] = useState('')
+
+  // Email lookup state
+  const [emailLookup, setEmailLookup] = useState('')
+  const [emailLookupResult, setEmailLookupResult] = useState<EmailLookupResult | null>(null)
+  const [emailLookupLoading, setEmailLookupLoading] = useState(false)
+
+  // Metrics state
+  const [metrics, setMetrics] = useState<SystemMetricPoint[]>([])
+  const [metricHours, setMetricHours] = useState(72)
+  const [dbTables, setDbTables] = useState<DbTableInfo[]>([])
+  const [tipsReport, setTipsReport] = useState<TipsReport | null>(null)
+  const [funnel, setFunnel] = useState<TrialFunnelReport | null>(null)
+
+  // Danger Zone state
+  const [maintenanceActive, setMaintenanceActive] = useState<boolean | null>(null)
+  const [maintenanceLoading, setMaintenanceLoading] = useState(false)
+  const [epicModeActive, setEpicModeActive] = useState<boolean | null>(null)
+  const [epicModeLoading, setEpicModeLoading] = useState(false)
+  const [flexiblePayoffActive, setFlexiblePayoffActive] = useState<boolean | null>(null)
+  const [flexiblePayoffLoading, setFlexiblePayoffLoading] = useState(false)
+  const [rotationOpen, setRotationOpen] = useState(false)
+  const [rotationConfirm, setRotationConfirm] = useState(false)
+  const [rotationRunning, setRotationRunning] = useState(false)
+  const [rotationLog, setRotationLog] = useState<RotationEvent[]>([])
+  const rotationLogRef = useRef<HTMLDivElement>(null)
+  const [snapshotExists, setSnapshotExists] = useState(false)
+  const [restoring, setRestoring] = useState(false)
+
+  const loadUsers = useCallback(async (q = '') => {
+    try {
+      const res = await api.adminUsers(q)
+      setUsers(res.users)
+      setTotalUsers(res.total)
+    } catch {
+      setError(prev => prev || 'Failed to load users')
+    }
+  }, [])
+
+  const loadErrors = useCallback(async () => {
+    try {
+      const logs = await api.adminErrors()
+      setErrorLogs(Array.isArray(logs) ? logs : [])
+    } catch { /* ignore */ }
+  }, [])
+
+  const loadReports = useCallback(async () => {
+    try {
+      const rs = await api.adminReports()
+      setReports(Array.isArray(rs) ? rs : [])
+    } catch { /* ignore */ }
+  }, [])
+
+  const loadMetrics = useCallback(async (hours: number) => {
+    try {
+      const [m, t] = await Promise.all([api.adminMetrics(hours), api.adminDbTables()])
+      setMetrics(m)
+      setDbTables(t)
+    } catch { /* ignore */ }
+  }, [])
+
+  const load = useCallback(async () => {
+    try {
+      const [s, b, m, rs, em, fp, tr, tf] = await Promise.all([
+        api.adminStats(),
+        api.adminListBlocked(),
+        api.adminGetMaintenance(),
+        api.adminRotationStatus(),
+        api.adminGetEpicMode(),
+        api.adminGetFlexiblePayoff(),
+        api.adminTipsReport(),
+        api.adminTrialFunnel(),
+      ])
+      setStats(s)
+      setBlocked(b)
+      setMaintenanceActive(m.active)
+      setSnapshotExists(rs.snapshot_exists)
+      setEpicModeActive(em.active)
+      setFlexiblePayoffActive(fp.active)
+      setTipsReport(tr)
+      setFunnel(tf)
+      setError('')
+      loadUsers()
+      loadErrors()
+    } catch {
+      setError('Failed to load admin data. You may not have admin access.')
+    }
+  }, [loadUsers, loadErrors])
+
+  useEffect(() => { load() }, [load])
+  useEffect(() => { loadReports() }, [loadReports])
+  useEffect(() => { loadMetrics(metricHours) }, [metricHours, loadMetrics])
+
+  useEffect(() => {
+    const timer = setTimeout(() => { setSearch(searchInput) }, 300)
+    return () => clearTimeout(timer)
+  }, [searchInput])
+
+  useEffect(() => { loadUsers(search) }, [search, loadUsers])
+
+  const newReportCount = reports.filter(r => r.status === 'new').length
+  const visibleReports = showResolvedReports ? reports : reports.filter(r => r.status === 'new')
+
+  async function handleBlock(e: React.FormEvent) {
+    e.preventDefault()
+    if (!blockEmail.trim()) return
+    try {
+      await api.adminBlockEmail(blockEmail.trim(), blockReason.trim())
+      setBlockEmail('')
+      setBlockReason('')
+      load()
+    } catch {
+      setError('Failed to block email')
+    }
+  }
+
+  async function handleUnblock(id: number) {
+    await api.adminUnblock(id)
+    load()
+  }
+
+  async function handleTestNotify(e: React.FormEvent) {
+    e.preventDefault()
+    if (!notifyModal) return
+    setNotifySending(true)
+    setNotifyResult(null)
+    try {
+      const result = await api.adminTestNotify(notifyModal.userId, notifyTitle, notifyBody)
+      setNotifyResult(result)
+      loadErrors()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send notification')
+    } finally {
+      setNotifySending(false)
+    }
+  }
+
+  function openNotifyModal(u: { id: number; name?: string | null; email: string }) {
+    const firstKey = Object.keys(notifyTemplates)[0] ?? 'custom'
+    const firstTpl = notifyTemplates[firstKey]
+    setNotifyModal({ userId: u.id, userName: u.name ?? u.email })
+    setNotifyTemplate(firstKey)
+    setNotifyTitle(firstTpl?.title ?? '')
+    setNotifyBody(firstTpl?.body ?? '')
+    setNotifyResult(null)
+  }
+
+  async function openUserDetail(u: AdminUser) {
+    setSelectedUser(u)
+    setUserDetail(null)
+    setUserDetailLoading(true)
+    setUserDetailAction('')
+    try {
+      const detail = await api.adminUserDetail(u.id)
+      setUserDetail(detail)
+    } catch {
+      setError('Failed to load user details')
+    } finally {
+      setUserDetailLoading(false)
+    }
+  }
+
+  async function reloadUserDetail() {
+    if (!selectedUser) return
+    try {
+      const detail = await api.adminUserDetail(selectedUser.id)
+      setUserDetail(detail)
+    } catch { /* ignore */ }
+  }
+
+  async function handleEmailLookup(e: React.FormEvent) {
+    e.preventDefault()
+    if (!emailLookup.trim()) return
+    setEmailLookupLoading(true)
+    setEmailLookupResult(null)
+    try {
+      const result = await api.adminEmailLookup(emailLookup.trim())
+      setEmailLookupResult(result)
+    } catch {
+      setError('Email lookup failed')
+    } finally {
+      setEmailLookupLoading(false)
+    }
+  }
+
+  function formatBytes(bytes: number) {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
+
+  function formatDate(iso: string | null) {
+    if (!iso) return 'Never'
+    const d = new Date(iso)
+    return d.toLocaleDateString('en-CA', { timeZone: 'UTC' }) + ' UTC'
+  }
+
+  // Without this, the page renders immediately with stats/epicModeActive/etc.
+  // still null, so e2e's navigateTo() helper — which waits for a "Loading..."
+  // placeholder to appear then clear — finds nothing to wait on and returns
+  // before load()'s Promise.all resolves. Danger Zone buttons read from state
+  // set only once load() finishes (epicModeActive starts null and shows a
+  // "Loading" label until then), so a slow load() window left every read of
+  // those buttons racing the admin API calls with no synchronization point.
+  if (!stats && !error) {
+    return <p className="p-6 text-center text-sm text-cs-text-2">Loading...</p>
+  }
+
+  if (error && !stats) {
+    return (
+      <div className="space-y-6">
+        <h2 className="text-lg font-semibold text-cs-text">Admin</h2>
+        <p className="text-sm text-red-500">{error}</p>
+      </div>
+    )
+  }
+
+  const ramPercent = stats?.ram_used_mb && stats?.ram_total_mb
+    ? Math.round((stats.ram_used_mb / stats.ram_total_mb) * 100)
+    : null
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-lg font-semibold text-cs-text">Admin</h2>
+
+      {error && <p className="text-xs text-red-500">{error}</p>}
+
+      {/* Tools */}
+      <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+        <h3 className="text-sm font-medium text-cs-text">Tools</h3>
+        <Link
+          to="/import-diagnostics"
+          className="mt-2 inline-block rounded-md bg-rose-50 px-3 py-1.5 text-xs font-medium text-cs-brand hover:bg-rose-100 dark:bg-rose-900/40 dark:text-rose-300 dark:hover:bg-rose-900/50"
+        >
+          Import diagnostics
+        </Link>
+        <p className="mt-2 text-xs text-cs-muted">
+          Compare the Epic file importer against a real export. Read-only.
+        </p>
+      </section>
+
+      {/* Stats */}
+      {stats && (
+        <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+          <h3 className="text-sm font-medium text-cs-text">Overview</h3>
+          <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-3">
+            <div>
+              <span className="text-cs-muted">Users</span>
+              <p className="text-lg font-semibold text-cs-text">{stats.total_users}</p>
+            </div>
+            <div>
+              <span className="text-cs-muted">Active (30d)</span>
+              <p className="text-lg font-semibold text-cs-text">{stats.active_users_30d}</p>
+            </div>
+            <div>
+              <span className="text-cs-muted">Grants</span>
+              <p className="text-lg font-semibold text-cs-text">{stats.total_grants}</p>
+            </div>
+            <div>
+              <span className="text-cs-muted">Loans</span>
+              <p className="text-lg font-semibold text-cs-text">{stats.total_loans}</p>
+            </div>
+            <div>
+              <span className="text-cs-muted">Prices</span>
+              <p className="text-lg font-semibold text-cs-text">{stats.total_prices}</p>
+            </div>
+            <div>
+              <span className="text-cs-muted">DB Size</span>
+              <p className="text-lg font-semibold text-cs-text">{formatBytes(stats.db_size_bytes)}</p>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Smart Tips Report */}
+      {tipsReport && (
+        <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+          <h3 className="text-sm font-medium text-cs-text">Smart Tips</h3>
+          {tipsReport.unique_users_accepted > 0 ? (
+            <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+              <div>
+                <span className="text-cs-muted">Users accepted</span>
+                <p className="text-lg font-semibold text-cs-text">{tipsReport.unique_users_accepted}</p>
+              </div>
+              <div>
+                <span className="text-cs-muted">Est. total savings</span>
+                <p className="text-lg font-semibold text-cs-text">
+                  {(tipsReport.total_estimated_savings ?? 0).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
+                </p>
+              </div>
+              {tipsReport.by_type.map(t => (
+                <div key={t.type}>
+                  <span className="text-cs-muted capitalize">{t.type.replace('_', ' ')}</span>
+                  <p className="text-lg font-semibold text-cs-text">{t.unique_users}</p>
+                  <p className="text-xs text-cs-muted">
+                    {t.total_savings.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })} saved
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-3 text-xs text-cs-muted">No tips accepted yet.</p>
+          )}
+        </section>
+      )}
+
+      {funnel && (
+        <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+          <h3 className="text-sm font-medium text-cs-text">No-account preview (/try)</h3>
+          <p className="mt-1 text-xs text-cs-muted">
+            Anonymous daily totals over the last 30 days — three counters per day, nothing about who caused them.
+          </p>
+          {funnel.previews > 0 ? (
+            <>
+              <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+                <div>
+                  <span className="text-cs-muted">Previews computed</span>
+                  <p className="text-lg font-semibold text-cs-text">{funnel.previews.toLocaleString()}</p>
+                </div>
+                <div>
+                  <span className="text-cs-muted">Pressed save</span>
+                  <p className="text-lg font-semibold text-cs-text">{funnel.save_clicked.toLocaleString()}</p>
+                </div>
+                <div>
+                  <span className="text-cs-muted">Signed up with it</span>
+                  <p className="text-lg font-semibold text-cs-text">{funnel.signups_from_trial.toLocaleString()}</p>
+                </div>
+                <div>
+                  <span className="text-cs-muted">Conversion</span>
+                  <p className="text-lg font-semibold text-cs-text">
+                    {funnel.conversion_rate != null ? `${(funnel.conversion_rate * 100).toFixed(1)}%` : '—'}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full min-w-[320px] text-left text-xs">
+                  <thead>
+                    <tr className="text-cs-muted">
+                      <th className="pb-1 pr-3 font-medium">Day</th>
+                      <th className="pb-1 pr-3 text-right font-medium">Previews</th>
+                      <th className="pb-1 pr-3 text-right font-medium">Saved</th>
+                      <th className="pb-1 text-right font-medium">Signed up</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {funnel.days.map(d => (
+                      <tr key={d.day} className="border-t border-cs-border">
+                        <td className="py-1 pr-3 text-cs-text-2">{d.day}</td>
+                        <td className="py-1 pr-3 text-right tabular-nums text-cs-text">{d.previews}</td>
+                        <td className="py-1 pr-3 text-right tabular-nums text-cs-text">{d.save_clicked}</td>
+                        <td className="py-1 text-right tabular-nums text-cs-text">{d.signups_from_trial}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <p className="mt-3 text-xs text-cs-muted">No previews computed yet.</p>
+          )}
+        </section>
+      )}
+
+      {/* System Health */}
+      <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-cs-text">System Health</h3>
+          <div className="flex gap-1">
+            {METRIC_WINDOWS.map(w => (
+              <button
+                key={w.hours}
+                onClick={() => setMetricHours(w.hours)}
+                className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+                  metricHours === w.hours
+                    ? 'bg-cs-brand text-white'
+                    : 'text-cs-muted hover:text-cs-text dark:hover:text-gray-100'
+                }`}
+              >
+                {w.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Current readings */}
+        {stats && (
+          <div className="mt-3 grid grid-cols-3 gap-3 text-xs">
+            <div>
+              <span className="text-cs-muted">CPU</span>
+              <p className="text-lg font-semibold text-cs-text">
+                {stats.cpu_percent != null ? `${stats.cpu_percent.toFixed(0)}%` : '—'}
+              </p>
+            </div>
+            <div>
+              <span className="text-cs-muted">RAM</span>
+              <p className="text-lg font-semibold text-cs-text">
+                {ramPercent != null ? `${ramPercent}%` : '—'}
+              </p>
+              {stats.ram_used_mb != null && stats.ram_total_mb != null && (
+                <p className="text-cs-text-2">
+                  {(stats.ram_used_mb / 1024).toFixed(1)} / {(stats.ram_total_mb / 1024).toFixed(1)} GB
+                </p>
+              )}
+            </div>
+            <div>
+              <span className="text-cs-muted">DB</span>
+              <p className="text-lg font-semibold text-cs-text">{formatBytes(stats.db_size_bytes)}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Sparklines */}
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div>
+            <p className="mb-1 text-xs text-cs-muted">CPU %</p>
+            <Sparkline
+              data={metrics}
+              dataKey="cpu_percent"
+              color="#6366f1"
+              formatter={v => `${v.toFixed(1)}%`}
+            />
+          </div>
+          <div>
+            <p className="mb-1 text-xs text-cs-muted">RAM %</p>
+            <Sparkline
+              data={metrics.map(m => ({ ...m, ram_percent: Math.round((m.ram_used_mb / m.ram_total_mb) * 100) }))}
+              dataKey={'ram_percent' as keyof SystemMetricPoint}
+              color="#10b981"
+              formatter={v => `${v.toFixed(0)}%`}
+            />
+          </div>
+          <div>
+            <p className="mb-1 text-xs text-cs-muted">DB size</p>
+            <Sparkline
+              data={metrics}
+              dataKey="db_size_bytes"
+              color="#f59e0b"
+              formatter={v => formatBytes(v)}
+            />
+          </div>
+          {metrics.some(m => m.cache_l1_hits != null) && (
+            <div>
+              <p className="mb-1 text-xs text-cs-muted">Cache hit rate</p>
+              <Sparkline
+                data={metrics.map((m, i) => {
+                  const prev = i > 0 ? metrics[i - 1] : null
+                  // Use per-interval deltas so restarts and zero-traffic points don't flatten the chart.
+                  // Negative deltas (counter reset on restart) are clamped to 0.
+                  const dl1 = Math.max(0, (m.cache_l1_hits ?? 0) - (prev?.cache_l1_hits ?? 0))
+                  const dl2 = Math.max(0, (m.cache_l2_hits ?? 0) - (prev?.cache_l2_hits ?? 0))
+                  const dm = Math.max(0, (m.cache_misses ?? 0) - (prev?.cache_misses ?? 0))
+                  const total = dl1 + dl2 + dm
+                  return { ...m, cache_hit_rate: total > 0 ? Math.round((dl1 + dl2) / total * 100) : null }
+                })}
+                dataKey={'cache_hit_rate' as keyof SystemMetricPoint}
+                color="#8b5cf6"
+                formatter={v => `${v.toFixed(0)}%`}
+              />
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Database Breakdown */}
+      <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+        <h3 className="text-sm font-medium text-cs-text">Database Tables</h3>
+        {dbTables.length === 0 ? (
+          <p className="mt-3 text-xs text-cs-text-2">
+            Table breakdown is only available on PostgreSQL.
+          </p>
+        ) : (
+          <>
+            <div tabIndex={0} className="mt-3 overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-cs-border text-left text-cs-text-2 ">
+                    <th className="pb-1.5 font-medium">Table</th>
+                    <th className="pb-1.5 text-right font-medium">Size</th>
+                    <th className="pb-1.5 text-right font-medium">~Rows</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                  {dbTables.map(t => (
+                    <tr key={t.table_name}>
+                      <td className="py-1.5 font-mono text-cs-text">{t.table_name}</td>
+                      <td className="py-1.5 text-right text-cs-text-2">{formatBytes(t.size_bytes)}</td>
+                      <td className="py-1.5 text-right text-cs-muted">
+                        {t.row_estimate < 0 ? '?' : t.row_estimate.toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-2 text-xs text-cs-text-2">
+              PostgreSQL baseline (~7–8 MB) is included in DB size — system catalogs, template databases, and WAL overhead.
+              Row counts are pg_class estimates; they may lag until after a VACUUM ANALYZE.
+            </p>
+          </>
+        )}
+      </section>
+
+      {/* Email Lookup */}
+      <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+        <h3 className="text-sm font-medium text-cs-text">Email Lookup</h3>
+        <form onSubmit={handleEmailLookup} className="mt-2 flex gap-2">
+          <input
+            type="email"
+            value={emailLookup}
+            onChange={e => setEmailLookup(e.target.value)}
+            placeholder="Search by exact email..."
+            className="min-w-0 flex-1 rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text "
+            required
+          />
+          <button
+            type="submit"
+            disabled={emailLookupLoading}
+            className="shrink-0 rounded-md bg-cs-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-cs-brand-hover disabled:opacity-50"
+          >
+            {emailLookupLoading ? '...' : 'Lookup'}
+          </button>
+        </form>
+
+        {emailLookupResult && (
+          <div className="mt-3 rounded-md border border-cs-border p-3 text-xs ">
+            <p className="font-medium text-cs-text">{emailLookupResult.email}</p>
+            <div className="mt-2 space-y-1 text-cs-text-2">
+              <p>Account: {emailLookupResult.has_account
+                ? <span className="text-green-600 dark:text-green-400">Yes — {emailLookupResult.user_name ?? 'No name'} (id:{emailLookupResult.user_id})</span>
+                : <span className="text-cs-muted">No account</span>}
+              </p>
+              <p>Email notifications: {emailLookupResult.email_notifications_enabled === null
+                ? 'N/A' : emailLookupResult.email_notifications_enabled
+                  ? <span className="text-green-600 dark:text-green-400">Enabled</span>
+                  : <span className="text-red-500">Disabled</span>}
+              </p>
+              <p>Invitation opt-out: {emailLookupResult.invitation_opt_out
+                ? <span className="text-red-500">Yes</span>
+                : <span className="text-green-600 dark:text-green-400">No</span>}
+              {emailLookupResult.invitation_opt_out && emailLookupResult.opt_out_id && (
+                <button
+                  onClick={async () => {
+                    await api.adminClearOptOut(emailLookupResult.opt_out_id!)
+                    handleEmailLookup({ preventDefault: () => {} } as React.FormEvent)
+                  }}
+                  className="ml-2 text-rose-600 hover:text-rose-800 underline "
+                >clear</button>
+              )}
+              </p>
+              <p>Blocked from receiving: {emailLookupResult.blocked_from_receiving
+                ? <span className="text-red-500">Yes{emailLookupResult.blocked_reason ? ` — ${emailLookupResult.blocked_reason}` : ''}</span>
+                : <span className="text-green-600 dark:text-green-400">No</span>}
+              {emailLookupResult.blocked_from_receiving && emailLookupResult.blocked_id && (
+                <button
+                  onClick={async () => {
+                    await api.adminUnblock(emailLookupResult.blocked_id!)
+                    handleEmailLookup({ preventDefault: () => {} } as React.FormEvent)
+                    load()
+                  }}
+                  className="ml-2 text-rose-600 hover:text-rose-800 underline "
+                >unblock</button>
+              )}
+              </p>
+              {emailLookupResult.has_account && (
+                <>
+                  <p>Sending blocked: {emailLookupResult.sending_blocked
+                    ? <span className="text-red-500">Yes{emailLookupResult.sending_block_reason ? ` — ${emailLookupResult.sending_block_reason}` : ''}</span>
+                    : <span className="text-green-600 dark:text-green-400">No</span>}
+                  {emailLookupResult.sending_blocked && emailLookupResult.user_id && (
+                    <button
+                      onClick={async () => {
+                        await api.adminUnblockSending(emailLookupResult.user_id!)
+                        handleEmailLookup({ preventDefault: () => {} } as React.FormEvent)
+                      }}
+                      className="ml-2 text-rose-600 hover:text-rose-800 underline "
+                    >unblock</button>
+                  )}
+                  </p>
+                  <p>Invitations sent: {emailLookupResult.invitations_sent} · Received: {emailLookupResult.invitations_received}</p>
+                  {emailLookupResult.email_notifications_enabled === false && emailLookupResult.user_id && (
+                    <button
+                      onClick={async () => {
+                        await api.adminReenableEmail(emailLookupResult.user_id!)
+                        handleEmailLookup({ preventDefault: () => {} } as React.FormEvent)
+                      }}
+                      className="mt-1 text-rose-600 hover:text-rose-800 underline "
+                    >Re-enable email notifications</button>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* Users */}
+      <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-cs-text">Users ({totalUsers})</h3>
+        </div>
+        <input
+          type="text"
+          value={searchInput}
+          onChange={e => setSearchInput(e.target.value)}
+          placeholder="Search by email or name..."
+          className="mt-2 w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text "
+        />
+        <div className="mt-3 space-y-2">
+          {users.map(u => (
+            <button
+              key={u.id}
+              onClick={() => openUserDetail(u)}
+              className="flex w-full items-center justify-between rounded-md border border-cs-border p-2 text-left text-xs transition-colors hover:bg-cs-raised "
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium text-cs-text">
+                  {u.email}
+                  {u.is_admin && (
+                    <span className="ml-1.5 inline-block rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-cs-brand dark:bg-rose-900/40 dark:text-rose-300">
+                      Admin
+                    </span>
+                  )}
+                  {!u.is_admin && u.is_content_admin && (
+                    <span className="ml-1.5 inline-block rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
+                      Content admin
+                    </span>
+                  )}
+                </p>
+                <p className="text-cs-muted">
+                  {u.name ?? 'No name'} · Joined {formatDate(u.created_at)} · Last login {formatDate(u.last_login)}
+                </p>
+                <p className="text-cs-text-2">
+                  {u.grant_count} grants · {u.loan_count} loans · {u.price_count} prices
+                </p>
+              </div>
+              <span className="ml-2 shrink-0 text-cs-muted">&#9656;</span>
+            </button>
+          ))}
+          {users.length === 0 && (
+            <p className="text-xs text-cs-text-2">
+              {search ? 'No users match your search.' : 'No users.'}
+            </p>
+          )}
+        </div>
+      </section>
+
+      {/* Blocked Emails */}
+      <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+        <h3 className="text-sm font-medium text-cs-text">Blocked Emails</h3>
+        <form onSubmit={handleBlock} className="mt-3 space-y-2">
+          <input
+            type="email"
+            value={blockEmail}
+            onChange={e => setBlockEmail(e.target.value)}
+            placeholder="email@example.com"
+            className="w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text "
+            required
+          />
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={blockReason}
+              onChange={e => setBlockReason(e.target.value)}
+              placeholder="Reason (optional)"
+              className="min-w-0 flex-1 rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text "
+            />
+            <button type="submit" className="shrink-0 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700">
+              Block
+            </button>
+          </div>
+        </form>
+
+        {blocked.length > 0 && (
+          <div className="mt-3 space-y-1">
+            {blocked.map(b => (
+              <div key={b.id} className="flex items-center justify-between rounded-md border border-cs-border p-2 text-xs ">
+                <div>
+                  <span className="font-medium text-cs-text">{b.email}</span>
+                  {b.reason && <span className="ml-2 text-cs-text-2">({b.reason})</span>}
+                </div>
+                <button onClick={() => handleUnblock(b.id)} className="rounded px-2 py-1 text-xs text-cs-brand hover:bg-rose-50 dark:hover:bg-rose-900/30">
+                  Unblock
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {blocked.length === 0 && (
+          <p className="mt-3 text-xs text-cs-text-2">No blocked emails.</p>
+        )}
+      </section>
+
+      {/* Problem reports — what people actually told us */}
+      <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-cs-text">
+            Problem Reports ({visibleReports.length})
+            {newReportCount > 0 && (
+              <span className="ml-2 rounded-full bg-cs-brand px-2 py-0.5 text-[10px] font-semibold text-white">
+                {newReportCount} new
+              </span>
+            )}
+          </h3>
+          <button
+            onClick={() => setShowResolvedReports(v => !v)}
+            className="text-xs text-cs-text-2 underline hover:text-cs-text"
+          >
+            {showResolvedReports ? 'Hide resolved' : 'Show resolved'}
+          </button>
+        </div>
+        {visibleReports.length === 0 && (
+          <p className="mt-3 text-xs text-cs-text-2">Nothing reported.</p>
+        )}
+        <div className="mt-3 space-y-2">
+          {visibleReports.map(r => (
+            <div
+              key={r.id}
+              className={`rounded-md border p-2 text-xs ${
+                r.status === 'resolved' ? 'border-cs-border opacity-60' : 'border-cs-border-strong'}`}
+            >
+              <div
+                className="flex cursor-pointer items-start justify-between gap-2"
+                onClick={() => setExpandedReport(expandedReport === r.id ? null : r.id)}
+              >
+                <div className="min-w-0 flex-1">
+                  <span className="font-mono font-medium text-cs-brand">{r.source}</span>
+                  {r.path && <span className="ml-2 text-cs-muted">{r.path}</span>}
+                  {r.error_ref && (
+                    <span className="ml-2 font-mono text-cs-text-2">ref:{r.error_ref}</span>
+                  )}
+                  {!r.include_details && (
+                    <span className="ml-2 text-cs-muted">anonymous</span>
+                  )}
+                  <p className="mt-0.5 whitespace-pre-wrap text-cs-text">{r.message}</p>
+                </div>
+                <span className="shrink-0 text-cs-text-2">
+                  {new Date(r.timestamp).toLocaleString('en-GB', { timeZone: 'UTC', hour12: false })} UTC
+                </span>
+              </div>
+
+              {expandedReport === r.id && (
+                <div className="mt-2 space-y-2">
+                  <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[11px] text-cs-text-2">
+                    {r.email && (<><dt className="font-medium">Email</dt><dd>{r.email}</dd></>)}
+                    {r.user_id != null && (<><dt className="font-medium">User</dt><dd>uid:{r.user_id}</dd></>)}
+                    {r.app_version && (<><dt className="font-medium">Build</dt><dd className="font-mono">{r.app_version}</dd></>)}
+                    {r.error_message && (<><dt className="font-medium">Shown</dt><dd>{r.error_message}</dd></>)}
+                    {r.user_agent && (<><dt className="font-medium">Browser</dt><dd className="break-all">{r.user_agent}</dd></>)}
+                  </dl>
+                  {r.client_log && (
+                    <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded bg-cs-raised p-2 font-mono text-[10px] text-cs-text-2">
+                      {r.client_log}
+                    </pre>
+                  )}
+                  {r.error_traceback && (
+                    <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded bg-cs-raised p-2 font-mono text-[10px] text-cs-text-2">
+                      {r.error_traceback}
+                    </pre>
+                  )}
+                  <div className="flex gap-3">
+                    <button
+                      onClick={async () => {
+                        const next = r.status === 'resolved' ? 'new' : 'resolved'
+                        await api.adminSetReportStatus(r.id, next)
+                        setReports(prev => prev.map(x => x.id === r.id ? { ...x, status: next } : x))
+                      }}
+                      className="text-xs text-cs-brand hover:underline"
+                    >
+                      {r.status === 'resolved' ? 'Reopen' : 'Mark resolved'}
+                    </button>
+                    <button
+                      onClick={async () => {
+                        await api.adminDeleteReport(r.id)
+                        setReports(prev => prev.filter(x => x.id !== r.id))
+                      }}
+                      className="text-xs text-red-500 hover:text-red-700 dark:text-red-400"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Error Logs */}
+      <section className="rounded-2xl border border-cs-border bg-cs-surface p-4 shadow-card">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium text-cs-text">
+            Error Logs ({errorLogs.length})
+          </h3>
+          {errorLogs.length > 0 && (
+            <button
+              onClick={async () => { await api.adminClearErrors(); setErrorLogs([]) }}
+              className="text-xs text-red-500 hover:text-red-700 dark:text-red-400"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+        {errorLogs.length === 0 && (
+          <p className="mt-3 text-xs text-cs-text-2">No errors logged.</p>
+        )}
+        <div className="mt-3 space-y-2">
+          {errorLogs.map(e => (
+            <div key={e.id} className="rounded-md border border-cs-border p-2 text-xs ">
+              <div
+                className="flex cursor-pointer items-start justify-between"
+                onClick={() => setExpandedError(expandedError === e.id ? null : e.id)}
+              >
+                <div className="min-w-0 flex-1">
+                  <span className="font-mono font-medium text-red-600 dark:text-red-400">
+                    {e.error_type}
+                  </span>
+                  <span className="ml-2 text-cs-muted">
+                    {e.method} {e.path}
+                  </span>
+                  {e.user_id && (
+                    <span className="ml-2 text-cs-text-2">uid:{e.user_id}</span>
+                  )}
+                  <p className="mt-0.5 truncate text-cs-text-2">{e.error_message}</p>
+                </div>
+                <span className="ml-2 shrink-0 text-cs-text-2">
+                  {new Date(e.timestamp).toLocaleString('en-GB', { timeZone: 'UTC', hour12: false })} UTC
+                </span>
+              </div>
+              {expandedError === e.id && e.traceback && (
+                <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all rounded bg-cs-raised p-2 font-mono text-[10px] text-cs-text-2 ">
+                  {e.traceback}
+                </pre>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Interrupted rotation recovery banner */}
+      {snapshotExists && (
+        <div className="rounded-lg border border-red-400 bg-red-50 p-4 dark:border-red-600 dark:bg-red-950">
+          <p className="text-sm font-semibold text-red-800 dark:text-red-200">
+            Key rotation was interrupted
+          </p>
+          <p className="mt-1 text-xs text-red-700 dark:text-red-300">
+            A rotation snapshot exists on disk. The database may have keys wrapped with the new
+            master key while the app is still using the old one. Financial data is inaccessible
+            until you restore from the snapshot or complete the rotation.
+          </p>
+          <button
+            disabled={restoring}
+            onClick={async () => {
+              setRestoring(true)
+              try {
+                const res = await api.adminRotationRestore()
+                setSnapshotExists(false)
+                setMaintenanceActive(false)
+                alert(`Restored ${res.restored} user key(s) from snapshot. Maintenance mode cleared.`)
+              } catch (e) {
+                alert(`Restore failed: ${e instanceof Error ? e.message : String(e)}`)
+              } finally {
+                setRestoring(false)
+              }
+            }}
+            className="mt-3 rounded-md bg-red-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-800 disabled:opacity-50"
+          >
+            {restoring ? 'Restoring…' : 'Restore from snapshot'}
+          </button>
+        </div>
+      )}
+
+      {/* Danger Zone */}
+      <section className="rounded-lg border border-red-200 bg-cs-surface p-4 dark:border-red-900/60 ">
+        <h3 className="text-sm font-semibold text-red-700 dark:text-red-400">⚠ Danger Zone</h3>
+
+        {/* Maintenance Mode Toggle */}
+        <div className="mt-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-cs-text">Maintenance Mode</p>
+              <p className="text-xs text-cs-muted">
+                Financial data becomes unavailable; auth and admin remain accessible.
+              </p>
+            </div>
+            <button
+              disabled={maintenanceActive === null || maintenanceLoading}
+              onClick={async () => {
+                setMaintenanceLoading(true)
+                try {
+                  const res = await api.adminSetMaintenance(!maintenanceActive)
+                  setMaintenanceActive(res.active)
+                } catch {
+                  setError('Failed to toggle maintenance mode')
+                } finally {
+                  setMaintenanceLoading(false)
+                }
+              }}
+              className={`ml-4 shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors disabled:opacity-50 ${
+                maintenanceActive
+                  ? 'bg-green-600 hover:bg-green-700'
+                  : 'bg-red-600 hover:bg-red-700'
+              }`}
+            >
+              {maintenanceLoading
+                ? '…'
+                : maintenanceActive === null
+                  ? 'Loading'
+                  : maintenanceActive
+                    ? 'Disable Maintenance'
+                    : 'Enable Maintenance'}
+            </button>
+          </div>
+          {maintenanceActive && (
+            <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-300">
+              Site is currently in maintenance mode. Users see a 503 page.
+            </p>
+          )}
+        </div>
+
+        <hr className="my-4 border-red-100 dark:border-red-900/40" />
+
+        {/* Epic Mode Toggle */}
+        <div className="mt-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-cs-text">Epic Mode</p>
+              <p className="text-xs text-cs-muted">
+                Users can view their data but cannot add or edit grants, prices, or loans.
+              </p>
+            </div>
+            <button
+              disabled={epicModeActive === null || epicModeLoading}
+              onClick={async () => {
+                setEpicModeLoading(true)
+                try {
+                  const res = await api.adminSetEpicMode(!epicModeActive)
+                  setEpicModeActive(res.active)
+                } catch {
+                  setError('Failed to toggle Epic Mode')
+                } finally {
+                  setEpicModeLoading(false)
+                }
+              }}
+              className={`ml-4 shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors disabled:opacity-50 ${
+                epicModeActive
+                  ? 'bg-green-600 hover:bg-green-700'
+                  : 'bg-cs-brand hover:bg-cs-brand-hover'
+              }`}
+            >
+              {epicModeLoading
+                ? '…'
+                : epicModeActive === null
+                  ? 'Loading'
+                  : epicModeActive
+                    ? 'Disable Epic Mode'
+                    : 'Enable Epic Mode'}
+            </button>
+          </div>
+          {epicModeActive && (
+            <p className="mt-1.5 text-xs text-cs-brand">
+              Epic Mode is active. Grant/price/loan writes are blocked for all users.
+            </p>
+          )}
+        </div>
+
+        <hr className="my-4 border-red-100 dark:border-red-900/40" />
+
+        {/* Flexible Loan Payoff Methods */}
+        <div className="mt-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-cs-text">Flexible Loan Payoff Methods</p>
+              <p className="text-xs text-cs-muted">
+                When enabled, users with sufficient stock coverage can choose Epic LIFO, LIFO, FIFO, or manual lot
+                selection for payoff sales instead of the default same-tranche method.
+              </p>
+            </div>
+            <button
+              disabled={flexiblePayoffActive === null || flexiblePayoffLoading}
+              onClick={async () => {
+                setFlexiblePayoffLoading(true)
+                try {
+                  const res = await api.adminSetFlexiblePayoff(!flexiblePayoffActive)
+                  setFlexiblePayoffActive(res.active)
+                } catch {
+                  setError('Failed to toggle flexible payoff')
+                } finally {
+                  setFlexiblePayoffLoading(false)
+                }
+              }}
+              className={`ml-4 shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors disabled:opacity-50 ${
+                flexiblePayoffActive
+                  ? 'bg-green-600 hover:bg-green-700'
+                  : 'bg-cs-brand hover:bg-cs-brand-hover'
+              }`}
+            >
+              {flexiblePayoffLoading
+                ? '…'
+                : flexiblePayoffActive === null
+                  ? 'Loading'
+                  : flexiblePayoffActive
+                    ? 'Disable'
+                    : 'Enable'}
+            </button>
+          </div>
+        </div>
+
+        <hr className="my-4 border-red-100 dark:border-red-900/40" />
+
+        {/* Encryption Key Rotation */}
+        <div>
+          <button
+            onClick={() => { setRotationOpen(o => !o); setRotationConfirm(false) }}
+            className="text-xs font-medium text-red-700 underline-offset-2 hover:underline dark:text-red-400"
+          >
+            {rotationOpen ? 'Hide' : 'Rotate Encryption Master Key'}
+          </button>
+
+          {rotationOpen && (
+            <div className="mt-3 space-y-3">
+              <p className="text-xs text-cs-text-2">
+                Generates a new master key, re-wraps all user encryption keys, and saves
+                the new key to disk. Triggers a brief maintenance window automatically.
+                No deploy needed — the new key is live immediately.
+              </p>
+
+              {rotationLog.length > 0 && (
+                <div
+                  ref={rotationLogRef}
+                  className="max-h-48 overflow-y-auto rounded-md border border-cs-border bg-cs-raised p-2 text-xs font-mono "
+                >
+                  {rotationLog.map((e, i) => (
+                    <div
+                      key={i}
+                      className={
+                        e.step === 'error'
+                          ? 'text-red-600 dark:text-red-400'
+                          : e.step === 'rollback'
+                            ? 'text-amber-700 dark:text-amber-300'
+                            : e.step === 'done'
+                              ? 'text-green-700 dark:text-green-300 font-semibold'
+                              : 'text-cs-text-2'
+                      }
+                    >
+                      {e.step === 'done' || e.step === 'persist' || e.step === 'smoke'
+                        ? '✓ '
+                        : e.step === 'error'
+                          ? '✗ '
+                          : e.step === 'rollback'
+                            ? '↩ '
+                            : '› '}
+                      {e.msg}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {(() => {
+                const lastStep = rotationLog[rotationLog.length - 1]?.step
+                if (lastStep === 'done') {
+                  return (
+                    <p className="text-xs font-medium text-green-700 dark:text-green-300">
+                      Rotation complete. New key is live — no deploy needed.
+                    </p>
+                  )
+                }
+                if (lastStep === 'error') {
+                  return (
+                    <div className="space-y-2">
+                      <p className="text-xs text-red-600 dark:text-red-400">
+                        Rotation failed — all changes were rolled back, no data was modified.
+                      </p>
+                      <button
+                        onClick={() => { setRotationLog([]); setRotationConfirm(false) }}
+                        className="rounded-md border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                      >
+                        Try Again
+                      </button>
+                    </div>
+                  )
+                }
+                if (rotationRunning) return null
+                if (!rotationConfirm) {
+                  return (
+                    <button
+                      onClick={() => setRotationConfirm(true)}
+                      className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
+                    >
+                      Rotate Master Key
+                    </button>
+                  )
+                }
+                return (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-cs-text-2">Are you sure?</span>
+                    <button
+                      onClick={async () => {
+                        setRotationConfirm(false)
+                        setRotationRunning(true)
+                        setRotationLog([])
+                        try {
+                          await api.adminRotateKey(event => {
+                            setRotationLog(prev => {
+                              const next = [...prev, event]
+                              setTimeout(() => {
+                                rotationLogRef.current?.scrollTo({ top: 999999, behavior: 'smooth' })
+                              }, 0)
+                              return next
+                            })
+                          })
+                        } catch (err) {
+                          setRotationLog(prev => [
+                            ...prev,
+                            { step: 'error', msg: err instanceof Error ? err.message : 'Unknown error' },
+                          ])
+                        } finally {
+                          setRotationRunning(false)
+                          // Refresh maintenance + snapshot status
+                          api.adminRotationStatus().then(rs => {
+                            setMaintenanceActive(rs.maintenance_active)
+                            setSnapshotExists(rs.snapshot_exists)
+                          }).catch(() => {})
+                        }
+                      }}
+                      className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
+                    >
+                      Yes, Rotate
+                    </button>
+                    <button
+                      onClick={() => setRotationConfirm(false)}
+                      className="text-xs text-cs-muted hover:text-cs-text-2 "
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )
+              })()}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {import.meta.env.VITE_COMMIT_SHA && import.meta.env.VITE_COMMIT_SHA !== 'dev' && (
+        <p className="text-center text-xs text-cs-text-2">
+          {import.meta.env.VITE_COMMIT_SHA.slice(0, 7)}
+        </p>
+      )}
+
+      {/* User Detail Modal */}
+      {selectedUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setSelectedUser(null)}>
+          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-lg bg-cs-surface p-5 shadow-xl " onClick={e => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-cs-text">
+                  {selectedUser.email}
+                </h3>
+                <p className="text-xs text-cs-text-2">
+                  {selectedUser.name ?? 'No name'}
+                  {selectedUser.is_admin && (
+                    <span className="ml-1.5 inline-block rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-cs-brand dark:bg-rose-900/40 dark:text-rose-300">
+                      Admin
+                    </span>
+                  )}
+                </p>
+              </div>
+              <button onClick={() => setSelectedUser(null)} aria-label="Close" className="text-cs-text-2 hover:text-cs-text-2 ">✕</button>
+            </div>
+
+            {userDetailLoading && (
+              <div className="flex items-center justify-center py-8">
+                <div className="h-3 w-3 animate-pulse rounded-full bg-rose-500" />
+              </div>
+            )}
+
+            {userDetail && (
+              <div className="space-y-4 text-xs">
+                {/* User Info */}
+                <div className="grid grid-cols-2 gap-2 text-cs-text-2">
+                  <p>Joined: {formatDate(userDetail.created_at)}</p>
+                  <p>Last login: {formatDate(userDetail.last_login)}</p>
+                  <p>{userDetail.grant_count} grants · {userDetail.loan_count} loans · {userDetail.price_count} prices</p>
+                  <p>{userDetail.push_subscriptions} push subscription{userDetail.push_subscriptions !== 1 ? 's' : ''}</p>
+                </div>
+
+                {/* Email & Notification Status */}
+                <div className="rounded-md border border-cs-border p-3 ">
+                  <h4 className="mb-2 text-xs font-semibold text-cs-text">Email & Notifications</h4>
+                  <div className="space-y-1 text-cs-text-2">
+                    <p>Email notifications: {userDetail.email_notifications_enabled === null
+                      ? 'Not configured'
+                      : userDetail.email_notifications_enabled
+                        ? <span className="text-green-600 dark:text-green-400">Enabled</span>
+                        : <span className="text-red-500">Disabled (unsubscribed)</span>}
+                    {userDetail.email_notifications_enabled === false && (
+                      <button
+                        onClick={async () => {
+                          setUserDetailAction('reenable-email')
+                          await api.adminReenableEmail(userDetail.id)
+                          await reloadUserDetail()
+                          setUserDetailAction('')
+                        }}
+                        disabled={!!userDetailAction}
+                        className="ml-2 text-rose-600 hover:text-rose-800 underline "
+                      >re-enable</button>
+                    )}
+                    </p>
+                    <p>Invitation opt-out: {userDetail.invitation_opt_out
+                      ? <span className="text-red-500">Yes</span>
+                      : <span className="text-green-600 dark:text-green-400">No</span>}
+                    {userDetail.invitation_opt_out && (
+                      <button
+                        onClick={async () => {
+                          setUserDetailAction('clear-optout')
+                          await api.adminClearOptOutByEmail(userDetail.email)
+                          await reloadUserDetail()
+                          setUserDetailAction('')
+                        }}
+                        disabled={!!userDetailAction}
+                        className="ml-2 text-rose-600 hover:text-rose-800 underline "
+                      >clear</button>
+                    )}
+                    </p>
+                    <p>Sending invitations: {userDetail.sending_blocked
+                      ? <span className="text-red-500">Blocked{userDetail.sending_block_reason ? ` — ${userDetail.sending_block_reason}` : ''}</span>
+                      : <span className="text-green-600 dark:text-green-400">Allowed</span>}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Invitations Sent */}
+                {userDetail.invitations_sent.length > 0 && (
+                  <div className="rounded-md border border-cs-border p-3 ">
+                    <h4 className="mb-2 text-xs font-semibold text-cs-text">
+                      Invitations Sent ({userDetail.invitations_sent.length})
+                    </h4>
+                    <div className="space-y-1">
+                      {userDetail.invitations_sent.map(inv => (
+                        <div key={inv.id} className="flex items-center justify-between text-cs-text-2">
+                          <span className="truncate">{inv.invitee_email}</span>
+                          <span className={`ml-2 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                            inv.status === 'accepted' ? 'bg-green-50 text-green-700 dark:bg-green-900/40 dark:text-green-300'
+                              : inv.status === 'pending' ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                                : 'bg-cs-raised text-cs-text-2 '
+                          }`}>{inv.status}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Invitations Received */}
+                {userDetail.invitations_received.length > 0 && (
+                  <div className="rounded-md border border-cs-border p-3 ">
+                    <h4 className="mb-2 text-xs font-semibold text-cs-text">
+                      Viewing Data From ({userDetail.invitations_received.length})
+                    </h4>
+                    <div className="space-y-1">
+                      {userDetail.invitations_received.map(inv => (
+                        <div key={inv.id} className="text-cs-text-2">
+                          {inv.inviter_name ?? inv.inviter_email}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="rounded-md border border-cs-border p-3 ">
+                  <h4 className="mb-2 text-xs font-semibold text-cs-text">Actions</h4>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => { openNotifyModal({ id: userDetail.id, name: userDetail.name, email: userDetail.email }) }}
+                      className="rounded px-3 py-1.5 text-xs font-medium text-white bg-rose-600 hover:bg-rose-700"
+                    >
+                      Send Notification
+                    </button>
+
+                    {userDetail.sending_blocked ? (
+                      <button
+                        onClick={async () => {
+                          setUserDetailAction('unblock-sending')
+                          await api.adminUnblockSending(userDetail.id)
+                          await reloadUserDetail()
+                          setUserDetailAction('')
+                        }}
+                        disabled={!!userDetailAction}
+                        className="rounded px-3 py-1.5 text-xs font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
+                      >
+                        Unblock Sending
+                      </button>
+                    ) : (
+                      <button
+                        onClick={async () => {
+                          const reason = prompt('Reason for blocking (optional):')
+                          if (reason === null) return
+                          setUserDetailAction('block-sending')
+                          await api.adminBlockSending(userDetail.id, reason)
+                          await reloadUserDetail()
+                          setUserDetailAction('')
+                        }}
+                        disabled={!!userDetailAction}
+                        className="rounded px-3 py-1.5 text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50"
+                      >
+                        Block Sending
+                      </button>
+                    )}
+
+                    {(userDetail.invitations_sent.some(i => i.status === 'pending' || i.status === 'accepted') ||
+                      userDetail.invitations_received.length > 0) && (
+                      <button
+                        onClick={async () => {
+                          if (!confirm('Reset all invitations? This revokes sent invitations and removes shared access.')) return
+                          setUserDetailAction('reset-invitations')
+                          try {
+                            const result = await api.adminResetInvitations(userDetail.id)
+                            alert(`Revoked ${result.revoked_sent} sent, removed ${result.access_removed} received.`)
+                            await reloadUserDetail()
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : 'Failed to reset invitations')
+                          } finally {
+                            setUserDetailAction('')
+                          }
+                        }}
+                        disabled={!!userDetailAction}
+                        className="rounded px-3 py-1.5 text-xs font-medium text-white bg-orange-600 hover:bg-orange-700 disabled:opacity-50"
+                      >
+                        Reset Invitations
+                      </button>
+                    )}
+
+                    {!userDetail.is_admin && (
+                      <button
+                        onClick={async () => {
+                          setUserDetailAction('toggle-content-admin')
+                          try {
+                            await api.setContentAdmin(userDetail.id, !selectedUser!.is_content_admin)
+                            await loadUsers(search)
+                            await reloadUserDetail()
+                            const refreshed = await api.adminUsers(search)
+                            const updated = refreshed.users.find(x => x.id === userDetail.id)
+                            if (updated) setSelectedUser(updated)
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : 'Failed to toggle content admin')
+                          } finally {
+                            setUserDetailAction('')
+                          }
+                        }}
+                        disabled={!!userDetailAction}
+                        className="rounded px-3 py-1.5 text-xs font-medium text-white bg-sky-600 hover:bg-sky-700 disabled:opacity-50"
+                      >
+                        {selectedUser?.is_content_admin ? 'Revoke Content Admin' : 'Make Content Admin'}
+                      </button>
+                    )}
+
+                    {!userDetail.is_admin && (
+                      <button
+                        onClick={async () => {
+                          if (confirmDelete !== userDetail.id) {
+                            setConfirmDelete(userDetail.id)
+                            return
+                          }
+                          try {
+                            await api.adminDeleteUser(userDetail.id)
+                            setSelectedUser(null)
+                            setConfirmDelete(null)
+                            loadUsers(search)
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : 'Failed to delete user')
+                          }
+                        }}
+                        className={`rounded px-3 py-1.5 text-xs font-medium text-white ${
+                          confirmDelete === userDetail.id ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-400 hover:bg-gray-500'
+                        }`}
+                      >
+                        {confirmDelete === userDetail.id ? 'Confirm Delete' : 'Delete User'}
+                      </button>
+                    )}
+                  </div>
+                  {userDetailAction && (
+                    <p className="mt-2 text-xs text-cs-muted">Processing...</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Notify Modal */}
+      {notifyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-lg bg-cs-surface p-5 shadow-xl ">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-cs-text">
+                  Notify — {notifyModal.userName}
+                </h3>
+                <p className="text-xs text-cs-text-2">
+                  Email from: {config?.resend_from || <span className="text-red-500">RESEND_FROM not set</span>}
+                </p>
+              </div>
+              <button
+                onClick={() => setNotifyModal(null)}
+                aria-label="Close dialog"
+                className="text-cs-text-2 hover:text-cs-text-2 "
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleTestNotify} className="space-y-2">
+              <select
+                aria-label="Template"
+                value={notifyTemplate}
+                onChange={e => {
+                  const tpl = e.target.value
+                  const tmpl = notifyTemplates[tpl]
+                  setNotifyTemplate(tpl)
+                  if (tmpl) {
+                    setNotifyTitle(tmpl.title)
+                    setNotifyBody(tmpl.body)
+                  }
+                  setNotifyResult(null)
+                }}
+                className="w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text "
+              >
+                {Object.entries(notifyTemplates).map(([key, tpl]) => (
+                  <option key={key} value={key}>{tpl.label}</option>
+                ))}
+              </select>
+              <input
+                type="text"
+                aria-label="Title"
+                value={notifyTitle}
+                onChange={e => { setNotifyTitle(e.target.value); setNotifyTemplate('custom') }}
+                placeholder="Title"
+                className="w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text "
+              />
+              <textarea
+                aria-label="Body"
+                value={notifyBody}
+                onChange={e => { setNotifyBody(e.target.value); setNotifyTemplate('custom') }}
+                placeholder="Body"
+                rows={2}
+                className="w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text "
+              />
+              <div className="flex items-center gap-2">
+                <button
+                  type="submit"
+                  disabled={notifySending}
+                  className="rounded-md bg-cs-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-cs-brand-hover disabled:opacity-50"
+                >
+                  {notifySending ? 'Sending…' : 'Send'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNotifyModal(null)}
+                  className="rounded-md bg-cs-raised px-3 py-1.5 text-xs font-medium text-cs-text-2 hover:bg-stone-200 dark:hover:bg-stone-700"
+                >
+                  Close
+                </button>
+              </div>
+              {notifyResult && (
+                <p className="text-xs text-green-700 dark:text-green-300">
+                  Push: {notifyResult.push_sent} sent{notifyResult.push_failed > 0 ? `, ${notifyResult.push_failed} expired` : ''}.{' '}
+                  Email: {notifyResult.email_sent ? 'sent' : `not sent${notifyResult.email_skipped_reason ? ` — ${notifyResult.email_skipped_reason}` : ''}`}.
+                </p>
+              )}
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }

@@ -69,22 +69,22 @@ function mockApi(opts: {
       const body = nc == null
         ? null
         : {
-            date: '2026-05-07',
-            vested_shares: 1000,
-            share_price: 100,
-            gross_vested: 100000,
-            unvested_cost_proceeds: 0,
-            liquidation_tax: 0,
-            outstanding_principal: 0,
-            outstanding_accrued_interest: 0,
-            prior_sales: [],
-            prior_sales_net: 0,
-            income_tax: 0,
-            deduction_savings: 0,
-            deduction_years: [],
-            deduction_excluded_years: [],
-            net_cash: nc,
-          }
+          date: '2026-05-07',
+          vested_shares: 1000,
+          share_price: 100,
+          gross_vested: 100000,
+          unvested_cost_proceeds: 0,
+          liquidation_tax: 0,
+          outstanding_principal: 0,
+          outstanding_accrued_interest: 0,
+          prior_sales: [],
+          prior_sales_net: 0,
+          income_tax: 0,
+          deduction_savings: 0,
+          deduction_years: [],
+          deduction_excluded_years: [],
+          net_cash: nc,
+        }
       return new Response(JSON.stringify(body), { status: 200 })
     }
     if (url.includes('/api/tax-settings')) {
@@ -389,9 +389,11 @@ describe('Retirement page', () => {
     // is the supported way to set a value on them.
     fireEvent.change(dateInput, { target: { value: '2031-04-15' } })
     await waitFor(() => {
-      const calls = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls
-      const matches = calls.filter(([input, init]: any) => {
-        const url = typeof input === 'string' ? input : input?.url ?? String(input)
+      const calls = (globalThis.fetch as unknown as {
+        mock: { calls: [RequestInfo | URL, RequestInit | undefined][] }
+      }).mock.calls
+      const matches = calls.filter(([input, init]) => {
+        const url = typeof input === 'string' ? input : (input as Request).url ?? String(input)
         return url.includes('/api/retirement/params') && (init?.method ?? '').toUpperCase() === 'PUT'
       })
       const withDate = matches

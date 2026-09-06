@@ -1,0 +1,10 @@
+# Revisions to skip in `git blame` — whitespace-only reformats, never logic.
+#
+# Enable locally with:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# GitHub applies it automatically.
+
+# Re-indent the frontend (every .ts/.tsx in frontend/src was flattened to one
+# space at all depths). Whitespace-only bar two dead eslint-disable comments
+# and one JSX ternary; see the commit message.
+6340616855b708cf222ee3edbf7a3302d608d1ee

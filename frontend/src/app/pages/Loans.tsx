@@ -4,678 +4,629 @@ import { api, ConflictError } from '../../api.ts'
 import type { LoanEntry, LoanPayoffSuggestion, SaleEntry, TaxSettings } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { broadcastChange, useDataSync } from '../hooks/useDataSync.ts'
-import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
-import { TaxRateFields, TrancheTable, ratesFromDefaults, ratesFromSale, DEFAULT_RATES } from './Sales.tsx'
-import type { TaxRates } from './Sales.tsx'
+import { useViewing } from '../../scaffold/contexts/viewing.ts'
+import { TaxRateFields, TrancheTable } from './Sales.tsx'
+import { DEFAULT_RATES, ratesFromDefaults, ratesFromSale, type TaxRates } from './salesTaxRates.ts'
 import type { TrancheAllocation } from '../../api.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 import { GRANT_TYPE_NAMES } from '../grantTypes.ts'
+import { fmt$ } from '../format.ts'
+import { Field, SelectField, FIELD_INPUT_CLASS } from '../../scaffold/components/ui/Field.tsx'
+import { ConflictBanner } from '../../scaffold/components/ui/ConflictBanner.tsx'
 
 type LoanForm = Omit<LoanEntry, 'id' | 'version'>
 type Mode = 'list' | 'add' | 'edit'
 
 const empty: LoanForm = {
- grant_year: new Date().getFullYear(),
- grant_type: 'Purchase',
- loan_type: 'Interest',
- loan_year: new Date().getFullYear(),
- amount: 0,
- interest_rate: 0,
- due_date: '',
- loan_number: null,
- refinances_loan_id: null,
+  grant_year: new Date().getFullYear(),
+  grant_type: 'Purchase',
+  loan_type: 'Interest',
+  loan_year: new Date().getFullYear(),
+  amount: 0,
+  interest_rate: 0,
+  due_date: '',
+  loan_number: null,
+  refinances_loan_id: null,
 }
 
 function loanLabel(l: LoanEntry, refinancedIds?: Set<number>) {
- const num = l.loan_number ? ` #${l.loan_number}` : ''
- const rate = `${(l.interest_rate * 100).toFixed(2)}%`
- const refinanced = refinancedIds?.has(l.id) ? ' [refinanced]' : ''
- return `${l.grant_year} ${l.grant_type} ${l.loan_type}${num} – ${rate} – ${l.due_date}${refinanced}`
-}
-
-function ConflictBanner({ onReload, onDiscard }: { onReload: () => void; onDiscard: () => void }) {
- return (
- <div className="rounded-md border border-yellow-300 bg-yellow-50 p-3 dark:border-yellow-700 dark:bg-yellow-900/20">
- <p className="text-xs font-medium text-yellow-800 dark:text-yellow-300">
- This record was changed on another device. Reload to see the latest version, or discard your changes.
- </p>
- <div className="mt-2 flex gap-2">
- <button onClick={onReload} className="rounded-md bg-yellow-600 px-2 py-1 text-xs font-medium text-white hover:bg-yellow-700">
- Reload latest
- </button>
- <button onClick={onDiscard} className="rounded-md bg-gray-200 px-2 py-1 text-xs font-medium text-cs-text-2 hover:bg-gray-300 dark:hover:bg-gray-600">
- Discard my changes
- </button>
- </div>
- </div>
- )
-}
-
-function fmt$(n: number) {
- return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+  const num = l.loan_number ? ` #${l.loan_number}` : ''
+  const rate = `${(l.interest_rate * 100).toFixed(2)}%`
+  const refinanced = refinancedIds?.has(l.id) ? ' [refinanced]' : ''
+  return `${l.grant_year} ${l.grant_type} ${l.loan_type}${num} – ${rate} – ${l.due_date}${refinanced}`
 }
 
 const LOAN_TYPES = ['Interest', 'Tax', 'Purchase']
 
 export default function Loans() {
- const { viewing } = useViewing()
- const vid = viewing?.invitationId
- const readOnly = !!viewing
+  const { viewing } = useViewing()
+  const vid = viewing?.invitationId
+  const readOnly = !!viewing
 
- const fetchLoans = useCallback(() => vid ? api.getSharedLoans(vid) : api.getLoans(), [vid])
- const { data: loans, loading, reload } = useApiData<LoanEntry[]>(fetchLoans)
- const fetchSales = useCallback(() => vid ? api.getSharedSales(vid) : api.getSales(), [vid])
- const { data: sales, reload: reloadSales } = useApiData<SaleEntry[]>(fetchSales)
- const fetchTaxSettings = useCallback(() => vid ? api.getSharedTaxSettings(vid) : api.getTaxSettings(), [vid])
- const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
+  const fetchLoans = useCallback(() => vid ? api.getSharedLoans(vid) : api.getLoans(), [vid])
+  const { data: loans, loading, reload } = useApiData<LoanEntry[]>(fetchLoans)
+  const fetchSales = useCallback(() => vid ? api.getSharedSales(vid) : api.getSales(), [vid])
+  const { data: sales, reload: reloadSales } = useApiData<SaleEntry[]>(fetchSales)
+  const fetchTaxSettings = useCallback(() => vid ? api.getSharedTaxSettings(vid) : api.getTaxSettings(), [vid])
+  const { data: taxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
 
- const [mode, setMode] = useState<Mode>('list')
- const [expandedLoanId, setExpandedLoanId] = useState<number | null>(null)
- const [form, setForm] = useState<LoanForm>(empty)
- const [editId, setEditId] = useState<number | null>(null)
- const [editVersion, setEditVersion] = useState(1)
- const [saving, setSaving] = useState(false)
- const [error, setError] = useState('')
- const [conflict, setConflict] = useState(false)
- const [payoffSaleChecked, setPayoffSaleChecked] = useState(true)
- const [saleRates, setSaleRates] = useState<TaxRates>(DEFAULT_RATES)
- const [regenerating, setRegenerating] = useState(false)
- const [payoffModal, setPayoffModal] = useState<{ loan: LoanEntry; suggestion: LoanPayoffSuggestion | null; existingSale: SaleEntry | null } | null>(null)
- const [payoffExecuting, setPayoffExecuting] = useState(false)
- const [payoffError, setPayoffError] = useState('')
- const [payoffTranche, setPayoffTranche] = useState<TrancheAllocation | null>(null)
- const [payoffTrancheLoading, setPayoffTrancheLoading] = useState(false)
+  const [mode, setMode] = useState<Mode>('list')
+  const [expandedLoanId, setExpandedLoanId] = useState<number | null>(null)
+  const [form, setForm] = useState<LoanForm>(empty)
+  const [editId, setEditId] = useState<number | null>(null)
+  const [editVersion, setEditVersion] = useState(1)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [conflict, setConflict] = useState(false)
+  const [payoffSaleChecked, setPayoffSaleChecked] = useState(true)
+  const [saleRates, setSaleRates] = useState<TaxRates>(DEFAULT_RATES)
+  const [regenerating, setRegenerating] = useState(false)
+  const [payoffModal, setPayoffModal] = useState<{ loan: LoanEntry; suggestion: LoanPayoffSuggestion | null; existingSale: SaleEntry | null } | null>(null)
+  const [payoffExecuting, setPayoffExecuting] = useState(false)
+  const [payoffError, setPayoffError] = useState('')
+  const [payoffTranche, setPayoffTranche] = useState<TrancheAllocation | null>(null)
+  const [payoffTrancheLoading, setPayoffTrancheLoading] = useState(false)
 
- const config = useConfig()
- const epicMode = !!config?.epic_mode || readOnly
- const isMobile = useIsMobile()
+  const config = useConfig()
+  const epicMode = !!config?.epic_mode || readOnly
+  const isMobile = useIsMobile()
 
- useDataSync('loans', reload)
- useDataSync('sales', reloadSales)
+  useDataSync('loans', reload)
+  useDataSync('sales', reloadSales)
 
- function resetForm() {
- setForm(empty)
- setEditId(null)
- setEditVersion(1)
- setError('')
- setConflict(false)
- setPayoffSaleChecked(true)
- setSaleRates(ratesFromDefaults(taxSettings))
- }
+  function resetForm() {
+    setForm(empty)
+    setEditId(null)
+    setEditVersion(1)
+    setError('')
+    setConflict(false)
+    setPayoffSaleChecked(true)
+    setSaleRates(ratesFromDefaults(taxSettings))
+  }
 
- function openAdd() {
- resetForm()
- setPayoffSaleChecked(true)
- setSaleRates(ratesFromDefaults(taxSettings))
- setMode('add')
- }
+  function openAdd() {
+    resetForm()
+    setPayoffSaleChecked(true)
+    setSaleRates(ratesFromDefaults(taxSettings))
+    setMode('add')
+  }
 
- function openEdit(l: LoanEntry) {
- const { id, version, ...rest } = l // eslint-disable-line @typescript-eslint/no-unused-vars
- setForm(rest)
- setEditId(id)
- setEditVersion(version)
- setError('')
- setConflict(false)
- const linkedSale = sales?.find(s => s.loan_id === id) ?? null
- setPayoffSaleChecked(!!linkedSale)
- setSaleRates(linkedSale ? ratesFromSale(linkedSale, taxSettings) : ratesFromDefaults(taxSettings))
- setMode('edit')
- }
+  function openEdit(l: LoanEntry) {
+    const { id, version, ...rest } = l  
+    setForm(rest)
+    setEditId(id)
+    setEditVersion(version)
+    setError('')
+    setConflict(false)
+    const linkedSale = sales?.find(s => s.loan_id === id) ?? null
+    setPayoffSaleChecked(!!linkedSale)
+    setSaleRates(linkedSale ? ratesFromSale(linkedSale, taxSettings) : ratesFromDefaults(taxSettings))
+    setMode('edit')
+  }
 
- async function handleSave(addAnother: boolean) {
- setSaving(true)
- setError('')
- try {
- let savedLoanId: number
+  async function handleSave(addAnother: boolean) {
+    setSaving(true)
+    setError('')
+    try {
+      let savedLoanId: number
 
- if (mode === 'add') {
- const newLoan = await api.createLoan(form, false) // handle payoff sale manually
- savedLoanId = newLoan.id
- } else if (editId != null) {
- await api.updateLoan(editId, { ...form, version: editVersion })
- savedLoanId = editId
- } else {
- return
- }
+      if (mode === 'add') {
+        const newLoan = await api.createLoan(form, false) // handle payoff sale manually
+        savedLoanId = newLoan.id
+      } else if (editId != null) {
+        await api.updateLoan(editId, { ...form, version: editVersion })
+        savedLoanId = editId
+      } else {
+        return
+      }
 
- // Handle payoff sale
- const linkedSale = sales?.find(s => s.loan_id === savedLoanId)
- if (payoffSaleChecked) {
- const suggestion = await api.getLoanPayoffSuggestion(savedLoanId)
- const salePayload = {
- date: suggestion.date,
- shares: suggestion.shares,
- price_per_share: suggestion.price_per_share,
- notes: suggestion.notes,
- loan_id: savedLoanId,
- ...saleRates,
- }
- if (linkedSale) {
- await api.updateSale(linkedSale.id, { ...salePayload, version: linkedSale.version })
- } else {
- await api.createSale(salePayload)
- }
- broadcastChange('sales')
- reloadSales()
- } else if (linkedSale) {
- await api.deleteSale(linkedSale.id)
- broadcastChange('sales')
- reloadSales()
- }
+      // Handle payoff sale
+      const linkedSale = sales?.find(s => s.loan_id === savedLoanId)
+      if (payoffSaleChecked) {
+        const suggestion = await api.getLoanPayoffSuggestion(savedLoanId)
+        const salePayload = {
+          date: suggestion.date,
+          shares: suggestion.shares,
+          price_per_share: suggestion.price_per_share,
+          notes: suggestion.notes,
+          loan_id: savedLoanId,
+          ...saleRates,
+        }
+        if (linkedSale) {
+          await api.updateSale(linkedSale.id, { ...salePayload, version: linkedSale.version })
+        } else {
+          await api.createSale(salePayload)
+        }
+        broadcastChange('sales')
+        reloadSales()
+      } else if (linkedSale) {
+        await api.deleteSale(linkedSale.id)
+        broadcastChange('sales')
+        reloadSales()
+      }
 
- broadcastChange('loans')
- reload()
- if (addAnother) {
- resetForm()
- } else {
- setMode('list')
- resetForm()
- }
- } catch (e: unknown) {
- if (e instanceof ConflictError) {
- setConflict(true)
- } else {
- setError(e instanceof Error ? e.message : 'Save failed')
- }
- } finally {
- setSaving(false)
- }
- }
+      broadcastChange('loans')
+      reload()
+      if (addAnother) {
+        resetForm()
+      } else {
+        setMode('list')
+        resetForm()
+      }
+    } catch (e: unknown) {
+      if (e instanceof ConflictError) {
+        setConflict(true)
+      } else {
+        setError(e instanceof Error ? e.message : 'Save failed')
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
 
- async function handleDelete(id: number) {
- if (!confirm('Delete this loan?')) return
- await api.deleteLoan(id)
- broadcastChange('loans')
- reload()
- }
+  async function handleDelete(id: number) {
+    if (!confirm('Delete this loan?')) return
+    await api.deleteLoan(id)
+    broadcastChange('loans')
+    reload()
+  }
 
- async function handleRegenerateAll() {
- if (!confirm('Recalculate how many shares each future loan\'s repayment sale should sell, using your current lot-selection setting?')) return
- setRegenerating(true)
- try {
- const result = await api.regenerateAllPayoffSales()
- broadcastChange('sales')
- reloadSales()
- const parts: string[] = []
- if (result.updated) parts.push(`updated ${result.updated}`)
- if (result.created) parts.push(`created ${result.created}`)
- alert(parts.length ? `Repayment sales: ${parts.join(', ')}.` : 'No changes needed.')
- } catch (e: unknown) {
- alert(e instanceof Error ? e.message : 'Failed to update repayment sales')
- } finally {
- setRegenerating(false)
- }
- }
+  async function handleRegenerateAll() {
+    if (!confirm('Recalculate how many shares each future loan\'s repayment sale should sell, using your current lot-selection setting?')) return
+    setRegenerating(true)
+    try {
+      const result = await api.regenerateAllPayoffSales()
+      broadcastChange('sales')
+      reloadSales()
+      const parts: string[] = []
+      if (result.updated) parts.push(`updated ${result.updated}`)
+      if (result.created) parts.push(`created ${result.created}`)
+      alert(parts.length ? `Repayment sales: ${parts.join(', ')}.` : 'No changes needed.')
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : 'Failed to update repayment sales')
+    } finally {
+      setRegenerating(false)
+    }
+  }
 
- function closePayoffModal() {
- setPayoffModal(null)
- setPayoffTranche(null)
- }
+  function closePayoffModal() {
+    setPayoffModal(null)
+    setPayoffTranche(null)
+  }
 
- async function openPayoffModal(loan: LoanEntry) {
- const existingSale = sales?.find(s => s.loan_id === loan.id) ?? null
- setPayoffModal({ loan, suggestion: null, existingSale })
- setPayoffError('')
- setPayoffTranche(null)
- setPayoffTrancheLoading(true)
- try {
- const suggestion = await api.getLoanPayoffSuggestion(loan.id)
- setPayoffModal({ loan, suggestion, existingSale })
- // Fetch same-tranche allocation using the suggestion's date and shares
- try {
- const alloc = await api.getTrancheAllocation({
- sale_date: suggestion.date,
- shares: suggestion.shares,
- method: 'epic_lifo',
- grant_year: loan.grant_year,
- grant_type: loan.grant_type,
- })
- setPayoffTranche(alloc)
- } catch {
- // tranche load is non-fatal
- }
- } catch {
- setPayoffError('Failed to load payoff estimate')
- } finally {
- setPayoffTrancheLoading(false)
- }
- }
+  async function openPayoffModal(loan: LoanEntry) {
+    const existingSale = sales?.find(s => s.loan_id === loan.id) ?? null
+    setPayoffModal({ loan, suggestion: null, existingSale })
+    setPayoffError('')
+    setPayoffTranche(null)
+    setPayoffTrancheLoading(true)
+    try {
+      const suggestion = await api.getLoanPayoffSuggestion(loan.id)
+      setPayoffModal({ loan, suggestion, existingSale })
+      // Fetch same-tranche allocation using the suggestion's date and shares
+      try {
+        const alloc = await api.getTrancheAllocation({
+          sale_date: suggestion.date,
+          shares: suggestion.shares,
+          method: 'epic_lifo',
+          grant_year: loan.grant_year,
+          grant_type: loan.grant_type,
+        })
+        setPayoffTranche(alloc)
+      } catch {
+        // tranche load is non-fatal
+      }
+    } catch {
+      setPayoffError('Failed to load payoff estimate')
+    } finally {
+      setPayoffTrancheLoading(false)
+    }
+  }
 
- async function handleExecutePayoff() {
- if (!payoffModal?.suggestion) return
- setPayoffExecuting(true)
- setPayoffError('')
- try {
- const { suggestion, existingSale, loan } = payoffModal
- if (existingSale) {
- await api.updateSale(existingSale.id, {
- date: suggestion.date,
- shares: suggestion.shares,
- price_per_share: suggestion.price_per_share,
- notes: suggestion.notes,
- loan_id: loan.id,
- version: existingSale.version,
- })
- } else {
- await api.executePayoff(loan.id)
- }
- broadcastChange('sales')
- reloadSales()
- closePayoffModal()
- } catch (e: unknown) {
- setPayoffError(e instanceof Error ? e.message : 'Failed to execute payoff')
- } finally {
- setPayoffExecuting(false)
- }
- }
+  async function handleExecutePayoff() {
+    if (!payoffModal?.suggestion) return
+    setPayoffExecuting(true)
+    setPayoffError('')
+    try {
+      const { suggestion, existingSale, loan } = payoffModal
+      if (existingSale) {
+        await api.updateSale(existingSale.id, {
+          date: suggestion.date,
+          shares: suggestion.shares,
+          price_per_share: suggestion.price_per_share,
+          notes: suggestion.notes,
+          loan_id: loan.id,
+          version: existingSale.version,
+        })
+      } else {
+        await api.executePayoff(loan.id)
+      }
+      broadcastChange('sales')
+      reloadSales()
+      closePayoffModal()
+    } catch (e: unknown) {
+      setPayoffError(e instanceof Error ? e.message : 'Failed to execute payoff')
+    } finally {
+      setPayoffExecuting(false)
+    }
+  }
 
- // Also wait on config: epicMode below reads config?.epic_mode, and config is
- // fetched independently of the loans list. Without this, the list can finish
- // loading (and this placeholder can unmount) before epic_mode arrives, so the
- // Calculate-repayment/Edit button below renders for the pre-epic-mode state
- // for one tick.
- if (loading || !config) return <p className="p-6 text-center text-sm text-cs-text-2">Loading...</p>
- if (!loans) return <p className="p-6 text-center text-sm text-red-500">Failed to load loans</p>
+  // Also wait on config: epicMode below reads config?.epic_mode, and config is
+  // fetched independently of the loans list. Without this, the list can finish
+  // loading (and this placeholder can unmount) before epic_mode arrives, so the
+  // Calculate-repayment/Edit button below renders for the pre-epic-mode state
+  // for one tick.
+  if (loading || !config) return <p className="p-6 text-center text-sm text-cs-text-2">Loading...</p>
+  if (!loans) return <p className="p-6 text-center text-sm text-red-500">Failed to load loans</p>
 
- if (mode !== 'list') {
- const title = mode === 'add' ? 'Add Loan' : 'Edit Loan'
+  if (mode !== 'list') {
+    const title = mode === 'add' ? 'Add Loan' : 'Edit Loan'
 
- return (
- <div className="space-y-4">
- <div className="flex items-center justify-between">
- <h2 className="text-lg font-semibold text-cs-text">{title}</h2>
- <button onClick={() => { setMode('list'); resetForm() }} className="text-xs text-cs-muted hover:text-cs-text-2 ">Cancel</button>
- </div>
- {conflict && (
- <ConflictBanner
- onReload={() => { reload(); setMode('list'); resetForm() }}
- onDiscard={() => { setMode('list'); resetForm() }}
- />
- )}
- {error && <p className="text-xs text-red-500">{error}</p>}
- <div className="grid grid-cols-2 gap-3">
- <Field label="Grant Year" type="number" value={form.grant_year} onChange={v => setForm(f => ({ ...f, grant_year: +v }))} />
- <label className="block">
- <span className="text-xs text-cs-muted">Grant Type</span>
- <select
- value={form.grant_type}
- onChange={e => setForm(f => ({ ...f, grant_type: e.target.value }))}
- className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text"
- >
- {GRANT_TYPE_NAMES.map(name => (
-   <option key={name} value={name}>{name}</option>
- ))}
- </select>
- </label>
- <label className="block">
- <span className="text-xs text-cs-muted">Loan Type</span>
- <select
- value={form.loan_type}
- onChange={e => setForm(f => ({ ...f, loan_type: e.target.value }))}
- className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text"
- >
- {LOAN_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
- </select>
- </label>
- <Field label="Loan Year" type="number" value={form.loan_year} onChange={v => setForm(f => ({ ...f, loan_year: +v }))} />
- <Field label="Amount" type="number" step="0.01" value={form.amount} onChange={v => setForm(f => ({ ...f, amount: +v }))} />
- <Field label="Interest Rate (%)" type="number" step="0.01" value={+(form.interest_rate * 100).toFixed(4)} onChange={v => setForm(f => ({ ...f, interest_rate: +v / 100 }))} />
- <Field label="Due Date" type="date" value={form.due_date} onChange={v => setForm(f => ({ ...f, due_date: v }))} />
- <Field label="Loan Number" type="text" value={form.loan_number ?? ''} onChange={v => setForm(f => ({ ...f, loan_number: v || null }))} />
- <label className="col-span-2 block">
- <span className="text-xs text-cs-muted">Refinances loan (optional)</span>
- <select
- value={form.refinances_loan_id ?? ''}
- onChange={e => setForm(f => ({ ...f, refinances_loan_id: e.target.value ? +e.target.value : null }))}
- className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text"
- >
- <option value="">— None —</option>
- {(() => {
- const refinancedIds = new Set((loans ?? []).map(o => o.refinances_loan_id).filter((id): id is number => id !== null))
- return (loans ?? [])
- .filter(l => l.id !== editId)
- .map(l => (
- <option key={l.id} value={l.id}>{loanLabel(l, refinancedIds)}</option>
- ))
- })()}
- </select>
- {form.refinances_loan_id && (
- <p className="mt-1 text-[10px] text-amber-700 dark:text-amber-300">
- The old loan will be marked "Refinanced" with nothing left to pay, and any sale that was set up to repay it will be removed.
- </p>
- )}
- </label>
- </div>
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-cs-text">{title}</h2>
+          <button onClick={() => { setMode('list'); resetForm() }} className="text-xs text-cs-muted hover:text-cs-text-2 ">Cancel</button>
+        </div>
+        {conflict && (
+          <ConflictBanner
+            onReload={() => { reload(); setMode('list'); resetForm() }}
+            onDiscard={() => { setMode('list'); resetForm() }}
+          />
+        )}
+        {error && <p className="text-xs text-red-500">{error}</p>}
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Grant Year" type="number" value={form.grant_year} onChange={v => setForm(f => ({ ...f, grant_year: +v }))} />
+          <SelectField label="Grant Type" value={form.grant_type}
+            onChange={v => setForm(f => ({ ...f, grant_type: v }))}>
+            {GRANT_TYPE_NAMES.map(name => <option key={name} value={name}>{name}</option>)}
+          </SelectField>
+          <SelectField label="Loan Type" value={form.loan_type}
+            onChange={v => setForm(f => ({ ...f, loan_type: v }))}>
+            {LOAN_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          </SelectField>
+          <Field label="Loan Year" type="number" value={form.loan_year} onChange={v => setForm(f => ({ ...f, loan_year: +v }))} />
+          <Field label="Amount" type="number" step="0.01" value={form.amount} onChange={v => setForm(f => ({ ...f, amount: +v }))} />
+          <Field label="Interest Rate (%)" type="number" step="0.01" value={+(form.interest_rate * 100).toFixed(4)} onChange={v => setForm(f => ({ ...f, interest_rate: +v / 100 }))} />
+          <Field label="Due Date" type="date" value={form.due_date} onChange={v => setForm(f => ({ ...f, due_date: v }))} />
+          <Field label="Loan Number" type="text" value={form.loan_number ?? ''} onChange={v => setForm(f => ({ ...f, loan_number: v || null }))} />
+          <label className="col-span-2 block">
+            <span className="text-xs text-cs-muted">Refinances loan (optional)</span>
+            <select
+              value={form.refinances_loan_id ?? ''}
+              onChange={e => setForm(f => ({ ...f, refinances_loan_id: e.target.value ? +e.target.value : null }))}
+              className={FIELD_INPUT_CLASS}
+            >
+              <option value="">— None —</option>
+              {(() => {
+                const refinancedIds = new Set((loans ?? []).map(o => o.refinances_loan_id).filter((id): id is number => id !== null))
+                return (loans ?? [])
+                  .filter(l => l.id !== editId)
+                  .map(l => (
+                    <option key={l.id} value={l.id}>{loanLabel(l, refinancedIds)}</option>
+                  ))
+              })()}
+            </select>
+            {form.refinances_loan_id && (
+              <p className="mt-1 text-[10px] text-amber-700 dark:text-amber-300">
+                The old loan will be marked "Refinanced" with nothing left to pay, and any sale that was set up to repay it will be removed.
+              </p>
+            )}
+          </label>
+        </div>
 
- <div className="space-y-3">
- <label className="flex items-center gap-2 text-xs text-cs-text-2">
- <input
- type="checkbox"
- checked={payoffSaleChecked}
- onChange={e => setPayoffSaleChecked(e.target.checked)}
- className="rounded border-cs-border-strong"
- />
- <span>Sell shares to repay this loan</span>
- </label>
- {payoffSaleChecked && (
- <TaxRateFields
- rates={saleRates}
- onChange={setSaleRates}
- onReset={() => setSaleRates(ratesFromDefaults(taxSettings))}
- />
- )}
- </div>
+        <div className="space-y-3">
+          <label className="flex items-center gap-2 text-xs text-cs-text-2">
+            <input
+              type="checkbox"
+              checked={payoffSaleChecked}
+              onChange={e => setPayoffSaleChecked(e.target.checked)}
+              className="rounded border-cs-border-strong"
+            />
+            <span>Sell shares to repay this loan</span>
+          </label>
+          {payoffSaleChecked && (
+            <TaxRateFields
+              rates={saleRates}
+              onChange={setSaleRates}
+              onReset={() => setSaleRates(ratesFromDefaults(taxSettings))}
+            />
+          )}
+        </div>
 
- <div className="flex items-center justify-between pt-2">
- <div className="flex gap-2">
- <button
- onClick={() => handleSave(false)}
- disabled={saving}
- className="rounded-full bg-cs-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-cs-brand-hover disabled:opacity-50"
- >
- {saving ? 'Saving...' : 'Save'}
- </button>
- {mode === 'add' && (
- <button
- onClick={() => handleSave(true)}
- disabled={saving}
- className="rounded-md bg-red-100 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-200 dark:bg-red-900/40 dark:text-red-300 dark:hover:bg-red-900/60 disabled:opacity-50"
- >
- Save & Add Another
- </button>
- )}
- </div>
- {mode === 'edit' && editId != null && (
- <button
- onClick={() => handleDelete(editId)}
- className="text-xs text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
- >
- Delete loan
- </button>
- )}
- </div>
- </div>
- )
- }
+        <div className="flex items-center justify-between pt-2">
+          <div className="flex gap-2">
+            <button
+              onClick={() => handleSave(false)}
+              disabled={saving}
+              className="rounded-full bg-cs-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-cs-brand-hover disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+            {mode === 'add' && (
+              <button
+                onClick={() => handleSave(true)}
+                disabled={saving}
+                className="rounded-md bg-red-100 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-200 dark:bg-red-900/40 dark:text-red-300 dark:hover:bg-red-900/60 disabled:opacity-50"
+              >
+                Save & Add Another
+              </button>
+            )}
+          </div>
+          {mode === 'edit' && editId != null && (
+            <button
+              onClick={() => handleDelete(editId)}
+              className="text-xs text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+            >
+              Delete loan
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
 
- return (
- <div className="space-y-4">
- <div className="flex items-center justify-between">
- <h2 className="text-lg font-semibold text-cs-text">Loans</h2>
- {epicMode
- ? <p className="text-xs text-cs-brand">{readOnly ? 'Viewing shared data — read only' : 'Data provided by Epic'}</p>
- : <div className="flex gap-2">
- <button
- onClick={handleRegenerateAll}
- disabled={regenerating}
- className="rounded-md bg-gray-200 px-2 py-1 text-xs font-medium text-cs-text-2 hover:bg-gray-300 disabled:opacity-50 dark:hover:bg-gray-600"
- title="Recalculate how many shares each future loan's repayment sale should sell, using your current lot-selection setting"
- >
- {regenerating ? 'Updating…' : 'Update repayment sales'}
- </button>
- <button onClick={openAdd} className="rounded-full bg-cs-brand px-3 py-1 text-xs font-semibold text-white hover:bg-cs-brand-hover">
- + Loan
- </button>
- </div>
- }
- </div>
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-cs-text">Loans</h2>
+        {epicMode
+          ? <p className="text-xs text-cs-brand">{readOnly ? 'Viewing shared data — read only' : 'Data provided by Epic'}</p>
+          : <div className="flex gap-2">
+            <button
+              onClick={handleRegenerateAll}
+              disabled={regenerating}
+              className="rounded-md bg-gray-200 px-2 py-1 text-xs font-medium text-cs-text-2 hover:bg-gray-300 disabled:opacity-50 dark:hover:bg-gray-600"
+              title="Recalculate how many shares each future loan's repayment sale should sell, using your current lot-selection setting"
+            >
+              {regenerating ? 'Updating…' : 'Update repayment sales'}
+            </button>
+            <button onClick={openAdd} className="rounded-full bg-cs-brand px-3 py-1 text-xs font-semibold text-white hover:bg-cs-brand-hover">
+              + Loan
+            </button>
+          </div>
+        }
+      </div>
 
- {/* Mobile card layout */}
- {isMobile ? <div className="space-y-2">
- {loans.map(l => {
- const linkedSale = sales?.find(s => s.loan_id === l.id)
- const hasSale = !!linkedSale
- const isExpanded = expandedLoanId === l.id
- const refinancedByLoan = loans.find(other => other.refinances_loan_id === l.id)
- return (
- <div key={l.id} className="rounded-xl border border-cs-border bg-cs-surface p-3 text-xs shadow-card">
- {/* Line 1: Grant + Type + Action */}
- <div className="flex items-center justify-between">
- <div className="flex items-center gap-2">
- <span className="font-medium text-cs-text-2">{l.grant_year} {l.grant_type}</span>
- <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
- l.loan_type === 'Interest' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' :
- l.loan_type === 'Tax' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300' :
- 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
- }`}>
- {l.loan_type}
- </span>
- {refinancedByLoan && (
- <span className="rounded-full bg-cs-raised px-1.5 py-0.5 text-[9px] font-medium text-cs-text-2 ">Refinanced</span>
- )}
- </div>
- {readOnly
- ? null
- : epicMode
- ? <button onClick={() => openPayoffModal(l)} className="text-xs font-medium text-cs-brand hover:text-cs-brand-hover dark:hover:text-rose-300">Calculate repayment</button>
- : <button onClick={() => openEdit(l)} className="text-cs-brand hover:text-cs-brand-hover dark:hover:text-rose-300">Edit</button>
- }
- </div>
- {/* Line 2: Amount + Rate */}
- <div className="mt-1 text-cs-text-2">
- <span className="tabular-nums">{fmt$(l.amount)}</span> @ <span className="tabular-nums">{(l.interest_rate * 100).toFixed(2)}%</span>
- </div>
- {/* Line 3: Due + Sale + Expand */}
- <div className="mt-1 flex items-center justify-between text-cs-muted">
- <span>Due: {l.due_date} <span className="text-cs-muted">&middot;</span> Yr: {l.loan_year}</span>
- <button
- onClick={() => setExpandedLoanId(isExpanded ? null : l.id)}
- className={`text-[10px] underline decoration-dotted ${hasSale ? 'text-green-700 dark:text-green-300' : 'text-cs-text-2'}`}
- >
- {hasSale ? '\u2713 linked' : 'none'} {isExpanded ? '\u25B2' : '\u25BC'}
- </button>
- </div>
- {/* Expanded detail */}
- {isExpanded && (
- <div className="mt-2 rounded-md bg-cs-raised p-3 ">
- <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
- {l.loan_number && <div className="col-span-2"><span className="text-cs-text-2">Loan #</span> <span className="ml-1 font-medium text-cs-text-2">{l.loan_number}</span></div>}
- {linkedSale && (
- <>
- <div><span className="text-cs-text-2">Sale date</span> <span className="ml-1 font-medium text-cs-text-2">{linkedSale.date}</span></div>
- <div><span className="text-cs-text-2">Shares</span> <span className="ml-1 font-medium text-cs-text-2">{linkedSale.shares.toLocaleString('en-US')}</span></div>
- <div><span className="text-cs-text-2">Price</span> <span className="ml-1 font-medium text-cs-text-2">{linkedSale.price_per_share.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 })}</span></div>
- <div><span className="text-cs-text-2">Gross</span> <span className="ml-1 font-medium text-cs-text-2">{fmt$(linkedSale.shares * linkedSale.price_per_share)}</span></div>
- </>
- )}
- {!l.loan_number && !linkedSale && (
- <div className="col-span-2 text-cs-text-2">No additional details</div>
- )}
- </div>
- </div>
- )}
- </div>
- )
- })}
- </div> : /* Desktop table layout */
- <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-cs-border bg-cs-surface shadow-card">
- <table className="w-full text-left text-xs">
- <thead className="bg-cs-raised">
- <tr className="text-cs-text-2">
- <th className="px-3 py-2">Grant</th>
- <th className="px-3 py-2 text-right">Loan Yr</th>
- <th className="px-3 py-2">Type</th>
- <th className="px-3 py-2 text-right">Amount</th>
- <th className="px-3 py-2 text-right">Rate</th>
- <th className="px-3 py-2">Due</th>
- <th className="px-3 py-2">Sale</th>
- <th className="px-3 py-2"></th>
- </tr>
- </thead>
- <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
- {loans.map(l => {
- const linkedSale = sales?.find(s => s.loan_id === l.id)
- const hasSale = !!linkedSale
- const isExpanded = expandedLoanId === l.id
- const refinancedByLoan = loans.find(other => other.refinances_loan_id === l.id)
- return (
- <>
- <tr key={l.id} className="bg-cs-surface">
- <td className="whitespace-nowrap px-3 py-2 text-cs-text-2">
- {l.grant_year} {l.grant_type}
- {refinancedByLoan && (
- <span className="ml-1.5 inline-block rounded-full bg-cs-raised px-1.5 py-0.5 text-[9px] font-medium text-cs-text-2 " title={`Refinanced by ${loanLabel(refinancedByLoan)}`}>
- Refinanced
- </span>
- )}
- </td>
- <td className="px-3 py-2 text-right text-cs-muted">{l.loan_year}</td>
- <td className="px-3 py-2">
- <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
- l.loan_type === 'Interest' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' :
- l.loan_type === 'Tax' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300' :
- 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
- }`}>
- {l.loan_type}
- </span>
- </td>
- <td className="px-3 py-2 text-right text-cs-text-2">{fmt$(l.amount)}</td>
- <td className="px-3 py-2 text-right text-cs-muted">{(l.interest_rate * 100).toFixed(2)}%</td>
- <td className="px-3 py-2 text-cs-muted">{l.due_date}</td>
- <td className="px-3 py-2">
- <button
- onClick={() => setExpandedLoanId(isExpanded ? null : l.id)}
- className={`text-[10px] underline decoration-dotted ${hasSale ? 'text-green-700 dark:text-green-300' : 'text-cs-text-2'}`}
- >
- {hasSale ? '\u2713 linked' : 'none'}
- </button>
- </td>
- <td className="px-3 py-2 text-right">
- {readOnly
- ? null
- : epicMode
- ? <button onClick={() => openPayoffModal(l)} className="text-cs-brand hover:text-cs-brand-hover dark:hover:text-rose-300 text-xs font-medium">Calculate repayment</button>
- : <button onClick={() => openEdit(l)} className="text-cs-brand hover:text-cs-brand-hover dark:hover:text-rose-300">Edit</button>
- }
- </td>
- </tr>
- {isExpanded && (
- <tr key={`${l.id}-detail`} className="bg-cs-surface">
- <td colSpan={7} className="px-3 pb-3 pt-0">
- <div className="rounded-md bg-cs-raised p-3 ">
- <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
- {l.loan_number && <div className="col-span-2"><span className="text-cs-text-2">Loan #</span> <span className="ml-1 font-medium text-cs-text-2">{l.loan_number}</span></div>}
- {linkedSale && (
- <>
- <div><span className="text-cs-text-2">Sale date</span> <span className="ml-1 font-medium text-cs-text-2">{linkedSale.date}</span></div>
- <div><span className="text-cs-text-2">Shares</span> <span className="ml-1 font-medium text-cs-text-2">{linkedSale.shares.toLocaleString('en-US')}</span></div>
- <div><span className="text-cs-text-2">Price</span> <span className="ml-1 font-medium text-cs-text-2">{linkedSale.price_per_share.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 })}</span></div>
- <div><span className="text-cs-text-2">Gross</span> <span className="ml-1 font-medium text-cs-text-2">{fmt$(linkedSale.shares * linkedSale.price_per_share)}</span></div>
- </>
- )}
- {!l.loan_number && !linkedSale && (
- <div className="col-span-2 text-cs-text-2">No additional details</div>
- )}
- </div>
- </div>
- </td>
- </tr>
- )}
- </>
- )
- })}
- </tbody>
- </table>
- </div>}
- {loans.length === 0 && (
- <p className="px-3 py-6 text-center text-xs text-cs-text-2">
- {epicMode
- ? 'No loans yet.'
- : <>No loans yet. Tap <span className="font-medium">+ Loan</span> above to record one.</>}
- </p>
- )}
- <p className="text-xs text-cs-text-2">{loans.length} loans</p>
+      {/* Mobile card layout */}
+      {isMobile ? <div className="space-y-2">
+        {loans.map(l => {
+          const linkedSale = sales?.find(s => s.loan_id === l.id)
+          const hasSale = !!linkedSale
+          const isExpanded = expandedLoanId === l.id
+          const refinancedByLoan = loans.find(other => other.refinances_loan_id === l.id)
+          return (
+            <div key={l.id} className="rounded-xl border border-cs-border bg-cs-surface p-3 text-xs shadow-card">
+              {/* Line 1: Grant + Type + Action */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-cs-text-2">{l.grant_year} {l.grant_type}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                    l.loan_type === 'Interest' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' :
+                      l.loan_type === 'Tax' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300' :
+                        'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
+                  }`}>
+                    {l.loan_type}
+                  </span>
+                  {refinancedByLoan && (
+                    <span className="rounded-full bg-cs-raised px-1.5 py-0.5 text-[9px] font-medium text-cs-text-2 ">Refinanced</span>
+                  )}
+                </div>
+                {readOnly
+                  ? null
+                  : epicMode
+                    ? <button onClick={() => openPayoffModal(l)} className="text-xs font-medium text-cs-brand hover:text-cs-brand-hover dark:hover:text-rose-300">Calculate repayment</button>
+                    : <button onClick={() => openEdit(l)} className="text-cs-brand hover:text-cs-brand-hover dark:hover:text-rose-300">Edit</button>
+                }
+              </div>
+              {/* Line 2: Amount + Rate */}
+              <div className="mt-1 text-cs-text-2">
+                <span className="tabular-nums">{fmt$(l.amount)}</span> @ <span className="tabular-nums">{(l.interest_rate * 100).toFixed(2)}%</span>
+              </div>
+              {/* Line 3: Due + Sale + Expand */}
+              <div className="mt-1 flex items-center justify-between text-cs-muted">
+                <span>Due: {l.due_date} <span className="text-cs-muted">&middot;</span> Yr: {l.loan_year}</span>
+                <button
+                  onClick={() => setExpandedLoanId(isExpanded ? null : l.id)}
+                  className={`text-[10px] underline decoration-dotted ${hasSale ? 'text-green-700 dark:text-green-300' : 'text-cs-text-2'}`}
+                >
+                  {hasSale ? '\u2713 linked' : 'none'} {isExpanded ? '\u25B2' : '\u25BC'}
+                </button>
+              </div>
+              {/* Expanded detail */}
+              {isExpanded && (
+                <div className="mt-2 rounded-md bg-cs-raised p-3 ">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                    {l.loan_number && <div className="col-span-2"><span className="text-cs-text-2">Loan #</span> <span className="ml-1 font-medium text-cs-text-2">{l.loan_number}</span></div>}
+                    {linkedSale && (
+                      <>
+                        <div><span className="text-cs-text-2">Sale date</span> <span className="ml-1 font-medium text-cs-text-2">{linkedSale.date}</span></div>
+                        <div><span className="text-cs-text-2">Shares</span> <span className="ml-1 font-medium text-cs-text-2">{linkedSale.shares.toLocaleString('en-US')}</span></div>
+                        <div><span className="text-cs-text-2">Price</span> <span className="ml-1 font-medium text-cs-text-2">{linkedSale.price_per_share.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 })}</span></div>
+                        <div><span className="text-cs-text-2">Gross</span> <span className="ml-1 font-medium text-cs-text-2">{fmt$(linkedSale.shares * linkedSale.price_per_share)}</span></div>
+                      </>
+                    )}
+                    {!l.loan_number && !linkedSale && (
+                      <div className="col-span-2 text-cs-text-2">No additional details</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div> : /* Desktop table layout */
+        <div tabIndex={0} className="overflow-x-auto rounded-2xl border border-cs-border bg-cs-surface shadow-card">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-cs-raised">
+              <tr className="text-cs-text-2">
+                <th className="px-3 py-2">Grant</th>
+                <th className="px-3 py-2 text-right">Loan Yr</th>
+                <th className="px-3 py-2">Type</th>
+                <th className="px-3 py-2 text-right">Amount</th>
+                <th className="px-3 py-2 text-right">Rate</th>
+                <th className="px-3 py-2">Due</th>
+                <th className="px-3 py-2">Sale</th>
+                <th className="px-3 py-2"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              {loans.map(l => {
+                const linkedSale = sales?.find(s => s.loan_id === l.id)
+                const hasSale = !!linkedSale
+                const isExpanded = expandedLoanId === l.id
+                const refinancedByLoan = loans.find(other => other.refinances_loan_id === l.id)
+                return (
+                  <>
+                    <tr key={l.id} className="bg-cs-surface">
+                      <td className="whitespace-nowrap px-3 py-2 text-cs-text-2">
+                        {l.grant_year} {l.grant_type}
+                        {refinancedByLoan && (
+                          <span className="ml-1.5 inline-block rounded-full bg-cs-raised px-1.5 py-0.5 text-[9px] font-medium text-cs-text-2 " title={`Refinanced by ${loanLabel(refinancedByLoan)}`}>
+                            Refinanced
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right text-cs-muted">{l.loan_year}</td>
+                      <td className="px-3 py-2">
+                        <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                          l.loan_type === 'Interest' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' :
+                            l.loan_type === 'Tax' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300' :
+                              'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300'
+                        }`}>
+                          {l.loan_type}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-right text-cs-text-2">{fmt$(l.amount)}</td>
+                      <td className="px-3 py-2 text-right text-cs-muted">{(l.interest_rate * 100).toFixed(2)}%</td>
+                      <td className="px-3 py-2 text-cs-muted">{l.due_date}</td>
+                      <td className="px-3 py-2">
+                        <button
+                          onClick={() => setExpandedLoanId(isExpanded ? null : l.id)}
+                          className={`text-[10px] underline decoration-dotted ${hasSale ? 'text-green-700 dark:text-green-300' : 'text-cs-text-2'}`}
+                        >
+                          {hasSale ? '\u2713 linked' : 'none'}
+                        </button>
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        {readOnly
+                          ? null
+                          : epicMode
+                            ? <button onClick={() => openPayoffModal(l)} className="text-cs-brand hover:text-cs-brand-hover dark:hover:text-rose-300 text-xs font-medium">Calculate repayment</button>
+                            : <button onClick={() => openEdit(l)} className="text-cs-brand hover:text-cs-brand-hover dark:hover:text-rose-300">Edit</button>
+                        }
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr key={`${l.id}-detail`} className="bg-cs-surface">
+                        <td colSpan={7} className="px-3 pb-3 pt-0">
+                          <div className="rounded-md bg-cs-raised p-3 ">
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                              {l.loan_number && <div className="col-span-2"><span className="text-cs-text-2">Loan #</span> <span className="ml-1 font-medium text-cs-text-2">{l.loan_number}</span></div>}
+                              {linkedSale && (
+                                <>
+                                  <div><span className="text-cs-text-2">Sale date</span> <span className="ml-1 font-medium text-cs-text-2">{linkedSale.date}</span></div>
+                                  <div><span className="text-cs-text-2">Shares</span> <span className="ml-1 font-medium text-cs-text-2">{linkedSale.shares.toLocaleString('en-US')}</span></div>
+                                  <div><span className="text-cs-text-2">Price</span> <span className="ml-1 font-medium text-cs-text-2">{linkedSale.price_per_share.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 })}</span></div>
+                                  <div><span className="text-cs-text-2">Gross</span> <span className="ml-1 font-medium text-cs-text-2">{fmt$(linkedSale.shares * linkedSale.price_per_share)}</span></div>
+                                </>
+                              )}
+                              {!l.loan_number && !linkedSale && (
+                                <div className="col-span-2 text-cs-text-2">No additional details</div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>}
+      {loans.length === 0 && (
+        <p className="px-3 py-6 text-center text-xs text-cs-text-2">
+          {epicMode
+            ? 'No loans yet.'
+            : <>No loans yet. Tap <span className="font-medium">+ Loan</span> above to record one.</>}
+        </p>
+      )}
+      <p className="text-xs text-cs-text-2">{loans.length} loans</p>
 
- {payoffModal && (
- <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={closePayoffModal}>
- <div className="w-full max-w-sm max-h-[90vh] overflow-y-auto rounded-lg bg-cs-surface p-5 shadow-xl " onClick={e => e.stopPropagation()}>
- <div className="flex items-center justify-between">
- <h3 className="text-sm font-semibold text-cs-text">Repay this loan early</h3>
- <button onClick={closePayoffModal} aria-label="Close dialog" className="text-cs-text-2 hover:text-cs-text-2 ">✕</button>
- </div>
- <p className="mt-1 text-xs text-cs-muted">
- {payoffModal.loan.grant_year} {payoffModal.loan.grant_type} — {payoffModal.loan.loan_type} loan
- </p>
- {payoffModal.existingSale && (
- <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
- The existing repayment sale on {payoffModal.existingSale.date} will be updated.
- </p>
- )}
+      {payoffModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={closePayoffModal}>
+          <div className="w-full max-w-sm max-h-[90vh] overflow-y-auto rounded-lg bg-cs-surface p-5 shadow-xl " onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-cs-text">Repay this loan early</h3>
+              <button onClick={closePayoffModal} aria-label="Close dialog" className="text-cs-text-2 hover:text-cs-text-2 ">✕</button>
+            </div>
+            <p className="mt-1 text-xs text-cs-muted">
+              {payoffModal.loan.grant_year} {payoffModal.loan.grant_type} — {payoffModal.loan.loan_type} loan
+            </p>
+            {payoffModal.existingSale && (
+              <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                The existing repayment sale on {payoffModal.existingSale.date} will be updated.
+              </p>
+            )}
 
- {!payoffModal.suggestion && !payoffError && (
- <p className="mt-4 text-center text-xs text-cs-text-2">Loading estimate…</p>
- )}
+            {!payoffModal.suggestion && !payoffError && (
+              <p className="mt-4 text-center text-xs text-cs-text-2">Loading estimate…</p>
+            )}
 
- {payoffModal.suggestion && (
- <>
- <dl className="mt-4 space-y-2 text-xs">
- <div className="flex justify-between">
- <dt className="text-cs-muted">Outstanding balance</dt>
- <dd className="font-medium text-cs-text">{payoffModal.suggestion.cash_due.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</dd>
- </div>
- <div className="flex justify-between">
- <dt className="text-cs-muted">Shares to sell</dt>
- <dd className="font-medium text-cs-text">{payoffModal.suggestion.shares.toLocaleString('en-US')}</dd>
- </div>
- <div className="flex justify-between">
- <dt className="text-cs-muted">Price per share</dt>
- <dd className="font-medium text-cs-text">{payoffModal.suggestion.price_per_share.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 })}</dd>
- </div>
- <div className="flex justify-between border-t border-gray-100 pt-2 ">
- <dt className="text-cs-muted">Est. gross proceeds</dt>
- <dd className="font-medium text-cs-text">{(payoffModal.suggestion.shares * payoffModal.suggestion.price_per_share).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</dd>
- </div>
- <div className="flex justify-between">
- <dt className="text-cs-muted">Sale date</dt>
- <dd className="font-medium text-cs-text">{payoffModal.suggestion.date}</dd>
- </div>
- </dl>
- <div className="mt-3">
- <TrancheTable
- lines={payoffTranche?.lines ?? []}
- loading={payoffTrancheLoading && !payoffTranche}
- manual={false}
- manualAlloc={{}}
- onManualChange={() => {}}
- date={payoffModal.suggestion.date}
- />
- </div>
- </>
- )}
+            {payoffModal.suggestion && (
+              <>
+                <dl className="mt-4 space-y-2 text-xs">
+                  <div className="flex justify-between">
+                    <dt className="text-cs-muted">Outstanding balance</dt>
+                    <dd className="font-medium text-cs-text">{payoffModal.suggestion.cash_due.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-cs-muted">Shares to sell</dt>
+                    <dd className="font-medium text-cs-text">{payoffModal.suggestion.shares.toLocaleString('en-US')}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-cs-muted">Price per share</dt>
+                    <dd className="font-medium text-cs-text">{payoffModal.suggestion.price_per_share.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 })}</dd>
+                  </div>
+                  <div className="flex justify-between border-t border-gray-100 pt-2 ">
+                    <dt className="text-cs-muted">Est. gross proceeds</dt>
+                    <dd className="font-medium text-cs-text">{(payoffModal.suggestion.shares * payoffModal.suggestion.price_per_share).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-cs-muted">Sale date</dt>
+                    <dd className="font-medium text-cs-text">{payoffModal.suggestion.date}</dd>
+                  </div>
+                </dl>
+                <div className="mt-3">
+                  <TrancheTable
+                    lines={payoffTranche?.lines ?? []}
+                    loading={payoffTrancheLoading && !payoffTranche}
+                    manual={false}
+                    manualAlloc={{}}
+                    onManualChange={() => {}}
+                    date={payoffModal.suggestion.date}
+                  />
+                </div>
+              </>
+            )}
 
- {payoffError && <p className="mt-3 text-xs text-red-600 dark:text-red-400">{payoffError}</p>}
+            {payoffError && <p className="mt-3 text-xs text-red-600 dark:text-red-400">{payoffError}</p>}
 
- <div className="mt-4 flex justify-end gap-2">
- <button onClick={closePayoffModal} className="rounded-md px-3 py-1.5 text-xs text-cs-muted hover:text-cs-text-2 ">Cancel</button>
- <button
- onClick={handleExecutePayoff}
- disabled={payoffExecuting || !payoffModal.suggestion}
- className="rounded-md bg-cs-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-cs-brand-hover disabled:opacity-50"
- >
- {payoffExecuting ? 'Processing…' : payoffModal.existingSale ? 'Update Payoff Sale' : 'Confirm Payoff'}
- </button>
- </div>
- </div>
- </div>
- )}
- </div>
- )
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={closePayoffModal} className="rounded-md px-3 py-1.5 text-xs text-cs-muted hover:text-cs-text-2 ">Cancel</button>
+              <button
+                onClick={handleExecutePayoff}
+                disabled={payoffExecuting || !payoffModal.suggestion}
+                className="rounded-md bg-cs-brand px-3 py-1.5 text-xs font-medium text-white hover:bg-cs-brand-hover disabled:opacity-50"
+              >
+                {payoffExecuting ? 'Processing…' : payoffModal.existingSale ? 'Update Payoff Sale' : 'Confirm Payoff'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
-function Field({ label, type, value, onChange, step }: {
- label: string; type: string; value: string | number; onChange: (v: string) => void; step?: string
-}) {
- return (
- <label className="block">
- <span className="text-xs text-cs-muted">{label}</span>
- <input
- type={type}
- step={step}
- value={value}
- onChange={e => onChange(e.target.value)}
- className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text"
- />
- </label>
- )
-}

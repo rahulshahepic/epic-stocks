@@ -35,7 +35,7 @@ function DiffTable({ differences }: { differences: Difference[] }) {
         <tbody>
           {differences.map((d, i) => (
             <tr key={`${d.entity}-${d.key}-${d.field}-${i}`}
-                className="border-b border-cs-border/50 align-top">
+              className="border-b border-cs-border/50 align-top">
               <td className={`py-1 pr-3 font-mono font-semibold ${SEVERITY_TONE[d.severity]}`}>
                 {d.rule}
               </td>

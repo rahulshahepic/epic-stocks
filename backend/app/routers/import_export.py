@@ -22,6 +22,7 @@ from schemas import LOAN_TYPES
 
 import openpyxl
 from openpyxl.styles import Font, PatternFill
+from app import event_cache
 
 _MAX_BACKUPS_PER_USER = 3
 
@@ -398,8 +399,7 @@ def import_excel(
         ("Schedule", has_schedule), ("Prices", has_prices), ("Loans", has_loans),
         ("LoanPayments", has_loan_payments), ("Sales", has_sales),
     ]
-    from app.event_cache import schedule_recompute
-    schedule_recompute(user.id)
+    event_cache.schedule_recompute(user.id)
     return {
         "grants": len(grants_raw),
         "prices": len(prices_raw),
@@ -600,8 +600,7 @@ def restore_import_backup(
         ))
 
     db.commit()
-    from app.event_cache import schedule_recompute
-    schedule_recompute(user.id)
+    event_cache.schedule_recompute(user.id)
     return {
         "restored_grants": len(grants),
         "restored_prices": len(prices),

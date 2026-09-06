@@ -1,30 +1,10 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { isLoggedIn, submitReport } from '../../api.ts'
 import { useScrollLock } from '../hooks/useScrollLock.ts'
 import type { ReportSource } from '../../api.ts'
 import { getClientLog, getLastErrorRef, logRoute, resetReportLog, scrubPath } from '../reportLog.ts'
-
-/** Context handed to the dialog when something specific went wrong. */
-export interface ReportPrefill {
-  source?: ReportSource
-  /** The failure text the UI already showed the person. */
-  errorMessage?: string
-  /** Server correlation id, when the failure carried one. */
-  errorRef?: string | null
-  /** Seed text for the message box (import findings use this). */
-  message?: string
-  /** Route to attribute the report to. Defaults to the current one. */
-  path?: string
-}
-
-interface ReportContextValue {
-  openReport: (prefill?: ReportPrefill) => void
-}
-
-const ReportContext = createContext<ReportContextValue>({ openReport: () => {} })
-
-export const useReportProblem = () => useContext(ReportContext)
+import { ReportContext, useReportProblem, type ReportPrefill } from './reportContext.ts'
 
 const APP_VERSION = (import.meta.env.VITE_COMMIT_SHA as string | undefined) ?? 'dev'
 
@@ -197,7 +177,7 @@ export function ReportDialog({
             </div>
             {showPayload && (
               <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-cs-raised p-2 font-mono text-[11px] leading-relaxed text-cs-text-2">
-{`message: ${message.trim() || '(empty)'}
+                {`message: ${message.trim() || '(empty)'}
 page: ${prefill.path ?? scrubPath(window.location.pathname)}
 source: ${prefill.source ?? 'manual'}
 error ref: ${errorRef ?? '(none)'}

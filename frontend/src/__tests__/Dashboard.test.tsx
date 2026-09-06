@@ -41,7 +41,6 @@ const MOCK_EVENTS = [
   },
 ]
 
-const MOCK_SALES: never[] = []
 
 // An auto-generated loan payoff sale: liquidates all of Grant 1's shares to pay off
 // MOCK_LOANS[0]. Auto-payoff sales carry loan_id but no lot_overrides (see
@@ -54,6 +53,7 @@ const MOCK_SALES_WITH_LOAN_PAYOFF = [
   },
 ]
 
+const MOCK_SALES: typeof MOCK_SALES_WITH_LOAN_PAYOFF = []
 const MOCK_PRICES = [
   { id: 1, effective_date: '2020-12-31', price: 1.99 },
   { id: 2, effective_date: '2021-03-01', price: 2.50 },

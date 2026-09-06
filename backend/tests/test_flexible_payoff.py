@@ -326,6 +326,34 @@ def test_adding_a_price_refreshes_stale_future_payoff_sales(client, db_session):
     assert sale_after["shares"] < sale_before["shares"]
 
 
+def test_adding_a_price_does_not_create_sales_for_loans_that_have_none(client, db_session):
+    """A price change must only refresh payoff sales that already exist — it
+    must not silently generate a brand-new payoff sale for a future loan the
+    user (or an import) deliberately left without one. Regression test for a
+    CI break: importing fixture.xlsx (21 loans, 0 payoff sales, by design)
+    and then adding a price started auto-creating a payoff sale per loan,
+    inflating the event count far past what every other fixture-based test
+    expects.
+    """
+    register_user(client)
+    _setup_data(client)  # price $20 from 2020-01-01
+
+    resp = client.post("/api/loans?generate_payoff_sale=false", json={
+        "grant_year": 2018, "grant_type": "Purchase",
+        "loan_type": "Interest", "loan_year": 2019,
+        "amount": 10000.0, "interest_rate": 0.03,
+        "due_date": "2030-01-01",
+    })
+    assert resp.status_code == 201
+
+    assert client.get("/api/sales").json() == []
+
+    resp = client.post("/api/prices", json={"effective_date": "2029-01-01", "price": 40.0})
+    assert resp.status_code == 201
+
+    assert client.get("/api/sales").json() == []
+
+
 def test_regenerate_skips_refinanced_loans(client, db_session):
     """regenerate-all-payoff-sales does not create sales for refinanced loans."""
     register_user(client)

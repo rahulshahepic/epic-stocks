@@ -19,7 +19,7 @@ def _refresh_future_payoff_sales(user: User, db: Session) -> None:
     when they were generated, silently drifting from the account's own latest
     known price."""
     from app.routers.loans import _regenerate_future_payoff_sales
-    _regenerate_future_payoff_sales(user, db)
+    _regenerate_future_payoff_sales(user, db, create_missing=False)
 
 
 def _remove_shadowed_estimates(user_id: int, db: Session) -> bool:

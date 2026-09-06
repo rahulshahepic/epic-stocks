@@ -712,11 +712,26 @@ def _preview_exit_data(user: User, db: Session, date_str: str):
     } if ts_row else None
     method = ts_row.lot_selection_method if ts_row else 'epic_lifo'
     lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
+    # Same-tranche restriction for loan payoff sales — see the matching comment
+    # in _get_events_data. loan_payoff_method (not lot_selection_method) governs
+    # payoff sales, and defaults to same_tranche unless flexible payoff is on.
+    from app.routers.loans import _is_flexible_payoff_enabled
+    payoff_method = 'same_tranche'
+    if ts_row and _is_flexible_payoff_enabled(db):
+        candidate = getattr(ts_row, 'loan_payoff_method', 'same_tranche')
+        if candidate in ('fifo', 'lifo', 'epic_lifo'):
+            payoff_method = candidate
+    sale_loan_map: dict = {}
+    if ts_row and payoff_method == 'same_tranche':
+        loan_id_to_grant = {ln.id: (ln.grant_year, ln.grant_type) for ln in loans_db}
+        for s in sales:
+            if s.loan_id:
+                sale_loan_map[s.id] = loan_id_to_grant.get(s.loan_id, (None, None))
     db.close()
 
     enriched = _enrich_timeline(timeline, loans_db, loan_payments, sales, horizon_date=preview_date)
     if ts_dict:
-        _annotate_sale_taxes(enriched, timeline, ts_dict, lot_order=lot_order)
+        _annotate_sale_taxes(enriched, timeline, ts_dict, lot_order=lot_order, sale_loan_map=sale_loan_map)
     deduction_enabled = bool(ts_row and ts_row.deduct_investment_interest)
     excl_years = set(ts_row.deduction_excluded_years or []) if ts_row else set()
     if deduction_enabled:
@@ -791,6 +806,17 @@ def _get_events_data(user: User, db: Session) -> list:
 
     method = ts_row.lot_selection_method if ts_row else 'epic_lifo'
     lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
+    # Loan payoff sales are same-tranche by default (restricted to the loan's own
+    # grant) unless the admin has enabled flexible payoff and the user opted into
+    # a different lot order — mirrors get_sale_tax's per-sale resolution. This is
+    # a different setting (loan_payoff_method) than lot_selection_method above,
+    # which only governs ordinary (non-payoff) sales.
+    from app.routers.loans import _is_flexible_payoff_enabled
+    payoff_method = 'same_tranche'
+    if ts_row and _is_flexible_payoff_enabled(db):
+        candidate = getattr(ts_row, 'loan_payoff_method', 'same_tranche')
+        if candidate in ('fifo', 'lifo', 'epic_lifo'):
+            payoff_method = candidate
     sale_overrides: dict = {}
     sale_loan_map: dict = {}
     sale_lot_overrides: dict = {}
@@ -807,7 +833,7 @@ def _get_events_data(user: User, db: Session) -> list:
                 "state_st_cg_rate": s.state_st_cg_rate if s.state_st_cg_rate is not None else ts_row.state_st_cg_rate,
                 "lt_holding_days": s.lt_holding_days if s.lt_holding_days is not None else ts_row.lt_holding_days,
             }
-            if s.loan_id and method == 'same_tranche':
+            if s.loan_id and payoff_method == 'same_tranche':
                 sale_loan_map[s.id] = loan_id_to_grant.get(s.loan_id, (None, None))
             if s.lot_overrides:
                 sale_lot_overrides[s.id] = s.lot_overrides

@@ -54,10 +54,18 @@ def authorize(client, client_id, challenge, scope="equity:read comp:read",
 
 
 def consent(client, page_html, decision="allow"):
-    """Submit the consent form the way a browser would."""
+    """Submit the consent form the way a browser would.
+
+    Posts to the action the page actually declares rather than to a hardcoded
+    path. The form had no action at all for a while, which means a browser
+    posted it to whatever URL it was already on — /oauth/authorize/resume after
+    a sign-in, which has no POST route — and Connect silently did nothing. A
+    test that knew the right path could not see that.
+    """
+    action = page_html.split('<form method="post" action="')[1].split('"')[0]
     request_token = page_html.split('name="request" value="')[1].split('"')[0]
     csrf = page_html.split('name="csrf" value="')[1].split('"')[0]
-    return client.post("/oauth/authorize", data={
+    return client.post(action, data={
         "request": request_token, "csrf": csrf, "decision": decision,
     }, follow_redirects=False)
 
@@ -639,3 +647,72 @@ def test_the_encryption_key_is_in_context_for_a_connector_request(client, db_ses
         "no data key in context for a connector request — every encrypted "
         "column read under /mcp would fail closed in production"
     )
+
+
+# ── the page a browser actually renders ─────────────────────────────────────
+
+def test_the_consent_page_links_its_stylesheet_rather_than_inlining_it(client):
+    """`style-src 'self'` blocks an inline <style>, and the page rendered as
+    unstyled browser defaults on staging until this was a real file."""
+    register_user(client)
+    reg = register_client(client)
+    _, challenge = pkce_pair()
+    page = authorize(client, reg["client_id"], challenge).text
+
+    assert '<link rel="stylesheet" href="/oauth/consent.css">' in page
+    assert "<style" not in page, "an inline style block is blocked by the site CSP"
+
+
+def test_the_stylesheet_is_served_as_css(client):
+    resp = client.get("/oauth/consent.css")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/css")
+    assert ".card" in resp.text
+
+
+def test_the_form_posts_somewhere_that_accepts_a_post(client):
+    """Without an explicit action a browser posts to the current URL, which
+    after a sign-in is the resume path — GET only."""
+    register_user(client)
+    reg = register_client(client)
+    _, challenge = pkce_pair()
+    page = authorize(client, reg["client_id"], challenge).text
+
+    action = page.split('<form method="post" action="')[1].split('"')[0]
+    assert action == "/oauth/authorize"
+
+
+def test_the_whole_flow_works_when_the_user_has_to_sign_in_first(client, db_session):
+    """The path a real user takes: an assistant sends them to /oauth/authorize
+    with no session, they sign in, and they come back to approve.
+
+    This is the one that was broken — the consent form posted to the resume URL
+    and got a 405, so Connect appeared to do nothing.
+    """
+    from urllib.parse import parse_qs, unquote, urlparse
+
+    reg = register_client(client)
+    verifier, challenge = pkce_pair()
+
+    bounced = authorize(client, reg["client_id"], challenge)
+    assert bounced.status_code == 302
+    resume = unquote(bounced.headers["location"].split("next=", 1)[1])
+    assert resume.startswith("/oauth/authorize/resume?request=")
+
+    register_user(client)
+
+    page = client.get(resume)
+    assert page.status_code == 200
+    assert "wants to connect" in page.text
+
+    redirected = consent(client, page.text)
+    assert redirected.status_code == 302, redirected.text
+    code = parse_qs(urlparse(redirected.headers["location"]).query)["code"][0]
+
+    tokens = client.post("/oauth/token", data={
+        "grant_type": "authorization_code", "code": code,
+        "redirect_uri": REDIRECT, "client_id": reg["client_id"],
+        "code_verifier": verifier,
+    })
+    assert tokens.status_code == 200, tokens.text
+    assert tokens.json()["access_token"]

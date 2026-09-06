@@ -40,6 +40,151 @@ class TestUnsubscribeTokens:
             assert "type=invite" in url
 
 
+
+# ── RFC 8058 one-click unsubscribe ─────────────────────────────────────────
+
+class TestOneClickUnsubscribe:
+    """The path Gmail and Outlook actually take.
+
+    Their "Unsubscribe" button POSTs to whatever is in List-Unsubscribe, with
+    the fixed body RFC 8058 specifies and no session. For a long time that
+    header pointed at the SPA page, so the POST reached static file serving and
+    did nothing at all while the message went on advertising one-click support.
+    """
+
+    def _headers(self, email="bob@test.com", category="notify"):
+        from scaffold.email_sender import list_unsubscribe_headers
+        with patch.dict(os.environ, {"APP_URL": "https://example.com"}):
+            return list_unsubscribe_headers(email, category)
+
+    def test_header_uri_is_an_endpoint_that_answers_post(self, client):
+        """The URI in the header, POSTed to exactly as a mail client would."""
+        hdrs = self._headers()
+        assert hdrs["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
+        uri = hdrs["List-Unsubscribe"].strip("<>")
+        assert uri.startswith("https://example.com/api/unsubscribe/one-click?")
+
+        register_user(client, "bob@test.com")
+        path = uri[len("https://example.com"):]
+        resp = client.post(path, content=b"List-Unsubscribe=One-Click",
+                           headers={"Content-Type": "application/x-www-form-urlencoded"})
+        assert resp.status_code == 200
+
+        from scaffold.email_sender import generate_unsubscribe_token
+        token = generate_unsubscribe_token("bob@test.com", "notify")
+        check = client.get("/api/unsubscribe", params={
+            "token": token, "email": "bob@test.com", "type": "notify",
+        }).json()
+        assert check["already_unsubscribed"] is True
+
+    def test_missing_body_still_unsubscribes(self, client):
+        """A client that sends no body still pressed the button."""
+        register_user(client, "bob@test.com")
+        from scaffold.email_sender import generate_unsubscribe_token
+        token = generate_unsubscribe_token("bob@test.com", "notify")
+        resp = client.post("/api/unsubscribe/one-click", params={
+            "token": token, "email": "bob@test.com", "type": "notify",
+        })
+        assert resp.status_code == 200
+
+    def test_invite_category_opts_out(self, client):
+        from scaffold.email_sender import generate_unsubscribe_token
+        token = generate_unsubscribe_token("cold@test.com", "invite")
+        resp = client.post("/api/unsubscribe/one-click", params={
+            "token": token, "email": "cold@test.com", "type": "invite",
+        })
+        assert resp.status_code == 200
+        check = client.get("/api/unsubscribe", params={
+            "token": token, "email": "cold@test.com", "type": "invite",
+        }).json()
+        assert check["already_unsubscribed"] is True
+
+    def test_bad_token_is_refused(self, client):
+        resp = client.post("/api/unsubscribe/one-click", params={
+            "token": "nope", "email": "bob@test.com", "type": "notify",
+        })
+        assert resp.status_code == 403
+
+    def test_bad_type_is_refused(self, client):
+        from scaffold.email_sender import generate_unsubscribe_token
+        token = generate_unsubscribe_token("bob@test.com", "notify")
+        resp = client.post("/api/unsubscribe/one-click", params={
+            "token": token, "email": "bob@test.com", "type": "everything",
+        })
+        assert resp.status_code == 400
+
+    def test_get_does_not_unsubscribe(self, client):
+        """A link scanner opens every URL in a message before it is delivered.
+
+        If GET unsubscribed, the gateway protecting the recipient would do it
+        for them — which is the whole reason RFC 8058 asks for a POST.
+        """
+        register_user(client, "bob@test.com")
+        from scaffold.email_sender import generate_unsubscribe_token
+        token = generate_unsubscribe_token("bob@test.com", "notify")
+        with patch.dict(os.environ, {"APP_URL": "https://example.com"}):
+            resp = client.get("/api/unsubscribe/one-click", params={
+                "token": token, "email": "bob@test.com", "type": "notify",
+            }, follow_redirects=False)
+        assert resp.status_code == 302
+        assert resp.headers["location"].startswith("https://example.com/unsubscribe?")
+
+        check = client.get("/api/unsubscribe", params={
+            "token": token, "email": "bob@test.com", "type": "notify",
+        }).json()
+        assert check["already_unsubscribed"] is False
+
+    def test_get_does_not_mint_a_token_for_an_arbitrary_address(self, client):
+        """The redirect carries the token it was given, never a fresh one.
+
+        Rebuilding the destination with a newly minted token would turn this
+        into an oracle: name any address, receive a working unsubscribe link
+        for it.
+        """
+        from scaffold.email_sender import generate_unsubscribe_token
+        real = generate_unsubscribe_token("victim@test.com", "notify")
+        with patch.dict(os.environ, {"APP_URL": "https://example.com"}):
+            resp = client.get("/api/unsubscribe/one-click", params={
+                "token": "garbage", "email": "victim@test.com", "type": "notify",
+            }, follow_redirects=False)
+        assert resp.status_code == 302
+        assert real not in resp.headers["location"]
+        assert "garbage" in resp.headers["location"]
+
+    def test_get_cannot_shape_the_location_header(self, client):
+        """Everything on the redirect is re-encoded, so no CR/LF gets through."""
+        with patch.dict(os.environ, {"APP_URL": "https://example.com"}):
+            resp = client.get("/api/unsubscribe/one-click", params={
+                "token": "a\r\nX-Injected: yes", "email": "bob@test.com", "type": "notify",
+            }, follow_redirects=False)
+        location = resp.headers["location"]
+        assert "\r" not in location and "\n" not in location
+        assert "x-injected" not in resp.headers
+
+    def test_plus_addressed_recipient_can_unsubscribe(self):
+        """A query string decodes "+" as a space.
+
+        Left unencoded, bob+epic@… came back as "bob epic@…", hashed to
+        something else, and the recipient was told their own link was invalid.
+        """
+        from urllib.parse import parse_qs, urlparse
+        from scaffold.email_sender import unsubscribe_url, verify_unsubscribe_token
+        with patch.dict(os.environ, {"APP_URL": "https://example.com"}):
+            url = unsubscribe_url("bob+epic@test.com", "notify")
+        params = parse_qs(urlparse(url).query)
+        assert params["email"] == ["bob+epic@test.com"]
+        assert verify_unsubscribe_token(params["token"][0], params["email"][0], params["type"][0])
+
+    def test_one_click_is_not_advertised_over_plain_http(self):
+        """RFC 8058 §7 requires an https URI, and a client may ignore anything
+        else — so promising one-click from a dev APP_URL promises nothing."""
+        from scaffold.email_sender import list_unsubscribe_headers
+        with patch.dict(os.environ, {"APP_URL": "http://localhost:5173"}):
+            hdrs = list_unsubscribe_headers("bob@test.com", "notify")
+        assert "List-Unsubscribe" in hdrs
+        assert "List-Unsubscribe-Post" not in hdrs
+
+
 # ── Unsubscribe API ────────────────────────────────────────────────────────
 
 class TestUnsubscribeAPI:

@@ -397,7 +397,7 @@ Go to **Settings → Notifications** to configure.
   Settings tells you which of five situations this device is in: on, off (tap **Enable**), blocked (you declined before — only your device settings can undo that), not available, or, on an iPhone or iPad, *add the app to your home screen first* — iOS only allows notifications for an installed app, never for a tab in Safari.
 
   If you have enabled push anywhere before, a new device offers a **Turn on notifications for this device?** banner. "Don't ask again" stops the offer everywhere without unsubscribing any device that already works.
-- **Email** — enable the toggle. Enabled by default for new users. All notification emails include an unsubscribe link in the footer.
+- **Email** — enable the toggle. Enabled by default for new users. All notification emails include an unsubscribe link in the footer, and the `List-Unsubscribe` header that puts an Unsubscribe button in Gmail and Outlook next to the sender.
 
 **Advance timing** — choose when to be notified: day-of (default), 3 days before, or 1 week before. This applies to both push and email.
 
@@ -1092,6 +1092,8 @@ Cross-origin requests are accepted only from the native shell origins (`capacito
 | **Unsubscribe** | | |
 | GET | `/api/unsubscribe?token=&email=&type=` | Verify unsubscribe token (no auth required) |
 | POST | `/api/unsubscribe` | Process unsubscribe — type is `invite` or `notify` (no auth required) |
+| POST | `/api/unsubscribe/one-click?token=&email=&type=` | RFC 8058 one-click unsubscribe — the URI in the `List-Unsubscribe` header, POSTed by Gmail/Outlook when the recipient presses their client's own Unsubscribe button. No session, no body read, no confirmation step |
+| GET | `/api/unsubscribe/one-click?token=&email=&type=` | Redirects to the `/unsubscribe` page. Deliberately does not unsubscribe — a link scanner opening every URL in a message must not opt the recipient out |
 | POST | `/api/report` | Submit a problem report (no auth required — works signed out, and stays open during maintenance) |
 | **Sharing** | | |
 | GET | `/api/sharing/invite-info?token=&code=` | Validate invitation token/code (no auth required) |

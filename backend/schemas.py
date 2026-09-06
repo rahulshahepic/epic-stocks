@@ -1,6 +1,6 @@
 from datetime import date
-from typing import Optional
-from pydantic import BaseModel, field_validator, model_validator
+from typing import Annotated, Optional
+from pydantic import AfterValidator, BaseModel, field_validator, model_validator
 
 from app.grant_types import TAX_LOAN_TEMPLATE_TYPES, TAX_LOAN_TEMPLATE_TYPES_TEXT
 
@@ -28,6 +28,100 @@ def bounded_list(v, limit: int, name: str):
     return v
 
 
+def _validate_iso_date(v: str) -> str:
+    from datetime import date as _d
+    try:
+        _d.fromisoformat(v)
+    except Exception:
+        raise ValueError("must be YYYY-MM-DD")
+    return v
+
+
+# ── Field constraints ────────────────────────────────────────────────────────
+# Every rule below used to be written twice: once in a Create model, and again
+# in its Update twin with `if v is not None and` in front of each clause. That
+# put each bound — 1900..2100, ten million shares, a thousand-two-hundred
+# periods — in two places that had to be changed together.
+#
+# They are Annotated types now: `shares: Shares` on the Create model,
+# `shares: Shares | None` on the Update. The None branch of that union is what
+# lets a partial update leave the field out, so the "is not None" guards are
+# gone with the duplication. Messages are unchanged — they are what the API
+# returns and what the import tests read.
+
+def _bounds(name: str, *, low: float, low_inclusive: bool, high: float, high_text: str | None = None):
+    """A numeric range, phrased the way this API already phrases it."""
+    too_low = f"{name} cannot be negative" if low_inclusive else f"{name} must be positive"
+    too_high = f"{name} cannot exceed {high_text or format(high, ',')}"
+
+    def check(v):
+        below = (v < low) if low_inclusive else (v <= low)
+        if below:
+            raise ValueError(too_low)
+        if v > high:
+            raise ValueError(too_high)
+        return v
+
+    return AfterValidator(check)
+
+
+def _positive(name: str):
+    """A lower bound with no ceiling — admin-managed content, not user figures."""
+    def check(v):
+        if v <= 0:
+            raise ValueError(f"{name} must be positive")
+        return v
+
+    return AfterValidator(check)
+
+
+def _one_of(name: str, allowed: set):
+    def check(v):
+        if v not in allowed:
+            raise ValueError(f"{name} must be one of {sorted(allowed)}")
+        return v
+
+    return AfterValidator(check)
+
+
+def _required_label(name: str):
+    def check(v):
+        if not v or not v.strip():
+            raise ValueError(f"{name} cannot be empty")
+        return bounded(v, MAX_LABEL_LEN, name)
+
+    return AfterValidator(check)
+
+
+def _year(v: int) -> int:
+    if v < 1900 or v > 2100:
+        raise ValueError("year must be between 1900 and 2100")
+    return v
+
+
+Year = Annotated[int, AfterValidator(_year)]
+Shares = Annotated[int, _bounds("shares", low=0, low_inclusive=False, high=10_000_000)]
+Periods = Annotated[int, _bounds("periods", low=0, low_inclusive=False, high=1200, high_text="1200")]
+#: A cost basis, which may be $0 for a grant that was given rather than bought.
+CostBasis = Annotated[float, _bounds("price", low=0, low_inclusive=True, high=1_000_000)]
+Price = Annotated[float, _bounds("price", low=0, low_inclusive=False, high=1_000_000)]
+SharePrice = Annotated[float, _bounds("price_per_share", low=0, low_inclusive=False, high=1_000_000)]
+Money = Annotated[float, _bounds("amount", low=0, low_inclusive=False, high=100_000_000)]
+#: A loan's own rate, carried as a percentage.
+InterestRate = Annotated[float, _bounds("interest_rate", low=0, low_inclusive=True, high=100, high_text="100 (100%)")]
+#: An admin-managed rate from the content tables, carried as a fraction.
+ContentRate = Annotated[float, _bounds("rate", low=0, low_inclusive=True, high=1, high_text="1.0 (100%)")]
+#: Vesting periods on a schedule template, where the ceiling above does not apply.
+TemplatePeriods = Annotated[int, _positive("periods")]
+GrantTypeLabel = Annotated[str, _required_label("type")]
+LoanGrantTypeLabel = Annotated[str, _required_label("grant_type")]
+LoanTypeName = Annotated[str, _one_of("loan_type", LOAN_TYPES)]
+LoanNumber = Annotated[str, AfterValidator(lambda v: bounded(v, MAX_LABEL_LEN, "loan_number"))]
+Notes = Annotated[str, AfterValidator(lambda v: bounded(v, MAX_NOTES_LEN, "notes"))]
+LotOverrides = Annotated[list, AfterValidator(lambda v: bounded_list(v, MAX_LOT_OVERRIDES, "lot_overrides"))]
+IsoDate = Annotated[str, AfterValidator(_validate_iso_date)]
+
+
 # Auth
 class AuthResponse(BaseModel):
     access_token: str
@@ -36,109 +130,27 @@ class AuthResponse(BaseModel):
 
 # Grant — type is free-form (Purchase, Bonus, Catch-Up, Free, etc.)
 class GrantCreate(BaseModel):
-    year: int
-    type: str
-    shares: int
-    price: float
+    year: Year
+    type: GrantTypeLabel
+    shares: Shares
+    price: CostBasis
     vest_start: date
-    periods: int
+    periods: Periods
     exercise_date: date
     dp_shares: int = 0
     election_83b: bool = False
 
-    @field_validator("type")
-    @classmethod
-    def type_not_empty(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("type cannot be empty")
-        return bounded(v, MAX_LABEL_LEN, "type")
-
-    @field_validator("year")
-    @classmethod
-    def year_range(cls, v: int) -> int:
-        if v < 1900 or v > 2100:
-            raise ValueError("year must be between 1900 and 2100")
-        return v
-
-    @field_validator("shares")
-    @classmethod
-    def shares_positive(cls, v: int) -> int:
-        if v <= 0:
-            raise ValueError("shares must be positive")
-        if v > 10_000_000:
-            raise ValueError("shares cannot exceed 10,000,000")
-        return v
-
-    @field_validator("price")
-    @classmethod
-    def price_non_negative(cls, v: float) -> float:
-        if v < 0:
-            raise ValueError("price cannot be negative")
-        if v > 1_000_000:
-            raise ValueError("price cannot exceed 1,000,000")
-        return v
-
-    @field_validator("periods")
-    @classmethod
-    def periods_positive(cls, v: int) -> int:
-        if v <= 0:
-            raise ValueError("periods must be positive")
-        if v > 1200:
-            raise ValueError("periods cannot exceed 1200")
-        return v
-
 class GrantUpdate(BaseModel):
-    year: int | None = None
-    type: str | None = None
-    shares: int | None = None
-    price: float | None = None
+    year: Year | None = None
+    type: GrantTypeLabel | None = None
+    shares: Shares | None = None
+    price: CostBasis | None = None
     vest_start: date | None = None
-    periods: int | None = None
+    periods: Periods | None = None
     exercise_date: date | None = None
     dp_shares: int | None = None
     election_83b: bool | None = None
     version: int | None = None
-
-    @field_validator("type")
-    @classmethod
-    def type_not_empty(cls, v):
-        if v is not None and (not v or not v.strip()):
-            raise ValueError("type cannot be empty")
-        return bounded(v, MAX_LABEL_LEN, "type")
-
-    @field_validator("year")
-    @classmethod
-    def year_range(cls, v):
-        if v is not None and (v < 1900 or v > 2100):
-            raise ValueError("year must be between 1900 and 2100")
-        return v
-
-    @field_validator("shares")
-    @classmethod
-    def shares_positive(cls, v):
-        if v is not None and v <= 0:
-            raise ValueError("shares must be positive")
-        if v is not None and v > 10_000_000:
-            raise ValueError("shares cannot exceed 10,000,000")
-        return v
-
-    @field_validator("price")
-    @classmethod
-    def price_non_negative(cls, v):
-        if v is not None and v < 0:
-            raise ValueError("price cannot be negative")
-        if v is not None and v > 1_000_000:
-            raise ValueError("price cannot exceed 1,000,000")
-        return v
-
-    @field_validator("periods")
-    @classmethod
-    def periods_positive(cls, v):
-        if v is not None and v <= 0:
-            raise ValueError("periods must be positive")
-        if v is not None and v > 1200:
-            raise ValueError("periods cannot exceed 1200")
-        return v
 
 class GrantOut(GrantCreate):
     id: int
@@ -148,115 +160,29 @@ class GrantOut(GrantCreate):
 
 # Loan
 class LoanCreate(BaseModel):
-    grant_year: int
-    grant_type: str
-    loan_type: str
-    loan_year: int
-    amount: float
-    interest_rate: float
+    grant_year: Year
+    grant_type: LoanGrantTypeLabel
+    loan_type: LoanTypeName
+    loan_year: Year
+    amount: Money
+    interest_rate: InterestRate
     due_date: date
-    loan_number: str | None = None
+    loan_number: LoanNumber | None = None
     refinances_loan_id: int | None = None
 
-    @field_validator("grant_type")
-    @classmethod
-    def grant_type_not_empty(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("grant_type cannot be empty")
-        return bounded(v, MAX_LABEL_LEN, "grant_type")
-
-    @field_validator("loan_number")
-    @classmethod
-    def loan_number_bounded(cls, v):
-        return bounded(v, MAX_LABEL_LEN, "loan_number")
-
-    @field_validator("loan_type")
-    @classmethod
-    def valid_loan_type(cls, v: str) -> str:
-        if v not in LOAN_TYPES:
-            raise ValueError(f"loan_type must be one of {sorted(LOAN_TYPES)}")
-        return v
-
-    @field_validator("grant_year", "loan_year")
-    @classmethod
-    def year_range(cls, v: int) -> int:
-        if v < 1900 or v > 2100:
-            raise ValueError("year must be between 1900 and 2100")
-        return v
-
-    @field_validator("amount")
-    @classmethod
-    def amount_positive(cls, v: float) -> float:
-        if v <= 0:
-            raise ValueError("amount must be positive")
-        if v > 100_000_000:
-            raise ValueError("amount cannot exceed 100,000,000")
-        return v
-
-    @field_validator("interest_rate")
-    @classmethod
-    def rate_non_negative(cls, v: float) -> float:
-        if v < 0:
-            raise ValueError("interest_rate cannot be negative")
-        if v > 100:
-            raise ValueError("interest_rate cannot exceed 100 (100%)")
-        return v
 
 class LoanUpdate(BaseModel):
-    grant_year: int | None = None
-    grant_type: str | None = None
-    loan_type: str | None = None
-    loan_year: int | None = None
-    amount: float | None = None
-    interest_rate: float | None = None
+    grant_year: Year | None = None
+    grant_type: LoanGrantTypeLabel | None = None
+    loan_type: LoanTypeName | None = None
+    loan_year: Year | None = None
+    amount: Money | None = None
+    interest_rate: InterestRate | None = None
     due_date: date | None = None
-    loan_number: str | None = None
+    loan_number: LoanNumber | None = None
     refinances_loan_id: int | None = None
     version: int | None = None
 
-    @field_validator("grant_type")
-    @classmethod
-    def grant_type_not_empty(cls, v):
-        if v is not None and (not v or not v.strip()):
-            raise ValueError("grant_type cannot be empty")
-        return bounded(v, MAX_LABEL_LEN, "grant_type")
-
-    @field_validator("loan_number")
-    @classmethod
-    def loan_number_bounded(cls, v):
-        return bounded(v, MAX_LABEL_LEN, "loan_number")
-
-    @field_validator("loan_type")
-    @classmethod
-    def valid_loan_type(cls, v):
-        if v is not None and v not in LOAN_TYPES:
-            raise ValueError(f"loan_type must be one of {sorted(LOAN_TYPES)}")
-        return v
-
-    @field_validator("grant_year", "loan_year")
-    @classmethod
-    def year_range(cls, v):
-        if v is not None and (v < 1900 or v > 2100):
-            raise ValueError("year must be between 1900 and 2100")
-        return v
-
-    @field_validator("amount")
-    @classmethod
-    def amount_positive(cls, v):
-        if v is not None and v <= 0:
-            raise ValueError("amount must be positive")
-        if v is not None and v > 100_000_000:
-            raise ValueError("amount cannot exceed 100,000,000")
-        return v
-
-    @field_validator("interest_rate")
-    @classmethod
-    def rate_non_negative(cls, v):
-        if v is not None and v < 0:
-            raise ValueError("interest_rate cannot be negative")
-        if v is not None and v > 100:
-            raise ValueError("interest_rate cannot exceed 100 (100%)")
-        return v
 
 class LoanOut(LoanCreate):
     id: int
@@ -268,30 +194,14 @@ class LoanOut(LoanCreate):
 # Price
 class PriceCreate(BaseModel):
     effective_date: date
-    price: float
+    price: Price
 
-    @field_validator("price")
-    @classmethod
-    def price_positive(cls, v: float) -> float:
-        if v <= 0:
-            raise ValueError("price must be positive")
-        if v > 1_000_000:
-            raise ValueError("price cannot exceed 1,000,000")
-        return v
 
 class PriceUpdate(BaseModel):
     effective_date: date | None = None
-    price: float | None = None
+    price: Price | None = None
     version: int | None = None
 
-    @field_validator("price")
-    @classmethod
-    def price_positive(cls, v):
-        if v is not None and v <= 0:
-            raise ValueError("price must be positive")
-        if v is not None and v > 1_000_000:
-            raise ValueError("price cannot exceed 1,000,000")
-        return v
 
 class PriceOut(PriceCreate):
     id: int
@@ -323,9 +233,9 @@ class GrowthPriceRequest(BaseModel):
 # Sale
 class SaleCreate(BaseModel):
     date: date
-    shares: int
-    price_per_share: float
-    notes: str = ""
+    shares: Shares
+    price_per_share: SharePrice
+    notes: Notes = ""
     # If set, this sale was recorded to cover this loan's payoff.
     loan_id: Optional[int] = None
     # Per-sale tax rate overrides (None = use user's TaxSettings)
@@ -338,47 +248,19 @@ class SaleCreate(BaseModel):
     state_st_cg_rate: Optional[float] = None
     lt_holding_days: Optional[int] = None
     # Manual lot overrides: [{vest_date, grant_year, grant_type, basis_price, shares}, ...]
-    lot_overrides: Optional[list] = None
+    lot_overrides: Optional[LotOverrides] = None
     # Groups related sales in a plan (payoff + cash-out from one decision)
     sale_plan_id: Optional[int] = None
     # User-recorded actual tax paid (overrides estimated for past recorded sales)
     actual_tax_paid: Optional[float] = None
 
-    @field_validator("shares")
-    @classmethod
-    def shares_positive(cls, v: int) -> int:
-        if v <= 0:
-            raise ValueError("shares must be positive")
-        if v > 10_000_000:
-            raise ValueError("shares cannot exceed 10,000,000")
-        return v
-
-    @field_validator("price_per_share")
-    @classmethod
-    def price_positive(cls, v: float) -> float:
-        if v <= 0:
-            raise ValueError("price_per_share must be positive")
-        if v > 1_000_000:
-            raise ValueError("price_per_share cannot exceed 1,000,000")
-        return v
-
-    @field_validator("notes")
-    @classmethod
-    def notes_bounded(cls, v):
-        return bounded(v, MAX_NOTES_LEN, "notes")
-
-    @field_validator("lot_overrides")
-    @classmethod
-    def lot_overrides_bounded(cls, v):
-        return bounded_list(v, MAX_LOT_OVERRIDES, "lot_overrides")
-
 _Date = date  # alias to avoid field-name shadowing Optional[date] = None in Pydantic v2
 
 class SaleUpdate(BaseModel):
     date: Optional[_Date] = None
-    shares: Optional[int] = None
-    price_per_share: Optional[float] = None
-    notes: Optional[str] = None
+    shares: Optional[Shares] = None
+    price_per_share: Optional[SharePrice] = None
+    notes: Optional[Notes] = None
     version: Optional[int] = None
     federal_income_rate: Optional[float] = None
     federal_lt_cg_rate: Optional[float] = None
@@ -388,37 +270,9 @@ class SaleUpdate(BaseModel):
     state_lt_cg_rate: Optional[float] = None
     state_st_cg_rate: Optional[float] = None
     lt_holding_days: Optional[int] = None
-    lot_overrides: Optional[list] = None
+    lot_overrides: Optional[LotOverrides] = None
     sale_plan_id: Optional[int] = None
     actual_tax_paid: Optional[float] = None
-
-    @field_validator("shares")
-    @classmethod
-    def shares_positive(cls, v):
-        if v is not None and v <= 0:
-            raise ValueError("shares must be positive")
-        if v is not None and v > 10_000_000:
-            raise ValueError("shares cannot exceed 10,000,000")
-        return v
-
-    @field_validator("price_per_share")
-    @classmethod
-    def price_positive(cls, v):
-        if v is not None and v <= 0:
-            raise ValueError("price_per_share must be positive")
-        if v is not None and v > 1_000_000:
-            raise ValueError("price_per_share cannot exceed 1,000,000")
-        return v
-
-    @field_validator("notes")
-    @classmethod
-    def notes_bounded(cls, v):
-        return bounded(v, MAX_NOTES_LEN, "notes")
-
-    @field_validator("lot_overrides")
-    @classmethod
-    def lot_overrides_bounded(cls, v):
-        return bounded_list(v, MAX_LOT_OVERRIDES, "lot_overrides")
 
 class SaleOut(SaleCreate):
     id: int
@@ -430,42 +284,14 @@ class SaleOut(SaleCreate):
 class LoanPaymentCreate(BaseModel):
     loan_id: int
     date: date
-    amount: float
-    notes: str = ""
-
-    @field_validator("amount")
-    @classmethod
-    def amount_positive(cls, v: float) -> float:
-        if v <= 0:
-            raise ValueError("amount must be positive")
-        if v > 100_000_000:
-            raise ValueError("amount cannot exceed 100,000,000")
-        return v
-
-    @field_validator("notes")
-    @classmethod
-    def notes_bounded(cls, v):
-        return bounded(v, MAX_NOTES_LEN, "notes")
+    amount: Money
+    notes: Notes = ""
 
 class LoanPaymentUpdate(BaseModel):
     date: Optional[_Date] = None
-    amount: Optional[float] = None
-    notes: Optional[str] = None
+    amount: Optional[Money] = None
+    notes: Optional[Notes] = None
     version: Optional[int] = None
-
-    @field_validator("amount")
-    @classmethod
-    def amount_positive(cls, v):
-        if v is not None and v <= 0:
-            raise ValueError("amount must be positive")
-        if v is not None and v > 100_000_000:
-            raise ValueError("amount cannot exceed 100,000,000")
-        return v
-
-    @field_validator("notes")
-    @classmethod
-    def notes_bounded(cls, v):
-        return bounded(v, MAX_NOTES_LEN, "notes")
 
 class LoanPaymentOut(LoanPaymentCreate):
     id: int
@@ -556,49 +382,19 @@ class PushSubscriptionOut(BaseModel):
 _DATE_RE = None
 
 
-def _validate_iso_date(v: str) -> str:
-    from datetime import date as _d
-    try:
-        _d.fromisoformat(v)
-    except Exception:
-        raise ValueError("must be YYYY-MM-DD")
-    return v
-
-
 class GrantTemplateCreate(BaseModel):
     year: int
-    type: str
-    vest_start: str
-    periods: int
-    exercise_date: str
+    type: GrantTypeLabel
+    vest_start: IsoDate
+    periods: TemplatePeriods
+    exercise_date: IsoDate
     default_catch_up: bool = False
     show_dp_shares: bool = False
-    default_purchase_due_date: str | None = None
-    default_tax_due_date: str | None = None
+    default_purchase_due_date: IsoDate | None = None
+    default_tax_due_date: IsoDate | None = None
     display_order: int = 0
     active: bool = True
     notes: str | None = None
-
-    @field_validator("type")
-    @classmethod
-    def type_not_empty(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("type cannot be empty")
-        return bounded(v, MAX_LABEL_LEN, "type")
-
-    @field_validator("vest_start", "exercise_date", "default_purchase_due_date", "default_tax_due_date")
-    @classmethod
-    def iso_date(cls, v):
-        if v is None:
-            return v
-        return _validate_iso_date(v)
-
-    @field_validator("periods")
-    @classmethod
-    def periods_positive(cls, v: int) -> int:
-        if v <= 0:
-            raise ValueError("periods must be positive")
-        return v
 
     @model_validator(mode="after")
     def check_shape(self):
@@ -623,89 +419,48 @@ class GrantTemplateCreate(BaseModel):
 
 class GrantTemplateUpdate(BaseModel):
     year: int | None = None
+    # Deliberately a bare str: unlike the Create model this has never rejected an
+    # empty type, and tightening it would fail admin writes that work today.
     type: str | None = None
-    vest_start: str | None = None
-    periods: int | None = None
-    exercise_date: str | None = None
+    vest_start: IsoDate | None = None
+    periods: TemplatePeriods | None = None
+    exercise_date: IsoDate | None = None
     default_catch_up: bool | None = None
     show_dp_shares: bool | None = None
-    default_purchase_due_date: str | None = None
-    default_tax_due_date: str | None = None
+    default_purchase_due_date: IsoDate | None = None
+    default_tax_due_date: IsoDate | None = None
     display_order: int | None = None
     active: bool | None = None
     notes: str | None = None
-
-    @field_validator("vest_start", "exercise_date", "default_purchase_due_date", "default_tax_due_date")
-    @classmethod
-    def iso_date(cls, v):
-        if v is None:
-            return v
-        return _validate_iso_date(v)
-
-    @field_validator("periods")
-    @classmethod
-    def periods_positive(cls, v):
-        if v is not None and v <= 0:
-            raise ValueError("periods must be positive")
-        return v
 
 
 class BonusScheduleVariantCreate(BaseModel):
     grant_year: int
     grant_type: str
     variant_code: str
-    periods: int
+    periods: TemplatePeriods
     label: str = ""
     is_default: bool = False
-
-    @field_validator("periods")
-    @classmethod
-    def periods_positive(cls, v: int) -> int:
-        if v <= 0:
-            raise ValueError("periods must be positive")
-        return v
 
 
 class BonusScheduleVariantUpdate(BaseModel):
     grant_year: int | None = None
     grant_type: str | None = None
     variant_code: str | None = None
-    periods: int | None = None
+    periods: TemplatePeriods | None = None
     label: str | None = None
     is_default: bool | None = None
 
-    @field_validator("periods")
-    @classmethod
-    def periods_positive(cls, v):
-        if v is not None and v <= 0:
-            raise ValueError("periods must be positive")
-        return v
-
 
 _LOAN_KINDS = {"interest", "tax", "purchase_original"}
+LoanKind = Annotated[str, _one_of("loan_kind", _LOAN_KINDS)]
 
 
 class LoanRateCreate(BaseModel):
-    loan_kind: str
+    loan_kind: LoanKind
     grant_type: str | None = None
     year: int
-    rate: float
-
-    @field_validator("loan_kind")
-    @classmethod
-    def valid_kind(cls, v: str) -> str:
-        if v not in _LOAN_KINDS:
-            raise ValueError(f"loan_kind must be one of {sorted(_LOAN_KINDS)}")
-        return v
-
-    @field_validator("rate")
-    @classmethod
-    def rate_non_negative(cls, v: float) -> float:
-        if v < 0:
-            raise ValueError("rate cannot be negative")
-        if v > 1:
-            raise ValueError("rate cannot exceed 1.0 (100%)")
-        return v
+    rate: ContentRate
 
     @model_validator(mode="after")
     def check_shape(self):
@@ -715,88 +470,40 @@ class LoanRateCreate(BaseModel):
 
 
 class LoanRateUpdate(BaseModel):
-    loan_kind: str | None = None
+    loan_kind: LoanKind | None = None
     grant_type: str | None = None
     year: int | None = None
-    rate: float | None = None
-
-    @field_validator("loan_kind")
-    @classmethod
-    def valid_kind(cls, v):
-        if v is not None and v not in _LOAN_KINDS:
-            raise ValueError(f"loan_kind must be one of {sorted(_LOAN_KINDS)}")
-        return v
-
-    @field_validator("rate")
-    @classmethod
-    def rate_non_negative(cls, v):
-        if v is not None and v < 0:
-            raise ValueError("rate cannot be negative")
-        if v is not None and v > 1:
-            raise ValueError("rate cannot exceed 1.0 (100%)")
-        return v
+    rate: ContentRate | None = None
 
 
 _CHAIN_KINDS = {"purchase", "tax"}
+ChainKind = Annotated[str, _one_of("chain_kind", _CHAIN_KINDS)]
 
 
 class LoanRefinanceCreate(BaseModel):
-    chain_kind: str
+    chain_kind: ChainKind
     grant_year: int
     grant_type: str | None = None
     orig_loan_year: int | None = None
     order_idx: int = 0
-    date: str
+    date: IsoDate
     rate: float
     loan_year: int
-    due_date: str
-    orig_due_date: str | None = None
-
-    @field_validator("chain_kind")
-    @classmethod
-    def valid_kind(cls, v: str) -> str:
-        if v not in _CHAIN_KINDS:
-            raise ValueError(f"chain_kind must be one of {sorted(_CHAIN_KINDS)}")
-        return v
-
-    @field_validator("date", "due_date")
-    @classmethod
-    def iso_date(cls, v):
-        return _validate_iso_date(v)
-
-    @field_validator("orig_due_date")
-    @classmethod
-    def optional_iso_date(cls, v):
-        if v is None:
-            return v
-        return _validate_iso_date(v)
+    due_date: IsoDate
+    orig_due_date: IsoDate | None = None
 
 
 class LoanRefinanceUpdate(BaseModel):
-    chain_kind: str | None = None
+    chain_kind: ChainKind | None = None
     grant_year: int | None = None
     grant_type: str | None = None
     orig_loan_year: int | None = None
     order_idx: int | None = None
-    date: str | None = None
+    date: IsoDate | None = None
     rate: float | None = None
     loan_year: int | None = None
-    due_date: str | None = None
-    orig_due_date: str | None = None
-
-    @field_validator("chain_kind")
-    @classmethod
-    def valid_kind(cls, v):
-        if v is not None and v not in _CHAIN_KINDS:
-            raise ValueError(f"chain_kind must be one of {sorted(_CHAIN_KINDS)}")
-        return v
-
-    @field_validator("date", "due_date", "orig_due_date")
-    @classmethod
-    def iso_date(cls, v):
-        if v is None:
-            return v
-        return _validate_iso_date(v)
+    due_date: IsoDate | None = None
+    orig_due_date: IsoDate | None = None
 
 
 class GrantProgramSettingsUpdate(BaseModel):

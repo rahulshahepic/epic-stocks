@@ -54,6 +54,32 @@ def test_both_configs_route_the_same_paths():
     )
 
 
+def _policy_in_handle(config: str, matcher: str) -> str | None:
+    """The Content-Security-Policy inside `handle <matcher> { ... }`.
+
+    Read out of the block itself rather than picked from the set of policies in
+    the file. Two blocks serve a `default-src 'none'` policy with no
+    form-action — this one and the maintenance page — so choosing by shape
+    picked whichever the set happened to yield first, which varies with
+    Python's per-process hash seed. It passed locally and failed on CI.
+    """
+    start = config.find("handle %s {" % matcher)
+    if start == -1:
+        return None
+    depth = 0
+    for i in range(start, len(config)):
+        if config[i] == "{":
+            depth += 1
+        elif config[i] == "}":
+            depth -= 1
+            if depth == 0:
+                found = re.search(
+                    r'header Content-Security-Policy "([^"]+)"', config[start:i]
+                )
+                return found.group(1) if found else None
+    return None
+
+
 def test_the_oauth_paths_are_exempt_from_form_action():
     """Approving a connection ends in a redirect to the AI provider, and
     `form-action 'self'` blocks exactly that — browsers apply it to redirects,
@@ -62,17 +88,25 @@ def test_the_oauth_paths_are_exempt_from_form_action():
         config = _read(name)
         assert "@oauth path /oauth/*" in config, f"{name} has no /oauth matcher"
 
-        oauth_policy = next(
-            (p for p in _policies(config) if "form-action" not in p and "default-src 'none'" in p),
-            None,
+        policy = _policy_in_handle(config, "@oauth")
+        assert policy, f"{name}: the @oauth handle serves no Content-Security-Policy"
+        assert "form-action" not in policy, (
+            f"{name}: the @oauth policy still restricts form-action, so the "
+            f"consent screen's redirect back to the provider will be blocked\n  {policy}"
         )
-        assert oauth_policy, (
-            f"{name} has no policy without form-action — the consent screen's "
-            "redirect back to the provider will be blocked"
+        assert "style-src 'self'" in policy, (
+            f"{name}: the consent screen loads /oauth/consent.css, which needs "
+            f"style-src 'self'\n  {policy}"
         )
-        assert "style-src 'self'" in oauth_policy, (
-            f"{name}: the consent screen loads /oauth/consent.css, which needs style-src 'self'"
-        )
+
+
+def test_the_oauth_handle_reaches_the_app():
+    """A handle block that matches but does not proxy would black-hole the path."""
+    for name in ("app.caddy", "Caddyfile"):
+        config = _read(name)
+        start = config.find("handle @oauth {")
+        block = config[start:config.find("}", config.find("reverse_proxy", start))]
+        assert "reverse_proxy" in block, f"{name}: @oauth does not forward to the app"
 
 
 def test_the_rest_of_the_site_keeps_form_action():

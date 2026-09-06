@@ -432,6 +432,22 @@ You can let ChatGPT or Claude read your equity data, so you can ask about vestin
 
 **What this does and does not do.** The assistant can read your grants, vesting timeline, prices, loans, sales and tax estimates, and your salary and retirement settings if you allow that. It cannot change anything. Connecting means your figures are sent to OpenAI or Anthropic when the assistant asks for them — the same as pasting them into a chat, but without the pasting.
 
+**What it can read:**
+
+| Tool | What it answers |
+|------|-----------------|
+| `get_dashboard` | Shares held and vested, current price, portfolio value, loan balance, income and gains to date |
+| `list_events` | The computed timeline — vesting, price changes, loan payments, payoffs, sales — filterable by date and type |
+| `list_grants` | Every grant: year, type, shares, purchase price, vesting schedule |
+| `list_loans` | Loans against equity, with early payments and balance outstanding |
+| `list_prices` | Share price history, with the user's own future estimates flagged as estimates |
+| `list_sales` | Sales recorded and planned |
+| `estimate_sale` | Models a sale without recording it — by share count, or working back from cash needed after tax |
+| `get_tax_breakdown` | The full working for one sale: lots consumed, income, short- and long-term gains |
+| `explain` | How this scheme works — vesting, grant types, tax, lots, the two prices. Worth asking for first; several ordinary RSU rules do not apply here |
+| `get_compensation` | Salary and bonus history (needs the compensation permission) |
+| `get_retirement_params` | Saved retirement simulator settings (needs the compensation permission) |
+
 **In Claude** — Pro, Max, Team or Enterprise; works on web, desktop and mobile:
 
 1. Settings → Connectors → **Add custom connector**
@@ -1116,7 +1132,7 @@ Cross-origin requests are accepted only from the native shell origins (`capacito
 | GET/POST | `/oauth/authorize` | Consent screen, server-rendered. Needs an app session; a signed-out user is sent through `/login?next=` and returned here |
 | POST | `/oauth/token` | `authorization_code` and `refresh_token`. PKCE `S256` required; refresh tokens rotate on use |
 | POST | `/oauth/revoke` | RFC 7009. Always 200 |
-| POST | `/mcp` | The MCP server: JSON-RPC over Streamable HTTP. Requires a connector token, never a session one |
+| POST | `/mcp` | The MCP server: JSON-RPC over Streamable HTTP (`initialize`, `tools/list`, `tools/call`, `ping`). Eleven read tools, listed under [Connecting Your Own AI](#connecting-your-own-ai). Requires a connector token, never a session one |
 | GET | `/api/oauth/connections` | This account's live AI connections, for Settings |
 | DELETE | `/api/oauth/connections/{id}` | Disconnect. Deleting the grant row is the revocation — it takes effect on the next request |
 | **Grant-program content** | | |

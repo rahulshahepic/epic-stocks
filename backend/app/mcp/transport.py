@@ -19,9 +19,12 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, Response
+from sqlalchemy.orm import Session
 
+from database import get_db
 from scaffold.oauth.resource import Connector, require_connector
-from .tools import REGISTRY, visible_to
+from . import read_tools  # noqa: F401  — importing is what registers the tools
+from .tools import REGISTRY, ToolContext, as_result, visible_to
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +71,8 @@ def mcp_get():
 
 
 @router.post("/mcp")
-async def mcp_post(request: Request, connector: Connector = Depends(require_connector)):
+async def mcp_post(request: Request, connector: Connector = Depends(require_connector),
+                   db: Session = Depends(get_db)):
     try:
         body = await request.json()
     except Exception:
@@ -94,7 +98,7 @@ async def mcp_post(request: Request, connector: Connector = Depends(require_conn
         return Response(status_code=202)
 
     try:
-        payload = _dispatch(method, params, request_id, connector)
+        payload = _dispatch(method, params, request_id, ToolContext(connector=connector, db=db))
     except Exception:
         logger.exception("MCP method %s failed", method)
         payload = _error(request_id, INTERNAL_ERROR, "The server could not complete that request")
@@ -104,7 +108,9 @@ async def mcp_post(request: Request, connector: Connector = Depends(require_conn
     return JSONResponse(payload)
 
 
-def _dispatch(method: str, params: dict, request_id: Any, connector: Connector) -> dict | None:
+def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext) -> dict | None:
+    connector = ctx.connector
+
     if method == "initialize":
         asked = params.get("protocolVersion")
         version = asked if asked in SUPPORTED_PROTOCOL_VERSIONS else PROTOCOL_VERSION
@@ -127,7 +133,7 @@ def _dispatch(method: str, params: dict, request_id: Any, connector: Connector) 
         })
 
     if method == "tools/call":
-        return _call_tool(params, request_id, connector)
+        return _call_tool(params, request_id, ctx)
 
     if method.startswith("notifications/"):
         return None
@@ -135,7 +141,8 @@ def _dispatch(method: str, params: dict, request_id: Any, connector: Connector) 
     return _error(request_id, METHOD_NOT_FOUND, f"Unknown method '{method}'")
 
 
-def _call_tool(params: dict, request_id: Any, connector: Connector) -> dict:
+def _call_tool(params: dict, request_id: Any, ctx: ToolContext) -> dict:
+    connector = ctx.connector
     name = params.get("name")
     if not isinstance(name, str) or not name:
         return _error(request_id, INVALID_PARAMS, "A tool name is required")
@@ -155,7 +162,7 @@ def _call_tool(params: dict, request_id: Any, connector: Connector) -> dict:
         arguments = {}
 
     try:
-        return _result(request_id, tool.handler(connector, arguments))
+        return _result(request_id, as_result(tool.handler(ctx, arguments)))
     except ValueError as exc:
         # A bad argument is a finding the model can act on, not a crash.
         return _tool_failure(request_id, str(exc))

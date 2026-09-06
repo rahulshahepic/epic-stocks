@@ -372,7 +372,13 @@ token rejected at `/mcp` and MCP token rejected at `/api/grants`; revoke is
 immediate; `E2E_TEST=1` does not relax redirect validation; user deletion
 removes OAuth rows.
 
-**Phase 2 — MCP transport and the read tools.** JSON-RPC for `initialize`,
+**Phase 2 — MCP transport and the read tools. DONE.** Eleven tools, scope-gated
+and listed only where granted; `resolve_account` in from the start so shared
+accounts stay additive. `explain` turned out to matter more than expected — it
+is what stops an assistant applying ordinary RSU rules to a scheme where
+several of them do not hold.
+
+**Phase 2 as built —** JSON-RPC for `initialize`,
 `notifications/initialized`, `tools/list`, `tools/call`, `ping`; protocol
 version negotiation; the §5 tools; scope enforcement; `resolve_account`.
 Hand-roll the JSON-RPC layer rather than adding the `mcp` SDK — it is a small,

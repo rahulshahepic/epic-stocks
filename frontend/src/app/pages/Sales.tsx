@@ -7,6 +7,7 @@ import { broadcastChange, useDataSync } from '../hooks/useDataSync.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
 import { fmtNum, fmtPct, fmtPrice as fmtUSD } from '../format.ts'
+import { Field, FIELD_INPUT_CLASS } from '../../scaffold/components/ui/Field.tsx'
 
 export type TaxRates = {
  federal_income_rate: number
@@ -266,24 +267,6 @@ function Row({ label, value, bold }: { label: string; value: string; bold?: bool
  <span>{label}</span>
  <span className="tabular-nums">{value}</span>
  </div>
- )
-}
-
-function Field({ label, type, value, onChange, step, min }: {
- label: string; type: string; value: string | number; onChange: (v: string) => void; step?: string; min?: string
-}) {
- return (
- <label className="block">
- <span className="text-xs text-cs-muted">{label}</span>
- <input
- type={type}
- step={step}
- min={min}
- value={value}
- onChange={e => onChange(e.target.value)}
- className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text"
- />
- </label>
  )
 }
 
@@ -645,7 +628,7 @@ export default function Sales() {
  ) : (
  <input type="number" step="0.01" value={form.price_per_share}
  onChange={e => setForm(f => ({ ...f, price_per_share: +e.target.value }))}
- className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text" />
+ className={FIELD_INPUT_CLASS} />
  )}
  </label>
  </div>
@@ -657,7 +640,7 @@ export default function Sales() {
  <select
  value={method}
  onChange={e => { setMethod(e.target.value as SaleMethod); setManualAlloc({}) }}
- className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text"
+ className={FIELD_INPUT_CLASS}
  >
  <option value="epic_lifo">Epic default — keep long-held shares for the lower tax rate</option>
  <option value="fifo">Oldest shares first</option>

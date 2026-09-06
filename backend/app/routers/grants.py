@@ -8,18 +8,20 @@ from scaffold.models import User, Grant, Loan, Price
 from schemas import GrantCreate, GrantUpdate, GrantOut, MAX_BULK_ITEMS
 from scaffold.quota import check_row_quota
 from scaffold.auth import get_current_user
+from app import event_cache
 
 router = APIRouter(prefix="/api/grants", tags=["grants"])
 
 
-def _grants_as_dicts(grants_db) -> list:
+def _grants_as_dicts(grants) -> list:
+    """Grants as core.py wants them. Takes ORM rows or submitted models alike."""
     return [{
         "year": g.year, "type": g.type, "shares": g.shares, "price": g.price,
         "vest_start": datetime.combine(g.vest_start, datetime.min.time()),
         "periods": g.periods,
         "exercise_date": datetime.combine(g.exercise_date, datetime.min.time()),
         "dp_shares": g.dp_shares or 0,
-    } for g in grants_db]
+    } for g in grants]
 
 
 def _check_dp_shares(dp_shares: int, exercise_date, grant_dicts: list, price_dicts: list, loan_dicts: list):
@@ -89,8 +91,7 @@ def create_grant(body: GrantCreate, user: User = Depends(get_current_user), db: 
     db.add(grant)
     db.commit()
     db.refresh(grant)
-    from app.event_cache import schedule_recompute
-    schedule_recompute(user.id)
+    event_cache.schedule_recompute(user.id)
     return grant
 
 
@@ -106,13 +107,7 @@ def bulk_create_grants(items: list[GrantCreate], user: User = Depends(get_curren
             db.query(Grant).filter(Grant.user_id == user.id).order_by(Grant.year).all()
         )
         # Convert batch to dicts so each grant can see the others' vesting events
-        batch_dicts = [{
-            "year": g.year, "type": g.type, "shares": g.shares, "price": g.price,
-            "vest_start": datetime.combine(g.vest_start, datetime.min.time()),
-            "periods": g.periods,
-            "exercise_date": datetime.combine(g.exercise_date, datetime.min.time()),
-            "dp_shares": g.dp_shares or 0,
-        } for g in items]
+        batch_dicts = _grants_as_dicts(items)
         for i, g in enumerate(items):
             if not g.dp_shares:
                 continue
@@ -124,8 +119,7 @@ def bulk_create_grants(items: list[GrantCreate], user: User = Depends(get_curren
     db.commit()
     for g in grants:
         db.refresh(g)
-    from app.event_cache import schedule_recompute
-    schedule_recompute(user.id)
+    event_cache.schedule_recompute(user.id)
     return grants
 
 
@@ -169,8 +163,7 @@ def update_grant(grant_id: int, body: GrantUpdate, user: User = Depends(get_curr
     grant.version = grant.version + 1
     db.commit()
     db.refresh(grant)
-    from app.event_cache import schedule_recompute
-    schedule_recompute(user.id)
+    event_cache.schedule_recompute(user.id)
     return grant
 
 
@@ -181,5 +174,4 @@ def delete_grant(grant_id: int, user: User = Depends(get_current_user), db: Sess
         raise HTTPException(status_code=404, detail="Grant not found")
     db.delete(grant)
     db.commit()
-    from app.event_cache import schedule_recompute
-    schedule_recompute(user.id)
+    event_cache.schedule_recompute(user.id)

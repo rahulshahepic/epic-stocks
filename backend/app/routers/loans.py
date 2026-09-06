@@ -13,6 +13,7 @@ from schemas import (LoanCreate, LoanUpdate, LoanOut, LoanPaymentCreate, LoanPay
                      LoanPaymentOut, SaleOut, MAX_BULK_ITEMS)
 from scaffold.quota import check_row_quota
 from scaffold.auth import get_current_user
+from app import event_cache
 
 router = APIRouter(prefix="/api/loans", tags=["loans"])
 lp_router = APIRouter(prefix="/api/loan-payments", tags=["loan-payments"])
@@ -330,8 +331,7 @@ def create_loan(
             db.add(sale)
             db.commit()
 
-    from app.event_cache import schedule_recompute
-    schedule_recompute(user.id)
+    event_cache.schedule_recompute(user.id)
     return loan
 
 
@@ -349,8 +349,7 @@ def bulk_create_loans(items: list[LoanCreate], user: User = Depends(get_current_
     db.commit()
     for l in loans:
         db.refresh(l)
-    from app.event_cache import schedule_recompute
-    schedule_recompute(user.id)
+    event_cache.schedule_recompute(user.id)
     return loans
 
 
@@ -463,8 +462,7 @@ def update_loan(
             ))
             db.commit()
 
-    from app.event_cache import schedule_recompute
-    schedule_recompute(user.id)
+    event_cache.schedule_recompute(user.id)
     return loan
 
 
@@ -504,8 +502,7 @@ def regenerate_all_payoff_sales(user: User = Depends(get_current_user), db: Sess
             ))
             created += 1
     db.commit()
-    from app.event_cache import schedule_recompute
-    schedule_recompute(user.id)
+    event_cache.schedule_recompute(user.id)
     return {"updated": updated, "created": created}
 
 
@@ -516,8 +513,7 @@ def delete_loan(loan_id: int, user: User = Depends(get_current_user), db: Sessio
         raise HTTPException(status_code=404, detail="Loan not found")
     db.delete(loan)
     db.commit()
-    from app.event_cache import schedule_recompute
-    schedule_recompute(user.id)
+    event_cache.schedule_recompute(user.id)
 
 
 # --- Loan Payments CRUD ---

@@ -949,6 +949,7 @@ epic-stocks/
 │   │   │   ├── oidc.ts      # Shared OIDC PKCE start/complete (used by Login + InviteLanding)
 │   │   │   ├── pages/       # Login, AuthCallback, Admin, Settings, PrivacyPolicy, InviteLanding, Unsubscribe
 │   │   │   ├── components/  # Layout shell, Toast, ErrorBoundary + ReportProblem (problem reporting), DisclaimerNotice + UnofficialBadge (affiliation notices)
+│   │   │   ├── components/ui/ # The shared primitives: Card, ChartCard, Segmented, icons, and Field/SelectField/PercentField (one input style for the whole app)
 │   │   │   ├── reportLog.ts # In-memory trail (routes, failed requests, JS errors) a report can attach
 │   │   │   ├── contexts/    # ThemeContext, MaintenanceContext, ViewingContext, AppContext (injection interface)
 │   │   │   └── hooks/       # useAuth, useConfig, useDark, usePush, useMe

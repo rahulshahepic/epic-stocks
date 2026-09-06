@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { api } from '../../api.ts'
 import type { TaxSettings } from '../../api.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
+import { FIELD_INPUT_CLASS } from '../../scaffold/components/ui/Field.tsx'
 
 const WI_DEFAULTS: TaxSettings = {
  federal_income_rate: 0.37,
@@ -196,7 +197,7 @@ export default function AppSettingsSections() {
  step="0.0001"
  value={taxForm[key] as number}
  onChange={e => setTaxForm(f => f ? { ...f, [key]: +e.target.value } : f)}
- className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text"
+ className={FIELD_INPUT_CLASS}
  />
  </label>
  ))}
@@ -205,7 +206,7 @@ export default function AppSettingsSections() {
  <select
  value={taxForm.lot_selection_method}
  onChange={e => setTaxForm(f => f ? { ...f, lot_selection_method: e.target.value as TaxSettings['lot_selection_method'] } : f)}
- className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text"
+ className={FIELD_INPUT_CLASS}
  >
  <option value="epic_lifo">Epic LIFO — LIFO, prefer long-term gains (default)</option>
  <option value="fifo">FIFO — oldest lots first</option>
@@ -225,7 +226,7 @@ export default function AppSettingsSections() {
  <select
  value={taxForm.loan_payoff_method}
  onChange={e => setTaxForm(f => f ? { ...f, loan_payoff_method: e.target.value as TaxSettings['loan_payoff_method'] } : f)}
- className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text"
+ className={FIELD_INPUT_CLASS}
  >
  <option value="epic_lifo">Epic LIFO — LIFO, prefer long-term gains (default)</option>
  <option value="lifo">LIFO — newest lots first</option>
@@ -243,7 +244,7 @@ export default function AppSettingsSections() {
  type="number"
  value={taxForm.lt_holding_days}
  onChange={e => setTaxForm(f => f ? { ...f, lt_holding_days: +e.target.value } : f)}
- className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text"
+ className={FIELD_INPUT_CLASS}
  />
  </label>
  <div className="col-span-2 rounded-md border border-cs-border p-3 ">

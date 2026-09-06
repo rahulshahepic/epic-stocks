@@ -1,80 +1,12 @@
-import { useState } from 'react'
+import { Field, PercentField } from '../../../scaffold/components/ui/Field.tsx'
 import { fmtMonthYear, fmtPct } from '../../format.ts'
 import type { LoanDraft, ReviewedLoan, WizardPrice } from './types.ts'
 
-const INPUT = 'mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text'
+// Re-exported so the screens import their inputs from one place.
+export { Field, PercentField }
+
 const INLINE_INPUT = 'w-full rounded border border-cs-border bg-cs-raised px-1.5 py-0.5 text-xs text-cs-text '
 const SECONDARY_BTN = 'rounded-md bg-cs-raised px-4 py-1.5 text-xs font-medium text-cs-text-2 hover:bg-stone-200 dark:hover:bg-stone-700 '
-
-export function Field({
-  label, type = 'text', value, onChange, step, min, placeholder, hint, disabled,
-}: {
-  label: string; type?: string; value: string | number; onChange: (v: string) => void
-  step?: string; min?: string; placeholder?: string; hint?: string; disabled?: boolean
-}) {
-  return (
-    <label className="block">
-      <span className="text-xs text-cs-muted">{label}</span>
-      {hint && <span className="ml-1.5 text-[10px] text-cs-muted">{hint}</span>}
-      <input
-        type={type} step={step} min={min} placeholder={placeholder} disabled={disabled}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className={`${INPUT}${disabled ? ' opacity-50 cursor-not-allowed' : ''}`}
-      />
-    </label>
-  )
-}
-
-/** Interest rate field that stores decimal (0.0307) but displays/edits as percent (3.07).
- * Uses local state during editing so intermediate values like "3." and "3.0" aren't lost.
- * When label is omitted, renders just the input (for inline use). */
-export function PercentField({ label, value, onChange, hint, placeholder, className }: {
-  label?: string; value: string; onChange: (decimalStr: string) => void
-  hint?: string; placeholder?: string; className?: string
-}) {
-  const [local, setLocal] = useState('')
-  const [focused, setFocused] = useState(false)
-
-  const toDisplay = (v: string) => v ? String(Math.round(parseFloat(v) * 1e6) / 1e4) : ''
-
-  const input = (
-    <input
-      type="text"
-      inputMode="decimal"
-      placeholder={placeholder}
-      value={focused ? local : toDisplay(value)}
-      onFocus={() => { setLocal(toDisplay(value)); setFocused(true) }}
-      onChange={e => {
-        const v = e.target.value
-        if (v === '' || /^-?\d*\.?\d*$/.test(v)) {
-          setLocal(v)
-          const num = parseFloat(v)
-          if (!isNaN(num)) onChange(String(num / 100))
-          else if (v === '') onChange('')
-        }
-      }}
-      onBlur={() => {
-        setFocused(false)
-        if (local) {
-          const num = parseFloat(local)
-          if (!isNaN(num)) onChange(String(num / 100))
-        } else onChange('')
-      }}
-      className={className ?? INPUT}
-    />
-  )
-
-  if (!label) return input
-
-  return (
-    <label className="block">
-      <span className="text-xs text-cs-muted">{label}</span>
-      {hint && <span className="ml-1.5 text-[10px] text-cs-muted">{hint}</span>}
-      {input}
-    </label>
-  )
-}
 
 export function LoanForm({
   loan, onChange, label, showRefinancesField = false,

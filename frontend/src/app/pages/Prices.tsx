@@ -5,6 +5,7 @@ import { useApiData } from '../hooks/useApiData.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
 import { fmtPrice } from '../format.ts'
+import { Field } from '../../scaffold/components/ui/Field.tsx'
 
 type PriceForm = { effective_date: string; price: number }
 type Mode = 'list' | 'add' | 'edit' | 'growth'
@@ -209,26 +210,13 @@ export default function Prices() {
  )}
  {error && <p className="text-xs text-red-500">{error}</p>}
  <div className="grid grid-cols-2 gap-3">
- <label className="block">
- <span className="text-xs text-cs-muted">Effective Date</span>
- <input
- type="date"
+ <Field label="Effective Date" type="date"
  value={form.effective_date}
  min={epicMode ? new Date(Date.now() + 86400000).toISOString().slice(0, 10) : undefined}
- onChange={e => setForm(f => ({ ...f, effective_date: e.target.value }))}
- className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text"
- />
- </label>
- <label className="block">
- <span className="text-xs text-cs-muted">Price per Share</span>
- <input
- type="number"
- step="0.01"
+ onChange={v => setForm(f => ({ ...f, effective_date: v }))} />
+ <Field label="Price per Share" type="number" step="0.01"
  value={form.price}
- onChange={e => setForm(f => ({ ...f, price: +e.target.value }))}
- className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text"
- />
- </label>
+ onChange={v => setForm(f => ({ ...f, price: +v }))} />
  </div>
 
  {mode === 'add' && nearbyEstimates.length > 0 && (
@@ -287,38 +275,17 @@ export default function Prices() {
  </p>
  {growthError && <p className="text-xs text-red-500">{growthError}</p>}
  <div className="grid grid-cols-3 gap-3">
- <label className="block">
- <span className="text-xs text-cs-muted">Annual Growth %</span>
- <input
- type="number"
- step="0.1"
- min="0.1"
- max="100"
+ <Field label="Annual Growth %" type="number" step="0.1" min="0.1" max="100"
  value={growthForm.annual_growth_pct}
- onChange={e => setGrowthForm(f => ({ ...f, annual_growth_pct: +e.target.value }))}
- className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text"
- />
- </label>
- <label className="block">
- <span className="text-xs text-cs-muted">First Price Date</span>
- <input
- type="date"
+ onChange={v => setGrowthForm(f => ({ ...f, annual_growth_pct: +v }))} />
+ <Field label="First Price Date" type="date"
  value={growthForm.first_date}
  min={new Date(Date.now() + 86400000).toISOString().slice(0, 10)}
- onChange={e => setGrowthForm(f => ({ ...f, first_date: e.target.value }))}
- className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text"
- />
- </label>
- <label className="block">
- <span className="text-xs text-cs-muted">Through Date</span>
- <input
- type="date"
+ onChange={v => setGrowthForm(f => ({ ...f, first_date: v }))} />
+ <Field label="Through Date" type="date"
  value={growthForm.through_date}
  min={growthForm.first_date}
- onChange={e => setGrowthForm(f => ({ ...f, through_date: e.target.value }))}
- className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text"
- />
- </label>
+ onChange={v => setGrowthForm(f => ({ ...f, through_date: v }))} />
  </div>
 
  {estimatesToReplace.length > 0 && (

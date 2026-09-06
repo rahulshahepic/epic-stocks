@@ -10,6 +10,7 @@ import hmac
 import os
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+from app import event_cache
 
 router = APIRouter(prefix="/api/internal", tags=["internal"])
 
@@ -31,15 +32,14 @@ class InvalidateRequest(BaseModel):
 @router.post("/cache-invalidate", status_code=202)
 def cache_invalidate(body: InvalidateRequest, request: Request):
     _check_auth(request)
-    from app.event_cache import schedule_recompute, schedule_fan_out
 
     if body.scope == "all":
-        schedule_fan_out()
+        event_cache.schedule_fan_out()
         return {"queued": "all"}
 
     if body.user_ids:
         for uid in body.user_ids:
-            schedule_recompute(uid)
+            event_cache.schedule_recompute(uid)
         return {"queued": len(body.user_ids)}
 
     raise HTTPException(status_code=400, detail="Provide scope='all' or user_ids=[...]")

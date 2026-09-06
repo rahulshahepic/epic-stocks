@@ -11,6 +11,7 @@ import type { TrancheAllocation } from '../../api.ts'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 import { GRANT_TYPE_NAMES } from '../grantTypes.ts'
 import { fmt$ } from '../format.ts'
+import { Field, SelectField, FIELD_INPUT_CLASS } from '../../scaffold/components/ui/Field.tsx'
 
 type LoanForm = Omit<LoanEntry, 'id' | 'version'>
 type Mode = 'list' | 'add' | 'edit'
@@ -293,28 +294,14 @@ export default function Loans() {
  {error && <p className="text-xs text-red-500">{error}</p>}
  <div className="grid grid-cols-2 gap-3">
  <Field label="Grant Year" type="number" value={form.grant_year} onChange={v => setForm(f => ({ ...f, grant_year: +v }))} />
- <label className="block">
- <span className="text-xs text-cs-muted">Grant Type</span>
- <select
- value={form.grant_type}
- onChange={e => setForm(f => ({ ...f, grant_type: e.target.value }))}
- className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text"
- >
- {GRANT_TYPE_NAMES.map(name => (
-   <option key={name} value={name}>{name}</option>
- ))}
- </select>
- </label>
- <label className="block">
- <span className="text-xs text-cs-muted">Loan Type</span>
- <select
- value={form.loan_type}
- onChange={e => setForm(f => ({ ...f, loan_type: e.target.value }))}
- className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text"
- >
+ <SelectField label="Grant Type" value={form.grant_type}
+ onChange={v => setForm(f => ({ ...f, grant_type: v }))}>
+ {GRANT_TYPE_NAMES.map(name => <option key={name} value={name}>{name}</option>)}
+ </SelectField>
+ <SelectField label="Loan Type" value={form.loan_type}
+ onChange={v => setForm(f => ({ ...f, loan_type: v }))}>
  {LOAN_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
- </select>
- </label>
+ </SelectField>
  <Field label="Loan Year" type="number" value={form.loan_year} onChange={v => setForm(f => ({ ...f, loan_year: +v }))} />
  <Field label="Amount" type="number" step="0.01" value={form.amount} onChange={v => setForm(f => ({ ...f, amount: +v }))} />
  <Field label="Interest Rate (%)" type="number" step="0.01" value={+(form.interest_rate * 100).toFixed(4)} onChange={v => setForm(f => ({ ...f, interest_rate: +v / 100 }))} />
@@ -325,7 +312,7 @@ export default function Loans() {
  <select
  value={form.refinances_loan_id ?? ''}
  onChange={e => setForm(f => ({ ...f, refinances_loan_id: e.target.value ? +e.target.value : null }))}
- className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text"
+ className={FIELD_INPUT_CLASS}
  >
  <option value="">— None —</option>
  {(() => {
@@ -660,19 +647,3 @@ export default function Loans() {
  )
 }
 
-function Field({ label, type, value, onChange, step }: {
- label: string; type: string; value: string | number; onChange: (v: string) => void; step?: string
-}) {
- return (
- <label className="block">
- <span className="text-xs text-cs-muted">{label}</span>
- <input
- type={type}
- step={step}
- value={value}
- onChange={e => onChange(e.target.value)}
- className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text"
- />
- </label>
- )
-}

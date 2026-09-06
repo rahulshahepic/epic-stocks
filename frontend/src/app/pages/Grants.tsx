@@ -10,6 +10,7 @@ import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 import { useViewing } from '../../scaffold/contexts/ViewingContext.tsx'
 import { ZERO_BASIS_TYPES } from '../grantTypes.ts'
 import { fmtNum, fmtPrice } from '../format.ts'
+import { Field, FIELD_INPUT_CLASS } from '../../scaffold/components/ui/Field.tsx'
 
 type GrantForm = Omit<GrantEntry, 'id' | 'version'>
 type Mode = 'list' | 'add' | 'edit'
@@ -499,7 +500,7 @@ export default function Grants() {
  type="number"
  value={form.dp_shares}
  onChange={e => setForm(f => ({ ...f, dp_shares: +e.target.value }))}
- className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text"
+ className={FIELD_INPUT_CLASS}
  />
  </label>
  )}
@@ -804,37 +805,11 @@ export default function Grants() {
  </div>
 
  <div className="space-y-3">
- <label className="block">
- <span className="text-xs text-cs-muted">Sale Date</span>
- <input
- type="date"
- value={sellDate}
- onChange={e => setSellDate(e.target.value)}
- className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text"
- />
- </label>
- <label className="block">
- <span className="text-xs text-cs-muted">Target Net Cash ($)</span>
- <input
- type="number"
- step="0.01"
- value={sellTargetCash}
- onChange={e => setSellTargetCash(e.target.value)}
- className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text"
- placeholder="e.g. 50000"
- />
- </label>
- <label className="block">
- <span className="text-xs text-cs-muted">Price per Share ($)</span>
- <input
- type="number"
- step="0.01"
- value={sellPrice}
- onChange={e => setSellPrice(e.target.value)}
- className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text"
- placeholder="e.g. 125.00"
- />
- </label>
+ <Field label="Sale Date" type="date" value={sellDate} onChange={setSellDate} />
+ <Field label="Target Net Cash ($)" type="number" step="0.01" placeholder="e.g. 50000"
+ value={sellTargetCash} onChange={setSellTargetCash} />
+ <Field label="Price per Share ($)" type="number" step="0.01" placeholder="e.g. 125.00"
+ value={sellPrice} onChange={setSellPrice} />
 
  {sellEstimateLoading && (
  <p className="text-center text-xs text-cs-text-2">Estimating...</p>
@@ -887,19 +862,3 @@ export default function Grants() {
  )
 }
 
-function Field({ label, type, value, onChange, step }: {
- label: string; type: string; value: string | number; onChange: (v: string) => void; step?: string
-}) {
- return (
- <label className="block">
- <span className="text-xs text-cs-muted">{label}</span>
- <input
- type={type}
- step={step}
- value={value}
- onChange={e => onChange(e.target.value)}
- className="mt-0.5 block w-full rounded-md border border-cs-border-strong bg-cs-surface px-2 py-1.5 text-xs text-cs-text"
- />
- </label>
- )
-}

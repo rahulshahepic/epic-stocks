@@ -32,6 +32,11 @@ USER_OWNED_TABLES: list[tuple[str, str]] = [
     ("tip_acceptances", "user_id"),
     ("invite_sending_blocks", "user_id"),
     ("invite_send_events", "user_id"),
+    # Connections to AI assistants, and half-finished authorizations. Deleting
+    # the grant row is what makes an outstanding connector token stop working,
+    # so this is the deletion that matters most here.
+    ("oauth_grants", "user_id"),
+    ("oauth_auth_codes", "user_id"),
 ]
 
 # Financial data only — what POST /api/me/reset clears, keeping the account.

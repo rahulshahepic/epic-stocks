@@ -356,7 +356,12 @@ table for the surface where it matters most.
 
 ## 11. Build order
 
-**Phase 1 — OAuth 2.1 authorization server.** Models + Alembic migration, both
+**Phase 1 — OAuth 2.1 authorization server. DONE.** Shipped with the transport
+and an empty tool registry, so a connector added to ChatGPT or Claude today
+connects, authenticates and reports no tools. The `account` parameter and
+`resolve_account` seam arrive with the tools in Phase 2.
+
+**Phase 1 as built —** Models + Alembic migration, both
 well-knowns, DCR with the redirect allowlist, authorize with consent, token with
 PKCE and rotation, revoke. Token type separation (§6.2) and the
 `EncryptionMiddleware` change (§6.3) land here.

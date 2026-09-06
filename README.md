@@ -28,7 +28,7 @@ A mobile-first web app for Epic employees to track their own equity compensation
 ## Table of Contents
 
 - [Understanding Your Equity](#understanding-your-equity) — key concepts explained
-- [For Users](#for-users) — getting started, importing, dashboard, sales, loans, notifications, sharing
+- [For Users](#for-users) — getting started, importing, dashboard, sales, loans, notifications, AI connections, sharing
 - [For Content Admins](#for-content-admins) — editing the grant program schedule and rates
 - [For Site Admins](#for-site-admins) — user management, system health, maintenance
 - [For Site Operators](#for-site-operators) — deployment, environment variables, development, API reference
@@ -420,9 +420,37 @@ Go to **Settings → Notifications** to configure.
 
 **Sign Out** (Settings → Account) clears the session on this device only — other browsers or devices stay signed in.
 
-**Sign Out Everywhere** (Settings → Account) revokes every active session for your account in one action. Use this if you've signed in on a device you no longer have access to, or if you want to force every browser to re-authenticate. After confirming, every existing session token is invalidated immediately and you'll be sent to the login page.
+**Sign Out Everywhere** (Settings → Account) revokes every active session for your account in one action. Use this if you've signed in on a device you no longer have access to, or if you want to force every browser to re-authenticate. After confirming, every existing session token is invalidated immediately and you'll be sent to the login page. Any AI connection (below) is cut loose at the same time — a connector is a signed-in thing, and losing a phone should disconnect the assistant along with the browsers.
 
 Sessions otherwise last 30 days, with a sliding refresh — the app silently extends your session each time you open it, so an installed PWA stays signed in indefinitely as long as you keep using it.
+
+---
+
+### Connecting Your Own AI
+
+You can let ChatGPT or Claude read your equity data, so you can ask about vesting and tax alongside the rest of your finances. It is off until you connect it, read-only, and you can disconnect it at any time.
+
+**What this does and does not do.** The assistant can read your grants, vesting timeline, prices, loans, sales and tax estimates, and your salary and retirement settings if you allow that. It cannot change anything. Connecting means your figures are sent to OpenAI or Anthropic when the assistant asks for them — the same as pasting them into a chat, but without the pasting.
+
+**In Claude** — Pro, Max, Team or Enterprise; works on web, desktop and mobile:
+
+1. Settings → Connectors → **Add custom connector**
+2. Paste `https://<your-domain>/mcp`
+3. Sign in and approve
+
+**In ChatGPT** — Plus, Pro, Business, Enterprise or Edu. Adding a connector is **web only**; once added it works everywhere:
+
+1. Settings → **Security and login** → turn on **Developer mode**. It sounds alarming and is not — it is the switch that lets you add connectors that are not in OpenAI's directory.
+2. Plugins → **+** → give it a name and description
+3. Paste `https://<your-domain>/mcp` as the endpoint
+4. Sign in and approve
+5. Review the tools it found and create the connection
+
+Then name the connector when you ask a question. Both assistants do better when told which tool to use than when left to guess.
+
+If your ChatGPT is provided by your employer, a workspace admin may have to enable developer mode before step 1. A personal account works either way.
+
+**Disconnecting.** Settings → AI Connections lists every connection with what it may read and when it was last used. Disconnecting takes effect on the assistant's next request, not at the next token expiry.
 
 ---
 
@@ -630,7 +658,7 @@ Blocked emails are checked at login time (case-insensitive). A blocked user cann
 |-------|-----------|
 | Backend | Python 3.12, FastAPI, SQLAlchemy, PostgreSQL (Alembic migrations) |
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS 4, Recharts |
-| Auth | OIDC PKCE (any provider) → BFF session cookie (HttpOnly, XSS-safe) |
+| Auth | OIDC PKCE (any provider) → BFF session cookie (HttpOnly, XSS-safe); OAuth 2.1 authorization server for AI connectors |
 | Deploy | Docker Compose + Caddy (auto-HTTPS) + Cloudflare (DDoS protection) |
 | Tests | pytest (backend), Vitest + RTL (frontend), Playwright (E2E) |
 
@@ -692,6 +720,9 @@ The backend creates `data/vesting.db` (SQLite) automatically on first run. The d
 | `INVITE_TOKEN_SECRET` | No | Key for the HMAC verifiers that replace plaintext invitation tokens in the database. Falls back to `JWT_SECRET`. Rotating it invalidates outstanding invitations and hides stored short codes — revoke and re-send. |
 | `PUSH_ALLOW_PRIVATE_ENDPOINTS` | No | Set to `1` for local development against a push relay on a private address. Never set in production: it disables the SSRF check on push subscription endpoints. |
 | `PUSH_ALLOWED_HOSTS` | No | Comma-separated hosts that may be used as push endpoints. Defaults to the browser push services (FCM, Mozilla autopush, Apple, WNS); an entry starting with `.` matches any subdomain. Set to `*` to accept any public host — only needed for a browser whose push service is not in the built-in list. |
+| `MCP_ENABLED` | No | AI connections (the OAuth server at `/oauth/*` and the MCP server at `/mcp`). Default on; set to `0` and neither is registered at all. |
+| `MCP_ALLOWED_REDIRECT_HOSTS` | No | Semicolon-delimited hosts an AI client may register a redirect URI on. Default `chatgpt.com;claude.ai;claude.com`. Dynamic client registration is anonymous, so this allowlist is what stops a stranger registering a client that returns authorization codes to their own server. |
+| `MCP_ACCESS_TOKEN_MINUTES` | No | Lifetime of a connector access token. Default `60`; refresh tokens carry the connection beyond that. |
 | `COMMIT_SHA` | No | Git commit SHA injected at Docker build time. Displayed as a 7-char short hash at the bottom of Admin and Settings pages. **Set automatically by the deploy workflow.** |
 | `APP_ENV` | No | Set to `staging` in the GitHub staging environment Variables tab to enable staging-specific UI: amber icon, PWA name "Epic Stocks (Staging)", and a persistent amber header banner. Defaults to `production` (no change). Injected as a Docker build arg at deploy time. |
 
@@ -1014,6 +1045,8 @@ All authenticated endpoints accept a valid `session` cookie (set automatically b
 
 The Bearer header exists for a client that cannot use cookies — a native shell, whose WebView origin is not this server's, so the cookie is never attached. Such a client obtains the token by passing `return_token: true` to `POST /api/auth/callback`; the web app never asks, so no readable copy of the credential is handed to script on the page. Bearer tokens carry the same `session_version` check as cookies, so "sign out everywhere" revokes both.
 
+**Connector tokens are a separate kind.** A token issued by `/oauth/token` for an AI assistant carries `typ: "mcp"` and is accepted only at `/mcp`; a session token is accepted only at `/api/*`. Presenting either in the other's place is a 401. Without that split, one leaked assistant credential would be a full account session, admin endpoints included. Connector tokens are additionally bound to this server by an audience claim and checked against their grant row on every request, so disconnecting takes effect immediately rather than at the next expiry.
+
 Cross-origin requests are accepted only from the native shell origins (`capacitor://localhost`, `https://localhost`) with credentials disallowed — those clients authenticate by Bearer, never by cookie. The PWA is served from the same origin as the API and never reaches CORS at all.
 
 | Method | Path | Description |
@@ -1076,6 +1109,16 @@ Cross-origin requests are accepted only from the native shell origins (`capacito
 | GET/PUT | `/api/tax-settings` | Get/set tax rate configuration and lot selection preferences |
 | GET | `/api/tips` | Smart tips: scenario-based tax savings recommendations |
 | POST | `/api/tips/accept` | Record acceptance of a tip recommendation |
+| **AI connectors** | | |
+| GET | `/.well-known/oauth-protected-resource` | RFC 9728. How an MCP client discovers who issues tokens for `/mcp`. No auth |
+| GET | `/.well-known/oauth-authorization-server` | RFC 8414. What this authorization server supports. No auth |
+| POST | `/oauth/register` | RFC 7591 dynamic client registration. Anonymous — it is what lets Claude on a phone connect. Redirect hosts limited by `MCP_ALLOWED_REDIRECT_HOSTS` |
+| GET/POST | `/oauth/authorize` | Consent screen, server-rendered. Needs an app session; a signed-out user is sent through `/login?next=` and returned here |
+| POST | `/oauth/token` | `authorization_code` and `refresh_token`. PKCE `S256` required; refresh tokens rotate on use |
+| POST | `/oauth/revoke` | RFC 7009. Always 200 |
+| POST | `/mcp` | The MCP server: JSON-RPC over Streamable HTTP. Requires a connector token, never a session one |
+| GET | `/api/oauth/connections` | This account's live AI connections, for Settings |
+| DELETE | `/api/oauth/connections/{id}` | Disconnect. Deleting the grant row is the revocation — it takes effect on the next request |
 | **Grant-program content** | | |
 | GET | `/api/content` | Global grant-program content blob — any logged-in user |
 | POST/PUT/DELETE | `/api/content/grant-templates[/{id}]` | CRUD grant templates (content admin) |

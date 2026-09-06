@@ -13,6 +13,15 @@ from scaffold.crud import apply_update, get_owned, version_conflict
 router = APIRouter(prefix="/api/prices", tags=["prices"])
 
 
+def _refresh_future_payoff_sales(user: User, db: Session) -> None:
+    """A price add/edit/delete changes what future payoff sales should be sized
+    against; without this they keep selling at whatever price was current
+    when they were generated, silently drifting from the account's own latest
+    known price."""
+    from app.routers.loans import _regenerate_future_payoff_sales
+    _regenerate_future_payoff_sales(user, db)
+
+
 def _remove_shadowed_estimates(user_id: int, db: Session) -> bool:
     """Delete estimate prices where a real price now exists for the same effective_date."""
     real_dates = {
@@ -72,6 +81,7 @@ def create_price(body: PriceCreate, user: User = Depends(get_current_user), db: 
     db.add(price)
     db.commit()
     db.refresh(price)
+    _refresh_future_payoff_sales(user, db)
     event_cache.schedule_recompute(user.id)
     return price
 
@@ -93,6 +103,7 @@ def update_price(price_id: int, body: PriceUpdate, user: User = Depends(get_curr
         price.is_estimate = price.effective_date > date_cls.today()
     db.commit()
     db.refresh(price)
+    _refresh_future_payoff_sales(user, db)
     event_cache.schedule_recompute(user.id)
     return price
 
@@ -102,4 +113,5 @@ def delete_price(price_id: int, user: User = Depends(get_current_user), db: Sess
     price = get_owned(db, Price, price_id, user, "Price")
     db.delete(price)
     db.commit()
+    _refresh_future_payoff_sales(user, db)
     event_cache.schedule_recompute(user.id)

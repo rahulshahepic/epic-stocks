@@ -287,6 +287,45 @@ def test_regenerate_creates_missing_payoff_sales(client, db_session):
     assert interest_loan["id"] in loan_ids
 
 
+def test_adding_a_price_refreshes_stale_future_payoff_sales(client, db_session):
+    """A future payoff sale is sized against whatever price is current when it's
+    generated. Adding a newer price (the account's normal 'set this year's
+    valuation' action) must re-price and re-size that sale — otherwise it
+    keeps selling at a stale price even though the account's own latest known
+    price has moved, which is exactly what happened to produce a wildly wrong
+    Cash Received total.
+    """
+    register_user(client)
+    _setup_data(client)  # price $20 from 2020-01-01
+
+    resp = client.post("/api/loans?generate_payoff_sale=true", json={
+        "grant_year": 2018, "grant_type": "Purchase",
+        "loan_type": "Interest", "loan_year": 2019,
+        "amount": 10000.0, "interest_rate": 0.03,
+        "due_date": "2030-01-01",
+    })
+    assert resp.status_code == 201
+    loan_id = resp.json()["id"]
+
+    sales_before = client.get("/api/sales").json()
+    assert len(sales_before) == 1
+    sale_before = sales_before[0]
+    assert sale_before["price_per_share"] == 20.0
+
+    # A newer, higher price is added for a year before the loan is due.
+    resp = client.post("/api/prices", json={"effective_date": "2029-01-01", "price": 40.0})
+    assert resp.status_code == 201
+
+    sales_after = client.get("/api/sales").json()
+    assert len(sales_after) == 1  # updated in place, not duplicated
+    sale_after = sales_after[0]
+    assert sale_after["id"] == sale_before["id"]
+    assert sale_after["loan_id"] == loan_id
+    assert sale_after["price_per_share"] == 40.0
+    # Same cash to raise at a higher price means fewer shares needed.
+    assert sale_after["shares"] < sale_before["shares"]
+
+
 def test_regenerate_skips_refinanced_loans(client, db_session):
     """regenerate-all-payoff-sales does not create sales for refinanced loans."""
     register_user(client)

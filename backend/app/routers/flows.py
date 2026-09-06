@@ -230,6 +230,11 @@ def annual_price(body: AnnualPriceRequest, user: User = Depends(get_current_user
     db.add(price)
     db.commit()
     db.refresh(price)
+    # Future payoff sales were sized against whatever price was current when
+    # they were generated; a new price point can make that stale, so refresh
+    # them now rather than leaving them selling at an outdated price.
+    from app.routers.loans import _regenerate_future_payoff_sales
+    _regenerate_future_payoff_sales(user, db)
     event_cache.schedule_recompute(user.id)
     return price
 
@@ -272,6 +277,9 @@ def growth_price(body: GrowthPriceRequest, user: User = Depends(get_current_user
     db.commit()
     for p in entries:
         db.refresh(p)
+    # Same as annual_price: refresh future payoff sales against the new prices.
+    from app.routers.loans import _regenerate_future_payoff_sales
+    _regenerate_future_payoff_sales(user, db)
     event_cache.schedule_recompute(user.id)
     return entries
 

@@ -451,9 +451,13 @@ def update_loan(
     return loan
 
 
-@router.post("/regenerate-all-payoff-sales")
-def regenerate_all_payoff_sales(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Recompute payoff sale share counts for all future loans, creating missing sales."""
+def _regenerate_future_payoff_sales(user: User, db: Session) -> dict:
+    """Recompute payoff sale share counts and prices for all future loans,
+    creating missing sales. Shared by the manual regenerate endpoint and by
+    anything that changes a projection input (e.g. a new price point) that
+    existing future payoff sales were sized against — otherwise those sales
+    keep selling at whatever price was current when they were generated,
+    even after a newer price makes that stale."""
     from datetime import date as date_type
     today = date_type.today()
     future_loans = db.query(Loan).filter(Loan.user_id == user.id, Loan.due_date >= today).all()
@@ -487,8 +491,15 @@ def regenerate_all_payoff_sales(user: User = Depends(get_current_user), db: Sess
             ))
             created += 1
     db.commit()
-    event_cache.schedule_recompute(user.id)
     return {"updated": updated, "created": created}
+
+
+@router.post("/regenerate-all-payoff-sales")
+def regenerate_all_payoff_sales(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Recompute payoff sale share counts for all future loans, creating missing sales."""
+    result = _regenerate_future_payoff_sales(user, db)
+    event_cache.schedule_recompute(user.id)
+    return result
 
 
 @router.delete("/{loan_id}", status_code=204)

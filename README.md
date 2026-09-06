@@ -466,7 +466,13 @@ Then name the connector when you ask a question. Both assistants do better when 
 
 If your ChatGPT is provided by your employer, a workspace admin may have to enable developer mode before step 1. A personal account works either way.
 
-**Disconnecting.** Settings → AI Connections lists every connection with what it may read and when it was last used. Disconnecting takes effect on the assistant's next request, not at the next token expiry.
+**Disconnecting.** Settings → AI Connections lists every connection with what it may read and when it was last used. Disconnecting takes effect on the assistant's next request, not at the next token expiry. Signing out everywhere disconnects all of them too.
+
+| AI Connections (light) | ChatGPT walkthrough (dark) |
+|------------------------|----------------------------|
+| ![AI Connections settings](screenshots/settings-ai-connections-light-mobile.png) | ![ChatGPT walkthrough](screenshots/settings-ai-connections-dark-mobile.png) |
+
+The section is hidden entirely if an administrator has switched AI connections off — instructions for something that cannot work are worse than no instructions.
 
 ---
 
@@ -689,7 +695,7 @@ Blocked emails are checked at login time (case-insensitive). A blocked user cann
 |-------|-----------|
 | Backend | Python 3.12, FastAPI, SQLAlchemy, PostgreSQL (Alembic migrations) |
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS 4, Recharts |
-| Auth | OIDC PKCE (any provider) → BFF session cookie (HttpOnly, XSS-safe); OAuth 2.1 authorization server for AI connectors |
+| Auth | OIDC PKCE (any provider) → BFF session cookie (HttpOnly, XSS-safe); OAuth 2.1 authorization server + MCP server for AI connectors |
 | Deploy | Docker Compose + Caddy (auto-HTTPS) + Cloudflare (DDoS protection) |
 | Tests | pytest (backend), Vitest + RTL (frontend), Playwright (E2E) |
 

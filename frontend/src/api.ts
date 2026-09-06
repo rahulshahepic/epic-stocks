@@ -3,6 +3,14 @@ import { logApiFailure, noteErrorRef } from './scaffold/reportLog.ts'
 import { platform } from './platform/index.ts'
 import type { PushRegistration } from './platform/index.ts'
 
+export interface AiConnection {
+  id: number
+  client_name: string
+  scopes: string[]
+  created_at: string | null
+  last_used_at: string | null
+}
+
 export interface McpHost {
   id: number
   label: string
@@ -555,6 +563,11 @@ export const api = {
   adminGetFlexiblePayoff: () => apiFetch<{ active: boolean }>('/api/admin/flexible-payoff'),
   adminSetFlexiblePayoff: (active: boolean) =>
     post<{ active: boolean }>('/api/admin/flexible-payoff', { active }),
+  // AI connections a user has authorized against their own account.
+  getAiConnections: () => apiFetch<AiConnection[]>('/api/oauth/connections'),
+  disconnectAi: (id: number) =>
+    apiFetch<void>(`/api/oauth/connections/${id}`, { method: 'DELETE' }),
+
   // AI connections (MCP). Which providers may connect, and whether any may —
   // admin policy, so it lives in the database rather than the environment.
   adminGetMcp: () => apiFetch<McpSettings>('/api/admin/mcp'),

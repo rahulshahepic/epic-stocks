@@ -695,6 +695,7 @@ def status():
 def client_config(request: Request):
     from scaffold.email_sender import email_configured
     from scaffold.epic_mode import is_epic_mode
+    from scaffold.oauth.settings import mcp_enabled
     return {
         "vapid_public_key": os.environ.get("VAPID_PUBLIC_KEY", ""),
         "email_notifications_available": email_configured(),
@@ -703,6 +704,9 @@ def client_config(request: Request):
         "resend_from": os.environ.get("RESEND_FROM", "") if _is_admin_request(request) else "",
 
         "epic_mode": is_epic_mode(),
+        # Whether to offer AI connections in Settings at all. Instructions for
+        # a feature an admin has switched off are worse than no instructions.
+        "ai_connections": mcp_enabled(),
     }
 
 

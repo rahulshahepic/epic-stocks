@@ -71,7 +71,7 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
         </button>
       </div>
 
-      <hr className="my-4 border-cs-line" />
+      <hr className="my-4 border-cs-border" />
 
       <p className="text-xs font-medium text-cs-text">Providers</p>
       <p className="mt-0.5 text-xs text-cs-muted">
@@ -85,7 +85,7 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
         </p>
       )}
 
-      <ul className="mt-2 divide-y divide-cs-line">
+      <ul className="mt-2 divide-y divide-cs-border">
         {[...groups.entries()].map(([groupLabel, entries]) => (
           <li key={groupLabel} className="py-2">
             <p className="text-xs font-medium text-cs-text">{groupLabel}</p>
@@ -98,7 +98,7 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
                   <button
                     disabled={busy}
                     onClick={() => run(() => api.adminToggleMcpHost(entry.id, !entry.enabled), 'Failed to change the provider')}
-                    className="rounded-md border border-cs-line px-2 py-1 text-xs text-cs-text hover:bg-cs-hover disabled:opacity-50"
+                    className="rounded-md border border-cs-border px-2 py-1 text-xs text-cs-text hover:bg-cs-raised disabled:opacity-50"
                   >
                     {entry.enabled ? 'Disable' : 'Enable'}
                   </button>
@@ -135,7 +135,7 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             placeholder="Copilot"
-            className="w-28 rounded-md border border-cs-line bg-cs-base px-2 py-1 text-xs text-cs-text"
+            className="w-28 rounded-md border border-cs-border bg-cs-base px-2 py-1 text-xs text-cs-text"
           />
         </label>
         <label className="flex flex-col gap-1">
@@ -144,7 +144,7 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
             value={host}
             onChange={(e) => setHost(e.target.value)}
             placeholder="copilot.microsoft.com"
-            className="w-52 rounded-md border border-cs-line bg-cs-base px-2 py-1 text-xs text-cs-text"
+            className="w-52 rounded-md border border-cs-border bg-cs-base px-2 py-1 text-xs text-cs-text"
           />
         </label>
         <button

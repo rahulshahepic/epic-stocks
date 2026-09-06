@@ -285,3 +285,14 @@ def test_boot_does_not_re_add_a_deleted_provider(admin, db_session):
     seed_defaults(db_session)
 
     assert "claude.com" not in {h["host"] for h in admin.get("/api/admin/mcp").json()["hosts"]}
+
+
+def test_the_client_config_says_whether_to_offer_connections(admin):
+    """Settings hides the whole section when an admin has switched this off.
+
+    Instructions for a feature that cannot work are worse than no instructions,
+    so the SPA needs to know before it renders them.
+    """
+    assert admin.get("/api/config").json()["ai_connections"] is True
+    admin.post("/api/admin/mcp", json={"enabled": False})
+    assert admin.get("/api/config").json()["ai_connections"] is False

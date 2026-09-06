@@ -392,7 +392,14 @@ error object, never a 500 — the same rule the Epic importers live under, and f
 the same reason (unhandled exceptions write `error_logs` rows that push real
 tracebacks out of the 500-row window).
 
-**Phase 3 — Connections UI and audit.** The page, the walkthroughs, the kill
+**Phase 3 — Connections UI. DONE**, except the audit table, which is deferred:
+with the connections list showing last-used and Disconnect being immediate,
+a per-tool log is a nice-to-have rather than the thing that makes the feature
+safe. The per-user kill switch became "disconnect each connection" plus the
+admin-level master switch, rather than a third piece of persisted state that
+would have meant another column and another way to be confusingly off.
+
+**Phase 3 as built —** The page, the walkthroughs, the kill
 switch, the audit table. Vitest, an E2E pass through `./e2e.sh`, screenshots.
 
 **Phase 4 — docs.** README: a "Connecting your own AI" user section, the new env

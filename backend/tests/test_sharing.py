@@ -1,5 +1,4 @@
 """Tests for the email invitation / sharing feature."""
-import pytest
 from tests.conftest import register_user
 
 
@@ -98,11 +97,9 @@ class TestInviteCRUD:
 class TestAcceptance:
     def test_accept_by_token(self, client, make_client):
         register_user(client, "alice@test.com", "Alice")
-        inv = _invite(client, "bob@test.com").json()
-        # Extract token from the DB (the API doesn't return raw tokens)
+        _invite(client, "bob@test.com")
+        # The API never returns the raw token, so acceptance goes by short code.
         sent = client.get("/api/sharing/sent").json()
-        token = None
-        # Get token via invite-info to verify it's valid
         code = sent[0]["short_code"]
         info = client.get(f"/api/sharing/invite-info?code={code}")
         assert info.json()["valid"] is True

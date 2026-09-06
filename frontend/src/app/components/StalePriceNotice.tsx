@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Card } from '../../scaffold/components/ui/Card.tsx'
-import { fmtPrice } from './charts.tsx'
+import { fmtPrice } from '../format.ts'
 
 /**
  * Ask for today's share price when the files predate it.

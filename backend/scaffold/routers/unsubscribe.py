@@ -1,7 +1,9 @@
 """Public (no-auth) unsubscribe endpoints for CAN-SPAM compliance."""
 import logging
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import PlainTextResponse, RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -17,9 +19,10 @@ router = APIRouter(prefix="/api/unsubscribe", tags=["unsubscribe"])
 def _limit(request: Request, endpoint: str, max_calls: int, window_secs: int = 900) -> None:
     """Cap how fast one caller can probe these routes.
 
-    Both take an HMAC token off the URL and are reachable with no session, so
-    without a limit they are free to hammer: a token oracle on one side, and a
-    supply of cheap requests that each touch the database on the other.
+    These routes take an HMAC token off the URL and are reachable with no
+    session, so without a limit they are free to hammer: a token oracle on one
+    side, and a supply of cheap requests that each touch the database on the
+    other.
 
     The token is a SHA-256 HMAC, so guessing it is infeasible at any rate this
     would permit; the budget only has to stop a flood, and it is shared by
@@ -82,6 +85,75 @@ def process_unsubscribe(body: UnsubscribeRequest, request: Request,
         _unsubscribe_notifications(email, db)
 
     return {"success": True, "email": email, "type": body.type}
+
+
+@router.post("/one-click")
+def one_click_unsubscribe(token: str, email: str, type: str, request: Request,
+                          db: Session = Depends(get_db)):
+    """RFC 8058 one-click unsubscribe: the URI in the List-Unsubscribe header.
+
+    Gmail and Outlook show their own "Unsubscribe" button beside the sender and
+    POST here when it is pressed — no page, no person, no second confirmation.
+    Everything that identifies the request is in the query string, because the
+    body RFC 8058 specifies is the fixed string "List-Unsubscribe=One-Click"
+    and carries nothing. It is not read at all: a client that sends a different
+    body, or none, still meant to unsubscribe, and refusing on that basis would
+    fail exactly the way this endpoint exists to stop failing.
+
+    The HMAC in the query string is the whole authorization. There is no session
+    here and no CSRF question to answer — the request is meant to arrive from
+    another origin entirely, and being able to unsubscribe someone requires
+    already knowing a token only they were sent.
+    """
+    from scaffold.email_sender import verify_unsubscribe_token
+
+    _limit(request, "unsubscribe_one_click", max_calls=120)
+    email = email.lower().strip()
+    if type not in ("invite", "notify"):
+        raise HTTPException(400, "Invalid unsubscribe type")
+
+    if not verify_unsubscribe_token(token, email, type):
+        raise HTTPException(403, "Invalid or expired unsubscribe link")
+
+    if type == "invite":
+        _unsubscribe_invitations(email, db)
+    else:
+        _unsubscribe_notifications(email, db)
+
+    # Nothing renders this; the client shows its own confirmation.
+    return PlainTextResponse("Unsubscribed.")
+
+
+@router.get("/one-click")
+def one_click_unsubscribe_page(token: str, email: str, type: str, request: Request):
+    """Send a person who clicked the header URI to the page with the button.
+
+    Deliberately does not unsubscribe. A GET here is either someone clicking a
+    link a mail client rendered from the header, or a security scanner opening
+    every URL in the message before it is delivered — and the scanner must not
+    be able to unsubscribe the recipient it is protecting. That is the reason
+    RFC 8058 specifies a POST at all.
+
+    It also does not mint anything. Building the destination with a fresh
+    token would make this an oracle: ask for any address, get back a working
+    unsubscribe link for it. The three values are carried across exactly as
+    they arrived — re-encoded, so nothing from the query string can shape the
+    Location header — and the page itself decides whether the token is good.
+    """
+    from scaffold.email_sender import app_url
+
+    _limit(request, "unsubscribe_one_click_page", max_calls=600)
+    base = app_url()
+    if not base:
+        raise HTTPException(404, "Not found")
+    # An unbounded query string here is an unbounded response header. Past
+    # anything a real link could carry — the token is 64 hex, an address is
+    # 320 at the outside — send them to the bare page, which says the link is
+    # invalid.
+    if len(token) > 200 or len(email) > 320 or len(type) > 20:
+        return RedirectResponse(f"{base}/unsubscribe", status_code=302)
+    query = urlencode({"token": token, "email": email, "type": type})
+    return RedirectResponse(f"{base}/unsubscribe?{query}", status_code=302)
 
 
 def _is_already_unsubscribed(email: str, category: str, db: Session) -> bool:

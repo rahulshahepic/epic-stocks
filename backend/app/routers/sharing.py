@@ -1,7 +1,6 @@
 """Invitation & sharing endpoints — invite users by email, accept invites, view shared data."""
 import logging
 import secrets
-import string
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request

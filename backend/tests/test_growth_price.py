@@ -165,7 +165,6 @@ class TestShadowCleanup:
         """Direct DB: insert an estimate, then add a real price for the same date via API."""
         register_user(client)
         from scaffold.models import Price
-        from scaffold.auth import get_current_user
 
         # Insert an estimate directly in DB for yesterday (bypassing the API)
         users = db_session.query(__import__('scaffold.models', fromlist=['User']).User).all()

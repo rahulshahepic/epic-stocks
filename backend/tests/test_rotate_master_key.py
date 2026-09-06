@@ -10,7 +10,6 @@ from sqlalchemy.pool import StaticPool
 
 # Keep the app's master key for conftest compatibility; the rotation script
 # has its own standalone crypto helpers and does not read ENCRYPTION_MASTER_KEY.
-from tests.conftest import TEST_ENGINE, register_user
 
 from scaffold.rotate_master_key import (
     encrypt_user_key,
@@ -19,7 +18,6 @@ from scaffold.rotate_master_key import (
     decrypt_value,
     rotate_master,
     encrypt_plaintext,
-    ENCRYPTED_COLUMNS,
     _ENC_PREFIX,
 )
 
@@ -169,7 +167,7 @@ def test_rotate_master_multiple_users():
     with engine.connect() as conn:
         rows = conn.execute(text("SELECT id, encrypted_key FROM users ORDER BY id")).fetchall()
 
-    for i, (uid, enc_key) in enumerate(rows):
+    for i, (_uid, enc_key) in enumerate(rows):
         assert decrypt_user_key(enc_key, NEW_MASTER) == keys[i]
 
 
@@ -280,6 +278,10 @@ def test_encrypt_plaintext_idempotent():
 
     with engine.connect() as conn:
         second_shares = conn.execute(text("SELECT shares FROM grants")).fetchone()[0]
+
+    # The second run must not have rewritten the row at all. Re-encrypting the
+    # plaintext would still decrypt to "10000", so the ciphertext is the check.
+    assert first_shares == second_shares
 
     # Value still decrypts correctly; we check it's a valid encrypted string
     with engine.connect() as conn:

@@ -21,7 +21,7 @@ def _checked_endpoint(endpoint: str) -> str:
     try:
         return validate_push_endpoint(endpoint)
     except PushEndpointRejected as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/subscribe", response_model=PushSubscriptionOut, status_code=201)

@@ -4,10 +4,10 @@ The body limit caps a single request; these cap what a run of valid requests
 can accumulate. Encrypted columns store several times the bytes they are given,
 so an unbounded note field is a shared-disk exhaustion path.
 """
-import sys, os
+import sys
+import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import pytest
 
 from schemas import MAX_BULK_ITEMS, MAX_LABEL_LEN, MAX_NOTES_LEN
 from tests.conftest import register_user

@@ -1,8 +1,6 @@
 from datetime import datetime, date
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -11,6 +9,7 @@ from schemas import SaleCreate, SaleUpdate, SaleOut, TaxSettingsRead, TaxSetting
 from scaffold.auth import get_current_user
 from scaffold.quota import check_row_quota
 from app.sales_engine import compute_sale_tax, build_fifo_lots, compute_grossup_shares, build_lots_from_overrides
+from scaffold.crud import apply_update, get_owned, version_conflict
 
 
 def _flexible_payoff_enabled(db: Session) -> bool:
@@ -208,10 +207,7 @@ def create_sale(body: SaleCreate, user: User = Depends(get_current_user), db: Se
     if is_epic_mode() and body.loan_id is None and body.date < date_type.today():
         raise HTTPException(status_code=422, detail="Sales cannot be backdated in Epic mode — only future planned sales are allowed")
     if body.loan_id is not None:
-        # Validate loan belongs to this user
-        loan = db.query(Loan).filter(Loan.id == body.loan_id, Loan.user_id == user.id).first()
-        if not loan:
-            raise HTTPException(status_code=404, detail="Loan not found")
+        get_owned(db, Loan, body.loan_id, user, "Loan")  # 404s if it is not theirs
         # Prevent duplicate payoff sale for the same loan
         existing = db.query(Sale).filter(Sale.loan_id == body.loan_id).first()
         if existing:
@@ -230,19 +226,11 @@ def create_sale(body: SaleCreate, user: User = Depends(get_current_user), db: Se
 
 @router.put("/{sale_id}", response_model=SaleOut)
 def update_sale(sale_id: int, body: SaleUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    sale = db.query(Sale).filter(Sale.id == sale_id, Sale.user_id == user.id).first()
-    if not sale:
-        raise HTTPException(status_code=404, detail="Sale not found")
-    submitted_version = body.version
-    if submitted_version is not None and sale.version != submitted_version:
-        return JSONResponse(
-            status_code=409,
-            content={"detail": "modified_elsewhere", "current_version": sale.version},
-        )
-    updates = {k: v for k, v in body.model_dump(exclude_unset=True).items() if k != "version"}
-    for k, v in updates.items():
-        setattr(sale, k, v)
-    sale.version = sale.version + 1
+    sale = get_owned(db, Sale, sale_id, user, "Sale")
+    stale = version_conflict(sale, body.version)
+    if stale:
+        return stale
+    apply_update(sale, body)
     db.commit()
     db.refresh(sale)
     return sale
@@ -250,18 +238,14 @@ def update_sale(sale_id: int, body: SaleUpdate, user: User = Depends(get_current
 
 @router.delete("/{sale_id}", status_code=204)
 def delete_sale(sale_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    sale = db.query(Sale).filter(Sale.id == sale_id, Sale.user_id == user.id).first()
-    if not sale:
-        raise HTTPException(status_code=404, detail="Sale not found")
+    sale = get_owned(db, Sale, sale_id, user, "Sale")
     db.delete(sale)
     db.commit()
 
 
 @router.get("/{sale_id}/tax", response_model=TaxBreakdown)
 def get_sale_tax(sale_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    sale = db.query(Sale).filter(Sale.id == sale_id, Sale.user_id == user.id).first()
-    if not sale:
-        raise HTTPException(status_code=404, detail="Sale not found")
+    sale = get_owned(db, Sale, sale_id, user, "Sale")
 
     timeline = _build_timeline(user, db)
     ts = _get_or_create_tax_settings(user, db)
@@ -333,7 +317,7 @@ def get_available_lots(
     try:
         as_of = date.fromisoformat(sale_date)
     except ValueError:
-        raise HTTPException(status_code=422, detail="Invalid sale_date format, expected YYYY-MM-DD")
+        raise HTTPException(status_code=422, detail="Invalid sale_date format, expected YYYY-MM-DD") from None
 
     method = _get_lot_selection_method(user, db)
     lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
@@ -373,7 +357,7 @@ def get_tranche_allocation(
     try:
         as_of = date.fromisoformat(sale_date)
     except ValueError:
-        raise HTTPException(status_code=422, detail="Invalid sale_date format, expected YYYY-MM-DD")
+        raise HTTPException(status_code=422, detail="Invalid sale_date format, expected YYYY-MM-DD") from None
 
     lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
     ts = _get_tax_settings_dict(user, db)
@@ -434,7 +418,7 @@ def estimate_sale(
     """
     from app.routers.loans import (
         _build_timeline_for_user, _get_tax_settings_dict,
-        _get_lot_selection_method, WI_DEFAULTS,
+        _get_lot_selection_method,
     )
 
     ts = _get_tax_settings_dict(user, db)

@@ -6,10 +6,9 @@ import FindingList, { ReportFindingsButton } from '../components/FindingList.tsx
 import { ReportProblemLink } from '../../scaffold/components/ReportProblem.tsx'
 import StalePriceNotice from '../components/StalePriceNotice.tsx'
 import { StatCard } from '../components/StatCard.tsx'
-import {
-  ChartBox, IncomeCapGainsChart, PriceChart, SharesChart, TODAY,
-  fmt$, fmtFullDate, fmtNum, fmtPrice, useChartColors, type DateRange,
-} from '../components/charts.tsx'
+import { ChartBox, IncomeCapGainsChart, PriceChart, SharesChart } from '../components/charts.tsx'
+import { TODAY, useChartColors, type DateRange } from '../components/chartAxes.ts'
+import { fmt$, fmtFullDate, fmtNum, fmtPrice } from '../format.ts'
 import { useAppContext } from '../../scaffold/contexts/AppContext.tsx'
 import DisclaimerNotice from '../../scaffold/components/DisclaimerNotice.tsx'
 import UnofficialBadge from '../../scaffold/components/UnofficialBadge.tsx'
@@ -129,8 +128,8 @@ function valuesAsOf(r: TrialAnalyzeResponse, asOf: string): AsOfValues {
   const estTax =
     r.loans.filter(l => l.loan_type === 'Tax' && l.loan_year <= year)
       .reduce((sum, l) => sum + l.amount, 0)
-    + r.timeline.filter(e => e.event_type === 'Vesting' && e.date <= asOf && e.income > 0)
-      .reduce((sum, e) => sum + e.income * incomeRate, 0)
+      + r.timeline.filter(e => e.event_type === 'Vesting' && e.date <= asOf && e.income > 0)
+        .reduce((sum, e) => sum + e.income * incomeRate, 0)
 
   const value = vestedValue + unvestedValue
   return {
@@ -267,13 +266,13 @@ function DashboardTab({ result, asOf }: { result: TrialAnalyzeResponse; asOf: st
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         <StatCard variant="price" label="Share price" value={fmtPrice(v.price)} />
         <StatCard variant="shares" label="Vested shares" value={fmtNum(v.shares)}
-                  subvalue={fmt$(v.vestedValue)} />
+          subvalue={fmt$(v.vestedValue)} />
         <StatCard variant="unvested" label="Unvested shares" value={fmtNum(v.unvestedShares)}
-                  subvalue={fmt$(v.unvestedValue)} subtitle="At cost basis" />
+          subvalue={fmt$(v.unvestedValue)} subtitle="At cost basis" />
         <StatCard variant="value" label="Total value" value={fmt$(v.value)}
-                  subtitle="Vested at FMV + unvested at cost basis" />
+          subtitle="Vested at FMV + unvested at cost basis" />
         <StatCard variant="costbasis" label="Cost basis" value={fmt$(v.costBasis)}
-                  subtitle="All grants, vested or not" />
+          subtitle="All grants, vested or not" />
         <StatCard variant="income" label="Income to date" value={fmt$(v.income)} />
         <StatCard variant="gains" label="Capital gains" value={fmt$(v.capGains)} />
         <StatCard variant="loans" label="Loan balance" value={fmt$(v.loanBalance)} />
@@ -314,7 +313,7 @@ function DashboardTab({ result, asOf }: { result: TrialAnalyzeResponse; asOf: st
 function EventsTab({ result, asOf }: { result: TrialAnalyzeResponse; asOf: string }) {
   const future = result.timeline.filter(e => e.date > asOf).length
   return (
-    <Card padded={false}>
+    <Card pad="none">
       <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 pt-4 sm:px-5 sm:pt-5">
         <h2 className="text-sm font-semibold text-cs-text">
           {result.timeline.length} computed events
@@ -547,11 +546,11 @@ export default function Try() {
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-4 pb-3">
           <nav className="flex gap-2" aria-label="Preview sections">
             <button type="button" onClick={() => setTab('dashboard')}
-                    aria-pressed={tab === 'dashboard'} className={tabClass(tab === 'dashboard')}>
+              aria-pressed={tab === 'dashboard'} className={tabClass(tab === 'dashboard')}>
               Dashboard
             </button>
             <button type="button" onClick={() => setTab('events')}
-                    aria-pressed={tab === 'events'} className={tabClass(tab === 'events')}>
+              aria-pressed={tab === 'events'} className={tabClass(tab === 'events')}>
               Events
             </button>
           </nav>

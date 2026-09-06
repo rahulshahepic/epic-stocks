@@ -11,6 +11,7 @@ from scaffold.safe_workbook import WorkbookRejected, load_workbook_safely
 from app.date_utils import to_date as _to_date
 from schemas import MAX_BULK_ITEMS, MAX_LABEL_LEN, bounded, bounded_list
 from scaffold.quota import check_row_count, check_row_quota
+from app import event_cache
 
 router = APIRouter(prefix="/api/wizard", tags=["wizard"])
 
@@ -79,9 +80,9 @@ def parse_file(
     try:
         wb = load_workbook_safely(content, data_only=True)
     except WorkbookRejected as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception:
-        raise HTTPException(status_code=422, detail="Could not parse file as Excel (.xlsx)")
+        raise HTTPException(status_code=422, detail="Could not parse file as Excel (.xlsx)") from None
 
     grants: list[ParsedGrantTemplate] = []
     if "Schedule" in wb.sheetnames:
@@ -420,8 +421,7 @@ def submit(
 
     db.commit()
 
-    from app.event_cache import schedule_recompute
-    schedule_recompute(user.id)
+    event_cache.schedule_recompute(user.id)
 
     return WizardSubmitResponse(
         grants=grant_count,

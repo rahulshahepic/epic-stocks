@@ -6,18 +6,19 @@ import secrets
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-logger = logging.getLogger(__name__)
 from pydantic import BaseModel
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 
 from database import get_db
-from scaffold.models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, ErrorLog, UserReport, EmailPreference, SystemMetric, TaxSettings, LoanPayment, Sale, TipAcceptance, Invitation, InvitationOptOut, InviteSendingBlock
+from scaffold.models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, ErrorLog, UserReport, EmailPreference, SystemMetric, TipAcceptance, Invitation, InvitationOptOut, InviteSendingBlock
 from scaffold.auth import get_admin_user, get_admin_emails
 from scaffold.client_ip import UNKNOWN
 from scaffold.maintenance import is_maintenance_active, set_maintenance
 from scaffold.epic_mode import is_epic_mode, set_epic_mode
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -572,8 +573,8 @@ def admin_test_notify(
                     f'<h3 style="margin-bottom: 4px;">{_esc(body.title)}</h3>'
                     f'<p style="color: #374151;">{_esc(body.body)}</p>'
                     + (f'<p>{link_html}</p>' if link_html else "")
-                    + f'<p style="font-size: 12px; color: #9CA3AF;">This is a test notification.</p>'
-                    f'</div>'
+                    + '<p style="font-size: 12px; color: #9CA3AF;">This is a test notification.</p>'
+                    '</div>'
                 )
                 email_sent = send_email(
                     user.email,
@@ -1196,7 +1197,7 @@ def rotate_key(admin: User = Depends(get_admin_user), db: Session = Depends(get_
             db.commit()
 
             # --- 4. Smoke test -------------------------------------------
-            for uid, new_enc in new_wrapped.items():
+            for new_enc in new_wrapped.values():
                 _unwrap(new_enc, new_master)  # raises InvalidTag on failure
 
             yield sse("smoke", "All user keys verified")

@@ -9,12 +9,12 @@ import { installGlobalErrorCapture } from './scaffold/reportLog.ts'
 installGlobalErrorCapture()
 
 createRoot(document.getElementById('root')!).render(
- <StrictMode>
- <App />
- </StrictMode>,
+  <StrictMode>
+    <App />
+  </StrictMode>,
 )
 
 // Register service worker for cache busting and push notifications
 if ('serviceWorker' in navigator) {
- navigator.serviceWorker.register('/sw.js')
+  navigator.serviceWorker.register('/sw.js')
 }

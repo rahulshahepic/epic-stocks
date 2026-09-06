@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -8,18 +7,21 @@ from scaffold.models import User, Grant, Loan, Price
 from schemas import GrantCreate, GrantUpdate, GrantOut, MAX_BULK_ITEMS
 from scaffold.quota import check_row_quota
 from scaffold.auth import get_current_user
+from app import event_cache
+from scaffold.crud import apply_update, get_owned, version_conflict
 
 router = APIRouter(prefix="/api/grants", tags=["grants"])
 
 
-def _grants_as_dicts(grants_db) -> list:
+def _grants_as_dicts(grants) -> list:
+    """Grants as core.py wants them. Takes ORM rows or submitted models alike."""
     return [{
         "year": g.year, "type": g.type, "shares": g.shares, "price": g.price,
         "vest_start": datetime.combine(g.vest_start, datetime.min.time()),
         "periods": g.periods,
         "exercise_date": datetime.combine(g.exercise_date, datetime.min.time()),
         "dp_shares": g.dp_shares or 0,
-    } for g in grants_db]
+    } for g in grants]
 
 
 def _check_dp_shares(dp_shares: int, exercise_date, grant_dicts: list, price_dicts: list, loan_dicts: list):
@@ -89,8 +91,7 @@ def create_grant(body: GrantCreate, user: User = Depends(get_current_user), db: 
     db.add(grant)
     db.commit()
     db.refresh(grant)
-    from app.event_cache import schedule_recompute
-    schedule_recompute(user.id)
+    event_cache.schedule_recompute(user.id)
     return grant
 
 
@@ -106,13 +107,7 @@ def bulk_create_grants(items: list[GrantCreate], user: User = Depends(get_curren
             db.query(Grant).filter(Grant.user_id == user.id).order_by(Grant.year).all()
         )
         # Convert batch to dicts so each grant can see the others' vesting events
-        batch_dicts = [{
-            "year": g.year, "type": g.type, "shares": g.shares, "price": g.price,
-            "vest_start": datetime.combine(g.vest_start, datetime.min.time()),
-            "periods": g.periods,
-            "exercise_date": datetime.combine(g.exercise_date, datetime.min.time()),
-            "dp_shares": g.dp_shares or 0,
-        } for g in items]
+        batch_dicts = _grants_as_dicts(items)
         for i, g in enumerate(items):
             if not g.dp_shares:
                 continue
@@ -124,30 +119,22 @@ def bulk_create_grants(items: list[GrantCreate], user: User = Depends(get_curren
     db.commit()
     for g in grants:
         db.refresh(g)
-    from app.event_cache import schedule_recompute
-    schedule_recompute(user.id)
+    event_cache.schedule_recompute(user.id)
     return grants
 
 
 @router.get("/{grant_id}", response_model=GrantOut)
 def get_grant(grant_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    grant = db.query(Grant).filter(Grant.id == grant_id, Grant.user_id == user.id).first()
-    if not grant:
-        raise HTTPException(status_code=404, detail="Grant not found")
+    grant = get_owned(db, Grant, grant_id, user, "Grant")
     return grant
 
 
 @router.put("/{grant_id}", response_model=GrantOut)
 def update_grant(grant_id: int, body: GrantUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    grant = db.query(Grant).filter(Grant.id == grant_id, Grant.user_id == user.id).first()
-    if not grant:
-        raise HTTPException(status_code=404, detail="Grant not found")
-    submitted_version = body.version
-    if submitted_version is not None and grant.version != submitted_version:
-        return JSONResponse(
-            status_code=409,
-            content={"detail": "modified_elsewhere", "current_version": grant.version},
-        )
+    grant = get_owned(db, Grant, grant_id, user, "Grant")
+    stale = version_conflict(grant, body.version)
+    if stale:
+        return stale
     new_year = body.year if body.year is not None else grant.year
     new_type = body.type if body.type is not None else grant.type
     conflict = db.query(Grant).filter(
@@ -163,23 +150,16 @@ def update_grant(grant_id: int, body: GrantUpdate, user: User = Depends(get_curr
             db.query(Grant).filter(Grant.user_id == user.id, Grant.id != grant_id).order_by(Grant.year).all()
         )
         _check_dp_shares(new_dp, new_exercise, other_grants, prices, loans)
-    updates = {k: v for k, v in body.model_dump(exclude_unset=True).items() if k != "version"}
-    for k, v in updates.items():
-        setattr(grant, k, v)
-    grant.version = grant.version + 1
+    apply_update(grant, body)
     db.commit()
     db.refresh(grant)
-    from app.event_cache import schedule_recompute
-    schedule_recompute(user.id)
+    event_cache.schedule_recompute(user.id)
     return grant
 
 
 @router.delete("/{grant_id}", status_code=204)
 def delete_grant(grant_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    grant = db.query(Grant).filter(Grant.id == grant_id, Grant.user_id == user.id).first()
-    if not grant:
-        raise HTTPException(status_code=404, detail="Grant not found")
+    grant = get_owned(db, Grant, grant_id, user, "Grant")
     db.delete(grant)
     db.commit()
-    from app.event_cache import schedule_recompute
-    schedule_recompute(user.id)
+    event_cache.schedule_recompute(user.id)

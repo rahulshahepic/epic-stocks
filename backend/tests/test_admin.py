@@ -432,7 +432,7 @@ def test_last_login_set_on_login(client, make_client):
 
 def test_test_login_sets_admin_flag(client, db_session):
     """test-login should set is_admin and last_login just like google login."""
-    from scaffold.auth import create_token, get_admin_emails
+    from scaffold.auth import get_admin_emails
     from scaffold.models import User
     from scaffold.crypto import encryption_enabled, generate_user_key, encrypt_user_key
     from datetime import datetime, timezone
@@ -461,7 +461,7 @@ def test_test_login_sets_admin_flag(client, db_session):
 
 def test_test_login_non_admin_flag(client, db_session):
     """test-login should NOT set is_admin for non-admin emails."""
-    from scaffold.auth import create_token, get_admin_emails
+    from scaffold.auth import get_admin_emails
     from scaffold.models import User
     from scaffold.crypto import encryption_enabled, generate_user_key, encrypt_user_key
     from datetime import datetime, timezone
@@ -492,7 +492,7 @@ def test_test_login_non_admin_flag(client, db_session):
 
 def test_admin_test_notify_push(client, db_session, make_client):
     """Admin can send a test push notification to a user."""
-    from unittest.mock import MagicMock, patch as upatch
+    from unittest.mock import patch as upatch
     from scaffold.models import PushSubscription
 
     with _admin_env():

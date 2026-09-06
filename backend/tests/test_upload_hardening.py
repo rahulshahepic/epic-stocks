@@ -13,7 +13,6 @@ The trial endpoints take no session at all, which is what makes the parsers
 worth this attention.
 """
 import io
-import json
 import zipfile
 
 import pytest
@@ -483,7 +482,7 @@ def test_dense_pdf_inside_the_page_cap_is_still_rejected():
 
     16 pages is under MAX_PDF_PAGES, but dense enough to have cost ~250 MB.
     """
-    from app.epic_import.pdf_statement import MAX_PDF_PAGES, MAX_TEXT_CHARS, extract_lines
+    from app.epic_import.pdf_statement import MAX_PDF_PAGES, extract_lines
     from app.epic_import import StatementUnreadable
 
     pdf = _pdf([_text_page(95) for _ in range(MAX_PDF_PAGES)])

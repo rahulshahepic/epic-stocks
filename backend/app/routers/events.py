@@ -690,7 +690,7 @@ def _preview_exit_data(user: User, db: Session, date_str: str):
     try:
         preview_date = date_type.fromisoformat(date_str)
     except ValueError:
-        raise HTTPException(status_code=422, detail="Invalid date format")
+        raise HTTPException(status_code=422, detail="Invalid date format") from None
 
     grants, prices, loans, loans_db, initial_price, _, _ = _user_source_data(user, db)
     if not grants and not prices:

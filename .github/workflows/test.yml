@@ -29,12 +29,22 @@ jobs:
       - name: Install deps
         run: |
           echo "::group::pip install"
-          time pip install -r backend/requirements.txt pytest pytest-asyncio httpx
+          time pip install -r backend/requirements.txt pytest pytest-asyncio httpx ruff==0.16.6
           echo "::endgroup::"
       - name: Check import boundaries
         run: |
           echo "::group::import-linter"
           cd backend && time lint-imports
+          echo "::endgroup::"
+      - name: Lint
+        # The backend had no linter until this step, only the import contracts
+        # above — which is how 68 unused imports and variables, two tests that
+        # asserted nothing, and three `assert False` in the security suite
+        # (stripped entirely by `python -O`) went unnoticed. Config and the
+        # reasoning for what is and isn't enabled live in pyproject.toml.
+        run: |
+          echo "::group::ruff"
+          time ruff check .
           echo "::endgroup::"
       - name: Run tests
         run: |
@@ -67,7 +77,13 @@ jobs:
         # this just skips the redundant network round trip.
         run: cd frontend && time npm ci --no-audit
       - name: Type-check
+        # tsc -b walks all three projects, tests included (tsconfig.test.json).
         run: cd frontend && time npx tsc -b --noEmit
+      - name: Lint
+        # The suite was never gated here, which is how 55 findings accumulated —
+        # among them a component rebuilt on every render and an effect that ran
+        # on every render. Zero at the time this step was added; keep it there.
+        run: cd frontend && time npm run lint
       - name: Audit production dependencies
         # Scope: production packages only (--omit=dev), so build-tool CVEs (vite,
         # babel, playwright) cannot block an unrelated PR — this app is a browser

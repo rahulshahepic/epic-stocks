@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import logging
 import os
+from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 
@@ -65,27 +66,54 @@ def verify_unsubscribe_token(token: str, email: str, category: str) -> bool:
     return hmac.compare_digest(supplied, expected.encode("ascii"))
 
 
+def _unsubscribe_query(email: str, category: str) -> str:
+    """The token/email/type query string both unsubscribe URLs carry.
+
+    The address is percent-encoded. A query string decodes "+" as a space, so
+    an unencoded plus-addressed recipient (bob+epic@…) arrived back as
+    "bob epic@…", hashed to something else, and was told their own
+    unsubscribe link was invalid.
+    """
+    token = generate_unsubscribe_token(email, category)
+    e = quote(email.lower().strip(), safe="")
+    return f"token={token}&email={e}&type={quote(category, safe='')}"
+
+
 def unsubscribe_url(email: str, category: str) -> str:
-    """Build the full unsubscribe URL for an email footer."""
+    """The page a person lands on from the footer link: confirm, then unsubscribe."""
     base = app_url()
     if not base:
         return ""
-    token = generate_unsubscribe_token(email, category)
-    e = email.lower().strip()
-    return f"{base}/unsubscribe?token={token}&email={e}&type={category}"
+    return f"{base}/unsubscribe?{_unsubscribe_query(email, category)}"
+
+
+def one_click_unsubscribe_url(email: str, category: str) -> str:
+    """The URI for the List-Unsubscribe header — an endpoint, not the SPA page.
+
+    A mail client acts on this without a person present, so it has to be
+    something that can answer a POST. GET on it redirects to the page above,
+    for the clients that render the header as an ordinary link.
+    """
+    base = app_url()
+    if not base:
+        return ""
+    return f"{base}/api/unsubscribe/one-click?{_unsubscribe_query(email, category)}"
 
 
 def list_unsubscribe_headers(email: str, category: str) -> dict[str, str]:
     """Build RFC 8058 List-Unsubscribe headers for email deliverability."""
-    url = unsubscribe_url(email, category)
+    url = one_click_unsubscribe_url(email, category)
     if not url:
         return {}
-    # POST URL for one-click unsubscribe (RFC 8058)
-    post_url = app_url().rstrip("/") + "/api/unsubscribe"
-    return {
-        "List-Unsubscribe": f"<{url}>",
-        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-    }
+    headers = {"List-Unsubscribe": f"<{url}>"}
+    # List-Unsubscribe-Post is a promise that one POST to the URI above
+    # unsubscribes with no further confirmation, and RFC 8058 §7 requires that
+    # URI be https — a client is entitled to ignore anything else. Advertising
+    # it from a plain-http APP_URL (local dev) would be a promise about a URI no
+    # client should honour, so the header is only added when it can be kept.
+    if url.startswith("https://"):
+        headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
+    return headers
 
 
 def _unsubscribe_footer_text(email: str, category: str) -> str:

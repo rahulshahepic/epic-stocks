@@ -67,13 +67,13 @@ def _parse_files(csv_bytes: bytes | None, pdf_bytes: bytes | None):
         try:
             lines = extract_lines(pdf_bytes)
         except StatementUnreadable as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=str(e)) from e
         except StatementParserBusy as e:
             # Shed load rather than queue: every slot is already parsing.
             raise HTTPException(status_code=503, detail=str(e),
-                                headers={"Retry-After": "5"})
+                                headers={"Retry-After": "5"}) from e
         except RuntimeError as e:
-            raise HTTPException(status_code=503, detail=str(e))
+            raise HTTPException(status_code=503, detail=str(e)) from e
         statement_text = "\n".join(lines)
         statement, f = parse_statement_lines(lines)
         findings += f
@@ -93,9 +93,9 @@ def _payload_from_xlsx(raw: bytes) -> dict:
     try:
         wb = load_workbook_safely(raw, data_only=True)
     except WorkbookRejected as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception:
-        raise HTTPException(status_code=400, detail="Could not open that workbook.")
+        raise HTTPException(status_code=400, detail="Could not open that workbook.") from None
     names = {s.lower(): s for s in wb.sheetnames}
     if "schedule" not in names:
         wb.close()
@@ -108,7 +108,7 @@ def _payload_from_xlsx(raw: bytes) -> dict:
     except Exception:
         raise HTTPException(
             status_code=400,
-            detail="Could not read that workbook — check it matches the app's own export.")
+            detail="Could not read that workbook — check it matches the app's own export.") from None
     finally:
         wb.close()
 
@@ -259,12 +259,12 @@ def analyze(
             raise HTTPException(
                 status_code=400,
                 detail=f"That is not valid JSON ({e.msg} at line {e.lineno}). Paste the "
-                       f"whole object the assistant produced, starting at '{{'.")
+                       f"whole object the assistant produced, starting at '{{'.") from e
         except RecursionError:
             # Thousands of nested arrays. Valid JSON, and json.loads recurses
             # on it until the interpreter's stack runs out.
             raise HTTPException(status_code=400,
-                                detail="That JSON is nested too deeply to read.")
+                                detail="That JSON is nested too deeply to read.") from None
     elif revised_draft is not None and revised_draft.filename:
         raw = _read_upload(revised_draft, "revised draft")
         if raw is not None:
@@ -275,7 +275,7 @@ def analyze(
                     payload = json.loads(raw.decode("utf-8-sig"))
                 except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
                     raise HTTPException(status_code=400,
-                                        detail="That file is neither JSON nor a workbook.")
+                                        detail="That file is neither JSON nor a workbook.") from None
 
     if payload is not None:
         findings = supersede_parse_findings(findings)
@@ -406,16 +406,16 @@ def _baseline_from_export(raw: bytes):
     try:
         wb = load_workbook_safely(raw, data_only=True)
     except WorkbookRejected as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception:
-        raise HTTPException(status_code=400, detail="Could not open the export.")
+        raise HTTPException(status_code=400, detail="Could not open the export.") from None
     names = {s.lower(): s for s in wb.sheetnames}
     if "holdings report" in names and "schedule" not in names:
         try:
             grants, loans = _holdings_report_baseline(wb[names["holdings report"]])
         except Exception:
             raise HTTPException(status_code=400,
-                                detail="Could not read that holdings report.")
+                                detail="Could not read that holdings report.") from None
         finally:
             wb.close()
         if not grants:
@@ -435,7 +435,7 @@ def _baseline_from_export(raw: bytes):
         loans_raw = read_loans_from_excel(wb[names["loans"]]) if "loans" in names else []
         prices_raw = read_prices_from_excel(wb[names["prices"]]) if "prices" in names else []
     except Exception:
-        raise HTTPException(status_code=400, detail="Could not read the export.")
+        raise HTTPException(status_code=400, detail="Could not read the export.") from None
     finally:
         wb.close()
 

@@ -135,7 +135,7 @@ class OIDCProvider:
             if not _force_jwks:
                 # Unknown kid — provider may have rotated keys; retry with a fresh JWKS fetch.
                 return self._verify_id_token(id_token, _force_jwks=True)
-            raise ValueError("JWT verification failed")
+            raise ValueError("JWT verification failed") from None
 
         registry = JWTClaimsRegistry(
             iss={"essential": True, "value": oidc.get("issuer")},
@@ -170,5 +170,5 @@ def get_providers() -> list[OIDCProvider]:
     try:
         configs = json.loads(raw)
     except json.JSONDecodeError as e:
-        raise ValueError(f"OIDC_PROVIDERS is not valid JSON: {e}")
+        raise ValueError(f"OIDC_PROVIDERS is not valid JSON: {e}") from e
     return [OIDCProvider(OIDCProviderConfig(**c)) for c in configs]

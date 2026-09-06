@@ -453,7 +453,6 @@ describe('ImportWizard', () => {
     await user.click(screen.getByRole('button', { name: /Let's go/i }))
     await user.click(screen.getByRole('button', { name: /Next: Enter grants/i }))
     // Find the 2022 purchase checkbox and check it
-    const checkboxes = screen.getAllByRole('checkbox')
     // The checkboxes correspond to purchase years in order (2018, 2019, ..., 2022, ...)
     // Find by label text context
     const purchaseSection = screen.getByText('Purchase grants').closest('div')!
@@ -631,6 +630,61 @@ describe('ImportWizard', () => {
     // The grant was submitted without the $0 loan
     expect(submitted!.grants).toHaveLength(1)
     expect(submitted!.grants[0].loans).toEqual([])
+  })
+
+  it('carries a tax loan the user ticked into the submit payload', async () => {
+    let submitted: { grants: { loans: { loan_type: string; amount: number }[] }[] } | null = null
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : (input as Request).url
+      const method = (init?.method ?? 'GET').toUpperCase()
+      if (url.includes('/api/wizard/submit') && method === 'POST') {
+        submitted = JSON.parse(init!.body as string)
+        return new Response(JSON.stringify({ grants: 1, loans: 1, prices: 0, payoff_sales: 0 }), { status: 201 })
+      }
+      if (url.includes('/api/prices') && method === 'GET') return new Response(JSON.stringify([]), { status: 200 })
+      if (url.includes('/api/grants') && method === 'GET') return new Response(JSON.stringify([]), { status: 200 })
+      if (url.includes('/api/loans') && method === 'GET') return new Response(JSON.stringify([]), { status: 200 })
+      if (url.includes('/api/config')) return new Response(JSON.stringify({ epic_mode: false, email_notifications_available: false, vapid_public_key: '', resend_from: '' }), { status: 200 })
+      if (url.includes('/api/content')) return new Response(JSON.stringify(MOCK_CONTENT), { status: 200 })
+      if (url.includes('/api/tax-settings')) return new Response(JSON.stringify({
+        federal_income_rate: 0.37, federal_lt_cg_rate: 0.20, federal_st_cg_rate: 0.37,
+        niit_rate: 0.038, state_income_rate: 0.0765, state_lt_cg_rate: 0.0765, state_st_cg_rate: 0.0765,
+        lt_holding_days: 365, lot_selection_method: 'epic_lifo', loan_payoff_method: 'epic_lifo',
+        flexible_payoff_enabled: false, prefer_stock_dp: false,
+        deduct_investment_interest: false,
+      }), { status: 200 })
+      return new Response('Not found', { status: 404 })
+    })
+    const user = userEvent.setup()
+    renderWizard()
+
+    await user.click(screen.getByRole('button', { name: /Manual entry/i }))
+    await user.click(screen.getByRole('button', { name: /Next: Add grants/i }))
+
+    // A zero-basis Bonus grant vests as income, so the wizard asks about tax loans.
+    await user.click(screen.getByRole('button', { name: 'Bonus' }))
+    await user.type(screen.getByLabelText(/Grant year/i) as HTMLInputElement, '2024')
+    await user.type(screen.getByLabelText(/^Shares$/i) as HTMLInputElement, '100')
+    await user.type(screen.getByLabelText(/Vest start/i) as HTMLInputElement, '2025-09-30')
+    await user.type(screen.getByLabelText(/Exercise date/i) as HTMLInputElement, '2024-12-31')
+    await user.click(screen.getByRole('button', { name: /Next →/i }))
+
+    await waitFor(() => screen.getByRole('heading', { name: /Tax loans for 2024 Bonus/i }))
+    await user.click(screen.getAllByRole('checkbox')[0])
+    await user.type(screen.getAllByLabelText(/Amount/i)[0] as HTMLInputElement, '5000')
+    await user.type(screen.getAllByLabelText(/Due date/i)[0] as HTMLInputElement, '2033-06-30')
+    await user.click(screen.getByRole('button', { name: /Done with tax loans/i }))
+
+    await waitFor(() => screen.getByText(/Add another grant/i))
+    await user.click(screen.getByRole('button', { name: /No, review/i }))
+    await waitFor(() => screen.getByText('Review'))
+    await user.click(screen.getByRole('button', { name: /Submit →/i }))
+    await waitFor(() => screen.getByText('Setup complete!'))
+
+    expect(submitted).not.toBeNull()
+    expect(submitted!.grants[0].loans).toEqual([
+      expect.objectContaining({ loan_type: 'Tax', amount: 5000, loan_year: 2025 }),
+    ])
   })
 
   // ── Refinance chains inferred from the rate on the statement ──────────────

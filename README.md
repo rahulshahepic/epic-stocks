@@ -955,8 +955,10 @@ epic-stocks/
 │   │   ├── app/             # Equity tracking UI (replace when forking)
 │   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport, ImportDiagnostics, Content, CompCalculator, Retirement, Try (no-account preview: upload → dashboard/events tabs)
 │   │   │   ├── components/  # ImportWizard, EpicFileImport, FindingList, TipCarousel, AppSettingsSections
+│   │   │   ├── components/importWizard/ # The wizard's parts: types, schedule (Epic's grant schedule → rows), rows (row maths), loans (tax/interest/refi generation), submit (validation + payload), fields.tsx (inputs, buttons, loan rows), screens/
 │   │   │   ├── components/charts.tsx  # Shares / income / price charts + date-range plumbing (Dashboard + /try)
 │   │   │   ├── components/StatCard.tsx # The dashboard stat tile (Dashboard + /try)
+│   │   │   ├── format.ts    # The one set of money / number / percent / date formatters
 │   │   │   ├── epicImport.ts # Client for the Epic importer endpoints
 │   │   │   ├── trialImport.ts # Client for the no-account trial preview + sessionStorage handoff to signup
 │   │   │   ├── refiInference.ts # How far down a refinance chain a loan's rate says it got

@@ -1375,7 +1375,7 @@ export default function Retirement() {
  <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-white">
  <span><span className="font-semibold">{fmt$M(result.medianFinalM)}</span> typical (median)</span>
  <span className="hidden h-1 w-1 rounded-full bg-white/60 sm:inline-block" />
- <span><span className="font-semibold">{fmtPct(result.pctRuin)}</span> risk of running out</span>
+ <span><span className="font-semibold">{fmtPct(result.pctRuin, 1)}</span> risk of running out</span>
  </div>
  </HeroCard>
  )
@@ -1383,13 +1383,13 @@ export default function Retirement() {
  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
  <StatCard
  label="Ended richer than you started"
- value={fmtPct(result.pctAboveStart)}
+ value={fmtPct(result.pctAboveStart, 1)}
  sub={`out of ${result.finalWealth.length.toLocaleString()} simulated retirements`}
  variant={result.pctAboveStart >= 0.5 ? 'good' : 'neutral'}
  />
  <StatCard
  label="Ran out of money"
- value={fmtPct(result.pctRuin)}
+ value={fmtPct(result.pctRuin, 1)}
  sub="couldn't pay the bills in some year"
  variant={result.pctRuin <= 0.1 ? 'good' : result.pctRuin >= 0.3 ? 'bad' : 'neutral'}
  />
@@ -1452,7 +1452,7 @@ export default function Retirement() {
  Where you end up at age {params.endAge} (today's dollars)
  </p>
  <p className="text-[10px] text-cs-muted">
- {histData.excluded.toLocaleString()} runs that ran out of money not shown ({fmtPct(histData.excluded / histData.total)})
+ {histData.excluded.toLocaleString()} runs that ran out of money not shown ({fmtPct(histData.excluded / histData.total, 1)})
  {histData.scale === 'log' && <> · log scale</>}
  </p>
  </div>

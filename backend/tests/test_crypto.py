@@ -3,7 +3,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from tests.conftest import register_user, TEST_ENGINE
+from tests.conftest import register_user, TEST_ENGINE, seed_grant
 
 from sqlalchemy import text
 
@@ -84,6 +84,7 @@ def test_grant_data_encrypted_at_rest(client):
 
 def test_loan_data_encrypted_at_rest(client):
     register_user(client, "loan-enc@example.com")
+    seed_grant(client)
     client.post("/api/loans", json={
         "grant_year": 2020, "grant_type": "Purchase", "loan_type": "Purchase",
         "loan_year": 2020, "amount": 19900.0, "interest_rate": 3.5,
@@ -213,6 +214,7 @@ def test_sale_actual_tax_paid_and_notes_encrypted_at_rest(client):
 def test_loan_payment_notes_encrypted_at_rest(client):
     """notes on a loan_payment record is stored encrypted."""
     register_user(client, "lpnotes-enc@example.com")
+    seed_grant(client)
     client.post("/api/loans", json={
         "grant_year": 2020, "grant_type": "Purchase", "loan_type": "Purchase",
         "loan_year": 2020, "amount": 5000.0, "interest_rate": 3.0,

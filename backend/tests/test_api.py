@@ -2,7 +2,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from tests.conftest import register_user
+from tests.conftest import register_user, seed_grant
 
 
 # ============================================================
@@ -119,6 +119,7 @@ LOAN_DATA = {
 
 def test_create_loan(client):
     register_user(client)
+    seed_grant(client)
     resp = client.post("/api/loans", json=LOAN_DATA)
     assert resp.status_code == 201
     assert resp.json()["amount"] == 19900.0
@@ -126,6 +127,7 @@ def test_create_loan(client):
 
 def test_list_loans(client):
     register_user(client)
+    seed_grant(client)
     client.post("/api/loans", json=LOAN_DATA)
     resp = client.get("/api/loans")
     assert len(resp.json()) == 1
@@ -133,6 +135,7 @@ def test_list_loans(client):
 
 def test_update_loan(client):
     register_user(client)
+    seed_grant(client)
     created = client.post("/api/loans", json=LOAN_DATA).json()
     resp = client.put(f"/api/loans/{created['id']}", json={"amount": 25000.0})
     assert resp.status_code == 200
@@ -141,6 +144,7 @@ def test_update_loan(client):
 
 def test_delete_loan(client):
     register_user(client)
+    seed_grant(client)
     created = client.post("/api/loans", json=LOAN_DATA).json()
     resp = client.delete(f"/api/loans/{created['id']}")
     assert resp.status_code == 204
@@ -148,6 +152,7 @@ def test_delete_loan(client):
 
 def test_bulk_create_loans(client):
     register_user(client)
+    seed_grant(client)
     items = [LOAN_DATA, {**LOAN_DATA, "loan_type": "Interest", "amount": 500.0}]
     resp = client.post("/api/loans/bulk", json=items)
     assert resp.status_code == 201
@@ -428,6 +433,7 @@ def test_grant_update_stale_version_conflicts(client):
 def test_loan_update_correct_version(client):
     """Loan PUT with correct version → 200, version incremented."""
     register_user(client)
+    seed_grant(client)
     created = client.post("/api/loans", json=LOAN_DATA).json()
     assert created["version"] == 1
     resp = client.put(
@@ -441,6 +447,7 @@ def test_loan_update_correct_version(client):
 def test_loan_update_stale_version_conflicts(client):
     """Loan PUT with stale version → 409."""
     register_user(client)
+    seed_grant(client)
     created = client.post("/api/loans", json=LOAN_DATA).json()
     client.put(f"/api/loans/{created['id']}", json={"amount": 50000.0, "version": 1})
     resp = client.put(

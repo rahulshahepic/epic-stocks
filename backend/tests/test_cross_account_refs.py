@@ -12,7 +12,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from tests.conftest import register_user
+from tests.conftest import register_user, seed_grant
 
 LOAN = {
     "grant_year": 2020,
@@ -27,6 +27,7 @@ LOAN = {
 
 def _victims_loan(make_client) -> int:
     with make_client("victim@example.com") as victim:
+        seed_grant(victim)
         resp = victim.post("/api/loans", json={**LOAN, "loan_number": "V-1"})
         assert resp.status_code == 201
         return resp.json()["id"]
@@ -35,6 +36,7 @@ def _victims_loan(make_client) -> int:
 def test_bulk_create_refuses_another_users_loan(client, make_client):
     victim_loan_id = _victims_loan(make_client)
     register_user(client, "attacker@example.com")
+    seed_grant(client)
 
     resp = client.post("/api/loans/bulk", json=[
         {**LOAN, "loan_number": "A-1", "refinances_loan_id": victim_loan_id},
@@ -53,6 +55,7 @@ def test_bulk_create_writes_nothing_when_one_item_is_bad(client, make_client):
     """
     victim_loan_id = _victims_loan(make_client)
     register_user(client, "attacker@example.com")
+    seed_grant(client)
 
     resp = client.post("/api/loans/bulk", json=[
         {**LOAN, "loan_number": "A-1"},
@@ -65,6 +68,7 @@ def test_bulk_create_writes_nothing_when_one_item_is_bad(client, make_client):
 
 def test_bulk_create_still_accepts_the_callers_own_loan(client):
     register_user(client, "owner@example.com")
+    seed_grant(client)
     own = client.post("/api/loans", json={**LOAN, "loan_number": "O-1"}).json()
 
     resp = client.post("/api/loans/bulk", json=[
@@ -78,6 +82,7 @@ def test_bulk_create_still_accepts_the_callers_own_loan(client):
 
 def test_bulk_create_refuses_a_loan_id_that_does_not_exist(client):
     register_user(client, "owner@example.com")
+    seed_grant(client)
     resp = client.post("/api/loans/bulk", json=[
         {**LOAN, "refinances_loan_id": 987654},
     ])
@@ -94,6 +99,7 @@ def test_the_victim_can_still_reset_and_delete_their_account(client, make_client
     victim_loan_id = _victims_loan(make_client)
 
     register_user(client, "attacker@example.com")
+    seed_grant(client)
     client.post("/api/loans/bulk", json=[
         {**LOAN, "loan_number": "A-1", "refinances_loan_id": victim_loan_id},
     ])
@@ -107,6 +113,7 @@ def test_single_create_and_update_are_unchanged(client, make_client):
     """The two paths that already had the check keep their behaviour."""
     victim_loan_id = _victims_loan(make_client)
     register_user(client, "attacker@example.com")
+    seed_grant(client)
 
     created = client.post("/api/loans", json={**LOAN, "loan_number": "A-1"}).json()
 

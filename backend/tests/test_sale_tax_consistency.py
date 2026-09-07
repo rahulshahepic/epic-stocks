@@ -91,3 +91,45 @@ def test_dashboard_total_tax_paid_reconciles_to_sale_breakdown(client, db_sessio
 
     dash = client.get("/api/dashboard").json()
     assert dash["total_tax_paid"] == round(breakdown["estimated_tax"], 2)
+
+
+def test_dashboard_total_tax_paid_ignores_future_price_assumptions(client, db_session):
+    """/api/dashboard is "as of today" — total_tax_paid must not change when
+    a future price assumption is added. The interest-deduction walk had no
+    date bound at all, so it consumed the projected deduction pool against
+    future vesting gains too; a steep future price made those future gains
+    balloon, subtracting far more in projected savings than has actually
+    happened and pushing total_tax_paid deeply negative, even though
+    nothing about today changed.
+    """
+    register_user(client)
+    resp = client.post("/api/grants", json={
+        "year": 2018, "type": "Purchase", "shares": 10000, "price": 5.0,
+        "vest_start": "2019-01-01", "periods": 10, "exercise_date": "2018-01-01",
+        "dp_shares": 0,
+    })
+    assert resp.status_code == 201
+    resp = client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 20.0})
+    assert resp.status_code == 201
+    # A large, long-dated Purchase loan with no recorded Interest loans gives
+    # _build_interest_pool a big projected deduction pool spanning decades —
+    # matching the real account's shape.
+    resp = client.post("/api/loans?generate_payoff_sale=false", json={
+        "grant_year": 2018, "grant_type": "Purchase",
+        "loan_type": "Purchase", "loan_year": 2018,
+        "amount": 1000000.0, "interest_rate": 0.05,
+        "due_date": "2034-01-01",
+    })
+    assert resp.status_code == 201
+    resp = client.put("/api/tax-settings", json={"deduct_investment_interest": True})
+    assert resp.status_code == 200
+
+    baseline = client.get("/api/dashboard").json()["total_tax_paid"]
+
+    # A steep price effective just before a still-future vest date (2027)
+    # must not affect today's figure.
+    resp = client.post("/api/prices", json={"effective_date": "2027-01-01", "price": 200.0})
+    assert resp.status_code == 201
+
+    after = client.get("/api/dashboard").json()["total_tax_paid"]
+    assert after == baseline

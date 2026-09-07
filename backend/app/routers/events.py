@@ -974,6 +974,14 @@ def _get_dashboard_data(user: User, db: Session) -> dict:
         stcg_rate = ts_row.federal_st_cg_rate + ts_row.niit_rate + ts_row.state_st_cg_rate
         ltcg_rate = ts_row.federal_lt_cg_rate + ts_row.niit_rate + ts_row.state_lt_cg_rate
         for ev in timeline:
+            # This dashboard is "as of today" — total_tax_paid and cash_received
+            # above only count what's happened by today, so the deduction
+            # savings subtracted from total_tax_paid must stop there too.
+            # Unbounded, this walked the whole projected lifetime (including
+            # decades of future gains) and could subtract far more than the
+            # tax paid so far, making total_tax_paid go deeply negative.
+            if _to_date(ev['date']) > today:
+                break
             if ev.get('event_type') not in _TAXABLE_EVENT_TYPES:
                 continue
             ev_year = int(ev['date'].year) if hasattr(ev['date'], 'year') else int(str(ev['date'])[:4])

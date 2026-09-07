@@ -2,10 +2,22 @@
  * E2E for problem reporting: the pre-login path (someone who cannot sign in
  * still has to be able to say so), and the admin end of it.
  */
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { loginAs, navigateTo } from './helpers'
 
 const ADMIN_EMAIL = 'admin@e2e.test'
+
+/** Wait until the document stops getting taller, so a scroll test measures
+ *  scroll restoration rather than whether the page had finished rendering. */
+async function settled(page: Page) {
+  let last = -1
+  for (let i = 0; i < 20; i++) {
+    const height = await page.evaluate(() => document.documentElement.scrollHeight)
+    if (height === last) return
+    last = height
+    await page.waitForTimeout(100)
+  }
+}
 
 test.describe('Reporting a problem', () => {
   test('can be sent from the login page with no account at all', async ({ page }) => {
@@ -70,6 +82,11 @@ test.describe('Reporting a problem', () => {
 
   test('freezes the page behind it and gives the scroll position back', async ({ page }) => {
     await page.goto('/login')
+    // The page finishes growing after first paint — /api/config decides whether
+    // the AI-connections item is in the feature list. Scrolling to the bottom
+    // of a page that is still getting taller leaves `before` short of the real
+    // bottom, and clicking the trigger then scrolls further to reach it.
+    await settled(page)
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
     await page.waitForTimeout(200)
     // Read this after settling: clicking the trigger scrolls it into view, so a

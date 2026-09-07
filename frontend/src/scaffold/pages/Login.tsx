@@ -162,7 +162,9 @@ export default function Login() {
             one. */}
         <div className="mt-5 flex items-center gap-3">
           <span className="h-px flex-1 bg-cs-border" />
-          <span className="text-xs font-medium uppercase tracking-wide text-cs-muted">or</span>
+          {/* text-2, not muted: muted is 4.45:1 on the page background, which
+              is under AA. It only clears the bar inside a surface card. */}
+          <span className="text-xs font-medium uppercase tracking-wide text-cs-text-2">or</span>
           <span className="h-px flex-1 bg-cs-border" />
         </div>
 

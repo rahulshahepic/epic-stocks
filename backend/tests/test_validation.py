@@ -3,7 +3,7 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from tests.conftest import register_user
+from tests.conftest import register_user, seed_grant
 
 
 # ============================================================
@@ -206,6 +206,7 @@ def test_loan_rejects_rate_above_100(client):
 
 def test_loan_allows_rate_at_100(client):
     register_user(client)
+    seed_grant(client)
     resp = client.post("/api/loans", json={
         "grant_year": 2020, "grant_type": "Purchase", "loan_type": "Interest",
         "loan_year": 2020, "amount": 5000, "interest_rate": 100,

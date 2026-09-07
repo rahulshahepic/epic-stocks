@@ -270,6 +270,25 @@ def _compute_payoff_sale(loan: Loan, user: User, db: Session) -> dict:
     }
 
 
+def _check_grant_exists(grant_year: int, grant_type: str, user: User, db: Session) -> None:
+    """Refuse a loan whose (grant_year, grant_type) matches no grant of this user's.
+
+    A loan is debt against a specific grant, and every figure that walks loans —
+    the payoff schedule, the interest pool, the cost basis — looks the grant up
+    by that pair. A row that resolves to nothing is invisible to all of them and
+    still counts toward the dashboard's totals, so it reads as real money owed
+    against equity that does not exist.
+    """
+    exists = db.query(Grant.id).filter(
+        Grant.user_id == user.id, Grant.year == grant_year, Grant.type == grant_type,
+    ).first()
+    if not exists:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No {grant_year} {grant_type} grant to attach this loan to",
+        )
+
+
 def _check_refinance_target(loan_id: int | None, user: User, db: Session, self_id: int | None = None) -> None:
     """Refuse a refinances_loan_id that is not this user's own loan.
 
@@ -302,6 +321,7 @@ def create_loan(
     db: Session = Depends(get_db),
 ):
     check_row_quota(db, Loan, user.id)
+    _check_grant_exists(body.grant_year, body.grant_type, user, db)
     _check_refinance_target(body.refinances_loan_id, user, db)
     if body.refinances_loan_id is not None:
         # Remove any auto-generated payoff sale for the old loan — it never happened
@@ -341,6 +361,7 @@ def bulk_create_loans(items: list[LoanCreate], user: User = Depends(get_current_
     # Every reference is checked before anything is written, so a bad one in
     # the middle of the batch does not leave the earlier rows behind.
     for item in items:
+        _check_grant_exists(item.grant_year, item.grant_type, user, db)
         _check_refinance_target(item.refinances_loan_id, user, db)
     loans = [Loan(**l.model_dump(), user_id=user.id) for l in items]
     db.add_all(loans)
@@ -408,6 +429,13 @@ def update_loan(
     db: Session = Depends(get_db),
 ):
     loan = get_owned(db, Loan, loan_id, user, "Loan")
+    # Only when the caller re-points the loan. Checking unconditionally would trap
+    # an already-orphaned row: its owner could not edit the amount to fix anything,
+    # only delete it.
+    sent = body.model_dump(exclude_unset=True)
+    if "grant_year" in sent or "grant_type" in sent:
+        _check_grant_exists(sent.get("grant_year", loan.grant_year),
+                            sent.get("grant_type", loan.grant_type), user, db)
     _check_refinance_target(body.refinances_loan_id, user, db, self_id=loan_id)
     if body.refinances_loan_id is not None:
         # Remove auto-generated payoff sale for the old loan if this is a new refinance link

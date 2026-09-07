@@ -171,14 +171,31 @@ def test_calling_a_tool_outside_the_granted_scope_fails_readably(client):
 
 # ── equity reads agree with the app ─────────────────────────────────────────
 
-def test_get_dashboard_matches_the_app(mcp, client):
-    assert mcp.call("get_dashboard") == client.get("/api/dashboard").json()
+def test_get_dashboard_matches_the_app(mcp, client, db_session):
+    """The same service function, bounded the way the app bounds it.
+
+    The app never shows the raw endpoint: it picks the last event on or before
+    the date in its picker. The tool asks for the same thing explicitly.
+    """
+    from datetime import date
+
+    from app.routers.events import _get_dashboard_data
+    from scaffold.models import User
+    from tests.conftest import user_key
+
+    user = db_session.query(User).one()
+    with user_key(user):
+        expected = _get_dashboard_data(user, db_session, as_of=date.today())
+    assert mcp.call("get_dashboard") == expected
 
 
 def test_list_events_matches_the_app(mcp, client):
     from_api = client.get("/api/events").json()
     from_tool = mcp.call("list_events")
-    assert from_tool["events"] == from_api
+    # Identical but for the flag saying which figures rest on assumed prices.
+    stripped = [{k: v for k, v in e.items() if k != "valuation_is_projected"}
+                for e in from_tool["events"]]
+    assert stripped == from_api
     assert from_tool["matched"] == len(from_api)
     assert from_tool["truncated"] is False
 
@@ -337,8 +354,8 @@ def test_compensation_is_empty_rather_than_missing_when_unset(mcp):
 
 # ── the account seam ────────────────────────────────────────────────────────
 
-def test_account_defaults_to_the_connected_user(mcp, client):
-    assert mcp.call("get_dashboard", account="me") == client.get("/api/dashboard").json()
+def test_account_defaults_to_the_connected_user(mcp):
+    assert mcp.call("get_dashboard", account="me") == mcp.call("get_dashboard")
 
 
 def test_asking_for_another_account_is_a_readable_refusal(mcp):

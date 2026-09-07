@@ -844,9 +844,21 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
     return _get_dashboard_data(user, db)
 
 
-def _get_dashboard_data(user: User, db: Session) -> dict:
-    """Core dashboard logic, usable by both the direct endpoint and shared view."""
-    grants, prices, loans, loans_db, initial_price, _election_83b_map, _ = _user_source_data(user, db)
+def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> dict:
+    """Core dashboard logic, usable by both the direct endpoint and shared view.
+
+    `as_of` bounds the cumulative figures to a point on the timeline instead of
+    running to its end. The web app has always done this itself — it picks the
+    last event on or before the date in its picker and flags when that rests on
+    an estimated price — but the endpoint returned the *final* event, which on
+    an account with price projections is a decade out. That is fine for the app,
+    which only uses these as a placeholder until it computes its own, and wrong
+    for anything that reads them as the answer: `current_price` held a projected
+    2034 price.
+
+    Left as None the behaviour is exactly what it was, so the app is unaffected.
+    """
+    grants, prices, loans, loans_db, initial_price, _election_83b_map, estimated_price_dates = _user_source_data(user, db)
 
     today = date.today()
     total_tax_paid = sum(
@@ -954,7 +966,18 @@ def _get_dashboard_data(user: User, db: Session) -> dict:
         else:
             loan_payment_by_year[year]["cash_in"] += cash_due
 
-    last = timeline[-1] if timeline else {}
+    if as_of is None:
+        last = timeline[-1] if timeline else {}
+    else:
+        # The same point the app's own card values use: the newest event that
+        # has actually happened by this date.
+        last = {}
+        for e in timeline:
+            if _to_date(e["date"]) <= as_of:
+                last = e
+            else:
+                break
+
     next_event = None
     for e in timeline:
         edate = _to_date(e["date"])
@@ -1002,7 +1025,21 @@ def _get_dashboard_data(user: User, db: Session) -> dict:
                 interest_deduction_total += ded_s + ded_l
                 tax_savings_from_deduction += ded_s * stcg_rate + ded_l * ltcg_rate
 
+    # Whether the price these figures rest on is one the user projected rather
+    # than a real valuation. The app shows this as a banner; anything reading
+    # the endpoint needs it just as much, and more so, because it cannot see one.
+    price_is_estimate = False
+    if as_of is not None:
+        for p in prices:
+            pdate = _to_date(p["date"])
+            if pdate <= as_of:
+                price_is_estimate = pdate in estimated_price_dates
+            else:
+                break
+
     return {
+        "as_of": as_of.isoformat() if as_of else None,
+        "price_is_estimate": price_is_estimate,
         "current_price": last.get("share_price", initial_price),
         "total_shares": last.get("cum_shares", 0),
         "total_income": last.get("cum_income", 0),

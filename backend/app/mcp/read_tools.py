@@ -68,6 +68,41 @@ def _opt_float(args: dict, key: str) -> float | None:
         raise ValueError(f"'{raw}' is not a number") from None
 
 
+def _flag(args: dict, key: str) -> bool:
+    value = args.get(key)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in ("true", "yes", "1")
+    return bool(value)
+
+
+def _as_date(value) -> date | None:
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str) and value:
+        try:
+            return date.fromisoformat(value[:10])
+        except ValueError:
+            return None
+    return None
+
+
+def _last_real_price_date(owner, db) -> date | None:
+    """The newest valuation that is not one of the user's own projections.
+
+    Everything on the timeline after this is priced at an assumption, which is
+    the distinction the app draws and the connector did not.
+    """
+    row = (
+        db.query(Price)
+        .filter(Price.user_id == owner.id, Price.is_estimate.is_(False))
+        .order_by(Price.effective_date.desc())
+        .first()
+    )
+    return row.effective_date if row else None
+
+
 def _rows(model, owner, db, order):
     return [
         {c.name: getattr(row, c.name) for c in model.__table__.columns if c.name != "user_id"}
@@ -82,16 +117,32 @@ _ACCOUNT_ONLY = object_schema({"account": ACCOUNT_PROPERTY})
 
 def _get_dashboard(ctx: ToolContext, args: dict):
     from app.routers.events import _get_dashboard_data
-    return _get_dashboard_data(_account(ctx, args), ctx.db)
+
+    # Bounded to today. Left unbounded this reports the *end* of the timeline,
+    # which on an account carrying price projections is years out — an assistant
+    # read `current_price` as the current price and it was a projected 2034 one.
+    payload = _get_dashboard_data(_account(ctx, args), ctx.db, as_of=date.today())
+    # An estimate whose date has since passed with no real valuation behind it
+    # is still the price in effect. The flag alone is easy to skim past.
+    if payload.get("price_is_estimate"):
+        payload["projection_warning"] = (
+            "The price in effect today is one the user assumed for planning, "
+            "not a real valuation, so every figure here is derived from it. "
+            "Say so before quoting any of them."
+        )
+    return payload
 
 
 register(Tool(
     name="get_dashboard",
     title="Equity summary",
     description=(
-        "The headline numbers for the account: shares held and vested, current "
-        "share price, portfolio value, outstanding loan balance, income and "
-        "capital gains to date. Start here when asked how someone's equity is doing."
+        "The headline numbers as they stand today: shares held and vested, the "
+        "current share price, outstanding loan balance, income and capital "
+        "gains realised so far. Start here when asked how someone's equity is "
+        "doing. Everything is as of today — `as_of` says which day. If "
+        "`price_is_estimate` is true these figures rest on a price the user "
+        "projected rather than a real valuation, and you must say so."
     ),
     input_schema=_ACCOUNT_ONLY,
     scope=EQUITY_READ,
@@ -116,6 +167,12 @@ def _list_events(ctx: ToolContext, args: dict):
     limit = _opt_int(args, "limit") or DEFAULT_EVENT_LIMIT
     limit = max(1, min(limit, MAX_EVENTS))
 
+    # Future vesting dates and share counts are fixed facts — the schedule is
+    # company-wide. What they are *worth* after the newest real valuation is
+    # priced at the user's own assumption, and that is the part an assistant
+    # must not repeat as though it were known.
+    priced_to = _last_real_price_date(owner, ctx.db)
+
     events = _get_events_data(owner, ctx.db)
     selected = []
     for event in events:
@@ -126,16 +183,33 @@ def _list_events(ctx: ToolContext, args: dict):
             continue
         if kinds and str(event.get("event_type", "")).lower() not in kinds:
             continue
+        when_date = _as_date(when)
+        event = dict(event)
+        event["valuation_is_projected"] = bool(
+            priced_to and when_date and when_date > priced_to
+        )
         selected.append(event)
 
-    return {
-        "events": selected[:limit],
-        "returned": min(len(selected), limit),
+    shown = selected[:limit]
+    projected = sum(1 for e in shown if e["valuation_is_projected"])
+    payload = {
+        "events": shown,
+        "returned": len(shown),
         "matched": len(selected),
         # Say so rather than letting the model total a truncated list and
         # present the answer as complete.
         "truncated": len(selected) > limit,
+        "priced_to": priced_to.isoformat() if priced_to else None,
     }
+    if projected:
+        payload["projection_warning"] = (
+            f"{projected} of these events fall after the newest real valuation "
+            f"({priced_to}), so every figure on them — value, income, gains — is "
+            "computed from prices the user assumed for planning. The dates and "
+            "share counts are real; the money is not. Say which is which, and "
+            "do not total projected figures into a headline number."
+        )
+    return payload
 
 
 register(Tool(
@@ -220,14 +294,55 @@ register(Tool(
 
 
 def _list_prices(ctx: ToolContext, args: dict):
+    """Real valuations by default; the user's projections only if asked for.
+
+    Returning both in one ascending list invited exactly one mistake: read the
+    last row as the current price. On an account that projects out to 2034 that
+    is a decade of invented growth reported as fact. Projecting the future is
+    the app's job — it has a simulator for it — so this hands over what is
+    known and names the current price rather than leaving it to be inferred.
+    """
     owner = _account(ctx, args)
-    return {
-        "prices": _rows(Price, owner, ctx.db, Price.effective_date),
+    today = date.today()
+    rows = _rows(Price, owner, ctx.db, Price.effective_date)
+
+    actual = [p for p in rows if not p.get("is_estimate")]
+    projected = [p for p in rows if p.get("is_estimate")]
+
+    in_effect = None
+    for p in actual:
+        if _as_date(p.get("effective_date")) and _as_date(p["effective_date"]) <= today:
+            in_effect = p
+
+    payload = {
+        "current_price": in_effect.get("price") if in_effect else None,
+        "current_price_date": in_effect.get("effective_date") if in_effect else None,
+        "prices": actual,
         "note": (
-            "Each price applies forward until the next one. Entries flagged "
-            "is_estimate are the user's own projections, not actual valuations."
+            "Real valuations only. Each applies forward until the next one, so "
+            "current_price is the one in effect today."
         ),
     }
+    if in_effect is None:
+        payload["note"] += (
+            " This account has no real valuation dated on or before today, so "
+            "there is no current price to report."
+        )
+
+    if _flag(args, "include_projections"):
+        payload["projected_prices"] = projected
+        payload["projection_warning"] = (
+            "These are the user's own assumptions entered into the app's "
+            "planner, not valuations and not a forecast by anyone else. Never "
+            "present a projected price as the current or expected price, and "
+            "never total them into a figure without saying they are assumed."
+        )
+    elif projected:
+        payload["note"] += (
+            f" The account also holds {len(projected)} projected price(s) the "
+            "user entered for planning; pass include_projections to see them."
+        )
+    return payload
 
 
 register(Tool(
@@ -307,7 +422,10 @@ register(Tool(
         "Model a sale without recording it: gross proceeds, estimated tax and "
         "net cash. Give 'shares' to price a specific number, or "
         "'target_net_cash' to work backwards to how many shares are needed to "
-        "clear that much after tax. Nothing is saved."
+        "clear that much after tax. Nothing is saved. You supply "
+        "price_per_share, so the answer is only as real as that price — use "
+        "current_price from list_prices unless the user asks for a "
+        "what-if, and say which you used."
     ),
     input_schema=object_schema({
         "price_per_share": {"type": "number", "description": "Price per share to model the sale at."},

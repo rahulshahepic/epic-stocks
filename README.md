@@ -440,11 +440,11 @@ That does **not** save anything. It leaves a draft on the Import page, and you a
 
 | Tool | What it answers |
 |------|-----------------|
-| `get_dashboard` | Shares held and vested, current price, portfolio value, loan balance, income and gains to date |
+| `get_dashboard` | Shares held and vested, current price, portfolio value, loan balance, income and gains to date — **as of today**, never the end of the timeline |
 | `list_events` | The computed timeline — vesting, price changes, loan payments, payoffs, sales — filterable by date and type |
 | `list_grants` | Every grant: year, type, shares, purchase price, vesting schedule |
 | `list_loans` | Loans against equity, with early payments and balance outstanding |
-| `list_prices` | Share price history, with the user's own future estimates flagged as estimates |
+| `list_prices` | Real share price history and the price in effect today. Your own future estimates are kept out unless asked for, and labelled when they come |
 | `list_sales` | Sales recorded and planned |
 | `estimate_sale` | Models a sale without recording it — by share count, or working back from cash needed after tax |
 | `get_tax_breakdown` | The full working for one sale: lots consumed, income, short- and long-term gains |
@@ -473,6 +473,8 @@ Then name the connector when you ask a question. Both assistants do better when 
 If your ChatGPT is provided by your employer, a workspace admin may have to enable developer mode before step 1. A personal account works either way.
 
 > **Getting "registration endpoint returned 403" in ChatGPT?** That is the CDN in front of this site blocking OpenAI's agent, not the app — the request never arrives. Whoever operates the deployment needs the WAF skip rule in [OPERATIONS.md §1](OPERATIONS.md#cloudflares-ai-bot-blocking-breaks-ai-connectors). Claude is unaffected.
+
+**Your projections stay yours.** The future prices you enter are planning assumptions, and the app's own planner is where they belong. The connector will not hand one to an assistant as a valuation: `list_prices` reports the price in effect today and leaves projections out unless they are explicitly requested, `get_dashboard` reports today rather than the end of a timeline that may run a decade out, and events past your newest real valuation come back marked `valuation_is_projected`. Future vesting dates and share counts are facts and are reported plainly — it is the money attached to them that is an assumption.
 
 **Disconnecting.** Settings → AI Connections lists every connection with what it may read and when it was last used. Disconnecting takes effect on the assistant's next request, not at the next token expiry. Signing out everywhere disconnects all of them too.
 

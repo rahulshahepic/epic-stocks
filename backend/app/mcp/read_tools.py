@@ -268,18 +268,64 @@ register(Tool(
 
 
 def _list_loans(ctx: ToolContext, args: dict):
+    """Every loan on file, each saying whether it is still owed.
+
+    A refinance chain keeps every link as a row. Listed flat with a balance on
+    each, the four links of one 76k debt read as four debts — and a reader
+    totalling the column gets 305k. History is worth keeping, so the rows stay;
+    what changes is that a row now says which of the four states it is in and
+    carries a balance that matches.
+    """
     from scaffold.models import LoanPayment
+    from app.routers.events import _compute_outstanding_principal
 
     owner = _account(ctx, args)
-    loans = _rows(Loan, owner, ctx.db, Loan.due_date)
+    today = date.today()
+    loans_db = ctx.db.query(Loan).filter(Loan.user_id == owner.id).order_by(Loan.due_date).all()
+    payments = ctx.db.query(LoanPayment).filter(LoanPayment.user_id == owner.id).all()
+    sales = ctx.db.query(Sale).filter(Sale.user_id == owner.id).all()
+
     paid: dict[int, float] = {}
-    for payment in ctx.db.query(LoanPayment).filter(LoanPayment.user_id == owner.id).all():
+    for payment in payments:
         paid[payment.loan_id] = paid.get(payment.loan_id, 0.0) + payment.amount
+    successor = {ln.refinances_loan_id: ln.id for ln in loans_db if ln.refinances_loan_id}
+    settled_by_sale = {s.loan_id for s in sales if s.loan_id is not None and s.date <= today}
+
+    loans = _rows(Loan, owner, ctx.db, Loan.due_date)
     for loan in loans:
         already = paid.get(loan["id"], 0.0)
         loan["paid_early"] = round(already, 2)
-        loan["balance"] = round(max(0.0, (loan.get("amount") or 0.0) - already), 2)
-    return {"loans": loans}
+        loan["superseded_by_loan_id"] = successor.get(loan["id"])
+        if loan["id"] in successor:
+            loan["status"] = "refinanced"
+        elif loan["id"] in settled_by_sale:
+            loan["status"] = "settled"
+        elif loan["loan_year"] > today.year:
+            loan["status"] = "not_yet_drawn"
+        else:
+            loan["status"] = "outstanding"
+        loan["balance"] = (
+            round(max(0.0, (loan.get("amount") or 0.0) - already), 2)
+            if loan["status"] == "outstanding" else 0.0
+        )
+
+    return {
+        "loans": loans,
+        # The app's own figure, not a second opinion computed here.
+        "total_outstanding": round(
+            _compute_outstanding_principal(loans_db, payments, sales, today), 2
+        ),
+        "note": (
+            "`status` says whether a loan is still owed. Only `outstanding` rows "
+            "carry a balance; `refinanced` ones were settled by the loan named in "
+            "`superseded_by_loan_id`, `settled` ones by a sale, and "
+            "`not_yet_drawn` ones start in a later year. Refinance history is "
+            "kept, so never total `amount` across rows — that counts one debt "
+            "once per link in its chain. total_outstanding nets early payments; "
+            "get_dashboard's total_loan_principal is the gross principal of the "
+            "same live loans, so the two differ by whatever has been paid early."
+        ),
+    }
 
 
 register(Tool(
@@ -287,8 +333,11 @@ register(Tool(
     title="Loans against equity",
     description=(
         "Loans tied to grants — the ones that funded a purchase, plus interest "
-        "and tax loans: amount, interest rate, due date, early payments made "
-        "and the balance outstanding."
+        "and tax loans: amount, interest rate, due date, early payments made and "
+        "the balance outstanding. Refinanced loans stay on the list as history "
+        "with `status: refinanced` and a zero balance; read `status` before "
+        "treating any row as money owed, and use `total_outstanding` rather than "
+        "adding the rows up."
     ),
     input_schema=_ACCOUNT_ONLY,
     scope=EQUITY_READ,

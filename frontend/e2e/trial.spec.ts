@@ -78,7 +78,7 @@ test.describe('No-account trial (/try)', () => {
 
   test('the login page offers the trial as a lower-commitment path in, and back again', async ({ page }) => {
     await page.goto('/login')
-    await page.getByRole('link', { name: /Try it with your own files/i }).click()
+    await page.getByRole('link', { name: /See it first, without an account/i }).click()
     await expect(page).toHaveURL(/\/try$/)
     await page.getByRole('link', { name: 'Sign in' }).click()
     await expect(page).toHaveURL(/\/login$/)

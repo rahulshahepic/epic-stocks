@@ -200,6 +200,48 @@ def test_events_tax_matches_sale_tax_for_same_tranche_payoff(client, db_session)
     assert sale_event["estimated_tax"] == authoritative["estimated_tax"]
 
 
+def test_changing_loan_payoff_method_refreshes_existing_payoff_sales(client, db_session):
+    """A payoff sale is sized against whichever lot order resolves at
+    generation time. If the account later turns on flexible payoff or
+    changes loan_payoff_method, that sale keeps its old share count even
+    though it will now be taxed under the new order — exactly the gap that
+    let a Dashboard go deeply negative after the account's payoff method
+    changed out from under sales that were sized for same-tranche. Saving
+    tax settings must refresh existing future payoff sales the same way a
+    price change does.
+    """
+    register_user(client)
+    _setup_data(client)  # 2018 Purchase @ $5/sh, 2020 Purchase @ $8/sh, price $20 from 2020-01-01
+
+    # Flexible payoff off: this payoff sale is sized same-tranche, against
+    # the 2020 grant's own $8 basis only.
+    resp = client.post("/api/loans?generate_payoff_sale=true", json={
+        "grant_year": 2020, "grant_type": "Purchase",
+        "loan_type": "Interest", "loan_year": 2021,
+        "amount": 10000.0, "interest_rate": 0.03,
+        "due_date": "2030-01-01",
+    })
+    assert resp.status_code == 201
+    loan_id = resp.json()["id"]
+
+    sales_before = client.get("/api/sales").json()
+    assert len(sales_before) == 1
+    shares_before = sales_before[0]["shares"]
+
+    # Turn on flexible payoff with FIFO — now this sale would draw the
+    # cheaper $5-basis 2018 lots first instead of its own $8-basis tranche,
+    # so the share count needed to net the same cash_due changes.
+    _set_flexible_payoff(db_session, True)
+    resp = client.put("/api/tax-settings", json={"loan_payoff_method": "fifo"})
+    assert resp.status_code == 200
+
+    sales_after = client.get("/api/sales").json()
+    assert len(sales_after) == 1  # refreshed in place, not duplicated
+    assert sales_after[0]["id"] == sales_before[0]["id"]
+    assert sales_after[0]["loan_id"] == loan_id
+    assert sales_after[0]["shares"] != shares_before
+
+
 def test_payoff_uses_flexible_method_when_enabled_and_eligible(client, db_session):
     """With flexible enabled and sufficient coverage, payoff uses user's method."""
     register_user(client)

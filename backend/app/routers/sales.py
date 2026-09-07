@@ -492,4 +492,10 @@ def update_tax_settings(body: TaxSettingsUpdate, user: User = Depends(get_curren
         setattr(ts, k, int(v) if k == 'prefer_stock_dp' else v)
     db.commit()
     db.refresh(ts)
+    # Rates and lot method feed straight into how payoff sales are sized
+    # (_compute_payoff_sale reads this same TaxSettings row) — refresh existing
+    # future payoff sales so they aren't left sized for a method or rate that
+    # no longer applies. Same reasoning as the price-change refresh.
+    from app.routers.loans import _regenerate_future_payoff_sales
+    _regenerate_future_payoff_sales(user, db, create_missing=False)
     return ts

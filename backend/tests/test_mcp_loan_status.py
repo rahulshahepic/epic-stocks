@@ -172,3 +172,25 @@ def test_the_two_totals_are_reconcilable(account):
     gross = mcp.call("get_dashboard")["total_loan_principal"]
     net = mcp.call("list_loans")["total_outstanding"]
     assert gross - net == pytest.approx(296.60)
+
+
+def test_the_rate_table_says_where_it_stops(client):
+    """A loan year past the end of the table is unlisted, not wrong. Without
+    saying so, a reader treats the silence as a contradiction and "corrects" a
+    rate that was right."""
+    from app.content_service import load_content
+    from app.epic_import import prompt as brief
+    from app.epic_import.skeleton import build_skeleton
+    from database import SessionLocal
+
+    register_user(client)
+    db = SessionLocal()
+    try:
+        schedule, _ = build_skeleton(load_content(db))
+    finally:
+        db.close()
+    table = brief._rate_table(schedule)
+    if table == "(none on record)":
+        pytest.skip("no loan rates seeded in this environment")
+    assert "Covers " in table
+    assert "no rate on record" in table

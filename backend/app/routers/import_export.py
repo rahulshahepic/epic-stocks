@@ -1197,11 +1197,12 @@ def export_holdings_report(
             break
 
     # Settled / refinanced loan IDs
+    from app.routers.events import _refinanced_loan_ids
     settled_ids = set()
     for s in sales_db:
         if s.loan_id and s.date <= as_of_date:
             settled_ids.add(s.loan_id)
-    refinanced_ids = {ln.refinances_loan_id for ln in loans_db if ln.refinances_loan_id}
+    refinanced_ids = _refinanced_loan_ids(loans_db)
 
     early_paid = {}
     for lp in payments_db:

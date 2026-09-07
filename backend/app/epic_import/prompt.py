@@ -120,7 +120,18 @@ def _rate_table(sk: Skeleton) -> str:
         lines.append(f"tax              | {gtype:<{_TYPE_COL}} | {year} | {rate}")
     for year, rate in sorted(sk.purchase_rates.items()):
         lines.append(f"purchase (orig.) | {'any':<{_TYPE_COL}} | {year} | {rate}")
-    return "\n".join(lines) if len(lines) > 2 else "(none on record)"
+    if len(lines) <= 2:
+        return "(none on record)"
+    # Say where the table stops. It lags the calendar, and a rate for a year past
+    # the end is not wrong, just unlisted — without this a reader treats silence
+    # as contradiction and "corrects" a figure that was right.
+    years = [*sk.interest_rates, *sk.purchase_rates, *(y for _, y in sk.tax_rates)]
+    if years:
+        lines.append("")
+        lines.append(f"Covers {min(years)}-{max(years)}. A loan year outside that "
+                     "range has no rate on record; take the figure from the "
+                     "statement rather than treating it as an error.")
+    return "\n".join(lines)
 
 
 def _problem_list(findings: list[Finding]) -> str:

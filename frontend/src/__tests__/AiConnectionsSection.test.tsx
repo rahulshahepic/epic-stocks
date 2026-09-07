@@ -150,9 +150,32 @@ describe('AiConnectionsSection', () => {
     expect(screen.queryByText('Recent activity')).not.toBeInTheDocument()
   })
 
-  it('is explicit that this is read-only', async () => {
+  it('is explicit that reading is the default and writing is opt-in', async () => {
     vi.spyOn(api, 'getAiConnections').mockResolvedValue([])
     render(<AiConnectionsSection />)
-    expect(await screen.findByText(/cannot change anything/)).toBeInTheDocument()
+    expect(await screen.findByText(/Reading is the default/)).toBeInTheDocument()
+    // The one promise that must survive any new scope: equity is never
+    // writable by an assistant.
+    expect(screen.getByText(/never be changed by an assistant/)).toBeInTheDocument()
+  })
+
+  it('marks a connection that was allowed to make changes', async () => {
+    vi.spyOn(api, 'getAiConnections').mockResolvedValue([{
+      id: 1, client_name: 'Claude', created_at: null, last_used_at: null,
+      scopes: ['equity:read', 'comp:write'],
+    }])
+    render(<AiConnectionsSection />)
+    expect(await screen.findByText('can make changes')).toBeInTheDocument()
+    expect(screen.getByText(/Update salary, bonuses/)).toBeInTheDocument()
+  })
+
+  it('does not mark a read-only connection', async () => {
+    vi.spyOn(api, 'getAiConnections').mockResolvedValue([{
+      id: 1, client_name: 'Claude', created_at: null, last_used_at: null,
+      scopes: ['equity:read', 'comp:read'],
+    }])
+    render(<AiConnectionsSection />)
+    expect(await screen.findByText(/Equity — grants, vesting/)).toBeInTheDocument()
+    expect(screen.queryByText('can make changes')).not.toBeInTheDocument()
   })
 })

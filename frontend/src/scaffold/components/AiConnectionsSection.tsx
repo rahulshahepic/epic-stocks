@@ -13,10 +13,18 @@ import { Card } from './ui/Card.tsx'
  * once.
  */
 
+// Mirrors scaffold/oauth/scopes.py:SCOPE_LABELS. A scope with no entry falls
+// back to its raw id, which is readable but not English.
 const SCOPE_LABELS: Record<string, string> = {
   'equity:read': 'Equity — grants, vesting, prices, loans, sales, tax',
   'comp:read': 'Salary and retirement settings',
+  'comp:write': 'Update salary, bonuses and retirement balances',
+  'import:propose': 'Prepare an import for you to review',
 }
+
+// The scopes that let an assistant leave something behind, so the summary
+// above can stop promising read-only for a connection that holds one.
+const WRITING_SCOPES = ['comp:write', 'import:propose']
 
 function formatWhen(value: string | null): string {
   if (!value) return ''
@@ -100,8 +108,16 @@ export function AiConnectionsSection() {
       <h3 className="text-sm font-medium text-cs-text">AI Connections</h3>
       <p className="mt-1 text-xs text-cs-text-2">
         Let ChatGPT or Claude read your equity data, so you can ask about vesting
-        and tax alongside the rest of your finances. Read-only — an assistant
-        cannot change anything here — and you can disconnect at any time.
+        and tax alongside the rest of your finances. You choose what each
+        connection may do when you approve it, and you can disconnect at any
+        time.
+      </p>
+      <p className="mt-1.5 text-xs text-cs-text-2">
+        Reading is the default. An assistant can only change anything if you
+        also allow it to — that covers your salary and bonus history and your
+        retirement balances, and it is listed against the connection below.
+        Grants, prices and loans can never be changed by an assistant; it can
+        only prepare an import for you to accept yourself.
       </p>
       <p className="mt-1.5 text-xs text-cs-muted">
         Connecting means your figures are sent to OpenAI or Anthropic when the
@@ -202,7 +218,14 @@ export function AiConnectionsSection() {
               <li key={connection.id} className="py-2">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-xs font-medium text-cs-text">{connection.client_name}</p>
+                    <p className="flex flex-wrap items-center gap-1.5 text-xs font-medium text-cs-text">
+                      {connection.client_name}
+                      {connection.scopes.some(s => WRITING_SCOPES.includes(s)) && (
+                        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+                          can make changes
+                        </span>
+                      )}
+                    </p>
                     <p className="mt-0.5 text-xs text-cs-muted">
                       Connected {formatDate(connection.created_at)} · last used {formatDate(connection.last_used_at)}
                     </p>

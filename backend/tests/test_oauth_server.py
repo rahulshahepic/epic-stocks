@@ -182,6 +182,40 @@ def test_authorize_shows_consent_to_a_signed_in_user(client):
     assert "read-only" in resp.text
 
 
+def test_the_consent_screen_says_which_promise_it_is_making(client):
+    """Three scope sets, three different sentences. This is the one line on the
+    screen a user is entitled to rely on, so a connection that can change data
+    the moment it is asked must not read as one that only prepares a draft."""
+    register_user(client)
+    reg = register_client(client)
+    _, challenge = pkce_pair()
+
+    reading = authorize(client, reg["client_id"], challenge,
+                        scope="equity:read comp:read").text
+    assert "read-only" in reading
+
+    staging = authorize(client, reg["client_id"], challenge,
+                        scope="equity:read import:propose").text
+    assert "read-only" not in staging
+    assert "waits" in staging and "accept it in the app" in staging
+
+    writing = authorize(client, reg["client_id"], challenge,
+                        scope="comp:read comp:write").text
+    assert "read-only" not in writing
+    assert "as soon as you ask it to" in writing
+    # And it still has to say what remains out of reach.
+    assert "cannot be changed by an assistant" in writing
+
+
+def test_the_consent_screen_names_the_write_permission(client):
+    register_user(client)
+    reg = register_client(client)
+    _, challenge = pkce_pair()
+    page = authorize(client, reg["client_id"], challenge,
+                     scope="comp:read comp:write").text
+    assert "Update your salary and bonus history" in page
+
+
 def test_authorize_sends_a_signed_out_user_to_login_and_back(client):
     reg = register_client(client)
     _, challenge = pkce_pair()

@@ -15,7 +15,9 @@ import UnofficialBadge from '../../scaffold/components/UnofficialBadge.tsx'
 import { Card, HeroCard, Eyebrow, IconTile } from '../../scaffold/components/ui/Card.tsx'
 import {
   Sparkline, IconBell, IconMountainFlag, IconPieChart, IconCompass, IconDocument,
+  IconChatSpark,
 } from '../../scaffold/components/ui/icons.tsx'
+import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 
 type Stage = 'upload' | 'analyzing' | 'preview'
 type Tab = 'dashboard' | 'events'
@@ -26,6 +28,17 @@ const EVENT_COLORS: Record<string, string> = {
   'Vesting': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300',
   'Share Price': 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
   'Loan Payoff': 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
+}
+
+/**
+ * Connecting an assistant, which needs an account because it is an account it
+ * connects to. Listed first: it is the one thing here that nobody expects to
+ * find, and the numbers on screen are exactly what it would be answering from.
+ * Only shown when the deployment has AI connections switched on.
+ */
+const AI_CONNECTION = {
+  icon: <IconChatSpark />, tone: 'brand' as const, title: 'Ask ChatGPT or Claude about it',
+  body: 'Connect your assistant and ask it directly — "what vests before December?", "how much would I clear after tax?" — with these figures instead of a guess. It can keep your salary and retirement numbers up to date too.',
 }
 
 /** What the preview deliberately withholds, and why it needs an account. */
@@ -366,7 +379,12 @@ function EventsTab({ result, asOf }: { result: TrialAnalyzeResponse; asOf: strin
   )
 }
 
-function WhyAnAccount({ onSave, saving }: { onSave: () => void; saving: boolean }) {
+function WhyAnAccount({ onSave, saving, aiConnections }: {
+  onSave: () => void
+  saving: boolean
+  aiConnections: boolean
+}) {
+  const reasons = aiConnections ? [AI_CONNECTION, ...LOCKED] : LOCKED
   return (
     <Card>
       <Eyebrow className="mb-1">Keep this</Eyebrow>
@@ -375,7 +393,7 @@ function WhyAnAccount({ onSave, saving }: { onSave: () => void; saving: boolean 
         An account keeps it, and adds the parts a one-off read can't do:
       </p>
       <div className="mt-4 space-y-2.5">
-        {LOCKED.map(f => (
+        {reasons.map(f => (
           <div key={f.title} className="flex items-center gap-3">
             <IconTile tone={f.tone}>{f.icon}</IconTile>
             <div className="min-w-0">
@@ -401,6 +419,7 @@ function WhyAnAccount({ onSave, saving }: { onSave: () => void; saving: boolean 
 export default function Try() {
   const navigate = useNavigate()
   const { appName } = useAppContext()
+  const config = useConfig()
   const [csv, setCsv] = useState<File | null>(null)
   const [pdf, setPdf] = useState<File | null>(null)
   const [stage, setStage] = useState<Stage>('upload')
@@ -596,7 +615,11 @@ export default function Try() {
           ? <DashboardTab result={result} asOf={asOf} />
           : <EventsTab result={result} asOf={asOf} />}
 
-        <WhyAnAccount onSave={saveAndSignUp} saving={saving} />
+        <WhyAnAccount
+          onSave={saveAndSignUp}
+          saving={saving}
+          aiConnections={!!config?.ai_connections}
+        />
 
         <DisclaimerNotice />
 

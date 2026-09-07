@@ -107,6 +107,8 @@ What you get is the app itself, running on your numbers in that browser tab:
 
 Tax figures use the same default rates a new account starts with, read straight off the model, so nothing shifts underneath you when you sign up. Nothing is written anywhere — refreshing clears it. If you like what you see, one button carries the computed data into sign-up, so you don't re-upload; it lands in your new account already imported.
 
+The preview then says what an account adds that a one-off read cannot: notifications before each vest and payoff, the retirement simulator, the total-comp calculator, your own tax rates, sales history — and [connecting ChatGPT or Claude](#connecting-your-own-ai) to the numbers you are looking at. The sign-in page lists the same things, so the choice between previewing and signing up is answerable before you do either.
+
 | Upload | Preview dashboard | Preview events |
 |--------|-------------------|----------------|
 | ![Try it](screenshots/try-light-mobile.png) | ![Preview dashboard](screenshots/try-preview-light-mobile.png) | ![Preview events](screenshots/try-preview-events-light-mobile.png) |
@@ -428,9 +430,13 @@ Sessions otherwise last 30 days, with a sliding refresh — the app silently ext
 
 ### Connecting Your Own AI
 
-You can let ChatGPT or Claude read your equity data, so you can ask about vesting and tax alongside the rest of your finances. It is off until you connect it, read-only, and you can disconnect it at any time.
+You can let ChatGPT or Claude read your equity data, so you can ask about vesting and tax alongside the rest of your finances. It is off until you connect it, reading by default, and you can disconnect it at any time.
 
-**What this does and does not do.** The assistant can read your grants, vesting timeline, prices, loans, sales and tax estimates, and your salary and retirement settings if you allow that. It cannot change anything. Connecting means your figures are sent to OpenAI or Anthropic when the assistant asks for them — the same as pasting them into a chat, but without the pasting.
+**What this does and does not do.** The assistant can read your grants, vesting timeline, prices, loans, sales and tax estimates, and your salary and retirement settings if you allow that. Connecting means your figures are sent to OpenAI or Anthropic when the assistant asks for them — the same as pasting them into a chat, but without the pasting.
+
+**Your equity can never be changed by an assistant.** Grants, prices, loans and sales feed the event engine, and a wrong one there quietly restates your whole timeline — so there is no tool that writes them. The most an assistant can do is prepare an import you accept yourself, in the wizard, with the same checks and diff an uploaded file gets.
+
+**Letting it keep your salary and retirement numbers current.** Two things you type by hand *can* be written, if you tick that permission when you connect: your salary and bonus history, and the account balances the retirement simulator starts from. Then *"I got a raise to $205k in April"* or *"my 401(k) is at $850k now"* updates the app as you say it, instead of becoming a note to go and do it later. These are figures nothing else is computed from, and you are looking at them on the page — which is why they are the ones that are safe to write. Salary and bonus writes add to the history rather than replacing it, and repeating a request does not double a raise.
 
 **Getting your equity in with your assistant's help.** If entering it by hand is a chore, tick the import permission when you connect. Then say something like *"help me get my Epic equity into the tracker"* — the assistant reads `get_import_guide` for the exact shape and the company schedule, asks you for the figures, and calls `stage_import`.
 
@@ -450,9 +456,22 @@ That does **not** save anything. It leaves a draft on the Import page, and you a
 | `get_tax_breakdown` | The full working for one sale: lots consumed, income, short- and long-term gains |
 | `explain` | How this scheme works — vesting, grant types, tax, lots, the two prices. Worth asking for first; several ordinary RSU rules do not apply here |
 | `get_import_guide` | The exact shape an import must take, the rules, and the company vesting schedule and loan rates on record |
-| `stage_import` | Prepares an import for you to review. **Changes nothing** — you accept it in the wizard (needs the import permission) |
 | `get_compensation` | Salary and bonus history (needs the compensation permission) |
 | `get_retirement_params` | Saved retirement simulator settings (needs the compensation permission) |
+
+**What it can write** — only with the "update salary, bonuses and retirement balances" permission, which is never granted by default:
+
+| Tool | What it changes |
+|------|-----------------|
+| `add_compensation` | Adds salary-change and bonus entries to the compensation history. Adds rather than replaces, and skips an entry identical to one already stored |
+| `remove_compensation` | Deletes compensation entries by id, for correcting a mistake |
+| `set_retirement_accounts` | Sets the retirement simulator's starting balances: 401(k)/traditional IRA, Roth, taxable brokerage and its cost basis. Only the balances named are changed; the rest of your saved scenario is left alone |
+
+And one that writes nothing of yours, under its own separate permission:
+
+| Tool | What it changes |
+|------|-----------------|
+| `stage_import` | Prepares an import for you to review. **Saves no grant, price or loan** — you accept it in the wizard (needs the import permission) |
 
 **In Claude** — Pro, Max, Team or Enterprise; works on web, desktop and mobile:
 
@@ -476,7 +495,7 @@ If your ChatGPT is provided by your employer, a workspace admin may have to enab
 
 **Your projections stay yours.** The future prices you enter are planning assumptions, and the app's own planner is where they belong. The connector will not hand one to an assistant as a valuation: `list_prices` reports the price in effect today and leaves projections out unless they are explicitly requested, `get_dashboard` reports today rather than the end of a timeline that may run a decade out, and events past your newest real valuation come back marked `valuation_is_projected`. Future vesting dates and share counts are facts and are reported plainly — it is the money attached to them that is an assumption.
 
-**Disconnecting.** Settings → AI Connections lists every connection with what it may read and when it was last used. Disconnecting takes effect on the assistant's next request, not at the next token expiry. Signing out everywhere disconnects all of them too.
+**Disconnecting.** Settings → AI Connections lists every connection with what it may read, whether it may change anything (connections that can are badged "can make changes"), and when it was last used. Disconnecting takes effect on the assistant's next request, not at the next token expiry. Signing out everywhere disconnects all of them too.
 
 **Recent activity.** The same section keeps a log of what each assistant asked for and when — tool names and times, so you can tell whether it read your salary or only your vesting dates. It records **no figures at all**: your share counts, prices and balances are never written to it, so it cannot leak them. Entries are kept for 90 days.
 
@@ -1014,6 +1033,13 @@ epic-stocks/
 │   │   ├── timeline_cache.py # L1 in-process memoized event computation
 │   │   ├── event_cache.py   # L2 Redis cache + background recompute
 │   │   ├── content_service.py # Seeder + load_content() for grant-program data
+│   │   ├── mcp/             # The MCP server an AI assistant connects to
+│   │   │   ├── transport.py    # JSON-RPC over Streamable HTTP at POST /mcp + rate limits
+│   │   │   ├── tools.py        # The tool registry: schema, scope, handler, annotations
+│   │   │   ├── read_tools.py   # The reads — each a call through to the router's own service function
+│   │   │   ├── comp_tools.py   # The writes: salary/bonus history and retirement balances (comp:write)
+│   │   │   ├── import_tools.py # Import guide + staging a draft the user accepts in the wizard
+│   │   │   └── accounts.py     # Whose data a tool reads — own account only today
 │   │   └── routers/
 │   │       ├── grants.py    # Grant CRUD + bulk
 │   │       ├── loans.py     # Loan CRUD + bulk
@@ -1169,7 +1195,7 @@ Cross-origin requests are accepted only from the native shell origins (`capacito
 | GET/POST | `/oauth/authorize` | Consent screen, server-rendered. Needs an app session; a signed-out user is sent through `/login?next=` and returned here |
 | POST | `/oauth/token` | `authorization_code` and `refresh_token`. PKCE `S256` required; refresh tokens rotate on use |
 | POST | `/oauth/revoke` | RFC 7009. Always 200 |
-| POST | `/mcp` | The MCP server: JSON-RPC over Streamable HTTP (`initialize`, `tools/list`, `tools/call`, `ping`). Eleven read tools, listed under [Connecting Your Own AI](#connecting-your-own-ai). Requires a connector token, never a session one |
+| POST | `/mcp` | The MCP server: JSON-RPC over Streamable HTTP (`initialize`, `tools/list`, `tools/call`, `ping`). Twelve read tools and four that write, listed under [Connecting Your Own AI](#connecting-your-own-ai). Requires a connector token, never a session one |
 | GET | `/api/oauth/connections` | This account's live AI connections, for Settings |
 | DELETE | `/api/oauth/connections/{id}` | Disconnect. Deleting the grant row is the revocation — it takes effect on the next request |
 | GET | `/api/oauth/activity` | This account's last 50 connector events — tool names, outcomes and times, never figures |

@@ -67,7 +67,7 @@ def seed(client) -> dict:
 class Mcp:
     """A connected assistant, talking JSON-RPC."""
 
-    def __init__(self, client, scope="equity:read comp:read import:propose"):
+    def __init__(self, client, scope="equity:read comp:read comp:write import:propose"):
         self.client = client
         self.tokens = connect(client, scope=scope)
         self._id = 0
@@ -115,7 +115,15 @@ def mcp(client):
 
 # The tools that leave something behind. Everything else must claim, and be,
 # read-only — a client decides how loudly to confirm from these annotations.
-WRITING_TOOLS = {"stage_import"}
+WRITING_TOOLS = {
+    "stage_import",
+    "add_compensation", "remove_compensation", "set_retirement_accounts",
+}
+
+# Of those, the ones that can take something away. stage_import stages a
+# proposal the user accepts elsewhere and the two comp writers only add or
+# amend; deleting history is the one that destroys.
+DESTRUCTIVE_TOOLS = {"remove_compensation"}
 
 
 def test_every_tool_is_listed_and_annotated_honestly(mcp):
@@ -129,17 +137,28 @@ def test_every_tool_is_listed_and_annotated_honestly(mcp):
             f"{name} claims readOnlyHint={tool['annotations']['readOnlyHint']}"
         )
         if not expected_read_only:
-            # A writing tool has to say whether it destroys anything. This one
-            # stages a proposal the user accepts elsewhere, so it does not.
-            assert tool["annotations"]["destructiveHint"] is False, name
+            # A writing tool has to say whether it destroys anything, because a
+            # client decides how loudly to confirm from exactly this.
+            assert tool["annotations"]["destructiveHint"] is (
+                name in DESTRUCTIVE_TOOLS
+            ), name
 
 
-def test_the_only_writing_tool_is_the_one_that_stages_an_import(mcp):
-    """A read-only connector is the whole promise on the consent screen; a new
+def test_the_writing_tools_are_only_the_ones_we_meant_to_add(mcp):
+    """A read-only connector is most of the promise on the consent screen; a new
     tool that writes must be a deliberate change, not a slip."""
     writing = {t["name"] for t in mcp.list_tools()
                if not t["annotations"]["readOnlyHint"]}
     assert writing == WRITING_TOOLS
+
+
+def test_no_tool_writes_equity(mcp):
+    """Grants, prices, loans and sales feed core.py, and a wrong one there
+    restates the whole timeline. Entering equity goes through stage_import and
+    the wizard, so nothing under equity:read may write."""
+    for tool in mcp.list_tools():
+        if tool["name"] in WRITING_TOOLS:
+            assert REGISTRY[tool["name"]].scope != "equity:read", tool["name"]
 
 
 def test_every_input_schema_is_well_formed(mcp):
@@ -404,6 +423,12 @@ def test_every_successful_tool_result_is_parseable_json(mcp, name):
         "get_tax_breakdown": {"sale_id": None},
         "explain": {"topic": "vesting"},
         "stage_import": {"payload": IMPORT_PAYLOAD},
+        "add_compensation": {
+            "entries": [{"type": "salary", "effective_date": "2024-01-01",
+                         "amount": 180000}],
+        },
+        "remove_compensation": {"ids": ["nothing-with-this-id"]},
+        "set_retirement_accounts": {"roth": 0.25},
     }
     arguments = dict(required.get(name, {}))
     if name == "get_tax_breakdown":

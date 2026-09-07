@@ -46,6 +46,12 @@ class _CompEntries(BaseModel):
     entries: list[Any]
 
 
+# A working life's worth of raises and bonuses. The list is a column on the
+# users table rather than rows of its own, so it needs a ceiling here — the
+# same one the MCP write tool enforces on the other way in.
+MAX_COMP_ENTRIES = 400
+
+
 @retirement_router.get("/comp-entries")
 def get_comp_entries(user: User = Depends(get_current_user)):
     return {"entries": user.comp_entries or []}
@@ -59,6 +65,11 @@ def save_comp_entries(
 ):
     if not isinstance(body.entries, list):
         raise HTTPException(status_code=422, detail="entries must be an array")
+    if len(body.entries) > MAX_COMP_ENTRIES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"at most {MAX_COMP_ENTRIES} compensation entries",
+        )
     user.comp_entries = body.entries
     db.commit()
     return {"entries": body.entries}

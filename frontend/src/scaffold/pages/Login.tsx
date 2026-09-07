@@ -10,7 +10,8 @@ import { HeroIllustration } from '../components/ui/icons.tsx'
 import DisclaimerNotice from '../components/DisclaimerNotice.tsx'
 import UnofficialBadge from '../components/UnofficialBadge.tsx'
 import { IconTile, Card, Eyebrow } from '../components/ui/Card.tsx'
-import { IconTrendUp, IconCompass, IconShield } from '../components/ui/icons.tsx'
+import { IconTrendUp, IconCompass, IconShield, IconChatSpark } from '../components/ui/icons.tsx'
+import { useConfig } from '../hooks/useConfig.ts'
 
 const FEATURES = [
   {
@@ -33,10 +34,25 @@ const FEATURES = [
   },
 ]
 
+/**
+ * The one thing on this page nobody arrives expecting, so it is on the page
+ * rather than waiting in Settings for someone to find it. Slotted third, above
+ * the privacy line that closes the list. Hidden when the deployment has AI
+ * connections switched off — advertising a feature an admin turned off is
+ * worse than not mentioning it.
+ */
+const AI_FEATURE = {
+  icon: <IconChatSpark />,
+  tone: 'violet' as const,
+  title: 'Ask ChatGPT or Claude',
+  body: 'Connect your assistant and ask about vesting, tax and total comp using your real figures — and let it keep your salary and retirement numbers current.',
+}
+
 export default function Login() {
   const { isAuthenticated } = useAuth()
   const navigate = useNavigate()
   const { appName, appTagline } = useAppContext()
+  const config = useConfig()
   const [providers, setProviders] = useState<Array<{ name: string; label: string }>>([])
   const [loading, setLoading] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -66,6 +82,11 @@ export default function Login() {
     window.addEventListener('pageshow', handlePageShow)
     return () => window.removeEventListener('pageshow', handlePageShow)
   }, [])
+
+  // Slotted above the privacy line, which is the natural closer for the list.
+  const features = config?.ai_connections
+    ? [...FEATURES.slice(0, 2), AI_FEATURE, ...FEATURES.slice(2)]
+    : FEATURES
 
   async function handleSignIn(providerName: string) {
     setLoading(providerName)
@@ -97,8 +118,9 @@ export default function Login() {
 
         <DisclaimerNotice className="mt-6" />
 
-        <div className="mt-7 space-y-2.5">
-          {FEATURES.map(f => (
+        <Eyebrow className="mt-7">What you get with an account</Eyebrow>
+        <div className="mt-2.5 space-y-2.5">
+          {features.map(f => (
             <div key={f.title} className="flex items-center gap-3 rounded-xl border border-cs-border bg-cs-surface px-3.5 py-3 shadow-card">
               <IconTile tone={f.tone}>{f.icon}</IconTile>
               <div className="min-w-0">
@@ -135,16 +157,28 @@ export default function Login() {
           )}
         </div>
 
-        <p className="mt-4 text-center text-sm text-cs-text-2">
-          Not ready for an account?{' '}
-          <Link
-            to="/try"
-            className="font-medium text-cs-brand underline decoration-cs-brand/40 underline-offset-2 hover:text-cs-brand-hover"
-          >
-            Try it with your own files
-          </Link>
-          .
-        </p>
+        {/* The other way in. It was a sentence under the buttons, which reads
+            as a footnote — the two paths are a real choice, so it looks like
+            one. */}
+        <div className="mt-5 flex items-center gap-3">
+          <span className="h-px flex-1 bg-cs-border" />
+          <span className="text-xs font-medium uppercase tracking-wide text-cs-muted">or</span>
+          <span className="h-px flex-1 bg-cs-border" />
+        </div>
+
+        <Link
+          to="/try"
+          className="mt-5 block rounded-xl border border-cs-border-strong bg-cs-surface p-3.5 text-left shadow-card transition hover:bg-cs-raised"
+        >
+          <p className="text-sm font-semibold text-cs-text">
+            See it first, without an account
+          </p>
+          <p className="mt-0.5 text-xs leading-snug text-cs-text-2">
+            Drop in your Epic share summary and loan statement for a read-only
+            preview of your position. The files are read and thrown away —
+            nothing is stored.
+          </p>
+        </Link>
 
         <Card className="mt-6 text-left">
           <Eyebrow className="mb-2">Your data &amp; privacy</Eyebrow>

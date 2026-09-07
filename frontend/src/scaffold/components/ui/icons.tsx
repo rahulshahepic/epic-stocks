@@ -81,6 +81,20 @@ export function IconMountainFlag({ className = base }: IconProps) {
   )
 }
 
+/**
+ * A speech bubble with a spark in it — the "ask your assistant about this"
+ * mark. A bare sparkle reads as decoration; the bubble is what says the
+ * feature is a conversation.
+ */
+export function IconChatSpark({ className = base }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path d="M21 12a8 8 0 0 1-8 8H4.8a.8.8 0 0 1-.62-1.3l1.4-1.72A8 8 0 1 1 21 12Z" stroke="currentColor" strokeWidth={2} strokeLinejoin="round" />
+      <path d="M12.8 7.4l1.02 2.58 2.58 1.02-2.58 1.02-1.02 2.58-1.02-2.58L9.2 11l2.58-1.02L12.8 7.4Z" fill="currentColor" />
+    </svg>
+  )
+}
+
 export function IconChevronLeft({ className = base }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">

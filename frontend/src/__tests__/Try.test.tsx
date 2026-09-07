@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { AppProvider } from '../app/AppProvider.tsx'
 import Try from '../app/pages/Try.tsx'
+import { resetConfigCache } from '../scaffold/hooks/useConfig.ts'
 import { platform } from '../platform/index.ts'
 
 // Dates are deliberately far from "today" in both directions so the as-of
@@ -71,6 +72,12 @@ function mockFetch(...responses: unknown[]) {
   let i = 0
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const url = typeof input === 'string' ? input : (input as Request).url
+    // The page reads /api/config to decide what to offer. It is not one of the
+    // analyze calls these tests count, so it neither consumes a queued
+    // response nor lands in `calls`.
+    if (url.includes('/api/config')) {
+      return new Response(JSON.stringify({}), { status: 200 })
+    }
     calls.push({ url, body: (init?.body as FormData) ?? null })
     const body = responses[Math.min(i, responses.length - 1)]
     i += 1
@@ -134,7 +141,7 @@ describe('Try — upload stage', () => {
 })
 
 describe('Try — preview', () => {
-  beforeEach(() => { sessionStorage.clear() })
+  beforeEach(() => { sessionStorage.clear(); resetConfigCache() })
   afterEach(() => { vi.restoreAllMocks() })
 
   it('shows a dashboard, not a table dump, and never logs in to do it', async () => {
@@ -264,6 +271,29 @@ describe('Try — preview', () => {
     expect(screen.getByText('Retirement simulator')).toBeInTheDocument()
     expect(screen.getByText('Total comp calculator')).toBeInTheDocument()
     expect(screen.getByText('Sales you have already made')).toBeInTheDocument()
+  })
+
+  it('offers connecting an assistant among the reasons to sign up', async () => {
+    // The figures just computed on screen are exactly what it would answer
+    // from, so this is the moment the feature is worth mentioning.
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = typeof input === 'string' ? input : (input as Request).url
+      const body = url.includes('/api/config') ? { ai_connections: true } : CLEAN
+      return new Response(JSON.stringify(body), { status: 200 })
+    })
+    renderTry()
+    await upload()
+
+    expect(await screen.findByText(/Ask ChatGPT or Claude about it/i)).toBeInTheDocument()
+  })
+
+  it('does not offer it when the server has AI connections switched off', async () => {
+    mockFetch(CLEAN)   // no ai_connections flag
+    renderTry()
+    await upload()
+
+    expect(await screen.findByText('Notifications')).toBeInTheDocument()
+    expect(screen.queryByText(/Ask ChatGPT or Claude about it/i)).not.toBeInTheDocument()
   })
 
   it('stashes the computed data and sends the user to sign in on save', async () => {

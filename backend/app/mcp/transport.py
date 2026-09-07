@@ -26,7 +26,7 @@ from scaffold.oauth import audit
 from scaffold.oauth.resource import Connector, require_connector
 from scaffold.oauth.settings import mcp_enabled
 from scaffold.rate_limit import check_rate_shared
-from . import import_tools, read_tools  # noqa: F401  — importing is what registers the tools
+from . import comp_tools, import_tools, read_tools  # noqa: F401  — importing is what registers the tools
 from .tools import REGISTRY, ToolContext, as_result, visible_to
 
 logger = logging.getLogger(__name__)
@@ -178,7 +178,12 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext) -> d
                 "first, then stage_import. Vesting dates and periods are fixed "
                 "company-wide and must not be invented. stage_import changes "
                 "nothing on its own — it leaves a draft the user accepts in the "
-                "app, so say that rather than reporting the import as done."
+                "app, so say that rather than reporting the import as done.\n\n"
+                "Salary, bonuses and retirement balances can be written "
+                "directly, and those writes are immediate. Read the matching "
+                "get_ tool first so you add to the history rather than "
+                "duplicating it, and note the units differ: compensation is in "
+                "dollars, retirement balances in millions of dollars."
             ),
         })
 

@@ -449,7 +449,7 @@ That does **not** save anything. It leaves a draft on the Import page, and you a
 | `get_dashboard` | Shares vested, current price, loan principal outstanding, income and gains to date — **as of today**, never the end of the timeline. `shares_at_end_of_schedule` gives the full position; `basis` says which figure counts what |
 | `list_events` | The computed timeline — vesting, price changes, loan payments, payoffs, sales — filterable by date and type |
 | `list_grants` | Every grant: year, type, shares, purchase price, vesting schedule |
-| `list_loans` | Loans against equity, with early payments and balance outstanding |
+| `list_loans` | Loans against equity, with early payments and balance outstanding. Refinanced loans stay on the list as history, marked and zero-balance, so a chain is never read as several debts |
 | `list_prices` | Real share price history and the price in effect today. Your own future estimates are kept out unless asked for, and labelled when they come |
 | `list_sales` | Sales recorded and planned |
 | `estimate_sale` | Models a sale without recording it — by share count, or working back from cash needed after tax |

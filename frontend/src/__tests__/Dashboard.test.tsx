@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import Dashboard from '../app/pages/Dashboard.tsx'
@@ -97,6 +97,22 @@ const MOCK_LOANS = [
   },
 ]
 
+// Left unmocked, /api/tax-settings (and /api/tips, see mockApi below) 404 and
+// useApiData's error path resolves a beat later than the other endpoints (a different
+// promise chain: throw -> catch -> toast -> finally, vs. the happy-path .then() the
+// rest take). That extra, later render is what made the loan-payoff test flaky:
+// occasionally it lands in the same tick as the test's fireEvent.change on the date
+// input, and React resets the controlled input back to its old value before the change
+// handler reads e.target.value — so the date "change" is silently dropped. Mocking
+// every endpoint the page touches on mount keeps them all on the same settle timing.
+const MOCK_TAX_SETTINGS = {
+  federal_income_rate: 0.32, federal_lt_cg_rate: 0.15, federal_st_cg_rate: 0.32,
+  niit_rate: 0.038, state_income_rate: 0.093, state_lt_cg_rate: 0.093, state_st_cg_rate: 0.093,
+  lt_holding_days: 365, lot_selection_method: 'fifo', loan_payoff_method: 'fifo',
+  flexible_payoff_enabled: false, prefer_stock_dp: false, deduct_investment_interest: false,
+  deduction_excluded_years: null, taxable_years: [2020, 2021, 2025, 2026, 2027],
+}
+
 beforeEach(() => {
   localStorage.clear()
   localStorage.setItem('auth_token', 'test-token')
@@ -120,6 +136,14 @@ function mockApi(prices = MOCK_PRICES, sales = MOCK_SALES) {
     }
     if (url.includes('/api/grants')) {
       return new Response(JSON.stringify(MOCK_GRANTS), { status: 200 })
+    }
+    if (url.includes('/api/tax-settings')) {
+      return new Response(JSON.stringify(MOCK_TAX_SETTINGS), { status: 200 })
+    }
+    // TipCarousel (rendered whenever !readOnly) fetches this on mount too — same
+    // stray-404 race as tax-settings above if left unhandled.
+    if (url.includes('/api/tips')) {
+      return new Response(JSON.stringify([]), { status: 200 })
     }
     if (url.includes('/api/sales')) {
       return new Response(JSON.stringify(sales), { status: 200 })
@@ -216,6 +240,16 @@ describe('Dashboard', () => {
     await waitFor(() => {
       expect(screen.getByText(/^Net worth/)).toBeInTheDocument()
     })
+
+    // grantHoldings (and so the hero card) only requires grantsData/events/loans to
+    // have resolved — sales and taxSettings are optional inputs it tolerates being
+    // null (see computeGrantHoldings) — so "Net worth" can appear while one of those
+    // two is still in flight. If either settles in the same tick as fireEvent.change
+    // below, the resulting re-render can land between the DOM's value being set and
+    // React's onChange reading it, so the controlled input gets reset to its old
+    // value first and the date change is silently dropped (observed flaky in CI:
+    // cardDate stays at TODAY). Flush any still-pending fetches/effects first.
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
 
     const dateInput = screen.getByDisplayValue(new Date().toISOString().slice(0, 10))
     fireEvent.change(dateInput, { target: { value: '2027-01-02' } })

@@ -1,4 +1,3 @@
-import bisect
 from datetime import date, datetime
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
@@ -441,59 +440,55 @@ def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales:
     return enriched
 
 
-def _sort_key(e: dict) -> tuple:
-    d = e["date"]
-    return (_to_date(d), 0 if e.get("event_type") == "Vesting" else 1)
-
-
 def _annotate_sale_taxes(enriched: list, timeline: list, ts_dict: dict,
-                          lot_order: str = 'lifo',
+                          loan_grant_by_id: dict | None = None,
+                          loan_payoff_method: str | None = None,
+                          lot_selection_method: str | None = 'lifo',
+                          flexible_payoff_enabled: bool = False,
                           sale_overrides: dict | None = None,
-                          sale_loan_map: dict | None = None,
+                          sale_loan_ids: dict | None = None,
                           sale_lot_overrides: dict | None = None) -> None:
     """
-    Compute estimated_tax for each Sale event in place, in chronological order.
-    Prior sales are injected as negative vested_shares so lots are consumed correctly.
+    Compute estimated_tax for each Sale event in place, via the single shared
+    compute_all_sale_taxes — the same function /api/sales/{id}/tax, the bulk
+    /api/sales/tax and payoff-sale sizing use, so the timeline (and the
+    Dashboard it feeds) can never disagree with them about the same sale.
     """
-    from app.sales_engine import build_lots_from_overrides
-    # Sort once; insert prior-sale sentinel entries incrementally via bisect.
-    sorted_tl = sorted(timeline, key=_sort_key)
-    sort_keys: list[tuple] = [_sort_key(e) for e in sorted_tl]
+    from app.sale_tax import compute_all_sale_taxes
 
+    sale_specs = []
     for e in enriched:
         if e.get("event_type") != "Sale":
             continue
-        sale_date = _to_date(e["date"])
         shares = abs(e.get("vested_shares") or 0)
-        price_per_share = round(e["gross_proceeds"] / shares, 10) if shares else 0.0
+        if not shares:
+            continue
         sale_id = e.get("sale_id")
-        effective_ts = (sale_overrides or {}).get(sale_id, ts_dict) if sale_id else ts_dict
-        gy, gt = ((sale_loan_map or {}).get(sale_id) or (None, None)) if sale_id else (None, None)
-        lot_ovrs = (sale_lot_overrides or {}).get(sale_id) if sale_id else None
-        prebuilt = build_lots_from_overrides(sorted_tl, lot_ovrs, sale_date) if lot_ovrs else None
-        result = compute_sale_tax(sorted_tl, {"date": sale_date, "shares": shares, "price_per_share": price_per_share}, effective_ts, lot_order=lot_order, grant_year=gy, grant_type=gt, prebuilt_lots=prebuilt)
+        sale_specs.append({
+            "id": sale_id,
+            "date": _to_date(e["date"]),
+            "shares": shares,
+            "price_per_share": round(e["gross_proceeds"] / shares, 10),
+            "loan_id": (sale_loan_ids or {}).get(sale_id),
+            "lot_overrides": (sale_lot_overrides or {}).get(sale_id),
+            "rates": (sale_overrides or {}).get(sale_id, ts_dict),
+        })
+
+    results, final_tl = compute_all_sale_taxes(
+        timeline, sale_specs, loan_grant_by_id or {}, loan_payoff_method,
+        lot_selection_method, flexible_payoff_enabled,
+    )
+    for e in enriched:
+        if e.get("event_type") != "Sale":
+            continue
+        result = results.get(e.get("sale_id"))
+        if result is None:
+            continue
         e["estimated_tax"] = result["estimated_tax"]
         e["st_shares"] = result["st_shares"]
-        # Inject per-lot sentinels so subsequent build_fifo_lots calls consume exactly
-        # the lots this sale used (matching lot_order), not just the oldest lots.
-        for lot in result.get("lots_consumed", []):
-            sentinel = {
-                "date": datetime.combine(sale_date, datetime.min.time()),
-                "event_type": "Prior Sale Lot",
-                "target_vest_date": lot["vest_date"],
-                "target_grant_year": lot["grant_year"],
-                "target_grant_type": lot["grant_type"],
-                "shares_consumed": lot["shares"],
-                "vested_shares": 0,
-                "grant_price": None,
-                "share_price": 0.0,
-            }
-            key = _sort_key(sentinel)
-            idx = bisect.bisect_right(sort_keys, key)
-            sorted_tl.insert(idx, sentinel)
-            sort_keys.insert(idx, key)
 
-    # Annotate the projected liquidation event (if present)
+    # Annotate the projected liquidation event (if present), against
+    # everything real that came before it.
     for e in enriched:
         if e.get("event_type") != "Liquidation (projected)":
             continue
@@ -502,7 +497,8 @@ def _annotate_sale_taxes(enriched: list, timeline: list, ts_dict: dict,
         if shares == 0:
             continue
         price_per_share = round(e["gross_proceeds"] / shares, 10)
-        result = compute_sale_tax(sorted_tl, {"date": liq_date, "shares": shares, "price_per_share": price_per_share}, ts_dict, lot_order=lot_order)
+        liq_lot_order = lot_selection_method if lot_selection_method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
+        result = compute_sale_tax(final_tl, {"date": liq_date, "shares": shares, "price_per_share": price_per_share}, ts_dict, lot_order=liq_lot_order)
         e["estimated_tax"] = result["estimated_tax"]
         e["st_shares"] = result["st_shares"]
 
@@ -710,28 +706,22 @@ def _preview_exit_data(user: User, db: Session, date_str: str):
         "state_st_cg_rate": ts_row.state_st_cg_rate,
         "lt_holding_days": ts_row.lt_holding_days,
     } if ts_row else None
-    method = ts_row.lot_selection_method if ts_row else 'epic_lifo'
-    lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
-    # Same-tranche restriction for loan payoff sales — see the matching comment
-    # in _get_events_data. loan_payoff_method (not lot_selection_method) governs
-    # payoff sales, and defaults to same_tranche unless flexible payoff is on.
     from app.routers.loans import _is_flexible_payoff_enabled
-    payoff_method = 'same_tranche'
-    if ts_row and _is_flexible_payoff_enabled(db):
-        candidate = getattr(ts_row, 'loan_payoff_method', 'same_tranche')
-        if candidate in ('fifo', 'lifo', 'epic_lifo'):
-            payoff_method = candidate
-    sale_loan_map: dict = {}
-    if ts_row and payoff_method == 'same_tranche':
-        loan_id_to_grant = {ln.id: (ln.grant_year, ln.grant_type) for ln in loans_db}
-        for s in sales:
-            if s.loan_id:
-                sale_loan_map[s.id] = loan_id_to_grant.get(s.loan_id, (None, None))
+    flexible_payoff_enabled = _is_flexible_payoff_enabled(db)
+    loan_grant_by_id = {ln.id: (ln.grant_year, ln.grant_type) for ln in loans_db}
+    sale_loan_ids = {s.id: s.loan_id for s in sales}
+    loan_payoff_method = ts_row.loan_payoff_method if ts_row else None
+    lot_selection_method = ts_row.lot_selection_method if ts_row else None
     db.close()
 
     enriched = _enrich_timeline(timeline, loans_db, loan_payments, sales, horizon_date=preview_date)
     if ts_dict:
-        _annotate_sale_taxes(enriched, timeline, ts_dict, lot_order=lot_order, sale_loan_map=sale_loan_map)
+        _annotate_sale_taxes(enriched, timeline, ts_dict,
+                             loan_grant_by_id=loan_grant_by_id,
+                             loan_payoff_method=loan_payoff_method,
+                             lot_selection_method=lot_selection_method,
+                             flexible_payoff_enabled=flexible_payoff_enabled,
+                             sale_loan_ids=sale_loan_ids)
     deduction_enabled = bool(ts_row and ts_row.deduct_investment_interest)
     excl_years = set(ts_row.deduction_excluded_years or []) if ts_row else set()
     if deduction_enabled:
@@ -804,24 +794,13 @@ def _get_events_data(user: User, db: Session) -> list:
         "lt_holding_days": ts_row.lt_holding_days,
     } if ts_row else None
 
-    method = ts_row.lot_selection_method if ts_row else 'epic_lifo'
-    lot_order = method if method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
-    # Loan payoff sales are same-tranche by default (restricted to the loan's own
-    # grant) unless the admin has enabled flexible payoff and the user opted into
-    # a different lot order — mirrors get_sale_tax's per-sale resolution. This is
-    # a different setting (loan_payoff_method) than lot_selection_method above,
-    # which only governs ordinary (non-payoff) sales.
     from app.routers.loans import _is_flexible_payoff_enabled
-    payoff_method = 'same_tranche'
-    if ts_row and _is_flexible_payoff_enabled(db):
-        candidate = getattr(ts_row, 'loan_payoff_method', 'same_tranche')
-        if candidate in ('fifo', 'lifo', 'epic_lifo'):
-            payoff_method = candidate
+    flexible_payoff_enabled = _is_flexible_payoff_enabled(db)
+    loan_grant_by_id = {ln.id: (ln.grant_year, ln.grant_type) for ln in loans_db}
     sale_overrides: dict = {}
-    sale_loan_map: dict = {}
+    sale_loan_ids: dict = {}
     sale_lot_overrides: dict = {}
     if ts_row:
-        loan_id_to_grant = {ln.id: (ln.grant_year, ln.grant_type) for ln in loans_db}
         for s in sales:
             sale_overrides[s.id] = {
                 "federal_income_rate": s.federal_income_rate if s.federal_income_rate is not None else ts_row.federal_income_rate,
@@ -833,18 +812,24 @@ def _get_events_data(user: User, db: Session) -> list:
                 "state_st_cg_rate": s.state_st_cg_rate if s.state_st_cg_rate is not None else ts_row.state_st_cg_rate,
                 "lt_holding_days": s.lt_holding_days if s.lt_holding_days is not None else ts_row.lt_holding_days,
             }
-            if s.loan_id and payoff_method == 'same_tranche':
-                sale_loan_map[s.id] = loan_id_to_grant.get(s.loan_id, (None, None))
+            sale_loan_ids[s.id] = s.loan_id
             if s.lot_overrides:
                 sale_lot_overrides[s.id] = s.lot_overrides
+
+    loan_payoff_method = ts_row.loan_payoff_method if ts_row else None
+    lot_selection_method = ts_row.lot_selection_method if ts_row else None
 
     # All DB reads are done — release the connection back to the pool before
     # CPU-heavy computation so we don't starve concurrent requests.
     db.close()
 
     if ts_dict:
-        _annotate_sale_taxes(enriched, timeline, ts_dict, lot_order=lot_order,
-                             sale_overrides=sale_overrides, sale_loan_map=sale_loan_map,
+        _annotate_sale_taxes(enriched, timeline, ts_dict,
+                             loan_grant_by_id=loan_grant_by_id,
+                             loan_payoff_method=loan_payoff_method,
+                             lot_selection_method=lot_selection_method,
+                             flexible_payoff_enabled=flexible_payoff_enabled,
+                             sale_overrides=sale_overrides, sale_loan_ids=sale_loan_ids,
                              sale_lot_overrides=sale_lot_overrides)
 
     if ts_row and ts_row.deduct_investment_interest:
@@ -912,29 +897,46 @@ def _get_dashboard_data(user: User, db: Session) -> dict:
 
     covered_loan_ids = {s.loan_id for s in sales_db if s.loan_id is not None}
 
+    from app.routers.loans import _is_flexible_payoff_enabled
+    flexible_payoff_enabled = _is_flexible_payoff_enabled(db)
+    loan_grant_by_id = {ln.id: (ln.grant_year, ln.grant_type) for ln in loans_db}
+    loan_payoff_method = ts_row.loan_payoff_method if ts_row else None
+    lot_selection_method = ts_row.lot_selection_method if ts_row else None
+
+    # Snapshot the sales due for tax before closing the DB session.
+    sale_specs = []
+    if ts_dict_dash:
+        for s in sales_db:
+            if s.date > today:
+                continue
+            sale_specs.append({
+                "id": s.id, "date": s.date, "shares": s.shares, "price_per_share": s.price_per_share,
+                "loan_id": s.loan_id, "lot_overrides": s.lot_overrides,
+                "rates": {
+                    "federal_income_rate": s.federal_income_rate if s.federal_income_rate is not None else ts_row.federal_income_rate,
+                    "federal_lt_cg_rate": s.federal_lt_cg_rate if s.federal_lt_cg_rate is not None else ts_row.federal_lt_cg_rate,
+                    "federal_st_cg_rate": s.federal_st_cg_rate if s.federal_st_cg_rate is not None else ts_row.federal_st_cg_rate,
+                    "niit_rate": s.niit_rate if s.niit_rate is not None else ts_row.niit_rate,
+                    "state_income_rate": s.state_income_rate if s.state_income_rate is not None else ts_row.state_income_rate,
+                    "state_lt_cg_rate": s.state_lt_cg_rate if s.state_lt_cg_rate is not None else ts_row.state_lt_cg_rate,
+                    "state_st_cg_rate": s.state_st_cg_rate if s.state_st_cg_rate is not None else ts_row.state_st_cg_rate,
+                    "lt_holding_days": s.lt_holding_days if s.lt_holding_days is not None else ts_row.lt_holding_days,
+                },
+            })
+
     # All DB reads are done — release the connection before CPU-heavy computation.
     db.close()
 
-    if ts_dict_dash and sales_db:
-        sorted_tl_dash = sorted(timeline, key=_sort_key)
-        sort_keys_dash: list[tuple] = [_sort_key(e) for e in sorted_tl_dash]
-        for s in sorted(sales_db, key=lambda x: x.date):
-            if s.date > today:
-                continue
-            result = compute_sale_tax(sorted_tl_dash, {"date": s.date, "shares": s.shares, "price_per_share": s.price_per_share}, ts_dict_dash)
-            total_tax_paid += result["estimated_tax"]
-            sale_taxes += result["estimated_tax"]
-            sentinel = {
-                "date": datetime.combine(s.date, datetime.min.time()),
-                "event_type": "Sale",
-                "vested_shares": -s.shares,
-                "grant_price": None,
-                "share_price": 0.0,
-            }
-            key = _sort_key(sentinel)
-            idx = bisect.bisect_right(sort_keys_dash, key)
-            sorted_tl_dash.insert(idx, sentinel)
-            sort_keys_dash.insert(idx, key)
+    if sale_specs:
+        from app.sale_tax import compute_all_sale_taxes
+        results, _ = compute_all_sale_taxes(
+            timeline, sale_specs, loan_grant_by_id, loan_payoff_method,
+            lot_selection_method, flexible_payoff_enabled,
+        )
+        for spec in sale_specs:
+            tax = results[spec["id"]]["estimated_tax"]
+            total_tax_paid += tax
+            sale_taxes += tax
 
     # Loan payment by year: payoff_sale vs cash_in (skip refinanced loans — they show as $0 events)
     refinanced_loan_ids_dash: set[int] = {ln.refinances_loan_id for ln in loans_db if ln.refinances_loan_id is not None}

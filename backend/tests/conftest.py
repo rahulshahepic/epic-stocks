@@ -122,6 +122,24 @@ def user_key(user):
         set_current_key(None)
 
 
+def seed_grant(client, year=2020, gtype="Purchase"):
+    """Create the grant a loan will hang off.
+
+    A loan is debt against a specific grant and the API refuses one that resolves
+    to no grant, so a test that posts a loan needs the matching grant first.
+    """
+    for g in client.get("/api/grants").json():
+        if g["year"] == year and g["type"] == gtype:
+            return g  # already seeded; a second copy would change the timeline
+    resp = client.post("/api/grants", json={
+        "year": year, "type": gtype, "shares": 1000, "price": 1.0,
+        "vest_start": f"{year + 1}-03-01", "periods": 4,
+        "exercise_date": f"{year}-12-31",
+    })
+    assert resp.status_code == 201, f"grant seed failed: {resp.text}"
+    return resp.json()
+
+
 def register_user(client, email="test@example.com", name="Test User"):
     """Log in as a user via the E2E test-login endpoint; sets the session cookie on client."""
     resp = client.post("/api/auth/test-login", json={"email": email, "name": name})

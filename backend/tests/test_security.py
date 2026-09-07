@@ -10,7 +10,7 @@ import hashlib
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from tests.conftest import register_user
+from tests.conftest import register_user, seed_grant
 import subprocess
 import pytest
 
@@ -90,6 +90,7 @@ def _create_grant(client):
 
 
 def _create_loan(client):
+    seed_grant(client)
     resp = client.post("/api/loans", json={
         "grant_year": 2020, "grant_type": "Purchase", "loan_type": "Interest",
         "loan_year": 2020, "amount": 1000, "interest_rate": 0.05,

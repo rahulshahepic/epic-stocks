@@ -1,6 +1,7 @@
 """Import/export endpoints for Excel files."""
 import io
 import json
+import logging
 import tempfile
 from datetime import datetime, date
 from openpyxl.comments import Comment
@@ -25,6 +26,8 @@ from openpyxl.styles import Font, PatternFill
 from app import event_cache
 
 _MAX_BACKUPS_PER_USER = 3
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["import_export"])
 
@@ -1379,3 +1382,78 @@ def export_holdings_report(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"; filename*=UTF-8\'\'{encoded}'},
     )
+
+
+# ── imports an AI assistant prepared ────────────────────────────────────────
+#
+# A connector with the import:propose scope can leave a draft here. It writes no
+# grant, price or loan: acceptance goes through the wizard, the same as any
+# other import, which is what epic_import/ requires however the draft was made.
+
+class ImportProposalOut(BaseModel):
+    client_name: str
+    created_at: str
+    blocked: bool
+    grants: int
+    prices: int
+    findings: list[dict]
+    wizard_prefill: dict
+
+
+@router.get("/import/proposal", response_model=ImportProposalOut | None)
+def get_import_proposal(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """The draft waiting for review, or null. Expired drafts read as absent.
+
+    The wizard's prefill is derived here rather than stored, because
+    `_wizard_prefill` folds in the prices the account holds *now* — a draft
+    covers the years it knows about, and anything else the user has must be
+    carried through or accepting the import would silently delete it. Storing
+    the prefill would freeze whatever those rows looked like at staging time.
+    """
+    from datetime import timezone as _tz
+
+    from scaffold.models import ImportProposal
+    from app.content_service import load_content
+    from app.epic_import.draft import draft_from_payload
+    from app.epic_import.skeleton import build_skeleton
+    from app.routers.epic_import import _wizard_prefill
+
+    row = db.query(ImportProposal).filter(ImportProposal.user_id == user.id).first()
+    if row is None:
+        return None
+
+    expires = row.expires_at if row.expires_at.tzinfo else row.expires_at.replace(tzinfo=_tz.utc)
+    if expires < datetime.now(_tz.utc):
+        return None
+
+    try:
+        payload = json.loads(row.payload_json)
+        findings = json.loads(row.findings_json)
+        sk, _ = build_skeleton(load_content(db))
+        draft, _ = draft_from_payload(payload, sk)
+        prefill = _wizard_prefill(draft, db, user.id)
+    except Exception:
+        # Unreadable is the same as absent: the user can ask their assistant
+        # again, and a 500 here would block the whole Import page over a draft
+        # nobody has committed to.
+        logger.exception("Could not rebuild import proposal for user %s", user.id)
+        return None
+
+    return ImportProposalOut(
+        client_name=row.client_name or "an AI assistant",
+        created_at=row.created_at.isoformat() if row.created_at else "",
+        blocked=bool(row.blocked),
+        grants=len(payload.get("grants") or []),
+        prices=len(payload.get("prices") or []),
+        findings=findings if isinstance(findings, list) else [],
+        wizard_prefill=prefill,
+    )
+
+
+@router.delete("/import/proposal", status_code=204)
+def dismiss_import_proposal(user: User = Depends(get_current_user),
+                            db: Session = Depends(get_db)):
+    from scaffold.models import ImportProposal
+
+    db.query(ImportProposal).filter(ImportProposal.user_id == user.id).delete()
+    db.commit()

@@ -311,6 +311,7 @@ def authorize(request: Request, db: Session = Depends(get_db)):
         redirect_origin=urlparse(redirect_uri).netloc,
         account_email=user.email,
         scope_labels=[scope_defs.SCOPE_LABELS[s] for s in granted],
+        read_only=not scope_defs.writes_anything(granted),
         request_token=request_token,
         csrf=_csrf_for(session_token, request_token),
     ))
@@ -352,6 +353,7 @@ def authorize_resume(request: Request, db: Session = Depends(get_db)):
         redirect_origin=urlparse(pending["ru"]).netloc,
         account_email=user.email,
         scope_labels=[scope_defs.SCOPE_LABELS[s] for s in pending["sc"].split()],
+        read_only=not scope_defs.writes_anything(pending["sc"].split()),
         request_token=request_token,
         csrf=_csrf_for(session_token, request_token),
     ))

@@ -432,6 +432,10 @@ You can let ChatGPT or Claude read your equity data, so you can ask about vestin
 
 **What this does and does not do.** The assistant can read your grants, vesting timeline, prices, loans, sales and tax estimates, and your salary and retirement settings if you allow that. It cannot change anything. Connecting means your figures are sent to OpenAI or Anthropic when the assistant asks for them — the same as pasting them into a chat, but without the pasting.
 
+**Getting your equity in with your assistant's help.** If entering it by hand is a chore, tick the import permission when you connect. Then say something like *"help me get my Epic equity into the tracker"* — the assistant reads `get_import_guide` for the exact shape and the company schedule, asks you for the figures, and calls `stage_import`.
+
+That does **not** save anything. It leaves a draft on the Import page, and you accept it in the same wizard an uploaded file goes through, with the same checks and the same diff. If your assistant tells you the import is done, it is wrong — open the app and look. A draft you never accept expires after seven days.
+
 **What it can read:**
 
 | Tool | What it answers |
@@ -445,6 +449,8 @@ You can let ChatGPT or Claude read your equity data, so you can ask about vestin
 | `estimate_sale` | Models a sale without recording it — by share count, or working back from cash needed after tax |
 | `get_tax_breakdown` | The full working for one sale: lots consumed, income, short- and long-term gains |
 | `explain` | How this scheme works — vesting, grant types, tax, lots, the two prices. Worth asking for first; several ordinary RSU rules do not apply here |
+| `get_import_guide` | The exact shape an import must take, the rules, and the company vesting schedule and loan rates on record |
+| `stage_import` | Prepares an import for you to review. **Changes nothing** — you accept it in the wizard (needs the import permission) |
 | `get_compensation` | Salary and bonus history (needs the compensation permission) |
 | `get_retirement_params` | Saved retirement simulator settings (needs the compensation permission) |
 

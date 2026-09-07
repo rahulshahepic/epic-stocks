@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import EpicFileImport from '../components/EpicFileImport.tsx'
+import AssistantImport from '../components/AssistantImport.tsx'
 import { apiFetch, apiFetchBlob } from '../../api.ts'
 import { platform } from '../../platform/index.ts'
 import { Card } from '../../scaffold/components/ui/Card.tsx'
@@ -148,6 +149,9 @@ export default function ImportExport() {
       <h2 className="text-lg font-semibold text-cs-text">Import / Export</h2>
 
       {/* The fastest path leads, because it is what most people should do. */}
+      {/* Renders nothing unless an assistant left a draft. */}
+      <AssistantImport />
+
       <EpicFileImport />
 
       {/* Fallback for anyone without the documents to hand. */}

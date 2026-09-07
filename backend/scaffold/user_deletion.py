@@ -41,6 +41,8 @@ USER_OWNED_TABLES: list[tuple[str, str]] = [
     # account rather than de-linked: it is that person's activity, not a
     # diagnostic someone else needs to keep.
     ("mcp_audit", "user_id"),
+    # A draft an assistant prepared and the user never accepted.
+    ("import_proposals", "user_id"),
 ]
 
 # Financial data only — what POST /api/me/reset clears, keeping the account.

@@ -105,14 +105,24 @@ def _page(title: str, body: str) -> str:
 
 def render_consent(*, client_name: str, redirect_origin: str, account_email: str,
                    scope_labels: list[str], request_token: str, csrf: str,
-                   app_name: str = "Epic Stocks") -> str:
+                   read_only: bool = True, app_name: str = "Epic Stocks") -> str:
     items = "".join(f"<li>{_CHECK}<span>{_esc(label)}</span></li>" for label in scope_labels)
+    # The claim has to follow the scopes actually being granted. Saying
+    # "read-only" over a connection that can leave an import behind would be
+    # the one sentence on this screen a user is entitled to rely on, and wrong.
+    note = (
+        "It will not be able to change anything — this connection is read-only. "
+        "You can disconnect it at any time in Settings."
+        if read_only else
+        "It cannot change your data on its own. Anything it prepares waits for "
+        "you to review and accept it in the app. You can disconnect it at any "
+        "time in Settings."
+    )
     body = (
         f"<h1>{_esc(client_name)} wants to connect to {_esc(app_name)}</h1>"
         f"<p class=\"origin\">It will return you to <code>{_esc(redirect_origin)}</code></p>"
         f"<ul>{items}</ul>"
-        "<p class=\"note\">It will not be able to change anything — this connection is "
-        "read-only. You can disconnect it at any time in Settings.</p>"
+        f"<p class=\"note\">{note}</p>"
         f"<p class=\"who\">Signed in as {_esc(account_email)}</p>"
         "<form method=\"post\" action=\"/oauth/authorize\">"
         f"<input type=\"hidden\" name=\"request\" value=\"{_esc(request_token)}\">"

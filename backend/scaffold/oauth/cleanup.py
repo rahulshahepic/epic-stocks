@@ -15,6 +15,11 @@ Three things here grow on their own and nothing else removes them:
 
   mcp_audit          Append-only by design; bounded by retention and a
                      per-account ceiling in audit.py.
+
+  import_proposals   A draft an assistant prepared and the user never opened.
+                     One per account, so this is small, but a stale draft is
+                     worse than none — it would offer figures the user has
+                     since changed.
 """
 import logging
 from datetime import datetime, timedelta, timezone
@@ -54,11 +59,18 @@ def prune(db: Session) -> dict[str, int]:
             OAuthClient.client_id.in_(stale)
         ).delete(synchronize_session=False)
 
+    from scaffold.models import ImportProposal
+
+    proposals = db.query(ImportProposal).filter(
+        ImportProposal.expires_at < now
+    ).delete(synchronize_session=False)
+
     db.commit()
 
     entries = audit.prune(db)
 
-    result = {"auth_codes": codes, "clients": clients, "audit_entries": entries}
+    result = {"auth_codes": codes, "clients": clients, "audit_entries": entries,
+              "import_proposals": proposals}
     if any(result.values()):
         logger.info("Connector cleanup removed %s", result)
     return result

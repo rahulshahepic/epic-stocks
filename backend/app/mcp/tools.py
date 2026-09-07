@@ -38,10 +38,11 @@ class Tool:
     input_schema: dict[str, Any]
     scope: str
     handler: Callable[[ToolContext, dict], Any]
-    # MCP tool annotations. Read-only is the honest value for every tool in this
-    # release, and it is what lets a client show them without a confirmation.
+    # MCP tool annotations. Most tools here only read; the one that does not
+    # still destroys nothing — it stages a proposal the user accepts elsewhere.
     read_only: bool = True
     idempotent: bool = True
+    destructive: bool = False
 
     def describe(self) -> dict[str, Any]:
         return {
@@ -53,6 +54,9 @@ class Tool:
                 "readOnlyHint": self.read_only,
                 "idempotentHint": self.idempotent,
                 "openWorldHint": False,
+                # Only meaningful for a tool that writes; a client shows it to
+                # decide how loudly to confirm.
+                **({} if self.read_only else {"destructiveHint": self.destructive}),
             },
         }
 

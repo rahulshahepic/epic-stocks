@@ -20,6 +20,15 @@ from app.mcp.tools import REGISTRY
 from tests.conftest import register_user
 from tests.test_oauth_server import connect
 
+# A draft in the shape get_import_guide describes, for the staging tool.
+IMPORT_PAYLOAD = {
+    "grants": [{
+        "year": 2021, "type": "Purchase", "shares": 1000, "price": 2.83,
+        "dp_shares": 0, "election_83b": False, "loans": [],
+    }],
+    "prices": [{"effective_date": "2021-01-01", "price": 2.83}],
+}
+
 GRANT = {
     "year": 2020, "type": "Purchase", "shares": 10000, "price": 1.5,
     "vest_start": "2021-03-01", "periods": 5, "exercise_date": "2020-12-31",
@@ -58,7 +67,7 @@ def seed(client) -> dict:
 class Mcp:
     """A connected assistant, talking JSON-RPC."""
 
-    def __init__(self, client, scope="equity:read comp:read"):
+    def __init__(self, client, scope="equity:read comp:read import:propose"):
         self.client = client
         self.tokens = connect(client, scope=scope)
         self._id = 0
@@ -104,13 +113,33 @@ def mcp(client):
 
 # ── the catalogue ───────────────────────────────────────────────────────────
 
-def test_every_tool_is_listed_and_read_only(mcp):
+# The tools that leave something behind. Everything else must claim, and be,
+# read-only — a client decides how loudly to confirm from these annotations.
+WRITING_TOOLS = {"stage_import"}
+
+
+def test_every_tool_is_listed_and_annotated_honestly(mcp):
     listed = {t["name"]: t for t in mcp.list_tools()}
     assert set(listed) == set(REGISTRY)
     assert listed, "no tools registered"
     for name, tool in listed.items():
-        assert tool["annotations"]["readOnlyHint"] is True, name
         assert tool["description"].strip(), name
+        expected_read_only = name not in WRITING_TOOLS
+        assert tool["annotations"]["readOnlyHint"] is expected_read_only, (
+            f"{name} claims readOnlyHint={tool['annotations']['readOnlyHint']}"
+        )
+        if not expected_read_only:
+            # A writing tool has to say whether it destroys anything. This one
+            # stages a proposal the user accepts elsewhere, so it does not.
+            assert tool["annotations"]["destructiveHint"] is False, name
+
+
+def test_the_only_writing_tool_is_the_one_that_stages_an_import(mcp):
+    """A read-only connector is the whole promise on the consent screen; a new
+    tool that writes must be a deliberate change, not a slip."""
+    writing = {t["name"] for t in mcp.list_tools()
+               if not t["annotations"]["readOnlyHint"]}
+    assert writing == WRITING_TOOLS
 
 
 def test_every_input_schema_is_well_formed(mcp):
@@ -357,6 +386,7 @@ def test_every_successful_tool_result_is_parseable_json(mcp, name):
         "estimate_sale": {"price_per_share": 4.0, "shares": 10},
         "get_tax_breakdown": {"sale_id": None},
         "explain": {"topic": "vesting"},
+        "stage_import": {"payload": IMPORT_PAYLOAD},
     }
     arguments = dict(required.get(name, {}))
     if name == "get_tax_breakdown":

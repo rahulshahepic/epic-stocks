@@ -658,8 +658,9 @@ def shared_sale_tax(
     owner = _get_shared_owner(invitation_id, user, db)
     from scaffold.models import Sale, TaxSettings
     from app.routers.events import _user_source_data
+    from app.routers.sales import _flexible_payoff_enabled
     from services.timeline_cache import get_timeline
-    from app.sales_engine import compute_sale_tax
+    from app.sale_tax import compute_all_sale_taxes
 
     sale = db.query(Sale).filter(Sale.id == sale_id, Sale.user_id == owner.id).first()
     if not sale:
@@ -669,22 +670,32 @@ def shared_sale_tax(
     if not ts_row:
         raise HTTPException(404, "Tax settings not found")
 
-    grants, prices, loans, _loans_db, initial_price, _e83b, _ = _user_source_data(owner, db)
+    grants, prices, loans, loans_db, initial_price, _e83b, _ = _user_source_data(owner, db)
     if not grants or not prices:
         raise HTTPException(422, "Insufficient data")
 
     timeline = get_timeline(owner.id, grants, prices, loans, initial_price)
-    ts_dict = {
-        "federal_income_rate": sale.federal_income_rate if sale.federal_income_rate is not None else ts_row.federal_income_rate,
-        "federal_lt_cg_rate": sale.federal_lt_cg_rate if sale.federal_lt_cg_rate is not None else ts_row.federal_lt_cg_rate,
-        "federal_st_cg_rate": sale.federal_st_cg_rate if sale.federal_st_cg_rate is not None else ts_row.federal_st_cg_rate,
-        "niit_rate": sale.niit_rate if sale.niit_rate is not None else ts_row.niit_rate,
-        "state_income_rate": sale.state_income_rate if sale.state_income_rate is not None else ts_row.state_income_rate,
-        "state_lt_cg_rate": sale.state_lt_cg_rate if sale.state_lt_cg_rate is not None else ts_row.state_lt_cg_rate,
-        "state_st_cg_rate": sale.state_st_cg_rate if sale.state_st_cg_rate is not None else ts_row.state_st_cg_rate,
-        "lt_holding_days": sale.lt_holding_days if sale.lt_holding_days is not None else ts_row.lt_holding_days,
-    }
-    return compute_sale_tax(timeline, {"date": sale.date, "shares": sale.shares, "price_per_share": sale.price_per_share}, ts_dict)
+    loan_grant_by_id = {ln.id: (ln.grant_year, ln.grant_type) for ln in loans_db}
+    flexible_enabled = _flexible_payoff_enabled(db)
+    all_sales = db.query(Sale).filter(Sale.user_id == owner.id).order_by(Sale.date).all()
+    specs = [{
+        "id": s.id, "date": s.date, "shares": s.shares, "price_per_share": s.price_per_share,
+        "loan_id": s.loan_id, "lot_overrides": s.lot_overrides,
+        "rates": {
+            "federal_income_rate": s.federal_income_rate if s.federal_income_rate is not None else ts_row.federal_income_rate,
+            "federal_lt_cg_rate": s.federal_lt_cg_rate if s.federal_lt_cg_rate is not None else ts_row.federal_lt_cg_rate,
+            "federal_st_cg_rate": s.federal_st_cg_rate if s.federal_st_cg_rate is not None else ts_row.federal_st_cg_rate,
+            "niit_rate": s.niit_rate if s.niit_rate is not None else ts_row.niit_rate,
+            "state_income_rate": s.state_income_rate if s.state_income_rate is not None else ts_row.state_income_rate,
+            "state_lt_cg_rate": s.state_lt_cg_rate if s.state_lt_cg_rate is not None else ts_row.state_lt_cg_rate,
+            "state_st_cg_rate": s.state_st_cg_rate if s.state_st_cg_rate is not None else ts_row.state_st_cg_rate,
+            "lt_holding_days": s.lt_holding_days if s.lt_holding_days is not None else ts_row.lt_holding_days,
+        },
+    } for s in all_sales]
+    results, _ = compute_all_sale_taxes(
+        timeline, specs, loan_grant_by_id, ts_row.loan_payoff_method, ts_row.lot_selection_method, flexible_enabled,
+    )
+    return results[sale_id]
 
 
 @router.get("/view/{invitation_id}/export/excel")

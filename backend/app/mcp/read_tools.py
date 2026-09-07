@@ -288,7 +288,12 @@ def _list_loans(ctx: ToolContext, args: dict):
     paid: dict[int, float] = {}
     for payment in payments:
         paid[payment.loan_id] = paid.get(payment.loan_id, 0.0) + payment.amount
-    successor = {ln.refinances_loan_id: ln.id for ln in loans_db if ln.refinances_loan_id}
+    # `ln.id != ln.refinances_loan_id`: a row pointing at itself supersedes
+    # nothing, and reading it as superseded marked a live loan settled.
+    successor = {
+        ln.refinances_loan_id: ln.id for ln in loans_db
+        if ln.refinances_loan_id and ln.refinances_loan_id != ln.id
+    }
     settled_by_sale = {s.loan_id for s in sales if s.loan_id is not None and s.date <= today}
 
     loans = _rows(Loan, owner, ctx.db, Loan.due_date)

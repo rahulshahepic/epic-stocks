@@ -315,3 +315,105 @@ def test_an_imported_refinance_chain_counts_once(client):
     ]))
     assert resp.status_code == 201, resp.text
     assert client.get("/api/dashboard").json()["total_loan_principal"] == 50000.0
+
+
+# ── a loan pointing at itself supersedes nothing ────────────────────────────
+
+def self_referencing_loan(client, db_session, **kw):
+    """The state a real account is in: a live loan whose refinances_loan_id is
+    its own id. Writes have refused that since the bulk resolvers compared ids,
+    so straight SQL is the only way to reach it — and the only way to test that
+    the read side still handles rows written before the guard existed.
+    """
+    from sqlalchemy import text
+
+    created = client.post("/api/loans?generate_payoff_sale=false", json=loan(**kw)).json()
+    db_session.execute(text("UPDATE loans SET refinances_loan_id = id WHERE id = :i"),
+                       {"i": created["id"]})
+    db_session.commit()
+    return created["id"]
+
+
+def test_a_loan_that_points_at_itself_is_still_owed(account, db_session):
+    """Reading a self-reference as supersession dropped a live 6,432.84 debt
+    out of every total. A row supersedes nothing but itself, which is nothing."""
+    self_referencing_loan(account, db_session)
+    assert account.get("/api/dashboard").json()["total_loan_principal"] == PRINCIPAL
+
+
+def test_it_stays_on_the_payoff_schedule_too(account, db_session):
+    """The aggregate and the schedule were wrong by the same amount, which is
+    why they agreed and neither looked suspect."""
+    self_referencing_loan(account, db_session)
+    dash = account.get("/api/dashboard").json()
+    scheduled = sum(y["payoff_sale"] + y["cash_in"] for y in dash["loan_payment_by_year"])
+    assert scheduled == pytest.approx(PRINCIPAL)
+    assert dash["total_loan_principal"] == pytest.approx(scheduled)
+
+
+def test_a_self_referencing_tax_loan_still_counts(account, db_session):
+    self_referencing_loan(account, db_session, loan_type="Tax")
+    assert account.get("/api/dashboard").json()["total_tax_paid"] == PRINCIPAL
+
+
+def test_it_still_accrues_projected_interest(db_session, account):
+    """`_build_interest_pool` walks the same exclusion set, so it was
+    understating the deduction by this loan's interest every year."""
+    from app.routers.events import _build_interest_pool
+    from scaffold.models import Loan, User
+    from tests.conftest import user_key
+
+    self_referencing_loan(account, db_session)
+    user = db_session.query(User).one()
+    with user_key(user):
+        pool = _build_interest_pool(db_session.query(Loan).filter(Loan.user_id == user.id).all())
+    assert pool, "a live purchase loan must project interest"
+    assert set(pool.values()) == {PRINCIPAL * 0.03}
+
+
+def test_the_connector_does_not_report_it_as_refinanced(account, db_session):
+    """list_loans builds its own successor map and had the same bug: the loan
+    came back `refinanced` with a zero balance."""
+    loan_id = self_referencing_loan(account, db_session)
+    row = next(r for r in Mcp(account).call("list_loans")["loans"] if r["id"] == loan_id)
+    assert row["status"] == "outstanding"
+    assert row["superseded_by_loan_id"] is None
+    assert row["balance"] == PRINCIPAL
+
+
+def test_a_real_chain_beside_a_self_reference_is_still_deduped(account, db_session):
+    """Both rules at once: three links collapse to one, the self-link stands."""
+    chain(account, 3)
+    self_referencing_loan(account, db_session, loan_number="SELF")
+    dash = account.get("/api/dashboard").json()
+    assert dash["total_loan_principal"] == pytest.approx(PRINCIPAL * 2)
+    scheduled = sum(y["payoff_sale"] + y["cash_in"] for y in dash["loan_payment_by_year"])
+    assert dash["total_loan_principal"] == pytest.approx(scheduled)
+
+
+def test_the_error_names_the_grant_types_that_year_had(account):
+    """"2019 Bonus" is not a near miss — 2019 had Catch-Up and Purchase. Saying
+    which is the difference between a rejection and a usable one."""
+    from app.epic_import.skeleton import build_skeleton
+
+    schedule, _ = build_skeleton(load_content_for(account))
+    year = next((t.year for t in schedule.templates), None)
+    if year is None:
+        pytest.skip("no company grant schedule seeded in this environment")
+    types = sorted({t.type for t in schedule.templates if t.year == year})
+
+    resp = account.post("/api/loans", json=loan(grant_year=year, grant_type="Nonexistent"))
+    assert resp.status_code == 400
+    for t in types:
+        assert t in resp.json()["detail"]
+
+
+def load_content_for(client):
+    from app.content_service import load_content
+    from database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        return load_content(db)
+    finally:
+        db.close()

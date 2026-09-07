@@ -404,7 +404,8 @@ def submit(
 
     # Payoff sales for all loans — skip refinanced loans (their payoff events
     # are converted to $0 "Refinanced" events, so a linked sale would be confusing)
-    refinanced_ids = {loan.refinances_loan_id for loan, _ in loan_objects if loan.refinances_loan_id is not None}
+    from app.routers.events import _refinanced_loan_ids
+    refinanced_ids = _refinanced_loan_ids([loan for loan, _ in loan_objects])
     payoff_count = 0
     if body.generate_payoff_sales:
         from app.routers.loans import _compute_payoff_sale

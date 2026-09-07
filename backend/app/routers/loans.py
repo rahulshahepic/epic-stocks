@@ -270,6 +270,22 @@ def _compute_payoff_sale(loan: Loan, user: User, db: Session) -> dict:
     }
 
 
+def _company_grant_types(grant_year: int, db: Session) -> list[str]:
+    """The grant types the company issued that year, per the same company
+    schedule `get_import_guide` serves, so the two cannot drift.
+
+    Used to say what a rejected loan *could* have attached to. Empty when the
+    schedule has nothing for that year, or nothing at all — a fork, a fresh
+    install, unseeded content tables, or simply a grant year newer than the
+    templates, which lag.
+    """
+    from app.content_service import load_content
+    from app.epic_import.skeleton import build_skeleton
+
+    schedule, _ = build_skeleton(load_content(db))
+    return sorted({t.type for t in schedule.templates if t.year == grant_year})
+
+
 def _check_grant_exists(grant_year: int, grant_type: str, user: User, db: Session) -> None:
     """Refuse a loan whose (grant_year, grant_type) matches no grant of this user's.
 
@@ -277,16 +293,26 @@ def _check_grant_exists(grant_year: int, grant_type: str, user: User, db: Sessio
     the payoff schedule, the interest pool, the cost basis — looks the grant up
     by that pair. A row that resolves to nothing is invisible to all of them and
     still counts toward the dashboard's totals, so it reads as real money owed
-    against equity that does not exist.
+    against equity that does not exist. A loan tagged "2019 Bonus" was found on
+    a real account; 2019 has Catch-Up and Purchase only.
+
+    The account's own grants are the authority, not the company schedule:
+    `create_grant` does not check the type against that schedule either, so
+    enforcing it here would make a grant the app accepted impossible to attach a
+    loan to — and a fork with its own content tables could attach none at all.
+    The schedule's job is the error message, which can name what that year
+    actually had when this cannot.
     """
     exists = db.query(Grant.id).filter(
         Grant.user_id == user.id, Grant.year == grant_year, Grant.type == grant_type,
     ).first()
-    if not exists:
-        raise HTTPException(
-            status_code=400,
-            detail=f"No {grant_year} {grant_type} grant to attach this loan to",
-        )
+    if exists:
+        return
+    detail = f"No {grant_year} {grant_type} grant to attach this loan to"
+    company_types = _company_grant_types(grant_year, db)
+    if company_types and grant_type not in company_types:
+        detail += f". {grant_year} grant types: " + ", ".join(company_types)
+    raise HTTPException(status_code=400, detail=detail)
 
 
 def _check_refinance_target(loan_id: int | None, user: User, db: Session, self_id: int | None = None) -> None:
@@ -498,7 +524,8 @@ def _regenerate_future_payoff_sales(user: User, db: Session, create_missing: boo
     today = date_type.today()
     future_loans = db.query(Loan).filter(Loan.user_id == user.id, Loan.due_date >= today).all()
     # Skip refinanced loans — they show as $0 "Refinanced" events
-    refinanced_ids = {ln.refinances_loan_id for ln in future_loans if ln.refinances_loan_id is not None}
+    from app.routers.events import _refinanced_loan_ids
+    refinanced_ids = _refinanced_loan_ids(future_loans)
     ts = _get_tax_settings_dict(user, db)
     updated = 0
     created = 0

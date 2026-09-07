@@ -26,7 +26,7 @@ from scaffold.oauth import audit
 from scaffold.oauth.resource import Connector, require_connector
 from scaffold.oauth.settings import mcp_enabled
 from scaffold.rate_limit import check_rate_shared
-from . import read_tools  # noqa: F401  — importing is what registers the tools
+from . import import_tools, read_tools  # noqa: F401  — importing is what registers the tools
 from .tools import REGISTRY, ToolContext, as_result, visible_to
 
 logger = logging.getLogger(__name__)
@@ -156,7 +156,20 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext) -> d
             "serverInfo": {"name": "epic-stocks", "title": "Epic Stocks", "version": "1"},
             "instructions": (
                 "Equity vesting, loans, sales and tax figures for the signed-in "
-                "account. Every tool reads; nothing here can change the user's data."
+                "account.\n\n"
+                "Call explain before reasoning about the numbers. This is a "
+                "private-company scheme and several ordinary RSU rules do not "
+                "hold: some grants have a zero cost basis and are taxed as they "
+                "vest, others are bought at market value and vesting only lifts "
+                "a sale restriction.\n\n"
+                "list_events computes the whole timeline on every call — filter "
+                "it by date range or event type rather than pulling everything, "
+                "and check `truncated` before totalling what comes back.\n\n"
+                "Helping someone enter their equity: read get_import_guide "
+                "first, then stage_import. Vesting dates and periods are fixed "
+                "company-wide and must not be invented. stage_import changes "
+                "nothing on its own — it leaves a draft the user accepts in the "
+                "app, so say that rather than reporting the import as done."
             ),
         })
 

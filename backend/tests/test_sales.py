@@ -5,7 +5,7 @@ import math
 from datetime import date
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from tests.conftest import register_user
+from tests.conftest import register_user, seed_grant
 from app.sales_engine import build_fifo_lots, compute_sale_tax, compute_grossup_shares
 from collections import deque
 
@@ -609,7 +609,9 @@ LOAN_DATA = {
 
 
 def _create_loan(client, data=None):
-    resp = client.post("/api/loans?generate_payoff_sale=false", json=data or LOAN_DATA)
+    body = data or LOAN_DATA
+    seed_grant(client, body["grant_year"], body["grant_type"])
+    resp = client.post("/api/loans?generate_payoff_sale=false", json=body)
     assert resp.status_code == 201
     return resp.json()["id"]
 
@@ -755,6 +757,7 @@ def test_duplicate_payoff_sale_rejected(client):
 def test_create_loan_no_auto_sale_when_disabled(client):
     """POST /api/loans?generate_payoff_sale=false should NOT create a sale."""
     register_user(client)
+    seed_grant(client)
     resp = client.post("/api/loans?generate_payoff_sale=false", json=LOAN_DATA)
     assert resp.status_code == 201
     sales_resp = client.get("/api/sales")
@@ -764,6 +767,7 @@ def test_create_loan_no_auto_sale_when_disabled(client):
 def test_create_loan_auto_sale_skipped_without_price(client):
     """Auto-sale is skipped when no price data exists (price=0)."""
     register_user(client)
+    seed_grant(client)
     # No price records → price=0 → auto-sale skipped
     resp = client.post("/api/loans?generate_payoff_sale=true", json=LOAN_DATA)
     assert resp.status_code == 201

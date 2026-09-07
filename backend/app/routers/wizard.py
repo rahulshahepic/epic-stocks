@@ -392,7 +392,13 @@ def submit(
     }
     for loan, ref_num in loan_objects:
         if ref_num and ref_num in all_loans_by_number:
-            loan.refinances_loan_id = all_loans_by_number[ref_num].id
+            target = all_loans_by_number[ref_num]
+            # A loan cannot refinance itself. The CRUD path refuses this; the bulk
+            # resolvers matched on loan_number and never checked, so a payload
+            # naming its own number produced a row the payoff schedule dropped
+            # while the dashboard still counted its principal.
+            if target.id != loan.id:
+                loan.refinances_loan_id = target.id
 
     db.flush()
 

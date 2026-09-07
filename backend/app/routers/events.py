@@ -62,11 +62,27 @@ def _last_vesting_date(timeline: list):
     return last
 
 
+def _refinanced_loan_ids(loans_db) -> set[int]:
+    """Ids of loans another row has refinanced — superseded, not outstanding.
+
+    A refinance chain keeps every link as a row, so any aggregate that sums
+    `amount` across `loans_db` without this counts the same debt once per link.
+    A four-link chain on one 76k loan reported 305k.
+    """
+    return {l.refinances_loan_id for l in loans_db if l.refinances_loan_id is not None}
+
+
+def _live_loans(loans_db) -> list:
+    """The loans that still carry debt: every row no other row supersedes."""
+    superseded = _refinanced_loan_ids(loans_db)
+    return [l for l in loans_db if l.id not in superseded]
+
+
 def _compute_outstanding_principal(loans_db, loan_payments, sales, as_of_date) -> float:
     """Outstanding loan principal as of a date, excluding settled/refinanced loans."""
     year = as_of_date.year
     settled_ids = {s.loan_id for s in sales if s.loan_id is not None and s.date <= as_of_date}
-    refinanced_ids = {l.refinances_loan_id for l in loans_db if l.refinances_loan_id is not None}
+    refinanced_ids = _refinanced_loan_ids(loans_db)
     early_paid: dict[int, float] = {}
     for lp in loan_payments:
         if lp.date <= as_of_date:
@@ -515,8 +531,11 @@ def _build_interest_pool(loans_db: list) -> dict[int, float]:
       + compounding on existing interest loans for that grant.
     """
     from collections import defaultdict
-    purchase_loans = [l for l in loans_db if l.loan_type == 'Purchase']
-    interest_loans  = [l for l in loans_db if l.loan_type == 'Interest']
+    # Only live links: a refinanced loan's principal is carried by its successor,
+    # so projecting interest on both charged the same debt twice.
+    live = _live_loans(loans_db)
+    purchase_loans = [l for l in live if l.loan_type == 'Purchase']
+    interest_loans  = [l for l in live if l.loan_type == 'Interest']
 
     # Index: (grant_year, grant_type) -> {loan_year: Loan}
     interest_by_grant: dict = defaultdict(dict)
@@ -844,6 +863,33 @@ def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(
     return _get_dashboard_data(user, db)
 
 
+def _as_of_view(payload: dict, as_of: date, timeline: list) -> dict:
+    """Rename the bounded figures to say what they actually count.
+
+    `total_*` bounded to a date are not the totals the app's keys mean: a caller
+    read `total_shares` as the whole position and got the vested count. So the
+    date-bounded figures get date-bounded names, and the one full-schedule figure
+    that is a fact rather than an assumption comes back beside them — share
+    counts follow the vesting schedule, income and gains follow projected prices,
+    which is why there is no lifetime equivalent of those two.
+    """
+    payload = dict(payload)
+    payload["as_of"] = as_of.isoformat()
+    payload["vested_shares"] = payload.pop("total_shares")
+    payload["shares_at_end_of_schedule"] = timeline[-1].get("cum_shares", 0) if timeline else 0
+    payload["income_to_date"] = payload.pop("total_income")
+    payload["cap_gains_to_date"] = payload.pop("total_cap_gains")
+    payload["basis"] = (
+        "vested_shares, income_to_date, cap_gains_to_date, total_tax_paid and "
+        f"cash_received count only what has happened by {as_of.isoformat()}. "
+        "shares_at_end_of_schedule is the position once every grant on record has "
+        "fully vested — a share count, so it is a fact. There is no lifetime "
+        "income or gains figure because those would be computed from prices the "
+        "user assumed."
+    )
+    return payload
+
+
 def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> dict:
     """Core dashboard logic, usable by both the direct endpoint and shared view.
 
@@ -861,9 +907,12 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
     grants, prices, loans, loans_db, initial_price, _election_83b_map, estimated_price_dates = _user_source_data(user, db)
 
     today = date.today()
+    # Live rows only. A refinanced loan is carried by its successor, so summing
+    # every row charges one debt once per link in its chain.
+    live_loans = _live_loans(loans_db)
     total_tax_paid = sum(
-        ln["amount"] for ln in loans
-        if ln["loan_type"] == "Tax" and ln["loan_year"] <= today.year
+        ln.amount for ln in live_loans
+        if ln.loan_type == "Tax" and ln.loan_year <= today.year
     )
 
     sales_db = db.query(Sale).filter(Sale.user_id == user.id).all()
@@ -885,12 +934,15 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
     sale_taxes = 0.0
 
     if not grants and not prices:
-        return {
+        empty = {
             "current_price": 0, "total_shares": 0,
             "total_income": 0, "total_cap_gains": 0,
             "total_loan_principal": 0, "total_tax_paid": 0,
             "cash_received": 0, "next_event": None,
         }
+        # An empty account must not hand back a different shape from a full one,
+        # or a caller reads `total_shares` here and `vested_shares` everywhere else.
+        return _as_of_view(empty, as_of, []) if as_of is not None else empty
 
     timeline = get_timeline(user.id, grants, prices, loans, initial_price)
 
@@ -951,11 +1003,8 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
             sale_taxes += tax
 
     # Loan payment by year: payoff_sale vs cash_in (skip refinanced loans — they show as $0 events)
-    refinanced_loan_ids_dash: set[int] = {ln.refinances_loan_id for ln in loans_db if ln.refinances_loan_id is not None}
     loan_payment_by_year: dict[str, dict] = {}
-    for ln in loans_db:
-        if ln.id in refinanced_loan_ids_dash:
-            continue
+    for ln in live_loans:
         year = str(ln.due_date.year)
         early_paid = payments_by_loan.get(ln.id, 0.0)
         cash_due = max(0.0, ln.amount - early_paid)
@@ -1037,14 +1086,14 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
             else:
                 break
 
-    return {
+    payload = {
         "as_of": as_of.isoformat() if as_of else None,
         "price_is_estimate": price_is_estimate,
         "current_price": last.get("share_price", initial_price),
         "total_shares": last.get("cum_shares", 0),
         "total_income": last.get("cum_income", 0),
         "total_cap_gains": round(last.get("cum_cap_gains", 0), 2),
-        "total_loan_principal": sum(ln["amount"] for ln in loans),
+        "total_loan_principal": round(sum(ln.amount for ln in live_loans), 2),
         "total_tax_paid": round(total_tax_paid - tax_savings_from_deduction, 2),
         "cash_received": round(cash_received_gross - sale_taxes, 2),
         "interest_deduction_total": round(interest_deduction_total, 2),
@@ -1052,3 +1101,5 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
         "loan_payment_by_year": sorted(loan_payment_by_year.values(), key=lambda x: x["year"]),
         "next_event": next_event,
     }
+
+    return _as_of_view(payload, as_of, timeline) if as_of is not None else payload

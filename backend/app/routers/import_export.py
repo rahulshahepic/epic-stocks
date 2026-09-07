@@ -258,6 +258,23 @@ def import_excel(
             all_errors.append(f"Duplicate grant: {key[1]} {key[0]} appears more than once in the Schedule sheet")
         seen_grants.add(key)
 
+    # Every loan must hang off a grant. A loan that resolves to none is invisible
+    # to the payoff schedule, the interest pool and the cost basis, yet still
+    # counts toward the dashboard's totals — money owed against equity that does
+    # not exist. Checked here, before anything is wiped, against the grants the
+    # file carries, or the ones already on the account when it has no Schedule sheet.
+    known_grants = (
+        {(_to_year(g["year"]), str(g.get("type", "")).strip()) for g in grants_raw}
+        if has_schedule
+        else {(g.year, g.type) for g in db.query(Grant).filter(Grant.user_id == user.id).all()}
+    )
+    for i, ln in enumerate(loans_raw):
+        key = (_to_year(ln["grant_yr"]), str(ln.get("grant_type", "")).strip())
+        if key not in known_grants:
+            all_errors.append(
+                f"Loans row {i + 2}: no {key[0]} {key[1]} grant to attach this loan to"
+            )
+
     if all_errors:
         raise HTTPException(status_code=400, detail="Validation errors:\n" + "\n".join(all_errors))
 
@@ -338,7 +355,9 @@ def import_excel(
 
     for ln_raw, loan_obj in inserted_loans:
         ref_num = str(ln_raw.get("refinances_loan_number") or "").strip()
-        if ref_num and ref_num in loan_num_to_id:
+        # Never point a loan at itself: the payoff schedule then treats it as
+        # superseded and drops it while the dashboard still counts its principal.
+        if ref_num and loan_num_to_id.get(ref_num) not in (None, loan_obj.id):
             loan_obj.refinances_loan_id = loan_num_to_id[ref_num]
 
     db.commit()
@@ -579,7 +598,9 @@ def restore_import_backup(
 
     for ln_raw, loan_obj in inserted_loans:
         ref_num = str(ln_raw.get("refinances_loan_number") or "").strip()
-        if ref_num and ref_num in loan_num_to_id:
+        # Never point a loan at itself: the payoff schedule then treats it as
+        # superseded and drops it while the dashboard still counts its principal.
+        if ref_num and loan_num_to_id.get(ref_num) not in (None, loan_obj.id):
             loan_obj.refinances_loan_id = loan_num_to_id[ref_num]
 
     db.commit()

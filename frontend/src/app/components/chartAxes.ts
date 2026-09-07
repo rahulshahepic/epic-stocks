@@ -55,6 +55,6 @@ export interface ChartColors {
 export function useChartColors(): ChartColors {
   const dark = useDark()
   return dark
-    ? { grid: '#252220', axis: '#A8998F', tooltipBg: '#1C1917', tooltipText: '#F2EDE8' }
-    : { grid: '#EAE7E3', axis: '#6B5F58', tooltipBg: '#ffffff', tooltipText: '#1A1411' }
+    ? { grid: '#493A33', axis: '#C8B9AF', tooltipBg: '#2A211D', tooltipText: '#F2EDE8' }
+    : { grid: '#E4D9CC', axis: '#62544C', tooltipBg: '#ffffff', tooltipText: '#211713' }
 }

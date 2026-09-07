@@ -22,6 +22,7 @@ import { HeroCard, IconTile, Eyebrow } from '../../scaffold/components/ui/Card.t
 import { cardClass } from '../../scaffold/components/ui/cardShell.ts'
 import { Sparkline, IconTrendUp } from '../../scaffold/components/ui/icons.tsx'
 import { StatCard as Card } from '../components/StatCard.tsx'
+import { StockJourney } from '../components/StockJourney.tsx'
 
 /**
  * Nudge when the newest share price on file is from an earlier year.
@@ -346,10 +347,42 @@ export default function Dashboard() {
   const totalValue = grantHoldings ? grantHoldings.reduce((s, h) => s + h.totalValue, 0) : 0
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
+      {grantHoldings && (
+        <HeroCard
+          className="min-h-52 p-6 sm:p-8"
+          watermark={<Sparkline className="h-32 w-56" color="#fff" />}
+        >
+          <div className="grid gap-6 sm:grid-cols-[minmax(0,1.5fr)_minmax(16rem,1fr)] sm:items-end">
+            <div>
+              <Eyebrow className="text-white">Your position · {fmtFullDate(cardDate)}</Eyebrow>
+              <p className="mt-2 font-serif text-4xl font-semibold tabular-nums tracking-tight sm:text-6xl">
+                {fmt$(totalValue - cv.total_loan_principal)}
+              </p>
+              <p className="mt-2 text-sm font-semibold text-white">Net worth in Epic stock</p>
+            </div>
+            <div className="space-y-3 border-t border-white/35 pt-4 text-sm sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
+              <p className="font-bold tabular-nums">
+                {fmt$(totalValue)} in shares − {fmt$(cv.total_loan_principal)} loans
+              </p>
+              <p className="font-semibold tabular-nums">
+                {fmtNum(cv.total_shares)} vested shares · {fmtPrice(cv.current_price)}/share
+                {cv.price_is_estimate ? ' estimated' : ''}
+              </p>
+              {cv.next_event && (
+                <p className="border-t border-white/35 pt-3">
+                  <span className="text-xs font-semibold uppercase tracking-wide">Next stop</span><br />
+                  <span className="font-bold">{fmtFullDate(cv.next_event.date)}</span>
+                </p>
+              )}
+            </div>
+          </div>
+        </HeroCard>
+      )}
+
       {/* Date selector for card values */}
-      <div className="rounded-xl border border-cs-border bg-cs-surface px-3 py-2.5 shadow-card">
-        <div className="flex items-center gap-2">
+      <div className="rounded-2xl border border-cs-border bg-cs-surface px-3 py-2.5 shadow-card sm:flex sm:items-center sm:gap-3 sm:px-4">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           <span className="shrink-0 text-xs font-medium text-cs-muted">As of</span>
           <input
             type="date"
@@ -359,7 +392,7 @@ export default function Dashboard() {
             className="h-7 flex-1 rounded border border-cs-border-strong bg-cs-surface px-2 text-xs text-cs-text"
           />
         </div>
-        <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 sm:mt-0">
           <span className="shrink-0 text-xs text-cs-muted">Jump to:</span>
           {([
             { label: 'Today', mode: 'today' as const },
@@ -389,36 +422,16 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {!readOnly && <TipCarousel onApply={() => { reloadDash(); reloadEvents(); reloadTaxSettings() }} />}
+      {events && <StockJourney events={events} asOf={cardDate} />}
 
-      {stalePrice && <StalePriceBanner latest={stalePrice} readOnly={readOnly} />}
-
-      {grantHoldings && (
-        <HeroCard watermark={<Sparkline className="h-24 w-40" color="#fff" />}>
-          <Eyebrow className="text-white">Net worth · as of {fmtFullDate(cardDate)}</Eyebrow>
-          <p className="mt-1 text-3xl font-extrabold tabular-nums tracking-tight sm:text-4xl">
-            {fmt$(totalValue - cv.total_loan_principal)}
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-white">
-            <span><span className="font-semibold">{fmtNum(cv.total_shares)}</span> vested shares</span>
-            <span className="hidden h-1 w-1 rounded-full bg-white/60 sm:inline-block" />
-            <span>
-              <span className="font-semibold">{fmtPrice(cv.current_price)}</span> / share
-              {cv.price_is_estimate && <span className="ml-1">(est.)</span>}
-            </span>
-            {cv.total_loan_principal > 0 && (
-              <>
-                <span className="hidden h-1 w-1 rounded-full bg-white/60 sm:inline-block" />
-                <span>{fmt$(totalValue)} in shares − {fmt$(cv.total_loan_principal)} loans</span>
-              </>
-            )}
-          </div>
-        </HeroCard>
-      )}
+      <div className="grid gap-3 lg:grid-cols-2">
+        {!readOnly && <TipCarousel onApply={() => { reloadDash(); reloadEvents(); reloadTaxSettings() }} />}
+        {stalePrice && <StalePriceBanner latest={stalePrice} readOnly={readOnly} />}
+      </div>
 
       {/* (F) aria-live so screen readers announce summary updates when cardDate changes */}
       <div aria-live="polite" aria-atomic="true" className="space-y-3">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-cs-muted">Up to this date</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-cs-muted">Up to this date</p>
 
         <ShareCards cv={cv} cardDate={cardDate} grantHoldings={grantHoldings}
           totalValue={totalValue} openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
@@ -433,7 +446,7 @@ export default function Dashboard() {
 
       {showExitPreview && (
         <div aria-live="polite" aria-atomic="true" className="space-y-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-cs-muted">
+          <p className="text-xs font-semibold uppercase tracking-wide text-cs-muted">
             If you exited on this date
           </p>
           {exitPreview === 'loading' ? (

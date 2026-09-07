@@ -352,7 +352,7 @@ export function DashboardCharts({
   return (
     <div className="grid gap-4 md:grid-cols-2">
       {events && events.length > 0 && (
-        <ChartBox title="Shares Over Time" range={range} setRange={setRange} maxDate={maxDate}>
+        <ChartBox className="md:col-span-2" title="Shares Over Time" range={range} setRange={setRange} maxDate={maxDate}>
           <SharesChart events={events} c={c} range={range} hasFuturePrices={hasFuturePrices} />
         </ChartBox>
       )}

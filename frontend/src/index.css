@@ -4,17 +4,21 @@
 
 /* ── Crimson Studio palette ──────────────────────────────── */
 :root {
-  --cs-base: #F8F6F4;
+  --cs-base: #F7F2EA;
   --cs-surface: #FFFFFF;
-  --cs-raised: #F0EDE9;
-  --cs-border: #EAE7E3;
-  --cs-border-strong: #C8C3BC;
-  --cs-text: #1A1411;
-  --cs-text-2: #6B5F58;
-  --cs-muted: #78716C;
+  --cs-raised: #EFE8DD;
+  --cs-border: #E4D9CC;
+  --cs-border-strong: #B9AA9A;
+  --cs-text: #211713;
+  --cs-text-2: #62544C;
+  --cs-muted: #75665D;
   --cs-brand: #C41230;
   --cs-brand-hover: #A80F28;
   --cs-brand-subtle: #F7E8EB;
+  --cs-gold: #B25B00;
+  --cs-emerald: #087A55;
+  --cs-cobalt: #1769AA;
+  --cs-plum: #71358A;
 
   /* Chart accent palette — one fixed hue per series across the whole app */
   --cs-chart-shares: #C41230;
@@ -31,9 +35,9 @@
 }
 
 .dark {
-  --cs-base: #111009;
-  --cs-surface: #1C1917;
-  --cs-raised: #252220;
+  --cs-base: #201916;
+  --cs-surface: #2A211D;
+  --cs-raised: #352A25;
   --cs-border: rgba(255, 255, 255, 0.07);
   --cs-border-strong: rgba(255, 255, 255, 0.14);
   --cs-text: #F2EDE8;
@@ -87,8 +91,21 @@ html.dark {
 
 body {
   background-color: var(--cs-base);
+  background-image:
+    radial-gradient(circle at 8% 12%, color-mix(in srgb, var(--cs-brand) 6%, transparent) 0 8rem, transparent 8.1rem),
+    radial-gradient(circle at 94% 38%, color-mix(in srgb, var(--cs-chart-price) 5%, transparent) 0 11rem, transparent 11.1rem);
+  background-attachment: fixed;
   font-family: var(--font-sans);
   font-feature-settings: 'cv11', 'ss01';
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* ── Animations ─────────────────────────────────────────── */

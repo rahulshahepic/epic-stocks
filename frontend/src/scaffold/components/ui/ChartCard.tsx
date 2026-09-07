@@ -18,9 +18,9 @@ export function ChartCard({
   children: ReactNode
 }) {
   return (
-    <Card>
+    <Card className="overflow-hidden border-t-4 border-t-cs-border-strong">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-cs-text">{title}</h3>
+        <h3 className="font-serif text-lg font-semibold text-cs-text">{title}</h3>
         {controls}
       </div>
       {legend && <div className="mb-2">{legend}</div>}

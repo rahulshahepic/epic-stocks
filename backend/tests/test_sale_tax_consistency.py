@@ -12,7 +12,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from tests.conftest import register_user
-from tests.test_flexible_payoff import GRANT_DATA, GRANT_DATA2, _setup_data
+from tests.test_flexible_payoff import _setup_data
 
 
 def test_payoff_sizing_matches_timeline_and_breakdown_when_tranche_exhausts(client, db_session):

@@ -1041,7 +1041,7 @@ def test_lifo_multi_sale_lot_tracking():
         },
     ]
 
-    _annotate_sale_taxes(enriched, vesting_tl, WI_DEFAULTS, lot_order='lifo')
+    _annotate_sale_taxes(enriched, vesting_tl, WI_DEFAULTS, lot_selection_method='lifo')
 
     sale1_tax = enriched[0]["estimated_tax"]
     sale2_tax = enriched[1]["estimated_tax"]

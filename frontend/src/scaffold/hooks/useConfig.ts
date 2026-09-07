@@ -6,6 +6,7 @@ interface AppConfig {
   email_notifications_available: boolean
   resend_from: string
   epic_mode: boolean
+  ai_connections: boolean
 }
 
 let cached: AppConfig | null = null
@@ -31,8 +32,9 @@ function fetchConfig(): Promise<AppConfig> {
       email_notifications_available: !!data.email_notifications_available,
       resend_from: data.resend_from || '',
       epic_mode: !!data.epic_mode,
+      ai_connections: !!data.ai_connections,
     }))
-    .catch(() => ({ vapid_public_key: '', email_notifications_available: false, resend_from: '', epic_mode: false }))
+    .catch(() => ({ vapid_public_key: '', email_notifications_available: false, resend_from: '', epic_mode: false, ai_connections: false }))
     .then(config => {
       cached = config
       inflight = null

@@ -13,6 +13,9 @@ import database
 from scaffold.routers import auth_router, admin, notifications, push, unsubscribe, reports
 from app.routers import grants, loans, prices, events, flows, import_export, epic_import, sales, cache as cache_router, tips, wizard, content, sharing, trial
 from app.routers.retirement import retirement_router, dashboard_prefs_router
+from scaffold.oauth import router as oauth_router
+from scaffold.oauth.router import well_known_router as oauth_well_known_router
+from app.mcp import transport as mcp_transport
 from scaffold.auth import get_current_user
 from scaffold.body_limit import BodyLimitMiddleware
 from scaffold.crypto import encryption_enabled, decrypt_user_key, set_current_key
@@ -72,6 +75,7 @@ def _bootstrap_system():
     """Ensure system_settings seed rows and master key are initialized on every boot."""
     from scaffold.crypto import initialize_master_key, backfill_plaintext_encryption
     from app.content_service import seed_content_if_empty
+    from scaffold.oauth.settings import seed_defaults as seed_mcp_defaults
     db = database.SessionLocal()
     try:
         initialize_master_key(db)
@@ -85,6 +89,13 @@ def _bootstrap_system():
         seed_content_if_empty(db)
     except Exception:
         logger.exception("Failed to seed wizard content")
+    try:
+        # The migration seeds these for an existing database; this covers a
+        # fresh one, and the test suite, which builds its schema with
+        # create_all and never runs migrations.
+        seed_mcp_defaults(db)
+    except Exception:
+        logger.exception("Failed to seed AI connection settings")
     finally:
         db.close()
 
@@ -334,6 +345,14 @@ def _start_nightly_maintenance():
                 _cleanup_epic_past_estimates(db)
             except Exception:
                 logger.warning("Nightly estimate cleanup failed", exc_info=True)
+            finally:
+                db.close()
+            try:
+                db = database.SessionLocal()
+                from scaffold.oauth.cleanup import prune as prune_connectors
+                prune_connectors(db)
+            except Exception:
+                logger.warning("Nightly connector cleanup failed", exc_info=True)
             finally:
                 db.close()
 
@@ -654,6 +673,18 @@ _fastapi_app.include_router(reports.router)
 _fastapi_app.include_router(content.router)
 _fastapi_app.include_router(retirement_router)
 _fastapi_app.include_router(dashboard_prefs_router)
+# The OAuth server and /mcp are registered here, alongside everything else, and
+# not later: spa_fallback is mounted at /{path:path} and answers anything it
+# catches with index.html and a 200. These paths are not under /api/, so a
+# registration that landed after the mount would hand an MCP client HTML.
+# Registered unconditionally. Whether AI connections are available is an admin
+# setting now, checked per request, so it can be switched without a redeploy —
+# and a router that only exists on some boots is the kind of thing that makes a
+# 404 impossible to tell apart from a routing bug.
+_fastapi_app.include_router(oauth_well_known_router)
+_fastapi_app.include_router(oauth_router.router)
+_fastapi_app.include_router(oauth_router.api_router)
+_fastapi_app.include_router(mcp_transport.router)
 
 
 @_fastapi_app.get("/api/health")
@@ -672,6 +703,7 @@ def status():
 def client_config(request: Request):
     from scaffold.email_sender import email_configured
     from scaffold.epic_mode import is_epic_mode
+    from scaffold.oauth.settings import mcp_enabled
     return {
         "vapid_public_key": os.environ.get("VAPID_PUBLIC_KEY", ""),
         "email_notifications_available": email_configured(),
@@ -680,6 +712,9 @@ def client_config(request: Request):
         "resend_from": os.environ.get("RESEND_FROM", "") if _is_admin_request(request) else "",
 
         "epic_mode": is_epic_mode(),
+        # Whether to offer AI connections in Settings at all. Instructions for
+        # a feature an admin has switched off are worse than no instructions.
+        "ai_connections": mcp_enabled(),
     }
 
 

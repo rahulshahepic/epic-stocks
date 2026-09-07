@@ -7,6 +7,17 @@
     <title>Epic Stocks (Unofficial)</title>
     <meta name="description" content="Track your Epic equity — grants, vesting, stock loans, and taxes. An independent project — not affiliated with or endorsed by Epic Systems Corporation." />
 
+    <!-- Apply the stored theme before first paint so the page background never
+         flashes light on a dark-mode load. Mirrors ThemeContext. -->
+    <script>
+      try {
+        var t = localStorage.getItem('theme') || 'auto'
+        if (t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark')
+        }
+      } catch (e) {}
+    </script>
+
     <!-- Theme color for browser chrome -->
     <meta name="theme-color" content="#C41230" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#E8334A" media="(prefers-color-scheme: dark)" />

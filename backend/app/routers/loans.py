@@ -157,6 +157,7 @@ def _sort_key_event(e: dict):
 def _compute_payoff_sale(loan: Loan, user: User, db: Session) -> dict:
     """Compute the suggested payoff sale for a loan (gross-up shares to cover cash_due after tax)."""
     from app.sales_engine import build_fifo_lots, compute_grossup_shares, compute_sale_tax
+    from app.sale_tax import resolve_sale_lot_order
 
     early_paid = sum(
         lp.amount for lp in db.query(LoanPayment).filter(LoanPayment.loan_id == loan.id).all()
@@ -175,16 +176,15 @@ def _compute_payoff_sale(loan: Loan, user: User, db: Session) -> dict:
     ts = _get_tax_settings_dict(user, db)
     lt_days = int(ts.get("lt_holding_days", 365))
     ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
-
-    # The tax annotator for Sale events uses lot_selection_method. Mirror that here so
-    # our sizing consumes the same lots the actual tax calc will consume.
-    tax_method = ts_row.lot_selection_method if ts_row else 'epic_lifo'
-    tax_lot_order = tax_method if tax_method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
+    flexible_enabled = _is_flexible_payoff_enabled(db)
+    loan_payoff_method = ts_row.loan_payoff_method if ts_row else None
+    lot_selection_method = ts_row.lot_selection_method if ts_row else None
+    loan_id_to_grant = {ln.id: (ln.grant_year, ln.grant_type) for ln in db.query(Loan).filter(Loan.user_id == user.id).all()}
 
     # Inject prior sales (excluding this loan's own payoff sale) as PRECISE lot sentinels —
-    # matching what _annotate_sale_taxes does. Using crude negative-shares reducers consumes
-    # oldest lots regardless of lot_order, which diverges from the real consumption and
-    # produces an undersized payoff when later sales get stuck with higher-basis or STCG lots.
+    # matching what compute_all_sale_taxes does, each resolved through the SAME lot-order
+    # policy /api/events and /api/sales/{id}/tax use, so the lots this sizing sees as
+    # already spoken for match what those endpoints will actually show.
     existing_payoff = db.query(Sale).filter(Sale.loan_id == loan.id).first()
     prior_sales_q = db.query(Sale).filter(
         Sale.user_id == user.id,
@@ -196,17 +196,15 @@ def _compute_payoff_sale(loan: Loan, user: User, db: Session) -> dict:
 
     sorted_tl = sorted(timeline, key=_sort_key_event)
     sort_keys: list = [_sort_key_event(e) for e in sorted_tl]
-    loan_id_to_grant = {ln.id: (ln.grant_year, ln.grant_type) for ln in db.query(Loan).filter(Loan.user_id == user.id).all()}
     for ps in prior_sales:
         ps_date = ps.date
-        ps_gy, ps_gt = (loan_id_to_grant.get(ps.loan_id, (None, None)) if ps.loan_id else (None, None))
-        # Tax annotator passes grant_year/grant_type only for same_tranche lot_selection_method;
-        # since lot_selection_method doesn't include that value today, leave unrestricted.
+        ps_lot_order, ps_gy, ps_gt = resolve_sale_lot_order(
+            ps.loan_id, loan_payoff_method, lot_selection_method, flexible_enabled, loan_id_to_grant,
+        )
         ps_result = compute_sale_tax(
             sorted_tl,
             {"date": ps_date, "shares": ps.shares, "price_per_share": ps.price_per_share},
-            ts,
-            lot_order=tax_lot_order,
+            ts, lot_order=ps_lot_order, grant_year=ps_gy, grant_type=ps_gt,
         )
         for lot in ps_result.get("lots_consumed", []):
             sentinel = {
@@ -225,34 +223,35 @@ def _compute_payoff_sale(loan: Loan, user: User, db: Session) -> dict:
             sorted_tl.insert(idx, sentinel)
             sort_keys.insert(idx, key)
 
-    # Determine lot selection method for this payoff.
-    # Default is same-tranche; flexible methods are available when admin has enabled the setting
-    # and the user has sufficient total stock coverage (vested at price + unvested at cost basis).
+    # Determine lot selection method for THIS loan's own payoff sale — same
+    # resolution /api/events and /api/sales/{id}/tax will apply once this sale
+    # is persisted, except a flexible method is only honored when there's
+    # enough total coverage to actually attempt it; otherwise same-tranche.
     payoff_method = 'same_tranche'
-    if ts_row and _is_flexible_payoff_enabled(db):
+    if ts_row and flexible_enabled:
         user_method = ts_row.loan_payoff_method
         if user_method != 'same_tranche' and _has_sufficient_coverage(user, loan, db, sorted_tl, price, cash_due):
             payoff_method = user_method
 
     if payoff_method == 'same_tranche':
-        lots = build_fifo_lots(sorted_tl, loan.due_date, order='epic_lifo',
-                               grant_year=loan.grant_year, grant_type=loan.grant_type,
-                               lt_holding_days=lt_days)
+        tax_lot_order, tranche_gy, tranche_gt = 'epic_lifo', loan.grant_year, loan.grant_type
     else:
-        order = payoff_method if payoff_method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
-        lots = build_fifo_lots(sorted_tl, loan.due_date, order=order, lt_holding_days=lt_days)
+        tax_lot_order = payoff_method if payoff_method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
+        tranche_gy, tranche_gt = None, None
+
+    lots = build_fifo_lots(sorted_tl, loan.due_date, order=tax_lot_order,
+                           grant_year=tranche_gy, grant_type=tranche_gt, lt_holding_days=lt_days)
     shares = compute_grossup_shares(lots, cash_due, price, loan.due_date, ts)
 
-    # Self-correct against the actual tax calc: if the sized sale's net proceeds don't cover
-    # cash_due under the real tax computation (pro-rata LT/ST allocation, lot_selection_method
-    # consumption), bump the share count until it does.
+    # Self-correct against the actual tax calc, under the SAME lot order and
+    # tranche restriction this sale will be taxed under everywhere else once
+    # persisted, so sizing can never under- or over-shoot what it actually owes.
     if shares > 0 and price > 0:
         for _ in range(20):
             verify = compute_sale_tax(
                 sorted_tl,
                 {"date": loan.due_date, "shares": shares, "price_per_share": price},
-                ts,
-                lot_order=tax_lot_order,
+                ts, lot_order=tax_lot_order, grant_year=tranche_gy, grant_type=tranche_gt,
             )
             net = shares * price - verify["estimated_tax"]
             if net >= cash_due:
@@ -451,9 +450,22 @@ def update_loan(
     return loan
 
 
-@router.post("/regenerate-all-payoff-sales")
-def regenerate_all_payoff_sales(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Recompute payoff sale share counts for all future loans, creating missing sales."""
+def _regenerate_future_payoff_sales(user: User, db: Session, create_missing: bool = True) -> dict:
+    """Recompute payoff sale share counts and prices for all future loans.
+
+    Shared by the manual regenerate endpoint and by anything that changes a
+    projection input (e.g. a new price point) that existing future payoff
+    sales were sized against — otherwise those sales keep selling at
+    whatever price was current when they were generated, even after a newer
+    price makes that stale.
+
+    create_missing controls whether a loan with no payoff sale yet gets one:
+    True for the explicit "regenerate all" action, False when this runs as a
+    side effect of a price change — a loan the user deliberately left without
+    an auto-generated sale (e.g. plenty of accounts import loans without
+    payoff sales at all) shouldn't suddenly grow one just because a price was
+    added; only sales that already exist get kept in sync.
+    """
     from datetime import date as date_type
     today = date_type.today()
     future_loans = db.query(Loan).filter(Loan.user_id == user.id, Loan.due_date >= today).all()
@@ -466,6 +478,8 @@ def regenerate_all_payoff_sales(user: User = Depends(get_current_user), db: Sess
         if loan.id in refinanced_ids:
             continue
         existing_sale = db.query(Sale).filter(Sale.loan_id == loan.id, Sale.user_id == user.id).first()
+        if not existing_sale and not create_missing:
+            continue
         suggestion = _compute_payoff_sale(loan, user, db)
         if existing_sale:
             existing_sale.date = suggestion["date"]
@@ -487,8 +501,15 @@ def regenerate_all_payoff_sales(user: User = Depends(get_current_user), db: Sess
             ))
             created += 1
     db.commit()
-    event_cache.schedule_recompute(user.id)
     return {"updated": updated, "created": created}
+
+
+@router.post("/regenerate-all-payoff-sales")
+def regenerate_all_payoff_sales(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Recompute payoff sale share counts for all future loans, creating missing sales."""
+    result = _regenerate_future_payoff_sales(user, db, create_missing=True)
+    event_cache.schedule_recompute(user.id)
+    return result
 
 
 @router.delete("/{loan_id}", status_code=204)

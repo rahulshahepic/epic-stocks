@@ -368,6 +368,32 @@ test.describe('Screenshots', () => {
     await shoot(page, 'settings-sharing-dark-mobile')
   })
 
+  test('settings ai connections - light - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    await page.click('text=Settings')
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(800)
+    const heading = page.locator('h2, h3').filter({ hasText: 'AI Connections' }).first()
+    await heading.scrollIntoViewIfNeeded()
+    await expect(heading).toBeInViewport()
+    await shoot(page, 'settings-ai-connections-light-mobile')
+  })
+
+  test('settings ai connections - dark - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'dark')
+    await page.click('text=Settings')
+    await page.waitForLoadState('networkidle')
+    await page.waitForTimeout(800)
+    const heading = page.locator('h2, h3').filter({ hasText: 'AI Connections' }).first()
+    await heading.scrollIntoViewIfNeeded()
+    await expect(heading).toBeInViewport()
+    // The ChatGPT walkthrough is the one with the developer-mode caveat, so it
+    // is the half worth showing in the README.
+    await page.getByRole('tab', { name: 'ChatGPT' }).click()
+    await page.waitForTimeout(300)
+    await shoot(page, 'settings-ai-connections-dark-mobile')
+  })
+
   test('invite landing page - light - mobile', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'light' })
     await page.setViewportSize(MOBILE)

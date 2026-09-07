@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useReportProblem } from '../components/reportContext.ts'
 import { api } from '../../api.ts'
 import { clearPendingLogin, completeLogin, readPendingLogin } from '../oidc.ts'
+import { takeNext } from '../postLogin.ts'
 import { platform } from '../../platform/index.ts'
 import { pingConverted, takeStashedTrialPayload } from '../../app/trialImport.ts'
 
@@ -80,6 +81,15 @@ export default function AuthCallback() {
         } catch {
           // Save failed — they still have a working account; they can import again.
         }
+      }
+
+      // Something sent this user to sign in mid-flow — the OAuth consent
+      // screen, today. Return them to it rather than to the dashboard. It is a
+      // server-rendered route, so this is a navigation, not a router push.
+      const next = await takeNext()
+      if (next) {
+        window.location.assign(next)
+        return
       }
 
       navigate('/', { replace: true })

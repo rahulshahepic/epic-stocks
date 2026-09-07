@@ -8,6 +8,7 @@ import { api } from '../../api.ts'
 import type { InvitationEntry, ReceivedInvitation } from '../../api.ts'
 import type { Theme } from '../contexts/theme.ts'
 import { Card } from '../components/ui/Card.tsx'
+import { AiConnectionsSection } from '../components/AiConnectionsSection.tsx'
 
 export default function Settings() {
   const config = useConfig()
@@ -240,6 +241,11 @@ export default function Settings() {
 
       {/* App-specific settings injected here */}
       {settingsSections}
+
+      {/* AI connections — hidden entirely when an admin has switched the
+          feature off, because instructions for something that cannot work are
+          worse than no instructions. */}
+      {config?.ai_connections && <AiConnectionsSection />}
 
       {/* Sharing */}
       <SharingSection />

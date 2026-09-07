@@ -44,6 +44,17 @@ def setup_db():
     Base.metadata.create_all(bind=TEST_ENGINE)
     yield
     Base.metadata.drop_all(bind=TEST_ENGINE)
+    # Settings read from the database are cached with a short TTL. The rows
+    # they were read from have just been dropped, so a test that lands inside
+    # that window would otherwise see the previous test's admin settings.
+    from scaffold.oauth.settings import invalidate
+    invalidate()
+    # The in-memory rate limiters key on (id, endpoint) in a module-level dict
+    # that nothing clears. User ids restart at 1 with the tables, so without
+    # this a test that deliberately exhausts a budget leaves the next test's
+    # first request already over the limit.
+    from scaffold.rate_limit import _calls
+    _calls.clear()
 
 
 @pytest.fixture()

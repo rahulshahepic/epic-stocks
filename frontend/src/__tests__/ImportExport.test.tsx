@@ -62,7 +62,9 @@ describe('ImportExport', () => {
   })
 
   it('shows success message after import', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    // A fresh Response per call: a body can only be read once, and the page
+    // now also asks whether an assistant left a draft on mount.
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(JSON.stringify({ grants: 12, loans: 21, prices: 8, sheets_imported: ['Schedule', 'Loans', 'Prices'] }), { status: 201 })
     )
     renderPage()
@@ -77,7 +79,7 @@ describe('ImportExport', () => {
   })
 
   it('shows error message on import failure', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(JSON.stringify({ detail: 'Bad file format' }), { status: 400 })
     )
     renderPage()

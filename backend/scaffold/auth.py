@@ -66,27 +66,53 @@ def _b64url_decode(s: str) -> bytes:
     return base64.urlsafe_b64decode(s + "=" * padding)
 
 
+# What a token is *for*. A session token drives the app; a connector token
+# drives the MCP server on behalf of an AI assistant the user has authorized.
+# The two must never substitute for each other: a connector token that worked
+# against /api/* would turn one leaked assistant credential into a full account
+# session, admin endpoints included. Enforced in both directions —
+# get_current_user below rejects anything that is not a session token, and the
+# MCP dependency rejects anything that is not a connector token.
+#
+# Session tokens minted before this claim existed carry no "typ" at all, so
+# absent reads as SESSION and nobody is signed out by the upgrade.
+TOKEN_TYPE_SESSION = "session"
+TOKEN_TYPE_MCP = "mcp"
+
+
+def sign_jwt(payload: dict) -> str:
+    """Sign a payload with the app's HMAC secret. No opinion about its claims."""
+    header = _b64url_encode(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
+    body = _b64url_encode(json.dumps(payload).encode())
+    sig_input = f"{header}.{body}".encode()
+    signature = _b64url_encode(hmac.new(JWT_SECRET.encode(), sig_input, hashlib.sha256).digest())
+    return f"{header}.{body}.{signature}"
+
+
 def create_token(user_id: int, session_version: int = 0, siat: int | None = None) -> str:
-    """Mint a signed JWT.
+    """Mint a signed session JWT.
 
     siat (session-issued-at) is set on first login and carried forward unchanged
     on every sliding refresh, enforcing an absolute session ceiling.
     """
-    header = _b64url_encode(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
     now = datetime.now(timezone.utc)
     exp = now + timedelta(hours=JWT_EXPIRE_HOURS)
-    payload = _b64url_encode(json.dumps({
+    return sign_jwt({
         "sub": str(user_id),
         "exp": int(exp.timestamp()),
         "sv": int(session_version),
         "siat": siat if siat is not None else int(now.timestamp()),
-    }).encode())
-    sig_input = f"{header}.{payload}".encode()
-    signature = _b64url_encode(hmac.new(JWT_SECRET.encode(), sig_input, hashlib.sha256).digest())
-    return f"{header}.{payload}.{signature}"
+        "typ": TOKEN_TYPE_SESSION,
+    })
 
 
-def _decode_token(token: str) -> dict:
+def decode_jwt(token: str) -> dict:
+    """Verify signature and expiry. Says nothing about what the token is for.
+
+    Callers that act on a token MUST check its "typ" — see token_type(). This
+    is the raw form because the middleware needs the subject of *either* kind
+    to put the right encryption key in context.
+    """
     parts = token.split(".")
     if len(parts) != 3:
         raise ValueError("bad token")
@@ -99,6 +125,16 @@ def _decode_token(token: str) -> dict:
     if payload.get("exp", 0) < time.time():
         raise ValueError("expired")
     return payload
+
+
+def token_type(payload: dict) -> str:
+    """The token's purpose, treating a missing claim as a session token."""
+    return payload.get("typ") or TOKEN_TYPE_SESSION
+
+
+# Retained under its old name: main.py's middleware imports it, and there it
+# genuinely wants either kind.
+_decode_token = decode_jwt
 
 
 def set_session_cookies(response, token: str) -> None:
@@ -157,12 +193,17 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     try:
-        payload = _decode_token(token)
+        payload = decode_jwt(token)
         user_id = int(payload["sub"])
         token_sv = int(payload.get("sv", 0))
         siat = int(payload.get("siat", 0))
     except (ValueError, KeyError):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from None
+    # A connector token authorizes an AI assistant against /mcp and nothing
+    # else. Presented here it is not a weaker session, it is the wrong
+    # credential entirely.
+    if token_type(payload) != TOKEN_TYPE_SESSION:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
     if siat and time.time() - siat > ABSOLUTE_SESSION_HOURS * 3600:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired — please log in again")
     user = db.get(User, user_id)

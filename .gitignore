@@ -11,3 +11,6 @@ node_modules/
 .env
 test-results/
 .vite/
+
+# Local Python virtualenv (backend deps for running the suite outside Docker)
+.venv/

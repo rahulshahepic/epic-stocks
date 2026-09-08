@@ -53,6 +53,14 @@ export default function Layout() {
     ['/', '/events', '/retirement', '/grants'].includes(item.to)
   )
 
+  const recordsRoutes = ['/grants', '/loans', '/sales', '/prices', '/import']
+  const workshopRoutes = ['/settings', '/content', '/admin', '/import-diagnostics']
+  const campusWing = recordsRoutes.some(route => location.pathname.startsWith(route))
+    ? { id: 'records', label: 'The records wing', motto: 'Verba volant, scripta manent', translation: 'Spoken words fly; written words remain' }
+    : workshopRoutes.some(route => location.pathname.startsWith(route))
+      ? { id: 'workshop', label: 'The workshop', motto: 'Festina lente', translation: 'Make haste slowly' }
+      : null
+
   return (
     <div className="flex min-h-screen flex-col bg-cs-base">
       {/* (A) Skip-navigation link */}
@@ -170,8 +178,15 @@ export default function Layout() {
         id="main-content"
         ref={mainRef}
         tabIndex={-1}
+        data-campus-wing={campusWing?.id}
         className="mx-auto w-full max-w-6xl flex-1 px-4 py-5 pb-24 outline-none sm:px-6 sm:py-7 md:pb-8"
       >
+        {campusWing && (
+          <div className="campus-wing-marker">
+            <span>{campusWing.label}</span>
+            <span lang="la" title={campusWing.translation}>{campusWing.motto}</span>
+          </div>
+        )}
         <Outlet />
       </main>
 

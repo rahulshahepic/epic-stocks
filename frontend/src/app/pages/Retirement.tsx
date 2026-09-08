@@ -19,7 +19,8 @@ import { useViewing } from '../../scaffold/contexts/viewing.ts'
 import { useMe, updateMeCache } from '../../scaffold/hooks/useMe.ts'
 import { Card, HeroCard, IconTile, Eyebrow, type TileTone } from '../../scaffold/components/ui/Card.tsx'
 import { Segmented } from '../../scaffold/components/ui/Segmented.tsx'
-import { IconCompass, IconMountainFlag, IconTrendUp } from '../../scaffold/components/ui/icons.tsx'
+import { IconCompass, IconTrendUp } from '../../scaffold/components/ui/icons.tsx'
+import campusWatercolor from '../../assets/campus-watercolor.webp'
 import {
   computeFanPercentiles,
   computeRiskOfRuinTable,
@@ -642,13 +643,16 @@ export default function Retirement() {
   }, [fanData])
 
   return (
-    <div className="space-y-5">
+    <div className="campus-observatory space-y-5">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2.5">
           <IconTile tone="brand" className="h-9 w-9 rounded-xl">
             <IconCompass className="h-5 w-5" />
           </IconTile>
-          <h1 className="text-xl font-extrabold tracking-tight text-cs-text">Retirement Simulator</h1>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cs-text-2">Long-range observatory</p>
+            <h1 className="font-serif text-2xl font-semibold text-cs-text">Retirement Simulator</h1>
+          </div>
         </div>
         <span className="text-[11px] text-cs-muted">
           {vid
@@ -1362,7 +1366,10 @@ export default function Retirement() {
             const p10Row = finalRows.find(r => Math.round(r.q * 100) === 10)
             const p90Row = finalRows.find(r => Math.round(r.q * 100) === 90)
             return (
-              <HeroCard watermark={<IconMountainFlag className="h-28 w-28" />}>
+              <HeroCard
+                className="campus-observatory-hero"
+                watermark={<img src={campusWatercolor} alt="" aria-hidden="true" className="h-36 w-72 object-cover object-right" />}
+              >
                 <div className="flex items-center justify-between gap-2">
                   <Eyebrow className="text-white">Age {params.endAge} estimate range</Eyebrow>
                   <IconTile tone="brand" className="h-9 w-9 rounded-lg bg-white/15 text-white">

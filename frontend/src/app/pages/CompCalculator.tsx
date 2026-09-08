@@ -1098,8 +1098,11 @@ export default function CompCalculator() {
   const hasProjected = rows.some(r => r.isProjected)
 
   return (
-    <div className="space-y-5">
-      <h1 className="text-xl font-extrabold tracking-tight text-cs-text">Total Comp Calculator</h1>
+    <div className="campus-study space-y-5">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cs-text-2">The arithmetic study</p>
+        <h1 className="mt-1 font-serif text-2xl font-semibold text-cs-text">Total Comp Calculator</h1>
+      </div>
 
       <div className="rounded-xl border border-cs-border bg-cs-raised ">
         <button
@@ -1176,7 +1179,7 @@ export default function CompCalculator() {
         </Card>
       ) : (
         <>
-          <Card pad="md">
+          <Card pad="md" className="campus-graph-paper">
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <p className="text-xs font-medium text-cs-text-2">
                 {showTotal

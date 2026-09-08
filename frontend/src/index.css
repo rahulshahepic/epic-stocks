@@ -296,6 +296,37 @@ body {
   border-radius: .5rem .5rem 1.5rem 1.5rem;
 }
 
+.campus-study > .rounded-2xl,
+.campus-observatory > .rounded-2xl {
+  border-top-width: .3rem;
+  border-top-color: #B99A73;
+}
+
+.campus-study > .rounded-2xl:nth-of-type(4n + 1) { border-top-color: var(--cs-brand); }
+.campus-study > .rounded-2xl:nth-of-type(4n + 2) { border-top-color: #1769AA; }
+.campus-study > .rounded-2xl:nth-of-type(4n + 3) { border-top-color: #B25B00; }
+
+.campus-graph-paper {
+  background-color: var(--cs-surface);
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--cs-cobalt) 7%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--cs-cobalt) 7%, transparent) 1px, transparent 1px);
+  background-size: 1.25rem 1.25rem;
+}
+
+.campus-observatory > .rounded-2xl:nth-of-type(4n + 1) { border-top-color: #71358A; }
+.campus-observatory > .rounded-2xl:nth-of-type(4n + 2) { border-top-color: #1769AA; }
+.campus-observatory > .rounded-2xl:nth-of-type(4n + 3) { border-top-color: #087A55; }
+
+.campus-observatory-hero {
+  border: 2px solid #4A4278;
+  border-radius: 1rem 3rem 1rem 1rem;
+  background:
+    radial-gradient(circle at 78% 22%, rgba(255, 255, 255, .75) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 90% 35%, rgba(255, 255, 255, .65) 0 1px, transparent 1.5px),
+    linear-gradient(135deg, #6F1025 0%, #3A315F 72%, #1B3152 100%);
+}
+
 @media (min-width: 640px) {
   .campus-watercolor {
     right: -2.5rem;

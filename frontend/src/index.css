@@ -99,6 +99,148 @@ body {
   font-feature-settings: 'cv11', 'ss01';
 }
 
+/* ── Verona campus character ──────────────────────────────
+   These details borrow the campus's visual grammar—garden paths, hand-painted
+   wayfinding, collected art, and purposeful surprises—without copying any
+   protected artwork or turning financial data into a theme park. */
+.campus-dashboard {
+  position: relative;
+}
+
+.campus-dashboard::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  top: 19rem;
+  right: -2rem;
+  width: 5rem;
+  height: 9rem;
+  opacity: .2;
+  background:
+    radial-gradient(ellipse at 30% 18%, var(--cs-emerald) 0 12%, transparent 13%),
+    radial-gradient(ellipse at 70% 42%, var(--cs-emerald) 0 14%, transparent 15%),
+    linear-gradient(77deg, transparent 47%, var(--cs-emerald) 48% 51%, transparent 52%);
+  transform: rotate(12deg);
+}
+
+.campus-hero {
+  border-radius: 1.25rem 3.5rem 1.25rem 1.25rem;
+  border: 2px solid #5C1327;
+  background:
+    linear-gradient(100deg, rgba(82, 9, 29, .98) 0%, rgba(107, 16, 39, .96) 48%, rgba(31, 33, 73, .92) 100%);
+}
+
+.campus-hero::after {
+  content: '';
+  position: absolute;
+  inset: .55rem;
+  border: 1px dashed rgba(255, 255, 255, .42);
+  border-radius: .8rem 3rem .8rem .8rem;
+  pointer-events: none;
+}
+
+.campus-sticker {
+  position: relative;
+  z-index: 3;
+  display: block;
+  width: max-content;
+  margin-left: auto;
+  padding: .35rem .7rem;
+  color: #5A3100;
+  background: #F7C948;
+  border: 2px solid #fff4c7;
+  border-radius: .35rem;
+  box-shadow: 2px 3px 0 rgba(80, 30, 10, .28);
+  font-size: .65rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  transform: rotate(2.5deg);
+}
+
+.campus-watercolor {
+  position: absolute;
+  z-index: 1;
+  right: -11rem;
+  bottom: -1rem;
+  width: 38rem;
+  max-width: none;
+  opacity: .34;
+  filter: saturate(.95) contrast(1.02);
+  pointer-events: none;
+}
+
+.campus-wayfinder {
+  border-left: .45rem solid #F7C948;
+  transform: rotate(-.18deg);
+}
+
+.campus-map {
+  position: relative;
+  border-radius: 1.1rem 1.1rem 2.8rem 1.1rem;
+  background:
+    radial-gradient(circle at 95% 8%, color-mix(in srgb, var(--cs-chart-income) 11%, transparent) 0 4.5rem, transparent 4.6rem),
+    var(--cs-surface);
+}
+
+.campus-map::after {
+  content: '✦';
+  position: absolute;
+  right: 1.25rem;
+  bottom: .7rem;
+  color: #B25B00;
+  font-size: 1.4rem;
+  transform: rotate(12deg);
+}
+
+.campus-marker {
+  border-radius: 45% 55% 48% 52%;
+  box-shadow: 2px 3px 0 color-mix(in srgb, var(--cs-text) 18%, transparent);
+  transform: rotate(-5deg);
+}
+
+.campus-stop:nth-of-type(even) .campus-marker {
+  transform: rotate(6deg);
+}
+
+.campus-wordmark {
+  position: relative;
+  border-radius: 52% 48% 42% 58%;
+  box-shadow: 2px 2px 0 #F7C948;
+  transform: rotate(-4deg);
+}
+
+.campus-nav-link[aria-current='page'] {
+  transform: rotate(-1.5deg);
+}
+
+@media (min-width: 640px) {
+  .campus-watercolor {
+    right: -2.5rem;
+    bottom: -3rem;
+    width: 47rem;
+    opacity: .48;
+  }
+
+  .campus-route::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-top: 3px dashed #B99A73;
+    border-radius: 50%;
+    transform: rotate(-2deg);
+  }
+
+  .campus-stop-2,
+  .campus-stop-4 {
+    margin-top: 2.4rem;
+  }
+
+  .campus-stop-3 {
+    margin-top: .65rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     scroll-behavior: auto !important;

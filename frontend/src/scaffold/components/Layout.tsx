@@ -94,7 +94,7 @@ export default function Layout() {
         <header className="border-b border-cs-border">
           <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
             <span className="flex min-w-0 shrink items-center gap-2 text-sm font-extrabold tracking-tight text-cs-brand">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-cs-brand to-cs-brand-hover text-[11px] font-extrabold text-white">
+              <span className="campus-wordmark flex h-7 w-7 shrink-0 items-center justify-center bg-gradient-to-br from-cs-brand to-cs-brand-hover text-[11px] font-extrabold text-white">
                 E
               </span>
               {/* Badge sits under the name rather than beside it: side by side, the two
@@ -150,7 +150,7 @@ export default function Layout() {
                 to={to}
                 end={to === '/'}
                 className={({ isActive }) =>
-                  `whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  `campus-nav-link whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
                     isActive
                       ? 'bg-cs-brand text-white shadow-sm'
                       : 'text-cs-text-2 hover:bg-cs-raised hover:text-cs-text'

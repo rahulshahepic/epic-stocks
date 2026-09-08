@@ -20,9 +20,10 @@ import TipCarousel from '../components/TipCarousel.tsx'
 import { useViewing } from '../../scaffold/contexts/viewing.ts'
 import { HeroCard, IconTile, Eyebrow } from '../../scaffold/components/ui/Card.tsx'
 import { cardClass } from '../../scaffold/components/ui/cardShell.ts'
-import { Sparkline, IconTrendUp } from '../../scaffold/components/ui/icons.tsx'
+import { IconTrendUp } from '../../scaffold/components/ui/icons.tsx'
 import { StatCard as Card } from '../components/StatCard.tsx'
 import { StockJourney } from '../components/StockJourney.tsx'
+import campusWatercolor from '../../assets/campus-watercolor.webp'
 
 /**
  * Nudge when the newest share price on file is from an earlier year.
@@ -347,15 +348,21 @@ export default function Dashboard() {
   const totalValue = grantHoldings ? grantHoldings.reduce((s, h) => s + h.totalValue, 0) : 0
 
   return (
-    <div className="space-y-5 sm:space-y-6">
+    <div className="campus-dashboard space-y-5 sm:space-y-6">
       {grantHoldings && (
         <HeroCard
-          className="min-h-52 p-6 sm:p-8"
-          watermark={<Sparkline className="h-32 w-56" color="#fff" />}
+          className="campus-hero min-h-72 p-6 sm:min-h-64 sm:p-8"
         >
-          <div className="grid gap-6 sm:grid-cols-[minmax(0,1.5fr)_minmax(16rem,1fr)] sm:items-end">
+          <img
+            aria-hidden="true"
+            src={campusWatercolor}
+            className="campus-watercolor"
+            alt=""
+          />
+          <span className="campus-sticker" lang="la" title="Through hardship to the stars">Ad astra per aspera</span>
+          <div className="relative z-10 mt-7 grid gap-6 sm:mt-5 sm:grid-cols-[minmax(0,1.5fr)_minmax(16rem,1fr)] sm:items-end">
             <div>
-              <Eyebrow className="text-white">Your position · {fmtFullDate(cardDate)}</Eyebrow>
+              <Eyebrow className="text-white">The view from here · {fmtFullDate(cardDate)}</Eyebrow>
               <p className="mt-2 font-serif text-4xl font-semibold tabular-nums tracking-tight sm:text-6xl">
                 {fmt$(totalValue - cv.total_loan_principal)}
               </p>
@@ -381,7 +388,7 @@ export default function Dashboard() {
       )}
 
       {/* Date selector for card values */}
-      <div className="rounded-2xl border border-cs-border bg-cs-surface px-3 py-2.5 shadow-card sm:flex sm:items-center sm:gap-3 sm:px-4">
+      <div className="campus-wayfinder rounded-2xl border border-cs-border bg-cs-surface px-3 py-2.5 shadow-card sm:flex sm:items-center sm:gap-3 sm:px-4">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <span className="shrink-0 text-xs font-medium text-cs-muted">As of</span>
           <input

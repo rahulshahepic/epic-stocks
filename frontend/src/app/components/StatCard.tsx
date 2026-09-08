@@ -23,7 +23,7 @@ const CARD_STYLES: Record<string, { tone: TileTone; icon: React.ReactNode }> = {
   costbasis: { tone: 'slate', icon: <IconDocument className="h-4 w-4" /> },
 }
 
-export function StatCard({ label, value, subvalue, variant, subtitle, onClick, expanded }: { label: string; value: string; subvalue?: string; variant: string; subtitle?: string; onClick?: () => void; expanded?: boolean }) {
+export function StatCard({ label, value, subvalue, variant, subtitle, onClick, expanded, className = '' }: { label: string; value: string; subvalue?: string; variant: string; subtitle?: string; onClick?: () => void; expanded?: boolean; className?: string }) {
   const s = CARD_STYLES[variant] ?? CARD_STYLES.event
   const clickable = !!onClick
   const content = (
@@ -48,11 +48,11 @@ export function StatCard({ label, value, subvalue, variant, subtitle, onClick, e
         type="button"
         onClick={onClick}
         aria-expanded={!!expanded}
-        className={cardClass('md', 'text-left transition hover:-translate-y-0.5 hover:shadow-pop')}
+        className={cardClass('md', `text-left transition hover:-translate-y-0.5 hover:shadow-pop ${className}`)}
       >
         {content}
       </button>
     )
   }
-  return <Card pad="md">{content}</Card>
+  return <Card pad="md" className={className}>{content}</Card>
 }

@@ -24,6 +24,7 @@ export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakd
           subtitle="Vested at FMV + unvested at cost basis"
           onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
           expanded={openBreakdowns.has('grants')}
+          className="col-span-2 min-h-36 bg-gradient-to-br from-cs-surface to-cs-brand-subtle sm:col-span-2"
         />
         <Card
           label="Total Cost Basis"
@@ -59,6 +60,7 @@ export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakd
           subtitle="Your next vesting or price date"
           onClick={cv.next_event_detail ? () => toggleBreakdown('nextEvent') : undefined}
           expanded={openBreakdowns.has('nextEvent')}
+          className="col-span-2 sm:col-span-1"
         />
       </div>
       {openBreakdowns.has('nextEvent') && cv.next_event_detail && (

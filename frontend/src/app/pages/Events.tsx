@@ -248,8 +248,11 @@ export default function Events() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-cs-text">Events Timeline</h2>
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cs-text-2">The archive</p>
+          <h1 className="mt-1 font-serif text-2xl font-semibold text-cs-text">Events Timeline</h1>
+        </div>
         <div className="relative" ref={typeDropdownRef}>
           <button
             onClick={() => setTypeDropdownOpen(p => !p)}
@@ -291,7 +294,7 @@ export default function Events() {
       </div>
 
       {/* Mobile card layout */}
-      {isMobile ? <div className="space-y-2">
+      {isMobile ? <div className="campus-event-list space-y-2">
         {filtered.map((e, i) => {
           const saleId = e.sale_id ?? null
           const bd = saleId != null ? breakdowns.get(saleId) : undefined
@@ -351,8 +354,9 @@ export default function Events() {
             <React.Fragment key={i}>
               <div
                 ref={(el) => { if (el) highlightRefs.current.set(i, el); else highlightRefs.current.delete(i) }}
+                data-event-type={e.event_type}
                 className={[
-                  'rounded-lg border border-cs-border p-3 text-xs bg-cs-surface',
+                  'campus-event-card rounded-lg border border-cs-border p-3 text-xs bg-cs-surface',
                   highlightedRows.has(i) ? 'ring-2 ring-inset ring-blue-400 animate-pulse' : '',
                 ].join(' ')}
                 onClick={() => setExpandedMobileRows(prev => { const next = new Set(prev); if (next.has(i)) next.delete(i); else next.add(i); return next })}
@@ -427,7 +431,7 @@ export default function Events() {
           )
         })}
       </div> : /* Desktop table layout */
-        <Card pad="none" className="overflow-x-auto" tabIndex={0}>
+        <Card pad="none" className="campus-ledger overflow-x-auto" tabIndex={0}>
           <table className="w-full text-left text-xs">
             <thead className="bg-cs-raised">
               <tr className="text-cs-text-2">

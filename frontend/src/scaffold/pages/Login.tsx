@@ -6,12 +6,12 @@ import { api } from '../../api.ts'
 import { startLogin } from '../oidc.ts'
 import { safeNext, stashNext } from '../postLogin.ts'
 import { useAppContext } from '../contexts/AppContext.tsx'
-import { HeroIllustration } from '../components/ui/icons.tsx'
 import DisclaimerNotice from '../components/DisclaimerNotice.tsx'
 import UnofficialBadge from '../components/UnofficialBadge.tsx'
 import { IconTile, Card, Eyebrow } from '../components/ui/Card.tsx'
 import { IconTrendUp, IconCompass, IconShield, IconChatSpark } from '../components/ui/icons.tsx'
 import { useConfig } from '../hooks/useConfig.ts'
+import campusWatercolor from '../../assets/campus-watercolor.webp'
 
 const FEATURES = [
   {
@@ -102,8 +102,16 @@ export default function Login() {
   return (
     <div className="flex min-h-screen flex-col items-center bg-cs-base px-4 py-10">
       <div className="w-full max-w-sm">
-        <Card pad="none" className="overflow-hidden">
-          <HeroIllustration className="h-40 w-full" />
+        <Card pad="none" className="campus-front-gate overflow-hidden">
+          <div className="relative h-52 overflow-hidden bg-[#5C1327]">
+            <img
+              src={campusWatercolor}
+              alt=""
+              aria-hidden="true"
+              className="h-full w-full object-cover object-[72%_center]"
+            />
+            <span className="campus-entry-plaque" lang="la" title="Dare to know">Sapere aude</span>
+          </div>
         </Card>
 
         <div className="mt-7 text-center">
@@ -119,9 +127,9 @@ export default function Login() {
         <DisclaimerNotice className="mt-6" />
 
         <Eyebrow className="mt-7">What you get with an account</Eyebrow>
-        <div className="mt-2.5 space-y-2.5">
+        <div className="campus-feature-grid mt-2.5 space-y-2.5">
           {features.map(f => (
-            <div key={f.title} className="flex items-center gap-3 rounded-xl border border-cs-border bg-cs-surface px-3.5 py-3 shadow-card">
+            <div key={f.title} className="campus-feature-card flex items-center gap-3 rounded-xl border border-cs-border bg-cs-surface px-3.5 py-3 shadow-card">
               <IconTile tone={f.tone}>{f.icon}</IconTile>
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-cs-text">{f.title}</p>

@@ -214,6 +214,88 @@ body {
   transform: rotate(-1.5deg);
 }
 
+.campus-front-gate {
+  border: 2px solid #7A2738;
+  border-radius: 3.25rem 1rem 1rem 1rem;
+  box-shadow: 0 18px 44px -26px rgba(92, 19, 39, .62);
+}
+
+.campus-front-gate img {
+  filter: saturate(.9) contrast(1.04);
+}
+
+.campus-entry-plaque {
+  position: absolute;
+  right: 1rem;
+  top: 1rem;
+  padding: .35rem .7rem;
+  border: 2px solid #FFF0AE;
+  border-radius: .35rem;
+  background: #F7C948;
+  color: #543000;
+  box-shadow: 2px 3px 0 rgba(35, 18, 8, .35);
+  font-family: var(--font-serif);
+  font-size: .75rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  transform: rotate(2deg);
+}
+
+.campus-feature-card {
+  border-left-width: .35rem;
+}
+
+.campus-feature-card:nth-child(4n + 1) { border-left-color: var(--cs-brand); }
+.campus-feature-card:nth-child(4n + 2) { border-left-color: #B25B00; }
+.campus-feature-card:nth-child(4n + 3) { border-left-color: #71358A; }
+.campus-feature-card:nth-child(4n) { border-left-color: #087A55; }
+
+.campus-event-list {
+  position: relative;
+  padding-left: .6rem;
+}
+
+.campus-event-list::before {
+  content: '';
+  position: absolute;
+  top: .75rem;
+  bottom: .75rem;
+  left: 0;
+  border-left: 2px dashed #B99A73;
+}
+
+.campus-event-card {
+  position: relative;
+  margin-left: .45rem;
+  border-left-width: .35rem;
+  border-radius: .55rem 1.25rem 1.25rem .55rem;
+  box-shadow: var(--cs-shadow-card);
+}
+
+.campus-event-card::before {
+  content: '';
+  position: absolute;
+  left: -.92rem;
+  top: 1.05rem;
+  width: .55rem;
+  height: .55rem;
+  border: 2px solid var(--cs-surface);
+  border-radius: 50%;
+  background: var(--cs-brand);
+  box-shadow: 0 0 0 1px var(--cs-border-strong);
+}
+
+.campus-event-card[data-event-type='Vesting'] { border-left-color: #087A55; }
+.campus-event-card[data-event-type='Share Price'] { border-left-color: #B25B00; }
+.campus-event-card[data-event-type='Exercise'] { border-left-color: #1769AA; }
+.campus-event-card[data-event-type='Sale'] { border-left-color: #71358A; }
+
+.campus-ledger {
+  border-top: .4rem solid #B25B00;
+  border-radius: .5rem .5rem 1.5rem 1.5rem;
+}
+
 @media (min-width: 640px) {
   .campus-watercolor {
     right: -2.5rem;

@@ -204,6 +204,7 @@ export default function Layout() {
               key={to}
               to={to}
               end={to === '/'}
+              aria-label={label}
               onClick={() => setMobileMenuOpen(false)}
               className={({ isActive }) =>
                 `rounded-xl px-1 py-2 text-center text-xs font-semibold ${isActive ? 'bg-cs-brand-subtle text-cs-brand' : 'text-cs-text-2'}`

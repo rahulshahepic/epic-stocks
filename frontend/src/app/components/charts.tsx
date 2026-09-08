@@ -316,14 +316,15 @@ export function PriceChart({ prices, c, range, hasFuturePrices }: { prices: Pric
   )
 }
 
-export function ChartBox({ title, children, range, setRange, maxDate }: {
+export function ChartBox({ title, children, range, setRange, maxDate, className = '' }: {
   title: string; children: React.ReactNode
   range?: DateRange; setRange?: (r: DateRange) => void; maxDate?: string
+  className?: string
 }) {
   return (
-    <Card>
+    <Card className={`overflow-hidden border-t-4 border-t-cs-border-strong ${className}`}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-cs-text">{title}</h3>
+        <h3 className="font-serif text-lg font-semibold text-cs-text">{title}</h3>
         {range && setRange && <RangeControls range={range} setRange={setRange} maxDate={maxDate ?? '2099-12-31'} />}
       </div>
       {children}

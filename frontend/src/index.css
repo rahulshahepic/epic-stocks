@@ -4,17 +4,21 @@
 
 /* ── Crimson Studio palette ──────────────────────────────── */
 :root {
-  --cs-base: #F8F6F4;
+  --cs-base: #F7F2EA;
   --cs-surface: #FFFFFF;
-  --cs-raised: #F0EDE9;
-  --cs-border: #EAE7E3;
-  --cs-border-strong: #C8C3BC;
-  --cs-text: #1A1411;
-  --cs-text-2: #6B5F58;
-  --cs-muted: #78716C;
+  --cs-raised: #EFE8DD;
+  --cs-border: #E4D9CC;
+  --cs-border-strong: #B9AA9A;
+  --cs-text: #211713;
+  --cs-text-2: #62544C;
+  --cs-muted: #75665D;
   --cs-brand: #C41230;
   --cs-brand-hover: #A80F28;
   --cs-brand-subtle: #F7E8EB;
+  --cs-gold: #B25B00;
+  --cs-emerald: #087A55;
+  --cs-cobalt: #1769AA;
+  --cs-plum: #71358A;
 
   /* Chart accent palette — one fixed hue per series across the whole app */
   --cs-chart-shares: #C41230;
@@ -31,9 +35,9 @@
 }
 
 .dark {
-  --cs-base: #111009;
-  --cs-surface: #1C1917;
-  --cs-raised: #252220;
+  --cs-base: #201916;
+  --cs-surface: #2A211D;
+  --cs-raised: #352A25;
   --cs-border: rgba(255, 255, 255, 0.07);
   --cs-border-strong: rgba(255, 255, 255, 0.14);
   --cs-text: #F2EDE8;
@@ -87,8 +91,245 @@ html.dark {
 
 body {
   background-color: var(--cs-base);
+  background-image:
+    radial-gradient(circle at 8% 12%, color-mix(in srgb, var(--cs-brand) 6%, transparent) 0 8rem, transparent 8.1rem),
+    radial-gradient(circle at 94% 38%, color-mix(in srgb, var(--cs-chart-price) 5%, transparent) 0 11rem, transparent 11.1rem);
+  background-attachment: fixed;
   font-family: var(--font-sans);
   font-feature-settings: 'cv11', 'ss01';
+}
+
+/* ── Verona campus character ──────────────────────────────
+   These details borrow the campus's visual grammar—garden paths, hand-painted
+   wayfinding, collected art, and purposeful surprises—without copying any
+   protected artwork or turning financial data into a theme park. */
+.campus-dashboard {
+  position: relative;
+}
+
+.campus-dashboard::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  top: 19rem;
+  right: -2rem;
+  width: 5rem;
+  height: 9rem;
+  opacity: .2;
+  background:
+    radial-gradient(ellipse at 30% 18%, var(--cs-emerald) 0 12%, transparent 13%),
+    radial-gradient(ellipse at 70% 42%, var(--cs-emerald) 0 14%, transparent 15%),
+    linear-gradient(77deg, transparent 47%, var(--cs-emerald) 48% 51%, transparent 52%);
+  transform: rotate(12deg);
+}
+
+.campus-hero {
+  border-radius: 1.25rem 3.5rem 1.25rem 1.25rem;
+  border: 2px solid #5C1327;
+  background:
+    linear-gradient(100deg, rgba(82, 9, 29, .98) 0%, rgba(107, 16, 39, .96) 48%, rgba(31, 33, 73, .92) 100%);
+}
+
+.campus-hero::after {
+  content: '';
+  position: absolute;
+  inset: .55rem;
+  border: 1px dashed rgba(255, 255, 255, .42);
+  border-radius: .8rem 3rem .8rem .8rem;
+  pointer-events: none;
+}
+
+.campus-sticker {
+  position: relative;
+  z-index: 3;
+  display: block;
+  width: max-content;
+  margin-left: auto;
+  padding: .35rem .7rem;
+  color: #5A3100;
+  background: #F7C948;
+  border: 2px solid #fff4c7;
+  border-radius: .35rem;
+  box-shadow: 2px 3px 0 rgba(80, 30, 10, .28);
+  font-size: .65rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  transform: rotate(2.5deg);
+}
+
+.campus-watercolor {
+  position: absolute;
+  z-index: 1;
+  right: -11rem;
+  bottom: -1rem;
+  width: 38rem;
+  max-width: none;
+  opacity: .34;
+  filter: saturate(.95) contrast(1.02);
+  pointer-events: none;
+}
+
+.campus-wayfinder {
+  border-left: .45rem solid #F7C948;
+  transform: rotate(-.18deg);
+}
+
+.campus-map {
+  position: relative;
+  border-radius: 1.1rem 1.1rem 2.8rem 1.1rem;
+  background:
+    radial-gradient(circle at 95% 8%, color-mix(in srgb, var(--cs-chart-income) 11%, transparent) 0 4.5rem, transparent 4.6rem),
+    var(--cs-surface);
+}
+
+.campus-map::after {
+  content: '✦';
+  position: absolute;
+  right: 1.25rem;
+  bottom: .7rem;
+  color: #B25B00;
+  font-size: 1.4rem;
+  transform: rotate(12deg);
+}
+
+.campus-marker {
+  border-radius: 45% 55% 48% 52%;
+  box-shadow: 2px 3px 0 color-mix(in srgb, var(--cs-text) 18%, transparent);
+  transform: rotate(-5deg);
+}
+
+.campus-stop:nth-of-type(even) .campus-marker {
+  transform: rotate(6deg);
+}
+
+.campus-wordmark {
+  position: relative;
+  border-radius: 52% 48% 42% 58%;
+  box-shadow: 2px 2px 0 #F7C948;
+  transform: rotate(-4deg);
+}
+
+.campus-nav-link[aria-current='page'] {
+  transform: rotate(-1.5deg);
+}
+
+.campus-front-gate {
+  border: 2px solid #7A2738;
+  border-radius: 3.25rem 1rem 1rem 1rem;
+  box-shadow: 0 18px 44px -26px rgba(92, 19, 39, .62);
+}
+
+.campus-front-gate img {
+  filter: saturate(.9) contrast(1.04);
+}
+
+.campus-entry-plaque {
+  position: absolute;
+  right: 1rem;
+  top: 1rem;
+  padding: .35rem .7rem;
+  border: 2px solid #FFF0AE;
+  border-radius: .35rem;
+  background: #F7C948;
+  color: #543000;
+  box-shadow: 2px 3px 0 rgba(35, 18, 8, .35);
+  font-family: var(--font-serif);
+  font-size: .75rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  transform: rotate(2deg);
+}
+
+.campus-feature-card {
+  border-left-width: .35rem;
+}
+
+.campus-feature-card:nth-child(4n + 1) { border-left-color: var(--cs-brand); }
+.campus-feature-card:nth-child(4n + 2) { border-left-color: #B25B00; }
+.campus-feature-card:nth-child(4n + 3) { border-left-color: #71358A; }
+.campus-feature-card:nth-child(4n) { border-left-color: #087A55; }
+
+.campus-event-list {
+  position: relative;
+  padding-left: .6rem;
+}
+
+.campus-event-list::before {
+  content: '';
+  position: absolute;
+  top: .75rem;
+  bottom: .75rem;
+  left: 0;
+  border-left: 2px dashed #B99A73;
+}
+
+.campus-event-card {
+  position: relative;
+  margin-left: .45rem;
+  border-left-width: .35rem;
+  border-radius: .55rem 1.25rem 1.25rem .55rem;
+  box-shadow: var(--cs-shadow-card);
+}
+
+.campus-event-card::before {
+  content: '';
+  position: absolute;
+  left: -.92rem;
+  top: 1.05rem;
+  width: .55rem;
+  height: .55rem;
+  border: 2px solid var(--cs-surface);
+  border-radius: 50%;
+  background: var(--cs-brand);
+  box-shadow: 0 0 0 1px var(--cs-border-strong);
+}
+
+.campus-event-card[data-event-type='Vesting'] { border-left-color: #087A55; }
+.campus-event-card[data-event-type='Share Price'] { border-left-color: #B25B00; }
+.campus-event-card[data-event-type='Exercise'] { border-left-color: #1769AA; }
+.campus-event-card[data-event-type='Sale'] { border-left-color: #71358A; }
+
+.campus-ledger {
+  border-top: .4rem solid #B25B00;
+  border-radius: .5rem .5rem 1.5rem 1.5rem;
+}
+
+@media (min-width: 640px) {
+  .campus-watercolor {
+    right: -2.5rem;
+    bottom: -3rem;
+    width: 47rem;
+    opacity: .48;
+  }
+
+  .campus-route::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-top: 3px dashed #B99A73;
+    border-radius: 50%;
+    transform: rotate(-2deg);
+  }
+
+  .campus-stop-2,
+  .campus-stop-4 {
+    margin-top: 2.4rem;
+  }
+
+  .campus-stop-3 {
+    margin-top: .65rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* ── Animations ─────────────────────────────────────────── */

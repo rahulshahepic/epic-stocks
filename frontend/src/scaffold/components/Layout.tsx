@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { ReportProblemLink } from './ReportProblem.tsx'
 import { useAuth } from '../hooks/useAuth.ts'
@@ -31,6 +31,7 @@ export default function Layout() {
     : withContent
 
   const sharedAccounts = me?.shared_accounts ?? []
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   // Clear stale viewing_context if the invitation is no longer valid for this user.
   // The list is read inside the effect: `?? []` makes a new array on every render,
@@ -47,6 +48,10 @@ export default function Layout() {
   useEffect(() => {
     mainRef.current?.focus()
   }, [location.pathname])
+
+  const mobilePrimaryItems = navItems.filter(item =>
+    ['/', '/events', '/retirement', '/grants'].includes(item.to)
+  )
 
   return (
     <div className="flex min-h-screen flex-col bg-cs-base">
@@ -87,9 +92,9 @@ export default function Layout() {
         )}
 
         <header className="border-b border-cs-border">
-          <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
+          <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
             <span className="flex min-w-0 shrink items-center gap-2 text-sm font-extrabold tracking-tight text-cs-brand">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-cs-brand to-cs-brand-hover text-[11px] font-extrabold text-white">
+              <span className="campus-wordmark flex h-7 w-7 shrink-0 items-center justify-center bg-gradient-to-br from-cs-brand to-cs-brand-hover text-[11px] font-extrabold text-white">
                 E
               </span>
               {/* Badge sits under the name rather than beside it: side by side, the two
@@ -138,14 +143,14 @@ export default function Layout() {
             </div>
           </div>
 
-          <nav aria-label="Main navigation" className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-4 pb-2.5">
+          <nav aria-label="Main navigation" className="mx-auto hidden max-w-6xl gap-1 overflow-x-auto px-6 pb-2.5 md:flex">
             {navItems.map(({ to, label }) => (
               <NavLink
                 key={to}
                 to={to}
                 end={to === '/'}
                 className={({ isActive }) =>
-                  `whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  `campus-nav-link whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
                     isActive
                       ? 'bg-cs-brand text-white shadow-sm'
                       : 'text-cs-text-2 hover:bg-cs-raised hover:text-cs-text'
@@ -165,12 +170,62 @@ export default function Layout() {
         id="main-content"
         ref={mainRef}
         tabIndex={-1}
-        className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 outline-none"
+        className="mx-auto w-full max-w-6xl flex-1 px-4 py-5 pb-24 outline-none sm:px-6 sm:py-7 md:pb-8"
       >
         <Outlet />
       </main>
 
-      <footer className="border-t border-cs-border px-4 py-4 text-center text-xs text-cs-text-2">
+      <nav
+        aria-label="Mobile navigation"
+        className="fixed inset-x-0 bottom-0 z-50 border-t border-cs-border bg-cs-surface/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-8px_28px_-20px_rgba(26,20,17,0.45)] backdrop-blur md:hidden"
+      >
+        {mobileMenuOpen && (
+          <div id="mobile-more-menu" className="absolute bottom-full left-3 right-3 mb-2 rounded-2xl border border-cs-border bg-cs-surface p-3 shadow-pop">
+            <p className="mb-2 px-2 text-xs font-semibold uppercase tracking-wide text-cs-muted">Everything</p>
+            <div className="grid grid-cols-3 gap-1">
+              {navItems.filter(item => !mobilePrimaryItems.some(primary => primary.to === item.to)).map(({ to, label }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={({ isActive }) =>
+                    `rounded-xl px-2 py-2.5 text-center text-sm font-semibold ${isActive ? 'bg-cs-brand-subtle text-cs-brand' : 'text-cs-text-2 hover:bg-cs-raised'}`
+                  }
+                >
+                  {label}
+                </NavLink>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="mx-auto grid max-w-lg grid-cols-5 px-2 py-1.5">
+          {mobilePrimaryItems.map(({ to, label }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={to === '/'}
+              aria-label={label}
+              onClick={() => setMobileMenuOpen(false)}
+              className={({ isActive }) =>
+                `rounded-xl px-1 py-2 text-center text-xs font-semibold ${isActive ? 'bg-cs-brand-subtle text-cs-brand' : 'text-cs-text-2'}`
+              }
+            >
+              {label === 'Retirement' ? 'Plan' : label === 'Grants' ? 'Data' : label}
+            </NavLink>
+          ))}
+          <button
+            type="button"
+            aria-expanded={mobileMenuOpen}
+            aria-controls="mobile-more-menu"
+            onClick={() => setMobileMenuOpen(open => !open)}
+            className={`rounded-xl px-1 py-2 text-center text-xs font-semibold ${mobileMenuOpen ? 'bg-cs-brand-subtle text-cs-brand' : 'text-cs-text-2'}`}
+          >
+            More
+          </button>
+        </div>
+      </nav>
+
+      <footer className="mb-16 border-t border-cs-border px-4 py-4 text-center text-xs text-cs-text-2 md:mb-0">
         <Link
           to="/privacy"
           className="underline hover:text-cs-text"

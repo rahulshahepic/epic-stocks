@@ -19,7 +19,7 @@ export async function loginAs(page: Page, email: string, name = 'Test User') {
   const body = await resp.text().catch(() => '(unreadable)')
   expect(resp.ok(), `test-login ${email} → HTTP ${resp.status()}: ${body}`).toBeTruthy()
   await page.goto(BASE_URL)
-  await expect(page.getByRole('navigation')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('navigation', { name: 'Mobile navigation' })).toBeVisible({ timeout: 15_000 })
 }
 
 /**
@@ -37,7 +37,16 @@ export async function loginAs(page: Page, email: string, name = 'Test User') {
  * tight timeouts that fail fast on real bugs.
  */
 export async function navigateTo(page: Page, label: string) {
-  const link = page.getByRole('navigation').getByRole('link', { name: label, exact: true })
+  const mobileNav = page.getByRole('navigation', { name: 'Mobile navigation' })
+  const mobile = await mobileNav.isVisible()
+  const navigation = mobile
+    ? mobileNav
+    : page.getByRole('navigation', { name: 'Main navigation' })
+  let link = navigation.getByRole('link', { name: label, exact: true })
+  if (mobile && await link.count() === 0) {
+    await navigation.getByRole('button', { name: 'More' }).click()
+    link = navigation.getByRole('link', { name: label, exact: true })
+  }
   // Derive the expected pathname from the link's own href instead of guessing
   // from the label — Dashboard is "/" not "/dashboard", and we don't want to
   // hard-code mappings here.

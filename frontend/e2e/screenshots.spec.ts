@@ -5,6 +5,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import * as path from 'path'
 import { fileURLToPath } from 'url'
+import { navigateTo } from './helpers.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -86,7 +87,7 @@ test.describe('Screenshots', () => {
 
   test('admin - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
-    await page.click('text=Admin')
+    await navigateTo(page, 'Admin')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(1000)
     await shoot(page, 'admin-light-mobile')
@@ -94,7 +95,7 @@ test.describe('Screenshots', () => {
 
   test('admin - dark - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'dark')
-    await page.click('text=Admin')
+    await navigateTo(page, 'Admin')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(1000)
     await shoot(page, 'admin-dark-mobile')
@@ -102,7 +103,7 @@ test.describe('Screenshots', () => {
 
   test('events page - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
-    await page.click('text=Events')
+    await navigateTo(page, 'Events')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
     await shoot(page, 'events-light-mobile')
@@ -110,7 +111,7 @@ test.describe('Screenshots', () => {
 
   test('events page - dark - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'dark')
-    await page.click('text=Events')
+    await navigateTo(page, 'Events')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
     await shoot(page, 'events-dark-mobile')
@@ -118,7 +119,7 @@ test.describe('Screenshots', () => {
 
   test('import-export page - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
-    await page.click('text=Import')
+    await navigateTo(page, 'Import')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
     // fullPage: the export card and its as-of date sit below the fold.
@@ -146,7 +147,7 @@ test.describe('Screenshots', () => {
 
   test('sales page - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
-    await page.click('text=Sales')
+    await navigateTo(page, 'Sales')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
     await shoot(page, 'sales-light-mobile', { fullPage: true })
@@ -154,7 +155,7 @@ test.describe('Screenshots', () => {
 
   test('sales page - dark - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'dark')
-    await page.click('text=Sales')
+    await navigateTo(page, 'Sales')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
     await shoot(page, 'sales-dark-mobile', { fullPage: true })
@@ -162,7 +163,7 @@ test.describe('Screenshots', () => {
 
   test('settings page - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
-    await page.click('text=Settings')
+    await navigateTo(page, 'Settings')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
     await shoot(page, 'settings-light-mobile')
@@ -170,7 +171,7 @@ test.describe('Screenshots', () => {
 
   test('settings page - dark - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'dark')
-    await page.click('text=Settings')
+    await navigateTo(page, 'Settings')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
     await shoot(page, 'settings-dark-mobile')
@@ -290,7 +291,7 @@ test.describe('Screenshots', () => {
     await page.request.post(`${BASE}/api/admin/epic-mode`, { data: { active: true } })
     await page.goto(`${BASE}`)
     await page.waitForLoadState('networkidle')
-    await page.click('text=Grants')
+    await navigateTo(page, 'Grants')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
     await shoot(page, 'grants-epic-mode-light-mobile', { fullPage: true })
@@ -302,7 +303,7 @@ test.describe('Screenshots', () => {
     await page.request.post(`${BASE}/api/admin/epic-mode`, { data: { active: true } })
     await page.goto(`${BASE}`)
     await page.waitForLoadState('networkidle')
-    await page.click('text=Grants')
+    await navigateTo(page, 'Grants')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
     await shoot(page, 'grants-epic-mode-dark-mobile', { fullPage: true })
@@ -348,7 +349,7 @@ test.describe('Screenshots', () => {
 
   test('settings sharing section - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
-    await page.click('text=Settings')
+    await navigateTo(page, 'Settings')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(800)
     const sharingHeading = page.locator('h2, h3').filter({ hasText: 'Sharing' }).first()
@@ -359,7 +360,7 @@ test.describe('Screenshots', () => {
 
   test('settings sharing section - dark - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'dark')
-    await page.click('text=Settings')
+    await navigateTo(page, 'Settings')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(800)
     const sharingHeading = page.locator('h2, h3').filter({ hasText: 'Sharing' }).first()
@@ -370,7 +371,7 @@ test.describe('Screenshots', () => {
 
   test('settings ai connections - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
-    await page.click('text=Settings')
+    await navigateTo(page, 'Settings')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(800)
     const heading = page.locator('h2, h3').filter({ hasText: 'AI Connections' }).first()
@@ -381,7 +382,7 @@ test.describe('Screenshots', () => {
 
   test('settings ai connections - dark - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'dark')
-    await page.click('text=Settings')
+    await navigateTo(page, 'Settings')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(800)
     const heading = page.locator('h2, h3').filter({ hasText: 'AI Connections' }).first()
@@ -405,7 +406,7 @@ test.describe('Screenshots', () => {
 
   test('content - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
-    await page.getByRole('link', { name: 'Content', exact: true }).click()
+    await navigateTo(page, 'Content')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
     await shoot(page, 'content-light-mobile', { fullPage: true })
@@ -413,7 +414,7 @@ test.describe('Screenshots', () => {
 
   test('content - dark - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'dark')
-    await page.getByRole('link', { name: 'Content', exact: true }).click()
+    await navigateTo(page, 'Content')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
     await shoot(page, 'content-dark-mobile', { fullPage: true })
@@ -519,7 +520,7 @@ test.describe('Screenshots', () => {
     await page.request.post(`${BASE}/api/admin/epic-mode`, { data: { active: true } })
     await page.goto(`${BASE}`)
     await page.waitForLoadState('networkidle')
-    await page.click('text=Loans')
+    await navigateTo(page, 'Loans')
     await page.waitForLoadState('networkidle')
     await page.waitForTimeout(500)
     await shoot(page, 'loans-epic-mode-light-mobile', { fullPage: true })

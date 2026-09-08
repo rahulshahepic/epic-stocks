@@ -31,7 +31,11 @@ test.describe('Content admin role', () => {
     await expect(page.getByText(editorEmail).first()).toBeVisible()
     await page.getByText(editorEmail).first().click()
     await expect(page.getByText('Actions')).toBeVisible()
-    await page.getByRole('button', { name: 'Make Content Admin' }).click()
+    // A Playwright retry can revisit this flow after the first attempt already
+    // persisted the promotion. Accept that state instead of waiting forever for
+    // a button that has correctly changed to "Revoke Content Admin".
+    const promote = page.getByRole('button', { name: 'Make Content Admin' })
+    if (await promote.isVisible()) await promote.click()
     // Button flips to Revoke
     await expect(page.getByRole('button', { name: 'Revoke Content Admin' })).toBeVisible()
 
@@ -39,7 +43,7 @@ test.describe('Content admin role', () => {
     const editorCtx = await browser.newContext()
     const editorPage = await editorCtx.newPage()
     await loginAs(editorPage, editorEmail, 'Editor')
-    await expect(editorPage.getByRole('link', { name: 'Content', exact: true })).toBeVisible()
+    // Content lives in the responsive More menu at mobile widths.
     await navigateTo(editorPage, 'Content')
     await expect(editorPage.getByText('Grant-program content')).toBeVisible()
 

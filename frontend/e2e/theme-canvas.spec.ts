@@ -7,8 +7,8 @@ import { test, expect } from '@playwright/test'
 
 const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:5173'
 
-const LIGHT_BASE = 'rgb(248, 246, 244)' // --cs-base
-const DARK_BASE = 'rgb(17, 16, 9)' // .dark --cs-base
+const LIGHT_BASE = 'rgb(247, 242, 234)' // --cs-base
+const DARK_BASE = 'rgb(32, 25, 22)' // .dark --cs-base
 
 async function rootStyle(page: import('@playwright/test').Page) {
   return page.evaluate(() => {

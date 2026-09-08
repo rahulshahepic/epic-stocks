@@ -59,7 +59,7 @@ export default function Login() {
             <CampusWelcomeScene className="relative z-0 -mb-2 mt-2 w-full text-cs-text" />
           </div>
 
-          <Eyebrow className="mt-7">Around the campus</Eyebrow>
+          <Eyebrow className="mt-7">What you get with an account</Eyebrow>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             {features.map(f => <div key={f.title} className="campus-feature-card flex items-center gap-3 rounded-xl border border-cs-border bg-cs-surface px-4 py-3.5 shadow-card"><IconTile tone={f.tone}>{f.icon}</IconTile><div className="min-w-0"><p className="text-sm font-semibold text-cs-text">{f.title}</p><p className="mt-0.5 text-xs leading-snug text-cs-text-2">{f.body}</p></div></div>)}
           </div>

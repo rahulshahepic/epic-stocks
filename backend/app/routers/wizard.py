@@ -1,7 +1,10 @@
 """Wizard endpoints: tolerant structural file parsing and merge-aware bulk data save."""
+from collections import Counter
 from datetime import date
+from math import isfinite
+from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -9,7 +12,8 @@ from scaffold.models import User, Grant, Loan, Price, Sale, LoanPayment
 from scaffold.auth import get_current_user
 from scaffold.safe_workbook import WorkbookRejected, load_workbook_safely
 from app.date_utils import to_date as _to_date
-from schemas import MAX_BULK_ITEMS, MAX_LABEL_LEN, bounded, bounded_list
+from schemas import (MAX_BULK_ITEMS, MAX_LABEL_LEN, Notes, SharePrice, Shares,
+                     bounded, bounded_list)
 from scaffold.quota import check_row_count, check_row_quota
 from app import event_cache
 
@@ -218,18 +222,65 @@ class WizardPrice(BaseModel):
         return v
 
 
+class WizardSale(BaseModel):
+    """A sale the user is entering alongside their grants.
+
+    The import drafts one of these for shares the workbook reports gone that no
+    down payment accounts for, with only the share count filled in. Date and
+    price come from the user, so both are required here — the wizard is the last
+    point at which an incomplete sale can be refused, and a sale with no price
+    would land in the capital-gains maths as a zero.
+    """
+    date: str
+    shares: Shares
+    price_per_share: SharePrice
+    notes: Notes = ""
+
+    @field_validator("price_per_share")
+    @classmethod
+    def price_finite(cls, v):
+        if not isfinite(v):
+            raise ValueError("price_per_share must be finite")
+        return v
+
+    @field_validator("date")
+    @classmethod
+    def date_parses(cls, v):
+        # Rejected here so a malformed date is a 422 rather than an exception in
+        # the insert loop, which would be a 500 and an error_logs row.
+        try:
+            _to_date(v)
+        except (ValueError, TypeError) as e:
+            raise ValueError("date must be an ISO date, e.g. 2023-06-30") from e
+        return v
+
+
 class WizardSubmitRequest(BaseModel):
     grants: list[WizardGrant]
     prices: list[WizardPrice]
+    sales: list[WizardSale] = []
+    reported_sold_shares: int | None = Field(default=None, ge=0, le=MAX_BULK_ITEMS * 10_000_000)
+    sale_grant_keys: list[Annotated[str, Field(max_length=MAX_LABEL_LEN + 5)]] = []
     clear_existing: bool = True
     generate_payoff_sales: bool = True
     preserve_grant_ids: list[int] = []
     preserve_price_ids: list[int] = []
 
-    @field_validator("grants", "prices", "preserve_grant_ids", "preserve_price_ids")
+    @field_validator("grants", "prices", "sales", "sale_grant_keys", "preserve_grant_ids", "preserve_price_ids")
     @classmethod
     def list_bounded(cls, v):
         return bounded_list(v, MAX_BULK_ITEMS, "list")
+
+    @model_validator(mode="after")
+    def shares_reconcile(self):
+        if self.reported_sold_shares is not None:
+            keys = set(self.sale_grant_keys)
+            exchanged = sum(abs(g.dp_shares) for g in self.grants
+                            if f"{g.year}:{g.type}" in keys)
+            if exchanged + sum(s.shares for s in self.sales) > self.reported_sold_shares:
+                raise ValueError("Sales plus down-payment shares exceed the workbook total. "
+                                 "Reduce the sale quantities after correcting exchanges.")
+        return self
 
 
 class WizardSubmitResponse(BaseModel):
@@ -237,6 +288,8 @@ class WizardSubmitResponse(BaseModel):
     loans: int
     prices: int
     payoff_sales: int
+    sales: int = 0
+    existing_sales: int = 0
 
 
 # ── Preview diff models ───────────────────────────────────────────────────────
@@ -357,16 +410,31 @@ def submit(
     """Save wizard data. clear_existing=True nukes all prior data; False merges."""
     loan_objects: list[tuple[Loan, str]] = []  # (loan_obj, refinances_loan_number)
 
+    # Serialize wizard retries for this account before reading existing sales.
+    db.query(User).filter(User.id == user.id).with_for_update().first()
+    existing = [] if body.clear_existing else db.query(Sale).filter(
+        Sale.user_id == user.id, Sale.loan_id.is_(None)).all()
+    remaining = Counter((s.date, s.shares, s.price_per_share) for s in existing)
+    new_sales = []
+    for s in body.sales:
+        key = (_to_date(s.date), s.shares, s.price_per_share)
+        if remaining[key]:
+            remaining[key] -= 1
+        else:
+            new_sales.append(s)
+
     incoming_loans = sum(len(g.loans) for g in body.grants)
     if body.clear_existing:
         # A clearing submit replaces everything, so only the incoming rows count.
         check_row_count(Grant, len(body.grants))
         check_row_count(Price, len(body.prices))
         check_row_count(Loan, incoming_loans)
+        check_row_count(Sale, len(new_sales))
     else:
         check_row_quota(db, Grant, user.id, adding=len(body.grants))
         check_row_quota(db, Price, user.id, adding=len(body.prices))
         check_row_quota(db, Loan, user.id, adding=incoming_loans)
+        check_row_quota(db, Sale, user.id, adding=len(new_sales))
 
     if body.clear_existing:
         db.query(LoanPayment).filter(LoanPayment.user_id == user.id).delete()
@@ -426,6 +494,21 @@ def submit(
                 except Exception:
                     pass  # Don't abort the whole wizard if payoff calc fails
 
+    # Sales the user entered, after the payoff ones so a hand-entered sale is
+    # never mistaken for a generated one. These carry no loan_id: they are shares
+    # that left a grant, which is all either document says about them.
+    sale_count = 0
+    for s in new_sales:
+        sale_date = _to_date(s.date)
+        db.add(Sale(
+            user_id=user.id,
+            date=sale_date,
+            shares=s.shares,
+            price_per_share=s.price_per_share,
+            notes=s.notes,
+        ))
+        sale_count += 1
+
     db.commit()
 
     event_cache.schedule_recompute(user.id)
@@ -435,6 +518,8 @@ def submit(
         loans=loan_count,
         prices=price_count,
         payoff_sales=payoff_count,
+        sales=sale_count,
+        existing_sales=len(body.sales) - sale_count,
     )
 
 

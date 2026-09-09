@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import ImportWizard from '../app/components/ImportWizard.tsx'
+import type { WizardPrefill } from '../app/components/importWizard/types.ts'
 
 const mockNavigate = vi.fn()
 vi.mock('react-router-dom', async () => ({
@@ -77,6 +78,7 @@ function renderWizard(onComplete = vi.fn()) {
 function renderWizardWithPrefill(
   loan: { interest_rate: number; due_date: string },
   dp_shares = 0,
+  extras: Partial<WizardPrefill> = {},
 ) {
   const prefill = {
     grants: [{
@@ -91,6 +93,7 @@ function renderWizardWithPrefill(
       loan_number: '001468', refinances_loan_id: null,
     }],
     prices: [{ id: -1, version: 1, effective_date: '2018-01-01', price: 2.00 }],
+    ...extras,
   }
   return render(
     <MemoryRouter>
@@ -752,4 +755,37 @@ describe('ImportWizard', () => {
     expect(filled[0].disabled).toBe(false)
   })
 
+})
+
+
+it('submits split sales, preserves a skipped balance, and carries source totals through the wizard', async () => {
+  mockApi()
+  const user = userEvent.setup()
+  renderWizardWithPrefill({ interest_rate: 0.0285, due_date: '2028-06-30' }, 0, {
+    reported_sold_shares: 1000, sale_grant_keys: ['2018:Purchase'],
+    sales: [{ shares: 1000, date: '', price_per_share: null, notes: '', needs_input: true }],
+    existing_sales: [{ shares: 500, date: '2024-03-01', price_per_share: 12.5 }],
+  })
+  await gotoRefiScreen(user)
+  await user.click(screen.getByRole('button', { name: /Next: Interest loans/ }))
+  await user.click(screen.getByRole('button', { name: /Next: Preferences/ }))
+  await user.click(screen.getByRole('button', { name: 'Skip' }))
+  await user.selectOptions(screen.getByLabelText('Use a saved sale'), '0')
+  await user.click(screen.getByRole('button', { name: 'Add another sale' }))
+  await user.clear(screen.getAllByLabelText('Shares sold')[1])
+  await user.type(screen.getAllByLabelText('Shares sold')[1], '300')
+  await user.type(screen.getAllByLabelText('Date sold')[1], '2025-03-01')
+  await user.type(screen.getAllByLabelText('Price per share')[1], '15')
+  await user.click(screen.getByRole('button', { name: /Next: review 1 new sale/ }))
+  expect(screen.getByRole('region', { name: 'Sales summary' })).toHaveTextContent('1 already recorded')
+  expect(screen.getByText(/200 shares remain unimported/)).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Submit →' }))
+  await waitFor(() => expect(screen.getByText('Setup complete!')).toBeInTheDocument())
+  const call = vi.mocked(globalThis.fetch).mock.calls.find(([url]) => String(url).includes('/api/wizard/submit'))
+  const payload = JSON.parse(call?.[1]?.body as string)
+  expect(payload).toMatchObject({ reported_sold_shares: 1000, sale_grant_keys: ['2018:Purchase'], clear_existing: false })
+  expect(payload.sales).toMatchObject([
+    { shares: 500, date: '2024-03-01', price_per_share: 12.5 },
+    { shares: 300, date: '2025-03-01', price_per_share: 15 },
+  ])
 })

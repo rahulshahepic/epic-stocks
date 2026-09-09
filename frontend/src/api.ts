@@ -1020,9 +1020,19 @@ export interface WizardGrant {
   loans: WizardLoan[]
 }
 
+export interface WizardSale {
+  date: string
+  shares: number
+  price_per_share: number
+  notes?: string
+}
+
 export interface WizardSubmitPayload {
   grants: WizardGrant[]
   prices: { effective_date: string; price: number }[]
+  sales?: WizardSale[]
+  reported_sold_shares?: number | null
+  sale_grant_keys?: string[]
   clear_existing?: boolean
   generate_payoff_sales?: boolean
   preserve_grant_ids?: number[]
@@ -1034,6 +1044,8 @@ export interface WizardSubmitResult {
   loans: number
   prices: number
   payoff_sales: number
+  sales: number
+  existing_sales?: number
 }
 
 export interface WizardPreviewGrant {

@@ -12,6 +12,7 @@ payload that tries to change them.
 """
 from dataclasses import dataclass, field
 from datetime import date
+from math import isfinite
 
 from .models import ERROR, INFO, WARNING, Finding, ShareRow, Statement
 from .rules import (attribute_loan, basis_per_share, classify_row,
@@ -31,11 +32,25 @@ _RATE_TOL = 1e-6
 MIN_GRANT_YEAR = 1900
 MAX_GRANT_YEAR = 2100
 
+# A sale note is assembled here, but a supplied payload can carry any string at
+# all — schemas.py bounds the field the wizard finally writes, and this keeps a
+# pasted megabyte out of the draft before it gets that far.
+_MAX_SALE_NOTE = 500
+
 # Failing these means we could not read a document correctly, so nothing
 # downstream can be trusted: G0 is a column the share summary is missing, C1/C2
 # are the statement not adding up to its own printed totals. Everything else is
 # the two documents disagreeing, which is the user's call to override.
 BLOCKING_CHECKS = {"G0", "C1", "C2"}
+
+# Why the two documents disagree about loans more often than not. Shareworks
+# regenerates the loan statement on demand but the stock workbook is refreshed on
+# its own slower cycle, so a payoff or a refinance lands on the statement first
+# and the workbook still carries the old balance. That is the ordinary case
+# rather than a misread, which is why C3 and C4 warn instead of erroring.
+_STALE_WORKBOOK = ("The workbook is refreshed less often than the statement, so it "
+                   "usually means it predates a payment on this loan — check which "
+                   "of the two is newer before changing anything.")
 
 
 def _d(v) -> date | None:
@@ -106,16 +121,48 @@ class DraftPrice:
 
 
 @dataclass
+class DraftSale:
+    """Shares that left a grant and were not a down payment paid in stock.
+
+    The share count comes from the CSV; the date and the price do not exist in
+    either document, so both start unknown and only the user can supply them.
+    An incomplete sale is carried through the draft deliberately rather than
+    dropped — it is how the wizard knows to ask, and how the repair prompt knows
+    what to collect. `C12` keeps an unfilled one visible until it is answered.
+    """
+    shares: int
+    sale_date: date | None = None
+    price_per_share: float | None = None
+    notes: str = ""
+
+    @property
+    def is_complete(self) -> bool:
+        return self.sale_date is not None and self.price_per_share is not None
+
+    def as_dict(self) -> dict:
+        # Field names match WizardSale, because a complete sale in this shape is
+        # posted to /api/wizard/submit verbatim — "note" here would be dropped as
+        # an unknown key and the text lost without an error.
+        return {"shares": self.shares,
+                "date": self.sale_date.isoformat() if self.sale_date else None,
+                "price_per_share": self.price_per_share, "notes": self.notes}
+
+
+@dataclass
 class Draft:
     grants: list[DraftGrant] = field(default_factory=list)
     prices: list[DraftPrice] = field(default_factory=list)
+    sales: list[DraftSale] = field(default_factory=list)
     statement_date: date | None = None
+    reported_sold_shares: int | None = None
     # "parsed" when we derived it, "supplied" when it came back from an assistant
     origin: str = "parsed"
 
     def as_dict(self) -> dict:
         return {"grants": [g.as_dict() for g in self.grants],
                 "prices": [p.as_dict() for p in self.prices],
+                "sales": [s.as_dict() for s in self.sales],
+                "reported_sold_shares": self.reported_sold_shares,
                 "statement_date": self.statement_date.isoformat() if self.statement_date else None,
                 "origin": self.origin}
 
@@ -330,8 +377,11 @@ def _explain_shares_sold(draft: Draft, rows: list[ShareRow], sk: Skeleton,
     between a grant's cost basis and its purchase loan says what the down
     payment was, and a down payment paid in stock is a whole number of shares —
     so when those add up to exactly the shares reported gone, that is where they
-    went. Anything left over is reported as sold, which is all the CSV can
-    support: it carries no sale dates or prices.
+    went.
+
+    An unmatched total may mix exchanges and multiple sales. Keep an unanswered
+    row for the user to classify and split; a failed exact match proves neither
+    that every share was sold nor that they left in one transaction.
     """
     sold_total = sum(r.shares_sold or 0 for r in rows)
     if not sold_total:
@@ -372,14 +422,17 @@ def _explain_shares_sold(draft: Draft, rows: list[ShareRow], sk: Skeleton,
                                 f"were applied. Set the down payment shares by hand in the "
                                 f"wizard if these were exchanges rather than sales."))
 
-    for row in rows:
-        if row.shares_sold:
-            findings.append(Finding("G2", INFO, row.label,
-                                    f"Epic reports {row.shares_sold:,} shares sold from this grant. "
-                                    f"The CSV carries no sale dates or prices, so no sales are "
-                                    f"created — add them on the Sales page. If they were handed "
-                                    f"back as a down payment on a later purchase, record that on "
-                                    f"the grant instead."))
+    per_grant = ", ".join(f"{r.label} ({r.shares_sold:,})"
+                          for r in rows if r.shares_sold)
+    draft.sales.append(DraftSale(
+        shares=sold_total,
+        notes=f"Unclassified shares reported by the workbook: {per_grant}."[:_MAX_SALE_NOTE]))
+    findings.append(Finding("G2", WARNING, "",
+                            f"Epic reports {sold_total:,} shares gone ({per_grant}). "
+                            "The down-payment check could not uniquely account for them. "
+                            "They may be exchanges, sales, or both. Set exchanged shares "
+                            "on the purchase grants, then enter each actual sale separately "
+                            "or select a sale already recorded. Leave unknowns unimported."))
 
 
 # ============================================================
@@ -524,6 +577,43 @@ def draft_from_payload(payload: dict, sk: Skeleton) -> tuple[Draft, list[Finding
             draft.prices.append(DraftPrice(d, float(p)))
         except (TypeError, ValueError, OverflowError):
             findings.append(Finding("R1", WARNING, f"prices[{i}]", "Price is not a number."))
+
+    raw_sales = payload.get("sales") or []
+    if not isinstance(raw_sales, list):
+        findings.append(Finding("R1", WARNING, "sales", "'sales' is not an array."))
+        raw_sales = []
+    for i, raw in enumerate(raw_sales):
+        if not isinstance(raw, dict):
+            findings.append(Finding("R1", WARNING, f"sales[{i}]", "Not an object."))
+            continue
+        try:
+            shares = _finite_int(raw["shares"])
+        except (KeyError, TypeError, ValueError, OverflowError):
+            findings.append(Finding("R1", WARNING, f"sales[{i}]",
+                                    "Skipped — needs a whole number of shares."))
+            continue
+        if shares <= 0:
+            findings.append(Finding("R1", WARNING, f"sales[{i}]",
+                                    "Skipped — shares must be positive."))
+            continue
+        # A missing or unreadable date or price is not a reason to drop the sale.
+        # The share count is the part that came out of the file; the other two are
+        # the user's to supply, and C12 keeps asking until they are there.
+        price = raw.get("price_per_share")
+        try:
+            price = None if price in (None, "") else float(price)
+        except (TypeError, ValueError, OverflowError):
+            findings.append(Finding("R1", WARNING, f"sales[{i}]",
+                                    f"price_per_share {raw.get('price_per_share')!r} is not a "
+                                    f"number; left blank for you to fill in."))
+            price = None
+        if price is not None and (not isfinite(price) or not 0 < price <= 1_000_000):
+            findings.append(Finding("R1", WARNING, f"sales[{i}]",
+                                    "price_per_share must be finite and between 0 (exclusive) and 1,000,000; left blank."))
+            price = None
+        draft.sales.append(DraftSale(
+            shares=shares, sale_date=_d(raw.get("date")), price_per_share=price,
+            notes=str(raw.get("notes") or "")[:_MAX_SALE_NOTE]))
     return draft, findings
 
 
@@ -534,6 +624,8 @@ def draft_from_payload(payload: dict, sk: Skeleton) -> tuple[Draft, list[Finding
 def validate_draft(draft: Draft, statement: Statement | None, rows: list[ShareRow],
                    sk: Skeleton) -> list[Finding]:
     out: list[Finding] = []
+    draft.reported_sold_shares = (sum(r.shares_sold or 0 for r in rows)
+                                  if any(r.shares_sold is not None for r in rows) else None)
     loans = draft.all_loans
 
     if statement is not None:
@@ -583,17 +675,17 @@ def validate_draft(draft: Draft, statement: Statement | None, rows: list[ShareRo
         if statement is not None and row.loan_balance is not None:          # C3
             got = round(sum(l.amount for l in grant.loans), 2)
             if abs(got - row.loan_balance) > _CENT:
-                out.append(Finding("C3", ERROR, row.label,
+                out.append(Finding("C3", WARNING, row.label,
                                    f"The stock workbook reports a loan balance of "
                                    f"{row.loan_balance:,.2f}; the loans on this grant add up "
-                                   f"to {got:,.2f}."))
+                                   f"to {got:,.2f}. {_STALE_WORKBOOK}"))
         if statement is not None and row.annual_interest_due is not None:   # C4
             got = round(sum(l.amount * l.interest_rate for l in grant.loans), 2)
             if abs(got - row.annual_interest_due) > 0.02:
-                out.append(Finding("C4", ERROR, row.label,
+                out.append(Finding("C4", WARNING, row.label,
                                    f"The stock workbook reports {row.annual_interest_due:,.2f} "
                                    f"of annual interest; the loans on this grant imply "
-                                   f"{got:,.2f}."))
+                                   f"{got:,.2f}. {_STALE_WORKBOOK}"))
         if row.loan_due_year and grant.loans:                               # C7
             years = {l.due_date.year for l in grant.loans}
             if years != {row.loan_due_year}:
@@ -652,6 +744,21 @@ def validate_draft(draft: Draft, statement: Statement | None, rows: list[ShareRo
                                f"{expected:,.2f}, but the cost basis exceeds the purchase "
                                f"loan by {gap:,.2f}."))
 
+    for s in draft.sales:                                                   # C12
+        missing = [n for n, v in (("a date", s.sale_date),
+                                  ("a price per share", s.price_per_share)) if v is None]
+        if missing:
+            out.append(Finding("C12", WARNING, f"sale of {s.shares:,} shares",
+                               f"Needs {' and '.join(missing)} before it can be imported — "
+                               f"neither document records that, only you know it."))
+    sale_total = sum(s.shares for s in draft.sales)
+    if reported_sold and sale_total + dp_total != sold_total:               # C12
+        out.append(Finding("C12", WARNING, "",
+                           f"The stock workbook reports {sold_total:,} shares gone from your "
+                           f"grants, but the draft accounts for {sale_total + dp_total:,} — "
+                           f"{dp_total:,} handed back as down payments and {sale_total:,} "
+                           f"sold."))
+
     for g in draft.grants:                                                  # C10
         t = sk.template(g.year, g.type)
         if t and (g.periods != t.periods or g.vest_start != t.vest_start):
@@ -678,8 +785,14 @@ def is_blocked(findings: list[Finding]) -> bool:
     return any(f.code in BLOCKING_CHECKS and f.severity == ERROR for f in findings)
 
 
-def to_wizard_payload(draft: Draft) -> dict:
-    """The shape POST /api/wizard/submit accepts."""
+def to_wizard_payload(draft: Draft, include_unanswered_sales: bool = False) -> dict:
+    """The shape POST /api/wizard/submit accepts.
+
+    A sale with no date or price is left out by default, because the wizard
+    refuses one and this payload is what gets submitted. `include_unanswered_sales`
+    is for the repair prompt, where showing the blank is the whole point — it is
+    how the assistant knows there is something to ask the user about.
+    """
     return {
         "grants": [{
             "year": g.year, "type": g.type, "shares": g.shares, "price": g.price,
@@ -693,4 +806,6 @@ def to_wizard_payload(draft: Draft) -> dict:
         } for g in draft.grants],
         "prices": [{"effective_date": p.effective_date.isoformat(),
                     "price": p.price} for p in draft.prices],
+        "sales": [s.as_dict() for s in draft.sales
+                  if include_unanswered_sales or s.is_complete],
     }

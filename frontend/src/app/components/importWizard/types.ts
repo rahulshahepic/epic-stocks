@@ -1,4 +1,4 @@
-import type { GrantEntry, LoanEntry, PriceEntry } from '../../../api.ts'
+import type { GrantEntry, LoanEntry, PriceEntry, WizardSale } from '../../../api.ts'
 import type { BonusRowType, GrantTypeName } from '../../grantTypes.ts'
 import type { WizardGrantTemplate } from '../../../api.ts'
 
@@ -63,6 +63,7 @@ export type Screen =
   | 'schedule_loans_refi' // refinance chains review
   | 'schedule_loans_interest' // interest loans review (uses data from prior two screens)
   | 'schedule_settings' // user preference questions (replaces old tax-rate step)
+  | 'schedule_sales' // shares the files say went but cannot date or price
 
 /** One entry of Epic's own grant schedule, as the wizard uses it. */
 export interface KnownGrant {
@@ -116,8 +117,67 @@ export interface ReviewedLoan {
   is_existing: boolean // loaded from DB vs auto-generated
 }
 
+/** A sale mid-edit. The import fills in `shares`; the other two are the user's.
+ *  Strings so a half-typed value stays valid, same as WizardPrice. */
+export interface SaleDraft {
+  shares: number
+  date: string
+  price_per_share: string
+  notes: string
+  /** True when the import could not date or price it — what the screen asks about. */
+  needs_input: boolean
+}
+
+/** One sale as the import handed it over, before the user answered anything. */
+export interface PrefillSale {
+  shares: number
+  date: string
+  price_per_share: number | null
+  notes: string
+  needs_input: boolean
+}
+
 /** A draft to review instead of the user's saved data — see EpicFileImport. */
-export type WizardPrefill = { grants: GrantEntry[]; loans: LoanEntry[]; prices: PriceEntry[] }
+export type WizardPrefill = {
+  grants: GrantEntry[]
+  loans: LoanEntry[]
+  prices: PriceEntry[]
+  sales?: PrefillSale[]
+  existing_sales?: WizardSale[]
+  reported_sold_shares?: number | null
+  sale_grant_keys?: string[]
+}
+
+export function prefillToSaleDraft(s: PrefillSale): SaleDraft {
+  return {
+    shares: s.shares,
+    date: s.date || '',
+    price_per_share: s.price_per_share != null ? String(s.price_per_share) : '',
+    notes: s.notes || '',
+    needs_input: s.needs_input,
+  }
+}
+
+export function saleIsComplete(s: SaleDraft): boolean {
+  const price = Number(s.price_per_share)
+  const date = new Date(`${s.date}T00:00:00Z`)
+  return /^\d{4}-\d{2}-\d{2}$/.test(s.date) && Number.isFinite(date.getTime())
+    && date.toISOString().slice(0, 10) === s.date
+    && Number.isFinite(price) && price > 0 && price <= 1_000_000
+    && Number.isInteger(s.shares) && s.shares > 0 && s.shares <= 10_000_000
+}
+
+/** Only fully answered sales are submittable — the backend refuses the rest. */
+export function submittableSales(sales: SaleDraft[]) {
+  return sales
+    .filter(s => saleIsComplete(s))
+    .map(s => ({
+      date: s.date,
+      shares: s.shares,
+      price_per_share: Number(s.price_per_share),
+      notes: s.notes,
+    }))
+}
 
 export function emptyLoan(type: 'Purchase' | 'Tax' = 'Purchase'): LoanDraft {
   return { loan_number: '', loan_type: type, loan_year: '', amount: '', interest_rate: '', due_date: '', refinances_loan_number: '' }

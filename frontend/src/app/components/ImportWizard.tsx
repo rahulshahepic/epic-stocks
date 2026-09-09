@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../../api.ts'
 import type {
-  ContentBlob, GrantEntry, LoanEntry, PriceEntry, TaxSettings, WizardGrant, WizardGrantTemplate,
+  ContentBlob, GrantEntry, LoanEntry, PriceEntry, TaxSettings, WizardGrant, WizardGrantTemplate, WizardSubmitResult,
 } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { useContent } from '../hooks/useContent.ts'
@@ -32,6 +32,7 @@ import {
   ScheduleGrants, ScheduleIntro, SchedulePrices, ScheduleSettings,
 } from './importWizard/screens/SchedulePath.tsx'
 import { LoanReviewScreen, RefiReviewScreen } from './importWizard/screens/LoanReview.tsx'
+import { remainingSaleShares, resizeUnansweredSale, saleReview } from './importWizard/sales.ts'
 import { SalesEntryScreen } from './importWizard/screens/SalesEntry.tsx'
 import { DoneScreen, ReviewScreen } from './importWizard/screens/Finish.tsx'
 import campusWatercolor from '../../assets/campus-watercolor.webp'
@@ -126,6 +127,7 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
   // Only ever populated from a prefill: the manual paths have no file to read a
   // share count off, so there is nothing to ask about.
   const [sales, setSales] = useState<SaleDraft[]>([])
+  const [submitResult, setSubmitResult] = useState<WizardSubmitResult | null>(null)
 
   // Auto-enter schedule mode when navigated with ?mode=schedule (from Import
   // page), or when handed a draft to review — someone who has just uploaded their
@@ -211,6 +213,10 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
   // ── Submit ──────────────────────────────────────────────────────────────────
 
   const submission = sanitizeForSubmit(prices, completedGrants)
+  const availableSaleShares = remainingSaleShares(prefill?.reported_sold_shares,
+    completedGrants, prefill?.sale_grant_keys ?? [])
+  const salesReview = saleReview(sales, prefill?.existing_sales ?? [], availableSaleShares)
+  submission.blockingIssues.push(...salesReview.issues)
 
   async function handleSubmit() {
     if (submission.blockingIssues.length > 0) {
@@ -220,15 +226,18 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
     setSubmitting(true)
     setSubmitError('')
     try {
-      await api.wizardSubmit({
+      const result = await api.wizardSubmit({
         grants: submission.grants,
         prices: submission.prices,
         sales: submittableSales(sales),
+        reported_sold_shares: prefill?.reported_sold_shares,
+        sale_grant_keys: prefill?.sale_grant_keys,
         clear_existing: false,
         generate_payoff_sales: true,
         preserve_grant_ids: Array.from(preserveOrphanGrantIds),
         preserve_price_ids: Array.from(preserveOrphanPriceIds),
       })
+      setSubmitResult(result)
       push('done')
     } catch (e: unknown) {
       setSubmitError(e instanceof Error ? e.message : 'Submit failed')
@@ -348,10 +357,11 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
       if (saveSettings) {
         try { await api.updateTaxSettings({ deduct_investment_interest: deductInterest }) } catch { /* non-fatal */ }
       }
-      setCompletedGrants(buildScheduleGrants({ purchaseRows, catchUpRows, bonusRows, reviewedLoans }))
-      // Ask about sold shares before Review, so the figures on Review are the
-      // ones about to be written. Skipped entirely when the files implied none.
-      push(sales.length > 0 ? 'schedule_sales' : 'review')
+      const grants = buildScheduleGrants({ purchaseRows, catchUpRows, bonusRows, reviewedLoans })
+      setCompletedGrants(grants)
+      const remaining = remainingSaleShares(prefill?.reported_sold_shares, grants, prefill?.sale_grant_keys ?? [])
+      setSales(prev => resizeUnansweredSale(prev, remaining))
+      push(sales.length > 0 || remaining != null && remaining !== 0 ? 'schedule_sales' : 'review')
     } catch (e: unknown) {
       setSubmitError(e instanceof Error ? e.message : 'Submit failed')
     } finally {
@@ -510,6 +520,7 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
       {screen === 'review' && (
         <ReviewScreen
           submission={submission}
+          salesReview={prefill ? salesReview : undefined}
           submitting={submitting}
           submitError={submitError}
           orphanPrices={orphanPrices}
@@ -635,6 +646,10 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
       {screen === 'schedule_sales' && (
         <SalesEntryScreen
           sales={sales}
+          existingSales={prefill?.existing_sales}
+          availableShares={availableSaleShares}
+          onAdd={() => setSales(prev => [...prev, { shares: Math.max(0, (availableSaleShares ?? 0) - prev.reduce((n, s) => n + s.shares, 0)), date: '', price_per_share: '', notes: '', needs_input: true }])}
+          onRemove={i => setSales(prev => prev.filter((_, j) => i !== j))}
           onChange={(i, updated) => setSales(prev => prev.map((s, j) => j === i ? updated : s))}
           onBack={back}
           onNext={() => push('review')}
@@ -645,6 +660,8 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
       {screen === 'done' && (
         <DoneScreen
           grants={completedGrants}
+          salesReview={prefill ? salesReview : undefined}
+          submitResult={submitResult}
           priceCount={prices.filter(p => p.effective_date && p.price !== '').length}
           onComplete={handleComplete}
         />

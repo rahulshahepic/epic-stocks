@@ -65,7 +65,7 @@ describe('SalesEntryScreen', () => {
     render(<SalesEntryScreen sales={[draft({ notes: '2021 Purchased (10,000)' })]}
       onChange={noop} onBack={noop} onNext={noop} onSkip={noop} />)
 
-    expect(screen.getByText('10,000 shares')).toBeInTheDocument()
+    expect(screen.getByText(/Sale 1 · 10,000 shares/)).toBeInTheDocument()
     expect(screen.getByText('2021 Purchased (10,000)')).toBeInTheDocument()
     expect(screen.getByLabelText('Date sold')).toHaveValue('')
     expect(screen.getByLabelText('Price per share')).toHaveValue(null)
@@ -84,7 +84,7 @@ describe('SalesEntryScreen', () => {
     render(<SalesEntryScreen sales={[draft({ date: '2024-03-01' })]}
       onChange={noop} onBack={noop} onNext={noop} onSkip={noop} />)
 
-    expect(screen.getByText(/only one of the two/)).toBeInTheDocument()
+    expect(screen.getByText(/Not importing this row/)).toBeInTheDocument()
   })
 
   it('counts the answered sales on the button so the user knows what will be written', () => {
@@ -92,7 +92,7 @@ describe('SalesEntryScreen', () => {
       sales={[draft({ date: '2024-03-01', price_per_share: '12.5' }), draft()]}
       onChange={noop} onBack={noop} onNext={noop} onSkip={noop} />)
 
-    expect(screen.getByRole('button', { name: /import 1 sale/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /review 1 new sale/ })).toBeInTheDocument()
   })
 
   it('lets the user move on without answering', async () => {
@@ -102,5 +102,25 @@ describe('SalesEntryScreen', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /Skip/ }))
     expect(onSkip).toHaveBeenCalled()
+  })
+})
+
+describe('sales reconciliation', () => {
+  it('lets a saved sale supply its actual date, price and quantity', async () => {
+    const onChange = vi.fn()
+    render(<SalesEntryScreen sales={[draft()]} existingSales={[
+      { date: '2024-03-01', shares: 500, price_per_share: 12.5, notes: 'saved note' },
+    ]} onChange={onChange} onBack={vi.fn()} onNext={vi.fn()} onSkip={vi.fn()} />)
+    await userEvent.selectOptions(screen.getByLabelText('Use a saved sale'), '0')
+    expect(onChange).toHaveBeenCalledWith(0, expect.objectContaining({
+      shares: 500, date: '2024-03-01', price_per_share: '12.5', notes: 'saved note',
+    }))
+  })
+
+  it('blocks a sale count that still includes corrected down-payment exchanges', () => {
+    render(<SalesEntryScreen sales={[draft({ shares: 1834, date: '2024-03-01', price_per_share: '12.5' })]}
+      availableShares={500} onChange={vi.fn()} onBack={vi.fn()} onNext={vi.fn()} onSkip={vi.fn()} />)
+    expect(screen.getByRole('alert')).toHaveTextContent(/exceed the workbook total/)
+    expect(screen.getByRole('button', { name: /Next: review/ })).toBeDisabled()
   })
 })

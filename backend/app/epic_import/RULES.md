@@ -60,9 +60,9 @@ else, which is why sign-off shows rendered figures rather than a row of ticks.
 
 The same rule reports the shares Epic says have left a grant that `G8` below
 cannot explain as a down payment. **Warning**, once, naming the per-grant counts
-that make up the total: those shares were sold, so a sale is drafted for them
-with the share count filled in and the date and price blank — the CSV carries
-neither. `C12` tracks the blanks until they are answered.
+that make up the total. These shares remain **unclassified**: they may mix
+exchanges and multiple sales. An unanswered row holds the count while the user
+confirms exchanges and splits actual transactions. `C12` tracks the blanks.
 
 ### `G3` — Cost Basis ÷ Shares Granted → `grant.price`
 The per-share cost basis, with zero-basis detection: a grant taxed as it vests
@@ -205,16 +205,14 @@ from the template — including when a repaired draft tries to change them, whic
 is reported and then ignored in favour of the schedule.
 
 ### `C12` — sales against the shares nothing else explains
-Every share the CSV reports gone is either a down payment paid in stock (`G8`)
-or a sale. **Warning** when the two together do not come to the reported
-`Shares Sold`, and **warning** per sale that still has no date or no price.
-
-Neither document carries a sale date or price, so `G8` failing to reconcile
-drafts a sale with the share count filled in and those two blank rather than
-leaving the user to work the count out themselves. The blanks are the user's to
-answer — in the wizard, or through the repair prompt, which is told to ask them
-rather than infer a figure. A sale stays in the draft while it is incomplete;
-the wizard is what refuses to import one.
+**Warning** when down-payment exchanges and drafted shares do not match the
+workbook's `Shares Sold`, or a drafted row lacks a date or price. A row with
+unknown details is an unclassified balance, not proof of a sale. Failure to
+find one unique down-payment combination cannot distinguish exchanges from
+sales. Both repair routes ask the user to classify the balance and enter each
+actual transaction separately. The wizard recalculates the remaining balance
+after grant edits and refuses sales plus exchanges above the reported total.
+Unanswered or unallocated shares are explicitly shown as skipped at sign-off.
 
 ### `C11` — down-payment shares against the loan they paid
 **Warning** when a grant's `dp_shares` do not come to the gap between its cost

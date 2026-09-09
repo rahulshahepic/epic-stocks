@@ -167,7 +167,7 @@ describe('EpicFileImport', () => {
     await readFiles()
     await userEvent.click(await screen.findByRole('button', { name: 'Review and finish' }))
     expect(await screen.findByText('Review your import')).toBeInTheDocument()
-    expect(screen.getByText(/Nothing has been saved yet/)).toBeInTheDocument()
+    expect(screen.getByText(/The final screen confirms what was saved/)).toBeInTheDocument()
   })
 
   it('surfaces a server error instead of a blank panel', async () => {

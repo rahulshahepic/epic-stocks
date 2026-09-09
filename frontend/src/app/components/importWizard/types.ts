@@ -1,4 +1,4 @@
-import type { GrantEntry, LoanEntry, PriceEntry } from '../../../api.ts'
+import type { GrantEntry, LoanEntry, PriceEntry, WizardSale } from '../../../api.ts'
 import type { BonusRowType, GrantTypeName } from '../../grantTypes.ts'
 import type { WizardGrantTemplate } from '../../../api.ts'
 
@@ -143,6 +143,9 @@ export type WizardPrefill = {
   loans: LoanEntry[]
   prices: PriceEntry[]
   sales?: PrefillSale[]
+  existing_sales?: WizardSale[]
+  reported_sold_shares?: number | null
+  sale_grant_keys?: string[]
 }
 
 export function prefillToSaleDraft(s: PrefillSale): SaleDraft {
@@ -155,14 +158,23 @@ export function prefillToSaleDraft(s: PrefillSale): SaleDraft {
   }
 }
 
+export function saleIsComplete(s: SaleDraft): boolean {
+  const price = Number(s.price_per_share)
+  const date = new Date(`${s.date}T00:00:00Z`)
+  return /^\d{4}-\d{2}-\d{2}$/.test(s.date) && Number.isFinite(date.getTime())
+    && date.toISOString().slice(0, 10) === s.date
+    && Number.isFinite(price) && price > 0 && price <= 1_000_000
+    && Number.isInteger(s.shares) && s.shares > 0 && s.shares <= 10_000_000
+}
+
 /** Only fully answered sales are submittable — the backend refuses the rest. */
 export function submittableSales(sales: SaleDraft[]) {
   return sales
-    .filter(s => s.date && parseFloat(s.price_per_share) > 0 && s.shares > 0)
+    .filter(s => saleIsComplete(s))
     .map(s => ({
       date: s.date,
       shares: s.shares,
-      price_per_share: parseFloat(s.price_per_share),
+      price_per_share: Number(s.price_per_share),
       notes: s.notes,
     }))
 }

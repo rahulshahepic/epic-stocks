@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from scaffold.auth import get_current_user
-from scaffold.models import Grant, Price, User
+from scaffold.models import Grant, Price, Sale, User
 from scaffold.safe_workbook import WorkbookRejected, load_workbook_safely
 from app.content_service import load_content
 from app.date_utils import to_date as _to_date
@@ -195,7 +195,16 @@ def _wizard_prefill(draft: Draft, db: Session | None = None,
                                "dp_shares": g.dp_shares or 0,
                                "election_83b": bool(g.election_83b),
                                "version": g.version or 1})
-    return {"grants": grants, "loans": loans, "prices": prices, "sales": sales}
+    existing_sales = []
+    if db is not None and user_id is not None:
+        existing_sales = [{"date": s.date.isoformat(), "shares": s.shares,
+                           "price_per_share": s.price_per_share, "notes": s.notes or ""}
+                          for s in db.query(Sale).filter(
+                              Sale.user_id == user_id, Sale.loan_id.is_(None)).order_by(Sale.date, Sale.id)]
+    return {"grants": grants, "loans": loans, "prices": prices, "sales": sales,
+            "existing_sales": existing_sales,
+            "reported_sold_shares": draft.reported_sold_shares,
+            "sale_grant_keys": [f"{g.year}:{g.type}" for g in draft.grants]}
 
 
 def _summary(draft: Draft) -> dict:

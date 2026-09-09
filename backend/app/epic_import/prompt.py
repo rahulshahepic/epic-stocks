@@ -81,15 +81,17 @@ Rules you must follow:
    the grant being bought. Leave dp_shares at 0 when the arithmetic does not
    land on whole shares.
 7. Use only figures present in the source material. Do not estimate anything.
-8. Shares the CSV reports gone that rule 6 does not account for were sold. The
-   share count is in the files; the sale date and the price are not, and there
-   is no way to work them out from anything you have been given. So ASK ME for
-   them, in plain language, before you produce the JSON — one question per sale,
-   telling me the share count you are asking about and which grants the workbook
-   reports it against. If I do not know a date or a price, put null in that
-   field and leave it for me to fill in later. Never infer, estimate, average,
-   or carry across a share price for a sale: a made-up sale price becomes a
-   made-up capital gain and I will not be able to tell it apart from a real one.
+8. Shares the CSV reports gone may be exchanges, actual sales, or both. Failure
+   to find an exact down-payment match does NOT establish that they were sold.
+   ASK ME how the unexplained total divides between exchanges and sales before
+   producing JSON. Put confirmed exchanges on the receiving purchase grants;
+   subtract those shares from the unresolved total. ASK ME for the quantity,
+   date and price of EACH actual sale — several transactions may have different
+   dates and prices. Do not combine them into one transaction. Tell me which
+   grants the workbook reports the shares against. If I do not know, keep an
+   unanswered row with null date and price for the unresolved balance. Never infer, estimate, average,
+   or carry across a share price for a sale. The wizard also lets me select
+   an already recorded sale, and matches existing transactions without copying them.
    Rule 7 is not relaxed here — I am the source, not you.
 """
 
@@ -105,8 +107,8 @@ Your answer must satisfy all of these. Check them before replying:
   E. For each grant, shares equals "Shares Granted" in the CSV.
   F. For each grant carrying dp_shares, cost basis minus the purchase loan
      equals dp_shares x price. Across all grants, the shares handed back come
-     to no more than the total "Shares Sold" in the CSV; any remainder was
-     genuinely sold.
+     to no more than the total "Shares Sold" in the CSV; ask the user to classify
+     any remainder rather than assuming it was sold.
   G. The shares handed back as down payments plus the shares in "sales" come to
      exactly the total "Shares Sold" in the CSV. A sale may have a null date or
      a null price and still count towards this — the share count is what has to

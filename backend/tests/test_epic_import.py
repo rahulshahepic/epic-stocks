@@ -1496,3 +1496,72 @@ def test_a_price_older_than_the_files_is_ignored(client):
     body = client.post("/api/epic-import/analyze", files=upload_files(),
                        data={"current_price": "0"}).json()
     assert len(body["draft"]["prices"]) == 3
+
+
+def test_reimport_matches_existing_sales_one_for_one(client):
+    register_user(client)
+    payload = analyze(client)['wizard_payload']
+    sale = {'date': '2024-03-01', 'shares': 500, 'price_per_share': 12.5,
+            'notes': 'original note'}
+    body = {**payload, 'sales': [sale, sale], 'clear_existing': False,
+            'generate_payoff_sales': False}
+    first = client.post('/api/wizard/submit', json=body)
+    assert first.status_code == 201, first.text
+    assert first.json()['sales'] == 2
+    body['sales'] = [{**sale, 'notes': 'different import note'}] * 2
+    second = client.post('/api/wizard/submit', json=body)
+    assert second.status_code == 201, second.text
+    assert second.json()['sales'] == 0
+    assert second.json()['existing_sales'] == 2
+    saved = client.get('/api/sales').json()
+    assert len(saved) == 2
+    assert all(s['notes'] == 'original note' for s in saved)
+    body['sales'].append({**sale, 'date': '2025-03-01'})
+    third = client.post('/api/wizard/submit', json=body)
+    assert third.json()['sales'] == 1
+    assert len(client.get('/api/sales').json()) == 3
+
+
+def test_manual_exchange_correction_cannot_also_import_those_shares(client):
+    register_user(client)
+    payload = analyze(client)['wizard_payload']
+    g = payload['grants'][0]
+    g['dp_shares'] = -1334
+    body = {**payload, 'reported_sold_shares': 1834,
+            'sale_grant_keys': [f"{g['year']}:{g['type']}"],
+            'generate_payoff_sales': False,
+            'sales': [{'date': '2024-03-01', 'shares': 1834, 'price_per_share': 12.5}]}
+    assert client.post('/api/wizard/submit', json=body).status_code == 422
+    assert client.get('/api/grants').json() == []
+    body['sales'][0]['shares'] = 500
+    assert client.post('/api/wizard/submit', json=body).status_code == 201
+    assert client.get('/api/sales').json()[0]['shares'] == 500
+
+
+def test_mixed_exchanges_and_sales_remain_unclassified(skeleton):
+    draft, findings = draft_from_files(skeleton, *one_grant_files(**{**STOCK_DP, 'sold': 1834}))
+    assert draft.sales[0].shares == 1834
+    assert draft.reported_sold_shares == 1834
+    assert draft.sales[0].is_complete is False
+    message = next(f.message for f in findings if f.code == 'G2')
+    assert 'exchanges, sales, or both' in message
+
+
+def test_import_offers_saved_sales_without_assuming_they_are_in_the_workbook(client):
+    register_user(client)
+    payload = analyze(client)['wizard_payload']
+    sale = {'date': '2024-03-01', 'shares': 500, 'price_per_share': 12.5}
+    client.post('/api/wizard/submit', json={**payload, 'sales': [sale],
+                                          'generate_payoff_sales': False})
+    prefill = analyze(client)['wizard_prefill']
+    assert prefill['existing_sales'][0]['shares'] == 500
+    assert prefill['reported_sold_shares'] == 10000
+
+
+@pytest.mark.parametrize('price', [0, -1, 'Infinity', 'NaN', 1000001])
+def test_invalid_sale_price_stays_unanswered(skeleton, price):
+    base, _ = draft_from_files(skeleton, *one_grant_files(**STOCK_DP))
+    draft, findings = draft_from_payload({**to_wizard_payload(base), 'sales': [
+        {'shares': 500, 'date': '2024-03-01', 'price_per_share': price}]}, skeleton)
+    assert draft.sales[0].is_complete is False
+    assert 'R1' in codes(findings)

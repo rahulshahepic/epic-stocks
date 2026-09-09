@@ -1031,6 +1031,8 @@ export interface WizardSubmitPayload {
   grants: WizardGrant[]
   prices: { effective_date: string; price: number }[]
   sales?: WizardSale[]
+  reported_sold_shares?: number | null
+  sale_grant_keys?: string[]
   clear_existing?: boolean
   generate_payoff_sales?: boolean
   preserve_grant_ids?: number[]
@@ -1043,6 +1045,7 @@ export interface WizardSubmitResult {
   prices: number
   payoff_sales: number
   sales: number
+  existing_sales?: number
 }
 
 export interface WizardPreviewGrant {

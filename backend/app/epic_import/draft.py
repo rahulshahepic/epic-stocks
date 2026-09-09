@@ -12,6 +12,7 @@ payload that tries to change them.
 """
 from dataclasses import dataclass, field
 from datetime import date
+from math import isfinite
 
 from .models import ERROR, INFO, WARNING, Finding, ShareRow, Statement
 from .rules import (attribute_loan, basis_per_share, classify_row,
@@ -153,6 +154,7 @@ class Draft:
     prices: list[DraftPrice] = field(default_factory=list)
     sales: list[DraftSale] = field(default_factory=list)
     statement_date: date | None = None
+    reported_sold_shares: int | None = None
     # "parsed" when we derived it, "supplied" when it came back from an assistant
     origin: str = "parsed"
 
@@ -160,6 +162,7 @@ class Draft:
         return {"grants": [g.as_dict() for g in self.grants],
                 "prices": [p.as_dict() for p in self.prices],
                 "sales": [s.as_dict() for s in self.sales],
+                "reported_sold_shares": self.reported_sold_shares,
                 "statement_date": self.statement_date.isoformat() if self.statement_date else None,
                 "origin": self.origin}
 
@@ -376,11 +379,9 @@ def _explain_shares_sold(draft: Draft, rows: list[ShareRow], sk: Skeleton,
     so when those add up to exactly the shares reported gone, that is where they
     went.
 
-    Whatever is left over was sold. The CSV gives the share count and nothing
-    else — no date, no price — so a sale is drafted with the count filled in and
-    those two blank, for the user to answer in the wizard or through the repair
-    prompt. Drafting it beats the old advice to "add them on the Sales page"
-    because the count is the part the user would otherwise have to work out.
+    An unmatched total may mix exchanges and multiple sales. Keep an unanswered
+    row for the user to classify and split; a failed exact match proves neither
+    that every share was sold nor that they left in one transaction.
     """
     sold_total = sum(r.shares_sold or 0 for r in rows)
     if not sold_total:
@@ -421,22 +422,17 @@ def _explain_shares_sold(draft: Draft, rows: list[ShareRow], sk: Skeleton,
                                 f"were applied. Set the down payment shares by hand in the "
                                 f"wizard if these were exchanges rather than sales."))
 
-    # Nothing was attributed to a down payment, so every share Epic reports gone
-    # is one that was sold. Drafted as a single sale rather than one per grant:
-    # the app picks lots itself, so which grant a share left is not something a
-    # sale records, and splitting the count would invent a division the CSV
-    # never made.
     per_grant = ", ".join(f"{r.label} ({r.shares_sold:,})"
                           for r in rows if r.shares_sold)
     draft.sales.append(DraftSale(
         shares=sold_total,
-        notes=f"Shares the stock workbook reports gone: {per_grant}."))
+        notes=f"Unclassified shares reported by the workbook: {per_grant}."[:_MAX_SALE_NOTE]))
     findings.append(Finding("G2", WARNING, "",
-                            f"Epic reports {sold_total:,} shares gone from your grants "
-                            f"({per_grant}) and no combination of down payments accounts for "
-                            f"them, so they are drafted as a sale. The CSV carries no sale "
-                            f"date or price — fill those in to import it, or set the down "
-                            f"payment shares by hand if they were exchanges rather than sales."))
+                            f"Epic reports {sold_total:,} shares gone ({per_grant}). "
+                            "The down-payment check could not uniquely account for them. "
+                            "They may be exchanges, sales, or both. Set exchanged shares "
+                            "on the purchase grants, then enter each actual sale separately "
+                            "or select a sale already recorded. Leave unknowns unimported."))
 
 
 # ============================================================
@@ -611,9 +607,9 @@ def draft_from_payload(payload: dict, sk: Skeleton) -> tuple[Draft, list[Finding
                                     f"price_per_share {raw.get('price_per_share')!r} is not a "
                                     f"number; left blank for you to fill in."))
             price = None
-        if price is not None and (price != price or price < 0):
+        if price is not None and (not isfinite(price) or not 0 < price <= 1_000_000):
             findings.append(Finding("R1", WARNING, f"sales[{i}]",
-                                    "price_per_share must not be negative; left blank."))
+                                    "price_per_share must be finite and between 0 (exclusive) and 1,000,000; left blank."))
             price = None
         draft.sales.append(DraftSale(
             shares=shares, sale_date=_d(raw.get("date")), price_per_share=price,
@@ -628,6 +624,8 @@ def draft_from_payload(payload: dict, sk: Skeleton) -> tuple[Draft, list[Finding
 def validate_draft(draft: Draft, statement: Statement | None, rows: list[ShareRow],
                    sk: Skeleton) -> list[Finding]:
     out: list[Finding] = []
+    draft.reported_sold_shares = (sum(r.shares_sold or 0 for r in rows)
+                                  if any(r.shares_sold is not None for r in rows) else None)
     loans = draft.all_loans
 
     if statement is not None:

@@ -16,8 +16,10 @@ from .models import Finding, Statement
 from .skeleton import Skeleton
 
 _CONTRACT = """\
-Return ONE JSON object and nothing else — no explanation before or after, no
-markdown fences. It must have this shape:
+If rule 8 below leaves you with something to ask me, ask it first and wait — a
+turn spent asking is fine and is what I want. Your FINAL answer, once you have
+what you need, must be ONE JSON object and nothing else — no explanation before
+or after, no markdown fences. It must have this shape:
 
 {
   "grants": [
@@ -42,6 +44,14 @@ markdown fences. It must have this shape:
   ],
   "prices": [
     { "effective_date": "2021-01-01", "price": 2.83 }   // one per year, dated 1 January
+  ],
+  "sales": [
+    {
+      "shares": 5000,              // whole shares sold
+      "date": "2023-06-30",        // null if the user does not know it yet
+      "price_per_share": 4.10,     // null if the user does not know it yet
+      "notes": ""
+    }
   ]
 }
 """
@@ -71,6 +81,18 @@ Rules you must follow:
    the grant being bought. Leave dp_shares at 0 when the arithmetic does not
    land on whole shares.
 7. Use only figures present in the source material. Do not estimate anything.
+8. Shares the CSV reports gone may be exchanges, actual sales, or both. Failure
+   to find an exact down-payment match does NOT establish that they were sold.
+   ASK ME how the unexplained total divides between exchanges and sales before
+   producing JSON. Put confirmed exchanges on the receiving purchase grants;
+   subtract those shares from the unresolved total. ASK ME for the quantity,
+   date and price of EACH actual sale — several transactions may have different
+   dates and prices. Do not combine them into one transaction. Tell me which
+   grants the workbook reports the shares against. If I do not know, keep an
+   unanswered row with null date and price for the unresolved balance. Never infer, estimate, average,
+   or carry across a share price for a sale. The wizard also lets me select
+   an already recorded sale, and matches existing transactions without copying them.
+   Rule 7 is not relaxed here — I am the source, not you.
 """
 
 _IDENTITIES = """\
@@ -85,8 +107,12 @@ Your answer must satisfy all of these. Check them before replying:
   E. For each grant, shares equals "Shares Granted" in the CSV.
   F. For each grant carrying dp_shares, cost basis minus the purchase loan
      equals dp_shares x price. Across all grants, the shares handed back come
-     to no more than the total "Shares Sold" in the CSV; any remainder was
-     genuinely sold.
+     to no more than the total "Shares Sold" in the CSV; ask the user to classify
+     any remainder rather than assuming it was sold.
+  G. The shares handed back as down payments plus the shares in "sales" come to
+     exactly the total "Shares Sold" in the CSV. A sale may have a null date or
+     a null price and still count towards this — the share count is what has to
+     add up.
 
 If a check cannot be made to pass with the figures available, say so in a
 comment AFTER the JSON object rather than bending a number to fit.
@@ -166,7 +192,9 @@ def build_prompt(draft: Draft, findings: list[Finding], statement: Statement | N
         "## Down payment policy (fixed)", "", _dp_policy(sk), "",
         "## What did not reconcile", "", _problem_list(findings), "",
         "## The draft so far", "",
-        "```json", json.dumps(to_wizard_payload(draft), indent=2), "```", "",
+        "```json",
+        json.dumps(to_wizard_payload(draft, include_unanswered_sales=True), indent=2),
+        "```", "",
     ]
     if statement:
         printed = statement.printed_total or statement.total_principal

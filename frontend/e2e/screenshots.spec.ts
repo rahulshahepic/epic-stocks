@@ -5,6 +5,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import * as path from 'path'
 import { fileURLToPath } from 'url'
+import AxeBuilder from '@axe-core/playwright'
 import { navigateTo } from './helpers.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -337,6 +338,45 @@ test.describe('Screenshots', () => {
     await page.click('text=Next: Add grants')
     await page.waitForTimeout(300)
     await shoot(page, 'wizard-grant-entry-light-mobile', { fullPage: true })
+  })
+
+  test('wizard sales - light - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    await page.request.post(`${BASE}/api/auth/test-login`, {
+      data: { email: 'sales-screenshot@e2e.test', name: 'Import example' },
+    })
+    await page.goto(`${BASE}/import`)
+    await page.locator('#epic-csv').setInputFiles(TRIAL_CSV)
+    await page.locator('#epic-pdf').setInputFiles(TRIAL_PDF)
+    await page.getByRole('button', { name: 'Read my files' }).click()
+    await page.getByRole('button', { name: /Review and finish|Review anyway/ }).click()
+    await page.getByRole('button', { name: /Let's go/ }).click()
+    await page.getByRole('button', { name: /Next: Enter grants/ }).click()
+    await page.getByRole('button', { name: /Next: Review loans/ }).click()
+    await page.getByRole('button', { name: /Next: Refinances/ }).click()
+    await page.getByRole('button', { name: /Next: Interest loans/ }).click()
+    await page.getByRole('button', { name: /Next: Preferences/ }).click()
+    await page.getByRole('button', { name: 'Skip', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'Account for shares that left' })).toBeVisible()
+    await page.getByLabel('Shares sold', { exact: true }).fill('6000')
+    await page.getByLabel('Date sold', { exact: true }).fill('2024-03-01')
+    await page.getByLabel('Price per share', { exact: true }).fill('12.5')
+    await page.getByRole('button', { name: 'Add another sale' }).click()
+    await page.getByLabel('Shares sold', { exact: true }).nth(1).fill('3000')
+    await page.getByLabel('Date sold', { exact: true }).nth(1).fill('2025-03-01')
+    await page.getByLabel('Price per share', { exact: true }).nth(1).fill('15')
+    await expect(page.getByText(/1,000 shares will remain unimported/)).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    const accessibility = await new AxeBuilder({ page }).include('.campus-map-room').analyze()
+    expect(accessibility.violations).toEqual([])
+    await shoot(page, 'wizard-sales-light-mobile', { fullPage: true })
+    await page.getByRole('button', { name: /Next: review 2 new sales/ }).click()
+    await expect(page.getByRole('region', { name: 'Sales summary' })).toContainText('2 to import')
+    await shoot(page, 'wizard-sales-review-light-mobile', { fullPage: true })
+    await page.getByRole('button', { name: 'Submit →', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'Setup complete!' })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Sales summary' })).toContainText('2 imported')
+    await shoot(page, 'wizard-sales-done-light-mobile', { fullPage: true })
   })
 
   test('wizard page - light - mobile', async ({ page }) => {

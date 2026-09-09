@@ -219,6 +219,18 @@ def test_the_prompt_carries_what_a_repair_needs(case, skeleton):
     assert "## Stock Loan Statement" in prompt
 
 
+def test_the_prompt_tells_the_assistant_to_ask_rather_than_invent_a_sale_price(skeleton):
+    """A sale date and price are in neither file. An assistant that fills them in
+    from context produces a capital gain the user cannot tell from a real one, so
+    the brief has to send it back to the user and permit a question first."""
+    prompt = prompt_for(money_format, skeleton)
+    assert '"sales"' in prompt                       # the output contract
+    assert "ASK ME" in prompt
+    assert "Never infer, estimate, average" in prompt
+    assert "ask it first and wait" in prompt         # asking beats one-shot JSON
+    assert "null" in prompt                          # an unknown stays unknown
+
+
 def test_the_prompt_shows_the_headers_when_a_column_was_renamed(skeleton):
     """A renamed column is only fixable if the prompt says what it is now called."""
     prompt = prompt_for(renamed_basis_column, skeleton)

@@ -27,7 +27,7 @@ def test_trial_analyze_computes_a_timeline_without_an_account(client):
                for e in body["timeline"])
 
     # wizard_payload is exactly what /api/wizard/submit accepts after signup
-    assert set(body["wizard_payload"].keys()) == {"grants", "prices"}
+    assert set(body["wizard_payload"].keys()) == {"grants", "prices", "sales"}
     assert len(body["wizard_payload"]["grants"]) == 8
     assert len(body["wizard_payload"]["prices"]) == 3
 

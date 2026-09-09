@@ -59,9 +59,10 @@ Straight read. Nothing in either file can check a share count against anything
 else, which is why sign-off shows rendered figures rather than a row of ticks.
 
 The same rule reports the shares Epic says have left a grant that `G8` below
-cannot explain as a down payment, as **info** per row: the CSV carries no sale
-dates or prices, so no sales are invented. Record them on the Sales page, or as
-a down payment on the grant they paid for.
+cannot explain as a down payment. **Warning**, once, naming the per-grant counts
+that make up the total. These shares remain **unclassified**: they may mix
+exchanges and multiple sales. An unanswered row holds the count while the user
+confirms exchanges and splits actual transactions. `C12` tracks the blanks.
 
 ### `G3` — Cost Basis ÷ Shares Granted → `grant.price`
 The per-share cost basis, with zero-basis detection: a grant taxed as it vests
@@ -166,13 +167,18 @@ there is nothing to check against.
 
 ### `C3` — loans against the CSV's loan balance
 For each grant, the loans attributed to it must reproduce that grant's
-`Loan Balance` in the CSV. **Error** — the two files disagreeing, which is
-yours to override.
+`Loan Balance` in the CSV. **Warning**: Shareworks regenerates the loan
+statement on demand but refreshes the stock workbook on its own slower cycle, so
+a payoff or refinance shows up on the statement while the workbook still carries
+the old balance. The two files disagreeing is the ordinary case, not a misread —
+the message says so, and which file is newer is yours to judge.
 
 ### `C4` — loans against the CSV's annual interest
 For each grant, Σ(loan amount × rate) must equal `Annual Interest Due`.
-**Error**. This is what catches a loan attributed to the wrong grant when the
-balances happen to add up anyway.
+**Warning**, for the same staleness reason as `C3`. This is also what catches a
+loan attributed to the wrong grant when the balances happen to add up anyway, so
+a `C4` on its own — with `C3` clear — is worth a closer look than the two
+together.
 
 ### `C5` — unvested value against vested share counts
 At each vesting checkpoint, (shares remaining − vested) × per-share basis must
@@ -197,6 +203,16 @@ is the original one and no longer matches the current balance.
 **Warning** when a draft's `vest_start`, `periods` or `exercise_date` differs
 from the template — including when a repaired draft tries to change them, which
 is reported and then ignored in favour of the schedule.
+
+### `C12` — sales against the shares nothing else explains
+**Warning** when down-payment exchanges and drafted shares do not match the
+workbook's `Shares Sold`, or a drafted row lacks a date or price. A row with
+unknown details is an unclassified balance, not proof of a sale. Failure to
+find one unique down-payment combination cannot distinguish exchanges from
+sales. Both repair routes ask the user to classify the balance and enter each
+actual transaction separately. The wizard recalculates the remaining balance
+after grant edits and refuses sales plus exchanges above the reported total.
+Unanswered or unallocated shares are explicitly shown as skipped at sign-off.
 
 ### `C11` — down-payment shares against the loan they paid
 **Warning** when a grant's `dp_shares` do not come to the gap between its cost

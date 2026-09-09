@@ -141,7 +141,7 @@ describe('AuthCallback', () => {
 
   it('saves a stashed /try import before navigating home, so signup skips the re-upload', async () => {
     vi.spyOn(api, 'exchangeCode').mockResolvedValue({ ok: true })
-    const submit = vi.spyOn(api, 'wizardSubmit').mockResolvedValue({ grants: 1, loans: 0, prices: 1, payoff_sales: 0 })
+    const submit = vi.spyOn(api, 'wizardSubmit').mockResolvedValue({ grants: 1, loans: 0, prices: 1, payoff_sales: 0, sales: 0 })
     setCallbackUrl('?code=abc123&state=st-1')
     await seedPendingLogin('st-1')
     const payload = { grants: [{ year: 2022, type: 'Bonus', shares: 100, price: 0, vest_start: '2023-09-30', periods: 3, exercise_date: '2022-12-31', dp_shares: 0, election_83b: false, loans: [] }], prices: [{ effective_date: '2024-01-01', price: 12.5 }] }
@@ -156,7 +156,7 @@ describe('AuthCallback', () => {
 
   it('counts the conversion once the trial data is actually saved', async () => {
     vi.spyOn(api, 'exchangeCode').mockResolvedValue({ ok: true })
-    vi.spyOn(api, 'wizardSubmit').mockResolvedValue({ grants: 1, loans: 0, prices: 1, payoff_sales: 0 })
+    vi.spyOn(api, 'wizardSubmit').mockResolvedValue({ grants: 1, loans: 0, prices: 1, payoff_sales: 0, sales: 0 })
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }))
     setCallbackUrl('?code=abc123&state=st-1')
     await seedPendingLogin('st-1')

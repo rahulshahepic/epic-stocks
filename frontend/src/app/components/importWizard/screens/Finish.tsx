@@ -1,7 +1,8 @@
-import type { GrantEntry, PriceEntry, WizardGrant } from '../../../../api.ts'
+import type { GrantEntry, PriceEntry, WizardGrant, WizardSubmitResult } from '../../../../api.ts'
 import { ReportableError } from '../../../../scaffold/components/ReportProblem.tsx'
 import { fmtFullDate, fmtNum, fmtPrice } from '../../../format.ts'
 import { BackBtn, NextBtn } from '../fields.tsx'
+import type { SaleReview } from '../sales.ts'
 import type { SanitizedSubmission } from '../submit.ts'
 
 function plural(n: number, word: string) {
@@ -14,8 +15,9 @@ function loanSuffix(g: WizardGrant) {
 
 export function ReviewScreen({
   submission, submitting, submitError, orphanPrices, orphanGrants,
-  preservedPriceIds, preservedGrantIds, onBack, onSubmit,
+  preservedPriceIds, preservedGrantIds, onBack, onSubmit, salesReview,
 }: {
+  salesReview?: SaleReview
   submission: SanitizedSubmission
   submitting: boolean
   submitError: string
@@ -105,6 +107,8 @@ export function ReviewScreen({
         </p>
       )}
 
+      {salesReview && <SalesSummary review={salesReview} />}
+
       <NextBtn
         label="Submit →"
         saving={submitting}
@@ -115,7 +119,9 @@ export function ReviewScreen({
   )
 }
 
-export function DoneScreen({ grants, priceCount, onComplete }: {
+export function DoneScreen({ grants, priceCount, onComplete, salesReview, submitResult }: {
+  salesReview?: SaleReview
+  submitResult?: WizardSubmitResult | null
   grants: WizardGrant[]
   priceCount: number
   onComplete: () => void
@@ -132,6 +138,7 @@ export function DoneScreen({ grants, priceCount, onComplete }: {
           <p key={i}>✓ {g.year} {g.type} — {fmtNum(g.shares)} shares{loanSuffix(g)}</p>
         ))}
       </div>
+      {salesReview && <SalesSummary review={salesReview} result={submitResult} />}
       <button
         type="button"
         onClick={onComplete}
@@ -140,5 +147,23 @@ export function DoneScreen({ grants, priceCount, onComplete }: {
         View dashboard →
       </button>
     </div>
+  )
+}
+
+
+function SalesSummary({ review, result }: { review: SaleReview; result?: WizardSubmitResult | null }) {
+  return (
+    <section className="mt-3 rounded-md border border-cs-border bg-cs-surface p-3 space-y-2 text-sm text-cs-text" aria-label="Sales summary">
+      <h3 className="font-medium">Sales</h3>
+      <p>{result ? `${result.sales} imported` : `${review.newCount} to import`} · {result?.existing_sales ?? review.existingCount} already recorded · {review.skippedCount} incomplete rows skipped</p>
+      {review.rows.map(({ sale, status }, i) => (
+        <p key={i} className="text-xs">
+          {fmtNum(sale.shares)} shares — {status === 'skipped' ? 'skipped: missing or invalid details'
+            : `${fmtFullDate(sale.date)} @ ${fmtPrice(Number(sale.price_per_share))}`}
+          {!result && status === 'existing' ? ' · already recorded' : ''}
+        </p>
+      ))}
+      {review.skippedShares > 0 && <p>{fmtNum(review.skippedShares)} shares remain unimported. Add their details later on the Sales page.</p>}
+    </section>
   )
 }

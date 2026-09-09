@@ -94,8 +94,7 @@ export default function EpicFileImport() {
           </button>
         </div>
         <p className="mb-3 text-xs text-cs-muted">
-          Nothing has been saved yet. Step through and check the numbers are yours —
-          finishing the wizard is what writes them.
+          Check each step before submitting. The final screen confirms what was saved.
         </p>
         <ImportWizard prefill={result.wizard_prefill} />
       </div>

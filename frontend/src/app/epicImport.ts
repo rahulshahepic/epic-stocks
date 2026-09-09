@@ -7,6 +7,7 @@
  */
 import { apiFetch } from '../api.ts'
 import type { GrantEntry, LoanEntry, PriceEntry } from '../api.ts'
+import type { PrefillSale } from './components/importWizard/types.ts'
 import { platform } from '../platform/index.ts'
 
 export interface Finding {
@@ -30,6 +31,9 @@ export interface WizardPrefill {
   grants: GrantEntry[]
   loans: LoanEntry[]
   prices: PriceEntry[]
+  /** Shares the files report gone that no down payment explains. `needs_input`
+   *  marks the ones with no date or price — the wizard's sales screen asks. */
+  sales: PrefillSale[]
 }
 
 export interface AnalyzeResponse {

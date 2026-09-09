@@ -9,7 +9,8 @@ from scaffold.models import User, Grant, Loan, Price, Sale, LoanPayment
 from scaffold.auth import get_current_user
 from scaffold.safe_workbook import WorkbookRejected, load_workbook_safely
 from app.date_utils import to_date as _to_date
-from schemas import MAX_BULK_ITEMS, MAX_LABEL_LEN, bounded, bounded_list
+from schemas import (MAX_BULK_ITEMS, MAX_LABEL_LEN, Notes, SharePrice, Shares,
+                     bounded, bounded_list)
 from scaffold.quota import check_row_count, check_row_quota
 from app import event_cache
 
@@ -218,15 +219,42 @@ class WizardPrice(BaseModel):
         return v
 
 
+class WizardSale(BaseModel):
+    """A sale the user is entering alongside their grants.
+
+    The import drafts one of these for shares the workbook reports gone that no
+    down payment accounts for, with only the share count filled in. Date and
+    price come from the user, so both are required here — the wizard is the last
+    point at which an incomplete sale can be refused, and a sale with no price
+    would land in the capital-gains maths as a zero.
+    """
+    date: str
+    shares: Shares
+    price_per_share: SharePrice
+    notes: Notes = ""
+
+    @field_validator("date")
+    @classmethod
+    def date_parses(cls, v):
+        # Rejected here so a malformed date is a 422 rather than an exception in
+        # the insert loop, which would be a 500 and an error_logs row.
+        try:
+            _to_date(v)
+        except (ValueError, TypeError):
+            raise ValueError("date must be an ISO date, e.g. 2023-06-30")
+        return v
+
+
 class WizardSubmitRequest(BaseModel):
     grants: list[WizardGrant]
     prices: list[WizardPrice]
+    sales: list[WizardSale] = []
     clear_existing: bool = True
     generate_payoff_sales: bool = True
     preserve_grant_ids: list[int] = []
     preserve_price_ids: list[int] = []
 
-    @field_validator("grants", "prices", "preserve_grant_ids", "preserve_price_ids")
+    @field_validator("grants", "prices", "sales", "preserve_grant_ids", "preserve_price_ids")
     @classmethod
     def list_bounded(cls, v):
         return bounded_list(v, MAX_BULK_ITEMS, "list")
@@ -237,6 +265,7 @@ class WizardSubmitResponse(BaseModel):
     loans: int
     prices: int
     payoff_sales: int
+    sales: int = 0
 
 
 # ── Preview diff models ───────────────────────────────────────────────────────
@@ -363,10 +392,12 @@ def submit(
         check_row_count(Grant, len(body.grants))
         check_row_count(Price, len(body.prices))
         check_row_count(Loan, incoming_loans)
+        check_row_count(Sale, len(body.sales))
     else:
         check_row_quota(db, Grant, user.id, adding=len(body.grants))
         check_row_quota(db, Price, user.id, adding=len(body.prices))
         check_row_quota(db, Loan, user.id, adding=incoming_loans)
+        check_row_quota(db, Sale, user.id, adding=len(body.sales))
 
     if body.clear_existing:
         db.query(LoanPayment).filter(LoanPayment.user_id == user.id).delete()
@@ -426,6 +457,21 @@ def submit(
                 except Exception:
                     pass  # Don't abort the whole wizard if payoff calc fails
 
+    # Sales the user entered, after the payoff ones so a hand-entered sale is
+    # never mistaken for a generated one. These carry no loan_id: they are shares
+    # that left a grant, which is all either document says about them.
+    sale_count = 0
+    for s in body.sales:
+        sale_date = _to_date(s.date)
+        db.add(Sale(
+            user_id=user.id,
+            date=sale_date,
+            shares=s.shares,
+            price_per_share=s.price_per_share,
+            notes=s.notes,
+        ))
+        sale_count += 1
+
     db.commit()
 
     event_cache.schedule_recompute(user.id)
@@ -435,6 +481,7 @@ def submit(
         loans=loan_count,
         prices=price_count,
         payoff_sales=payoff_count,
+        sales=sale_count,
     )
 
 

@@ -168,6 +168,15 @@ def _wizard_prefill(draft: Draft, db: Session | None = None,
         prices.append({"id": -pi, "effective_date": p.effective_date.isoformat(),
                        "price": p.price, "is_estimate": False, "version": 1})
 
+    # Sales the files imply but cannot date or price. They travel incomplete on
+    # purpose: the wizard screen exists to ask for the blanks, and a sale the
+    # user has not answered is not submitted.
+    sales = [{"id": -si, "shares": s.shares,
+              "date": s.sale_date.isoformat() if s.sale_date else "",
+              "price_per_share": s.price_per_share,
+              "notes": s.notes, "needs_input": not s.is_complete, "version": 1}
+             for si, s in enumerate(draft.sales, 1)]
+
     if db is not None and user_id is not None:
         covered_years = {p.effective_date.year for p in draft.prices}
         for p in db.query(Price).filter(Price.user_id == user_id).all():
@@ -186,7 +195,7 @@ def _wizard_prefill(draft: Draft, db: Session | None = None,
                                "dp_shares": g.dp_shares or 0,
                                "election_83b": bool(g.election_83b),
                                "version": g.version or 1})
-    return {"grants": grants, "loans": loans, "prices": prices}
+    return {"grants": grants, "loans": loans, "prices": prices, "sales": sales}
 
 
 def _summary(draft: Draft) -> dict:

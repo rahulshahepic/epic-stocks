@@ -18,10 +18,12 @@ import {
 } from './importWizard/rows.ts'
 import { buildScheduleGrants, draftToWizardGrant, sanitizeForSubmit } from './importWizard/submit.ts'
 import type {
-  BonusGrantRow, CatchUpRow, GrantDraft, LoanDraft, PurchaseGrantRow, ReviewedLoan, Screen,
-  TaxLoanDraft, WizardPrefill, WizardPrice,
+  BonusGrantRow, CatchUpRow, GrantDraft, LoanDraft, PurchaseGrantRow, ReviewedLoan, SaleDraft,
+  Screen, TaxLoanDraft, WizardPrefill, WizardPrice,
 } from './importWizard/types.ts'
-import { emptyGrantDraft, emptyLoan, emptyTaxLoanDraft, vestingYears } from './importWizard/types.ts'
+import {
+  emptyGrantDraft, emptyLoan, emptyTaxLoanDraft, prefillToSaleDraft, submittableSales, vestingYears,
+} from './importWizard/types.ts'
 import {
   GrantEntry as GrantEntryScreen, LoanRefinanceScreen, MoreGrants, PricesScreen,
   PurchaseLoanScreen, TaxLoansScreen, Upload, Welcome,
@@ -30,6 +32,7 @@ import {
   ScheduleGrants, ScheduleIntro, SchedulePrices, ScheduleSettings,
 } from './importWizard/screens/SchedulePath.tsx'
 import { LoanReviewScreen, RefiReviewScreen } from './importWizard/screens/LoanReview.tsx'
+import { SalesEntryScreen } from './importWizard/screens/SalesEntry.tsx'
 import { DoneScreen, ReviewScreen } from './importWizard/screens/Finish.tsx'
 
 /**
@@ -117,6 +120,11 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
   // Loans review state — auto-generated Tax/Interest/Refinance loans for schedule mode
   const [reviewedLoans, setReviewedLoans] = useState<ReviewedLoan[]>([])
   const [allExistingLoans, setAllExistingLoans] = useState<LoanEntry[]>([])
+
+  // Sales the import worked out the share count for but could not date or price.
+  // Only ever populated from a prefill: the manual paths have no file to read a
+  // share count off, so there is nothing to ask about.
+  const [sales, setSales] = useState<SaleDraft[]>([])
 
   // Auto-enter schedule mode when navigated with ?mode=schedule (from Import
   // page), or when handed a draft to review — someone who has just uploaded their
@@ -214,6 +222,7 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
       await api.wizardSubmit({
         grants: submission.grants,
         prices: submission.prices,
+        sales: submittableSales(sales),
         clear_existing: false,
         generate_payoff_sales: true,
         preserve_grant_ids: Array.from(preserveOrphanGrantIds),
@@ -244,6 +253,7 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
         ? [prefill.prices, prefill.grants, prefill.loans]
         : await Promise.all([api.getPrices(), api.getGrants(), api.getLoans()])
       setAllExistingLoans(existingLoans)
+      setSales((prefill?.sales ?? []).map(prefillToSaleDraft))
 
       const rows = buildScheduleRows(schedule, {
         prices: existingPrices, grants: existingGrants, loans: existingLoans,
@@ -338,7 +348,9 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
         try { await api.updateTaxSettings({ deduct_investment_interest: deductInterest }) } catch { /* non-fatal */ }
       }
       setCompletedGrants(buildScheduleGrants({ purchaseRows, catchUpRows, bonusRows, reviewedLoans }))
-      push('review')
+      // Ask about sold shares before Review, so the figures on Review are the
+      // ones about to be written. Skipped entirely when the files implied none.
+      push(sales.length > 0 ? 'schedule_sales' : 'review')
     } catch (e: unknown) {
       setSubmitError(e instanceof Error ? e.message : 'Submit failed')
     } finally {
@@ -607,6 +619,16 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
           onBack={back}
           onSave={() => handleScheduleReview(true)}
           onSkip={() => handleScheduleReview(false)}
+        />
+      )}
+
+      {screen === 'schedule_sales' && (
+        <SalesEntryScreen
+          sales={sales}
+          onChange={(i, updated) => setSales(prev => prev.map((s, j) => j === i ? updated : s))}
+          onBack={back}
+          onNext={() => push('review')}
+          onSkip={() => { setSales([]); push('review') }}
         />
       )}
 

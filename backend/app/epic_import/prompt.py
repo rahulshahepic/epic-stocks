@@ -16,8 +16,10 @@ from .models import Finding, Statement
 from .skeleton import Skeleton
 
 _CONTRACT = """\
-Return ONE JSON object and nothing else — no explanation before or after, no
-markdown fences. It must have this shape:
+If rule 8 below leaves you with something to ask me, ask it first and wait — a
+turn spent asking is fine and is what I want. Your FINAL answer, once you have
+what you need, must be ONE JSON object and nothing else — no explanation before
+or after, no markdown fences. It must have this shape:
 
 {
   "grants": [
@@ -42,6 +44,14 @@ markdown fences. It must have this shape:
   ],
   "prices": [
     { "effective_date": "2021-01-01", "price": 2.83 }   // one per year, dated 1 January
+  ],
+  "sales": [
+    {
+      "shares": 5000,              // whole shares sold
+      "date": "2023-06-30",        // null if the user does not know it yet
+      "price_per_share": 4.10,     // null if the user does not know it yet
+      "notes": ""
+    }
   ]
 }
 """
@@ -71,6 +81,16 @@ Rules you must follow:
    the grant being bought. Leave dp_shares at 0 when the arithmetic does not
    land on whole shares.
 7. Use only figures present in the source material. Do not estimate anything.
+8. Shares the CSV reports gone that rule 6 does not account for were sold. The
+   share count is in the files; the sale date and the price are not, and there
+   is no way to work them out from anything you have been given. So ASK ME for
+   them, in plain language, before you produce the JSON — one question per sale,
+   telling me the share count you are asking about and which grants the workbook
+   reports it against. If I do not know a date or a price, put null in that
+   field and leave it for me to fill in later. Never infer, estimate, average,
+   or carry across a share price for a sale: a made-up sale price becomes a
+   made-up capital gain and I will not be able to tell it apart from a real one.
+   Rule 7 is not relaxed here — I am the source, not you.
 """
 
 _IDENTITIES = """\
@@ -87,6 +107,10 @@ Your answer must satisfy all of these. Check them before replying:
      equals dp_shares x price. Across all grants, the shares handed back come
      to no more than the total "Shares Sold" in the CSV; any remainder was
      genuinely sold.
+  G. The shares handed back as down payments plus the shares in "sales" come to
+     exactly the total "Shares Sold" in the CSV. A sale may have a null date or
+     a null price and still count towards this — the share count is what has to
+     add up.
 
 If a check cannot be made to pass with the figures available, say so in a
 comment AFTER the JSON object rather than bending a number to fit.
@@ -166,7 +190,9 @@ def build_prompt(draft: Draft, findings: list[Finding], statement: Statement | N
         "## Down payment policy (fixed)", "", _dp_policy(sk), "",
         "## What did not reconcile", "", _problem_list(findings), "",
         "## The draft so far", "",
-        "```json", json.dumps(to_wizard_payload(draft), indent=2), "```", "",
+        "```json",
+        json.dumps(to_wizard_payload(draft, include_unanswered_sales=True), indent=2),
+        "```", "",
     ]
     if statement:
         printed = statement.printed_total or statement.total_principal

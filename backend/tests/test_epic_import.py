@@ -347,17 +347,35 @@ def test_a_misread_row_blocks_the_import(skeleton):
     assert is_blocked(findings) is True
 
 
-def test_wrong_attribution_is_an_error_but_does_not_block(skeleton):
-    """The documents disagreeing is worth stopping on, but it is the user's call."""
+def test_wrong_attribution_is_reported_as_a_warning(skeleton):
+    """The two documents disagreeing about loans is ordinary — the workbook is
+    refreshed less often than the statement, so it routinely predates a payment.
+    Worth saying, never worth erroring over, and never blocking."""
     statement, f = parse_statement_lines(statement_lines())
     rows, _ = parse_share_csv(csv_bytes())
     for sl in statement.loans:
         sl.name = sl.name.replace("Tax Loan", "Interest Loan")
     draft, df = derive_draft(statement, rows, skeleton)
     findings = f + df + validate_draft(draft, statement, rows, skeleton)
-    assert "C3" in codes(findings, "error")
-    assert "C4" in codes(findings, "error")
+    assert "C3" in codes(findings, "warning")
+    assert "C4" in codes(findings, "warning")
+    assert "C3" not in codes(findings, "error")
+    assert "C4" not in codes(findings, "error")
     assert is_blocked(findings) is False
+
+
+def test_a_stale_workbook_says_why_it_disagrees(skeleton):
+    """A loan paid off after the workbook was downloaded is the reported case —
+    the message has to name that cause, or the user reads it as a parse bug."""
+    statement, f = parse_statement_lines(statement_lines())
+    rows, _ = parse_share_csv(csv_bytes())
+    # loan_type is filled in by L2 during derive, so filter on the printed name.
+    statement.loans = [l for l in statement.loans if "Tax Loan" not in l.name]
+    draft, df = derive_draft(statement, rows, skeleton)
+    findings = f + df + validate_draft(draft, statement, rows, skeleton)
+    c3 = [f for f in findings if f.code == "C3"]
+    assert c3 and all(f.severity == "warning" for f in c3)
+    assert "refreshed less often" in c3[0].message
 
 
 def test_share_count_disagreement_is_reported(skeleton, parsed):
@@ -514,11 +532,23 @@ def test_the_down_payment_finding_names_the_grant_and_the_shares(skeleton):
     assert "1,334 shares" in message and "2022 Purchase" in message
 
 
-def test_shares_that_no_down_payment_accounts_for_are_still_reported_as_sold(skeleton):
+def test_shares_that_no_down_payment_accounts_for_are_drafted_as_a_sale(skeleton):
     draft, findings = draft_from_files(skeleton, *one_grant_files(**{**STOCK_DP, "sold": 5_000}))
     assert grant(draft, 2022, "Purchase").dp_shares == 0
-    assert "G2" in codes(findings, "info")
+    assert "G2" in codes(findings, "warning")
     assert "G8" not in codes(findings)
+    assert [s.shares for s in draft.sales] == [5_000]
+
+
+def test_a_drafted_sale_carries_the_count_and_nothing_else(skeleton):
+    """The CSV has the share count and neither a date nor a price. Inventing
+    either would put a made-up figure into capital gains."""
+    draft, findings = draft_from_files(skeleton, *one_grant_files(**{**STOCK_DP, "sold": 5_000}))
+    sale = draft.sales[0]
+    assert sale.shares == 5_000
+    assert sale.sale_date is None and sale.price_per_share is None
+    assert sale.is_complete is False
+    assert "C12" in codes(findings, "warning")
 
 
 def test_a_loan_paid_down_since_is_not_read_as_a_down_payment(skeleton):
@@ -528,7 +558,8 @@ def test_a_loan_paid_down_since_is_not_read_as_a_down_payment(skeleton):
         skeleton, *one_grant_files(shares=300_000, basis=4_500_000.0,
                                    loan=4_000_005.0, sold=33_333))
     assert grant(draft, 2022, "Purchase").dp_shares == 0
-    assert "G2" in codes(findings, "info")
+    assert "G2" in codes(findings, "warning")
+    assert [s.shares for s in draft.sales] == [33_333]
 
 
 def test_a_down_payment_in_cash_leaves_no_shares_to_explain(skeleton):
@@ -848,6 +879,71 @@ def test_the_draft_can_be_submitted_through_the_wizard(client):
     assert len(client.get("/api/grants").json()) == 8
     assert len(client.get("/api/loans").json()) == 9
     assert len(client.get("/api/prices").json()) == 3
+
+
+def test_an_answered_sale_is_saved_by_the_wizard(client):
+    """The end of the loop the import starts: the file said how many shares went,
+    the user says when and for how much, and the wizard writes the sale."""
+    register_user(client)
+    payload = analyze(client)["wizard_payload"]
+    resp = client.post("/api/wizard/submit", json={
+        **payload, "clear_existing": True, "generate_payoff_sales": False,
+        "sales": [{"date": "2024-03-01", "shares": 10_000,
+                   "price_per_share": 12.5, "notes": "from the workbook"}]})
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["sales"] == 1
+    saved = client.get("/api/sales").json()
+    assert [(s["shares"], s["price_per_share"]) for s in saved] == [(10_000, 12.5)]
+
+
+def test_the_wizard_refuses_a_sale_with_no_price(client):
+    """A sale with a blank price would land in capital gains as a zero. The
+    wizard is the last place it can be stopped, so it stops it."""
+    register_user(client)
+    payload = analyze(client)["wizard_payload"]
+    resp = client.post("/api/wizard/submit", json={
+        **payload, "clear_existing": True,
+        "sales": [{"date": "2024-03-01", "shares": 10_000, "price_per_share": None}]})
+    assert resp.status_code == 422
+
+
+def test_the_wizard_refuses_a_sale_with_an_unreadable_date(client):
+    """A 422 rather than an exception in the insert loop, which would be a 500
+    and an error_logs row."""
+    register_user(client)
+    payload = analyze(client)["wizard_payload"]
+    resp = client.post("/api/wizard/submit", json={
+        **payload, "clear_existing": True,
+        "sales": [{"date": "last March", "shares": 10, "price_per_share": 1.0}]})
+    assert resp.status_code == 422
+
+
+def test_an_unanswered_sale_never_reaches_the_submit_payload(client):
+    """The draft carries the blank so the wizard can ask about it; the payload
+    the wizard would submit must not, or the blank rides in as a real sale."""
+    register_user(client)
+    body = analyze(client)
+    assert body["wizard_payload"]["sales"] == []
+    unanswered = [s for s in body["wizard_prefill"]["sales"] if s["needs_input"]]
+    assert unanswered and unanswered[0]["shares"] == 10_000
+
+
+def test_an_answered_sale_survives_the_round_trip_to_the_wizard(client):
+    """to_wizard_payload output is posted to the wizard verbatim, so its sale
+    keys have to be the ones WizardSale declares — an unknown key is dropped
+    silently, which lost the note saying where the shares came from."""
+    register_user(client)
+    body = analyze(client)
+    unanswered = [s for s in body["wizard_prefill"]["sales"] if s["needs_input"]]
+    assert unanswered, "fixture should leave shares no down payment explains"
+
+    payload = {**body["wizard_payload"], "clear_existing": True,
+               "generate_payoff_sales": False,
+               "sales": [{"date": "2024-03-01", "shares": unanswered[0]["shares"],
+                          "price_per_share": 12.5, "notes": unanswered[0]["notes"]}]}
+    assert client.post("/api/wizard/submit", json=payload).status_code == 201
+    saved = client.get("/api/sales").json()
+    assert saved[0]["notes"] == unanswered[0]["notes"] != ""
 
 
 def test_analyze_requires_authentication(client):

@@ -240,8 +240,8 @@ class WizardSale(BaseModel):
         # the insert loop, which would be a 500 and an error_logs row.
         try:
             _to_date(v)
-        except (ValueError, TypeError):
-            raise ValueError("date must be an ISO date, e.g. 2023-06-30")
+        except (ValueError, TypeError) as e:
+            raise ValueError("date must be an ISO date, e.g. 2023-06-30") from e
         return v
 
 

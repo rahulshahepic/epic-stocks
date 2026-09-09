@@ -34,6 +34,7 @@ import {
 import { LoanReviewScreen, RefiReviewScreen } from './importWizard/screens/LoanReview.tsx'
 import { SalesEntryScreen } from './importWizard/screens/SalesEntry.tsx'
 import { DoneScreen, ReviewScreen } from './importWizard/screens/Finish.tsx'
+import campusWatercolor from '../../assets/campus-watercolor.webp'
 
 /**
  * The setup wizard: two paths onto the same submit payload.
@@ -373,7 +374,16 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
     })
 
   return (
-    <div className="space-y-5">
+    <div className="campus-map-room space-y-5">
+      {screen === 'welcome' && (
+        <div className="campus-map-banner">
+          <img src={campusWatercolor} alt="" aria-hidden="true" />
+          <div>
+            <p>The map room</p>
+            <span lang="la" title="Know thyself">Nosce te ipsum</span>
+          </div>
+        </div>
+      )}
       {screen === 'welcome' && (
         <Welcome
           isPage={isPage}

@@ -7,7 +7,6 @@
  */
 import { apiFetch } from '../api.ts'
 import type { GrantEntry, LoanEntry, PriceEntry, WizardSale } from '../api.ts'
-import type { PrefillSale } from './components/importWizard/types.ts'
 import { platform } from '../platform/index.ts'
 
 export interface Finding {
@@ -26,6 +25,15 @@ export interface DraftSummary {
   grant_years: number[]
 }
 
+/** One sale as the import handed it over, before the user answered anything. */
+export interface PrefillSale {
+  shares: number
+  date: string
+  price_per_share: number | null
+  notes: string
+  needs_input: boolean
+}
+
 /** The draft in the shape the wizard's own data loader consumes. */
 export interface WizardPrefill {
   grants: GrantEntry[]
@@ -33,7 +41,7 @@ export interface WizardPrefill {
   prices: PriceEntry[]
   /** Shares the files report gone that no down payment explains. `needs_input`
    *  marks the ones with no date or price — the wizard's sales screen asks. */
-  sales: PrefillSale[]
+  sales?: PrefillSale[]
   existing_sales?: WizardSale[]
   reported_sold_shares?: number | null
   sale_grant_keys?: string[]

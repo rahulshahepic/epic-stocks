@@ -49,7 +49,7 @@ export function SalesEntryScreen({
                   if (!e.target.value) return
                   const saved = existingSales[Number(e.target.value)]
                   if (saved) onChange(i, { ...sale, ...saved, notes: saved.notes || '',
-                    price_per_share: String(saved.price_per_share), needs_input: false })
+                    price_per_share: String(saved.price_per_share) })
                 }}>
                   <option value="">Select a transaction…</option>
                   {existingSales.map((s, j) => <option key={j} value={j}>

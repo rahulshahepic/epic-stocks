@@ -447,7 +447,7 @@ def _finite_int(v) -> int:
     500. This whole payload is text someone pasted in from an assistant.
     """
     f = float(v)
-    if f != f or f in (float("inf"), float("-inf")):
+    if not isfinite(f):
         raise ValueError("not a finite number")
     return int(round(f))
 
@@ -609,7 +609,8 @@ def draft_from_payload(payload: dict, sk: Skeleton) -> tuple[Draft, list[Finding
             price = None
         if price is not None and (not isfinite(price) or not 0 < price <= 1_000_000):
             findings.append(Finding("R1", WARNING, f"sales[{i}]",
-                                    "price_per_share must be finite and between 0 (exclusive) and 1,000,000; left blank."))
+                                    "price_per_share must be finite and between 0 "
+                                    "(exclusive) and 1,000,000; left blank."))
             price = None
         draft.sales.append(DraftSale(
             shares=shares, sale_date=_d(raw.get("date")), price_per_share=price,

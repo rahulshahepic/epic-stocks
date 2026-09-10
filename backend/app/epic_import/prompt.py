@@ -89,8 +89,8 @@ Rules you must follow:
    date and price of EACH actual sale — several transactions may have different
    dates and prices. Do not combine them into one transaction. Tell me which
    grants the workbook reports the shares against. If I do not know, keep an
-   unanswered row with null date and price for the unresolved balance. Never infer, estimate, average,
-   or carry across a share price for a sale. The wizard also lets me select
+   unanswered row with null date and price for the unresolved balance. Never infer, estimate, average, or
+   carry across a share price for a sale. The wizard also lets me select
    an already recorded sale, and matches existing transactions without copying them.
    Rule 7 is not relaxed here — I am the source, not you.
 """

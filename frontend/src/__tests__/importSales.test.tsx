@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
-import { remainingSaleShares, resizeUnansweredSale, saleReview } from '../app/components/importWizard/sales.ts'
-import { submittableSales, type SaleDraft } from '../app/components/importWizard/types.ts'
+import {
+  remainingSaleShares, resizeUnansweredSale, saleReview, submittableSales,
+} from '../app/components/importWizard/sales.ts'
+import type { SaleDraft } from '../app/components/importWizard/types.ts'
 import { DoneScreen, ReviewScreen } from '../app/components/importWizard/screens/Finish.tsx'
 import type { WizardGrant } from '../api.ts'
 
-const sale: SaleDraft = { shares: 500, date: '2024-03-01', price_per_share: '12.5', notes: '', needs_input: false }
+const sale: SaleDraft = { shares: 500, date: '2024-03-01', price_per_share: '12.5', notes: '' }
 
 describe('import sales', () => {
   it('splits actual sales across years without changing prices or quantities', () => {

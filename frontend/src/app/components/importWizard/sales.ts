@@ -1,9 +1,46 @@
 import type { WizardGrant, WizardSale } from '../../../api.ts'
-import { saleIsComplete, type SaleDraft } from './types.ts'
+import type { PrefillSale } from '../../epicImport.ts'
+import type { SaleDraft } from './types.ts'
+
+const MAX_SALE_SHARES = 10_000_000
+const MAX_SALE_PRICE = 1_000_000
+
+export function newSaleDraft(shares = 0): SaleDraft {
+  return { shares, date: '', price_per_share: '', notes: '' }
+}
+
+export function prefillToSaleDraft(sale: PrefillSale): SaleDraft {
+  return {
+    shares: sale.shares,
+    date: sale.date || '',
+    price_per_share: sale.price_per_share == null ? '' : String(sale.price_per_share),
+    notes: sale.notes || '',
+  }
+}
+
+export function saleIsComplete(sale: SaleDraft): boolean {
+  const price = Number(sale.price_per_share)
+  const date = new Date(`${sale.date}T00:00:00Z`)
+  return /^\d{4}-\d{2}-\d{2}$/.test(sale.date) && Number.isFinite(date.getTime())
+    && date.toISOString().slice(0, 10) === sale.date
+    && Number.isFinite(price) && price > 0 && price <= MAX_SALE_PRICE
+    && Number.isInteger(sale.shares) && sale.shares > 0 && sale.shares <= MAX_SALE_SHARES
+}
+
+/** Only fully answered sales are submittable — the backend refuses the rest. */
+export function submittableSales(sales: SaleDraft[]) {
+  return sales.filter(saleIsComplete).map(sale => ({
+    date: sale.date,
+    shares: sale.shares,
+    price_per_share: Number(sale.price_per_share),
+    notes: sale.notes,
+  }))
+}
 
 export function remainingSaleShares(total: number | null | undefined, grants: WizardGrant[], keys: string[]) {
   if (total == null) return null
-  const exchanged = grants.filter(g => keys.includes(`${g.year}:${g.type}`))
+  const saleGrantKeys = new Set(keys)
+  const exchanged = grants.filter(g => saleGrantKeys.has(`${g.year}:${g.type}`))
     .reduce((n, g) => n + Math.abs(g.dp_shares), 0)
   return total - exchanged
 }
@@ -34,7 +71,7 @@ export function saleReview(sales: SaleDraft[], existing: WizardSale[], available
     issues.push('Sales and down-payment shares exceed the workbook total. Reduce the sale quantities or correct the exchanges on the grants screen.')
   }
   for (const [i, s] of sales.entries()) {
-    if (!Number.isInteger(s.shares) || s.shares < 0 || s.shares > 10_000_000) {
+    if (!Number.isInteger(s.shares) || s.shares < 0 || s.shares > MAX_SALE_SHARES) {
       issues.push(`Sale ${i + 1}: enter a whole number of shares between 0 and 10,000,000.`)
     }
   }

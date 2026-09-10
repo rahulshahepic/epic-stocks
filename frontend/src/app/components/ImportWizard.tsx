@@ -22,7 +22,7 @@ import type {
   Screen, TaxLoanDraft, WizardPrefill, WizardPrice,
 } from './importWizard/types.ts'
 import {
-  emptyGrantDraft, emptyLoan, emptyTaxLoanDraft, prefillToSaleDraft, submittableSales, vestingYears,
+  emptyGrantDraft, emptyLoan, emptyTaxLoanDraft, vestingYears,
 } from './importWizard/types.ts'
 import {
   GrantEntry as GrantEntryScreen, LoanRefinanceScreen, MoreGrants, PricesScreen,
@@ -32,7 +32,10 @@ import {
   ScheduleGrants, ScheduleIntro, SchedulePrices, ScheduleSettings,
 } from './importWizard/screens/SchedulePath.tsx'
 import { LoanReviewScreen, RefiReviewScreen } from './importWizard/screens/LoanReview.tsx'
-import { remainingSaleShares, resizeUnansweredSale, saleReview } from './importWizard/sales.ts'
+import {
+  newSaleDraft, prefillToSaleDraft, remainingSaleShares, resizeUnansweredSale, saleReview,
+  submittableSales,
+} from './importWizard/sales.ts'
 import { SalesEntryScreen } from './importWizard/screens/SalesEntry.tsx'
 import { DoneScreen, ReviewScreen } from './importWizard/screens/Finish.tsx'
 import campusWatercolor from '../../assets/campus-watercolor.webp'
@@ -648,7 +651,10 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
           sales={sales}
           existingSales={prefill?.existing_sales}
           availableShares={availableSaleShares}
-          onAdd={() => setSales(prev => [...prev, { shares: Math.max(0, (availableSaleShares ?? 0) - prev.reduce((n, s) => n + s.shares, 0)), date: '', price_per_share: '', notes: '', needs_input: true }])}
+          onAdd={() => setSales(prev => [...prev, newSaleDraft(Math.max(
+            0,
+            (availableSaleShares ?? 0) - prev.reduce((total, sale) => total + sale.shares, 0),
+          ))])}
           onRemove={i => setSales(prev => prev.filter((_, j) => i !== j))}
           onChange={(i, updated) => setSales(prev => prev.map((s, j) => j === i ? updated : s))}
           onBack={back}

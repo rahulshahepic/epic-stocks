@@ -258,13 +258,14 @@ class WizardSale(BaseModel):
 class WizardSubmitRequest(BaseModel):
     grants: list[WizardGrant]
     prices: list[WizardPrice]
-    sales: list[WizardSale] = []
+    sales: list[WizardSale] = Field(default_factory=list)
     reported_sold_shares: int | None = Field(default=None, ge=0, le=MAX_BULK_ITEMS * 10_000_000)
-    sale_grant_keys: list[Annotated[str, Field(max_length=MAX_LABEL_LEN + 5)]] = []
+    sale_grant_keys: list[Annotated[str, Field(max_length=MAX_LABEL_LEN + 5)]] = Field(
+        default_factory=list)
     clear_existing: bool = True
     generate_payoff_sales: bool = True
-    preserve_grant_ids: list[int] = []
-    preserve_price_ids: list[int] = []
+    preserve_grant_ids: list[int] = Field(default_factory=list)
+    preserve_price_ids: list[int] = Field(default_factory=list)
 
     @field_validator("grants", "prices", "sales", "sale_grant_keys", "preserve_grant_ids", "preserve_price_ids")
     @classmethod
@@ -412,16 +413,17 @@ def submit(
 
     # Serialize wizard retries for this account before reading existing sales.
     db.query(User).filter(User.id == user.id).with_for_update().first()
-    existing = [] if body.clear_existing else db.query(Sale).filter(
+    existing_sales = [] if body.clear_existing else db.query(Sale).filter(
         Sale.user_id == user.id, Sale.loan_id.is_(None)).all()
-    remaining = Counter((s.date, s.shares, s.price_per_share) for s in existing)
-    new_sales = []
-    for s in body.sales:
-        key = (_to_date(s.date), s.shares, s.price_per_share)
-        if remaining[key]:
-            remaining[key] -= 1
+    unmatched_existing = Counter(
+        (sale.date, sale.shares, sale.price_per_share) for sale in existing_sales)
+    sales_to_create: list[WizardSale] = []
+    for sale in body.sales:
+        key = (_to_date(sale.date), sale.shares, sale.price_per_share)
+        if unmatched_existing[key]:
+            unmatched_existing[key] -= 1
         else:
-            new_sales.append(s)
+            sales_to_create.append(sale)
 
     incoming_loans = sum(len(g.loans) for g in body.grants)
     if body.clear_existing:
@@ -429,12 +431,12 @@ def submit(
         check_row_count(Grant, len(body.grants))
         check_row_count(Price, len(body.prices))
         check_row_count(Loan, incoming_loans)
-        check_row_count(Sale, len(new_sales))
+        check_row_count(Sale, len(sales_to_create))
     else:
         check_row_quota(db, Grant, user.id, adding=len(body.grants))
         check_row_quota(db, Price, user.id, adding=len(body.prices))
         check_row_quota(db, Loan, user.id, adding=incoming_loans)
-        check_row_quota(db, Sale, user.id, adding=len(new_sales))
+        check_row_quota(db, Sale, user.id, adding=len(sales_to_create))
 
     if body.clear_existing:
         db.query(LoanPayment).filter(LoanPayment.user_id == user.id).delete()
@@ -497,17 +499,17 @@ def submit(
     # Sales the user entered, after the payoff ones so a hand-entered sale is
     # never mistaken for a generated one. These carry no loan_id: they are shares
     # that left a grant, which is all either document says about them.
-    sale_count = 0
-    for s in new_sales:
-        sale_date = _to_date(s.date)
-        db.add(Sale(
+    sales = [
+        Sale(
             user_id=user.id,
-            date=sale_date,
-            shares=s.shares,
-            price_per_share=s.price_per_share,
-            notes=s.notes,
-        ))
-        sale_count += 1
+            date=_to_date(sale.date),
+            shares=sale.shares,
+            price_per_share=sale.price_per_share,
+            notes=sale.notes,
+        )
+        for sale in sales_to_create
+    ]
+    db.add_all(sales)
 
     db.commit()
 
@@ -518,8 +520,8 @@ def submit(
         loans=loan_count,
         prices=price_count,
         payoff_sales=payoff_count,
-        sales=sale_count,
-        existing_sales=len(body.sales) - sale_count,
+        sales=len(sales),
+        existing_sales=len(body.sales) - len(sales),
     )
 
 

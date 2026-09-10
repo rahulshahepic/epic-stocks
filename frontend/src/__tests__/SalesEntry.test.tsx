@@ -2,12 +2,12 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SalesEntryScreen } from '../app/components/importWizard/screens/SalesEntry.tsx'
-import { prefillToSaleDraft, submittableSales } from '../app/components/importWizard/types.ts'
+import { prefillToSaleDraft, submittableSales } from '../app/components/importWizard/sales.ts'
 import type { SaleDraft } from '../app/components/importWizard/types.ts'
 
 function draft(over: Partial<SaleDraft> = {}): SaleDraft {
   return {
-    shares: 10000, date: '', price_per_share: '', notes: '', needs_input: true, ...over,
+    shares: 10000, date: '', price_per_share: '', notes: '', ...over,
   }
 }
 
@@ -47,14 +47,13 @@ describe('prefillToSaleDraft', () => {
     })).toEqual({
       shares: 10000, date: '', price_per_share: '',
       notes: 'Shares the stock workbook reports gone: 2021 Purchased (10,000).',
-      needs_input: true,
     })
   })
 
   it('keeps figures an assistant already collected', () => {
     expect(prefillToSaleDraft({
       shares: 500, date: '2023-06-30', price_per_share: 4.1, notes: '', needs_input: false,
-    })).toMatchObject({ date: '2023-06-30', price_per_share: '4.1', needs_input: false })
+    })).toMatchObject({ date: '2023-06-30', price_per_share: '4.1' })
   })
 })
 

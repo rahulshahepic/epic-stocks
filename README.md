@@ -207,6 +207,10 @@ Epic's stock purchase program is structured as a low-rate loan to buy stock — 
 
 The math, in plain English: if Epic loaned you $L to buy stock, and that stock grows by *r* % a year, then the appreciation on Epic's loan is *r* × *L*. Subtract the interest you pay on that loan and what's left is your comp from the program.
 
+**Why loan principal is the basis.** The compensation benefit being measured is access to Epic's low-interest financing. The comparison assumes that, at another employer, you would not have equivalent financing available to invest the same additional amount. Return on the outstanding loan-funded amount, less financing costs, estimates the incremental annual benefit to compare with another employer paying cash or awarding stock as income. The loan itself remains repayable; its face value is not income.
+
+Using outstanding loan principal is intentional. Paying it down reduces the financing benefit from that point onward, even if you keep the shares. Appreciation on accumulated gains or shares funded with your own money is a return on your existing wealth, outside this financing-benefit measure. Do not replace the loan-principal basis with total share value when maintaining this calculator. Separately awarded shares are a different compensation component and should be identified separately if included in a broader total.
+
 **The view:**
 
 - **Bar chart of net comp by year** — one bar for every year you have price data for, from your first loan year through the latest Dec 31 price. Click a bar to drill into that year's breakdown.

@@ -5,6 +5,12 @@ import { MemoryRouter } from 'react-router-dom'
 import Retirement from '../app/pages/Retirement.tsx'
 import { resetMeCache } from '../scaffold/hooks/useMe.ts'
 import { ViewingProvider } from '../scaffold/contexts/ViewingContext.tsx'
+import { useViewing } from '../scaffold/contexts/viewing.ts'
+
+function ReturnToOwner() {
+  const { clearViewing } = useViewing()
+  return <button onClick={clearViewing}>Return to owner</button>
+}
 
 beforeEach(() => {
   localStorage.setItem('auth_token', 'test-token')
@@ -522,4 +528,35 @@ describe('Retirement page', () => {
     expect(screen.queryByText(/Inputs changed.*Re-run/)).not.toBeInTheDocument()
   })
 
+  it('ignores a delayed shared-account response after returning to the owner', async () => {
+    sessionStorage.setItem('viewing_context', JSON.stringify({ invitationId: 7, name: 'Alice' }))
+    mockApi({ savedParams: { retirementDate: '2040-01-01' } })
+    const fallback = vi.mocked(globalThis.fetch).getMockImplementation()!
+    let resolveShared!: (response: Response) => void
+    const delayedShared = new Promise<Response>(resolve => { resolveShared = resolve })
+    vi.mocked(globalThis.fetch).mockImplementation((input, init) => {
+      const url = typeof input === 'string'
+        ? input
+        : input instanceof URL ? input.toString() : (input as Request).url
+      if (url.includes('/api/sharing/view/7/retirement-params')) return delayedShared
+      return fallback(input, init)
+    })
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter>
+        <ViewingProvider>
+          <ReturnToOwner />
+          <Retirement />
+        </ViewingProvider>
+      </MemoryRouter>,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Return to owner' }))
+    const dateInput = await screen.findByLabelText(/^Retirement date/i) as HTMLInputElement
+    await waitFor(() => expect(dateInput.value).toBe('2040-01-01'))
+    resolveShared(new Response(JSON.stringify({ params: { retirementDate: '2030-01-01' } }), { status: 200 }))
+    await Promise.resolve()
+    expect(dateInput.value).toBe('2040-01-01')
+    expect(dateInput.disabled).toBe(false)
+  })
 })

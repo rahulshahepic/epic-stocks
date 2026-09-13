@@ -39,8 +39,7 @@ def _get_or_create_tax_settings(user: User, db: Session) -> TaxSettings:
     if not ts:
         ts = TaxSettings(user_id=user.id, **WI_DEFAULTS)
         db.add(ts)
-        db.commit()
-        db.refresh(ts)
+        db.flush()
     return ts
 
 
@@ -77,20 +76,19 @@ def _check_cash_out_allowed(user: User, sale_date, db: Session):
     Block cash-out sale if any loan with due_date <= sale_date has no linked payoff Sale.
     Raises HTTPException 422 if blocked.
     """
-    outstanding_loans = db.query(Loan).filter(
-        Loan.user_id == user.id,
-        Loan.due_date <= sale_date,
-    ).all()
-
-    covered_ids = {
-        s.loan_id for s in
-        db.query(Sale).filter(Sale.user_id == user.id, Sale.loan_id.isnot(None)).all()
-    }
-
-    uncovered = [
-        ln for ln in outstanding_loans
-        if ln.id not in covered_ids
-    ]
+    from app.loan_state import refinanced_loan_ids
+    from scaffold.models import LoanPayment
+    loans = db.query(Loan).filter(Loan.user_id == user.id).all()
+    superseded = refinanced_loan_ids(loans, sale_date)
+    covered_ids = {s.loan_id for s in db.query(Sale).filter(
+        Sale.user_id == user.id, Sale.date <= sale_date, Sale.loan_id.isnot(None)).all()}
+    paid = {}
+    for payment in db.query(LoanPayment).filter(
+            LoanPayment.user_id == user.id, LoanPayment.date <= sale_date).all():
+        paid[payment.loan_id] = paid.get(payment.loan_id, 0) + payment.amount
+    uncovered = [ln for ln in loans if ln.due_date <= sale_date
+                 and ln.id not in superseded and ln.id not in covered_ids
+                 and ln.amount > paid.get(ln.id, 0)]
 
     if uncovered:
         names = "; ".join(
@@ -149,6 +147,17 @@ def get_all_sale_taxes(user: User = Depends(get_current_user), db: Session = Dep
     return results
 
 
+def sale_aware_timeline(user: User, db: Session, as_of: date, exclude_sale_id=None):
+    """Remaining lots after every earlier sale, including manual allocations."""
+    specs, grants, settings, flexible = _sale_specs_for_user(user, db)
+    specs = [s for s in specs if s["date"] <= as_of and s["id"] != exclude_sale_id]
+    _, timeline = compute_all_sale_taxes(
+        _build_timeline(user, db), specs, grants, settings.loan_payoff_method,
+        settings.lot_selection_method, flexible,
+    )
+    return timeline
+
+
 # --- Sales CRUD ---
 
 @router.get("", response_model=list[SaleOut])
@@ -186,6 +195,8 @@ def update_sale(sale_id: int, body: SaleUpdate, user: User = Depends(get_current
     stale = version_conflict(sale, body.version)
     if stale:
         return stale
+    if sale.loan_id is None:
+        _check_cash_out_allowed(user, body.date or sale.date, db)
     apply_update(sale, body)
     db.commit()
     db.refresh(sale)
@@ -225,7 +236,7 @@ def get_available_lots(
     db: Session = Depends(get_db),
 ):
     """Return available share lots as of a given date, grouped by cost basis (descending)."""
-    from app.routers.loans import _build_timeline_for_user, _get_lot_selection_method, _get_tax_settings_dict
+    from app.routers.loans import _get_lot_selection_method, _get_tax_settings_dict
     from collections import defaultdict
 
     try:
@@ -238,7 +249,7 @@ def get_available_lots(
     ts = _get_tax_settings_dict(user, db)
     lt_days = int(ts.get("lt_holding_days", 365))
 
-    timeline = _build_timeline_for_user(user, db)
+    timeline = sale_aware_timeline(user, db, as_of)
     lots = build_fifo_lots(timeline, as_of, order=lot_order, lt_holding_days=lt_days)
 
     by_cost: dict[float, int] = defaultdict(int)
@@ -257,7 +268,7 @@ def get_available_lots(
 @router.get("/tranche-allocation")
 def get_tranche_allocation(
     sale_date: str = Query(...),
-    shares: int = Query(default=0),
+    shares: int = Query(default=0, ge=0, le=10_000_000),
     method: str = Query(default='epic_lifo'),
     grant_year: Optional[int] = Query(default=None),
     grant_type: Optional[str] = Query(default=None),
@@ -265,7 +276,7 @@ def get_tranche_allocation(
     db: Session = Depends(get_db),
 ):
     """Return lot-level allocation for a proposed sale. Read-only, no DB write."""
-    from app.routers.loans import _build_timeline_for_user, _get_tax_settings_dict
+    from app.routers.loans import _get_tax_settings_dict
     from app.date_utils import to_date as _to_date
 
     try:
@@ -277,7 +288,7 @@ def get_tranche_allocation(
     ts = _get_tax_settings_dict(user, db)
     lt_days = int(ts.get("lt_holding_days", 365))
 
-    timeline = _build_timeline_for_user(user, db)
+    timeline = sale_aware_timeline(user, db, as_of)
     lots = build_fifo_lots(timeline, as_of, order=lot_order, lt_holding_days=lt_days,
                            grant_year=grant_year, grant_type=grant_type)
 
@@ -315,9 +326,9 @@ def get_tranche_allocation(
 
 @router.get("/estimate")
 def estimate_sale(
-    price_per_share: float = Query(...),
-    target_net_cash: float | None = Query(default=None),
-    shares: int | None = Query(default=None),
+    price_per_share: float = Query(..., gt=0, le=1_000_000, allow_inf_nan=False),
+    target_net_cash: float | None = Query(default=None, gt=0, le=100_000_000, allow_inf_nan=False),
+    shares: int | None = Query(default=None, gt=0, le=10_000_000),
     sale_date: str | None = Query(default=None),
     loan_id: int | None = Query(default=None),
     grant_year: int | None = Query(default=None),
@@ -331,7 +342,7 @@ def estimate_sale(
     Pure read — no DB write.
     """
     from app.routers.loans import (
-        _build_timeline_for_user, _get_tax_settings_dict,
+        _get_tax_settings_dict,
         _get_lot_selection_method,
     )
 
@@ -352,8 +363,8 @@ def estimate_sale(
             if method == 'same_tranche':
                 gy, gt = loan.grant_year, loan.grant_type
 
-    timeline = _build_timeline_for_user(user, db)
     as_of = date.fromisoformat(sale_date) if sale_date else date.today()
+    timeline = sale_aware_timeline(user, db, as_of)
 
     lots = build_fifo_lots(timeline, as_of, order=lot_order,
                            grant_year=gy, grant_type=gt, lt_holding_days=lt_days)

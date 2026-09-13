@@ -1,8 +1,27 @@
 from datetime import date
-from typing import Annotated, Optional
-from pydantic import AfterValidator, BaseModel, field_validator, model_validator
+from typing import Annotated, ClassVar, Optional
+
+from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, field_validator, model_validator
 
 from app.grant_types import TAX_LOAN_TEMPLATE_TYPES, TAX_LOAN_TEMPLATE_TYPES_TEXT
+
+
+class InputModel(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
+
+class UpdateModel(InputModel):
+    non_nullable: ClassVar[set[str]] = set()
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_null_required_fields(cls, values):
+        if isinstance(values, dict):
+            for name in cls.non_nullable:
+                if name in values and values[name] is None:
+                    raise ValueError(f"{name} cannot be null; omit it to leave it unchanged")
+        return values
+
 
 LOAN_TYPES = {"Interest", "Tax", "Purchase"}
 
@@ -107,6 +126,7 @@ CostBasis = Annotated[float, _bounds("price", low=0, low_inclusive=True, high=1_
 Price = Annotated[float, _bounds("price", low=0, low_inclusive=False, high=1_000_000)]
 SharePrice = Annotated[float, _bounds("price_per_share", low=0, low_inclusive=False, high=1_000_000)]
 Money = Annotated[float, _bounds("amount", low=0, low_inclusive=False, high=100_000_000)]
+TaxPaid = Annotated[float, Field(ge=0, le=100_000_000)]
 #: A loan's own rate, carried as a percentage.
 InterestRate = Annotated[float, _bounds("interest_rate", low=0, low_inclusive=True, high=100, high_text="100 (100%)")]
 #: An admin-managed rate from the content tables, carried as a fraction.
@@ -118,18 +138,35 @@ LoanGrantTypeLabel = Annotated[str, _required_label("grant_type")]
 LoanTypeName = Annotated[str, _one_of("loan_type", LOAN_TYPES)]
 LoanNumber = Annotated[str, AfterValidator(lambda v: bounded(v, MAX_LABEL_LEN, "loan_number"))]
 Notes = Annotated[str, AfterValidator(lambda v: bounded(v, MAX_NOTES_LEN, "notes"))]
-LotOverrides = Annotated[list, AfterValidator(lambda v: bounded_list(v, MAX_LOT_OVERRIDES, "lot_overrides"))]
+
+
+class LotOverride(InputModel):
+    vest_date: str
+    grant_year: Year | None = None
+    grant_type: GrantTypeLabel | None = None
+    basis_price: CostBasis
+    shares: Shares
+
+    _date = field_validator("vest_date")(_validate_iso_date)
+
+
+LotOverrides = Annotated[
+    list[LotOverride],
+    BeforeValidator(lambda v: bounded_list(v, MAX_LOT_OVERRIDES, "lot_overrides")),
+]
+TaxRate = Annotated[float, Field(ge=0, le=1)]
+HoldingDays = Annotated[int, Field(ge=1, le=36500)]
 IsoDate = Annotated[str, AfterValidator(_validate_iso_date)]
 
 
 # Auth
-class AuthResponse(BaseModel):
+class AuthResponse(InputModel):
     access_token: str
     token_type: str = "bearer"
 
 
 # Grant — type is free-form (Purchase, Bonus, Catch-Up, Free, etc.)
-class GrantCreate(BaseModel):
+class GrantCreate(InputModel):
     year: Year
     type: GrantTypeLabel
     shares: Shares
@@ -140,7 +177,11 @@ class GrantCreate(BaseModel):
     dp_shares: int = 0
     election_83b: bool = False
 
-class GrantUpdate(BaseModel):
+class GrantUpdate(UpdateModel):
+    non_nullable = {
+        "dp_shares", "election_83b", "exercise_date", "periods", "price",
+        "shares", "type", "vest_start", "year",
+    }
     year: Year | None = None
     type: GrantTypeLabel | None = None
     shares: Shares | None = None
@@ -159,7 +200,7 @@ class GrantOut(GrantCreate):
 
 
 # Loan
-class LoanCreate(BaseModel):
+class LoanCreate(InputModel):
     grant_year: Year
     grant_type: LoanGrantTypeLabel
     loan_type: LoanTypeName
@@ -171,7 +212,11 @@ class LoanCreate(BaseModel):
     refinances_loan_id: int | None = None
 
 
-class LoanUpdate(BaseModel):
+class LoanUpdate(UpdateModel):
+    non_nullable = {
+        "amount", "due_date", "grant_type", "grant_year", "interest_rate",
+        "loan_type", "loan_year",
+    }
     grant_year: Year | None = None
     grant_type: LoanGrantTypeLabel | None = None
     loan_type: LoanTypeName | None = None
@@ -192,12 +237,13 @@ class LoanOut(LoanCreate):
 
 
 # Price
-class PriceCreate(BaseModel):
+class PriceCreate(InputModel):
     effective_date: date
     price: Price
 
 
-class PriceUpdate(BaseModel):
+class PriceUpdate(UpdateModel):
+    non_nullable = {'effective_date', 'price'}
     effective_date: date | None = None
     price: Price | None = None
     version: int | None = None
@@ -210,7 +256,7 @@ class PriceOut(PriceCreate):
     model_config = {"from_attributes": True}
 
 
-class GrowthPriceRequest(BaseModel):
+class GrowthPriceRequest(InputModel):
     annual_growth_pct: float
     first_date: date
     through_date: date
@@ -231,7 +277,7 @@ class GrowthPriceRequest(BaseModel):
 
 
 # Sale
-class SaleCreate(BaseModel):
+class SaleCreate(InputModel):
     date: date
     shares: Shares
     price_per_share: SharePrice
@@ -239,40 +285,41 @@ class SaleCreate(BaseModel):
     # If set, this sale was recorded to cover this loan's payoff.
     loan_id: Optional[int] = None
     # Per-sale tax rate overrides (None = use user's TaxSettings)
-    federal_income_rate: Optional[float] = None
-    federal_lt_cg_rate: Optional[float] = None
-    federal_st_cg_rate: Optional[float] = None
-    niit_rate: Optional[float] = None
-    state_income_rate: Optional[float] = None
-    state_lt_cg_rate: Optional[float] = None
-    state_st_cg_rate: Optional[float] = None
-    lt_holding_days: Optional[int] = None
+    federal_income_rate: Optional[TaxRate] = None
+    federal_lt_cg_rate: Optional[TaxRate] = None
+    federal_st_cg_rate: Optional[TaxRate] = None
+    niit_rate: Optional[TaxRate] = None
+    state_income_rate: Optional[TaxRate] = None
+    state_lt_cg_rate: Optional[TaxRate] = None
+    state_st_cg_rate: Optional[TaxRate] = None
+    lt_holding_days: Optional[HoldingDays] = None
     # Manual lot overrides: [{vest_date, grant_year, grant_type, basis_price, shares}, ...]
     lot_overrides: Optional[LotOverrides] = None
     # Groups related sales in a plan (payoff + cash-out from one decision)
     sale_plan_id: Optional[int] = None
     # User-recorded actual tax paid (overrides estimated for past recorded sales)
-    actual_tax_paid: Optional[float] = None
+    actual_tax_paid: Optional[TaxPaid] = None
 
 _Date = date  # alias to avoid field-name shadowing Optional[date] = None in Pydantic v2
 
-class SaleUpdate(BaseModel):
+class SaleUpdate(UpdateModel):
+    non_nullable = {"date", "notes", "price_per_share", "shares"}
     date: Optional[_Date] = None
     shares: Optional[Shares] = None
     price_per_share: Optional[SharePrice] = None
     notes: Optional[Notes] = None
     version: Optional[int] = None
-    federal_income_rate: Optional[float] = None
-    federal_lt_cg_rate: Optional[float] = None
-    federal_st_cg_rate: Optional[float] = None
-    niit_rate: Optional[float] = None
-    state_income_rate: Optional[float] = None
-    state_lt_cg_rate: Optional[float] = None
-    state_st_cg_rate: Optional[float] = None
-    lt_holding_days: Optional[int] = None
+    federal_income_rate: Optional[TaxRate] = None
+    federal_lt_cg_rate: Optional[TaxRate] = None
+    federal_st_cg_rate: Optional[TaxRate] = None
+    niit_rate: Optional[TaxRate] = None
+    state_income_rate: Optional[TaxRate] = None
+    state_lt_cg_rate: Optional[TaxRate] = None
+    state_st_cg_rate: Optional[TaxRate] = None
+    lt_holding_days: Optional[HoldingDays] = None
     lot_overrides: Optional[LotOverrides] = None
     sale_plan_id: Optional[int] = None
-    actual_tax_paid: Optional[float] = None
+    actual_tax_paid: Optional[TaxPaid] = None
 
 class SaleOut(SaleCreate):
     id: int
@@ -281,13 +328,14 @@ class SaleOut(SaleCreate):
 
 
 # LoanPayment
-class LoanPaymentCreate(BaseModel):
+class LoanPaymentCreate(InputModel):
     loan_id: int
     date: date
     amount: Money
     notes: Notes = ""
 
-class LoanPaymentUpdate(BaseModel):
+class LoanPaymentUpdate(UpdateModel):
+    non_nullable = {"amount", "date", "notes"}
     date: Optional[_Date] = None
     amount: Optional[Money] = None
     notes: Optional[Notes] = None
@@ -300,7 +348,7 @@ class LoanPaymentOut(LoanPaymentCreate):
 
 
 # Tax Settings
-class TaxSettingsRead(BaseModel):
+class TaxSettingsRead(InputModel):
     federal_income_rate: float
     federal_lt_cg_rate: float
     federal_st_cg_rate: float
@@ -318,22 +366,28 @@ class TaxSettingsRead(BaseModel):
     taxable_years: list[int] = []  # virtual field; populated by the endpoint
     model_config = {"from_attributes": True}
 
-class TaxSettingsUpdate(BaseModel):
-    federal_income_rate: float | None = None
-    federal_lt_cg_rate: float | None = None
-    federal_st_cg_rate: float | None = None
-    niit_rate: float | None = None
-    state_income_rate: float | None = None
-    state_lt_cg_rate: float | None = None
-    state_st_cg_rate: float | None = None
-    lt_holding_days: int | None = None
+class TaxSettingsUpdate(UpdateModel):
+    non_nullable = {
+        "deduct_investment_interest", "federal_income_rate", "federal_lt_cg_rate",
+        "federal_st_cg_rate", "loan_payoff_method", "lot_selection_method",
+        "lt_holding_days", "niit_rate", "prefer_stock_dp", "state_income_rate",
+        "state_lt_cg_rate", "state_st_cg_rate",
+    }
+    federal_income_rate: TaxRate | None = None
+    federal_lt_cg_rate: TaxRate | None = None
+    federal_st_cg_rate: TaxRate | None = None
+    niit_rate: TaxRate | None = None
+    state_income_rate: TaxRate | None = None
+    state_lt_cg_rate: TaxRate | None = None
+    state_st_cg_rate: TaxRate | None = None
+    lt_holding_days: HoldingDays | None = None
     lot_selection_method: str | None = None
     loan_payoff_method: str | None = None
     prefer_stock_dp: bool | None = None
     deduct_investment_interest: bool | None = None
     deduction_excluded_years: list[int] | None = None
 
-class LotSummary(BaseModel):
+class LotSummary(InputModel):
     grant_year: int | None
     grant_type: str | None
     shares: int
@@ -341,7 +395,7 @@ class LotSummary(BaseModel):
     st_shares: int
 
 
-class TaxBreakdown(BaseModel):
+class TaxBreakdown(InputModel):
     gross_proceeds: float
     cost_basis: float
     net_gain: float
@@ -363,15 +417,15 @@ class TaxBreakdown(BaseModel):
 
 
 # Push Subscription
-class PushSubscriptionKeys(BaseModel):
+class PushSubscriptionKeys(InputModel):
     p256dh: str
     auth: str
 
-class PushSubscriptionCreate(BaseModel):
+class PushSubscriptionCreate(InputModel):
     endpoint: str
     keys: PushSubscriptionKeys
 
-class PushSubscriptionOut(BaseModel):
+class PushSubscriptionOut(InputModel):
     id: int
     endpoint: str
     model_config = {"from_attributes": True}
@@ -382,7 +436,7 @@ class PushSubscriptionOut(BaseModel):
 _DATE_RE = None
 
 
-class GrantTemplateCreate(BaseModel):
+class GrantTemplateCreate(InputModel):
     year: int
     type: GrantTypeLabel
     vest_start: IsoDate
@@ -417,7 +471,7 @@ class GrantTemplateCreate(BaseModel):
         return self
 
 
-class GrantTemplateUpdate(BaseModel):
+class GrantTemplateUpdate(InputModel):
     year: int | None = None
     # Deliberately a bare str: unlike the Create model this has never rejected an
     # empty type, and tightening it would fail admin writes that work today.
@@ -434,7 +488,7 @@ class GrantTemplateUpdate(BaseModel):
     notes: str | None = None
 
 
-class BonusScheduleVariantCreate(BaseModel):
+class BonusScheduleVariantCreate(InputModel):
     grant_year: int
     grant_type: str
     variant_code: str
@@ -443,7 +497,7 @@ class BonusScheduleVariantCreate(BaseModel):
     is_default: bool = False
 
 
-class BonusScheduleVariantUpdate(BaseModel):
+class BonusScheduleVariantUpdate(InputModel):
     grant_year: int | None = None
     grant_type: str | None = None
     variant_code: str | None = None
@@ -456,7 +510,7 @@ _LOAN_KINDS = {"interest", "tax", "purchase_original"}
 LoanKind = Annotated[str, _one_of("loan_kind", _LOAN_KINDS)]
 
 
-class LoanRateCreate(BaseModel):
+class LoanRateCreate(InputModel):
     loan_kind: LoanKind
     grant_type: str | None = None
     year: int
@@ -469,7 +523,7 @@ class LoanRateCreate(BaseModel):
         return self
 
 
-class LoanRateUpdate(BaseModel):
+class LoanRateUpdate(InputModel):
     loan_kind: LoanKind | None = None
     grant_type: str | None = None
     year: int | None = None
@@ -480,7 +534,7 @@ _CHAIN_KINDS = {"purchase", "tax"}
 ChainKind = Annotated[str, _one_of("chain_kind", _CHAIN_KINDS)]
 
 
-class LoanRefinanceCreate(BaseModel):
+class LoanRefinanceCreate(InputModel):
     chain_kind: ChainKind
     grant_year: int
     grant_type: str | None = None
@@ -493,7 +547,7 @@ class LoanRefinanceCreate(BaseModel):
     orig_due_date: IsoDate | None = None
 
 
-class LoanRefinanceUpdate(BaseModel):
+class LoanRefinanceUpdate(InputModel):
     chain_kind: ChainKind | None = None
     grant_year: int | None = None
     grant_type: str | None = None
@@ -506,7 +560,7 @@ class LoanRefinanceUpdate(BaseModel):
     orig_due_date: IsoDate | None = None
 
 
-class GrantProgramSettingsUpdate(BaseModel):
+class GrantProgramSettingsUpdate(InputModel):
     tax_fallback_federal: float | None = None
     tax_fallback_state: float | None = None
     dp_min_percent: float | None = None

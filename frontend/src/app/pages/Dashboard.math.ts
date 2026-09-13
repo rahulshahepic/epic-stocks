@@ -1,3 +1,4 @@
+import { refinancedLoanIds } from '../loanState.ts'
 import type {
   GrantEntry, LoanEntry, PriceEntry, SaleEntry, TaxSettings, TimelineEvent,
 } from '../../api.ts'
@@ -25,9 +26,7 @@ export function loanStateAsOf(loans: LoanEntry[], events: TimelineEvent[], sales
   const settledIds = new Set(
     (sales ?? []).filter(s => s.loan_id !== null && s.date <= asOf).map(s => s.loan_id),
   )
-  const refinancedIds = new Set(
-    loans.map(l => l.refinances_loan_id).filter((id): id is number => id !== null),
-  )
+  const refinancedIds = refinancedLoanIds(loans, asOf)
   const earlyPaidByLoan = new Map<number, number>()
   for (const e of events) {
     if (e.event_type === 'Early Loan Payment' && e.date <= asOf && e.loan_id != null) {
@@ -126,7 +125,7 @@ export function computeCardValues(events: TimelineEvent[] | null, loans: LoanEnt
     const settledIds = new Set(
       (sales ?? []).filter(s => s.loan_id !== null && s.date <= refDate).map(s => s.loan_id)
     )
-    const refinancedIds = new Set(loans.map(l => l.refinances_loan_id).filter((id): id is number => id !== null))
+    const refinancedIds = refinancedLoanIds(loans, refDate)
     const earlyPaidByLoan = new Map<number, number>()
     events.filter(e => e.event_type === 'Early Loan Payment' && e.date <= refDate && e.loan_id != null)
       .forEach(e => { earlyPaidByLoan.set(e.loan_id!, (earlyPaidByLoan.get(e.loan_id!) ?? 0) + (e.amount ?? 0)) })

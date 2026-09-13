@@ -69,6 +69,16 @@ describe('loanStateAsOf', () => {
     expect(s.payoffFor(null, amounts)).toBe(0)   // a sale that pays off no loan
     expect(s.payoffFor(999, amounts)).toBe(0)    // a loan that is not there
   })
+
+  it('keeps an original loan until its future refinance year and ignores self-links', () => {
+    const dated = [
+      loan({ id: 1 }),
+      loan({ id: 2, loan_year: 2030, refinances_loan_id: 1 }),
+      loan({ id: 3, refinances_loan_id: 3 }),
+    ]
+    const state = loanStateAsOf(dated, [], null, '2025-12-31')
+    expect(dated.filter(state.isOutstanding).map(l => l.id)).toEqual([1, 3])
+  })
 })
 
 describe('computeActiveLoans', () => {

@@ -402,6 +402,11 @@ function ageFromDOB(dob: string | null | undefined, asOf: string = TODAY): numbe
 
 export default function Retirement() {
   const { viewing } = useViewing()
+  return <RetirementAccount key={viewing?.invitationId ?? 'me'} />
+}
+
+function RetirementAccount() {
+  const { viewing } = useViewing()
   const c = useChartColors()
   const me = useMe()
   const [retirementDate, setRetirementDate] = useState<string>(TODAY)
@@ -490,8 +495,8 @@ export default function Retirement() {
         setParamsLoaded(true)
       })
       .catch(() => {
-        paramsLoadedRef.current = true
-        setParamsLoaded(true)
+        paramsLoadedRef.current = false
+        setParamsLoaded(false)
       })
   }, [vid])
 

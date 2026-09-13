@@ -121,6 +121,14 @@ describe('outstandingPrincipalAt', () => {
     ]
     expect(outstandingPrincipalAt(loans, [], [], '2025-01-01')).toBe(100)
   })
+  it('does not apply a future refinance or a corrupt self-reference early', () => {
+    const loans = [
+      loan({ id: 1, amount: 100, loan_year: 2020 }),
+      loan({ id: 2, amount: 200, loan_year: 2030, refinances_loan_id: 1 }),
+      loan({ id: 3, amount: 50, loan_year: 2020, refinances_loan_id: 3 }),
+    ]
+    expect(outstandingPrincipalAt(loans, [], [], '2025-01-01')).toBe(150)
+  })
   it('subtracts early payments', () => {
     const loans = [loan({ id: 1, amount: 100 })]
     const payments: LoanPaymentEntry[] = [
@@ -166,6 +174,22 @@ describe('annualInterestForYear', () => {
     ]
     // For 2025 (no recorded Interest): 100k × 0.04 + 4k × 0.04 = 4160
     expect(annualInterestForYear(loans, [], [], 2025)).toBeCloseTo(4160, 4)
+  })
+  it('does not compound a refinanced Interest loan', () => {
+    const loans = [
+      loan({ id: 1, amount: 100000, interest_rate: 0.04 }),
+      loan({ id: 2, loan_type: 'Interest', amount: 4000, interest_rate: 0.04, loan_year: 2024 }),
+      loan({ id: 3, amount: 4000, interest_rate: 0.04, loan_year: 2025, refinances_loan_id: 2 }),
+    ]
+    expect(annualInterestForYear(loans, [], [], 2026)).toBeCloseTo(4000 + 160, 4)
+  })
+
+  it('reduces projected interest after an early principal payment', () => {
+    const loans = [loan({ id: 1, amount: 100000, interest_rate: 0.04 })]
+    const payments: LoanPaymentEntry[] = [
+      { id: 1, version: 1, loan_id: 1, date: '2024-06-01', amount: 25000, notes: '' },
+    ]
+    expect(annualInterestForYear(loans, payments, [], 2025)).toBeCloseTo(3000, 4)
   })
 })
 

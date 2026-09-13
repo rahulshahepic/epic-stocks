@@ -1326,6 +1326,106 @@ describe('annual rebalancing', () => {
   })
 })
 
+describe('retirement withdrawal tax integrity', () => {
+  it('uses the spouse full retirement age for the spouse benefit', () => {
+    const base = {
+      ...DEFAULT_PARAMS,
+      epicExit: 1,
+      defaultSpend: 80,
+      minSpend: 80,
+      healthInsurance: 0,
+      zeroHIPost65: false,
+      ssMonthly: 0,
+      includeSpouse: true,
+      spouseCurrentAge: 65,
+      spouseSsMonthly: 2400,
+      spouseClaimAge: 65,
+      currentAge: 65,
+      endAge: 70,
+      paths: 1,
+      seed: 19,
+    }
+    const fra66 = simulate({ ...base, spouseFra: 66 })
+    const fra67 = simulate({ ...base, spouseFra: 67 })
+    expect(fra66.finalWealth[0]).toBeGreaterThan(fra67.finalWealth[0])
+  })
+
+  it('cannot use a locked retirement account to fund a taxable withdrawal shortfall', () => {
+    const result = simulate({
+      ...DEFAULT_PARAMS,
+      epicExit: 0,
+      taxableAdditional: 0.1,
+      additionalBasis: 0,
+      traditional: 2,
+      stockPct: 1,
+      bondPct: 0,
+      defaultSpend: 100,
+      minSpend: 100,
+      healthInsurance: 0,
+      zeroHIPost65: false,
+      ssMonthly: 0,
+      currentAge: 50,
+      endAge: 51,
+      paths: 1,
+      seed: 7,
+    })
+    expect(result.ruined[0]).toBe(1)
+  })
+
+  it('grosses up tax paid from a traditional account', () => {
+    const base = {
+      ...DEFAULT_PARAMS,
+      epicExit: 0,
+      taxableAdditional: 0,
+      stockPct: 0.7,
+      bondPct: 0.3,
+      defaultSpend: 100,
+      minSpend: 100,
+      healthInsurance: 0,
+      zeroHIPost65: false,
+      ssMonthly: 0,
+      currentAge: 65,
+      endAge: 66,
+      paths: 1,
+      seed: 31,
+    }
+    const traditional = simulate({ ...base, traditional: 1, roth: 0 })
+    const roth = simulate({ ...base, traditional: 0, roth: 1 })
+    const taxOnSpendingOnly = computeAnnualTax({
+      traditionalWithdrawal: 100_000,
+      ssTaxable: 0,
+      ltcg: 0,
+      status: 'single',
+      stateLTCGRate: 0,
+    }).total / 1_000_000
+    expect(roth.finalWealth[0] - traditional.finalWealth[0]).toBeGreaterThan(taxOnSpendingOnly)
+  })
+
+  it('funds taxable rebalancing tax even when the cash bucket is empty', () => {
+    const base = {
+      ...DEFAULT_PARAMS,
+      epicExit: 0,
+      taxableAdditional: 1,
+      additionalBasis: 0,
+      stockPct: 0.7,
+      bondPct: 0.3,
+      defaultSpend: 0,
+      minSpend: 0,
+      healthInsurance: 0,
+      zeroHIPost65: false,
+      ssMonthly: 0,
+      currentAge: 65,
+      endAge: 66,
+      rebalance: 'all' as const,
+      paths: 1,
+      seed: 44,
+    }
+    const untaxed = simulate({ ...base, stateLTCGRate: 0 })
+    const taxed = simulate({ ...base, stateLTCGRate: 0.2 })
+    expect(taxed.finalWealth[0]).toBeLessThan(untaxed.finalWealth[0])
+  })
+})
+
 describe('computeRiskOfRuinTable', () => {
   const base = {
     ...DEFAULT_PARAMS,

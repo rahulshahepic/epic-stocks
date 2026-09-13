@@ -1,3 +1,4 @@
+from app.loan_state import refinanced_loan_ids as _refinanced_loan_ids
 from datetime import date, datetime
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
@@ -62,25 +63,6 @@ def _last_vesting_date(timeline: list):
     return last
 
 
-def _refinanced_loan_ids(loans_db) -> set[int]:
-    """Ids of loans **another** row has refinanced — superseded, not outstanding.
-
-    A refinance chain keeps every link as a row, so any aggregate that sums
-    `amount` across `loans_db` without this counts the same debt once per link.
-    A four-link chain on one 76k loan reported 305k.
-
-    The `!= l.id` is what stops the opposite error. A row pointing at itself
-    supersedes nothing — it is a live loan carrying bad data — and reading the
-    self-reference as supersession dropped a real 6,432.84 debt from every
-    total. Writes have refused a self-link since the bulk resolvers started
-    comparing ids, but rows that predate that are still on file, so the
-    predicate has to hold rather than assume they are gone.
-    """
-    return {
-        l.refinances_loan_id for l in loans_db
-        if l.refinances_loan_id is not None and l.refinances_loan_id != l.id
-    }
-
 
 def _live_loans(loans_db) -> list:
     """The loans that still carry debt: every row no other row supersedes."""
@@ -92,7 +74,7 @@ def _compute_outstanding_principal(loans_db, loan_payments, sales, as_of_date) -
     """Outstanding loan principal as of a date, excluding settled/refinanced loans."""
     year = as_of_date.year
     settled_ids = {s.loan_id for s in sales if s.loan_id is not None and s.date <= as_of_date}
-    refinanced_ids = _refinanced_loan_ids(loans_db)
+    refinanced_ids = _refinanced_loan_ids(loans_db, as_of_date)
     early_paid: dict[int, float] = {}
     for lp in loan_payments:
         if lp.date <= as_of_date:
@@ -114,7 +96,7 @@ def _compute_projected_unrecorded_interest(loans_db, as_of_date) -> float:
     purchase_loans = [l for l in loans_db if l.loan_type == 'Purchase']
     interest_loans = [l for l in loans_db if l.loan_type == 'Interest']
     recorded = {(il.grant_year, il.grant_type, il.loan_year) for il in interest_loans}
-    refinanced_ids = _refinanced_loan_ids(loans_db)
+    refinanced_ids = _refinanced_loan_ids(loans_db, as_of_date)
     exit_year = as_of_date.year
     total = 0.0
     for p in purchase_loans:

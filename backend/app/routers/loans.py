@@ -1,6 +1,5 @@
-import bisect
 import math
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -148,26 +147,20 @@ def _price_at_date(timeline: list, as_of) -> float:
     return price
 
 
-def _sort_key_event(e: dict):
-    d = e["date"]
-    d = d.date() if isinstance(d, datetime) else d
-    return (d, 0 if e.get("event_type") == "Vesting" else 1)
-
-
-def _compute_payoff_sale(loan: Loan, user: User, db: Session) -> dict:
+def _compute_payoff_sale(loan: Loan, user: User, db: Session, payoff_date=None) -> dict:
     """Compute the suggested payoff sale for a loan (gross-up shares to cover cash_due after tax)."""
     from app.sales_engine import build_fifo_lots, compute_grossup_shares, compute_sale_tax
-    from app.sale_tax import resolve_sale_lot_order
 
+    payoff_date = payoff_date or loan.due_date
     early_paid = sum(
-        lp.amount for lp in db.query(LoanPayment).filter(LoanPayment.loan_id == loan.id).all()
+        lp.amount for lp in db.query(LoanPayment).filter(LoanPayment.loan_id == loan.id, LoanPayment.date <= payoff_date).all()
     )
     cash_due = max(0.0, loan.amount - early_paid)
 
     timeline = _build_timeline_for_user(user, db)
     # Use the price at the loan due date, not the final timeline price.
     # Using a far-future price (which may be lower) would compute too many shares.
-    price = _price_at_date(timeline, loan.due_date)
+    price = _price_at_date(timeline, payoff_date)
     if price <= 0:
         # Fall back to most recent DB price
         latest = db.query(Price).filter(Price.user_id == user.id).order_by(Price.effective_date.desc()).first()
@@ -177,51 +170,10 @@ def _compute_payoff_sale(loan: Loan, user: User, db: Session) -> dict:
     lt_days = int(ts.get("lt_holding_days", 365))
     ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
     flexible_enabled = _is_flexible_payoff_enabled(db)
-    loan_payoff_method = ts_row.loan_payoff_method if ts_row else None
-    lot_selection_method = ts_row.lot_selection_method if ts_row else None
-    loan_id_to_grant = {ln.id: (ln.grant_year, ln.grant_type) for ln in db.query(Loan).filter(Loan.user_id == user.id).all()}
 
-    # Inject prior sales (excluding this loan's own payoff sale) as PRECISE lot sentinels —
-    # matching what compute_all_sale_taxes does, each resolved through the SAME lot-order
-    # policy /api/events and /api/sales/{id}/tax use, so the lots this sizing sees as
-    # already spoken for match what those endpoints will actually show.
+    from app.routers.sales import sale_aware_timeline
     existing_payoff = db.query(Sale).filter(Sale.loan_id == loan.id).first()
-    prior_sales_q = db.query(Sale).filter(
-        Sale.user_id == user.id,
-        Sale.date <= loan.due_date,
-    )
-    if existing_payoff:
-        prior_sales_q = prior_sales_q.filter(Sale.id != existing_payoff.id)
-    prior_sales = sorted(prior_sales_q.all(), key=lambda s: s.date)
-
-    sorted_tl = sorted(timeline, key=_sort_key_event)
-    sort_keys: list = [_sort_key_event(e) for e in sorted_tl]
-    for ps in prior_sales:
-        ps_date = ps.date
-        ps_lot_order, ps_gy, ps_gt = resolve_sale_lot_order(
-            ps.loan_id, loan_payoff_method, lot_selection_method, flexible_enabled, loan_id_to_grant,
-        )
-        ps_result = compute_sale_tax(
-            sorted_tl,
-            {"date": ps_date, "shares": ps.shares, "price_per_share": ps.price_per_share},
-            ts, lot_order=ps_lot_order, grant_year=ps_gy, grant_type=ps_gt,
-        )
-        for lot in ps_result.get("lots_consumed", []):
-            sentinel = {
-                "date": datetime.combine(ps_date, datetime.min.time()),
-                "event_type": "Prior Sale Lot",
-                "target_vest_date": lot["vest_date"],
-                "target_grant_year": lot["grant_year"],
-                "target_grant_type": lot["grant_type"],
-                "shares_consumed": lot["shares"],
-                "vested_shares": 0,
-                "grant_price": None,
-                "share_price": 0.0,
-            }
-            key = _sort_key_event(sentinel)
-            idx = bisect.bisect_right(sort_keys, key)
-            sorted_tl.insert(idx, sentinel)
-            sort_keys.insert(idx, key)
+    sorted_tl = sale_aware_timeline(user, db, payoff_date, existing_payoff.id if existing_payoff else None)
 
     # Determine lot selection method for THIS loan's own payoff sale — same
     # resolution /api/events and /api/sales/{id}/tax will apply once this sale
@@ -239,9 +191,9 @@ def _compute_payoff_sale(loan: Loan, user: User, db: Session) -> dict:
         tax_lot_order = payoff_method if payoff_method in ('fifo', 'lifo', 'epic_lifo') else 'epic_lifo'
         tranche_gy, tranche_gt = None, None
 
-    lots = build_fifo_lots(sorted_tl, loan.due_date, order=tax_lot_order,
+    lots = build_fifo_lots(sorted_tl, payoff_date, order=tax_lot_order,
                            grant_year=tranche_gy, grant_type=tranche_gt, lt_holding_days=lt_days)
-    shares = compute_grossup_shares(lots, cash_due, price, loan.due_date, ts)
+    shares = compute_grossup_shares(lots, cash_due, price, payoff_date, ts)
 
     # Self-correct against the actual tax calc, under the SAME lot order and
     # tranche restriction this sale will be taxed under everywhere else once
@@ -250,7 +202,7 @@ def _compute_payoff_sale(loan: Loan, user: User, db: Session) -> dict:
         for _ in range(20):
             verify = compute_sale_tax(
                 sorted_tl,
-                {"date": loan.due_date, "shares": shares, "price_per_share": price},
+                {"date": payoff_date, "shares": shares, "price_per_share": price},
                 ts, lot_order=tax_lot_order, grant_year=tranche_gy, grant_type=tranche_gt,
             )
             net = shares * price - verify["estimated_tax"]
@@ -261,7 +213,7 @@ def _compute_payoff_sale(loan: Loan, user: User, db: Session) -> dict:
 
     loan_label = loan.loan_number or f"{loan.grant_year}/{loan.loan_type}"
     return {
-        "date": loan.due_date,
+        "date": payoff_date,
         "shares": shares,
         "price_per_share": price,
         "loan_id": loan.id,
@@ -330,6 +282,16 @@ def _check_refinance_target(loan_id: int | None, user: User, db: Session, self_i
     ref = db.query(Loan).filter(Loan.id == loan_id, Loan.user_id == user.id).first()
     if not ref:
         raise HTTPException(status_code=400, detail="refinances_loan_id references a loan that does not exist or belongs to another user")
+    visited = set()
+    while ref is not None:
+        if ref.id == self_id or ref.id in visited:
+            raise HTTPException(status_code=422, detail="Refinance links cannot form a cycle")
+        visited.add(ref.id)
+        target = ref.refinances_loan_id
+        if target is None or target == ref.id:
+            break
+        ref = db.get(Loan, target)
+
 
 
 # --- Loans CRUD ---
@@ -405,9 +367,9 @@ def get_loan(loan_id: int, user: User = Depends(get_current_user), db: Session =
 
 
 @router.get("/{loan_id}/payoff-sale-suggestion")
-def get_payoff_sale_suggestion(loan_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_payoff_sale_suggestion(loan_id: int, payoff_date: date | None = None, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     loan = get_owned(db, Loan, loan_id, user, "Loan")
-    return _compute_payoff_sale(loan, user, db)
+    return _compute_payoff_sale(loan, user, db, payoff_date)
 
 
 @router.post("/{loan_id}/execute-payoff", response_model=SaleOut, status_code=201)
@@ -419,14 +381,21 @@ def execute_payoff(loan_id: int, user: User = Depends(get_current_user), db: Ses
     loan = get_owned(db, Loan, loan_id, user, "Loan")
 
     existing = db.query(Sale).filter(Sale.loan_id == loan.id, Sale.user_id == user.id).first()
-    if existing:
+    if existing and existing.date <= date.today():
         return existing
 
-    suggestion = _compute_payoff_sale(loan, user, db)
+    suggestion = _compute_payoff_sale(loan, user, db, date.today())
     if suggestion["shares"] <= 0 or suggestion["price_per_share"] <= 0:
         raise HTTPException(status_code=400, detail="Loan balance is zero — no sale needed")
 
     ts = _get_tax_settings_dict(user, db)
+    if existing:
+        existing.date = suggestion["date"]
+        existing.shares = suggestion["shares"]
+        existing.price_per_share = suggestion["price_per_share"]
+        db.commit()
+        db.refresh(existing)
+        return existing
     sale = Sale(
         user_id=user.id,
         date=suggestion["date"],
@@ -504,7 +473,7 @@ def update_loan(
     return loan
 
 
-def _regenerate_future_payoff_sales(user: User, db: Session, create_missing: bool = True) -> dict:
+def _regenerate_future_payoff_sales(user: User, db: Session, create_missing: bool = True, *, commit: bool = True) -> dict:
     """Recompute payoff sale share counts and prices for all future loans.
 
     Shared by the manual regenerate endpoint and by anything that changes a
@@ -522,10 +491,12 @@ def _regenerate_future_payoff_sales(user: User, db: Session, create_missing: boo
     """
     from datetime import date as date_type
     today = date_type.today()
-    future_loans = db.query(Loan).filter(Loan.user_id == user.id, Loan.due_date >= today).all()
+    future_loans = db.query(Loan).filter(Loan.user_id == user.id, Loan.due_date >= today).order_by(Loan.due_date, Loan.id).all()
     # Skip refinanced loans — they show as $0 "Refinanced" events
-    from app.routers.events import _refinanced_loan_ids
-    refinanced_ids = _refinanced_loan_ids(future_loans)
+    from app.loan_state import refinanced_loan_ids
+    refinanced_ids = refinanced_loan_ids(
+        db.query(Loan).filter(Loan.user_id == user.id).all(), today
+    )
     ts = _get_tax_settings_dict(user, db)
     updated = 0
     created = 0
@@ -535,7 +506,14 @@ def _regenerate_future_payoff_sales(user: User, db: Session, create_missing: boo
         existing_sale = db.query(Sale).filter(Sale.loan_id == loan.id, Sale.user_id == user.id).first()
         if not existing_sale and not create_missing:
             continue
+        if existing_sale and (existing_sale.date < today or existing_sale.actual_tax_paid is not None):
+            continue
         suggestion = _compute_payoff_sale(loan, user, db)
+        if existing_sale and suggestion["shares"] <= 0:
+            db.delete(existing_sale)
+            db.flush()
+            updated += 1
+            continue
         if existing_sale:
             existing_sale.date = suggestion["date"]
             existing_sale.shares = suggestion["shares"]
@@ -555,7 +533,9 @@ def _regenerate_future_payoff_sales(user: User, db: Session, create_missing: boo
                 **_tax_rate_fields(ts),
             ))
             created += 1
-    db.commit()
+        db.flush()
+    if commit:
+        db.commit()
     return {"updated": updated, "created": created}
 
 
@@ -595,6 +575,8 @@ def create_loan_payment(body: LoanPaymentCreate, user: User = Depends(get_curren
     check_row_quota(db, LoanPayment, user.id)
     lp = LoanPayment(**body.model_dump(), user_id=user.id)
     db.add(lp)
+    db.flush()
+    _regenerate_future_payoff_sales(user, db, create_missing=False, commit=False)
     db.commit()
     db.refresh(lp)
     return lp
@@ -610,6 +592,8 @@ def update_loan_payment(
     if stale:
         return stale
     apply_update(lp, body)
+    db.flush()
+    _regenerate_future_payoff_sales(user, db, create_missing=False, commit=False)
     db.commit()
     db.refresh(lp)
     return lp
@@ -619,4 +603,6 @@ def update_loan_payment(
 def delete_loan_payment(lp_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     lp = get_owned(db, LoanPayment, lp_id, user, "Loan payment")
     db.delete(lp)
+    db.flush()
+    _regenerate_future_payoff_sales(user, db, create_missing=False, commit=False)
     db.commit()

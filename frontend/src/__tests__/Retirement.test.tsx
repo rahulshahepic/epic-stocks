@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import Retirement from '../app/pages/Retirement.tsx'
@@ -493,4 +493,33 @@ describe('Retirement page', () => {
     const dateInput = await screen.findByLabelText(/^Retirement date/i) as HTMLInputElement
     expect(dateInput.disabled).toBe(false)
   })
+
+  it('keeps result ages and purchasing-power year tied to the run until rerun', async () => {
+    mockApi({ savedParams: {
+      retirementDate: '2030-06-15', epicExit: 5, paths: 10, seed: 42,
+      currentAge: 50, endAge: 95, defaultSpend: 100, minSpend: 80,
+    } })
+    render(<MemoryRouter><Retirement /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByLabelText(/^Retirement date/)).toHaveValue('2030-06-15'))
+    const run = screen.getByRole('button', { name: /Simulate.*retirements/ })
+    await waitFor(() => expect(run).toBeEnabled())
+    fireEvent.click(run)
+    expect(await screen.findByText('Age 95 estimate range')).toBeInTheDocument()
+    expect(screen.getByText('10th–90th percentile, 2030 purchasing power')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(/Plan until you're/), { target: { value: '90' } })
+    fireEvent.change(screen.getByLabelText(/^Retirement date/), { target: { value: '2032-06-15' } })
+    expect(await screen.findByText(/Inputs changed.*Re-run/)).toBeInTheDocument()
+    expect(screen.getByText('Age 95 estimate range')).toBeInTheDocument()
+    expect(screen.queryByText('Age 90 estimate range')).not.toBeInTheDocument()
+    expect(screen.getByText('10th–90th percentile, 2030 purchasing power')).toBeInTheDocument()
+
+    const rerun = screen.getByRole('button', { name: 'Re-run simulation' })
+    await waitFor(() => expect(rerun).toBeEnabled())
+    fireEvent.click(rerun)
+    expect(await screen.findByText('Age 90 estimate range')).toBeInTheDocument()
+    expect(screen.getByText('10th–90th percentile, 2032 purchasing power')).toBeInTheDocument()
+    expect(screen.queryByText(/Inputs changed.*Re-run/)).not.toBeInTheDocument()
+  })
+
 })

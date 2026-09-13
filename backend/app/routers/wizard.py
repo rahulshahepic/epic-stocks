@@ -1,10 +1,11 @@
 """Wizard endpoints: tolerant structural file parsing and merge-aware bulk data save."""
+
 from collections import Counter
 from datetime import date
 from math import isfinite
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -12,7 +13,7 @@ from scaffold.models import User, Grant, Loan, Price, Sale, LoanPayment
 from scaffold.auth import get_current_user
 from scaffold.safe_workbook import WorkbookRejected, load_workbook_safely
 from app.date_utils import to_date as _to_date
-from schemas import (MAX_BULK_ITEMS, MAX_LABEL_LEN, Notes, SharePrice, Shares,
+from schemas import (InputModel, MAX_BULK_ITEMS, MAX_LABEL_LEN, Notes, SharePrice, Shares,
                      bounded, bounded_list)
 from scaffold.quota import check_row_count, check_row_quota
 from app import event_cache
@@ -49,7 +50,7 @@ def _safe_date(v) -> str | None:
 
 # ── Parse file (tolerant — missing numbers are fine) ─────────────────────────
 
-class ParsedGrantTemplate(BaseModel):
+class ParsedGrantTemplate(InputModel):
     year: int | None = None
     type: str | None = None
     periods: int | None = None
@@ -58,12 +59,12 @@ class ParsedGrantTemplate(BaseModel):
     price: float | None = None
 
 
-class ParsedPrice(BaseModel):
+class ParsedPrice(InputModel):
     effective_date: str
     price: float | None = None
 
 
-class ParseFileResponse(BaseModel):
+class ParseFileResponse(InputModel):
     grants: list[ParsedGrantTemplate]
     prices: list[ParsedPrice]
 
@@ -123,7 +124,7 @@ def parse_file(
 
 # ── Shared request/response models ───────────────────────────────────────────
 
-class WizardLoan(BaseModel):
+class WizardLoan(InputModel):
     loan_number: str = ""
     loan_type: str  # "Purchase" or "Tax"
     loan_year: int
@@ -159,7 +160,7 @@ class WizardLoan(BaseModel):
         return v
 
 
-class WizardGrant(BaseModel):
+class WizardGrant(InputModel):
     year: int
     type: str  # Purchase | Catch-Up | Bonus | Free
     shares: int
@@ -210,7 +211,7 @@ class WizardGrant(BaseModel):
         return bounded_list(v, MAX_BULK_ITEMS, "loans")
 
 
-class WizardPrice(BaseModel):
+class WizardPrice(InputModel):
     effective_date: str
     price: float
 
@@ -222,7 +223,7 @@ class WizardPrice(BaseModel):
         return v
 
 
-class WizardSale(BaseModel):
+class WizardSale(InputModel):
     """A sale the user is entering alongside their grants.
 
     The import drafts one of these for shares the workbook reports gone that no
@@ -255,7 +256,7 @@ class WizardSale(BaseModel):
         return v
 
 
-class WizardSubmitRequest(BaseModel):
+class WizardSubmitRequest(InputModel):
     grants: list[WizardGrant]
     prices: list[WizardPrice]
     sales: list[WizardSale] = Field(default_factory=list)
@@ -274,6 +275,9 @@ class WizardSubmitRequest(BaseModel):
 
     @model_validator(mode="after")
     def shares_reconcile(self):
+        keys = [(g.year, g.type) for g in self.grants]
+        if len(set(keys)) != len(keys):
+            raise ValueError("Duplicate grant year/type in wizard")
         if self.reported_sold_shares is not None:
             keys = set(self.sale_grant_keys)
             exchanged = sum(abs(g.dp_shares) for g in self.grants
@@ -284,7 +288,7 @@ class WizardSubmitRequest(BaseModel):
         return self
 
 
-class WizardSubmitResponse(BaseModel):
+class WizardSubmitResponse(InputModel):
     grants: int
     loans: int
     prices: int
@@ -295,7 +299,7 @@ class WizardSubmitResponse(BaseModel):
 
 # ── Preview diff models ───────────────────────────────────────────────────────
 
-class DiffGrant(BaseModel):
+class DiffGrant(InputModel):
     year: int
     type: str
     status: str  # "added" | "updated" | "removed" | "unchanged"
@@ -306,7 +310,7 @@ class DiffGrant(BaseModel):
     old_loans: int | None = None
 
 
-class DiffPrice(BaseModel):
+class DiffPrice(InputModel):
     effective_date: str
     status: str  # "added" | "updated" | "removed" | "unchanged"
     id: int | None = None
@@ -314,7 +318,7 @@ class DiffPrice(BaseModel):
     old_price: float | None = None
 
 
-class WizardPreviewResponse(BaseModel):
+class WizardPreviewResponse(InputModel):
     grants: list[DiffGrant]
     prices: list[DiffPrice]
 
@@ -471,6 +475,9 @@ def submit(
                 loan.refinances_loan_id = target.id
 
     db.flush()
+
+    from app.loan_state import validate_refinance_graph
+    validate_refinance_graph(db.query(Loan).filter(Loan.user_id == user.id).all())
 
     # Payoff sales for all loans — skip refinanced loans (their payoff events
     # are converted to $0 "Refinanced" events, so a linked sale would be confusing)

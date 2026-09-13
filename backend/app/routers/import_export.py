@@ -26,6 +26,11 @@ from openpyxl.styles import Font, PatternFill
 from app import event_cache
 
 _MAX_BACKUPS_PER_USER = 3
+SALE_BACKUP_FIELDS = (
+    "federal_income_rate", "federal_lt_cg_rate", "federal_st_cg_rate", "niit_rate",
+    "state_income_rate", "state_lt_cg_rate", "state_st_cg_rate", "lt_holding_days",
+    "actual_tax_paid", "lot_overrides", "sale_plan_id",
+)
 
 logger = logging.getLogger(__name__)
 
@@ -360,7 +365,9 @@ def import_excel(
         if ref_num and loan_num_to_id.get(ref_num) not in (None, loan_obj.id):
             loan_obj.refinances_loan_id = loan_num_to_id[ref_num]
 
-    db.commit()
+    from app.loan_state import validate_refinance_graph
+    validate_refinance_graph(db.query(Loan).filter(Loan.user_id == user.id).all())
+    db.flush()
 
     # Insert loan payments (loan_num_to_id already built above)
     payments_created = 0
@@ -393,7 +400,7 @@ def import_excel(
         sales_created += 1
 
     if payments_created or sales_created:
-        db.commit()
+        db.flush()
 
     payoff_sales_created = 0
     if has_loans and not has_sales and generate_payoff_sales:
@@ -415,8 +422,9 @@ def import_excel(
             except Exception:
                 pass  # best-effort; missing price data etc. silently skipped
         if payoff_sales_created:
-            db.commit()
+            db.flush()
 
+    db.commit()
     sheets = [
         ("Schedule", has_schedule), ("Prices", has_prices), ("Loans", has_loans),
         ("LoanPayments", has_loan_payments), ("Sales", has_sales),
@@ -455,12 +463,13 @@ def _save_import_backup(user_id: int, has_schedule: bool, has_prices: bool, has_
             })
     if has_prices:
         for p in db.query(Price).filter(Price.user_id == user_id).all():
-            prices.append({"effective_date": str(p.effective_date), "price": p.price})
+            prices.append({"effective_date": str(p.effective_date), "price": p.price, "is_estimate": p.is_estimate})
     if has_loans:
         all_loans = db.query(Loan).filter(Loan.user_id == user_id).all()
         loan_id_to_num = {ln.id: ln.loan_number or "" for ln in all_loans}
         for ln in all_loans:
             loans.append({
+                "id": ln.id, "refinances_loan_id": ln.refinances_loan_id,
                 "grant_year": ln.grant_year, "grant_type": ln.grant_type,
                 "loan_type": ln.loan_type, "loan_year": ln.loan_year,
                 "amount": ln.amount, "interest_rate": ln.interest_rate,
@@ -471,6 +480,7 @@ def _save_import_backup(user_id: int, has_schedule: bool, has_prices: bool, has_
         for lp in db.query(LoanPayment).filter(LoanPayment.user_id == user_id).all():
             all_loans_for_num = db.query(Loan).filter(Loan.id == lp.loan_id).first()
             loan_payments.append({
+                "loan_id": lp.loan_id,
                 "loan_number": all_loans_for_num.loan_number if all_loans_for_num else "",
                 "date": str(lp.date), "amount": lp.amount, "notes": lp.notes or "",
             })
@@ -478,7 +488,9 @@ def _save_import_backup(user_id: int, has_schedule: bool, has_prices: bool, has_
         all_loans_map = {ln.id: ln.loan_number for ln in db.query(Loan).filter(Loan.user_id == user_id).all()}
         for s in db.query(Sale).filter(Sale.user_id == user_id).all():
             sales.append({
+                "loan_id": s.loan_id,
                 "date": str(s.date), "shares": s.shares, "price": s.price_per_share,
+                **{field: getattr(s, field) for field in SALE_BACKUP_FIELDS},
                 "notes": s.notes or "",
                 "loan_number": all_loans_map.get(s.loan_id, "") if s.loan_id else "",
             })
@@ -487,7 +499,9 @@ def _save_import_backup(user_id: int, has_schedule: bool, has_prices: bool, has_
         return  # Nothing to back up
 
     db.add(ImportBackup(user_id=user_id, data_json=json.dumps(
-        {"grants": grants, "prices": prices, "loans": loans,
+        {"schema_version": 2, "included": {"grants": has_schedule, "prices": has_prices,
+         "loans": has_loans, "loan_payments": has_loans or has_loan_payments, "sales": has_loans or has_sales},
+         "grants": grants, "prices": prices, "loans": loans,
          "loan_payments": loan_payments, "sales": sales}
     )))
     db.flush()  # ensure new backup is visible in the trimming query
@@ -554,16 +568,18 @@ def restore_import_backup(
     loan_payments = data.get("loan_payments", [])
     sales = data.get("sales", [])
 
-    # Wipe in FK-safe order
-    if loans or sales:
+    included = data.get("included", {key: bool(data.get(key)) for key in
+        ("grants", "prices", "loans", "loan_payments", "sales")})
+    if included.get("loans") or included.get("sales"):
         db.query(Sale).filter(Sale.user_id == user.id).delete()
-    if loans or loan_payments:
+    if included.get("loans") or included.get("loan_payments"):
         db.query(LoanPayment).filter(LoanPayment.user_id == user.id).delete()
-    if loans:
+    if included.get("loans"):
+        db.query(Loan).filter(Loan.user_id == user.id).update({Loan.refinances_loan_id: None})
         db.query(Loan).filter(Loan.user_id == user.id).delete()
-    if grants:
+    if included.get("grants"):
         db.query(Grant).filter(Grant.user_id == user.id).delete()
-    if prices:
+    if included.get("prices"):
         db.query(Price).filter(Price.user_id == user.id).delete()
 
     for g in grants:
@@ -575,7 +591,8 @@ def restore_import_backup(
             election_83b=g.get("election_83b", False),
         ))
     for p in prices:
-        db.add(Price(user_id=user.id, effective_date=_to_date(p["effective_date"]), price=p["price"]))
+        db.add(Price(user_id=user.id, effective_date=_to_date(p["effective_date"]), price=p["price"],
+            is_estimate=p.get("is_estimate", _to_date(p["effective_date"]) > date.today())))
 
     inserted_loans: list[tuple[dict, Loan]] = []
     for ln in loans:
@@ -590,7 +607,11 @@ def restore_import_backup(
 
     db.flush()
 
-    loan_num_to_id: dict[str, int] = {}
+    loan_id_map = {raw["id"]: obj.id for raw, obj in inserted_loans if "id" in raw}
+    current_loans = db.query(Loan).filter(Loan.user_id == user.id).all()
+    if not included.get("loans"):
+        loan_id_map = {ln.id: ln.id for ln in current_loans}
+    loan_num_to_id: dict[str, int] = {ln.loan_number: ln.id for ln in current_loans if ln.loan_number}
     for _, loan_obj in inserted_loans:
         num = (loan_obj.loan_number or "").strip()
         if num and num not in loan_num_to_id:
@@ -600,14 +621,17 @@ def restore_import_backup(
         ref_num = str(ln_raw.get("refinances_loan_number") or "").strip()
         # Never point a loan at itself: the payoff schedule then treats it as
         # superseded and drops it while the dashboard still counts its principal.
-        if ref_num and loan_num_to_id.get(ref_num) not in (None, loan_obj.id):
-            loan_obj.refinances_loan_id = loan_num_to_id[ref_num]
+        target = loan_id_map.get(ln_raw.get("refinances_loan_id")) or loan_num_to_id.get(ref_num)
+        if target is not None and target != loan_obj.id:
+            loan_obj.refinances_loan_id = target
 
-    db.commit()
+    from app.loan_state import validate_refinance_graph
+    validate_refinance_graph(current_loans)
+    db.flush()
 
     for lp in loan_payments:
         num = str(lp.get("loan_number") or "").strip()
-        lid = loan_num_to_id.get(num)
+        lid = loan_id_map.get(lp.get("loan_id")) or loan_num_to_id.get(num)
         if lid:
             db.add(LoanPayment(
                 user_id=user.id, loan_id=lid,
@@ -616,11 +640,12 @@ def restore_import_backup(
 
     for s in sales:
         loan_num = str(s.get("loan_number") or "").strip()
-        lid = loan_num_to_id.get(loan_num) if loan_num else None
+        lid = loan_id_map.get(s.get("loan_id")) or loan_num_to_id.get(loan_num)
         db.add(Sale(
             user_id=user.id, date=_to_date(s["date"]),
             shares=s["shares"], price_per_share=s["price"],
             notes=s.get("notes") or "", loan_id=lid,
+            **{field: s[field] for field in SALE_BACKUP_FIELDS if field in s},
         ))
 
     db.commit()

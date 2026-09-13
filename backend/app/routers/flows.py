@@ -1,12 +1,12 @@
 import math
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, field_validator
+from pydantic import field_validator
 from datetime import date, date as date_cls
 
 from database import get_db
 from scaffold.models import User, Grant, Loan, Price, Sale, TaxSettings, GrantProgramSettings
-from schemas import GrantOut, LoanOut, PriceOut, GrowthPriceRequest
+from schemas import InputModel, GrantOut, LoanOut, PriceOut, GrowthPriceRequest
 from scaffold.auth import get_current_user
 from scaffold.quota import check_row_quota
 from app import event_cache
@@ -14,7 +14,7 @@ from app import event_cache
 router = APIRouter(prefix="/api/flows", tags=["flows"])
 
 
-class NewPurchaseRequest(BaseModel):
+class NewPurchaseRequest(InputModel):
     year: int
     shares: int
     price: float
@@ -71,7 +71,7 @@ class NewPurchaseRequest(BaseModel):
         return v
 
 
-class AnnualPriceRequest(BaseModel):
+class AnnualPriceRequest(InputModel):
     effective_date: date
     price: float
 
@@ -83,7 +83,7 @@ class AnnualPriceRequest(BaseModel):
         return v
 
 
-class AddBonusRequest(BaseModel):
+class AddBonusRequest(InputModel):
     year: int
     shares: int
     price: float = 0.0
@@ -286,6 +286,9 @@ def growth_price(body: GrowthPriceRequest, user: User = Depends(get_current_user
 
 @router.post("/add-bonus", response_model=GrantOut, status_code=201)
 def add_bonus(body: AddBonusRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    db.query(User).filter(User.id == user.id).with_for_update().first()
+    if db.query(Grant.id).filter(Grant.user_id == user.id, Grant.year == body.year, Grant.type == "Bonus").first():
+        raise HTTPException(status_code=409, detail=f"A Bonus grant for {body.year} already exists")
     check_row_quota(db, Grant, user.id)
     grant = Grant(
         user_id=user.id, year=body.year, type="Bonus",

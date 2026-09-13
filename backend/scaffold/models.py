@@ -83,6 +83,7 @@ class Grant(Base):
     dp_shares: Mapped[int] = mapped_column(EncryptedInt, default=0)
     election_83b: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+    __mapper_args__ = {"version_id_col": version}
 
     user: Mapped["User"] = relationship(back_populates="grants")
 
@@ -102,6 +103,7 @@ class Loan(Base):
     loan_number: Mapped[str] = mapped_column(EncryptedString, nullable=True)
     refinances_loan_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("loans.id"), nullable=True)
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+    __mapper_args__ = {"version_id_col": version}
 
     user: Mapped["User"] = relationship(back_populates="loans")
 
@@ -115,6 +117,7 @@ class Price(Base):
     price: Mapped[float] = mapped_column(EncryptedFloat, nullable=False)
     is_estimate: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+    __mapper_args__ = {"version_id_col": version}
 
     user: Mapped["User"] = relationship(back_populates="prices")
 
@@ -156,6 +159,7 @@ class Sale(Base):
     # If set, this sale was generated to cover this loan's payoff.
     loan_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("loans.id", ondelete="SET NULL"), nullable=True, index=True)
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+    __mapper_args__ = {"version_id_col": version}
     # Per-sale tax rate overrides (null = fall back to user's TaxSettings)
     federal_income_rate: Mapped[float | None] = mapped_column(EncryptedFloat, nullable=True)
     federal_lt_cg_rate: Mapped[float | None] = mapped_column(EncryptedFloat, nullable=True)
@@ -188,6 +192,7 @@ class LoanPayment(Base):
     amount: Mapped[float] = mapped_column(EncryptedFloat, nullable=False)
     notes: Mapped[str] = mapped_column(EncryptedString, nullable=False, default="")
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+    __mapper_args__ = {"version_id_col": version}
 
     user: Mapped["User"] = relationship(back_populates="loan_payments")
 

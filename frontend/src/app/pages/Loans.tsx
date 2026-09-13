@@ -202,7 +202,7 @@ export default function Loans() {
     setPayoffTranche(null)
     setPayoffTrancheLoading(true)
     try {
-      const suggestion = await api.getLoanPayoffSuggestion(loan.id)
+      const suggestion = await api.getLoanPayoffSuggestion(loan.id, new Date().toISOString().slice(0, 10))
       setPayoffModal({ loan, suggestion, existingSale })
       // Fetch same-tranche allocation using the suggestion's date and shares
       try {

@@ -952,6 +952,11 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
 
 export default function CompCalculator() {
   const { viewing } = useViewing()
+  return <CompCalculatorAccount key={viewing?.invitationId ?? 'me'} />
+}
+
+function CompCalculatorAccount() {
+  const { viewing } = useViewing()
   const vid = viewing?.invitationId
   const fetcher = useCallback(async (): Promise<AllData> => {
     const [loans, prices, sales, taxSettings, dashboard, payments, grants] = await Promise.all([

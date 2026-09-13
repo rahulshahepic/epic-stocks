@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   MEAN_BLOCK_LEN,
   computeAnnualTax,
@@ -1069,6 +1069,9 @@ function makeSyntheticResult(finalValues: number[], startingTotal: number) {
     fanWealth: [] as Float64Array[],
     finalWealth: Float64Array.from(finalValues),
     ruined: new Uint8Array(finalValues.length),
+    firstShortfallMonth: new Int32Array(finalValues.length),
+    pctLiquidityShortfall: 0,
+    pctExhausted: 0,
     startingEquity: 0,
     startingCash: 0,
     startingTotal,
@@ -1414,4 +1417,161 @@ describe('computeRiskOfRuinTable', () => {
     expect(table.ages[0]).toBe(63)
     expect(table.ages[table.ages.length - 1]).toBe(75)
   })
+})
+
+
+describe('retirement funding accounting', () => {
+  const base = {
+    ...DEFAULT_PARAMS, epicExit: 0, stockPct: 0, bondPct: 1,
+    healthInsurance: 0, zeroHIPost65: false, ssMonthly: 0,
+    currentAge: 60, endAge: 61, rebalance: 'none' as const,
+    defaultSpend: 100, minSpend: 100, paths: 1,
+  }
+
+  it('includes tax-payment withdrawals in the taxable income used to fund the full bill', () => {
+    // Repeated January 1928 has zero inflation, so the independent ledger
+    // below can stay in retirement-year dollars without basis adjustments.
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0)
+    try {
+      const r = simulate({ ...base, traditional: 1 })
+      let beforeTax = 1
+      for (let m = 0; m < 12; m++) {
+        beforeTax = beforeTax * (1 + HISTORICAL_RETURNS[0].bondReal) - 0.1 / 12
+      }
+      const taxWithdrawal = (beforeTax - r.finalWealth[0]) * 1_000_000
+      const bill = computeAnnualTax({
+        traditionalWithdrawal: 100_000 + taxWithdrawal,
+        ssTaxable: 0, ltcg: 0, status: 'single', stateLTCGRate: 0,
+      }).total
+      expect(taxWithdrawal).toBeCloseTo(bill, 2)
+      expect(r.pctRuin).toBe(0)
+    } finally { random.mockRestore() }
+  })
+
+  it('does not raid locked accounts to pay taxes on spouse wages', () => {
+    const r = simulate({
+      ...base, currentAge: 50, endAge: 51, traditional: 1,
+      includeSpouse: true, spouseCurrentAge: 50, spouseWorkIncome: 100,
+      spouseStopWorkAge: 65,
+      defaultSpend: 100 - computeSpousePayrollTax(100_000, 'mfj') / 1000,
+      minSpend: 100 - computeSpousePayrollTax(100_000, 'mfj') / 1000,
+      seed: 42,
+    })
+    expect(r.pctRuin).toBe(1)
+    expect(r.firstShortfallMonth[0]).toBe(12)
+    expect(r.pctLiquidityShortfall).toBe(1)
+    expect(r.pctExhausted).toBe(0)
+    expect(r.finalWealth[0]).toBeGreaterThan(0.5)
+  })
+
+  it('keeps locked assets growing after a bridge shortfall', () => {
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0)
+    try {
+      const r = simulate({ ...base, traditional: 1, currentAge: 50, endAge: 52 })
+      expect(r.firstShortfallMonth[0]).toBe(1)
+      expect(r.pctLiquidityShortfall).toBe(1)
+      expect(r.pctExhausted).toBe(0)
+      expect(r.finalWealth[0]).toBeCloseTo((1 + HISTORICAL_RETURNS[0].bondReal) ** 24, 10)
+      expect(r.fanWealth.at(-1)![0]).toBe(r.finalWealth[0])
+    } finally { random.mockRestore() }
+  })
+
+  it('does not call a zero-asset retirement a failure when income covers every bill', () => {
+    const r = simulate({
+      ...base, currentAge: 67, endAge: 69,
+      ssMonthly: 1000, defaultSpend: 12, minSpend: 12,
+    })
+    expect(r.pctRuin).toBe(0)
+    expect(r.pctExhausted).toBe(0)
+    expect(r.firstShortfallMonth[0]).toBe(0)
+    expect(r.finalWealth[0]).toBeCloseTo(0, 10)
+  })
+
+  it('distinguishes an exhausted portfolio from locked-account liquidity shortfalls', () => {
+    const r = simulate({ ...base, epicExit: 0.01, stockPct: 0, bondPct: 0, seed: 1 })
+    expect(r.pctRuin).toBe(1)
+    expect(r.pctExhausted).toBe(1)
+    expect(r.pctLiquidityShortfall).toBe(0)
+    expect(r.finalWealth[0]).toBe(0)
+  })
+
+  it('charges rebalancing taxes even with no cash buffer or spending', () => {
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0)
+    try {
+      const p = { ...base, taxableAdditional: 1, additionalBasis: 0,
+        stockPct: 0.5, bondPct: 0.5, defaultSpend: 0, minSpend: 0,
+        rebalance: 'all' as const, includeSpouse: true }
+      const noState = simulate(p)
+      const taxed = simulate({ ...p, stateLTCGRate: 0.1 })
+      let stocks = 0.5, bonds = 0.5
+      for (let m = 0; m < 12; m++) {
+        stocks *= 1 + HISTORICAL_RETURNS[0].stockReal
+        bonds *= 1 + HISTORICAL_RETURNS[0].bondReal
+      }
+      const gain = (stocks - bonds) / 2
+      // The bond purchase adds basis before the tax-funding sale.
+      const gainFraction = 1 - gain / (stocks + bonds)
+      const expectedTax = gain * 0.1 / (1 - 0.1 * gainFraction)
+      expect(noState.finalWealth[0] - taxed.finalWealth[0]).toBeCloseTo(expectedTax, 8)
+    } finally { random.mockRestore() }
+  })
+
+  it('grosses up taxable sales used to pay capital gains tax', () => {
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0)
+    try {
+      const r = simulate({ ...base, taxableAdditional: 1, additionalBasis: 0, stateLTCGRate: 0.05 })
+      let beforeTax = 1
+      for (let m = 0; m < 12; m++) beforeTax = beforeTax * (1 + HISTORICAL_RETURNS[0].bondReal) - 0.1 / 12
+      const sale = (beforeTax - r.finalWealth[0]) * 1_000_000
+      const bill = computeAnnualTax({
+        traditionalWithdrawal: 0, ssTaxable: 0, ltcg: 100_000 + sale,
+        status: 'single', stateLTCGRate: 0.05,
+      }).total
+      expect(sale).toBeCloseTo(bill, 2)
+    } finally { random.mockRestore() }
+  })
+
+  it('pays prior unpaid taxes once retirement accounts unlock, without forgetting the shortfall', () => {
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0)
+    try {
+      const spend = 100 - computeSpousePayrollTax(100_000, 'mfj') / 1000
+      const r = simulate({ ...base, traditional: 1, currentAge: 58, endAge: 60,
+        includeSpouse: true, spouseCurrentAge: 50, spouseWorkIncome: 100,
+        spouseStopWorkAge: 65, defaultSpend: spend, minSpend: spend })
+      const grossAssets = (1 + HISTORICAL_RETURNS[0].bondReal) ** 24
+      const paid = (grossAssets - r.finalWealth[0]) * 1_000_000
+      const priorBill = computeAnnualTax({ traditionalWithdrawal: 100_000,
+        ssTaxable: 0, ltcg: 0, status: 'mfj', stateLTCGRate: 0 }).total
+      const currentBill = computeAnnualTax({ traditionalWithdrawal: 100_000 + paid,
+        ssTaxable: 0, ltcg: 0, status: 'mfj', stateLTCGRate: 0 }).total
+      expect(paid).toBeCloseTo(priorBill + currentBill, 2)
+      expect(r.firstShortfallMonth[0]).toBe(12)
+      expect(r.pctRuin).toBe(1)
+      expect(r.pctExhausted).toBe(0)
+    } finally { random.mockRestore() }
+  })
+
+  it('keeps cash constant in retirement-year purchasing power', () => {
+    const r = simulate({ ...base, epicExit: 1, stockPct: 0, bondPct: 0,
+      defaultSpend: 0, minSpend: 0, endAge: 90, seed: 42 })
+    expect(r.finalWealth[0]).toBe(1)
+  })
+
+  it('excludes earlier shortfalls from later conditional-risk cohorts', () => {
+    const r = simulate({ ...base, traditional: 1, currentAge: 50, endAge: 60, seed: 42 })
+    const table = computeRiskOfRuinTable(r)
+    for (const row of table.cells) {
+      for (let col = 1; col < table.ages.length; col++) expect(row[col].n).toBe(0)
+    }
+  })
+
+
+  it('reports the same retained balance in final wealth and the fan on a final-month shortfall', () => {
+    const r = simulate({ ...base, epicExit: 0.095, traditional: 1,
+      stockPct: 0, bondPct: 0, currentAge: 50, endAge: 51, seed: 42 })
+    expect(r.firstShortfallMonth[0]).toBe(12)
+    expect(r.finalWealth[0]).toBeGreaterThan(0.5)
+    expect(r.fanWealth.at(-1)![0]).toBe(r.finalWealth[0])
+  })
+
 })

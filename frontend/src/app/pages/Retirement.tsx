@@ -413,7 +413,19 @@ export default function Retirement() {
   const paramsLoadedRef = useRef(false)
   const [params, setParams] = useState<SimParams>(() => ({ ...DEFAULT_PARAMS }))
   const [running, setRunning] = useState(false)
-  const [result, setResult] = useState<SimResult | null>(null)
+  const [completedRun, setCompletedRun] = useState<{
+    result: SimResult
+    params: SimParams
+    retirementDate: string
+  } | null>(null)
+  const result = completedRun?.result ?? null
+  const resultEndAge = completedRun?.params.endAge
+  const resultDollarYear = completedRun?.retirementDate.slice(0, 4)
+  const resultsStale = completedRun != null && (
+    completedRun.retirementDate !== retirementDate ||
+    JSON.stringify(completedRun.params) !== JSON.stringify(params)
+  )
+  const runTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [explainerOpen, setExplainerOpen] = useState(false)
   const [sigmaOpen, setSigmaOpen] = useState(false)
   const [hasRun, setHasRun] = useState(false)
@@ -447,6 +459,10 @@ export default function Retirement() {
   useEffect(() => {
     paramsLoadedRef.current = false
     setParamsLoaded(false)
+    setCompletedRun(null)
+    setHasRun(false)
+    setRunning(false)
+    if (runTimer.current) clearTimeout(runTimer.current)
     const fetcher = vid ? api.getSharedRetirementParams(vid) : api.getRetirementParams()
     fetcher
       .then(({ params: saved }) => {
@@ -619,18 +635,23 @@ export default function Retirement() {
   const bridgeYears = Math.max(0, RETIREMENT_ACCESS_AGE - ageAtRetirement)
   const hasLockedAssets = params.traditional + params.roth > 0
 
+  useEffect(() => () => {
+    if (runTimer.current) clearTimeout(runTimer.current)
+  }, [])
+
   const run = useCallback(() => {
+    const runParams = { ...params, glidePoints: params.glidePoints.map(point => ({ ...point })) }
     setRunning(true)
-    setTimeout(() => {
+    runTimer.current = setTimeout(() => {
       try {
-        const r = simulate(params)
-        setResult(r)
+        setCompletedRun({ result: simulate(runParams), params: runParams, retirementDate })
         setHasRun(true)
       } finally {
         setRunning(false)
+        runTimer.current = null
       }
     }, 30)
-  }, [params])
+  }, [params, retirementDate])
 
   const fanData = useMemo(() => (result ? buildFanData(computeFanPercentiles(result)) : []), [result])
   const histData = useMemo(() => (result ? histogram(result, 30) : null), [result])
@@ -693,7 +714,8 @@ export default function Retirement() {
             <p className="mb-2">
               Your <strong>spending</strong> number is what you actually spend — groceries, housing, travel, everything. Think of it as your annual take-home needs, not a gross salary. Taxes are figured out separately and added on top.
               Health insurance is tracked separately too — your estimated premium before 65, then Medicare after.
-              All dollar amounts are in <strong>today's dollars</strong>, so "$150K in year 20" still means what $150K buys right now.
+              All dollar amounts use <strong>purchasing power in your retirement year</strong>, so "$150K in year 20" means what $150K buys when you retire.
+              Cash earns 0% after inflation — an approximation for savings keeping pace with prices.
               Got a spouse? Their Social Security is added and your tax brackets switch to the married rate.
             </p>
             <p>
@@ -1312,12 +1334,14 @@ export default function Retirement() {
             </p>
           </div>
         )}
-        <Segmented
-          ariaLabel="Market outlook scenario"
-          options={SCENARIO_ORDER.map(s => ({ value: s, label: SCENARIO_LABELS[s] }))}
-          value={params.scenario}
-          onChange={v => update('scenario', v)}
-        />
+        <div className="dark:[&_button[aria-pressed=true]]:bg-rose-700">
+          <Segmented
+            ariaLabel="Market outlook scenario"
+            options={SCENARIO_ORDER.map(s => ({ value: s, label: SCENARIO_LABELS[s] }))}
+            value={params.scenario}
+            onChange={v => update('scenario', v)}
+          />
+        </div>
         {params.scenario === 'custom' && (
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <NumInput
@@ -1348,8 +1372,8 @@ export default function Retirement() {
         <button
           type="button"
           onClick={run}
-          disabled={running || allocOver}
-          className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-rose-700 disabled:opacity-50 dark:bg-rose-500 dark:hover:bg-rose-400"
+          disabled={running || allocOver || !paramsLoaded || exitPreviewLoading}
+          className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-rose-700 disabled:opacity-50 dark:bg-rose-700 dark:hover:bg-rose-800"
         >
           {running ? 'Running…' : hasRun ? 'Re-run simulation' : `Simulate ${params.paths.toLocaleString()} retirements × ${years} years`}
         </button>
@@ -1362,6 +1386,11 @@ export default function Retirement() {
 
       {result && (
         <>
+          {resultsStale && (
+            <p role="status" className="rounded-lg border border-amber-500/40 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+              Inputs changed. Re-run to update these results; the charts still show the previous run.
+            </p>
+          )}
           {(() => {
             const p10Row = finalRows.find(r => Math.round(r.q * 100) === 10)
             const p90Row = finalRows.find(r => Math.round(r.q * 100) === 90)
@@ -1371,7 +1400,7 @@ export default function Retirement() {
                 watermark={<img src={campusWatercolor} alt="" aria-hidden="true" className="h-36 w-72 object-cover object-right" />}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <Eyebrow className="text-white">Age {params.endAge} estimate range</Eyebrow>
+                  <Eyebrow className="text-white">Age {resultEndAge} estimate range</Eyebrow>
                   <IconTile tone="brand" className="h-9 w-9 rounded-lg bg-white/15 text-white">
                     <IconCompass className="h-4 w-4" />
                   </IconTile>
@@ -1379,16 +1408,16 @@ export default function Retirement() {
                 <p className="mt-1 text-2xl font-extrabold tabular-nums tracking-tight sm:text-3xl">
                   {p10Row ? fmt$M(p10Row.value) : '—'} – {p90Row ? fmt$M(p90Row.value) : '—'}
                 </p>
-                <p className="text-xs text-white">10th–90th percentile, today&rsquo;s dollars</p>
+                <p className="text-xs text-white">10th–90th percentile, {resultDollarYear} purchasing power</p>
                 <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-white">
                   <span><span className="font-semibold">{fmt$M(result.medianFinalM)}</span> typical (median)</span>
                   <span className="hidden h-1 w-1 rounded-full bg-white/60 sm:inline-block" />
-                  <span><span className="font-semibold">{fmtPct(result.pctRuin, 1)}</span> risk of running out</span>
+                  <span><span className="font-semibold">{fmtPct(result.pctRuin, 1)}</span> chance of a funding shortfall</span>
                 </div>
               </HeroCard>
             )
           })()}
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
             <StatCard
               label="Ended richer than you started"
               value={fmtPct(result.pctAboveStart, 1)}
@@ -1396,10 +1425,20 @@ export default function Retirement() {
               variant={result.pctAboveStart >= 0.5 ? 'good' : 'neutral'}
             />
             <StatCard
-              label="Ran out of money"
+              label="Couldn’t fund the plan"
               value={fmtPct(result.pctRuin, 1)}
-              sub="couldn't pay the bills in some year"
+              sub="spending or taxes went unfunded at least once"
               variant={result.pctRuin <= 0.1 ? 'good' : result.pctRuin >= 0.3 ? 'bad' : 'neutral'}
+            />
+            <StatCard
+              label="Shortfall with assets remaining"
+              value={fmtPct(result.pctLiquidityShortfall, 1)}
+              sub="money remained in locked accounts"
+            />
+            <StatCard
+              label="Shortfall with assets exhausted"
+              value={fmtPct(result.pctExhausted, 1)}
+              sub="no assets remained to fund a bill"
             />
             <StatCard
               label="Typical ending wealth"
@@ -1414,9 +1453,13 @@ export default function Retirement() {
             />
           </div>
 
+          <p className="text-xs text-cs-muted">
+            A plan can have both kinds of shortfall at different times. Remaining balances continue to be simulated;
+            they do not mean every expense was funded. Wealth is net of unpaid taxes.
+          </p>
           <Card pad="md">
             <p className="mb-2 text-xs font-semibold text-cs-text-2">
-              How your wealth could play out over time (today's dollars)
+              How your wealth could play out over time ({resultDollarYear} purchasing power)
             </p>
             <ResponsiveContainer width="100%" height={300}>
               <ComposedChart data={fanData} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
@@ -1457,10 +1500,10 @@ export default function Retirement() {
             <Card pad="md">
               <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
                 <p className="text-xs font-semibold text-cs-text-2">
-                  Where you end up at age {params.endAge} (today's dollars)
+                  Where you end up at age {resultEndAge} ({resultDollarYear} purchasing power)
                 </p>
                 <p className="text-[10px] text-cs-muted">
-                  {histData.excluded.toLocaleString()} runs that ran out of money not shown ({fmtPct(histData.excluded / histData.total, 1)})
+                  {histData.excluded.toLocaleString()} runs with funding shortfalls not shown ({fmtPct(histData.excluded / histData.total, 1)})
                   {histData.scale === 'log' && <> · log scale</>}
                 </p>
               </div>
@@ -1499,9 +1542,9 @@ export default function Retirement() {
 
           <Card pad="md">
             <p className="mb-2 text-xs font-semibold text-cs-text-2">
-              Range of final outcomes at age {params.endAge} (today's dollars)
+              Range of final outcomes at age {resultEndAge} ({resultDollarYear} purchasing power)
             </p>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto" role="region" aria-label="Final wealth percentiles" tabIndex={0}>
               <table className="w-full text-xs tabular-nums">
                 <thead>
                   <tr className="text-left text-[10px] uppercase tracking-wider text-cs-text-2">
@@ -1532,7 +1575,7 @@ export default function Retirement() {
                         className={`px-2 py-1 ${
                           r.value >= result.startingTotal
                             ? 'text-emerald-700 dark:text-emerald-400'
-                            : 'text-cs-brand'
+                            : 'text-cs-brand dark:text-rose-300'
                         }`}
                       >
                         {fmt$M(r.value)}
@@ -1543,17 +1586,18 @@ export default function Retirement() {
               </table>
             </div>
             <p className="mt-1.5 text-[10px] text-cs-muted">
-              Runs that ran out of money show as $0.
+              Includes all runs, with remaining assets preserved after a funding shortfall.
             </p>
           </Card>
 
           {ruinTable && (
             <div>
               <button
+                aria-expanded={showRuinTable}
                 onClick={() => setShowRuinTable(v => !v)}
                 className="flex w-full items-center justify-between rounded-xl border border-cs-border bg-cs-surface px-4 py-3 text-xs font-medium text-cs-text-2 shadow-card hover:bg-cs-raised "
               >
-                <span>Risk of ruin — conditional analysis</span>
+                <span>Funding shortfall — conditional analysis</span>
                 <span className="text-cs-muted">{showRuinTable ? '▲' : '▼'}</span>
               </button>
               {showRuinTable && <RiskOfRuinPanel table={ruinTable} />}
@@ -1569,7 +1613,7 @@ export default function Retirement() {
       )}
 
       <footer className="pt-4 text-center text-[10px] text-cs-muted">
-        Everything runs in your browser — no data leaves your device. All amounts are in today's purchasing power. This is a planning tool, not financial advice.
+        Simulation calculations run in your browser; your inputs are saved to your account. All amounts use purchasing power in the retirement year. Cash is held constant after inflation. This is a planning tool, not financial advice.
       </footer>
     </div>
   )
@@ -1588,7 +1632,7 @@ function ruinCellText(p: number): string {
   if (p < 0.10) return 'text-lime-700 dark:text-lime-400'
   if (p < 0.20) return 'text-amber-700 dark:text-amber-400'
   if (p < 0.30) return 'text-orange-700 dark:text-orange-400'
-  return 'text-cs-brand'
+  return 'text-cs-brand dark:text-rose-300'
 }
 
 function RiskOfRuinPanel({ table }: { table: RiskOfRuinTable }) {
@@ -1596,11 +1640,11 @@ function RiskOfRuinPanel({ table }: { table: RiskOfRuinTable }) {
   return (
     <div className="mt-px rounded-b-lg border border-t-0 border-cs-border bg-cs-surface p-4 ">
       <p className="mb-1 text-[10px] text-cs-muted">
-        Each cell: <strong className="font-medium text-cs-text-2 ">chance of reaching that wealth at that age</strong> (top) ·{' '}
-        <strong className="font-medium text-cs-text-2 ">chance of eventually going broke if you do</strong> (bottom, color-coded).
+        Each cell: <strong className="font-medium text-cs-text-2 ">chance of reaching that wealth at that age without a prior shortfall</strong> (top) ·{' '}
+        <strong className="font-medium text-cs-text-2 ">chance of a later funding shortfall if you do</strong> (bottom, color-coded).
         Wealth rows are percentiles of all simulated portfolios at age {refAge}.
       </p>
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" role="region" aria-label="Conditional funding shortfalls" tabIndex={0}>
         <table className="w-full text-xs tabular-nums">
           <thead>
             <tr className="text-[10px] uppercase tracking-wider text-cs-text-2">
@@ -1620,12 +1664,12 @@ function RiskOfRuinPanel({ table }: { table: RiskOfRuinTable }) {
                   </span>
                 </td>
                 {table.cells[ri].map((cell, ci) => (
-                  <td key={ci} className={`px-2 py-1.5 text-center ${ruinCellBg(cell.pRuinGiven)}`}>
+                  <td key={ci} className={`px-2 py-1.5 text-center ${cell.n > 0 ? ruinCellBg(cell.pRuinGiven) : ''}`}>
                     <div className="text-[10px] text-cs-muted">
                       {fmtPct(cell.pReach, 0)} reach
                     </div>
-                    <div className={`text-xs font-semibold ${ruinCellText(cell.pRuinGiven)}`}>
-                      {fmtPct(cell.pRuinGiven, 1)} ruin
+                    <div className={`text-xs font-semibold ${cell.n > 0 ? ruinCellText(cell.pRuinGiven) : ''}`}>
+                      {cell.n > 0 ? `${fmtPct(cell.pRuinGiven, 1)} shortfall` : 'No matching runs'}
                     </div>
                     {cell.n < 50 && (
                       <div className="mt-0.5 text-[9px] text-cs-muted">

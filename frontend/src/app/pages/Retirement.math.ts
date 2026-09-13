@@ -1952,7 +1952,7 @@ export function simulate(params: SimParams): SimResult {
   const ssAnnual = (params.ssMonthly * 12) * ssAdj  // $/yr real
 
   const hasSpouse = params.includeSpouse
-  const spouseSsAdj = hasSpouse ? ssAdjustment(params.spouseClaimAge, params.fra) : 1
+  const spouseSsAdj = hasSpouse ? ssAdjustment(params.spouseClaimAge, params.spouseFra) : 1
   const spouseSsAnnual = hasSpouse ? (params.spouseSsMonthly * 12) * spouseSsAdj : 0
 
   const status: FilingStatus = hasSpouse ? 'mfj' : 'single'

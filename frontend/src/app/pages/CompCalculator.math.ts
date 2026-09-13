@@ -1,3 +1,4 @@
+import { refinancedLoanIds } from '../loanState.ts'
 // Pure math helpers for the Total Comp Calculator.
 // `outstandingPrincipalAt` mirrors the Dashboard's client-side principal IIFE
 // (Dashboard.tsx:979-992) which itself mirrors backend `_compute_outstanding_principal`
@@ -33,9 +34,7 @@ export function outstandingPrincipalAt(
   const settled = new Set(
     sales.filter(s => s.loan_id != null && s.date <= asOf).map(s => s.loan_id as number),
   )
-  const refinanced = new Set(
-    loans.filter(l => l.refinances_loan_id != null).map(l => l.refinances_loan_id as number),
-  )
+  const refinanced = refinancedLoanIds(loans, asOf)
   const paid = new Map<number, number>()
   for (const p of payments) {
     if (p.date <= asOf) paid.set(p.loan_id, (paid.get(p.loan_id) ?? 0) + p.amount)
@@ -59,17 +58,21 @@ export function outstandingPrincipalAt(
  *    (principal × rate) only when no Interest loan was recorded for that year.
  *    Add compounding on prior recorded Interest loans for that grant.
  *  - Tax loans don't contribute (taxes are not interest).
- *  - `payments` and `sales` are accepted for symmetry with the principal helper
- *    but are not currently applied — matching Dashboard's behavior.
+ *  - Refinanced loans and loans settled before the year are excluded.
+ *    Cash payments made before the year reduce projected principal.
  */
 export function annualInterestForYear(
   loans: LoanEntry[],
-  _payments: LoanPaymentEntry[],
-  _sales: SaleEntry[],
+  payments: LoanPaymentEntry[],
+  sales: SaleEntry[],
   year: number,
 ): number {
-  const purchaseLoans = loans.filter(l => l.loan_type === 'Purchase')
-  const interestLoans = loans.filter(l => l.loan_type === 'Interest')
+  const superseded = refinancedLoanIds(loans, `${year}-12-31`)
+  const settled = new Set(sales.filter(s => s.loan_id != null && s.date < `${year}-01-01`).map(s => s.loan_id))
+  const purchaseLoans = loans.filter(l => l.loan_type === 'Purchase' && !superseded.has(l.id) && !settled.has(l.id))
+  const interestLoans = loans.filter(
+    l => l.loan_type === 'Interest' && !superseded.has(l.id) && !settled.has(l.id),
+  )
 
   // Recorded interest loans for this year — sum amounts directly.
   let total = interestLoans
@@ -84,7 +87,9 @@ export function annualInterestForYear(
       l => l.grant_year === p.grant_year && l.grant_type === p.grant_type,
     )
     if (related.some(l => l.loan_year === year)) continue
-    total += p.amount * p.interest_rate
+    const paid = payments.filter(payment => payment.loan_id === p.id && payment.date < `${year}-01-01`)
+      .reduce((sum, payment) => sum + payment.amount, 0)
+    total += Math.max(0, p.amount - paid) * p.interest_rate
     for (const il of related) {
       if (il.loan_year < year) total += il.amount * il.interest_rate
     }
@@ -108,9 +113,7 @@ export function unvestedPrincipalAt(
   const settled = new Set(
     sales.filter(s => s.loan_id != null && s.date <= asOf).map(s => s.loan_id as number),
   )
-  const refinanced = new Set(
-    loans.filter(l => l.refinances_loan_id != null).map(l => l.refinances_loan_id as number),
-  )
+  const refinanced = refinancedLoanIds(loans, asOf)
   const paid = new Map<number, number>()
   for (const p of payments) {
     if (p.date <= asOf) paid.set(p.loan_id, (paid.get(p.loan_id) ?? 0) + p.amount)

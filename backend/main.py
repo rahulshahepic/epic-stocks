@@ -2,10 +2,12 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+
 from fastapi import Depends, FastAPI, HTTPException, Request
-from sqlalchemy.orm import Session
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.orm import Session
+from sqlalchemy.orm.exc import StaleDataError
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import FileResponse
 import database
@@ -582,6 +584,11 @@ class EncryptionMiddleware:
 
 
 _fastapi_app = FastAPI(title="Epic Stocks", lifespan=lifespan)
+
+
+@_fastapi_app.exception_handler(StaleDataError)
+async def stale_write_handler(request: Request, exc: StaleDataError):
+    return JSONResponse(status_code=409, content={"detail": "modified_elsewhere"})
 
 
 def _is_admin_request(request: Request) -> bool:

@@ -75,6 +75,7 @@ def list_grants(user: User = Depends(get_current_user), db: Session = Depends(ge
 
 @router.post("", response_model=GrantOut, status_code=201)
 def create_grant(body: GrantCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    db.query(User).filter(User.id == user.id).with_for_update().first()
     existing = db.query(Grant).filter(
         Grant.user_id == user.id, Grant.year == body.year, Grant.type == body.type
     ).first()
@@ -99,6 +100,13 @@ def create_grant(body: GrantCreate, user: User = Depends(get_current_user), db: 
 def bulk_create_grants(items: list[GrantCreate], user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if len(items) > MAX_BULK_ITEMS:
         raise HTTPException(status_code=422, detail=f"At most {MAX_BULK_ITEMS} grants can be created in one request")
+    db.query(User).filter(User.id == user.id).with_for_update().first()
+    keys = {(g.year, g.type) for g in db.query(Grant).filter(Grant.user_id == user.id).all()}
+    for item in items:
+        key = (item.year, item.type)
+        if key in keys:
+            raise HTTPException(status_code=409, detail=f"A {item.type} grant for {item.year} already exists")
+        keys.add(key)
     check_row_quota(db, Grant, user.id, adding=len(items))
     dp_items = [g for g in items if g.dp_shares]
     if dp_items:
@@ -142,6 +150,8 @@ def update_grant(grant_id: int, body: GrantUpdate, user: User = Depends(get_curr
     ).first()
     if conflict:
         raise HTTPException(status_code=409, detail=f"A {new_type} grant for {new_year} already exists")
+    if (new_year, new_type) != (grant.year, grant.type):
+        _check_no_attached_loans(grant, user, db)
     new_dp = body.dp_shares if body.dp_shares is not None else grant.dp_shares
     new_exercise = body.exercise_date if body.exercise_date is not None else grant.exercise_date
     if new_dp:
@@ -157,9 +167,16 @@ def update_grant(grant_id: int, body: GrantUpdate, user: User = Depends(get_curr
     return grant
 
 
+def _check_no_attached_loans(grant, user, db):
+    if db.query(Loan.id).filter(Loan.user_id == user.id, Loan.grant_year == grant.year,
+                               Loan.grant_type == grant.type).first():
+        raise HTTPException(status_code=409, detail="Remove or reassign this grant's loans before changing its identity or deleting it")
+
+
 @router.delete("/{grant_id}", status_code=204)
 def delete_grant(grant_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     grant = get_owned(db, Grant, grant_id, user, "Grant")
+    _check_no_attached_loans(grant, user, db)
     db.delete(grant)
     db.commit()
     event_cache.schedule_recompute(user.id)

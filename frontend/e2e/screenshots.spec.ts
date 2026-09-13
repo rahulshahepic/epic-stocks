@@ -534,6 +534,11 @@ test.describe('Screenshots', () => {
     await fill(/Additional portfolio/, '1')
     await page.getByRole('button', { name: /Simulate.*retirements/ }).click()
     await page.waitForSelector('text=Ended richer than you started', { timeout: 60000 })
+    await expect(page.getByText('Shortfall with assets remaining', { exact: true })).toBeVisible()
+    await expect(page.getByText('Shortfall with assets exhausted', { exact: true })).toBeVisible()
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width)
+    const audit = await new AxeBuilder({ page }).include('.campus-observatory').withTags(['wcag2a', 'wcag2aa']).analyze()
+    expect(audit.violations.filter(v => v.impact === 'critical' || v.impact === 'serious')).toEqual([])
     await page.waitForTimeout(500)
   }
 

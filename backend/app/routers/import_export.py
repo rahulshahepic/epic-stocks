@@ -98,8 +98,12 @@ def _validate_loan(ln: dict, row: int) -> list[str]:
     if not isinstance(amt, (int, float)) or float(amt) <= 0:
         errors.append(f"Row {row}: amount must be positive")
     rate = ln.get("interest_rate")
-    if not isinstance(rate, (int, float)) or float(rate) < 0:
+    if not isinstance(rate, (int, float)):
+        errors.append(f"Row {row}: interest_rate must be a number")
+    elif float(rate) < 0:
         errors.append(f"Row {row}: interest_rate cannot be negative")
+    elif float(rate) > 1:
+        errors.append(f"Row {row}: interest_rate cannot exceed 1.0 (100%)")
     due = ln.get("due")
     if due is None:
         errors.append(f"Row {row}: due_date is required")
@@ -279,16 +283,6 @@ def import_excel(
             all_errors.append(
                 f"Loans row {i + 2}: no {key[0]} {key[1]} grant to attach this loan to"
             )
-
-    seen_grant_keys: set = set()
-    for i, g in enumerate(grants_raw):
-        key = (_to_year(g["year"]), str(g.get("type", "")).strip())
-        if key in seen_grant_keys:
-            all_errors.append(
-                f"Schedule row {i + 2}: a second {key[0]} {key[1]} grant — a year and "
-                f"type identify a grant, so two rows would attach every loan to both"
-            )
-        seen_grant_keys.add(key)
 
     if all_errors:
         raise HTTPException(status_code=400, detail="Validation errors:\n" + "\n".join(all_errors))

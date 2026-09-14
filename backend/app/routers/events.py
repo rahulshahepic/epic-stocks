@@ -916,12 +916,14 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
     grants, prices, loans, loans_db, initial_price, _election_83b_map, estimated_price_dates = _user_source_data(user, db)
 
     today = date.today()
+    cutoff = as_of or today
     # Live rows only. A refinanced loan is carried by its successor, so summing
-    # every row charges one debt once per link in its chain.
-    live_loans = _live_loans(loans_db, today)
+    # every row charges one debt once per link in its chain. All cumulative
+    # figures use the same cutoff as the requested snapshot.
+    live_loans = _live_loans(loans_db, cutoff)
     total_tax_paid = sum(
         ln.amount for ln in live_loans
-        if ln.loan_type == "Tax" and ln.loan_year <= today.year
+        if ln.loan_type == "Tax" and ln.loan_year <= cutoff.year
     )
 
     sales_db = db.query(Sale).filter(Sale.user_id == user.id).all()
@@ -929,7 +931,8 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
     loan_payments_db = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).all()
     payments_by_loan: dict[int, float] = {}
     for lp in loan_payments_db:
-        payments_by_loan[lp.loan_id] = payments_by_loan.get(lp.loan_id, 0.0) + lp.amount
+        if lp.date <= cutoff:
+            payments_by_loan[lp.loan_id] = payments_by_loan.get(lp.loan_id, 0.0) + lp.amount
     loan_amount_by_id = {ln.id: ln.amount for ln in loans_db}
     # Cash received = all sale proceeds minus loan amounts covered by payoff sales
     cash_received_gross = sum(
@@ -938,7 +941,7 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
             if s.loan_id is not None else 0
         )
         for s in sales_db
-        if s.date <= today
+        if s.date <= cutoff
     )
     sale_taxes = 0.0
 
@@ -980,7 +983,7 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
     sale_specs = []
     if ts_dict_dash:
         for s in sales_db:
-            if s.date > today:
+            if s.date > cutoff:
                 continue
             sale_specs.append({
                 "id": s.id, "date": s.date, "shares": s.shares, "price_per_share": s.price_per_share,
@@ -1055,13 +1058,10 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
         stcg_rate = ts_row.federal_st_cg_rate + ts_row.niit_rate + ts_row.state_st_cg_rate
         ltcg_rate = ts_row.federal_lt_cg_rate + ts_row.niit_rate + ts_row.state_lt_cg_rate
         for ev in timeline:
-            # This dashboard is "as of today" — total_tax_paid and cash_received
-            # above only count what's happened by today, so the deduction
-            # savings subtracted from total_tax_paid must stop there too.
-            # Unbounded, this walked the whole projected lifetime (including
-            # decades of future gains) and could subtract far more than the
-            # tax paid so far, making total_tax_paid go deeply negative.
-            if _to_date(ev['date']) > today:
+            # Match the snapshot cutoff used by tax and cash figures above.
+            # Unbounded, this walks the whole projected lifetime and can subtract
+            # far more than the tax paid within the requested period.
+            if _to_date(ev['date']) > cutoff:
                 break
             if ev.get('event_type') not in _TAXABLE_EVENT_TYPES:
                 continue

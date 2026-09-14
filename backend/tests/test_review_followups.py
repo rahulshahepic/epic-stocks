@@ -286,7 +286,7 @@ def test_a_workbook_with_two_rows_for_one_grant_is_refused(client, make_client):
                     files={"file": ("x.xlsx", buf.getvalue(),
                                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")})
     assert r.status_code == 400, r.text
-    assert "second 2020 Purchase grant" in r.text
+    assert r.text.count("Duplicate grant: Purchase 2020 appears more than once") == 1
     assert client.get("/api/grants").json() == []
 
 
@@ -300,6 +300,52 @@ def test_a_loan_rate_is_a_fraction_everywhere_it_is_written(client):
             "loan_year": 2020, "amount": 100, "due_date": "2030-01-01"}
     assert client.post("/api/loans", json={**body, "interest_rate": 5}).status_code == 422
     assert client.post("/api/loans", json={**body, "interest_rate": 0.05}).status_code == 201
+
+    from app.routers.import_export import _validate_loan
+    imported = {
+        "grant_yr": 2020, "grant_type": "Purchase", "loan_type": "Purchase",
+        "loan_year": 2020, "amount": 100, "interest_rate": 5,
+        "due": date(2030, 1, 1),
+    }
+    assert _validate_loan(imported, 2) == [
+        "Row 2: interest_rate cannot exceed 1.0 (100%)"
+    ]
+
+
+@pytest.mark.parametrize("method", ["post", "put"])
+def test_refinancing_never_deletes_a_user_owned_payoff_sale(client, method):
+    register_user(client)
+    old, sale = _loan_with_payoff(client)
+    claimed = client.put(
+        f"/api/sales/{sale['id']}",
+        json={"shares": 7, "version": sale["version"]},
+    )
+    assert claimed.status_code == 200, claimed.text
+    assert claimed.json()["is_generated"] is False
+
+    if method == "post":
+        response = client.post(
+            "/api/loans?generate_payoff_sale=false",
+            json={
+                "grant_year": 2020, "grant_type": "Purchase",
+                "loan_type": "Purchase", "loan_year": 2026,
+                "amount": 1000, "interest_rate": 0.03,
+                "due_date": "2035-01-01", "refinances_loan_id": old["id"],
+            },
+        )
+    else:
+        successor = loan(client, loan_year=2026, due_date="2035-01-01")
+        response = client.put(
+            f"/api/loans/{successor['id']}",
+            json={
+                "refinances_loan_id": old["id"],
+                "version": successor["version"],
+            },
+        )
+
+    assert response.status_code == 409, response.text
+    kept = [s for s in client.get("/api/sales").json() if s["id"] == sale["id"]]
+    assert kept and kept[0]["shares"] == 7
 
 
 def test_the_sale_flag_is_on_the_orm_and_the_deletion_contract(db_session):

@@ -294,6 +294,34 @@ def _check_refinance_target(loan_id: int | None, user: User, db: Session, self_i
 
 
 
+def _remove_generated_payoff_for_refinance(
+    refinanced_loan_id: int | None, user: User, db: Session,
+) -> None:
+    """Remove only an app-owned payoff plan when its loan is refinanced.
+
+    A manually entered or edited linked sale is user data. Silently deleting it
+    would violate the ownership boundary represented by is_generated; make the
+    user resolve that conflict explicitly instead.
+    """
+    if refinanced_loan_id is None:
+        return
+    payoff = db.query(Sale).filter(
+        Sale.loan_id == refinanced_loan_id,
+        Sale.user_id == user.id,
+    ).first()
+    if not payoff:
+        return
+    if not payoff.is_generated:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "The refinanced loan has a payoff sale you entered or edited. "
+                "Edit or delete that sale before refinancing the loan."
+            ),
+        )
+    db.delete(payoff)
+
+
 # --- Loans CRUD ---
 
 @router.get("", response_model=list[LoanOut])
@@ -311,11 +339,7 @@ def create_loan(
     check_row_quota(db, Loan, user.id)
     _check_grant_exists(body.grant_year, body.grant_type, user, db)
     _check_refinance_target(body.refinances_loan_id, user, db)
-    if body.refinances_loan_id is not None:
-        # Remove any auto-generated payoff sale for the old loan — it never happened
-        old_payoff_sale = db.query(Sale).filter(Sale.loan_id == body.refinances_loan_id, Sale.user_id == user.id).first()
-        if old_payoff_sale:
-            db.delete(old_payoff_sale)
+    _remove_generated_payoff_for_refinance(body.refinances_loan_id, user, db)
     loan = Loan(**body.model_dump(), user_id=user.id)
     db.add(loan)
     db.commit()
@@ -352,6 +376,7 @@ def bulk_create_loans(items: list[LoanCreate], user: User = Depends(get_current_
     for item in items:
         _check_grant_exists(item.grant_year, item.grant_type, user, db)
         _check_refinance_target(item.refinances_loan_id, user, db)
+        _remove_generated_payoff_for_refinance(item.refinances_loan_id, user, db)
     loans = [Loan(**l.model_dump(), user_id=user.id) for l in items]
     db.add_all(loans)
     db.commit()
@@ -444,12 +469,9 @@ def update_loan(
         _check_grant_exists(sent.get("grant_year", loan.grant_year),
                             sent.get("grant_type", loan.grant_type), user, db)
     _check_refinance_target(body.refinances_loan_id, user, db, self_id=loan_id)
-    if body.refinances_loan_id is not None:
-        # Remove auto-generated payoff sale for the old loan if this is a new refinance link
-        if loan.refinances_loan_id != body.refinances_loan_id:
-            old_payoff_sale = db.query(Sale).filter(Sale.loan_id == body.refinances_loan_id, Sale.user_id == user.id).first()
-            if old_payoff_sale:
-                db.delete(old_payoff_sale)
+    if (body.refinances_loan_id is not None
+            and loan.refinances_loan_id != body.refinances_loan_id):
+        _remove_generated_payoff_for_refinance(body.refinances_loan_id, user, db)
     stale = version_conflict(loan, body.version)
     if stale:
         return stale

@@ -6,13 +6,12 @@ sales whenever a loan or a loan payment changes; without this flag it could not
 tell a figure it wrote itself from one the user deliberately retuned, so a
 recorded payment silently discarded the user's own numbers.
 
-Backfill: every existing row with a `loan_id` is marked generated. `notes`
-carries the "Auto-generated payoff sale" marker the app writes, but it is an
-EncryptedString, so no SQL predicate can read it. Marking them all reproduces
-exactly today's behaviour for rows already on file — every one of them is
-regenerable now — while anything created or edited after this migration is
-classified correctly. A user who edits an old hand-attached payoff sale clears
-the flag on that row and it stops being rewritten from then on.
+Existing rows remain user-owned. Some are generated and some were manually
+attached or edited, and `notes` is encrypted so the migration cannot distinguish
+them safely. Misclassifying a manual row would let a later loan/payment write
+rewrite or delete user data; preserving uncertain rows is the safe default.
+Users can delete an old payoff sale and regenerate it if they want the app to
+resume maintaining it.
 
 Revision ID: h9i0j1k2l3m5
 Revises: g8h9i0j1k2l4
@@ -32,9 +31,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column('sales', sa.Column('is_generated', sa.Boolean(), nullable=False,
-                                     server_default='0'))
-    op.execute("UPDATE sales SET is_generated = 1 WHERE loan_id IS NOT NULL")
+    op.add_column(
+        'sales',
+        sa.Column('is_generated', sa.Boolean(), nullable=False,
+                  server_default=sa.false()),
+    )
 
 
 def downgrade() -> None:

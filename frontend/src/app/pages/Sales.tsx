@@ -20,6 +20,7 @@ type SaleForm = {
   price_per_share: number
   notes: string
   loan_id: number | null
+  is_generated?: boolean
 }
 type Mode = 'list' | 'add' | 'edit'
 
@@ -738,6 +739,12 @@ export default function Sales() {
                   ) : (
                     <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">Cash sale</span>
                   )}
+                  {s.loan_id != null && !s.is_generated && (
+                    <span
+                      title="Regenerating repayment sales will leave this one alone. Delete it to have the app compute it again."
+                      className="rounded-full px-2 py-0.5 text-[10px] font-medium text-cs-muted ring-1 ring-cs-border-strong"
+                    >Yours</span>
+                  )}
                 </div>
                 {!readOnly && (
                   <button onClick={() => openEdit(s)} className="text-rose-400 hover:text-cs-brand dark:hover:text-rose-300" aria-label="Edit sale">
@@ -818,6 +825,12 @@ export default function Sales() {
                           <span className="inline-block rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">
                             Cash sale
                           </span>
+                        )}
+                        {s.loan_id != null && !s.is_generated && (
+                          <span
+                            title="Regenerating repayment sales will leave this one alone. Delete it to have the app compute it again."
+                            className="ml-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-medium text-cs-muted ring-1 ring-cs-border-strong"
+                          >Yours</span>
                         )}
                       </td>
                       <td className="px-3 py-2 text-right text-cs-text-2">{fmtNum(s.shares)}</td>

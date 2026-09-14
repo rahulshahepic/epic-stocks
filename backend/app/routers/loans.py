@@ -540,6 +540,7 @@ def _regenerate_future_payoff_sales(user: User, db: Session, create_missing: boo
     ts = _get_tax_settings_dict(user, db)
     updated = 0
     created = 0
+    skipped_user_owned = 0
     for loan in future_loans:
         if loan.id in refinanced_ids:
             continue
@@ -554,6 +555,15 @@ def _regenerate_future_payoff_sales(user: User, db: Session, create_missing: boo
         if existing_sale and (existing_sale.date < today
                               or existing_sale.actual_tax_paid is not None
                               or not existing_sale.is_generated):
+            # A future sale left alone only because the app does not own it is
+            # the one case the caller cannot infer from the counts, and it is
+            # the common one after the is_generated migration, which marks every
+            # pre-existing row user-owned rather than guess. Reported so a run
+            # that changes nothing does not read as "nothing needed changing".
+            if (existing_sale.date >= today
+                    and existing_sale.actual_tax_paid is None
+                    and not existing_sale.is_generated):
+                skipped_user_owned += 1
             continue
         suggestion = _compute_payoff_sale(loan, user, db)
         if existing_sale and suggestion["shares"] <= 0:
@@ -585,7 +595,8 @@ def _regenerate_future_payoff_sales(user: User, db: Session, create_missing: boo
         db.flush()
     if commit:
         db.commit()
-    return {"updated": updated, "created": created}
+    return {"updated": updated, "created": created,
+            "skipped_user_owned": skipped_user_owned}
 
 
 @router.post("/regenerate-all-payoff-sales")

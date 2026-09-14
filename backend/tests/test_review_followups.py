@@ -348,6 +348,45 @@ def test_refinancing_never_deletes_a_user_owned_payoff_sale(client, method):
     assert kept and kept[0]["shares"] == 7
 
 
+def test_regenerate_reports_the_sales_it_left_alone(client):
+    """A run that changes nothing because every sale is yours is not "no changes".
+
+    The migration marks every pre-existing payoff sale user-owned rather than
+    guess from an encrypted note, so for an established account the first run
+    after deploying touches nothing. Reported as "no changes needed" that reads
+    as a broken recalculation, and sends the user looking for the bug.
+    """
+    register_user(client)
+    _, sale = _loan_with_payoff(client)
+    assert client.put(f"/api/sales/{sale['id']}",
+                      json={"shares": 7, "version": sale["version"]}).status_code == 200
+
+    result = client.post("/api/loans/regenerate-all-payoff-sales").json()
+    assert result == {"updated": 0, "created": 0, "skipped_user_owned": 1}
+
+    # Deleting it hands the loan back to the app, which is the documented way out.
+    assert client.delete(f"/api/sales/{sale['id']}").status_code == 204
+    again = client.post("/api/loans/regenerate-all-payoff-sales").json()
+    assert again["created"] == 1 and again["skipped_user_owned"] == 0
+
+
+def test_a_past_or_settled_sale_is_not_reported_as_user_owned(client):
+    """Only the ownership skip is invisible to the caller; the others are not.
+
+    A past-dated sale or one with recorded actual tax is skipped for reasons the
+    user already knows about, and counting those would inflate the figure into
+    noise on every run.
+    """
+    register_user(client)
+    ln, sale = _loan_with_payoff(client)
+    assert client.put(
+        f"/api/sales/{sale['id']}",
+        json={"actual_tax_paid": 10.0, "version": sale["version"]},
+    ).status_code == 200
+    result = client.post("/api/loans/regenerate-all-payoff-sales").json()
+    assert result["skipped_user_owned"] == 0
+
+
 def test_the_sale_flag_is_on_the_orm_and_the_deletion_contract(db_session):
     """A new user-owned column still has to travel with the row it belongs to."""
     assert "is_generated" in {c.key for c in sa_inspect(Sale).mapper.column_attrs}

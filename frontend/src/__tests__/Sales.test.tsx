@@ -53,7 +53,7 @@ beforeEach(() => {
   vi.restoreAllMocks()
 })
 
-function mockApi(opts: { failFetch?: boolean; stcg?: boolean } = {}) {
+function mockApi(opts: { failFetch?: boolean; stcg?: boolean; sales?: unknown[] } = {}) {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     if (opts.failFetch) throw new Error('fail')
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url
@@ -67,7 +67,7 @@ function mockApi(opts: { failFetch?: boolean; stcg?: boolean } = {}) {
       return new Response(JSON.stringify(opts.stcg ? MOCK_TAX_ST : MOCK_TAX), { status: 200 })
     }
     if (url.endsWith('/api/sales') && method === 'GET') {
-      return new Response(JSON.stringify(MOCK_SALES), { status: 200 })
+      return new Response(JSON.stringify(opts.sales ?? MOCK_SALES), { status: 200 })
     }
     if (url.endsWith('/api/sales') && method === 'POST') {
       const body = JSON.parse(init?.body as string)
@@ -194,5 +194,39 @@ describe('Sales', () => {
     await waitFor(() => {
       expect(screen.getByText(/No sales yet/)).toBeInTheDocument()
     })
+  })
+})
+
+describe('Sales — who maintains a repayment sale', () => {
+  // Every repayment sale written before `is_generated` existed reads as
+  // user-owned, because the migration will not guess from an encrypted note. So
+  // "Regen payoff sales" quietly stops touching them, and without a marker the
+  // page gives the user no way to tell which rows those are.
+  const payoff = (over: Record<string, unknown>) => ({
+    id: 9, version: 1, date: '2030-01-01', shares: 40,
+    price_per_share: 12, notes: 'Auto-generated payoff sale for loan 123',
+    loan_id: 5, ...over,
+  })
+
+  it('marks a repayment sale the app no longer maintains', async () => {
+    mockApi({ sales: [payoff({ is_generated: false })] })
+    renderSales()
+    await waitFor(() => expect(screen.queryByText('Loading...')).not.toBeInTheDocument())
+    expect(screen.getAllByText('Yours').length).toBeGreaterThan(0)
+  })
+
+  it('leaves an app-maintained repayment sale unmarked', async () => {
+    mockApi({ sales: [payoff({ is_generated: true })] })
+    renderSales()
+    await waitFor(() => expect(screen.queryByText('Loading...')).not.toBeInTheDocument())
+    expect(screen.getAllByText('Repayment').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Yours')).not.toBeInTheDocument()
+  })
+
+  it('never marks a cash sale, which the app never maintained', async () => {
+    mockApi()
+    renderSales()
+    await waitFor(() => expect(screen.queryByText('Loading...')).not.toBeInTheDocument())
+    expect(screen.queryByText('Yours')).not.toBeInTheDocument()
   })
 })

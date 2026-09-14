@@ -356,7 +356,9 @@ When you create a loan with **Payoff loan via sale** checked (the default), a pa
 - **Lot selection** — same-tranche (originating grant's lots only)
 - **Tax rates** — locked to your Settings at creation time
 
-If you later change tax rates or add new share prices, the stored share count will be stale. Use **Regen payoff sales** on the Loans page to recompute all future payoff sale share counts at once (this also updates the locked tax rates to your current settings).
+If you later change tax rates or add new share prices, the stored share count will be stale. Use **Regen payoff sales** on the Loans page to recompute all future payoff sale share counts at once (this also updates the locked tax rates to your current settings). Recording a loan payment refreshes them too, since paying down the balance changes how many shares the payoff needs.
+
+**Once you edit one, it is yours.** Change the date, share count or price on an auto-generated payoff sale and the app stops maintaining it: regenerating, recording a payment, or editing the loan will leave your figures alone from then on, and **Execute payoff** will refuse rather than overwrite them. Delete the sale if you want a freshly computed one back. Editing only the notes or a tax-rate override does not count as taking it over.
 
 ---
 
@@ -506,7 +508,7 @@ If your ChatGPT is provided by your employer, a workspace admin may have to enab
 
 > **Getting "registration endpoint returned 403" in ChatGPT?** That is the CDN in front of this site blocking OpenAI's agent, not the app — the request never arrives. Whoever operates the deployment needs the WAF skip rule in [OPERATIONS.md §1](OPERATIONS.md#cloudflares-ai-bot-blocking-breaks-ai-connectors). Claude is unaffected.
 
-**One debt, counted once.** When a loan is refinanced the old row stays on file — it is history, not money still owed. Every total the app and the connector report counts only the live link in each chain, and the same goes for projected interest. A loan also has to hang off a grant you actually hold: the app refuses one that does not, whether you type it into the Loans form or bring it in on a spreadsheet, because a loan attached to nothing is invisible to your payoff schedule while still showing up as money you owe.
+**One debt, counted once — as of the date you are asking about.** When a loan is refinanced the old row stays on file — it is history, not money still owed. Every total the app and the connector report counts only the live link in each chain. "Live" is judged against the date of the figure, though: a refinance scheduled for 2030 has not relieved anything you owe today, so it does not shrink today's totals, and interest keeps accruing on the old loan right up to the year the refinance lands rather than vanishing from the record. A loan the schedule replaces before its own maturity shows a $0 "Refinanced" step instead of a payoff, and never gets a payoff sale alongside it. A loan also has to hang off a grant you actually hold: the app refuses one that does not, whether you type it into the Loans form or bring it in on a spreadsheet, because a loan attached to nothing is invisible to your payoff schedule while still showing up as money you owe.
 
 **Your projections stay yours.** The future prices you enter are planning assumptions, and the app's own planner is where they belong. The connector will not hand one to an assistant as a valuation: `list_prices` reports the price in effect today and leaves projections out unless they are explicitly requested, `get_dashboard` reports today rather than the end of a timeline that may run a decade out, and events past your newest real valuation come back marked `valuation_is_projected`. Future vesting dates and share counts are facts and are reported plainly — it is the money attached to them that is an assumption.
 
@@ -1039,7 +1041,7 @@ epic-stocks/
 │   │       └── unsubscribe.py   # Public (no-auth) email unsubscribe endpoints
 │   ├── app/                 # Equity tracking domain (replace when forking)
 │   │   ├── core.py          # Event generation logic (frozen)
-│   │   ├── loan_state.py    # Date-aware refinance state + cycle validation
+│   │   ├── loan_state.py    # Refinance state (as_of is required) + accrual window + cycle validation
 │   │   ├── sales_engine.py  # FIFO cost-basis + tax + gross-up calculations
 │   │   ├── excel_io.py      # Excel read/write (openpyxl)
 │   │   ├── epic_import/     # Import from the Shareworks documents

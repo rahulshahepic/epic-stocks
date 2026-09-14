@@ -111,7 +111,7 @@ LOAN_DATA = {
     "loan_type": "Purchase",
     "loan_year": 2020,
     "amount": 19900.0,
-    "interest_rate": 3.5,
+    "interest_rate": 0.035,
     "due_date": "2025-12-31",
     "loan_number": "123456",
 }
@@ -242,7 +242,7 @@ def _seed_data(client):
     client.post("/api/prices", json={"effective_date": "2021-03-01", "price": 2.50})
     client.post("/api/loans", json={
         "grant_year": 2020, "grant_type": "Purchase", "loan_type": "Purchase",
-        "loan_year": 2020, "amount": 19900.0, "interest_rate": 3.5,
+        "loan_year": 2020, "amount": 19900.0, "interest_rate": 0.035,
         "due_date": "2025-12-31", "loan_number": "123456",
     })
 

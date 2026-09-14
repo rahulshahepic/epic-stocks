@@ -412,6 +412,13 @@ function RetirementAccount() {
   const [retirementDate, setRetirementDate] = useState<string>(TODAY)
   const [exitPreviewLoading, setExitPreviewLoading] = useState(false)
   const [paramsLoaded, setParamsLoaded] = useState(false)
+  // Distinct from `!paramsLoaded`: a failed load must not read as "still
+  // loading" forever. The autosave below refuses to write until the saved
+  // params have been read, so proceeding with defaults after a failure would
+  // overwrite them — but leaving the page inert with no message and no retry
+  // just moves the damage to the user.
+  const [paramsError, setParamsError] = useState(false)
+  const [paramsReloadNonce, setParamsReloadNonce] = useState(0)
   const exitOverriddenRef = useRef(false)
   const defaultSpendOverriddenRef = useRef(false)
   const minSpendOverriddenRef = useRef(false)
@@ -464,6 +471,7 @@ function RetirementAccount() {
   useEffect(() => {
     paramsLoadedRef.current = false
     setParamsLoaded(false)
+    setParamsError(false)
     setCompletedRun(null)
     setHasRun(false)
     setRunning(false)
@@ -497,8 +505,9 @@ function RetirementAccount() {
       .catch(() => {
         paramsLoadedRef.current = false
         setParamsLoaded(false)
+        setParamsError(true)
       })
-  }, [vid])
+  }, [vid, paramsReloadNonce])
 
   // Push the age-at-retirement-date into params as the simulation start age.
   // The exit-preview seeds wealth as of `retirementDate`, so the horizon must
@@ -1373,6 +1382,20 @@ function RetirementAccount() {
         </p>
       </Card>
 
+      {paramsError && (
+        <p role="alert" className="rounded-lg border border-amber-500/40 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+          Couldn&rsquo;t load your saved settings, so the simulator is paused rather
+          than running on defaults and saving those over them.{' '}
+          <button
+            type="button"
+            onClick={() => setParamsReloadNonce(n => n + 1)}
+            className="font-semibold underline underline-offset-2"
+          >
+            Try again
+          </button>
+        </p>
+      )}
+
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
@@ -1438,12 +1461,12 @@ function RetirementAccount() {
             <StatCard
               label="Shortfall with assets remaining"
               value={fmtPct(result.pctLiquidityShortfall, 1)}
-              sub="money remained in locked accounts"
+              sub="at the first shortfall, money remained in locked accounts"
             />
             <StatCard
               label="Shortfall with assets exhausted"
               value={fmtPct(result.pctExhausted, 1)}
-              sub="no assets remained to fund a bill"
+              sub="at the first shortfall, no assets remained"
             />
             <StatCard
               label="Typical ending wealth"

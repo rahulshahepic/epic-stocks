@@ -41,6 +41,17 @@ describe('import sales', () => {
     expect(saleReview([], [], 500)).toMatchObject({ newCount: 0, skippedShares: 500 })
   })
 
+  it('says a zero-share row will not be imported rather than dropping it quietly', () => {
+    // `submittableSales` needs a positive count, so a 0 is filtered out on the
+    // way to the backend. Review accepted `shares >= 0` and told the user the
+    // valid range started at 0, so the row read as something they could leave.
+    const zero = { ...sale, shares: 0 }
+    expect(submittableSales([zero])).toEqual([])
+    expect(saleReview([zero], [], 1000).issues).toEqual([
+      expect.stringContaining('between 1 and 10,000,000'),
+    ])
+  })
+
   it.each(['Infinity', 'NaN', '0', '-1', '1000001', '12oops'])('does not submit invalid price %s', price => {
     expect(submittableSales([{ ...sale, price_per_share: price }])).toEqual([])
   })

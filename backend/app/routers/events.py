@@ -1,4 +1,5 @@
-from app.loan_state import refinanced_loan_ids as _refinanced_loan_ids
+from app.loan_state import (interest_accrual_end_year, refinanced_loan_ids as _refinanced_loan_ids,
+                            superseded_from_year)
 from datetime import date, datetime
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
@@ -64,10 +65,17 @@ def _last_vesting_date(timeline: list):
 
 
 
-def _live_loans(loans_db) -> list:
-    """The loans that still carry debt: every row no other row supersedes."""
-    superseded = _refinanced_loan_ids(loans_db)
-    return [l for l in loans_db if l.id not in superseded]
+def _live_loans(loans_db, as_of) -> list:
+    """The loans that still carry debt as of a date — see `refinanced_loan_ids`.
+
+    Pass the same date the figure is reported for. The dashboard's totals are a
+    picture of today, so they pass `today` and agree with
+    `_compute_outstanding_principal`; passing None here would drop a loan whose
+    refinance has not happened yet while the outstanding figure still counts it.
+    """
+    superseded = _refinanced_loan_ids(loans_db, as_of)
+    return [l for l in loans_db
+            if l.id not in superseded and (as_of is None or l.loan_year <= as_of.year)]
 
 
 def _compute_outstanding_principal(loans_db, loan_payments, sales, as_of_date) -> float:
@@ -96,14 +104,14 @@ def _compute_projected_unrecorded_interest(loans_db, as_of_date) -> float:
     purchase_loans = [l for l in loans_db if l.loan_type == 'Purchase']
     interest_loans = [l for l in loans_db if l.loan_type == 'Interest']
     recorded = {(il.grant_year, il.grant_type, il.loan_year) for il in interest_loans}
-    refinanced_ids = _refinanced_loan_ids(loans_db, as_of_date)
-    exit_year = as_of_date.year
+    # A refinance ends accrual on the old principal from its own year on; it does
+    # not unmake the years that accrued before it. Skipping the loan outright
+    # erased those years.
+    first_superseded = superseded_from_year(loans_db)
     total = 0.0
     for p in purchase_loans:
-        if p.id in refinanced_ids:
-            continue
-        due_year = p.due_date.year
-        for yr in range(p.loan_year + 1, min(exit_year, due_year) + 1):
+        end_year = interest_accrual_end_year(p, first_superseded, cap_year=as_of_date.year)
+        for yr in range(p.loan_year + 1, end_year + 1):
             if (p.grant_year, p.grant_type, yr) not in recorded:
                 total += p.amount * p.interest_rate
     return total
@@ -241,7 +249,9 @@ def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales:
     covered_loan_ids = {s.loan_id for s in sales if s.loan_id is not None}
 
     # Set of loan_ids that were refinanced by another loan (their payoff events become "Refinanced")
-    refinanced_loan_ids: set[int] = _refinanced_loan_ids(loans_db)
+    # None: a loan the schedule replaces before maturity never reaches its own
+    # payoff date, whichever side of today the refinance falls on.
+    refinanced_loan_ids: set[int] = _refinanced_loan_ids(loans_db, None)
 
     enriched = []
     for e in timeline:
@@ -523,11 +533,18 @@ def _build_interest_pool(loans_db: list) -> dict[int, float]:
       + compounding on existing interest loans for that grant.
     """
     from collections import defaultdict
-    # Only live links: a refinanced loan's principal is carried by its successor,
-    # so projecting interest on both charged the same debt twice.
-    live = _live_loans(loans_db)
-    purchase_loans = [l for l in live if l.loan_type == 'Purchase']
-    interest_loans  = [l for l in live if l.loan_type == 'Interest']
+    # A refinanced loan's principal is carried by its successor from the
+    # refinance year on, so projecting interest on both from that year charged
+    # the same debt twice — but the old row really did accrue interest in the
+    # years before, and dropping it outright lost that deduction. The window per
+    # purchase loan is closed below by `interest_accrual_end_year`; the recorded
+    # Interest rows a successor rolled up are still dropped whole, because those
+    # are amounts already charged rather than a projection over years.
+    first_superseded = superseded_from_year(loans_db)
+    superseded_ever = set(first_superseded)
+    purchase_loans = [l for l in loans_db if l.loan_type == 'Purchase']
+    interest_loans  = [l for l in loans_db
+                       if l.loan_type == 'Interest' and l.id not in superseded_ever]
 
     # Index: (grant_year, grant_type) -> {loan_year: Loan}
     interest_by_grant: dict = defaultdict(dict)
@@ -543,9 +560,9 @@ def _build_interest_pool(loans_db: list) -> dict[int, float]:
 
     # Projected interest for years without a recorded loan
     for p in purchase_loans:
-        due_year = p.due_date.year
         recorded = interest_by_grant[(p.grant_year, p.grant_type)]
-        for yr in range(p.loan_year + 1, due_year + 1):
+        for yr in range(p.loan_year + 1,
+                        interest_accrual_end_year(p, first_superseded) + 1):
             if yr in recorded:
                 continue
             projected = p.amount * p.interest_rate
@@ -901,7 +918,7 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
     today = date.today()
     # Live rows only. A refinanced loan is carried by its successor, so summing
     # every row charges one debt once per link in its chain.
-    live_loans = _live_loans(loans_db)
+    live_loans = _live_loans(loans_db, today)
     total_tax_paid = sum(
         ln.amount for ln in live_loans
         if ln.loan_type == "Tax" and ln.loan_year <= today.year

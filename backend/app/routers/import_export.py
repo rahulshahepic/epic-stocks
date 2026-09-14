@@ -29,7 +29,7 @@ _MAX_BACKUPS_PER_USER = 3
 SALE_BACKUP_FIELDS = (
     "federal_income_rate", "federal_lt_cg_rate", "federal_st_cg_rate", "niit_rate",
     "state_income_rate", "state_lt_cg_rate", "state_st_cg_rate", "lt_holding_days",
-    "actual_tax_paid", "lot_overrides", "sale_plan_id",
+    "actual_tax_paid", "lot_overrides", "sale_plan_id", "is_generated",
 )
 
 logger = logging.getLogger(__name__)
@@ -280,8 +280,23 @@ def import_excel(
                 f"Loans row {i + 2}: no {key[0]} {key[1]} grant to attach this loan to"
             )
 
+    seen_grant_keys: set = set()
+    for i, g in enumerate(grants_raw):
+        key = (_to_year(g["year"]), str(g.get("type", "")).strip())
+        if key in seen_grant_keys:
+            all_errors.append(
+                f"Schedule row {i + 2}: a second {key[0]} {key[1]} grant — a year and "
+                f"type identify a grant, so two rows would attach every loan to both"
+            )
+        seen_grant_keys.add(key)
+
     if all_errors:
         raise HTTPException(status_code=400, detail="Validation errors:\n" + "\n".join(all_errors))
+
+    # Serialize imports for this account: the wipe-then-insert below is only
+    # coherent against one writer, and every other path that creates grants takes
+    # the same lock. A no-op on SQLite, which is why it is not the whole guard.
+    db.query(User).filter(User.id == user.id).with_for_update().first()
 
     check_row_count(Grant, len(grants_raw))
     check_row_count(Price, len(prices_raw))
@@ -417,6 +432,7 @@ def import_excel(
                         price_per_share=suggestion["price_per_share"],
                         loan_id=ln.id,
                         notes=suggestion["notes"],
+                        is_generated=True,
                     ))
                     payoff_sales_created += 1
             except Exception:
@@ -1222,12 +1238,14 @@ def export_holdings_report(
             break
 
     # Settled / refinanced loan IDs
-    from app.routers.events import _refinanced_loan_ids
+    from app.loan_state import refinanced_loan_ids
     settled_ids = set()
     for s in sales_db:
         if s.loan_id and s.date <= as_of_date:
             settled_ids.add(s.loan_id)
-    refinanced_ids = _refinanced_loan_ids(loans_db)
+    # This whole block is an as-of picture, so supersession is too: a refinance
+    # dated after the report date has not relieved the old debt yet.
+    refinanced_ids = refinanced_loan_ids(loans_db, as_of_date)
 
     early_paid = {}
     for lp in payments_db:

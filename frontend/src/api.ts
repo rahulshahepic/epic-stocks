@@ -878,6 +878,9 @@ export interface SaleEntry {
   price_per_share: number
   notes: string
   loan_id: number | null
+  /** True while the app still maintains this payoff figure; cleared once the
+   *  user edits the date, shares or price, after which it is never rewritten. */
+  is_generated?: boolean
   // Per-sale tax rate overrides (null = use user TaxSettings)
   federal_income_rate?: number | null
   federal_lt_cg_rate?: number | null

@@ -163,14 +163,29 @@ def test_projected_unrecorded_interest_capped_at_due_year():
     assert result == pytest.approx(10_000.0)
 
 
-def test_projected_unrecorded_interest_skips_refinanced_purchase():
-    """A purchase loan that was refinanced away should not generate projected interest."""
+def test_projected_unrecorded_interest_stops_at_the_refinance_not_before_it():
+    """A refinance ends accrual from its own year; it does not unmake earlier years.
+
+    The old purchase ran from 2020 and was refinanced in 2022, so it accrued a
+    year of interest in 2021 that the borrower really owed. Dropping the loan
+    outright — which is what excluding every superseded id did — erased that
+    year from the deduction, and left this figure disagreeing with the interest
+    pool the deduction is drawn from.
+    """
     old_purchase = _FakeLoan(1, 2020, "Purchase", "Purchase", 2020, 100_000, 0.05, date(2030, 12, 31))
     new_purchase = _FakeLoan(2, 2020, "Purchase", "Purchase", 2022, 110_000, 0.05, date(2030, 12, 31), refinances_loan_id=1)
-    # new_purchase.refinances_loan_id=1 means old_purchase (id=1) is refinanced; it should be excluded
     result = _compute_projected_unrecorded_interest([old_purchase, new_purchase], date(2023, 6, 1))
-    # old_purchase skipped (id in refinanced_ids); new_purchase: years 2023 only (loan_year=2022, exit 2023)
-    assert result == pytest.approx(110_000.0 * 0.05)
+    # old_purchase: 2021 only (2022 onward belongs to its successor).
+    # new_purchase: 2023 only (loan_year 2022, exit 2023).
+    assert result == pytest.approx(100_000.0 * 0.05 + 110_000.0 * 0.05)
+
+
+def test_projected_unrecorded_interest_ignores_a_refinance_that_has_not_happened():
+    """A 2030 refinance says nothing about interest accruing in 2026."""
+    purchase = _FakeLoan(1, 2020, "Purchase", "Purchase", 2020, 100_000, 0.05, date(2030, 12, 31))
+    future = _FakeLoan(2, 2020, "Purchase", "Purchase", 2030, 120_000, 0.05, date(2035, 12, 31), refinances_loan_id=1)
+    result = _compute_projected_unrecorded_interest([purchase, future], date(2023, 6, 1))
+    assert result == pytest.approx(3 * 100_000.0 * 0.05)  # 2021, 2022, 2023
 
 
 # ============================================================

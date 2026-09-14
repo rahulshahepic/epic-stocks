@@ -294,6 +294,34 @@ def _check_refinance_target(loan_id: int | None, user: User, db: Session, self_i
 
 
 
+def _remove_generated_payoff_for_refinance(
+    refinanced_loan_id: int | None, user: User, db: Session,
+) -> None:
+    """Remove only an app-owned payoff plan when its loan is refinanced.
+
+    A manually entered or edited linked sale is user data. Silently deleting it
+    would violate the ownership boundary represented by is_generated; make the
+    user resolve that conflict explicitly instead.
+    """
+    if refinanced_loan_id is None:
+        return
+    payoff = db.query(Sale).filter(
+        Sale.loan_id == refinanced_loan_id,
+        Sale.user_id == user.id,
+    ).first()
+    if not payoff:
+        return
+    if not payoff.is_generated:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "The refinanced loan has a payoff sale you entered or edited. "
+                "Edit or delete that sale before refinancing the loan."
+            ),
+        )
+    db.delete(payoff)
+
+
 # --- Loans CRUD ---
 
 @router.get("", response_model=list[LoanOut])
@@ -311,11 +339,7 @@ def create_loan(
     check_row_quota(db, Loan, user.id)
     _check_grant_exists(body.grant_year, body.grant_type, user, db)
     _check_refinance_target(body.refinances_loan_id, user, db)
-    if body.refinances_loan_id is not None:
-        # Remove any auto-generated payoff sale for the old loan — it never happened
-        old_payoff_sale = db.query(Sale).filter(Sale.loan_id == body.refinances_loan_id, Sale.user_id == user.id).first()
-        if old_payoff_sale:
-            db.delete(old_payoff_sale)
+    _remove_generated_payoff_for_refinance(body.refinances_loan_id, user, db)
     loan = Loan(**body.model_dump(), user_id=user.id)
     db.add(loan)
     db.commit()
@@ -332,6 +356,7 @@ def create_loan(
                 price_per_share=suggestion["price_per_share"],
                 loan_id=loan.id,
                 notes=suggestion["notes"],
+                is_generated=True,
                 **_tax_rate_fields(ts),
             )
             db.add(sale)
@@ -351,6 +376,7 @@ def bulk_create_loans(items: list[LoanCreate], user: User = Depends(get_current_
     for item in items:
         _check_grant_exists(item.grant_year, item.grant_type, user, db)
         _check_refinance_target(item.refinances_loan_id, user, db)
+        _remove_generated_payoff_for_refinance(item.refinances_loan_id, user, db)
     loans = [Loan(**l.model_dump(), user_id=user.id) for l in items]
     db.add_all(loans)
     db.commit()
@@ -390,11 +416,24 @@ def execute_payoff(loan_id: int, user: User = Depends(get_current_user), db: Ses
 
     ts = _get_tax_settings_dict(user, db)
     if existing:
+        if not existing.is_generated:
+            raise HTTPException(
+                status_code=409,
+                detail="This loan already has a payoff sale you entered. Edit or delete it on the Sales page first.",
+            )
+        # Moving the sale to today re-prices it, so the rates and the note that
+        # describe it have to move with it. Leaving the rates behind kept
+        # whatever was stamped when the future-dated sale was first computed and
+        # taxed today's sale at them.
         existing.date = suggestion["date"]
         existing.shares = suggestion["shares"]
         existing.price_per_share = suggestion["price_per_share"]
+        existing.notes = suggestion["notes"]
+        for k, v in _tax_rate_fields(ts).items():
+            setattr(existing, k, v)
         db.commit()
         db.refresh(existing)
+        event_cache.schedule_recompute(user.id)
         return existing
     sale = Sale(
         user_id=user.id,
@@ -403,15 +442,13 @@ def execute_payoff(loan_id: int, user: User = Depends(get_current_user), db: Ses
         price_per_share=suggestion["price_per_share"],
         loan_id=loan.id,
         notes=suggestion["notes"],
-        **{k: ts[k] for k in (
-            "federal_income_rate", "federal_lt_cg_rate", "federal_st_cg_rate",
-            "niit_rate", "state_income_rate", "state_lt_cg_rate", "state_st_cg_rate",
-            "lt_holding_days",
-        )},
+        is_generated=True,
+        **_tax_rate_fields(ts),
     )
     db.add(sale)
     db.commit()
     db.refresh(sale)
+    event_cache.schedule_recompute(user.id)
     return sale
 
 
@@ -432,12 +469,9 @@ def update_loan(
         _check_grant_exists(sent.get("grant_year", loan.grant_year),
                             sent.get("grant_type", loan.grant_type), user, db)
     _check_refinance_target(body.refinances_loan_id, user, db, self_id=loan_id)
-    if body.refinances_loan_id is not None:
-        # Remove auto-generated payoff sale for the old loan if this is a new refinance link
-        if loan.refinances_loan_id != body.refinances_loan_id:
-            old_payoff_sale = db.query(Sale).filter(Sale.loan_id == body.refinances_loan_id, Sale.user_id == user.id).first()
-            if old_payoff_sale:
-                db.delete(old_payoff_sale)
+    if (body.refinances_loan_id is not None
+            and loan.refinances_loan_id != body.refinances_loan_id):
+        _remove_generated_payoff_for_refinance(body.refinances_loan_id, user, db)
     stale = version_conflict(loan, body.version)
     if stale:
         return stale
@@ -449,7 +483,9 @@ def update_loan(
         suggestion = _compute_payoff_sale(loan, user, db)
         ts = _get_tax_settings_dict(user, db)
         existing_sale = db.query(Sale).filter(Sale.loan_id == loan.id, Sale.user_id == user.id).first()
-        if existing_sale:
+        # A sale the user has edited is theirs; regenerating the loan does not
+        # take it back. They can delete it to get a fresh computed one.
+        if existing_sale and existing_sale.is_generated:
             existing_sale.date = suggestion["date"]
             existing_sale.shares = suggestion["shares"]
             existing_sale.price_per_share = suggestion["price_per_share"]
@@ -457,7 +493,7 @@ def update_loan(
             for k, v in _tax_rate_fields(ts).items():
                 setattr(existing_sale, k, v)
             db.commit()
-        elif suggestion["shares"] > 0 and suggestion["price_per_share"] > 0:
+        elif not existing_sale and suggestion["shares"] > 0 and suggestion["price_per_share"] > 0:
             db.add(Sale(
                 user_id=user.id,
                 date=suggestion["date"],
@@ -465,6 +501,7 @@ def update_loan(
                 price_per_share=suggestion["price_per_share"],
                 loan_id=loan.id,
                 notes=suggestion["notes"],
+                is_generated=True,
                 **_tax_rate_fields(ts),
             ))
             db.commit()
@@ -492,21 +529,41 @@ def _regenerate_future_payoff_sales(user: User, db: Session, create_missing: boo
     from datetime import date as date_type
     today = date_type.today()
     future_loans = db.query(Loan).filter(Loan.user_id == user.id, Loan.due_date >= today).order_by(Loan.due_date, Loan.id).all()
-    # Skip refinanced loans — they show as $0 "Refinanced" events
+    # Skip refinanced loans — they show as $0 "Refinanced" events. None, not
+    # today: a loan due 2028 that a 2028 refinance replaces never reaches its own
+    # payoff date, so generating a sale for it here would contradict the $0
+    # event the timeline shows and charge the debt twice.
     from app.loan_state import refinanced_loan_ids
     refinanced_ids = refinanced_loan_ids(
-        db.query(Loan).filter(Loan.user_id == user.id).all(), today
+        db.query(Loan).filter(Loan.user_id == user.id).all(), None
     )
     ts = _get_tax_settings_dict(user, db)
     updated = 0
     created = 0
+    skipped_user_owned = 0
     for loan in future_loans:
         if loan.id in refinanced_ids:
             continue
         existing_sale = db.query(Sale).filter(Sale.loan_id == loan.id, Sale.user_id == user.id).first()
         if not existing_sale and not create_missing:
             continue
-        if existing_sale and (existing_sale.date < today or existing_sale.actual_tax_paid is not None):
+        # Never rewrite a figure that is not ours: a past sale, one with recorded
+        # actual tax, or one the user has edited. `is_generated` is what makes
+        # the last of those knowable — this runs on every loan and loan-payment
+        # write, so without it recording a payment silently discarded whatever
+        # the user had tuned the payoff sale to.
+        if existing_sale and (existing_sale.date < today
+                              or existing_sale.actual_tax_paid is not None
+                              or not existing_sale.is_generated):
+            # A future sale left alone only because the app does not own it is
+            # the one case the caller cannot infer from the counts, and it is
+            # the common one after the is_generated migration, which marks every
+            # pre-existing row user-owned rather than guess. Reported so a run
+            # that changes nothing does not read as "nothing needed changing".
+            if (existing_sale.date >= today
+                    and existing_sale.actual_tax_paid is None
+                    and not existing_sale.is_generated):
+                skipped_user_owned += 1
             continue
         suggestion = _compute_payoff_sale(loan, user, db)
         if existing_sale and suggestion["shares"] <= 0:
@@ -519,6 +576,7 @@ def _regenerate_future_payoff_sales(user: User, db: Session, create_missing: boo
             existing_sale.shares = suggestion["shares"]
             existing_sale.price_per_share = suggestion["price_per_share"]
             existing_sale.notes = suggestion["notes"]
+            existing_sale.is_generated = True
             for k, v in _tax_rate_fields(ts).items():
                 setattr(existing_sale, k, v)
             updated += 1
@@ -530,13 +588,15 @@ def _regenerate_future_payoff_sales(user: User, db: Session, create_missing: boo
                 price_per_share=suggestion["price_per_share"],
                 loan_id=loan.id,
                 notes=suggestion["notes"],
+                is_generated=True,
                 **_tax_rate_fields(ts),
             ))
             created += 1
         db.flush()
     if commit:
         db.commit()
-    return {"updated": updated, "created": created}
+    return {"updated": updated, "created": created,
+            "skipped_user_owned": skipped_user_owned}
 
 
 @router.post("/regenerate-all-payoff-sales")

@@ -27,7 +27,7 @@ def _grant(**over):
 def _loan(**over):
     ln = {
         "grant_year": 2020, "grant_type": "Purchase", "loan_type": "Purchase",
-        "loan_year": 2020, "amount": 1000.0, "interest_rate": 5.0,
+        "loan_year": 2020, "amount": 1000.0, "interest_rate": 0.05,
         "due_date": "2025-01-01",
     }
     ln.update(over)

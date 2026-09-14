@@ -480,9 +480,11 @@ def submit(
     validate_refinance_graph(db.query(Loan).filter(Loan.user_id == user.id).all())
 
     # Payoff sales for all loans — skip refinanced loans (their payoff events
-    # are converted to $0 "Refinanced" events, so a linked sale would be confusing)
-    from app.routers.events import _refinanced_loan_ids
-    refinanced_ids = _refinanced_loan_ids([loan for loan, _ in loan_objects])
+    # are converted to $0 "Refinanced" events, so a linked sale would be confusing).
+    # None, not today: whether a loan reaches its own payoff date is a fact about
+    # the schedule, and the timeline marker this mirrors asks it the same way.
+    from app.loan_state import refinanced_loan_ids
+    refinanced_ids = refinanced_loan_ids([loan for loan, _ in loan_objects], None)
     payoff_count = 0
     if body.generate_payoff_sales:
         from app.routers.loans import _compute_payoff_sale
@@ -498,6 +500,7 @@ def submit(
                             price_per_share=suggestion["price_per_share"],
                             loan_id=loan.id,
                             notes=suggestion["notes"],
+                            is_generated=True,
                         ))
                         payoff_count += 1
                 except Exception:

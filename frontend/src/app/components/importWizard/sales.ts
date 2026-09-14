@@ -71,8 +71,11 @@ export function saleReview(sales: SaleDraft[], existing: WizardSale[], available
     issues.push('Sales and down-payment shares exceed the workbook total. Reduce the sale quantities or correct the exchanges on the grants screen.')
   }
   for (const [i, s] of sales.entries()) {
-    if (!Number.isInteger(s.shares) || s.shares < 0 || s.shares > MAX_SALE_SHARES) {
-      issues.push(`Sale ${i + 1}: enter a whole number of shares between 0 and 10,000,000.`)
+    // `saleIsComplete` — and the backend behind it — require a positive count,
+    // so a row of 0 is dropped on submit. Saying "between 0 and 10,000,000"
+    // told the user 0 was a figure they could leave and have imported.
+    if (!Number.isInteger(s.shares) || s.shares <= 0 || s.shares > MAX_SALE_SHARES) {
+      issues.push(`Sale ${i + 1}: enter a whole number of shares between 1 and 10,000,000, or remove the row.`)
     }
   }
   return {

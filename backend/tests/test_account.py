@@ -13,7 +13,7 @@ def _seed_data(client):
     })
     client.post("/api/loans", json={
         "grant_year": 2020, "grant_type": "Purchase", "loan_type": "Purchase",
-        "loan_year": 2020, "amount": 2000.0, "interest_rate": 3.5,
+        "loan_year": 2020, "amount": 2000.0, "interest_rate": 0.035,
         "due_date": "2025-12-31", "loan_number": "L001",
     })
     client.post("/api/prices", json={

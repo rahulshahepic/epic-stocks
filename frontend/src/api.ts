@@ -399,7 +399,7 @@ export const api = {
   updateLoan: (id: number, data: Partial<Omit<LoanEntry, 'id'>>, regeneratePayoffSale = false) =>
     put<LoanEntry>(`/api/loans/${id}?regenerate_payoff_sale=${regeneratePayoffSale}`, data),
   deleteLoan: (id: number) => del(`/api/loans/${id}`),
-  regenerateAllPayoffSales: () => apiFetch<{ updated: number; created: number }>('/api/loans/regenerate-all-payoff-sales', { method: 'POST' }),
+  regenerateAllPayoffSales: () => apiFetch<{ updated: number; created: number; skipped_user_owned: number }>('/api/loans/regenerate-all-payoff-sales', { method: 'POST' }),
   getLoanPayoffSuggestion: (loanId: number, payoffDate?: string) => apiFetch<LoanPayoffSuggestion>(`/api/loans/${loanId}/payoff-sale-suggestion${payoffDate ? `?payoff_date=${payoffDate}` : ''}`),
   executePayoff: (loanId: number) => apiFetch<SaleEntry>(`/api/loans/${loanId}/execute-payoff`, { method: 'POST' }),
 
@@ -878,6 +878,9 @@ export interface SaleEntry {
   price_per_share: number
   notes: string
   loan_id: number | null
+  /** True while the app still maintains this payoff figure; cleared once the
+   *  user edits the date, shares or price, after which it is never rewritten. */
+  is_generated?: boolean
   // Per-sale tax rate overrides (null = use user TaxSettings)
   federal_income_rate?: number | null
   federal_lt_cg_rate?: number | null

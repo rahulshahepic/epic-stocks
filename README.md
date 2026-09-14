@@ -356,7 +356,11 @@ When you create a loan with **Payoff loan via sale** checked (the default), a pa
 - **Lot selection** — same-tranche (originating grant's lots only)
 - **Tax rates** — locked to your Settings at creation time
 
-If you later change tax rates or add new share prices, the stored share count will be stale. Use **Regen payoff sales** on the Loans page to recompute all future payoff sale share counts at once (this also updates the locked tax rates to your current settings).
+If you later change tax rates or add new share prices, the stored share count will be stale. Use **Regen payoff sales** on the Loans page to recompute all future payoff sale share counts at once (this also updates the locked tax rates to your current settings). Recording a loan payment refreshes them too, since paying down the balance changes how many shares the payoff needs.
+
+**Once you edit one, it is yours.** Change the date, share count or price on an auto-generated payoff sale and the app stops maintaining it: regenerating, recording a payment, or editing the loan will leave your figures alone from then on, and **Execute payoff** will refuse rather than overwrite them. Refinancing a loan whose repayment sale you own is refused too, rather than deleting it quietly. Such a sale is marked **Yours** on the Sales page, and **Regen payoff sales** reports how many it left alone so a run that changes nothing does not look like a run that found nothing to change. Delete the sale if you want a freshly computed one back. Editing only the notes or a tax-rate override does not count as taking it over.
+
+**Repayment sales that pre-date this feature are all marked Yours.** The app cannot tell which of them it generated and which you attached or edited by hand — the note that would say so is encrypted — and guessing wrong would let it overwrite your own figures. So it stops maintaining all of them rather than risk one. Delete any you would rather have the app keep current, and it will compute a fresh one.
 
 ---
 
@@ -506,7 +510,7 @@ If your ChatGPT is provided by your employer, a workspace admin may have to enab
 
 > **Getting "registration endpoint returned 403" in ChatGPT?** That is the CDN in front of this site blocking OpenAI's agent, not the app — the request never arrives. Whoever operates the deployment needs the WAF skip rule in [OPERATIONS.md §1](OPERATIONS.md#cloudflares-ai-bot-blocking-breaks-ai-connectors). Claude is unaffected.
 
-**One debt, counted once.** When a loan is refinanced the old row stays on file — it is history, not money still owed. Every total the app and the connector report counts only the live link in each chain, and the same goes for projected interest. A loan also has to hang off a grant you actually hold: the app refuses one that does not, whether you type it into the Loans form or bring it in on a spreadsheet, because a loan attached to nothing is invisible to your payoff schedule while still showing up as money you owe.
+**One debt, counted once — as of the date you are asking about.** When a loan is refinanced the old row stays on file — it is history, not money still owed. Every total the app and the connector report counts only the live link in each chain. "Live" is judged against the date of the figure, though: a refinance scheduled for 2030 has not relieved anything you owe today, so it does not shrink today's totals, and interest keeps accruing on the old loan right up to the year the refinance lands rather than vanishing from the record. A loan the schedule replaces before its own maturity shows a $0 "Refinanced" step instead of a payoff, and never gets a payoff sale alongside it. A loan also has to hang off a grant you actually hold: the app refuses one that does not, whether you type it into the Loans form or bring it in on a spreadsheet, because a loan attached to nothing is invisible to your payoff schedule while still showing up as money you owe.
 
 **Your projections stay yours.** The future prices you enter are planning assumptions, and the app's own planner is where they belong. The connector will not hand one to an assistant as a valuation: `list_prices` reports the price in effect today and leaves projections out unless they are explicitly requested, `get_dashboard` reports today rather than the end of a timeline that may run a decade out, and events past your newest real valuation come back marked `valuation_is_projected`. Future vesting dates and share counts are facts and are reported plainly — it is the money attached to them that is an assumption.
 
@@ -1039,7 +1043,7 @@ epic-stocks/
 │   │       └── unsubscribe.py   # Public (no-auth) email unsubscribe endpoints
 │   ├── app/                 # Equity tracking domain (replace when forking)
 │   │   ├── core.py          # Event generation logic (frozen)
-│   │   ├── loan_state.py    # Date-aware refinance state + cycle validation
+│   │   ├── loan_state.py    # Refinance state (as_of is required) + accrual window + cycle validation
 │   │   ├── sales_engine.py  # FIFO cost-basis + tax + gross-up calculations
 │   │   ├── excel_io.py      # Excel read/write (openpyxl)
 │   │   ├── epic_import/     # Import from the Shareworks documents
@@ -1346,7 +1350,7 @@ The built-in privacy page (`/privacy`) lists the third-party services used by th
 - **The wizard uses merge mode, not replace mode.** Grants are upserted by natural key (year + type) and prices by effective date. Records not in the wizard payload are deleted unless their ID appears in the preserve list. Auto-generated payoff sales are deleted and regenerated; manually-entered sales are never touched. Loan matching uses loan_number when available, falling back to (type, year).
 - **core.py is frozen.** The event generation logic is tested against known-good values: 89 events, cum_shares=558,500, cum_income=$144,325, cum_cap_gains=$1,224,195. Do not modify it.
 - **Excel import is per-sheet.** Only sheets present in the uploaded file are replaced. A backup snapshot is saved automatically before each import (last 3 kept per user). Restore via `GET /api/import/backups` + `POST /api/import/backups/{id}/restore`.
-- **Payoff sale share counts are stored, not recomputed.** Auto-generated share counts do not automatically update when you change lot selection or add prices. Use "Regen payoff sales" on the Loans page to refresh all future payoff sales at once.
+- **Payoff sale share counts are stored, not recomputed.** Auto-generated share counts do not automatically update when you change lot selection or add prices. Use "Regen payoff sales" on the Loans page to refresh all future payoff sales at once — it skips any the user owns (`sales.is_generated` false, which includes every row written before that column existed) and reports how many it skipped.
 - **Down payment via stock exchange is non-taxable.** The `dp_shares` field on a grant records vested shares exchanged at exercise. They reduce the loan principal and generate no income or capital gains event. Shares are consumed in lowest-cost-basis order (Bonus lots first, then oldest Purchase lots by FIFO).
 - **Cost basis for purchase grants is the purchase price.** For grants with `grant_price > 0`, vesting only lifts the sale restriction — no new tax event. Capital gains = `sale price − purchase price`. For RSU/Bonus grants (`grant_price = 0`), FMV at vesting is recognized as ordinary income and becomes the cost basis.
 - **83(b) election is display-only.** The `election_83b` flag changes how events are rendered (violet unrealized gains vs. green income), not how they're computed. For non-zero FMV filings, set the Cost Basis field to that price; core.py will treat it as a purchase grant automatically.

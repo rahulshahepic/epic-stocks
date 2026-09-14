@@ -2039,8 +2039,13 @@ export function simulate(params: SimParams): SimResult {
     let yearStartTaxableTotal = txS + txB
 
     const assets = () => cash + txS + txB + trdS + trdB + rthS + rthB
+    // Classified once, at the first shortfall. The UI shows these two beside
+    // pctRuin as its breakdown, so a path has to land in exactly one: judging
+    // every shortfall separately let one path count as both and the two
+    // percentages add up to more than the total they are splitting.
     const recordShortfall = (month: number) => {
-      if (!firstShortfallMonth[i]) firstShortfallMonth[i] = month
+      if (firstShortfallMonth[i]) return
+      firstShortfallMonth[i] = month
       if (assets() > 1e-9) hadLiquidityShortfall = true
       else hadExhaustion = true
     }

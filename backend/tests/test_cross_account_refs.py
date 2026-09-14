@@ -20,7 +20,7 @@ LOAN = {
     "loan_type": "Purchase",
     "loan_year": 2020,
     "amount": 19900.0,
-    "interest_rate": 3.5,
+    "interest_rate": 0.035,
     "due_date": "2025-12-31",
 }
 

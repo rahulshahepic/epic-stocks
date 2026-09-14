@@ -48,11 +48,14 @@ function mockApi(opts: {
   netCash?: number | null
   dob?: string | null
   savedParams?: Record<string, unknown> | null
+  /** Fail the saved-params read this many times, then succeed. */
+  paramsFailures?: number
   // Viewer-mode mocks (when vid is set on viewing context)
   sharedDob?: string | null
   sharedName?: string | null
   sharedParams?: Record<string, unknown> | null
 } = {}) {
+  let paramsFailuresLeft = opts.paramsFailures ?? 0
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url
     if (url.includes('/api/sharing/view/') && url.includes('/retirement-params')) {
@@ -97,6 +100,10 @@ function mockApi(opts: {
       return new Response(JSON.stringify(TAX_SETTINGS), { status: 200 })
     }
     if (url.includes('/api/retirement/params')) {
+      if (paramsFailuresLeft > 0) {
+        paramsFailuresLeft -= 1
+        return new Response('{"detail":"boom"}', { status: 500 })
+      }
       return new Response(JSON.stringify({ params: opts.savedParams ?? null }), { status: 200 })
     }
     if (url.endsWith('/api/me') || url.includes('/api/me?')) {
@@ -558,5 +565,33 @@ describe('Retirement page', () => {
     await Promise.resolve()
     expect(dateInput.value).toBe('2040-01-01')
     expect(dateInput.disabled).toBe(false)
+  })
+})
+
+describe('Retirement saved-params load failure', () => {
+  it('says so and offers a retry instead of leaving the page inert', async () => {
+    // The autosave refuses to write until the saved params have been read, so
+    // running on defaults would overwrite them. Silently disabling the button
+    // just moved the damage onto the user: no message, no retry, no way back
+    // short of reloading.
+    mockApi({ netCash: null, paramsFailures: 1, savedParams: { minSpend: 90 } })
+    render(
+      <MemoryRouter>
+        <Retirement />
+      </MemoryRouter>,
+    )
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/couldn.t load your saved settings/i)
+    expect(screen.getByRole('button', { name: /Simulate.*retirements/i })).toBeDisabled()
+
+    await userEvent.click(screen.getByRole('button', { name: /try again/i }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Simulate.*retirements/i })).toBeEnabled()
+    })
   })
 })

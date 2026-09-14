@@ -182,7 +182,14 @@ export default function Loans() {
       const parts: string[] = []
       if (result.updated) parts.push(`updated ${result.updated}`)
       if (result.created) parts.push(`created ${result.created}`)
-      alert(parts.length ? `Repayment sales: ${parts.join(', ')}.` : 'No changes needed.')
+      // A run that touched nothing because every sale is yours is not the same
+      // answer as "nothing needed changing", and saying the latter sends people
+      // looking for a bug in the recalculation.
+      const skipped = result.skipped_user_owned
+        ? `${result.skipped_user_owned} repayment sale${result.skipped_user_owned === 1 ? ' is' : 's are'} yours to maintain and ${result.skipped_user_owned === 1 ? 'was' : 'were'} left alone. Delete one to have the app compute it again.`
+        : ''
+      const summary = parts.length ? `Repayment sales: ${parts.join(', ')}.` : 'No changes needed.'
+      alert(skipped ? `${summary}\n\n${skipped}` : summary)
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : 'Failed to update repayment sales')
     } finally {

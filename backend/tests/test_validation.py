@@ -199,17 +199,17 @@ def test_loan_rejects_rate_above_100(client):
     register_user(client)
     resp = client.post("/api/loans", json={
         "grant_year": 2020, "grant_type": "Purchase", "loan_type": "Interest",
-        "loan_year": 2020, "amount": 5000, "interest_rate": 101,
+        "loan_year": 2020, "amount": 5000, "interest_rate": 1.01,
         "due_date": "2025-01-01",
     })
     assert resp.status_code == 422
 
-def test_loan_allows_rate_at_100(client):
+def test_loan_allows_rate_at_100_percent(client):
     register_user(client)
     seed_grant(client)
     resp = client.post("/api/loans", json={
         "grant_year": 2020, "grant_type": "Purchase", "loan_type": "Interest",
-        "loan_year": 2020, "amount": 5000, "interest_rate": 100,
+        "loan_year": 2020, "amount": 5000, "interest_rate": 1,
         "due_date": "2025-01-01",
     })
     assert resp.status_code == 201

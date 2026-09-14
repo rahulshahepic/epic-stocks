@@ -87,7 +87,7 @@ def test_loan_data_encrypted_at_rest(client):
     seed_grant(client)
     client.post("/api/loans", json={
         "grant_year": 2020, "grant_type": "Purchase", "loan_type": "Purchase",
-        "loan_year": 2020, "amount": 19900.0, "interest_rate": 3.5,
+        "loan_year": 2020, "amount": 19900.0, "interest_rate": 0.035,
         "due_date": "2025-12-31", "loan_number": "SECRET-123",
     })
 
@@ -217,7 +217,7 @@ def test_loan_payment_notes_encrypted_at_rest(client):
     seed_grant(client)
     client.post("/api/loans", json={
         "grant_year": 2020, "grant_type": "Purchase", "loan_type": "Purchase",
-        "loan_year": 2020, "amount": 5000.0, "interest_rate": 3.0,
+        "loan_year": 2020, "amount": 5000.0, "interest_rate": 0.03,
         "due_date": "2025-12-31",
     })
     loan_id = client.get("/api/loans").json()[0]["id"]

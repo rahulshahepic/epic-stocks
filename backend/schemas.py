@@ -127,8 +127,12 @@ Price = Annotated[float, _bounds("price", low=0, low_inclusive=False, high=1_000
 SharePrice = Annotated[float, _bounds("price_per_share", low=0, low_inclusive=False, high=1_000_000)]
 Money = Annotated[float, _bounds("amount", low=0, low_inclusive=False, high=100_000_000)]
 TaxPaid = Annotated[float, Field(ge=0, le=100_000_000)]
-#: A loan's own rate, carried as a percentage.
-InterestRate = Annotated[float, _bounds("interest_rate", low=0, low_inclusive=True, high=100, high_text="100 (100%)")]
+#: A loan's own rate, carried as a fraction: 0.045 is 4.5%. Every consumer
+#: multiplies by it directly (`amount * interest_rate` in the interest pool, the
+#: workbook export's "0.00%" cell format), and the Loans page divides the typed
+#: percentage by 100 before sending. The old ceiling of 100 let a client that
+#: sent "4.5" store a 450% rate that every one of those consumers would honour.
+InterestRate = Annotated[float, _bounds("interest_rate", low=0, low_inclusive=True, high=1, high_text="1.0 (100%)")]
 #: An admin-managed rate from the content tables, carried as a fraction.
 ContentRate = Annotated[float, _bounds("rate", low=0, low_inclusive=True, high=1, high_text="1.0 (100%)")]
 #: Vesting periods on a schedule template, where the ceiling above does not apply.
@@ -194,8 +198,24 @@ class GrantUpdate(UpdateModel):
     version: int | None = None
 
 class GrantOut(GrantCreate):
+    """A stored grant on its way out.
+
+    Every `*Out` model below re-declares its parent's constrained fields with
+    the storage's own shape. The bounds on the `*Create` models describe what a
+    **write** may contain; applying them to a read turns a row that predates the
+    bound into a `ResponseValidationError`, which `main.py` serves as a 500 and
+    logs to `error_logs` — and because these are list endpoints, one unreadable
+    row takes every other row down with it. Reads must show what is stored so
+    the user can see and correct it. `test_output_models_never_bound_reads`
+    walks these classes so a new field cannot inherit a bound by accident.
+    """
     id: int
     version: int = 1
+    year: int
+    type: str
+    shares: int
+    price: float
+    periods: int
     model_config = {"from_attributes": True}
 
 
@@ -230,9 +250,17 @@ class LoanUpdate(UpdateModel):
 
 
 class LoanOut(LoanCreate):
+    """See GrantOut: a read reports what is stored, bounds included."""
     id: int
     version: int = 1
     refinances_loan_id: int | None = None
+    grant_year: int
+    grant_type: str
+    loan_type: str
+    loan_year: int
+    amount: float
+    interest_rate: float
+    loan_number: str | None = None
     model_config = {"from_attributes": True}
 
 
@@ -250,9 +278,11 @@ class PriceUpdate(UpdateModel):
 
 
 class PriceOut(PriceCreate):
+    """See GrantOut: a read reports what is stored, bounds included."""
     id: int
     version: int = 1
     is_estimate: bool = False
+    price: float
     model_config = {"from_attributes": True}
 
 
@@ -322,8 +352,30 @@ class SaleUpdate(UpdateModel):
     actual_tax_paid: Optional[TaxPaid] = None
 
 class SaleOut(SaleCreate):
+    """See GrantOut: a read reports what is stored, bounds included.
+
+    The per-sale tax rates and `lt_holding_days` were unbounded until the bounds
+    landed, and `lot_overrides` was an unvalidated list, so rows violating all
+    three are on file.
+    """
     id: int
     version: int = 1
+    #: True while this is the app's own computed payoff figure; cleared when the
+    #: user edits it. The Sales page uses it to say which rows it maintains.
+    is_generated: bool = False
+    shares: int
+    price_per_share: float
+    notes: str = ""
+    federal_income_rate: Optional[float] = None
+    federal_lt_cg_rate: Optional[float] = None
+    federal_st_cg_rate: Optional[float] = None
+    niit_rate: Optional[float] = None
+    state_income_rate: Optional[float] = None
+    state_lt_cg_rate: Optional[float] = None
+    state_st_cg_rate: Optional[float] = None
+    lt_holding_days: Optional[int] = None
+    lot_overrides: Optional[list] = None
+    actual_tax_paid: Optional[float] = None
     model_config = {"from_attributes": True}
 
 
@@ -342,8 +394,11 @@ class LoanPaymentUpdate(UpdateModel):
     version: Optional[int] = None
 
 class LoanPaymentOut(LoanPaymentCreate):
+    """See GrantOut: a read reports what is stored, bounds included."""
     id: int
     version: int = 1
+    amount: float
+    notes: str = ""
     model_config = {"from_attributes": True}
 
 

@@ -29,7 +29,7 @@ _MAX_BACKUPS_PER_USER = 3
 SALE_BACKUP_FIELDS = (
     "federal_income_rate", "federal_lt_cg_rate", "federal_st_cg_rate", "niit_rate",
     "state_income_rate", "state_lt_cg_rate", "state_st_cg_rate", "lt_holding_days",
-    "actual_tax_paid", "lot_overrides", "sale_plan_id",
+    "actual_tax_paid", "lot_overrides", "sale_plan_id", "is_generated",
 )
 
 logger = logging.getLogger(__name__)
@@ -98,8 +98,12 @@ def _validate_loan(ln: dict, row: int) -> list[str]:
     if not isinstance(amt, (int, float)) or float(amt) <= 0:
         errors.append(f"Row {row}: amount must be positive")
     rate = ln.get("interest_rate")
-    if not isinstance(rate, (int, float)) or float(rate) < 0:
+    if not isinstance(rate, (int, float)):
+        errors.append(f"Row {row}: interest_rate must be a number")
+    elif float(rate) < 0:
         errors.append(f"Row {row}: interest_rate cannot be negative")
+    elif float(rate) > 1:
+        errors.append(f"Row {row}: interest_rate cannot exceed 1.0 (100%)")
     due = ln.get("due")
     if due is None:
         errors.append(f"Row {row}: due_date is required")
@@ -283,6 +287,11 @@ def import_excel(
     if all_errors:
         raise HTTPException(status_code=400, detail="Validation errors:\n" + "\n".join(all_errors))
 
+    # Serialize imports for this account: the wipe-then-insert below is only
+    # coherent against one writer, and every other path that creates grants takes
+    # the same lock. A no-op on SQLite, which is why it is not the whole guard.
+    db.query(User).filter(User.id == user.id).with_for_update().first()
+
     check_row_count(Grant, len(grants_raw))
     check_row_count(Price, len(prices_raw))
     check_row_count(Loan, len(loans_raw))
@@ -417,6 +426,7 @@ def import_excel(
                         price_per_share=suggestion["price_per_share"],
                         loan_id=ln.id,
                         notes=suggestion["notes"],
+                        is_generated=True,
                     ))
                     payoff_sales_created += 1
             except Exception:
@@ -1222,12 +1232,14 @@ def export_holdings_report(
             break
 
     # Settled / refinanced loan IDs
-    from app.routers.events import _refinanced_loan_ids
+    from app.loan_state import refinanced_loan_ids
     settled_ids = set()
     for s in sales_db:
         if s.loan_id and s.date <= as_of_date:
             settled_ids.add(s.loan_id)
-    refinanced_ids = _refinanced_loan_ids(loans_db)
+    # This whole block is an as-of picture, so supersession is too: a refinance
+    # dated after the report date has not relieved the old debt yet.
+    refinanced_ids = refinanced_loan_ids(loans_db, as_of_date)
 
     early_paid = {}
     for lp in payments_db:

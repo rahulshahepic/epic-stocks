@@ -1,4 +1,5 @@
-from app.loan_state import refinanced_loan_ids as _refinanced_loan_ids
+from app.loan_state import (interest_accrual_end_year, refinanced_loan_ids as _refinanced_loan_ids,
+                            superseded_from_year)
 from datetime import date, datetime
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
@@ -64,10 +65,17 @@ def _last_vesting_date(timeline: list):
 
 
 
-def _live_loans(loans_db) -> list:
-    """The loans that still carry debt: every row no other row supersedes."""
-    superseded = _refinanced_loan_ids(loans_db)
-    return [l for l in loans_db if l.id not in superseded]
+def _live_loans(loans_db, as_of) -> list:
+    """The loans that still carry debt as of a date — see `refinanced_loan_ids`.
+
+    Pass the same date the figure is reported for. The dashboard's totals are a
+    picture of today, so they pass `today` and agree with
+    `_compute_outstanding_principal`; passing None here would drop a loan whose
+    refinance has not happened yet while the outstanding figure still counts it.
+    """
+    superseded = _refinanced_loan_ids(loans_db, as_of)
+    return [l for l in loans_db
+            if l.id not in superseded and (as_of is None or l.loan_year <= as_of.year)]
 
 
 def _compute_outstanding_principal(loans_db, loan_payments, sales, as_of_date) -> float:
@@ -96,14 +104,14 @@ def _compute_projected_unrecorded_interest(loans_db, as_of_date) -> float:
     purchase_loans = [l for l in loans_db if l.loan_type == 'Purchase']
     interest_loans = [l for l in loans_db if l.loan_type == 'Interest']
     recorded = {(il.grant_year, il.grant_type, il.loan_year) for il in interest_loans}
-    refinanced_ids = _refinanced_loan_ids(loans_db, as_of_date)
-    exit_year = as_of_date.year
+    # A refinance ends accrual on the old principal from its own year on; it does
+    # not unmake the years that accrued before it. Skipping the loan outright
+    # erased those years.
+    first_superseded = superseded_from_year(loans_db)
     total = 0.0
     for p in purchase_loans:
-        if p.id in refinanced_ids:
-            continue
-        due_year = p.due_date.year
-        for yr in range(p.loan_year + 1, min(exit_year, due_year) + 1):
+        end_year = interest_accrual_end_year(p, first_superseded, cap_year=as_of_date.year)
+        for yr in range(p.loan_year + 1, end_year + 1):
             if (p.grant_year, p.grant_type, yr) not in recorded:
                 total += p.amount * p.interest_rate
     return total
@@ -241,7 +249,9 @@ def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales:
     covered_loan_ids = {s.loan_id for s in sales if s.loan_id is not None}
 
     # Set of loan_ids that were refinanced by another loan (their payoff events become "Refinanced")
-    refinanced_loan_ids: set[int] = _refinanced_loan_ids(loans_db)
+    # None: a loan the schedule replaces before maturity never reaches its own
+    # payoff date, whichever side of today the refinance falls on.
+    refinanced_loan_ids: set[int] = _refinanced_loan_ids(loans_db, None)
 
     enriched = []
     for e in timeline:
@@ -523,11 +533,18 @@ def _build_interest_pool(loans_db: list) -> dict[int, float]:
       + compounding on existing interest loans for that grant.
     """
     from collections import defaultdict
-    # Only live links: a refinanced loan's principal is carried by its successor,
-    # so projecting interest on both charged the same debt twice.
-    live = _live_loans(loans_db)
-    purchase_loans = [l for l in live if l.loan_type == 'Purchase']
-    interest_loans  = [l for l in live if l.loan_type == 'Interest']
+    # A refinanced loan's principal is carried by its successor from the
+    # refinance year on, so projecting interest on both from that year charged
+    # the same debt twice — but the old row really did accrue interest in the
+    # years before, and dropping it outright lost that deduction. The window per
+    # purchase loan is closed below by `interest_accrual_end_year`; the recorded
+    # Interest rows a successor rolled up are still dropped whole, because those
+    # are amounts already charged rather than a projection over years.
+    first_superseded = superseded_from_year(loans_db)
+    superseded_ever = set(first_superseded)
+    purchase_loans = [l for l in loans_db if l.loan_type == 'Purchase']
+    interest_loans  = [l for l in loans_db
+                       if l.loan_type == 'Interest' and l.id not in superseded_ever]
 
     # Index: (grant_year, grant_type) -> {loan_year: Loan}
     interest_by_grant: dict = defaultdict(dict)
@@ -543,9 +560,9 @@ def _build_interest_pool(loans_db: list) -> dict[int, float]:
 
     # Projected interest for years without a recorded loan
     for p in purchase_loans:
-        due_year = p.due_date.year
         recorded = interest_by_grant[(p.grant_year, p.grant_type)]
-        for yr in range(p.loan_year + 1, due_year + 1):
+        for yr in range(p.loan_year + 1,
+                        interest_accrual_end_year(p, first_superseded) + 1):
             if yr in recorded:
                 continue
             projected = p.amount * p.interest_rate
@@ -899,12 +916,14 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
     grants, prices, loans, loans_db, initial_price, _election_83b_map, estimated_price_dates = _user_source_data(user, db)
 
     today = date.today()
+    cutoff = as_of or today
     # Live rows only. A refinanced loan is carried by its successor, so summing
-    # every row charges one debt once per link in its chain.
-    live_loans = _live_loans(loans_db)
+    # every row charges one debt once per link in its chain. All cumulative
+    # figures use the same cutoff as the requested snapshot.
+    live_loans = _live_loans(loans_db, cutoff)
     total_tax_paid = sum(
         ln.amount for ln in live_loans
-        if ln.loan_type == "Tax" and ln.loan_year <= today.year
+        if ln.loan_type == "Tax" and ln.loan_year <= cutoff.year
     )
 
     sales_db = db.query(Sale).filter(Sale.user_id == user.id).all()
@@ -912,7 +931,8 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
     loan_payments_db = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).all()
     payments_by_loan: dict[int, float] = {}
     for lp in loan_payments_db:
-        payments_by_loan[lp.loan_id] = payments_by_loan.get(lp.loan_id, 0.0) + lp.amount
+        if lp.date <= cutoff:
+            payments_by_loan[lp.loan_id] = payments_by_loan.get(lp.loan_id, 0.0) + lp.amount
     loan_amount_by_id = {ln.id: ln.amount for ln in loans_db}
     # Cash received = all sale proceeds minus loan amounts covered by payoff sales
     cash_received_gross = sum(
@@ -921,7 +941,7 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
             if s.loan_id is not None else 0
         )
         for s in sales_db
-        if s.date <= today
+        if s.date <= cutoff
     )
     sale_taxes = 0.0
 
@@ -963,7 +983,7 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
     sale_specs = []
     if ts_dict_dash:
         for s in sales_db:
-            if s.date > today:
+            if s.date > cutoff:
                 continue
             sale_specs.append({
                 "id": s.id, "date": s.date, "shares": s.shares, "price_per_share": s.price_per_share,
@@ -1038,13 +1058,10 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
         stcg_rate = ts_row.federal_st_cg_rate + ts_row.niit_rate + ts_row.state_st_cg_rate
         ltcg_rate = ts_row.federal_lt_cg_rate + ts_row.niit_rate + ts_row.state_lt_cg_rate
         for ev in timeline:
-            # This dashboard is "as of today" — total_tax_paid and cash_received
-            # above only count what's happened by today, so the deduction
-            # savings subtracted from total_tax_paid must stop there too.
-            # Unbounded, this walked the whole projected lifetime (including
-            # decades of future gains) and could subtract far more than the
-            # tax paid so far, making total_tax_paid go deeply negative.
-            if _to_date(ev['date']) > today:
+            # Match the snapshot cutoff used by tax and cash figures above.
+            # Unbounded, this walks the whole projected lifetime and can subtract
+            # far more than the tax paid within the requested period.
+            if _to_date(ev['date']) > cutoff:
                 break
             if ev.get('event_type') not in _TAXABLE_EVENT_TYPES:
                 continue

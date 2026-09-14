@@ -47,7 +47,7 @@ def test_grant_bounds(field, value, message):
     ("amount", 0, "amount must be positive"),
     ("amount", 100_000_001, "amount cannot exceed 100,000,000"),
     ("interest_rate", -0.01, "interest_rate cannot be negative"),
-    ("interest_rate", 100.01, "interest_rate cannot exceed 100 (100%)"),
+    ("interest_rate", 1.01, "interest_rate cannot exceed 1.0 (100%)"),
     ("loan_type", "Nope", "loan_type must be one of ['Interest', 'Purchase', 'Tax']"),
     ("grant_type", "", "grant_type cannot be empty"),
     ("loan_number", "x" * 101, "loan_number cannot exceed 100 characters"),
@@ -72,13 +72,20 @@ def test_a_zero_cost_basis_is_allowed_but_a_zero_sale_price_is_not():
     assert "price_per_share must be positive" in _err(schemas.SaleCreate, **{**SALE, "price_per_share": 0})
 
 
-def test_the_two_rate_scales_stay_apart():
-    """A loan's rate is a percentage; a content-table rate is a fraction.
+def test_both_rate_scales_are_fractions():
+    """Both rates are fractions, and both ceilings say so.
 
     Both validators were called `rate_non_negative` and differed only in their
-    ceiling, which is how 0.05 and 5 got confused for each other.
+    ceiling, which is how 0.05 and 5 got confused for each other. The loan
+    ceiling used to be 100, documented as "a percentage" — but every consumer
+    multiplies by the stored value directly (`amount * interest_rate` in the
+    interest pool), the workbook writes it into a "0.00%" cell, and the Loans
+    page divides the typed percentage by 100 before sending. A rate of 5 was
+    therefore 500%, accepted silently, and 100x every interest figure.
     """
-    assert schemas.LoanCreate(**{**LOAN, "interest_rate": 5}).interest_rate == 5
+    assert schemas.LoanCreate(**{**LOAN, "interest_rate": 0.05}).interest_rate == 0.05
+    assert "interest_rate cannot exceed 1.0 (100%)" in _err(
+        schemas.LoanCreate, **{**LOAN, "interest_rate": 5})
     assert "rate cannot exceed 1.0 (100%)" in _err(
         schemas.LoanRateCreate, loan_kind="interest", year=2020, rate=5)
 
@@ -98,7 +105,7 @@ PAIRS = [
       ("periods", 0), ("periods", 1201), ("type", "")]),
     (schemas.LoanCreate, schemas.LoanUpdate, LOAN,
      [("grant_year", 2101), ("loan_year", 1899), ("amount", 0), ("amount", 100_000_001),
-      ("interest_rate", -1), ("interest_rate", 101), ("loan_type", "Nope"),
+      ("interest_rate", -1), ("interest_rate", 1.01), ("loan_type", "Nope"),
       ("grant_type", ""), ("loan_number", "x" * 101)]),
     (schemas.PriceCreate, schemas.PriceUpdate, dict(effective_date="2020-01-01", price=1.5),
      [("price", 0), ("price", 1_000_001)]),

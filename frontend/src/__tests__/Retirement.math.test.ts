@@ -1564,6 +1564,22 @@ describe('retirement funding accounting', () => {
     expect(r.finalWealth[0]).toBeGreaterThan(0.5)
   })
 
+  it('counts each shortfall path in exactly one bucket', () => {
+    // The UI shows these two beside pctRuin as its breakdown. Classifying at
+    // every shortfall rather than the first let one path be counted as both —
+    // a bridge shortfall at 50 with a locked 401k, then real exhaustion later —
+    // so the two halves added up to more than the total they split.
+    const r = simulate({
+      ...base, currentAge: 50, endAge: 75, traditional: 0.2, roth: 0,
+      taxableAdditional: 0.05, defaultSpend: 120, minSpend: 120, paths: 200, seed: 7,
+    })
+    expect(r.pctRuin).toBeGreaterThan(0)
+    expect(r.pctLiquidityShortfall + r.pctExhausted).toBeCloseTo(r.pctRuin, 12)
+    for (let i = 0; i < r.finalWealth.length; i++) {
+      expect(Boolean(r.firstShortfallMonth[i])).toBe(Boolean(r.ruined[i]))
+    }
+  })
+
   it('keeps locked assets growing after a bridge shortfall', () => {
     const random = vi.spyOn(Math, 'random').mockReturnValue(0)
     try {

@@ -195,8 +195,19 @@ def update_sale(sale_id: int, body: SaleUpdate, user: User = Depends(get_current
     stale = version_conflict(sale, body.version)
     if stale:
         return stale
-    if sale.loan_id is None:
-        _check_cash_out_allowed(user, body.date or sale.date, db)
+    # Only when the edit actually moves the sale later. The check asks whether a
+    # loan already due by that date is still uncovered, so re-running it on a
+    # sale whose date is unchanged would block editing the notes on a historical
+    # sale over a loan the user has no intention of touching.
+    new_date = body.date or sale.date
+    if sale.loan_id is None and new_date > sale.date:
+        _check_cash_out_allowed(user, new_date, db)
+    # Once the user changes what the sale says, it is theirs — the regenerator
+    # must stop rewriting it. Rate overrides and notes are not part of the
+    # computed figure, so they do not claim the row.
+    if any(getattr(body, f) is not None and getattr(body, f) != getattr(sale, f)
+           for f in ("date", "shares", "price_per_share")):
+        sale.is_generated = False
     apply_update(sale, body)
     db.commit()
     db.refresh(sale)

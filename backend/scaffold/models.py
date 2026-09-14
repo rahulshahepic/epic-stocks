@@ -158,6 +158,11 @@ class Sale(Base):
     notes: Mapped[str] = mapped_column(EncryptedString, nullable=False, default="")
     # If set, this sale was generated to cover this loan's payoff.
     loan_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("loans.id", ondelete="SET NULL"), nullable=True, index=True)
+    # True while this row is the app's own computed payoff figure. Cleared the
+    # moment the user edits the date, shares or price, because from then on the
+    # number is theirs and `_regenerate_future_payoff_sales` must not rewrite or
+    # delete it behind them.
+    is_generated: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
     __mapper_args__ = {"version_id_col": version}
     # Per-sale tax rate overrides (null = fall back to user's TaxSettings)

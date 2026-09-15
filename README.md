@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 34484)
+Total output lines: 1385
+
 # Epic Stocks (Unofficial)
 
 A mobile-first web app for Epic employees to track their own equity compensation — grants, vesting schedules, stock loans, share price history, and estimated tax impact over time. Built as a PWA so it works on any device, including your phone.
@@ -345,6 +348,8 @@ Each loan tied to a Purchase grant can have an auto-generated payoff sale that c
 
 The app finds the smallest integer share count such that after-tax proceeds from selling those shares ≥ the outstanding balance. It only considers lots from the *originating grant* (same-tranche selection), regardless of your default lot method setting.
 
+A sale linked to a loan is treated as a repayment, so the app accepts it only when its estimated after-tax proceeds cover the remaining balance on that date. Record any earlier principal payments first; the sale estimator and confirmation screen use that reduced balance.
+
 The payoff sale always shows a Lot Allocation table in the Sales page so you can see exactly which lots are being consumed and whether they are long-term or short-term.
 
 #### Auto-generated payoff sales
@@ -595,223 +600,7 @@ Acceptance happens in the **Setup Wizard**, prefilled with the draft — the sam
 
 Two things worth knowing:
 
-- **Only arithmetic failures block.** If the statement does not match its own totals, part of it was misread and the import stops there. Everything else — the two files disagreeing, a rate that differs from the one on record — is shown and you decide. Epic's own paperwork sometimes disagrees with itself, and you should not be trapped in a loop over it.
-- **There is no automatic check on share counts.** The CSV's `Shares Granted` is the only source for them, so nothing can be reconciled against. Loan balances, interest and cost basis all have arithmetic checks; share counts have you. That is why sign-off shows rendered figures rather than a row of green ticks.
-- **Shares Epic reports as sold** are reported but no sales are invented — the CSV carries no sale dates or prices. Record those on the **Sales** page.
-
----
-
-### Exporting Your Data
-
-Go to **Import/Export → Download Vesting.xlsx** to export all your grants, prices, loans, and sales at any time. The same file can be re-imported to restore or transfer your data.
-
-The **Import** page also keeps the last 3 backup snapshots from previous imports — you can restore any of them if an import goes wrong.
-
-### Reporting a Problem
-
-**Report a problem** sits in the footer of every page once you are signed in, and on every page you can reach without an account — login, invitation landing, and both stages of `/try` (the upload screen and the preview dashboard it computes). Someone who cannot get past sign-in, or who is looking at numbers the preview got wrong, is exactly the person who most needs to be able to say so. The app also offers it at the moment something fails:
-
-- **A red error toast** carries a **Report** button.
-- **A crash** shows a recovery screen with **Reload** and **Report this**, instead of a blank page.
-- **An import that comes back with errors** offers **Report this import problem**.
-
-Every report carries what you typed, the page you were on, and — when the failure came from the server — a short **reference id** that points at the exact stored traceback.
-
-**"Include details that identify me" is a checkbox, and it starts off.** Ticking it attaches your account, your browser, and the last few pages you visited plus any requests that failed. Leaving it off means the report is stored anonymously, even if you are signed in. Either way it never includes any of your financial data — no share counts, no prices, no loan amounts. Press **Show exactly what gets sent** to read the whole payload before it goes.
-
-Import reports carry only the rule ids that fired (`C1`, `G3`, …), never the finding text, because those messages quote figures from your own statement.
-
-Your email address is always optional, and is only there so you can be reached about what you reported.
-
-| Light | Dark |
-|-------|------|
-| ![Report a problem](screenshots/report-light-mobile.png) | ![Report a problem Dark](screenshots/report-dark-mobile.png) |
-
----
-
-## For Content Admins
-
-| Light | Dark |
-|-------|------|
-| ![Content Editor](screenshots/content-light-mobile.png) | ![Content Editor Dark](screenshots/content-dark-mobile.png) |
-
-Content admins edit the grant-program data that drives the Setup Wizard for all users. A site admin promotes users to this role from the Admin panel (the role persists across logins). Site admins are implicitly content admins.
-
-Content admins see a **Content** nav link. From `/content` they can edit:
-
-| Section | What it controls |
-|---------|----------------|
-| **Grant templates** | The per-year, per-type grant schedule shown in the wizard: vest dates, periods, exercise dates |
-| **Bonus vesting variants** | The A/B/C schedule options for the 2020 Bonus grant |
-| **Loan rates** | Interest rates, tax rates, and purchase-original rates by year |
-| **Loan refinance chains** | The sequence of refinance steps for purchase and tax loans. The wizard applies only the steps up to the rate a user's own loan carries |
-| **Program settings** | Fallback tax rates, minimum down-payment policy (percent + dollar cap), flexible loan-payoff toggle |
-
-Edits take effect immediately for all users on their next wizard load. The wizard automatically refreshes the cache after any content write.
-
-> **Grant types** (Purchase, Catch-Up, Bonus, Free, Developer Bonus Shares) are hard-coded and cannot be changed from the content editor — the core computation engine branches on those specific strings. Year ranges shown on the settings tab (price and rate bounds) are derived from the rates and templates tables and are read-only.
-
----
-
-## For Site Admins
-
-| Light | Dark |
-|-------|------|
-| ![Admin Dashboard](screenshots/admin-light-mobile.png) | ![Admin Dashboard Dark](screenshots/admin-dark-mobile.png) |
-
-Site admins are designated via the `ADMIN_EMAIL` environment variable (semicolon-delimited for multiple). Access is granted dynamically on each login — adding or removing an email from `ADMIN_EMAIL` takes effect on the user's next sign-in. Navigate to `/admin` after signing in with a matching account.
-
-### What admins can see
-
-- Total registered users and active users (last 30 days)
-- Aggregate counts: total grants, loans, prices across all users
-- **System Health** — CPU %, RAM %, and DB size with sparkline charts (24h / 72h / 7d / 30d windows). Sampled every 15 minutes; 30-day rolling retention.
-- **Database Tables** — per-table size breakdown (PostgreSQL only). Useful for diagnosing storage growth.
-- **Smart Tips Report** — aggregate-only view: total users who accepted a tip, total estimated savings, per-type breakdown. No individual financial data.
-- **No-account preview funnel** — how the `/try` preview converts: previews computed, saves pressed, signups that carried preview data, and the conversion rate, as anonymous daily totals over the last 30 days. The `trial_daily_stats` table holds exactly three integers keyed by date — no IP, no user agent, no per-visitor row — so this measures the feature without recording anything about a visitor. See the privacy policy's "Anonymous counts" section, which discloses it.
-- Per-user metadata: email, name, join date, last login, record counts, admin badge
-- Searchable and paginated user list, sorted by last active
-- **Problem Reports** — what people actually reported, newest first, with a **new** badge for untriaged ones. Each entry expands to the reporter's account and browser (only when they opted in), the client trail, and — when the report carries a reference id — the matching server traceback pulled from the error log. Mark resolved, reopen, or delete. Reports live in their own `user_reports` table, so the nightly trim of `error_logs` to 500 rows never sweeps them away. The daily admin digest email counts the open ones, and each new report emails the admins as it lands.
-- **Build version** — a 7-character commit SHA at the bottom of the Admin page confirms exactly which build is running
-
-> Admins **cannot** see any user's financial data (share counts, prices, loan amounts, computed events). Only aggregate counts and account metadata are exposed.
-
-### Admin actions
-
-Click any user in the list to open a detail card:
-
-| Action | What it does |
-|--------|-------------|
-| **Delete user** | Permanently removes the user and all their data. Blocked during maintenance mode and for admin accounts. |
-| **Send test notification** | Immediately sends a push or email notification to any user for debugging. |
-| **Block / unblock sending** | Prevents a user from sending new invitations (e.g. for abuse). |
-| **Reset invitations** | Revokes all sent invitations and removes any received access for the user. Both sides are cleaned up. |
-| **Re-enable email** | Restores email notifications for a user who unsubscribed via an email footer link. |
-| **Clear invitation opt-out** | Removes an email from the invitation opt-out list. Works for non-users who opted out without an account. |
-| **Block / unblock email** | Prevents an email address from logging in or creating an account. |
-| **Make / Revoke Content Admin** | Promotes or revokes the persistent content-admin role for a user. |
-| **Enable / disable maintenance** | Toggles app-managed downtime. Financial API routes return 503; auth and admin remain accessible. Use before planned ops that affect financial data. |
-| **Rotate encryption key** | Generates a new master key, re-wraps all per-user keys, smoke-tests, and persists to the database. Propagates to all replicas automatically within seconds — no deploy or env var change needed. A snapshot of old keys is saved before any changes and restored automatically on failure. |
-| **Restore from snapshot** | Appears when an interrupted rotation left a snapshot in the database. Recovers from a crash without SSH access. |
-
-### AI Connections (admin)
-
-Admin → **AI Connections** controls whether people can connect ChatGPT or Claude to their own accounts, and which providers are allowed to. Both were environment variables at first, which made "stop accepting connections from ChatGPT" a redeploy; they are policy, so they live in the database.
-
-- **Allow AI connections** — the master switch. Off, nobody can authorize a new connection and every `/mcp` call gets a 503. It is a pause, not a disconnect: existing connections are left in place and start working again when you turn it back on. Disconnecting everyone would be a worse surprise than the pause.
-- **Providers** — the allowlist of hosts an AI client may be redirected back to after authorizing. Seeded with ChatGPT (`chatgpt.com`) and Claude (`claude.ai`, `claude.com`), both on. Claude is two hostnames under one label so there is one thing to switch off, not two.
-
-This allowlist is a security control, not a convenience. Dynamic client registration is anonymous — it has to be, or Claude on a phone cannot connect — so without it a stranger could register a client whose redirect URI points at their own server and try to walk a signed-in user through the consent screen. Adding a host means trusting that provider with any account that authorizes it.
-
-Switching a provider off blocks new authorizations immediately and ends existing connections at their next token refresh, within the hour — not whenever their refresh token would have expired. Removing a host does the same permanently.
-
-Paste a URL or type a bare hostname; either is stored as the hostname.
-
-**Usage.** The same panel reports calls in the last 24 hours, 7 and 30 days; failures and permission refusals over 7 days; a per-account table (assistants connected, last used, calls over 7/30 days); and the most-used tools. An account that has since disconnected still appears — hiding it would make the record vanish exactly when someone is looking into it. Counts and tool names only: the audit table holds no financial data, so this cannot show any.
-
-**Rate limits.** `/mcp` is capped per connection and per account (120 and 300 calls a minute, in `backend/app/mcp/transport.py`). Both are needed: the per-connection limit stops one runaway assistant starving another the same user has connected, and the per-account limit is what bounds one user's cost to the server. Nothing else covers this endpoint — the mutation rate limiter only inspects `/api/` paths, and an IP-keyed limit would count OpenAI's and Anthropic's servers rather than the user's.
-
-**Retention.** A nightly job removes client registrations that never became a connection after 7 days, expired authorization codes, and audit entries past 90 days (or beyond 5,000 per account). Registration is anonymous by necessity, so without that first sweep the table would grow on its own.
-
----
-
-### Import diagnostics
-
-**Admin → Tools → Import diagnostics** (`/import-diagnostics`) checks the Epic file importer against real data. Upload:
-
-1. Your own export — either the `Vesting.xlsx` from **Import / Export** or a dashboard **holdings report** (see below), and
-2. **Data for Stock Workbook** and/or the **Stock Loan Statement** from Shareworks, **from the same date**.
-
-**Match the dates.** Shareworks documents are issued periodically, so the copy you have is usually months old, while an export is of today. Set the **as of** date on the Import / Export export to the statement date and the export leaves out grants, loans and prices dated after it — otherwise everything drawn in between reads as a difference. A grant is dated by its exercise date, a price by its effective date, a sale or payment by the day it happened; loans carry only the year they were drawn, so they are filtered by year.
-
-Either export works as a baseline. The `Vesting.xlsx` is the full dataset. The dashboard holdings report is a formatted position statement rather than a dataset — it carries no loan numbers, no vesting schedule, and one share price instead of a history — so the report says once what it could not compare instead of listing those as differences on every row.
-
-The importer runs against the Shareworks files alone, and the result is diffed field by field against the export. Every difference is listed with the id of the rule that produced the value, so the report reads as "rule `G3` reads the cost basis wrong" rather than "the import is wrong". Download it as Markdown and hand it back as a bug report. Every id is explained in [`backend/app/epic_import/RULES.md`](backend/app/epic_import/RULES.md) — what it reads, what it produces, when it fires and whether it blocks.
-
-The page is read-only — it never touches the database, and it only ever reads the three files in the request, which is what makes it safe to run against a production export. It compares against the uploaded export, not against any stored user data, so it exposes no financial data the uploader did not already provide.
-
-### Email Lookup
-
-The **Email Lookup** tool searches any email address across all relevant systems in one place:
-
-- Account status (registered? name? user ID?)
-- Email notification status — enabled/disabled, with a re-enable action
-- Invitation opt-out status — with a clear action
-- Blocked-from-receiving status — with an unblock action
-- Sending-blocked status — with an unblock action
-- Invitation sent/received counts
-
-Works for non-users too — useful for clearing opt-outs set by people who received an invitation email but never created an account.
-
-### Blocked Email System
-
-Blocked emails are checked at login time (case-insensitive). A blocked user cannot log in or create a new account. The blocklist is managed via the admin panel.
-
----
-
-## For Site Operators
-
-### Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Backend | Python 3.12, FastAPI, SQLAlchemy, PostgreSQL (Alembic migrations) |
-| Frontend | React 19, TypeScript, Vite, Tailwind CSS 4, Recharts |
-| Auth | OIDC PKCE (any provider) → BFF session cookie (HttpOnly, XSS-safe); OAuth 2.1 authorization server + MCP server for AI connectors |
-| Deploy | Docker Compose + Caddy (auto-HTTPS) + Cloudflare (DDoS protection) |
-| Tests | pytest (backend), Vitest + RTL (frontend), Playwright (E2E) |
-
----
-
-### Quick Start (Local Development)
-
-**Prerequisites:** Python 3.12+, Node.js 20+, and at least one OIDC provider configured.
-
-```bash
-# Copy env template and fill in OIDC_PROVIDERS (minimum required)
-cp .env.example .env
-
-# Backend
-cd backend
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
-
-# Frontend (separate terminal)
-cd frontend
-npm install
-npm run dev
-```
-
-The backend creates `data/vesting.db` (SQLite) automatically on first run. The dev server proxies `/api` to `localhost:8000`. To reset: `rm backend/data/vesting.db`.
-
----
-
-### Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `JWT_SECRET` | Yes (local) | Random secret for signing JWT tokens. **Auto-generated on production deploy.** |
-| `OIDC_PROVIDERS` | Yes | JSON array of OIDC provider configs — see [OIDC Provider Configuration](#oidc-provider-configuration). |
-| `DATABASE_URL` | Yes (prod) | PostgreSQL DSN. Docker Compose sets this automatically from `POSTGRES_PASSWORD`. |
-| `REDIS_URL` | No | Redis connection string for the L2 timeline cache (e.g. `redis://redis:6379/0`). When set, computed timelines are cached and pre-warmed after data writes; survives restarts and is shared across replicas. The `redis` service in `docker-compose.yml` provides this automatically. |
-| `POSTGRES_PASSWORD` | Yes (local) | PostgreSQL password. **Auto-generated on production deploy.** |
-| `KEY_ENCRYPTION_KEY` | No | Enables per-user AES-256-GCM encryption. Set once, never changes. **Auto-generated on production deploy.** Wraps the operational master key stored in the database. |
-| `LEGACY_MASTER_KEY` | No | One-time migration aid. Set to the old `ENCRYPTION_MASTER_KEY` value on first deploy after upgrading to the two-level key hierarchy; unset after first successful boot. |
-| `ADMIN_EMAIL` | No | Semicolon-delimited email(s) granted admin access on login. |
-| `VAPID_PUBLIC_KEY` | No | Required for push notifications. **Auto-generated on production deploy.** |
-| `VAPID_PRIVATE_KEY` | No | Required for push notifications. **Auto-generated on production deploy.** |
-| `EMAIL_PROVIDER` | No | `resend` (default) or `smtp` |
-| `RESEND_API_KEY` | No | Enables email notifications via Resend |
-| `RESEND_FROM` | No | Sender address for emails (e.g. `Epic Stocks <noreply@yourdomain.com>`) |
-| `SMTP_HOST` | No | SMTP server hostname (when `EMAIL_PROVIDER=smtp`) |
-| `SMTP_PORT` | No | SMTP port, default 587 |
-| `SMTP_USER` | No | SMTP username |
-| `SMTP_PASSWORD` | No | SMTP password |
-| `SMTP_FROM` | No | Sender address for SMTP emails |
-| `APP_URL` | No | Public app URL included as a link in email notifications |
-| `ACME_EMAIL` | No (prod) | Email for Let's Encrypt certificate expiry notifications. Set as a GitHub Actions variable. |
-| `TRUSTED_PROXY_IPS` | No (prod) | Cloudflare IP ranges passed to Caddy for real-IP forwarding. Set as a GitHub Actions variable. |
-| `CLIENT_IP_HEADER` | No | Header carrying exactly one address, put there by the proxy in front — `CF-Connecting-IP` behind Cloudflare. Set it and `TRUSTED_PROXY_HOPS` stops mattering, because there is no counting to get wrong. **Only safe when the origin cannot be reached except through that proxy** (firewall the origin to the proxy's ranges); otherwise anyone can forge it and mint a fresh rate-limit bucket per request. Check the result at `GET /api/admin/client-ip`. |
+- **Only arithmetic failures block.** If the statement does not match its own t…4484 tokens truncated…r carrying exactly one address, put there by the proxy in front — `CF-Connecting-IP` behind Cloudflare. Set it and `TRUSTED_PROXY_HOPS` stops mattering, because there is no counting to get wrong. **Only safe when the origin cannot be reached except through that proxy** (firewall the origin to the proxy's ranges); otherwise anyone can forge it and mint a fresh rate-limit bucket per request. Check the result at `GET /api/admin/client-ip`. |
 | `TRUSTED_PROXY_HOPS` | No | How many trusted reverse proxies sit in front of the app, so anonymous rate limits can be keyed on the real caller instead of the proxy. `0` (default) ignores `X-Forwarded-For` entirely — correct for a directly-exposed app. `1` for Caddy alone, `2` when Cloudflare proxies to Caddy. docker-compose defaults it to `1`. |
 | `MUTATION_RATE_LIMIT` | No | Writes (POST/PUT/PATCH/DELETE on `/api/…`) one signed-in account may make per minute. Default `120` — far above any real session, and a ceiling on how fast one account can grow the database. Shared across replicas when `REDIS_URL` is set, per-process otherwise. |
 | `PDF_PARSE_SLOTS` | No | Statement PDFs parsed at once. Default `3`. Extraction is the most expensive thing an anonymous caller can reach (`POST /api/trial/analyze` takes no session) and a bounded parse still costs ~65 MB, so slots are taken without waiting and a full set sheds load with `503` instead of queueing behind the request. Raise it only with the container's memory limit. |
@@ -1099,6 +888,7 @@ epic-stocks/
 │   │   │   ├── contexts/    # ThemeContext, MaintenanceContext, ViewingContext, AppContext (injection interface)
 │   │   │   └── hooks/       # useAuth, useConfig, useDark, usePush, useMe
 │   │   ├── app/             # Equity tracking UI (replace when forking)
+│   │   │   ├── dateUtils.ts  # Local-day clock + leap-safe calendar date arithmetic
 │   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport, ImportDiagnostics, Content, CompCalculator, Retirement, Try (no-account preview: upload → dashboard/events tabs)
 │   │   │   ├── components/  # ImportWizard, EpicFileImport, FindingList, TipCarousel, StockJourney, AppSettingsSections
 │   │   │   ├── components/importWizard/ # The wizard's parts: types, schedule (Epic's grant schedule → rows), rows (row maths), loans (tax/interest/refi generation), submit (validation + payload), fields.tsx (inputs, buttons, loan rows), screens/
@@ -1375,7 +1165,6 @@ The built-in privacy page (`/privacy`) lists the third-party services used by th
 - **Anything a native shell would have to do differently lives behind `frontend/src/platform/`.** Four capabilities — how a session is authenticated and stored, key-value storage, handing the user a file, and push registration — are interfaces with a browser implementation. Feature code calls `platform.files.saveBlob(...)` rather than building an `<a download>`, and `platform.auth.openAuthorizationUrl(...)` rather than assigning `window.location`. These are the exact points where a WebView behaves differently from a browser (blob downloads are inert, `PushManager` does not exist, OAuth in an embedded WebView is refused by identity providers), so isolating them keeps one codebase serving both targets.
 
 - **Schema migrations use Alembic.** Migrations live in `backend/alembic/versions/`. `alembic upgrade head` runs automatically on startup (PostgreSQL only; SQLite test environments use `create_all`). Create a new migration with `alembic revision --autogenerate -m "description"`.
-
 
 
 

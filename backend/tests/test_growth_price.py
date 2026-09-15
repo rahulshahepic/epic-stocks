@@ -245,6 +245,15 @@ class TestGrowthPrice:
         estimates = [p for p in prices2 if p["is_estimate"]]
         assert len(estimates) == 2
 
+    def test_leap_day_projection_clamps_to_february_28(self, client):
+        register_user(client)
+        _add_annual_price(client, YESTERDAY, 50.0)
+        resp = _growth_price(client, 10.0, date(2028, 2, 29), date(2029, 2, 28))
+        assert resp.status_code == 201, resp.text
+        assert [row["effective_date"] for row in resp.json()] == [
+            "2028-02-29", "2029-02-28",
+        ]
+
     def test_preserves_real_prices_in_range(self, client, db_session):
         """Real prices in the growth range must not be deleted."""
         register_user(client)

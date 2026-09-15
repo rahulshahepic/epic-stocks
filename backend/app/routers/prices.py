@@ -1,6 +1,7 @@
 from datetime import date as date_cls
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from database import get_db
 from scaffold.models import User, Price
@@ -75,11 +76,26 @@ def list_prices(user: User = Depends(get_current_user), db: Session = Depends(ge
 
 @router.post("", response_model=PriceOut, status_code=201)
 def create_price(body: PriceCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    check_row_quota(db, Price, user.id)
     is_est = body.effective_date > date_cls.today()
+    existing = db.query(Price).filter(
+        Price.user_id == user.id, Price.effective_date == body.effective_date,
+    ).first()
+    # A projection is only a placeholder.  When its date arrives, accepting a
+    # reported price must replace that placeholder instead of creating a second
+    # row (or rejecting the real observation because of the uniqueness guard).
+    if existing is not None and existing.is_estimate and not is_est:
+        db.delete(existing)
+        db.flush()
+    elif existing is not None:
+        raise HTTPException(status_code=409, detail="A price already exists for that date")
+    check_row_quota(db, Price, user.id)
     price = Price(**body.model_dump(), user_id=user.id, is_estimate=is_est)
     db.add(price)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="A price already exists for that date") from None
     db.refresh(price)
     _refresh_future_payoff_sales(user, db)
     event_cache.schedule_recompute(user.id)
@@ -100,8 +116,24 @@ def update_price(price_id: int, body: PriceUpdate, user: User = Depends(get_curr
         return stale
     updates = apply_update(price, body)
     if "effective_date" in updates:
-        price.is_estimate = price.effective_date > date_cls.today()
-    db.commit()
+        is_est = price.effective_date > date_cls.today()
+        existing = db.query(Price).filter(
+            Price.user_id == user.id,
+            Price.effective_date == price.effective_date,
+            Price.id != price.id,
+        ).first()
+        if existing is not None and existing.is_estimate and not is_est:
+            db.delete(existing)
+            db.flush()
+        elif existing is not None:
+            db.rollback()
+            raise HTTPException(status_code=409, detail="A price already exists for that date")
+        price.is_estimate = is_est
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="A price already exists for that date") from None
     db.refresh(price)
     _refresh_future_payoff_sales(user, db)
     event_cache.schedule_recompute(user.id)

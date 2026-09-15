@@ -11,6 +11,7 @@ import { Field, FIELD_INPUT_CLASS } from '../../scaffold/components/ui/Field.tsx
 import { ConflictBanner } from '../../scaffold/components/ui/ConflictBanner.tsx'
 import { DEFAULT_RATES, ratesFromDefaults, ratesFromSale, type TaxRates } from './salesTaxRates.ts'
 import { Card } from '../../scaffold/components/ui/Card.tsx'
+import { useToday } from '../dateUtils.ts'
 
 type SaleMethod = 'fifo' | 'lifo' | 'epic_lifo' | 'manual_tranche'
 
@@ -120,15 +121,13 @@ export function TrancheTable({
   )
 }
 
-const TODAY = new Date().toISOString().slice(0, 10)
-
-const emptyForm: SaleForm = {
-  date: TODAY,
+const emptyForm = (today: string): SaleForm => ({
+  date: today,
   shares: 0,
   price_per_share: 0,
   notes: '',
   loan_id: null,
-}
+})
 
 function priceAt(date: string, prices: PriceEntry[]): number {
   let last = 0
@@ -286,6 +285,7 @@ export default function Sales() {
   const { viewing } = useViewing()
   const vid = viewing?.invitationId
   const readOnly = !!viewing
+  const today = useToday()
 
   const config = useConfig()
   const epicMode = !!config?.epic_mode || readOnly
@@ -298,7 +298,7 @@ export default function Sales() {
   const { data: prices } = useApiData<PriceEntry[]>(fetchPrices)
 
   const [mode, setMode] = useState<Mode>('list')
-  const [form, setForm] = useState<SaleForm>(emptyForm)
+  const [form, setForm] = useState<SaleForm>(() => emptyForm(today))
   const [taxRates, setTaxRates] = useState<TaxRates>(DEFAULT_RATES)
   const [editId, setEditId] = useState<number | null>(null)
   const [editVersion, setEditVersion] = useState(1)
@@ -403,7 +403,7 @@ export default function Sales() {
   }, [dollarTarget, form.shares, form.price_per_share, form.date, inputMode, mode])
 
   function resetForm() {
-    setForm(emptyForm)
+    setForm(emptyForm(today))
     setTaxRates(ratesFromDefaults(taxSettings))
     setEditId(null)
     setEditVersion(1)
@@ -544,7 +544,7 @@ export default function Sales() {
 
   if (mode !== 'list') {
     const isPayoff = form.loan_id != null
-    const isRecording = !epicMode && form.date < TODAY
+    const isRecording = !epicMode && form.date < today
     const isPlanAdd = mode === 'add' && !isRecording
     const title = mode === 'add' ? (isRecording ? 'Record Sale' : 'Plan Sale') : 'Edit Sale'
     const showMethodSelector = !isPayoff || (isPayoff && taxSettings?.flexible_payoff_enabled === true)
@@ -566,7 +566,7 @@ export default function Sales() {
 
         {/* Date + price */}
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Sale Date" type="date" value={form.date} min={epicMode ? TODAY : undefined}
+          <Field label="Sale Date" type="date" value={form.date} min={epicMode ? today : undefined}
             onChange={v => setForm(f => ({ ...f, date: v }))} />
           <label className="block">
             <span className="text-xs text-cs-muted">Price per Share</span>

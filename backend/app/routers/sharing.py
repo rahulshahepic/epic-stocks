@@ -1,7 +1,7 @@
 """Invitation & sharing endpoints — invite users by email, accept invites, view shared data."""
 import logging
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, EmailStr
@@ -520,6 +520,18 @@ def shared_events(
     owner = _get_shared_owner(invitation_id, user, db)
     from app.routers.events import _get_events_data
     return _get_events_data(owner, db)
+
+
+@router.get("/view/{invitation_id}/holdings")
+def shared_holdings(
+    invitation_id: int,
+    as_of: date = Query(...),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    owner = _get_shared_owner(invitation_id, user, db)
+    from app.routers.sales import _remaining_holdings
+    return _remaining_holdings(owner, db, as_of)
 
 
 @router.get("/view/{invitation_id}/grants")

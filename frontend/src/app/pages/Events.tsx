@@ -10,6 +10,7 @@ import { TaxCard } from './Sales.tsx'
 import React from 'react'
 import { fmt$, fmtNum, fmtPct, fmtPrice } from '../format.ts'
 import { Card } from '../../scaffold/components/ui/Card.tsx'
+import { useToday } from '../dateUtils.ts'
 
 const EVENT_TYPES = ['Exercise', 'Down payment exchange', 'Vesting', 'Share Price', 'Loan Payoff', 'Early Loan Payment', 'Sale']
 
@@ -22,8 +23,6 @@ const TYPE_COLORS: Record<string, string> = {
   'Early Loan Payment': 'bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300',
   'Sale': 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
 }
-
-const TODAY = new Date().toISOString().slice(0, 10)
 
 const WI_TAX_DEFAULTS: TaxSettings = {
   federal_income_rate: 0.37, federal_lt_cg_rate: 0.20, federal_st_cg_rate: 0.37,
@@ -56,10 +55,11 @@ function TaxRow({ label, value, bold }: { label: string; value: string; bold?: b
 }
 
 function VestingTaxCard({ e, ts }: { e: TimelineEvent; ts: TaxSettings }) {
+  const today = useToday()
   const incomeRate = ts.federal_income_rate + ts.state_income_rate
   const totalTax = e.income * incomeRate
   const sharesToCover = e.share_price > 0 ? Math.ceil(totalTax / e.share_price) : 0
-  const isFuture = e.date > TODAY
+  const isFuture = e.date > today
 
   return (
     <div className="rounded-lg border border-orange-200 bg-orange-50 p-4 text-xs dark:border-orange-800 dark:bg-orange-900/20">
@@ -80,9 +80,10 @@ function VestingTaxCard({ e, ts }: { e: TimelineEvent; ts: TaxSettings }) {
 }
 
 function Unrealized83bCard({ e, ts }: { e: TimelineEvent; ts: TaxSettings }) {
+  const today = useToday()
   const ltCgRate = ts.federal_lt_cg_rate + ts.niit_rate + ts.state_lt_cg_rate
   const potentialTax = e.income * ltCgRate
-  const isFuture = e.date > TODAY
+  const isFuture = e.date > today
 
   return (
     <div className="rounded-lg border border-violet-200 bg-violet-50 p-4 text-xs dark:border-violet-800 dark:bg-violet-900/20">

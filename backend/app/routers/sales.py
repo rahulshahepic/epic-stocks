@@ -158,6 +158,100 @@ def sale_aware_timeline(user: User, db: Session, as_of: date, exclude_sale_id=No
     return timeline
 
 
+def _remaining_holdings(user: User, db: Session, as_of: date) -> list[dict]:
+    """Authoritative vested shares by grant after DP exchanges and every sale."""
+    specs, loan_grants, settings, flexible = _sale_specs_for_user(user, db)
+    specs = [spec for spec in specs if spec["date"] <= as_of]
+    timeline = _build_timeline(user, db)
+    _, final_timeline = compute_all_sale_taxes(
+        timeline, specs, loan_grants, settings.loan_payoff_method,
+        settings.lot_selection_method, flexible,
+    )
+    lots = build_fifo_lots(final_timeline, as_of, order="fifo")
+    by_grant: dict[tuple[int | None, str | None], int] = {}
+    for lot in lots:
+        key = (lot[3], lot[4])
+        by_grant[key] = by_grant.get(key, 0) + int(lot[1])
+    return [
+        {"grant_year": year, "grant_type": grant_type, "vested_shares": shares}
+        for (year, grant_type), shares in sorted(
+            by_grant.items(), key=lambda item: (item[0][0] or 0, item[0][1] or ""),
+        )
+    ]
+
+
+@router.get("/holdings")
+def get_remaining_holdings(
+    as_of: date = Query(...),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return _remaining_holdings(user, db, as_of)
+
+
+def _validate_payoff_coverage(
+    user: User,
+    db: Session,
+    *,
+    loan: Loan,
+    sale_values: dict,
+    exclude_sale_id: int | None = None,
+) -> None:
+    """A linked sale means payoff, so its after-tax proceeds must cover debt."""
+    from scaffold.models import LoanPayment
+
+    sale_date = sale_values["date"]
+    paid = sum(
+        payment.amount for payment in db.query(LoanPayment).filter(
+            LoanPayment.loan_id == loan.id,
+            LoanPayment.user_id == user.id,
+            LoanPayment.date <= sale_date,
+        ).all()
+    )
+    balance = round(max(0.0, loan.amount - paid), 2)
+    if balance <= 0:
+        return
+
+    specs, loan_grants, settings, flexible = _sale_specs_for_user(user, db)
+    specs = [spec for spec in specs if spec["id"] != exclude_sale_id]
+    rates = {
+        field: sale_values.get(field)
+        if sale_values.get(field) is not None else getattr(settings, field)
+        for field in (
+            "federal_income_rate", "federal_lt_cg_rate", "federal_st_cg_rate",
+            "niit_rate", "state_income_rate", "state_lt_cg_rate",
+            "state_st_cg_rate", "lt_holding_days",
+        )
+    }
+    candidate_id = -1
+    specs.append({
+        "id": candidate_id,
+        "date": sale_date,
+        "shares": sale_values["shares"],
+        "price_per_share": sale_values["price_per_share"],
+        "loan_id": loan.id,
+        "lot_overrides": sale_values.get("lot_overrides"),
+        "rates": rates,
+    })
+    results, _ = compute_all_sale_taxes(
+        _build_timeline(user, db), specs, loan_grants,
+        settings.loan_payoff_method, settings.lot_selection_method, flexible,
+    )
+    net = round(
+        sale_values["shares"] * sale_values["price_per_share"]
+        - results[candidate_id]["estimated_tax"],
+        2,
+    )
+    if net < balance:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"After-tax sale proceeds (${net:,.2f}) do not cover the "
+                f"remaining loan balance (${balance:,.2f})"
+            ),
+        )
+
+
 # --- Sales CRUD ---
 
 @router.get("", response_model=list[SaleOut])
@@ -172,11 +266,14 @@ def create_sale(body: SaleCreate, user: User = Depends(get_current_user), db: Se
     if is_epic_mode() and body.loan_id is None and body.date < date_type.today():
         raise HTTPException(status_code=422, detail="Sales cannot be backdated in Epic mode — only future planned sales are allowed")
     if body.loan_id is not None:
-        get_owned(db, Loan, body.loan_id, user, "Loan")  # 404s if it is not theirs
+        loan = get_owned(db, Loan, body.loan_id, user, "Loan")
         # Prevent duplicate payoff sale for the same loan
         existing = db.query(Sale).filter(Sale.loan_id == body.loan_id).first()
         if existing:
             raise HTTPException(status_code=409, detail="A sale already covers this loan's payoff")
+        _validate_payoff_coverage(
+            user, db, loan=loan, sale_values=body.model_dump(),
+        )
     else:
         # Cash-out sale: enforce loan repayment rule
         _check_cash_out_allowed(user, body.date, db)
@@ -202,6 +299,21 @@ def update_sale(sale_id: int, body: SaleUpdate, user: User = Depends(get_current
     new_date = body.date or sale.date
     if sale.loan_id is None and new_date > sale.date:
         _check_cash_out_allowed(user, new_date, db)
+    elif sale.loan_id is not None:
+        loan = get_owned(db, Loan, sale.loan_id, user, "Loan")
+        values = {
+            field: getattr(sale, field)
+            for field in (
+                "date", "shares", "price_per_share", "lot_overrides",
+                "federal_income_rate", "federal_lt_cg_rate",
+                "federal_st_cg_rate", "niit_rate", "state_income_rate",
+                "state_lt_cg_rate", "state_st_cg_rate", "lt_holding_days",
+            )
+        }
+        values.update(body.model_dump(exclude_unset=True))
+        _validate_payoff_coverage(
+            user, db, loan=loan, sale_values=values, exclude_sale_id=sale.id,
+        )
     # Once the user changes what the sale says, it is theirs — the regenerator
     # must stop rewriting it. Rate overrides and notes are not part of the
     # computed figure, so they do not claim the row.
@@ -340,7 +452,7 @@ def estimate_sale(
     price_per_share: float = Query(..., gt=0, le=1_000_000, allow_inf_nan=False),
     target_net_cash: float | None = Query(default=None, gt=0, le=100_000_000, allow_inf_nan=False),
     shares: int | None = Query(default=None, gt=0, le=10_000_000),
-    sale_date: str | None = Query(default=None),
+    sale_date: date | None = Query(default=None),
     loan_id: int | None = Query(default=None),
     grant_year: int | None = Query(default=None),
     grant_type: str | None = Query(default=None),
@@ -366,15 +478,17 @@ def estimate_sale(
     loan_balance = 0.0
     gy, gt = grant_year, grant_type
     if loan_id:
-        loan = db.query(Loan).filter(Loan.id == loan_id, Loan.user_id == user.id).first()
-        if loan:
-            from scaffold.models import LoanPayment
-            paid = sum(lp.amount for lp in db.query(LoanPayment).filter(LoanPayment.loan_id == loan.id).all())
-            loan_balance = round(max(0.0, loan.amount - paid), 2)
-            if method == 'same_tranche':
-                gy, gt = loan.grant_year, loan.grant_type
+        loan = get_owned(db, Loan, loan_id, user, "Loan")
+        from scaffold.models import LoanPayment
+        as_of = sale_date or date.today()
+        paid = sum(lp.amount for lp in db.query(LoanPayment).filter(
+            LoanPayment.loan_id == loan.id, LoanPayment.date <= as_of,
+        ).all())
+        loan_balance = round(max(0.0, loan.amount - paid), 2)
+        if method == 'same_tranche':
+            gy, gt = loan.grant_year, loan.grant_type
 
-    as_of = date.fromisoformat(sale_date) if sale_date else date.today()
+    as_of = sale_date or date.today()
     timeline = sale_aware_timeline(user, db, as_of)
 
     lots = build_fifo_lots(timeline, as_of, order=lot_order,

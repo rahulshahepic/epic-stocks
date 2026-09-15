@@ -463,7 +463,7 @@ def _estimate_sale(ctx: ToolContext, args: dict):
         price_per_share=price,
         target_net_cash=target,
         shares=shares,
-        sale_date=sale_date.isoformat() if sale_date else None,
+        sale_date=sale_date,
         loan_id=_opt_int(args, "loan_id"),
         grant_year=None,
         grant_type=None,

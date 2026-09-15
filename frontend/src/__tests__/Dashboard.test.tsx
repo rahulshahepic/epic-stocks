@@ -145,6 +145,14 @@ function mockApi(prices = MOCK_PRICES, sales = MOCK_SALES) {
     if (url.includes('/api/tips')) {
       return new Response(JSON.stringify([]), { status: 200 })
     }
+    if (url.includes('/api/sales/holdings')) {
+      const asOf = new URL(url, 'http://localhost').searchParams.get('as_of') ?? ''
+      const payoffOccurred = sales.some(sale => sale.date <= asOf)
+      return new Response(JSON.stringify([
+        { grant_year: 2020, grant_type: 'Purchase', vested_shares: payoffOccurred ? 0 : 2000 },
+        { grant_year: 2030, grant_type: 'Purchase', vested_shares: 0 },
+      ]), { status: 200 })
+    }
     if (url.includes('/api/sales')) {
       return new Response(JSON.stringify(sales), { status: 200 })
     }

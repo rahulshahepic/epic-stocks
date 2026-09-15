@@ -160,19 +160,12 @@ export function vestingYears(draft: GrantDraft): string[] {
   const start = draft.vest_start
   const periods = parseInt(draft.periods) || 0
   if (!start || !periods) return []
-  const base = new Date(start + 'T00:00:00')
-  return Array.from({ length: periods }, (_, i) => {
-    const d = new Date(base)
-    d.setFullYear(d.getFullYear() + i)
-    return d.toISOString().slice(0, 10)
-  })
+  return Array.from({ length: periods }, (_, i) => addCalendarYears(start, i))
 }
 
 /** The date `years` after an ISO date, as an ISO date. */
 export function addYears(iso: string, years: number): Date {
-  const d = new Date(iso + 'T00:00:00')
-  d.setFullYear(d.getFullYear() + years)
-  return d
+  return new Date(addCalendarYears(iso, years) + 'T00:00:00')
 }
 
 /** Shares vesting in period `i` of `periods`; the last period takes the remainder. */
@@ -180,3 +173,4 @@ export function sharesInPeriod(totalShares: number, periods: number, i: number):
   const per = Math.floor(totalShares / periods)
   return i === periods - 1 ? totalShares - per * (periods - 1) : per
 }
+import { addCalendarYears } from '../../dateUtils.ts'

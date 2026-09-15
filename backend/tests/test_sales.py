@@ -593,6 +593,18 @@ def test_estimate_with_target_net_cash_grosses_up(client):
     assert data["gross_proceeds"] >= 8.78
 
 
+def test_estimate_rejects_malformed_date(client):
+    register_user(client)
+    resp = client.get("/api/sales/estimate?price_per_share=10&shares=1&sale_date=not-a-date")
+    assert resp.status_code == 422
+
+
+def test_estimate_rejects_unknown_loan(client):
+    register_user(client)
+    resp = client.get("/api/sales/estimate?price_per_share=10&shares=1&loan_id=9999")
+    assert resp.status_code == 404
+
+
 # ============================================================
 # LOAN PAYMENT CRUD TESTS
 # ============================================================
@@ -725,7 +737,7 @@ def test_cash_out_allowed_when_no_loans(client):
 def test_cash_out_allowed_after_loan_covered_by_sale(client):
     """Cash-out sale allowed once loan has a linked payoff sale."""
     register_user(client)
-    loan_id = _create_loan(client, {**LOAN_DATA, "due_date": "2023-01-01"})
+    loan_id = _create_loan(client, {**LOAN_DATA, "amount": 100, "due_date": "2023-01-01"})
     # Create a linked (payoff) sale for this loan
     client.post("/api/sales", json={
         "date": "2023-01-01", "shares": 50, "price_per_share": 10.0, "loan_id": loan_id,
@@ -740,7 +752,7 @@ def test_cash_out_allowed_after_loan_covered_by_sale(client):
 def test_duplicate_payoff_sale_rejected(client):
     """A second sale linked to the same loan is rejected."""
     register_user(client)
-    loan_id = _create_loan(client, {**LOAN_DATA, "due_date": "2023-01-01"})
+    loan_id = _create_loan(client, {**LOAN_DATA, "amount": 100, "due_date": "2023-01-01"})
     client.post("/api/sales", json={
         "date": "2023-01-01", "shares": 50, "price_per_share": 10.0, "loan_id": loan_id,
     })
@@ -773,6 +785,47 @@ def test_create_loan_auto_sale_skipped_without_price(client):
     assert resp.status_code == 201
     sales_resp = client.get("/api/sales")
     assert len(sales_resp.json()) == 0
+
+
+def test_atomic_loan_endpoint_marks_computed_sale_generated(client):
+    register_user(client)
+    seed_grant(client)
+    client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 10})
+    resp = client.post("/api/loans/with-payoff", json={
+        "loan": {**LOAN_DATA, "amount": 100},
+        "payoff_sale": {"enabled": True, "niit_rate": 0.01},
+    })
+    assert resp.status_code == 201, resp.text
+    sales = client.get("/api/sales").json()
+    assert len(sales) == 1
+    assert sales[0]["loan_id"] == resp.json()["id"]
+    assert sales[0]["is_generated"] is True
+    assert sales[0]["niit_rate"] == 0.01
+
+
+def test_remaining_holdings_include_sales_and_down_payment_exchanges(client):
+    register_user(client)
+    bonus = {
+        "year": 2020, "type": "Bonus", "shares": 1000, "price": 0,
+        "vest_start": "2021-01-01", "periods": 1,
+        "exercise_date": "2020-12-31", "dp_shares": 0,
+    }
+    assert client.post("/api/grants", json=bonus).status_code == 201
+    purchase = {
+        "year": 2022, "type": "Purchase", "shares": 100, "price": 1,
+        "vest_start": "2024-01-01", "periods": 1,
+        "exercise_date": "2022-01-01", "dp_shares": -200,
+    }
+    assert client.post("/api/grants", json=purchase).status_code == 201
+    client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 10})
+    sale = client.post("/api/sales", json={
+        "date": "2023-01-01", "shares": 100, "price_per_share": 10,
+    })
+    assert sale.status_code == 201, sale.text
+    resp = client.get("/api/sales/holdings?as_of=2023-01-02")
+    assert resp.status_code == 200
+    row = next(r for r in resp.json() if r["grant_year"] == 2020)
+    assert row["vested_shares"] == 700
 
 
 # ============================================================

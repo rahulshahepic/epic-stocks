@@ -333,8 +333,8 @@ export function healthInsuranceCost({
   status: FilingStatus
 }): number {
   if (!zeroHIPost65) return preMedicareCost
-  const ownerOnMedicare = ownerAge > 65
-  const spouseOnMedicare = hasSpouse && spouseAge > 65
+  const ownerOnMedicare = ownerAge >= 65
+  const spouseOnMedicare = hasSpouse && spouseAge >= 65
   if (hasSpouse) {
     let cost = 0
     if (ownerOnMedicare) {
@@ -1655,6 +1655,8 @@ export interface SimParams {
   // Spouse extension. When includeSpouse is false the rest are ignored.
   includeSpouse: boolean
   spouseCurrentAge: number  // age at simulation start (derived from spouse DOB + retirement date)
+  simulationStartDate?: string // exact calendar anchor for FRA-year rules
+  spouseBirthDate?: string     // exact calendar anchor for FRA-year rules
   spouseSsMonthly: number   // $/month at FRA (0 = no spouse SS)
   spouseClaimAge: number    // 62-70
   spouseFra: number         // spouse's full retirement age (66 or 67 depending on birth year)
@@ -1868,15 +1870,16 @@ export function spouseSsAfterEarningsTest(
   spouseGrossWorkM: number, // $M/month gross wages
   spouseAge: number,
   spouseFra: number,
+  inFraCalendarYear = false,
 ): number {
   if (spouseGrossWorkM <= 0 || spouseAge >= spouseFra) return ssMonthlyM
   const annualWages = spouseGrossWorkM * 12 * 1_000_000  // → $
   const annualSs = ssMonthlyM * 12 * 1_000_000           // → $
   let withheld: number
-  if (spouseAge < spouseFra) {
-    withheld = Math.max(0, annualWages - SS_EARNINGS_EXEMPT_BEFORE_FRA) / 2
-  } else {
+  if (inFraCalendarYear) {
     withheld = Math.max(0, annualWages - SS_EARNINGS_EXEMPT_FRA_YEAR) / 3
+  } else {
+    withheld = Math.max(0, annualWages - SS_EARNINGS_EXEMPT_BEFORE_FRA) / 2
   }
   return Math.max(0, annualSs - withheld) / 12 / 1_000_000  // → $M/month
 }
@@ -1993,6 +1996,14 @@ export function simulate(params: SimParams): SimResult {
   if (fan0Idx != null) fanWealth[fan0Idx].fill(startingTotal)
 
   const jumpProb = 1 / MEAN_BLOCK_LEN
+  const simulationStartYear = params.simulationStartDate
+    ? Number(params.simulationStartDate.slice(0, 4)) : null
+  const simulationStartMonth = params.simulationStartDate
+    ? Number(params.simulationStartDate.slice(5, 7)) - 1 : null
+  const spouseBirthYear = params.spouseBirthDate
+    ? Number(params.spouseBirthDate.slice(0, 4)) : null
+  const spouseFraCalendarYear = spouseBirthYear == null
+    ? null : spouseBirthYear + Math.floor(params.spouseFra)
 
   // Initial HI estimate (zero MAGI) — seeds the first year's monthly
   // amortization. IRMAA is updated annually at year-end using the year's
@@ -2135,9 +2146,17 @@ export function simulate(params: SimParams): SimResult {
         && spouseAge <= params.spouseStopWorkAge
       const spouseSsRawM = hasSpouse && spouseAge >= params.spouseClaimAge
         ? spouseSsAnnual / 12 / 1_000_000 : 0
+      const simulationCalendarYear = simulationStartYear != null && simulationStartMonth != null
+        ? simulationStartYear + Math.floor((simulationStartMonth + m) / 12)
+        : null
+      const inFraCalendarYear = simulationCalendarYear != null
+        && spouseFraCalendarYear != null
+        && simulationCalendarYear === spouseFraCalendarYear
+        && spouseAge < params.spouseFra
       // Apply SSA earnings test: benefits are reduced while claiming before FRA + working.
       const spouseSsM = spouseSsAfterEarningsTest(
-        spouseSsRawM, spouseWorking ? spouseWorkMonthM : 0, spouseAge, params.spouseFra)
+        spouseSsRawM, spouseWorking ? spouseWorkMonthM : 0, spouseAge,
+        params.spouseFra, inFraCalendarYear)
       const ssGrossM = ownerSsM + spouseSsM
       const ssTaxableMonthM = ssGrossM * 0.85
 

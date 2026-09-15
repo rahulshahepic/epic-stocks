@@ -11,6 +11,7 @@ import {
   fraFromBirthYear,
   HISTORICAL_RETURNS,
   histogram,
+  healthInsuranceCost,
   interpolateGlide,
   irmaaSurcharge,
   migrateLoadedParams,
@@ -23,6 +24,7 @@ import {
   simulate,
   SPEND_RAMP_FLOOR,
   SS_EARNINGS_EXEMPT_BEFORE_FRA,
+  SS_EARNINGS_EXEMPT_FRA_YEAR,
   SS_WAGE_BASE_REAL,
   ssAdjustment,
   spouseSsAfterEarningsTest,
@@ -1168,6 +1170,34 @@ describe('spouseSsAfterEarningsTest', () => {
     const ssM = 1_000 / 12 / 1_000_000    // $1K/yr SS
     const workM = 500_000 / 12 / 1_000_000 // $500K wages — withheld > benefit
     expect(spouseSsAfterEarningsTest(ssM, workM, 63, 67)).toBe(0)
+  })
+
+  it('uses the FRA-calendar-year $1-for-$3 rule before the FRA birthday', () => {
+    const annualSs = 24_000
+    const annualWages = SS_EARNINGS_EXEMPT_FRA_YEAR + 9_000
+    const result = spouseSsAfterEarningsTest(
+      annualSs / 12 / 1_000_000,
+      annualWages / 12 / 1_000_000,
+      66.5,
+      67,
+      true,
+    )
+    expect(result).toBeCloseTo((annualSs - 3_000) / 12 / 1_000_000, 9)
+  })
+})
+
+describe('healthInsuranceCost Medicare boundary', () => {
+  it('switches to Medicare at age 65, not one year later', () => {
+    const at64 = healthInsuranceCost({
+      ownerAge: 64, spouseAge: 0, hasSpouse: false,
+      preMedicareCost: 50_000, zeroHIPost65: true, magi: 0, status: 'single',
+    })
+    const at65 = healthInsuranceCost({
+      ownerAge: 65, spouseAge: 0, hasSpouse: false,
+      preMedicareCost: 50_000, zeroHIPost65: true, magi: 0, status: 'single',
+    })
+    expect(at64).toBe(50_000)
+    expect(at65).toBeLessThan(50_000)
   })
 })
 

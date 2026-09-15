@@ -1,12 +1,17 @@
 import math
+from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from pydantic import field_validator
+from sqlalchemy.exc import IntegrityError
 from datetime import date, date as date_cls
 
 from database import get_db
-from scaffold.models import User, Grant, Loan, Price, Sale, TaxSettings, GrantProgramSettings
-from schemas import InputModel, GrantOut, LoanOut, PriceOut, GrowthPriceRequest
+from scaffold.models import User, Grant, Loan, Price, TaxSettings, GrantProgramSettings
+from schemas import (
+    InputModel, GrantOut, LoanOut, PriceOut, GrowthPriceRequest,
+    Year, Shares, Price as PositivePrice, CostBasis, Periods,
+    DownPaymentShares, Money, InterestRate, LoanNumber, PayoffSaleOptions,
+)
 from scaffold.auth import get_current_user
 from scaffold.quota import check_row_quota
 from app import event_cache
@@ -15,103 +20,35 @@ router = APIRouter(prefix="/api/flows", tags=["flows"])
 
 
 class NewPurchaseRequest(InputModel):
-    year: int
-    shares: int
-    price: float
+    year: Year
+    shares: Shares
+    price: CostBasis
     vest_start: date
-    periods: int
+    periods: Periods
     exercise_date: date
-    dp_shares: int = 0
-    loan_amount: float | None = None
-    loan_rate: float | None = None
+    dp_shares: DownPaymentShares = 0
+    loan_amount: Money | None = None
+    loan_rate: InterestRate | None = None
     loan_due_date: date | None = None
-    loan_number: str | None = None
+    loan_number: LoanNumber | None = None
     generate_payoff_sale: bool = True
-
-    @field_validator("year")
-    @classmethod
-    def year_range(cls, v):
-        if v < 1900 or v > 2100:
-            raise ValueError("year must be between 1900 and 2100")
-        return v
-
-    @field_validator("shares")
-    @classmethod
-    def shares_positive(cls, v):
-        if v <= 0:
-            raise ValueError("shares must be positive")
-        return v
-
-    @field_validator("price")
-    @classmethod
-    def price_non_negative(cls, v):
-        if v < 0:
-            raise ValueError("price cannot be negative")
-        return v
-
-    @field_validator("periods")
-    @classmethod
-    def periods_positive(cls, v):
-        if v <= 0:
-            raise ValueError("periods must be positive")
-        return v
-
-    @field_validator("loan_amount")
-    @classmethod
-    def loan_amount_positive(cls, v):
-        if v is not None and v <= 0:
-            raise ValueError("loan_amount must be positive")
-        return v
-
-    @field_validator("loan_rate")
-    @classmethod
-    def loan_rate_non_negative(cls, v):
-        if v is not None and v < 0:
-            raise ValueError("loan_rate cannot be negative")
-        return v
+    payoff_sale: PayoffSaleOptions | None = None
 
 
 class AnnualPriceRequest(InputModel):
     effective_date: date
-    price: float
-
-    @field_validator("price")
-    @classmethod
-    def price_positive(cls, v):
-        if v <= 0:
-            raise ValueError("price must be positive")
-        return v
+    price: PositivePrice
 
 
 class AddBonusRequest(InputModel):
-    year: int
-    shares: int
-    price: float = 0.0
+    year: Year
+    shares: Shares
+    price: CostBasis = 0.0
     vest_start: date
-    periods: int
+    periods: Periods
     exercise_date: date
     election_83b: bool = False
 
-    @field_validator("year")
-    @classmethod
-    def year_range(cls, v):
-        if v < 1900 or v > 2100:
-            raise ValueError("year must be between 1900 and 2100")
-        return v
-
-    @field_validator("shares")
-    @classmethod
-    def shares_positive(cls, v):
-        if v <= 0:
-            raise ValueError("shares must be positive")
-        return v
-
-    @field_validator("periods")
-    @classmethod
-    def periods_positive(cls, v):
-        if v <= 0:
-            raise ValueError("periods must be positive")
-        return v
 
 
 def _compute_min_dp(total_purchase: float, settings: GrantProgramSettings | None) -> float:
@@ -125,6 +62,8 @@ def _compute_min_dp(total_purchase: float, settings: GrantProgramSettings | None
 
 @router.post("/new-purchase", status_code=201)
 def new_purchase(body: NewPurchaseRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # The natural key check and insert belong to one serialized operation.
+    db.query(User).filter(User.id == user.id).with_for_update().first()
     existing = db.query(Grant).filter(
         Grant.user_id == user.id, Grant.year == body.year, Grant.type == "Purchase"
     ).first()
@@ -180,7 +119,7 @@ def new_purchase(body: NewPurchaseRequest, user: User = Depends(get_current_user
     db.add(grant)
 
     loan = None
-    if loan_amount is not None:
+    if loan_amount is not None and loan_amount > 0:
         check_row_quota(db, Loan, user.id)
         loan = Loan(
             user_id=user.id, grant_year=body.year, grant_type="Purchase",
@@ -191,25 +130,20 @@ def new_purchase(body: NewPurchaseRequest, user: User = Depends(get_current_user
         )
         db.add(loan)
 
+    # Flush assigns ids and makes the new rows visible to the payoff calculator;
+    # the final commit remains atomic with the generated sale.
+    db.flush()
+    if loan:
+        payoff = body.payoff_sale
+        enabled = payoff.enabled if payoff is not None else body.generate_payoff_sale
+        if enabled:
+            from app.routers.loans import _upsert_generated_payoff_sale
+            _upsert_generated_payoff_sale(loan, user, db, payoff)
+
     db.commit()
     db.refresh(grant)
-
     if loan:
         db.refresh(loan)
-        if body.generate_payoff_sale:
-            from app.routers.loans import _compute_payoff_sale
-            suggestion = _compute_payoff_sale(loan, user, db)
-            if suggestion["shares"] > 0 and suggestion["price_per_share"] > 0:
-                sale = Sale(
-                    user_id=user.id,
-                    date=suggestion["date"],
-                    shares=suggestion["shares"],
-                    price_per_share=suggestion["price_per_share"],
-                    loan_id=loan.id,
-                    notes=suggestion["notes"],
-                )
-                db.add(sale)
-                db.commit()
 
     result = {"grant": GrantOut.model_validate(grant)}
     if loan:
@@ -225,10 +159,22 @@ def annual_price(body: AnnualPriceRequest, user: User = Depends(get_current_user
     is_est = body.effective_date > date_cls.today()
     if is_epic_mode() and not is_est:
         raise HTTPException(status_code=422, detail="Only future-dated prices can be added in Epic mode")
+    existing = db.query(Price).filter(
+        Price.user_id == user.id, Price.effective_date == body.effective_date,
+    ).first()
+    if existing is not None and existing.is_estimate and not is_est:
+        db.delete(existing)
+        db.flush()
+    elif existing is not None:
+        raise HTTPException(status_code=409, detail="A price already exists for that date")
     check_row_quota(db, Price, user.id)
     price = Price(user_id=user.id, effective_date=body.effective_date, price=body.price, is_estimate=is_est)
     db.add(price)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="A price already exists for that date") from None
     db.refresh(price)
     # Future payoff sales were sized against whatever price was current when
     # they were generated; a new price point can make that stale, so refresh
@@ -260,18 +206,30 @@ def growth_price(body: GrowthPriceRequest, user: User = Depends(get_current_user
         Price.effective_date <= body.through_date,
     ).delete(synchronize_session=False)
 
-    years = body.through_date.year - body.first_date.year + 1
-    check_row_quota(db, Price, user.id, adding=years)
+    projection_dates: list[date] = []
+    current_date = body.first_date
+    while current_date <= body.through_date:
+        projection_dates.append(current_date)
+        current_date = current_date + relativedelta(years=1)
+    real_dates = {
+        row.effective_date for row in db.query(Price).filter(
+            Price.user_id == user.id,
+            Price.is_estimate == False,
+            Price.effective_date.in_(projection_dates),
+        ).all()
+    }
+    check_row_quota(db, Price, user.id, adding=len(projection_dates) - len(real_dates))
 
     multiplier = 1 + body.annual_growth_pct / 100
     entries: list[Price] = []
-    current_date = body.first_date
     current_price = round(base.price * multiplier, 2)
-    while current_date <= body.through_date:
+    for current_date in projection_dates:
+        if current_date in real_dates:
+            current_price = round(current_price * multiplier, 2)
+            continue
         p = Price(user_id=user.id, effective_date=current_date, price=current_price, is_estimate=True)
         db.add(p)
         entries.append(p)
-        current_date = current_date.replace(year=current_date.year + 1)
         current_price = round(current_price * multiplier, 2)
 
     db.commit()

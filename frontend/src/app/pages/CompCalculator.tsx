@@ -25,6 +25,7 @@ import {
 } from './CompCalculator.math.ts'
 import { fmt$, fmtPct } from '../format.ts'
 import { Card } from '../../scaffold/components/ui/Card.tsx'
+import { localToday, useToday } from '../dateUtils.ts'
 import { cardClass } from '../../scaffold/components/ui/cardShell.ts'
 
 interface AllData {
@@ -157,8 +158,7 @@ interface YearRow {
   totalTaxEquiv5y: number | null
 }
 
-const TODAY = new Date().toISOString().slice(0, 10)
-const CURRENT_YEAR = new Date().getFullYear()
+const currentYear = () => Number(localToday().slice(0, 4))
 
 interface ChartColors { grid: string; axis: string; tooltipBg: string; tooltipText: string }
 function useChartColors(): ChartColors {
@@ -372,7 +372,7 @@ function YearDetailPanel({ row, m, c, useDeduction, year }: {
     <div className="rounded-lg border border-rose-300 bg-rose-50 p-4 dark:border-rose-700 dark:bg-rose-950/30">
       <div className="flex items-baseline justify-between gap-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-cs-brand">
-          {row.year}{row.year === CURRENT_YEAR ? ' · current year' : ''}
+          {row.year}{row.year === currentYear() ? ' · current year' : ''}
         </p>
         {row.isProjected && (
           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
@@ -531,14 +531,15 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
   onEdit: (id: string, updated: CompEvent) => void
   onDelete: (id: string) => void
 }) {
+  const today = useToday()
   const [open, setOpen] = useState(false)
 
   // Add-new state
   const [addingSalary, setAddingSalary] = useState(false)
-  const [newSalDate, setNewSalDate] = useState(TODAY)
+  const [newSalDate, setNewSalDate] = useState(today)
   const [newSalAmt, setNewSalAmt] = useState('')
   const [addingBonus, setAddingBonus] = useState(false)
-  const [newBonDate, setNewBonDate] = useState(TODAY)
+  const [newBonDate, setNewBonDate] = useState(today)
   const [newBonAmt, setNewBonAmt] = useState('')
   const [newBonNote, setNewBonNote] = useState('')
 
@@ -568,7 +569,7 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
       const [y, mo, d] = latest.split('-')
       setNewSalDate(`${parseInt(y) + 1}-${mo}-${d}`)
     } else {
-      setNewSalDate(TODAY)
+      setNewSalDate(today)
     }
     setNewSalAmt('')
     setAddingSalary(true)
@@ -576,7 +577,7 @@ function CompEventsEditor({ events, readOnly, onAdd, onEdit, onDelete }: {
 
   function openAddBonus() {
     setEditingId(null)
-    const latestDate = bonusEvents.length > 0 ? bonusEvents[0].date : `${CURRENT_YEAR - 1}-12-31`
+    const latestDate = bonusEvents.length > 0 ? bonusEvents[0].date : `${currentYear() - 1}-12-31`
     const [y, mo, d] = latestDate.split('-')
     setNewBonDate(`${parseInt(y) + 1}-${mo}-${d}`)
     setNewBonAmt('')
@@ -956,6 +957,7 @@ export default function CompCalculator() {
 }
 
 function CompCalculatorAccount() {
+  const today = useToday()
   const { viewing } = useViewing()
   const vid = viewing?.invitationId
   const fetcher = useCallback(async (): Promise<AllData> => {
@@ -1090,7 +1092,7 @@ function CompCalculatorAccount() {
   // one they picked is no longer in `rows` — this year is shown, or the last.
   // Settling that here rather than in an effect means the first paint already
   // has a row selected instead of correcting itself a frame later.
-  const defaultYear = rows.find(r => r.year === CURRENT_YEAR)?.year ?? rows[rows.length - 1]?.year ?? null
+  const defaultYear = rows.find(r => r.year === currentYear())?.year ?? rows[rows.length - 1]?.year ?? null
   const shownYear = selectedYear != null && rows.some(r => r.year === selectedYear)
     ? selectedYear
     : defaultYear
@@ -1270,8 +1272,8 @@ function CompCalculatorAccount() {
                 />
                 <Tooltip content={<ChartTooltip c={chartColors} useDeduction={deductOn} m={m} taxEquivView={taxEquivView} showTotal={showTotal} />} cursor={{ fill: 'rgba(225, 29, 72, 0.08)' }} />
                 <ReferenceLine y={0} stroke={chartColors.axis} strokeWidth={1} />
-                {rows.some(r => r.year === CURRENT_YEAR) && (
-                  <ReferenceLine x={CURRENT_YEAR} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />
+                {rows.some(r => r.year === currentYear()) && (
+                  <ReferenceLine x={currentYear()} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: 'Today', fontSize: 10, fill: '#f59e0b', position: 'top' }} />
                 )}
                 {exitDate && (
                   <ReferenceLine x={parseInt(exitDate.slice(0, 4))} stroke="#6366f1" strokeDasharray="4 4" label={{ value: 'Exit', fontSize: 10, fill: '#6366f1', position: 'insideTopRight' }} />
@@ -1317,7 +1319,7 @@ function CompCalculatorAccount() {
             m={m}
             c={c}
             useDeduction={deductOn}
-            year={shownYear ?? CURRENT_YEAR}
+            year={shownYear ?? currentYear()}
           />
 
           <label className={cardClass('sm', 'flex cursor-pointer items-center gap-2')}>
@@ -1348,7 +1350,7 @@ function CompCalculatorAccount() {
       )}
 
       <footer className="pt-4 text-center text-[10px] text-cs-muted">
-        As of {TODAY}. All calculations are local to your browser.
+        As of {today}. All calculations are local to your browser.
       </footer>
     </div>
   )

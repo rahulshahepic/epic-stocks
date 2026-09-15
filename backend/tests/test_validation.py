@@ -69,6 +69,16 @@ def test_grant_update_validates_too(client):
     assert resp.status_code == 422
 
 
+def test_grant_rejects_positive_down_payment_shares(client):
+    register_user(client)
+    resp = client.post("/api/grants", json={
+        "year": 2020, "type": "Purchase", "shares": 100, "price": 5.0,
+        "vest_start": "2020-01-01", "periods": 5,
+        "exercise_date": "2025-01-01", "dp_shares": 10,
+    })
+    assert resp.status_code == 422
+
+
 # ============================================================
 # LOAN VALIDATION
 # ============================================================
@@ -120,6 +130,13 @@ def test_price_rejects_negative(client):
     assert resp.status_code == 422
 
 
+def test_price_rejects_duplicate_user_date(client):
+    register_user(client)
+    body = {"effective_date": "2020-01-01", "price": 5}
+    assert client.post("/api/prices", json=body).status_code == 201
+    assert client.post("/api/prices", json={**body, "price": 6}).status_code == 409
+
+
 # ============================================================
 # FLOW VALIDATION
 # ============================================================
@@ -131,6 +148,26 @@ def test_flow_purchase_rejects_bad_data(client):
         "vest_start": "2020-01-01", "periods": 5, "exercise_date": "2025-01-01",
     })
     assert resp.status_code == 422
+
+
+def test_flow_purchase_rejects_positive_down_payment_shares(client):
+    register_user(client)
+    resp = client.post("/api/flows/new-purchase", json={
+        "year": 2020, "shares": 100, "price": 5.0,
+        "vest_start": "2020-01-01", "periods": 5,
+        "exercise_date": "2025-01-01", "dp_shares": 10,
+    })
+    assert resp.status_code == 422
+
+
+def test_flow_purchase_accepts_zero_cost_basis(client):
+    register_user(client)
+    resp = client.post("/api/flows/new-purchase", json={
+        "year": 2020, "shares": 100, "price": 0,
+        "vest_start": "2020-01-01", "periods": 5,
+        "exercise_date": "2025-01-01",
+    })
+    assert resp.status_code == 201
 
 def test_flow_bonus_rejects_zero_periods(client):
     register_user(client)

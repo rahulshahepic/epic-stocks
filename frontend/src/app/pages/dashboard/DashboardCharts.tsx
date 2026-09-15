@@ -7,13 +7,14 @@ import {
   ChartBox, DetailCard, IncomeCapGainsChart, PriceChart, SharesChart,
 } from '../../components/charts.tsx'
 import {
-  TODAY, filterByDateRange, numericTicks, smartInterval, todayIndex,
+  filterByDateRange, numericTicks, smartInterval, todayIndex,
   type ChartColors, type DateRange,
 } from '../../components/chartAxes.ts'
 import { fmt$, fmtDate, fmtFullDate } from '../../format.ts'
 import type {
   DashboardData, LoanEntry, PriceEntry, TaxSettings, TimelineEvent,
 } from '../../../api.ts'
+import { useToday } from '../../dateUtils.ts'
 
 const WI_TAX_DEFAULTS: TaxSettings = {
   federal_income_rate: 0.37,
@@ -42,6 +43,7 @@ function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices }: {
   hasFuturePrices: boolean
 }) {
   const [selected, setSelected] = useState<number | null>(null)
+  const today = useToday()
 
   const data = useMemo(() => {
     const incomeRate = taxSettings.federal_income_rate + taxSettings.state_income_rate
@@ -77,7 +79,7 @@ function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices }: {
       }
 
       // Track future price surplus (same logic as IncomeCapGainsChart)
-      if (hasFuturePrices && e.date > TODAY) {
+      if (hasFuturePrices && e.date > today) {
         const vs = e.vested_shares ?? 0
         if (e.event_type === 'Share Price') {
           cumFuturePriceIncrease += e.price_increase
@@ -115,7 +117,7 @@ function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices }: {
         taxPaid: cumTaxPaid > 0 ? cumTaxPaid : null as number | null,
       }
     })
-  }, [events, loans, taxSettings, range, hasFuturePrices])
+  }, [events, loans, taxSettings, range, hasFuturePrices, today])
 
   const tIdx = todayIndex(data)
   const sel = selected !== null && selected < data.length ? data[selected] : null

@@ -65,7 +65,9 @@ def _validate_grant(g: dict, row: int) -> list[str]:
     periods = g.get("periods")
     if not isinstance(periods, (int, float)) or int(periods) <= 0:
         errors.append(f"Row {row}: periods must be positive")
-    # dp_shares can be negative (DP exchange returns shares)
+    dp_shares = g.get("dp_shares", 0)
+    if not isinstance(dp_shares, (int, float)) or int(dp_shares) > 0:
+        errors.append(f"Row {row}: dp_shares must be zero or negative")
     for field in ("vest_start", "exercise_date"):
         v = g.get(field)
         if v is None:
@@ -266,6 +268,15 @@ def import_excel(
         if key in seen_grants:
             all_errors.append(f"Duplicate grant: {key[1]} {key[0]} appears more than once in the Schedule sheet")
         seen_grants.add(key)
+
+    seen_price_dates: set[date] = set()
+    for p in prices_raw:
+        effective_date = _to_date(p["date"])
+        if effective_date in seen_price_dates:
+            all_errors.append(
+                f"Duplicate price: {effective_date.isoformat()} appears more than once in the Prices sheet"
+            )
+        seen_price_dates.add(effective_date)
 
     # Every loan must hang off a grant. A loan that resolves to none is invisible
     # to the payoff schedule, the interest pool and the cost basis, yet still
@@ -1213,6 +1224,11 @@ def export_holdings_report(
 
     initial_price = prices_dicts[0]["price"] if prices_dicts else 0
     timeline = get_timeline(user.id, grants_dicts, prices_dicts, loans_dicts, initial_price) if grants_dicts else []
+    from app.routers.sales import _remaining_holdings
+    remaining_by_grant = {
+        (row["grant_year"], row["grant_type"]): row["vested_shares"]
+        for row in _remaining_holdings(user, db, as_of_date)
+    }
 
     # Current share price as of date
     current_price = 0.0
@@ -1287,7 +1303,8 @@ def export_holdings_report(
                     vested += base + (1 if p < rem else 0)
         unvested = g.shares - vested
         unvested_value = unvested * (g.price or 0.0)
-        vested_value = vested * current_price
+        held_vested = remaining_by_grant.get((g.year, g.type), 0)
+        vested_value = held_vested * current_price
 
         # Outstanding loans for this grant
         grant_loans = [ln for ln in loans_db
@@ -1316,14 +1333,14 @@ def export_holdings_report(
         _report_cell(ws, row, 1, f"{g.year} {g.type}")
         _report_cell(ws, row, 2, g.exercise_date, "mm/dd/yyyy")
         _report_cell(ws, row, 3, g.price, "\\$#,##0.00")
-        _report_cell(ws, row, 4, vested, "#,##0")
+        _report_cell(ws, row, 4, held_vested, "#,##0")
         _report_cell(ws, row, 5, unvested, "#,##0")
         _report_cell(ws, row, 6, round(unvested_value, 2), "\\$#,##0")
         _report_cell(ws, row, 7, round(vested_value, 2), "\\$#,##0")
         _report_cell(ws, row, 8, round(total_tax, 2), "\\$#,##0")
         _report_cell(ws, row, 9, round(total_loan, 2), "\\$#,##0")
 
-        totals["vested"] += vested
+        totals["vested"] += held_vested
         totals["unvested"] += unvested
         totals["unvested_value"] += unvested_value
         totals["value"] += vested_value

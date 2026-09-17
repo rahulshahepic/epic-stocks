@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { TODAY, useChartColors, type DateRange } from '../components/chartAxes.ts'
+import { useChartColors, type DateRange } from '../components/chartAxes.ts'
+import { useToday } from '../dateUtils.ts'
 import { fmt$, fmtFullDate, fmtNum, fmtPrice } from '../format.ts'
 import { CostCards } from './dashboard/CostCards.tsx'
 import { DashboardCharts } from './dashboard/DashboardCharts.tsx'
@@ -11,7 +12,7 @@ import {
   findStalePrice, hasDivergentFuturePrice, lastTimelineDate, maxTimelineDate,
 } from './Dashboard.math.ts'
 import { api, apiFetchBlob } from '../../api.ts'
-import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, GrantEntry, TaxSettings, SaleEntry, ExitPreview, DeductionPreview } from '../../api.ts'
+import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, GrantEntry, GrantHoldingShares, TaxSettings, SaleEntry, ExitPreview, DeductionPreview } from '../../api.ts'
 import { platform } from '../../platform/index.ts'
 import ExitBreakdownCard from '../components/ExitBreakdownCard.tsx'
 import { useApiData } from '../hooks/useApiData.ts'
@@ -76,6 +77,7 @@ export default function Dashboard() {
   const { viewing } = useViewing()
   const vid = viewing?.invitationId
   const readOnly = !!viewing
+  const today = useToday()
 
   const fetchDashboard = useCallback(() => vid ? api.getSharedDashboard(vid) : api.getDashboard(), [vid])
   const fetchEvents = useCallback(() => vid ? api.getSharedEvents(vid) : api.getEvents(), [vid])
@@ -109,10 +111,20 @@ export default function Dashboard() {
   })
   const [cardDate, setCardDate] = useState<string>(() => {
     const mode = localStorage.getItem('dashboard_dateMode')
-    if (!mode || mode === 'today') return TODAY
-    if (mode === 'last-event') return TODAY // resolved after events load via effect
-    return localStorage.getItem('dashboard_cardDate') ?? TODAY
+    if (!mode || mode === 'today') return today
+    if (mode === 'last-event') return today // resolved after events load via effect
+    return localStorage.getItem('dashboard_cardDate') ?? today
   })
+  const [holdingsDate, setHoldingsDate] = useState(cardDate)
+  useEffect(() => {
+    const timer = setTimeout(() => setHoldingsDate(cardDate), 250)
+    return () => clearTimeout(timer)
+  }, [cardDate])
+  const fetchRemainingHoldings = useCallback(
+    () => vid ? api.getSharedRemainingHoldings(vid, holdingsDate) : api.getRemainingHoldings(holdingsDate),
+    [vid, holdingsDate],
+  )
+  const { data: remainingHoldings } = useApiData<GrantHoldingShares[]>(fetchRemainingHoldings)
   const [exitBreakdownOpen, setExitBreakdownOpen] = useState(false)
   const [openBreakdowns, setOpenBreakdowns] = useState<Set<string>>(() => {
     try {
@@ -137,7 +149,7 @@ export default function Dashboard() {
   }, [openBreakdowns, vid])
 
   // Load an exit preview for the current cardDate (only meaningful for today or later).
-  const showExitPreview = cardDate >= TODAY
+  const showExitPreview = cardDate >= today
   const [exitPreview, setExitPreview] = useState<ExitPreview | null | 'loading'>(null)
 
   useEffect(() => {
@@ -276,15 +288,18 @@ export default function Dashboard() {
 
   // Keep cardDate in sync when using a dynamic mode
   useEffect(() => {
-    if (dateMode === 'today') setCardDate(TODAY)
+    if (dateMode === 'today') setCardDate(today)
     else if (dateMode === 'last-event') setCardDate(lastEventDate)
-  }, [dateMode, lastEventDate])
+  }, [dateMode, lastEventDate, today])
 
   // Card values computed from local data as of cardDate
   const cardValues = useMemo(() => computeCardValues(events, loans, sales, taxSettings, cardDate, prices), [events, loans, sales, taxSettings, cardDate, prices])
 
   // Per-grant holdings breakdown as of cardDate
-  const grantHoldings = useMemo(() => computeGrantHoldings(grantsData, events, loans, sales, taxSettings, cardDate), [grantsData, events, loans, sales, taxSettings, cardDate])
+  const grantHoldings = useMemo(
+    () => computeGrantHoldings(grantsData, events, loans, sales, taxSettings, cardDate, remainingHoldings),
+    [grantsData, events, loans, sales, taxSettings, cardDate, remainingHoldings],
+  )
 
   // Active (non-settled, non-refinanced) loans as of cardDate
   const activeLoans = useMemo(() => computeActiveLoans(loans, events, sales, cardDate), [loans, events, sales, cardDate])

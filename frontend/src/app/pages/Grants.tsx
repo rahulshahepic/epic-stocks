@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useIsMobile } from '../hooks/useIsMobile.ts'
 import { api, ConflictError } from '../../api.ts'
-import type { GrantEntry, LoanEntry, PriceEntry, SaleEntry, TaxSettings, SaleEstimate } from '../../api.ts'
+import type { GrantEntry, LoanEntry, LoanPaymentEntry, PriceEntry, SaleEntry, TaxSettings, SaleEstimate } from '../../api.ts'
 import { useApiData } from '../hooks/useApiData.ts'
 import { broadcastChange, useDataSync } from '../hooks/useDataSync.ts'
 import { TaxRateFields } from './Sales.tsx'
@@ -13,6 +13,7 @@ import { fmtNum, fmtPrice } from '../format.ts'
 import { Field, FIELD_INPUT_CLASS } from '../../scaffold/components/ui/Field.tsx'
 import { ConflictBanner } from '../../scaffold/components/ui/ConflictBanner.tsx'
 import { Card } from '../../scaffold/components/ui/Card.tsx'
+import { useToday } from '../dateUtils.ts'
 
 type GrantForm = Omit<GrantEntry, 'id' | 'version'>
 type Mode = 'list' | 'add' | 'edit'
@@ -43,6 +44,7 @@ export default function Grants() {
   const { viewing } = useViewing()
   const vid = viewing?.invitationId
   const readOnly = !!viewing
+  const today = useToday()
 
   const fetchGrants = useCallback(() => vid ? api.getSharedGrants(vid) : api.getGrants(), [vid])
   const { data: grants, loading, reload } = useApiData<GrantEntry[]>(fetchGrants)
@@ -50,6 +52,8 @@ export default function Grants() {
   const { data: prices } = useApiData<PriceEntry[]>(fetchPrices)
   const fetchLoans = useCallback(() => vid ? api.getSharedLoans(vid) : api.getLoans(), [vid])
   const { data: loans, reload: reloadLoans } = useApiData<LoanEntry[]>(fetchLoans)
+  const fetchLoanPayments = useCallback(() => vid ? Promise.resolve([]) : api.getLoanPayments(), [vid])
+  const { data: loanPayments } = useApiData<LoanPaymentEntry[]>(fetchLoanPayments)
   const fetchSales = useCallback(() => vid ? api.getSharedSales(vid) : api.getSales(), [vid])
   const { data: sales, reload: reloadSales } = useApiData<SaleEntry[]>(fetchSales)
   const fetchTaxSettings = useCallback(() => vid ? api.getSharedTaxSettings(vid) : api.getTaxSettings(), [vid])
@@ -125,13 +129,13 @@ export default function Grants() {
 
   function openPurchase() {
     resetForm()
-    setForm({ ...empty, type: 'Purchase', price: priceAt(new Date().toISOString().split('T')[0], prices) })
+    setForm({ ...empty, type: 'Purchase', price: priceAt(today, prices) })
     setMode('add')
   }
 
   function openBonus() {
     resetForm()
-    setForm({ ...empty, type: 'Bonus', price: priceAt(new Date().toISOString().split('T')[0], prices), dp_shares: 0 })
+    setForm({ ...empty, type: 'Bonus', price: priceAt(today, prices), dp_shares: 0 })
     setMode('add')
   }
 
@@ -177,7 +181,7 @@ export default function Grants() {
     try {
       if (mode === 'add') {
         if (form.type === 'Purchase') {
-          const result = await api.newPurchase({
+          await api.newPurchase({
             year: form.year,
             shares: form.shares,
             price: form.price,
@@ -189,22 +193,8 @@ export default function Grants() {
             loan_rate: loanRate || undefined,
             loan_due_date: loanDueDate || undefined,
             loan_number: loanNumber || undefined,
-            generate_payoff_sale: false, // handle manually below
+            payoff_sale: { enabled: payoffSaleChecked, ...saleRates },
           })
-          // Handle payoff sale for new purchase
-          const newLoanId = result.loan?.id
-          if (newLoanId && loanAmount > 0 && payoffSaleChecked) {
-            const suggestion = await api.getLoanPayoffSuggestion(newLoanId)
-            await api.createSale({
-              date: suggestion.date,
-              shares: suggestion.shares,
-              price_per_share: suggestion.price_per_share,
-              notes: suggestion.notes,
-              loan_id: newLoanId,
-              ...saleRates,
-            })
-            broadcastChange('sales')
-          }
         } else if (ZERO_BASIS_TYPES.has(form.type)) {
           // Cost basis is $0 by definition, so these vest as ordinary income.
           await api.createGrant({
@@ -249,57 +239,41 @@ export default function Grants() {
           let loanId = editLoanId
 
           if (editLoanId != null) {
-            await api.updateLoan(editLoanId, {
-              amount: loanAmount,
-              interest_rate: loanRate,
-              due_date: loanDueDate,
-              loan_number: loanNumber || null,
-              version: editLoanVersion,
-            })
+            await api.updateLoanWithPayoff(
+              editLoanId,
+              {
+                amount: loanAmount,
+                interest_rate: loanRate,
+                due_date: loanDueDate,
+                loan_number: loanNumber || null,
+                version: editLoanVersion,
+              },
+              { enabled: payoffSaleChecked, ...saleRates },
+            )
             broadcastChange('loans')
             reloadLoans()
           } else if (loanAmount > 0) {
-            const newLoan = await api.createLoan({
-              grant_year: form.year,
-              grant_type: 'Purchase',
-              loan_type: 'Purchase',
-              loan_year: form.year,
-              amount: loanAmount,
-              interest_rate: loanRate,
-              due_date: loanDueDate,
-              loan_number: loanNumber || null,
-              refinances_loan_id: null,
-            }, false)
+            const newLoan = await api.createLoanWithPayoff(
+              {
+                grant_year: form.year,
+                grant_type: 'Purchase',
+                loan_type: 'Purchase',
+                loan_year: form.year,
+                amount: loanAmount,
+                interest_rate: loanRate,
+                due_date: loanDueDate,
+                loan_number: loanNumber || null,
+                refinances_loan_id: null,
+              },
+              { enabled: payoffSaleChecked, ...saleRates },
+            )
             loanId = newLoan.id
             broadcastChange('loans')
             reloadLoans()
           }
-
-          // Handle payoff sale
-          if (loanId != null && loanAmount > 0) {
-            const linkedSale = sales?.find(s => s.loan_id === loanId)
-            if (payoffSaleChecked) {
-              const suggestion = await api.getLoanPayoffSuggestion(loanId)
-              const salePayload = {
-                date: suggestion.date,
-                shares: suggestion.shares,
-                price_per_share: suggestion.price_per_share,
-                notes: suggestion.notes,
-                loan_id: loanId,
-                ...saleRates,
-              }
-              if (linkedSale) {
-                await api.updateSale(linkedSale.id, { ...salePayload, version: linkedSale.version })
-              } else {
-                await api.createSale(salePayload)
-              }
-              broadcastChange('sales')
-              reloadSales()
-            } else if (linkedSale) {
-              await api.deleteSale(linkedSale.id)
-              broadcastChange('sales')
-              reloadSales()
-            }
+          if (loanId != null) {
+            broadcastChange('sales')
+            reloadSales()
           }
         }
       }
@@ -309,7 +283,7 @@ export default function Grants() {
       if (addAnother) {
         const prevType = form.type
         resetForm()
-        setForm(() => ({ ...empty, type: prevType, price: priceAt(new Date().toISOString().split('T')[0], prices) }))
+        setForm(() => ({ ...empty, type: prevType, price: priceAt(today, prices) }))
       } else {
         setMode('list')
         resetForm()
@@ -334,11 +308,13 @@ export default function Grants() {
 
   function openSellModal(g: GrantEntry) {
     const loan = loans?.find(l => l.grant_year === g.year && l.grant_type === g.type && l.loan_type === 'Purchase' && !refinancedLoanIds.has(l.id))
-    const today = new Date().toISOString().split('T')[0]
     setSellModal({ grantYear: g.year, grantType: g.type, loanId: loan?.id })
     setSellDate(today)
     setSellPrice(String(priceAt(today, prices) || ''))
-    setSellTargetCash(loan ? String(loan.amount) : '')
+    const paid = loan ? (loanPayments ?? [])
+      .filter(p => p.loan_id === loan.id && p.date <= today)
+      .reduce((sum, p) => sum + p.amount, 0) : 0
+    setSellTargetCash(loan ? String(Math.max(0, loan.amount - paid)) : '')
     setSellEstimate(null)
     setSellError('')
   }
@@ -390,7 +366,7 @@ export default function Grants() {
     setSellError('')
     try {
       await api.createSale({
-        date: sellDate || new Date().toISOString().split('T')[0],
+        date: sellDate || today,
         shares: sellEstimate.shares_needed,
         price_per_share: parseFloat(sellPrice),
         notes: `Sale — ${sellModal.grantType} ${sellModal.grantYear}`,
@@ -483,8 +459,8 @@ export default function Grants() {
               <p className="text-[10px] text-cs-text-2">Existing shares you handed in toward this purchase. Bonus shares are used first, then oldest — this swap is not taxed.</p>
               <input
                 type="number"
-                value={form.dp_shares}
-                onChange={e => setForm(f => ({ ...f, dp_shares: +e.target.value }))}
+                value={Math.abs(form.dp_shares)}
+                onChange={e => setForm(f => ({ ...f, dp_shares: -Math.abs(+e.target.value) }))}
                 className={FIELD_INPUT_CLASS}
               />
             </label>
@@ -833,7 +809,7 @@ export default function Grants() {
                 </button>
                 <button
                   onClick={handleSell}
-                  disabled={!sellEstimate || sellSubmitting}
+                  disabled={!sellEstimate || sellSubmitting || sellEstimate.covers_loan === false}
                   className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
                 >
                   {sellSubmitting ? 'Creating sale...' : 'Confirm Sale'}
@@ -846,4 +822,3 @@ export default function Grants() {
     </div>
   )
 }
-

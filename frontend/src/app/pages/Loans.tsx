@@ -14,6 +14,7 @@ import { fmt$ } from '../format.ts'
 import { Field, SelectField, FIELD_INPUT_CLASS } from '../../scaffold/components/ui/Field.tsx'
 import { ConflictBanner } from '../../scaffold/components/ui/ConflictBanner.tsx'
 import { Card } from '../../scaffold/components/ui/Card.tsx'
+import { useToday } from '../dateUtils.ts'
 
 type LoanForm = Omit<LoanEntry, 'id' | 'version'>
 type Mode = 'list' | 'add' | 'edit'
@@ -43,6 +44,7 @@ export default function Loans() {
   const { viewing } = useViewing()
   const vid = viewing?.invitationId
   const readOnly = !!viewing
+  const today = useToday()
 
   const fetchLoans = useCallback(() => vid ? api.getSharedLoans(vid) : api.getLoans(), [vid])
   const { data: loans, loading, reload } = useApiData<LoanEntry[]>(fetchLoans)
@@ -109,45 +111,22 @@ export default function Loans() {
     setSaving(true)
     setError('')
     try {
-      let savedLoanId: number
-
       if (mode === 'add') {
-        const newLoan = await api.createLoan(form, false) // handle payoff sale manually
-        savedLoanId = newLoan.id
+        await api.createLoanWithPayoff(form, { enabled: payoffSaleChecked, ...saleRates })
       } else if (editId != null) {
-        await api.updateLoan(editId, { ...form, version: editVersion })
-        savedLoanId = editId
+        await api.updateLoanWithPayoff(
+          editId,
+          { ...form, version: editVersion },
+          { enabled: payoffSaleChecked, ...saleRates },
+        )
       } else {
         return
       }
 
-      // Handle payoff sale
-      const linkedSale = sales?.find(s => s.loan_id === savedLoanId)
-      if (payoffSaleChecked) {
-        const suggestion = await api.getLoanPayoffSuggestion(savedLoanId)
-        const salePayload = {
-          date: suggestion.date,
-          shares: suggestion.shares,
-          price_per_share: suggestion.price_per_share,
-          notes: suggestion.notes,
-          loan_id: savedLoanId,
-          ...saleRates,
-        }
-        if (linkedSale) {
-          await api.updateSale(linkedSale.id, { ...salePayload, version: linkedSale.version })
-        } else {
-          await api.createSale(salePayload)
-        }
-        broadcastChange('sales')
-        reloadSales()
-      } else if (linkedSale) {
-        await api.deleteSale(linkedSale.id)
-        broadcastChange('sales')
-        reloadSales()
-      }
-
       broadcastChange('loans')
+      broadcastChange('sales')
       reload()
+      reloadSales()
       if (addAnother) {
         resetForm()
       } else {
@@ -209,7 +188,7 @@ export default function Loans() {
     setPayoffTranche(null)
     setPayoffTrancheLoading(true)
     try {
-      const suggestion = await api.getLoanPayoffSuggestion(loan.id, new Date().toISOString().slice(0, 10))
+      const suggestion = await api.getLoanPayoffSuggestion(loan.id, today)
       setPayoffModal({ loan, suggestion, existingSale })
       // Fetch same-tranche allocation using the suggestion's date and shares
       try {
@@ -637,4 +616,3 @@ export default function Loans() {
     </div>
   )
 }
-

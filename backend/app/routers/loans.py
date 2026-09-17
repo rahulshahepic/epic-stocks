@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 from database import get_db
 from scaffold.models import User, Loan, Sale, LoanPayment, Price, Grant, TaxSettings
 from schemas import (LoanCreate, LoanUpdate, LoanOut, LoanPaymentCreate, LoanPaymentUpdate,
-                     LoanPaymentOut, SaleOut, MAX_BULK_ITEMS)
+                     LoanPaymentOut, SaleOut, MAX_BULK_ITEMS, PayoffSaleOptions,
+                     LoanWithPayoffCreate, LoanWithPayoffUpdate)
 from scaffold.quota import check_row_quota
 from scaffold.auth import get_current_user
 from app import event_cache
@@ -94,39 +95,6 @@ def _is_flexible_payoff_enabled(db: Session) -> bool:
     return bool(row.flexible_payoff_enabled) if row else False
 
 
-def _has_sufficient_coverage(user: User, loan: Loan, db: Session, timeline: list, price: float, cash_due: float) -> bool:
-    """
-    Returns True if vested_shares*price + sum(unvested_shares_i * grant_price_i) >= cash_due.
-    timeline must already be augmented with prior sales (same as used by _compute_payoff_sale).
-    """
-    from app.sales_engine import build_fifo_lots
-
-    lots = build_fifo_lots(timeline, loan.due_date, order='fifo')
-    vested_coverage = sum(lot[1] for lot in lots) * price
-
-    grants_db = db.query(Grant).filter(Grant.user_id == user.id).all()
-    vested_by_grant: dict = {}
-    for e in timeline:
-        edate = e.get("date")
-        if edate is None:
-            continue
-        if isinstance(edate, datetime):
-            edate = edate.date()
-        if edate > loan.due_date:
-            break
-        if e.get("event_type") == "Vesting" and (e.get("vested_shares") or 0) > 0:
-            key = (e.get("grant_year"), e.get("grant_type"))
-            vested_by_grant[key] = vested_by_grant.get(key, 0) + e["vested_shares"]
-
-    unvested_coverage = 0.0
-    for g in grants_db:
-        vested = vested_by_grant.get((g.year, g.type), 0)
-        unvested = max(0, g.shares - (g.dp_shares or 0) - vested)
-        unvested_coverage += unvested * (g.price or 0.0)
-
-    return (vested_coverage + unvested_coverage) >= cash_due
-
-
 def _price_at_date(timeline: list, as_of) -> float:
     """Return the share price from the timeline at or just before as_of date."""
     if isinstance(as_of, datetime):
@@ -147,7 +115,23 @@ def _price_at_date(timeline: list, as_of) -> float:
     return price
 
 
-def _compute_payoff_sale(loan: Loan, user: User, db: Session, payoff_date=None) -> dict:
+def _payoff_tax_settings(
+    user: User, db: Session, options: PayoffSaleOptions | None = None,
+) -> dict:
+    """Settings used both to size and persist a generated payoff sale."""
+    settings = dict(_get_tax_settings_dict(user, db))
+    if options is not None:
+        settings.update(options.model_dump(exclude={"enabled"}, exclude_none=True))
+    return settings
+
+
+def _compute_payoff_sale(
+    loan: Loan,
+    user: User,
+    db: Session,
+    payoff_date=None,
+    tax_settings: dict | None = None,
+) -> dict:
     """Compute the suggested payoff sale for a loan (gross-up shares to cover cash_due after tax)."""
     from app.sales_engine import build_fifo_lots, compute_grossup_shares, compute_sale_tax
 
@@ -166,7 +150,7 @@ def _compute_payoff_sale(loan: Loan, user: User, db: Session, payoff_date=None) 
         latest = db.query(Price).filter(Price.user_id == user.id).order_by(Price.effective_date.desc()).first()
         price = latest.price if latest else 0.0
 
-    ts = _get_tax_settings_dict(user, db)
+    ts = tax_settings or _get_tax_settings_dict(user, db)
     lt_days = int(ts.get("lt_holding_days", 365))
     ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
     flexible_enabled = _is_flexible_payoff_enabled(db)
@@ -177,13 +161,13 @@ def _compute_payoff_sale(loan: Loan, user: User, db: Session, payoff_date=None) 
 
     # Determine lot selection method for THIS loan's own payoff sale — same
     # resolution /api/events and /api/sales/{id}/tax will apply once this sale
-    # is persisted, except a flexible method is only honored when there's
-    # enough total coverage to actually attempt it; otherwise same-tranche.
+    # is persisted.
     payoff_method = 'same_tranche'
     if ts_row and flexible_enabled:
-        user_method = ts_row.loan_payoff_method
-        if user_method != 'same_tranche' and _has_sufficient_coverage(user, loan, db, sorted_tl, price, cash_due):
-            payoff_method = user_method
+        # Persisted payoff sales are taxed with this account-level method by
+        # resolve_sale_lot_order. Size the generated sale with that exact same
+        # method so creation and later validation cannot disagree.
+        payoff_method = ts_row.loan_payoff_method
 
     if payoff_method == 'same_tranche':
         tax_lot_order, tranche_gy, tranche_gt = 'epic_lifo', loan.grant_year, loan.grant_type
@@ -220,6 +204,49 @@ def _compute_payoff_sale(loan: Loan, user: User, db: Session, payoff_date=None) 
         "notes": f"Auto-generated payoff sale for loan {loan_label}",
         "cash_due": round(cash_due, 2),
     }
+
+
+def _upsert_generated_payoff_sale(
+    loan: Loan,
+    user: User,
+    db: Session,
+    options: PayoffSaleOptions | None = None,
+    *,
+    payoff_date=None,
+) -> Sale | None:
+    """Create or refresh the app-owned payoff sale without committing.
+
+    A user-owned row is deliberately left alone. Callers can therefore update a
+    loan and request maintenance without accidentally reclaiming figures the
+    user edited on the Sales page.
+    """
+    existing = db.query(Sale).filter(
+        Sale.loan_id == loan.id, Sale.user_id == user.id,
+    ).first()
+    if existing and not existing.is_generated:
+        return existing
+
+    rates = _payoff_tax_settings(user, db, options)
+    suggestion = _compute_payoff_sale(
+        loan, user, db, payoff_date=payoff_date, tax_settings=rates,
+    )
+    if suggestion["shares"] <= 0 or suggestion["price_per_share"] <= 0:
+        if existing:
+            db.delete(existing)
+        return None
+
+    if existing is None:
+        existing = Sale(user_id=user.id, loan_id=loan.id, is_generated=True)
+        db.add(existing)
+    existing.date = suggestion["date"]
+    existing.shares = suggestion["shares"]
+    existing.price_per_share = suggestion["price_per_share"]
+    existing.notes = suggestion["notes"]
+    existing.is_generated = True
+    for key, value in _tax_rate_fields(rates).items():
+        setattr(existing, key, value)
+    db.flush()
+    return existing
 
 
 def _company_grant_types(grant_year: int, db: Session) -> list[str]:
@@ -342,26 +369,35 @@ def create_loan(
     _remove_generated_payoff_for_refinance(body.refinances_loan_id, user, db)
     loan = Loan(**body.model_dump(), user_id=user.id)
     db.add(loan)
+    db.flush()
+    if generate_payoff_sale:
+        _upsert_generated_payoff_sale(loan, user, db)
     db.commit()
     db.refresh(loan)
 
-    if generate_payoff_sale:
-        suggestion = _compute_payoff_sale(loan, user, db)
-        if suggestion["shares"] > 0 and suggestion["price_per_share"] > 0:
-            ts = _get_tax_settings_dict(user, db)
-            sale = Sale(
-                user_id=user.id,
-                date=suggestion["date"],
-                shares=suggestion["shares"],
-                price_per_share=suggestion["price_per_share"],
-                loan_id=loan.id,
-                notes=suggestion["notes"],
-                is_generated=True,
-                **_tax_rate_fields(ts),
-            )
-            db.add(sale)
-            db.commit()
+    event_cache.schedule_recompute(user.id)
+    return loan
 
+
+@router.post("/with-payoff", response_model=LoanOut, status_code=201)
+def create_loan_with_payoff(
+    body: LoanWithPayoffCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Atomically create a loan and its server-computed payoff sale."""
+    loan_body = body.loan
+    check_row_quota(db, Loan, user.id)
+    _check_grant_exists(loan_body.grant_year, loan_body.grant_type, user, db)
+    _check_refinance_target(loan_body.refinances_loan_id, user, db)
+    _remove_generated_payoff_for_refinance(loan_body.refinances_loan_id, user, db)
+    loan = Loan(**loan_body.model_dump(), user_id=user.id)
+    db.add(loan)
+    db.flush()
+    if body.payoff_sale.enabled:
+        _upsert_generated_payoff_sale(loan, user, db, body.payoff_sale)
+    db.commit()
+    db.refresh(loan)
     event_cache.schedule_recompute(user.id)
     return loan
 
@@ -476,36 +512,59 @@ def update_loan(
     if stale:
         return stale
     apply_update(loan, body)
+    db.flush()
+    if regenerate_payoff_sale:
+        _upsert_generated_payoff_sale(loan, user, db)
     db.commit()
     db.refresh(loan)
 
-    if regenerate_payoff_sale:
-        suggestion = _compute_payoff_sale(loan, user, db)
-        ts = _get_tax_settings_dict(user, db)
-        existing_sale = db.query(Sale).filter(Sale.loan_id == loan.id, Sale.user_id == user.id).first()
-        # A sale the user has edited is theirs; regenerating the loan does not
-        # take it back. They can delete it to get a fresh computed one.
-        if existing_sale and existing_sale.is_generated:
-            existing_sale.date = suggestion["date"]
-            existing_sale.shares = suggestion["shares"]
-            existing_sale.price_per_share = suggestion["price_per_share"]
-            existing_sale.notes = suggestion["notes"]
-            for k, v in _tax_rate_fields(ts).items():
-                setattr(existing_sale, k, v)
-            db.commit()
-        elif not existing_sale and suggestion["shares"] > 0 and suggestion["price_per_share"] > 0:
-            db.add(Sale(
-                user_id=user.id,
-                date=suggestion["date"],
-                shares=suggestion["shares"],
-                price_per_share=suggestion["price_per_share"],
-                loan_id=loan.id,
-                notes=suggestion["notes"],
-                is_generated=True,
-                **_tax_rate_fields(ts),
-            ))
-            db.commit()
+    event_cache.schedule_recompute(user.id)
+    return loan
 
+
+@router.put("/{loan_id}/with-payoff", response_model=LoanOut)
+def update_loan_with_payoff(
+    loan_id: int,
+    body: LoanWithPayoffUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Atomically update a loan and maintain or remove its payoff sale."""
+    loan = get_owned(db, Loan, loan_id, user, "Loan")
+    sent = body.loan.model_dump(exclude_unset=True)
+    if "grant_year" in sent or "grant_type" in sent:
+        _check_grant_exists(
+            sent.get("grant_year", loan.grant_year),
+            sent.get("grant_type", loan.grant_type), user, db,
+        )
+    _check_refinance_target(body.loan.refinances_loan_id, user, db, self_id=loan_id)
+    if (body.loan.refinances_loan_id is not None
+            and loan.refinances_loan_id != body.loan.refinances_loan_id):
+        _remove_generated_payoff_for_refinance(body.loan.refinances_loan_id, user, db)
+    stale = version_conflict(loan, body.loan.version)
+    if stale:
+        return stale
+    apply_update(loan, body.loan)
+    db.flush()
+
+    existing = db.query(Sale).filter(
+        Sale.loan_id == loan.id, Sale.user_id == user.id,
+    ).first()
+    if body.payoff_sale.enabled:
+        _upsert_generated_payoff_sale(loan, user, db, body.payoff_sale)
+    elif existing is not None:
+        if not existing.is_generated:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "This payoff sale has been edited and is now user-owned; "
+                    "delete it from Sales if you want to remove it"
+                ),
+            )
+        db.delete(existing)
+
+    db.commit()
+    db.refresh(loan)
     event_cache.schedule_recompute(user.id)
     return loan
 

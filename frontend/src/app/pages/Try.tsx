@@ -7,7 +7,8 @@ import { ReportProblemLink } from '../../scaffold/components/ReportProblem.tsx'
 import StalePriceNotice from '../components/StalePriceNotice.tsx'
 import { StatCard } from '../components/StatCard.tsx'
 import { ChartBox, IncomeCapGainsChart, PriceChart, SharesChart } from '../components/charts.tsx'
-import { TODAY, useChartColors, type DateRange } from '../components/chartAxes.ts'
+import { useChartColors, type DateRange } from '../components/chartAxes.ts'
+import { addCalendarYears, useToday } from '../dateUtils.ts'
 import { fmt$, fmtFullDate, fmtNum, fmtPrice } from '../format.ts'
 import { useAppContext } from '../../scaffold/contexts/AppContext.tsx'
 import DisclaimerNotice from '../../scaffold/components/DisclaimerNotice.tsx'
@@ -115,9 +116,7 @@ function valuesAsOf(r: TrialAnalyzeResponse, asOf: string): AsOfValues {
       const base = Math.floor(g.shares / g.periods)
       const rem = g.shares % g.periods
       for (let p = 0; p < g.periods; p++) {
-        const vd = new Date(g.vest_start + 'T00:00:00')
-        vd.setFullYear(vd.getFullYear() + p)
-        if (vd.toISOString().slice(0, 10) <= asOf) vested += base + (p < rem ? 1 : 0)
+        if (addCalendarYears(g.vest_start, p) <= asOf) vested += base + (p < rem ? 1 : 0)
       }
     }
     const unvested = g.shares - vested
@@ -223,6 +222,7 @@ function UploadStage({ csv, pdf, setCsv, setPdf, busy, error, onRun }: {
 function AsOfControl({ asOf, setAsOf, lastEventDate }: {
   asOf: string; setAsOf: (d: string) => void; lastEventDate: string
 }) {
+  const today = useToday()
   const pill = 'rounded-full px-2.5 py-1 text-xs font-semibold transition-colors'
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -233,8 +233,8 @@ function AsOfControl({ asOf, setAsOf, lastEventDate }: {
         className="h-7 rounded-md border border-cs-border-strong bg-cs-surface px-2 text-xs text-cs-text"
       />
       <button
-        type="button" onClick={() => setAsOf(TODAY)} aria-pressed={asOf === TODAY}
-        className={`${pill} ${asOf === TODAY ? 'bg-cs-brand text-white' : 'bg-cs-raised text-cs-text-2 hover:bg-cs-border'}`}
+        type="button" onClick={() => setAsOf(today)} aria-pressed={asOf === today}
+        className={`${pill} ${asOf === today ? 'bg-cs-brand text-white' : 'bg-cs-raised text-cs-text-2 hover:bg-cs-border'}`}
       >
         Today
       </button>
@@ -250,12 +250,13 @@ function AsOfControl({ asOf, setAsOf, lastEventDate }: {
 
 function DashboardTab({ result, asOf }: { result: TrialAnalyzeResponse; asOf: string }) {
   const c = useChartColors()
+  const today = useToday()
   // The preview shows every chart whole. Per-chart range pickers are a second
   // date control next to the as-of one, which is exactly the clutter a first
   // look does not need — an account gets those.
   const range: DateRange = { mode: 'all', start: '', end: '' }
   const v = useMemo(() => valuesAsOf(result, asOf), [result, asOf])
-  const hasFuturePrices = result.prices.some(p => p.effective_date > TODAY)
+  const hasFuturePrices = result.prices.some(p => p.effective_date > today)
 
   return (
     <div className="space-y-4">
@@ -420,12 +421,13 @@ export default function Try() {
   const navigate = useNavigate()
   const { appName } = useAppContext()
   const config = useConfig()
+  const today = useToday()
   const [csv, setCsv] = useState<File | null>(null)
   const [pdf, setPdf] = useState<File | null>(null)
   const [stage, setStage] = useState<Stage>('upload')
   const [result, setResult] = useState<TrialAnalyzeResponse | null>(null)
   const [tab, setTab] = useState<Tab>('dashboard')
-  const [asOf, setAsOf] = useState(TODAY)
+  const [asOf, setAsOf] = useState(today)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [repricing, setRepricing] = useState(false)
@@ -438,7 +440,7 @@ export default function Try() {
       const r = await trialAnalyze(csv, pdf, currentPrice)
       setResult(r)
       setTab('dashboard')
-      setAsOf(TODAY)
+      setAsOf(today)
       setStage('preview')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not read those files')
@@ -530,7 +532,7 @@ export default function Try() {
   // ── Preview: the app itself, on data that only exists in this tab ──────────
   const lastEventDate = result.timeline.length
     ? result.timeline[result.timeline.length - 1].date
-    : TODAY
+    : today
   const errors = result.findings.filter(f => f.severity === 'error').length
   const tabClass = (active: boolean) =>
     `rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${

@@ -190,7 +190,8 @@ def test_editing_a_payoff_sale_stops_the_regenerator_rewriting_it(client):
     """
     register_user(client)
     ln, sale = _loan_with_payoff(client)
-    edited = client.put(f"/api/sales/{sale['id']}", json={"shares": 7, "version": sale["version"]})
+    custom_shares = sale["shares"] + 1
+    edited = client.put(f"/api/sales/{sale['id']}", json={"shares": custom_shares, "version": sale["version"]})
     assert edited.status_code == 200, edited.text
     assert edited.json()["is_generated"] is False
 
@@ -198,7 +199,7 @@ def test_editing_a_payoff_sale_stops_the_regenerator_rewriting_it(client):
                     json={"loan_id": ln["id"], "date": "2026-01-01", "amount": 1000})
     assert r.status_code == 201, r.text
     after = [s for s in client.get("/api/sales").json() if s["id"] == sale["id"]]
-    assert after and after[0]["shares"] == 7
+    assert after and after[0]["shares"] == custom_shares
 
 
 def test_a_rate_override_does_not_claim_a_generated_sale(client):
@@ -214,10 +215,11 @@ def test_a_rate_override_does_not_claim_a_generated_sale(client):
 def test_execute_payoff_refuses_to_overwrite_a_sale_the_user_entered(client):
     register_user(client)
     ln, sale = _loan_with_payoff(client)
-    client.put(f"/api/sales/{sale['id']}", json={"shares": 7, "version": sale["version"]})
+    custom_shares = sale["shares"] + 1
+    client.put(f"/api/sales/{sale['id']}", json={"shares": custom_shares, "version": sale["version"]})
     r = client.post(f"/api/loans/{ln['id']}/execute-payoff")
     assert r.status_code == 409, r.text
-    assert [s for s in client.get("/api/sales").json() if s["id"] == sale["id"]][0]["shares"] == 7
+    assert [s for s in client.get("/api/sales").json() if s["id"] == sale["id"]][0]["shares"] == custom_shares
 
 
 def test_executing_a_payoff_early_restamps_the_rates_with_the_new_date(client):
@@ -316,9 +318,10 @@ def test_a_loan_rate_is_a_fraction_everywhere_it_is_written(client):
 def test_refinancing_never_deletes_a_user_owned_payoff_sale(client, method):
     register_user(client)
     old, sale = _loan_with_payoff(client)
+    custom_shares = sale["shares"] + 1
     claimed = client.put(
         f"/api/sales/{sale['id']}",
-        json={"shares": 7, "version": sale["version"]},
+        json={"shares": custom_shares, "version": sale["version"]},
     )
     assert claimed.status_code == 200, claimed.text
     assert claimed.json()["is_generated"] is False
@@ -345,7 +348,7 @@ def test_refinancing_never_deletes_a_user_owned_payoff_sale(client, method):
 
     assert response.status_code == 409, response.text
     kept = [s for s in client.get("/api/sales").json() if s["id"] == sale["id"]]
-    assert kept and kept[0]["shares"] == 7
+    assert kept and kept[0]["shares"] == custom_shares
 
 
 def test_regenerate_reports_the_sales_it_left_alone(client):
@@ -358,8 +361,9 @@ def test_regenerate_reports_the_sales_it_left_alone(client):
     """
     register_user(client)
     _, sale = _loan_with_payoff(client)
+    custom_shares = sale["shares"] + 1
     assert client.put(f"/api/sales/{sale['id']}",
-                      json={"shares": 7, "version": sale["version"]}).status_code == 200
+                      json={"shares": custom_shares, "version": sale["version"]}).status_code == 200
 
     result = client.post("/api/loans/regenerate-all-payoff-sales").json()
     assert result == {"updated": 0, "created": 0, "skipped_user_owned": 1}

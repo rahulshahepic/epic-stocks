@@ -35,6 +35,9 @@ describe('shiftYears', () => {
   it('adds whole years', () => {
     expect(shiftYears('2020-01-31', 5)).toBe('2025-01-31')
   })
+  it('clamps leap day to February 28 in a common year', () => {
+    expect(shiftYears('2024-02-29', 1)).toBe('2025-02-28')
+  })
 })
 
 describe('priceAt', () => {

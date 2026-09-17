@@ -1,6 +1,6 @@
 import { StatCard as Card } from '../../components/StatCard.tsx'
 import { BreakdownRow, BreakdownShell } from './Breakdown.tsx'
-import { TODAY } from '../../components/chartAxes.ts'
+import { useToday } from '../../dateUtils.ts'
 import { fmt$, fmtFullDate, fmtNum, fmtPrice } from '../../format.ts'
 import type { CardValues, GrantHolding } from '../Dashboard.math.ts'
 
@@ -13,12 +13,13 @@ export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakd
   openBreakdowns: Set<string>
   toggleBreakdown: (key: string) => void
 }) {
+  const today = useToday()
   return (
     <section className="space-y-3">
       <p className="text-[11px] font-semibold uppercase tracking-wide text-cs-muted">Your Shares</p>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Card
-          label={cardDate === TODAY ? 'Value Today' : `Value on ${fmtFullDate(cardDate)}`}
+          label={cardDate === today ? 'Value Today' : `Value on ${fmtFullDate(cardDate)}`}
           value={grantHoldings ? fmt$(totalValue) : '—'}
           variant="value"
           subtitle="Vested at FMV + unvested at cost basis"

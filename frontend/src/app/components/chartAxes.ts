@@ -1,4 +1,5 @@
 import { useDark } from '../../scaffold/hooks/useDark.ts'
+import { localToday } from '../dateUtils.ts'
 
 /**
  * Date-range and axis helpers the chart components and their callers share.
@@ -20,8 +21,6 @@ export function smartInterval(len: number, maxTicks = 6): number {
   return Math.ceil(len / maxTicks) - 1
 }
 
-export const TODAY = new Date().toISOString().slice(0, 10)
-
 export type RangeMode = 'all' | 'custom'
 
 export interface DateRange {
@@ -38,9 +37,9 @@ export function filterByDateRange<T>(items: T[], range: DateRange, dateKey: keyo
   })
 }
 
-export function todayIndex(data: { _date: string }[]): number | null {
+export function todayIndex(data: { _date: string }[], today = localToday()): number | null {
   for (let i = 0; i < data.length; i++) {
-    if (data[i]._date >= TODAY) return i
+    if (data[i]._date >= today) return i
   }
   return null
 }

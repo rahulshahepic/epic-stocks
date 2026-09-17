@@ -120,6 +120,7 @@ def _year(v: int) -> int:
 
 Year = Annotated[int, AfterValidator(_year)]
 Shares = Annotated[int, _bounds("shares", low=0, low_inclusive=False, high=10_000_000)]
+DownPaymentShares = Annotated[int, Field(ge=-10_000_000, le=0)]
 Periods = Annotated[int, _bounds("periods", low=0, low_inclusive=False, high=1200, high_text="1200")]
 #: A cost basis, which may be $0 for a grant that was given rather than bought.
 CostBasis = Annotated[float, _bounds("price", low=0, low_inclusive=True, high=1_000_000)]
@@ -178,7 +179,7 @@ class GrantCreate(InputModel):
     vest_start: date
     periods: Periods
     exercise_date: date
-    dp_shares: int = 0
+    dp_shares: DownPaymentShares = 0
     election_83b: bool = False
 
 class GrantUpdate(UpdateModel):
@@ -193,7 +194,7 @@ class GrantUpdate(UpdateModel):
     vest_start: date | None = None
     periods: Periods | None = None
     exercise_date: date | None = None
-    dp_shares: int | None = None
+    dp_shares: DownPaymentShares | None = None
     election_83b: bool | None = None
     version: int | None = None
 
@@ -216,6 +217,7 @@ class GrantOut(GrantCreate):
     shares: int
     price: float
     periods: int
+    dp_shares: int
     model_config = {"from_attributes": True}
 
 
@@ -262,6 +264,33 @@ class LoanOut(LoanCreate):
     interest_rate: float
     loan_number: str | None = None
     model_config = {"from_attributes": True}
+
+
+class PayoffSaleOptions(InputModel):
+    """How the server should maintain a computed payoff sale for a loan.
+
+    The client may choose the tax assumptions, but it cannot choose
+    ``is_generated``: ownership follows from the server doing the calculation.
+    """
+    enabled: bool = True
+    federal_income_rate: TaxRate | None = None
+    federal_lt_cg_rate: TaxRate | None = None
+    federal_st_cg_rate: TaxRate | None = None
+    niit_rate: TaxRate | None = None
+    state_income_rate: TaxRate | None = None
+    state_lt_cg_rate: TaxRate | None = None
+    state_st_cg_rate: TaxRate | None = None
+    lt_holding_days: HoldingDays | None = None
+
+
+class LoanWithPayoffCreate(InputModel):
+    loan: LoanCreate
+    payoff_sale: PayoffSaleOptions
+
+
+class LoanWithPayoffUpdate(InputModel):
+    loan: LoanUpdate
+    payoff_sale: PayoffSaleOptions
 
 
 # Price

@@ -4,10 +4,11 @@ import {
   XAxis, YAxis, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts'
 import type { TimelineEvent, PriceEntry } from '../../api.ts'
-import { TODAY, filterByDateRange, numericTicks, todayIndex } from './chartAxes.ts'
+import { filterByDateRange, numericTicks, todayIndex } from './chartAxes.ts'
 import type { ChartColors, DateRange } from './chartAxes.ts'
 import { fmt$, fmtDate, fmtFullDate, fmtNum, fmtPrice } from '../format.ts'
 import { Card } from '../../scaffold/components/ui/Card.tsx'
+import { useToday } from '../dateUtils.ts'
 
 /**
  * Chart primitives shared by the Dashboard and the no-account preview (/try).
@@ -72,12 +73,13 @@ export function DetailCard({ items, onClose }: { items: { label: string; value: 
 
 export function SharesChart({ events, c, range, hasFuturePrices }: { events: TimelineEvent[]; c: ChartColors; range: DateRange; hasFuturePrices: boolean }) {
   const [selected, setSelected] = useState<number | null>(null)
+  const today = useToday()
 
   const data = useMemo(() => {
     const filtered = filterByDateRange(events, range, 'date')
       .filter(e => e.cum_shares !== 0 || e.event_type === 'Exercise')
     return filtered.map((e, i) => {
-      const isPast = !hasFuturePrices || e.date <= TODAY
+      const isPast = !hasFuturePrices || e.date <= today
       return {
         _idx: i,
         _date: e.date,
@@ -92,9 +94,9 @@ export function SharesChart({ events, c, range, hasFuturePrices }: { events: Tim
       }
       return d
     })
-  }, [events, range, hasFuturePrices])
+  }, [events, range, hasFuturePrices, today])
 
-  const tIdx = todayIndex(data)
+  const tIdx = todayIndex(data, today)
   const sel = selected !== null && selected < data.length ? data[selected] : null
 
   return (
@@ -139,6 +141,7 @@ export function SharesChart({ events, c, range, hasFuturePrices }: { events: Tim
 
 export function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { events: TimelineEvent[]; c: ChartColors; range: DateRange; hasFuturePrices: boolean }) {
   const [selected, setSelected] = useState<number | null>(null)
+  const today = useToday()
 
   const hasDeduction = events.some(e => (e.interest_deduction_applied ?? 0) > 0)
 
@@ -153,7 +156,7 @@ export function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { eve
     let cumSurplusCg = 0
     const points = []
     for (const [i, e] of filtered.entries()) {
-      if (hasFuturePrices && e.date > TODAY) {
+      if (hasFuturePrices && e.date > today) {
         const vs = (e.vested_shares ?? 0)
         if (e.event_type === 'Share Price') {
           cumFuturePriceIncrease += e.price_increase
@@ -178,7 +181,7 @@ export function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { eve
       })
     }
     return points
-  }, [events, range, hasFuturePrices])
+  }, [events, range, hasFuturePrices, today])
 
   const tIdx = todayIndex(data)
   const sel = selected !== null && selected < data.length ? data[selected] : null
@@ -245,13 +248,14 @@ export function IncomeCapGainsChart({ events, c, range, hasFuturePrices }: { eve
 
 export function PriceChart({ prices, c, range, hasFuturePrices }: { prices: PriceEntry[]; c: ChartColors; range: DateRange; hasFuturePrices: boolean }) {
   const [selected, setSelected] = useState<number | null>(null)
+  const today = useToday()
 
   const data = useMemo(() => {
     const filtered = filterByDateRange(prices, range, 'effective_date')
     if (filtered.length === 0) return []
 
     const result = filtered.map((p, i) => {
-      const isPast = !hasFuturePrices || p.effective_date <= TODAY
+      const isPast = !hasFuturePrices || p.effective_date <= today
       return {
         _idx: i,
         _date: p.effective_date,
@@ -264,7 +268,7 @@ export function PriceChart({ prices, c, range, hasFuturePrices }: { prices: Pric
 
     if (hasFuturePrices) {
       // Overlap: last past point also gets projected for line continuity
-      const lastKnownIdx = result.findIndex(d => d._date > TODAY) - 1
+      const lastKnownIdx = result.findIndex(d => d._date > today) - 1
       const overlapIdx = lastKnownIdx >= 0 ? lastKnownIdx : result.length - 1
       if (result[overlapIdx] && result.some(d => d.projected !== null)) {
         result[overlapIdx] = { ...result[overlapIdx], projected: result[overlapIdx].price ?? result[overlapIdx]._price }
@@ -272,9 +276,9 @@ export function PriceChart({ prices, c, range, hasFuturePrices }: { prices: Pric
     }
 
     return result
-  }, [prices, range, hasFuturePrices])
+  }, [prices, range, hasFuturePrices, today])
 
-  const tIdx = todayIndex(data)
+  const tIdx = todayIndex(data, today)
   const sel = selected !== null && selected < data.length ? data[selected] : null
 
   return (

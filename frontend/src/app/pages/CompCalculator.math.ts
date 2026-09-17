@@ -1,4 +1,5 @@
 import { refinancedLoanIds } from '../loanState.ts'
+import { addCalendarYears } from '../dateUtils.ts'
 // Pure math helpers for the Total Comp Calculator.
 // `outstandingPrincipalAt` mirrors the Dashboard's client-side principal IIFE
 // (Dashboard.tsx:979-992) which itself mirrors backend `_compute_outstanding_principal`
@@ -239,10 +240,7 @@ export function annualizedAppreciation(
 
 /** Subtract `n` years from an ISO date string (YYYY-MM-DD). */
 export function shiftYears(date: string, n: number): string {
-  const [y, m, d] = date.split('-').map(Number)
-  const dt = new Date(Date.UTC(y, m - 1, d))
-  dt.setUTCFullYear(dt.getUTCFullYear() + n)
-  return dt.toISOString().slice(0, 10)
+  return addCalendarYears(date, n)
 }
 
 /** Base net comp: appreciation on the loan-funded portion minus interest paid. */

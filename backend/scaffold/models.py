@@ -1,6 +1,6 @@
 from datetime import datetime, date, timezone
 from sqlalchemy import Integer, String, Float, BigInteger, Date, DateTime, ForeignKey, Boolean, JSON, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, reconstructor, relationship, validates
 from database import Base
 from scaffold.crypto import (
     EncryptedFloat, EncryptedInt, EncryptedString, EncryptedDate, EncryptedJSON,
@@ -85,6 +85,19 @@ class Grant(Base):
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
     __mapper_args__ = {"version_id_col": version}
 
+    @validates("dp_shares")
+    def validate_dp_shares(self, _key, value):
+        if value is not None and value > 0:
+            raise ValueError("dp_shares must be zero or negative")
+        return value
+
+    @reconstructor
+    def normalize_legacy_dp_shares(self):
+        # Interpret a legacy positive value as the obsolete encoding for
+        # handed-back shares; every current write path rejects that sign.
+        if self.dp_shares is not None and self.dp_shares > 0:
+            self.__dict__["dp_shares"] = -self.dp_shares
+
     user: Mapped["User"] = relationship(back_populates="grants")
 
 
@@ -118,6 +131,9 @@ class Price(Base):
     is_estimate: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
     __mapper_args__ = {"version_id_col": version}
+    __table_args__ = (
+        UniqueConstraint("user_id", "effective_date", name="uq_prices_user_effective_date"),
+    )
 
     user: Mapped["User"] = relationship(back_populates="prices")
 

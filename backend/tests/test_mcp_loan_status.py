@@ -142,10 +142,11 @@ def test_a_loan_drawn_in_a_later_year_is_not_owed_yet(account):
 def test_a_loan_a_sale_has_paid_off_is_settled(account):
     created = account.post("/api/loans?generate_payoff_sale=false",
                            json=body(loan_number="A")).json()
-    account.post("/api/sales", json={
-        "date": "2024-06-01", "shares": 1000, "price_per_share": 80.0,
+    response = account.post("/api/sales", json={
+        "date": "2024-06-01", "shares": 2000, "price_per_share": 80.0,
         "loan_id": created["id"],
     })
+    assert response.status_code == 201, response.text
     row = Mcp(account).call("list_loans")["loans"][0]
     assert row["status"] == "settled"
     assert row["balance"] == 0.0

@@ -13,8 +13,8 @@ from scaffold.models import User, Grant, Loan, Price, Sale, LoanPayment
 from scaffold.auth import get_current_user
 from scaffold.safe_workbook import WorkbookRejected, load_workbook_safely
 from app.date_utils import to_date as _to_date
-from schemas import (InputModel, MAX_BULK_ITEMS, MAX_LABEL_LEN, Notes, SharePrice, Shares,
-                     bounded, bounded_list)
+from schemas import (DownPaymentShares, InputModel, MAX_BULK_ITEMS, MAX_LABEL_LEN,
+                     Notes, SharePrice, Shares, bounded, bounded_list)
 from scaffold.quota import check_row_count, check_row_quota
 from app import event_cache
 
@@ -168,7 +168,7 @@ class WizardGrant(InputModel):
     vest_start: str
     periods: int
     exercise_date: str
-    dp_shares: int = 0
+    dp_shares: DownPaymentShares = 0
     election_83b: bool = False
     loans: list[WizardLoan] = []
 

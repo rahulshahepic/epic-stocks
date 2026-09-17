@@ -21,6 +21,7 @@ import { Card, HeroCard, IconTile, Eyebrow, type TileTone } from '../../scaffold
 import { Segmented } from '../../scaffold/components/ui/Segmented.tsx'
 import { IconCompass, IconTrendUp } from '../../scaffold/components/ui/icons.tsx'
 import campusWatercolor from '../../assets/campus-watercolor.webp'
+import { localToday, useToday } from '../dateUtils.ts'
 import {
   computeFanPercentiles,
   computeRiskOfRuinTable,
@@ -387,9 +388,7 @@ function HistogramTooltip({
   )
 }
 
-const TODAY = new Date().toISOString().slice(0, 10)
-
-function ageFromDOB(dob: string | null | undefined, asOf: string = TODAY): number | null {
+function ageFromDOB(dob: string | null | undefined, asOf: string = localToday()): number | null {
   if (!dob) return null
   const a = new Date(dob)
   const b = new Date(asOf)
@@ -408,8 +407,9 @@ export default function Retirement() {
 function RetirementAccount() {
   const { viewing } = useViewing()
   const c = useChartColors()
+  const today = useToday()
   const me = useMe()
-  const [retirementDate, setRetirementDate] = useState<string>(TODAY)
+  const [retirementDate, setRetirementDate] = useState<string>(today)
   const [exitPreviewLoading, setExitPreviewLoading] = useState(false)
   const [paramsLoaded, setParamsLoaded] = useState(false)
   // Distinct from `!paramsLoaded`: a failed load must not read as "still
@@ -429,14 +429,11 @@ function RetirementAccount() {
     result: SimResult
     params: SimParams
     retirementDate: string
+    spouseDOB: string | null
   } | null>(null)
   const result = completedRun?.result ?? null
   const resultEndAge = completedRun?.params.endAge
   const resultDollarYear = completedRun?.retirementDate.slice(0, 4)
-  const resultsStale = completedRun != null && (
-    completedRun.retirementDate !== retirementDate ||
-    JSON.stringify(completedRun.params) !== JSON.stringify(params)
-  )
   const runTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [explainerOpen, setExplainerOpen] = useState(false)
   const [sigmaOpen, setSigmaOpen] = useState(false)
@@ -445,6 +442,11 @@ function RetirementAccount() {
   const [ownerName, setOwnerName] = useState<string | null>(null)
   const [savingDOB, setSavingDOB] = useState(false)
   const [spouseDOB, setSpouseDOB] = useState<string | null>(null)
+  const resultsStale = completedRun != null && (
+    completedRun.retirementDate !== retirementDate ||
+    completedRun.spouseDOB !== spouseDOB ||
+    JSON.stringify(completedRun.params) !== JSON.stringify(params)
+  )
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [showRuinTable, setShowRuinTable] = useState(false)
 
@@ -654,18 +656,28 @@ function RetirementAccount() {
   }, [])
 
   const run = useCallback(() => {
-    const runParams = { ...params, glidePoints: params.glidePoints.map(point => ({ ...point })) }
+    const runParams = {
+      ...params,
+      simulationStartDate: retirementDate,
+      spouseBirthDate: spouseDOB ?? undefined,
+      glidePoints: params.glidePoints.map(point => ({ ...point })),
+    }
     setRunning(true)
     runTimer.current = setTimeout(() => {
       try {
-        setCompletedRun({ result: simulate(runParams), params: runParams, retirementDate })
+        setCompletedRun({
+          result: simulate(runParams),
+          params: { ...params, glidePoints: params.glidePoints.map(point => ({ ...point })) },
+          retirementDate,
+          spouseDOB,
+        })
         setHasRun(true)
       } finally {
         setRunning(false)
         runTimer.current = null
       }
     }, 30)
-  }, [params, retirementDate])
+  }, [params, retirementDate, spouseDOB])
 
   const fanData = useMemo(() => (result ? buildFanData(computeFanPercentiles(result)) : []), [result])
   const histData = useMemo(() => (result ? histogram(result, 30) : null), [result])

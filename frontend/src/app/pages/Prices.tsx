@@ -7,6 +7,7 @@ import { useViewing } from '../../scaffold/contexts/viewing.ts'
 import { fmtPrice } from '../format.ts'
 import { Field } from '../../scaffold/components/ui/Field.tsx'
 import { Card } from '../../scaffold/components/ui/Card.tsx'
+import { addCalendarDays, addCalendarYears, useToday } from '../dateUtils.ts'
 
 type PriceForm = { effective_date: string; price: number }
 type Mode = 'list' | 'add' | 'edit' | 'growth'
@@ -17,14 +18,12 @@ type GrowthForm = {
   through_date: string
 }
 
-const TODAY = new Date().toISOString().slice(0, 10)
-
 function nextJan1(): string {
   return `${new Date().getFullYear() + 1}-01-01`
 }
 
 function addYears(iso: string, n: number): string {
-  return `${+iso.slice(0, 4) + n}${iso.slice(4)}`
+  return addCalendarYears(iso, n)
 }
 
 function daysApart(a: string, b: string): number {
@@ -44,8 +43,7 @@ function computeGrowthPreview(
   let price = Math.round(basePrice * multiplier * 100) / 100
   while (current <= through_date) {
     results.push({ date: current, price })
-    const year = +current.slice(0, 4) + 1
-    current = `${year}${current.slice(4)}`
+    current = addCalendarYears(current, 1)
     price = Math.round(price * multiplier * 100) / 100
   }
   return results
@@ -55,6 +53,7 @@ export default function Prices() {
   const { viewing } = useViewing()
   const vid = viewing?.invitationId
   const readOnly = !!viewing
+  const today = useToday()
 
   const fetchPrices = useCallback(() => vid ? api.getSharedPrices(vid) : api.getPrices(), [vid])
   const { data: prices, loading, reload } = useApiData<PriceEntry[]>(fetchPrices)
@@ -106,7 +105,7 @@ export default function Prices() {
   }, [prices, form.effective_date, mode])
 
   async function handleSave(addAnother: boolean) {
-    if (epicMode && form.effective_date <= TODAY) {
+    if (epicMode && form.effective_date <= today) {
       setError('Only future-dated prices can be added in Epic mode')
       return
     }
@@ -144,9 +143,9 @@ export default function Prices() {
   // Most recent non-estimate price for growth preview base
   const basePrice = useMemo(() => {
     if (!prices) return 0
-    const real = prices.filter(p => !p.is_estimate && p.effective_date <= TODAY)
+    const real = prices.filter(p => !p.is_estimate && p.effective_date <= today)
     return real.length ? real[real.length - 1].price : 0
-  }, [prices])
+  }, [prices, today])
 
   const growthPreview = useMemo(
     () => computeGrowthPreview(basePrice, growthForm.annual_growth_pct, growthForm.first_date, growthForm.through_date),
@@ -162,7 +161,7 @@ export default function Prices() {
   }, [prices, growthForm.first_date, growthForm.through_date])
 
   async function handleGrowthApply() {
-    if (!growthForm.first_date || growthForm.first_date <= TODAY) {
+    if (!growthForm.first_date || growthForm.first_date <= today) {
       setGrowthError('First date must be in the future')
       return
     }
@@ -213,7 +212,7 @@ export default function Prices() {
         <div className="grid grid-cols-2 gap-3">
           <Field label="Effective Date" type="date"
             value={form.effective_date}
-            min={epicMode ? new Date(Date.now() + 86400000).toISOString().slice(0, 10) : undefined}
+            min={epicMode ? addCalendarDays(today, 1) : undefined}
             onChange={v => setForm(f => ({ ...f, effective_date: v }))} />
           <Field label="Price per Share" type="number" step="0.01"
             value={form.price}
@@ -281,7 +280,7 @@ export default function Prices() {
             onChange={v => setGrowthForm(f => ({ ...f, annual_growth_pct: +v }))} />
           <Field label="First Price Date" type="date"
             value={growthForm.first_date}
-            min={new Date(Date.now() + 86400000).toISOString().slice(0, 10)}
+            min={addCalendarDays(today, 1)}
             onChange={v => setGrowthForm(f => ({ ...f, first_date: v }))} />
           <Field label="Through Date" type="date"
             value={growthForm.through_date}

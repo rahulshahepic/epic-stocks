@@ -396,8 +396,12 @@ export const api = {
   getLoans: () => apiFetch<LoanEntry[]>('/api/loans'),
   createLoan: (data: Omit<LoanEntry, 'id' | 'version'>, generatePayoffSale = true) =>
     post<LoanEntry>(`/api/loans?generate_payoff_sale=${generatePayoffSale}`, data),
+  createLoanWithPayoff: (data: Omit<LoanEntry, 'id' | 'version'>, payoffSale: PayoffSaleOptions) =>
+    post<LoanEntry>('/api/loans/with-payoff', { loan: data, payoff_sale: payoffSale }),
   updateLoan: (id: number, data: Partial<Omit<LoanEntry, 'id'>>, regeneratePayoffSale = false) =>
     put<LoanEntry>(`/api/loans/${id}?regenerate_payoff_sale=${regeneratePayoffSale}`, data),
+  updateLoanWithPayoff: (id: number, data: Partial<Omit<LoanEntry, 'id'>>, payoffSale: PayoffSaleOptions) =>
+    put<LoanEntry>(`/api/loans/${id}/with-payoff`, { loan: data, payoff_sale: payoffSale }),
   deleteLoan: (id: number) => del(`/api/loans/${id}`),
   regenerateAllPayoffSales: () => apiFetch<{ updated: number; created: number; skipped_user_owned: number }>('/api/loans/regenerate-all-payoff-sales', { method: 'POST' }),
   getLoanPayoffSuggestion: (loanId: number, payoffDate?: string) => apiFetch<LoanPayoffSuggestion>(`/api/loans/${loanId}/payoff-sale-suggestion${payoffDate ? `?payoff_date=${payoffDate}` : ''}`),
@@ -426,6 +430,7 @@ export const api = {
     periods: number; exercise_date: string; dp_shares?: number;
     loan_amount?: number; loan_rate?: number; loan_due_date?: string; loan_number?: string;
     generate_payoff_sale?: boolean;
+    payoff_sale?: PayoffSaleOptions;
   }) => post<{ grant: GrantEntry; loan?: LoanEntry }>('/api/flows/new-purchase', data),
 
   addBonus: (data: {
@@ -501,6 +506,8 @@ export const api = {
   deleteSale: (id: number) => del(`/api/sales/${id}`),
   getSaleTax: (id: number) => apiFetch<TaxBreakdown>(`/api/sales/${id}/tax`),
   getAllSaleTaxes: () => apiFetch<Record<number, TaxBreakdown>>('/api/sales/tax'),
+  getRemainingHoldings: (asOf: string) =>
+    apiFetch<GrantHoldingShares[]>(`/api/sales/holdings?as_of=${encodeURIComponent(asOf)}`),
 
   // Tax Settings
   getTaxSettings: () => apiFetch<TaxSettings>('/api/tax-settings'),
@@ -670,6 +677,8 @@ export const api = {
   getSharedLoans: (invId: number) => apiFetch<LoanEntry[]>(`/api/sharing/view/${invId}/loans`),
   getSharedPrices: (invId: number) => apiFetch<PriceEntry[]>(`/api/sharing/view/${invId}/prices`),
   getSharedSales: (invId: number) => apiFetch<SaleEntry[]>(`/api/sharing/view/${invId}/sales`),
+  getSharedRemainingHoldings: (invId: number, asOf: string) =>
+    apiFetch<GrantHoldingShares[]>(`/api/sharing/view/${invId}/holdings?as_of=${encodeURIComponent(asOf)}`),
   getSharedTaxSettings: (invId: number) => apiFetch<TaxSettings>(`/api/sharing/view/${invId}/tax-settings`),
   getSharedSaleTax: (invId: number, saleId: number) => apiFetch<TaxBreakdown>(`/api/sharing/view/${invId}/sales/${saleId}/tax`),
   getSharedPreviewExit: (invId: number, date: string) => apiFetch<ExitPreview | null>(`/api/sharing/view/${invId}/preview-exit?date=${encodeURIComponent(date)}`),
@@ -894,6 +903,24 @@ export interface SaleEntry {
   lot_overrides?: Array<{ vest_date: string; grant_year: number | null; grant_type: string | null; basis_price: number; shares: number }> | null
   sale_plan_id?: number | null
   actual_tax_paid?: number | null
+}
+
+export interface PayoffSaleOptions {
+  enabled: boolean
+  federal_income_rate?: number | null
+  federal_lt_cg_rate?: number | null
+  federal_st_cg_rate?: number | null
+  niit_rate?: number | null
+  state_income_rate?: number | null
+  state_lt_cg_rate?: number | null
+  state_st_cg_rate?: number | null
+  lt_holding_days?: number | null
+}
+
+export interface GrantHoldingShares {
+  grant_year: number | null
+  grant_type: string | null
+  vested_shares: number
 }
 
 export interface LoanPaymentEntry {

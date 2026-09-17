@@ -158,7 +158,9 @@ test.describe('Full user journey', () => {
     await page.getByRole('button', { name: '+ Price' }).click()
     await expect(page.getByText('Add Price')).toBeVisible()
 
-    await page.getByLabel('Effective Date').fill('2026-03-01')
+    // Use a date that is not already present in fixture.xlsx. Prices are unique
+    // per user/date, so reusing 2026-03-01 would update the imported row.
+    await page.getByLabel('Effective Date').fill('2026-04-01')
     await page.getByLabel('Price per Share').fill('25.00')
     await page.getByRole('button', { name: 'Save', exact: true }).click()
 

@@ -346,7 +346,7 @@ def test_flow_new_purchase_with_loan(client):
         "year": 2022, "shares": 5000, "price": 3.50,
         "vest_start": "2023-03-01", "periods": 5,
         "exercise_date": "2022-12-31",
-        "loan_amount": 15750.0, "loan_rate": 4.0,
+        "loan_amount": 15750.0, "loan_rate": 0.04,
         "loan_due_date": "2027-12-31", "loan_number": "654321",
     })
     assert resp.status_code == 201
@@ -359,6 +359,18 @@ def test_flow_new_purchase_with_loan(client):
     loans = client.get("/api/loans").json()
     assert len(grants) == 1
     assert len(loans) == 1
+
+
+def test_flow_new_purchase_rejects_percentage_style_loan_rate(client):
+    register_user(client)
+    resp = client.post("/api/flows/new-purchase", json={
+        "year": 2022, "shares": 5000, "price": 3.50,
+        "vest_start": "2023-03-01", "periods": 5,
+        "exercise_date": "2022-12-31",
+        "loan_amount": 15750.0, "loan_rate": 4.0,
+        "loan_due_date": "2027-12-31", "loan_number": "654321",
+    })
+    assert resp.status_code == 422
 
 
 def test_flow_annual_price(client):

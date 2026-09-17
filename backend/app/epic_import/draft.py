@@ -552,6 +552,11 @@ def draft_from_payload(payload: dict, sk: Skeleton) -> tuple[Draft, list[Finding
                                     f"dp_shares {raw.get('dp_shares')!r} is not a number; "
                                     f"0 was used."))
             dp_shares = 0
+        if dp_shares > 0:
+            findings.append(Finding(
+                "R1", ERROR, f"{year} {gtype}",
+                "dp_shares must be zero or negative; positive values add shares instead of handing them back.",
+            ))
 
         draft.grants.append(DraftGrant(
             year=year, type=gtype, shares=shares, price=price,

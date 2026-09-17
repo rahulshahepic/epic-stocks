@@ -459,12 +459,17 @@ def _estimate_sale(ctx: ToolContext, args: dict):
         raise ValueError("'shares' must be greater than zero")
 
     sale_date = _opt_date(args, "sale_date")
+    loan_id = _opt_int(args, "loan_id")
+    if loan_id is not None and not ctx.db.query(Loan).filter(
+        Loan.id == loan_id, Loan.user_id == owner.id,
+    ).first():
+        raise ValueError(f"Loan {loan_id} was not found for this account")
     return estimate_sale(
         price_per_share=price,
         target_net_cash=target,
         shares=shares,
-        sale_date=sale_date.isoformat() if sale_date else None,
-        loan_id=_opt_int(args, "loan_id"),
+        sale_date=sale_date,
+        loan_id=loan_id,
         grant_year=None,
         grant_type=None,
         user=owner,

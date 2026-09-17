@@ -1,8 +1,8 @@
 import { refinancedLoanIds } from '../loanState.ts'
 import type {
-  GrantEntry, LoanEntry, PriceEntry, SaleEntry, TaxSettings, TimelineEvent,
+  GrantEntry, GrantHoldingShares, LoanEntry, PriceEntry, SaleEntry, TaxSettings, TimelineEvent,
 } from '../../api.ts'
-import { TODAY } from '../components/chartAxes.ts'
+import { addCalendarYears, localToday } from '../dateUtils.ts'
 
 /**
  * Everything the dashboard works out from the user's timeline, loans and sales.
@@ -49,16 +49,17 @@ export function loanStateAsOf(loans: LoanEntry[], events: TimelineEvent[], sales
 /** Whether any future price actually differs from today's — what makes a projection worth marking as one. */
 export function hasDivergentFuturePrice(prices: PriceEntry[] | null) {
   if (!prices) return false
-  const futurePrices = prices.filter(p => p.effective_date > TODAY)
+  const today = localToday()
+  const futurePrices = prices.filter(p => p.effective_date > today)
   if (!futurePrices.length) return false
-  const pastPrices = prices.filter(p => p.effective_date <= TODAY)
+  const pastPrices = prices.filter(p => p.effective_date <= today)
   const currentPrice = pastPrices.length ? pastPrices[pastPrices.length - 1].price : 0
   return futurePrices.some(p => Math.abs(p.price - currentPrice) > 0.005)
 }
 
 /** The furthest date anything is known about: the last event or the last price. */
 export function maxTimelineDate(events: TimelineEvent[] | null, prices: PriceEntry[] | null) {
-  let last = TODAY
+  let last = localToday()
   if (events?.length) last = events[events.length - 1].date > last ? events[events.length - 1].date : last
   if (prices?.length) {
     const lp = prices[prices.length - 1].effective_date
@@ -73,12 +74,12 @@ export function findStalePrice(prices: PriceEntry[] | null) {
   const real = (prices ?? []).filter(p => !p.is_estimate)
   if (real.length === 0) return null
   const newest = real[real.length - 1]
-  return newest.effective_date.slice(0, 4) < TODAY.slice(0, 4) ? newest : null
+  return newest.effective_date.slice(0, 4) < localToday().slice(0, 4) ? newest : null
 }
 
 /** The last date on the timeline, projections included — what "Last event" jumps to. */
 export function lastTimelineDate(events: TimelineEvent[] | null) {
-  if (!events?.length) return TODAY
+  if (!events?.length) return localToday()
   return events[events.length - 1].date
 }
 
@@ -220,8 +221,8 @@ export function computeCardValues(events: TimelineEvent[] | null, loans: LoanEnt
 }
 
 /** Per-grant holdings, value, tax and outstanding loans, as of one date. */
-export function computeGrantHoldings(grantsData: GrantEntry[] | null, events: TimelineEvent[] | null, loans: LoanEntry[] | null, sales: SaleEntry[] | null, taxSettings: TaxSettings | null, cardDate: string) {
-  if (!grantsData || !events || !loans) return null
+export function computeGrantHoldings(grantsData: GrantEntry[] | null, events: TimelineEvent[] | null, loans: LoanEntry[] | null, sales: SaleEntry[] | null, taxSettings: TaxSettings | null, cardDate: string, remainingHoldings: GrantHoldingShares[] | null) {
+  if (!grantsData || !events || !loans || !remainingHoldings) return null
 
   const loanState = loanStateAsOf(loans, events, sales, cardDate)
 
@@ -239,51 +240,26 @@ export function computeGrantHoldings(grantsData: GrantEntry[] | null, events: Ti
     ? taxSettings.federal_income_rate + taxSettings.state_income_rate
     : 0
 
-  // Per-grant sold shares from explicit lot overrides (lot_overrides carries grant attribution).
-  // Loan payoff sales carry no lot_overrides but do carry loan_id — attribute those to the
-  // grant the loan belongs to, otherwise their shares never leave heldVested even after the
-  // loan (and the shares that paid it off) are gone.
-  const loanById = new Map(loans.map(l => [l.id, l]))
-  const soldByGrant = new Map<string, number>()
-  for (const s of (sales ?? [])) {
-    if (s.date > effectiveDate) continue
-    if (s.lot_overrides) {
-      for (const lot of s.lot_overrides) {
-        if (lot.grant_year == null || lot.grant_type == null) continue
-        const key = `${lot.grant_year}-${lot.grant_type}`
-        soldByGrant.set(key, (soldByGrant.get(key) ?? 0) + lot.shares)
-      }
-    } else if (s.loan_id != null) {
-      const loan = loanById.get(s.loan_id)
-      if (loan) {
-        const key = `${loan.grant_year}-${loan.grant_type}`
-        soldByGrant.set(key, (soldByGrant.get(key) ?? 0) + s.shares)
-      }
-    }
-  }
-
-
+  const vestedByGrant = new Map(
+    remainingHoldings.map(h => [`${h.grant_year}-${h.grant_type}`, h.vested_shares]),
+  )
 
   return grantsData.map(g => {
     // Vested shares from schedule
     let vested = 0
     if (g.periods > 0) {
-      const vs = new Date(g.vest_start + 'T00:00:00')
       const base = Math.floor(g.shares / g.periods)
       const rem = g.shares % g.periods
       for (let p = 0; p < g.periods; p++) {
-        const vd = new Date(vs)
-        vd.setFullYear(vd.getFullYear() + p)
-        if (vd.toISOString().slice(0, 10) <= effectiveDate) {
+        if (addCalendarYears(g.vest_start, p) <= effectiveDate) {
           vested += base + (p < rem ? 1 : 0)
         }
       }
     }
     const unvested = g.shares - vested
-    // dp_shares are negative when shares were exchanged as a down payment; subtract
-    // lot-attributed sales where the user recorded per-lot allocation
-    const soldViaLots = soldByGrant.get(`${g.year}-${g.type}`) ?? 0
-    const heldVested = Math.max(0, vested + (g.dp_shares ?? 0) - soldViaLots)
+    // The backend lot engine is authoritative here: it has already consumed DP
+    // exchanges and automatic/manual sales from the grants they actually used.
+    const heldVested = vestedByGrant.get(`${g.year}-${g.type}`) ?? 0
 
     // Outstanding loans for this grant
     const totalLoan = loans

@@ -1,7 +1,9 @@
 """Regression coverage for the September financial-integrity review."""
 
 from datetime import date
+import io
 from types import SimpleNamespace
+import openpyxl
 from .conftest import register_user
 
 
@@ -152,6 +154,72 @@ def test_payment_refreshes_generated_payoff_sale(client):
     assert before["shares"] > 0
     assert after == []
     assert suggestion["shares"] == 0
+
+
+def test_disabling_payoff_does_not_delete_a_user_owned_sale(client):
+    register_user(client)
+    grant(client)
+    client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 10})
+    ln = loan(client)
+    generated = client.post(f"/api/loans/{ln['id']}/execute-payoff").json()
+    edited = client.put(
+        f"/api/sales/{generated['id']}",
+        json={"shares": generated["shares"] + 1},
+    )
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["is_generated"] is False
+
+    response = client.put(
+        f"/api/loans/{ln['id']}/with-payoff",
+        json={"loan": {}, "payoff_sale": {"enabled": False}},
+    )
+    assert response.status_code == 409, response.text
+    assert client.get("/api/sales").json()[0]["id"] == generated["id"]
+
+
+def test_notes_only_edit_does_not_revalidate_historical_payoff(client):
+    register_user(client)
+    grant(client)
+    ln = loan(client)
+    sale = client.post("/api/sales", json={
+        "loan_id": ln["id"], "date": "2030-01-01",
+        "shares": 20, "price_per_share": 10,
+    }).json()
+    assert client.put(f"/api/loans/{ln['id']}", json={"amount": 10_000}).status_code == 200
+    edited = client.put(f"/api/sales/{sale['id']}", json={"notes": "audited"})
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["notes"] == "audited"
+
+
+def test_holdings_report_separates_vested_schedule_from_shares_held(client):
+    register_user(client)
+    grant(client)
+    sale = client.post("/api/sales", json={
+        "date": "2023-01-01", "shares": 20, "price_per_share": 10,
+    })
+    assert sale.status_code == 201, sale.text
+    report = client.get("/api/export/holdings-report", params={"as_of": "2024-01-01"})
+    assert report.status_code == 200, report.text
+    sheet = openpyxl.load_workbook(io.BytesIO(report.content)).active
+    headers = [sheet.cell(7, col).value for col in range(1, 11)]
+    assert headers[3:5] == ["Vested Shares", "Shares Held"]
+    assert sheet.cell(8, 4).value == 100
+    assert sheet.cell(8, 5).value == 80
+
+
+def test_wizard_rejects_positive_down_payment_shares(client):
+    register_user(client)
+    response = client.post("/api/wizard/submit", json={
+        "grants": [{
+            "year": 2020, "type": "Purchase", "shares": 100, "price": 1,
+            "vest_start": "2021-01-01", "periods": 1,
+            "exercise_date": "2020-01-01", "dp_shares": 10,
+            "loans": [],
+        }],
+        "prices": [], "sales": [], "clear_existing": False,
+        "generate_payoff_sales": False,
+    })
+    assert response.status_code == 422, response.text
 
 
 def test_invalid_inputs_are_rejected():

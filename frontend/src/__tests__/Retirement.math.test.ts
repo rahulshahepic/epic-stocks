@@ -8,6 +8,7 @@ import {
   DEFAULT_PARAMS,
   finalPercentiles,
   FINAL_PERCENTILES,
+  fraCalendarYear,
   fraFromBirthYear,
   HISTORICAL_RETURNS,
   histogram,
@@ -1100,6 +1101,41 @@ describe('fraFromBirthYear', () => {
     expect(fraFromBirthYear(1955)).toBeCloseTo(66 + 2 / 12, 9)
     expect(fraFromBirthYear(1957)).toBeCloseTo(66 + 6 / 12, 9)  // 66½
     expect(fraFromBirthYear(1959)).toBeCloseTo(66 + 10 / 12, 9)
+  })
+})
+
+describe('fractional FRA calendar year', () => {
+  it('includes both birth month and FRA months for someone born in 1957', () => {
+    expect(fraCalendarYear('1957-08-15', 66.5)).toBe(2024)
+  })
+
+  it('uses the FRA-year earnings rule inside a simulation', () => {
+    const base = {
+      ...DEFAULT_PARAMS,
+      epicExit: 1,
+      taxableAdditional: 0,
+      traditional: 0,
+      roth: 0,
+      defaultSpend: 120,
+      minSpend: 120,
+      healthInsurance: 0,
+      ssMonthly: 0,
+      includeSpouse: true,
+      spouseCurrentAge: 66 + 4 / 12,
+      spouseSsMonthly: 2400,
+      spouseClaimAge: 62,
+      spouseFra: 66.5,
+      spouseWorkIncome: 50,
+      spouseStopWorkAge: 67,
+      currentAge: 65,
+      endAge: 66,
+      simulationStartDate: '2023-12-01',
+      paths: 1,
+      seed: 17,
+    }
+    const fraYear = simulate({ ...base, spouseBirthDate: '1957-08-15' })
+    const noCalendarAnchor = simulate(base)
+    expect(fraYear.finalWealth[0]).toBeGreaterThan(noCalendarAnchor.finalWealth[0])
   })
 })
 

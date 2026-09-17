@@ -269,8 +269,10 @@ describe('Dashboard', () => {
     await waitFor(() => {
       expect(screen.getByText('Value on Jan 2, 2027')).toBeInTheDocument()
     })
-    expect(screen.getAllByText('$3,000').length).toBeGreaterThanOrEqual(2)
-    expect(screen.queryByText('$20,000')).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getAllByText('$3,000').length).toBeGreaterThanOrEqual(2)
+      expect(screen.queryByText('$20,000')).not.toBeInTheDocument()
+    })
   })
 
   it('renders color-coded card labels', async () => {

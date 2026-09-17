@@ -311,6 +311,11 @@ def test_estimate_sale_rejects_a_nonsense_price(mcp):
     assert "not a number" in mcp.error("estimate_sale", price_per_share="four", shares=10)
 
 
+def test_estimate_sale_reports_an_unknown_loan_as_a_tool_error(mcp):
+    message = mcp.error("estimate_sale", price_per_share=4.0, shares=10, loan_id=999999)
+    assert "not found for this account" in message
+
+
 def test_get_tax_breakdown_agrees_with_the_app_and_adds_the_lot_allocation(mcp, client):
     """Every figure the HTTP endpoint reports, plus the lots behind them.
 

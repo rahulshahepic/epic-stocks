@@ -115,9 +115,14 @@ export default function Dashboard() {
     if (mode === 'last-event') return today // resolved after events load via effect
     return localStorage.getItem('dashboard_cardDate') ?? today
   })
+  const [holdingsDate, setHoldingsDate] = useState(cardDate)
+  useEffect(() => {
+    const timer = setTimeout(() => setHoldingsDate(cardDate), 250)
+    return () => clearTimeout(timer)
+  }, [cardDate])
   const fetchRemainingHoldings = useCallback(
-    () => vid ? api.getSharedRemainingHoldings(vid, cardDate) : api.getRemainingHoldings(cardDate),
-    [vid, cardDate],
+    () => vid ? api.getSharedRemainingHoldings(vid, holdingsDate) : api.getRemainingHoldings(holdingsDate),
+    [vid, holdingsDate],
   )
   const { data: remainingHoldings } = useApiData<GrantHoldingShares[]>(fetchRemainingHoldings)
   const [exitBreakdownOpen, setExitBreakdownOpen] = useState(false)

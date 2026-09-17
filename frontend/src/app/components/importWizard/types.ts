@@ -2,6 +2,7 @@ import type { LoanEntry } from '../../../api.ts'
 import type { WizardPrefill as ImportWizardPrefill } from '../../epicImport.ts'
 import type { BonusRowType, GrantTypeName } from '../../grantTypes.ts'
 import type { WizardGrantTemplate } from '../../../api.ts'
+import { addCalendarYears } from '../../dateUtils.ts'
 
 export type GrantType = GrantTypeName
 
@@ -173,4 +174,3 @@ export function sharesInPeriod(totalShares: number, periods: number, i: number):
   const per = Math.floor(totalShares / periods)
   return i === periods - 1 ? totalShares - per * (periods - 1) : per
 }
-import { addCalendarYears } from '../../dateUtils.ts'

@@ -588,6 +588,11 @@ def restore_import_backup(
     loans = data.get("loans", [])
     loan_payments = data.get("loan_payments", [])
     sales = data.get("sales", [])
+    if any((g.get("dp_shares") or 0) > 0 for g in grants):
+        raise HTTPException(
+            status_code=422,
+            detail="Backup contains invalid positive dp_shares; values must be zero or negative",
+        )
 
     included = data.get("included", {key: bool(data.get(key)) for key in
         ("grants", "prices", "loans", "loan_payments", "sales")})
@@ -1279,17 +1284,23 @@ def export_holdings_report(
     # --- SECTION 1: Holdings by Grant ---
     row = 6
     ws.cell(row=row, column=1, value="HOLDINGS BY GRANT").font = _SECTION_FONT
-    for col in range(1, 10):
+    for col in range(1, 11):
         ws.cell(row=row, column=col).fill = _SECTION_FILL
     row += 1
 
     vested_value_label = "Vested Value (est.)" if price_is_estimate else "Vested Value"
-    holdings_headers = ["Grant", "Exercise Date", "Cost Basis/Share", "Vested Shares",
-                        "Unvested Shares", "Unvested Value (Cost Basis)", vested_value_label, "Est. Taxes Paid", "Outstanding Loans"]
+    holdings_headers = [
+        "Grant", "Exercise Date", "Cost Basis/Share", "Vested Shares",
+        "Shares Held", "Unvested Shares", "Unvested Value (Cost Basis)",
+        vested_value_label, "Est. Taxes Paid", "Outstanding Loans",
+    ]
     _report_header(ws, row, holdings_headers)
     row += 1
 
-    totals = {"vested": 0, "unvested": 0, "unvested_value": 0.0, "value": 0.0, "tax": 0.0, "loan": 0.0}
+    totals = {
+        "vested": 0, "held": 0, "unvested": 0, "unvested_value": 0.0,
+        "value": 0.0, "tax": 0.0, "loan": 0.0,
+    }
 
     for g in grants_db:
         # Compute vested from schedule
@@ -1333,14 +1344,16 @@ def export_holdings_report(
         _report_cell(ws, row, 1, f"{g.year} {g.type}")
         _report_cell(ws, row, 2, g.exercise_date, "mm/dd/yyyy")
         _report_cell(ws, row, 3, g.price, "\\$#,##0.00")
-        _report_cell(ws, row, 4, held_vested, "#,##0")
-        _report_cell(ws, row, 5, unvested, "#,##0")
-        _report_cell(ws, row, 6, round(unvested_value, 2), "\\$#,##0")
-        _report_cell(ws, row, 7, round(vested_value, 2), "\\$#,##0")
-        _report_cell(ws, row, 8, round(total_tax, 2), "\\$#,##0")
-        _report_cell(ws, row, 9, round(total_loan, 2), "\\$#,##0")
+        _report_cell(ws, row, 4, vested, "#,##0")
+        _report_cell(ws, row, 5, held_vested, "#,##0")
+        _report_cell(ws, row, 6, unvested, "#,##0")
+        _report_cell(ws, row, 7, round(unvested_value, 2), "\\$#,##0")
+        _report_cell(ws, row, 8, round(vested_value, 2), "\\$#,##0")
+        _report_cell(ws, row, 9, round(total_tax, 2), "\\$#,##0")
+        _report_cell(ws, row, 10, round(total_loan, 2), "\\$#,##0")
 
-        totals["vested"] += held_vested
+        totals["vested"] += vested
+        totals["held"] += held_vested
         totals["unvested"] += unvested
         totals["unvested_value"] += unvested_value
         totals["value"] += vested_value
@@ -1349,21 +1362,23 @@ def export_holdings_report(
         row += 1
 
     # Totals row
-    for col in range(1, 10):
+    for col in range(1, 11):
         ws.cell(row=row, column=col).border = Border(top=Side(style="thin", color="FF4472C4"))
     ws.cell(row=row, column=1, value="TOTAL").font = Font(name="Arial", size=10, bold=True)
     ws.cell(row=row, column=4, value=totals["vested"]).font = Font(name="Arial", size=10, bold=True)
     ws.cell(row=row, column=4).number_format = "#,##0"
-    ws.cell(row=row, column=5, value=totals["unvested"]).font = Font(name="Arial", size=10, bold=True)
+    ws.cell(row=row, column=5, value=totals["held"]).font = Font(name="Arial", size=10, bold=True)
     ws.cell(row=row, column=5).number_format = "#,##0"
-    ws.cell(row=row, column=6, value=round(totals["unvested_value"], 2)).font = Font(name="Arial", size=10, bold=True)
-    ws.cell(row=row, column=6).number_format = "\\$#,##0"
-    ws.cell(row=row, column=7, value=round(totals["value"], 2)).font = Font(name="Arial", size=10, bold=True)
+    ws.cell(row=row, column=6, value=totals["unvested"]).font = Font(name="Arial", size=10, bold=True)
+    ws.cell(row=row, column=6).number_format = "#,##0"
+    ws.cell(row=row, column=7, value=round(totals["unvested_value"], 2)).font = Font(name="Arial", size=10, bold=True)
     ws.cell(row=row, column=7).number_format = "\\$#,##0"
-    ws.cell(row=row, column=8, value=round(totals["tax"], 2)).font = Font(name="Arial", size=10, bold=True)
+    ws.cell(row=row, column=8, value=round(totals["value"], 2)).font = Font(name="Arial", size=10, bold=True)
     ws.cell(row=row, column=8).number_format = "\\$#,##0"
-    ws.cell(row=row, column=9, value=round(totals["loan"], 2)).font = Font(name="Arial", size=10, bold=True)
+    ws.cell(row=row, column=9, value=round(totals["tax"], 2)).font = Font(name="Arial", size=10, bold=True)
     ws.cell(row=row, column=9).number_format = "\\$#,##0"
+    ws.cell(row=row, column=10, value=round(totals["loan"], 2)).font = Font(name="Arial", size=10, bold=True)
+    ws.cell(row=row, column=10).number_format = "\\$#,##0"
     row += 2
 
     # --- SECTION 2: Active Loans ---
@@ -1423,6 +1438,7 @@ def export_holdings_report(
     summary_items = [
         ("Share Price (estimated)" if price_is_estimate else "Share Price", current_price, "\\$#,##0.00"),
         ("Total Vested Shares", totals["vested"], "#,##0"),
+        ("Total Shares Held", totals["held"], "#,##0"),
         ("Total Unvested Shares", totals["unvested"], "#,##0"),
         ("Total Unvested Value (Cost Basis)", round(totals["unvested_value"], 2), "\\$#,##0"),
         ("Total Vested Value" + (" (estimated)" if price_is_estimate else ""), round(totals["value"], 2), "\\$#,##0"),
@@ -1439,7 +1455,7 @@ def export_holdings_report(
         row += 1
 
     # --- Column widths ---
-    col_widths = [22, 16, 16, 16, 16, 22, 16, 18, 18]
+    col_widths = [22, 16, 16, 16, 16, 16, 22, 16, 18, 18]
     for i, w in enumerate(col_widths, 1):
         ws.column_dimensions[get_column_letter(i)].width = w
 

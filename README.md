@@ -178,7 +178,7 @@ Its visual language draws from Epic's Verona campus: a hand-painted botanical,
 library, observatory, and dragon panorama frames the summary without obscuring
 the financial data.
 
-The **Export** button in the date bar downloads a formatted Excel holdings report for the selected date, useful for financial or estate planners.
+The **Export** button in the date bar downloads a formatted Excel holdings report for the selected date, useful for financial or estate planners. The report distinguishes shares vested by the award schedule from **Shares Held** after sales and down-payment exchanges.
 
 #### "If you exited on this date"
 
@@ -360,7 +360,7 @@ When you create a loan with **Payoff loan via sale** checked (the default), a pa
 
 If you later change tax rates or add new share prices, the stored share count will be stale. Use **Regen payoff sales** on the Loans page to recompute all future payoff sale share counts at once (this also updates the locked tax rates to your current settings). Recording a loan payment refreshes them too, since paying down the balance changes how many shares the payoff needs.
 
-**Once you edit one, it is yours.** Change the date, share count or price on an auto-generated payoff sale and the app stops maintaining it: regenerating, recording a payment, or editing the loan will leave your figures alone from then on, and **Execute payoff** will refuse rather than overwrite them. Refinancing a loan whose repayment sale you own is refused too, rather than deleting it quietly. Such a sale is marked **Yours** on the Sales page, and **Regen payoff sales** reports how many it left alone so a run that changes nothing does not look like a run that found nothing to change. Delete the sale if you want a freshly computed one back. Editing only the notes or a tax-rate override does not count as taking it over.
+**Once you edit one, it is yours.** Change the date, share count or price on an auto-generated payoff sale and the app stops maintaining it: regenerating, recording a payment, editing the loan, or clearing **Payoff loan via sale** will leave your figures alone, and **Execute payoff** will refuse rather than overwrite them. Refinancing a loan whose repayment sale you own is refused too, rather than deleting it quietly. Such a sale is marked **Yours** on the Sales page, and **Regen payoff sales** reports how many it left alone so a run that changes nothing does not look like a run that found nothing to change. Delete the sale if you want a freshly computed one back. Editing only the notes or a tax-rate override does not count as taking it over.
 
 **Repayment sales that pre-date this feature are all marked Yours.** The app cannot tell which of them it generated and which you attached or edited by hand — the note that would say so is encrypted — and guessing wrong would let it overwrite your own figures. So it stops maintaining all of them rather than risk one. Delete any you would rather have the app keep current, and it will compute a fresh one.
 
@@ -1378,7 +1378,6 @@ The built-in privacy page (`/privacy`) lists the third-party services used by th
 - **Anything a native shell would have to do differently lives behind `frontend/src/platform/`.** Four capabilities — how a session is authenticated and stored, key-value storage, handing the user a file, and push registration — are interfaces with a browser implementation. Feature code calls `platform.files.saveBlob(...)` rather than building an `<a download>`, and `platform.auth.openAuthorizationUrl(...)` rather than assigning `window.location`. These are the exact points where a WebView behaves differently from a browser (blob downloads are inert, `PushManager` does not exist, OAuth in an embedded WebView is refused by identity providers), so isolating them keeps one codebase serving both targets.
 
 - **Schema migrations use Alembic.** Migrations live in `backend/alembic/versions/`. `alembic upgrade head` runs automatically on startup (PostgreSQL only; SQLite test environments use `create_all`). Create a new migration with `alembic revision --autogenerate -m "description"`.
-
 
 
 

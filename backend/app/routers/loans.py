@@ -95,39 +95,6 @@ def _is_flexible_payoff_enabled(db: Session) -> bool:
     return bool(row.flexible_payoff_enabled) if row else False
 
 
-def _has_sufficient_coverage(user: User, loan: Loan, db: Session, timeline: list, price: float, cash_due: float) -> bool:
-    """
-    Returns True if vested_shares*price + sum(unvested_shares_i * grant_price_i) >= cash_due.
-    timeline must already be augmented with prior sales (same as used by _compute_payoff_sale).
-    """
-    from app.sales_engine import build_fifo_lots
-
-    lots = build_fifo_lots(timeline, loan.due_date, order='fifo')
-    vested_coverage = sum(lot[1] for lot in lots) * price
-
-    grants_db = db.query(Grant).filter(Grant.user_id == user.id).all()
-    vested_by_grant: dict = {}
-    for e in timeline:
-        edate = e.get("date")
-        if edate is None:
-            continue
-        if isinstance(edate, datetime):
-            edate = edate.date()
-        if edate > loan.due_date:
-            break
-        if e.get("event_type") == "Vesting" and (e.get("vested_shares") or 0) > 0:
-            key = (e.get("grant_year"), e.get("grant_type"))
-            vested_by_grant[key] = vested_by_grant.get(key, 0) + e["vested_shares"]
-
-    unvested_coverage = 0.0
-    for g in grants_db:
-        vested = vested_by_grant.get((g.year, g.type), 0)
-        unvested = max(0, g.shares - (g.dp_shares or 0) - vested)
-        unvested_coverage += unvested * (g.price or 0.0)
-
-    return (vested_coverage + unvested_coverage) >= cash_due
-
-
 def _price_at_date(timeline: list, as_of) -> float:
     """Return the share price from the timeline at or just before as_of date."""
     if isinstance(as_of, datetime):
@@ -194,13 +161,13 @@ def _compute_payoff_sale(
 
     # Determine lot selection method for THIS loan's own payoff sale — same
     # resolution /api/events and /api/sales/{id}/tax will apply once this sale
-    # is persisted, except a flexible method is only honored when there's
-    # enough total coverage to actually attempt it; otherwise same-tranche.
+    # is persisted.
     payoff_method = 'same_tranche'
     if ts_row and flexible_enabled:
-        user_method = ts_row.loan_payoff_method
-        if user_method != 'same_tranche' and _has_sufficient_coverage(user, loan, db, sorted_tl, price, cash_due):
-            payoff_method = user_method
+        # Persisted payoff sales are taxed with this account-level method by
+        # resolve_sale_lot_order. Size the generated sale with that exact same
+        # method so creation and later validation cannot disagree.
+        payoff_method = ts_row.loan_payoff_method
 
     if payoff_method == 'same_tranche':
         tax_lot_order, tranche_gy, tranche_gt = 'epic_lifo', loan.grant_year, loan.grant_type
@@ -586,6 +553,14 @@ def update_loan_with_payoff(
     if body.payoff_sale.enabled:
         _upsert_generated_payoff_sale(loan, user, db, body.payoff_sale)
     elif existing is not None:
+        if not existing.is_generated:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "This payoff sale has been edited and is now user-owned; "
+                    "delete it from Sales if you want to remove it"
+                ),
+            )
         db.delete(existing)
 
     db.commit()

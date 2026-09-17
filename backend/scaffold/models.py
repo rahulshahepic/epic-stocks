@@ -1,6 +1,6 @@
 from datetime import datetime, date, timezone
 from sqlalchemy import Integer, String, Float, BigInteger, Date, DateTime, ForeignKey, Boolean, JSON, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
+from sqlalchemy.orm import Mapped, mapped_column, reconstructor, relationship, validates
 from database import Base
 from scaffold.crypto import (
     EncryptedFloat, EncryptedInt, EncryptedString, EncryptedDate, EncryptedJSON,
@@ -90,6 +90,13 @@ class Grant(Base):
         if value is not None and value > 0:
             raise ValueError("dp_shares must be zero or negative")
         return value
+
+    @reconstructor
+    def normalize_legacy_dp_shares(self):
+        # Interpret a legacy positive value as the obsolete encoding for
+        # handed-back shares; every current write path rejects that sign.
+        if self.dp_shares is not None and self.dp_shares > 0:
+            self.__dict__["dp_shares"] = -self.dp_shares
 
     user: Mapped["User"] = relationship(back_populates="grants")
 

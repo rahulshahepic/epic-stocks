@@ -1819,6 +1819,13 @@ export function fraFromBirthYear(birthYear: number): number {
   return 66 + ((birthYear - 1954) * 2) / 12
 }
 
+/** Calendar year in which a person reaches a fractional full-retirement age. */
+export function fraCalendarYear(birthDate: string, fra: number): number {
+  const birthYear = Number(birthDate.slice(0, 4))
+  const birthMonth = Number(birthDate.slice(5, 7))
+  return birthYear + Math.floor((birthMonth - 1 + Math.round(fra * 12)) / 12)
+}
+
 // SS benefit adjustment factor at claim age. FRA default 67.
 //   Early: 5/9 of 1% per month for first 36, 5/12 of 1% per month beyond.
 //   Late: 8% per year delayed retirement credit, capped at age 70.
@@ -2000,10 +2007,9 @@ export function simulate(params: SimParams): SimResult {
     ? Number(params.simulationStartDate.slice(0, 4)) : null
   const simulationStartMonth = params.simulationStartDate
     ? Number(params.simulationStartDate.slice(5, 7)) - 1 : null
-  const spouseBirthYear = params.spouseBirthDate
-    ? Number(params.spouseBirthDate.slice(0, 4)) : null
-  const spouseFraCalendarYear = spouseBirthYear == null
-    ? null : spouseBirthYear + Math.floor(params.spouseFra)
+  const spouseFraCalendarYear = params.spouseBirthDate
+    ? fraCalendarYear(params.spouseBirthDate, params.spouseFra)
+    : null
 
   // Initial HI estimate (zero MAGI) — seeds the first year's monthly
   // amortization. IRMAA is updated annually at year-end using the year's

@@ -201,6 +201,10 @@ def _validate_payoff_coverage(
     from scaffold.models import LoanPayment
 
     sale_date = sale_values["date"]
+    from app.loan_state import refinanced_loan_ids
+    loans = db.query(Loan).filter(Loan.user_id == user.id).all()
+    if loan.id in refinanced_loan_ids(loans, sale_date):
+        return
     paid = sum(
         payment.amount for payment in db.query(LoanPayment).filter(
             LoanPayment.loan_id == loan.id,
@@ -299,7 +303,10 @@ def update_sale(sale_id: int, body: SaleUpdate, user: User = Depends(get_current
     new_date = body.date or sale.date
     if sale.loan_id is None and new_date > sale.date:
         _check_cash_out_allowed(user, new_date, db)
-    elif sale.loan_id is not None:
+    elif sale.loan_id is not None and any(
+        field in body.model_fields_set
+        for field in ("date", "shares", "price_per_share", "lot_overrides")
+    ):
         loan = get_owned(db, Loan, sale.loan_id, user, "Loan")
         values = {
             field: getattr(sale, field)
@@ -317,8 +324,10 @@ def update_sale(sale_id: int, body: SaleUpdate, user: User = Depends(get_current
     # Once the user changes what the sale says, it is theirs — the regenerator
     # must stop rewriting it. Rate overrides and notes are not part of the
     # computed figure, so they do not claim the row.
-    if any(getattr(body, f) is not None and getattr(body, f) != getattr(sale, f)
-           for f in ("date", "shares", "price_per_share")):
+    if any(
+        f in body.model_fields_set and getattr(body, f) != getattr(sale, f)
+        for f in ("date", "shares", "price_per_share", "lot_overrides")
+    ):
         sale.is_generated = False
     apply_update(sale, body)
     db.commit()

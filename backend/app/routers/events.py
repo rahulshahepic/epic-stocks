@@ -891,6 +891,10 @@ def _as_of_view(payload: dict, as_of: date, timeline: list) -> dict:
     payload["basis"] = (
         "vested_shares, income_to_date, cap_gains_to_date, total_tax_paid and "
         f"cash_received count only what has happened by {as_of.isoformat()}. "
+        "held_vested_shares excludes shares sold or exchanged; total_stock_value "
+        "values those holdings at current_price plus purchased unvested shares "
+        "at purchase cost. net_equity subtracts outstanding_loan_balance, which "
+        "nets early payments and settled loans (unlike gross total_loan_principal). "
         "shares_at_end_of_schedule is the position once every grant on record has "
         "fully vested — a share count, so it is a fact. There is no lifetime "
         "income or gains figure because those would be computed from prices the "
@@ -933,6 +937,21 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
     for lp in loan_payments_db:
         if lp.date <= cutoff:
             payments_by_loan[lp.loan_id] = payments_by_loan.get(lp.loan_id, 0.0) + lp.amount
+    position = None
+    if as_of is not None:
+        # Use the same remaining-lot service as the dashboard's per-grant cards:
+        # cumulative vested shares include shares already sold or exchanged.
+        from app.routers.sales import _remaining_holdings
+        held_vested = sum(h["vested_shares"] for h in _remaining_holdings(user, db, cutoff))
+        purchased = [g for g in grants if g["exercise_date"].date() <= cutoff]
+        position = {
+            "held_vested_shares": held_vested,
+            "purchased_unvested_value": round(_compute_unvested_cost(purchased, cutoff), 2),
+            "outstanding_loan_balance": round(
+                _compute_outstanding_principal(loans_db, loan_payments_db, sales_db, cutoff), 2
+            ),
+            "has_price": any(_to_date(p["date"]) <= cutoff for p in prices),
+        }
     loan_amount_by_id = {ln.id: ln.amount for ln in loans_db}
     # Cash received = all sale proceeds minus loan amounts covered by payoff sales
     cash_received_gross = sum(
@@ -951,6 +970,10 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
             "total_income": 0, "total_cap_gains": 0,
             "total_loan_principal": 0, "total_tax_paid": 0,
             "cash_received": 0, "next_event": None,
+            "held_vested_shares": 0, "vested_stock_value": None,
+            "purchased_unvested_stock_value": 0,
+            "total_stock_value": None, "outstanding_loan_balance": 0,
+            "net_equity": None,
         }
         # An empty account must not hand back a different shape from a full one,
         # or a caller reads `total_shares` here and `vested_shares` everywhere else.
@@ -1110,5 +1133,20 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
         "loan_payment_by_year": sorted(loan_payment_by_year.values(), key=lambda x: x["year"]),
         "next_event": next_event,
     }
+
+    if position is not None:
+        vested_value = (round(position["held_vested_shares"] * payload["current_price"], 2)
+                        if position["has_price"] else None)
+        stock_value = (round(vested_value + position["purchased_unvested_value"], 2)
+                       if vested_value is not None else None)
+        payload.update({
+            "held_vested_shares": position["held_vested_shares"],
+            "vested_stock_value": vested_value,
+            "purchased_unvested_stock_value": position["purchased_unvested_value"],
+            "total_stock_value": stock_value,
+            "outstanding_loan_balance": position["outstanding_loan_balance"],
+            "net_equity": (round(stock_value - position["outstanding_loan_balance"], 2)
+                           if stock_value is not None else None),
+        })
 
     return _as_of_view(payload, as_of, timeline) if as_of is not None else payload

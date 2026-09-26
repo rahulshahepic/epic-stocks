@@ -138,8 +138,9 @@ register(Tool(
     title="Equity summary",
     description=(
         "Today's direct stock position: `total_stock_value` includes held vested "
-        "shares at today's price and already-purchased unvested shares at cost; "
-        "`net_equity` subtracts `outstanding_loan_balance`. Use these directly "
+        "shares at `stock_valuation_price` and already-purchased unvested shares "
+        "at cost; `net_equity` subtracts `outstanding_loan_balance` and "
+        "`accrued_unbooked_interest`. Use these directly "
         "for net worth, not vested_shares times price or future scheduled shares. "
         "Read `basis`: `vested_shares` includes shares since sold or exchanged; "
         "`held_vested_shares` is what remains. `shares_at_end_of_schedule` "

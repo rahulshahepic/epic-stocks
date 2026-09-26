@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import type { LoanEntry, PriceEntry, SaleEntry, TimelineEvent } from '../api.ts'
+import type { GrantEntry, LoanEntry, PriceEntry, SaleEntry, TimelineEvent } from '../api.ts'
 import {
-  computeActiveLoans, findStalePrice, hasDivergentFuturePrice, lastTimelineDate,
+  computeActiveLoans, computeGrantHoldings, findStalePrice, hasDivergentFuturePrice, lastTimelineDate,
   loanStateAsOf, maxTimelineDate,
 } from '../app/pages/Dashboard.math.ts'
 
@@ -92,6 +92,23 @@ describe('computeActiveLoans', () => {
   it('is null until the data it needs has arrived', () => {
     expect(computeActiveLoans(null, [], null, '2025-06-30')).toBeNull()
     expect(computeActiveLoans([], null, null, '2025-06-30')).toBeNull()
+  })
+})
+
+describe('computeGrantHoldings', () => {
+  it('does not value shares before their exercise date', () => {
+    const grant = {
+      id: 1, version: 1, year: 2030, type: 'Purchase', shares: 100, price: 2,
+      vest_start: '2032-01-01', periods: 1, exercise_date: '2030-12-31',
+      dp_shares: 0, election_83b: false,
+    } satisfies GrantEntry
+    const events = [event({ date: '2025-01-01', event_type: 'Share Price', share_price: 5 })]
+    const holdings = [{ grant_year: 2030, grant_type: 'Purchase', vested_shares: 0 }]
+
+    expect(computeGrantHoldings([grant], events, [], null, null, '2030-06-30', holdings)?.[0]
+      .unvestedValue).toBe(0)
+    expect(computeGrantHoldings([grant], events, [], null, null, '2031-01-01', holdings)?.[0]
+      .unvestedValue).toBe(200)
   })
 })
 

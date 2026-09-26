@@ -167,7 +167,12 @@ def _remaining_holdings(user: User, db: Session, as_of: date) -> list[dict]:
         timeline, specs, loan_grants, settings.loan_payoff_method,
         settings.lot_selection_method, flexible,
     )
-    lots = build_fifo_lots(final_timeline, as_of, order="fifo")
+    return _remaining_holdings_from_timeline(final_timeline, as_of)
+
+
+def _remaining_holdings_from_timeline(timeline: list, as_of: date) -> list[dict]:
+    """Authoritative vested shares by grant from a sale-aware timeline."""
+    lots = build_fifo_lots(timeline, as_of, order="fifo")
     by_grant: dict[tuple[int | None, str | None], int] = {}
     for lot in lots:
         key = (lot[3], lot[4])

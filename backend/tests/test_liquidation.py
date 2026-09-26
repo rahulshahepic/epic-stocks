@@ -188,6 +188,50 @@ def test_projected_unrecorded_interest_ignores_a_refinance_that_has_not_happened
     assert result == pytest.approx(3 * 100_000.0 * 0.05)  # 2021, 2022, 2023
 
 
+class _FakeRow:
+    def __init__(self, loan_id, d, amount=0.0):
+        self.loan_id = loan_id
+        self.date = d
+        self.amount = amount
+
+
+def test_projected_unrecorded_interest_stops_once_the_loan_is_prepaid():
+    """Repaid in June 2022: 2021 and 2022 accrued, nothing from 2023 on."""
+    purchase = _FakeLoan(1, 2020, "Purchase", "Purchase", 2020, 15_000, 0.03, date(2028, 12, 31))
+    paid = [_FakeRow(1, date(2022, 6, 1), 15_000)]
+    result = _compute_projected_unrecorded_interest([purchase], date(2026, 9, 26), paid)
+    assert result == pytest.approx(2 * 15_000 * 0.03)
+
+
+def test_projected_unrecorded_interest_follows_a_partial_prepayment():
+    purchase = _FakeLoan(1, 2020, "Purchase", "Purchase", 2020, 100_000, 0.05, date(2030, 12, 31))
+    paid = [_FakeRow(1, date(2022, 3, 1), 40_000)]
+    result = _compute_projected_unrecorded_interest([purchase], date(2023, 6, 1), paid)
+    # 2021 and 2022 on 100k (owed on 1 January), 2023 on the 60k left.
+    assert result == pytest.approx(2 * 5_000 + 3_000)
+
+
+def test_projected_unrecorded_interest_stops_after_a_payoff_sale():
+    purchase = _FakeLoan(1, 2020, "Purchase", "Purchase", 2020, 100_000, 0.05, date(2030, 12, 31))
+    sale = [_FakeRow(1, date(2022, 7, 1))]
+    assert _compute_projected_unrecorded_interest(
+        [purchase], date(2025, 1, 1), sales=sale) == pytest.approx(2 * 5_000)
+    # A payoff sale that has not happened yet ends nothing.
+    assert _compute_projected_unrecorded_interest(
+        [purchase], date(2021, 12, 31), sales=[_FakeRow(1, date(2026, 1, 1))]) == pytest.approx(5_000)
+
+
+def test_projected_unrecorded_interest_keeps_the_year_of_a_due_date_payoff():
+    """A payoff on 31 December settles a loan that was owed all year."""
+    purchase = _FakeLoan(1, 2020, "Purchase", "Purchase", 2020, 100_000, 0.05, date(2023, 12, 31))
+    payoff = [_FakeRow(1, date(2023, 12, 31))]
+    paid = [_FakeRow(1, date(2023, 12, 31), 100_000)]
+    assert _compute_projected_unrecorded_interest(
+        [purchase], date(2024, 6, 1), sales=payoff) == pytest.approx(3 * 5_000)
+    assert _compute_projected_unrecorded_interest(
+        [purchase], date(2024, 6, 1), paid) == pytest.approx(3 * 5_000)
+
+
 # ============================================================
 # Integration: preview-exit includes outstanding_accrued_interest
 # ============================================================

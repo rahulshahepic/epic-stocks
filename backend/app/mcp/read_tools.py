@@ -137,15 +137,18 @@ register(Tool(
     name="get_dashboard",
     title="Equity summary",
     description=(
-        "The headline numbers as they stand today: shares vested, the current "
-        "share price, outstanding loan principal, income and capital gains "
-        "realised so far. Start here when asked how someone's equity is doing. "
-        "Read `basis`: the figures are bounded to `as_of`, so `vested_shares` is "
-        "what has vested by then, not the whole position — that is "
-        "`shares_at_end_of_schedule`. `total_loan_principal` counts live loans "
-        "only; a refinanced loan is carried by its successor, not owed twice. If "
+        "Today's direct stock position: `total_stock_value` includes held vested "
+        "shares at today's price and already-purchased unvested shares at cost; "
+        "`net_equity` subtracts `outstanding_loan_balance`. Use these directly "
+        "for net worth, not vested_shares times price or future scheduled shares. "
+        "Read `basis`: `vested_shares` includes shares since sold or exchanged; "
+        "`held_vested_shares` is what remains. `shares_at_end_of_schedule` "
+        "is the full scheduled count, not current holdings. "
+        "`total_loan_principal` is gross live principal; `outstanding_loan_balance` "
+        "also nets early payments and settled loans. If "
         "`price_is_estimate` is true these figures rest on a price the user "
-        "projected rather than a real valuation, and you must say so."
+        "projected rather than a real valuation, and you must say so. When no "
+        "price exists, stock value and net equity are null, not zero."
     ),
     input_schema=_ACCOUNT_ONLY,
     scope=EQUITY_READ,

@@ -208,6 +208,53 @@ def test_get_dashboard_matches_the_app(mcp, client, db_session):
     assert mcp.call("get_dashboard") == expected
 
 
+def test_dashboard_values_held_and_purchased_unvested_shares(mcp, client):
+    """The position agrees with the app's remaining lots and counts purchases
+    before vesting, while a future grant and a past sale cannot inflate it."""
+    from datetime import date
+
+    year = date.today().year
+    client.post("/api/grants", json={
+        "year": year - 1, "type": "Purchase", "shares": 800, "price": 2.0,
+        "vest_start": f"{year}-01-01", "periods": 4,
+        "exercise_date": f"{year - 1}-12-31",
+    })
+    client.post("/api/grants", json={
+        "year": year, "type": "Purchase", "shares": 800, "price": 2.0,
+        "vest_start": f"{year + 1}-01-01", "periods": 4,
+        "exercise_date": f"{year + 1}-01-01",
+    })
+    client.post("/api/prices", json={
+        "effective_date": f"{year}-01-01", "price": 5.0,
+    })
+    loan_id = client.get("/api/loans").json()[0]["id"]
+    client.post("/api/loan-payments", json={
+        "loan_id": loan_id, "date": "2024-01-15", "amount": 1000.0,
+    })
+
+    dash = mcp.call("get_dashboard")
+    holdings = client.get("/api/sales/holdings", params={
+        "as_of": date.today().isoformat(),
+    }).json()
+    held = sum(h["vested_shares"] for h in holdings)
+    assert held == 13700  # Existing 14,000 + 200 vested − 500 sold.
+    assert dash["held_vested_shares"] == held
+    assert dash["purchased_unvested_stock_value"] == 1200.0
+    assert dash["vested_stock_value"] == held * dash["current_price"]
+    assert dash["total_stock_value"] == dash["vested_stock_value"] + 1200.0
+    assert dash["outstanding_loan_balance"] == mcp.call("list_loans")["total_outstanding"]
+    assert dash["net_equity"] == dash["total_stock_value"] - dash["outstanding_loan_balance"]
+
+
+def test_dashboard_does_not_invent_a_valuation_without_a_price(client):
+    register_user(client)
+    client.post("/api/grants", json=GRANT)
+    dash = Mcp(client).call("get_dashboard")
+    assert dash["vested_stock_value"] is None
+    assert dash["total_stock_value"] is None
+    assert dash["net_equity"] is None
+
+
 def test_list_events_matches_the_app(mcp, client):
     from_api = client.get("/api/events").json()
     from_tool = mcp.call("list_events")

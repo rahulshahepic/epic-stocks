@@ -987,16 +987,6 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
 
     # Add estimated tax from Sale events (FIFO, chronological order)
     ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
-    ts_dict_dash = {
-        "federal_income_rate": ts_row.federal_income_rate,
-        "federal_lt_cg_rate": ts_row.federal_lt_cg_rate,
-        "federal_st_cg_rate": ts_row.federal_st_cg_rate,
-        "niit_rate": ts_row.niit_rate,
-        "state_income_rate": ts_row.state_income_rate,
-        "state_lt_cg_rate": ts_row.state_lt_cg_rate,
-        "state_st_cg_rate": ts_row.state_st_cg_rate,
-        "lt_holding_days": ts_row.lt_holding_days,
-    } if ts_row else None
 
     covered_loan_ids = {s.loan_id for s in sales_db if s.loan_id is not None}
 

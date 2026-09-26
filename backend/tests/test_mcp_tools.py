@@ -208,6 +208,76 @@ def test_get_dashboard_matches_the_app(mcp, client, db_session):
     assert mcp.call("get_dashboard") == expected
 
 
+def test_dashboard_values_held_and_purchased_unvested_shares(mcp, client, db_session):
+    """The position agrees with the app's remaining lots and counts purchases
+    before vesting, while a future grant and a past sale cannot inflate it."""
+    from datetime import date
+
+    year = date.today().year
+    bought = client.post("/api/grants", json={
+        "year": year - 1, "type": "Purchase", "shares": 800, "price": 2.0,
+        "vest_start": f"{year}-01-01", "periods": 4,
+        "exercise_date": f"{year - 1}-12-31",
+    })
+    assert bought.status_code == 201, bought.text
+    future = client.post("/api/grants", json={
+        "year": year, "type": "Purchase", "shares": 800, "price": 2.0,
+        "vest_start": f"{year + 1}-01-01", "periods": 4,
+        "exercise_date": f"{year + 1}-01-01",
+    })
+    assert future.status_code == 201, future.text
+    price = client.post("/api/prices", json={
+        "effective_date": f"{year}-01-01", "price": 5.0,
+    })
+    assert price.status_code == 201, price.text
+    loan_id = client.get("/api/loans").json()[0]["id"]
+    payment = client.post("/api/loan-payments", json={
+        "loan_id": loan_id, "date": "2024-01-15", "amount": 1000.0,
+    })
+    assert payment.status_code == 201, payment.text
+
+    dash = mcp.call("get_dashboard")
+    holdings = client.get("/api/sales/holdings", params={
+        "as_of": date.today().isoformat(),
+    }).json()
+    held = sum(h["vested_shares"] for h in holdings)
+    assert dash["held_vested_shares"] == held
+
+    from app.routers.events import _compute_unvested_cost, _user_source_data
+    from scaffold.models import User
+    from tests.conftest import user_key
+    user = db_session.query(User).one()
+    with user_key(user):
+        grants, *_ = _user_source_data(user, db_session)
+    purchased = [g for g in grants if g["exercise_date"].date() <= date.today()]
+    unvested_value = round(_compute_unvested_cost(purchased, date.today()), 2)
+
+    assert dash["purchased_unvested_stock_value"] == unvested_value
+    assert dash["vested_stock_value"] == held * dash["stock_valuation_price"]
+    assert dash["total_stock_value"] == dash["vested_stock_value"] + unvested_value
+    assert dash["outstanding_loan_balance"] == mcp.call("list_loans")["total_outstanding"]
+    assert dash["accrued_unbooked_interest"] > 0
+    assert dash["net_equity"] == (
+        dash["total_stock_value"] - dash["outstanding_loan_balance"]
+        - dash["accrued_unbooked_interest"]
+    )
+
+    plain = client.get("/api/dashboard").json()
+    for field in ("total_stock_value", "outstanding_loan_balance",
+                  "accrued_unbooked_interest", "net_equity"):
+        assert field in plain
+
+
+def test_dashboard_does_not_invent_a_valuation_without_a_price(client):
+    register_user(client)
+    created = client.post("/api/grants", json=GRANT)
+    assert created.status_code == 201, created.text
+    dash = Mcp(client).call("get_dashboard")
+    assert dash["vested_stock_value"] is None
+    assert dash["total_stock_value"] is None
+    assert dash["net_equity"] is None
+
+
 def test_list_events_matches_the_app(mcp, client):
     from_api = client.get("/api/events").json()
     from_tool = mcp.call("list_events")

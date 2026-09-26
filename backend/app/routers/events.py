@@ -891,6 +891,11 @@ def _as_of_view(payload: dict, as_of: date, timeline: list) -> dict:
     payload["basis"] = (
         "vested_shares, income_to_date, cap_gains_to_date, total_tax_paid and "
         f"cash_received count only what has happened by {as_of.isoformat()}. "
+        "held_vested_shares excludes shares sold or exchanged; total_stock_value "
+        "values those holdings at stock_valuation_price plus purchased unvested "
+        "shares at purchase cost. net_equity subtracts outstanding_loan_balance "
+        "and accrued_unbooked_interest. The balance nets early payments and settled "
+        "loans (unlike gross total_loan_principal). "
         "shares_at_end_of_schedule is the position once every grant on record has "
         "fully vested — a share count, so it is a fact. There is no lifetime "
         "income or gains figure because those would be computed from prices the "
@@ -933,6 +938,22 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
     for lp in loan_payments_db:
         if lp.date <= cutoff:
             payments_by_loan[lp.loan_id] = payments_by_loan.get(lp.loan_id, 0.0) + lp.amount
+    purchased = [g for g in grants if g["exercise_date"].date() <= cutoff]
+    position = {
+        "purchased_unvested_value": round(_compute_unvested_cost(purchased, cutoff), 2),
+        "outstanding_loan_balance": round(
+            _compute_outstanding_principal(loans_db, loan_payments_db, sales_db, cutoff), 2
+        ),
+        "accrued_unbooked_interest": round(
+            _compute_projected_unrecorded_interest(loans_db, cutoff), 2
+        ),
+        "valuation_price": None,
+    }
+    for price in prices:
+        if _to_date(price["date"]) <= cutoff:
+            position["valuation_price"] = price["price"]
+        else:
+            break
     loan_amount_by_id = {ln.id: ln.amount for ln in loans_db}
     # Cash received = all sale proceeds minus loan amounts covered by payoff sales
     cash_received_gross = sum(
@@ -951,6 +972,12 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
             "total_income": 0, "total_cap_gains": 0,
             "total_loan_principal": 0, "total_tax_paid": 0,
             "cash_received": 0, "next_event": None,
+            "held_vested_shares": 0, "stock_valuation_price": None,
+            "vested_stock_value": None,
+            "purchased_unvested_stock_value": 0,
+            "total_stock_value": None, "outstanding_loan_balance": 0,
+            "accrued_unbooked_interest": 0,
+            "net_equity": None,
         }
         # An empty account must not hand back a different shape from a full one,
         # or a caller reads `total_shares` here and `vested_shares` everywhere else.
@@ -960,16 +987,6 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
 
     # Add estimated tax from Sale events (FIFO, chronological order)
     ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
-    ts_dict_dash = {
-        "federal_income_rate": ts_row.federal_income_rate,
-        "federal_lt_cg_rate": ts_row.federal_lt_cg_rate,
-        "federal_st_cg_rate": ts_row.federal_st_cg_rate,
-        "niit_rate": ts_row.niit_rate,
-        "state_income_rate": ts_row.state_income_rate,
-        "state_lt_cg_rate": ts_row.state_lt_cg_rate,
-        "state_st_cg_rate": ts_row.state_st_cg_rate,
-        "lt_holding_days": ts_row.lt_holding_days,
-    } if ts_row else None
 
     covered_loan_ids = {s.loan_id for s in sales_db if s.loan_id is not None}
 
@@ -981,14 +998,13 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
 
     # Snapshot the sales due for tax before closing the DB session.
     sale_specs = []
-    if ts_dict_dash:
-        for s in sales_db:
-            if s.date > cutoff:
-                continue
-            sale_specs.append({
-                "id": s.id, "date": s.date, "shares": s.shares, "price_per_share": s.price_per_share,
-                "loan_id": s.loan_id, "lot_overrides": s.lot_overrides,
-                "rates": {
+    for s in sales_db:
+        if s.date > cutoff:
+            continue
+        sale_specs.append({
+            "id": s.id, "date": s.date, "shares": s.shares, "price_per_share": s.price_per_share,
+            "loan_id": s.loan_id, "lot_overrides": s.lot_overrides,
+            "rates": ({
                     "federal_income_rate": s.federal_income_rate if s.federal_income_rate is not None else ts_row.federal_income_rate,
                     "federal_lt_cg_rate": s.federal_lt_cg_rate if s.federal_lt_cg_rate is not None else ts_row.federal_lt_cg_rate,
                     "federal_st_cg_rate": s.federal_st_cg_rate if s.federal_st_cg_rate is not None else ts_row.federal_st_cg_rate,
@@ -997,15 +1013,21 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
                     "state_lt_cg_rate": s.state_lt_cg_rate if s.state_lt_cg_rate is not None else ts_row.state_lt_cg_rate,
                     "state_st_cg_rate": s.state_st_cg_rate if s.state_st_cg_rate is not None else ts_row.state_st_cg_rate,
                     "lt_holding_days": s.lt_holding_days if s.lt_holding_days is not None else ts_row.lt_holding_days,
-                },
-            })
+                } if ts_row else {
+                    "federal_income_rate": 0, "federal_lt_cg_rate": 0,
+                    "federal_st_cg_rate": 0, "niit_rate": 0,
+                    "state_income_rate": 0, "state_lt_cg_rate": 0,
+                    "state_st_cg_rate": 0, "lt_holding_days": 365,
+                }),
+        })
 
     # All DB reads are done — release the connection before CPU-heavy computation.
     db.close()
 
+    holdings_timeline = timeline
     if sale_specs:
         from app.sale_tax import compute_all_sale_taxes
-        results, _ = compute_all_sale_taxes(
+        results, holdings_timeline = compute_all_sale_taxes(
             timeline, sale_specs, loan_grant_by_id, loan_payoff_method,
             lot_selection_method, flexible_payoff_enabled,
         )
@@ -1013,6 +1035,10 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
             tax = results[spec["id"]]["estimated_tax"]
             total_tax_paid += tax
             sale_taxes += tax
+
+    from app.routers.sales import _remaining_holdings_from_timeline
+    holdings = _remaining_holdings_from_timeline(holdings_timeline, cutoff)
+    position["held_vested_shares"] = sum(h["vested_shares"] for h in holdings)
 
     # Loan payment by year: payoff_sale vs cash_in (skip refinanced loans — they show as $0 events)
     loan_payment_by_year: dict[str, dict] = {}
@@ -1087,13 +1113,12 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
     # than a real valuation. The app shows this as a banner; anything reading
     # the endpoint needs it just as much, and more so, because it cannot see one.
     price_is_estimate = False
-    if as_of is not None:
-        for p in prices:
-            pdate = _to_date(p["date"])
-            if pdate <= as_of:
-                price_is_estimate = pdate in estimated_price_dates
-            else:
-                break
+    for p in prices:
+        pdate = _to_date(p["date"])
+        if pdate <= cutoff:
+            price_is_estimate = pdate in estimated_price_dates
+        else:
+            break
 
     payload = {
         "as_of": as_of.isoformat() if as_of else None,
@@ -1110,5 +1135,26 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
         "loan_payment_by_year": sorted(loan_payment_by_year.values(), key=lambda x: x["year"]),
         "next_event": next_event,
     }
+
+    if position is not None:
+        valuation_price = position["valuation_price"]
+        vested_value = (round(position["held_vested_shares"] * valuation_price, 2)
+                        if valuation_price is not None else None)
+        stock_value = (round(vested_value + position["purchased_unvested_value"], 2)
+                       if vested_value is not None else None)
+        payload.update({
+            "held_vested_shares": position["held_vested_shares"],
+            "stock_valuation_price": valuation_price,
+            "vested_stock_value": vested_value,
+            "purchased_unvested_stock_value": position["purchased_unvested_value"],
+            "total_stock_value": stock_value,
+            "outstanding_loan_balance": position["outstanding_loan_balance"],
+            "accrued_unbooked_interest": position["accrued_unbooked_interest"],
+            "net_equity": (round(
+                stock_value - position["outstanding_loan_balance"]
+                - position["accrued_unbooked_interest"], 2
+            )
+                           if stock_value is not None else None),
+        })
 
     return _as_of_view(payload, as_of, timeline) if as_of is not None else payload

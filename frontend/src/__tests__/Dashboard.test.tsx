@@ -85,7 +85,7 @@ const MOCK_GRANTS = [
   },
   {
     id: 2, version: 1, year: 2030, type: 'Purchase', shares: 1000, price: 3.00,
-    vest_start: '2030-01-01', periods: 1, exercise_date: '2030-01-01', dp_shares: 0, election_83b: false,
+    vest_start: '2030-01-01', periods: 1, exercise_date: '2025-12-31', dp_shares: 0, election_83b: false,
   },
 ]
 

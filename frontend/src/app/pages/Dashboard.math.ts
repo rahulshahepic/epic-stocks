@@ -281,7 +281,8 @@ export function computeGrantHoldings(grantsData: GrantEntry[] | null, events: Ti
       .reduce((sum, e) => sum + e.income * incomeRate, 0)
 
     const vestedValue = heldVested * currentPrice
-    const unvestedValue = unvested * g.price
+    // A scheduled grant is not an owned asset until its exercise/purchase date.
+    const unvestedValue = g.exercise_date <= effectiveDate ? unvested * g.price : 0
     return {
       year: g.year,
       type: g.type,

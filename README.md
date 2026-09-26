@@ -465,7 +465,7 @@ That does **not** save anything. It leaves a draft on the Import page, and you a
 
 | Tool | What it answers |
 |------|-----------------|
-| `get_dashboard` | **Today's net Epic position**: `total_stock_value` values held vested shares at the current price and already purchased unvested shares at cost; `outstanding_loan_balance` accounts for early payments and settled loans; `net_equity` subtracts that balance. Also returns share counts, income and gains to date. A missing share price makes the stock value and net equity null; `price_is_estimate` flags an assumed price. `basis` explains the counts and loan totals |
+| `get_dashboard` | **Today's net Epic position**: `total_stock_value` values held vested shares at `stock_valuation_price` and already purchased unvested shares at cost; `outstanding_loan_balance` accounts for early payments and settled loans; `net_equity` subtracts that balance and accrued interest not yet booked as a separate loan. Also returns share counts, income and gains to date. A missing share price makes the stock value and net equity null; `price_is_estimate` flags an assumed price. `basis` explains the counts and loan totals |
 | `list_events` | The computed timeline — vesting, price changes, loan payments, payoffs, sales — filterable by date and type |
 | `list_grants` | Every grant: year, type, shares, purchase price, vesting schedule |
 | `list_loans` | Loans against equity, with early payments and balance outstanding. Refinanced loans stay on the list as history, marked and zero-balance, so a chain is never read as several debts |
@@ -1378,6 +1378,5 @@ The built-in privacy page (`/privacy`) lists the third-party services used by th
 - **Anything a native shell would have to do differently lives behind `frontend/src/platform/`.** Four capabilities — how a session is authenticated and stored, key-value storage, handing the user a file, and push registration — are interfaces with a browser implementation. Feature code calls `platform.files.saveBlob(...)` rather than building an `<a download>`, and `platform.auth.openAuthorizationUrl(...)` rather than assigning `window.location`. These are the exact points where a WebView behaves differently from a browser (blob downloads are inert, `PushManager` does not exist, OAuth in an embedded WebView is refused by identity providers), so isolating them keeps one codebase serving both targets.
 
 - **Schema migrations use Alembic.** Migrations live in `backend/alembic/versions/`. `alembic upgrade head` runs automatically on startup (PostgreSQL only; SQLite test environments use `create_all`). Create a new migration with `alembic revision --autogenerate -m "description"`.
-
 
 

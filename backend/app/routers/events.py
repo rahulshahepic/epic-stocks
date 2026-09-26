@@ -94,16 +94,26 @@ def _compute_outstanding_principal(loans_db, loan_payments, sales, as_of_date) -
     )
 
 
-def _compute_projected_unrecorded_interest(loans_db, as_of_date) -> float:
+def _compute_projected_unrecorded_interest(loans_db, as_of_date, loan_payments=(), sales=()) -> float:
     """
     Interest that has accrued on Purchase loans by as_of_date but hasn't been
     recorded as Interest loan rows yet.  Mirrors the 'guaranteed' projection in
     the InterestChart: purchase_principal × rate for each year in
     [loan_year+1, min(exit_year, due_year)] that has no Interest loan entry.
+
+    Each year accrues on the principal owed when it starts, as
+    `annualInterestForYear` in CompCalculator.math.ts does: payments and payoff
+    sales before 1 January reduce or end it. Without that a loan repaid years
+    ago kept accruing to today.
     """
     purchase_loans = [l for l in loans_db if l.loan_type == 'Purchase']
     interest_loans = [l for l in loans_db if l.loan_type == 'Interest']
     recorded = {(il.grant_year, il.grant_type, il.loan_year) for il in interest_loans}
+    settled_on: dict[int, date] = {}
+    for s in sales:
+        if s.loan_id is not None and s.date <= as_of_date:
+            settled_on[s.loan_id] = min(s.date, settled_on.get(s.loan_id, s.date))
+    payments = [lp for lp in loan_payments if lp.date <= as_of_date]
     # A refinance ends accrual on the old principal from its own year on; it does
     # not unmake the years that accrued before it. Skipping the loan outright
     # erased those years.
@@ -112,8 +122,16 @@ def _compute_projected_unrecorded_interest(loans_db, as_of_date) -> float:
     for p in purchase_loans:
         end_year = interest_accrual_end_year(p, first_superseded, cap_year=as_of_date.year)
         for yr in range(p.loan_year + 1, end_year + 1):
-            if (p.grant_year, p.grant_type, yr) not in recorded:
-                total += p.amount * p.interest_rate
+            if (p.grant_year, p.grant_type, yr) in recorded:
+                continue
+            year_start = date(yr, 1, 1)
+            if p.id in settled_on and settled_on[p.id] < year_start:
+                break
+            paid = sum(lp.amount for lp in payments if lp.loan_id == p.id and lp.date < year_start)
+            balance = p.amount - paid
+            if balance <= 0:
+                break
+            total += balance * p.interest_rate
     return total
 
 
@@ -212,7 +230,8 @@ def _build_exit_summary(enriched, grants, loans_db, loan_payments, sales_db,
         deduction_savings = round(deduction_savings, 2)
         deduction_years = sorted(years_seen)
 
-    accrued_interest = round(_compute_projected_unrecorded_interest(loans_db, horizon_date), 2)
+    accrued_interest = round(_compute_projected_unrecorded_interest(
+        loans_db, horizon_date, loan_payments, sales_db), 2)
     liq_net = round(max(0.0, gross_vested + unvested_cost - liq_tax - outstanding - accrued_interest), 2)
     net_cash = round(prior_sales_net + liq_net + deduction_savings, 2)
 
@@ -916,7 +935,10 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
     for anything that reads them as the answer: `current_price` held a projected
     2034 price.
 
-    Left as None the behaviour is exactly what it was, so the app is unaffected.
+    Left as None the cumulative figures still run to the end of the timeline,
+    which is what the app expects. The position fields (`total_stock_value`,
+    `net_equity` and the figures they are built from) and `price_is_estimate`
+    are always a snapshot at `as_of`, or today when it is None.
     """
     grants, prices, loans, loans_db, initial_price, _election_83b_map, estimated_price_dates = _user_source_data(user, db)
 
@@ -945,7 +967,7 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
             _compute_outstanding_principal(loans_db, loan_payments_db, sales_db, cutoff), 2
         ),
         "accrued_unbooked_interest": round(
-            _compute_projected_unrecorded_interest(loans_db, cutoff), 2
+            _compute_projected_unrecorded_interest(loans_db, cutoff, loan_payments_db, sales_db), 2
         ),
         "valuation_price": None,
     }

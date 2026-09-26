@@ -269,7 +269,7 @@ def test_dashboard_values_held_and_purchased_unvested_shares(mcp, client, db_ses
 
 
 def test_net_equity_does_not_charge_interest_on_a_repaid_loan(mcp, client):
-    """A loan paid off in full stops accruing; only the years before it count."""
+    """A loan paid off in full stops accruing from the next year on."""
     loan = client.get("/api/loans").json()[0]
     paid = client.post("/api/loan-payments", json={
         "loan_id": loan["id"], "date": "2022-06-01", "amount": loan["amount"],
@@ -277,8 +277,8 @@ def test_net_equity_does_not_charge_interest_on_a_repaid_loan(mcp, client):
     assert paid.status_code == 201, paid.text
     dash = mcp.call("get_dashboard")
     assert dash["outstanding_loan_balance"] == 0
-    # Accrued in 2021 on the full principal; nothing from 2022 on.
-    assert dash["accrued_unbooked_interest"] == round(loan["amount"] * loan["interest_rate"], 2)
+    # Owed on 1 January of 2021 and 2022; nothing from 2023 on.
+    assert dash["accrued_unbooked_interest"] == round(2 * loan["amount"] * loan["interest_rate"], 2)
     assert dash["net_equity"] == round(
         dash["total_stock_value"] - dash["accrued_unbooked_interest"], 2)
 

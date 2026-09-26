@@ -101,9 +101,10 @@ def _compute_projected_unrecorded_interest(loans_db, as_of_date, loan_payments=(
     the InterestChart: purchase_principal × rate for each year in
     [loan_year+1, min(exit_year, due_year)] that has no Interest loan entry.
 
-    Each year accrues on the principal still owed at that year's end (or at
-    as_of_date for its own year): early payments shrink it, and a linked payoff
-    sale ends it. Without that a loan repaid years ago kept accruing to today.
+    Each year accrues on the principal owed when it starts, as
+    `annualInterestForYear` in CompCalculator.math.ts does: payments and payoff
+    sales before 1 January reduce or end it. Without that a loan repaid years
+    ago kept accruing to today.
     """
     purchase_loans = [l for l in loans_db if l.loan_type == 'Purchase']
     interest_loans = [l for l in loans_db if l.loan_type == 'Interest']
@@ -123,10 +124,10 @@ def _compute_projected_unrecorded_interest(loans_db, as_of_date, loan_payments=(
         for yr in range(p.loan_year + 1, end_year + 1):
             if (p.grant_year, p.grant_type, yr) in recorded:
                 continue
-            year_end = min(date(yr, 12, 31), as_of_date)
-            if p.id in settled_on and settled_on[p.id] <= year_end:
+            year_start = date(yr, 1, 1)
+            if p.id in settled_on and settled_on[p.id] < year_start:
                 break
-            paid = sum(lp.amount for lp in payments if lp.loan_id == p.id and lp.date <= year_end)
+            paid = sum(lp.amount for lp in payments if lp.loan_id == p.id and lp.date < year_start)
             balance = p.amount - paid
             if balance <= 0:
                 break

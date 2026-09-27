@@ -161,6 +161,8 @@ export default function Events() {
     () => typeFilter.size > 0 ? (events ?? []).filter(e => typeFilter.has(e.event_type)) : (events ?? []),
     [events, typeFilter],
   )
+  const filteredRef = useRef(filtered)
+  useEffect(() => { filteredRef.current = filtered }, [filtered])
 
   const highlightAndScroll = useCallback((indices: Set<number>) => {
     if (jumpHighlightTimer.current) clearTimeout(jumpHighlightTimer.current)
@@ -188,14 +190,14 @@ export default function Events() {
   useEffect(() => {
     if (!highlightDate || !events) return
     const matchingIndices = new Set<number>()
-    filtered.forEach((e, i) => {
+    filteredRef.current.forEach((e, i) => {
       if (typeof e.date === 'string' && e.date.startsWith(highlightDate)) {
         matchingIndices.add(i)
       }
     })
     if (matchingIndices.size === 0) return
     highlightAndScroll(matchingIndices)
-  }, [highlightDate, events, filtered, highlightAndScroll])
+  }, [highlightDate, events, highlightAndScroll])
 
   function toggleType(t: string) {
     setTypeFilter(prev => {

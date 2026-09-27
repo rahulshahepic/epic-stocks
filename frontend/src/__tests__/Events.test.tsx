@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import Events from '../app/pages/Events.tsx'
@@ -31,6 +31,7 @@ const originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.proto
 afterEach(() => {
   if (originalScrollIntoView) Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', originalScrollIntoView)
   else Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView')
+  vi.restoreAllMocks()
 })
 
 function mockApi() {
@@ -136,5 +137,38 @@ describe('Events', () => {
     expect(screen.getByLabelText('Go to date')).toHaveValue(localToday())
     expect(last).toHaveClass('ring-blue-400')
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(4))
+  })
+
+  it('does not revisit a URL date when the event-type filter changes, and cancels its timer on a jump', async () => {
+    mockApi()
+    const scrollIntoView = vi.fn()
+    HTMLElement.prototype.scrollIntoView = scrollIntoView
+    const setTimer = vi.spyOn(globalThis, 'setTimeout')
+    const clearTimer = vi.spyOn(globalThis, 'clearTimeout')
+    renderEvents('/?date=2021-03-01')
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1))
+    const urlTimer = setTimer.mock.calls.findIndex(([, delay]) => delay === 2000)
+    expect(urlTimer).toBeGreaterThanOrEqual(0)
+
+    fireEvent.change(screen.getByLabelText('Go to date'), { target: { value: '2021-04-01' } })
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(2))
+    expect(clearTimer).toHaveBeenCalledWith(setTimer.mock.results[urlTimer].value)
+
+    await userEvent.click(screen.getByRole('button', { name: /All types/i }))
+    await userEvent.click(screen.getByRole('checkbox', { name: /Exercise/i }))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)) })
+    expect(scrollIntoView).toHaveBeenCalledTimes(2)
+  })
+
+  it('skips events hidden by the type filter when jumping', async () => {
+    mockApi()
+    const scrollIntoView = vi.fn()
+    HTMLElement.prototype.scrollIntoView = scrollIntoView
+    renderEvents('/?types=Exercise')
+    await screen.findByText('2021-06-01')
+    fireEvent.change(screen.getByLabelText('Go to date'), { target: { value: '2021-02-01' } })
+    await waitFor(() => expect(screen.getByText('2021-06-01').closest('tr')).toHaveClass('ring-blue-400'))
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText('2021-03-01')).not.toBeInTheDocument()
   })
 })

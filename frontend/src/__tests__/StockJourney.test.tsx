@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import { StockJourney } from '../app/components/StockJourney.tsx'
+import { localToday } from '../app/dateUtils.ts'
 import type { TimelineEvent } from '../api.ts'
 
 function event(date: string, event_type: string, extra: Partial<TimelineEvent> = {}): TimelineEvent {
@@ -28,17 +29,18 @@ describe('StockJourney', () => {
   })
 
   it('sums each vesting tranche at its own market value and gain before choosing five milestones', () => {
+    const year = Number(localToday().slice(0, 4)) + 1
     const events = [
-      event('2026-09-30', 'Vesting', { vested_shares: 20, share_price: 10, vesting_cap_gains: 140 }),
-      event('2026-09-30', 'Vesting', { vested_shares: 30, share_price: 12, vesting_cap_gains: 240 }),
-      event('2026-09-30', 'Vesting', { vested_shares: 5, share_price: 12, income: 60, grant_type: 'Bonus' }),
-      event('2027-01-01', 'Share Price'),
-      event('2027-07-15', 'Loan Payoff', { cash_due: 100 }),
-      event('2027-07-15', 'Loan Payoff', { cash_due: 250 }),
-      event('2027-07-15', 'Sale', { gross_proceeds: 500 }),
-      event('2027-09-30', 'Vesting', { vested_shares: 1 }),
+      event(`${year}-09-30`, 'Vesting', { vested_shares: 20, share_price: 10, vesting_cap_gains: 140 }),
+      event(`${year}-09-30`, 'Vesting', { vested_shares: 30, share_price: 12, vesting_cap_gains: 240 }),
+      event(`${year}-09-30`, 'Vesting', { vested_shares: 5, share_price: 12, income: 60, grant_type: 'Bonus' }),
+      event(`${year + 1}-01-01`, 'Share Price'),
+      event(`${year + 1}-07-15`, 'Loan Payoff', { cash_due: 100 }),
+      event(`${year + 1}-07-15`, 'Loan Payoff', { cash_due: 250 }),
+      event(`${year + 1}-07-15`, 'Sale', { gross_proceeds: 500 }),
+      event(`${year + 1}-09-30`, 'Vesting', { vested_shares: 1 }),
     ]
-    render(<StockJourney events={events} asOf="2026-09-27" />)
+    render(<StockJourney events={events} asOf={localToday()} />)
     const milestones = screen.getAllByRole('listitem')
     expect(milestones).toHaveLength(5)
     expect(within(milestones[0]).getByText('55 shares vest')).toBeInTheDocument()

@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import Events from '../app/pages/Events.tsx'
+import { localToday } from '../app/dateUtils.ts'
 
 const MOCK_EVENTS = [
   {
@@ -107,5 +108,17 @@ describe('Events', () => {
     })
     // Only Vesting selected — Exercise row should be hidden
     expect(screen.queryByText('2021-06-01')).not.toBeInTheDocument()
+  })
+
+  it('jumps to the next visible event for today or a chosen date', async () => {
+    mockApi()
+    const scrollIntoView = vi.fn()
+    HTMLElement.prototype.scrollIntoView = scrollIntoView
+    renderEvents()
+    await screen.findByText('2021-03-01')
+    fireEvent.change(screen.getByLabelText('Go to date'), { target: { value: '2021-04-01' } })
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled())
+    await userEvent.click(screen.getByRole('button', { name: 'Today' }))
+    expect(screen.getByLabelText('Go to date')).toHaveValue(localToday())
   })
 })

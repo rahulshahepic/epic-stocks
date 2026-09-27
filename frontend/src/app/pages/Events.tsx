@@ -150,10 +150,17 @@ export default function Events() {
   )
   const highlightDate = searchParams.get('date') ?? null
   const [highlightedRows, setHighlightedRows] = useState<Set<number>>(new Set())
+  const today = useToday()
+  const [jumpDate, setJumpDate] = useState(today)
   const isMobile = useIsMobile()
   const highlightRefs = useRef<Map<number, HTMLElement>>(new Map())
+  const jumpHighlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false)
   const typeDropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => () => {
+    if (jumpHighlightTimer.current) clearTimeout(jumpHighlightTimer.current)
+  }, [])
 
   useEffect(() => {
     if (!typeDropdownOpen) return
@@ -210,6 +217,18 @@ export default function Events() {
 
   const ts = taxSettings ?? WI_TAX_DEFAULTS
 
+  function jumpToDate(date: string) {
+    setJumpDate(date)
+    const visible = typeFilter.size > 0 ? (events ?? []).filter(e => typeFilter.has(e.event_type)) : (events ?? [])
+    if (!visible.length) return
+    const nextIndex = visible.findIndex(e => e.date >= date)
+    const index = nextIndex >= 0 ? nextIndex : visible.length - 1
+    setHighlightedRows(new Set([index]))
+    requestAnimationFrame(() => highlightRefs.current.get(index)?.scrollIntoView({ behavior: 'smooth', block: 'center' }))
+    if (jumpHighlightTimer.current) clearTimeout(jumpHighlightTimer.current)
+    jumpHighlightTimer.current = setTimeout(() => setHighlightedRows(new Set()), 2000)
+  }
+
   function toggleVestingTax(idx: number) {
     setExpandedVesting(prev => {
       const next = new Set(prev)
@@ -249,7 +268,7 @@ export default function Events() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-end justify-between gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cs-text-2">The archive</p>
           <h1 className="mt-1 font-serif text-2xl font-semibold text-cs-text">Events Timeline</h1>
@@ -292,6 +311,26 @@ export default function Events() {
             </div>
           )}
         </div>
+      </div>
+
+      <div className="campus-wayfinder rounded-2xl border border-cs-border bg-cs-surface px-3 py-2.5 shadow-card sm:flex sm:items-center sm:gap-3 sm:px-4">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <label htmlFor="events-jump-date" className="shrink-0 text-xs font-medium text-cs-muted">Go to date</label>
+          <input
+            id="events-jump-date"
+            type="date"
+            value={jumpDate}
+            onChange={e => { if (e.target.value) jumpToDate(e.target.value) }}
+            className="h-7 flex-1 rounded border border-cs-border-strong bg-cs-surface px-2 text-xs text-cs-text"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => jumpToDate(today)}
+          className="mt-2 rounded bg-cs-brand px-2 py-1 text-xs font-medium text-white sm:mt-0"
+        >
+          Today
+        </button>
       </div>
 
       {/* Mobile card layout */}

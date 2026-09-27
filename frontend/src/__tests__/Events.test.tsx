@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
@@ -25,6 +25,12 @@ const MOCK_EVENTS = [
 beforeEach(() => {
   localStorage.setItem('auth_token', 'test-token')
   vi.restoreAllMocks()
+})
+
+const originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView')
+afterEach(() => {
+  if (originalScrollIntoView) Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', originalScrollIntoView)
+  else Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView')
 })
 
 function mockApi() {
@@ -110,15 +116,25 @@ describe('Events', () => {
     expect(screen.queryByText('2021-06-01')).not.toBeInTheDocument()
   })
 
-  it('jumps to the next visible event for today or a chosen date', async () => {
+  it('jumps to the next event, falls back to the last, and resets with Today', async () => {
     mockApi()
     const scrollIntoView = vi.fn()
     HTMLElement.prototype.scrollIntoView = scrollIntoView
     renderEvents()
     await screen.findByText('2021-03-01')
+    const first = screen.getByText('2021-03-01').closest('tr')!
+    const last = screen.getByText('2021-06-01').closest('tr')!
+    fireEvent.change(screen.getByLabelText('Go to date'), { target: { value: '2021-02-01' } })
+    await waitFor(() => expect(first).toHaveClass('ring-blue-400'))
     fireEvent.change(screen.getByLabelText('Go to date'), { target: { value: '2021-04-01' } })
-    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled())
+    await waitFor(() => expect(last).toHaveClass('ring-blue-400'))
+    expect(first).not.toHaveClass('ring-blue-400')
+    fireEvent.change(screen.getByLabelText('Go to date'), { target: { value: '2030-01-01' } })
+    await waitFor(() => expect(last).toHaveClass('ring-blue-400'))
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(3))
     await userEvent.click(screen.getByRole('button', { name: 'Today' }))
     expect(screen.getByLabelText('Go to date')).toHaveValue(localToday())
+    expect(last).toHaveClass('ring-blue-400')
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(4))
   })
 })

@@ -175,7 +175,9 @@ The dashboard also includes **Your stock journey**, a responsive milestone path
 showing the next five upcoming event types by date. Same-day events of one type
 share a milestone: vesting adds all tranche shares, their individual market values,
 and their individual gains or income; loan payoffs add amounts due; sales add gross
-proceeds. The Events page keeps every tranche and transaction separate. On phones
+proceeds. Future vesting and sale dollar figures, and those based on a projected
+share price, are marked "Est."; loan amounts due come from outstanding principal.
+The Events page keeps every tranche and transaction separate. On phones
 it reads as a vertical path; on wider screens it becomes a horizontal horizon.
 Its visual language draws from Epic's Verona campus: a hand-painted botanical,
 library, observatory, and dragon panorama frames the summary without obscuring
@@ -1381,4 +1383,3 @@ The built-in privacy page (`/privacy`) lists the third-party services used by th
 - **Anything a native shell would have to do differently lives behind `frontend/src/platform/`.** Four capabilities — how a session is authenticated and stored, key-value storage, handing the user a file, and push registration — are interfaces with a browser implementation. Feature code calls `platform.files.saveBlob(...)` rather than building an `<a download>`, and `platform.auth.openAuthorizationUrl(...)` rather than assigning `window.location`. These are the exact points where a WebView behaves differently from a browser (blob downloads are inert, `PushManager` does not exist, OAuth in an embedded WebView is refused by identity providers), so isolating them keeps one codebase serving both targets.
 
 - **Schema migrations use Alembic.** Migrations live in `backend/alembic/versions/`. `alembic upgrade head` runs automatically on startup (PostgreSQL only; SQLite test environments use `create_all`). Create a new migration with `alembic revision --autogenerate -m "description"`.
-

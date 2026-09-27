@@ -1,6 +1,7 @@
 import type { TimelineEvent } from '../../api.ts'
 import { fmt$, fmtNum } from '../format.ts'
 import { Card, Eyebrow } from '../../scaffold/components/ui/Card.tsx'
+import { localToday } from '../dateUtils.ts'
 
 const MILESTONE_TONES = ['bg-cs-brand', 'bg-[#087A55]', 'bg-[#1769AA]', 'bg-[#71358A]', 'bg-[#B25B00]']
 
@@ -31,12 +32,12 @@ function eventLabel(group: TimelineEvent[]) {
   return group.length === 1 ? event.event_type : `${group.length} ${event.event_type.toLowerCase()} events`
 }
 
-function eventDetail(group: TimelineEvent[]) {
+function eventDetail(group: TimelineEvent[], estimated: boolean) {
   const [event] = group
   if (event.event_type === 'Vesting') {
     const marketValue = group.reduce((sum, e) => sum + (e.vested_shares ?? 0) * e.share_price, 0)
     const valueAdded = group.reduce((sum, e) => sum + e.vesting_cap_gains + e.income, 0)
-    return `${fmt$(marketValue)} market value · ${fmt$(valueAdded)} value added · ${group.length} tranche${group.length === 1 ? '' : 's'}`
+    return `${estimated ? 'Est. ' : ''}${fmt$(marketValue)} market value · ${estimated ? 'est. ' : ''}${fmt$(valueAdded)} value added · ${group.length} tranche${group.length === 1 ? '' : 's'}`
   }
   if (event.event_type === 'Loan Payoff') {
     const due = group.reduce((sum, e) => sum + (e.cash_due ?? 0), 0)
@@ -44,7 +45,7 @@ function eventDetail(group: TimelineEvent[]) {
   }
   if (event.event_type === 'Sale') {
     const proceeds = group.reduce((sum, e) => sum + (e.gross_proceeds ?? 0), 0)
-    return group.some(e => e.gross_proceeds != null) ? `${fmt$(proceeds)} gross proceeds` : null
+    return group.some(e => e.gross_proceeds != null) ? `${estimated ? 'Est. ' : ''}${fmt$(proceeds)} gross proceeds` : null
   }
   return null
 }
@@ -52,6 +53,19 @@ function eventDetail(group: TimelineEvent[]) {
 /** A compact, data-driven map of the next stops in the owner's stock story. */
 export function StockJourney({ events, asOf }: { events: TimelineEvent[]; asOf: string }) {
   const milestones = journeyMilestones(events, asOf)
+  const today = localToday()
+
+  // The latest price announcement at each milestone controls whether its valuation
+  // is projected. Future monetary values are estimates even at the last real price.
+  let latestPriceEstimated = false
+  let priceIndex = 0
+  const details = milestones.map(group => {
+    while (priceIndex < events.length && events[priceIndex].date <= group[0].date) {
+      const event = events[priceIndex++]
+      if (event.event_type === 'Share Price') latestPriceEstimated = !!event.is_estimate
+    }
+    return eventDetail(group, group[0].date > today || latestPriceEstimated)
+  })
 
   if (milestones.length === 0) return null
 
@@ -84,7 +98,7 @@ export function StockJourney({ events, asOf }: { events: TimelineEvent[]; asOf: 
             <div className="min-w-0 pt-0.5 sm:mt-3 sm:pt-0">
               <p className="text-sm font-bold leading-tight text-cs-text">{eventLabel(group)}</p>
               <p className="mt-1 text-xs font-semibold text-cs-text-2">{shortDate(group[0].date)}</p>
-              {eventDetail(group) && <p className="mt-0.5 text-xs text-cs-muted">{eventDetail(group)}</p>}
+              {details[index] && <p className="mt-0.5 text-xs text-cs-muted">{details[index]}</p>}
               {group.length === 1 && group[0].grant_year && (
                 <p className="mt-0.5 text-xs text-cs-muted">{group[0].grant_year} {group[0].grant_type}</p>
               )}

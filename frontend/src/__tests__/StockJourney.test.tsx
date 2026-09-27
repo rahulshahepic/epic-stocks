@@ -42,9 +42,26 @@ describe('StockJourney', () => {
     const milestones = screen.getAllByRole('listitem')
     expect(milestones).toHaveLength(5)
     expect(within(milestones[0]).getByText('55 shares vest')).toBeInTheDocument()
-    expect(within(milestones[0]).getByText('$620 market value · $440 value added · 3 tranches')).toBeInTheDocument()
+    expect(within(milestones[0]).getByText('Est. $620 market value · est. $440 value added · 3 tranches')).toBeInTheDocument()
     expect(within(milestones[2]).getByText('2 loan payoffs')).toBeInTheDocument()
     expect(within(milestones[2]).getByText('$350 due')).toBeInTheDocument()
-    expect(within(milestones[3]).getByText('$500 gross proceeds')).toBeInTheDocument()
+    expect(within(milestones[3]).getByText('Est. $500 gross proceeds')).toBeInTheDocument()
+  })
+
+  it('labels a past valuation estimated only while an estimated price is in effect', () => {
+    const events = [
+      event('2021-01-01', 'Share Price', { is_estimate: false }),
+      event('2021-03-01', 'Vesting', { vested_shares: 10, vesting_cap_gains: 70 }),
+      event('2021-09-01', 'Share Price', { is_estimate: true }),
+      event('2022-03-01', 'Vesting', { vested_shares: 10, vesting_cap_gains: 70 }),
+      event('2023-01-01', 'Share Price', { is_estimate: false }),
+      event('2023-03-01', 'Vesting', { vested_shares: 10, vesting_cap_gains: 70 }),
+    ]
+    const { rerender } = render(<StockJourney asOf="2021-01-01" events={events} />)
+    const milestones = screen.getAllByRole('listitem')
+    expect(within(milestones[1]).getByText('$100 market value · $70 value added · 1 tranche')).toBeInTheDocument()
+    expect(within(milestones[3]).getByText('Est. $100 market value · est. $70 value added · 1 tranche')).toBeInTheDocument()
+    rerender(<StockJourney asOf="2023-01-01" events={events} />)
+    expect(within(screen.getAllByRole('listitem')[1]).getByText('$100 market value · $70 value added · 1 tranche')).toBeInTheDocument()
   })
 })

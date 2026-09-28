@@ -143,8 +143,9 @@ describe('Layout footer', () => {
 
 describe('Layout wordmark', () => {
   it('badges the app name as unofficial in the header', async () => {
-    renderLayout()
+    const { container } = renderLayout()
     expect(await screen.findByText('Epic Stocks')).toBeInTheDocument()
     expect(screen.getByText('Unofficial')).toBeInTheDocument()
+    expect(container.querySelector('header img[src="/favicon.svg"]')).toHaveAttribute('aria-hidden', 'true')
   })
 })

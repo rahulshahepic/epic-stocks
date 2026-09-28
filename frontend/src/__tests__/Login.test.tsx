@@ -52,6 +52,11 @@ describe('Login page', () => {
     expect(screen.getByText('Epic Stocks')).toBeInTheDocument()
   })
 
+  it('uses the app icon beside the title', () => {
+    const { container } = renderLogin()
+    expect(container.querySelector('img[src="/favicon.svg"]')).toHaveAttribute('aria-hidden', 'true')
+  })
+
   it('offers a separate responsive garden image and readable caption', () => {
     const { container } = renderLogin()
     const picture = container.querySelector('figure picture')

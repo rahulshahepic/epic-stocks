@@ -57,7 +57,7 @@ export default function Login() {
               <span className="campus-sticker ml-0">Verona · unofficial</span>
               <h1 className="mt-6 max-w-2xl font-serif text-4xl font-semibold leading-[1.08] tracking-tight text-cs-text sm:text-5xl xl:text-6xl">Know what your Epic stock is actually worth.</h1>
               <p className="mt-5 max-w-xl text-base leading-relaxed text-cs-text-2 sm:text-lg">{appTagline}</p>
-              <div className="mt-5 flex items-center gap-2"><span className="campus-wordmark flex h-9 w-9 items-center justify-center bg-cs-brand text-sm font-extrabold text-white">E</span><span><span className="font-extrabold text-cs-brand">{appName}</span><UnofficialBadge className="mt-0.5" /></span></div>
+              <div className="mt-5 flex items-center gap-2"><img src="/favicon.svg" alt="" aria-hidden="true" className="h-9 w-9 shrink-0" /><span><span className="font-extrabold text-cs-brand">{appName}</span><UnofficialBadge className="mt-0.5" /></span></div>
             </div>
             <figure className="relative z-0 mt-5">
               <picture>

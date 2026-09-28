@@ -280,7 +280,9 @@ export function buildScheduleRows(s: WizardSchedule, existing: ExistingData): Sc
   return {
     purchaseRows, catchUpRows, bonusRows, orphanPrices, orphanGrants, customGrants,
     prices: s.priceYears.map(y => ({
-      effective_date: `${y}-01-01`,
+      // A saved price keeps its own date; re-dating it to 1 January moved
+      // which vests and sales it applied to.
+      effective_date: priceByYear.get(y)?.effective_date ?? `${y}-01-01`,
       price: priceByYear.has(y) ? String(priceByYear.get(y)!.price) : '',
     })).concat(existing.prices.filter(p => p.id < 0 && !s.priceYears.includes(
       parseInt(p.effective_date.slice(0, 4)))).map(p => ({

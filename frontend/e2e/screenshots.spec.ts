@@ -199,6 +199,14 @@ test.describe('Screenshots', () => {
     await shoot(page, 'login-dark-mobile', { fullPage: true })
   })
 
+  test('login page - light - desktop', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' })
+    await page.setViewportSize(DESKTOP)
+    await page.goto(`${BASE}/login`)
+    await page.waitForLoadState('networkidle')
+    await shoot(page, 'login-light-desktop', { fullPage: true })
+  })
+
   // The report dialog, from the pre-login side — the case that matters most,
   // because it is the one a person reaches when they cannot get in at all.
   test('report dialog - light - mobile', async ({ page }) => {

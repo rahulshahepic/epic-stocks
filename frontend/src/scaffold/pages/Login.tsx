@@ -10,9 +10,12 @@ import DisclaimerNotice from '../components/DisclaimerNotice.tsx'
 import UnofficialBadge from '../components/UnofficialBadge.tsx'
 import { IconTile, Card, Eyebrow } from '../components/ui/Card.tsx'
 import { IconTrendUp, IconCompass, IconShield, IconChatSpark } from '../components/ui/icons.tsx'
-import { CampusWelcomeScene } from '../components/CampusMotifs.tsx'
 import { useConfig } from '../hooks/useConfig.ts'
 import campusWatercolor from '../../assets/campus-watercolor.webp'
+import gardenMobile480 from '../../assets/campus-garden-mobile-480.webp'
+import gardenMobile960 from '../../assets/campus-garden-mobile-960.webp'
+import gardenWide800 from '../../assets/campus-garden-wide-800.webp'
+import gardenWide1600 from '../../assets/campus-garden-wide-1600.webp'
 
 const FEATURES = [
   { icon: <IconTrendUp />, tone: 'brand' as const, title: 'Built around Epic grants', body: 'Purchase, catch-up, free, and bonus grants, plus stock loans and payoffs.' },
@@ -56,7 +59,13 @@ export default function Login() {
               <p className="mt-5 max-w-xl text-base leading-relaxed text-cs-text-2 sm:text-lg">{appTagline}</p>
               <div className="mt-5 flex items-center gap-2"><span className="campus-wordmark flex h-9 w-9 items-center justify-center bg-cs-brand text-sm font-extrabold text-white">E</span><span><span className="font-extrabold text-cs-brand">{appName}</span><UnofficialBadge className="mt-0.5" /></span></div>
             </div>
-            <CampusWelcomeScene className="relative z-0 -mb-2 mt-2 w-full text-cs-text" />
+            <figure className="relative z-0 mt-5">
+              <picture>
+                <source media="(min-width: 640px)" srcSet={`${gardenWide800} 800w, ${gardenWide1600} 1600w`} sizes="(min-width: 1024px) 55vw, 100vw" />
+                <img src={gardenMobile480} srcSet={`${gardenMobile480} 480w, ${gardenMobile960} 960w`} sizes="100vw" alt="A garden path leads past a wooden signpost and brass telescope toward a lakeside campus." width="1122" height="1402" className="block aspect-[5/4] w-full object-cover object-center sm:aspect-[3/2]" />
+              </picture>
+              <figcaption className="bg-cs-raised px-6 py-3 font-serif text-sm italic text-cs-text sm:px-10 sm:text-base">Sapere aude · look up, wander a little, keep good records.</figcaption>
+            </figure>
           </div>
 
           <Eyebrow className="mt-7">What you get with an account</Eyebrow>

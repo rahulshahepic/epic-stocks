@@ -229,6 +229,15 @@ describe('Dashboard', () => {
       expect(screen.getByText('Value Today')).toBeInTheDocument()
     })
 
+    // Other mocked fetches (sales/taxSettings) can still resolve after "Value Today"
+    // first appears. If one settles in the same tick as fireEvent.change below, the
+    // resulting re-render can land between the DOM's value being set and React's
+    // onChange reading it, so the controlled input gets reset to its old value first
+    // and the date change is silently dropped (observed flaky in CI: cardDate stays
+    // at TODAY). Flush any still-pending fetches/effects first — see the payoff-sale
+    // test below, which hit the same race.
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+
     const dateInput = screen.getByDisplayValue(new Date().toISOString().slice(0, 10))
     fireEvent.change(dateInput, { target: { value: '2021-03-01' } })
 

@@ -1,8 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import Events from '../app/pages/Events.tsx'
+import { localToday } from '../app/dateUtils.ts'
 
 const MOCK_EVENTS = [
   {
@@ -23,6 +24,13 @@ const MOCK_EVENTS = [
 
 beforeEach(() => {
   localStorage.setItem('auth_token', 'test-token')
+  vi.restoreAllMocks()
+})
+
+const originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView')
+afterEach(() => {
+  if (originalScrollIntoView) Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', originalScrollIntoView)
+  else Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView')
   vi.restoreAllMocks()
 })
 
@@ -107,5 +115,60 @@ describe('Events', () => {
     })
     // Only Vesting selected — Exercise row should be hidden
     expect(screen.queryByText('2021-06-01')).not.toBeInTheDocument()
+  })
+
+  it('jumps to the next event, falls back to the last, and resets with Today', async () => {
+    mockApi()
+    const scrollIntoView = vi.fn()
+    HTMLElement.prototype.scrollIntoView = scrollIntoView
+    renderEvents()
+    await screen.findByText('2021-03-01')
+    const first = screen.getByText('2021-03-01').closest('tr')!
+    const last = screen.getByText('2021-06-01').closest('tr')!
+    fireEvent.change(screen.getByLabelText('Go to date'), { target: { value: '2021-02-01' } })
+    await waitFor(() => expect(first).toHaveClass('ring-blue-400'))
+    fireEvent.change(screen.getByLabelText('Go to date'), { target: { value: '2021-04-01' } })
+    await waitFor(() => expect(last).toHaveClass('ring-blue-400'))
+    expect(first).not.toHaveClass('ring-blue-400')
+    fireEvent.change(screen.getByLabelText('Go to date'), { target: { value: '2030-01-01' } })
+    await waitFor(() => expect(last).toHaveClass('ring-blue-400'))
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(3))
+    await userEvent.click(screen.getByRole('button', { name: 'Today' }))
+    expect(screen.getByLabelText('Go to date')).toHaveValue(localToday())
+    expect(last).toHaveClass('ring-blue-400')
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(4))
+  })
+
+  it('does not revisit a URL date when the event-type filter changes, and cancels its timer on a jump', async () => {
+    mockApi()
+    const scrollIntoView = vi.fn()
+    HTMLElement.prototype.scrollIntoView = scrollIntoView
+    const setTimer = vi.spyOn(globalThis, 'setTimeout')
+    const clearTimer = vi.spyOn(globalThis, 'clearTimeout')
+    renderEvents('/?date=2021-03-01')
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1))
+    const urlTimer = setTimer.mock.calls.findIndex(([, delay]) => delay === 2000)
+    expect(urlTimer).toBeGreaterThanOrEqual(0)
+
+    fireEvent.change(screen.getByLabelText('Go to date'), { target: { value: '2021-04-01' } })
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(2))
+    expect(clearTimer).toHaveBeenCalledWith(setTimer.mock.results[urlTimer].value)
+
+    await userEvent.click(screen.getByRole('button', { name: /All types/i }))
+    await userEvent.click(screen.getByRole('checkbox', { name: /Exercise/i }))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)) })
+    expect(scrollIntoView).toHaveBeenCalledTimes(2)
+  })
+
+  it('skips events hidden by the type filter when jumping', async () => {
+    mockApi()
+    const scrollIntoView = vi.fn()
+    HTMLElement.prototype.scrollIntoView = scrollIntoView
+    renderEvents('/?types=Exercise')
+    await screen.findByText('2021-06-01')
+    fireEvent.change(screen.getByLabelText('Go to date'), { target: { value: '2021-02-01' } })
+    await waitFor(() => expect(screen.getByText('2021-06-01').closest('tr')).toHaveClass('ring-blue-400'))
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1))
+    expect(screen.queryByText('2021-03-01')).not.toBeInTheDocument()
   })
 })

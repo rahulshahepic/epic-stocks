@@ -119,6 +119,9 @@ The preview then says what an account adds that a one-off read cannot: notificat
    |-------|------|
    | ![Login](screenshots/login-light-mobile.png) | ![Login Dark](screenshots/login-dark-mobile.png) |
 
+   The welcome garden has separate phone and desktop compositions, each with resolution-aware WebP sizes. [Desktop preview](screenshots/login-light-desktop.png).
+   The app mark beside the name on this page and in the signed-in header uses the same artwork as the favicon.
+
 2. **Enter your data** — with no grants yet, the setup screen appears automatically on the dashboard, and is always reachable from the Import page. Options, fastest first:
    - **Import from Shareworks** (fastest) — download **Data for Stock Workbook** and your latest **Stock Loan Statement** from the **Documents** tab in Shareworks and upload them as-is. Share counts, cost basis, loan balances, interest rates and due dates are read straight out of them, and you check the result in the wizard before anything is saved. See [Importing from Shareworks](#importing-from-shareworks) below.
    - **Enter it myself** — no documents to hand? Epic's company-wide grant structure is pre-filled (vest dates, periods, exercise dates), so you fill in your share counts, annual market prices and loan details grant by grant. Catch-up grants are included by default for years ≤ 2021. The 2020 Bonus has an A/B/C vesting schedule selector matching your grant agreement. Developer Bonus Shares appear for the 2020 and 2021 cohorts with their cost basis fixed at $0 — leave the share count blank if you weren't offered them. If you already have data, the wizard pre-loads it on each screen — unmatched existing records appear at the bottom so you can keep or remove them. Nothing is written until you confirm at the final step.
@@ -133,7 +136,7 @@ The preview then says what an account adds that a one-off read cannot: notificat
 
 4. **View the Dashboard** — once you have grants and at least one price, the dashboard shows your full financial picture. See [The Dashboard](#the-dashboard) below.
 
-5. **Explore the Events timeline** — the **Events** page shows the full computed timeline: every vesting tranche, exercise date, loan payoff, and recorded sale, with income, capital gains, and running totals for each event.
+5. **Explore the Events timeline** — the **Events** page shows the full computed timeline: every vesting tranche, exercise date, loan payoff, and recorded sale, with income, capital gains, and running totals for each event. Use **Today** or **Go to date** to jump to the first visible event on or after that date (or the last event if none follow).
 
    ![Events Timeline](screenshots/events-light-mobile.png)
 
@@ -172,7 +175,12 @@ Summary cards showing everything that has happened through the selected date:
 Tap any card marked **▼ see breakdown** to see how the number was computed — per-grant, per-sale, or per-loan detail. Open breakdowns persist across visits.
 
 The dashboard also includes **Your stock journey**, a responsive milestone path
-showing the next five upcoming vesting, share-price, and loan events. On phones
+showing the next five upcoming event types by date. Same-day events of one type
+share a milestone: vesting adds all tranche shares, their individual market values,
+and their individual gains or income; loan payoffs add amounts due; sales add gross
+proceeds. Future vesting and sale dollar figures, and those based on a projected
+share price, are marked "Est."; loan amounts due come from outstanding principal.
+The Events page keeps every tranche and transaction separate. On phones
 it reads as a vertical path; on wider screens it becomes a horizontal horizon.
 Its visual language draws from Epic's Verona campus: a hand-painted botanical,
 library, observatory, and dragon panorama frames the summary without obscuring
@@ -1378,5 +1386,3 @@ The built-in privacy page (`/privacy`) lists the third-party services used by th
 - **Anything a native shell would have to do differently lives behind `frontend/src/platform/`.** Four capabilities — how a session is authenticated and stored, key-value storage, handing the user a file, and push registration — are interfaces with a browser implementation. Feature code calls `platform.files.saveBlob(...)` rather than building an `<a download>`, and `platform.auth.openAuthorizationUrl(...)` rather than assigning `window.location`. These are the exact points where a WebView behaves differently from a browser (blob downloads are inert, `PushManager` does not exist, OAuth in an embedded WebView is refused by identity providers), so isolating them keeps one codebase serving both targets.
 
 - **Schema migrations use Alembic.** Migrations live in `backend/alembic/versions/`. `alembic upgrade head` runs automatically on startup (PostgreSQL only; SQLite test environments use `create_all`). Create a new migration with `alembic revision --autogenerate -m "description"`.
-
-

@@ -62,7 +62,7 @@ export default function Layout() {
         <header className="border-b border-cs-border">
           <div className="mx-auto flex w-full max-w-[90rem] items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
             <span className="flex min-w-0 shrink items-center gap-2 text-sm font-extrabold tracking-tight text-cs-brand">
-              <span className="campus-wordmark flex h-7 w-7 shrink-0 items-center justify-center bg-gradient-to-br from-cs-brand to-cs-brand-hover text-[11px] font-extrabold text-white">E</span>
+              <img src="/favicon.svg" alt="" aria-hidden="true" className="h-7 w-7 shrink-0" />
               <span className="flex min-w-0 flex-col items-start leading-tight"><span className="truncate">{appName}</span><UnofficialBadge className="mt-0.5" /></span>
             </span>
             <div className="flex min-w-0 shrink items-center gap-2">

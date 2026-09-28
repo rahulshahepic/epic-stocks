@@ -203,13 +203,6 @@ body {
   transform: rotate(6deg);
 }
 
-.campus-wordmark {
-  position: relative;
-  border-radius: 52% 48% 42% 58%;
-  box-shadow: 2px 2px 0 #F7C948;
-  transform: rotate(-4deg);
-}
-
 .campus-nav-link[aria-current='page'] {
   transform: rotate(-1.5deg);
 }

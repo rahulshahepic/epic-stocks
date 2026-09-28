@@ -39,9 +39,8 @@ MAX_GRANT_YEAR = 2100
 # pasted megabyte out of the draft before it gets that far.
 _MAX_SALE_NOTE = 500
 
-# Failing these means a source document cannot be trusted. A provisional G1
-# custom grant also needs confirmation. Other unfamiliar labels stay advisory:
-# some are historic conversion rows, not grants to enter.
+# Failing these means a source document cannot be trusted. Unfamiliar labels
+# stay advisory: some are historic conversion rows, not grants to enter.
 BLOCKING_CHECKS = {"G0", "C1", "C2"}
 
 # Why the two documents disagree about loans more often than not. Shareworks
@@ -246,36 +245,20 @@ def derive_draft(statement: Statement | None, rows: list[ShareRow],
     for row in rows:
         year, gtype = row.year, row.grant_type
         if gtype is None:
+            # Similarity is a hint for whoever confirms the award, never an
+            # assignment: historic conversion rows ("2019 Purchased
+            # Conversion") look like a type and are not grants. Blocking on the
+            # guess stranded a file upload with no way to confirm it in the app.
             match_year = re.match(r"^\s*(\d{4})\s+(.+?)\s*$", row.label)
             label_words = match_year.group(2) if match_year else row.label.strip()
             matches = get_close_matches(label_words.lower(),
                                         sorted({t.type.lower() for t in sk.templates}),
                                         n=1, cutoff=0.55)
-            hint = (f" Similar to {matches[0]!r}, but its schedule and tax "
-                    "treatment must be confirmed before entry." if matches else "")
-            suggested = False
-            if match_year and matches and year_in_range(int(match_year.group(1))):
-                candidate_year = int(match_year.group(1))
-                near = min((t for t in sk.templates if t.type.lower() == matches[0]),
-                           key=lambda t: abs(t.year - candidate_year))
-                start = _shift_year(near.vest_start, candidate_year - near.year)
-                exercise = _shift_year(near.exercise_date, candidate_year - near.year)
-                if start and exercise:
-                    vest_taxed, _ = is_vest_taxed(row)
-                    draft.grants.append(DraftGrant(
-                        year=candidate_year, type=label_words,
-                        shares=row.shares_granted,
-                        price=0 if vest_taxed else round(basis_per_share(row) or 0, 2),
-                        vest_start=start, periods=near.periods,
-                        exercise_date=exercise, election_83b=bool(row.shares_83b),
-                    ))
-                    row.year, row.grant_type = candidate_year, label_words
-                    suggested = True
-                    hint += " A provisional custom grant was added for review."
+            hint = (f" Similar to {matches[0]!r}; if it is a real award, enter it with "
+                    "its confirmed schedule and cost basis." if matches else "")
             findings.append(Finding("G1", WARNING, row.label,
                                     f"No grant type mapping for this category — "
-                                    f"{row.shares_granted:,} shares "
-                                    f"{'need confirmation' if suggested else 'not imported'}.{hint}"))
+                                    f"{row.shares_granted:,} shares not imported.{hint}"))
             continue
         if year is None:
             # A one-time award (rule G1): its label carries no year, so the
@@ -843,10 +826,9 @@ def supersede_parse_findings(findings: list[Finding]) -> list[Finding]:
 
 
 def is_blocked(findings: list[Finding]) -> bool:
-    """Refuse a provisional custom award until the user confirms its structure."""
-    return any((f.code in BLOCKING_CHECKS | {"R1", "S1"} and f.severity == ERROR)
-               or (f.code == "G1" and f.severity == WARNING
-                   and "provisional custom grant" in f.message) for f in findings)
+    """True when a document was misread or a grant cannot be built as supplied."""
+    return any(f.code in BLOCKING_CHECKS | {"R1", "S1"} and f.severity == ERROR
+               for f in findings)
 
 
 def to_wizard_payload(draft: Draft, include_unanswered_sales: bool = False) -> dict:

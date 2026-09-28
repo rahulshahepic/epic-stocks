@@ -191,18 +191,11 @@ def test_unknown_type_without_confirmed_schedule_cannot_use_placeholder(assistan
     assert any(f["code"] == "S1" and f["severity"] == "error" for f in result["findings"])
 
 
-def test_unknown_populated_category_blocks_file_import_until_repaired():
-    from app.epic_import.draft import is_blocked
-    from app.epic_import.models import Finding, WARNING, INFO
-
-    missing = Finding("G1", WARNING, "2025 Unusual Award",
-                      "A provisional custom grant was added for review")
-    assert is_blocked([missing])
-    assert not is_blocked([Finding("G1", INFO, missing.subject,
-                                   "Corrected by a confirmed custom grant")])
-
-
-def test_similar_unknown_grant_gets_provisional_shifted_schedule():
+@pytest.mark.parametrize("label", ["2025 Special Purchase", "2019 Purchased Conversion"])
+def test_a_similar_unknown_label_is_a_hint_not_a_blocking_grant(label):
+    """Historic conversion rows look like a type and are not grants. A file
+    upload has no way to confirm a guessed award in the app, so the guess must
+    not block the rest of the import."""
     from datetime import date
     from app.epic_import.draft import derive_draft, is_blocked
     from app.epic_import.models import ShareRow
@@ -210,13 +203,12 @@ def test_similar_unknown_grant_gets_provisional_shifted_schedule():
 
     skeleton = Skeleton(templates=[TemplateRow(
         2024, "Purchase", date(2025, 9, 30), 4, date(2024, 12, 31))])
-    row = ShareRow(label="2025 Special Purchase", shares_granted=100,
+    row = ShareRow(label=label, shares_granted=100,
                    shares_sold=0, shares_remaining=100, shares_83b=0,
                    cost_basis=200, loan_balance=None, loan_due_year=None,
                    vested=[], unvested_value=[], annual_interest_due=None)
     draft, findings = derive_draft(None, [row], skeleton)
-    assert len(draft.grants) == 1
-    assert draft.grants[0].type == "Special Purchase"
-    assert draft.grants[0].vest_start == date(2026, 9, 30)
-    assert draft.grants[0].periods == 4
-    assert is_blocked(findings), "the suggestion still needs the user's confirmation"
+    assert draft.grants == []
+    g1 = [f for f in findings if f.code == "G1"]
+    assert "not imported" in g1[0].message and "'purchase'" in g1[0].message
+    assert not is_blocked(findings)

@@ -5,6 +5,7 @@ import AssistantImport from '../components/AssistantImport.tsx'
 import { apiFetch, apiFetchBlob } from '../../api.ts'
 import { platform } from '../../platform/index.ts'
 import { Card } from '../../scaffold/components/ui/Card.tsx'
+import { useConfig } from '../../scaffold/hooks/useConfig.ts'
 
 
 const COLUMN_GUIDE = {
@@ -61,6 +62,7 @@ interface ImportResult {
 
 export default function ImportExport() {
   const navigate = useNavigate()
+  const config = useConfig()
   const [status, setStatus] = useState<Status>('idle')
   const [result, setResult] = useState<ImportResult | null>(null)
   const [error, setError] = useState('')
@@ -148,9 +150,9 @@ export default function ImportExport() {
     <div className="space-y-4">
       <h2 className="text-lg font-semibold text-cs-text">Import / Export</h2>
 
-      {/* The fastest path leads, because it is what most people should do. */}
-      {/* Renders nothing unless an assistant left a draft. */}
-      <AssistantImport />
+      {/* The fastest path leads, because it is what most people should do: a
+          draft waiting for review, or else how to have an assistant make one. */}
+      <AssistantImport showIntro={!!config?.ai_connections && !config?.epic_mode} />
 
       <EpicFileImport />
 

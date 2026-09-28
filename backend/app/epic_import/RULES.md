@@ -12,11 +12,10 @@ You will see them in three places:
 - the "What did not reconcile" section of the prompt the app hands you to paste
   into your own assistant
 
-**`G0`, `C1`, `C2`, `R1` and `S1` block at error severity; a `G1` warning for a provisional
-custom grant blocks until the user confirms it.** A corrected draft demotes the
-old parse finding to info and can proceed. Other unknown labels remain
-advisory: some historical conversion rows are not grants. The finding must
-clearly name any shares not imported (`is_blocked` in `draft.py`).
+**`G0`, `C1`, `C2`, `R1` and `S1` block at error severity.** A corrected draft
+demotes the old parse finding to info and can proceed. Unknown labels (`G1`)
+remain advisory: some historical conversion rows are not grants. The finding
+must clearly name any shares not imported (`is_blocked` in `draft.py`).
 
 Findings are graded **error** (something is wrong), **warning** (something may be
 wrong, or an assumption was made) and **info** (what was done and why).
@@ -44,12 +43,9 @@ Maps `2024 Purchased` → (2024, Purchase), `2019 Catch-up` → Catch-Up,
 `2020 Developer Bonus Shares` → Developer Bonus Shares. The developer pattern is
 tried before the plain bonus one, so the two do not collide. **Warning** for a category the
 mapping has never seen, naming the shares that were therefore not imported. It
-may suggest a similarly named configured type, but never assigns it without the
-user confirming the custom award's schedule and tax treatment. If the label
-contains a year and closely resembles a configured type, the draft includes a
-provisional custom grant using the nearest template shifted to that year. This
-still blocks acceptance until the user confirms and submits the full schedule
-and basis. Epic
+may name a similarly named configured type as a hint, but never assigns it: a
+real custom award is entered with its schedule and cost basis confirmed by the
+user (`custom_schedule` in a repaired draft or a chat import). Epic
 lists every category for every employee, so rows with no share count are skipped
 silently — only a populated row nobody can classify is reported.
 

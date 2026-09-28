@@ -465,7 +465,7 @@ You can let ChatGPT or Claude read your equity data, so you can ask about vestin
 
 **Letting it keep your salary and retirement numbers current.** Two things you type by hand *can* be written, if you tick that permission when you connect: your salary and bonus history, and the account balances the retirement simulator starts from. Then *"I got a raise to $205k in April"* or *"my 401(k) is at $850k now"* updates the app as you say it, instead of becoming a note to go and do it later. These are figures nothing else is computed from, and you are looking at them on the page — which is why they are the ones that are safe to write. Salary and bonus writes add to the history rather than replacing it, and repeating a request does not double a raise.
 
-**Getting your equity in with your assistant's help.** If entering it by hand is a chore, tick the import permission when you connect. Then say something like *"help me get my Epic equity into the tracker"* — the assistant reads `get_import_guide` for the exact shape and the company schedule, asks you for the figures, and calls `stage_import`.
+**Getting your equity in by chatting — the easiest way in.** You don't need to know what a cost basis or a vesting schedule is. Connect ChatGPT or Claude with the import permission ticked, then share whatever you have — grant letters, the Shareworks CSV and loan statement, screenshots, or just what you remember. The Import page shows a **Let ChatGPT or Claude do it** card with a message to start the chat. The assistant reads `get_import_guide`, drafts your grants and loans, walks you through what it found in plain words (saying what it guessed), and calls `stage_import`. A grant Epic's published schedule doesn't cover — this year's, or a one-off award — keeps the dates you confirmed with the assistant. Adding one grant only adds one grant: grants the draft doesn't mention are kept exactly as they are, loans included, and the review shows what the guesses were and what accepting would change.
 
 That does **not** save anything. It leaves a draft on the Import page, and you accept it in the same wizard an uploaded file goes through, with the same checks and the same diff. Confirmed custom grants and leave-adjusted dates appear in that review; older grants and prices outside the company schedule are kept unless you select them for removal. Unanswered sales remain visible for you to complete. If your assistant tells you staging finished the import, it is wrong — open the app and look. A draft you never accept expires after seven days.
 
@@ -484,7 +484,7 @@ That does **not** save anything. It leaves a draft on the Import page, and you a
 | `estimate_sale` | Models a sale without recording it — by share count, or working back from cash needed after tax |
 | `get_tax_breakdown` | The full working for one sale: lots consumed, income, short- and long-term gains |
 | `explain` | How this scheme works — vesting, grant types, tax, lots, the two prices. Worth asking for first; several ordinary RSU rules do not apply here |
-| `get_import_guide` | The exact shape an import must take, the rules, and the company vesting schedule and loan rates on record |
+| `get_import_guide` | How to draft an import with you: plain-language walkthrough, what may be guessed, the exact shape, the company vesting schedule and loan rates on record, and what your account already holds |
 | `get_compensation` | Salary and bonus history (needs the compensation permission) |
 | `get_retirement_params` | Saved retirement simulator settings (needs the compensation permission) |
 
@@ -502,7 +502,7 @@ And one that writes nothing of yours, under its own separate permission:
 
 | Tool | What it changes |
 |------|-----------------|
-| `stage_import` | Prepares an import for you to review. **Saves no grant, price or loan** — you accept it in the wizard (needs the import permission) |
+| `stage_import` | Prepares an import for you to review, and reports what accepting it would change and what the assistant guessed. **Saves no grant, price or loan** — you accept it in the wizard (needs the import permission) |
 
 **In Claude** — Pro, Max, Team or Enterprise; works on web, desktop and mobile:
 
@@ -609,7 +609,7 @@ Acceptance happens in the **Setup Wizard**, prefilled with the draft — the sam
 
 Two things worth knowing:
 
-- **Unreliable or incomplete grant details block acceptance.** A statement that does not match its own totals stops the import. A likely custom award also waits for confirmation of its schedule and cost basis; a malformed grant or sale cannot be accepted. Differences between the two files and unusual loan rates remain visible for review because Epic's paperwork can disagree with itself.
+- **Unreliable or incomplete grant details block acceptance.** A statement that does not match its own totals stops the import, and a malformed grant or sale cannot be accepted. An unfamiliar category is reported (with the configured type it resembles) and left out rather than guessed. Differences between the two files and unusual loan rates remain visible for review because Epic's paperwork can disagree with itself.
 - **There is no automatic check on share counts.** The CSV's `Shares Granted` is the only source for them, so nothing can be reconciled against. Loan balances, interest and cost basis all have arithmetic checks; share counts have you. That is why sign-off shows rendered figures rather than a row of green ticks.
 - **Shares Epic reports as sold** are reported but no sales are invented — the CSV carries no sale dates or prices. Record those on the **Sales** page.
 
@@ -1067,6 +1067,7 @@ epic-stocks/
 │   │   │   ├── rules.py         # Named derivation rules (G*, L*, P*)
 │   │   │   ├── draft.py         # Draft type, derivation, and the checks (C1-C12)
 │   │   │   ├── prompt.py        # The brief a user pastes into their own assistant
+│   │   │   ├── changes.py       # What accepting a draft would change, in plain words
 │   │   │   ├── reconcile.py     # Diff a draft against exported data
 │   │   │   ├── models.py        # Parsed value types
 │   │   │   └── RULES.md         # What every rule id means (pinned to the code by tests)
@@ -1078,7 +1079,9 @@ epic-stocks/
 │   │   │   ├── tools.py        # The tool registry: schema, scope, handler, annotations
 │   │   │   ├── read_tools.py   # The reads — each a call through to the router's own service function
 │   │   │   ├── comp_tools.py   # The writes: salary/bonus history and retirement balances (comp:write)
+│   │   │   ├── equity_tools.py # One-row grant/loan/price/sale writes, version-checked (equity:write)
 │   │   │   ├── import_tools.py # Import guide + staging a draft the user accepts in the wizard
+│   │   │   ├── import_guide.py # What an assistant is told: plain words, best guesses, unusual grants
 │   │   │   └── accounts.py     # Whose data a tool reads — own account only today
 │   │   └── routers/
 │   │       ├── grants.py    # Grant CRUD + bulk
@@ -1355,7 +1358,7 @@ The built-in privacy page (`/privacy`) lists the third-party services used by th
 - **Events are never stored.** Computed per-request from Grants + Prices + Loans. Eliminates sync issues entirely — changing a grant or price immediately recalculates everything.
 - **The app never calls a language model.** When a parse cannot be trusted it hands the user a prompt for their own assistant instead. That needs no API key, no cost cap, no billing, no secret to store, and no outbound request from the server — and the user's figures go where they choose rather than where the app decides. Whatever comes back is checked by exactly the same arithmetic that rejected the draft, so the repair path is no more trusted than the parser.
 - **Company templates are the starting point.** The file parser fills vest dates, periods and exercise dates from the content tables because the share summary does not reliably supply them. For an unfamiliar award or a leave-adjusted schedule, a repaired draft can carry a full user-confirmed custom schedule and cost-basis treatment. An unconfirmed change to a standard template is reported and ignored.
-- **Unreliable or incomplete grant details block an import.** Mismatched statement totals, malformed grants or sales, and a custom award without a confirmed schedule stop acceptance. Disagreement between files and unusual loan rates remain visible for review because Epic's paperwork can disagree with itself.
+- **Unreliable or incomplete grant details block an import.** Mismatched statement totals, malformed grants or sales, and a custom schedule the user has not confirmed stop acceptance. An unfamiliar file category is only a hint: historic conversion rows look like grant types and are not grants. Disagreement between files and unusual loan rates remain visible for review because Epic's paperwork can disagree with itself.
 - **Shares reported sold are reconciled, not assumed sold.** Epic reports a down-payment share exchange and a sale in the same column. Calling every one a sale invented taxable disposals; the down payment implied by each purchase loan is checkable arithmetic, and only an exact, unique match against the shares reported gone is acted on. Rule `G8`, checked back by `C11`.
 - **Unexplained shares are unclassified, not necessarily sold.** The user confirms exchanges and supplies each sale's quantity, date and price. `C12` keeps unknown details visible; the wizard checks edited exchanges against the reported total and shows omitted shares at sign-off. Re-import matches saved sales one-for-one rather than appending copies. The wizard's `sales.ts` contains the client-side reconciliation and review helpers.
 - **Two documents disagreeing is staleness, not a misread.** Shareworks regenerates the loan statement on demand and refreshes the stock workbook on a slower cycle, so the workbook routinely predates a payoff the statement already shows. `C3` and `C4` warn and name that cause rather than erroring: a user whose paperwork is merely out of step was being told their import had failed, twice in one evening, which is what prompted this.

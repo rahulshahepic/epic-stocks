@@ -67,7 +67,7 @@ def seed(client) -> dict:
 class Mcp:
     """A connected assistant, talking JSON-RPC."""
 
-    def __init__(self, client, scope="equity:read comp:read comp:write import:propose"):
+    def __init__(self, client, scope="equity:read comp:read comp:write import:propose equity:write"):
         self.client = client
         self.tokens = connect(client, scope=scope)
         self._id = 0
@@ -118,12 +118,13 @@ def mcp(client):
 WRITING_TOOLS = {
     "stage_import",
     "add_compensation", "remove_compensation", "set_retirement_accounts",
+    "save_equity", "remove_equity",
 }
 
 # Of those, the ones that can take something away. stage_import stages a
 # proposal the user accepts elsewhere and the two comp writers only add or
 # amend; deleting history is the one that destroys.
-DESTRUCTIVE_TOOLS = {"remove_compensation"}
+DESTRUCTIVE_TOOLS = {"remove_compensation", "remove_equity"}
 
 
 def test_every_tool_is_listed_and_annotated_honestly(mcp):
@@ -523,5 +524,10 @@ def test_every_successful_tool_result_is_parseable_json(mcp, name):
     arguments = dict(required.get(name, {}))
     if name == "get_tax_breakdown":
         arguments["sale_id"] = mcp.call("list_sales")["sales"][0]["id"]
+    if name == "save_equity":
+        arguments = {"kind": "price", "values": {"effective_date": "2025-01-01", "price": 5.0}}
+    if name == "remove_equity":
+        row = mcp.call("list_sales")["sales"][0]
+        arguments = {"kind": "sale", "id": row["id"], "version": row["version"]}
     payload = mcp.call(name, **arguments)
     assert isinstance(payload, (dict, list))

@@ -269,12 +269,20 @@ def test_authorize_requires_pkce_at_all(client):
     assert query["error"] == ["invalid_request"]
 
 
-def test_authorize_rejects_a_write_scope_that_does_not_exist_yet(client):
+def test_authorize_offers_explicit_equity_write_permission(client):
+    register_user(client)
+    reg = register_client(client)
+    _, challenge = pkce_pair()
+    resp = authorize(client, reg["client_id"], challenge, scope="equity:read equity:write")
+    assert resp.status_code == 200
+    assert "Create, correct or remove" in resp.text
+
+
+def test_equity_write_without_read_is_refused(client):
     register_user(client)
     reg = register_client(client)
     _, challenge = pkce_pair()
     resp = authorize(client, reg["client_id"], challenge, scope="equity:write")
-    assert resp.status_code == 302
     query = parse_qs(urlparse(resp.headers["location"]).query)
     assert query["error"] == ["invalid_scope"]
 

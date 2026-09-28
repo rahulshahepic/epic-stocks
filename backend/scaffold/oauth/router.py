@@ -313,6 +313,7 @@ def authorize(request: Request, db: Session = Depends(get_db)):
         scope_labels=[scope_defs.SCOPE_LABELS[s] for s in granted],
         read_only=not scope_defs.writes_anything(granted),
         writes_directly=scope_defs.writes_directly(granted),
+        equity_write=scope_defs.EQUITY_WRITE in granted,
         request_token=request_token,
         csrf=_csrf_for(session_token, request_token),
     ))
@@ -356,6 +357,7 @@ def authorize_resume(request: Request, db: Session = Depends(get_db)):
         scope_labels=[scope_defs.SCOPE_LABELS[s] for s in pending["sc"].split()],
         read_only=not scope_defs.writes_anything(pending["sc"].split()),
         writes_directly=scope_defs.writes_directly(pending["sc"].split()),
+        equity_write=scope_defs.EQUITY_WRITE in pending["sc"].split(),
         request_token=request_token,
         csrf=_csrf_for(session_token, request_token),
     ))

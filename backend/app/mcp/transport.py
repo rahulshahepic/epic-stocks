@@ -26,7 +26,7 @@ from scaffold.oauth import audit
 from scaffold.oauth.resource import Connector, require_connector
 from scaffold.oauth.settings import mcp_enabled
 from scaffold.rate_limit import check_rate_shared
-from . import comp_tools, import_tools, read_tools  # noqa: F401  — importing is what registers the tools
+from . import comp_tools, equity_tools, import_tools, read_tools  # noqa: F401
 from .tools import REGISTRY, ToolContext, as_result, visible_to
 
 logger = logging.getLogger(__name__)
@@ -174,11 +174,15 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext) -> d
                 "as what the equity is or will be worth. Future vesting dates "
                 "and share counts are fixed and can be stated plainly; the "
                 "money attached to them cannot.\n\n"
-                "Helping someone enter their equity: read get_import_guide "
-                "first, then stage_import. Vesting dates and periods are fixed "
-                "company-wide and must not be invented. stage_import changes "
-                "nothing on its own — it leaves a draft the user accepts in the "
-                "app, so say that rather than reporting the import as done.\n\n"
+                "Helping someone enter equity: read get_import_guide and the "
+                "existing grants, loans, prices and sales first. Company "
+                "schedules are starting points; custom grants and leave changes "
+                "need the user's explicit confirmation of the full schedule and "
+                "cost-basis treatment. stage_import leaves a review draft in "
+                "the app; with separately granted equity:write, save_equity "
+                "and remove_equity can complete a chat-only workflow after "
+                "the user approves the specific edits. Check the resulting "
+                "position with read tools afterward.\n\n"
                 "Salary, bonuses and retirement balances can be written "
                 "directly, and those writes are immediate. Read the matching "
                 "get_ tool first so you add to the history rather than "

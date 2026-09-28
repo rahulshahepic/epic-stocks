@@ -63,7 +63,7 @@ describe('import sales', () => {
   it('shows both planned imports and skipped shares on Review', () => {
     const review = saleReview([sale, { ...sale, shares: 200, date: '' }], [], 1000)
     render(<ReviewScreen salesReview={review} submission={{ grants: [], prices: [], droppedLoans: [], droppedPrices: [], blockingIssues: [] }}
-      submitting={false} submitError="" orphanPrices={[]} orphanGrants={[]} preservedPriceIds={new Set()}
+      submitting={false} submitError="" orphanPrices={[]} orphanGrants={[]} customGrants={[]} preservedPriceIds={new Set()}
       preservedGrantIds={new Set()} onBack={() => {}} onSubmit={() => {}} />)
     const summary = within(screen.getByRole('region', { name: 'Sales summary' }))
     expect(summary.getByText(/1 to import/)).toBeInTheDocument()

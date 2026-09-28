@@ -65,14 +65,39 @@ def _get_import_guide(ctx: ToolContext, args: dict):
         "loan_rates_on_record": brief._rate_table(sk),
         "down_payment_policy": brief._dp_policy(sk),
         "checks_if_working_from_epic_files": brief._IDENTITIES,
+        "chat_entry_shapes": {
+            "grant": "{year, type, shares, price (cost basis per share; 0 if taxed at vest), vest_start (first vest date, YYYY-MM-DD), periods (annual), exercise_date, dp_shares (negative or 0), election_83b}",
+            "loan": "{grant_year, grant_type, loan_type (Purchase|Interest|Tax), loan_year, amount (remaining principal), interest_rate (fraction: 0.02 means 2%), due_date, loan_number?, refinances_loan_id?}",
+            "price": "{effective_date, price}; future-dated prices are projections, not actual valuations",
+            "sale": "{date, shares, price_per_share, notes?}; use one row per real transaction, never an inferred sale",
+            "correction": "list the row, then save_equity with kind, id, and values containing version plus only changed fields",
+            "removal": "list the row, confirm with the user, then remove_equity with kind, id and version",
+        },
+        "workflow_examples": [
+            "Unknown grant name: use a similar template only to frame questions; confirm year, shares, vest start, periods, exercise date and zero versus purchase basis, then create one custom grant.",
+            "Leave of absence: find the existing grant by year and type, confirm its revised vest start and remaining annual periods, then correct that row by id and version.",
+            "Multiple sales: ask the user for each actual transaction date, shares and proceeds per share, then save separate sale rows; do not treat unexplained missing shares as a sale.",
+            "Loan extension or refinance: read the loan chain and outstanding balance before changing a due date or adding the successor loan. Do not total the whole chain as debt.",
+            "No app import at all: enter confirmed grants, prices, loans and sales one row at a time; read back the records and dashboard after each batch.",
+        ],
         "how_to_submit": (
             "Build the JSON object described in output_format, then call "
             "stage_import with it. That does not change anything — it leaves a "
             "draft for the user to review and accept in the app's import "
-            "wizard. Call list_grants and list_prices first to see what the "
-            "account already holds, so you replace it knowingly rather than "
-            "duplicating it: a proposal is the whole picture, not an addition "
-            "to what is there."
+            "wizard. For chat-only entry, request equity:write and use "
+            "save_equity one row at a time after the user confirms the edits. "
+            "Call list_grants, list_loans, list_prices and list_sales first: "
+            "a proposal is the whole picture, not an addition. Existing sales "
+            "and loan history may be absent from a new document; never infer "
+            "they should be deleted. For an unfamiliar grant label, suggest a "
+            "nearby company template only as a starting point. Ask the user "
+            "to confirm its year, type, vest_start (first vesting date/year), "
+            "periods, exercise_date, and whether price is zero because it "
+            "vests as income. Set custom_schedule, schedule_confirmed and "
+            "basis_confirmed to true with those fields in a draft. A leave "
+            "of absence can similarly change an existing grant's schedule. "
+            "For a sale, ask for each actual transaction's date, quantity and "
+            "per-share price; a missing balance is not proof of a sale."
         ),
         "notes": _finding_dicts(skeleton_findings),
     }
@@ -85,8 +110,9 @@ register(Tool(
         "Everything needed to build an import for this account: the exact JSON "
         "shape, the rules that apply, the company vesting schedule and loan "
         "rates on record, and the down-payment policy. Read this before helping "
-        "someone enter their equity — the vesting dates and periods are fixed "
-        "company-wide and must not be invented. Pair it with stage_import."
+        "someone enter their equity. Company templates are suggestions for "
+        "unfamiliar awards; user-confirmed custom schedules and leave changes "
+        "may differ. Pair with stage_import or the equity:write tools."
     ),
     input_schema=object_schema({"account": ACCOUNT_PROPERTY}),
     scope=EQUITY_READ,
@@ -100,7 +126,7 @@ def _stage_import(ctx: ToolContext, args: dict):
     from scaffold.epic_mode import is_epic_mode
     from scaffold.models import ImportProposal
     from app.epic_import.draft import (draft_from_payload, is_blocked,
-                                       supersede_parse_findings, to_wizard_payload,
+                                       to_wizard_payload,
                                        validate_draft)
 
     owner = resolve_account(ctx.user, args.get("account"), ctx.db)
@@ -125,7 +151,8 @@ def _stage_import(ctx: ToolContext, args: dict):
         raise ValueError(f"'payload.prices' must be a list of at most {MAX_PRICES} entries")
 
     sk, skeleton_findings = _skeleton(ctx)
-    if sk.is_empty:
+    if sk.is_empty and not all(isinstance(g, dict) and g.get("custom_schedule") is True
+                               for g in grants):
         raise ValueError(
             "This deployment has no grant schedule configured, so an import "
             "cannot be checked against one."
@@ -135,12 +162,18 @@ def _stage_import(ctx: ToolContext, args: dict):
     # rows here, so the checks that compare a statement against its own printed
     # totals do not apply; the structural rules still do.
     draft, parse_findings = draft_from_payload(payload, sk)
-    findings = supersede_parse_findings(
-        list(skeleton_findings) + list(parse_findings)
-        + validate_draft(draft, None, [], sk)
-    )
+    findings = (list(skeleton_findings) + list(parse_findings)
+                + validate_draft(draft, None, [], sk))
     blocked = is_blocked(findings)
-    wizard_payload = to_wizard_payload(draft)
+    wizard_payload = to_wizard_payload(draft, include_unanswered_sales=True)
+    custom_keys = {(g["year"], g["type"]) for g in grants
+                   if isinstance(g, dict) and g.get("custom_schedule") is True
+                   and g.get("schedule_confirmed") is True
+                   and g.get("basis_confirmed") is True
+                   and isinstance(g.get("year"), int) and isinstance(g.get("type"), str)}
+    for g in wizard_payload["grants"]:
+        if (g["year"], g["type"]) in custom_keys:
+            g.update(custom_schedule=True, schedule_confirmed=True, basis_confirmed=True)
 
     now = datetime.now(timezone.utc)
     row = ctx.db.query(ImportProposal).filter(

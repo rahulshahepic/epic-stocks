@@ -461,13 +461,15 @@ You can let ChatGPT or Claude read your equity data, so you can ask about vestin
 
 **What this does and does not do.** The assistant can read your grants, vesting timeline, prices, loans, sales and tax estimates, and your salary and retirement settings if you allow that. Connecting means your figures are sent to OpenAI or Anthropic when the assistant asks for them — the same as pasting them into a chat, but without the pasting.
 
-**Your equity can never be changed by an assistant.** Grants, prices, loans and sales feed the event engine, and a wrong one there quietly restates your whole timeline — so there is no tool that writes them. The most an assistant can do is prepare an import you accept yourself, in the wizard, with the same checks and diff an uploaded file gets.
+**Equity editing is a separate permission.** By default, the assistant can only read. You can allow `import:propose` to prepare a draft for review in the app, or explicitly allow `equity:write` to create, correct and remove individual grants, prices, loans and sales through chat. Those edits take effect immediately. Ask it to show you the exact values first, then check the saved rows and dashboard afterward. Disconnecting revokes access.
 
 **Letting it keep your salary and retirement numbers current.** Two things you type by hand *can* be written, if you tick that permission when you connect: your salary and bonus history, and the account balances the retirement simulator starts from. Then *"I got a raise to $205k in April"* or *"my 401(k) is at $850k now"* updates the app as you say it, instead of becoming a note to go and do it later. These are figures nothing else is computed from, and you are looking at them on the page — which is why they are the ones that are safe to write. Salary and bonus writes add to the history rather than replacing it, and repeating a request does not double a raise.
 
 **Getting your equity in with your assistant's help.** If entering it by hand is a chore, tick the import permission when you connect. Then say something like *"help me get my Epic equity into the tracker"* — the assistant reads `get_import_guide` for the exact shape and the company schedule, asks you for the figures, and calls `stage_import`.
 
-That does **not** save anything. It leaves a draft on the Import page, and you accept it in the same wizard an uploaded file goes through, with the same checks and the same diff. If your assistant tells you the import is done, it is wrong — open the app and look. A draft you never accept expires after seven days.
+That does **not** save anything. It leaves a draft on the Import page, and you accept it in the same wizard an uploaded file goes through, with the same checks and the same diff. Confirmed custom grants and leave-adjusted dates appear in that review; older grants and prices outside the company schedule are kept unless you select them for removal. Unanswered sales remain visible for you to complete. If your assistant tells you staging finished the import, it is wrong — open the app and look. A draft you never accept expires after seven days.
+
+**Chat-only setup and repair.** Grant `equity:write` when connecting, then upload your documents into ChatGPT or Claude and ask it to compare them with `list_grants`, `list_loans`, `list_prices` and `list_sales`. It can enter each verified item with `save_equity`, correct an existing item using its id and current version, or remove an incorrect item with `remove_equity`. It must ask before a specific write. An unknown grant name may resemble a standard award, but that is only a clue: confirm the award year, type, shares, first vesting date, number of annual vesting periods, exercise date, and whether the purchase cost basis is zero because vesting is income. For leave-related schedule changes, confirm the revised first vest date and periods. For sales, give the actual date, quantity and per-share proceeds for each transaction; shares missing from a statement alone do not establish a sale. Existing history stays put when you edit one item. The assistant should read back the saved rows and check the resulting dashboard and event timeline.
 
 **What it can read:**
 
@@ -486,13 +488,15 @@ That does **not** save anything. It leaves a draft on the Import page, and you a
 | `get_compensation` | Salary and bonus history (needs the compensation permission) |
 | `get_retirement_params` | Saved retirement simulator settings (needs the compensation permission) |
 
-**What it can write** — only with the "update salary, bonuses and retirement balances" permission, which is never granted by default:
+**What it can write** — with separately requested write permissions, never granted by default:
 
 | Tool | What it changes |
 |------|-----------------|
 | `add_compensation` | Adds salary-change and bonus entries to the compensation history. Adds rather than replaces, and skips an entry identical to one already stored |
 | `remove_compensation` | Deletes compensation entries by id, for correcting a mistake |
 | `set_retirement_accounts` | Sets the retirement simulator's starting balances: 401(k)/traditional IRA, Roth, taxable brokerage and its cost basis. Only the balances named are changed; the rest of your saved scenario is left alone |
+| `save_equity` | Under `equity:write`, creates or corrects one grant, loan, price or sale through the app's normal validations. Corrections require the latest row version |
+| `remove_equity` | Under `equity:write`, removes one specifically identified row after confirmation and a version check; a grant with attached loans cannot be removed |
 
 And one that writes nothing of yours, under its own separate permission:
 
@@ -605,7 +609,7 @@ Acceptance happens in the **Setup Wizard**, prefilled with the draft — the sam
 
 Two things worth knowing:
 
-- **Only arithmetic failures block.** If the statement does not match its own totals, part of it was misread and the import stops there. Everything else — the two files disagreeing, a rate that differs from the one on record — is shown and you decide. Epic's own paperwork sometimes disagrees with itself, and you should not be trapped in a loop over it.
+- **Unreliable or incomplete grant details block acceptance.** A statement that does not match its own totals stops the import. A likely custom award also waits for confirmation of its schedule and cost basis; a malformed grant or sale cannot be accepted. Differences between the two files and unusual loan rates remain visible for review because Epic's paperwork can disagree with itself.
 - **There is no automatic check on share counts.** The CSV's `Shares Granted` is the only source for them, so nothing can be reconciled against. Loan balances, interest and cost basis all have arithmetic checks; share counts have you. That is why sign-off shows rendered figures rather than a row of green ticks.
 - **Shares Epic reports as sold** are reported but no sales are invented — the CSV carries no sale dates or prices. Record those on the **Sales** page.
 
@@ -1233,7 +1237,7 @@ Cross-origin requests are accepted only from the native shell origins (`capacito
 | GET/POST | `/oauth/authorize` | Consent screen, server-rendered. Needs an app session; a signed-out user is sent through `/login?next=` and returned here |
 | POST | `/oauth/token` | `authorization_code` and `refresh_token`. PKCE `S256` required; refresh tokens rotate on use |
 | POST | `/oauth/revoke` | RFC 7009. Always 200 |
-| POST | `/mcp` | The MCP server: JSON-RPC over Streamable HTTP (`initialize`, `tools/list`, `tools/call`, `ping`). Twelve read tools and four that write, listed under [Connecting Your Own AI](#connecting-your-own-ai). Requires a connector token, never a session one |
+| POST | `/mcp` | The MCP server: JSON-RPC over Streamable HTTP (`initialize`, `tools/list`, `tools/call`, `ping`). Read tools and separately scoped compensation, import proposal and equity write tools are listed under [Connecting Your Own AI](#connecting-your-own-ai). Requires a connector token, never a session one |
 | GET | `/api/oauth/connections` | This account's live AI connections, for Settings |
 | DELETE | `/api/oauth/connections/{id}` | Disconnect. Deleting the grant row is the revocation — it takes effect on the next request |
 | GET | `/api/oauth/activity` | This account's last 50 connector events — tool names, outcomes and times, never figures |
@@ -1350,8 +1354,8 @@ The built-in privacy page (`/privacy`) lists the third-party services used by th
 
 - **Events are never stored.** Computed per-request from Grants + Prices + Loans. Eliminates sync issues entirely — changing a grant or price immediately recalculates everything.
 - **The app never calls a language model.** When a parse cannot be trusted it hands the user a prompt for their own assistant instead. That needs no API key, no cost cap, no billing, no secret to store, and no outbound request from the server — and the user's figures go where they choose rather than where the app decides. Whatever comes back is checked by exactly the same arithmetic that rejected the draft, so the repair path is no more trusted than the parser.
-- **Structure comes from the content tables; only figures come from the files.** Vest dates, periods, exercise dates, rates and due dates are company-wide, so an import fills numbers into a skeleton it cannot alter. Inferring a vesting schedule from a share summary was the one part of the import with no way to check itself, and it was wrong exactly where it had no evidence.
-- **Only arithmetic failures block an import.** A statement that does not match its own printed totals was misread, and nothing downstream can be trusted. Everything else is shown and overridable — Epic's own paperwork sometimes disagrees with itself, and a user should not be trapped in a repair loop by it.
+- **Company templates are the starting point.** The file parser fills vest dates, periods and exercise dates from the content tables because the share summary does not reliably supply them. For an unfamiliar award or a leave-adjusted schedule, a repaired draft can carry a full user-confirmed custom schedule and cost-basis treatment. An unconfirmed change to a standard template is reported and ignored.
+- **Unreliable or incomplete grant details block an import.** Mismatched statement totals, malformed grants or sales, and a custom award without a confirmed schedule stop acceptance. Disagreement between files and unusual loan rates remain visible for review because Epic's paperwork can disagree with itself.
 - **Shares reported sold are reconciled, not assumed sold.** Epic reports a down-payment share exchange and a sale in the same column. Calling every one a sale invented taxable disposals; the down payment implied by each purchase loan is checkable arithmetic, and only an exact, unique match against the shares reported gone is acted on. Rule `G8`, checked back by `C11`.
 - **Unexplained shares are unclassified, not necessarily sold.** The user confirms exchanges and supplies each sale's quantity, date and price. `C12` keeps unknown details visible; the wizard checks edited exchanges against the reported total and shows omitted shares at sign-off. Re-import matches saved sales one-for-one rather than appending copies. The wizard's `sales.ts` contains the client-side reconciliation and review helpers.
 - **Two documents disagreeing is staleness, not a misread.** Shareworks regenerates the loan statement on demand and refreshes the stock workbook on a slower cycle, so the workbook routinely predates a payoff the statement already shows. `C3` and `C4` warn and name that cause rather than erroring: a user whose paperwork is merely out of step was being told their import had failed, twice in one evening, which is what prompted this.

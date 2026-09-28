@@ -106,6 +106,7 @@ def _page(title: str, body: str) -> str:
 def render_consent(*, client_name: str, redirect_origin: str, account_email: str,
                    scope_labels: list[str], request_token: str, csrf: str,
                    read_only: bool = True, writes_directly: bool = False,
+                   equity_write: bool = False,
                    app_name: str = "Epic Stocks") -> str:
     items = "".join(f"<li>{_CHECK}<span>{_esc(label)}</span></li>" for label in scope_labels)
     # The claim has to follow the scopes actually being granted. This is the one
@@ -118,12 +119,19 @@ def render_consent(*, client_name: str, redirect_origin: str, account_email: str
             "It will not be able to change anything — this connection is "
             "read-only. You can disconnect it at any time in Settings."
         )
+    elif writes_directly and equity_write:
+        note = (
+            "It will be able to change the things listed above as soon as you "
+            "ask it to, without a further prompt. This includes your grants, "
+            "prices, loans and sales. You can "
+            "disconnect it at any time in Settings."
+        )
     elif writes_directly:
         note = (
             "It will be able to change the things listed above as soon as you "
             "ask it to, without a further prompt. Your grants, prices, loans "
-            "and sales are not among them and cannot be changed by an "
-            "assistant. You can disconnect it at any time in Settings."
+            "and sales cannot be changed by an assistant with these permissions. "
+            "You can disconnect it at any time in Settings."
         )
     else:
         note = (

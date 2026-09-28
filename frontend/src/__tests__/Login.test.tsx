@@ -52,6 +52,14 @@ describe('Login page', () => {
     expect(screen.getByText('Epic Stocks')).toBeInTheDocument()
   })
 
+  it('offers a separate responsive garden image and readable caption', () => {
+    const { container } = renderLogin()
+    const picture = container.querySelector('figure picture')
+    expect(picture?.querySelector('source[media="(min-width: 640px)"]')).toHaveAttribute('srcset', expect.stringContaining('campus-garden-wide'))
+    expect(screen.getByRole('img', { name: /garden path leads past a wooden signpost and brass telescope/i })).toHaveAttribute('srcset', expect.stringContaining('campus-garden-mobile'))
+    expect(screen.getByText(/Sapere aude · look up, wander a little/i)).toBeInTheDocument()
+  })
+
   it('says who the app is for', () => {
     renderLogin()
     expect(screen.getByText(/for Epic employees tracking their own equity/i)).toBeInTheDocument()

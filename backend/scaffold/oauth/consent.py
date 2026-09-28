@@ -71,6 +71,8 @@ li svg { flex: none; margin-top: .1875rem; }
   font-size: .8125rem; color: var(--text-2); background: var(--raised);
   border-radius: .625rem; padding: .625rem .75rem; margin-bottom: 1rem;
 }
+.opt { display: flex; gap: .5rem; align-items: flex-start; font-size: .8125rem; margin: 0 0 1rem; }
+.opt input { margin-top: .2rem; }
 .who { font-size: .8125rem; color: var(--muted); margin-bottom: 1.25rem; word-break: break-all; }
 .actions { display: flex; gap: .5rem; }
 button {
@@ -106,7 +108,7 @@ def _page(title: str, body: str) -> str:
 def render_consent(*, client_name: str, redirect_origin: str, account_email: str,
                    scope_labels: list[str], request_token: str, csrf: str,
                    read_only: bool = True, writes_directly: bool = False,
-                   equity_write: bool = False,
+                   equity_write: bool = False, offer_import: bool = False,
                    app_name: str = "Epic Stocks") -> str:
     items = "".join(f"<li>{_CHECK}<span>{_esc(label)}</span></li>" for label in scope_labels)
     # The claim has to follow the scopes actually being granted. This is the one
@@ -118,6 +120,11 @@ def render_consent(*, client_name: str, redirect_origin: str, account_email: str
         note = (
             "It will not be able to change anything — this connection is "
             "read-only. You can disconnect it at any time in Settings."
+            if not offer_import else
+            "It will not be able to change anything — this connection is "
+            "read-only unless you tick the option below, which still changes "
+            "nothing until you accept it in the app. You can disconnect it at "
+            "any time in Settings."
         )
     elif writes_directly and equity_write:
         note = (
@@ -148,7 +155,10 @@ def render_consent(*, client_name: str, redirect_origin: str, account_email: str
         "<form method=\"post\" action=\"/oauth/authorize\">"
         f"<input type=\"hidden\" name=\"request\" value=\"{_esc(request_token)}\">"
         f"<input type=\"hidden\" name=\"csrf\" value=\"{_esc(csrf)}\">"
-        "<div class=\"actions\">"
+        + ("<label class=\"opt\"><input type=\"checkbox\" name=\"add_scope\" "
+           "value=\"import:propose\"><span>Also let it prepare imports for you to "
+           "review — it cannot change your data</span></label>" if offer_import else "")
+        +         "<div class=\"actions\">"
         "<button class=\"deny\" type=\"submit\" name=\"decision\" value=\"deny\">Cancel</button>"
         "<button class=\"allow\" type=\"submit\" name=\"decision\" value=\"allow\">Connect</button>"
         "</div></form>"

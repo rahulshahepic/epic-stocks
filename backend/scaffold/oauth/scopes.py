@@ -52,6 +52,26 @@ SCOPE_LABELS: dict[str, str] = {
 }
 
 
+# What the consent screen may add when the client did not ask for it. Clients
+# that request no scope get reads only, so without this the import path — the
+# ordinary way in — was invisible to them with no way for the user to enable it.
+# Only the review-first permission: nothing that writes directly is offered.
+OPT_IN_SCOPES: frozenset[str] = frozenset({IMPORT_PROPOSE})
+
+
+def can_offer_import(granted: list[str] | tuple[str, ...]) -> bool:
+    return EQUITY_READ in granted and IMPORT_PROPOSE not in granted
+
+
+def with_opt_in(scope: str, chosen: list[str]) -> str:
+    """The pending scope plus whatever the user ticked that may be offered."""
+    granted = scope.split()
+    for s in chosen:
+        if s in OPT_IN_SCOPES and s not in granted and can_offer_import(granted):
+            granted.append(s)
+    return format_scope(granted)
+
+
 def writes_anything(scopes: list[str] | tuple[str, ...]) -> bool:
     return any(s in WRITING_SCOPES for s in scopes)
 

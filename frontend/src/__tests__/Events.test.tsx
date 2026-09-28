@@ -168,7 +168,7 @@ describe('Events', () => {
     await screen.findByText('2021-06-01')
     fireEvent.change(screen.getByLabelText('Go to date'), { target: { value: '2021-02-01' } })
     await waitFor(() => expect(screen.getByText('2021-06-01').closest('tr')).toHaveClass('ring-blue-400'))
-    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1))
     expect(screen.queryByText('2021-03-01')).not.toBeInTheDocument()
   })
 })

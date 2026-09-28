@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import AssistantImport from '../app/components/AssistantImport.tsx'
 import { api, type ImportProposal } from '../api.ts'
 
@@ -89,5 +90,42 @@ describe('AssistantImport', () => {
     vi.spyOn(api, 'getImportProposal').mockRejectedValue(new Error('boom'))
     const { container } = render(<AssistantImport />)
     await waitFor(() => expect(container).toBeEmptyDOMElement())
+  })
+})
+
+describe('AssistantImport — the chat path', () => {
+  it('offers the chat path when nothing is waiting', async () => {
+    vi.spyOn(api, 'getImportProposal').mockResolvedValue(null)
+    vi.spyOn(api, 'getAiConnections').mockResolvedValue([])
+    render(<MemoryRouter><AssistantImport showIntro /></MemoryRouter>)
+    expect(await screen.findByText('Let ChatGPT or Claude do it')).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: 'Connect ChatGPT or Claude' }))
+      .toHaveAttribute('href', '/settings#ai-connections')
+  })
+
+  it('says which assistant is ready to prepare an import', async () => {
+    vi.spyOn(api, 'getImportProposal').mockResolvedValue(null)
+    vi.spyOn(api, 'getAiConnections').mockResolvedValue([{
+      id: 1, client_name: 'Claude', scopes: ['equity:read', 'import:propose'],
+      created_at: null, last_used_at: null }])
+    render(<MemoryRouter><AssistantImport showIntro /></MemoryRouter>)
+    expect(await screen.findByText(/Connected: Claude/)).toBeInTheDocument()
+  })
+
+  it('puts the guesses and the changes in front of the review', async () => {
+    vi.spyOn(api, 'getImportProposal').mockResolvedValue({
+      ...PROPOSAL,
+      assumptions: [{ subject: '2026 Purchase', note: 'Vesting copied from the 2025 grant.' }],
+      changes: {
+        grants_added: ['2026 Purchase: 2,000 shares'],
+        loans_removed: ['2021 Purchase: interest loan of $1,000.00 (no. 222)'],
+        grants_kept: ['2021 Bonus'],
+      },
+    })
+    render(<MemoryRouter><AssistantImport /></MemoryRouter>)
+    expect(await screen.findByText('ChatGPT guessed these — check them')).toBeInTheDocument()
+    expect(screen.getByText('Vesting copied from the 2025 grant.')).toBeInTheDocument()
+    expect(screen.getByText('Loans that would be removed')).toBeInTheDocument()
+    expect(screen.getByText('2021 Purchase: interest loan of $1,000.00 (no. 222)')).toBeInTheDocument()
   })
 })

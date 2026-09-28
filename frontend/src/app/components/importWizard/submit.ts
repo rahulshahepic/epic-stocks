@@ -1,4 +1,4 @@
-import type { WizardGrant, WizardLoan } from '../../../api.ts'
+import type { GrantEntry, LoanEntry, WizardGrant, WizardLoan } from '../../../api.ts'
 import type { BonusRowType } from '../../grantTypes.ts'
 import { reviewedToWizardLoans } from './loans.ts'
 import type {
@@ -105,6 +105,51 @@ export interface ScheduleRowsForSubmit {
 }
 
 /** Turn the schedule-path tables and the reviewed loans into submittable grants. */
+/** A grant's saved loans, verbatim. Refinance links travel by loan number,
+ *  which is how the submit endpoint resolves them. */
+function savedLoansFor(year: number, type: string, loans: LoanEntry[]): WizardLoan[] {
+  const numberById = new Map(loans.map(l => [l.id, l.loan_number ?? '']))
+  return loans
+    .filter(l => l.grant_year === year && l.grant_type === type)
+    .map(l => ({
+      loan_number: l.loan_number ?? '',
+      loan_type: l.loan_type as WizardLoan['loan_type'],
+      loan_year: l.loan_year, amount: l.amount, interest_rate: l.interest_rate,
+      due_date: l.due_date,
+      refinances_loan_number: l.refinances_loan_id != null
+        ? numberById.get(l.refinances_loan_id) ?? '' : '',
+    }))
+}
+
+/** Grants the schedule has no row for, as the import proposed them, with the
+ *  loans that came with them. */
+export function proposedToWizardGrants(grants: GrantEntry[], loans: LoanEntry[]): WizardGrant[] {
+  return grants.map(g => ({
+    year: g.year, type: g.type, shares: g.shares, price: g.price,
+    vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
+    dp_shares: g.dp_shares, election_83b: g.election_83b,
+    loans: savedLoansFor(g.year, g.type, loans),
+  }))
+}
+
+/**
+ * Keys (`year-type`) of saved grants an import did not mention. Reviewing an
+ * import keeps those as they are, loans included — the schedule path would
+ * otherwise rebuild their tax and interest loans from estimates and drop any
+ * saved loan its one-per-year model has no slot for.
+ */
+export function carriedGrantKeys(prefillGrants: GrantEntry[] | undefined): Set<string> {
+  return new Set((prefillGrants ?? []).filter(g => g.id > 0).map(g => `${g.year}-${g.type}`))
+}
+
+export function keepCarriedLoans(
+  grants: WizardGrant[], carried: Set<string>, loans: LoanEntry[],
+): WizardGrant[] {
+  return grants.map(g => carried.has(`${g.year}-${g.type}`)
+    ? { ...g, loans: savedLoansFor(g.year, g.type, loans) }
+    : g)
+}
+
 export function buildScheduleGrants(rows: ScheduleRowsForSubmit): WizardGrant[] {
   const { reviewedLoans } = rows
   return [

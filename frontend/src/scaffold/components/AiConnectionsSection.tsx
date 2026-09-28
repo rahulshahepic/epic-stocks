@@ -83,6 +83,13 @@ export function AiConnectionsSection() {
 
   useEffect(load, [load])
 
+  // The Import page links here to connect an assistant before chatting.
+  useEffect(() => {
+    if (window.location.hash === '#ai-connections') {
+      document.getElementById('ai-connections')?.scrollIntoView({ block: 'start' })
+    }
+  }, [])
+
   async function copyUrl() {
     try {
       await navigator.clipboard.writeText(serverUrl)
@@ -104,11 +111,13 @@ export function AiConnectionsSection() {
   }
 
   return (
-    <Card as="section" pad="md">
+    <Card as="section" pad="md" id="ai-connections">
       <h3 className="text-sm font-medium text-cs-text">AI Connections</h3>
       <p className="mt-1 text-xs text-cs-text-2">
         Let ChatGPT or Claude read your equity data, so you can ask about vesting
-        and tax alongside the rest of your finances. You choose what each
+        and tax alongside the rest of your finances — and set up your grants and
+        loans for you from your paperwork, which you then review on the Import
+        page. You choose what each
         connection may do when you approve it, and you can disconnect at any
         time.
       </p>

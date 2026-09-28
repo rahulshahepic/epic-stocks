@@ -160,6 +160,13 @@ export interface ScheduleRows {
   orphanPrices: PriceEntry[]
   /** Saved grants that are not in Epic's schedule at all — removed unless kept. */
   orphanGrants: GrantEntry[]
+  /**
+   * Grants an import proposes that the schedule has no row for — a year past
+   * the last template, or a one-off award. Negative ids mark them as unsaved.
+   * They were dropped silently before; now they are listed and kept by default,
+   * because the import is where they came from and nothing else can enter them.
+   */
+  proposedGrants: GrantEntry[]
 }
 
 /** Lay the user's saved (or freshly imported) data over Epic's schedule. */
@@ -167,10 +174,15 @@ export function buildScheduleRows(s: WizardSchedule, existing: ExistingData): Sc
   // Match prices by year of effective_date; orphan anything outside priceYears
   const priceByYear = new Map<number, PriceEntry>()
   const orphanPrices: PriceEntry[] = []
+  // An imported price outside those years is not stale data to clear out —
+  // it is the proposal's, so it joins the editable rows instead.
+  const proposedPrices: PriceEntry[] = []
   for (const p of existing.prices) {
     const year = parseInt(p.effective_date.slice(0, 4))
     if (s.priceYears.includes(year)) {
       if (!priceByYear.has(year)) priceByYear.set(year, p)
+    } else if (p.id < 0) {
+      proposedPrices.push(p)
     } else {
       orphanPrices.push(p)
     }
@@ -194,7 +206,9 @@ export function buildScheduleRows(s: WizardSchedule, existing: ExistingData): Sc
     ...s.grants.map(g => `${g.year}-${g.type}`),
     ...s.grants.filter(g => g.defaultCatchUp).map(g => `${g.year}-Catch-Up`),
   ])
-  const orphanGrants = existing.grants.filter(g => !scheduleKeys.has(`${g.year}-${g.type}`))
+  const offSchedule = existing.grants.filter(g => !scheduleKeys.has(`${g.year}-${g.type}`))
+  const orphanGrants = offSchedule.filter(g => g.id >= 0)
+  const proposedGrants = offSchedule.filter(g => g.id < 0)
 
   const purchaseRows: PurchaseGrantRow[] = s.grants
     .filter(g => g.type === 'Purchase')
@@ -260,10 +274,13 @@ export function buildScheduleRows(s: WizardSchedule, existing: ExistingData): Sc
     })
 
   return {
-    purchaseRows, catchUpRows, bonusRows, orphanPrices, orphanGrants,
-    prices: s.priceYears.map(y => ({
-      effective_date: `${y}-01-01`,
-      price: priceByYear.has(y) ? String(priceByYear.get(y)!.price) : '',
-    })),
+    purchaseRows, catchUpRows, bonusRows, orphanPrices, orphanGrants, proposedGrants,
+    prices: [
+      ...s.priceYears.map(y => ({
+        effective_date: `${y}-01-01`,
+        price: priceByYear.has(y) ? String(priceByYear.get(y)!.price) : '',
+      })),
+      ...proposedPrices.map(p => ({ effective_date: p.effective_date, price: String(p.price) })),
+    ],
   }
 }

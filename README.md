@@ -465,7 +465,10 @@ You can let ChatGPT or Claude read your equity data, so you can ask about vestin
 
 **Letting it keep your salary and retirement numbers current.** Two things you type by hand *can* be written, if you tick that permission when you connect: your salary and bonus history, and the account balances the retirement simulator starts from. Then *"I got a raise to $205k in April"* or *"my 401(k) is at $850k now"* updates the app as you say it, instead of becoming a note to go and do it later. These are figures nothing else is computed from, and you are looking at them on the page — which is why they are the ones that are safe to write. Salary and bonus writes add to the history rather than replacing it, and repeating a request does not double a raise.
 
-**Getting your equity in with your assistant's help.** If entering it by hand is a chore, tick the import permission when you connect. Then say something like *"help me get my Epic equity into the tracker"* — the assistant reads `get_import_guide` for the exact shape and the company schedule, asks you for the figures, and calls `stage_import`.
+**Getting your equity in by chatting — the easiest way in.** You don't need to know what a cost basis or a vesting schedule is. Connect ChatGPT or Claude with the import permission ticked, then share whatever you have — grant letters, the Shareworks CSV and loan statement, screenshots, or just what you remember. The Import page shows a **Let ChatGPT or Claude do it** card with a message to start the chat. The assistant reads `get_import_guide`, drafts your grants and loans, walks you through what it found in plain words (saying what it guessed), and calls `stage_import`. Nothing is saved until you open **Import**, check the draft — its guesses and an *If you accept* summary are shown first — and submit it in the wizard.
+
+- **Unusual paperwork is expected.** A grant from a year Epic's published schedule doesn't cover yet, or a one-off award under its own name, keeps the vesting dates from its paperwork (rule `S2`) and is listed as *Not on Epic's published schedule yet* in the review, ticked, so you check it rather than lose it. For a grant the schedule does cover, the company schedule always wins.
+- **Adding one grant only adds one grant.** Grants the draft doesn't mention are kept exactly as they are, loans included. A grant it does mention replaces what's stored for it, and the review says plainly if that would remove a loan.
 
 That does **not** save anything. It leaves a draft on the Import page, and you accept it in the same wizard an uploaded file goes through, with the same checks and the same diff. If your assistant tells you the import is done, it is wrong — open the app and look. A draft you never accept expires after seven days.
 
@@ -482,7 +485,7 @@ That does **not** save anything. It leaves a draft on the Import page, and you a
 | `estimate_sale` | Models a sale without recording it — by share count, or working back from cash needed after tax |
 | `get_tax_breakdown` | The full working for one sale: lots consumed, income, short- and long-term gains |
 | `explain` | How this scheme works — vesting, grant types, tax, lots, the two prices. Worth asking for first; several ordinary RSU rules do not apply here |
-| `get_import_guide` | The exact shape an import must take, the rules, and the company vesting schedule and loan rates on record |
+| `get_import_guide` | How to draft an import with you: plain-language walkthrough, what may be guessed, the exact shape, the company vesting schedule and loan rates on record, and what your account already holds |
 | `get_compensation` | Salary and bonus history (needs the compensation permission) |
 | `get_retirement_params` | Saved retirement simulator settings (needs the compensation permission) |
 
@@ -498,7 +501,7 @@ And one that writes nothing of yours, under its own separate permission:
 
 | Tool | What it changes |
 |------|-----------------|
-| `stage_import` | Prepares an import for you to review. **Saves no grant, price or loan** — you accept it in the wizard (needs the import permission) |
+| `stage_import` | Prepares an import for you to review, and reports what accepting it would change and what the assistant guessed. **Saves no grant, price or loan** — you accept it in the wizard (needs the import permission) |
 
 **In Claude** — Pro, Max, Team or Enterprise; works on web, desktop and mobile:
 
@@ -1063,6 +1066,7 @@ epic-stocks/
 │   │   │   ├── rules.py         # Named derivation rules (G*, L*, P*)
 │   │   │   ├── draft.py         # Draft type, derivation, and the checks (C1-C12)
 │   │   │   ├── prompt.py        # The brief a user pastes into their own assistant
+│   │   │   ├── changes.py       # What accepting a draft would change, in plain words
 │   │   │   ├── reconcile.py     # Diff a draft against exported data
 │   │   │   ├── models.py        # Parsed value types
 │   │   │   └── RULES.md         # What every rule id means (pinned to the code by tests)
@@ -1075,6 +1079,7 @@ epic-stocks/
 │   │   │   ├── read_tools.py   # The reads — each a call through to the router's own service function
 │   │   │   ├── comp_tools.py   # The writes: salary/bonus history and retirement balances (comp:write)
 │   │   │   ├── import_tools.py # Import guide + staging a draft the user accepts in the wizard
+│   │   │   ├── import_guide.py # What an assistant is told: plain words, best guesses, unusual grants
 │   │   │   └── accounts.py     # Whose data a tool reads — own account only today
 │   │   └── routers/
 │   │       ├── grants.py    # Grant CRUD + bulk

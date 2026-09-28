@@ -6,9 +6,10 @@ back by the user after an assistant repaired it (`draft_from_payload`). Both go
 through `validate_draft`, because a check that only works on our own output is
 not a check.
 
-Structural fields (vest_start, periods, exercise_date) always come from the
-skeleton, never from the files and never from a supplied payload — C10 rejects a
-payload that tries to change them.
+Structural fields (vest_start, periods, exercise_date) come from the skeleton,
+never from the files, and a supplied payload cannot change them — C10 reports
+one that tries. The one exception is a grant no template covers (S2): there is
+no company schedule to protect, so a supplied payload's own dates are used.
 """
 from dataclasses import dataclass, field
 from datetime import date
@@ -452,6 +453,37 @@ def _finite_int(v) -> int:
     return int(round(f))
 
 
+MAX_PERIODS = 40
+
+
+def _supplied_schedule(raw: dict, year: int, gtype: str,
+                       findings: list[Finding]) -> TemplateRow | None:
+    """Rule S2. A grant off the company schedule, vesting as its paperwork says.
+
+    Only called when no template exists for (year, type). All three fields must
+    be present and sane, or the caller falls back to S1's shifted template.
+    """
+    vest_start, exercise = _d(raw.get("vest_start")), _d(raw.get("exercise_date"))
+    try:
+        periods = _finite_int(raw.get("periods"))
+    except (TypeError, ValueError, OverflowError):
+        periods = None
+    if vest_start is None or exercise is None or periods is None:
+        return None
+    if not (1 <= periods <= MAX_PERIODS) or not (
+            year_in_range(vest_start.year) and year_in_range(exercise.year)):
+        findings.append(Finding("S2", WARNING, f"{year} {gtype}",
+                                f"The supplied schedule ({periods} periods from {vest_start}) "
+                                f"is not plausible, so it was not used."))
+        return None
+    findings.append(Finding("S2", WARNING, f"{year} {gtype}",
+                            f"Not on the company's published schedule, so its vesting "
+                            f"({periods} vesting dates from {vest_start}) was taken from "
+                            f"your paperwork. Check it against the grant letter."))
+    return TemplateRow(year=year, type=gtype, vest_start=vest_start, periods=periods,
+                       exercise_date=exercise)
+
+
 def draft_from_payload(payload: dict, sk: Skeleton) -> tuple[Draft, list[Finding]]:
     """Read a draft returned by an assistant. Tolerant about shape, strict about types.
 
@@ -494,8 +526,13 @@ def draft_from_payload(payload: dict, sk: Skeleton) -> tuple[Draft, list[Finding
                                     f"{MAX_GRANT_YEAR}."))
             continue
 
-        # Structure is never taken from the payload — C10 reports any attempt.
-        t = _schedule_for(sk, year, gtype, findings)
+        # Structure is never taken from the payload when the company schedule
+        # covers the grant — C10 reports any attempt. A grant it does not cover
+        # (a year past the last template, a one-off award) has nothing to
+        # protect, and the grant letter's own dates beat an extrapolation.
+        t = (_supplied_schedule(raw, year, gtype, findings)
+             if sk.template(year, gtype) is None else None) or \
+            _schedule_for(sk, year, gtype, findings)
         for supplied, ours, label in ((_d(raw.get("vest_start")), t.vest_start, "vest_start"),
                                       (_d(raw.get("exercise_date")), t.exercise_date, "exercise_date")):
             if supplied is not None and supplied != ours:

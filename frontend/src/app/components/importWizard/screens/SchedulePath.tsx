@@ -1,4 +1,4 @@
-import type { GrantEntry, PriceEntry } from '../../../../api.ts'
+import type { GrantEntry, LoanEntry, PriceEntry } from '../../../../api.ts'
 import { ReportableError } from '../../../../scaffold/components/ReportProblem.tsx'
 import { GRANT_COLORS, ZERO_BASIS_TYPES } from '../../../grantTypes.ts'
 import { fmtFullDate, fmtPct, fmtPrice } from '../../../format.ts'
@@ -47,7 +47,9 @@ export function ScheduleIntro({ onBack, onNext }: { onBack: () => void; onNext: 
 
 export function SchedulePrices({
   prices, setPrices, orphanPrices, preservedPriceIds, onToggleOrphanPrice, onBack, onNext,
+  orphansKeptByDefault = false,
 }: {
+  orphansKeptByDefault?: boolean
   prices: WizardPrice[]
   setPrices: (next: WizardPrice[]) => void
   orphanPrices: PriceEntry[]
@@ -67,8 +69,11 @@ export function SchedulePrices({
       </div>
       <PriceRows prices={prices} onChange={setPrices} />
       <OrphanList
-        title="Existing prices not covered above — will be removed"
+        title={orphansKeptByDefault
+          ? 'Existing prices not covered above — tick any to remove'
+          : 'Existing prices not covered above — will be removed'}
         rows={orphanPrices} preserved={preservedPriceIds} onToggle={onToggleOrphanPrice}
+        hint={orphansKeptByDefault ? 'Kept unless ticked.' : undefined}
       >
         {p => <>{fmtFullDate(p.effective_date)} — {fmtPrice(p.price)}</>}
       </OrphanList>
@@ -93,8 +98,64 @@ export interface ScheduleGrantsProps {
   orphanGrants: GrantEntry[]
   preservedGrantIds: Set<number>
   onToggleOrphanGrant: (id: number, remove: boolean) => void
+  /** True when reviewing an import, which keeps what it does not mention. */
+  orphansKeptByDefault?: boolean
+  proposedGrants?: GrantEntry[]
+  proposedLoans?: LoanEntry[]
+  skippedProposedIds?: Set<number>
+  onToggleProposed?: (id: number, include: boolean) => void
   onBack: () => void
   onNext: () => void
+}
+
+/**
+ * Grants an import proposed that Epic's published schedule has no row for — a
+ * grant from a year the schedule has not reached yet, or a one-off award.
+ * Shown with the vesting the paperwork gave, ticked, so they are checked
+ * rather than lost.
+ */
+function ProposedGrantList({ grants, loans, skipped, onToggle }: {
+  grants: GrantEntry[]
+  loans: LoanEntry[]
+  skipped: Set<number>
+  onToggle: (id: number, include: boolean) => void
+}) {
+  if (grants.length === 0) return null
+  return (
+    <div className="rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-900/30"
+      aria-label="Grants not on Epic's published schedule">
+      <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
+        Not on Epic&apos;s published schedule yet
+      </p>
+      <p className="mt-0.5 text-[11px] text-amber-700 dark:text-amber-400">
+        These came from your paperwork, so their vesting dates did too. Check them
+        against your grant letter. Untick any you don&apos;t want.
+      </p>
+      <div className="mt-2 space-y-2">
+        {grants.map(g => {
+          const count = loans.filter(l => l.grant_year === g.year && l.grant_type === g.type).length
+          return (
+            <label key={g.id} className="flex items-start gap-2 text-xs text-amber-900 dark:text-amber-200">
+              <input
+                type="checkbox"
+                checked={!skipped.has(g.id)}
+                onChange={e => onToggle(g.id, e.target.checked)}
+                className="mt-0.5 rounded border-amber-400"
+              />
+              <span>
+                <span className="font-medium">{g.year} {g.type}</span> — {g.shares.toLocaleString()} shares
+                {g.price > 0 ? <> bought at {fmtPrice(g.price)} each</> : <>, not paid for (taxed as they vest)</>}
+                <span className="block text-[11px] text-amber-700 dark:text-amber-400">
+                  Becomes yours in {g.periods} part{g.periods !== 1 ? 's' : ''} from {fmtFullDate(g.vest_start)}
+                  {count > 0 && <> · {count} loan{count !== 1 ? 's' : ''}</>}
+                </span>
+              </span>
+            </label>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 export function ScheduleGrants(p: ScheduleGrantsProps) {
@@ -137,9 +198,17 @@ export function ScheduleGrants(p: ScheduleGrantsProps) {
         </button>
       </div>
 
+      <ProposedGrantList
+        grants={p.proposedGrants ?? []} loans={p.proposedLoans ?? []}
+        skipped={p.skippedProposedIds ?? new Set()} onToggle={p.onToggleProposed ?? (() => {})}
+      />
+
       <OrphanList
-        title="Existing grants not in Epic's schedule — will be removed"
+        title={p.orphansKeptByDefault
+          ? "Existing grants not in Epic's schedule — tick any to remove"
+          : "Existing grants not in Epic's schedule — will be removed"}
         rows={p.orphanGrants} preserved={p.preservedGrantIds} onToggle={p.onToggleOrphanGrant}
+        hint={p.orphansKeptByDefault ? 'Kept unless ticked.' : undefined}
       >
         {g => <>{g.year} {g.type} — {g.shares.toLocaleString()} shares</>}
       </OrphanList>

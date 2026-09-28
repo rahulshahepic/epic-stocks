@@ -148,6 +148,17 @@ one of the same type is shifted to fit (an admin should add the real one), when
 a template has no usable dates, or when no templates are configured at all.
 **Error** when a grant has no template and none can be adapted.
 
+### `S2` — a grant off the company schedule → its own paperwork's schedule
+*`draft.py:_supplied_schedule`.* A supplied draft (an assistant's, pasted back or
+staged through the connector) may carry `vest_start`, `periods` and
+`exercise_date` for a grant **no template covers** — a year past the last
+template, or a one-off award under its own name. Those are used instead of S1's
+shifted guess, because the grant letter's own dates beat an extrapolation.
+**Warning** either way, so the review shows it: when the supplied schedule was
+used, and when it was implausible (periods outside 1–40, dates outside the grant
+year range) and S1 applied instead. A grant the company schedule *does* cover
+never takes a supplied schedule; C10 still reports the attempt.
+
 ---
 
 ## Checks — `C*`

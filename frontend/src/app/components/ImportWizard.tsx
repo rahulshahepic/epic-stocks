@@ -16,7 +16,10 @@ import {
 import {
   dpSharesShortfall, isPreTax, priceForYear, recalcLoan,
 } from './importWizard/rows.ts'
-import { buildScheduleGrants, draftToWizardGrant, sanitizeForSubmit } from './importWizard/submit.ts'
+import {
+  buildScheduleGrants, carriedGrantKeys, draftToWizardGrant, keepCarriedLoans, proposedToWizardGrants,
+  sanitizeForSubmit,
+} from './importWizard/submit.ts'
 import type {
   BonusGrantRow, CatchUpRow, GrantDraft, LoanDraft, PurchaseGrantRow, ReviewedLoan, SaleDraft,
   Screen, TaxLoanDraft, WizardPrefill, WizardPrice,
@@ -112,6 +115,11 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
   const [preserveOrphanPriceIds, setPreserveOrphanPriceIds] = useState<Set<number>>(new Set())
   const [preserveOrphanGrantIds, setPreserveOrphanGrantIds] = useState<Set<number>>(new Set())
   const [scheduleLoading, setScheduleLoading] = useState(false)
+  // Off-schedule grants an import proposed, and the ones the user unticked.
+  const [proposedGrants, setProposedGrants] = useState<GrantEntry[]>([])
+  const [skippedProposedIds, setSkippedProposedIds] = useState<Set<number>>(new Set())
+  // Saved grants an import did not mention: kept verbatim, loans included.
+  const carried = useMemo(() => carriedGrantKeys(prefill?.grants), [prefill])
 
   // ── Schedule path state ────────────────────────────────────────────────────
   const [purchaseRows, setPurchaseRows] = useState<PurchaseGrantRow[]>(() => initPurchaseRows(schedule))
@@ -277,8 +285,14 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
       setPrices(rows.prices)
       setOrphanPrices(rows.orphanPrices)
       setOrphanGrants(rows.orphanGrants)
-      setPreserveOrphanPriceIds(new Set())
-      setPreserveOrphanGrantIds(new Set())
+      setProposedGrants(rows.proposedGrants)
+      setSkippedProposedIds(new Set())
+      // Reviewing an import keeps what it does not mention: the proposal says
+      // so, and a grant an earlier import added off the schedule would
+      // otherwise be deleted by the next one. Starting the schedule path by
+      // hand still offers to clear them out.
+      setPreserveOrphanPriceIds(new Set(prefill ? rows.orphanPrices.map(p => p.id) : []))
+      setPreserveOrphanGrantIds(new Set(prefill ? rows.orphanGrants.map(g => g.id) : []))
     } catch {
       // Fall back to blank rows if fetch fails
       setPurchaseRows(initPurchaseRows(schedule))
@@ -287,6 +301,7 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
       setPrices(blankPriceRows(schedule))
       setOrphanPrices([])
       setOrphanGrants([])
+      setProposedGrants([])
     } finally {
       setScheduleLoading(false)
       push('schedule_intro')
@@ -342,7 +357,8 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
         ? taxSettings.federal_income_rate + taxSettings.state_income_rate
         : schedule.fallbackTaxRate,
     })
-    setReviewedLoans(prev => mergeReviewedLoans(generated, prev))
+    const mentioned = generated.filter(l => !carried.has(`${l.grant_year}-${l.grant_type}`))
+    setReviewedLoans(prev => mergeReviewedLoans(mentioned, prev))
     push('schedule_loans_tax')
   }
 
@@ -360,7 +376,13 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
       if (saveSettings) {
         try { await api.updateTaxSettings({ deduct_investment_interest: deductInterest }) } catch { /* non-fatal */ }
       }
-      const grants = buildScheduleGrants({ purchaseRows, catchUpRows, bonusRows, reviewedLoans })
+      const grants = [
+        ...keepCarriedLoans(
+          buildScheduleGrants({ purchaseRows, catchUpRows, bonusRows, reviewedLoans }),
+          carried, allExistingLoans),
+        ...proposedToWizardGrants(
+          proposedGrants.filter(g => !skippedProposedIds.has(g.id)), allExistingLoans),
+      ]
       setCompletedGrants(grants)
       const remaining = remainingSaleShares(prefill?.reported_sold_shares, grants, prefill?.sale_grant_keys ?? [])
       setSales(prev => resizeUnansweredSale(prev, remaining))
@@ -546,6 +568,7 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
           orphanPrices={orphanPrices}
           preservedPriceIds={preserveOrphanPriceIds}
           onToggleOrphanPrice={toggleOrphan(setPreserveOrphanPriceIds)}
+          orphansKeptByDefault={!!prefill}
           onBack={back}
           onNext={() => { prefillCostBasis(); push('schedule_grants') }}
         />
@@ -573,6 +596,16 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
           orphanGrants={orphanGrants}
           preservedGrantIds={preserveOrphanGrantIds}
           onToggleOrphanGrant={toggleOrphan(setPreserveOrphanGrantIds)}
+          orphansKeptByDefault={!!prefill}
+          proposedGrants={proposedGrants}
+          proposedLoans={allExistingLoans}
+          skippedProposedIds={skippedProposedIds}
+          onToggleProposed={(id, include) => setSkippedProposedIds(prev => {
+            const next = new Set(prev)
+            if (include) next.delete(id)
+            else next.add(id)
+            return next
+          })}
           onBack={back}
           onNext={enterLoansReview}
         />

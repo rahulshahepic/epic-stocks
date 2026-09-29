@@ -84,6 +84,7 @@ const CHANGE_LABELS: [ProposalChangeKind, string][] = [
   ['grants_added', 'New grants'],
   ['grants_updated', 'Grants that change'],
   ['loans_added', 'New loans'],
+  ['loans_updated', 'Loans that change'],
   ['loans_removed', 'Loans that would be removed'],
   ['prices_added', 'New share prices'],
   ['prices_updated', 'Share prices that change'],

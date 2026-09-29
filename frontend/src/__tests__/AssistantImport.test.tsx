@@ -119,6 +119,7 @@ describe('AssistantImport — the chat path', () => {
       changes: {
         grants_added: ['2026 Purchase: 2,000 shares'],
         loans_removed: ['2021 Purchase: interest loan of $1,000.00 (no. 222)'],
+        loans_updated: ['2021 Purchase: loan no. 111 amount $300.00 → $3,000.00'],
         grants_kept: ['2021 Bonus'],
       },
     })
@@ -127,5 +128,7 @@ describe('AssistantImport — the chat path', () => {
     expect(screen.getByText('Vesting copied from the 2025 grant.')).toBeInTheDocument()
     expect(screen.getByText('Loans that would be removed')).toBeInTheDocument()
     expect(screen.getByText('2021 Purchase: interest loan of $1,000.00 (no. 222)')).toBeInTheDocument()
+    expect(screen.getByText('Loans that change')).toBeInTheDocument()
+    expect(screen.getByText('2021 Purchase: loan no. 111 amount $300.00 → $3,000.00')).toBeInTheDocument()
   })
 })

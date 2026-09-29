@@ -252,8 +252,9 @@ def _stage_import(ctx: ToolContext, args: dict):
         "prepared": wizard_payload,
         "next_step": (
             "Nothing has changed yet. Go through changes_vs_account with the "
-            "person in plain words — above all anything under loans_removed or "
-            "grants_updated they did not ask for — and restage if it is wrong. "
+            "person in plain words — above all anything under loans_removed, "
+            "loans_updated or grants_updated they did not ask for — and restage "
+            "if it is wrong. "
             "Explain any warning in findings without its code. Then pass on "
             "tell_the_user."
             + (" Some checks failed; the review screen will show them too." if blocked else "")

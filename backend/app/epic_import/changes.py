@@ -23,6 +23,7 @@ class Changes:
     grants_updated: list[str] = field(default_factory=list)
     grants_kept: list[str] = field(default_factory=list)
     loans_added: list[str] = field(default_factory=list)
+    loans_updated: list[str] = field(default_factory=list)
     loans_removed: list[str] = field(default_factory=list)
     prices_added: list[str] = field(default_factory=list)
     prices_updated: list[str] = field(default_factory=list)
@@ -82,6 +83,23 @@ def describe_changes(draft: Draft, grants: list, loans: list, prices: list) -> C
                     f"{name}: {_loan_label(dl.loan_type, dl.amount, dl.loan_number)}")
             else:
                 matched.add(hit.id)
+                # wizard._merge rewrites these on a matched loan. The refinance
+                # link is not among them: a proposal carries none, and the
+                # merge only sets one when a loan number is named.
+                diffs = []
+                if abs(hit.amount - dl.amount) > _TOL:
+                    diffs.append(f"amount {_money(hit.amount)} → {_money(dl.amount)}")
+                if abs(hit.interest_rate - dl.interest_rate) > 1e-9:
+                    diffs.append(f"rate {hit.interest_rate:.2%} → {dl.interest_rate:.2%}")
+                if hit.due_date != dl.due_date:
+                    diffs.append(f"due {hit.due_date} → {dl.due_date}")
+                if (hit.loan_type, hit.loan_year) != (dl.loan_type, dl.loan_year):
+                    diffs.append(f"{hit.loan_year} {hit.loan_type.lower()} → "
+                                 f"{dl.loan_year} {dl.loan_type.lower()}")
+                if diffs:
+                    label = f"loan no. {hit.loan_number}" if hit.loan_number else \
+                        f"{hit.loan_type.lower()} loan"
+                    out.loans_updated.append(f"{name}: {label} " + "; ".join(diffs))
         for l in mine:
             if l.id not in matched:
                 out.loans_removed.append(
@@ -90,14 +108,26 @@ def describe_changes(draft: Draft, grants: list, loans: list, prices: list) -> C
     for key in sorted(k for k in stored if k not in drafted):
         out.grants_kept.append(f"{key[0]} {key[1]}")
 
-    by_year = {p.effective_date.year: p for p in prices}
-    for p in sorted(draft.prices, key=lambda p: p.effective_date):
-        old = by_year.get(p.effective_date.year)
-        if old is None:
-            out.prices_added.append(f"{p.effective_date.year}: {_money(p.price)}")
-        elif abs(old.price - p.price) > _TOL:
-            out.prices_updated.append(
-                f"{p.effective_date.year}: {_money(old.price)} → {_money(p.price)}")
+    # A year the draft names replaces every saved price in that year
+    # (_wizard_prefill drops them, the wizard deletes what it omits), so compare
+    # whole years, with dates: two saved prices becoming one is a removal.
+    def _year(rows) -> dict[int, list]:
+        out_: dict[int, list] = {}
+        for r in sorted(rows, key=lambda r: r.effective_date):
+            out_.setdefault(r.effective_date.year, []).append(r)
+        return out_
+
+    def _fmt(rows) -> str:
+        return ", ".join(f"{_money(r.price)} on {r.effective_date}" for r in rows)
+
+    saved = _year(prices)
+    for year, new in sorted(_year(draft.prices).items()):
+        old = saved.get(year, [])
+        if not old:
+            out.prices_added.append(f"{year}: {_fmt(new)}")
+        elif [(r.effective_date, round(r.price, 4)) for r in old] != \
+                [(r.effective_date, round(r.price, 4)) for r in new]:
+            out.prices_updated.append(f"{year}: {_fmt(old)} → {_fmt(new)}")
     return out
 
 

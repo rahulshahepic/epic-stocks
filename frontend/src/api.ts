@@ -27,7 +27,7 @@ export interface ImportProposal {
 
 export type ProposalChangeKind =
   | 'grants_added' | 'grants_updated' | 'grants_kept'
-  | 'loans_added' | 'loans_removed' | 'prices_added' | 'prices_updated'
+  | 'loans_added' | 'loans_updated' | 'loans_removed' | 'prices_added' | 'prices_updated'
 
 export interface AiActivityEntry {
   id: number

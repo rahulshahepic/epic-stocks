@@ -199,3 +199,33 @@ def test_findings_on_a_staged_draft_keep_their_severity(mcp):
     r1 = codes(result, "R1")
     assert r1 and r1[0]["severity"] == "error"
     assert all("before your correction" not in f["message"] for f in result["findings"])
+
+
+def test_a_matched_loan_that_changes_is_reported(mcp, holding):
+    """Reported in review on #554: an edited debt read as no change at all."""
+    restated = {**ON_SCHEDULE, "loans": [
+        {"loan_number": "111", "loan_type": "Purchase", "loan_year": 2021,
+         "amount": 1000.0, "interest_rate": 0.02, "due_date": "2030-12-31"},
+        {"loan_number": "222", "loan_type": "Interest", "loan_year": 2021,
+         "amount": 3000.0, "interest_rate": 0.03, "due_date": "2035-12-31"}]}
+    changes = stage(mcp, restated)["changes_vs_account"]
+    assert changes["loans_updated"] == [
+        "2021 Purchase: loan no. 222 amount $1,000.00 → $3,000.00; rate 2.00% → 3.00%; "
+        "due 2030-12-31 → 2035-12-31"]
+    assert changes["loans_added"] == changes["loans_removed"] == []
+
+
+def test_a_price_year_the_draft_names_reports_every_saved_price_it_replaces(mcp, client):
+    for when, price in (("2021-01-01", 2.0), ("2021-07-01", 2.5)):
+        client.post("/api/prices", json={"effective_date": when, "price": price})
+    changes = stage(mcp, ON_SCHEDULE, prices=[
+        {"effective_date": "2021-01-01", "price": 2.0}])["changes_vs_account"]
+    assert changes["prices_updated"] == [
+        "2021: $2.00 on 2021-01-01, $2.50 on 2021-07-01 → $2.00 on 2021-01-01"]
+
+
+def test_an_unchanged_price_year_is_not_reported(mcp, client):
+    client.post("/api/prices", json={"effective_date": "2021-01-01", "price": 2.0})
+    changes = stage(mcp, ON_SCHEDULE, prices=[
+        {"effective_date": "2021-01-01", "price": 2.0}])["changes_vs_account"]
+    assert changes["prices_updated"] == changes["prices_added"] == []

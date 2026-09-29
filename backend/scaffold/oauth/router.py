@@ -366,7 +366,7 @@ def authorize_resume(request: Request, db: Session = Depends(get_db)):
 @router.post("/authorize")
 def authorize_decide(request: Request, decision: str = Form(...),
                      request_token: str = Form(..., alias="request"),
-                     csrf: str = Form(...),
+                     csrf: str = Form(...), read_only: str | None = Form(default=None),
                      db: Session = Depends(get_db)):
     if not _enabled():
         return _error_page("Not available", "AI connections are turned off on this server.", 404)
@@ -405,6 +405,15 @@ def authorize_decide(request: Request, decision: str = Form(...),
         return _redirect_error(redirect_uri, state, "access_denied",
                                "The user declined the connection")
 
+    scope = pending["sc"]
+    if read_only:
+        # The opt-out on the consent screen: keep the reads, drop every write.
+        scope = scope_defs.format_scope(
+            [s for s in scope.split() if s not in scope_defs.WRITING_SCOPES])
+        if not scope:
+            return _redirect_error(redirect_uri, state, "access_denied",
+                                   "Nothing left to grant once writes were declined")
+
     live = db.query(OAuthGrant).filter(OAuthGrant.user_id == user.id).count()
     if live >= MAX_GRANTS_PER_USER:
         return _redirect_error(
@@ -419,7 +428,7 @@ def authorize_decide(request: Request, decision: str = Form(...),
         user_id=user.id,
         client_id=client.client_id,
         redirect_uri=redirect_uri,
-        scope=pending["sc"],
+        scope=scope,
         code_challenge=pending["cc"],
         resource=pending.get("res") or None,
         expires_at=datetime.now(timezone.utc) + AUTH_CODE_TTL,

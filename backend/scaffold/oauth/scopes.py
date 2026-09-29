@@ -49,7 +49,7 @@ SCOPE_LABELS: dict[str, str] = {
     EQUITY_READ: "Read your equity — grants, vesting, prices, loans, sales and tax estimates",
     COMP_READ: "Read your salary and retirement settings",
     COMP_WRITE: "Update your salary and bonus history and your retirement account balances",
-    IMPORT_PROPOSE: "Prepare an import for you to review — it cannot change your data",
+    IMPORT_PROPOSE: "Prepare an import for you to review and accept in the app",
     EQUITY_WRITE: "Create, correct or remove your grants, prices, loans and sales directly",
 }
 

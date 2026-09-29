@@ -473,8 +473,8 @@ def test_blocking_checks_are_documented_as_blocking():
     from app.epic_import.draft import BLOCKING_CHECKS
     text = open(os.path.join(MODULE, "RULES.md")).read()
     assert all(f"`{code}`" in text for code in BLOCKING_CHECKS)
-    for code in BLOCKING_CHECKS:
-        assert code in text.split("Only ")[1].split("block an import")[0]
+    assert all(code in text.split("block at error severity")[0]
+               for code in BLOCKING_CHECKS)
 
 
 # ============================================================

@@ -12,6 +12,7 @@ export function Card({
   pad = 'responsive',
   as: Tag = 'div',
   tabIndex,
+  id,
 }: {
   children: ReactNode
   className?: string
@@ -19,9 +20,11 @@ export function Card({
   as?: 'div' | 'section'
   /** A card that scrolls its own content needs to be reachable by keyboard. */
   tabIndex?: number
+  /** A link target, e.g. Settings#ai-connections. */
+  id?: string
 }) {
   return (
-    <Tag className={cardClass(pad, className)} tabIndex={tabIndex}>
+    <Tag id={id} className={cardClass(pad, className)} tabIndex={tabIndex}>
       {children}
     </Tag>
   )

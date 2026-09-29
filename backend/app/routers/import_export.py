@@ -1490,6 +1490,10 @@ class ImportProposalOut(BaseModel):
     prices: int
     findings: list[dict]
     wizard_prefill: dict
+    # What the assistant guessed, and what accepting would change — read now,
+    # not at staging time, because the account may have moved since.
+    assumptions: list[dict] = []
+    changes: dict = {}
 
 
 @router.get("/import/proposal", response_model=ImportProposalOut | None)
@@ -1508,6 +1512,7 @@ def get_import_proposal(user: User = Depends(get_current_user), db: Session = De
     from app.content_service import load_content
     from app.epic_import.draft import draft_from_payload
     from app.epic_import.skeleton import build_skeleton
+    from app.epic_import.changes import changes_for
     from app.routers.epic_import import _wizard_prefill
 
     row = db.query(ImportProposal).filter(ImportProposal.user_id == user.id).first()
@@ -1524,6 +1529,8 @@ def get_import_proposal(user: User = Depends(get_current_user), db: Session = De
         sk, _ = build_skeleton(load_content(db))
         draft, _ = draft_from_payload(payload, sk)
         prefill = _wizard_prefill(draft, db, user.id)
+        changes = changes_for(draft, user.id, db)
+        assumptions = payload.get("assumptions") or []
     except Exception:
         # Unreadable is the same as absent: the user can ask their assistant
         # again, and a 500 here would block the whole Import page over a draft
@@ -1539,6 +1546,8 @@ def get_import_proposal(user: User = Depends(get_current_user), db: Session = De
         prices=len(payload.get("prices") or []),
         findings=findings if isinstance(findings, list) else [],
         wizard_prefill=prefill,
+        assumptions=assumptions if isinstance(assumptions, list) else [],
+        changes=changes,
     )
 
 

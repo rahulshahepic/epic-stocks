@@ -14,7 +14,7 @@ function loanSuffix(g: WizardGrant) {
 }
 
 export function ReviewScreen({
-  submission, submitting, submitError, orphanPrices, orphanGrants,
+  submission, submitting, submitError, orphanPrices, orphanGrants, customGrants,
   preservedPriceIds, preservedGrantIds, onBack, onSubmit, salesReview,
 }: {
   salesReview?: SaleReview
@@ -23,6 +23,7 @@ export function ReviewScreen({
   submitError: string
   orphanPrices: PriceEntry[]
   orphanGrants: GrantEntry[]
+  customGrants: WizardGrant[]
   preservedPriceIds: Set<number>
   preservedGrantIds: Set<number>
   onBack: () => void
@@ -37,6 +38,20 @@ export function ReviewScreen({
       <BackBtn onClick={onBack} />
       <h2 className="text-base font-semibold text-cs-text">Review</h2>
       <ReportableError message={submitError} source="import" />
+
+      {customGrants.length > 0 && (
+        <div className="rounded-md border border-emerald-300 bg-emerald-50 p-3 dark:border-emerald-800 dark:bg-emerald-950/30">
+          <p className="text-xs font-medium text-emerald-800 dark:text-emerald-300">Custom grants included in this import</p>
+          <ul className="mt-1 space-y-1 text-xs text-emerald-900 dark:text-emerald-200">
+            {customGrants.map(g => (
+              <li key={`${g.year}-${g.type}`}>
+                {g.year} {g.type}: {fmtNum(g.shares)} shares, {g.periods} annual vests from {fmtFullDate(g.vest_start)},
+                {' '}basis {fmtPrice(g.price)} per share
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {blockingIssues.length > 0 && (
         <div className="rounded-md border border-red-300 bg-red-50 p-3 dark:border-red-800 dark:bg-red-950/30">

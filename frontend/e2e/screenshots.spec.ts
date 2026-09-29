@@ -62,8 +62,29 @@ test.describe('Screenshots', () => {
   // has not failed yet — the next 300ms spent anywhere would have done it.
   test.describe.configure({ timeout: 120_000 })
 
-  test.beforeEach(() => {
+  // Charts animate on load, and a capture landing mid-animation differed from
+  // one run to the next (#559). Recharts honours reduced motion.
+  test.use({ reducedMotion: 'reduce' })
+
+  test.beforeEach(async ({ page }) => {
     test.skip(!EMAIL, 'Set SCREENSHOT_EMAIL env var to run screenshot tests')
+    // Charts mark "today" and some figures accrue by the minute, so two runs a
+    // few minutes apart differed. Midday of the real date keeps the browser on
+    // the same day as the server, which computes its own "as of today".
+    const midday = new Date()
+    midday.setHours(12, 0, 0, 0)
+    await page.clock.setFixedTime(midday)
+    // The retirement simulator's Monte Carlo draws from Math.random, so every
+    // run captured a different fan chart (#559). Seed it.
+    await page.addInitScript(() => {
+      let a = 0x2545f491
+      Math.random = () => {
+        a = (a + 0x6d2b79f5) | 0
+        let t = Math.imul(a ^ (a >>> 15), 1 | a)
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+      }
+    })
   })
 
   test('dashboard - light - mobile', async ({ page }) => {

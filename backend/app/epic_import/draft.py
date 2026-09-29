@@ -6,13 +6,15 @@ back by the user after an assistant repaired it (`draft_from_payload`). Both go
 through `validate_draft`, because a check that only works on our own output is
 not a check.
 
-Structural fields (vest_start, periods, exercise_date) always come from the
-skeleton, never from the files and never from a supplied payload — C10 rejects a
-payload that tries to change them.
+Structural fields normally come from the skeleton. A supplied payload may use
+an explicitly user-confirmed custom schedule for an unusual award or leave;
+an unconfirmed attempt to change a template is ignored and reported as C10.
 """
 from dataclasses import dataclass, field
 from datetime import date
+from difflib import get_close_matches
 from math import isfinite
+import re
 
 from .models import ERROR, INFO, WARNING, Finding, ShareRow, Statement
 from .rules import (attribute_loan, basis_per_share, classify_row,
@@ -37,10 +39,8 @@ MAX_GRANT_YEAR = 2100
 # pasted megabyte out of the draft before it gets that far.
 _MAX_SALE_NOTE = 500
 
-# Failing these means we could not read a document correctly, so nothing
-# downstream can be trusted: G0 is a column the share summary is missing, C1/C2
-# are the statement not adding up to its own printed totals. Everything else is
-# the two documents disagreeing, which is the user's call to override.
+# Failing these means a source document cannot be trusted. Unfamiliar labels
+# stay advisory: some are historic conversion rows, not grants to enter.
 BLOCKING_CHECKS = {"G0", "C1", "C2"}
 
 # Why the two documents disagree about loans more often than not. Shareworks
@@ -245,9 +245,20 @@ def derive_draft(statement: Statement | None, rows: list[ShareRow],
     for row in rows:
         year, gtype = row.year, row.grant_type
         if gtype is None:
+            # Similarity is a hint for whoever confirms the award, never an
+            # assignment: historic conversion rows ("2019 Purchased
+            # Conversion") look like a type and are not grants. Blocking on the
+            # guess stranded a file upload with no way to confirm it in the app.
+            match_year = re.match(r"^\s*(\d{4})\s+(.+?)\s*$", row.label)
+            label_words = match_year.group(2) if match_year else row.label.strip()
+            matches = get_close_matches(label_words.lower(),
+                                        sorted({t.type.lower() for t in sk.templates}),
+                                        n=1, cutoff=0.55)
+            hint = (f" Similar to {matches[0]!r}; if it is a real award, enter it with "
+                    "its confirmed schedule and cost basis." if matches else "")
             findings.append(Finding("G1", WARNING, row.label,
                                     f"No grant type mapping for this category — "
-                                    f"{row.shares_granted:,} shares not imported."))
+                                    f"{row.shares_granted:,} shares not imported.{hint}"))
             continue
         if year is None:
             # A one-time award (rule G1): its label carries no year, so the
@@ -485,6 +496,10 @@ def draft_from_payload(payload: dict, sk: Skeleton) -> tuple[Draft, list[Finding
             findings.append(Finding("R1", ERROR, f"grants[{i}]",
                                     f"Missing or unreadable year/type/shares/price ({e})."))
             continue
+        if not isfinite(price) or price < 0 or price > 1_000_000:
+            findings.append(Finding("R1", ERROR, f"{year} {gtype}",
+                                    "price must be finite and between 0 and 1,000,000."))
+            continue
         if shares <= 0:
             findings.append(Finding("R1", ERROR, f"{year} {gtype}", "shares must be positive."))
             continue
@@ -494,15 +509,39 @@ def draft_from_payload(payload: dict, sk: Skeleton) -> tuple[Draft, list[Finding
                                     f"{MAX_GRANT_YEAR}."))
             continue
 
-        # Structure is never taken from the payload — C10 reports any attempt.
-        t = _schedule_for(sk, year, gtype, findings)
-        for supplied, ours, label in ((_d(raw.get("vest_start")), t.vest_start, "vest_start"),
-                                      (_d(raw.get("exercise_date")), t.exercise_date, "exercise_date")):
+        # An individually changed schedule (for example a leave of absence) or
+        # an award the company tables do not know is deliberately custom. The
+        # assistant must collect the complete schedule and tax treatment from
+        # the user; similarity to a template is only a suggestion.
+        custom = raw.get("custom_schedule") is True
+        if custom:
+            start, exercise = _d(raw.get("vest_start")), _d(raw.get("exercise_date"))
+            try:
+                periods = _finite_int(raw["periods"])
+            except (KeyError, TypeError, ValueError, OverflowError):
+                periods = 0
+            if (not start or not exercise or periods <= 0 or periods > 100
+                    or "price" not in raw or start.year < year
+                    or raw.get("schedule_confirmed") is not True
+                    or raw.get("basis_confirmed") is not True):
+                findings.append(Finding("R1", ERROR, f"{year} {gtype}",
+                                        "Custom grant needs vest_start, exercise_date, 1–100 "
+                                        "periods, and explicit schedule_confirmed and "
+                                        "basis_confirmed acknowledgements from the user."))
+                continue
+            t = TemplateRow(year, gtype, start, periods, exercise)
+        else:
+            t = _schedule_for(sk, year, gtype, findings)
+        supplied_dates = () if custom else (
+            (_d(raw.get("vest_start")), t.vest_start, "vest_start"),
+            (_d(raw.get("exercise_date")), t.exercise_date, "exercise_date"),
+        )
+        for supplied, ours, label in supplied_dates:
             if supplied is not None and supplied != ours:
                 findings.append(Finding("C10", WARNING, f"{year} {gtype}",
                                         f"{label} was changed to {supplied}; the company "
                                         f"schedule says {ours} and that is what was used."))
-        if raw.get("periods") is not None:
+        if not custom and raw.get("periods") is not None:
             try:
                 supplied_periods = _finite_int(raw["periods"])
             except (TypeError, ValueError, OverflowError):
@@ -787,8 +826,9 @@ def supersede_parse_findings(findings: list[Finding]) -> list[Finding]:
 
 
 def is_blocked(findings: list[Finding]) -> bool:
-    """True when we misread the documents themselves — nothing downstream is trustworthy."""
-    return any(f.code in BLOCKING_CHECKS and f.severity == ERROR for f in findings)
+    """True when a document was misread or a grant cannot be built as supplied."""
+    return any(f.code in BLOCKING_CHECKS | {"R1", "S1"} and f.severity == ERROR
+               for f in findings)
 
 
 def to_wizard_payload(draft: Draft, include_unanswered_sales: bool = False) -> dict:

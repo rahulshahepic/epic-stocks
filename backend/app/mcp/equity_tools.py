@@ -45,8 +45,11 @@ def _save(ctx: ToolContext, args: dict):
     try:
         body = (update_model if row_id else create_model).model_validate(values)
         if kind == "loan":
-            result = (update(row_id, body, regenerate_payoff_sale=False, user=owner, db=ctx.db)
-                      if row_id else create(body, generate_payoff_sale=False, user=owner, db=ctx.db))
+            # The app's own defaults: a new loan gets its payoff sale, an edit
+            # leaves the sale alone. A loan entered in chat must produce the
+            # same timeline as the same loan entered on the Loans page.
+            result = (update(row_id, body, regenerate_payoff_sale=True, user=owner, db=ctx.db)
+                      if row_id else create(body, generate_payoff_sale=True, user=owner, db=ctx.db))
         else:
             result = (update(row_id, body, user=owner, db=ctx.db)
                       if row_id else create(body, user=owner, db=ctx.db))

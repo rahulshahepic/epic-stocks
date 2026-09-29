@@ -212,3 +212,28 @@ def test_a_similar_unknown_label_is_a_hint_not_a_blocking_grant(label):
     g1 = [f for f in findings if f.code == "G1"]
     assert "not imported" in g1[0].message and "'purchase'" in g1[0].message
     assert not is_blocked(findings)
+
+
+def test_a_loan_entered_in_chat_gets_the_same_payoff_sale_as_one_entered_in_the_app(
+        client, make_client):
+    """Invented figures. Two accounts, same rows, one through each door."""
+    grant = {"year": 2022, "type": "Purchase", "shares": 1000, "price": 2,
+             "vest_start": "2023-09-30", "periods": 4, "exercise_date": "2022-12-31"}
+    loan = {"grant_year": 2022, "grant_type": "Purchase", "loan_type": "Purchase",
+            "loan_year": 2022, "amount": 2000, "interest_rate": 0.02, "due_date": "2030-07-15"}
+    price = {"effective_date": "2022-01-01", "price": 2}
+
+    register_user(client)
+    chat = Mcp(client)
+    for kind, values in (("grant", grant), ("price", price), ("loan", loan)):
+        chat.call("save_equity", kind=kind, values=values)
+    by_chat = [(s["date"], s["shares"]) for s in chat.call("list_sales")["sales"]]
+
+    with make_client("app@example.com") as app:
+        app.post("/api/grants", json=grant)
+        app.post("/api/prices", json=price)
+        app.post("/api/loans", json=loan)
+        by_app = [(s["date"], s["shares"]) for s in app.get("/api/sales").json()]
+
+    assert by_app, "the app should have planned a payoff sale"
+    assert [(str(d), n) for d, n in by_chat] == [(str(d), n) for d, n in by_app]

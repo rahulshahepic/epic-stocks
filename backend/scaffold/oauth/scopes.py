@@ -38,10 +38,12 @@ IMMEDIATE_WRITE_SCOPES: frozenset[str] = frozenset({COMP_WRITE, EQUITY_WRITE})
 # "not yet" rather than a bare invalid_scope.
 RESERVED_SCOPES: tuple[str, ...] = ("shared:read",)
 
-# What a client that names no scope gets. Deliberately the reads only: most MCP
-# clients do not narrow, and nothing that leaves a trace should arrive by
-# default.
-DEFAULT_SCOPES: tuple[str, ...] = (EQUITY_READ, COMP_READ)
+# What a client that names no scope gets: everything grantable. ChatGPT names
+# none, and a read-only default left people unable to find how to let it edit.
+# The app is not the source of truth for anyone's equity — a wrong row is fixed
+# by editing it or re-importing — so the consent screen lists what is granted
+# and that is the check.
+DEFAULT_SCOPES: tuple[str, ...] = SUPPORTED_SCOPES
 
 SCOPE_LABELS: dict[str, str] = {
     EQUITY_READ: "Read your equity — grants, vesting, prices, loans, sales and tax estimates",
@@ -50,26 +52,6 @@ SCOPE_LABELS: dict[str, str] = {
     IMPORT_PROPOSE: "Prepare an import for you to review — it cannot change your data",
     EQUITY_WRITE: "Create, correct or remove your grants, prices, loans and sales directly",
 }
-
-
-# What the consent screen may add when the client did not ask for it. Clients
-# that request no scope get reads only, so without this the import path — the
-# ordinary way in — was invisible to them with no way for the user to enable it.
-# Only the review-first permission: nothing that writes directly is offered.
-OPT_IN_SCOPES: frozenset[str] = frozenset({IMPORT_PROPOSE})
-
-
-def can_offer_import(granted: list[str] | tuple[str, ...]) -> bool:
-    return EQUITY_READ in granted and IMPORT_PROPOSE not in granted
-
-
-def with_opt_in(scope: str, chosen: list[str]) -> str:
-    """The pending scope plus whatever the user ticked that may be offered."""
-    granted = scope.split()
-    for s in chosen:
-        if s in OPT_IN_SCOPES and s not in granted and can_offer_import(granted):
-            granted.append(s)
-    return format_scope(granted)
 
 
 def writes_anything(scopes: list[str] | tuple[str, ...]) -> bool:

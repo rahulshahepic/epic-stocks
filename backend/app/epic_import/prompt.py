@@ -2,7 +2,7 @@
 
 The app never calls a model. When the deterministic parse cannot be trusted, it
 hands the user a self-contained brief — the output contract, the company
-schedule they must not change, the draft so far, exactly what failed, and the
+schedule to use unless a custom one is confirmed, the draft so far, exactly what failed, and the
 source text — for them to paste into whichever assistant they already use. What
 comes back is validated by the same checks that rejected the draft.
 
@@ -30,6 +30,12 @@ or after, no markdown fences. It must have this shape:
       "price": 2.83,               // cost basis PER SHARE, 0 if taxed at vest
       "dp_shares": 0,              // shares handed back at exercise, negative or 0
       "election_83b": false,
+      "custom_schedule": false,  // true for a user-confirmed custom or leave-adjusted grant
+      "schedule_confirmed": false, // true only after asking the user about dates and periods
+      "basis_confirmed": false,    // true only after asking if cost basis is zero
+      "vest_start": "2022-09-30", // required with custom_schedule: first vest date
+      "periods": 4,             // required with custom_schedule: annual installments
+      "exercise_date": "2021-12-31", // required with custom_schedule
       "loans": [
         {
           "loan_number": "022270",
@@ -59,8 +65,12 @@ or after, no markdown fences. It must have this shape:
 _RULES = """\
 Rules you must follow:
 
-1. Do NOT invent or alter vest_start, periods or exercise_date. They are company
-   wide, they are listed below, and they are ignored if you send them.
+1. Normally use the company template; vest_start, periods and exercise_date
+   supplied without custom_schedule are ignored. If an award is unfamiliar or
+   leave changed its vesting, ask the user to confirm the full schedule, first
+   vesting date/year, exercise date, number of annual periods and whether the
+   cost basis is zero because vesting is income. Only then set custom_schedule,
+   schedule_confirmed and basis_confirmed true with the confirmed values.
 2. Every grant in the stock workbook that has a share count must appear exactly
    once. Match on year and type.
 3. interest_rate is a decimal fraction: 0.86% is 0.0086.

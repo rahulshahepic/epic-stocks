@@ -92,6 +92,8 @@ export function generateLoansForReview(args: GenerateLoansArgs): ReviewedLoan[] 
   const loans: ReviewedLoan[] = []
   const priceByYear = pricesByYear(args.prices)
 
+  // Saved loans an estimate slot claimed; the rest are listed as they are.
+  const usedExisting = new Set<number>()
   const existingByKey = new Map<string, LoanEntry>()
   for (const rl of args.existingLoans) {
     existingByKey.set(`${rl.grant_year}-${rl.grant_type}-${rl.loan_type}-${rl.loan_year}`, rl)
@@ -121,6 +123,7 @@ export function generateLoansForReview(args: GenerateLoansArgs): ReviewedLoan[] 
     existingKey = key,
   ): number {
     const existing = existingByKey.get(existingKey)
+    if (existing) usedExisting.add(existing.id)
     loans.push({
       key,
       grant_year: fields.grant_year, grant_type: fields.grant_type,
@@ -313,6 +316,30 @@ export function generateLoansForReview(args: GenerateLoansArgs): ReviewedLoan[] 
         loan_number: `wiz-${gy}-${grantType[0]}-I${ly}`, refinances_loan_number: '', refi_date: '', enabled: true,
       })
     }
+  }
+
+  // ── Phase 4: saved tax and interest loans no estimate slot matched ──
+  // The slots are one per (grant, kind, year), so a loan dated otherwise —
+  // entered by hand, or from a statement — has no slot. It used to be dropped
+  // on submit and replaced by estimates; it is the user's figure, so it is
+  // listed, ticked, for them to keep or untick.
+  const submitted = new Set([
+    ...purchaseRows.filter(r => r.participated && parseInt(r.shares) > 0).map(r => `${r.year}-Purchase`),
+    ...catchUpRows.filter(r => r.included && parseInt(r.shares) > 0).map(r => `${r.year}-Catch-Up`),
+    ...bonusRows.filter(r => parseInt(r.shares) > 0).map(r => `${r.year}-${r.type}`),
+  ])
+  const numberById = new Map(args.existingLoans.map(l => [l.id, l.loan_number ?? '']))
+  for (const l of args.existingLoans) {
+    if (usedExisting.has(l.id) || (l.loan_type !== 'Tax' && l.loan_type !== 'Interest')) continue
+    if (!submitted.has(`${l.grant_year}-${l.grant_type}`)) continue
+    loans.push({
+      key: `saved-${l.id}`, grant_year: l.grant_year, grant_type: l.grant_type,
+      loan_type: l.loan_type, loan_year: l.loan_year, amount: String(l.amount),
+      interest_rate: String(l.interest_rate), due_date: l.due_date,
+      loan_number: l.loan_number ?? '',
+      refinances_loan_number: l.refinances_loan_id != null ? numberById.get(l.refinances_loan_id) ?? '' : '',
+      refi_date: '', enabled: true, is_existing: true,
+    })
   }
 
   return loans

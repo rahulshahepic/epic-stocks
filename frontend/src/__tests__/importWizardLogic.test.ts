@@ -85,6 +85,33 @@ describe('buildScheduleRows', () => {
     } as never)
     expect(rows.orphanPrices.map(p => p.id)).toEqual([1])
   })
+
+  it('keeps a leave-adjusted schedule and an unknown grant in a proposal', () => {
+    const rows = buildScheduleRows(schedule, {
+      prices: [{ id: -1, effective_date: '2031-01-01', price: 12 }],
+      grants: [
+        { id: -1, year: 2023, type: 'Purchase', shares: 1000, price: 10,
+          vest_start: '2026-09-30', periods: 3, exercise_date: '2023-12-31',
+          dp_shares: 0, election_83b: false },
+        { id: -2, year: 2025, type: 'Special Purchase', shares: 100, price: 0,
+          vest_start: '2028-09-30', periods: 2, exercise_date: '2025-12-31',
+          dp_shares: 0, election_83b: false },
+      ],
+      loans: [{ id: -2001, grant_year: 2025, grant_type: 'Special Purchase',
+        loan_type: 'Tax', loan_year: 2028, amount: 50, interest_rate: 0.02,
+        due_date: '2030-07-15', loan_number: 'synthetic', refinances_loan_id: null }],
+    } as never)
+    expect(rows.purchaseRows.find(r => r.year === 2023)).toMatchObject({
+      vest_start: '2026-09-30', periods: 3,
+    })
+    expect(rows.customGrants).toMatchObject([{
+      type: 'Special Purchase', vest_start: '2028-09-30', price: 0,
+      loans: [{ loan_type: 'Tax', amount: 50 }],
+    }])
+    expect(rows.orphanGrants).toEqual([])
+    expect(rows.prices).toContainEqual({ effective_date: '2031-01-01', price: '12' })
+    expect(sanitizeForSubmit(rows.prices, rows.customGrants).grants[0].type).toBe('Special Purchase')
+  })
 })
 
 describe('down payments and loan amounts', () => {

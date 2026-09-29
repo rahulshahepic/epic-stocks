@@ -67,7 +67,7 @@ export function SchedulePrices({
       </div>
       <PriceRows prices={prices} onChange={setPrices} />
       <OrphanList
-        title="Existing prices not covered above — will be removed"
+        title="Existing prices not covered above — kept by default"
         rows={orphanPrices} preserved={preservedPriceIds} onToggle={onToggleOrphanPrice}
       >
         {p => <>{fmtFullDate(p.effective_date)} — {fmtPrice(p.price)}</>}
@@ -138,7 +138,7 @@ export function ScheduleGrants(p: ScheduleGrantsProps) {
       </div>
 
       <OrphanList
-        title="Existing grants not in Epic's schedule — will be removed"
+        title="Existing grants outside the company schedule — kept by default"
         rows={p.orphanGrants} preserved={p.preservedGrantIds} onToggle={p.onToggleOrphanGrant}
       >
         {g => <>{g.year} {g.type} — {g.shares.toLocaleString()} shares</>}

@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from scaffold.auth import get_current_user
-from scaffold.models import Grant, Price, Sale, User
+from scaffold.models import Grant, Loan, Price, Sale, User
 from scaffold.safe_workbook import WorkbookRejected, load_workbook_safely
 from app.content_service import load_content
 from app.date_utils import to_date as _to_date
@@ -185,6 +185,20 @@ def _wizard_prefill(draft: Draft, db: Session | None = None,
                                "price": p.price, "is_estimate": bool(p.is_estimate),
                                "version": p.version or 1})
         covered_grants = {g.key for g in draft.grants}
+        # A grant carried through keeps its loans too. The wizard rebuilds each
+        # grant's loan set from this list, so leaving them out deleted every
+        # loan on a grant the draft did not mention — which is the ordinary case
+        # for an assistant adding one new grant to an existing account.
+        for l in db.query(Loan).filter(Loan.user_id == user_id).all():
+            if (l.grant_year, l.grant_type) not in covered_grants:
+                loans.append({"id": l.id, "grant_year": l.grant_year,
+                              "grant_type": l.grant_type, "loan_type": l.loan_type,
+                              "loan_year": l.loan_year, "amount": l.amount,
+                              "interest_rate": l.interest_rate,
+                              "due_date": l.due_date.isoformat(),
+                              "loan_number": l.loan_number,
+                              "refinances_loan_id": l.refinances_loan_id,
+                              "version": l.version or 1})
         for g in db.query(Grant).filter(Grant.user_id == user_id).all():
             if (g.year, g.type) not in covered_grants:
                 grants.append({"id": g.id, "year": g.year, "type": g.type,

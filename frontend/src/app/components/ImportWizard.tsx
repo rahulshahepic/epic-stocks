@@ -16,7 +16,9 @@ import {
 import {
   dpSharesShortfall, isPreTax, priceForYear, recalcLoan,
 } from './importWizard/rows.ts'
-import { buildScheduleGrants, draftToWizardGrant, sanitizeForSubmit } from './importWizard/submit.ts'
+import {
+  buildScheduleGrants, carriedGrantKeys, draftToWizardGrant, keepCarriedLoans, sanitizeForSubmit,
+} from './importWizard/submit.ts'
 import type {
   BonusGrantRow, CatchUpRow, GrantDraft, LoanDraft, PurchaseGrantRow, ReviewedLoan, SaleDraft,
   Screen, TaxLoanDraft, WizardPrefill, WizardPrice,
@@ -109,6 +111,9 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
   // Orphaned existing data (populated when entering schedule mode)
   const [orphanPrices, setOrphanPrices] = useState<PriceEntry[]>([])
   const [orphanGrants, setOrphanGrants] = useState<GrantEntry[]>([])
+  const [customGrants, setCustomGrants] = useState<WizardGrant[]>([])
+  // Saved grants an import did not mention: kept verbatim, loans included.
+  const carried = useMemo(() => carriedGrantKeys(prefill?.grants), [prefill])
   const [preserveOrphanPriceIds, setPreserveOrphanPriceIds] = useState<Set<number>>(new Set())
   const [preserveOrphanGrantIds, setPreserveOrphanGrantIds] = useState<Set<number>>(new Set())
   const [scheduleLoading, setScheduleLoading] = useState(false)
@@ -215,9 +220,9 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
 
   // ── Submit ──────────────────────────────────────────────────────────────────
 
-  const submission = sanitizeForSubmit(prices, completedGrants)
+  const submission = sanitizeForSubmit(prices, [...completedGrants, ...customGrants])
   const availableSaleShares = remainingSaleShares(prefill?.reported_sold_shares,
-    completedGrants, prefill?.sale_grant_keys ?? [])
+    [...completedGrants, ...customGrants], prefill?.sale_grant_keys ?? [])
   const salesReview = saleReview(sales, prefill?.existing_sales ?? [], availableSaleShares)
   submission.blockingIssues.push(...salesReview.issues)
 
@@ -277,8 +282,9 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
       setPrices(rows.prices)
       setOrphanPrices(rows.orphanPrices)
       setOrphanGrants(rows.orphanGrants)
-      setPreserveOrphanPriceIds(new Set())
-      setPreserveOrphanGrantIds(new Set())
+      setCustomGrants(rows.customGrants)
+      setPreserveOrphanPriceIds(new Set(rows.orphanPrices.map(p => p.id)))
+      setPreserveOrphanGrantIds(new Set(rows.orphanGrants.map(g => g.id)))
     } catch {
       // Fall back to blank rows if fetch fails
       setPurchaseRows(initPurchaseRows(schedule))
@@ -287,6 +293,7 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
       setPrices(blankPriceRows(schedule))
       setOrphanPrices([])
       setOrphanGrants([])
+      setCustomGrants([])
     } finally {
       setScheduleLoading(false)
       push('schedule_intro')
@@ -342,7 +349,8 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
         ? taxSettings.federal_income_rate + taxSettings.state_income_rate
         : schedule.fallbackTaxRate,
     })
-    setReviewedLoans(prev => mergeReviewedLoans(generated, prev))
+    const mentioned = generated.filter(l => !carried.has(`${l.grant_year}-${l.grant_type}`))
+    setReviewedLoans(prev => mergeReviewedLoans(mentioned, prev))
     push('schedule_loans_tax')
   }
 
@@ -360,9 +368,12 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
       if (saveSettings) {
         try { await api.updateTaxSettings({ deduct_investment_interest: deductInterest }) } catch { /* non-fatal */ }
       }
-      const grants = buildScheduleGrants({ purchaseRows, catchUpRows, bonusRows, reviewedLoans })
+      const grants = keepCarriedLoans(
+        buildScheduleGrants({ purchaseRows, catchUpRows, bonusRows, reviewedLoans }),
+        carried, allExistingLoans)
       setCompletedGrants(grants)
-      const remaining = remainingSaleShares(prefill?.reported_sold_shares, grants, prefill?.sale_grant_keys ?? [])
+      const remaining = remainingSaleShares(prefill?.reported_sold_shares,
+        [...grants, ...customGrants], prefill?.sale_grant_keys ?? [])
       setSales(prev => resizeUnansweredSale(prev, remaining))
       push(sales.length > 0 || remaining != null && remaining !== 0 ? 'schedule_sales' : 'review')
     } catch (e: unknown) {
@@ -528,6 +539,7 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
           submitError={submitError}
           orphanPrices={orphanPrices}
           orphanGrants={orphanGrants}
+          customGrants={customGrants}
           preservedPriceIds={preserveOrphanPriceIds}
           preservedGrantIds={preserveOrphanGrantIds}
           onBack={back}

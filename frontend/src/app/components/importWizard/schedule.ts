@@ -169,10 +169,15 @@ export function buildScheduleRows(s: WizardSchedule, existing: ExistingData): Sc
   // Match prices by year of effective_date; orphan anything outside priceYears
   const priceByYear = new Map<number, PriceEntry>()
   const orphanPrices: PriceEntry[] = []
+  const sameYearPrices: PriceEntry[] = []
   for (const p of existing.prices) {
     const year = parseInt(p.effective_date.slice(0, 4))
     if (s.priceYears.includes(year)) {
+      // The table has one row per year, but a year can hold several saved
+      // prices. The rest ride along as extra rows: dropped here, they were
+      // neither shown nor listed for removal, and submit deleted them.
       if (!priceByYear.has(year)) priceByYear.set(year, p)
+      else sameYearPrices.push(p)
     } else {
       if (p.id > 0) orphanPrices.push(p)
     }
@@ -284,8 +289,8 @@ export function buildScheduleRows(s: WizardSchedule, existing: ExistingData): Sc
       // which vests and sales it applied to.
       effective_date: priceByYear.get(y)?.effective_date ?? `${y}-01-01`,
       price: priceByYear.has(y) ? String(priceByYear.get(y)!.price) : '',
-    })).concat(existing.prices.filter(p => p.id < 0 && !s.priceYears.includes(
-      parseInt(p.effective_date.slice(0, 4)))).map(p => ({
+    })).concat([...sameYearPrices, ...existing.prices.filter(p => p.id < 0 && !s.priceYears.includes(
+      parseInt(p.effective_date.slice(0, 4))))].map(p => ({
       effective_date: p.effective_date, price: String(p.price),
     }))),
   }

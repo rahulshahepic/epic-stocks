@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { MOCK_CONTENT } from './fixtures/content.ts'
 import { buildScheduleRows, deriveSchedule } from '../app/components/importWizard/schedule.ts'
 import { generateLoansForReview } from '../app/components/importWizard/loans.ts'
+import { sanitizeForSubmit } from '../app/components/importWizard/submit.ts'
 import type { LoanEntry } from '../api.ts'
 
 // Invented round numbers — never real Epic figures.
@@ -60,5 +61,23 @@ describe('saved prices (#557)', () => {
     } as never)
     expect(rows.prices).toContainEqual({ effective_date: '2023-03-01', price: '10' })
     expect(rows.prices).toContainEqual({ effective_date: '2024-01-01', price: '' })
+  })
+})
+
+describe('several saved prices in one year', () => {
+  it('all reach the submission rather than only the first', () => {
+    // Reported on #554: the table keeps one row per year, and the second price
+    // was neither shown nor offered for removal, so submit deleted it.
+    const rows = buildScheduleRows(schedule, {
+      prices: [
+        { id: 4, version: 1, effective_date: '2023-01-01', price: 10, is_estimate: false },
+        { id: 5, version: 1, effective_date: '2023-07-01', price: 11, is_estimate: false },
+      ],
+      grants: [], loans: [],
+    } as never)
+    const submitted = sanitizeForSubmit(rows.prices, []).prices
+    expect(submitted).toContainEqual({ effective_date: '2023-01-01', price: 10 })
+    expect(submitted).toContainEqual({ effective_date: '2023-07-01', price: 11 })
+    expect(rows.orphanPrices).toEqual([])
   })
 })

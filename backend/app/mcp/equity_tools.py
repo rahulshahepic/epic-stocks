@@ -45,11 +45,18 @@ def _save(ctx: ToolContext, args: dict):
     try:
         body = (update_model if row_id else create_model).model_validate(values)
         if kind == "loan":
-            # The app's own defaults: a new loan gets its payoff sale, an edit
-            # leaves the sale alone. A loan entered in chat must produce the
-            # same timeline as the same loan entered on the Loans page.
-            result = (update(row_id, body, regenerate_payoff_sale=True, user=owner, db=ctx.db)
-                      if row_id else create(body, generate_payoff_sale=True, user=owner, db=ctx.db))
+            # Match the Loans page: a new loan gets its payoff sale; an edit
+            # keeps whatever sale state the loan has — an app-owned sale is
+            # refreshed, an absent one stays absent, a user-owned one is left
+            # alone (the upsert itself refuses to touch it).
+            if row_id:
+                owned = ctx.db.query(Sale).filter(
+                    Sale.user_id == owner.id, Sale.loan_id == row_id,
+                    Sale.is_generated.is_(True)).first() is not None
+                result = update(row_id, body, regenerate_payoff_sale=owned,
+                                user=owner, db=ctx.db)
+            else:
+                result = create(body, generate_payoff_sale=True, user=owner, db=ctx.db)
         else:
             result = (update(row_id, body, user=owner, db=ctx.db)
                       if row_id else create(body, user=owner, db=ctx.db))

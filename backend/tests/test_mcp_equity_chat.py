@@ -237,3 +237,50 @@ def test_a_loan_entered_in_chat_gets_the_same_payoff_sale_as_one_entered_in_the_
 
     assert by_app, "the app should have planned a payoff sale"
     assert [(str(d), n) for d, n in by_chat] == [(str(d), n) for d, n in by_app]
+
+
+@pytest.fixture
+def payoff_setup(assistant):
+    assistant.call("save_equity", kind="grant", values={
+        "year": 2022, "type": "Purchase", "shares": 1000, "price": 2,
+        "vest_start": "2023-09-30", "periods": 4, "exercise_date": "2022-12-31"})
+    assistant.call("save_equity", kind="price", values={"effective_date": "2022-01-01", "price": 2})
+    return {"grant_year": 2022, "grant_type": "Purchase", "loan_type": "Purchase",
+            "loan_year": 2022, "amount": 2000, "interest_rate": 0.02, "due_date": "2030-07-15"}
+
+
+def _loan(assistant):
+    return assistant.call("list_loans")["loans"][0]
+
+
+def test_editing_a_loan_with_no_payoff_sale_does_not_create_one(assistant, client, payoff_setup):
+    """Reported in review on #554: an edit forced regeneration."""
+    client.post("/api/loans?generate_payoff_sale=false", json=payoff_setup)
+    loan = _loan(assistant)
+    assistant.call("save_equity", kind="loan", id=loan["id"],
+                   values={"version": loan["version"], "amount": 2500})
+    assert assistant.call("list_sales")["sales"] == []
+
+
+def test_editing_a_loan_refreshes_its_app_owned_payoff_sale(assistant, client, payoff_setup):
+    client.post("/api/loans", json=payoff_setup)
+    before = client.get("/api/sales").json()
+    loan = _loan(assistant)
+    assistant.call("save_equity", kind="loan", id=loan["id"],
+                   values={"version": loan["version"], "amount": 3000})
+    after = client.get("/api/sales").json()
+    assert len(before) == len(after) == 1
+    assert after[0]["shares"] > before[0]["shares"]
+
+
+def test_editing_a_loan_leaves_a_user_owned_payoff_sale_alone(assistant, client, payoff_setup):
+    client.post("/api/loans", json=payoff_setup)
+    sale = client.get("/api/sales").json()[0]
+    resp = client.put(f"/api/sales/{sale['id']}",
+                      json={"version": sale["version"], "shares": sale["shares"] + 7})
+    assert resp.status_code == 200, resp.text
+    claimed = resp.json()["shares"]
+    loan = _loan(assistant)
+    assistant.call("save_equity", kind="loan", id=loan["id"],
+                   values={"version": loan["version"], "amount": 3000})
+    assert [s["shares"] for s in client.get("/api/sales").json()] == [claimed]

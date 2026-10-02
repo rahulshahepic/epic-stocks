@@ -9,6 +9,7 @@ disagree about what a user's vesting schedule says.
 Tool names are verbs and nouns, one job each, because that is what a model
 picks correctly from a list.
 """
+from bisect import bisect_right
 from datetime import date
 
 from scaffold.models import Grant, Loan, Price, Sale
@@ -88,21 +89,6 @@ def _as_date(value) -> date | None:
     return None
 
 
-def _last_real_price_date(owner, db) -> date | None:
-    """The newest valuation that is not one of the user's own projections.
-
-    Everything on the timeline after this is priced at an assumption, which is
-    the distinction the app draws and the connector did not.
-    """
-    row = (
-        db.query(Price)
-        .filter(Price.user_id == owner.id, Price.is_estimate.is_(False))
-        .order_by(Price.effective_date.desc())
-        .first()
-    )
-    return row.effective_date if row else None
-
-
 def _rows(model, owner, db, order):
     return [
         {c.name: getattr(row, c.name) for c in model.__table__.columns if c.name != "user_id"}
@@ -174,11 +160,12 @@ def _list_events(ctx: ToolContext, args: dict):
     limit = _opt_int(args, "limit") or DEFAULT_EVENT_LIMIT
     limit = max(1, min(limit, MAX_EVENTS))
 
-    # Future vesting dates and share counts are fixed facts — the schedule is
-    # company-wide. What they are *worth* after the newest real valuation is
-    # priced at the user's own assumption, and that is the part an assistant
-    # must not repeat as though it were known.
-    priced_to = _last_real_price_date(owner, ctx.db)
+    today = date.today()
+    prices = (ctx.db.query(Price).filter(Price.user_id == owner.id)
+              .order_by(Price.effective_date).all())
+    price_dates = [p.effective_date for p in prices]
+    priced_to = max((p.effective_date for p in prices
+                     if not p.is_estimate and p.effective_date <= today), default=None)
 
     events = _get_events_data(owner, ctx.db)
     selected = []
@@ -192,8 +179,14 @@ def _list_events(ctx: ToolContext, args: dict):
             continue
         when_date = _as_date(when)
         event = dict(event)
+        # Match the shared timeline: the first row supplies its initial price,
+        # then each effective date replaces it, including on that date itself.
+        price = None
+        if prices and when_date:
+            price = prices[max(0, bisect_right(price_dates, when_date) - 1)]
+        event["price_is_estimate"] = bool(price and price.is_estimate)
         event["valuation_is_projected"] = bool(
-            priced_to and when_date and when_date > priced_to
+            when_date and (when_date > today or event["price_is_estimate"])
         )
         selected.append(event)
 
@@ -210,11 +203,13 @@ def _list_events(ctx: ToolContext, args: dict):
     }
     if projected:
         payload["projection_warning"] = (
-            f"{projected} of these events fall after the newest real valuation "
-            f"({priced_to}), so every figure on them — value, income, gains — is "
-            "computed from prices the user assumed for planning. The dates and "
-            "share counts are real; the money is not. Say which is which, and "
-            "do not total projected figures into a headline number."
+            f"{projected} of these events are future-dated or use an estimated "
+            "price. Future monetary values are projections even when carrying "
+            "forward a real price; price_is_estimate identifies prices the user "
+            "assumed for planning, including estimates whose dates have passed. "
+            "The scheduled dates and share counts are known; the money is not "
+            "a confirmed future valuation. Say which is which, and do not total "
+            "projected figures into a headline number."
         )
     return payload
 
@@ -227,7 +222,9 @@ register(Tool(
         "payments and payoffs, sales, and the running totals after each. These "
         "are calculated from grants, prices and loans on every request, never "
         "stored, so this is always current. Filter by date range or event type "
-        "rather than pulling everything."
+        "rather than pulling everything. valuation_is_projected flags future "
+        "events or an estimated price; price_is_estimate identifies the latter. "
+        "priced_to is the newest real price effective date, not its expiry."
     ),
     input_schema=object_schema({
         "from_date": {"type": "string", "description": "Only events on or after this date (YYYY-MM-DD)."},

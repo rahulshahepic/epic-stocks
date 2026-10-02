@@ -146,7 +146,7 @@ def test_future_events_are_marked_as_projected_valuations(mcp):
     events = mcp.call("list_events")
     assert events["priced_to"], "the newest real valuation should be reported"
 
-    future = [e for e in events["events"] if e["date"] > events["priced_to"]]
+    future = [e for e in events["events"] if e["date"] > date.today().isoformat()]
     assert future, "the seeded account vests past the newest real price"
     assert all(e["valuation_is_projected"] for e in future)
     assert "the money is not" in events["projection_warning"]
@@ -161,7 +161,7 @@ def test_events_up_to_the_newest_real_price_are_not_marked(mcp):
 
 def test_no_warning_when_nothing_is_projected(mcp):
     """A model should not be told to hedge figures that are real."""
-    events = mcp.call("list_events", to_date=mcp.call("list_events")["priced_to"])
+    events = mcp.call("list_events", to_date=date.today().isoformat())
     assert "projection_warning" not in events
 
 
@@ -175,3 +175,74 @@ def test_future_vesting_dates_are_still_reported(mcp):
     # Flagged, not withheld: the date and the share count are facts, the
     # valuation attached to them is not.
     assert all(e["valuation_is_projected"] for e in future)
+
+
+def test_completed_vesting_after_real_price_date_is_not_projected(client):
+    register_user(client)
+    client.post("/api/grants", json={**ONGOING_GRANT, "vest_start": date.today().isoformat()})
+    price_date = (date.today() - timedelta(days=1)).isoformat()
+    client.post("/api/prices", json={"effective_date": price_date, "price": REAL_PRICE})
+    events = Mcp(client).call("list_events", event_types=["Vesting"],
+                             from_date=date.today().isoformat(),
+                             to_date=date.today().isoformat())
+    assert events["events"]
+    assert all(e["date"] > events["priced_to"] for e in events["events"])
+    assert not any(e["valuation_is_projected"] for e in events["events"])
+    assert not any(e["price_is_estimate"] for e in events["events"])
+    assert "projection_warning" not in events
+
+
+def test_future_events_using_real_price_still_disclose_projection(mcp):
+    events = mcp.call("list_events", event_types=["Vesting"],
+                      from_date=(date.today() + timedelta(days=1)).isoformat())
+    assert events["events"]
+    assert all(e["valuation_is_projected"] for e in events["events"])
+    assert any(not e["price_is_estimate"] for e in events["events"])
+    assert "carrying forward a real price" in events["projection_warning"]
+
+
+def test_estimated_price_is_flagged_until_replaced_by_real_price(client, db_session):
+    register_user(client)
+    client.post("/api/grants", json=GRANT)
+    client.post("/api/prices", json={"effective_date": "2021-01-01", "price": 2.0})
+    price_id = client.post("/api/prices", json={
+        "effective_date": (date.today() + timedelta(days=200)).isoformat(),
+        "price": 8.0,
+    }).json()["id"]
+    db_session.execute(text("UPDATE prices SET effective_date = :d WHERE id = :i"),
+                       {"d": date(2021, 7, 1), "i": price_id})
+    db_session.commit()
+    client.post("/api/prices", json={"effective_date": "2022-01-01", "price": 3.0})
+    events = Mcp(client).call("list_events", to_date="2022-12-31")
+    assumed = [e for e in events["events"] if "2021-07-01" <= e["date"] < "2022-01-01"]
+    actual = [e for e in events["events"] if e["date"] < "2021-07-01" or e["date"] >= "2022-01-01"]
+    assert assumed and actual
+    assert all(e["price_is_estimate"] and e["valuation_is_projected"] for e in assumed)
+    assert not any(e["valuation_is_projected"] for e in actual)
+    assert "projection_warning" in events
+
+
+def test_events_on_today_use_real_price_without_projection(client):
+    register_user(client)
+    client.post("/api/grants", json=GRANT)
+    client.post("/api/prices", json={"effective_date": "2021-01-01", "price": 2.0})
+    client.post("/api/prices", json={"effective_date": date.today().isoformat(), "price": 3.0})
+    events = Mcp(client).call("list_events", from_date=date.today().isoformat(),
+                             to_date=date.today().isoformat())
+    assert events["events"]
+    assert not any(e["valuation_is_projected"] for e in events["events"])
+    assert "projection_warning" not in events
+
+
+def test_estimate_only_account_does_not_present_history_as_real(client):
+    register_user(client)
+    client.post("/api/grants", json=GRANT)
+    client.post("/api/prices", json={
+        "effective_date": (date.today() + timedelta(days=400)).isoformat(), "price": 12.0,
+    })
+    events = Mcp(client).call("list_events", to_date=date.today().isoformat())
+    assert events["events"] and events["priced_to"] is None
+    # The shared timeline uses the first price as its initial price even before
+    # that row's date. Metadata must describe that same valuation.
+    assert all(e["price_is_estimate"] and e["valuation_is_projected"] for e in events["events"])
+    assert "projection_warning" in events

@@ -760,49 +760,40 @@ def test_the_whole_flow_works_when_the_user_has_to_sign_in_first(client, db_sess
     assert tokens.json()["access_token"]
 
 
-# ── opting in to imports on the consent screen (#558) ───────────────────────
+# ── the consent screen when a connection can edit ───────────────────────────
 
-def _connect_with(client, scope, add_scope=None):
+def _consent(client, scope, **extra):
     reg = register_client(client)
     verifier, challenge = pkce_pair()
     page = authorize(client, reg["client_id"], challenge, scope=scope).text
     action = page.split('<form method="post" action="')[1].split('"')[0]
-    request_token = page.split('name="request" value="')[1].split('"')[0]
-    csrf = page.split('name="csrf" value="')[1].split('"')[0]
-    data = {"request": request_token, "csrf": csrf, "decision": "allow"}
-    if add_scope:
-        data["add_scope"] = add_scope
+    data = {"request": page.split('name="request" value="')[1].split('"')[0],
+            "csrf": page.split('name="csrf" value="')[1].split('"')[0],
+            "decision": "allow", **extra}
     code = code_from(client.post(action, data=data, follow_redirects=False))
-    return page, client.post("/oauth/token", data={
+    tokens = client.post("/oauth/token", data={
         "grant_type": "authorization_code", "code": code, "redirect_uri": REDIRECT,
         "client_id": reg["client_id"], "code_verifier": verifier}).json()
+    return page, tokens
 
 
-def test_a_reading_connection_is_offered_imports_unticked(client):
+def test_a_client_naming_no_scope_is_told_plainly_it_can_edit(client):
     register_user(client)
-    page, tokens = _connect_with(client, "equity:read comp:read")
-    assert 'name="add_scope" value="import:propose"' in page
-    assert " checked" not in page.split('name="add_scope"')[1].split(">")[0]
-    assert "import:propose" not in tokens["scope"]
+    page, tokens = _consent(client, "")
+    assert "It can edit your data." in page
+    assert "grants, loans, prices, sales" in page
+    assert 'name="read_only"' in page
+    assert "equity:write" in tokens["scope"].split()
 
 
-def test_ticking_the_offer_grants_imports(client):
+def test_ticking_read_only_drops_every_write(client):
     register_user(client)
-    _, tokens = _connect_with(client, "equity:read", add_scope=["import:propose"])
-    assert tokens["scope"].split() == ["equity:read", "import:propose"]
+    _, tokens = _consent(client, "", read_only="1")
+    assert tokens["scope"].split() == ["equity:read", "comp:read"]
 
 
-def test_the_offer_cannot_smuggle_in_a_direct_write(client):
+def test_a_read_only_request_gets_no_edit_warning(client):
     register_user(client)
-    _, tokens = _connect_with(client, "equity:read",
-                              add_scope=["equity:write", "comp:write", "import:propose"])
-    assert tokens["scope"].split() == ["equity:read", "import:propose"]
-
-
-def test_no_offer_without_equity_read_or_when_already_requested(client):
-    register_user(client)
-    reg = register_client(client)
-    _, challenge = pkce_pair()
-    for scope in ("comp:read", "equity:read import:propose"):
-        page = authorize(client, reg["client_id"], challenge, scope=scope).text
-        assert 'name="add_scope"' not in page
+    page, _ = _consent(client, "equity:read comp:read")
+    assert "It can edit your data." not in page
+    assert 'name="read_only"' not in page

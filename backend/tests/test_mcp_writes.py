@@ -5,10 +5,12 @@ reads. First, a write has to land where the app looks: the assertions go
 through the app's own endpoints rather than re-reading the column, so a tool
 that quietly stored a differently-shaped row would fail here.
 
-Second, writing is a permission the user has to have granted on purpose. It is
-not in the default scope set, a connection without it is refused readably, and
-a connection that holds only comp:write must not be able to read the history
-back out through the answer to a write.
+Second, writing is a permission. It is in the default set — the app is not the
+source of truth, and a read-only default left people unable to find how to let
+an assistant edit — but the consent screen says so and lets the user connect
+read-only instead. A connection without it is refused readably, and a
+connection that holds only comp:write must not be able to read the history back
+out through the answer to a write.
 """
 import os
 import sys
@@ -44,16 +46,16 @@ def params(client):
 
 # ── the permission ──────────────────────────────────────────────────────────
 
-def test_writing_is_not_granted_by_default():
-    """Nothing that changes data may arrive just because a client did not
-    narrow its request — most MCP clients do not narrow."""
-    assert scopes.COMP_WRITE not in scopes.DEFAULT_SCOPES
-    assert scopes.COMP_WRITE in scopes.SUPPORTED_SCOPES
+def test_writing_is_granted_by_default():
+    """ChatGPT names no scope; the default is everything grantable."""
+    assert scopes.COMP_WRITE in scopes.DEFAULT_SCOPES
+    assert scopes.EQUITY_WRITE in scopes.DEFAULT_SCOPES
 
 
 def test_granting_it_stops_the_connection_being_read_only():
     assert scopes.writes_anything([scopes.COMP_WRITE])
-    assert not scopes.writes_anything(list(scopes.DEFAULT_SCOPES))
+    assert scopes.writes_anything(list(scopes.DEFAULT_SCOPES))
+    assert not scopes.writes_anything([scopes.EQUITY_READ, scopes.COMP_READ])
 
 
 def test_it_has_a_label_for_the_consent_screen():

@@ -231,13 +231,14 @@ def test_the_consent_screen_stops_claiming_read_only_when_it_is_not(client):
     assert "cannot change your data on its own" in proposing
 
 
-def test_proposing_is_not_granted_by_default(client):
-    """A client that names no scope gets the reads. Nothing that leaves a trace
-    should arrive without being asked for."""
+def test_a_client_that_names_no_scope_gets_every_tool(client):
+    """ChatGPT names none. A read-only default left people unable to find how
+    to let it import or edit, so the default is everything grantable."""
     register_user(client)
     seed(client)
     default = Mcp(client, scope="")
-    assert "stage_import" not in {t["name"] for t in default.list_tools()}
+    names = {t["name"] for t in default.list_tools()}
+    assert {"stage_import", "save_equity", "add_compensation"} <= names
 
 
 def test_the_prefill_keeps_prices_the_draft_does_not_cover(mcp, client):

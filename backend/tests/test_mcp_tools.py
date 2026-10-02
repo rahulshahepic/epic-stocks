@@ -297,8 +297,8 @@ def test_dashboard_does_not_invent_a_valuation_without_a_price(client):
 def test_list_events_matches_the_app(mcp, client):
     from_api = client.get("/api/events").json()
     from_tool = mcp.call("list_events")
-    # Identical but for the flag saying which figures rest on assumed prices.
-    stripped = [{k: v for k, v in e.items() if k != "valuation_is_projected"}
+    # Identical but for connector metadata describing valuation provenance.
+    stripped = [{k: v for k, v in e.items() if k not in {"valuation_is_projected", "price_is_estimate"}}
                 for e in from_tool["events"]]
     assert stripped == from_api
     assert from_tool["matched"] == len(from_api)

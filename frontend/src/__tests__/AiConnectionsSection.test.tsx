@@ -150,13 +150,11 @@ describe('AiConnectionsSection', () => {
     expect(screen.queryByText('Recent activity')).not.toBeInTheDocument()
   })
 
-  it('is explicit that reading is the default and writing is opt-in', async () => {
+  it('says plainly that a connection can edit, and how to recover', async () => {
     vi.spyOn(api, 'getAiConnections').mockResolvedValue([])
     render(<AiConnectionsSection />)
-    expect(await screen.findByText(/Reading is the default/)).toBeInTheDocument()
-    // The one promise that must survive any new scope: equity is never
-    // writable by an assistant.
-    expect(screen.getByText(/never be changed by an assistant/)).toBeInTheDocument()
+    expect(await screen.findByText(/add or correct your grants/)).toBeInTheDocument()
+    expect(screen.getByText(/fix the row or re-import/)).toBeInTheDocument()
   })
 
   it('marks a connection that was allowed to make changes', async () => {

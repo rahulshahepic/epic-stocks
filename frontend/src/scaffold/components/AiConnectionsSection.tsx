@@ -83,6 +83,13 @@ export function AiConnectionsSection() {
 
   useEffect(load, [load])
 
+  // The Import page links here to connect an assistant before chatting.
+  useEffect(() => {
+    if (window.location.hash === '#ai-connections') {
+      document.getElementById('ai-connections')?.scrollIntoView({ block: 'start' })
+    }
+  }, [])
+
   async function copyUrl() {
     try {
       await navigator.clipboard.writeText(serverUrl)
@@ -104,20 +111,19 @@ export function AiConnectionsSection() {
   }
 
   return (
-    <Card as="section" pad="md">
+    <Card as="section" pad="md" id="ai-connections">
       <h3 className="text-sm font-medium text-cs-text">AI Connections</h3>
       <p className="mt-1 text-xs text-cs-text-2">
         Let ChatGPT or Claude read your equity data, so you can ask about vesting
-        and tax alongside the rest of your finances. You choose what each
-        connection may do when you approve it, and you can disconnect at any
-        time.
+        and tax alongside the rest of your finances — and set up your grants and
+        loans for you from your paperwork, which you then review on the Import
+        page. You can disconnect at any time.
       </p>
       <p className="mt-1.5 text-xs text-cs-text-2">
-        Reading is the default. An assistant can only change anything if you
-        also allow it to — that covers your salary and bonus history and your
-        retirement balances, and it is listed against the connection below.
-        Grants, prices and loans can never be changed by an assistant; it can
-        only prepare an import for you to accept yourself.
+        A connection can read your data, prepare imports for you to review, and
+        add or correct your grants, prices, loans, sales, salary and retirement
+        balances when you ask it to. Ask it to show you the exact changes
+        first. If anything goes wrong, fix the row or re-import.
       </p>
       <p className="mt-1.5 text-xs text-cs-muted">
         Connecting means your figures are sent to OpenAI or Anthropic when the

@@ -12,10 +12,10 @@ You will see them in three places:
 - the "What did not reconcile" section of the prompt the app hands you to paste
   into your own assistant
 
-**Only `G0`, `C1` and `C2` block an import**, and only at error severity: those
-mean a document was misread, so nothing downstream can be trusted. Everything
-else is advisory — Epic's own paperwork sometimes disagrees with itself, and you
-decide what to do about it (`BLOCKING_CHECKS` in `draft.py`).
+**`G0`, `C1`, `C2`, `R1` and `S1` block at error severity.** A corrected draft
+demotes the old parse finding to info and can proceed. Unknown labels (`G1`)
+remain advisory: some historical conversion rows are not grants. The finding
+must clearly name any shares not imported (`is_blocked` in `draft.py`).
 
 Findings are graded **error** (something is wrong), **warning** (something may be
 wrong, or an assumption was made) and **info** (what was done and why).
@@ -42,7 +42,10 @@ Maps `2024 Purchased` → (2024, Purchase), `2019 Catch-up` → Catch-Up,
 `2023 Bonus Shares` → Bonus, `2022 Free` → Free, and
 `2020 Developer Bonus Shares` → Developer Bonus Shares. The developer pattern is
 tried before the plain bonus one, so the two do not collide. **Warning** for a category the
-mapping has never seen, naming the shares that were therefore not imported. Epic
+mapping has never seen, naming the shares that were therefore not imported. It
+may name a similarly named configured type as a hint, but never assigns it: a
+real custom award is entered with its schedule and cost basis confirmed by the
+user (`custom_schedule` in a repaired draft or a chat import). Epic
 lists every category for every employee, so rows with no share count are skipped
 silently — only a populated row nobody can classify is reported.
 
@@ -141,12 +144,13 @@ purchase grant carries a basis, because then no prices can be worked out at all.
 
 ### `S1` — the company grant schedule → vest_start, periods, exercise_date
 *`skeleton.py`.* Vest dates, vesting periods, exercise dates, loan rates, due
-dates and the down payment policy are company-wide: they come from the
-admin-managed content tables, never from an uploaded file, and an import may not
-change them. **Warning** when a template for a year is missing and the nearest
+dates and the down payment policy normally come from the admin-managed content
+tables. A user-confirmed custom award or leave adjustment supplies its own full
+schedule through a repaired draft. **Warning** when a template for a year is missing and the nearest
 one of the same type is shifted to fit (an admin should add the real one), when
 a template has no usable dates, or when no templates are configured at all.
-**Error** when a grant has no template and none can be adapted.
+**Error** (blocking) when a grant has no template and none can be adapted;
+the user can supply a confirmed custom schedule instead.
 
 ---
 
@@ -201,8 +205,9 @@ is the original one and no longer matches the current balance.
 
 ### `C10` — the vesting schedule against the company schedule
 **Warning** when a draft's `vest_start`, `periods` or `exercise_date` differs
-from the template — including when a repaired draft tries to change them, which
-is reported and then ignored in favour of the schedule.
+from the template. A repaired draft's changed dates are ignored unless it has
+`custom_schedule`, `schedule_confirmed` and `basis_confirmed` set to true, with
+complete dates and periods; a custom schedule is retained and warned about.
 
 ### `C12` — sales against the shares nothing else explains
 **Warning** when down-payment exchanges and drafted shares do not match the
@@ -228,8 +233,9 @@ applies just as much to a figure a repaired draft supplied.
 *`draft_from_payload`.* Tolerant about shape, strict about types. **Error** for
 JSON that is not an object, has no `grants` array, or carries a grant or loan
 whose fields cannot be read; **warning** for a price row that has to be skipped.
-Structural fields are never taken from a payload — an attempt to change them is
-reported as `C10` and the company schedule is used regardless.
+Structural fields are ignored unless a custom schedule is explicitly confirmed
+with all required fields. An incomplete custom schedule is an error, with its
+grant omitted; an ordinary override is `C10` and uses the company template.
 
 Parse complaints from an earlier round are demoted to **info** once a corrected
 draft supersedes them, prefixed "(before your correction)". Otherwise a repair

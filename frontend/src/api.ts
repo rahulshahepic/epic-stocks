@@ -19,7 +19,15 @@ export interface ImportProposal {
   prices: number
   findings: { code: string; severity: 'error' | 'warning' | 'info'; subject: string; message: string }[]
   wizard_prefill: { grants: GrantEntry[]; loans: LoanEntry[]; prices: PriceEntry[] }
+  /** What the assistant guessed rather than read, in its own words. */
+  assumptions?: { subject: string; note: string }[]
+  /** What accepting would do to the account, read when the page loads. */
+  changes?: Partial<Record<ProposalChangeKind, string[]>>
 }
+
+export type ProposalChangeKind =
+  | 'grants_added' | 'grants_updated' | 'grants_kept'
+  | 'loans_added' | 'loans_updated' | 'loans_removed' | 'prices_added' | 'prices_updated'
 
 export interface AiActivityEntry {
   id: number

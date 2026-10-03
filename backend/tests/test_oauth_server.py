@@ -269,12 +269,20 @@ def test_authorize_requires_pkce_at_all(client):
     assert query["error"] == ["invalid_request"]
 
 
-def test_authorize_rejects_a_write_scope_that_does_not_exist_yet(client):
+def test_authorize_offers_explicit_equity_write_permission(client):
+    register_user(client)
+    reg = register_client(client)
+    _, challenge = pkce_pair()
+    resp = authorize(client, reg["client_id"], challenge, scope="equity:read equity:write")
+    assert resp.status_code == 200
+    assert "Create, correct or remove" in resp.text
+
+
+def test_equity_write_without_read_is_refused(client):
     register_user(client)
     reg = register_client(client)
     _, challenge = pkce_pair()
     resp = authorize(client, reg["client_id"], challenge, scope="equity:write")
-    assert resp.status_code == 302
     query = parse_qs(urlparse(resp.headers["location"]).query)
     assert query["error"] == ["invalid_scope"]
 
@@ -750,3 +758,42 @@ def test_the_whole_flow_works_when_the_user_has_to_sign_in_first(client, db_sess
     })
     assert tokens.status_code == 200, tokens.text
     assert tokens.json()["access_token"]
+
+
+# ── the consent screen when a connection can edit ───────────────────────────
+
+def _consent(client, scope, **extra):
+    reg = register_client(client)
+    verifier, challenge = pkce_pair()
+    page = authorize(client, reg["client_id"], challenge, scope=scope).text
+    action = page.split('<form method="post" action="')[1].split('"')[0]
+    data = {"request": page.split('name="request" value="')[1].split('"')[0],
+            "csrf": page.split('name="csrf" value="')[1].split('"')[0],
+            "decision": "allow", **extra}
+    code = code_from(client.post(action, data=data, follow_redirects=False))
+    tokens = client.post("/oauth/token", data={
+        "grant_type": "authorization_code", "code": code, "redirect_uri": REDIRECT,
+        "client_id": reg["client_id"], "code_verifier": verifier}).json()
+    return page, tokens
+
+
+def test_a_client_naming_no_scope_is_told_plainly_it_can_edit(client):
+    register_user(client)
+    page, tokens = _consent(client, "")
+    assert "It can edit your data." in page
+    assert "grants, loans, prices, sales" in page
+    assert 'name="read_only"' in page
+    assert "equity:write" in tokens["scope"].split()
+
+
+def test_ticking_read_only_drops_every_write(client):
+    register_user(client)
+    _, tokens = _consent(client, "", read_only="1")
+    assert tokens["scope"].split() == ["equity:read", "comp:read"]
+
+
+def test_a_read_only_request_gets_no_edit_warning(client):
+    register_user(client)
+    page, _ = _consent(client, "equity:read comp:read")
+    assert "It can edit your data." not in page
+    assert 'name="read_only"' not in page

@@ -1,4 +1,4 @@
-import type { ContentBlob, GrantEntry, LoanEntry, PriceEntry } from '../../../api.ts'
+import type { ContentBlob, GrantEntry, LoanEntry, PriceEntry, WizardGrant } from '../../../api.ts'
 import { ZERO_BASIS_TYPES, isBonusRowType } from '../../grantTypes.ts'
 import type { BonusRowType } from '../../grantTypes.ts'
 import type {
@@ -160,6 +160,8 @@ export interface ScheduleRows {
   orphanPrices: PriceEntry[]
   /** Saved grants that are not in Epic's schedule at all — removed unless kept. */
   orphanGrants: GrantEntry[]
+  /** New custom grants in an assistant/file proposal, outside the content schedule. */
+  customGrants: WizardGrant[]
 }
 
 /** Lay the user's saved (or freshly imported) data over Epic's schedule. */
@@ -167,12 +169,17 @@ export function buildScheduleRows(s: WizardSchedule, existing: ExistingData): Sc
   // Match prices by year of effective_date; orphan anything outside priceYears
   const priceByYear = new Map<number, PriceEntry>()
   const orphanPrices: PriceEntry[] = []
+  const sameYearPrices: PriceEntry[] = []
   for (const p of existing.prices) {
     const year = parseInt(p.effective_date.slice(0, 4))
     if (s.priceYears.includes(year)) {
+      // The table has one row per year, but a year can hold several saved
+      // prices. The rest ride along as extra rows: dropped here, they were
+      // neither shown nor listed for removal, and submit deleted them.
       if (!priceByYear.has(year)) priceByYear.set(year, p)
+      else sameYearPrices.push(p)
     } else {
-      orphanPrices.push(p)
+      if (p.id > 0) orphanPrices.push(p)
     }
   }
 
@@ -194,7 +201,19 @@ export function buildScheduleRows(s: WizardSchedule, existing: ExistingData): Sc
     ...s.grants.map(g => `${g.year}-${g.type}`),
     ...s.grants.filter(g => g.defaultCatchUp).map(g => `${g.year}-Catch-Up`),
   ])
-  const orphanGrants = existing.grants.filter(g => !scheduleKeys.has(`${g.year}-${g.type}`))
+  const outsideSchedule = existing.grants.filter(g => !scheduleKeys.has(`${g.year}-${g.type}`))
+  const orphanGrants = outsideSchedule.filter(g => g.id > 0)
+  const customGrants: WizardGrant[] = outsideSchedule.filter(g => g.id < 0).map(g => ({
+    year: g.year, type: g.type, shares: g.shares, price: g.price,
+    vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
+    dp_shares: g.dp_shares, election_83b: g.election_83b,
+    loans: (loansByKey.get(`${g.year}-${g.type}`) ?? []).map(l => ({
+      loan_number: l.loan_number ?? '', loan_type: l.loan_type as 'Purchase' | 'Tax' | 'Interest',
+      loan_year: l.loan_year, amount: l.amount, interest_rate: l.interest_rate,
+      due_date: l.due_date,
+      refinances_loan_number: existing.loans.find(previous => previous.id === l.refinances_loan_id)?.loan_number ?? '',
+    })),
+  }))
 
   const purchaseRows: PurchaseGrantRow[] = s.grants
     .filter(g => g.type === 'Purchase')
@@ -218,7 +237,8 @@ export function buildScheduleRows(s: WizardSchedule, existing: ExistingData): Sc
       const refiChain = s.purchaseRefiChains[g.year]
       const lastRefi = refiChain?.[refiChain.length - 1]
       return {
-        year: g.year, vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
+        year: g.year, vest_start: saved?.vest_start ?? g.vest_start,
+        periods: saved?.periods ?? g.periods, exercise_date: saved?.exercise_date ?? g.exercise_date,
         participated: saved != null,
         purchase_price: saved ? String(saved.price) : '',
         shares: saved ? String(saved.shares) : '',
@@ -239,7 +259,8 @@ export function buildScheduleRows(s: WizardSchedule, existing: ExistingData): Sc
     .map(g => {
       const saved = grantByKey.get(`${g.year}-Catch-Up`)
       return {
-        year: g.year, vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
+        year: g.year, vest_start: saved?.vest_start ?? g.vest_start,
+        periods: saved?.periods ?? g.periods, exercise_date: saved?.exercise_date ?? g.exercise_date,
         included: saved != null,
         shares: saved ? String(saved.shares) : '',
       }
@@ -255,15 +276,22 @@ export function buildScheduleRows(s: WizardSchedule, existing: ExistingData): Sc
         shares: saved ? String(saved.shares) : '',
         isBonus2020: s.bonusVariantKeys.has(`${g.year}-${g.type}`),
         schedule: s.defaultBonusVariant,
-        vest_start: g.vest_start, periods: g.periods, exercise_date: g.exercise_date,
+        vest_start: saved?.vest_start ?? g.vest_start,
+        periods: saved?.periods ?? g.periods,
+        exercise_date: saved?.exercise_date ?? g.exercise_date,
       }
     })
 
   return {
-    purchaseRows, catchUpRows, bonusRows, orphanPrices, orphanGrants,
+    purchaseRows, catchUpRows, bonusRows, orphanPrices, orphanGrants, customGrants,
     prices: s.priceYears.map(y => ({
-      effective_date: `${y}-01-01`,
+      // A saved price keeps its own date; re-dating it to 1 January moved
+      // which vests and sales it applied to.
+      effective_date: priceByYear.get(y)?.effective_date ?? `${y}-01-01`,
       price: priceByYear.has(y) ? String(priceByYear.get(y)!.price) : '',
-    })),
+    })).concat([...sameYearPrices, ...existing.prices.filter(p => p.id < 0 && !s.priceYears.includes(
+      parseInt(p.effective_date.slice(0, 4))))].map(p => ({
+      effective_date: p.effective_date, price: String(p.price),
+    }))),
   }
 }

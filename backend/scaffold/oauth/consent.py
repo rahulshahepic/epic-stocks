@@ -71,6 +71,10 @@ li svg { flex: none; margin-top: .1875rem; }
   font-size: .8125rem; color: var(--text-2); background: var(--raised);
   border-radius: .625rem; padding: .625rem .75rem; margin-bottom: 1rem;
 }
+.edits { font-size: .875rem; line-height: 1.45; margin: 0 0 1rem; padding: .625rem .75rem;
+  border-radius: .5rem; border: 1px solid #d97706; background: rgba(217,119,6,.12); }
+.opt { display: flex; gap: .5rem; align-items: flex-start; font-size: .8125rem; margin: 0 0 1rem; }
+.opt input { margin-top: .2rem; }
 .who { font-size: .8125rem; color: var(--muted); margin-bottom: 1.25rem; word-break: break-all; }
 .actions { display: flex; gap: .5rem; }
 button {
@@ -106,6 +110,7 @@ def _page(title: str, body: str) -> str:
 def render_consent(*, client_name: str, redirect_origin: str, account_email: str,
                    scope_labels: list[str], request_token: str, csrf: str,
                    read_only: bool = True, writes_directly: bool = False,
+                   equity_write: bool = False,
                    app_name: str = "Epic Stocks") -> str:
     items = "".join(f"<li>{_CHECK}<span>{_esc(label)}</span></li>" for label in scope_labels)
     # The claim has to follow the scopes actually being granted. This is the one
@@ -118,12 +123,15 @@ def render_consent(*, client_name: str, redirect_origin: str, account_email: str
             "It will not be able to change anything — this connection is "
             "read-only. You can disconnect it at any time in Settings."
         )
+    elif writes_directly and equity_write:
+        # The warning above the list already says what it can change.
+        note = "You can disconnect it at any time in Settings."
     elif writes_directly:
         note = (
             "It will be able to change the things listed above as soon as you "
             "ask it to, without a further prompt. Your grants, prices, loans "
-            "and sales are not among them and cannot be changed by an "
-            "assistant. You can disconnect it at any time in Settings."
+            "and sales cannot be changed by an assistant with these permissions. "
+            "You can disconnect it at any time in Settings."
         )
     else:
         note = (
@@ -134,13 +142,22 @@ def render_consent(*, client_name: str, redirect_origin: str, account_email: str
     body = (
         f"<h1>{_esc(client_name)} wants to connect to {_esc(app_name)}</h1>"
         f"<p class=\"origin\">It will return you to <code>{_esc(redirect_origin)}</code></p>"
-        f"<ul>{items}</ul>"
+        + ("<p class=\"edits\"><strong>It can edit your data.</strong> When you ask "
+           "it to, it can add, change or remove your "
+           + ("grants, loans, prices, sales, " if equity_write else "")
+           + "salary and retirement balances straight away, without asking again "
+           "here. Tick <em>Read only</em> below if you only want it to look.</p>"
+           if writes_directly else "")
+        + f"<ul>{items}</ul>"
         f"<p class=\"note\">{note}</p>"
         f"<p class=\"who\">Signed in as {_esc(account_email)}</p>"
         "<form method=\"post\" action=\"/oauth/authorize\">"
         f"<input type=\"hidden\" name=\"request\" value=\"{_esc(request_token)}\">"
         f"<input type=\"hidden\" name=\"csrf\" value=\"{_esc(csrf)}\">"
-        "<div class=\"actions\">"
+        + ("<label class=\"opt\"><input type=\"checkbox\" name=\"read_only\" "
+           "value=\"1\"><span><strong>Read only</strong> — don't let it change or "
+           "prepare anything</span></label>" if not read_only else "")
+        + "<div class=\"actions\">"
         "<button class=\"deny\" type=\"submit\" name=\"decision\" value=\"deny\">Cancel</button>"
         "<button class=\"allow\" type=\"submit\" name=\"decision\" value=\"allow\">Connect</button>"
         "</div></form>"

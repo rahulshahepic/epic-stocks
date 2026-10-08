@@ -535,6 +535,11 @@ class EncryptionMiddleware:
         writing plaintext and reading placeholders for real ciphertext.
         """
         headers = dict(scope.get("headers", []))
+        # /mcp authenticates only the connector Bearer. A browser session for
+        # another account must not choose a different account's encryption key.
+        if scope.get("path") == "/mcp":
+            scheme, _, credential = headers.get(b"authorization", b"").decode().partition(" ")
+            return credential.strip() if scheme.lower() == "bearer" and credential.strip() else None
         cookie_header = headers.get(b"cookie", b"").decode()
         for part in cookie_header.split(";"):
             k, _, v = part.strip().partition("=")

@@ -120,6 +120,7 @@ jobs:
             LEGACY_MASTER_KEY=${LEGACY_MASTER_KEY}
             DOMAIN=${{ vars.DOMAIN }}
             APP_URL=https://${{ vars.DOMAIN }}
+            CHATGPT_UI_ORIGIN=${{ vars.CHATGPT_UI_ORIGIN }}
             ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}
             VAPID_PUBLIC_KEY=${VAPID_PUBLIC}
             VAPID_PRIVATE_KEY=${VAPID_PRIVATE}

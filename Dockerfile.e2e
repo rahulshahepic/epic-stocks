@@ -14,5 +14,7 @@ RUN npm install -g npm@11.19.1 && npm ci --no-audit
 
 COPY frontend/ ./
 COPY test_data/ /test_data/
+# The component harness reads the exact resource served by the MCP backend.
+COPY backend/app/mcp/portfolio.html /backend/app/mcp/portfolio.html
 
 CMD ["npx", "playwright", "test"]

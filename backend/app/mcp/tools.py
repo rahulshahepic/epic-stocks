@@ -5,9 +5,9 @@ service functions the HTTP routers call — the shared-view helpers in
 app/routers/, which already take an arbitrary user because sharing needed that
 first. Nothing here re-implements event computation and core.py is untouched.
 
-Results go back as a JSON text block. Every assistant reads that; only some
-read `structuredContent`, and declaring an output schema for eleven differently
-shaped payloads buys nothing the model cannot already parse.
+Results go back as a JSON text block. UI tools additionally declare an output
+schema and return structuredContent for the component; ordinary analysis tools
+keep their existing text behavior.
 """
 import json
 from dataclasses import dataclass
@@ -43,6 +43,8 @@ class Tool:
     read_only: bool = True
     idempotent: bool = True
     destructive: bool = False
+    metadata: dict[str, Any] | None = None
+    output_schema: dict[str, Any] | None = None
 
     def describe(self) -> dict[str, Any]:
         return {
@@ -50,6 +52,8 @@ class Tool:
             "title": self.title,
             "description": self.description,
             "inputSchema": self.input_schema,
+            **({"_meta": self.metadata} if self.metadata else {}),
+            **({"outputSchema": self.output_schema} if self.output_schema else {}),
             "annotations": {
                 "readOnlyHint": self.read_only,
                 "idempotentHint": self.idempotent,

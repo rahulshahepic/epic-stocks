@@ -1,0 +1,22 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "epic-stocks",
+  "version": "1.0.0",
+  "description": "Browse your Epic Stocks portfolio in ChatGPT and work with your account through scoped tools.",
+  "repository": "https://github.com/rahulshahepic/epic-stocks",
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Epic Stocks (Unofficial)",
+        "shortDescription": "Your stocks, loans and vesting schedule",
+        "longDescription": "See your current equity in an inline card, browse grants and loans, and inspect upcoming vesting events. Connect your own Epic Stocks account with OAuth. Editing remains subject to the permissions you grant. This is an independent app, not an official Epic product.",
+        "developerName": "Epic Stocks contributors",
+        "category": "Productivity",
+        "capabilities": ["Read", "Write"],
+        "brandColor": "#C41230",
+        "logo": "./assets/icon.svg",
+        "defaultPrompt": ["Show my Epic Stocks portfolio", "Show my upcoming vesting events", "Explain my outstanding stock loans"]
+      }
+    }
+  }
+}

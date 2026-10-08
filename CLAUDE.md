@@ -113,3 +113,5 @@ Follow the order in SPEC.md. Build backend first, then frontend. **Every step mu
 **Decided against:**
 - JWT refresh tokens — 30-day access tokens + seamless Google re-auth on expiry is sufficient (PWA-friendly)
 - Client-side (zero-knowledge) encryption — would break server-side event computation, Excel export, and push notifications
+
+- **MCP UI uses the connector boundary.** `show_equity` opens a versioned HTML resource; `refresh_equity_view` is app-only and reads the same registered services. Both require `equity:read`, are audited, and return structured data plus text fallback. The resource has no user data or external network access. At `/mcp`, `EncryptionMiddleware._token_from_scope` must select the Bearer token, as `require_connector` does, even if the request also carries another account's session cookie. App HTTP routes keep cookie precedence.

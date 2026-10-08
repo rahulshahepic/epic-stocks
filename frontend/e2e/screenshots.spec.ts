@@ -7,6 +7,7 @@ import * as path from 'path'
 import { fileURLToPath } from 'url'
 import AxeBuilder from '@axe-core/playwright'
 import { navigateTo } from './helpers.ts'
+import { pluginHost } from './plugin-host'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -86,6 +87,17 @@ test.describe('Screenshots', () => {
       }
     })
   })
+
+  for (const theme of ['light', 'dark'] as const) {
+    for (const size of ['mobile', 'desktop'] as const) {
+      test(`chatgpt plugin - ${theme} - ${size}`, async ({ page }) => {
+        await page.setViewportSize(size === 'mobile' ? MOBILE : DESKTOP)
+        const widget = await pluginHost(page, { theme })
+        await expect(widget.getByText('$225,000')).toBeVisible()
+        await shoot(page, `chatgpt-plugin-${theme}-${size}`, { fullPage: true })
+      })
+    }
+  }
 
   test('dashboard - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')

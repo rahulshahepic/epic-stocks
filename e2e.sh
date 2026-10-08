@@ -10,6 +10,14 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 echo "==> Type-checking frontend..."
 cd "$ROOT/frontend" && npx tsc -b --noEmit
 
+# The existing screenshot runner owns the temporary servers and their cleanup.
+# Opt in on machines without Docker; the normal CI path is unchanged.
+if [[ "${E2E_LOCAL:-0}" == "1" ]]; then
+  cd "$ROOT"
+  PLAYWRIGHT_SPECS="${PLAYWRIGHT_SPECS:-e2e/plugin-ui.spec.ts}" ./screenshots/run.sh
+  exit $?
+fi
+
 echo "==> Running E2E tests in Docker..."
 cd "$ROOT"
 docker compose -f docker-compose.e2e.yml up --build --abort-on-container-exit --exit-code-from playwright

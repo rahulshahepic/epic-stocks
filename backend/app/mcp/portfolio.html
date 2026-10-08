@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Epic Stocks portfolio</title>
+<style>
+:root { color-scheme:light dark; font-family:system-ui,-apple-system,sans-serif; --bg:#fffdf9; --fg:#292520; --muted:#655e55; --line:#ddd5c9; --soft:#f4eee5; --accent:#a20f2b; --on-accent:#fff; --warn:#715000; --warn-bg:#fff3ca; }
+@media(prefers-color-scheme:dark) { :root { --bg:#25221f; --fg:#f8f1e8; --muted:#ccc1b5; --line:#61564b; --soft:#332d27; --accent:#ffa0af; --on-accent:#39151e; --warn:#ffe4a1; --warn-bg:#45391f; } }
+:root[data-theme=light] { color-scheme:light; --bg:#fffdf9; --fg:#292520; --muted:#655e55; --line:#ddd5c9; --soft:#f4eee5; --accent:#a20f2b; --on-accent:#fff; --warn:#715000; --warn-bg:#fff3ca; }
+:root[data-theme=dark] { color-scheme:dark; --bg:#25221f; --fg:#f8f1e8; --muted:#ccc1b5; --line:#61564b; --soft:#332d27; --accent:#ffa0af; --on-accent:#39151e; --warn:#ffe4a1; --warn-bg:#45391f; }
+* { box-sizing:border-box; } body { margin:0; background:var(--bg); color:var(--fg); } main { max-width:960px; margin:auto; padding:20px; } header { display:flex; gap:12px; align-items:center; justify-content:space-between; } h1 { font-size:18px; margin:0 0 4px; } h2 { font-size:16px; margin:0 0 12px; } p { margin:0; line-height:1.5; } .muted, small { color:var(--muted); } small { font-size:12px; } .brand { display:flex; gap:10px; align-items:center; } .mark { width:32px; height:32px; flex:none; color:var(--accent); } button,input { font:inherit; color:inherit; } button { cursor:pointer; min-height:44px; padding:8px 12px; border:1px solid var(--line); border-radius:10px; background:var(--bg); } button:hover { background:var(--soft); } button:disabled { cursor:wait; opacity:.65; } :focus-visible { outline:3px solid var(--accent); outline-offset:3px; } nav { display:flex; gap:4px; margin:18px 0; } nav button { flex:1; font-size:13px; padding:8px 4px; border-color:transparent; } nav button[aria-pressed=true] { background:var(--accent); color:var(--on-accent); } .hero { padding:20px; background:var(--soft); border-radius:14px; margin-bottom:16px; } .value { font-size:clamp(25px,5vw,40px); font-weight:700; letter-spacing:-1px; overflow-wrap:anywhere; margin:6px 0; font-variant-numeric:tabular-nums; } .metrics { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:16px 0; } .metric { border:1px solid var(--line); border-radius:12px; padding:12px; min-width:0; } .metric strong { display:block; font-size:18px; margin-top:5px; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; } .note { padding:12px; background:var(--warn-bg); color:var(--warn); border-radius:10px; margin:12px 0; font-size:13px; } .row { border-top:1px solid var(--line); padding:14px 0; } .row strong { display:block; margin-bottom:5px; overflow-wrap:anywhere; } .row p { font-size:14px; } .badge { display:inline-block; border:1px solid var(--line); border-radius:6px; padding:2px 6px; font-size:12px; margin-top:6px; } #status { min-height:24px; font-size:13px; margin-bottom:8px; } footer { display:flex; gap:8px; align-items:center; justify-content:space-between; border-top:1px solid var(--line); padding-top:16px; margin-top:12px; } footer small { max-width:180px; } .filters { display:flex; flex-wrap:wrap; gap:10px; align-items:end; margin-bottom:16px; } label { display:flex; flex-direction:column; gap:5px; font-size:13px; flex:1; min-width:120px; } input { width:100%; min-height:44px; border:1px solid var(--line); border-radius:8px; background:var(--bg); padding:8px; } [hidden] { display:none !important; } #content { overflow-wrap:anywhere; } @media(min-width:600px) { main { padding:28px; } nav { max-width:480px; } .metrics { grid-template-columns:repeat(4,1fr); } }
+</style>
+</head>
+<body>
+<main>
+<header><div class="brand"><svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M3 28V8l13-5 13 5v20H3Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 23V16m8 7V11m8 12v-7" stroke="currentColor" stroke-width="3"/></svg><div><h1>Epic Stocks</h1><small>Unofficial · Your connected account</small></div></div><button id="expand" hidden>Expand</button></header>
+<nav aria-label="Portfolio views"><button data-view="summary" aria-pressed="true">Overview</button><button data-view="grants" aria-pressed="false">Grants</button><button data-view="loans" aria-pressed="false">Loans</button><button data-view="events" aria-pressed="false">Events</button></nav>
+<p id="status" role="status" aria-live="polite">Connecting to your portfolio…</p>
+<form id="filters" class="filters" hidden><label>From<input id="from" type="date" required></label><label>Through<input id="through" type="date" required></label><button type="submit">Apply</button></form>
+<section id="content" aria-label="Portfolio details" aria-busy="true"></section>
+<footer><small id="asof">Data stays in your account.</small><button id="refresh" disabled>Refresh</button><button id="explain" disabled>Explain this</button></footer>
+</main>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const pending = new Map();
+  let nextId = 0, connected = false, busy = false, current = null, hostContext = {};
+  const views = ['summary', 'grants', 'loans', 'events'];
+  function notify(method, params) { window.parent.postMessage({jsonrpc:'2.0', method, params}, '*'); }
+  function request(method, params) {
+    return new Promise((resolve, reject) => {
+      const id = ++nextId;
+      const timer = setTimeout(() => { pending.delete(id); reject(new Error('ChatGPT did not respond. Try Refresh.')); }, 20000);
+      pending.set(id, {resolve, reject, timer});
+      window.parent.postMessage({jsonrpc:'2.0', id, method, params}, '*');
+    });
+  }
+  function el(tag, text, cls) { const node = document.createElement(tag); if(text !== undefined) node.textContent = text; if(cls) node.className = cls; return node; }
+  function money(value) { return typeof value === 'number' && Number.isFinite(value) ? new Intl.NumberFormat('en-US', {style:'currency', currency:'USD', maximumFractionDigits:0}).format(value) : 'Not available'; }
+  function number(value) { return typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString('en-US') : 'Not available'; }
+  function when(value) { if(!/^\d{4}-\d{2}-\d{2}$/.test(value ?? '')) return 'Not available'; const d = new Date(value+'T12:00:00'); return Number.isNaN(d.getTime()) ? 'Not available' : d.toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}); }
+  function metric(label, value) { const node=el('div',undefined,'metric'); node.append(el('small',label),el('strong',value)); return node; }
+  function row(title, details, badge) { const node=el('article',undefined,'row'); node.append(el('strong',title),el('p',details,'muted')); if(badge) node.append(el('span',badge,'badge')); return node; }
+  function note(text) { return el('p',text,'note'); }
+  function setBusy(value) {
+    busy=value; $('content').setAttribute('aria-busy',String(value));
+    document.querySelectorAll('nav button, #refresh, #explain, #filters button').forEach(b => b.disabled=value || !connected);
+    if(!current) $('explain').disabled=true;
+  }
+  function contextChanged(context) {
+    hostContext={...hostContext,...context};
+    if(hostContext.theme === 'light' || hostContext.theme === 'dark') document.documentElement.dataset.theme=hostContext.theme;
+    const modes=hostContext.availableDisplayModes ?? [];
+    $('expand').hidden=!(modes.includes('fullscreen') || window.openai?.requestDisplayMode);
+    $('expand').textContent=hostContext.displayMode === 'fullscreen' ? 'Collapse' : 'Expand';
+  }
+  function render(snapshot) {
+    if(!snapshot || !views.includes(snapshot.view) || !snapshot.data || typeof snapshot.data !== 'object') throw new Error('The portfolio response could not be displayed. Try Refresh.');
+    current=snapshot; const data=snapshot.data, root=$('content'); root.replaceChildren();
+    document.querySelectorAll('nav button').forEach(b => b.setAttribute('aria-pressed',String(b.dataset.view===snapshot.view)));
+    $('filters').hidden=snapshot.view!=='events'; $('asof').textContent='Read '+when(snapshot.as_of);
+    if(snapshot.view==='events' && /^\d{4}-\d{2}-\d{2}$/.test(snapshot.as_of)) {
+      if(!$('from').value) $('from').value=snapshot.as_of;
+      if(!$('through').value) { const end=new Date(snapshot.as_of+'T12:00:00Z'); end.setUTCDate(end.getUTCDate()+365); $('through').value=end.toISOString().slice(0,10); }
+    }
+    if(data.projection_warning) root.append(note(data.projection_warning));
+    if(snapshot.view==='summary') {
+      const hero=el('div',undefined,'hero');
+      hero.append(el('p',data.price_is_estimate ? 'Net equity · assumed price' : 'Net equity'),el('div',money(data.net_equity),'value'),el('small','Stock value less outstanding loans and accrued interest'));
+      root.append(hero);
+      if(data.net_equity==null) root.append(note('No current valuation is available. Add your share price in Epic Stocks to see a value.'));
+      const metrics=el('div',undefined,'metrics');
+      metrics.append(metric('Stock value',money(data.total_stock_value)),metric('Outstanding loans',money(data.outstanding_loan_balance)),metric('Held vested shares',number(data.held_vested_shares)),metric('Accrued interest',money(data.accrued_unbooked_interest)));
+      root.append(metrics,el('p','Already-purchased unvested shares are valued at cost. Future scheduled shares are not current holdings.','muted'));
+      if(data.next_event) root.append(row('Next scheduled event',when(data.next_event.date)+' · '+data.next_event.event_type));
+    } else if(snapshot.view==='grants') {
+      root.append(el('h2','Your grants'));
+      if(!data.grants?.length) root.append(el('p','No grants recorded yet. Add them in Epic Stocks or ask ChatGPT to help enter a grant.','muted'));
+      for(const g of data.grants ?? []) root.append(row(g.year+' · '+g.type,number(g.shares)+' shares · '+g.periods+' vesting periods · Starts '+when(g.vest_start)));
+    } else if(snapshot.view==='loans') {
+      const hero=el('div',undefined,'hero'); hero.append(el('p','Outstanding principal'),el('div',money(data.total_outstanding),'value')); root.append(hero);
+      root.append(el('p','Refinance history is included below. Replaced loans are not additional debt.','muted'));
+      if(!data.loans?.length) root.append(el('p','No loans recorded.','muted'));
+      for(const l of data.loans ?? []) root.append(row(l.grant_year+' · '+l.loan_type+' loan',money(l.balance)+' remaining · '+number(l.interest_rate*100)+'% · Due '+when(l.due_date),String(l.status ?? '').replaceAll('_',' ')));
+    } else {
+      root.append(el('h2','Scheduled events'));
+      if(data.truncated) root.append(note('Showing '+data.returned+' of '+data.matched+' events. Narrow the dates to see the rest.'));
+      if(!data.events?.length) root.append(el('p','No events in this date range. Try a wider range.','muted'));
+      for(const e of data.events ?? []) root.append(row(when(e.date)+' · '+e.event_type,(e.grant_year ? e.grant_year+' · '+(e.grant_type ?? '') : 'Account event')+(typeof e.vested_shares==='number' && e.vested_shares!==0 ? ' · '+number(e.vested_shares)+' shares' : ''), e.valuation_is_projected ? 'Monetary values are projected' : undefined));
+    }
+    $('status').textContent='';
+    setBusy(false);
+    // Persist presentation state only, never private balances or credentials.
+    window.openai?.setWidgetState?.({view:snapshot.view});
+    notify('ui/notifications/size-changed',{height:Math.ceil(document.querySelector('main').getBoundingClientRect().height)});
+  }
+  function accept(result) {
+    if(result?.isError) throw new Error(result.content?.find(c=>c.type==='text')?.text || 'Unable to read this account.');
+    render(result?.structuredContent);
+  }
+  async function load(view) {
+    if(busy || !connected) return;
+    const args={view,account:'me'};
+    if(view==='events') { if($('from').value) args.from_date=$('from').value; if($('through').value) args.to_date=$('through').value; }
+    setBusy(true); $('status').textContent='Reading your '+view+'…';
+    try { accept(await request('tools/call',{name:'refresh_equity_view',arguments:args})); }
+    catch(error) { $('status').textContent=(current ? 'The displayed data was not refreshed. ' : '')+(error.message || 'Unable to read this account.'); }
+    finally { setBusy(false); }
+  }
+  window.addEventListener('message',event => {
+    if(event.source!==window.parent) return;
+    const message=event.data;
+    if(!message || message.jsonrpc!=='2.0') return;
+    if(message.id!==undefined && !message.method) {
+      const p=pending.get(message.id); if(!p) return; clearTimeout(p.timer); pending.delete(message.id);
+      if(message.error) p.reject(new Error(message.error.message || 'ChatGPT could not complete this request.')); else p.resolve(message.result); return;
+    }
+    if(message.method==='ui/notifications/host-context-changed') contextChanged(message.params ?? {});
+    if(message.method==='ui/notifications/tool-input') { const a=message.params?.arguments ?? {}; $('from').value=a.from_date ?? ''; $('through').value=a.to_date ?? ''; }
+    if(message.method==='ui/notifications/tool-result') { try { accept(message.params); } catch(error) { $('status').textContent=error.message; setBusy(false); } }
+    if(message.method==='ui/notifications/tool-cancelled') { $('status').textContent='The portfolio request was cancelled. Try Refresh.'; setBusy(false); }
+    if(message.method==='ui/resource-teardown' && message.id!==undefined) window.parent.postMessage({jsonrpc:'2.0',id:message.id,result:{}},'*');
+  });
+  document.querySelectorAll('nav button').forEach(b => b.addEventListener('click',()=>load(b.dataset.view)));
+  $('refresh').addEventListener('click',()=>load(current?.view ?? 'summary'));
+  $('filters').addEventListener('submit',event => { event.preventDefault(); void load('events'); });
+  $('explain').addEventListener('click',async()=>{
+    if(!current) return;
+    const range=current.view==='events' ? ' for '+($('from').value || 'today')+' through '+($('through').value || 'one year from today') : '';
+    const prompt='Explain my Epic Stocks '+current.view+' view'+range+', read as of '+current.as_of+'. Use the account tools to verify figures and distinguish actual valuations from assumptions.';
+    try { await request('ui/message',{role:'user',content:[{type:'text',text:prompt}]}); }
+    catch(error) { $('status').textContent=error.message; }
+  });
+  $('expand').addEventListener('click',async()=>{
+    const mode=hostContext.displayMode==='fullscreen' ? 'inline' : 'fullscreen';
+    try {
+      const result=window.openai?.requestDisplayMode ? await window.openai.requestDisplayMode({mode}) : await request('ui/request-display-mode',{mode});
+      contextChanged({displayMode:result?.mode ?? mode});
+    } catch(error) { $('status').textContent=error.message || 'This display mode is unavailable.'; }
+  });
+  new ResizeObserver(()=>{ if(connected) notify('ui/notifications/size-changed',{height:Math.ceil(document.querySelector('main').getBoundingClientRect().height)}); }).observe(document.querySelector('main'));
+  setBusy(true);
+  request('ui/initialize',{appInfo:{name:'epic-stocks-portfolio',version:'1.0.0'},appCapabilities:{},protocolVersion:'2026-01-26'}).then(result=>{
+    connected=true; contextChanged(result?.hostContext ?? {});
+    notify('ui/notifications/initialized',{}); setBusy(false);
+    // Entrypoints are bootstrapped by their tool result, just like inline cards.
+  }).catch(error=>{ $('status').textContent=error.message; setBusy(false); });
+})();
+</script>
+</body>
+</html>

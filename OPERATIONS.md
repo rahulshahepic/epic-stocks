@@ -414,3 +414,7 @@ docker compose up -d
 - The deploy job creates a 2 GB swapfile on first run; verify it's still active: `swapon --show`
 - Check memory: `free -h` and `docker stats`
 - If the DB container was OOM-killed, PostgreSQL will recover on restart: `docker compose restart db`
+
+### ChatGPT portfolio UI
+
+The optional GitHub environment variable `CHATGPT_UI_ORIGIN` is carried into the deploy `.env` and the app container. For public UI submission it must be a unique HTTPS origin owned by this plugin; omit it during development to use the host sandbox. After a tool/resource metadata change, refresh the connection in ChatGPT Plugins. See [host acceptance and rollout](docs/chatgpt-plugin.md).

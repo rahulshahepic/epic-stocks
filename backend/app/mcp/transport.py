@@ -14,6 +14,7 @@ An unhandled exception would be a 500, and a 500 writes an error_logs row —
 which the nightly job then counts against the 500-row window that real
 tracebacks live in. A confused assistant must not be able to evict them.
 """
+import json
 import logging
 from typing import Any
 
@@ -26,7 +27,8 @@ from scaffold.oauth import audit
 from scaffold.oauth.resource import Connector, require_connector
 from scaffold.oauth.settings import mcp_enabled
 from scaffold.rate_limit import check_rate_shared
-from . import comp_tools, equity_tools, import_tools, read_tools  # noqa: F401
+from . import comp_tools, equity_tools, import_tools, read_tools, ui_tools  # noqa: F401
+from .ui_tools import RESOURCE_URI, resource_contents, resource_descriptor
 from .tools import REGISTRY, ToolContext, as_result, visible_to
 
 logger = logging.getLogger(__name__)
@@ -152,9 +154,12 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext) -> d
         version = asked if asked in SUPPORTED_PROTOCOL_VERSIONS else PROTOCOL_VERSION
         return _result(request_id, {
             "protocolVersion": version,
-            "capabilities": {"tools": {"listChanged": False}},
+            "capabilities": {"tools": {"listChanged": False}, "resources": {"listChanged": False}},
             "serverInfo": {"name": "epic-stocks", "title": "Epic Stocks", "version": "1"},
             "instructions": (
+                "Use show_equity when someone asks to see or browse their "
+                "portfolio; it opens an interactive view. Use the other read "
+                "tools for analysis without opening a card.\n\n"
                 "Equity vesting, loans, sales and tax figures for the signed-in "
                 "account.\n\n"
                 "Call explain before reasoning about the numbers. This is a "
@@ -205,6 +210,20 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext) -> d
             "tools": [tool.describe() for tool in visible_to(connector)],
         })
 
+    if method == "resources/list":
+        resources = [resource_descriptor()] if "equity:read" in connector.scopes else []
+        return _result(request_id, {"resources": resources})
+
+    if method == "resources/templates/list":
+        return _result(request_id, {"resourceTemplates": []})
+
+    if method == "resources/read":
+        if params.get("uri") != RESOURCE_URI:
+            return _error(request_id, INVALID_PARAMS, "Unknown resource")
+        if "equity:read" not in connector.scopes:
+            return _error(request_id, INVALID_PARAMS, "This resource requires equity:read")
+        return _result(request_id, {"contents": [resource_contents()]})
+
     if method == "tools/call":
         return _call_tool(params, request_id, ctx)
 
@@ -248,7 +267,12 @@ def _call_tool(params: dict, request_id: Any, ctx: ToolContext) -> dict:
         arguments = {}
 
     try:
-        answer = _result(request_id, as_result(tool.handler(ctx, arguments)))
+        payload = tool.handler(ctx, arguments)
+        result = as_result(payload)
+        if tool.output_schema is not None:
+            # Normalize dates exactly as in the text fallback.
+            result["structuredContent"] = json.loads(result["content"][0]["text"])
+        answer = _result(request_id, result)
     except ValueError as exc:
         # A bad argument is a finding the model can act on, not a crash.
         audit.finish_tool_call(ctx.db, entry, audit.ERROR)

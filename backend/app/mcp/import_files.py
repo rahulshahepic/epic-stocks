@@ -78,7 +78,7 @@ def download_file(ref):
             expired.set()
             try:
                 download_socket.shutdown(socket.SHUT_RDWR)
-            except OSError:
+            except (OSError, ValueError):
                 pass
         # read()/header parsing may perform many socket reads. A watchdog also
         # interrupts a slow drip inside a single HTTP parser operation.
@@ -110,6 +110,10 @@ def download_file(ref):
         if expired.is_set():
             raise ValueError("The file download took too long. Select it again.") from None
         raise ValueError("The file could not be downloaded. Select it again.") from None
+    except ValueError:
+        if expired.is_set():
+            raise ValueError("The file download took too long. Select it again.") from None
+        raise
     finally:
         if timer:
             timer.cancel()

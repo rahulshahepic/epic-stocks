@@ -321,6 +321,44 @@ def test_download_deadline_interrupts_slow_drip(phase, monkeypatch):
         reader.close()
 
 
+@pytest.mark.parametrize("timeout", [False, True])
+def test_tls_shutdown_value_error_only_maps_to_timeout_when_watchdog_fired(monkeypatch, timeout):
+    import threading
+    from urllib.parse import urlsplit
+    from app.mcp import import_files
+    stopped = threading.Event()
+    class Socket:
+        def shutdown(self, how):
+            stopped.set()
+    class Response:
+        status = 200
+        def getheader(self, *args):
+            return "identity"
+        def read1(self, limit):
+            if timeout:
+                assert stopped.wait(1), "The watchdog did not close the socket"
+                raise ValueError("Read on closed or unwrapped SSL socket.")
+            raise ValueError("Unrelated file error")
+        def close(self):
+            pass
+    class Connection:
+        def __init__(self, *args):
+            self.sock = Socket()
+        def connect(self):
+            pass
+        def request(self, *args):
+            pass
+        def getresponse(self):
+            return Response()
+        def close(self):
+            pass
+    monkeypatch.setattr(import_files, "_destination", lambda url: (urlsplit("https://files.oaiusercontent.com/test"), "8.8.8.8"))
+    monkeypatch.setattr(import_files, "_PinnedConnection", Connection)
+    monkeypatch.setattr(import_files, "DOWNLOAD_TIMEOUT", 0.02)
+    with pytest.raises(ValueError, match="too long" if timeout else "Unrelated file error"):
+        import_files.download_file({"file_id": "file-test", "download_url": "unused"})
+
+
 def test_review_blocks_ambiguous_payment_loan_numbers(mcp):
     seed(mcp.client)
     from tests.test_mcp_tools import LOAN

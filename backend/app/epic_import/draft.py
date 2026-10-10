@@ -463,7 +463,7 @@ def _finite_int(v) -> int:
     return int(round(f))
 
 
-def draft_from_payload(payload: dict, sk: Skeleton) -> tuple[Draft, list[Finding]]:
+def draft_from_payload(payload: dict, sk: Skeleton, *, allow_empty_grants: bool = False) -> tuple[Draft, list[Finding]]:
     """Read a draft returned by an assistant. Tolerant about shape, strict about types.
 
     Nothing in here may raise: the payload is whatever an assistant handed the
@@ -479,7 +479,7 @@ def draft_from_payload(payload: dict, sk: Skeleton) -> tuple[Draft, list[Finding
     draft = Draft(origin="supplied", statement_date=_d(payload.get("statement_date")))
 
     grants = payload.get("grants")
-    if not isinstance(grants, list) or not grants:
+    if not isinstance(grants, list) or (not grants and not allow_empty_grants):
         return draft, [Finding("R1", ERROR, "",
                                "No 'grants' array in the JSON. Paste the whole object the "
                                "assistant produced, starting at '{'.")]

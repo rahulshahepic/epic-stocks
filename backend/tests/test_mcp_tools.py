@@ -119,12 +119,13 @@ WRITING_TOOLS = {
     "stage_import",
     "add_compensation", "remove_compensation", "set_retirement_accounts",
     "save_equity", "remove_equity",
+    "analyze_import_files", "prepare_import_review", "accept_import_review",
 }
 
 # Of those, the ones that can take something away. stage_import stages a
 # proposal the user accepts elsewhere and the two comp writers only add or
 # amend; deleting history is the one that destroys.
-DESTRUCTIVE_TOOLS = {"remove_compensation", "remove_equity"}
+DESTRUCTIVE_TOOLS = {"remove_compensation", "remove_equity", "accept_import_review"}
 
 
 def test_every_tool_is_listed_and_annotated_honestly(mcp):
@@ -507,7 +508,7 @@ def test_every_tool_survives_garbage_arguments(mcp, name):
 
 
 @pytest.mark.parametrize("name", sorted(REGISTRY))
-def test_every_successful_tool_result_is_parseable_json(mcp, name):
+def test_every_successful_tool_result_is_parseable_json(mcp, name, monkeypatch):
     """The payload is a JSON text block, so it has to actually parse."""
     required = {
         "estimate_sale": {"price_per_share": 4.0, "shares": 10},
@@ -529,5 +530,14 @@ def test_every_successful_tool_result_is_parseable_json(mcp, name):
     if name == "remove_equity":
         row = mcp.call("list_sales")["sales"][0]
         arguments = {"kind": "sale", "id": row["id"], "version": row["version"]}
+    if name == "analyze_import_files":
+        monkeypatch.setattr("app.mcp.import_ui.download_file", lambda ref: b"Synthetic award letter")
+        arguments = {"files": [{"file_id": "file-test", "download_url": "unused", "file_name": "letter.txt"}]}
+    if name in {"prepare_import_review", "accept_import_review"}:
+        from tests.test_mcp_chat_import import RETENTION
+        arguments = {"payload": {"grants": [RETENTION], "prices": []}}
+        if name == "accept_import_review":
+            review = mcp.call("prepare_import_review", **arguments)["data"]
+            arguments = {"review_token": review["review_token"], "confirmed": True}
     payload = mcp.call(name, **arguments)
     assert isinstance(payload, (dict, list))

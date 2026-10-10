@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
-import { pluginHost, snapshots } from './plugin-host'
+import { pluginHost, snapshots, importReviewSnapshot } from './plugin-host'
 
 test('portfolio reads, filters, expansion and conversation context', async ({page}) => {
   const widget = await pluginHost(page)
@@ -48,7 +48,7 @@ for (const theme of ['light','dark'] as const) {
   test(`mobile layout and accessibility - ${theme}`, async ({page}) => {
     await page.setViewportSize({width:375,height:812})
     const widget = await pluginHost(page,{theme})
-    for (const view of ['Overview','Grants','Loans','Events']) {
+    for (const view of ['Overview','Grants','Loans','Events','Import']) {
       await widget.getByRole('button',{name:view,exact:true}).click()
       await expect(widget.locator('#content')).toHaveAttribute('aria-busy','false')
       const frame = page.frames()[1]
@@ -56,5 +56,73 @@ for (const theme of ['light','dark'] as const) {
       const audit = await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa']).analyze()
       expect(audit.violations).toEqual([])
     }
+  })
+}
+
+test('custom grant can be added, confirmed, reviewed and saved without a template', async ({page}) => {
+  const widget = await pluginHost(page)
+  await widget.getByRole('button',{name:'Import',exact:true}).click()
+  await widget.getByRole('button',{name:'Add a new grant type',exact:true}).click()
+  await widget.getByLabel('Grant name',{exact:true}).fill('Retention')
+  await widget.getByLabel('Grant year',{exact:true}).fill('2025')
+  await widget.getByLabel('Total shares',{exact:true}).fill('500')
+  await widget.getByLabel('What you paid per share (0 = taxed at vest)',{exact:true}).fill('0')
+  await widget.getByLabel('First vesting date',{exact:true}).fill('2026-03-01')
+  await widget.getByLabel('Annual vesting periods',{exact:true}).fill('2')
+  await widget.getByLabel('Exercise / purchase date',{exact:true}).fill('2025-12-31')
+  await widget.getByLabel('I confirm these vesting dates, annual periods and exercise date').check()
+  await widget.getByLabel('I confirm this cost basis, including whether it is zero').check()
+  await widget.getByRole('button',{name:'Check changes',exact:true}).click()
+  await expect(widget.getByRole('status')).toContainText('Checks complete.')
+  await expect(widget.getByRole('button',{name:'Save confirmed import'})).toBeDisabled()
+  await widget.getByLabel('I reviewed these changes, including any loans being removed, and want to save them').check()
+  await expect(widget.getByRole('button',{name:'Save confirmed import'})).toBeEnabled()
+  await widget.getByLabel('Annual vesting periods',{exact:true}).fill('3')
+  await expect(widget.getByRole('button',{name:'Save confirmed import'})).toBeDisabled()
+  await expect(widget.getByLabel('I confirm these vesting dates, annual periods and exercise date')).not.toBeChecked()
+  await widget.getByLabel('I confirm these vesting dates, annual periods and exercise date').check()
+  await widget.getByLabel('I confirm this cost basis, including whether it is zero').check()
+  await widget.getByRole('button',{name:'Check changes',exact:true}).click()
+  await expect(widget.getByRole('status')).toContainText('Checks complete.')
+  await widget.getByLabel('I reviewed these changes, including any loans being removed, and want to save them').check()
+  await widget.getByRole('button',{name:'Save confirmed import'}).click()
+  await expect(widget.getByText('Import saved',{exact:true})).toBeVisible()
+})
+
+test('local and existing ChatGPT files use host references and parser roles', async ({page}) => {
+  const widget = await pluginHost(page,{fileHelpers:true})
+  await widget.getByRole('button',{name:'Import',exact:true}).click()
+  await widget.getByLabel('PDFs, CSVs, Excel, JSON, letters or screenshots').setInputFiles({name:'summary.csv',mimeType:'text/csv',buffer:Buffer.from('synthetic')})
+  await expect(widget.getByText('summary.csv',{exact:true})).toBeVisible()
+  await widget.getByRole('button',{name:'Choose ChatGPT files'}).click()
+  await expect(widget.getByText('letter.pdf',{exact:true})).toBeVisible()
+  await widget.getByRole('button',{name:'Try parsing files'}).click()
+  await expect(widget.getByLabel('Grant name',{exact:true})).toHaveValue('Retention')
+  await widget.getByRole('button',{name:'Ask ChatGPT to help'}).click()
+  await expect.poll(async()=>page.evaluate(()=>(window as unknown as {pluginCalls:{method:string}[]}).pluginCalls.some(c=>c.method==='ui/message'))).toBe(true)
+  const calls=await page.evaluate(()=>(window as unknown as {pluginCalls:{method:string;params:Record<string,unknown>}[]}).pluginCalls)
+  const parse=calls.find(c=>c.params.name==='analyze_import_files')
+  expect(parse).toBeDefined()
+  expect(JSON.stringify(parse)).toContain('share_csv')
+  expect(JSON.stringify(parse)).toContain('evidence')
+  expect(calls.some(c=>c.method==='ui/message' && JSON.stringify(c).includes('new grant type'))).toBe(true)
+})
+
+test('proposal-only connection cannot enable save', async ({page}) => {
+  const widget=await pluginHost(page,{view:'import',savePermission:false,initial:{view:'import',data:{can_save:false,blocked:false,review_token:'not-authorized',payload:{grants:[],prices:[],sales:[]}}}})
+  await widget.getByLabel('I reviewed these changes, including any loans being removed, and want to save them').check()
+  await expect(widget.getByRole('button',{name:'Save confirmed import'})).toBeDisabled()
+  await expect(widget.getByText('This connection cannot save equity.',{exact:false})).toBeVisible()
+})
+
+for(const theme of ['light','dark'] as const) {
+  test(`custom grant review accessibility - ${theme}`,async({page})=>{
+    await page.setViewportSize({width:375,height:812})
+    const widget=await pluginHost(page,{theme,initial:importReviewSnapshot,fileHelpers:true})
+    await expect(widget.getByLabel('Grant name',{exact:true})).toHaveValue('Retention Award')
+    const frame=page.frames()[1]
+    expect(await frame.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true)
+    const audit=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa']).analyze()
+    expect(audit.violations).toEqual([])
   })
 }

@@ -9,7 +9,7 @@ from .read_tools import _opt_date
 from .accounts import ACCOUNT_PROPERTY
 from .tools import REGISTRY, Tool, ToolContext, object_schema, register
 
-RESOURCE_URI = "ui://epic-stocks/portfolio-v1.html"
+RESOURCE_URI = "ui://epic-stocks/portfolio-v2.html"
 MIME_TYPE = "text/html;profile=mcp-app"
 VIEWS = {"summary": "get_dashboard", "grants": "list_grants", "loans": "list_loans", "events": "list_events"}
 
@@ -32,7 +32,7 @@ def resource_contents() -> dict:
         "_meta": {
             "ui": ui,
             "openai/ui": {"availableDisplayModes": ["inline", "fullscreen"]},
-            "openai/widgetDescription": "An interactive Epic Stocks portfolio: current net equity, grants, loans and scheduled events. Projected values are labelled. The card already shows the figures; avoid repeating them all.",
+            "openai/widgetDescription": "An interactive Epic Stocks portfolio and import wizard. Select files, review parsing findings, create custom grants, and confirm the exact changes before saving. Projected values are labelled. Avoid repeating figures already displayed.",
         },
     }
 

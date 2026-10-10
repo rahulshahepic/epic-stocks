@@ -14,7 +14,7 @@ from scaffold.auth import get_current_user
 from scaffold.safe_workbook import WorkbookRejected, load_workbook_safely
 from app.date_utils import to_date as _to_date
 from schemas import (DownPaymentShares, InputModel, MAX_BULK_ITEMS, MAX_LABEL_LEN,
-                     Notes, SharePrice, Shares, bounded, bounded_list)
+                     Notes, SharePrice, Shares, IsoDate, LoanNumber, Money, bounded, bounded_list)
 from scaffold.quota import check_row_count, check_row_quota
 from app import event_cache
 
@@ -256,10 +256,18 @@ class WizardSale(InputModel):
         return v
 
 
+class WizardPayment(InputModel):
+    loan_number: LoanNumber
+    date: IsoDate
+    amount: Money
+    notes: Notes = ""
+
+
 class WizardSubmitRequest(InputModel):
     grants: list[WizardGrant]
     prices: list[WizardPrice]
     sales: list[WizardSale] = Field(default_factory=list)
+    loan_payments: list[WizardPayment] = Field(default_factory=list)
     reported_sold_shares: int | None = Field(default=None, ge=0, le=MAX_BULK_ITEMS * 10_000_000)
     sale_grant_keys: list[Annotated[str, Field(max_length=MAX_LABEL_LEN + 5)]] = Field(
         default_factory=list)
@@ -268,7 +276,7 @@ class WizardSubmitRequest(InputModel):
     preserve_grant_ids: list[int] = Field(default_factory=list)
     preserve_price_ids: list[int] = Field(default_factory=list)
 
-    @field_validator("grants", "prices", "sales", "sale_grant_keys", "preserve_grant_ids", "preserve_price_ids")
+    @field_validator("grants", "prices", "sales", "loan_payments", "sale_grant_keys", "preserve_grant_ids", "preserve_price_ids")
     @classmethod
     def list_bounded(cls, v):
         return bounded_list(v, MAX_BULK_ITEMS, "list")
@@ -295,6 +303,7 @@ class WizardSubmitResponse(InputModel):
     payoff_sales: int
     sales: int = 0
     existing_sales: int = 0
+    loan_payments: int = 0
 
 
 # ── Preview diff models ───────────────────────────────────────────────────────
@@ -436,6 +445,7 @@ def submit(
         check_row_count(Price, len(body.prices))
         check_row_count(Loan, incoming_loans)
         check_row_count(Sale, len(sales_to_create))
+        check_row_count(LoanPayment, len(body.loan_payments))
     else:
         check_row_quota(db, Grant, user.id, adding=len(body.grants))
         check_row_quota(db, Price, user.id, adding=len(body.prices))
@@ -521,6 +531,26 @@ def submit(
     ]
     db.add_all(sales)
 
+    payment_count = 0
+    existing_payments = Counter((lp.loan_id, lp.date, lp.amount) for lp in
+                               db.query(LoanPayment).filter(LoanPayment.user_id == user.id))
+    for payment in body.loan_payments:
+        loan = all_loans_by_number.get(payment.loan_number)
+        if loan is None:
+            raise HTTPException(status_code=422, detail="A payment names a loan number not present in this account or import")
+        key = (loan.id, _to_date(payment.date), payment.amount)
+        if existing_payments[key]:
+            existing_payments[key] -= 1
+            continue
+        check_row_quota(db, LoanPayment, user.id)
+        db.add(LoanPayment(user_id=user.id, loan_id=loan.id, date=key[1],
+                           amount=payment.amount, notes=payment.notes))
+        db.flush()
+        payment_count += 1
+    if payment_count:
+        from app.routers.loans import _regenerate_future_payoff_sales
+        _regenerate_future_payoff_sales(user, db, create_missing=False, commit=False)
+
     db.commit()
 
     event_cache.schedule_recompute(user.id)
@@ -532,6 +562,7 @@ def submit(
         payoff_sales=payoff_count,
         sales=len(sales),
         existing_sales=len(body.sales) - len(sales),
+        loan_payments=payment_count,
     )
 
 
@@ -608,8 +639,15 @@ def _merge(
     preserve_grant_ids = set(body.preserve_grant_ids)
     preserve_price_ids = set(body.preserve_price_ids)
 
-    # Delete auto-generated payoff sales — they'll be regenerated from the new loan set
-    db.query(Sale).filter(Sale.user_id == user_id, Sale.loan_id.isnot(None)).delete()
+    # Only the incoming or removed grants rebuild their loan set. A partial
+    # plugin import must keep payoff sales on grants preserved by identity.
+    affected_keys = wizard_grant_keys | {
+        key for key, g in existing_grants.items()
+        if key not in wizard_grant_keys and g.id not in preserve_grant_ids
+    }
+    affected_loan_ids = [l.id for l in db.query(Loan).filter(Loan.user_id == user_id)
+                         if (l.grant_year, l.grant_type) in affected_keys]
+    db.query(Sale).filter(Sale.user_id == user_id, Sale.loan_id.in_(affected_loan_ids)).delete()
 
     # Delete orphaned grants (not in wizard, not preserved) and their loans
     for key, g in existing_grants.items():

@@ -377,3 +377,21 @@ def test_json_array_is_reported_without_losing_original_files(mcp, monkeypatch):
     monkeypatch.setattr(import_ui, "download_file", lambda ref: b"[]")
     data = mcp.call("analyze_import_files", files=[{"file_id": "draft", "download_url": "unused", "file_name": "draft.json", "role": "draft"}])["data"]
     assert data["blocked"] and data["files"] and data["source_notes"]
+
+
+def test_tentative_price_dates_survive_plugin_review_and_acceptance(mcp):
+    data = review(mcp, prices=[{"effective_date": "2020-01-01", "price": 110,
+        "is_estimate": True, "expected_announcement_date": "2020-03-01"}])
+    assert not data["blocked"], data
+    assert accept(mcp, data)["saved"]
+    price = mcp.client.get("/api/prices").json()[0]
+    assert price["is_estimate"] is True
+    assert price["expected_announcement_date"] == "2020-03-01"
+    assert price["announced_date"] is None
+    data = review(mcp, prices=[{"effective_date": "2020-01-01", "price": 112,
+        "announced_date": "2020-02-27"}])
+    assert not data["blocked"], data
+    assert accept(mcp, data)["saved"]
+    prices = mcp.client.get("/api/prices").json()
+    assert len(prices) == 1 and prices[0]["is_estimate"] is False
+    assert prices[0]["announced_date"] == "2020-02-27"

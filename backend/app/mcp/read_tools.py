@@ -16,6 +16,7 @@ from scaffold.models import Grant, Loan, Price, Sale
 from scaffold.oauth.scopes import COMP_READ, EQUITY_READ
 from .accounts import ACCOUNT_PROPERTY, resolve_account
 from .tools import Tool, ToolContext, object_schema, register
+from services.price_state import price_metadata
 
 MAX_EVENTS = 2000
 DEFAULT_EVENT_LIMIT = 500
@@ -91,7 +92,7 @@ def _as_date(value) -> date | None:
 
 def _rows(model, owner, db, order):
     return [
-        {c.name: getattr(row, c.name) for c in model.__table__.columns if c.name != "user_id"}
+        {c.name: getattr(row, c.name) for c in model.__table__.columns if c.name not in {"user_id", "announcement_notified_at"}}
         for row in db.query(model).filter(model.user_id == owner.id).order_by(order).all()
     ]
 
@@ -112,7 +113,7 @@ def _get_dashboard(ctx: ToolContext, args: dict):
     # is still the price in effect. The flag alone is easy to skim past.
     if payload.get("price_is_estimate"):
         payload["projection_warning"] = (
-            "The price in effect today is one the user assumed for planning, "
+            "The applicable price is tentative pending an actual announcement. It is a planning assumption, "
             "not a real valuation, so every figure here is derived from it. "
             "Say so before quoting any of them."
         )
@@ -184,7 +185,9 @@ def _list_events(ctx: ToolContext, args: dict):
         price = None
         if prices and when_date:
             price = prices[max(0, bisect_right(price_dates, when_date) - 1)]
-        event["price_is_estimate"] = bool(price and price.is_estimate)
+        if price:
+            event.update(price_metadata(price))
+        event["price_is_estimate"] = bool(price and price_metadata(price)["price_is_estimate"])
         event["valuation_is_projected"] = bool(
             when_date and (when_date > today or event["price_is_estimate"])
         )
@@ -352,14 +355,7 @@ register(Tool(
 
 
 def _list_prices(ctx: ToolContext, args: dict):
-    """Real valuations by default; the user's projections only if asked for.
-
-    Returning both in one ascending list invited exactly one mistake: read the
-    last row as the current price. On an account that projects out to 2034 that
-    is a decade of invented growth reported as fact. Projecting the future is
-    the app's job — it has a simulator for it — so this hands over what is
-    known and names the current price rather than leaving it to be inferred.
-    """
+    """Report the applicable price and its certainty separately from future projections."""
     owner = _account(ctx, args)
     today = date.today()
     rows = _rows(Price, owner, ctx.db, Price.effective_date)
@@ -367,33 +363,38 @@ def _list_prices(ctx: ToolContext, args: dict):
     actual = [p for p in rows if not p.get("is_estimate")]
     projected = [p for p in rows if p.get("is_estimate")]
 
-    in_effect = None
-    for p in actual:
-        if _as_date(p.get("effective_date")) and _as_date(p["effective_date"]) <= today:
-            in_effect = p
+    in_effect = next((p for p in reversed(rows) if _as_date(p.get("effective_date"))
+                      and _as_date(p["effective_date"]) <= today), None)
+    last_confirmed = next((p for p in reversed(actual) if _as_date(p.get("effective_date"))
+                           and _as_date(p["effective_date"]) <= today), None)
 
     payload = {
         "current_price": in_effect.get("price") if in_effect else None,
         "current_price_date": in_effect.get("effective_date") if in_effect else None,
+        "price_is_estimate": bool(in_effect and in_effect.get("is_estimate")),
+        "expected_announcement_date": in_effect.get("expected_announcement_date") if in_effect else None,
+        "last_confirmed_price": last_confirmed.get("price") if last_confirmed else None,
+        "last_confirmed_price_date": last_confirmed.get("effective_date") if last_confirmed else None,
         "prices": actual,
         "note": (
-            "Real valuations only. Each applies forward until the next one, so "
-            "current_price is the one in effect today."
+            "current_price is the price applicable today in the app. Check "
+            "price_is_estimate before calling it a confirmed valuation. "
+            "prices contains confirmed valuations only."
         ),
     }
     if in_effect is None:
-        payload["note"] += (
-            " This account has no real valuation dated on or before today, so "
-            "there is no current price to report."
-        )
+        payload["note"] += " This account has no current price dated on or before today."
+    elif in_effect.get("is_estimate"):
+        payload["note"] += " The applicable price is tentative until an actual announcement is recorded."
 
     if _flag(args, "include_projections"):
         payload["projected_prices"] = projected
         payload["projection_warning"] = (
             "These are the user's own assumptions entered into the app's "
-            "planner, not valuations and not a forecast by anyone else. Never "
-            "present a projected price as the current or expected price, and "
-            "never total them into a figure without saying they are assumed."
+            "planner, not confirmed valuations and not a forecast by anyone else. "
+            "Past-dated assumptions apply to current app figures but remain tentative. "
+            "Never use a future-dated projection as today's price or total "
+            "assumed figures without saying they are tentative."
         )
     elif projected:
         payload["note"] += (
@@ -408,11 +409,11 @@ register(Tool(
     title="Share price history",
     description=(
         "The share price history the account's figures are computed from: an "
-        "effective date and a price per share, each applying until the next "
-        "entry. Future-dated entries flagged as estimates are the user's "
-        "projections, not real valuations — say so when using them."
+        "applicable date and price per share, each applying until the next "
+        "entry. current_price is the applicable price today, which may be "
+        "tentative; price_is_estimate distinguishes it from a confirmed valuation."
     ),
-    input_schema=_ACCOUNT_ONLY,
+    input_schema=object_schema({"account": ACCOUNT_PROPERTY, "include_projections": {"type": "boolean", "description": "Include tentative planning prices, including those already applicable."}}),
     scope=EQUITY_READ,
     handler=_list_prices,
 ))
@@ -488,7 +489,8 @@ register(Tool(
         "clear that much after tax. Nothing is saved. You supply "
         "price_per_share, so the answer is only as real as that price — use "
         "current_price from list_prices unless the user asks for a "
-        "what-if, and say which you used."
+        "what-if, and say which you used. If price_is_estimate is true, "
+        "describe the result as tentative."
     ),
     input_schema=object_schema({
         "price_per_share": {"type": "number", "description": "Price per share to model the sale at."},

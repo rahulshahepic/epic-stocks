@@ -27,7 +27,7 @@ test('missing prices and assumed prices remain explicit', async ({page}) => {
   await expect(widget.getByText('Not available',{exact:true}).first()).toBeVisible()
   await expect(widget.getByText('No current valuation is available.',{exact:false})).toBeVisible()
   await page.evaluate(snapshot => window.frames[0].postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:{structuredContent:snapshot}},'*'), {...snapshots.summary,data:{...snapshots.summary.data,price_is_estimate:true,projection_warning:'The price is an assumption, not a real valuation.'}})
-  await expect(widget.getByText('Net equity · assumed price',{exact:true})).toBeVisible()
+  await expect(widget.getByText('Net equity · tentative price',{exact:true})).toBeVisible()
 })
 
 test('failed refresh keeps the snapshot and labels it stale', async ({page}) => {
@@ -126,3 +126,21 @@ for(const theme of ['light','dark'] as const) {
     expect(audit.violations).toEqual([])
   })
 }
+
+
+test('plugin import preserves tentative applicable and announcement dates', async ({page}) => {
+  const widget = await pluginHost(page, {initial: {...importReviewSnapshot, data: {...importReviewSnapshot.data,
+    payload: {...importReviewSnapshot.data.payload, prices: [{effective_date:'2027-01-01', price:110,
+      is_estimate:true, expected_announcement_date:'2027-03-01', announced_date:null}]}}}})
+  await expect(widget.getByLabel('Applicable price date', {exact:true})).toHaveValue('2027-01-01')
+  await expect(widget.getByLabel('Tentative estimate', {exact:true})).toBeChecked()
+  await expect(widget.getByLabel('Expected announcement date', {exact:true})).toHaveValue('2027-03-01')
+  await widget.getByLabel('Tentative estimate', {exact:true}).uncheck()
+  await widget.getByLabel('Actual announcement date (if known)', {exact:true}).fill('2027-02-27')
+  await widget.getByRole('button', {name:'Check changes',exact:true}).click()
+  await expect.poll(() => page.evaluate(() => (window as unknown as {pluginCalls:{method:string;params:Record<string,unknown>}[]}).pluginCalls.some(c=>c.method==='tools/call' && c.params.name==='prepare_import_review'))).toBe(true)
+  const calls = await page.evaluate(() => (window as unknown as {pluginCalls:{method:string;params:Record<string,unknown>}[]}).pluginCalls)
+  const review = calls.find(c => c.method==='tools/call' && c.params.name==='prepare_import_review')
+  expect(review?.params.arguments).toMatchObject({payload:{prices:[{effective_date:'2027-01-01', price:110,
+    is_estimate:false, expected_announcement_date:'2027-03-01', announced_date:'2027-02-27'}]}})
+})

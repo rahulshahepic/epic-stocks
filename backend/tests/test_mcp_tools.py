@@ -299,7 +299,7 @@ def test_list_events_matches_the_app(mcp, client):
     from_api = client.get("/api/events").json()
     from_tool = mcp.call("list_events")
     # Identical but for connector metadata describing valuation provenance.
-    stripped = [{k: v for k, v in e.items() if k not in {"valuation_is_projected", "price_is_estimate"}}
+    stripped = [{k: v for k, v in e.items() if k not in {"valuation_is_projected"}}
                 for e in from_tool["events"]]
     assert stripped == from_api
     assert from_tool["matched"] == len(from_api)

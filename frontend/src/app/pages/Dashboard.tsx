@@ -48,8 +48,8 @@ function StalePriceBanner({ latest, readOnly }: { latest: PriceEntry; readOnly: 
         <span className="font-semibold">
           Your newest share price is from {latest.effective_date.slice(0, 4)} ({fmtPrice(latest.price)}).
         </span>{' '}
-        Everything here is valued at it, so your position probably reads low.
-        {!readOnly && ' Add this year\'s price to bring these figures up to date.'}
+        This year's announced price has not been recorded. Any applicable growth estimate remains tentative.
+        {!readOnly && ' Record this year\'s announcement to confirm the price.'}
       </p>
       {!readOnly && (
         <Link
@@ -351,7 +351,7 @@ export default function Dashboard() {
     next_event: dash.next_event,
     next_event_detail: null as TimelineEvent | null,
     total_interest: 0,
-    price_is_estimate: false,
+    price_is_estimate: dash.price_is_estimate ?? false,
   }
   const hasInterestDeduction = (cv.interest_deduction_total ?? 0) > 0
   const hasInterestLoans = loans?.some(l => l.loan_type === 'Interest' || l.loan_type === 'Purchase') ?? false
@@ -389,7 +389,7 @@ export default function Dashboard() {
               </p>
               <p className="font-semibold tabular-nums">
                 {fmtNum(cv.total_shares)} vested shares · {fmtPrice(cv.current_price)}/share
-                {cv.price_is_estimate ? ' estimated' : ''}
+                {cv.price_is_estimate ? ' tentative, awaiting announcement' : ''}
               </p>
               {cv.next_event && (
                 <p className="border-t border-white/35 pt-3">

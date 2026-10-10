@@ -3,7 +3,7 @@ import io
 import json
 import logging
 import tempfile
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from openpyxl.comments import Comment
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
@@ -24,6 +24,7 @@ from schemas import LOAN_TYPES
 import openpyxl
 from openpyxl.styles import Font, PatternFill
 from app import event_cache
+from services.price_state import price_values
 
 _MAX_BACKUPS_PER_USER = 3
 SALE_BACKUP_FIELDS = (
@@ -167,6 +168,11 @@ def _validate_price(p: dict, row: int) -> list[str]:
     price = p.get("price")
     if not isinstance(price, (int, float)) or float(price) <= 0:
         errors.append(f"Row {row}: price must be positive")
+    try:
+        price_values({"effective_date": _to_date(d), **{k: p[k] for k in
+            ("is_estimate", "expected_announcement_date", "announced_date") if k in p}})
+    except (ValueError, TypeError):
+        errors.append(f"Row {row}: invalid price announcement fields")
     return errors
 
 
@@ -341,8 +347,10 @@ def import_excel(
     for p in prices_raw:
         db.add(Price(
             user_id=user.id,
-            effective_date=_to_date(p["date"]),
             price=p["price"],
+            **price_values({"effective_date": _to_date(p["date"]), **{k: p[k] for k in
+                ("is_estimate", "expected_announcement_date", "announced_date") if k in p}}),
+            announcement_notified_at=datetime.now(timezone.utc) if p.get("announced_date") and _to_date(p["announced_date"]) < date.today() else None,
         ))
 
     # Insert loans without refinances_loan_id first, then resolve in a second pass
@@ -484,7 +492,10 @@ def _save_import_backup(user_id: int, has_schedule: bool, has_prices: bool, has_
             })
     if has_prices:
         for p in db.query(Price).filter(Price.user_id == user_id).all():
-            prices.append({"effective_date": str(p.effective_date), "price": p.price, "is_estimate": p.is_estimate})
+            prices.append({"effective_date": str(p.effective_date), "price": p.price, "is_estimate": p.is_estimate,
+                           "expected_announcement_date": str(p.expected_announcement_date) if p.expected_announcement_date else None,
+                           "announced_date": str(p.announced_date) if p.announced_date else None,
+                           "announcement_notified_at": p.announcement_notified_at.isoformat() if p.announcement_notified_at else None})
     if has_loans:
         all_loans = db.query(Loan).filter(Loan.user_id == user_id).all()
         loan_id_to_num = {ln.id: ln.loan_number or "" for ln in all_loans}
@@ -617,8 +628,8 @@ def restore_import_backup(
             election_83b=g.get("election_83b", False),
         ))
     for p in prices:
-        db.add(Price(user_id=user.id, effective_date=_to_date(p["effective_date"]), price=p["price"],
-            is_estimate=p.get("is_estimate", _to_date(p["effective_date"]) > date.today())))
+        db.add(Price(user_id=user.id, price=p["price"], **price_values(p),
+                     announcement_notified_at=datetime.fromisoformat(p["announcement_notified_at"]) if p.get("announcement_notified_at") else None))
 
     inserted_loans: list[tuple[dict, Loan]] = []
     for ln in loans:
@@ -922,20 +933,22 @@ def download_sample():
     ws_prices.cell(row=1, column=2).comment = Comment("Share price in dollars on that date.", "Sample")
 
     price_rows = [
-        (date(2020, 3, 1), 1.85),
-        (date(2021, 3, 1), 2.20),
-        (date(2022, 3, 1), 2.75),
-        (date(2023, 3, 1), 3.10),
-        (date(2024, 3, 1), 3.60),
-        (date(2025, 3, 1), 4.25),
-        (date(2026, 3, 1), 5.10),
+        (date(2020, 1, 1), 1.85),
+        (date(2021, 1, 1), 2.20),
+        (date(2022, 1, 1), 2.75),
+        (date(2023, 1, 1), 3.10),
+        (date(2024, 1, 1), 3.60),
+        (date(2025, 1, 1), 4.25),
+        (date(2026, 1, 1), 5.10),
     ]
     for r, (d, p) in enumerate(price_rows, 2):
         _body_cell(ws_prices, r, 1, d, "mm/dd/yyyy")
         _body_cell(ws_prices, r, 2, p, "\\$#,##0.00")
+        _body_cell(ws_prices, r, 3, False)
+        _body_cell(ws_prices, r, 5, date(d.year, 3, 1), "mm/dd/yyyy")
 
     ws_prices.cell(row=2, column=1).comment = Comment(
-        "March 1, 2020 = the day Epic announced the 2020 share price", "Sample"
+        "January 1, 2020 = applicable date; March 1 in Announced Date records the announcement", "Sample"
     )
     ws_prices.cell(row=2, column=2).comment = Comment("$1.85 per share in 2020", "Sample")
 
@@ -957,7 +970,7 @@ _SCHED_HEADERS = ["Year", "Type", "Shares", "Price", "Vest Start", "Periods",
                    "Exercise Date", "DP Shares", "83(b)"]
 _LOAN_HEADERS = ["Loan #", "Grant Year", "Grant Type", "Loan Type", "Loan Year",
                   "Amount", "Rate", "Due Date", "Refinances Loan #"]
-_PRICE_HEADERS = ["Date", "Price"]
+_PRICE_HEADERS = ["Date", "Price", "Is Estimate", "Expected Announcement Date", "Announced Date"]
 _LOAN_PAYMENT_HEADERS = ["Loan #", "Date", "Amount", "Notes"]
 _SALE_HEADERS = ["Date", "Shares", "Price", "Notes", "Loan #"]
 _EVENT_HEADERS = ["Date", "Grant Year", "Grant Type", "Event Type",
@@ -1100,6 +1113,9 @@ def export_excel(
     for i, p in enumerate(prices_db, 2):
         _body_cell(ws_prices, i, 1, p.effective_date, "mm/dd/yyyy")
         _body_cell(ws_prices, i, 2, p.price, "\\$#,##0.00")
+        _body_cell(ws_prices, i, 3, p.is_estimate)
+        _body_cell(ws_prices, i, 4, p.expected_announcement_date, "mm/dd/yyyy")
+        _body_cell(ws_prices, i, 5, p.announced_date, "mm/dd/yyyy")
 
     # -- Events sheet (use existing writer for formulas) --
     ws_events = wb.create_sheet("Events")

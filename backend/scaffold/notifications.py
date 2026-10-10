@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from database import SessionLocal
 from scaffold.models import User, Grant, Loan, Price, PushSubscription, EmailPreference, Sale
 from services.timeline_cache import get_timeline
+from services.price_state import price_metadata, notification_details
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,18 @@ def get_todays_events_for_user(user: User, db: Session, today: date | None = Non
             if edate == target_date and e["event_type"] in NOTIFY_EVENT_TYPES:
                 todays.append(e)
 
+    price_rows = db.query(Price).filter(Price.user_id == user.id).order_by(Price.effective_date).all()
+    applicable = next((p for p in reversed(price_rows) if p.effective_date <= target_date), None)
+    if applicable:
+        for event in todays:
+            event.update(price_metadata(applicable, today))
+    for price in price_rows:
+        if (not price.is_estimate and price.announced_date is not None
+                and price.announced_date <= today and price.announcement_notified_at is None):
+            todays.append({"event_type": "Price Announcement", "date": price.announced_date,
+                           "_announcement_price_id": price.id,
+                           **price_metadata(price, today)})
+
     sales = db.query(Sale).filter(Sale.user_id == user.id, Sale.date == target_date).all()
     for s in sales:
         todays.append({
@@ -87,9 +100,13 @@ def build_notification_payload(events: list[dict], target_date: date | None = No
     total = sum(counts.values())
     parts = [f"{count} {etype}" for etype, count in sorted(counts.items())]
     body = f"You have {total} event{'s' if total != 1 else ''} today: {', '.join(parts)}"
+    details = notification_details(events)
+    if details:
+        body += ". " + " ".join(details)
     payload: dict = {"title": "Upcoming Events", "body": body}
     if target_date is not None:
-        url = f"/events?date={target_date.isoformat()}&types={','.join(sorted(counts.keys()))}"
+        url = ("/prices" if "Price Announcement" in counts else
+               f"/events?date={target_date.isoformat()}&types={','.join(sorted(counts.keys()))}")
         payload["data"] = {"url": url}
     return payload
 
@@ -200,6 +217,7 @@ def send_daily_notifications(today: date | None = None):
 
         from scaffold.crypto import encryption_enabled, decrypt_user_key, set_current_key
 
+        delivered_announcements = set()
         for user in users:
             if _already_notified_today(user, today):
                 continue
@@ -220,12 +238,15 @@ def send_daily_notifications(today: date | None = None):
                 continue
 
             # Push notifications
+            announcement_sent = False
             if user.id in push_user_ids:
                 payload = build_notification_payload(events, target_date=target_date)
                 if payload:
                     subs = db.query(PushSubscription).filter(PushSubscription.user_id == user.id).all()
                     for sub in subs:
-                        if send_push(sub, payload) is PushResult.GONE:
+                        result = send_push(sub, payload)
+                        announcement_sent |= result is PushResult.SENT
+                        if result is PushResult.GONE:
                             db.delete(sub)
 
             # Email notifications
@@ -233,8 +254,11 @@ def send_daily_notifications(today: date | None = None):
                 from scaffold.email_sender import build_event_email, send_email, email_configured
                 if email_configured():
                     subject, text, html, hdrs = build_event_email(events, recipient_email=user.email)
-                    send_email(user.email, subject, text, html, headers=hdrs)
+                    announcement_sent |= bool(send_email(user.email, subject, text, html, headers=hdrs))
 
+            if announcement_sent:
+                delivered_announcements.update(e["_announcement_price_id"] for e in events
+                                               if "_announcement_price_id" in e)
             user.last_notified_at = datetime.now(timezone.utc)
 
         # ── Shared-data notifications ──────────────────────────────────────
@@ -267,7 +291,9 @@ def send_daily_notifications(today: date | None = None):
                     set_current_key(None)
 
                 viewer_advance = all_prefs.get(viewer_id, 0)
-                shared_events = get_todays_events_for_user(owner, db, today, advance_days=viewer_advance)
+                shared_events = [event for event in get_todays_events_for_user(
+                    owner, db, today, advance_days=viewer_advance)
+                    if event["event_type"] != "Price Announcement"]
                 if shared_events:
                     owner_name = owner.name or owner.email
                     if viewer_id not in viewer_events:
@@ -293,6 +319,9 @@ def send_daily_notifications(today: date | None = None):
                 parts = [f"{count} {etype}" for etype, count in sorted(counts.items())]
                 owner_str = ', '.join(owners)
                 body = f"{owner_str}: {total} event{'s' if total != 1 else ''} today — {', '.join(parts)}"
+                details = notification_details(shared_evts)
+                if details:
+                    body += ". " + " ".join(details)
                 payload: dict = {"title": "Shared Data Events", "body": body}
 
                 # Deep link: single owner → dashboard (where account switcher shows them)
@@ -301,7 +330,8 @@ def send_daily_notifications(today: date | None = None):
                 if viewer_id in push_user_ids:
                     subs = db.query(PushSubscription).filter(PushSubscription.user_id == viewer_id).all()
                     for sub in subs:
-                        if send_push(sub, payload) is PushResult.GONE:
+                        result = send_push(sub, payload)
+                        if result is PushResult.GONE:
                             db.delete(sub)
 
                 if viewer_id in email_user_ids:
@@ -311,6 +341,9 @@ def send_daily_notifications(today: date | None = None):
         except Exception:
             logger.exception("Error sending shared-data notifications")
 
+        if delivered_announcements:
+            db.query(Price).filter(Price.id.in_(delivered_announcements)).update(
+                {Price.announcement_notified_at: datetime.now(timezone.utc)}, synchronize_session=False)
         db.commit()
     except Exception:
         logger.exception("Error in daily notification check")

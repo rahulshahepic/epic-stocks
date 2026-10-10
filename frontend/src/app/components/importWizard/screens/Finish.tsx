@@ -94,6 +94,8 @@ export function ReviewScreen({
           {submission.prices.map((p, i) => (
             <p key={i} className="text-xs text-cs-muted">
               {fmtFullDate(p.effective_date)} — {fmtPrice(p.price)}
+              {p.is_estimate ? ` · Tentative, announcement expected ${p.expected_announcement_date ?? 'March 1'}`
+                : p.announced_date ? ` · Announced ${p.announced_date}` : ' · Confirmed'}
             </p>
           ))}
         </div>

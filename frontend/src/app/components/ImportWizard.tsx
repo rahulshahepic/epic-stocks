@@ -200,6 +200,7 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
       const result = await api.wizardParseFile(file)
       if (result.prices.length > 0) {
         setPrices(result.prices.map(p => ({
+          ...p,
           effective_date: p.effective_date,
           price: p.price != null ? String(p.price) : '',
         })))

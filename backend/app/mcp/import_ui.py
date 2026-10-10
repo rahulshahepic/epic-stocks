@@ -43,7 +43,7 @@ def _account_hash(ctx):
     # Include values, not only versions: the wizard itself does not bump versions.
     state = []
     for model in (Grant, Loan, Price, Sale, LoanPayment):
-        state.append([{c.name: getattr(row, c.name) for c in model.__table__.columns}
+        state.append([{c.name: getattr(row, c.name) for c in model.__table__.columns if c.name != "announcement_notified_at"}
                       for row in ctx.db.query(model).filter(model.user_id == ctx.user.id)
                       .order_by(model.id)])
     sk, findings = _skeleton(ctx)
@@ -274,7 +274,7 @@ def _submission(ctx, draft, payload):
         for loan in grant.loans:
             date.fromisoformat(loan.due_date)
     # Refuse non-finite values even where the older wizard schemas allow them.
-    json.dumps(body.model_dump(), allow_nan=False)
+    json.dumps(body.model_dump(mode="json"), allow_nan=False)
     from collections import Counter
     incoming_keys = {(g.year, g.type) for g in body.grants}
     available_numbers = Counter(l.loan_number for l in ctx.db.query(Loan).filter_by(user_id=ctx.user.id)
@@ -341,7 +341,7 @@ def prepare_import_review(ctx, args):
             review["blocked"] = True
             review["source_notes"].append(str(exc))
         else:
-            review.update(submit=body.model_dump(), account_hash=_account_hash(ctx),
+            review.update(submit=body.model_dump(mode="json"), account_hash=_account_hash(ctx),
                           review_token=secrets.token_hex(32),
                           summary={"grants": len(body.grants), "loans": sum(len(g.loans) for g in body.grants),
                                    "prices": len(body.prices), "sales": len(body.sales), "loan_payments": len(body.loan_payments)})

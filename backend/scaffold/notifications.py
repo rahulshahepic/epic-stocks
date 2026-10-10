@@ -291,7 +291,9 @@ def send_daily_notifications(today: date | None = None):
                     set_current_key(None)
 
                 viewer_advance = all_prefs.get(viewer_id, 0)
-                shared_events = get_todays_events_for_user(owner, db, today, advance_days=viewer_advance)
+                shared_events = [event for event in get_todays_events_for_user(
+                    owner, db, today, advance_days=viewer_advance)
+                    if event["event_type"] != "Price Announcement"]
                 if shared_events:
                     owner_name = owner.name or owner.email
                     if viewer_id not in viewer_events:
@@ -311,7 +313,6 @@ def send_daily_notifications(today: date | None = None):
                 if not viewer:
                     continue
 
-                announcement_sent = False
                 owners = sorted(set(e.get("_shared_owner", "") for e in shared_evts))
                 counts = Counter(e["event_type"] for e in shared_evts)
                 total = sum(counts.values())
@@ -330,17 +331,13 @@ def send_daily_notifications(today: date | None = None):
                     subs = db.query(PushSubscription).filter(PushSubscription.user_id == viewer_id).all()
                     for sub in subs:
                         result = send_push(sub, payload)
-                        announcement_sent |= result is PushResult.SENT
                         if result is PushResult.GONE:
                             db.delete(sub)
 
                 if viewer_id in email_user_ids:
                     from scaffold.email_sender import send_email, email_configured
                     if email_configured():
-                        announcement_sent |= bool(send_email(viewer.email, f"Epic Stocks: {owner_str} has events today", body))
-                if announcement_sent:
-                    delivered_announcements.update(e["_announcement_price_id"] for e in shared_evts
-                                                   if "_announcement_price_id" in e)
+                        send_email(viewer.email, f"Epic Stocks: {owner_str} has events today", body)
         except Exception:
             logger.exception("Error sending shared-data notifications")
 

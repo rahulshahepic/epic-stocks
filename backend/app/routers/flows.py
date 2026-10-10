@@ -169,7 +169,7 @@ def annual_price(body: AnnualPriceRequest, user: User = Depends(get_current_user
 def growth_price(body: GrowthPriceRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     base = (
         db.query(Price)
-        .filter(Price.user_id == user.id, Price.is_estimate == False, Price.effective_date < body.first_date)
+        .filter(Price.user_id == user.id, Price.effective_date < body.first_date)
         .order_by(Price.effective_date.desc())
         .first()
     )

@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from tests.conftest import register_user
+from tests.conftest import register_user, user_key
 from tests.test_mcp_tools import Mcp, GRANT
 
 
@@ -36,6 +36,24 @@ def test_date_edit_does_not_confirm_estimate(client):
         "effective_date": "2020-01-01", "version": row["version"]})
     assert response.status_code == 200
     assert response.json()["is_estimate"] is True
+
+
+def test_list_prices_matches_applicable_tentative_dashboard_price(client):
+    register_user(client)
+    client.post("/api/grants", json=GRANT)
+    last_year = date.today().year - 1
+    this_year = date.today().year
+    client.post("/api/prices", json={"effective_date": f"{last_year}-01-01", "price": 100})
+    client.post("/api/prices", json={"effective_date": f"{this_year}-01-01", "price": 110,
+        "is_estimate": True})
+    mcp = Mcp(client)
+    listed = mcp.call("list_prices")
+    dashboard = mcp.call("get_dashboard")
+    assert listed["current_price"] == dashboard["current_price"] == 110
+    assert listed["price_is_estimate"] is dashboard["price_is_estimate"] is True
+    assert listed["last_confirmed_price"] == 100
+    assert listed["expected_announcement_date"] == f"{this_year}-03-01"
+    assert [p["price"] for p in listed["prices"]] == [100]
 
 
 def test_announcement_validation(client):
@@ -199,3 +217,30 @@ def test_late_announcement_is_pending_until_daily_notification_marks_it(client, 
     with user_key(user):
         assert (db_session.query(Price).first().announcement_notified_at is not None) == email_success
         assert bool(get_todays_events_for_user(user, db_session, date(2020, 3, 3))) == (not email_success)
+
+
+def test_shared_viewer_delivery_does_not_clear_owners_pending_announcement(client, make_client, db_session):
+    from datetime import datetime, timezone
+    from unittest.mock import patch
+    from scaffold.models import User, Price, EmailPreference, Invitation
+    from scaffold.notifications import send_daily_notifications
+
+    register_user(client, "owner@test.com")
+    client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 110,
+                                     "announced_date": "2020-02-27"})
+    with make_client("viewer@test.com"):
+        owner = db_session.query(User).filter(User.email == "owner@test.com").one()
+        viewer = db_session.query(User).filter(User.email == "viewer@test.com").one()
+        db_session.query(EmailPreference).filter(EmailPreference.user_id == owner.id).update({"enabled": 0})
+        db_session.add(Invitation(inviter_id=owner.id, invitee_id=viewer.id,
+                                  invitee_email=viewer.email, status="accepted", notify_enabled=1,
+                                  token="owner-viewer-token", short_code="owner-viewer-code",
+                                  expires_at=datetime(2030, 1, 1, tzinfo=timezone.utc)))
+        db_session.commit()
+        with (patch("scaffold.notifications.SessionLocal", return_value=db_session),
+              patch("scaffold.email_sender.email_configured", return_value=True),
+              patch("scaffold.email_sender.send_email", return_value=True) as send):
+            send_daily_notifications(date(2020, 3, 2))
+            assert send.call_count == 0
+        with user_key(db_session.query(User).filter(User.email == "owner@test.com").one()):
+            assert db_session.query(Price).one().announcement_notified_at is None

@@ -3,7 +3,7 @@ import io
 import json
 import logging
 import tempfile
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from openpyxl.comments import Comment
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
@@ -350,7 +350,7 @@ def import_excel(
             price=p["price"],
             **price_values({"effective_date": _to_date(p["date"]), **{k: p[k] for k in
                 ("is_estimate", "expected_announcement_date", "announced_date") if k in p}}),
-            announcement_notified_at=datetime.now() if p.get("announced_date") and _to_date(p["announced_date"]) < date.today() else None,
+            announcement_notified_at=datetime.now(timezone.utc) if p.get("announced_date") and _to_date(p["announced_date"]) < date.today() else None,
         ))
 
     # Insert loans without refinances_loan_id first, then resolve in a second pass

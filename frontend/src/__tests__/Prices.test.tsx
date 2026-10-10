@@ -38,6 +38,20 @@ function renderPrices() {
 }
 
 describe('Prices', () => {
+  it('chains the growth preview from the latest tentative price', async () => {
+    mockApi()
+    vi.spyOn(api, 'getPrices').mockResolvedValue([
+      {id: 1, version: 1, effective_date: '2025-01-01', price: 100, is_estimate: false},
+      {id: 2, version: 1, effective_date: '2026-01-01', price: 110, is_estimate: true},
+    ])
+    renderPrices()
+    await userEvent.click(await screen.findByText('+ Estimate'))
+    await userEvent.clear(screen.getByLabelText('Annual Growth %'))
+    await userEvent.type(screen.getByLabelText('Annual Growth %'), '10')
+    expect(screen.getByText('($110.00)', {exact: false})).toBeInTheDocument()
+    expect(screen.getByText('$121.00')).toBeInTheDocument()
+  })
+
   it('shows loading initially', () => {
     mockApi()
     renderPrices()

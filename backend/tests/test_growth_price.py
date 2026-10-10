@@ -194,6 +194,17 @@ class TestShadowCleanup:
 # ── Growth price estimator ────────────────────────────────────────────────────
 
 class TestGrowthPrice:
+    def test_chains_from_latest_applicable_tentative_price(self, client):
+        register_user(client)
+        current_year = date.today().year
+        _add_price(client, f"{current_year - 1}-01-01", 100)
+        resp = client.post("/api/prices", json={"effective_date": f"{current_year}-01-01",
+                                                "price": 110, "is_estimate": True})
+        assert resp.status_code == 201
+        generated = _growth_price(client, 10, f"{current_year + 1}-01-01", f"{current_year + 1}-01-01")
+        assert generated.status_code == 201
+        assert generated.json()[0]["price"] == pytest.approx(121)
+
     def test_generates_yearly_prices(self, client):
         register_user(client)
         _add_annual_price(client, YESTERDAY, 50.0)

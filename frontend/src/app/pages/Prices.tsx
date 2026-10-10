@@ -155,11 +155,11 @@ export default function Prices() {
     reload()
   }
 
-  // Most recent non-estimate price for growth preview base
+  // Growth starts from the latest applicable price, including tentative prices.
   const basePrice = useMemo(() => {
     if (!prices) return 0
-    const real = prices.filter(p => !p.is_estimate && p.effective_date < growthForm.first_date)
-    return real.length ? real[real.length - 1].price : 0
+    const prior = prices.filter(p => p.effective_date < growthForm.first_date)
+    return prior.length ? prior[prior.length - 1].price : 0
   }, [prices, growthForm.first_date])
 
   const growthPreview = useMemo(
@@ -222,7 +222,7 @@ export default function Prices() {
         </div>
         {epicMode && (
           <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
-            In Epic mode, only future-dated prices can be added.
+            In Epic mode, you can add tentative estimates for any applicable date.
           </p>
         )}
         {error && <p className="text-xs text-red-500">{error}</p>}
@@ -426,7 +426,7 @@ export default function Prices() {
         <table className="w-full text-left text-xs">
           <thead className="bg-cs-raised">
             <tr className="text-cs-text-2">
-              <th className="px-3 py-2">Effective Date</th>
+              <th className="px-3 py-2">Applicable Date</th>
               <th className="px-3 py-2 text-right">Price</th>
               <th className="px-3 py-2"></th>
             </tr>

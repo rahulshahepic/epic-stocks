@@ -203,9 +203,24 @@ def test_images_are_returned_as_model_content_not_plain_base64_json(mcp, monkeyp
     result = mcp.raw_call("analyze_import_files", files=[{"file_id": "screenshot", "download_url": "unused", "file_name": "award.png", "mime_type": "image/png"}])
     assert result["content"][1]["type"] == "image"
     assert "bytes" not in str(result["structuredContent"])
+    assert not any(c["type"] == "image" for c in mcp.raw_call("show_import")["content"])
+    state = result["structuredContent"]["data"]
+    result = mcp.raw_call("prepare_import_review", revision=state["revision"], payload={"grants": [RETENTION], "prices": []})
+    assert not any(c["type"] == "image" for c in result["content"])
 
 
-@pytest.mark.parametrize("url", ["http://files.oaiusercontent.com/a", "https://127.0.0.1/a", "https://evil.test/a", "https://files.oaiusercontent.com.evil.test/a", "https://user:pass@files.oaiusercontent.com/a", "https://files.oaiusercontent.com:8443/a"])
+def test_busy_supporting_pdf_reports_retry_instead_of_bad_file(mcp, monkeypatch):
+    from app import epic_import
+    def busy(raw):
+        raise epic_import.StatementParserBusy("Busy")
+    monkeypatch.setattr(import_ui, "download_file", lambda ref: b"%PDF-synthetic")
+    monkeypatch.setattr(epic_import, "extract_lines", busy)
+    data = mcp.call("analyze_import_files", files=[{"file_id": "letter", "download_url": "unused", "file_name": "letter.pdf"}])["data"]
+    assert "parser is busy" in str(data["source_notes"])
+    assert "no readable text" not in str(data["source_notes"])
+
+
+@pytest.mark.parametrize("url", ["http://files.oaiusercontent.com/a", "https://127.0.0.1/a", "https://evil.test/a", "https://files.oaiusercontent.com.evil.test/a", "https://user:pass@files.oaiusercontent.com/a", "https://files.oaiusercontent.com:8443/a", "https://oaisevil.s3.us-east-1.amazonaws.com/a", "https://sdmntevil.blob.core.windows.net/a"])
 def test_file_download_rejects_arbitrary_urls(url):
     with pytest.raises(ValueError):
         _destination(url)
@@ -217,6 +232,13 @@ def test_file_download_rejects_private_dns(monkeypatch):
         _destination("https://files.oaiusercontent.com/a")
 
 
+@pytest.mark.parametrize("host", ["files.oaiusercontent.com", "oaisdmntprsynthetic.blob.core.windows.net", "oaisdsorprsynthetic.blob.core.windows.net", "oaisdmntprsyntheticaws.s3.us-east-1.amazonaws.com"])
+def test_file_host_patterns_pin_a_public_address(host, monkeypatch):
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 443))])
+    parsed, address = _destination("https://" + host + "/test")
+    assert parsed.hostname == host and address == "8.8.8.8"
+
+
 @pytest.mark.parametrize("status,size,encoding", [(302, 1, "identity"), (200, 5 * 1024 * 1024 + 1, "identity"), (200, 10, "gzip")])
 def test_download_refuses_redirects_large_files_and_encoded_transfers(monkeypatch, status, size, encoding):
     from app.mcp import import_files
@@ -225,12 +247,19 @@ def test_download_refuses_redirects_large_files_and_encoded_transfers(monkeypatc
     class Response:
         def __init__(self):
             self.status = status
+            self.remaining = size
         def getheader(self, *args):
             return encoding
-        def read(self, limit):
-            return b"x" * min(size, limit)
+        def read1(self, limit):
+            count = min(self.remaining, limit)
+            self.remaining -= count
+            return b"x" * count
+        def close(self):
+            pass
     class Connection:
         def __init__(self, *args):
+            self.sock = None
+        def connect(self):
             pass
         def request(self, *args):
             pass
@@ -241,6 +270,69 @@ def test_download_refuses_redirects_large_files_and_encoded_transfers(monkeypatc
     monkeypatch.setattr(import_files, "_PinnedConnection", Connection)
     with pytest.raises(ValueError):
         import_files.download_file({"file_id": "file-test", "download_url": "unused"})
+
+
+@pytest.mark.parametrize("phase", ["headers", "body"])
+def test_download_deadline_interrupts_slow_drip(phase, monkeypatch):
+    import threading
+    import time
+    from http.client import HTTPResponse
+    from urllib.parse import urlsplit
+    from app.mcp import import_files
+    reader, writer = socket.socketpair()
+    stopped = threading.Event()
+    def drip():
+        try:
+            if phase == "body":
+                writer.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 5000\r\n\r\n")
+            else:
+                writer.sendall(b"HTTP/1.1 200 OK\r\nX-Slow: ")
+            while not stopped.wait(0.01):
+                writer.sendall(b"x")
+        except OSError:
+            pass
+    thread = threading.Thread(target=drip, daemon=True)
+    class Connection:
+        def __init__(self, *args):
+            self.sock = reader
+        def connect(self):
+            pass
+        def request(self, *args):
+            pass
+        def getresponse(self):
+            response = HTTPResponse(reader)
+            response.begin()
+            return response
+        def close(self):
+            reader.close()
+    monkeypatch.setattr(import_files, "_destination", lambda url: (urlsplit("https://files.oaiusercontent.com/test"), "8.8.8.8"))
+    monkeypatch.setattr(import_files, "_PinnedConnection", Connection)
+    monkeypatch.setattr(import_files, "DOWNLOAD_TIMEOUT", 0.15)
+    thread.start()
+    start = time.monotonic()
+    try:
+        with pytest.raises(ValueError, match="too long"):
+            import_files.download_file({"file_id": "file-test", "download_url": "unused"})
+        assert time.monotonic() - start < 2
+    finally:
+        stopped.set()
+        thread.join(timeout=1)
+        writer.close()
+        reader.close()
+
+
+def test_review_blocks_ambiguous_payment_loan_numbers(mcp):
+    seed(mcp.client)
+    from tests.test_mcp_tools import LOAN
+    response = mcp.client.post("/api/loans", json={**LOAN, "grant_year": 2021, "grant_type": "Bonus", "loan_number": "same-number"})
+    assert response.status_code == 201
+    loans = mcp.client.get("/api/loans").json()
+    for loan in loans[:2]:
+        response = mcp.client.put(f"/api/loans/{loan['id']}", json={"version": loan["version"], "loan_number": "same-number"})
+        assert response.status_code == 200
+    data = review(mcp, loan_payments=[{"loan_number": "same-number", "date": "2024-08-02", "amount": 100}])
+    assert data["blocked"] and "review_token" not in data
+    assert "more than one loan" in str(data["source_notes"])
 
 
 def test_json_array_is_reported_without_losing_original_files(mcp, monkeypatch):

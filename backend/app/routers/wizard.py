@@ -469,9 +469,15 @@ def submit(
     db.flush()
 
     # Resolve refinance references across all user loans
+    all_loans = db.query(Loan).filter(Loan.user_id == user.id).all()
+    referenced_numbers = {p.loan_number for p in body.loan_payments} | {
+        ref_num for _, ref_num in loan_objects if ref_num}
+    number_counts = Counter(l.loan_number for l in all_loans if l.loan_number)
+    if any(number_counts[number] > 1 for number in referenced_numbers):
+        raise HTTPException(status_code=422, detail="A payment or refinance names more than one loan; use distinct loan numbers")
     all_loans_by_number = {
         l.loan_number: l
-        for l in db.query(Loan).filter(Loan.user_id == user.id).all()
+        for l in all_loans
         if l.loan_number
     }
     for loan, ref_num in loan_objects:

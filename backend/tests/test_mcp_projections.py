@@ -76,7 +76,7 @@ def test_projections_come_back_labelled_when_asked_for(mcp):
     assert [p["price"] for p in prices["projected_prices"]] == [PROJECTED_PRICE]
     warning = prices["projection_warning"]
     assert "assumptions" in warning
-    assert "never present a projected price" in warning.lower()
+    assert "future-dated projection" in warning.lower()
     # Still kept out of the real list.
     assert PROJECTED_PRICE not in [p["price"] for p in prices["prices"]]
 

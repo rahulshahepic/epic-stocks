@@ -84,7 +84,10 @@ register(Tool(
         "from shares missing in a statement. When updating, send only changed "
         "fields plus version, and use the id from list_grants/list_loans/"
         "list_prices/list_sales. Loan interest_rate is a fraction. Ask the "
-        "user to approve the exact write before calling. Reads after writing "
+        "user to approve the exact write before calling. For a price guess set is_estimate=true, "
+        "effective_date to its applicable date, and expected_announcement_date (March 1 by default). "
+        "To confirm it, update the same row with the actual price and announced_date. "
+        "Never confirm a guess because its effective or expected announcement date passed. Reads after writing "
         "show whether the resulting position makes sense."
     ),
     input_schema=object_schema({

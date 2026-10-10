@@ -25,10 +25,8 @@ export default function StalePriceNotice({ latestPrice, latestDate, onApply, bus
         These figures use the {latestDate.slice(0, 4)} price of {fmtPrice(latestPrice)}
       </p>
       <p className="mt-1 text-xs leading-relaxed text-amber-800 dark:text-amber-300">
-        That is the newest price in your files, and it is not this year's. Your
-        shares are almost certainly worth more than shown. Epic announces a new
-        price each spring — enter the current one and everything here is
-        recomputed against it.
+        That is the newest price in your files, and it is not this year's. Epic announces a new price around March 1, applicable from January 1.
+        Enter an announced price only; use the Prices page to model tentative growth.
       </p>
       <form
         className="mt-3 flex flex-wrap items-center gap-2"

@@ -195,7 +195,7 @@ def analyze(
     # Stale once the newest price held — including one just supplied — is from an
     # earlier year than today.
     price_is_stale = bool(wizard_payload["prices"]) and max(
-        p["effective_date"] for p in wizard_payload["prices"])[:4] < today_iso[:4]
+        p["effective_date"] for p in wizard_payload["prices"])[:4] < today_iso[:4] and today_iso >= f"{today_iso[:4]}-03-01"
 
     grants, prices, loans, initial_price = _source_data(wizard_payload)
     events = generate_all_events(grants, prices, loans)

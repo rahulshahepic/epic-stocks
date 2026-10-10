@@ -94,7 +94,7 @@ it is a guess and the person confirms it.
 - Loan rate and due date: from the statement; otherwise the rate on record for
   that year and kind of loan, and ask about the due date.
 - Never guess: how many shares they have (ask), the date or price of a sale
-  (ask; leave them null if they do not know), or a future share price.
+  (ask; leave them null if they do not know), or a future share price. User-specified growth assumptions are allowed only as tentative prices with `is_estimate: true`.
 - Whether they filed an 83(b): false unless they say otherwise; note it.
 
 Every guess goes in `assumptions`, one short sentence each, e.g.
@@ -152,7 +152,7 @@ Pass this object to stage_import as `payload`. Comments are explanation only.
     }
   ],
   "prices": [
-    { "effective_date": "2024-01-01", "price": 0 }   // one per year, dated 1 January
+    { "effective_date": "2024-01-01", "price": 0, "is_estimate": false, "announced_date": null } // applicable date; announced date only if known
   ],
   "sales": [
     { "shares": 0, "date": null, "price_per_share": null, "notes": "" }

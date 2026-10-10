@@ -25,6 +25,14 @@ A mobile-first web app for Epic employees to track their own equity compensation
 
 ---
 
+### Applicable prices and announcements
+
+Share prices have an **applicable date**, an **expected announcement date**, and an optional **actual announcement date**. Annual growth estimates normally apply January 1 with an expected announcement March 1. They affect planning values immediately on their applicable date but remain **tentative**, even after the expected announcement date passes. On the Share Prices page, select **Tentative estimate** for a guess. To confirm it, edit that row, clear Tentative estimate, and enter the actual announced price and announcement date. This replaces the estimate for that applicable date and recalculates values back to January 1; it does not add a second increase. Annual growth can start on a date already passed. Existing later price estimates remain the explicitly saved amounts; use the growth estimator to regenerate them from the announced price when needed.
+
+The ChatGPT plugin uses the same price writes and shows applicable/announcement dates in its portfolio and import review. A chat estimate must set `is_estimate: true`; recording `announced_date` confirms that row. Passing either date never confirms a guess. Excel exports retain tentative status and both announcement dates in optional columns after Date and Price; older two-column workbooks remain supported. Legacy confirmed prices keep their status with an unknown announcement date rather than inventing one.
+
+Daily push/email notifications include confirmed price announcements for the price owner, identifying both the actual announcement and backdated applicable dates. Announcements recorded late or while notifications are disabled remain pending until a channel is enabled and a send succeeds; bulk imports suppress old historical announcements. Shared viewers receive dated equity events without a separate price-announcement alert. Other event notifications identify monetary values using a tentative price. Tentative price changes do not send confirmed-price alerts. Stale-price reminders wait until the expected announcement date. The shared `backend/services/price_state.py` handles status validation and price metadata; the Alembic migration adds announcement dates without changing encrypted price values.
+
 ## Table of Contents
 
 - [Understanding Your Equity](#understanding-your-equity) — key concepts explained
@@ -526,9 +534,19 @@ If your ChatGPT is provided by your employer, a workspace admin may have to enab
 
 **Interactive ChatGPT portfolio.** Ask “Show my Epic Stocks portfolio” to open an inline card with the app's current net equity, shares, loans and upcoming events. Browse grants and loan history, narrow the event dates, refresh, or ask ChatGPT to explain the view. Expand, sidebar and conversation-panel entrypoints are available where the host supports them. Missing prices stay unknown and projected money is labelled. The card needs only `equity:read`; existing chat edits still require separate write permissions. After deploying this version, refresh the plugin's tools in ChatGPT or register your deployed `/mcp` URL as a custom OAuth plugin. See [the implementation plan, setup and host acceptance steps](docs/chatgpt-plugin.md) and [portable packaging](plugins/epic-stocks/README.md).
 
+**Import entirely inside ChatGPT.** Open **Import** in the plugin or ask “Import my Epic Stocks documents.” Select local files or existing ChatGPT files, identify each as the stock workbook CSV, loan statement PDF, an Epic Stocks Excel workbook, a JSON draft, or supporting evidence. Parsing findings stay in the card. **Ask ChatGPT to help** uses the retained documents for repairs; the backend does not call an LLM. Edit grants, loans, prices, loan payments and actual sales in the card, then **Check changes**, review the diff and assumptions, and **Save confirmed import**. Import needs `equity:read` and `import:propose`; saving additionally needs `equity:write`. File helpers depend on host support; attaching files in chat remains available.
+
+Plugin imports bound each file connection/transfer to 30 seconds after DNS resolution. Image evidence is attached on initial parsing, and ambiguous payment/refinance loan numbers require correction before saving. See [plugin operations](docs/chatgpt-plugin.md#operations) for retained-source storage bounds.
+
+**New grant names do not need an administrator or template.** Click **Add a new grant type**, enter its name, year, shares, cost basis (explicitly zero when taxed at vest), first vest date, annual periods and exercise date. Confirm the schedule and cost basis. A similar prebuilt grant is only a hint. Schedule changes after a leave use the same custom path. Original files are retained with the encrypted proposal for up to seven days so repairs are rechecked against the same sources. Untouched grants, their loans and payoff sales, existing transactions and prices outside imported years are preserved. Any account change or draft correction requires another review before saving.
+
 | Inline portfolio (synthetic, mobile) | Dark mode (synthetic, desktop) |
 | --- | --- |
 | ![ChatGPT inline portfolio](screenshots/chatgpt-plugin-light-mobile.png) | ![ChatGPT portfolio in dark mode](screenshots/chatgpt-plugin-dark-desktop.png) |
+
+| ChatGPT custom grant import | Import review in dark mode |
+|---|---|
+| ![Custom grant import](screenshots/chatgpt-import-light-mobile.png) | ![Import review](screenshots/chatgpt-import-dark-desktop.png) |
 
 **One debt, counted once — as of the date you are asking about.** When a loan is refinanced the old row stays on file — it is history, not money still owed. Every total the app and the connector report counts only the live link in each chain. "Live" is judged against the date of the figure, though: a refinance scheduled for 2030 has not relieved anything you owe today, so it does not shrink today's totals, and interest keeps accruing on the old loan right up to the year the refinance lands rather than vanishing from the record. A loan the schedule replaces before its own maturity shows a $0 "Refinanced" step instead of a payoff, and never gets a payoff sale alongside it. A loan also has to hang off a grant you actually hold: the app refuses one that does not, whether you type it into the Loans form or bring it in on a spreadsheet, because a loan attached to nothing is invisible to your payoff schedule while still showing up as money you owe.
 
@@ -1062,6 +1080,9 @@ epic-stocks/
 │   │       ├── reports.py       # Problem reports (no-auth POST) + what a report may carry
 │   │       ├── sharing.py       # Email invitations + shared data viewing
 │   │       └── unsubscribe.py   # Public (no-auth) email unsubscribe endpoints
+│   ├── services/
+│   │   ├── price_state.py   # Applicable/announcement dates and price certainty
+│   │   └── timeline_cache.py # Timeline adapter shared with notifications
 │   ├── app/                 # Equity tracking domain (replace when forking)
 │   │   ├── core.py          # Event generation logic (frozen)
 │   │   ├── loan_state.py    # Refinance state (as_of is required) + accrual window + cycle validation
@@ -1401,4 +1422,10 @@ The built-in privacy page (`/privacy`) lists the third-party services used by th
 
 - **Schema migrations use Alembic.** Migrations live in `backend/alembic/versions/`. `alembic upgrade head` runs automatically on startup (PostgreSQL only; SQLite test environments use `create_all`). Create a new migration with `alembic revision --autogenerate -m "description"`.
 
-**ChatGPT UI code:** `backend/app/mcp/ui_tools.py` registers the scoped presentation tools and versioned resource; `portfolio.html` is the self-contained MCP Apps component. `plugins/epic-stocks/` holds the portable package source and `scripts/build-chatgpt-plugin.py` builds it for a deployment. Component host tests and synthetic screenshots live in `frontend/e2e/plugin-ui.spec.ts` and `plugin-host.ts`.
+**ChatGPT UI code:** `backend/app/mcp/import_ui.py` runs plugin parsing, review and wizard acceptance; `import_files.py` downloads bounded host file references with HTTPS, a host allowlist, public DNS pinned for the connection and no redirects. `backend/app/mcp/ui_tools.py` registers the scoped presentation tools and versioned resource; `portfolio.html` is the self-contained MCP Apps component. `plugins/epic-stocks/` holds the portable package source and `scripts/build-chatgpt-plugin.py` builds it for a deployment. Component host tests and synthetic screenshots live in `frontend/e2e/plugin-ui.spec.ts` and `plugin-host.ts`.
+
+
+Price entry and tentative announcement on mobile:
+
+![Share prices](screenshots/prices-light-mobile.png)
+![Tentative price entry](screenshots/prices-tentative-light-mobile.png)

@@ -65,6 +65,10 @@ def describe_changes(draft: Draft, grants: list, loans: list, prices: list) -> C
             if (old.vest_start, old.periods) != (g.vest_start, g.periods):
                 diffs.append(f"vesting {old.periods} from {old.vest_start} → "
                              f"{g.periods} from {g.vest_start}")
+            if old.exercise_date != g.exercise_date:
+                diffs.append(f"exercise date {old.exercise_date} → {g.exercise_date}")
+            if bool(old.election_83b) != g.election_83b:
+                diffs.append(f"83(b) election {bool(old.election_83b)} → {g.election_83b}")
             if (old.dp_shares or 0) != g.dp_shares:
                 diffs.append(f"shares traded in {abs(old.dp_shares or 0):,} → "
                              f"{abs(g.dp_shares):,}")
@@ -118,15 +122,18 @@ def describe_changes(draft: Draft, grants: list, loans: list, prices: list) -> C
         return out_
 
     def _fmt(rows) -> str:
-        return ", ".join(f"{_money(r.price)} on {r.effective_date}" for r in rows)
+        return ", ".join(f"{_money(r.price)} applicable {r.effective_date}" +
+                         (f" (tentative; announcement expected {r.expected_announcement_date})" if r.is_estimate
+                          else f" (announced {r.announced_date})" if r.announced_date else " (confirmed)")
+                         for r in rows)
 
     saved = _year(prices)
     for year, new in sorted(_year(draft.prices).items()):
         old = saved.get(year, [])
         if not old:
             out.prices_added.append(f"{year}: {_fmt(new)}")
-        elif [(r.effective_date, round(r.price, 4)) for r in old] != \
-                [(r.effective_date, round(r.price, 4)) for r in new]:
+        elif [(r.effective_date, round(r.price, 4), r.is_estimate, r.announced_date) for r in old] != \
+                [(r.effective_date, round(r.price, 4), bool(r.is_estimate), r.announced_date) for r in new]:
             out.prices_updated.append(f"{year}: {_fmt(old)} → {_fmt(new)}")
     return out
 

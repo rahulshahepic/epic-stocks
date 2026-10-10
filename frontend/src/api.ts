@@ -200,6 +200,9 @@ export interface PushStatus {
 }
 
 export interface DashboardData {
+  price_is_estimate?: boolean
+  expected_announcement_date?: string | null
+  announced_date?: string | null
   current_price: number
   total_shares: number
   total_income: number
@@ -249,6 +252,9 @@ export interface TimelineEvent {
   election_83b?: boolean
   // Estimated price (Share Price events from projected prices)
   is_estimate?: boolean
+  price_is_estimate?: boolean
+  expected_announcement_date?: string | null
+  announced_date?: string | null
   // Projected liquidation
   is_projected?: boolean
   outstanding_loan_principal?: number | null
@@ -310,6 +316,8 @@ export interface PriceEntry {
   effective_date: string
   price: number
   is_estimate?: boolean
+  expected_announcement_date?: string | null
+  announced_date?: string | null
 }
 
 export interface LoanEntry {
@@ -426,10 +434,10 @@ export const api = {
 
   // Prices
   getPrices: () => apiFetch<PriceEntry[]>('/api/prices'),
-  createPrice: (data: Omit<PriceEntry, 'id' | 'version' | 'is_estimate'>) => post<PriceEntry>('/api/prices', data),
-  updatePrice: (id: number, data: Partial<Omit<PriceEntry, 'id' | 'is_estimate'>>) => put<PriceEntry>(`/api/prices/${id}`, data),
+  createPrice: (data: Omit<PriceEntry, 'id' | 'version'>) => post<PriceEntry>('/api/prices', data),
+  updatePrice: (id: number, data: Partial<Omit<PriceEntry, 'id'>>) => put<PriceEntry>(`/api/prices/${id}`, data),
   deletePrice: (id: number) => del(`/api/prices/${id}`),
-  growthPrice: (data: { annual_growth_pct: number; first_date: string; through_date: string }) =>
+  growthPrice: (data: { annual_growth_pct: number; first_date: string; through_date: string; announcement_month?: number; announcement_day?: number }) =>
     post<PriceEntry[]>('/api/flows/growth-price', data),
 
   // Quick flows
@@ -446,7 +454,7 @@ export const api = {
     periods: number; exercise_date: string; election_83b?: boolean;
   }) => post<GrantEntry>('/api/flows/add-bonus', data),
 
-  annualPrice: (data: { effective_date: string; price: number }) =>
+  annualPrice: (data: Omit<PriceEntry, 'id' | 'version'>) =>
     post<PriceEntry>('/api/flows/annual-price', data),
 
   // User info
@@ -1067,7 +1075,7 @@ export interface WizardSale {
 
 export interface WizardSubmitPayload {
   grants: WizardGrant[]
-  prices: { effective_date: string; price: number }[]
+  prices: Omit<PriceEntry, 'id' | 'version'>[]
   sales?: WizardSale[]
   reported_sold_shares?: number | null
   sale_grant_keys?: string[]

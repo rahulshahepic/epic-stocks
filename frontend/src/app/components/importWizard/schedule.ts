@@ -287,11 +287,15 @@ export function buildScheduleRows(s: WizardSchedule, existing: ExistingData): Sc
     prices: s.priceYears.map(y => ({
       // A saved price keeps its own date; re-dating it to 1 January moved
       // which vests and sales it applied to.
+      is_estimate: priceByYear.get(y)?.is_estimate,
+      expected_announcement_date: priceByYear.get(y)?.expected_announcement_date,
+      announced_date: priceByYear.get(y)?.announced_date,
       effective_date: priceByYear.get(y)?.effective_date ?? `${y}-01-01`,
       price: priceByYear.has(y) ? String(priceByYear.get(y)!.price) : '',
     })).concat([...sameYearPrices, ...existing.prices.filter(p => p.id < 0 && !s.priceYears.includes(
       parseInt(p.effective_date.slice(0, 4))))].map(p => ({
-      effective_date: p.effective_date, price: String(p.price),
+      effective_date: p.effective_date, price: String(p.price), is_estimate: p.is_estimate,
+      expected_announcement_date: p.expected_announcement_date, announced_date: p.announced_date,
     }))),
   }
 }

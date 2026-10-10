@@ -129,6 +129,9 @@ class Price(Base):
     effective_date: Mapped[date] = mapped_column(Date, nullable=False)
     price: Mapped[float] = mapped_column(EncryptedFloat, nullable=False)
     is_estimate: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
+    expected_announcement_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    announced_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    announcement_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
     __mapper_args__ = {"version_id_col": version}
     __table_args__ = (
@@ -558,8 +561,9 @@ class ImportProposal(Base):
 
     `epic_import/` requires that acceptance goes through the wizard and never a
     file, and that is the whole point of this row: a connector can prepare a
-    draft but not apply it. The user opens the app, sees what their assistant
-    put together, and accepts it in the wizard like any other import.
+    draft but not apply it. The user accepts it in the web or plugin wizard.
+    Plugin acceptance separately requires equity:write and a frozen review;
+    its retained source files and review state live in the same encrypted blob.
 
     One per account — a second proposal replaces the first. Two assistants
     racing is a confusing thing to build a list UI for, and the newer draft is

@@ -86,7 +86,7 @@ class TestIsEstimateFlag:
         assert resp.status_code == 201
         assert resp.json()["is_estimate"] is False
 
-    def test_update_flips_is_estimate_future_to_past(self, client):
+    def test_update_preserves_estimate_future_to_past(self, client):
         register_user(client)
         # Start as estimate (future date)
         resp = _add_price(client, NEXT_YEAR, 60.0)
@@ -97,9 +97,9 @@ class TestIsEstimateFlag:
             "effective_date": str(YESTERDAY), "version": version
         })
         assert resp2.status_code == 200
-        assert resp2.json()["is_estimate"] is False
+        assert resp2.json()["is_estimate"] is True
 
-    def test_update_flips_is_estimate_past_to_future(self, client):
+    def test_update_preserves_confirmed_past_to_future(self, client):
         register_user(client)
         resp = _add_price(client, YESTERDAY, 50.0)
         price_id = resp.json()["id"]
@@ -108,7 +108,7 @@ class TestIsEstimateFlag:
             "effective_date": str(NEXT_YEAR), "version": version
         })
         assert resp2.status_code == 200
-        assert resp2.json()["is_estimate"] is True
+        assert resp2.json()["is_estimate"] is False
 
 
 # ── Same-date shadow cleanup ──────────────────────────────────────────────────
@@ -194,6 +194,17 @@ class TestShadowCleanup:
 # ── Growth price estimator ────────────────────────────────────────────────────
 
 class TestGrowthPrice:
+    def test_chains_from_latest_applicable_tentative_price(self, client):
+        register_user(client)
+        current_year = date.today().year
+        _add_price(client, f"{current_year - 1}-01-01", 100)
+        resp = client.post("/api/prices", json={"effective_date": f"{current_year}-01-01",
+                                                "price": 110, "is_estimate": True})
+        assert resp.status_code == 201
+        generated = _growth_price(client, 10, f"{current_year + 1}-01-01", f"{current_year + 1}-01-01")
+        assert generated.status_code == 201
+        assert generated.json()[0]["price"] == pytest.approx(121)
+
     def test_generates_yearly_prices(self, client):
         register_user(client)
         _add_annual_price(client, YESTERDAY, 50.0)
@@ -221,11 +232,11 @@ class TestGrowthPrice:
         resp = _growth_price(client, 5.0, YESTERDAY, NEXT_YEAR)
         assert resp.status_code == 422
 
-    def test_rejects_today_as_first_date(self, client):
+    def test_allows_today_as_first_date(self, client):
         register_user(client)
         _add_annual_price(client, YESTERDAY, 50.0)
         resp = _growth_price(client, 5.0, TODAY, NEXT_YEAR)
-        assert resp.status_code == 422
+        assert resp.status_code == 201
 
     def test_replaces_existing_estimates_in_range(self, client):
         register_user(client)
@@ -321,7 +332,7 @@ class TestEpicModeAnnualPrice:
 # ── Epic mode stale estimate cleanup ─────────────────────────────────────────
 
 class TestEpicCleanup:
-    def test_epic_list_prices_removes_past_estimates(self, client, db_session):
+    def test_epic_list_prices_preserves_past_estimates(self, client, db_session):
         register_user(client)
         _set_epic_mode(db_session, True)
 
@@ -336,7 +347,7 @@ class TestEpicCleanup:
 
         # GET /api/prices should clean it up
         prices = client.get("/api/prices").json()
-        assert not any(p["effective_date"] == str(YESTERDAY) and p["is_estimate"] for p in prices)
+        assert any(p["effective_date"] == str(YESTERDAY) and p["is_estimate"] for p in prices)
 
     def test_non_epic_list_prices_preserves_past_estimates(self, client, db_session):
         register_user(client)
@@ -385,10 +396,10 @@ class TestEpicCleanup:
 
         from app.routers.prices import _cleanup_epic_past_estimates
         deleted = _cleanup_epic_past_estimates(db_session)
-        assert deleted == 1
+        assert deleted == 0
 
         remaining = db_session.query(Price).filter(Price.is_estimate == True, Price.effective_date == YESTERDAY).count()
-        assert remaining == 0
+        assert remaining == 1
 
     def test_epic_cleanup_keeps_future_estimates(self, client, db_session):
         register_user(client)

@@ -25,7 +25,7 @@ test.describe('Multi-user isolation', () => {
     // Add a price as User A
     await navigateTo(page, 'Prices')
     await page.getByRole('button', { name: '+ Price' }).click()
-    await page.getByLabel('Effective Date').fill('2028-03-01')
+    await page.getByLabel('Applicable Date').fill('2028-03-01')
     await page.getByLabel('Price per Share').fill('10.00')
     await page.getByRole('button', { name: 'Save', exact: true }).click()
     await expect(page.getByText('1 price entry')).toBeVisible({ timeout: SETTLE })
@@ -62,7 +62,7 @@ test.describe('Multi-user isolation', () => {
     // User B adds their own price
     await navigateTo(page, 'Prices')
     await page.getByRole('button', { name: '+ Price' }).click()
-    await page.getByLabel('Effective Date').fill('2028-06-01')
+    await page.getByLabel('Applicable Date').fill('2028-06-01')
     await page.getByLabel('Price per Share').fill('20.00')
     await page.getByRole('button', { name: 'Save', exact: true }).click()
     await expect(page.getByText('1 price entry')).toBeVisible({ timeout: SETTLE })

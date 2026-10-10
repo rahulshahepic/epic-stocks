@@ -38,7 +38,12 @@ def read_prices_from_excel(ws):
         p = ws.cell(row=i, column=2).value
         if d is None:
             break
-        prices.append({'date': d, 'price': float(p)})
+        row = {'date': d, 'price': float(p)}
+        for col, key in ((3, 'is_estimate'), (4, 'expected_announcement_date'), (5, 'announced_date')):
+            value = ws.cell(row=i, column=col).value
+            if value is not None:
+                row[key] = value
+        prices.append(row)
     return prices
 
 

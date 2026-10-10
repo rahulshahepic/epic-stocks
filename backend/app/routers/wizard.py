@@ -1,7 +1,7 @@
 """Wizard endpoints: tolerant structural file parsing and merge-aware bulk data save."""
 
 from collections import Counter
-from datetime import date
+from datetime import date, datetime, timezone
 from math import isfinite
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
@@ -14,9 +14,10 @@ from scaffold.auth import get_current_user
 from scaffold.safe_workbook import WorkbookRejected, load_workbook_safely
 from app.date_utils import to_date as _to_date
 from schemas import (DownPaymentShares, InputModel, MAX_BULK_ITEMS, MAX_LABEL_LEN,
-                     Notes, SharePrice, Shares, bounded, bounded_list)
+                     Notes, SharePrice, Shares, IsoDate, LoanNumber, Money, bounded, bounded_list)
 from scaffold.quota import check_row_count, check_row_quota
 from app import event_cache
+from services.price_state import price_values
 
 router = APIRouter(prefix="/api/wizard", tags=["wizard"])
 
@@ -62,6 +63,9 @@ class ParsedGrantTemplate(InputModel):
 class ParsedPrice(InputModel):
     effective_date: str
     price: float | None = None
+    is_estimate: bool | None = None
+    expected_announcement_date: str | None = None
+    announced_date: str | None = None
 
 
 class ParseFileResponse(InputModel):
@@ -117,6 +121,9 @@ def parse_file(
                 prices.append(ParsedPrice(
                     effective_date=date_str,
                     price=_safe_float(ws.cell(row=i, column=2).value),
+                    is_estimate=ws.cell(row=i, column=3).value,
+                    expected_announcement_date=_safe_date(ws.cell(row=i, column=4).value),
+                    announced_date=_safe_date(ws.cell(row=i, column=5).value),
                 ))
 
     return ParseFileResponse(grants=grants, prices=prices)
@@ -214,6 +221,14 @@ class WizardGrant(InputModel):
 class WizardPrice(InputModel):
     effective_date: str
     price: float
+    is_estimate: bool | None = None
+    expected_announcement_date: date | None = None
+    announced_date: date | None = None
+
+    @model_validator(mode="after")
+    def validate_state(self):
+        price_values(self.model_dump(exclude_unset=True))
+        return self
 
     @field_validator("price")
     @classmethod
@@ -256,10 +271,18 @@ class WizardSale(InputModel):
         return v
 
 
+class WizardPayment(InputModel):
+    loan_number: LoanNumber
+    date: IsoDate
+    amount: Money
+    notes: Notes = ""
+
+
 class WizardSubmitRequest(InputModel):
     grants: list[WizardGrant]
     prices: list[WizardPrice]
     sales: list[WizardSale] = Field(default_factory=list)
+    loan_payments: list[WizardPayment] = Field(default_factory=list)
     reported_sold_shares: int | None = Field(default=None, ge=0, le=MAX_BULK_ITEMS * 10_000_000)
     sale_grant_keys: list[Annotated[str, Field(max_length=MAX_LABEL_LEN + 5)]] = Field(
         default_factory=list)
@@ -268,7 +291,7 @@ class WizardSubmitRequest(InputModel):
     preserve_grant_ids: list[int] = Field(default_factory=list)
     preserve_price_ids: list[int] = Field(default_factory=list)
 
-    @field_validator("grants", "prices", "sales", "sale_grant_keys", "preserve_grant_ids", "preserve_price_ids")
+    @field_validator("grants", "prices", "sales", "loan_payments", "sale_grant_keys", "preserve_grant_ids", "preserve_price_ids")
     @classmethod
     def list_bounded(cls, v):
         return bounded_list(v, MAX_BULK_ITEMS, "list")
@@ -295,6 +318,7 @@ class WizardSubmitResponse(InputModel):
     payoff_sales: int
     sales: int = 0
     existing_sales: int = 0
+    loan_payments: int = 0
 
 
 # ── Preview diff models ───────────────────────────────────────────────────────
@@ -386,7 +410,9 @@ def preview(
                 effective_date=wp.effective_date, status="added", price=wp.price,
             ))
         else:
-            changed = abs(existing.price - wp.price) > 0.001
+            state = price_values(wp.model_dump(exclude_unset=True), existing)
+            changed = abs(existing.price - wp.price) > 0.001 or any(
+                getattr(existing, key) != value for key, value in state.items())
             price_diffs.append(DiffPrice(
                 effective_date=wp.effective_date,
                 status="updated" if changed else "unchanged",
@@ -436,6 +462,7 @@ def submit(
         check_row_count(Price, len(body.prices))
         check_row_count(Loan, incoming_loans)
         check_row_count(Sale, len(sales_to_create))
+        check_row_count(LoanPayment, len(body.loan_payments))
     else:
         check_row_quota(db, Grant, user.id, adding=len(body.grants))
         check_row_quota(db, Price, user.id, adding=len(body.prices))
@@ -459,9 +486,15 @@ def submit(
     db.flush()
 
     # Resolve refinance references across all user loans
+    all_loans = db.query(Loan).filter(Loan.user_id == user.id).all()
+    referenced_numbers = {p.loan_number for p in body.loan_payments} | {
+        ref_num for _, ref_num in loan_objects if ref_num}
+    number_counts = Counter(l.loan_number for l in all_loans if l.loan_number)
+    if any(number_counts[number] > 1 for number in referenced_numbers):
+        raise HTTPException(status_code=422, detail="A payment or refinance names more than one loan; use distinct loan numbers")
     all_loans_by_number = {
         l.loan_number: l
-        for l in db.query(Loan).filter(Loan.user_id == user.id).all()
+        for l in all_loans
         if l.loan_number
     }
     for loan, ref_num in loan_objects:
@@ -521,6 +554,26 @@ def submit(
     ]
     db.add_all(sales)
 
+    payment_count = 0
+    existing_payments = Counter((lp.loan_id, lp.date, lp.amount) for lp in
+                               db.query(LoanPayment).filter(LoanPayment.user_id == user.id))
+    for payment in body.loan_payments:
+        loan = all_loans_by_number.get(payment.loan_number)
+        if loan is None:
+            raise HTTPException(status_code=422, detail="A payment names a loan number not present in this account or import")
+        key = (loan.id, _to_date(payment.date), payment.amount)
+        if existing_payments[key]:
+            existing_payments[key] -= 1
+            continue
+        check_row_quota(db, LoanPayment, user.id)
+        db.add(LoanPayment(user_id=user.id, loan_id=loan.id, date=key[1],
+                           amount=payment.amount, notes=payment.notes))
+        db.flush()
+        payment_count += 1
+    if payment_count:
+        from app.routers.loans import _regenerate_future_payoff_sales
+        _regenerate_future_payoff_sales(user, db, create_missing=False, commit=False)
+
     db.commit()
 
     event_cache.schedule_recompute(user.id)
@@ -532,6 +585,7 @@ def submit(
         payoff_sales=payoff_count,
         sales=len(sales),
         existing_sales=len(body.sales) - len(sales),
+        loan_payments=payment_count,
     )
 
 
@@ -542,9 +596,9 @@ def _insert_prices(prices: list[WizardPrice], user_id: int, db: Session) -> int:
     for p in prices:
         db.add(Price(
             user_id=user_id,
-            effective_date=_to_date(p.effective_date),
             price=p.price,
-            is_estimate=_to_date(p.effective_date) > date.today(),
+            **price_values(p.model_dump(exclude_unset=True)),
+            announcement_notified_at=datetime.now(timezone.utc) if p.announced_date and p.announced_date < date.today() else None,
         ))
         count += 1
     return count
@@ -608,8 +662,15 @@ def _merge(
     preserve_grant_ids = set(body.preserve_grant_ids)
     preserve_price_ids = set(body.preserve_price_ids)
 
-    # Delete auto-generated payoff sales — they'll be regenerated from the new loan set
-    db.query(Sale).filter(Sale.user_id == user_id, Sale.loan_id.isnot(None)).delete()
+    # Only the incoming or removed grants rebuild their loan set. A partial
+    # plugin import must keep payoff sales on grants preserved by identity.
+    affected_keys = wizard_grant_keys | {
+        key for key, g in existing_grants.items()
+        if key not in wizard_grant_keys and g.id not in preserve_grant_ids
+    }
+    affected_loan_ids = [l.id for l in db.query(Loan).filter(Loan.user_id == user_id)
+                         if (l.grant_year, l.grant_type) in affected_keys]
+    db.query(Sale).filter(Sale.user_id == user_id, Sale.loan_id.in_(affected_loan_ids)).delete()
 
     # Delete orphaned grants (not in wizard, not preserved) and their loans
     for key, g in existing_grants.items():
@@ -634,13 +695,17 @@ def _merge(
         existing = existing_prices.get(wp.effective_date)
         if existing:
             existing.price = wp.price
-            existing.is_estimate = _to_date(wp.effective_date) > date.today()
+            state = price_values(wp.model_dump(exclude_unset=True), existing)
+            if state["announced_date"] != existing.announced_date:
+                existing.announcement_notified_at = None
+            for key, value in state.items():
+                setattr(existing, key, value)
         else:
             db.add(Price(
                 user_id=user_id,
-                effective_date=_to_date(wp.effective_date),
                 price=wp.price,
-                is_estimate=_to_date(wp.effective_date) > date.today(),
+                **price_values(wp.model_dump(exclude_unset=True)),
+                announcement_notified_at=datetime.now(timezone.utc) if wp.announced_date and wp.announced_date < date.today() else None,
             ))
         price_count += 1
 

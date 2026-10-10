@@ -27,7 +27,7 @@ from scaffold.oauth import audit
 from scaffold.oauth.resource import Connector, require_connector
 from scaffold.oauth.settings import mcp_enabled
 from scaffold.rate_limit import check_rate_shared
-from . import comp_tools, equity_tools, import_tools, read_tools, ui_tools  # noqa: F401
+from . import comp_tools, equity_tools, import_tools, read_tools, ui_tools, import_ui  # noqa: F401
 from .ui_tools import RESOURCE_URI, resource_contents, resource_descriptor
 from .tools import REGISTRY, ToolContext, as_result, visible_to
 
@@ -190,7 +190,12 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext) -> d
                 "schedules are starting points; custom grants and leave changes "
                 "need the user's explicit confirmation of the full schedule and "
                 "cost-basis treatment. stage_import leaves a review draft in "
-                "the app; with separately granted equity:write, save_equity "
+                "the app. For ChatGPT's full plugin wizard, open show_import; "
+                "analyze_import_files tries the existing parsers, and "
+                "prepare_import_review rechecks corrections against retained "
+                "sources and displays the review. The user confirms and saves "
+                "in the UI, with separately granted equity:write. Do not call "
+                "the app-only accept_import_review from chat. With equity:write, save_equity "
                 "and remove_equity can complete a chat-only workflow after "
                 "the user approves the specific edits. Check the resulting "
                 "position with read tools afterward.\n\n"
@@ -269,6 +274,7 @@ def _call_tool(params: dict, request_id: Any, ctx: ToolContext) -> dict:
     try:
         payload = tool.handler(ctx, arguments)
         result = as_result(payload)
+        result["content"].extend(ctx.extra_content)
         if tool.output_schema is not None:
             # Normalize dates exactly as in the text fallback.
             result["structuredContent"] = json.loads(result["content"][0]["text"])

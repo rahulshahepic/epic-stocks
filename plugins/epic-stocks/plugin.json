@@ -1,21 +1,29 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "epic-stocks",
-  "version": "1.0.0",
-  "description": "Browse your Epic Stocks portfolio in ChatGPT and work with your account through scoped tools.",
+  "version": "1.1.0",
+  "description": "Browse Epic Stocks and import documents, repair drafts and confirm custom grants inside ChatGPT.",
   "repository": "https://github.com/rahulshahepic/epic-stocks",
   "extensions": {
     "com.openai": {
       "interface": {
         "displayName": "Epic Stocks (Unofficial)",
-        "shortDescription": "Your stocks, loans and vesting schedule",
-        "longDescription": "See your current equity in an inline card, browse grants and loans, and inspect upcoming vesting events. Connect your own Epic Stocks account with OAuth. Editing remains subject to the permissions you grant. This is an independent app, not an official Epic product.",
+        "shortDescription": "Stocks, loans and imports",
+        "longDescription": "Browse your current equity, grants, loans and vesting events. Import PDFs, CSVs, Excel workbooks and other documents inside ChatGPT, review parsing findings, repair with ChatGPT and add new grant types without a built-in template. Confirm the exact changes in the plugin before saving. Connect your account with OAuth; saving needs edit permission. This is an independent app, not an official Epic product.",
         "developerName": "Epic Stocks contributors",
         "category": "Productivity",
-        "capabilities": ["Read", "Write"],
+        "capabilities": [
+          "Read",
+          "Write"
+        ],
         "brandColor": "#C41230",
         "logo": "./assets/icon.svg",
-        "defaultPrompt": ["Show my Epic Stocks portfolio", "Show my upcoming vesting events", "Explain my outstanding stock loans"]
+        "defaultPrompt": [
+          "Show my Epic Stocks portfolio",
+          "Show my upcoming vesting events",
+          "Explain my outstanding stock loans",
+          "Import my Epic Stocks documents"
+        ]
       }
     }
   }

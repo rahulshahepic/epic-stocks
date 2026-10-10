@@ -114,10 +114,15 @@ class DraftGrant:
 class DraftPrice:
     effective_date: date
     price: float
+    is_estimate: bool | None = False
+    expected_announcement_date: date | None = None
+    announced_date: date | None = None
 
     def as_dict(self) -> dict:
         return {"effective_date": self.effective_date.isoformat(),
-                "price": round(self.price, 4)}
+                "price": round(self.price, 4), "is_estimate": self.is_estimate,
+                "expected_announcement_date": self.expected_announcement_date.isoformat() if self.expected_announcement_date else None,
+                "announced_date": self.announced_date.isoformat() if self.announced_date else None}
 
 
 @dataclass
@@ -463,7 +468,7 @@ def _finite_int(v) -> int:
     return int(round(f))
 
 
-def draft_from_payload(payload: dict, sk: Skeleton) -> tuple[Draft, list[Finding]]:
+def draft_from_payload(payload: dict, sk: Skeleton, *, allow_empty_grants: bool = False) -> tuple[Draft, list[Finding]]:
     """Read a draft returned by an assistant. Tolerant about shape, strict about types.
 
     Nothing in here may raise: the payload is whatever an assistant handed the
@@ -479,7 +484,7 @@ def draft_from_payload(payload: dict, sk: Skeleton) -> tuple[Draft, list[Finding
     draft = Draft(origin="supplied", statement_date=_d(payload.get("statement_date")))
 
     grants = payload.get("grants")
-    if not isinstance(grants, list) or not grants:
+    if not isinstance(grants, list) or (not grants and not allow_empty_grants):
         return draft, [Finding("R1", ERROR, "",
                                "No 'grants' array in the JSON. Paste the whole object the "
                                "assistant produced, starting at '{'.")]
@@ -618,9 +623,14 @@ def draft_from_payload(payload: dict, sk: Skeleton) -> tuple[Draft, list[Finding
                                     "Skipped — needs an effective_date and a price."))
             continue
         try:
-            draft.prices.append(DraftPrice(d, float(p)))
+            from services.price_state import price_values
+            state = price_values({"effective_date": d, **{k: raw[k] for k in
+                ("is_estimate", "expected_announcement_date", "announced_date") if k in raw}})
+            if state["is_estimate"] is not None and type(state["is_estimate"]) is not bool:
+                raise ValueError("is_estimate must be a boolean")
+            draft.prices.append(DraftPrice(price=float(p), **state))
         except (TypeError, ValueError, OverflowError):
-            findings.append(Finding("R1", WARNING, f"prices[{i}]", "Price is not a number."))
+            findings.append(Finding("R1", WARNING, f"prices[{i}]", "Price or announcement fields are invalid."))
 
     raw_sales = payload.get("sales") or []
     if not isinstance(raw_sales, list):
@@ -850,8 +860,7 @@ def to_wizard_payload(draft: Draft, include_unanswered_sales: bool = False) -> d
                        "interest_rate": l.interest_rate,
                        "due_date": l.due_date.isoformat()} for l in g.loans],
         } for g in draft.grants],
-        "prices": [{"effective_date": p.effective_date.isoformat(),
-                    "price": p.price} for p in draft.prices],
+        "prices": [p.as_dict() for p in draft.prices],
         "sales": [s.as_dict() for s in draft.sales
                   if include_unanswered_sales or s.is_complete],
     }

@@ -221,7 +221,7 @@ def test_a_price_year_the_draft_names_reports_every_saved_price_it_replaces(mcp,
     changes = stage(mcp, ON_SCHEDULE, prices=[
         {"effective_date": "2021-01-01", "price": 2.0}])["changes_vs_account"]
     assert changes["prices_updated"] == [
-        "2021: $2.00 on 2021-01-01, $2.50 on 2021-07-01 → $2.00 on 2021-01-01"]
+        "2021: $2.00 applicable 2021-01-01 (confirmed), $2.50 applicable 2021-07-01 (confirmed) → $2.00 applicable 2021-01-01 (confirmed)"]
 
 
 def test_an_unchanged_price_year_is_not_reported(mcp, client):

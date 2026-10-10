@@ -817,6 +817,18 @@ def _get_events_data(user: User, db: Session) -> list:
 
     enriched = _enrich_timeline(timeline, loans_db, loan_payments, sales)
 
+    from services.price_state import price_metadata
+    price_rows = db.query(Price).filter(Price.user_id == user.id).order_by(Price.effective_date).all()
+    current_row = price_rows[0] if price_rows else None
+    price_index = 0
+    for event in enriched:
+        when = _to_date(event["date"])
+        while price_index < len(price_rows) and price_rows[price_index].effective_date <= when:
+            current_row = price_rows[price_index]
+            price_index += 1
+        if current_row:
+            event.update(price_metadata(current_row))
+
     # Annotate vesting events with election_83b flag from their grant
     # Annotate Share Price events with is_estimate flag
     for e in enriched:
@@ -1142,7 +1154,13 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
         else:
             break
 
+    from services.price_state import price_metadata
+    applicable_price = (db.query(Price).filter(Price.user_id == user.id, Price.effective_date <= cutoff)
+                        .order_by(Price.effective_date.desc()).first())
+    metadata = price_metadata(applicable_price, cutoff) if applicable_price else {}
+    price_is_estimate = metadata.get("price_is_estimate", False)
     payload = {
+        **metadata,
         "as_of": as_of.isoformat() if as_of else None,
         "price_is_estimate": price_is_estimate,
         "current_price": last.get("share_price", initial_price),

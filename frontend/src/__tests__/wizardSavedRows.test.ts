@@ -59,8 +59,8 @@ describe('saved prices (#557)', () => {
       prices: [{ id: 4, version: 1, effective_date: '2023-03-01', price: 10, is_estimate: false }],
       grants: [], loans: [],
     } as never)
-    expect(rows.prices).toContainEqual({ effective_date: '2023-03-01', price: '10' })
-    expect(rows.prices).toContainEqual({ effective_date: '2024-01-01', price: '' })
+    expect(rows.prices).toContainEqual(expect.objectContaining({ effective_date: '2023-03-01', price: '10', is_estimate: false }))
+    expect(rows.prices).toContainEqual(expect.objectContaining({ effective_date: '2024-01-01', price: '' }))
   })
 })
 
@@ -76,8 +76,8 @@ describe('several saved prices in one year', () => {
       grants: [], loans: [],
     } as never)
     const submitted = sanitizeForSubmit(rows.prices, []).prices
-    expect(submitted).toContainEqual({ effective_date: '2023-01-01', price: 10 })
-    expect(submitted).toContainEqual({ effective_date: '2023-07-01', price: 11 })
+    expect(submitted).toContainEqual(expect.objectContaining({ effective_date: '2023-01-01', price: 10, is_estimate: false }))
+    expect(submitted).toContainEqual(expect.objectContaining({ effective_date: '2023-07-01', price: 11, is_estimate: false }))
     expect(rows.orphanPrices).toEqual([])
   })
 })

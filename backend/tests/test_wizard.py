@@ -5,6 +5,7 @@ import io
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import openpyxl
+import pytest
 from tests.conftest import register_user
 
 FIXTURE = os.path.join(os.path.dirname(__file__), "..", "..", "test_data", "fixture.xlsx")
@@ -474,3 +475,48 @@ def test_merge_keeps_manual_sales(client):
     assert resp.status_code == 201
     sales_after = client.get("/api/sales").json()
     assert any(s["id"] == manual_sale["id"] for s in sales_after)
+
+
+def test_partial_merge_preserves_only_unsubmitted_grants_payoff_sales(client):
+    register_user(client)
+    loan = {"loan_number": "first", "loan_type": "Purchase", "loan_year": 2021,
+            "amount": 100, "interest_rate": 0.03, "due_date": "2025-12-31"}
+    first = {**MINIMAL_PAYLOAD["grants"][0], "loans": [loan]}
+    second = {**first, "year": 2022, "type": "Bonus", "loans": [{**loan, "loan_number": "second"}]}
+    response = client.post("/api/wizard/submit", json={**MINIMAL_PAYLOAD, "grants": [first, second]})
+    assert response.status_code == 201
+    grants = client.get("/api/grants").json()
+    sales = {s["loan_id"]: s for s in client.get("/api/sales").json() if s["loan_id"]}
+    loans = {l["loan_number"]: l for l in client.get("/api/loans").json()}
+    preserved = sales[loans["second"]["id"]]
+    replaced = sales[loans["first"]["id"]]
+    response = client.post("/api/wizard/submit", json={
+        **MINIMAL_PAYLOAD, "clear_existing": False,
+        "preserve_grant_ids": [g["id"] for g in grants],
+        "grants": [{**first, "loans": [{**loan, "amount": 200}]}],
+    })
+    assert response.status_code == 201
+    after = client.get("/api/sales").json()
+    assert preserved in after
+    assert replaced not in after
+    assert any(s["loan_id"] == loans["first"]["id"] and s["shares"] != replaced["shares"] for s in after)
+
+
+@pytest.mark.parametrize("reference", ["payment", "refinance"])
+def test_submit_refuses_ambiguous_loan_number_references_atomically(client, reference):
+    register_user(client)
+    loan = {"loan_number": "duplicate", "loan_type": "Purchase", "loan_year": 2021,
+            "amount": 100, "interest_rate": 0.03, "due_date": "2025-12-31"}
+    first = {**MINIMAL_PAYLOAD["grants"][0], "loans": [loan]}
+    second = {**first, "year": 2022, "type": "Bonus"}
+    payload = {**MINIMAL_PAYLOAD, "grants": [first, second]}
+    if reference == "payment":
+        payload["loan_payments"] = [{"loan_number": "duplicate", "date": "2024-08-02", "amount": 10}]
+    else:
+        first["loans"] = [loan, {**loan, "loan_number": "replacement", "refinances_loan_number": "duplicate"}]
+    response = client.post("/api/wizard/submit", json=payload)
+    assert response.status_code == 422
+    assert "more than one loan" in response.json()["detail"]
+    assert client.get("/api/grants").json() == []
+    assert client.get("/api/loans").json() == []
+    assert client.get("/api/loan-payments").json() == []

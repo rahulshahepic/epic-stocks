@@ -120,6 +120,18 @@ def _get_import_guide(ctx: ToolContext, args: dict):
             "separately granted equity:write tools save one confirmed row at "
             "a time."
         ),
+        "plugin_import_workflow": (
+            "In ChatGPT with plugin UI support, use show_import to open the "
+            "full wizard. Users can upload/select files there, or pass attached "
+            "files to analyze_import_files with their parser roles. Read the "
+            "current revision and draft from show_import, explain the evidence "
+            "and findings, and use prepare_import_review for each corrected "
+            "draft. It retains the original sources for reconciliation. "
+            "Custom grants do not need templates, but schedule_confirmed and "
+            "basis_confirmed must reflect the user's actual acknowledgements. "
+            "Let the user check changes and Save confirmed import in the UI. "
+            "Do not call the app-only acceptance tool from the conversation."
+        ),
         "notes": _finding_dicts(skeleton_findings),
     }
 

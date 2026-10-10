@@ -10,7 +10,7 @@ schema and return structuredContent for the component; ordinary analysis tools
 keep their existing text behavior.
 """
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from sqlalchemy.orm import Session
@@ -24,6 +24,7 @@ class ToolContext:
 
     connector: Connector
     db: Session
+    extra_content: list[dict] = field(default_factory=list)
 
     @property
     def user(self):

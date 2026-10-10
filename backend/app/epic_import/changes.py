@@ -65,6 +65,10 @@ def describe_changes(draft: Draft, grants: list, loans: list, prices: list) -> C
             if (old.vest_start, old.periods) != (g.vest_start, g.periods):
                 diffs.append(f"vesting {old.periods} from {old.vest_start} → "
                              f"{g.periods} from {g.vest_start}")
+            if old.exercise_date != g.exercise_date:
+                diffs.append(f"exercise date {old.exercise_date} → {g.exercise_date}")
+            if bool(old.election_83b) != g.election_83b:
+                diffs.append(f"83(b) election {bool(old.election_83b)} → {g.election_83b}")
             if (old.dp_shares or 0) != g.dp_shares:
                 diffs.append(f"shares traded in {abs(old.dp_shares or 0):,} → "
                              f"{abs(g.dp_shares):,}")

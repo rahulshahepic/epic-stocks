@@ -7,7 +7,7 @@ import * as path from 'path'
 import { fileURLToPath } from 'url'
 import AxeBuilder from '@axe-core/playwright'
 import { navigateTo } from './helpers.ts'
-import { pluginHost } from './plugin-host'
+import { pluginHost, importReviewSnapshot } from './plugin-host'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -92,9 +92,12 @@ test.describe('Screenshots', () => {
     for (const size of ['mobile', 'desktop'] as const) {
       test(`chatgpt plugin - ${theme} - ${size}`, async ({ page }) => {
         await page.setViewportSize(size === 'mobile' ? MOBILE : DESKTOP)
-        const widget = await pluginHost(page, { theme })
+        const widget = await pluginHost(page, { theme, fileHelpers:true })
         await expect(widget.getByText('$225,000')).toBeVisible()
         await shoot(page, `chatgpt-plugin-${theme}-${size}`, { fullPage: true })
+        await page.evaluate(snapshot=>window.frames[0].postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:{structuredContent:snapshot}},'*'),importReviewSnapshot)
+        await expect(widget.getByLabel('Grant name',{exact:true})).toHaveValue('Retention Award')
+        await shoot(page, `chatgpt-import-${theme}-${size}`, { fullPage: true })
       })
     }
   }

@@ -10,6 +10,9 @@ export type GrantType = GrantTypeName
 export interface WizardPrice {
   effective_date: string
   price: string
+  is_estimate?: boolean
+  expected_announcement_date?: string | null
+  announced_date?: string | null
 }
 
 export interface LoanDraft {

@@ -74,7 +74,12 @@ export function findStalePrice(prices: PriceEntry[] | null) {
   const real = (prices ?? []).filter(p => !p.is_estimate)
   if (real.length === 0) return null
   const newest = real[real.length - 1]
-  return newest.effective_date.slice(0, 4) < localToday().slice(0, 4) ? newest : null
+  const today = localToday()
+  const year = today.slice(0, 4)
+  const applicable = (prices ?? []).filter(p => p.is_estimate && p.effective_date <= today)
+  const expected = applicable.at(-1)?.expected_announcement_date ?? `${year}-03-01`
+  if (today < expected) return null
+  return newest.effective_date.slice(0, 4) < year ? newest : null
 }
 
 /** The last date on the timeline, projections included — what "Last event" jumps to. */

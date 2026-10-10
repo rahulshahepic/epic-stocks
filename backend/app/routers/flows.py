@@ -2,14 +2,13 @@ import math
 from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
-from datetime import date, date as date_cls
+from datetime import date
 
 from database import get_db
 from scaffold.models import User, Grant, Loan, Price, TaxSettings, GrantProgramSettings
 from schemas import (
-    InputModel, GrantOut, LoanOut, PriceOut, GrowthPriceRequest,
-    Year, Shares, Price as PositivePrice, CostBasis, Periods,
+    InputModel, GrantOut, LoanOut, PriceOut, PriceCreate, GrowthPriceRequest,
+    Year, Shares, CostBasis, Periods,
     DownPaymentShares, Money, InterestRate, LoanNumber, PayoffSaleOptions,
 )
 from scaffold.auth import get_current_user
@@ -35,9 +34,8 @@ class NewPurchaseRequest(InputModel):
     payoff_sale: PayoffSaleOptions | None = None
 
 
-class AnnualPriceRequest(InputModel):
-    effective_date: date
-    price: PositivePrice
+class AnnualPriceRequest(PriceCreate):
+    pass
 
 
 class AddBonusRequest(InputModel):
@@ -155,43 +153,23 @@ def new_purchase(body: NewPurchaseRequest, user: User = Depends(get_current_user
 
 @router.post("/annual-price", response_model=PriceOut, status_code=201)
 def annual_price(body: AnnualPriceRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    from services.price_state import price_values
+    from app.routers.prices import create_price
     from scaffold.epic_mode import is_epic_mode
-    is_est = body.effective_date > date_cls.today()
-    if is_epic_mode() and not is_est:
-        raise HTTPException(status_code=422, detail="Only future-dated prices can be added in Epic mode")
-    existing = db.query(Price).filter(
-        Price.user_id == user.id, Price.effective_date == body.effective_date,
-    ).first()
-    if existing is not None and existing.is_estimate and not is_est:
-        db.delete(existing)
-        db.flush()
-    elif existing is not None:
-        raise HTTPException(status_code=409, detail="A price already exists for that date")
-    check_row_quota(db, Price, user.id)
-    price = Price(user_id=user.id, effective_date=body.effective_date, price=body.price, is_estimate=is_est)
-    db.add(price)
     try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(status_code=409, detail="A price already exists for that date") from None
-    db.refresh(price)
-    # Future payoff sales were sized against whatever price was current when
-    # they were generated; a new price point can make that stale, so refresh
-    # them now rather than leaving them selling at an outdated price.
-    from app.routers.loans import _regenerate_future_payoff_sales
-    _regenerate_future_payoff_sales(user, db, create_missing=False)
-    event_cache.schedule_recompute(user.id)
-    return price
+        state = price_values(body.model_dump(exclude_unset=True))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    if is_epic_mode() and not state["is_estimate"]:
+        raise HTTPException(status_code=422, detail="Only tentative prices can be added in Epic mode")
+    return create_price(body, user=user, db=db)
 
 
 @router.post("/growth-price", response_model=list[PriceOut], status_code=201)
 def growth_price(body: GrowthPriceRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    if body.first_date <= date_cls.today():
-        raise HTTPException(status_code=422, detail="first_date must be in the future")
     base = (
         db.query(Price)
-        .filter(Price.user_id == user.id, Price.is_estimate == False)
+        .filter(Price.user_id == user.id, Price.is_estimate == False, Price.effective_date < body.first_date)
         .order_by(Price.effective_date.desc())
         .first()
     )
@@ -225,9 +203,11 @@ def growth_price(body: GrowthPriceRequest, user: User = Depends(get_current_user
     current_price = round(base.price * multiplier, 2)
     for current_date in projection_dates:
         if current_date in real_dates:
-            current_price = round(current_price * multiplier, 2)
+            real = db.query(Price).filter(Price.user_id == user.id, Price.effective_date == current_date).one()
+            current_price = round(real.price * multiplier, 2)
             continue
-        p = Price(user_id=user.id, effective_date=current_date, price=current_price, is_estimate=True)
+        p = Price(user_id=user.id, effective_date=current_date, price=current_price, is_estimate=True,
+                  expected_announcement_date=date(current_date.year, body.announcement_month, body.announcement_day))
         db.add(p)
         entries.append(p)
         current_price = round(current_price * multiplier, 2)

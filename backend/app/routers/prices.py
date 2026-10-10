@@ -1,4 +1,3 @@
-from datetime import date as date_cls
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
@@ -9,6 +8,7 @@ from schemas import PriceCreate, PriceUpdate, PriceOut
 from scaffold.auth import get_current_user
 from scaffold.quota import check_row_quota
 from app import event_cache
+from services.price_state import price_values
 from scaffold.crud import apply_update, get_owned, version_conflict
 
 router = APIRouter(prefix="/api/prices", tags=["prices"])
@@ -42,41 +42,22 @@ def _remove_shadowed_estimates(user_id: int, db: Session) -> bool:
 
 
 def _cleanup_epic_past_estimates(db: Session) -> int:
-    """In Epic mode, delete estimate prices whose effective_date has passed. Returns count deleted."""
-    from scaffold.epic_mode import is_epic_mode
-    if not is_epic_mode():
-        return 0
-    deleted = db.query(Price).filter(
-        Price.is_estimate == True,
-        Price.effective_date < date_cls.today(),
-    ).delete(synchronize_session=False)
-    if deleted:
-        db.commit()
-    return deleted
+    """Estimates remain applicable until explicitly replaced, including in Epic mode."""
+    return 0
 
 
 @router.get("", response_model=list[PriceOut])
 def list_prices(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    from scaffold.epic_mode import is_epic_mode
-    # Remove estimates that are now shadowed by a real price for the same date.
-    shadow_deleted = _remove_shadowed_estimates(user.id, db)
-    # In Epic mode also remove past estimates (Epic's systems supply the real prices).
-    epic_deleted = 0
-    if is_epic_mode():
-        epic_deleted = db.query(Price).filter(
-            Price.user_id == user.id,
-            Price.is_estimate == True,
-            Price.effective_date < date_cls.today(),
-        ).delete(synchronize_session=False)
-    if shadow_deleted or epic_deleted:
-        db.commit()
-        event_cache.schedule_recompute(user.id)
     return db.query(Price).filter(Price.user_id == user.id).order_by(Price.effective_date).all()
 
 
 @router.post("", response_model=PriceOut, status_code=201)
 def create_price(body: PriceCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    is_est = body.effective_date > date_cls.today()
+    try:
+        state = price_values(body.model_dump(exclude_unset=True))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    is_est = state["is_estimate"]
     existing = db.query(Price).filter(
         Price.user_id == user.id, Price.effective_date == body.effective_date,
     ).first()
@@ -89,7 +70,7 @@ def create_price(body: PriceCreate, user: User = Depends(get_current_user), db: 
     elif existing is not None:
         raise HTTPException(status_code=409, detail="A price already exists for that date")
     check_row_quota(db, Price, user.id)
-    price = Price(**body.model_dump(), user_id=user.id, is_estimate=is_est)
+    price = Price(price=body.price, user_id=user.id, **state)
     db.add(price)
     try:
         db.commit()
@@ -114,9 +95,17 @@ def update_price(price_id: int, body: PriceUpdate, user: User = Depends(get_curr
     stale = version_conflict(price, body.version)
     if stale:
         return stale
+    try:
+        state = price_values(body.model_dump(exclude_unset=True), price)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    if state["announced_date"] != price.announced_date:
+        price.announcement_notified_at = None
     updates = apply_update(price, body)
+    for key, value in state.items():
+        setattr(price, key, value)
     if "effective_date" in updates:
-        is_est = price.effective_date > date_cls.today()
+        is_est = price.is_estimate
         existing = db.query(Price).filter(
             Price.user_id == user.id,
             Price.effective_date == price.effective_date,

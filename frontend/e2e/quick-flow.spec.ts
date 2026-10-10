@@ -12,7 +12,7 @@ test.describe('Quick flow: purchase grant + loan', () => {
     // First add a price (required to generate meaningful events)
     await navigateTo(page, 'Prices')
     await page.getByRole('button', { name: '+ Price' }).click()
-    await page.getByLabel('Effective Date').fill('2024-12-31')
+    await page.getByLabel('Applicable Date').fill('2024-12-31')
     await page.getByLabel('Price per Share').fill('10.00')
     await page.getByRole('button', { name: 'Save', exact: true }).click()
     await expect(page.getByText('1 price entry')).toBeVisible({ timeout: 10000 })
@@ -80,7 +80,7 @@ test.describe('Quick flow: purchase grant + loan', () => {
     // Add a price first
     await navigateTo(page, 'Prices')
     await page.getByRole('button', { name: '+ Price' }).click()
-    await page.getByLabel('Effective Date').fill('2024-12-31')
+    await page.getByLabel('Applicable Date').fill('2024-12-31')
     await page.getByLabel('Price per Share').fill('10.00')
     await page.getByRole('button', { name: 'Save', exact: true }).click()
     await expect(page.getByText('1 price entry')).toBeVisible({ timeout: 10000 })

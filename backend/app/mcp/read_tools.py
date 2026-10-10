@@ -16,6 +16,7 @@ from scaffold.models import Grant, Loan, Price, Sale
 from scaffold.oauth.scopes import COMP_READ, EQUITY_READ
 from .accounts import ACCOUNT_PROPERTY, resolve_account
 from .tools import Tool, ToolContext, object_schema, register
+from services.price_state import price_metadata
 
 MAX_EVENTS = 2000
 DEFAULT_EVENT_LIMIT = 500
@@ -91,7 +92,7 @@ def _as_date(value) -> date | None:
 
 def _rows(model, owner, db, order):
     return [
-        {c.name: getattr(row, c.name) for c in model.__table__.columns if c.name != "user_id"}
+        {c.name: getattr(row, c.name) for c in model.__table__.columns if c.name not in {"user_id", "announcement_notified_at"}}
         for row in db.query(model).filter(model.user_id == owner.id).order_by(order).all()
     ]
 
@@ -112,7 +113,7 @@ def _get_dashboard(ctx: ToolContext, args: dict):
     # is still the price in effect. The flag alone is easy to skim past.
     if payload.get("price_is_estimate"):
         payload["projection_warning"] = (
-            "The price in effect today is one the user assumed for planning, "
+            "The applicable price is tentative pending an actual announcement. It is a planning assumption, "
             "not a real valuation, so every figure here is derived from it. "
             "Say so before quoting any of them."
         )
@@ -184,7 +185,9 @@ def _list_events(ctx: ToolContext, args: dict):
         price = None
         if prices and when_date:
             price = prices[max(0, bisect_right(price_dates, when_date) - 1)]
-        event["price_is_estimate"] = bool(price and price.is_estimate)
+        if price:
+            event.update(price_metadata(price))
+        event["price_is_estimate"] = bool(price and price_metadata(price)["price_is_estimate"])
         event["valuation_is_projected"] = bool(
             when_date and (when_date > today or event["price_is_estimate"])
         )
@@ -409,10 +412,10 @@ register(Tool(
     description=(
         "The share price history the account's figures are computed from: an "
         "effective date and a price per share, each applying until the next "
-        "entry. Future-dated entries flagged as estimates are the user's "
+        "entry. Tentative entries, even past-dated ones, are the user's "
         "projections, not real valuations — say so when using them."
     ),
-    input_schema=_ACCOUNT_ONLY,
+    input_schema=object_schema({"account": ACCOUNT_PROPERTY, "include_projections": {"type": "boolean", "description": "Include tentative planning prices, including those already applicable."}}),
     scope=EQUITY_READ,
     handler=_list_prices,
 ))

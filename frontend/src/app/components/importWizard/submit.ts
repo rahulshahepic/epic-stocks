@@ -7,7 +7,7 @@ import type {
 
 export interface SanitizedSubmission {
   grants: WizardGrant[]
-  prices: { effective_date: string; price: number }[]
+  prices: (Omit<WizardPrice, 'price'> & {price: number})[]
   droppedLoans: { grant: string; reason: string }[]
   droppedPrices: { effective_date: string; reason: string }[]
   blockingIssues: string[]
@@ -25,7 +25,7 @@ export function sanitizeForSubmit(prices: WizardPrice[], grants: WizardGrant[]):
   const droppedPrices: { effective_date: string; reason: string }[] = []
   const blockingIssues: string[] = []
 
-  const cleanPrices: { effective_date: string; price: number }[] = []
+  const cleanPrices: (Omit<WizardPrice, 'price'> & {price: number})[] = []
   for (const p of prices) {
     if (!p.effective_date) continue // empty row — placeholder, ignore silently
     const trimmed = p.price.trim?.() ?? p.price
@@ -37,7 +37,11 @@ export function sanitizeForSubmit(prices: WizardPrice[], grants: WizardGrant[]):
       })
       continue
     }
-    cleanPrices.push({ effective_date: p.effective_date, price: num })
+    const row = { ...p, price: num }
+    if (p.is_estimate) row.announced_date = null
+    else if (p.announced_date !== undefined) row.announced_date = p.announced_date || null
+    if (p.expected_announcement_date !== undefined) row.expected_announcement_date = p.expected_announcement_date || null
+    cleanPrices.push(row)
   }
 
   const cleanGrants: WizardGrant[] = grants.map(g => {

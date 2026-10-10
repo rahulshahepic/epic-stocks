@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import type { GrantEntry, LoanEntry, PriceEntry, SaleEntry, TimelineEvent } from '../api.ts'
 import {
   computeActiveLoans, computeGrantHoldings, findStalePrice, hasDivergentFuturePrice, lastTimelineDate,
@@ -148,4 +148,17 @@ describe('timeline dates', () => {
     expect(lastTimelineDate([event({ date: '2024-01-01' }), event({ date: '2033-01-01' })]))
       .toBe('2033-01-01')
   })
+})
+
+it('does not call last year stale before the expected announcement', () => {
+  vi.useFakeTimers()
+  try {
+    vi.setSystemTime(new Date('2027-01-15T12:00:00'))
+    const rows = [{id: 1, version: 1, effective_date: '2026-01-01', price: 100},
+      {id: 2, version: 1, effective_date: '2027-01-01', price: 110, is_estimate: true, expected_announcement_date: '2027-03-01'}]
+    expect(findStalePrice(rows)).toBeNull()
+    vi.setSystemTime(new Date('2027-03-02T12:00:00'))
+    expect(findStalePrice(rows)?.price).toBe(100)
+    expect(rows[1].is_estimate).toBe(true)
+  } finally { vi.useRealTimers() }
 })

@@ -74,8 +74,10 @@
     if(data.projection_warning) root.append(note(data.projection_warning));
     if(snapshot.view==='summary') {
       const hero=el('div',undefined,'hero');
-      hero.append(el('p',data.price_is_estimate ? 'Net equity · assumed price' : 'Net equity'),el('div',money(data.net_equity),'value'),el('small','Stock value less outstanding loans and accrued interest'));
+      hero.append(el('p',data.price_is_estimate ? 'Net equity · tentative price' : 'Net equity'),el('div',money(data.net_equity),'value'),el('small','Stock value less outstanding loans and accrued interest'));
       root.append(hero);
+      if(data.price_is_estimate) root.append(note('Applicable '+when(data.price_effective_date)+' · announcement expected '+when(data.expected_announcement_date)+'. Remains tentative until an actual announcement is recorded.'));
+      else if(data.announced_date) root.append(el('p','Announced '+when(data.announced_date)+' · applicable '+when(data.price_effective_date),'muted'));
       if(data.net_equity==null) root.append(note('No current valuation is available. Add your share price in Epic Stocks to see a value.'));
       const metrics=el('div',undefined,'metrics');
       metrics.append(metric('Stock value',money(data.total_stock_value)),metric('Outstanding loans',money(data.outstanding_loan_balance)),metric('Held vested shares',number(data.held_vested_shares)),metric('Accrued interest',money(data.accrued_unbooked_interest)));
@@ -94,7 +96,7 @@
       root.append(el('h2','Scheduled events'));
       if(data.truncated) root.append(note('Showing '+data.returned+' of '+data.matched+' events. Narrow the dates to see the rest.'));
       if(!data.events?.length) root.append(el('p','No events in this date range. Try a wider range.','muted'));
-      for(const e of data.events ?? []) root.append(row(when(e.date)+' · '+e.event_type,(e.grant_year ? e.grant_year+' · '+(e.grant_type ?? '') : 'Account event')+(typeof e.vested_shares==='number' && e.vested_shares!==0 ? ' · '+number(e.vested_shares)+' shares' : ''), e.valuation_is_projected ? 'Monetary values are projected' : undefined));
+      for(const e of data.events ?? []) root.append(row(when(e.date)+' · '+e.event_type,(e.grant_year ? e.grant_year+' · '+(e.grant_type ?? '') : 'Account event')+(typeof e.vested_shares==='number' && e.vested_shares!==0 ? ' · '+number(e.vested_shares)+' shares' : ''), e.price_is_estimate ? 'Tentative price · announcement expected '+when(e.expected_announcement_date) : e.valuation_is_projected ? 'Monetary values are projected' : undefined));
     }
     $('status').textContent='';
     setBusy(false);
@@ -242,8 +244,11 @@
     }
     root.append(action('Add a new grant type',()=>{grants.push({type:'',year:null,shares:null,price:null,vest_start:'',periods:null,exercise_date:'',dp_shares:0,election_83b:false,custom_schedule:true,schedule_confirmed:false,basis_confirmed:false,loans:[]});changed();renderImport(data);}));
     const prices=group('Prices'), priceRows=data.payload.prices;
-    for(const [i,p] of priceRows.entries()) { const fields=el('div',undefined,'import-fields'); field(fields,'Price date',p,'effective_date','date'); field(fields,'Share price',p,'price','number',{min:0}); fields.append(action('Remove price',()=>{priceRows.splice(i,1);changed();renderImport(data);})); prices.append(fields); }
-    prices.append(action('Add price',()=>{priceRows.push({effective_date:'',price:null});changed();renderImport(data);})); root.append(prices);
+    for(const [i,p] of priceRows.entries()) { const fields=el('div',undefined,'import-fields'); field(fields,'Applicable price date',p,'effective_date','date'); field(fields,'Share price',p,'price','number',{min:0});
+      const tentative=field(fields,'Tentative estimate',p,'is_estimate','checkbox');
+      tentative.addEventListener('input',()=>{if(p.is_estimate) {p.announced_date=null;p.expected_announcement_date ||= (p.effective_date?.slice(0,4) || new Date().getFullYear())+'-03-01';} renderImport(data);});
+      field(fields,p.is_estimate ? 'Expected announcement date' : 'Actual announcement date (if known)',p,p.is_estimate ? 'expected_announcement_date' : 'announced_date','date'); fields.append(action('Remove price',()=>{priceRows.splice(i,1);changed();renderImport(data);})); prices.append(fields); }
+    prices.append(action('Add price',()=>{priceRows.push({effective_date:'',price:null,is_estimate:true,expected_announcement_date:new Date().getFullYear()+'-03-01',announced_date:null});changed();renderImport(data);})); root.append(prices);
     const sales=group('Sales'), saleRows=data.payload.sales;
     sales.append(el('p','Record real transactions only. Missing dates and sale prices must be filled in. Existing sales are preserved and matching transactions are not duplicated.','muted'));
     for(const [i,s] of saleRows.entries()) { const fields=el('div',undefined,'import-fields'); field(fields,'Sale date',s,'date','date'); field(fields,'Shares sold',s,'shares','number',{min:1}); field(fields,'Sale price per share',s,'price_per_share','number',{min:0}); field(fields,'Sale notes',s,'notes','text',{maxLength:500}); fields.append(action('Remove sale',()=>{saleRows.splice(i,1);changed();renderImport(data);})); sales.append(fields); }

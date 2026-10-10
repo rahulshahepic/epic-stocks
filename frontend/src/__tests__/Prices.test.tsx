@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import Prices from '../app/pages/Prices.tsx'
+import { api } from '../api.ts'
 
 const MOCK_PRICES = [
   { id: 1, effective_date: '2020-12-31', price: 1.99 },
@@ -95,4 +96,37 @@ describe('Prices', () => {
       expect(screen.getByText('Failed to load prices')).toBeInTheDocument()
     })
   })
+})
+
+
+it('saves a backdated guess with explicit tentative status and expected announcement', async () => {
+  mockApi()
+  const save = vi.spyOn(api, 'annualPrice').mockResolvedValue({id: 4, version: 1, effective_date: '2020-01-01', price: 110, is_estimate: true})
+  renderPrices()
+  await userEvent.click(await screen.findByText('+ Price'))
+  await userEvent.type(screen.getByLabelText('Applicable Date'), '2020-01-01')
+  await userEvent.clear(screen.getByLabelText('Price per Share'))
+  await userEvent.type(screen.getByLabelText('Price per Share'), '110')
+  await userEvent.click(screen.getByLabelText('Tentative estimate'))
+  expect(screen.getByLabelText('Expected Announcement Date')).toHaveValue('2020-03-01')
+  await userEvent.click(screen.getByRole('button', {name: /^Save$/}))
+  await waitFor(() => expect(save).toHaveBeenCalledWith({effective_date: '2020-01-01', price: 110,
+    is_estimate: true, expected_announcement_date: '2020-03-01', announced_date: null}))
+})
+
+it('records an announcement through the same row with its version', async () => {
+  mockApi()
+  vi.spyOn(api, 'getPrices').mockResolvedValue([{id: 4, version: 3, effective_date: '2020-01-01', price: 110,
+    is_estimate: true, expected_announcement_date: '2020-03-01'}])
+  const save = vi.spyOn(api, 'updatePrice').mockResolvedValue({id: 4, version: 4, effective_date: '2020-01-01', price: 112})
+  renderPrices()
+  await userEvent.click(await screen.findByText('Edit'))
+  await userEvent.click(screen.getByLabelText('Tentative estimate'))
+  await userEvent.clear(screen.getByLabelText('Actual Announcement Date'))
+  await userEvent.type(screen.getByLabelText('Actual Announcement Date'), '2020-02-27')
+  await userEvent.clear(screen.getByLabelText('Price per Share'))
+  await userEvent.type(screen.getByLabelText('Price per Share'), '112')
+  await userEvent.click(screen.getByRole('button', {name: /^Save$/}))
+  await waitFor(() => expect(save).toHaveBeenCalledWith(4, expect.objectContaining({version: 3,
+    effective_date: '2020-01-01', announced_date: '2020-02-27', is_estimate: false, price: 112})))
 })

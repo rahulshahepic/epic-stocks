@@ -7,15 +7,16 @@ import { useViewing } from '../../scaffold/contexts/viewing.ts'
 import { fmtPrice } from '../format.ts'
 import { Field } from '../../scaffold/components/ui/Field.tsx'
 import { Card } from '../../scaffold/components/ui/Card.tsx'
-import { addCalendarDays, addCalendarYears, useToday } from '../dateUtils.ts'
+import { addCalendarYears, useToday } from '../dateUtils.ts'
 
-type PriceForm = { effective_date: string; price: number }
+type PriceForm = { effective_date: string; price: number; is_estimate: boolean; expected_announcement_date: string; announced_date: string; version?: number }
 type Mode = 'list' | 'add' | 'edit' | 'growth'
 
 type GrowthForm = {
   annual_growth_pct: number
   first_date: string
   through_date: string
+  expected_announcement_date: string
 }
 
 function nextJan1(): string {
@@ -35,6 +36,7 @@ function computeGrowthPreview(
   annual_growth_pct: number,
   first_date: string,
   through_date: string,
+  confirmed: PriceEntry[],
 ): { date: string; price: number }[] {
   if (!basePrice || !first_date || !through_date || first_date > through_date) return []
   const multiplier = 1 + annual_growth_pct / 100
@@ -42,7 +44,9 @@ function computeGrowthPreview(
   let current = first_date
   let price = Math.round(basePrice * multiplier * 100) / 100
   while (current <= through_date) {
-    results.push({ date: current, price })
+    const actual = confirmed.find(p => p.effective_date === current)
+    if (actual) price = actual.price
+    else results.push({ date: current, price })
     current = addCalendarYears(current, 1)
     price = Math.round(price * multiplier * 100) / 100
   }
@@ -62,7 +66,7 @@ export default function Prices() {
   const epicMode = (config?.epic_mode ?? false) || readOnly
 
   const [mode, setMode] = useState<Mode>('list')
-  const [form, setForm] = useState<PriceForm>({ effective_date: '', price: 0 })
+  const [form, setForm] = useState<PriceForm>({ effective_date: '', price: 0, is_estimate: false, expected_announcement_date: '', announced_date: today })
   const [editId, setEditId] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -73,12 +77,13 @@ export default function Prices() {
     annual_growth_pct: 5,
     first_date: defaultFirst,
     through_date: addYears(defaultFirst, 4),
+    expected_announcement_date: `${defaultFirst.slice(0, 4)}-03-01`,
   })
   const [growthSaving, setGrowthSaving] = useState(false)
   const [growthError, setGrowthError] = useState('')
 
   function resetForm() {
-    setForm({ effective_date: '', price: 0 })
+    setForm({ effective_date: '', price: 0, is_estimate: false, expected_announcement_date: '', announced_date: today })
     setEditId(null)
     setError('')
     setRemoveNearby(true)
@@ -86,11 +91,14 @@ export default function Prices() {
 
   function openAdd() {
     resetForm()
+    if (epicMode) setForm(f => ({ ...f, is_estimate: true, announced_date: '' }))
     setMode('add')
   }
 
   function openEdit(p: PriceEntry) {
-    setForm({ effective_date: p.effective_date, price: p.price })
+    setForm({ effective_date: p.effective_date, price: p.price, is_estimate: !!p.is_estimate,
+      expected_announcement_date: p.expected_announcement_date ?? `${p.effective_date.slice(0, 4)}-03-01`,
+      announced_date: p.announced_date ?? (p.is_estimate ? '' : today), version: p.version })
     setEditId(p.id)
     setError('')
     setMode('edit')
@@ -105,20 +113,27 @@ export default function Prices() {
   }, [prices, form.effective_date, mode])
 
   async function handleSave(addAnother: boolean) {
-    if (epicMode && form.effective_date <= today) {
-      setError('Only future-dated prices can be added in Epic mode')
+    if (epicMode && !form.is_estimate) {
+      setError('Only tentative prices can be added in Epic mode')
+      return
+    }
+    if (!form.is_estimate && !form.announced_date) {
+      setError('Enter the actual announcement date to confirm this price')
       return
     }
     setSaving(true)
     setError('')
     try {
       if (mode === 'add') {
-        await api.annualPrice({ effective_date: form.effective_date, price: form.price })
-        if (removeNearby && nearbyEstimates.length > 0) {
+        await api.annualPrice({ effective_date: form.effective_date, price: form.price,
+          is_estimate: form.is_estimate, expected_announcement_date: form.expected_announcement_date || null,
+          announced_date: form.is_estimate ? null : form.announced_date })
+        if (!form.is_estimate && removeNearby && nearbyEstimates.length > 0) {
           await Promise.all(nearbyEstimates.map(p => api.deletePrice(p.id)))
         }
       } else if (editId != null) {
-        await api.updatePrice(editId, form)
+        await api.updatePrice(editId, { ...form, expected_announcement_date: form.expected_announcement_date || null,
+          announced_date: form.is_estimate ? null : form.announced_date })
       }
       reload()
       if (addAnother) {
@@ -143,13 +158,13 @@ export default function Prices() {
   // Most recent non-estimate price for growth preview base
   const basePrice = useMemo(() => {
     if (!prices) return 0
-    const real = prices.filter(p => !p.is_estimate && p.effective_date <= today)
+    const real = prices.filter(p => !p.is_estimate && p.effective_date < growthForm.first_date)
     return real.length ? real[real.length - 1].price : 0
-  }, [prices, today])
+  }, [prices, growthForm.first_date])
 
   const growthPreview = useMemo(
-    () => computeGrowthPreview(basePrice, growthForm.annual_growth_pct, growthForm.first_date, growthForm.through_date),
-    [basePrice, growthForm],
+    () => computeGrowthPreview(basePrice, growthForm.annual_growth_pct, growthForm.first_date, growthForm.through_date, (prices ?? []).filter(p => !p.is_estimate)),
+    [basePrice, growthForm, prices],
   )
 
   // Existing estimates that fall inside the growth range — will be replaced
@@ -161,8 +176,8 @@ export default function Prices() {
   }, [prices, growthForm.first_date, growthForm.through_date])
 
   async function handleGrowthApply() {
-    if (!growthForm.first_date || growthForm.first_date <= today) {
-      setGrowthError('First date must be in the future')
+    if (!growthForm.first_date) {
+      setGrowthError('Enter the first applicable date')
       return
     }
     if (growthForm.through_date < growthForm.first_date) {
@@ -176,6 +191,8 @@ export default function Prices() {
         annual_growth_pct: growthForm.annual_growth_pct,
         first_date: growthForm.first_date,
         through_date: growthForm.through_date,
+        announcement_month: Number(growthForm.expected_announcement_date.slice(5, 7)),
+        announcement_day: Number(growthForm.expected_announcement_date.slice(8, 10)),
       })
       reload()
       setMode('list')
@@ -210,16 +227,28 @@ export default function Prices() {
         )}
         {error && <p className="text-xs text-red-500">{error}</p>}
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Effective Date" type="date"
+          <Field label="Applicable Date" type="date"
             value={form.effective_date}
-            min={epicMode ? addCalendarDays(today, 1) : undefined}
             onChange={v => setForm(f => ({ ...f, effective_date: v }))} />
           <Field label="Price per Share" type="number" step="0.01"
             value={form.price}
             onChange={v => setForm(f => ({ ...f, price: +v }))} />
         </div>
 
-        {mode === 'add' && nearbyEstimates.length > 0 && (
+        <label className="flex items-center gap-2 text-sm text-cs-text">
+          <input type="checkbox" checked={form.is_estimate}
+            onChange={e => setForm(f => ({ ...f, is_estimate: e.target.checked,
+              expected_announcement_date: f.expected_announcement_date || `${f.effective_date.slice(0, 4) || today.slice(0, 4)}-03-01`,
+              announced_date: e.target.checked ? '' : today }))} />
+          Tentative estimate
+        </label>
+        <Field label={form.is_estimate ? 'Expected Announcement Date' : 'Actual Announcement Date'} type="date"
+          value={form.is_estimate ? form.expected_announcement_date : form.announced_date}
+          max={form.is_estimate ? undefined : today}
+          onChange={v => setForm(f => ({ ...f, [f.is_estimate ? 'expected_announcement_date' : 'announced_date']: v }))} />
+        <p className="text-xs text-cs-muted">The price applies from its applicable date. A tentative estimate stays tentative until an actual announcement is recorded.</p>
+
+        {mode === 'add' && !form.is_estimate && nearbyEstimates.length > 0 && (
           <label className="flex cursor-pointer items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-800/40 dark:bg-amber-900/20">
             <input
               type="checkbox"
@@ -280,13 +309,17 @@ export default function Prices() {
             onChange={v => setGrowthForm(f => ({ ...f, annual_growth_pct: +v }))} />
           <Field label="First Price Date" type="date"
             value={growthForm.first_date}
-            min={addCalendarDays(today, 1)}
             onChange={v => setGrowthForm(f => ({ ...f, first_date: v }))} />
           <Field label="Through Date" type="date"
             value={growthForm.through_date}
             min={growthForm.first_date}
             onChange={v => setGrowthForm(f => ({ ...f, through_date: v }))} />
         </div>
+
+        <Field label="Expected Announcement Date (repeats annually)" type="date"
+          value={growthForm.expected_announcement_date}
+          onChange={v => setGrowthForm(f => ({ ...f, expected_announcement_date: v }))} />
+        <p className="text-xs text-cs-muted">Estimates apply on each price date, including dates already passed. March 1 is the default expected announcement; passing that date never confirms an estimate.</p>
 
         {estimatesToReplace.length > 0 && (
           <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-800/40 dark:bg-amber-900/20">
@@ -385,7 +418,7 @@ export default function Prices() {
         <p className="rounded-md bg-rose-50 px-3 py-2 text-xs text-cs-brand dark:bg-indigo-900/20 dark:text-rose-300">
           {readOnly
             ? `Viewing shared data — read only.`
-            : 'Historical data provided by Epic — view only. You can add future price estimates.'}
+            : 'Historical data provided by Epic — view only. You can add tentative price estimates, including ones already applicable.'}
         </p>
       )}
 
@@ -405,10 +438,13 @@ export default function Prices() {
               return (
                 <tr key={p.id} className={`bg-cs-surface ${isEst ? 'opacity-70' : ''}`}>
                   <td className="px-3 py-2 text-cs-text-2">
-                    {p.effective_date}
+                    <span>{p.effective_date}</span>
+                    <div className="mt-1 text-[10px] text-cs-muted">{isEst
+                      ? `Announcement expected ${p.expected_announcement_date ?? `${p.effective_date.slice(0, 4)}-03-01`}`
+                      : p.announced_date ? `Announced ${p.announced_date}` : 'Confirmed · announcement date unknown'}</div>
                     {isEst && (
                       <span className="ml-1.5 rounded bg-amber-100 px-1 py-0.5 text-[10px] italic text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-                        est.
+                        tentative
                       </span>
                     )}
                   </td>

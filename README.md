@@ -25,6 +25,14 @@ A mobile-first web app for Epic employees to track their own equity compensation
 
 ---
 
+### Applicable prices and announcements
+
+Share prices have an **applicable date**, an **expected announcement date**, and an optional **actual announcement date**. Annual growth estimates normally apply January 1 with an expected announcement March 1. They affect planning values immediately on their applicable date but remain **tentative**, even after the expected announcement date passes. On the Share Prices page, select **Tentative estimate** for a guess. To confirm it, edit that row, clear Tentative estimate, and enter the actual announced price and announcement date. This replaces the estimate for that applicable date and recalculates values back to January 1; it does not add a second increase. Annual growth can start on a date already passed. Existing later price estimates remain the explicitly saved amounts; use the growth estimator to regenerate them from the announced price when needed.
+
+The ChatGPT plugin uses the same price writes and shows applicable/announcement dates in its portfolio and import review. A chat estimate must set `is_estimate: true`; recording `announced_date` confirms that row. Passing either date never confirms a guess. Excel exports retain tentative status and both announcement dates in optional columns after Date and Price; older two-column workbooks remain supported. Legacy confirmed prices keep their status with an unknown announcement date rather than inventing one.
+
+Daily push/email notifications include confirmed price announcements, identifying both the actual announcement and backdated applicable dates. Announcements recorded late remain pending for the next daily notification and are marked once dispatched; bulk imports suppress old historical announcements. Other event notifications identify monetary values using a tentative price. Tentative price changes do not send confirmed-price alerts. Stale-price reminders wait until the expected announcement date. The shared `backend/services/price_state.py` handles status validation and price metadata; the Alembic migration adds announcement dates without changing encrypted price values.
+
 ## Table of Contents
 
 - [Understanding Your Equity](#understanding-your-equity) — key concepts explained
@@ -1072,6 +1080,9 @@ epic-stocks/
 │   │       ├── reports.py       # Problem reports (no-auth POST) + what a report may carry
 │   │       ├── sharing.py       # Email invitations + shared data viewing
 │   │       └── unsubscribe.py   # Public (no-auth) email unsubscribe endpoints
+│   ├── services/
+│   │   ├── price_state.py   # Applicable/announcement dates and price certainty
+│   │   └── timeline_cache.py # Timeline adapter shared with notifications
 │   ├── app/                 # Equity tracking domain (replace when forking)
 │   │   ├── core.py          # Event generation logic (frozen)
 │   │   ├── loan_state.py    # Refinance state (as_of is required) + accrual window + cycle validation
@@ -1412,3 +1423,9 @@ The built-in privacy page (`/privacy`) lists the third-party services used by th
 - **Schema migrations use Alembic.** Migrations live in `backend/alembic/versions/`. `alembic upgrade head` runs automatically on startup (PostgreSQL only; SQLite test environments use `create_all`). Create a new migration with `alembic revision --autogenerate -m "description"`.
 
 **ChatGPT UI code:** `backend/app/mcp/import_ui.py` runs plugin parsing, review and wizard acceptance; `import_files.py` downloads bounded host file references with HTTPS, a host allowlist, public DNS pinned for the connection and no redirects. `backend/app/mcp/ui_tools.py` registers the scoped presentation tools and versioned resource; `portfolio.html` is the self-contained MCP Apps component. `plugins/epic-stocks/` holds the portable package source and `scripts/build-chatgpt-plugin.py` builds it for a deployment. Component host tests and synthetic screenshots live in `frontend/e2e/plugin-ui.spec.ts` and `plugin-host.ts`.
+
+
+Price entry and tentative announcement on mobile:
+
+![Share prices](screenshots/prices-light-mobile.png)
+![Tentative price entry](screenshots/prices-tentative-light-mobile.png)

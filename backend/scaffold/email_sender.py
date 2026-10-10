@@ -1,4 +1,5 @@
 """Email sending — delegates to the configured EmailProvider (Resend or SMTP)."""
+import html as _html
 import hashlib
 import hmac
 import logging
@@ -149,6 +150,8 @@ def send_email(to_email: str, subject: str, body_text: str, body_html: str | Non
 def build_event_email(events: list[dict], recipient_email: str = "") -> tuple[str, str, str, dict[str, str]]:
     """Build subject, text body, HTML body, and headers for event notification."""
     from collections import Counter
+    from services.price_state import notification_details
+    details = notification_details(events)
     counts = Counter(e["event_type"] for e in events)
     total = sum(counts.values())
     parts = [f"{count} {etype}" for etype, count in sorted(counts.items())]
@@ -159,8 +162,12 @@ def build_event_email(events: list[dict], recipient_email: str = "") -> tuple[st
     unsub_html = _unsubscribe_footer_html(recipient_email, "notify") if recipient_email else ""
     hdrs = list_unsubscribe_headers(recipient_email, "notify") if recipient_email else {}
     text = f"You have {total} event{'s' if total != 1 else ''} today: {', '.join(parts)}\n\n{'Log in at ' + url if url else 'Log in to view details.'}\n\n{APP_DISCLAIMER}{unsub_text}"
+    if details:
+        text += "\n\n" + "\n".join(details)
+    details_html = "".join(f"<p>{_html.escape(detail)}</p>" for detail in details)
     html = f"""<div style="font-family: sans-serif; max-width: 480px;">
   <h2 style="color: #4472C4;">Epic Stocks</h2>
+  {details_html}
   <p>You have <strong>{total}</strong> event{'s' if total != 1 else ''} today:</p>
   <ul>{''.join(f'<li>{count} {etype}</li>' for etype, count in sorted(counts.items()))}</ul>
   <p>{link_text.strip()}</p>

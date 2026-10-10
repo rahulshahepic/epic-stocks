@@ -132,9 +132,16 @@ def _payload_from_xlsx(raw: bytes) -> dict:
             "amount": float(l["amount"]), "interest_rate": float(l["interest_rate"]),
             "due_date": _to_date(l["due"]).isoformat(),
         })
-    return {"grants": list(by_key.values()),
-            "prices": [{"effective_date": _to_date(p["date"]).isoformat(),
-                        "price": p["price"]} for p in prices]}
+    try:
+        price_payload = [{"effective_date": _to_date(p["date"]).isoformat(),
+                          "price": p["price"], "is_estimate": p.get("is_estimate"),
+                          **{k: _to_date(p[k]).isoformat() if p.get(k) else None
+                             for k in ("expected_announcement_date", "announced_date")}}
+                         for p in prices]
+    except (ValueError, TypeError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid price announcement dates in workbook") from None
+    return {"grants": list(by_key.values()), "prices": price_payload}
+
 
 
 def _wizard_prefill(draft: Draft, db: Session | None = None,
@@ -166,7 +173,9 @@ def _wizard_prefill(draft: Draft, db: Session | None = None,
                           "version": 1})
     for pi, p in enumerate(draft.prices, 1):
         prices.append({"id": -pi, "effective_date": p.effective_date.isoformat(),
-                       "price": p.price, "is_estimate": False, "version": 1})
+                       "price": p.price, "is_estimate": p.is_estimate if p.is_estimate is not None else False,
+                       "expected_announcement_date": p.expected_announcement_date.isoformat() if p.expected_announcement_date else None,
+                       "announced_date": p.announced_date.isoformat() if p.announced_date else None, "version": 1})
 
     # Sales the files imply but cannot date or price. They travel incomplete on
     # purpose: the wizard screen exists to ask for the blanks, and a sale the
@@ -183,6 +192,8 @@ def _wizard_prefill(draft: Draft, db: Session | None = None,
             if p.effective_date.year not in covered_years:
                 prices.append({"id": p.id, "effective_date": p.effective_date.isoformat(),
                                "price": p.price, "is_estimate": bool(p.is_estimate),
+                               "expected_announcement_date": p.expected_announcement_date.isoformat() if p.expected_announcement_date else None,
+                               "announced_date": p.announced_date.isoformat() if p.announced_date else None,
                                "version": p.version or 1})
         covered_grants = {g.key for g in draft.grants}
         # A grant carried through keeps its loans too. The wizard rebuilds each
@@ -333,15 +344,17 @@ def analyze(
     blocked = is_blocked(findings)
     reconciles = not any(x.severity == "error" for x in findings)
 
-    # A supplied current price becomes an ordinary price point dated today, so it
-    # reaches the wizard (and from there the dashboard) like any announced price.
+    # A user-supplied announced current price applies January 1. Its actual
+    # announcement date is unknown until supplied, so do not invent one.
     today_iso = date.today().isoformat()
     latest = max((p.effective_date.isoformat() for p in draft.prices), default=None)
     if (current_price is not None and current_price > 0
             and latest is not None and today_iso > latest):
-        draft.prices.append(DraftPrice(effective_date=date.today(), price=current_price))
+        draft.prices.append(DraftPrice(effective_date=date(date.today().year, 1, 1), price=current_price,
+                                       is_estimate=False))
         latest = today_iso
-    price_is_stale = latest is not None and latest[:4] < today_iso[:4]
+    price_is_stale = (latest is not None and latest[:4] < today_iso[:4]
+                      and date.today() >= date(date.today().year, 3, 1))
 
     return AnalyzeResponse(
         draft=draft.as_dict(),

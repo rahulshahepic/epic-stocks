@@ -1,0 +1,25 @@
+import {test, expect} from '@playwright/test'
+import {loginAs, navigateTo, resetUserData} from './helpers'
+
+test('backdated estimate stays tentative until announced, without another increase', async ({page}) => {
+  await loginAs(page, `price-announcements-${test.info().testId}@test.com`, 'Price Announcements')
+  await resetUserData(page)
+  await navigateTo(page, 'Prices')
+  await page.getByRole('button', {name: '+ Price', exact: true}).click()
+  await page.getByLabel('Applicable Date').fill('2020-01-01')
+  await page.getByLabel('Price per Share').fill('110')
+  await page.getByLabel('Tentative estimate').check()
+  await expect(page.getByLabel('Expected Announcement Date')).toHaveValue('2020-03-01')
+  await page.getByRole('button', {name: 'Save', exact: true}).click()
+  await expect(page.getByText('1 price entry (1 estimated)')).toBeVisible()
+  await expect(page.getByText('Announcement expected 2020-03-01')).toBeVisible()
+  await page.getByRole('button', {name: 'Edit', exact: true}).click()
+  await page.getByLabel('Tentative estimate').uncheck()
+  await page.getByLabel('Actual Announcement Date').fill('2020-02-27')
+  await page.getByLabel('Price per Share').fill('112')
+  await page.getByRole('button', {name: 'Save', exact: true}).click()
+  await expect(page.getByText('1 price entry', {exact: true})).toBeVisible()
+  await expect(page.getByText('Announced 2020-02-27')).toBeVisible()
+  await expect(page.getByText('$112.00')).toBeVisible()
+  await expect(page.getByText('2020-01-01', {exact: true})).toBeVisible()
+})

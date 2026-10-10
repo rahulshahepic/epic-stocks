@@ -404,7 +404,7 @@ export default function Events() {
                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${TYPE_COLORS[e.event_type] ?? ''}`}>
                       {e.event_type}
                     </span>
-                    {e.is_estimate && <span className="text-[9px] uppercase tracking-wide text-amber-600 dark:text-amber-400">est.</span>}
+                    {(e.is_estimate || e.price_is_estimate) && <span className="text-[9px] uppercase tracking-wide text-amber-600 dark:text-amber-400">tentative</span>}
                   </div>
                   <span className="text-cs-muted">{isMobileExpanded ? '\u25B2' : '\u25BC'}</span>
                 </div>
@@ -510,8 +510,8 @@ export default function Events() {
                         <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${TYPE_COLORS[e.event_type] ?? ''}`}>
                           {e.event_type}
                         </span>
-                        {e.is_estimate && (
-                          <span className="ml-1 text-[9px] uppercase tracking-wide text-amber-600 dark:text-amber-400">est.</span>
+                        {(e.is_estimate || e.price_is_estimate) && (
+                          <span className="ml-1 text-[9px] uppercase tracking-wide text-amber-600 dark:text-amber-400">tentative</span>
                         )}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 text-cs-muted">

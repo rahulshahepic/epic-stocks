@@ -1468,11 +1468,11 @@ def test_a_supplied_current_price_reaches_the_wizard(client):
     body = client.post("/api/epic-import/analyze", files=upload_files(),
                        data={"current_price": "42.75"}).json()
 
-    today = date.today().isoformat()
     assert body["price_is_stale"] is False
-    assert {"effective_date": today, "price": 42.75} in body["wizard_payload"]["prices"]
+    assert any(p["effective_date"] == f"{date.today().year}-01-01" and p["announced_date"] is None
+               and p["price"] == 42.75 for p in body["wizard_payload"]["prices"])
     # And through the prefill the wizard actually renders from.
-    assert any(p["effective_date"] == today and p["price"] == 42.75
+    assert any(p["effective_date"] == f"{date.today().year}-01-01" and p["price"] == 42.75
                for p in body["wizard_prefill"]["prices"])
 
 
@@ -1487,8 +1487,7 @@ def test_a_supplied_price_survives_into_saved_data(client):
     assert resp.status_code == 201, resp.text
 
     saved = client.get("/api/prices").json()
-    today = date.today().isoformat()
-    assert any(p["effective_date"] == today and p["price"] == 42.75 for p in saved)
+    assert any(p["effective_date"] == f"{date.today().year}-01-01" and p["price"] == 42.75 for p in saved)
 
 
 def test_a_price_older_than_the_files_is_ignored(client):

@@ -95,14 +95,14 @@ export function PriceRows({ prices, onChange }: {
   prices: WizardPrice[]
   onChange: (next: WizardPrice[]) => void
 }) {
-  const patch = (i: number, field: keyof WizardPrice, v: string) =>
+  const patch = (i: number, field: keyof WizardPrice, v: string | boolean) =>
     onChange(prices.map((x, j) => j === i ? { ...x, [field]: v } : x))
 
   return (
     <>
       <div className="space-y-2">
         {prices.map((p, i) => (
-          <div key={i} className="flex items-end gap-2">
+          <div key={i} className="flex flex-wrap items-end gap-2">
             <div className="flex-1">
               <Field label={i === 0 ? 'Date' : ''} type="date" value={p.effective_date}
                 onChange={v => patch(i, 'effective_date', v)} />
@@ -110,6 +110,18 @@ export function PriceRows({ prices, onChange }: {
             <div className="w-28">
               <Field label={i === 0 ? 'Price ($)' : ''} type="number" step="0.01" value={p.price}
                 onChange={v => patch(i, 'price', v)} placeholder="0.00" />
+            </div>
+            <label className="flex items-center gap-1 text-xs text-cs-muted">
+              <input type="checkbox" checked={!!p.is_estimate}
+                onChange={e => onChange(prices.map((x, j) => j === i ? { ...x,
+                  is_estimate: e.target.checked, announced_date: null,
+                  expected_announcement_date: x.expected_announcement_date || `${x.effective_date.slice(0, 4)}-03-01` } : x))} />
+              Tentative
+            </label>
+            <div className="w-full">
+              <Field label={p.is_estimate ? 'Expected Announcement Date' : 'Actual Announcement Date (if known)'} type="date"
+                value={(p.is_estimate ? p.expected_announcement_date : p.announced_date) ?? ''}
+                onChange={v => patch(i, p.is_estimate ? 'expected_announcement_date' : 'announced_date', v)} />
             </div>
             {prices.length > 1 && (
               <button

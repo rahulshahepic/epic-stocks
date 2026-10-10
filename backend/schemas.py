@@ -297,12 +297,18 @@ class LoanWithPayoffUpdate(InputModel):
 class PriceCreate(InputModel):
     effective_date: date
     price: Price
+    is_estimate: bool | None = None
+    expected_announcement_date: date | None = None
+    announced_date: date | None = None
 
 
 class PriceUpdate(UpdateModel):
-    non_nullable = {'effective_date', 'price'}
+    non_nullable = {'effective_date', 'price', 'is_estimate'}
     effective_date: date | None = None
     price: Price | None = None
+    is_estimate: bool | None = None
+    expected_announcement_date: date | None = None
+    announced_date: date | None = None
     version: int | None = None
 
 
@@ -319,6 +325,13 @@ class GrowthPriceRequest(InputModel):
     annual_growth_pct: float
     first_date: date
     through_date: date
+    announcement_month: int = 3
+    announcement_day: int = 1
+
+    @model_validator(mode="after")
+    def valid_announcement(self):
+        date(2001, self.announcement_month, self.announcement_day)
+        return self
 
     @field_validator("annual_growth_pct")
     @classmethod

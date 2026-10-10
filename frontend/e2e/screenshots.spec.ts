@@ -604,6 +604,17 @@ test.describe('Screenshots', () => {
     await shoot(page, 'retirement-dark-mobile', { fullPage: true })
   })
 
+  test('prices and tentative announcement - light - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    await navigateTo(page, 'Prices')
+    await shoot(page, 'prices-light-mobile', { fullPage: true })
+    await page.getByRole('button', {name: '+ Price', exact: true}).click()
+    await page.getByLabel('Applicable Date').fill('2026-01-01')
+    await page.getByLabel('Price per Share').fill('10')
+    await page.getByLabel('Tentative estimate').check()
+    await shoot(page, 'prices-tentative-light-mobile', { fullPage: true })
+  })
+
   test('loans - epic mode - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     await page.request.post(`${BASE}/api/admin/epic-mode`, { data: { active: true } })

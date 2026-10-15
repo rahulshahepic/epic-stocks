@@ -479,6 +479,18 @@ test.describe('Screenshots', () => {
     await shoot(page, 'settings-ai-connections-dark-mobile')
   })
 
+  test('settings ai connections Muse - light - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    await navigateTo(page, 'Settings')
+    await page.waitForLoadState('networkidle')
+    await page.getByRole('tab', { name: 'Muse' }).click()
+    const section = page.locator('#ai-connections')
+    await section.scrollIntoViewIfNeeded()
+    await expect(section).toContainText('Create a custom connector named Epic Stocks')
+    await expect(section).toContainText('OAuth callback host')
+    await shoot(page, 'settings-ai-connections-muse-light-mobile', { fullPage: true })
+  })
+
   test('invite landing page - light - mobile', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'light' })
     await page.setViewportSize(MOBILE)

@@ -1,7 +1,7 @@
 """Helping a user get their equity into the app by talking to their assistant.
 
 This is meant to be the ordinary way in: someone shares a grant letter, a
-Shareworks file, a screenshot or just what they remember, and their assistant
+Eureka file, a screenshot or just what they remember, and their assistant
 drafts the import with them. Two tools, which deliberately stop short of
 closing the loop:
 
@@ -143,7 +143,7 @@ register(Tool(
         "Everything needed to build an import for this account: the exact JSON "
         "shape, the rules that apply, the company vesting schedule and loan "
         "rates on record, and the down-payment policy. Read this before helping "
-        "someone enter their equity — from a grant letter, a Shareworks file, "
+        "someone enter their equity — from a grant letter, a Eureka file, "
         "a screenshot or memory. It explains how to draft the import, how to "
         "walk the person through it in plain words, what may be guessed, the "
         "company vesting schedule and loan rates, and what the account already "

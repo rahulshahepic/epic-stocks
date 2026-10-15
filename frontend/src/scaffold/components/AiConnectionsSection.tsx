@@ -67,7 +67,7 @@ export function AiConnectionsSection() {
   const [showActivity, setShowActivity] = useState(false)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
-  const [guide, setGuide] = useState<'chatgpt' | 'claude'>('claude')
+  const [guide, setGuide] = useState<'chatgpt' | 'claude' | 'muse'>('claude')
   const [confirmId, setConfirmId] = useState<number | null>(null)
 
   const serverUrl = `${window.location.origin}/mcp`
@@ -114,7 +114,7 @@ export function AiConnectionsSection() {
     <Card as="section" pad="md" id="ai-connections">
       <h3 className="text-sm font-medium text-cs-text">AI Connections</h3>
       <p className="mt-1 text-xs text-cs-text-2">
-        Let ChatGPT or Claude read your equity data, so you can ask about vesting
+        Let ChatGPT, Claude or Muse read your equity data, so you can ask about vesting
         and tax alongside the rest of your finances — and set up your grants and
         loans for you from your paperwork, which you then review on the Import
         page. You can disconnect at any time.
@@ -126,7 +126,7 @@ export function AiConnectionsSection() {
         first. If anything goes wrong, fix the row or re-import.
       </p>
       <p className="mt-1.5 text-xs text-cs-muted">
-        Connecting means your figures are sent to OpenAI or Anthropic when the
+        Connecting means your figures are sent to OpenAI, Anthropic or Meta when the
         assistant asks for them. That is the same as pasting them into a chat,
         without the pasting.
       </p>
@@ -152,7 +152,7 @@ export function AiConnectionsSection() {
       {/* Walkthroughs */}
       <div className="mt-4">
         <div className="flex gap-1.5" role="tablist">
-          {(['claude', 'chatgpt'] as const).map((which) => (
+          {(['claude', 'chatgpt', 'muse'] as const).map((which) => (
             <button
               key={which}
               role="tab"
@@ -164,7 +164,7 @@ export function AiConnectionsSection() {
                   : 'border border-cs-border-strong text-cs-text-2 hover:bg-cs-raised'
               }`}
             >
-              {which === 'claude' ? 'Claude' : 'ChatGPT'}
+              {which === 'claude' ? 'Claude' : which === 'muse' ? 'Muse' : 'ChatGPT'}
             </button>
           ))}
         </div>
@@ -180,6 +180,30 @@ export function AiConnectionsSection() {
             <p className="pt-1.5 text-xs text-cs-muted">
               Needs a paid Claude plan. Works on web, desktop and mobile.
             </p>
+          </div>
+        ) : guide === 'muse' ? (
+          <div>
+            <ol className="mt-2.5 space-y-1.5 text-xs text-cs-text-2">
+              <Step n={1}>Start a chat in Muse and paste this message, using the server address above:</Step>
+            </ol>
+            <p className="mt-2 whitespace-pre-wrap break-words rounded-md bg-cs-raised p-2.5 text-xs text-cs-text">
+              Create a custom connector named Epic Stocks for the remote MCP server at {serverUrl}.{' '}
+              It uses Streamable HTTP and OAuth with PKCE and dynamic client registration.{' '}
+              Guide me through signing in to Epic Stocks and approving the connection.{' '}
+              Then list its tools, use get_dashboard to check the connection, and save it for future chats.
+            </p>
+            <ol start={2} className="mt-2.5 space-y-1.5 text-xs text-cs-text-2">
+              <Step n={2}>Follow Muse&apos;s sign-in link, sign in here and review the permissions. Choose Read only if you only want answers.</Step>
+              <Step n={3}>Let Muse check the connection and save the custom connector for future chats.</Step>
+            </ol>
+            <p className="pt-1.5 text-xs text-cs-muted">
+              If registration says this server does not accept connections from a host,
+              send that error to this site&apos;s administrator. They need to verify
+              Muse&apos;s OAuth callback host and allow it in Admin → AI Connections, then you can retry.
+            </p>
+            <a className="mt-2 inline-block text-xs text-cs-brand underline" href="https://www.meta.com/help/artificial-intelligence/1687253048996149/" target="_blank" rel="noopener noreferrer">
+              Muse&apos;s custom connector instructions
+            </a>
           </div>
         ) : (
           <div>
@@ -206,7 +230,7 @@ export function AiConnectionsSection() {
 
         <p className="mt-2 text-xs text-cs-muted">
           Once connected, name the assistant&apos;s connector when you ask a
-          question — both do better when told which tool to use than when left to
+          question — assistants do better when told which tool to use than when left to
           guess. Try &ldquo;what vests in the next six months?&rdquo;
         </p>
       </div>

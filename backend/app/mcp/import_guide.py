@@ -22,7 +22,7 @@ paid for the shares (C10, R1).
 """
 
 START_HERE = """\
-1. Ask the person for whatever they have: grant letters, the Shareworks "Data
+1. Ask the person for whatever they have: grant letters, the Eureka "Data
    for Stock Workbook" CSV, the Stock Loan Statement PDF, screenshots, or just
    what they remember. Any one of these is enough to start.
 2. Look at account_now below (or list_grants / list_loans / list_prices) so you

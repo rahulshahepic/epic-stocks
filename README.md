@@ -105,7 +105,7 @@ Everything in the app is derived from these four tables at request time:
 
 ### Getting Started
 
-Not ready to create an account? Go to **/try** and upload your **Data for Stock Workbook** and **Stock Loan Statement** straight from Shareworks — no sign-in, no email.
+Not ready to create an account? Go to **/try** and upload your **Data for Stock Workbook** and **Stock Loan Statement** straight from Eureka — no sign-in, no email.
 
 What you get is the app itself, running on your numbers in that browser tab:
 
@@ -131,7 +131,7 @@ The preview then says what an account adds that a one-off read cannot: notificat
    The app mark beside the name on this page and in the signed-in header uses the same artwork as the favicon.
 
 2. **Enter your data** — with no grants yet, the setup screen appears automatically on the dashboard, and is always reachable from the Import page. Options, fastest first:
-   - **Import from Shareworks** (fastest) — download **Data for Stock Workbook** and your latest **Stock Loan Statement** from the **Documents** tab in Shareworks and upload them as-is. Share counts, cost basis, loan balances, interest rates and due dates are read straight out of them, and you check the result in the wizard before anything is saved. See [Importing from Shareworks](#importing-from-shareworks) below.
+   - **Import from Eureka** (fastest) — download **Data for Stock Workbook** and your latest **Stock Loan Statement** from Eureka and upload them as-is. Share counts, cost basis, loan balances, interest rates and due dates are read straight out of them, and you check the result in the wizard before anything is saved. See [Importing from Eureka](#importing-from-eureka) below.
    - **Enter it myself** — no documents to hand? Epic's company-wide grant structure is pre-filled (vest dates, periods, exercise dates), so you fill in your share counts, annual market prices and loan details grant by grant. Catch-up grants are included by default for years ≤ 2021. The 2020 Bonus has an A/B/C vesting schedule selector matching your grant agreement. Developer Bonus Shares appear for the 2020 and 2021 cohorts with their cost basis fixed at $0 — leave the share count blank if you weren't offered them. If you already have data, the wizard pre-loads it on each screen — unmatched existing records appear at the bottom so you can keep or remove them. Nothing is written until you confirm at the final step.
    - **Import a Vesting.xlsx** — already have an export from this app, or a workbook someone shared? Upload it to pre-fill the wizard.
    - **Manual entry** — a blank slate, for grants that don't match the company schedule at all.
@@ -465,15 +465,15 @@ Sessions otherwise last 30 days, with a sliding refresh — the app silently ext
 
 ### Connecting Your Own AI
 
-You can let ChatGPT or Claude read your equity data, so you can ask about vesting and tax alongside the rest of your finances. It is off until you connect it, reading by default, and you can disconnect it at any time.
+You can let ChatGPT, Claude or Muse read your equity data, so you can ask about vesting and tax alongside the rest of your finances. It is off until you connect it, reading by default, and you can disconnect it at any time.
 
-**What this does and does not do.** The assistant can read your grants, vesting timeline, prices, loans, sales and tax estimates, and your salary and retirement settings if you allow that. Connecting means your figures are sent to OpenAI or Anthropic when the assistant asks for them — the same as pasting them into a chat, but without the pasting.
+**What this does and does not do.** The assistant can read your grants, vesting timeline, prices, loans, sales and tax estimates, and your salary and retirement settings if you allow that. Connecting means your figures are sent to OpenAI, Anthropic or Meta when the assistant asks for them — the same as pasting them into a chat, but without the pasting.
 
 **Connecting grants every permission.** The assistant can read your data, prepare an import for you to review (`import:propose`), and create, correct and remove individual grants, prices, loans and sales (`equity:write`) and salary and retirement figures (`comp:write`). The app is not the source of truth for your equity — anything wrong can be corrected or re-imported. The connect screen says so up front; tick **Read only** there if you only want the assistant to look. Those edits take effect immediately. Ask it to show you the exact values first, then check the saved rows and dashboard afterward. Disconnecting revokes access.
 
 **Letting it keep your salary and retirement numbers current.** Two things you type by hand *can* be written, if you tick that permission when you connect: your salary and bonus history, and the account balances the retirement simulator starts from. Then *"I got a raise to $205k in April"* or *"my 401(k) is at $850k now"* updates the app as you say it, instead of becoming a note to go and do it later. These are figures nothing else is computed from, and you are looking at them on the page — which is why they are the ones that are safe to write. Salary and bonus writes add to the history rather than replacing it, and repeating a request does not double a raise.
 
-**Getting your equity in by chatting — the easiest way in.** You don't need to know what a cost basis or a vesting schedule is. Connect ChatGPT or Claude with the import permission ticked, then share whatever you have — grant letters, the Shareworks CSV and loan statement, screenshots, or just what you remember. The Import page shows a **Let ChatGPT or Claude do it** card with a message to start the chat. The assistant reads `get_import_guide`, drafts your grants and loans, walks you through what it found in plain words (saying what it guessed), and calls `stage_import`. A grant Epic's published schedule doesn't cover — this year's, or a one-off award — keeps the dates you confirmed with the assistant. Adding one grant only adds one grant: grants the draft doesn't mention are kept exactly as they are, loans included, and the review shows what the guesses were and what accepting would change.
+**Getting your equity in by chatting — the easiest way in.** You don't need to know what a cost basis or a vesting schedule is. Connect ChatGPT or Claude with the import permission ticked, then share whatever you have — grant letters, the Eureka CSV and loan statement, screenshots, or just what you remember. The Import page shows a **Let ChatGPT or Claude do it** card with a message to start the chat. The assistant reads `get_import_guide`, drafts your grants and loans, walks you through what it found in plain words (saying what it guessed), and calls `stage_import`. A grant Epic's published schedule doesn't cover — this year's, or a one-off award — keeps the dates you confirmed with the assistant. Adding one grant only adds one grant: grants the draft doesn't mention are kept exactly as they are, loans included, and the review shows what the guesses were and what accepting would change.
 
 That does **not** save anything. It leaves a draft on the Import page, and you accept it in the same wizard an uploaded file goes through, with the same checks and the same diff. Confirmed custom grants and leave-adjusted dates appear in that review; older grants and prices outside the company schedule are kept unless you select them for removal. Unanswered sales remain visible for you to complete. If your assistant tells you staging finished the import, it is wrong — open the app and look. A draft you never accept expires after seven days.
 
@@ -518,6 +518,19 @@ And one that writes nothing of yours, under its own separate permission:
 2. Paste `https://<your-domain>/mcp`
 3. Sign in and approve
 
+**In Muse** — ask for a custom connector in a chat. A [standalone Muse setup guide](docs/muse-connector.md) includes the same steps:
+
+1. Copy this message into Muse, replacing the address with the server address shown in **Settings → AI Connections**:
+
+   > Create a custom connector named Epic Stocks for the remote MCP server at https://YOUR-DOMAIN/mcp. It uses Streamable HTTP and OAuth with PKCE and dynamic client registration. Guide me through signing in to Epic Stocks and approving the connection. Then list its tools, use get_dashboard to check the connection, and save it for future chats.
+
+2. Follow Muse's sign-in link, sign in to Epic Stocks, and review the consent screen. Choose **Read only** if you only want answers; editing and import permissions allow changes.
+3. Let Muse check the connection and save it for future chats. Ask “Use Epic Stocks to show what vests in the next six months.” Manage the custom connector under Muse's **Settings → Connectors**, or revoke it here in **Settings → AI Connections**.
+
+**If Muse registration is blocked:** this server initially allows ChatGPT and Claude OAuth callback hosts. Send the error naming the refused host to the site administrator. In **Admin → AI Connections**, the administrator must verify that host belongs to Muse's OAuth flow, add it with the label **Muse**, and enable it before you retry. Do not allow a broad parent domain or disable redirect validation. The server address is this site's `/mcp`; the callback host is where Muse receives the OAuth response, and is a different address. No API key or account session token is needed.
+
+Muse's [official connector guide](https://www.meta.com/help/artificial-intelligence/1687253048996149/) documents asking in chat to create a custom connector and storing credentials securely. The prompt above supplies this server's MCP/OAuth details; Muse's exact sign-in UI can vary. This walkthrough has not yet been verified end to end in Muse. Meta does not review custom connectors.
+
 **In ChatGPT** — Plus, Pro, Business, Enterprise or Edu. Adding a connector is **web only**; once added it works everywhere:
 
 1. Settings → **Security and login** → turn on **Developer mode**. It sounds alarming and is not — it is the switch that lets you add connectors that are not in OpenAI's directory.
@@ -560,6 +573,8 @@ Plugin imports bound each file connection/transfer to 30 seconds after DNS resol
 |------------------------|----------------------------|
 | ![AI Connections settings](screenshots/settings-ai-connections-light-mobile.png) | ![ChatGPT walkthrough](screenshots/settings-ai-connections-dark-mobile.png) |
 
+![Muse custom connector walkthrough](screenshots/settings-ai-connections-muse-light-mobile.png)
+
 The section is hidden entirely if an administrator has switched AI connections off — instructions for something that cannot work are worse than no instructions.
 
 ---
@@ -592,24 +607,24 @@ The 83(b) flag is display-only — it doesn't change how events are computed. If
 
 ---
 
-### Importing from Shareworks
+### Importing from Eureka
 
 ![Import / Export](screenshots/import-export-mobile.png)
 
-Everything the tracker needs is already in two documents on Shareworks. Sign in there, open the **Documents** tab, and download:
+Download these two documents from Eureka:
 
 | Document | What is read from it |
 |----------|----------------------|
 | **Data for Stock Workbook** (.csv) | Shares granted and sold per grant, cost basis, 83(b) shares |
 | **Stock Loan Statement** (.pdf) — the latest one | Every loan: number, name, principal balance, interest rate, due date |
 
-Then go to **Import/Export → Import from Shareworks** and upload either or both, exactly as they downloaded. There is no need to open or edit them first.
+Then go to **Import/Export → Import from Eureka** and upload either or both, exactly as they downloaded. There is no need to open or edit them first.
 
 **Only your own figures come from the files.** Vest dates, vesting periods, exercise dates, loan rates and due dates are company-wide and come from the grant schedule a content admin maintains — see [For Content Admins](#for-content-admins). Nothing in an import can change them.
 
 **The files check each other.** Before anything is shown, the app verifies the statement adds up to its own printed subtotals and total, that the loans it attributes to each grant reproduce that grant's loan balance and annual interest in the CSV, and that share counts and rates agree with what is on record.
 
-**The two files disagreeing about loans is normal.** Shareworks regenerates the loan statement on demand but refreshes the stock workbook on its own slower cycle, so a payoff or a refinance lands on the statement while the workbook still carries the old balance. That is why the loan-balance and annual-interest checks (`C3`, `C4`) are warnings, not errors, and why their message says which cause to check first. Only the statement failing to add up to its *own* printed totals blocks an import — that means a row was misread, and nothing downstream can be trusted.
+**The two files disagreeing about loans is normal.** Epic regenerates the loan statement on demand but refreshes the stock workbook on its own slower cycle, so a payoff or a refinance lands on the statement while the workbook still carries the old balance. That is why the loan-balance and annual-interest checks (`C3`, `C4`) are warnings, not errors, and why their message says which cause to check first. Only the statement failing to add up to its *own* printed totals blocks an import — that means a row was misread, and nothing downstream can be trusted.
 
 **Shares Epic reports as sold are reconciled before they are called sales.** Epic's CSV puts shares handed back to cover a later purchase's down payment in the same `Shares Sold` column as shares actually sold, and never says which is which. The arithmetic does: the gap between a grant's cost basis and its purchase loan is the down payment, and one paid in stock is a whole number of shares at that year's price — the policy minimum rounded up to the next whole share. When those add up to exactly the shares reported gone, they are recorded as share exchanges at exercise (not taxable disposals, no sales created) and the import says which grants they paid for. A larger-than-minimum down payment, or a loan that has been paid down since, reads as unexplained shares rather than being quietly reclassified.
 
@@ -758,13 +773,13 @@ Paste a URL or type a bare hostname; either is stored as the hostname.
 **Admin → Tools → Import diagnostics** (`/import-diagnostics`) checks the Epic file importer against real data. Upload:
 
 1. Your own export — either the `Vesting.xlsx` from **Import / Export** or a dashboard **holdings report** (see below), and
-2. **Data for Stock Workbook** and/or the **Stock Loan Statement** from Shareworks, **from the same date**.
+2. **Data for Stock Workbook** and/or the **Stock Loan Statement** from Eureka, **from the same date**.
 
-**Match the dates.** Shareworks documents are issued periodically, so the copy you have is usually months old, while an export is of today. Set the **as of** date on the Import / Export export to the statement date and the export leaves out grants, loans and prices dated after it — otherwise everything drawn in between reads as a difference. A grant is dated by its exercise date, a price by its effective date, a sale or payment by the day it happened; loans carry only the year they were drawn, so they are filtered by year.
+**Match the dates.** Eureka documents are issued periodically, so the copy you have is usually months old, while an export is of today. Set the **as of** date on the Import / Export export to the statement date and the export leaves out grants, loans and prices dated after it — otherwise everything drawn in between reads as a difference. A grant is dated by its exercise date, a price by its effective date, a sale or payment by the day it happened; loans carry only the year they were drawn, so they are filtered by year.
 
 Either export works as a baseline. The `Vesting.xlsx` is the full dataset. The dashboard holdings report is a formatted position statement rather than a dataset — it carries no loan numbers, no vesting schedule, and one share price instead of a history — so the report says once what it could not compare instead of listing those as differences on every row.
 
-The importer runs against the Shareworks files alone, and the result is diffed field by field against the export. Every difference is listed with the id of the rule that produced the value, so the report reads as "rule `G3` reads the cost basis wrong" rather than "the import is wrong". Download it as Markdown and hand it back as a bug report. Every id is explained in [`backend/app/epic_import/RULES.md`](backend/app/epic_import/RULES.md) — what it reads, what it produces, when it fires and whether it blocks.
+The importer runs against the Eureka files alone, and the result is diffed field by field against the export. Every difference is listed with the id of the rule that produced the value, so the report reads as "rule `G3` reads the cost basis wrong" rather than "the import is wrong". Download it as Markdown and hand it back as a bug report. Every id is explained in [`backend/app/epic_import/RULES.md`](backend/app/epic_import/RULES.md) — what it reads, what it produces, when it fires and whether it blocks.
 
 The page is read-only — it never touches the database, and it only ever reads the three files in the request, which is what makes it safe to run against a production export. It compares against the uploaded export, not against any stored user data, so it exposes no financial data the uploader did not already provide.
 
@@ -1088,7 +1103,7 @@ epic-stocks/
 │   │   ├── loan_state.py    # Refinance state (as_of is required) + accrual window + cycle validation
 │   │   ├── sales_engine.py  # FIFO cost-basis + tax + gross-up calculations
 │   │   ├── excel_io.py      # Excel read/write (openpyxl)
-│   │   ├── epic_import/     # Import from the Shareworks documents
+│   │   ├── epic_import/     # Import from the Eureka documents
 │   │   │   ├── pdf_statement.py # Stock Loan Statement PDF -> loan rows (pdfplumber)
 │   │   │   ├── share_csv.py     # Share summary CSV -> grant rows
 │   │   │   ├── skeleton.py      # Content tables -> structure an import may not invent
@@ -1249,10 +1264,10 @@ Cross-origin requests are accepted only from the native shell origins (`capacito
 | POST | `/api/import/backups/{id}/restore` | Restore data from a backup snapshot |
 | GET | `/api/export/excel` | Download Vesting.xlsx with all data. `?as_of=YYYY-MM-DD` (optional) drops records dated after that day |
 | GET | `/api/export/holdings-report` | Download formatted Excel holdings report as of a given date |
-| POST | `/api/epic-import/analyze` | Read the Shareworks CSV + PDF, or check a repaired draft against them — returns a draft, what failed, and a prompt to paste out. Writes nothing |
+| POST | `/api/epic-import/analyze` | Read the Eureka CSV + PDF, or check a repaired draft against them — returns a draft, what failed, and a prompt to paste out. Writes nothing |
 | POST | `/api/epic-import/diff` | Diff the derivation against an uploaded Excel export — read-only |
 | POST | `/api/epic-import/diff.md` | The same report as a downloadable Markdown file |
-| POST | `/api/trial/analyze` | No-account preview: read the Shareworks CSV + PDF and return the computed timeline, dashboard-shaped grants/loans/prices, and the default tax rates. No auth, stores none of the uploaded data, IP rate-limited |
+| POST | `/api/trial/analyze` | No-account preview: read the Eureka CSV + PDF and return the computed timeline, dashboard-shaped grants/loans/prices, and the default tax rates. No auth, stores none of the uploaded data, IP rate-limited |
 | POST | `/api/trial/save-intent` | Add one to today's "pressed save" count. No auth, no body, IP rate-limited |
 | POST | `/api/trial/converted` | Add one to today's "signed up carrying preview data" count. Requires auth |
 | POST | `/api/wizard/parse-file` | Parse an uploaded Excel structure file for wizard pre-fill |
@@ -1389,7 +1404,7 @@ The built-in privacy page (`/privacy`) lists the third-party services used by th
 - **Unreliable or incomplete grant details block an import.** Mismatched statement totals, malformed grants or sales, and a custom schedule the user has not confirmed stop acceptance. An unfamiliar file category is only a hint: historic conversion rows look like grant types and are not grants. Disagreement between files and unusual loan rates remain visible for review because Epic's paperwork can disagree with itself.
 - **Shares reported sold are reconciled, not assumed sold.** Epic reports a down-payment share exchange and a sale in the same column. Calling every one a sale invented taxable disposals; the down payment implied by each purchase loan is checkable arithmetic, and only an exact, unique match against the shares reported gone is acted on. Rule `G8`, checked back by `C11`.
 - **Unexplained shares are unclassified, not necessarily sold.** The user confirms exchanges and supplies each sale's quantity, date and price. `C12` keeps unknown details visible; the wizard checks edited exchanges against the reported total and shows omitted shares at sign-off. Re-import matches saved sales one-for-one rather than appending copies. The wizard's `sales.ts` contains the client-side reconciliation and review helpers.
-- **Two documents disagreeing is staleness, not a misread.** Shareworks regenerates the loan statement on demand and refreshes the stock workbook on a slower cycle, so the workbook routinely predates a payoff the statement already shows. `C3` and `C4` warn and name that cause rather than erroring: a user whose paperwork is merely out of step was being told their import had failed, twice in one evening, which is what prompted this.
+- **Two documents disagreeing is staleness, not a misread.** Epic regenerates the loan statement on demand and refreshes the stock workbook on a slower cycle, so the workbook routinely predates a payoff the statement already shows. `C3` and `C4` warn and name that cause rather than erroring: a user whose paperwork is merely out of step was being told their import had failed, twice in one evening, which is what prompted this.
 - **A refinance chain is inferred from the rate, not assumed.** The company-wide chain says what Epic did; the rate on a user's own statement says how much of it happened to them. Applying the whole chain to everyone silently invented history for anyone who did not refinance with the crowd, and rates are the one piece of evidence the documents do carry. `frontend/src/app/refiInference.ts`.
 - **Sign-off happens in the wizard, not on a file.** An import ends by prefilling the Setup Wizard, so what a user confirms is their rendered position. Asking someone to eyeball a CSV or a JSON blob is not validation.
 - **Every derived field records the rule that produced it.** Tagging each field with a rule id turns "the import is wrong" into "rule G3 reads the cost basis wrong", which is what the diagnostics report is for. The ids are documented in `backend/app/epic_import/RULES.md`, and a test pins that reference to the code: a rule the importer can report but the reference cannot explain fails the suite, which is the only way a document like that stays true.

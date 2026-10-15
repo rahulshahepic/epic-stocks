@@ -518,7 +518,7 @@ And one that writes nothing of yours, under its own separate permission:
 2. Paste `https://<your-domain>/mcp`
 3. Sign in and approve
 
-**In Muse** — ask for a custom connector in a chat:
+**In Muse** — ask for a custom connector in a chat. A [standalone Muse setup guide](docs/muse-connector.md) includes the same steps:
 
 1. Copy this message into Muse, replacing the address with the server address shown in **Settings → AI Connections**:
 

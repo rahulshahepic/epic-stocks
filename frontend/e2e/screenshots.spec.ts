@@ -287,7 +287,7 @@ test.describe('Screenshots', () => {
     await shoot(page, 'try-dark-mobile', { fullPage: true })
   })
 
-  /** Upload the synthetic Shareworks fixtures and land on the computed preview. */
+  /** Upload the synthetic Eureka fixtures and land on the computed preview. */
   async function previewPage(page: Page, viewport: { width: number; height: number }, scheme: 'light' | 'dark') {
     await page.emulateMedia({ colorScheme: scheme })
     await page.setViewportSize(viewport)

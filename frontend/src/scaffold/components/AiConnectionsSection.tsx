@@ -20,11 +20,13 @@ const SCOPE_LABELS: Record<string, string> = {
   'comp:read': 'Salary and retirement settings',
   'comp:write': 'Update salary, bonuses and retirement balances',
   'import:propose': 'Prepare an import for you to review',
+  'equity:write': 'Create, correct or remove grants, prices, loans and sales',
+  'admin:read': 'Site deployment, metrics and redacted application errors',
 }
 
 // The scopes that let an assistant leave something behind, so the summary
 // above can stop promising read-only for a connection that holds one.
-const WRITING_SCOPES = ['comp:write', 'import:propose']
+const WRITING_SCOPES = ['comp:write', 'import:propose', 'equity:write']
 
 function formatWhen(value: string | null): string {
   if (!value) return ''

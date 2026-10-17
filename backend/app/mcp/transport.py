@@ -24,10 +24,12 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from scaffold.oauth import audit
+from scaffold.oauth.scopes import ADMIN_READ
+from scaffold.auth import get_admin_emails
 from scaffold.oauth.resource import Connector, require_connector
 from scaffold.oauth.settings import mcp_enabled
 from scaffold.rate_limit import check_rate_shared
-from . import comp_tools, equity_tools, import_tools, read_tools, ui_tools, import_ui  # noqa: F401
+from . import admin_tools, comp_tools, equity_tools, import_tools, read_tools, ui_tools, import_ui  # noqa: F401
 from .ui_tools import RESOURCE_URI, resource_contents, resource_descriptor
 from .tools import REGISTRY, ToolContext, as_result, visible_to
 
@@ -204,6 +206,13 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext) -> d
                 "get_ tool first so you add to the history rather than "
                 "duplicating it, and note the units differ: compensation is in "
                 "dollars, retirement balances in millions of dollars."
+                + ("\n\nSite admins with separately granted admin:read may inspect "
+                   "deployment status, system metrics and redacted application "
+                   "errors. Always identify the environment and API build in "
+                   "the result. These tools cannot read VPS, Cloudflare or GitHub "
+                   "logs; do not claim that an empty error list clears those sources."
+                   if ADMIN_READ in connector.scopes and connector.user.email.lower() in get_admin_emails()
+                   else "")
             ),
         })
 
@@ -266,6 +275,10 @@ def _call_tool(params: dict, request_id: Any, ctx: ToolContext) -> dict:
             f"This connection was not granted the '{tool.scope}' permission. "
             "Reconnect it and allow that permission to use this tool.",
         )
+
+    if tool.scope == ADMIN_READ and connector.user.email.lower() not in get_admin_emails():
+        audit.finish_tool_call(ctx.db, entry, audit.DENIED)
+        return _tool_failure(request_id, "Site admin access has been revoked")
 
     arguments = params.get("arguments")
     if not isinstance(arguments, dict):

@@ -18,10 +18,15 @@ logger = logging.getLogger(__name__)
 
 
 def _notifications(day: date) -> None:
-    from scaffold.notifications import send_admin_daily_digest, send_daily_notifications
+    from scaffold.notifications import send_daily_notifications
 
     send_daily_notifications(today=day)
-    send_admin_daily_digest()
+
+
+def _admin_digest(day: date) -> None:
+    from scaffold.notifications import send_admin_daily_digest
+
+    send_admin_daily_digest(today=day)
 
 
 def _maintenance(_day: date) -> None:
@@ -42,6 +47,7 @@ def _maintenance(_day: date) -> None:
 _JOBS = (
     ("maintenance", time(3, 0), 444444444, _maintenance),
     ("notifications", time(7, 0), 555555555, _notifications),
+    ("admin_digest", time(7, 0), 666666666, _admin_digest),
 )
 
 

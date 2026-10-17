@@ -1,5 +1,6 @@
 """Notification logic — daily check for today's events, send push + email per user."""
 import html as _html
+import hashlib
 import json
 from enum import Enum
 import logging
@@ -11,7 +12,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
-from scaffold.models import User, Grant, Loan, Price, PushSubscription, EmailPreference, Sale
+from scaffold.models import User, Grant, Loan, Price, PushSubscription, EmailPreference, Sale, SystemSettings
 from services.timeline_cache import get_timeline
 from services.price_state import price_metadata, notification_details
 
@@ -426,7 +427,7 @@ def check_user_milestone(db: Session):
         send_admin_milestone_notification(total)
 
 
-def send_admin_daily_digest():
+def send_admin_daily_digest(today: date | None = None):
     """Send a daily system health digest to admins.
 
     In multi-replica deployments, uses a PostgreSQL advisory lock so only one
@@ -490,8 +491,22 @@ def send_admin_daily_digest():
   </table>
 </div>"""
 
-        for admin_email in admin_emails:
-            send_email(admin_email, subject, text, html)
+        day = today or now.date()
+        for admin_email in sorted(admin_emails):
+            # A partial provider failure should retry only the recipients who
+            # have not had a successful send recorded for this UTC day.
+            recipient = hashlib.sha256(admin_email.strip().lower().encode()).hexdigest()
+            key = f"scheduled:admin_digest:recipient:{recipient}:last_completed"
+            state = db.get(SystemSettings, key)
+            if state and state.value >= day.isoformat():
+                continue
+            if not send_email(admin_email, subject, text, html):
+                raise RuntimeError("Admin digest email delivery failed")
+            if state is None:
+                db.add(SystemSettings(key=key, value=day.isoformat()))
+            else:
+                state.value = day.isoformat()
+            db.commit()
     except Exception:
         logger.exception("Error sending admin daily digest")
         raise

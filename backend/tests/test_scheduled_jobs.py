@@ -73,10 +73,39 @@ def test_notifications_use_the_due_utc_date(monkeypatch):
 
     calls = []
     monkeypatch.setattr(notifications, "send_daily_notifications", lambda today: calls.append(today))
-    monkeypatch.setattr(notifications, "send_admin_daily_digest", lambda: calls.append("digest"))
+    monkeypatch.setattr(notifications, "send_admin_daily_digest", lambda today: calls.append(("digest", today)))
 
     jobs._notifications(_at(8).date())
-    assert calls == [_at(8).date(), "digest"]
+    jobs._admin_digest(_at(8).date())
+    assert calls == [_at(8).date(), ("digest", _at(8).date())]
+
+
+def test_failed_digest_retries_without_resending_notifications(setup_db, db_session, monkeypatch):
+    from scaffold import notifications
+
+    sent = []
+    attempts = []
+    monkeypatch.setattr(notifications, "send_daily_notifications", lambda today: sent.append(today))
+
+    def digest(today):
+        assert today == _at(8).date()
+        attempts.append(True)
+        if len(attempts) == 1:
+            raise RuntimeError("email provider unavailable")
+
+    monkeypatch.setattr(notifications, "send_admin_daily_digest", digest)
+    monkeypatch.setattr(jobs, "_JOBS", (
+        ("notifications", jobs.time(7), 555555555, jobs._notifications),
+        ("admin_digest", jobs.time(7), 666666666, jobs._admin_digest),
+    ))
+
+    assert jobs.run_due(_at(8)) == {"notifications": "completed", "admin_digest": "failed"}
+    assert jobs.run_due(_at(8) + timedelta(minutes=15)) == {
+        "notifications": "already_done_or_running", "admin_digest": "completed",
+    }
+    assert sent == [_at(8).date()]
+    assert len(attempts) == 2
+    assert db_session.get(SystemSettings, "scheduled:admin_digest:last_completed").value == "2026-10-17"
 
 
 def test_maintenance_runs_all_three_steps(setup_db, monkeypatch):

@@ -1,5 +1,6 @@
 """The same job entry point is used by the Hetzner timer and future cloud jobs."""
 from datetime import datetime, timedelta, timezone
+import json
 
 import pytest
 
@@ -43,6 +44,24 @@ def test_failed_job_retries_without_blocking_other_jobs(setup_db, db_session, mo
     }
     assert len(calls) == 2
     assert len(other) == 1
+    assert json.loads(db_session.get(SystemSettings, "scheduled:runner:last_results").value) == {
+        "maintenance": "completed", "notifications": "already_done_or_running",
+    }
+    assert datetime.fromisoformat(db_session.get(SystemSettings, "scheduled:runner:last_finished_at").value).tzinfo
+
+
+def test_runner_records_startup_failure(setup_db, db_session, monkeypatch):
+    from scaffold import crypto
+
+    def fail(_db):
+        raise RuntimeError("key unavailable")
+
+    monkeypatch.setattr(crypto, "initialize_master_key", fail)
+    with pytest.raises(RuntimeError, match="key unavailable"):
+        jobs.run_due(_at(8))
+    assert json.loads(db_session.get(SystemSettings, "scheduled:runner:last_results").value) == {
+        "runner": "failed",
+    }
 
 
 def test_jobs_use_utc_day(setup_db, monkeypatch):

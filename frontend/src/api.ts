@@ -582,6 +582,7 @@ export const api = {
 
   // Admin
   adminStats: () => apiFetch<AdminStats>('/api/admin/stats'),
+  adminDeploymentStatus: () => apiFetch<DeploymentStatus>('/api/admin/deployment-status'),
   adminUsers: (q = '', limit = 10, offset = 0) =>
     apiFetch<AdminUserListResponse>(`/api/admin/users?q=${encodeURIComponent(q)}&limit=${limit}&offset=${offset}`),
   adminDeleteUser: (id: number) => del(`/api/admin/users/${id}`),
@@ -757,6 +758,15 @@ export interface AdminStats {
   cpu_percent: number | null
   ram_used_mb: number | null
   ram_total_mb: number | null
+}
+
+export interface DeploymentStatus {
+  build: string | null
+  environment: string
+  state: 'healthy' | 'running' | 'pending' | 'failed' | 'stale'
+  last_started_at: string | null
+  last_checked_at: string | null
+  jobs: { name: string; due_utc: string; last_completed_day: string | null; last_result: string | null }[]
 }
 
 export interface SystemMetricPoint {

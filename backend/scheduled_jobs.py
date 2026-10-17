@@ -6,6 +6,7 @@ send the same batch concurrently. The date marker follows the work: retries
 after a crash may repeat an external send, as with the previous web scheduler.
 """
 import logging
+import json
 from contextlib import nullcontext
 from datetime import date, datetime, time, timezone
 
@@ -51,6 +52,21 @@ _JOBS = (
 )
 
 
+def _record_runner_state(values: dict[str, str]) -> None:
+    db = database.SessionLocal()
+    try:
+        for name, value in values.items():
+            key = f"scheduled:runner:{name}"
+            row = db.get(SystemSettings, key)
+            if row is None:
+                db.add(SystemSettings(key=key, value=value))
+            else:
+                row.value = value
+        db.commit()
+    finally:
+        db.close()
+
+
 def _run_once(name: str, day: date, lock_id: int, action) -> bool:
     lock_connection = database.engine.connect() if not database._is_sqlite else nullcontext(None)
     with lock_connection as connection:
@@ -89,27 +105,37 @@ def run_due(now: datetime | None = None) -> dict[str, str]:
     if now.tzinfo is None:
         raise ValueError("run_due requires a timezone-aware datetime")
     now = now.astimezone(timezone.utc)
-    # A one-off job container never enters FastAPI lifespan. Notifications
-    # decrypt user keys, so load the same shared master key before doing work.
-    from scaffold.crypto import initialize_master_key
-
-    db = database.SessionLocal()
-    try:
-        initialize_master_key(db)
-    finally:
-        db.close()
+    _record_runner_state({"last_started_at": datetime.now(timezone.utc).isoformat()})
     result = {}
-    for name, start, lock_id, action in _JOBS:
-        if now.time() < start:
-            result[name] = "not_due"
-            continue
+    try:
+        # A one-off job container never enters FastAPI lifespan. Notifications
+        # decrypt user keys, so load the same shared master key before doing work.
+        from scaffold.crypto import initialize_master_key
+
+        db = database.SessionLocal()
         try:
-            ran = _run_once(name, now.date(), lock_id, action)
-            result[name] = "completed" if ran else "already_done_or_running"
-        except Exception:
-            logger.exception("Scheduled %s job failed", name)
-            result[name] = "failed"
-    return result
+            initialize_master_key(db)
+        finally:
+            db.close()
+        for name, start, lock_id, action in _JOBS:
+            if now.time() < start:
+                result[name] = "not_due"
+                continue
+            try:
+                ran = _run_once(name, now.date(), lock_id, action)
+                result[name] = "completed" if ran else "already_done_or_running"
+            except Exception:
+                logger.exception("Scheduled %s job failed", name)
+                result[name] = "failed"
+        return result
+    except Exception:
+        result["runner"] = "failed"
+        raise
+    finally:
+        _record_runner_state({
+            "last_finished_at": datetime.now(timezone.utc).isoformat(),
+            "last_results": json.dumps(result),
+        })
 
 
 if __name__ == "__main__":

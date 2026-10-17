@@ -766,7 +766,7 @@ export interface DeploymentStatus {
   state: 'healthy' | 'running' | 'pending' | 'failed' | 'stale'
   last_started_at: string | null
   last_checked_at: string | null
-  jobs: { name: string; due_utc: string; last_completed_day: string | null; last_result: string | null }[]
+  jobs: { name: string; due_utc: string; last_completed_day: string | null; last_completed_at: string | null; last_result: string | null }[]
 }
 
 export interface SystemMetricPoint {

@@ -125,6 +125,7 @@ def test_deployment_status_shows_runner_and_job_health(client, db_session):
             })),
             *[SystemSettings(key=f"scheduled:{name}:last_completed", value=now.date().isoformat())
               for name in ("maintenance", "notifications", "admin_digest")],
+            SystemSettings(key="scheduled:maintenance:last_completed_at", value=now.isoformat()),
         ])
         db_session.commit()
         response = client.get("/api/admin/deployment-status")
@@ -133,6 +134,9 @@ def test_deployment_status_shows_runner_and_job_health(client, db_session):
         assert {job["name"] for job in response.json()["jobs"]} == {
             "maintenance", "notifications", "admin_digest",
         }
+        jobs = {job["name"]: job for job in response.json()["jobs"]}
+        assert jobs["maintenance"]["last_completed_at"] == now.isoformat()
+        assert jobs["notifications"]["last_completed_at"] is None
 
         db_session.get(SystemSettings, "scheduled:runner:last_results").value = json.dumps({
             "notifications": "failed",

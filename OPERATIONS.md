@@ -220,7 +220,7 @@ Connects to the VPS via SSH (key stored in GitHub Actions secrets) and:
 1. Generates any missing server-side secrets (JWT, encryption key, VAPID keys, Postgres password) into `/opt/epic-stocks/.secrets/`, then writes `.env` from those files plus GitHub Secrets/Vars. Also writes `COMMIT_SHA=${{ github.sha }}` into `.env` so it is available as a Docker build arg.
 2. Creates a 2 GB swapfile if one doesn't exist (idempotent)
 3. `git fetch origin main && git reset --hard origin/main` — always matches the repo exactly; no local drift
-4. `docker compose build` — passes `COMMIT_SHA` and `APP_ENV` as build args to the frontend stage. `VITE_COMMIT_SHA` is displayed as a 7-char short hash in Admin and Settings. `VITE_APP_ENV=staging` activates the staging visual identity (amber icon, renamed PWA, amber header banner). `docker compose up -d`
+4. `docker compose build` — passes `COMMIT_SHA` and `APP_ENV` as build args to the frontend stage. `VITE_COMMIT_SHA` is displayed as a 7-char short hash in Admin and Settings. `VITE_APP_ENV=staging` activates the staging visual identity (amber icon, renamed PWA, amber header banner). After the database is healthy, a one-off app container runs `alembic upgrade head`. The web app starts with `RUN_MIGRATIONS_ON_STARTUP=0` so it does not rerun migrations. Local PostgreSQL starts still run them by default.
 5. Polls `http://localhost/api/health` every 5 seconds for up to 60 seconds
 
 **Step 3 — Health polling**
@@ -234,7 +234,7 @@ If `/api/health` returns `{"status": "ok"}` within 60 seconds, the deploy succee
 MANUAL ROLLBACK INSTRUCTIONS: ...
 ```
 
-No automatic rollback. Because Alembic migrations run on startup, reverting code after a schema migration requires manual review (see §7 Runbook).
+No automatic rollback. The deploy runs Alembic before starting the app; reverting code after a schema migration requires manual review (see §7 Runbook).
 
 ### GitHub Actions secrets and variables required
 

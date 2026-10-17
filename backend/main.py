@@ -31,19 +31,7 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 @asynccontextmanager
 async def lifespan(app):
-    if database.engine.url.drivername.startswith("sqlite"):
-        # Test environments use SQLite — skip Alembic, use create_all
-        database.Base.metadata.create_all(bind=database.engine)
-    else:
-        # Production uses PostgreSQL — run Alembic migrations
-        from pathlib import Path
-        from alembic.config import Config
-        from alembic import command as alembic_command
-        cfg = Config(Path(__file__).parent / "alembic.ini")
-        alembic_command.upgrade(cfg, "head")
-        # One-time migration from SQLite if data/vesting.db exists and PG is empty
-        from scaffold.migrate_sqlite_to_pg import maybe_migrate
-        maybe_migrate()
+    _prepare_database()
     # Ensure system_settings seed rows exist and load/generate the master encryption key
     _bootstrap_system()
     redis_url = os.getenv("REDIS_URL", "")
@@ -71,6 +59,22 @@ async def lifespan(app):
         metrics_task.cancel()
     if maintenance_task:
         maintenance_task.cancel()
+
+
+def _prepare_database():
+    if database.engine.url.drivername.startswith("sqlite"):
+        # Test environments use SQLite — skip Alembic, use create_all
+        database.Base.metadata.create_all(bind=database.engine)
+    else:
+        if os.getenv("RUN_MIGRATIONS_ON_STARTUP", "1") != "0":
+            # Local PostgreSQL starts without a deploy workflow; run migrations there.
+            from alembic.config import Config
+            from alembic import command as alembic_command
+            cfg = Config(Path(__file__).parent / "alembic.ini")
+            alembic_command.upgrade(cfg, "head")
+        # One-time migration from SQLite if data/vesting.db exists and PG is empty
+        from scaffold.migrate_sqlite_to_pg import maybe_migrate
+        maybe_migrate()
 
 
 def _bootstrap_system():

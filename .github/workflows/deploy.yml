@@ -144,6 +144,7 @@ jobs:
             CACHE_INVALIDATE_SECRET=${CACHE_INVALIDATE_SECRET}
             ACME_EMAIL=${{ vars.ACME_EMAIL }}
             COMMIT_SHA=${{ github.sha }}
+            RUN_MIGRATIONS_ON_STARTUP=0
             KEY_ENCRYPTION_KEY=${KEY_ENCRYPTION_KEY}
             LEGACY_MASTER_KEY=${LEGACY_MASTER_KEY}
             ENVEOF

@@ -6,5 +6,5 @@ After=docker.service
 [Service]
 Type=oneshot
 WorkingDirectory=@DEPLOY_PATH@
-ExecStart=/usr/bin/docker compose run --rm --no-deps app python -m scaffold.scheduled_jobs
+ExecStart=/usr/bin/docker compose run --rm --no-deps app python -m scheduled_jobs
 TimeoutStartSec=20min

@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from scaffold import scheduled_jobs as jobs
+import scheduled_jobs as jobs
 from scaffold.models import SystemSettings
 
 

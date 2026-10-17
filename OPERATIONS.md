@@ -263,7 +263,7 @@ These are the only values that need to be set in GitHub. Cryptographic secrets (
 | `DOMAIN` | Variable | Your domain name |
 | `TRUSTED_PROXY_IPS` | Variable | Cloudflare IP ranges for real-IP forwarding |
 | `CLIENT_IP_HEADER` | Variable | Header carrying the caller's address. `CF-Connecting-IP` behind Cloudflare. Only safe with the origin firewalled to the proxy. |
-| `APP_ENV` | Variable | Set to `staging` in the staging GitHub environment to enable staging visual identity (amber icon, "Epic Stocks (Staging)" PWA name, amber header banner). Omit or set to `production` for production — defaults to `production` if absent. |
+| `APP_ENV` | Variable | Set to `staging` in the staging GitHub environment to enable staging visual identity (amber icon, "Epic Stocks (Staging)" PWA name, amber header banner) and the Admin deployment label. Compose passes it to the frontend build and the app container. Omit or set to `production` for production — defaults to `production` if absent. |
 | `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | Variable | Optional VPS pool limits. Defaults to `10` / `20` per app process when not set. |
 
 

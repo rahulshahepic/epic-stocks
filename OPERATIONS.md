@@ -220,7 +220,7 @@ Connects to the VPS via SSH (key stored in GitHub Actions secrets) and:
 1. Generates any missing server-side secrets (JWT, encryption key, VAPID keys, Postgres password) into `/opt/epic-stocks/.secrets/`, then writes `.env` from those files plus GitHub Secrets/Vars. Also writes `COMMIT_SHA=${{ github.sha }}` into `.env` so it is available as a Docker build arg.
 2. Creates a 2 GB swapfile if one doesn't exist (idempotent)
 3. `git fetch origin main && git reset --hard origin/main` — always matches the repo exactly; no local drift
-4. `docker compose build` — passes `COMMIT_SHA` and `APP_ENV` as build args to the frontend stage. `VITE_COMMIT_SHA` is displayed as a 7-char short hash in Admin and Settings. `VITE_APP_ENV=staging` activates the staging visual identity (amber icon, renamed PWA, amber header banner). `docker compose up -d`
+4. `docker compose build` — passes `COMMIT_SHA` and `APP_ENV` as build args to the frontend stage. `VITE_COMMIT_SHA` is displayed as a 7-char short hash in Admin and Settings. `VITE_APP_ENV=staging` activates the staging visual identity (amber icon, renamed PWA, amber header banner). After the image is built and before taking down the current app, the workflow installs and restarts `epic-stocks-jobs.timer` from `ops/systemd/`. It remains enabled if a later deployment step fails. After the database is healthy, a one-off app container runs `alembic upgrade head`. The web app starts with `RUN_MIGRATIONS_ON_STARTUP=0` so it does not rerun migrations. Local PostgreSQL starts still run them by default.
 5. Polls `http://localhost/api/health` every 5 seconds for up to 60 seconds
 
 **Step 3 — Health polling**
@@ -234,7 +234,17 @@ If `/api/health` returns `{"status": "ok"}` within 60 seconds, the deploy succee
 MANUAL ROLLBACK INSTRUCTIONS: ...
 ```
 
-No automatic rollback. Because Alembic migrations run on startup, reverting code after a schema migration requires manual review (see §7 Runbook).
+No automatic rollback. The deploy runs Alembic before starting the app; reverting code after a schema migration requires manual review (see §7 Runbook).
+
+### Daily jobs
+
+`epic-stocks-jobs.timer` starts a one-off app container every 15 minutes. The container runs `python -m scheduled_jobs`, not Uvicorn. It runs nightly maintenance after 03:00 UTC, and notifications and the admin digest as separate jobs after 07:00 UTC. Successful UTC dates live in `system_settings` as `scheduled:maintenance:last_completed`, `scheduled:notifications:last_completed`, and `scheduled:admin_digest:last_completed`; a failed or missed job is retried at the next timer firing on the same day without rerunning the others. Successful digest recipients have individual hashed-address completion markers, so a partial email failure retries only those still pending. The timer is installed by `.github/workflows/deploy.yml` on both VPS hosts before the old app is taken down. No host-side manual installation is needed.
+
+To inspect a deployment, check `systemctl status epic-stocks-jobs.timer`, `systemctl status epic-stocks-jobs.service`, and `journalctl -u epic-stocks-jobs.service -n 100`. Check the recorded days with `docker compose exec db psql -U postgres -d vesting -c "SELECT key, value FROM system_settings WHERE key LIKE 'scheduled:%:last_completed';"`. If the timer fails, fix the tracked service/timer or app code through a PR and redeploy; the next invocation catches up for the current UTC day. If a site is down past midnight, old notification days are intentionally not replayed. An external send can be repeated if the process dies after sending but before recording success; per-user `last_notified_at` limits repeat user notifications.
+
+Admins can check this from a phone in **Admin → Deployment**. The API returns the running backend build, environment, last runner start and finish, latest job results and completion dates. The panel warns if the check is older than 35 minutes, a job failed, a due job remains incomplete, or the frontend and backend builds differ. The runner writes its heartbeat in `system_settings` on each invocation; this measures actual job execution, not merely an enabled systemd timer. If the database itself is unavailable, the panel shows an error instead. It cannot display the GitHub Actions deployment result; use the Deploy workflow for that.
+
+For local development with no systemd timer, run `docker compose run --rm app python -m scheduled_jobs` to check due jobs. The Hetzner workflow writes `DB_POOL_SIZE=10` and `DB_MAX_OVERFLOW=20` into `.env` unless overridden by GitHub environment variables, preserving the prior VPS pool capacity. For request-based hosting, schedule the same CLI every 15 minutes, set `RUN_MIGRATIONS_ON_STARTUP=0` after a separate migration step, and set `SAMPLE_SYSTEM_METRICS=0`; size `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, and maximum instance count together against the PostgreSQL connection limit.
 
 ### GitHub Actions secrets and variables required
 
@@ -254,6 +264,7 @@ These are the only values that need to be set in GitHub. Cryptographic secrets (
 | `TRUSTED_PROXY_IPS` | Variable | Cloudflare IP ranges for real-IP forwarding |
 | `CLIENT_IP_HEADER` | Variable | Header carrying the caller's address. `CF-Connecting-IP` behind Cloudflare. Only safe with the origin firewalled to the proxy. |
 | `APP_ENV` | Variable | Set to `staging` in the staging GitHub environment to enable staging visual identity (amber icon, "Epic Stocks (Staging)" PWA name, amber header banner). Omit or set to `production` for production — defaults to `production` if absent. |
+| `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | Variable | Optional VPS pool limits. Defaults to `10` / `20` per app process when not set. |
 
 
 ### Multi-app network

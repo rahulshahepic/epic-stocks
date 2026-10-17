@@ -139,7 +139,7 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
 
   // Auto-enter schedule mode when navigated with ?mode=schedule (from Import
   // page), or when handed a draft to review — someone who has just uploaded their
-  // Shareworks files has already chosen how to start, and asking again strands
+  // Eureka files has already chosen how to start, and asking again strands
   // them on a menu instead of the figures they came to check.
   const autoScheduleTriggered = useRef(false)
   useEffect(() => {
@@ -413,7 +413,7 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
         <Welcome
           isPage={isPage}
           scheduleLoading={scheduleLoading}
-          onShareworks={() => navigate('/import')}
+          onEureka={() => navigate('/import')}
           onSchedule={enterScheduleMode}
           onWorkbook={() => push('upload')}
           onManual={() => {
@@ -594,7 +594,7 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
       {screen === 'schedule_loans_tax' && (
         <LoanReviewScreen
           title="Tax loans"
-          blurb="For Catch-Up and Bonus grants that vest as income. Amounts are estimated from vested shares x price x your tax rate. Check your Shareworks loan statement for exact amounts."
+          blurb="For Catch-Up and Bonus grants that vest as income. Amounts are estimated from vested shares x price x your tax rate. Check your Eureka loan statement for exact amounts."
           emptyText="No tax loans — no Catch-Up or Bonus grants with vesting in range."
           accentClass="text-amber-600 dark:text-amber-400"
           loans={reviewedLoans.filter(isTaxLoan)}
@@ -635,7 +635,7 @@ function ImportWizardInner({ onComplete, isPage = false, prefill, content }: {
       {screen === 'schedule_loans_interest' && (
         <LoanReviewScreen
           title="Interest loans"
-          blurb="Annual interest on all outstanding loans for each grant, estimated from the tax loans and refinance rates you entered. Check your Shareworks loan statement for exact amounts."
+          blurb="Annual interest on all outstanding loans for each grant, estimated from the tax loans and refinance rates you entered. Check your Eureka loan statement for exact amounts."
           emptyText="No interest loans — no participated purchase grants."
           accentClass="text-sky-600 dark:text-sky-400"
           loans={reviewedLoans.filter(isInterestLoan)}

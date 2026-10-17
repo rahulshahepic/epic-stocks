@@ -164,7 +164,7 @@ export default function ImportExport() {
       >
         <span className="text-sm font-semibold text-cs-text">Enter it myself</span>
         <span className="mt-1 text-xs text-cs-muted">
-          No Shareworks documents to hand? Step through your grants one at a time — we know Epic's grant schedule, so you only fill in your own numbers.
+          No Eureka documents to hand? Step through your grants one at a time — we know Epic's grant schedule, so you only fill in your own numbers.
         </span>
       </button>
 
@@ -270,7 +270,7 @@ export default function ImportExport() {
             className="mt-1 w-full rounded-md border border-cs-border bg-cs-surface px-2 py-1.5 text-sm text-cs-text"
           />
           <span className="mt-1 block text-xs text-cs-text-2">
-            Leave blank for everything. Set it to the date of the Shareworks documents you
+            Leave blank for everything. Set it to the date of the Eureka documents you
             are checking against and the export leaves out grants, loans and prices dated
             after that day.
           </span>

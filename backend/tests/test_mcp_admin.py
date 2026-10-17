@@ -45,6 +45,7 @@ def test_admin_consent_is_opt_in_and_nonadmins_cannot_request_it(client):
     register_user(client)
     ordinary = Mcp(client, scope="equity:read")
     assert not ADMIN_TOOLS.intersection(t["name"] for t in ordinary.list_tools())
+    assert "Site admins with separately granted" not in ordinary.rpc("initialize")["result"]["instructions"]
     reg = register_client(client)
     _, challenge = pkce_pair()
     response = authorize(client, reg["client_id"], challenge, scope="admin:read")
@@ -79,11 +80,15 @@ def test_admin_tools_redact_exception_content_and_report_utc_context(client, db_
         assert tokens["scope"] == "admin:read"
         names = {t["name"] for t in _rpc(client, tokens["access_token"], "tools/list")["tools"]}
         assert names == ADMIN_TOOLS
+        assert "Site admins with separately granted" in _rpc(
+            client, tokens["access_token"], "initialize")["instructions"]
 
         db_session.add(ErrorLog(timestamp=datetime.now(timezone.utc), method="POST",
                                 path="/api/users/secret@example.com", error_type="ValueError",
                                 error_message="private-message",
-                                traceback='Traceback:\n  File "/app/backend/main.py", line 42, in handle\n    private-source\nValueError: private-traceback',
+                                traceback=('Traceback:\n  File "/app/backend/main.py", line 42, in handle\n'
+                                           '    private-source\n  File "/usr/local/lib/site-packages/sqlalchemy/engine.py", '
+                                           'line 5, in execute\nValueError: private-traceback'),
                                 error_ref="ref123", user_id=27))
         db_session.add(SystemMetric(timestamp=datetime.now(timezone.utc), cpu_percent=4,
                                     ram_used_mb=100, ram_total_mb=200, db_size_bytes=1000,

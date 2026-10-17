@@ -92,6 +92,8 @@ def _error_stack(ctx: ToolContext, args: dict) -> dict:
     # locations leave the server, never the original traceback string.
     frames = []
     for path, line, function in _FRAME.findall(row.traceback or "")[-12:]:
+        if "site-packages" in path.replace("\\", "/").split("/"):
+            continue
         filename = os.path.basename(path)
         if re.fullmatch(r"[A-Za-z_][A-Za-z_0-9.]*\.py", filename):
             frames.append({"file": filename, "line": int(line), "function": function})

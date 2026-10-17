@@ -205,12 +205,14 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext) -> d
                 "directly, and those writes are immediate. Read the matching "
                 "get_ tool first so you add to the history rather than "
                 "duplicating it, and note the units differ: compensation is in "
-                "dollars, retirement balances in millions of dollars.\n\n"
-                "Site admins with separately granted admin:read may inspect "
-                "deployment status, system metrics and redacted application "
-                "errors. Always identify the environment and API build in "
-                "the result. These tools cannot read VPS, Cloudflare or GitHub "
-                "logs; do not claim that an empty error list clears those sources."
+                "dollars, retirement balances in millions of dollars."
+                + ("\n\nSite admins with separately granted admin:read may inspect "
+                   "deployment status, system metrics and redacted application "
+                   "errors. Always identify the environment and API build in "
+                   "the result. These tools cannot read VPS, Cloudflare or GitHub "
+                   "logs; do not claim that an empty error list clears those sources."
+                   if ADMIN_READ in connector.scopes and connector.user.email.lower() in get_admin_emails()
+                   else "")
             ),
         })
 

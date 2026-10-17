@@ -59,11 +59,6 @@ services:
       start_period: 30s
     environment:
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@db:5432/vesting
-      - RUN_MIGRATIONS_ON_STARTUP=${RUN_MIGRATIONS_ON_STARTUP:-1}
-      - COMMIT_SHA=${COMMIT_SHA:-dev}
-      - DB_POOL_SIZE=${DB_POOL_SIZE:-5}
-      - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-5}
-      - SAMPLE_SYSTEM_METRICS=${SAMPLE_SYSTEM_METRICS:-1}
       - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379/0
       - JWT_SECRET=${JWT_SECRET}
       - OIDC_PROVIDERS=${OIDC_PROVIDERS:-[]}

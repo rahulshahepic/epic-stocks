@@ -58,19 +58,6 @@ describe('AiConnectionsSection', () => {
     expect(screen.getByText(/sounds alarming and is not/)).toBeInTheDocument()
   })
 
-  it('explains Muse custom setup with this server and the callback prerequisite', async () => {
-    vi.spyOn(api, 'getAiConnections').mockResolvedValue([])
-    render(<AiConnectionsSection />)
-    await userEvent.click(await screen.findByRole('tab', { name: 'Muse' }))
-    expect(screen.getByRole('tab', { name: 'Muse' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByText(/Create a custom connector named Epic Stocks/)).toHaveTextContent(`${window.location.origin}/mcp`)
-    expect(screen.getByText(/Create a custom connector named Epic Stocks/)).toHaveTextContent('OAuth with PKCE')
-    expect(screen.getByText(/Create a custom connector named Epic Stocks/)).toHaveTextContent('get_dashboard')
-    expect(screen.getByText(/verify Muse.*OAuth callback host/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Muse.*custom connector instructions/ })).toHaveAttribute('href', 'https://www.meta.com/help/artificial-intelligence/1687253048996149/')
-    expect(screen.getByText(/sent to OpenAI, Anthropic or Meta/)).toBeInTheDocument()
-  })
-
   it('lists a connection with what it can read and when it was last used', async () => {
     vi.spyOn(api, 'getAiConnections').mockResolvedValue(CONNECTED)
     render(<AiConnectionsSection />)

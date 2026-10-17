@@ -182,7 +182,7 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext) -> d
                 "and share counts are fixed and can be stated plainly; the "
                 "money attached to them cannot.\n\n"
                 "Helping someone enter or update their equity — from a grant "
-                "letter, a Eureka file, a screenshot or memory — is a "
+                "letter, a Shareworks file, a screenshot or memory — is a "
                 "first-class use. Read get_import_guide and the existing "
                 "grants, loans, prices and sales first, draft it yourself, and "
                 "walk the person through it in plain words without financial "

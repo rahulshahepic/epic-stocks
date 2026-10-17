@@ -101,7 +101,7 @@ export default function ImportDiagnostics() {
         <p className="mt-1 text-xs text-cs-muted">
           Checks the importer against real data. Export your data from
           Import&nbsp;/&nbsp;Export &mdash; set its <em>as of</em> date to match the
-          Eureka documents, or the two are months apart &mdash; then upload it
+          Shareworks documents, or the two are months apart &mdash; then upload it
           here with those files. A dashboard holdings report works too, though it
           carries no loan numbers or price history. Every difference names the rule
           that produced it, so the report can be handed back as a bug report.

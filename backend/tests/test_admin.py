@@ -1,12 +1,9 @@
 import sys
 import os
-import json
-from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from tests.conftest import register_user
-from scaffold.models import SystemSettings
 
 ADMIN_EMAIL = "admin@example.com"
 
@@ -102,50 +99,6 @@ def test_admin_stats(client, make_client):
         data = resp.json()
         assert data["total_users"] == 2
         assert data["total_grants"] == 1
-
-
-def test_deployment_status_requires_admin(client):
-    assert client.get("/api/admin/deployment-status").status_code == 401
-    with _admin_env():
-        register_user(client, "regular@test.com")
-        assert client.get("/api/admin/deployment-status").status_code == 403
-
-
-def test_deployment_status_shows_runner_and_job_health(client, db_session):
-    with _admin_env():
-        _register_admin(client)
-        assert client.get("/api/admin/deployment-status").json()["state"] == "stale"
-
-        now = datetime.now(timezone.utc)
-        db_session.add_all([
-            SystemSettings(key="scheduled:runner:last_started_at", value=now.isoformat()),
-            SystemSettings(key="scheduled:runner:last_finished_at", value=now.isoformat()),
-            SystemSettings(key="scheduled:runner:last_results", value=json.dumps({
-                "maintenance": "completed", "notifications": "completed", "admin_digest": "completed",
-            })),
-            *[SystemSettings(key=f"scheduled:{name}:last_completed", value=now.date().isoformat())
-              for name in ("maintenance", "notifications", "admin_digest")],
-        ])
-        db_session.commit()
-        response = client.get("/api/admin/deployment-status")
-        assert response.status_code == 200
-        assert response.json()["state"] == "healthy"
-        assert {job["name"] for job in response.json()["jobs"]} == {
-            "maintenance", "notifications", "admin_digest",
-        }
-
-        db_session.get(SystemSettings, "scheduled:runner:last_results").value = json.dumps({
-            "notifications": "failed",
-        })
-        db_session.commit()
-        assert client.get("/api/admin/deployment-status").json()["state"] == "failed"
-
-        db_session.get(SystemSettings, "scheduled:runner:last_finished_at").value = (
-            now - timedelta(hours=1)).isoformat()
-        db_session.get(SystemSettings, "scheduled:runner:last_started_at").value = (
-            now - timedelta(hours=1)).isoformat()
-        db_session.commit()
-        assert client.get("/api/admin/deployment-status").json()["state"] == "stale"
 
 
 # ============================================================

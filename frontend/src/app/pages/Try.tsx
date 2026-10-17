@@ -170,7 +170,7 @@ function UploadStage({ csv, pdf, setCsv, setPdf, busy, error, onRun }: {
     <Card className="text-left">
       <Eyebrow className="mb-2">No account needed</Eyebrow>
       <p className="text-sm leading-relaxed text-cs-text-2">
-        Download these two files from Eureka:
+        In Shareworks, open the <strong>Documents</strong> tab and download two files:
         your latest <strong>Stock Loan Statement</strong> and{' '}
         <strong>Data for Stock Workbook</strong>. Upload them exactly as they
         download — no editing needed.
@@ -495,7 +495,7 @@ export default function Try() {
             </h1>
             <UnofficialBadge className="mt-2" />
             <p className="mx-auto mt-2 max-w-[26rem] text-sm leading-relaxed text-cs-text-2">
-              No sign-up, no email. Upload the two files Eureka already gives you
+              No sign-up, no email. Upload the two files Shareworks already gives you
               and get your dashboard and full vesting timeline in this tab.
             </p>
           </div>

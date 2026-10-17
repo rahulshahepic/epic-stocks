@@ -32,12 +32,12 @@ describe('ImportExport', () => {
     expect(screen.getByText('Export to Excel')).toBeInTheDocument()
   })
 
-  it('leads with the Eureka import, ahead of typing it in', () => {
+  it('leads with the Shareworks import, ahead of typing it in', () => {
     renderPage()
     const headings = screen.getAllByText(
-      /Import from Eureka|Enter it myself|Import from Excel/)
+      /Import from Shareworks|Enter it myself|Import from Excel/)
     expect(headings.map(h => h.textContent)).toEqual(
-      ['Import from Eureka', 'Enter it myself', 'Import from Excel'])
+      ['Import from Shareworks', 'Enter it myself', 'Import from Excel'])
   })
 
   it('shows confirmation dialog after file selection', async () => {

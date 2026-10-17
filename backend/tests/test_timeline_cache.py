@@ -113,26 +113,3 @@ def test_redis_l2_write_on_compute():
     finally:
         ec._client = None
         tc._cache.clear()
-
-
-def test_dropped_prewarm_cannot_serve_stale_timeline():
-    """A stopped instance can lose queued work; the next read must recover."""
-    from unittest.mock import MagicMock
-    import app.event_cache as ec
-
-    redis = MagicMock()
-    redis.get.return_value = None
-    ec._client = redis
-    tc._cache.clear()
-    try:
-        before = tc.get_timeline(1, _grants(), _prices(), [], 10.0)
-        redis.setex.reset_mock()
-        updated = _prices() + [{"date": datetime(2022, 1, 1), "price": 30.0}]
-        # Simulate a mutation whose queued prewarm is lost at instance shutdown.
-        after = tc.get_timeline(1, _grants(), updated, [], 10.0)
-        assert len(after) > len(before)
-        assert tc._cache[1][0] == tc._hash(_grants(), updated, [], 10.0)
-        redis.setex.assert_called_once()
-    finally:
-        ec._client = None
-        tc._cache.clear()

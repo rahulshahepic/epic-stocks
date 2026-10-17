@@ -10,9 +10,9 @@ test.describe('Onboarding wizard', () => {
     await page.waitForLoadState('networkidle')
   })
 
-  test('new user is led to the Eureka import, with the slower paths kept', async ({ page }) => {
+  test('new user is led to the Shareworks import, with the slower paths kept', async ({ page }) => {
     await expect(page.getByText("Let's set up your equity tracker.")).toBeVisible()
-    await expect(page.getByRole('button', { name: /Import from Eureka/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Import from Shareworks/i })).toBeVisible()
     await expect(page.getByRole('button', { name: /Enter it myself/i })).toBeVisible()
     await expect(page.getByRole('button', { name: /Import a Vesting.xlsx/i })).toBeVisible()
     await expect(page.getByRole('button', { name: /Manual entry/i })).toBeVisible()

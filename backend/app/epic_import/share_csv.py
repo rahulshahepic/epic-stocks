@@ -74,7 +74,7 @@ def parse_share_csv(raw: bytes) -> tuple[list[ShareRow], list[Finding]]:
     if "grant" not in idx:
         return [], [Finding("G0", ERROR, "",
                             "CSV has no 'Grant' column — is this Data for Stock Workbook, "
-                            "downloaded from Eureka?")]
+                            "downloaded from Shareworks?")]
 
     # A renamed column reads as an absent one, and an absent cost basis silently
     # prices every grant at zero — which in this app turns every capital gain

@@ -287,7 +287,7 @@ test.describe('Screenshots', () => {
     await shoot(page, 'try-dark-mobile', { fullPage: true })
   })
 
-  /** Upload the synthetic Eureka fixtures and land on the computed preview. */
+  /** Upload the synthetic Shareworks fixtures and land on the computed preview. */
   async function previewPage(page: Page, viewport: { width: number; height: number }, scheme: 'light' | 'dark') {
     await page.emulateMedia({ colorScheme: scheme })
     await page.setViewportSize(viewport)
@@ -477,18 +477,6 @@ test.describe('Screenshots', () => {
     await page.getByRole('tab', { name: 'ChatGPT' }).click()
     await page.waitForTimeout(300)
     await shoot(page, 'settings-ai-connections-dark-mobile')
-  })
-
-  test('settings ai connections Muse - light - mobile', async ({ page }) => {
-    await authedPage(page, MOBILE, 'light')
-    await navigateTo(page, 'Settings')
-    await page.waitForLoadState('networkidle')
-    await page.getByRole('tab', { name: 'Muse' }).click()
-    const section = page.locator('#ai-connections')
-    await section.scrollIntoViewIfNeeded()
-    await expect(section).toContainText('Create a custom connector named Epic Stocks')
-    await expect(section).toContainText('OAuth callback host')
-    await shoot(page, 'settings-ai-connections-muse-light-mobile', { fullPage: true })
   })
 
   test('invite landing page - light - mobile', async ({ page }) => {

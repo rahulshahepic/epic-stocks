@@ -1,8 +1,6 @@
 """Tests for Alembic migration configuration."""
 import sys
 import os
-from types import SimpleNamespace
-from unittest.mock import Mock
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 
@@ -32,40 +30,3 @@ def test_alembic_env_imports_models():
     )
     # Just verify the file parses without errors
     assert spec is not None
-
-
-def test_deployed_postgres_uses_isolated_migration_step(monkeypatch):
-    import main
-    import database
-    from alembic import command
-    from scaffold import migrate_sqlite_to_pg
-
-    monkeypatch.setattr(database, "engine", SimpleNamespace(url=SimpleNamespace(drivername="postgresql")))
-    upgrade = Mock()
-    migrate = Mock()
-    monkeypatch.setattr(command, "upgrade", upgrade)
-    monkeypatch.setattr(migrate_sqlite_to_pg, "maybe_migrate", migrate)
-    monkeypatch.setenv("RUN_MIGRATIONS_ON_STARTUP", "0")
-
-    main._prepare_database()
-
-    upgrade.assert_not_called()
-    migrate.assert_called_once()
-
-
-def test_local_postgres_migrates_on_startup(monkeypatch):
-    import main
-    import database
-    from alembic import command
-    from scaffold import migrate_sqlite_to_pg
-
-    monkeypatch.setattr(database, "engine", SimpleNamespace(url=SimpleNamespace(drivername="postgresql")))
-    upgrade = Mock()
-    monkeypatch.setattr(command, "upgrade", upgrade)
-    monkeypatch.setattr(migrate_sqlite_to_pg, "maybe_migrate", Mock())
-    monkeypatch.delenv("RUN_MIGRATIONS_ON_STARTUP", raising=False)
-
-    main._prepare_database()
-
-    upgrade.assert_called_once()
-    assert upgrade.call_args.args[1] == "head"

@@ -187,7 +187,7 @@ def build_prompt(draft: Draft, findings: list[Finding], statement: Statement | N
         "files and produced a draft, but some figures do not reconcile. Please correct "
         "the draft and return it in the exact format below.",
         "",
-        "I have attached the two files this came from, both downloaded from Eureka: "
+        "I have attached the two files this came from, both downloaded from Shareworks: "
         "Data for Stock Workbook (CSV) and my Stock Loan Statement (PDF). "
         "The text the tracker extracted from them is included at the bottom — if it "
         "disagrees with the attachments, trust the attachments.",

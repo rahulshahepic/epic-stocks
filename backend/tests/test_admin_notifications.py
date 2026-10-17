@@ -3,6 +3,7 @@ import sys
 import os
 from datetime import date, datetime, timezone
 from unittest.mock import patch, MagicMock
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -179,6 +180,25 @@ def test_admin_daily_digest_no_admins(client, db_session):
     from scaffold.notifications import send_admin_daily_digest
     with patch.dict(os.environ, {"RESEND_API_KEY": "re_test_key", "ADMIN_EMAIL": ""}):
         send_admin_daily_digest()  # should not raise
+
+
+def test_admin_digest_retries_only_failed_recipient(client, db_session):
+    from scaffold.notifications import send_admin_daily_digest
+
+    sent = []
+
+    def send(address, *_args, **_kwargs):
+        sent.append(address)
+        return address != "second@test.com" or sent.count(address) > 1
+
+    with patch.dict(os.environ, {"ADMIN_EMAIL": "first@test.com;second@test.com"}):
+        with patch("scaffold.email_sender.email_configured", return_value=True), \
+             patch("scaffold.email_sender.send_email", side_effect=send):
+            with pytest.raises(RuntimeError, match="delivery failed"):
+                send_admin_daily_digest(today=date(2026, 10, 17))
+            send_admin_daily_digest(today=date(2026, 10, 17))
+
+    assert sent == ["first@test.com", "second@test.com", "second@test.com"]
 
 
 # ============================================================

@@ -86,6 +86,14 @@ describe('AI connections accessibility', () => {
     expect(summarise(found)).toBe('')
   })
 
+  it('the Settings section is clean on the Muse walkthrough', async () => {
+    vi.spyOn(api, 'getAiConnections').mockResolvedValue(CONNECTED)
+    vi.spyOn(api, 'getAiActivity').mockResolvedValue(ACTIVITY)
+    const { container } = render(<AiConnectionsSection />)
+    await userEvent.click(await screen.findByRole('tab', { name: 'Muse' }))
+    expect(summarise(await violations(container))).toBe('')
+  })
+
   it('the Settings section is clean with the activity list open', async () => {
     vi.spyOn(api, 'getAiConnections').mockResolvedValue(CONNECTED)
     vi.spyOn(api, 'getAiActivity').mockResolvedValue(ACTIVITY)

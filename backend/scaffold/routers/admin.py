@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 
 from database import get_db
-from scaffold.models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, ErrorLog, UserReport, EmailPreference, SystemMetric, TipAcceptance, Invitation, InvitationOptOut, InviteSendingBlock
+from scaffold.models import User, Grant, Loan, Price, PushSubscription, BlockedEmail, ErrorLog, UserReport, EmailPreference, SystemMetric, SystemSettings, TipAcceptance, Invitation, InvitationOptOut, InviteSendingBlock
 from scaffold.auth import get_admin_user, get_admin_emails
 from scaffold.client_ip import UNKNOWN
 from scaffold.maintenance import is_maintenance_active, set_maintenance
@@ -39,6 +39,80 @@ class AdminStats(BaseModel):
     ram_used_mb: float | None = None
     ram_total_mb: float | None = None
     new_reports: int = 0
+
+
+class ScheduledJobStatus(BaseModel):
+    name: str
+    due_utc: str
+    last_completed_day: str | None
+    last_result: str | None
+
+
+class DeploymentStatus(BaseModel):
+    build: str | None
+    environment: str
+    state: str
+    last_started_at: str | None
+    last_checked_at: str | None
+    jobs: list[ScheduledJobStatus]
+
+
+@router.get("/deployment-status", response_model=DeploymentStatus)
+def deployment_status(admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    now = datetime.now(timezone.utc)
+    keys = ["scheduled:runner:last_started_at", "scheduled:runner:last_finished_at",
+            "scheduled:runner:last_results"]
+    job_times = (("maintenance", "03:00"), ("notifications", "07:00"),
+                 ("admin_digest", "07:00"))
+    keys.extend(f"scheduled:{name}:last_completed" for name, _ in job_times)
+    values = {row.key: row.value for row in db.query(SystemSettings).filter(SystemSettings.key.in_(keys))}
+    started = values.get("scheduled:runner:last_started_at")
+    checked = values.get("scheduled:runner:last_finished_at")
+    try:
+        results = json.loads(values.get("scheduled:runner:last_results", "{}"))
+        if not isinstance(results, dict):
+            results = {}
+    except (ValueError, TypeError):
+        results = {}
+
+    jobs = [ScheduledJobStatus(
+        name=name, due_utc=due, last_completed_day=values.get(f"scheduled:{name}:last_completed"),
+        last_result=results.get(name),
+    ) for name, due in job_times]
+    try:
+        checked_at = datetime.fromisoformat(checked) if checked else None
+        if checked_at is not None and checked_at.tzinfo is None:
+            checked_at = checked_at.replace(tzinfo=timezone.utc)
+    except ValueError:
+        checked_at = None
+    try:
+        started_at = datetime.fromisoformat(started) if started else None
+        if started_at is not None and started_at.tzinfo is None:
+            started_at = started_at.replace(tzinfo=timezone.utc)
+    except ValueError:
+        started_at = None
+
+    running = started_at is not None and (checked_at is None or started_at > checked_at)
+    if running and now - started_at < timedelta(minutes=25):
+        state = "running"
+    elif checked_at is None or not timedelta(0) <= now - checked_at <= timedelta(minutes=35):
+        state = "stale"
+    elif "failed" in results.values():
+        state = "failed"
+    elif any(now.strftime("%H:%M") >= job.due_utc
+             and job.last_completed_day != now.date().isoformat() for job in jobs):
+        state = "pending"
+    else:
+        state = "healthy"
+
+    return DeploymentStatus(
+        build=os.getenv("COMMIT_SHA") or None,
+        environment=os.getenv("APP_ENV", "production"),
+        state=state,
+        last_started_at=started,
+        last_checked_at=checked,
+        jobs=jobs,
+    )
 
 
 class UserSummary(BaseModel):

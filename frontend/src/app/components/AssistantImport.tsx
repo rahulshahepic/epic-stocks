@@ -9,7 +9,7 @@ import ImportWizard from './ImportWizard.tsx'
  *  assistant reads it rather than improvising a format. */
 export const STARTER_MESSAGE =
   'Help me get my Epic stock into Epic Stocks. I will share my paperwork — ' +
-  'grant letters, Shareworks files or screenshots — or tell you what I remember. ' +
+  'grant letters, Eureka files or screenshots — or tell you what I remember. ' +
   'Use the Epic Stocks connector: read its import guide, work out a first draft, ' +
   'walk me through what you found in plain English (tell me what you guessed), ' +
   'and then prepare the import for me to review in the app.'
@@ -42,7 +42,7 @@ export function ChatImportIntro() {
     <Card as="section" pad="md">
       <h3 className="text-sm font-medium text-cs-text">Let ChatGPT or Claude do it</h3>
       <p className="mt-1 text-xs text-cs-text-2">
-        Share your grant letters, Shareworks files or screenshots with your AI
+        Share your grant letters, Eureka files or screenshots with your AI
         assistant — or just tell it what you remember. It works out your grants and
         loans, explains what it found in plain words, asks about anything unclear,
         and leaves the result here for you to check. Nothing is saved until you

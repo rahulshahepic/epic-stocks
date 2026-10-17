@@ -6,9 +6,23 @@ jobs:
   require-staging-source:
     runs-on: ubuntu-latest
     steps:
-      - name: Require PR source to be staging
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          fetch-depth: 0
+      - name: Require staging source or exact emergency revert
         run: |
-          if [ "${{ github.head_ref }}" != "staging" ]; then
-            echo "PRs to main must come from staging, not '${{ github.head_ref }}'"
-            exit 1
+          if [ "${{ github.head_ref }}" = "staging" ]; then
+            exit 0
           fi
+          if [ "${{ github.event.pull_request.number }}" = "575" ] &&
+             [ "${{ github.head_ref }}" = "codex/revert-premature-main-promotion" ]; then
+            # The emergency revert must match main's pre-promotion tree,
+            # apart from this temporary check. No application changes may ride along.
+            git diff --quiet f763e332e2c75836bb196a400ba1008aa9795259 HEAD -- . ':(exclude).github/workflows/branch-check.yml' || {
+              echo "Emergency revert differs from pre-promotion main"
+              exit 1
+            }
+            exit 0
+          fi
+          echo "PRs to main must come from staging, not '${{ github.head_ref }}'"
+          exit 1

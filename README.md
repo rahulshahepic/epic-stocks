@@ -1070,9 +1070,9 @@ epic-stocks/
 │   ├── database.py          # SQLAlchemy engine setup
 │   ├── schemas.py           # Shared Pydantic schemas
 │   ├── alembic/             # Alembic migrations (isolated deploy step on Hetzner)
+│   ├── scheduled_jobs.py    # Daily job entry point shared by host schedulers
 │   ├── scaffold/            # Reusable auth/infra layer (keep when forking)
 │   │   ├── auth.py          # JWT creation/verification + admin checks
-│   │   ├── scheduled_jobs.py  # Daily job entry point shared by host schedulers
 │   │   ├── client_ip.py     # Real caller address behind a proxy (TRUSTED_PROXY_HOPS)
 │   │   ├── crud.py          # get-or-404, the optimistic-lock 409, and the update-and-bump every user-owned endpoint does
 │   │   ├── crypto.py        # Per-user AES-256-GCM encryption (fails closed without a key)
@@ -1440,7 +1440,7 @@ The built-in privacy page (`/privacy`) lists the third-party services used by th
 - **Anything a native shell would have to do differently lives behind `frontend/src/platform/`.** Four capabilities — how a session is authenticated and stored, key-value storage, handing the user a file, and push registration — are interfaces with a browser implementation. Feature code calls `platform.files.saveBlob(...)` rather than building an `<a download>`, and `platform.auth.openAuthorizationUrl(...)` rather than assigning `window.location`. These are the exact points where a WebView behaves differently from a browser (blob downloads are inert, `PushManager` does not exist, OAuth in an embedded WebView is refused by identity providers), so isolating them keeps one codebase serving both targets.
 
 - **Schema migrations use Alembic.** Migrations live in `backend/alembic/versions/`. The Hetzner deploy runs `alembic upgrade head` before starting the app; local PostgreSQL defaults to running it on startup. SQLite test environments use `create_all`. Create a new migration with `alembic revision --autogenerate -m "description"`.
-- **Daily jobs run outside the web process.** `python -m scaffold.scheduled_jobs` checks whether UTC maintenance (03:00) and notifications plus admin digest (07:00) are due. It stores the last successful UTC date for each in `system_settings`, retries failures on the next invocation, and uses PostgreSQL advisory locks to avoid overlap. Hetzner invokes it every 15 minutes via a systemd timer installed by the deploy workflow. A future Cloud Run deployment can invoke the same command as a scheduled job. Cache prewarming after writes is best effort: a stopped web instance cannot make reads stale because the cache key includes the current inputs.
+- **Daily jobs run outside the web process.** `python -m scheduled_jobs` checks whether UTC maintenance (03:00) and notifications plus admin digest (07:00) are due. It stores the last successful UTC date for each in `system_settings`, retries failures on the next invocation, and uses PostgreSQL advisory locks to avoid overlap. Hetzner invokes it every 15 minutes via a systemd timer installed by the deploy workflow. A future Cloud Run deployment can invoke the same command as a scheduled job. Cache prewarming after writes is best effort: a stopped web instance cannot make reads stale because the cache key includes the current inputs.
 
 **ChatGPT UI code:** `backend/app/mcp/import_ui.py` runs plugin parsing, review and wizard acceptance; `import_files.py` downloads bounded host file references with HTTPS, a host allowlist, public DNS pinned for the connection and no redirects. `backend/app/mcp/ui_tools.py` registers the scoped presentation tools and versioned resource; `portfolio.html` is the self-contained MCP Apps component. `plugins/epic-stocks/` holds the portable package source and `scripts/build-chatgpt-plugin.py` builds it for a deployment. Component host tests and synthetic screenshots live in `frontend/e2e/plugin-ui.spec.ts` and `plugin-host.ts`.
 

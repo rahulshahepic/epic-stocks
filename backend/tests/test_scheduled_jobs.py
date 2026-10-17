@@ -21,6 +21,10 @@ def test_job_runs_after_missed_firing_and_only_once(setup_db, db_session, monkey
     assert jobs.run_due(_at(12)) == {"notifications": "already_done_or_running"}
     assert calls == [_at(9).date()]
     assert db_session.get(SystemSettings, "scheduled:notifications:last_completed").value == "2026-10-17"
+    completed = db_session.get(SystemSettings, "scheduled:notifications:last_completed_at").value
+    assert datetime.fromisoformat(completed).tzinfo == timezone.utc
+    assert jobs.run_due(_at(13)) == {"notifications": "already_done_or_running"}
+    assert db_session.get(SystemSettings, "scheduled:notifications:last_completed_at").value == completed
 
 
 def test_failed_job_retries_without_blocking_other_jobs(setup_db, db_session, monkeypatch):
@@ -39,6 +43,7 @@ def test_failed_job_retries_without_blocking_other_jobs(setup_db, db_session, mo
 
     assert jobs.run_due(_at(8)) == {"maintenance": "failed", "notifications": "completed"}
     assert db_session.get(SystemSettings, "scheduled:maintenance:last_completed") is None
+    assert db_session.get(SystemSettings, "scheduled:maintenance:last_completed_at") is None
     assert jobs.run_due(_at(8) + timedelta(minutes=15)) == {
         "maintenance": "completed", "notifications": "already_done_or_running",
     }

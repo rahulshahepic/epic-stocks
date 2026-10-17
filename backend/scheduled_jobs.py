@@ -85,10 +85,17 @@ def _run_once(name: str, day: date, lock_id: int, action) -> bool:
                 if state and state.value >= day.isoformat():
                     return False
                 action(day)
+                completed_at = datetime.now(timezone.utc).isoformat()
                 if state is None:
                     db.add(SystemSettings(key=key, value=day.isoformat()))
                 else:
                     state.value = day.isoformat()
+                completed_key = f"scheduled:{name}:last_completed_at"
+                completed = db.get(SystemSettings, completed_key)
+                if completed is None:
+                    db.add(SystemSettings(key=completed_key, value=completed_at))
+                else:
+                    completed.value = completed_at
                 db.commit()
                 logger.info("Completed %s job for %s", name, day)
                 return True

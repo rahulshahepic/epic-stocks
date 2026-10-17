@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { AppProvider } from '../app/AppProvider.tsx'
 import Admin from '../scaffold/pages/Admin.tsx'
+import { formatDueLocal } from '../scaffold/pages/admin/deploymentTime.ts'
 
 beforeEach(() => {
   localStorage.setItem('auth_token', 'test-token')
@@ -46,9 +47,9 @@ const DEPLOYMENT_STATUS = {
   build: 'dev', environment: 'staging', state: 'stale',
   last_started_at: null, last_checked_at: null,
   jobs: [
-    { name: 'maintenance', due_utc: '03:00', last_completed_day: null, last_result: null },
-    { name: 'notifications', due_utc: '07:00', last_completed_day: null, last_result: null },
-    { name: 'admin_digest', due_utc: '07:00', last_completed_day: null, last_result: null },
+    { name: 'maintenance', due_utc: '03:00', last_completed_day: null, last_completed_at: null, last_result: null },
+    { name: 'notifications', due_utc: '07:00', last_completed_day: null, last_completed_at: null, last_result: null },
+    { name: 'admin_digest', due_utc: '07:00', last_completed_day: null, last_completed_at: null, last_result: null },
   ],
 }
 
@@ -100,6 +101,13 @@ function renderPage() {
 }
 
 describe('Admin', () => {
+  it('shows UTC due times on the correct local date across daylight saving time', () => {
+    expect(formatDueLocal('03:00', '2026-10-17', 'America/Chicago'))
+      .toMatch(/Oct 16, 10:00 PM CDT/)
+    expect(formatDueLocal('03:00', '2026-01-17', 'America/Chicago'))
+      .toMatch(/Jan 16, 9:00 PM CST/)
+  })
+
   it('shows scheduler health and last completed jobs on a phone', async () => {
     mockFetch({
       '/api/admin/stats': STATS,
@@ -108,7 +116,10 @@ describe('Admin', () => {
       '/api/admin/deployment-status': {
         ...DEPLOYMENT_STATUS, state: 'failed', last_checked_at: '2026-10-17T12:00:00+00:00',
         jobs: DEPLOYMENT_STATUS.jobs.map(job => job.name === 'admin_digest'
-          ? { ...job, last_result: 'failed' } : job),
+          ? { ...job, last_result: 'failed' }
+          : job.name === 'maintenance'
+            ? { ...job, last_completed_day: '2026-10-17', last_completed_at: '2026-10-17T21:45:00Z' }
+            : job),
       },
     })
     renderPage()
@@ -116,6 +127,9 @@ describe('Admin', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Job failed; retrying')
     expect(screen.getByText('Admin digest')).toBeInTheDocument()
     expect(screen.getByText('Failed last check')).toBeInTheDocument()
+    expect(screen.getByText('UTC day 2026-10-17')).toBeInTheDocument()
+    expect(screen.getByText(/^Ran Oct 17,/)).toBeInTheDocument()
+    expect(screen.getByText(/a successful run may have nothing to send/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Refresh deployment status' })).toBeInTheDocument()
   })
 

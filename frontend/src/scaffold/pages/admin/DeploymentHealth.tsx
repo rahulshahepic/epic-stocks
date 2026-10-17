@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, type DeploymentStatus } from '../../../api.ts'
 import { AdminSection } from './AdminSection.tsx'
+import { formatDueLocal, formatLocalTime } from './deploymentTime.ts'
 
 const LABELS: Record<DeploymentStatus['state'], string> = {
   healthy: 'Jobs current',
@@ -17,7 +18,7 @@ const JOB_NAMES: Record<string, string> = {
 }
 
 function localTime(value: string | null) {
-  return value ? new Date(value).toLocaleString() : 'Never'
+  return value ? formatLocalTime(value) : 'Never'
 }
 
 export function DeploymentHealth() {
@@ -73,18 +74,19 @@ export function DeploymentHealth() {
           <p>Last job check: {localTime(status.last_checked_at)}</p>
         </div>
         <ul className="divide-y divide-cs-border text-xs">
-          {status.jobs.map(job => <li key={job.name} className="flex justify-between gap-3 py-2">
+          {status.jobs.map(job => <li key={job.name} className="grid grid-cols-2 gap-3 py-2">
             <span className="font-medium text-cs-text">{JOB_NAMES[job.name] ?? job.name}
-              <small className="block font-normal text-cs-muted">{job.due_utc} UTC</small>
+              <small className="block font-normal text-cs-muted">Due {formatDueLocal(job.due_utc, todayUtc)}</small>
             </span>
             <span className="text-right text-cs-text-2">
-              {job.last_completed_day === todayUtc ? 'Done today' :
-                job.last_completed_day ? `Last done ${job.last_completed_day}` : 'No completed run'}
+              {job.last_completed_at ? `Ran ${localTime(job.last_completed_at)}` :
+                job.last_completed_day ? 'Ran (time unavailable)' : 'No completed run'}
+              {job.last_completed_day && <small className="block text-cs-muted">UTC day {job.last_completed_day}</small>}
               {job.last_result === 'failed' && <strong className="block text-red-700 dark:text-red-300">Failed last check</strong>}
             </span>
           </li>)}
         </ul>
-        <p className="text-xs text-cs-muted">Jobs are checked every 15 minutes. Times shown in your timezone; job days use UTC.</p>
+        <p className="text-xs text-cs-muted">Due times are for the current UTC day, shown in your timezone. Jobs are checked every 15 minutes; a successful run may have nothing to send.</p>
       </div>}
     </AdminSection>
   )

@@ -45,6 +45,7 @@ class ScheduledJobStatus(BaseModel):
     name: str
     due_utc: str
     last_completed_day: str | None
+    last_completed_at: str | None
     last_result: str | None
 
 
@@ -64,7 +65,8 @@ def deployment_status(admin: User = Depends(get_admin_user), db: Session = Depen
             "scheduled:runner:last_results"]
     job_times = (("maintenance", "03:00"), ("notifications", "07:00"),
                  ("admin_digest", "07:00"))
-    keys.extend(f"scheduled:{name}:last_completed" for name, _ in job_times)
+    for name, _ in job_times:
+        keys.extend((f"scheduled:{name}:last_completed", f"scheduled:{name}:last_completed_at"))
     values = {row.key: row.value for row in db.query(SystemSettings).filter(SystemSettings.key.in_(keys))}
     started = values.get("scheduled:runner:last_started_at")
     checked = values.get("scheduled:runner:last_finished_at")
@@ -77,6 +79,7 @@ def deployment_status(admin: User = Depends(get_admin_user), db: Session = Depen
 
     jobs = [ScheduledJobStatus(
         name=name, due_utc=due, last_completed_day=values.get(f"scheduled:{name}:last_completed"),
+        last_completed_at=values.get(f"scheduled:{name}:last_completed_at"),
         last_result=results.get(name),
     ) for name, due in job_times]
     try:

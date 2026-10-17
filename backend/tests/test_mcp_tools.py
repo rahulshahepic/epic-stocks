@@ -130,7 +130,7 @@ DESTRUCTIVE_TOOLS = {"remove_compensation", "remove_equity", "accept_import_revi
 
 def test_every_tool_is_listed_and_annotated_honestly(mcp):
     listed = {t["name"]: t for t in mcp.list_tools()}
-    assert set(listed) == set(REGISTRY)
+    assert set(listed) == {name for name, tool in REGISTRY.items() if tool.scope != "admin:read"}
     assert listed, "no tools registered"
     for name, tool in listed.items():
         assert tool["description"].strip(), name
@@ -507,7 +507,7 @@ def test_every_tool_survives_garbage_arguments(mcp, name):
         assert isinstance(result["content"][0]["text"], str)
 
 
-@pytest.mark.parametrize("name", sorted(REGISTRY))
+@pytest.mark.parametrize("name", sorted(name for name, tool in REGISTRY.items() if tool.scope != "admin:read"))
 def test_every_successful_tool_result_is_parseable_json(mcp, name, monkeypatch):
     """The payload is a JSON text block, so it has to actually parse."""
     required = {

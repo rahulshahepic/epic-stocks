@@ -752,6 +752,18 @@ Click any user in the list to open a detail card:
 
 Admin → **AI Connections** controls whether people can connect ChatGPT or Claude to their own accounts, and which providers are allowed to. Both were environment variables at first, which made "stop accepting connections from ChatGPT" a redeploy; they are policy, so they live in the database.
 
+**Read-only diagnostics in an assistant.** A site admin can connect the existing MCP endpoint to inspect the environment from a phone:
+
+1. Add a connector named **Epic Stocks staging diagnostics** with `https://staging.epic-stocks.com/mcp` in the assistant's connector settings. Use the [ChatGPT or Claude steps above](#connecting-your-own-ai). Sign in to the staging site as an email listed in that deployment's `ADMIN_EMAIL`.
+2. On Epic Stocks' consent page, tap **Connect diagnostics only**. This gives that connection only `admin:read`, with no personal financial or editing tools. The ordinary **Connect** button grants the account permissions listed below it. Reconnect an existing connection to grant diagnostics; previous tokens do not gain the permission by an app upgrade. A client that explicitly requests `admin:read` instead gets exactly the scopes listed on the consent page.
+3. Ask the assistant to list the connector tools and call `admin_deployment_status`, `admin_system_metrics`, or `admin_recent_errors`. For a specific error id, `admin_error_stack` returns file names, line numbers and functions without traceback source lines. Every answer identifies the API build and environment; the scheduler's due times and timestamps are UTC. Check that the returned environment says `staging` before comparing with production.
+4. Repeat with a separate connector named **Epic Stocks production diagnostics** at `https://epic-stocks.com/mcp`, sign in on production, and explicitly grant the same permission there. Each site issues its own audience-bound tokens and keeps its own connection and audit history. For a second opinion, compare builds, scheduler heartbeat, recent metrics, and error references across the two connections.
+5. Revoke either connector on that site's **Settings → AI Connections** page. Removing an email from `ADMIN_EMAIL` also blocks admin tools on the next request, including on an already issued token.
+
+These tools have no write actions and do not return financial rows, user reports, request paths, exception messages, stack traces, or user identifiers. `admin_recent_errors` provides timestamps, methods, exception class names and opaque error references; open **Admin → Errors** on the corresponding site for the sensitive traceback. Metrics are limited to 96 samples and errors to 50 records per call. The app does not currently collect VPS journal/Docker logs, Cloudflare request logs or GitHub deploy run logs; those are separate operational sources. This connector does not claim to inspect them, and an empty error list does not prove they are clear. The existing MCP audit logs every admin tool call by name and outcome.
+
+![Admin diagnostics consent on a phone](screenshots/admin-diagnostics-consent-light-mobile.png)
+
 - **Allow AI connections** — the master switch. Off, nobody can authorize a new connection and every `/mcp` call gets a 503. It is a pause, not a disconnect: existing connections are left in place and start working again when you turn it back on. Disconnecting everyone would be a worse surprise than the pause.
 - **Providers** — the allowlist of hosts an AI client may be redirected back to after authorizing. Seeded with ChatGPT (`chatgpt.com`) and Claude (`claude.ai`, `claude.com`), both on. Claude is two hostnames under one label so there is one thing to switch off, not two.
 
@@ -1127,6 +1139,7 @@ epic-stocks/
 │   │   │   ├── transport.py    # JSON-RPC over Streamable HTTP at POST /mcp + rate limits
 │   │   │   ├── tools.py        # The tool registry: schema, scope, handler, annotations
 │   │   │   ├── read_tools.py   # The reads — each a call through to the router's own service function
+│   │   │   ├── admin_tools.py  # Scoped deployment, metrics and redacted error diagnostics
 │   │   │   ├── comp_tools.py   # The writes: salary/bonus history and retirement balances (comp:write)
 │   │   │   ├── equity_tools.py # One-row grant/loan/price/sale writes, version-checked (equity:write)
 │   │   │   ├── import_tools.py # Import guide + staging a draft the user accepts in the wizard
@@ -1289,7 +1302,7 @@ Cross-origin requests are accepted only from the native shell origins (`capacito
 | GET/POST | `/oauth/authorize` | Consent screen, server-rendered. Needs an app session; a signed-out user is sent through `/login?next=` and returned here |
 | POST | `/oauth/token` | `authorization_code` and `refresh_token`. PKCE `S256` required; refresh tokens rotate on use |
 | POST | `/oauth/revoke` | RFC 7009. Always 200 |
-| POST | `/mcp` | The MCP server: JSON-RPC over Streamable HTTP (`initialize`, `tools/list`, `tools/call`, `ping`). Read tools and separately scoped compensation, import proposal and equity write tools are listed under [Connecting Your Own AI](#connecting-your-own-ai). Requires a connector token, never a session one |
+| POST | `/mcp` | The MCP server: JSON-RPC over Streamable HTTP (`initialize`, `tools/list`, `tools/call`, `ping`). Read tools and separately scoped compensation, import proposal, equity write and [admin diagnostics](#ai-connections-admin) tools. Requires a connector token, never a session one |
 | GET | `/api/oauth/connections` | This account's live AI connections, for Settings |
 | DELETE | `/api/oauth/connections/{id}` | Disconnect. Deleting the grant row is the revocation — it takes effect on the next request |
 | GET | `/api/oauth/activity` | This account's last 50 connector events — tool names, outcomes and times, never figures |

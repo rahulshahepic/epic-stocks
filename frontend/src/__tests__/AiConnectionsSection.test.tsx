@@ -84,6 +84,16 @@ describe('AiConnectionsSection', () => {
     expect(screen.getByText(/last used/)).toBeInTheDocument()
   })
 
+  it('labels admin diagnostics and equity write permission clearly', async () => {
+    vi.spyOn(api, 'getAiConnections').mockResolvedValue([{
+      ...CONNECTED[0], scopes: ['admin:read', 'equity:write'],
+    }])
+    render(<AiConnectionsSection />)
+    expect(await screen.findByText('Site deployment, metrics and redacted application errors')).toBeInTheDocument()
+    expect(screen.getByText('Create, correct or remove grants, prices, loans and sales')).toBeInTheDocument()
+    expect(screen.getByText('can make changes')).toBeInTheDocument()
+  })
+
   it('says plainly when nothing is connected', async () => {
     vi.spyOn(api, 'getAiConnections').mockResolvedValue([])
     render(<AiConnectionsSection />)

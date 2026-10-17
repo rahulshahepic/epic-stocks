@@ -88,6 +88,11 @@ button {
 .deny:hover { background: var(--raised); }
 .err { font-size: .875rem; color: var(--text-2); }
 .err h1 { margin-bottom: .5rem; color: var(--text); }
+.admin-option { padding: .875rem; margin-bottom: 1.25rem; border: 1px solid var(--border-strong);
+  border-radius: .625rem; background: var(--raised); font-size: .8125rem; }
+.admin-option p { margin: .375rem 0 .75rem; color: var(--text-2); }
+.admin-option button { width: 100%; }
+.or { margin-bottom: .75rem; color: var(--muted); font-size: .8125rem; }
 """
 
 _CHECK = (
@@ -110,7 +115,7 @@ def _page(title: str, body: str) -> str:
 def render_consent(*, client_name: str, redirect_origin: str, account_email: str,
                    scope_labels: list[str], request_token: str, csrf: str,
                    read_only: bool = True, writes_directly: bool = False,
-                   equity_write: bool = False,
+                   equity_write: bool = False, offer_admin_read: bool = False,
                    app_name: str = "Epic Stocks") -> str:
     items = "".join(f"<li>{_CHECK}<span>{_esc(label)}</span></li>" for label in scope_labels)
     # The claim has to follow the scopes actually being granted. This is the one
@@ -142,6 +147,16 @@ def render_consent(*, client_name: str, redirect_origin: str, account_email: str
     body = (
         f"<h1>{_esc(client_name)} wants to connect to {_esc(app_name)}</h1>"
         f"<p class=\"origin\">It will return you to <code>{_esc(redirect_origin)}</code></p>"
+        + ("<div class=\"admin-option\"><strong>Site diagnostics only</strong>"
+           "<p>Read deployment status, system metrics and redacted application "
+           "errors. No account data or editing permissions.</p>"
+           "<form method=\"post\" action=\"/oauth/authorize\">"
+           f"<input type=\"hidden\" name=\"request\" value=\"{_esc(request_token)}\">"
+           f"<input type=\"hidden\" name=\"csrf\" value=\"{_esc(csrf)}\">"
+           "<button class=\"allow\" type=\"submit\" name=\"decision\" value=\"admin\">"
+           "Connect diagnostics only</button></form></div>"
+           "<p class=\"or\">Or connect with account permissions:</p>"
+           if offer_admin_read else "")
         + ("<p class=\"edits\"><strong>It can edit your data.</strong> When you ask "
            "it to, it can add, change or remove your "
            + ("grants, loans, prices, sales, " if equity_write else "")

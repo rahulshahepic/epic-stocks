@@ -464,6 +464,27 @@ test.describe('Screenshots', () => {
     await shoot(page, 'settings-ai-connections-light-mobile')
   })
 
+  test('admin diagnostics consent - light - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    const registration = await page.request.post('http://localhost:8000/oauth/register', {
+      data: {
+        client_name: 'ChatGPT staging diagnostics',
+        redirect_uris: ['https://chatgpt.com/connector_platform_oauth_redirect'],
+        token_endpoint_auth_method: 'none',
+      },
+    })
+    expect(registration.ok()).toBeTruthy()
+    const { client_id } = await registration.json()
+    const query = new URLSearchParams({
+      response_type: 'code', client_id,
+      redirect_uri: 'https://chatgpt.com/connector_platform_oauth_redirect',
+      code_challenge: 'x'.repeat(43), code_challenge_method: 'S256',
+    })
+    await page.goto(`http://localhost:8000/oauth/authorize?${query}`)
+    await expect(page.getByRole('button', { name: 'Connect diagnostics only' })).toBeVisible()
+    await shoot(page, 'admin-diagnostics-consent-light-mobile', { fullPage: true })
+  })
+
   test('settings ai connections - dark - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'dark')
     await navigateTo(page, 'Settings')

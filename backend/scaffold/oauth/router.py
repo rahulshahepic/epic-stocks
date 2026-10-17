@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from scaffold.auth import (
-    JWT_SECRET, decode_jwt, get_current_user, sign_jwt, token_type,
+    JWT_SECRET, decode_jwt, get_admin_emails, get_current_user, sign_jwt, token_type,
     TOKEN_TYPE_SESSION, _token_from_request,
 )
 from scaffold.client_ip import client_ip
@@ -195,6 +195,11 @@ def _optional_user(request: Request, db: Session) -> User | None:
     return user
 
 
+def _is_site_admin(user: User) -> bool:
+    # Check the live allowlist, not the flag cached at the last login.
+    return user.email.lower() in get_admin_emails()
+
+
 def _redirect_error(redirect_uri: str, state: str | None, error: str, description: str):
     params = {"error": error, "error_description": description}
     if state:
@@ -296,6 +301,9 @@ def authorize(request: Request, db: Session = Depends(get_db)):
         "cc": code_challenge,
         "st": state or "",
         "res": resource or "",
+        # When an OAuth client omits scope, the server's default can be
+        # replaced by an admin-only grant through a separate consent action.
+        "ao": not (q.get("scope") or "").strip(),
     })
 
     user = _optional_user(request, db)
@@ -304,6 +312,9 @@ def authorize(request: Request, db: Session = Depends(get_db)):
         # `next` for same-origin paths only.
         nxt = f"/oauth/authorize/resume?request={request_token}"
         return RedirectResponse(f"/login?next={quote(nxt, safe='')}", status_code=302)
+
+    if scope_defs.ADMIN_READ in granted and not _is_site_admin(user):
+        return _redirect_error(redirect_uri, state, "access_denied", "Site admin access required")
 
     session_token = _token_from_request(request) or ""
     return HTMLResponse(consent_page.render_consent(
@@ -314,6 +325,8 @@ def authorize(request: Request, db: Session = Depends(get_db)):
         read_only=not scope_defs.writes_anything(granted),
         writes_directly=scope_defs.writes_directly(granted),
         equity_write=scope_defs.EQUITY_WRITE in granted,
+        offer_admin_read=_is_site_admin(user) and scope_defs.ADMIN_READ not in granted
+        and not (q.get("scope") or "").strip(),
         request_token=request_token,
         csrf=_csrf_for(session_token, request_token),
     ))
@@ -344,6 +357,10 @@ def authorize_resume(request: Request, db: Session = Depends(get_db)):
     if user is None:
         return _error_page("Not signed in", "Sign in and try connecting again.", 401)
 
+    if scope_defs.ADMIN_READ in pending["sc"].split() and not _is_site_admin(user):
+        return _redirect_error(pending["ru"], pending.get("st") or None,
+                               "access_denied", "Site admin access required")
+
     client = get_client(db, pending.get("cid"))
     if client is None or not redirect_uri_registered(client, pending.get("ru", "")):
         return _error_page("Unknown application", "This application is no longer registered.")
@@ -358,6 +375,8 @@ def authorize_resume(request: Request, db: Session = Depends(get_db)):
         read_only=not scope_defs.writes_anything(pending["sc"].split()),
         writes_directly=scope_defs.writes_directly(pending["sc"].split()),
         equity_write=scope_defs.EQUITY_WRITE in pending["sc"].split(),
+        offer_admin_read=_is_site_admin(user) and scope_defs.ADMIN_READ not in pending["sc"].split()
+        and bool(pending.get("ao")),
         request_token=request_token,
         csrf=_csrf_for(session_token, request_token),
     ))
@@ -401,11 +420,21 @@ def authorize_decide(request: Request, decision: str = Form(...),
     if client is None or not redirect_uri_registered(client, redirect_uri):
         return _error_page("Unknown application", "This application is no longer registered.")
 
-    if decision != "allow":
+    if decision not in ("allow", "admin"):
         return _redirect_error(redirect_uri, state, "access_denied",
                                "The user declined the connection")
 
     scope = pending["sc"]
+    if scope_defs.ADMIN_READ in scope.split() or decision == "admin":
+        if decision == "admin" and not pending.get("ao"):
+            return _redirect_error(redirect_uri, state, "invalid_scope",
+                                   "Admin diagnostics were not requested by this client")
+        if not _is_site_admin(user):
+            return _redirect_error(redirect_uri, state, "access_denied", "Site admin access required")
+        if decision == "admin":
+            # ChatGPT's omitted scope defaults to account tools, including
+            # writes. A diagnostic connection should have none of those.
+            scope = scope_defs.ADMIN_READ
     if read_only:
         # The opt-out on the consent screen: keep the reads, drop every write.
         scope = scope_defs.format_scope(

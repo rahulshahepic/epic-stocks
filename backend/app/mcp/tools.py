@@ -16,6 +16,8 @@ from typing import Any, Callable
 from sqlalchemy.orm import Session
 
 from scaffold.oauth.resource import Connector
+from scaffold.auth import get_admin_emails
+from scaffold.oauth.scopes import ADMIN_READ
 
 
 @dataclass
@@ -80,7 +82,9 @@ def visible_to(connector: Connector) -> list[Tool]:
     Listing a tool the caller may not call wastes a round trip and invites the
     model to promise the user something it cannot deliver.
     """
-    return [t for t in REGISTRY.values() if t.scope in connector.scopes]
+    admin = connector.user.email.lower() in get_admin_emails()
+    return [t for t in REGISTRY.values()
+            if t.scope in connector.scopes and (t.scope != ADMIN_READ or admin)]
 
 
 def as_result(payload: Any) -> dict:

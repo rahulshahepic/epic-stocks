@@ -848,6 +848,8 @@ The backend creates `data/vesting.db` (SQLite) automatically on first run. The d
 | `CHATGPT_UI_ORIGIN` | No | Unique HTTPS component origin for ChatGPT UI submission. Omit for development to use the host sandbox. |
 | `DATABASE_URL` | Yes (prod) | PostgreSQL DSN. Docker Compose sets this automatically from `POSTGRES_PASSWORD`. |
 | `RUN_MIGRATIONS_ON_STARTUP` | No | Defaults to `1` for local PostgreSQL development. The Hetzner deploy workflow sets it to `0` after running Alembic once in its isolated deploy step. Keep it `0` for any future autoscaled web deployment with a separate migration step. SQLite tests still create their tables. |
+| `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | No | PostgreSQL connections per app instance: defaults to 5 pooled and 5 extra at peak. Keep the combined ceiling across web instances and jobs below the database's connection limit. |
+| `SAMPLE_SYSTEM_METRICS` | No | Defaults to `1` for the Hetzner app's 15-minute CPU/RAM sampler. Set to `0` on request-billed, scale-to-zero hosts, whose process metrics are not comparable to VPS metrics. |
 | `REDIS_URL` | No | Redis connection string for the L2 timeline cache (e.g. `redis://redis:6379/0`). When set, computed timelines are cached and pre-warmed after data writes; survives restarts and is shared across replicas. The `redis` service in `docker-compose.yml` provides this automatically. |
 | `POSTGRES_PASSWORD` | Yes (local) | PostgreSQL password. **Auto-generated on production deploy.** |
 | `KEY_ENCRYPTION_KEY` | No | Enables per-user AES-256-GCM encryption. Set once, never changes. **Auto-generated on production deploy.** Wraps the operational master key stored in the database. |
@@ -1070,6 +1072,7 @@ epic-stocks/
 │   ├── alembic/             # Alembic migrations (isolated deploy step on Hetzner)
 │   ├── scaffold/            # Reusable auth/infra layer (keep when forking)
 │   │   ├── auth.py          # JWT creation/verification + admin checks
+│   │   ├── scheduled_jobs.py  # Daily job entry point shared by host schedulers
 │   │   ├── client_ip.py     # Real caller address behind a proxy (TRUSTED_PROXY_HOPS)
 │   │   ├── crud.py          # get-or-404, the optimistic-lock 409, and the update-and-bump every user-owned endpoint does
 │   │   ├── crypto.py        # Per-user AES-256-GCM encryption (fails closed without a key)
@@ -1437,6 +1440,7 @@ The built-in privacy page (`/privacy`) lists the third-party services used by th
 - **Anything a native shell would have to do differently lives behind `frontend/src/platform/`.** Four capabilities — how a session is authenticated and stored, key-value storage, handing the user a file, and push registration — are interfaces with a browser implementation. Feature code calls `platform.files.saveBlob(...)` rather than building an `<a download>`, and `platform.auth.openAuthorizationUrl(...)` rather than assigning `window.location`. These are the exact points where a WebView behaves differently from a browser (blob downloads are inert, `PushManager` does not exist, OAuth in an embedded WebView is refused by identity providers), so isolating them keeps one codebase serving both targets.
 
 - **Schema migrations use Alembic.** Migrations live in `backend/alembic/versions/`. The Hetzner deploy runs `alembic upgrade head` before starting the app; local PostgreSQL defaults to running it on startup. SQLite test environments use `create_all`. Create a new migration with `alembic revision --autogenerate -m "description"`.
+- **Daily jobs run outside the web process.** `python -m scaffold.scheduled_jobs` checks whether UTC maintenance (03:00) and notifications plus admin digest (07:00) are due. It stores the last successful UTC date for each in `system_settings`, retries failures on the next invocation, and uses PostgreSQL advisory locks to avoid overlap. Hetzner invokes it every 15 minutes via a systemd timer installed by the deploy workflow. A future Cloud Run deployment can invoke the same command as a scheduled job. Cache prewarming after writes is best effort: a stopped web instance cannot make reads stale because the cache key includes the current inputs.
 
 **ChatGPT UI code:** `backend/app/mcp/import_ui.py` runs plugin parsing, review and wizard acceptance; `import_files.py` downloads bounded host file references with HTTPS, a host allowlist, public DNS pinned for the connection and no redirects. `backend/app/mcp/ui_tools.py` registers the scoped presentation tools and versioned resource; `portfolio.html` is the self-contained MCP Apps component. `plugins/epic-stocks/` holds the portable package source and `scripts/build-chatgpt-plugin.py` builds it for a deployment. Component host tests and synthetic screenshots live in `frontend/e2e/plugin-ui.spec.ts` and `plugin-host.ts`.
 

@@ -229,3 +229,15 @@ jobs:
             # Restore full site
             docker run --rm -v caddy_appdata:/appdata alpine \
               rm -f /appdata/epic-stocks/full_maintenance
+
+            # The web app no longer owns the daily jobs. Install the tracked
+            # systemd timer after the app and database are healthy. The job
+            # command checks durable completion dates, so a missed firing is
+            # picked up on the next 15-minute invocation.
+            sed "s|@DEPLOY_PATH@|${{ vars.DEPLOY_PATH }}|g" \
+              ops/systemd/epic-stocks-jobs.service \
+              > /etc/systemd/system/epic-stocks-jobs.service
+            cp ops/systemd/epic-stocks-jobs.timer \
+              /etc/systemd/system/epic-stocks-jobs.timer
+            systemctl daemon-reload
+            systemctl enable --now epic-stocks-jobs.timer

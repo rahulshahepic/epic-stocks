@@ -41,24 +41,18 @@ async def lifespan(app):
             _redis_init(redis_url)
         except Exception:
             logger.warning("Redis unavailable — running without L2 cache")
-    # In test mode the schedulers stay off. The metrics sampler calls
+    # In test mode the metrics sampler stays off. It calls
     # psutil.cpu_percent(interval=0.5) on its first iteration, which blocks
     # the event loop for 500 ms inside every TestClient lifespan and dominates
     # backend test wall-clock time. Tests cover these functions by calling them
     # directly (see test_admin_metrics.py).
     test_mode = os.getenv("E2E_TEST") == "1"
-    task = None if test_mode else _start_daily_scheduler()
-    metrics_task = None if test_mode else _start_metrics_sampler()
-    maintenance_task = None if test_mode else _start_nightly_maintenance()
+    metrics_task = None if test_mode or os.getenv("SAMPLE_SYSTEM_METRICS", "1") == "0" else _start_metrics_sampler()
     yield
     from app.event_cache import close as _redis_close
     _redis_close()
-    if task:
-        task.cancel()
     if metrics_task:
         metrics_task.cancel()
-    if maintenance_task:
-        maintenance_task.cancel()
 
 
 def _prepare_database():
@@ -104,36 +98,6 @@ def _bootstrap_system():
         logger.exception("Failed to seed AI connection settings")
     finally:
         db.close()
-
-
-def _start_daily_scheduler():
-    """Start background task that runs daily notification check at 7 AM."""
-    import asyncio
-    from datetime import datetime, time, timezone, timedelta
-
-    vapid_key = os.getenv("VAPID_PRIVATE_KEY", "")
-    smtp_host = os.getenv("SMTP_HOST", "")
-    if not vapid_key and not smtp_host:
-        return None
-
-    async def _daily_loop():
-        from scaffold.notifications import send_daily_notifications, send_admin_daily_digest
-        while True:
-            now = datetime.now(timezone.utc)
-            target = datetime.combine(now.date(), time(7, 0), tzinfo=timezone.utc)
-            if now >= target:
-                target += timedelta(days=1)
-            await asyncio.sleep((target - now).total_seconds())
-            try:
-                send_daily_notifications()
-            except Exception:
-                pass
-            try:
-                send_admin_daily_digest()
-            except Exception:
-                pass
-
-    return asyncio.ensure_future(_daily_loop())
 
 
 def _sample_metrics():
@@ -310,6 +274,7 @@ def _aggregate_old_metrics():
         db.commit()
     except Exception:
         logger.exception("Metric aggregation failed")
+        raise
     finally:
         if not database._is_sqlite:
             try:
@@ -328,39 +293,6 @@ def _start_metrics_sampler():
         while True:
             _sample_metrics()
             await asyncio.sleep(15 * 60)
-
-    return asyncio.ensure_future(_loop())
-
-
-def _start_nightly_maintenance():
-    """Start background task that runs metric aggregation at 03:00 UTC daily."""
-    import asyncio
-    from datetime import datetime, time, timezone, timedelta
-
-    async def _loop():
-        while True:
-            now = datetime.now(timezone.utc)
-            target = datetime.combine(now.date(), time(3, 0), tzinfo=timezone.utc)
-            if now >= target:
-                target += timedelta(days=1)
-            await asyncio.sleep((target - now).total_seconds())
-            _aggregate_old_metrics()
-            try:
-                db = database.SessionLocal()
-                from app.routers.prices import _cleanup_epic_past_estimates
-                _cleanup_epic_past_estimates(db)
-            except Exception:
-                logger.warning("Nightly estimate cleanup failed", exc_info=True)
-            finally:
-                db.close()
-            try:
-                db = database.SessionLocal()
-                from scaffold.oauth.cleanup import prune as prune_connectors
-                prune_connectors(db)
-            except Exception:
-                logger.warning("Nightly connector cleanup failed", exc_info=True)
-            finally:
-                db.close()
 
     return asyncio.ensure_future(_loop())
 

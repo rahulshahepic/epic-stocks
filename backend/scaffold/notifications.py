@@ -347,6 +347,7 @@ def send_daily_notifications(today: date | None = None):
         db.commit()
     except Exception:
         logger.exception("Error in daily notification check")
+        raise
     finally:
         # This job hops between users' keys; never leave one in the contextvar.
         try:
@@ -493,6 +494,7 @@ def send_admin_daily_digest():
             send_email(admin_email, subject, text, html)
     except Exception:
         logger.exception("Error sending admin daily digest")
+        raise
     finally:
         # Explicitly release the advisory lock so it doesn't persist on pooled connections
         if lock_acquired:

@@ -220,7 +220,7 @@ Connects to the VPS via SSH (key stored in GitHub Actions secrets) and:
 1. Generates any missing server-side secrets (JWT, encryption key, VAPID keys, Postgres password) into `/opt/epic-stocks/.secrets/`, then writes `.env` from those files plus GitHub Secrets/Vars. Also writes `COMMIT_SHA=${{ github.sha }}` into `.env` so it is available as a Docker build arg.
 2. Creates a 2 GB swapfile if one doesn't exist (idempotent)
 3. `git fetch origin main && git reset --hard origin/main` — always matches the repo exactly; no local drift
-4. `docker compose build` — passes `COMMIT_SHA` and `APP_ENV` as build args to the frontend stage. `VITE_COMMIT_SHA` is displayed as a 7-char short hash in Admin and Settings. `VITE_APP_ENV=staging` activates the staging visual identity (amber icon, renamed PWA, amber header banner). After the database is healthy, a one-off app container runs `alembic upgrade head`. The web app starts with `RUN_MIGRATIONS_ON_STARTUP=0` so it does not rerun migrations. Local PostgreSQL starts still run them by default.
+4. `docker compose build` — passes `COMMIT_SHA` and `APP_ENV` as build args to the frontend stage. `VITE_COMMIT_SHA` is displayed as a 7-char short hash in Admin and Settings. `VITE_APP_ENV=staging` activates the staging visual identity (amber icon, renamed PWA, amber header banner). After the database is healthy, a one-off app container runs `alembic upgrade head`. The web app starts with `RUN_MIGRATIONS_ON_STARTUP=0` so it does not rerun migrations. Local PostgreSQL starts still run them by default. After app health and Caddy reload, the workflow installs and enables `epic-stocks-jobs.timer` from `ops/systemd/`.
 5. Polls `http://localhost/api/health` every 5 seconds for up to 60 seconds
 
 **Step 3 — Health polling**
@@ -235,6 +235,14 @@ MANUAL ROLLBACK INSTRUCTIONS: ...
 ```
 
 No automatic rollback. The deploy runs Alembic before starting the app; reverting code after a schema migration requires manual review (see §7 Runbook).
+
+### Daily jobs
+
+`epic-stocks-jobs.timer` starts a one-off app container every 15 minutes. The container runs `python -m scaffold.scheduled_jobs`, not Uvicorn. It runs nightly maintenance after 03:00 UTC and notifications plus the admin digest after 07:00 UTC. Successful UTC dates live in `system_settings` as `scheduled:maintenance:last_completed` and `scheduled:notifications:last_completed`; a failed or missed run is retried at the next timer firing on the same day. The timer is installed by `.github/workflows/deploy.yml` on both VPS hosts. No host-side manual installation is needed.
+
+To inspect a deployment, check `systemctl status epic-stocks-jobs.timer`, `systemctl status epic-stocks-jobs.service`, and `journalctl -u epic-stocks-jobs.service -n 100`. Check the recorded days with `docker compose exec db psql -U postgres -d vesting -c "SELECT key, value FROM system_settings WHERE key LIKE 'scheduled:%:last_completed';"`. If the timer fails, fix the tracked service/timer or app code through a PR and redeploy; the next invocation catches up for the current UTC day. If a site is down past midnight, old notification days are intentionally not replayed. An external send can be repeated if the process dies after sending but before recording success; per-user `last_notified_at` limits repeat user notifications.
+
+For local development with no systemd timer, run `docker compose run --rm app python -m scaffold.scheduled_jobs` to check due jobs. For request-based hosting, schedule the same CLI every 15 minutes, set `RUN_MIGRATIONS_ON_STARTUP=0` after a separate migration step, and set `SAMPLE_SYSTEM_METRICS=0`; size `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, and maximum instance count together against the PostgreSQL connection limit.
 
 ### GitHub Actions secrets and variables required
 

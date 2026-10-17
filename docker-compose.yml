@@ -61,6 +61,7 @@ services:
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@db:5432/vesting
       - RUN_MIGRATIONS_ON_STARTUP=${RUN_MIGRATIONS_ON_STARTUP:-1}
       - COMMIT_SHA=${COMMIT_SHA:-dev}
+      - APP_ENV=${APP_ENV:-production}
       - DB_POOL_SIZE=${DB_POOL_SIZE:-5}
       - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-5}
       - SAMPLE_SYSTEM_METRICS=${SAMPLE_SYSTEM_METRICS:-1}

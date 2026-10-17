@@ -1,0 +1,10 @@
+[Unit]
+Description=Run due Epic Stocks daily jobs
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=@DEPLOY_PATH@
+ExecStart=/usr/bin/docker compose run --rm --no-deps app python -m scheduled_jobs
+TimeoutStartSec=20min

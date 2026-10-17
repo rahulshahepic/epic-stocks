@@ -7,10 +7,10 @@ import type { GrantDraft, LoanDraft, TaxLoanDraft, WizardPrice } from '../types.
 import { emptyTaxLoanDraft } from '../types.ts'
 
 /** The opening menu: the fast path first, the slower ones under it. */
-export function Welcome({ isPage, scheduleLoading, onEureka, onSchedule, onWorkbook, onManual }: {
+export function Welcome({ isPage, scheduleLoading, onShareworks, onSchedule, onWorkbook, onManual }: {
   isPage: boolean
   scheduleLoading: boolean
-  onEureka: () => void
+  onShareworks: () => void
   onSchedule: () => void
   onWorkbook: () => void
   onManual: () => void
@@ -22,25 +22,25 @@ export function Welcome({ isPage, scheduleLoading, onEureka, onSchedule, onWorkb
           {isPage ? 'Setup Wizard' : "Let's set up your equity tracker."}
         </h2>
         <p className="mt-1 text-sm text-cs-brand">
-          The quickest way is to let your Eureka documents fill this in.
+          The quickest way is to let your Shareworks documents fill this in.
         </p>
       </div>
 
       <div className="grid gap-3">
-        {/* Fastest path: the two documents Eureka already has */}
+        {/* Fastest path: the two documents Shareworks already has */}
         <button
           type="button"
-          onClick={onEureka}
+          onClick={onShareworks}
           className="flex flex-col rounded-lg border-2 border-rose-400 bg-cs-surface p-4 text-left hover:border-rose-600 hover:shadow-md dark:border-rose-500 "
         >
           <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-cs-brand">Import from Eureka</span>
+            <span className="text-sm font-semibold text-cs-brand">Import from Shareworks</span>
             <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-cs-brand dark:bg-rose-900/50 dark:text-rose-300">
               Fastest
             </span>
           </div>
           <span className="mt-1 text-xs text-cs-muted">
-            Download two documents from Eureka and upload
+            Download two documents from the Documents tab in Shareworks and upload
             them. Your shares, cost basis and every loan are read from them — you
             check the result here before anything is saved.
           </span>
@@ -107,7 +107,7 @@ export function Upload({ fileRef, uploading, uploadError, onFile, onBack, onSkip
       <BackBtn onClick={onBack} />
       <h2 className="text-base font-semibold text-cs-text">Import a Vesting.xlsx</h2>
       <p className="text-xs text-cs-muted">
-        Upload an Excel file with a Schedule and/or Prices sheet. Missing share counts and amounts are fine — you'll fill those in next. To import from Eureka instead, use Import&nbsp;/&nbsp;Export.
+        Upload an Excel file with a Schedule and/or Prices sheet. Missing share counts and amounts are fine — you'll fill those in next. To import from Shareworks instead, use Import&nbsp;/&nbsp;Export.
       </p>
 
       <ReportableError message={uploadError} source="import" />

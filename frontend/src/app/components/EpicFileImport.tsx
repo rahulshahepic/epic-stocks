@@ -111,9 +111,9 @@ export default function EpicFileImport() {
 
   return (
     <div className="flex flex-col rounded-lg border-2 border-cs-border bg-cs-surface p-4">
-      <span className="text-sm font-semibold text-cs-text">Import from Eureka</span>
+      <span className="text-sm font-semibold text-cs-text">Import from Shareworks</span>
       <span className="mt-1 text-xs text-cs-muted">
-        Download these two files from Eureka:
+        In Shareworks, open the <strong>Documents</strong> tab and download two files:
         your latest <strong>Stock Loan Statement</strong> and{' '}
         <strong>Data for Stock Workbook</strong>. Upload them here exactly as they
         download &mdash; no editing needed.

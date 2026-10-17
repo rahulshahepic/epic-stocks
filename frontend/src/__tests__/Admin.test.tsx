@@ -24,7 +24,6 @@ function mockFetch(responses: Record<string, unknown>) {
     }
     // Default: return empty arrays for list endpoints
     if (url.includes('/api/admin/metrics')) return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
-    if (url.includes('/api/admin/deployment-status')) return new Response(JSON.stringify(DEPLOYMENT_STATUS), { status: 200, headers: { 'Content-Type': 'application/json' } })
     if (url.includes('/api/admin/db-tables')) return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
     if (url.includes('/api/admin/errors')) return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
     if (url.includes('/api/admin/epic-mode')) return new Response(JSON.stringify({ active: false }), { status: 200, headers: { 'Content-Type': 'application/json' } })
@@ -40,16 +39,6 @@ const STATS = {
   total_grants: 20, total_loans: 10, total_prices: 8,
   db_size_bytes: 524288,
   cpu_percent: 42.0, ram_used_mb: 2048.0, ram_total_mb: 8192.0,
-}
-
-const DEPLOYMENT_STATUS = {
-  build: 'dev', environment: 'staging', state: 'stale',
-  last_started_at: null, last_checked_at: null,
-  jobs: [
-    { name: 'maintenance', due_utc: '03:00', last_completed_day: null, last_result: null },
-    { name: 'notifications', due_utc: '07:00', last_completed_day: null, last_result: null },
-    { name: 'admin_digest', due_utc: '07:00', last_completed_day: null, last_result: null },
-  ],
 }
 
 const STATS_NO_METRICS = {
@@ -100,25 +89,6 @@ function renderPage() {
 }
 
 describe('Admin', () => {
-  it('shows scheduler health and last completed jobs on a phone', async () => {
-    mockFetch({
-      '/api/admin/stats': STATS,
-      '/api/admin/users': USERS_RESPONSE,
-      '/api/admin/blocked': [],
-      '/api/admin/deployment-status': {
-        ...DEPLOYMENT_STATUS, state: 'failed', last_checked_at: '2026-10-17T12:00:00+00:00',
-        jobs: DEPLOYMENT_STATUS.jobs.map(job => job.name === 'admin_digest'
-          ? { ...job, last_result: 'failed' } : job),
-      },
-    })
-    renderPage()
-
-    expect(await screen.findByRole('status')).toHaveTextContent('Job failed; retrying')
-    expect(screen.getByText('Admin digest')).toBeInTheDocument()
-    expect(screen.getByText('Failed last check')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Refresh deployment status' })).toBeInTheDocument()
-  })
-
   it('renders stats overview', async () => {
     mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
     renderPage()
@@ -327,7 +297,6 @@ describe('Admin', () => {
       if (url.includes('/api/admin/test-notify') && method === 'POST')
         return new Response(JSON.stringify(notifyResult), { status: 200, headers: { 'Content-Type': 'application/json' } })
       if (url.includes('/api/admin/stats')) return new Response(JSON.stringify(STATS), { status: 200, headers: { 'Content-Type': 'application/json' } })
-      if (url.includes('/api/admin/deployment-status')) return new Response(JSON.stringify(DEPLOYMENT_STATUS), { status: 200, headers: { 'Content-Type': 'application/json' } })
       if (url.includes('/api/admin/users/2/detail')) return new Response(JSON.stringify(USER_DETAIL_REGULAR), { status: 200, headers: { 'Content-Type': 'application/json' } })
       if (url.includes('/api/admin/users')) return new Response(JSON.stringify(USERS_RESPONSE), { status: 200, headers: { 'Content-Type': 'application/json' } })
       if (url.includes('/api/admin/blocked')) return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } })

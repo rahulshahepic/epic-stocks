@@ -144,9 +144,6 @@ jobs:
             CACHE_INVALIDATE_SECRET=${CACHE_INVALIDATE_SECRET}
             ACME_EMAIL=${{ vars.ACME_EMAIL }}
             COMMIT_SHA=${{ github.sha }}
-            RUN_MIGRATIONS_ON_STARTUP=0
-            DB_POOL_SIZE=${{ vars.DB_POOL_SIZE || '10' }}
-            DB_MAX_OVERFLOW=${{ vars.DB_MAX_OVERFLOW || '20' }}
             KEY_ENCRYPTION_KEY=${KEY_ENCRYPTION_KEY}
             LEGACY_MASTER_KEY=${LEGACY_MASTER_KEY}
             ENVEOF
@@ -181,18 +178,6 @@ jobs:
               chmod 600 "$SECRETS_DIR/vapid_private_key" "$SECRETS_DIR/vapid_public_key"
               write_env
             fi
-
-            # Install the tracked scheduler while the current app is still up.
-            # If migrations, health checks, or Caddy reload fail later, the
-            # timer remains enabled and retries due jobs on the next firing.
-            sed "s|@DEPLOY_PATH@|${{ vars.DEPLOY_PATH }}|g" \
-              ops/systemd/epic-stocks-jobs.service \
-              > /etc/systemd/system/epic-stocks-jobs.service
-            cp ops/systemd/epic-stocks-jobs.timer \
-              /etc/systemd/system/epic-stocks-jobs.timer
-            systemctl daemon-reload
-            systemctl enable epic-stocks-jobs.timer
-            systemctl restart epic-stocks-jobs.timer
 
             # ── Signal maintenance before taking the app down ────────────────
             # Write the sentinel file first so Caddy immediately starts serving

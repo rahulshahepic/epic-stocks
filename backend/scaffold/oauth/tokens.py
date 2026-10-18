@@ -61,7 +61,7 @@ def pkce_matches(code_challenge: str, code_verifier_value: str) -> bool:
     return hmac.compare_digest(expected, code_challenge)
 
 
-def canonical_resource(request) -> str:
+def canonical_resource(request, *, admin: bool = False) -> str:
     """This server's RFC 8707 resource identifier — the URI tokens are bound to.
 
     DOMAIN wherever it is set, which is every real deployment, because deriving
@@ -71,17 +71,20 @@ def canonical_resource(request) -> str:
     attacker to care about.
     """
     domain = os.getenv("DOMAIN")
+    path = "/admin-mcp" if admin else "/mcp"
     if domain:
-        return f"https://{domain}/mcp"
+        return f"https://{domain}{path}"
     base = str(request.base_url).rstrip("/")
-    return f"{base}/mcp"
+    return f"{base}{path}"
 
 
-def issuer(request) -> str:
+def issuer(request, *, admin: bool = False) -> str:
     domain = os.getenv("DOMAIN")
     if domain:
-        return f"https://{domain}"
-    return str(request.base_url).rstrip("/")
+        base = f"https://{domain}"
+    else:
+        base = str(request.base_url).rstrip("/")
+    return f"{base}/admin-oauth" if admin else base
 
 
 def resource_matches(claimed: str | None, canonical: str) -> bool:

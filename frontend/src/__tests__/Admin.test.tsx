@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { AppProvider } from '../app/AppProvider.tsx'
 import Admin from '../scaffold/pages/Admin.tsx'
-import { formatDueLocal } from '../scaffold/pages/admin/deploymentTime.ts'
+import { formatDueLocal, formatLocalTime } from '../scaffold/pages/admin/deploymentTime.ts'
 
 beforeEach(() => {
   localStorage.setItem('auth_token', 'test-token')
@@ -128,7 +128,7 @@ describe('Admin', () => {
     expect(screen.getByText('Admin digest')).toBeInTheDocument()
     expect(screen.getByText('Failed last check')).toBeInTheDocument()
     expect(screen.getByText('UTC day 2026-10-17')).toBeInTheDocument()
-    expect(screen.getByText(/^Ran Oct 17,/)).toBeInTheDocument()
+    expect(screen.getByText(`Ran ${formatLocalTime('2026-10-17T21:45:00Z')}`)).toBeInTheDocument()
     expect(screen.getByText(/a successful run may have nothing to send/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Refresh deployment status' })).toBeInTheDocument()
   })

@@ -55,11 +55,22 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
   return (
     <AdminSection title={<>AI Connections</>}>
       <p className="mt-1 text-xs text-cs-muted">
-        Lets people connect ChatGPT or Claude to their own account, read-only.
+        Lets people connect ChatGPT or Claude to their account or site diagnostics.
         {typeof settings?.connections === 'number'
           ? ` ${settings.connections} connection${settings.connections === 1 ? '' : 's'} active.`
           : ''}
       </p>
+
+      <div className="mt-3 rounded-md border border-cs-border bg-cs-raised p-3 text-xs">
+        <p className="font-medium text-cs-text">Separate connector addresses</p>
+        <p className="mt-1 text-cs-muted">Connect diagnostics twice in your assistant, once for each site. Each connection asks for admin access on that site.</p>
+        <p className="mt-2 text-cs-text">Staging diagnostics</p>
+        <code className="block break-all text-cs-text-2">https://staging.epic-stocks.com/admin-mcp</code>
+        <p className="mt-2 text-cs-text">Production diagnostics</p>
+        <code className="block break-all text-cs-text-2">https://epic-stocks.com/admin-mcp</code>
+        <p className="mt-2 text-cs-text">Production account data</p>
+        <code className="block break-all text-cs-text-2">https://epic-stocks.com/mcp</code>
+      </div>
 
       <div className="mt-3 flex items-center justify-between">
         <div>

@@ -752,19 +752,23 @@ Click any user in the list to open a detail card:
 
 Admin → **AI Connections** controls whether people can connect ChatGPT or Claude to their own accounts, and which providers are allowed to. Both were environment variables at first, which made "stop accepting connections from ChatGPT" a redeploy; they are policy, so they live in the database.
 
-**Read-only diagnostics in an assistant.** A site admin can connect the existing MCP endpoint to inspect the environment from a phone:
+**Separate read-only diagnostic MCP.** The admin connector is a different MCP server and OAuth issuer from the account-data connector. Set up three named connections in your assistant:
 
-1. Add a connector named **Epic Stocks staging diagnostics** with `https://staging.epic-stocks.com/mcp` in the assistant's connector settings. Use the [ChatGPT or Claude steps above](#connecting-your-own-ai). Sign in to the staging site as an email listed in that deployment's `ADMIN_EMAIL`.
-2. On Epic Stocks' consent page, tap **Connect diagnostics only**. This gives that connection only `admin:read`, with no personal financial or editing tools. The ordinary **Connect** button grants the account permissions listed below it. Reconnect an existing connection to grant diagnostics; previous tokens do not gain the permission by an app upgrade. A client that explicitly requests `admin:read` instead gets exactly the scopes listed on the consent page.
-3. Ask the assistant to list the connector tools and call `admin_deployment_status`, `admin_system_metrics`, or `admin_recent_errors`. For a specific error id, `admin_error_stack` returns file names, line numbers and functions without traceback source lines. Every answer identifies the API build and environment; the scheduler's due times and timestamps are UTC. Check that the returned environment says `staging` before comparing with production.
-4. Repeat with a separate connector named **Epic Stocks production diagnostics** at `https://epic-stocks.com/mcp`, sign in on production, and explicitly grant the same permission there. Each site issues its own audience-bound tokens and keeps its own connection and audit history. For a second opinion, compare builds, scheduler heartbeat, recent metrics, and error references across the two connections.
-5. Revoke either connector on that site's **Settings → AI Connections** page. Removing an email from `ADMIN_EMAIL` also blocks admin tools on the next request, including on an already issued token.
+| Connection | URL | Permission |
+| --- | --- | --- |
+| Epic Stocks staging diagnostics | `https://staging.epic-stocks.com/admin-mcp` | `admin:read` on staging |
+| Epic Stocks production diagnostics | `https://epic-stocks.com/admin-mcp` | `admin:read` on production |
+| Epic Stocks account data | `https://epic-stocks.com/mcp` | Personal data scopes on production only |
+
+1. In **Admin → AI Connections** on your phone, copy the corresponding connector URL. Add each diagnostic connector in ChatGPT or Claude using the [same mobile connector setup steps](#connecting-your-own-ai); sign in to that environment as an email in its `ADMIN_EMAIL`, then tap **Connect** on the diagnostic consent page. It shows only site diagnostics and cannot grant equity access. The production account-data connector remains pointed at production `/mcp`.
+2. Ask the assistant to call `admin_deployment_status`, `admin_system_metrics`, or `admin_recent_errors` on each named diagnostic connection. For a specific error id, `admin_error_stack` returns file names, line numbers and functions without traceback source lines. Every answer identifies the API build and environment; scheduler due times and timestamps are UTC. Confirm the returned environment before comparing results.
+3. Revoke either diagnostic connector on that site's **Settings → AI Connections** page. Removing an email from `ADMIN_EMAIL` blocks admin tools on the next request. The two sites keep independent connection and audit histories.
+
+The admin MCP advertises only `admin:read`, has its own `/admin-oauth` issuer, and issues tokens bound to `/admin-mcp`. The account MCP never lists or calls admin tools; a token from either endpoint gets a 401 at the other. Previously granted diagnostic access on the shared `/mcp` flow must be reconnected at `/admin-mcp`.
 
 These tools have no write actions and do not return financial rows, user reports, request paths, exception messages, stack traces, or user identifiers. `admin_recent_errors` provides timestamps, methods, exception class names and opaque error references; open **Admin → Errors** on the corresponding site for the sensitive traceback. Metrics are limited to 96 samples and errors to 50 records per call. The app does not currently collect VPS journal/Docker logs, Cloudflare request logs or GitHub deploy run logs; those are separate operational sources. This connector does not claim to inspect them, and an empty error list does not prove they are clear. The existing MCP audit logs every admin tool call by name and outcome.
 
-![Admin diagnostics consent on a phone](screenshots/admin-diagnostics-consent-light-mobile.png)
-
-- **Allow AI connections** — the master switch. Off, nobody can authorize a new connection and every `/mcp` call gets a 503. It is a pause, not a disconnect: existing connections are left in place and start working again when you turn it back on. Disconnecting everyone would be a worse surprise than the pause.
+- **Allow AI connections** — the master switch. Off, nobody can authorize a new connection and every MCP call gets a 503. It is a pause, not a disconnect: existing connections are left in place and start working again when you turn it back on. Disconnecting everyone would be a worse surprise than the pause.
 - **Providers** — the allowlist of hosts an AI client may be redirected back to after authorizing. Seeded with ChatGPT (`chatgpt.com`) and Claude (`claude.ai`, `claude.com`), both on. Claude is two hostnames under one label so there is one thing to switch off, not two.
 
 This allowlist is a security control, not a convenience. Dynamic client registration is anonymous — it has to be, or Claude on a phone cannot connect — so without it a stranger could register a client whose redirect URI points at their own server and try to walk a signed-in user through the consent screen. Adding a host means trusting that provider with any account that authorizes it.
@@ -775,7 +779,7 @@ Paste a URL or type a bare hostname; either is stored as the hostname.
 
 **Usage.** The same panel reports calls in the last 24 hours, 7 and 30 days; failures and permission refusals over 7 days; a per-account table (assistants connected, last used, calls over 7/30 days); and the most-used tools. An account that has since disconnected still appears — hiding it would make the record vanish exactly when someone is looking into it. Counts and tool names only: the audit table holds no financial data, so this cannot show any.
 
-**Rate limits.** `/mcp` is capped per connection and per account (120 and 300 calls a minute, in `backend/app/mcp/transport.py`). Both are needed: the per-connection limit stops one runaway assistant starving another the same user has connected, and the per-account limit is what bounds one user's cost to the server. Nothing else covers this endpoint — the mutation rate limiter only inspects `/api/` paths, and an IP-keyed limit would count OpenAI's and Anthropic's servers rather than the user's.
+**Rate limits.** Both MCP endpoints are capped per connection and per account (120 and 300 calls a minute, in `backend/app/mcp/transport.py`). Both are needed: the per-connection limit stops one runaway assistant starving another the same user has connected, and the per-account limit is what bounds one user's cost to the server. Nothing else covers this endpoint — the mutation rate limiter only inspects `/api/` paths, and an IP-keyed limit would count OpenAI's and Anthropic's servers rather than the user's.
 
 **Retention.** A nightly job removes client registrations that never became a connection after 7 days, expired authorization codes, and audit entries past 90 days (or beyond 5,000 per account). Registration is anonymous by necessity, so without that first sweep the table would grow on its own.
 
@@ -1231,7 +1235,7 @@ All authenticated endpoints accept a valid `session` cookie (set automatically b
 
 The Bearer header exists for a client that cannot use cookies — a native shell, whose WebView origin is not this server's, so the cookie is never attached. Such a client obtains the token by passing `return_token: true` to `POST /api/auth/callback`; the web app never asks, so no readable copy of the credential is handed to script on the page. Bearer tokens carry the same `session_version` check as cookies, so "sign out everywhere" revokes both.
 
-**Connector tokens are a separate kind.** A token issued by `/oauth/token` for an AI assistant carries `typ: "mcp"` and is accepted only at `/mcp`; a session token is accepted only at `/api/*`. Presenting either in the other's place is a 401. Without that split, one leaked assistant credential would be a full account session, admin endpoints included. Connector tokens are additionally bound to this server by an audience claim and checked against their grant row on every request, so disconnecting takes effect immediately rather than at the next expiry.
+**Connector tokens are a separate kind.** A token issued by an OAuth endpoint carries `typ: "mcp"` and is accepted only at its audience-bound `/mcp` or `/admin-mcp` endpoint; a session token is accepted only by app routes. Presenting either in the other's place is a 401. Without that split, one leaked assistant credential would be a full account session, admin endpoints included. Connector tokens are additionally bound to this server by an audience claim and checked against their grant row on every request, so disconnecting takes effect immediately rather than at the next expiry.
 
 Cross-origin requests are accepted only from the native shell origins (`capacitor://localhost`, `https://localhost`) with credentials disallowed — those clients authenticate by Bearer, never by cookie. The PWA is served from the same origin as the API and never reaches CORS at all.
 
@@ -1302,10 +1306,11 @@ Cross-origin requests are accepted only from the native shell origins (`capacito
 | GET/POST | `/oauth/authorize` | Consent screen, server-rendered. Needs an app session; a signed-out user is sent through `/login?next=` and returned here |
 | POST | `/oauth/token` | `authorization_code` and `refresh_token`. PKCE `S256` required; refresh tokens rotate on use |
 | POST | `/oauth/revoke` | RFC 7009. Always 200 |
-| POST | `/mcp` | The MCP server: JSON-RPC over Streamable HTTP (`initialize`, `tools/list`, `tools/call`, `ping`). Read tools and separately scoped compensation, import proposal, equity write and [admin diagnostics](#ai-connections-admin) tools. Requires a connector token, never a session one |
+| POST | `/mcp` | The account-data MCP server: JSON-RPC over Streamable HTTP (`initialize`, `tools/list`, `tools/call`, `ping`). Account read tools and separately scoped compensation, import proposal and equity write tools. Requires a connector token, never a session one |
 | GET | `/api/oauth/connections` | This account's live AI connections, for Settings |
 | DELETE | `/api/oauth/connections/{id}` | Disconnect. Deleting the grant row is the revocation — it takes effect on the next request |
 | GET | `/api/oauth/activity` | This account's last 50 connector events — tool names, outcomes and times, never figures |
+| POST | `/admin-mcp` | Read-only admin diagnostic MCP. Separate OAuth issuer `/admin-oauth`, `admin:read` only; no account tools or resources |
 | GET | `/api/admin/mcp/usage` | Admin: connector usage per account and per tool, plus totals. Counts only |
 | **Grant-program content** | | |
 | GET | `/api/content` | Global grant-program content blob — any logged-in user |

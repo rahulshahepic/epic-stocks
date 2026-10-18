@@ -24,7 +24,8 @@ EQUITY_WRITE = "equity:write"
 ADMIN_READ = "admin:read"
 
 # Grantable today.
-SUPPORTED_SCOPES: tuple[str, ...] = (EQUITY_READ, COMP_READ, COMP_WRITE, IMPORT_PROPOSE, EQUITY_WRITE, ADMIN_READ)
+SUPPORTED_SCOPES: tuple[str, ...] = (EQUITY_READ, COMP_READ, COMP_WRITE, IMPORT_PROPOSE, EQUITY_WRITE)
+ADMIN_SCOPES: tuple[str, ...] = (ADMIN_READ,)
 
 # Scopes that let a connector leave something behind. The consent screen must
 # stop calling the connection read-only once one is granted.
@@ -70,7 +71,7 @@ class ScopeError(ValueError):
     """A requested scope cannot be granted. The message reaches the client."""
 
 
-def parse_scope(raw: str | None) -> list[str]:
+def parse_scope(raw: str | None, *, admin: bool = False) -> list[str]:
     """Space-delimited scope string to a validated, de-duplicated list.
 
     An empty or missing request means the default set, which is what most MCP
@@ -78,7 +79,7 @@ def parse_scope(raw: str | None) -> list[str]:
     do not narrow them.
     """
     if not raw or not raw.strip():
-        return list(DEFAULT_SCOPES)
+        return list(ADMIN_SCOPES if admin else DEFAULT_SCOPES)
 
     seen: list[str] = []
     for scope in raw.split():
@@ -88,7 +89,7 @@ def parse_scope(raw: str | None) -> list[str]:
             raise ScopeError(
                 f"The scope '{scope}' is not available yet"
             )
-        if scope not in SUPPORTED_SCOPES:
+        if scope not in (ADMIN_SCOPES if admin else SUPPORTED_SCOPES):
             raise ScopeError(f"Unknown scope '{scope}'")
         seen.append(scope)
     if not seen:

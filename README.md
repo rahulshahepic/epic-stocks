@@ -531,19 +531,17 @@ And one that writes nothing of yours, under its own separate permission:
 
 Muse's [official connector guide](https://www.meta.com/help/artificial-intelligence/1687253048996149/) documents asking in chat to create a custom connector and storing credentials securely. The prompt above supplies this server's MCP/OAuth details; Muse's exact sign-in UI can vary. This walkthrough has not yet been verified end to end in Muse. Meta does not review custom connectors.
 
-**In ChatGPT** — Plus, Pro, Business, Enterprise or Edu. Adding a connector is **web only**; once added it works everywhere:
+**In ChatGPT** — open [Plugins](https://chatgpt.com/plugins) on the web (including a phone browser if the web controls are available for your account). The iOS app cannot add a new custom MCP server, though it can use one after setup. Availability depends on your plan and workspace policy:
 
-1. Settings → **Security and login** → turn on **Developer mode**. It sounds alarming and is not — it is the switch that lets you add connectors that are not in OpenAI's directory.
-2. Plugins → **+** → give it a name and description
-3. Paste `https://<your-domain>/mcp` as the endpoint
-4. Sign in and approve
-5. Review the tools it found and create the connection
+1. Tap **+ → Add custom MCP server**; name it and optionally add a description. Developer mode is not required in the current Plugins flow.
+2. Under **Connection**, paste `https://<your-domain>/mcp`, choose OAuth authentication, and acknowledge the server warning.
+3. Tap **Create as a plugin**, sign in to Epic Stocks and approve the requested permissions, then review the discovered tools and install it.
 
 Then name the connector when you ask a question. Both assistants do better when told which tool to use than when left to guess.
 
-If your ChatGPT is provided by your employer, a workspace admin may have to enable developer mode before step 1. A personal account works either way.
+If your ChatGPT is provided by your employer, a workspace admin may need to enable **Create plugins with MCPs** for your role.
 
-> **Getting "registration endpoint returned 403" in ChatGPT?** That is the CDN in front of this site blocking OpenAI's agent, not the app — the request never arrives. Whoever operates the deployment needs the WAF skip rule in [OPERATIONS.md §1](OPERATIONS.md#cloudflares-ai-bot-blocking-breaks-ai-connectors). Claude is unaffected.
+> **Getting "registration endpoint returned 403"?** Check the Cloudflare security event for that request. A custom challenge rule can block `/oauth/register` or `/admin-oauth/register` before it reaches the app. See [OPERATIONS.md §1](OPERATIONS.md#cloudflares-ai-bot-blocking-breaks-ai-connectors).
 
 **Interactive ChatGPT portfolio.** Ask “Show my Epic Stocks portfolio” to open an inline card with the app's current net equity, shares, loans and upcoming events. Browse grants and loan history, narrow the event dates, refresh, or ask ChatGPT to explain the view. Expand, sidebar and conversation-panel entrypoints are available where the host supports them. Missing prices stay unknown and projected money is labelled. The card needs only `equity:read`; existing chat edits still require separate write permissions. After deploying this version, refresh the plugin's tools in ChatGPT or register your deployed `/mcp` URL as a custom OAuth plugin. See [the implementation plan, setup and host acceptance steps](docs/chatgpt-plugin.md) and [portable packaging](plugins/epic-stocks/README.md).
 
@@ -760,9 +758,10 @@ Admin → **AI Connections** controls whether people can connect ChatGPT or Clau
 | Epic Stocks production diagnostics | `https://epic-stocks.com/admin-mcp` | `admin:read` on production |
 | Epic Stocks account data | `https://epic-stocks.com/mcp` | Personal data scopes on production only |
 
-1. In **Admin → AI Connections** on your phone, copy the corresponding connector URL. Add each diagnostic connector in ChatGPT or Claude using the [same mobile connector setup steps](#connecting-your-own-ai); sign in to that environment as an email in its `ADMIN_EMAIL`, then tap **Connect** on the diagnostic consent page. It shows only site diagnostics and cannot grant equity access. The production account-data connector remains pointed at production `/mcp`.
-2. Ask the assistant to call `admin_deployment_status`, `admin_system_metrics`, or `admin_recent_errors` on each named diagnostic connection. For a specific error id, `admin_error_stack` returns file names, line numbers and functions without traceback source lines. Every answer identifies the API build and environment; scheduler due times and timestamps are UTC. Confirm the returned environment before comparing results.
-3. Revoke either diagnostic connector on that site's **Settings → AI Connections** page. Removing an email from `ADMIN_EMAIL` blocks admin tools on the next request. The two sites keep independent connection and audit histories.
+1. On your phone, open **Admin → AI Connections** and copy a diagnostic URL. Add a separate custom connector named **Epic Stocks Staging Admin** with `https://staging.epic-stocks.com/admin-mcp`. Use [ChatGPT Plugins on the web](#connecting-your-own-ai) or Claude's **Customize → Connectors → Add → Custom → Web** (mobile installation is in beta; the phone browser is another route). Use OAuth; in Claude select **Register automatically** for the OAuth client. Sign in to **staging** as an email in its `ADMIN_EMAIL` and tap **Connect** on the admin consent page. Only `admin:read` is requested; this connection has no equity tools.
+2. After the admin MCP is deployed to production, repeat with a **different** connector named **Epic Stocks Production Admin** and `https://epic-stocks.com/admin-mcp`, signing in to production. Keep personal account data in the separate production `https://epic-stocks.com/mcp` connector. Do not point the data connector at staging.
+3. Ask the assistant to call `admin_deployment_status`, `admin_system_metrics`, or `admin_recent_errors` on each named diagnostic connection. For a specific error id, `admin_error_stack` returns file names, line numbers and functions without traceback source lines. Every answer identifies the API build and environment; scheduler due times and timestamps are UTC. Confirm the returned environment before comparing results.
+4. Revoke either diagnostic connector on that site's **Settings → AI Connections** page. Removing an email from `ADMIN_EMAIL` blocks admin tools on the next request. The two sites keep independent connection and audit histories.
 
 The admin MCP advertises only `admin:read`, has its own `/admin-oauth` issuer, and issues tokens bound to `/admin-mcp`. The account MCP never lists or calls admin tools; a token from either endpoint gets a 401 at the other. Previously granted diagnostic access on the shared `/mcp` flow must be reconnected at `/admin-mcp`.
 

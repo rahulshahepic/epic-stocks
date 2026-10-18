@@ -492,7 +492,7 @@ def test_a_connector_cannot_reach_another_users_data(client, make_client):
 
 # ── nothing becomes a 500 ───────────────────────────────────────────────────
 
-@pytest.mark.parametrize("name", sorted(REGISTRY))
+@pytest.mark.parametrize("name", sorted(name for name, tool in REGISTRY.items() if tool.scope != "admin:read"))
 def test_every_tool_survives_garbage_arguments(mcp, name):
     """Whatever a confused model sends, the answer is a tool result, not a crash."""
     for arguments in (

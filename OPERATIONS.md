@@ -40,7 +40,7 @@ The reference deployment uses **Cloudflare** in front of Caddy. Cloudflare's bui
 
 Cloudflare blocks known AI agents — including OpenAI's `ChatGPT-User` — with a
 **403 before the request reaches the origin**. It carves out `/.well-known/*`
-and `/mcp` automatically, but **not `/oauth/*`**. The result is a connector that
+and `/mcp` automatically, but **not `/oauth/*` or `/admin-oauth/*`**. The result is a connector that
 gets through discovery and then fails at the first real step:
 
 > Error creating connector — Dynamic client registration failed: registration
@@ -68,14 +68,21 @@ rule, ordered above the bot rules:
 | Field | Value |
 |-------|-------|
 | Rule name | `Allow AI connector OAuth` |
-| Expression | `(starts_with(http.request.uri.path, "/oauth/")) or (http.request.uri.path eq "/mcp") or (starts_with(http.request.uri.path, "/.well-known/"))` |
+| Expression | `(starts_with(http.request.uri.path, "/oauth/")) or (starts_with(http.request.uri.path, "/admin-oauth/")) or (http.request.uri.path eq "/mcp") or (http.request.uri.path eq "/admin-mcp") or (starts_with(http.request.uri.path, "/.well-known/"))` |
 | Action | Skip → All remaining custom rules, Managed rules, **Bot Fight Mode / AI bot blocking** |
 
 Scope it to those paths and no further. The rest of the site keeps its AI-bot
 blocking, and the paths being opened are ones designed to face unauthenticated
 callers: `/oauth/register` is anonymous by necessity (it is what lets Claude on
-a phone connect), `/oauth/token` requires PKCE, and `/mcp` requires a connector
+a phone connect), `/oauth/token` and `/admin-oauth/token` require PKCE, and both MCP endpoints require a connector
 token. Their own bounds are described in the README's AI Connections section.
+
+Apply the expression to **both staging and production hostnames** in Cloudflare when
+the corresponding deployment is ready. On a phone, open Cloudflare → Security →
+WAF → Custom rules, edit the existing connector rule, paste the expression above,
+save, then create each diagnostic connection from the URLs in Admin → AI Connections.
+If registration returns a 403, inspect the Cloudflare security event for
+`/admin-oauth/register`; an application error instead reaches the site's own logs.
 
 If a deployment does **not** want AI connectors at all, the better lever is the
 admin switch (Admin → AI Connections → *Allow AI connections*), which turns the
@@ -94,7 +101,7 @@ The built-in privacy page (`/privacy`, `frontend/src/scaffold/pages/PrivacyPolic
 | VPS firewall locked to CF IPs only | ✅ Done |
 | `CLIENT_IP_HEADER=CF-Connecting-IP` set | ⬜ Check — see step 4 |
 | `/api/admin/client-ip` shows your real address | ⬜ Check — see step 5 |
-| WAF skip rule for `/oauth/*` (AI connectors) | ⬜ Needed — ChatGPT registration 403s without it |
+| WAF skip rule for `/oauth/*` and `/admin-oauth/*` (AI connectors) | ⬜ Check on both sites — ChatGPT registration 403s without it |
 
 ---
 

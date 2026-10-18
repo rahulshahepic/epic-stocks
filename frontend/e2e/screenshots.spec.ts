@@ -138,6 +138,17 @@ test.describe('Screenshots', () => {
     await shoot(page, 'admin-dark-mobile')
   })
 
+  test('admin AI connector addresses - light - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    await navigateTo(page, 'Admin')
+    await page.waitForLoadState('networkidle')
+    const heading = page.getByText('Separate connector addresses')
+    await heading.scrollIntoViewIfNeeded()
+    await expect(page.getByText('https://staging.epic-stocks.com/admin-mcp')).toBeVisible()
+    await expect(page.getByText('https://epic-stocks.com/admin-mcp')).toBeVisible()
+    await shoot(page, 'admin-ai-connector-addresses-light-mobile')
+  })
+
   test('events page - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     await navigateTo(page, 'Events')
@@ -466,7 +477,7 @@ test.describe('Screenshots', () => {
 
   test('admin diagnostics consent - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
-    const registration = await page.request.post('http://localhost:8000/oauth/register', {
+    const registration = await page.request.post('http://localhost:8000/admin-oauth/register', {
       data: {
         client_name: 'ChatGPT staging diagnostics',
         redirect_uris: ['https://chatgpt.com/connector_platform_oauth_redirect'],
@@ -480,8 +491,9 @@ test.describe('Screenshots', () => {
       redirect_uri: 'https://chatgpt.com/connector_platform_oauth_redirect',
       code_challenge: 'x'.repeat(43), code_challenge_method: 'S256',
     })
-    await page.goto(`http://localhost:8000/oauth/authorize?${query}`)
-    await expect(page.getByRole('button', { name: 'Connect diagnostics only' })).toBeVisible()
+    await page.goto(`http://localhost:8000/admin-oauth/authorize?${query}`)
+    await expect(page.getByRole('button', { name: 'Connect', exact: true })).toBeVisible()
+    await expect(page.getByText('Read site deployment status')).toBeVisible()
     await shoot(page, 'admin-diagnostics-consent-light-mobile', { fullPage: true })
   })
 

@@ -471,9 +471,9 @@ class EncryptionMiddleware:
         writing plaintext and reading placeholders for real ciphertext.
         """
         headers = dict(scope.get("headers", []))
-        # /mcp authenticates only the connector Bearer. A browser session for
+        # Both MCP resources authenticate only the connector Bearer. A browser session for
         # another account must not choose a different account's encryption key.
-        if scope.get("path") == "/mcp":
+        if scope.get("path") in ("/mcp", "/admin-mcp"):
             scheme, _, credential = headers.get(b"authorization", b"").decode().partition(" ")
             return credential.strip() if scheme.lower() == "bearer" and credential.strip() else None
         cookie_header = headers.get(b"cookie", b"").decode()
@@ -631,6 +631,7 @@ _fastapi_app.include_router(dashboard_prefs_router)
 # 404 impossible to tell apart from a routing bug.
 _fastapi_app.include_router(oauth_well_known_router)
 _fastapi_app.include_router(oauth_router.router)
+_fastapi_app.include_router(oauth_router.admin_router)
 _fastapi_app.include_router(oauth_router.api_router)
 _fastapi_app.include_router(mcp_transport.router)
 

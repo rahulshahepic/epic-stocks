@@ -95,6 +95,7 @@ def _refuse_when_disabled():
 
 
 @router.get("/mcp")
+@router.get("/admin-mcp")
 def mcp_get():
     return JSONResponse(
         {"detail": "This MCP server does not open server-initiated streams. Use POST."},
@@ -110,6 +111,7 @@ def _enforce_rate_limits(connector: Connector) -> None:
 
 
 @router.post("/mcp", dependencies=[Depends(_refuse_when_disabled)])
+@router.post("/admin-mcp", dependencies=[Depends(_refuse_when_disabled)])
 async def mcp_post(request: Request, connector: Connector = Depends(require_connector),
                    db: Session = Depends(get_db)):
     _enforce_rate_limits(connector)
@@ -138,7 +140,8 @@ async def mcp_post(request: Request, connector: Connector = Depends(require_conn
         return Response(status_code=202)
 
     try:
-        payload = _dispatch(method, params, request_id, ToolContext(connector=connector, db=db))
+        payload = _dispatch(method, params, request_id, ToolContext(connector=connector, db=db),
+                            admin=request.url.path == "/admin-mcp")
     except Exception:
         logger.exception("MCP method %s failed", method)
         payload = _error(request_id, INTERNAL_ERROR, "The server could not complete that request")
@@ -148,12 +151,24 @@ async def mcp_post(request: Request, connector: Connector = Depends(require_conn
     return JSONResponse(payload)
 
 
-def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext) -> dict | None:
+def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext, *, admin: bool = False) -> dict | None:
     connector = ctx.connector
 
     if method == "initialize":
         asked = params.get("protocolVersion")
         version = asked if asked in SUPPORTED_PROTOCOL_VERSIONS else PROTOCOL_VERSION
+        if admin:
+            return _result(request_id, {
+                "protocolVersion": version,
+                "capabilities": {"tools": {"listChanged": False}},
+                "serverInfo": {"name": "epic-stocks-admin", "title": "Epic Stocks diagnostics", "version": "1"},
+                "instructions": (
+                    "Read-only site diagnostics for this environment. Always identify the environment "
+                    "and API build in results. No personal financial data or account tools are available. "
+                    "This server reads application telemetry only, not VPS, Cloudflare or GitHub logs; "
+                    "an empty error list does not clear those sources."
+                ),
+            })
         return _result(request_id, {
             "protocolVersion": version,
             "capabilities": {"tools": {"listChanged": False}, "resources": {"listChanged": False}},
@@ -206,13 +221,6 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext) -> d
                 "get_ tool first so you add to the history rather than "
                 "duplicating it, and note the units differ: compensation is in "
                 "dollars, retirement balances in millions of dollars."
-                + ("\n\nSite admins with separately granted admin:read may inspect "
-                   "deployment status, system metrics and redacted application "
-                   "errors. Always identify the environment and API build in "
-                   "the result. These tools cannot read VPS, Cloudflare or GitHub "
-                   "logs; do not claim that an empty error list clears those sources."
-                   if ADMIN_READ in connector.scopes and connector.user.email.lower() in get_admin_emails()
-                   else "")
             ),
         })
 
@@ -221,10 +229,13 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext) -> d
 
     if method == "tools/list":
         return _result(request_id, {
-            "tools": [tool.describe() for tool in visible_to(connector)],
+            "tools": [tool.describe() for tool in visible_to(connector)
+                      if (tool.scope == ADMIN_READ) == admin],
         })
 
     if method == "resources/list":
+        if admin:
+            return _result(request_id, {"resources": []})
         resources = [resource_descriptor()] if "equity:read" in connector.scopes else []
         return _result(request_id, {"resources": resources})
 
@@ -232,6 +243,8 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext) -> d
         return _result(request_id, {"resourceTemplates": []})
 
     if method == "resources/read":
+        if admin:
+            return _error(request_id, INVALID_PARAMS, "Unknown resource")
         if params.get("uri") != RESOURCE_URI:
             return _error(request_id, INVALID_PARAMS, "Unknown resource")
         if "equity:read" not in connector.scopes:
@@ -239,7 +252,7 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext) -> d
         return _result(request_id, {"contents": [resource_contents()]})
 
     if method == "tools/call":
-        return _call_tool(params, request_id, ctx)
+        return _call_tool(params, request_id, ctx, admin=admin)
 
     if method.startswith("notifications/"):
         return None
@@ -247,14 +260,14 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext) -> d
     return _error(request_id, METHOD_NOT_FOUND, f"Unknown method '{method}'")
 
 
-def _call_tool(params: dict, request_id: Any, ctx: ToolContext) -> dict:
+def _call_tool(params: dict, request_id: Any, ctx: ToolContext, *, admin: bool = False) -> dict:
     connector = ctx.connector
     name = params.get("name")
     if not isinstance(name, str) or not name:
         return _error(request_id, INVALID_PARAMS, "A tool name is required")
 
     tool = REGISTRY.get(name)
-    if tool is None:
+    if tool is None or (tool.scope == ADMIN_READ) != admin:
         return _error(request_id, INVALID_PARAMS, f"Unknown tool '{name}'")
 
     # Recorded before it runs, so a read cannot happen without a record of it.

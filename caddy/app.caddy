@@ -84,7 +84,7 @@
     # policy without form-action. Nothing much is lost: the redirect target is
     # matched exactly against what the client registered, which providers may
     # register at all is the admin allowlist, and the page carries no script.
-    @oauth path /oauth/*
+    @oauth path /oauth/* /admin-oauth/*
     handle @oauth {
         header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
         header Content-Security-Policy "default-src 'none'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"

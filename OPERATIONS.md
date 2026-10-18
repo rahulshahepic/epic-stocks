@@ -38,10 +38,12 @@ The reference deployment uses **Cloudflare** in front of Caddy. Cloudflare's bui
 
 ### Cloudflare's AI-bot blocking breaks AI connectors
 
-Cloudflare blocks known AI agents — including OpenAI's `ChatGPT-User` — with a
-**403 before the request reaches the origin**. It carves out `/.well-known/*`
-and `/mcp` automatically, but **not `/oauth/*` or `/admin-oauth/*`**. The result is a connector that
-gets through discovery and then fails at the first real step:
+Cloudflare can challenge AI agents — including OpenAI's `ChatGPT-User` — with a
+**403 before the request reaches the origin**. This deployment has two custom
+WAF rules: `Bots MCP` skips Bot Fight Mode and UA blocking for connector paths,
+while `No bots on non mcp` challenges bot traffic outside those paths. Both
+rules must use the same path expression. A Skip rule that only skips Bot Fight
+Mode does **not** bypass a later custom challenge rule. The symptom is:
 
 > Error creating connector — Dynamic client registration failed: registration
 > endpoint returned 403
@@ -50,26 +52,37 @@ Nothing in the application logs shows it, because nothing reaches the
 application. Confirm it from any machine:
 
 ```bash
-# 403 with body "Your request was blocked." and no `via: 1.1 Caddy` header
-curl -i -X POST https://<your domain>/oauth/register \
+# A challenge is a Cloudflare HTML 403 with cf-mitigated: challenge.
+# Invalid metadata avoids registering a probe client; an app response is JSON 400.
+curl -i -X POST https://<your domain>/admin-oauth/register \
   -H 'Content-Type: application/json' \
   -A 'ChatGPT-User/1.0; +https://openai.com/bot' \
-  -d '{"client_name":"probe","redirect_uris":["https://chatgpt.com/cb"]}'
-
-# The same request without that user agent returns 201
+  -d '{}'
 ```
 
-The absence of `via: 1.1 Caddy` is the tell: our own responses always carry it,
-so a 403 without it came from the edge.
+**Fix — Cloudflare dashboard → Security → WAF → Custom rules.** Keep the
+existing `Bots MCP` Skip rule before `No bots on non mcp`. Set the Skip rule's
+expression to the following; its action skips **Bot Fight Mode**
+(`http_request_sbfm`) and **UA blocking** (`uaBlock`):
 
-**Fix — Cloudflare dashboard → Security → WAF → Custom rules.** Add a *Skip*
-rule, ordered above the bot rules:
+```text
+(http.request.uri.path in {"/mcp" "/admin-mcp" "/.well-known/oauth-protected-resource" "/.well-known/oauth-protected-resource/mcp" "/.well-known/oauth-protected-resource/admin-mcp" "/.well-known/oauth-authorization-server" "/.well-known/oauth-authorization-server/mcp" "/.well-known/oauth-authorization-server/admin-mcp" "/.well-known/oauth-authorization-server/admin-oauth"}) or starts_with(http.request.uri.path, "/oauth/") or starts_with(http.request.uri.path, "/admin-oauth/")
+```
 
-| Field | Value |
-|-------|-------|
-| Rule name | `Allow AI connector OAuth` |
-| Expression | `(starts_with(http.request.uri.path, "/oauth/")) or (starts_with(http.request.uri.path, "/admin-oauth/")) or (http.request.uri.path eq "/mcp") or (http.request.uri.path eq "/admin-mcp") or (starts_with(http.request.uri.path, "/.well-known/"))` |
-| Action | Skip → All remaining custom rules, Managed rules, **Bot Fight Mode / AI bot blocking** |
+Edit `No bots on non mcp` as well: its expression must be **not (the same
+allowed-path expression)**, joined with its existing bot-detection condition.
+Preserve its `managed_challenge` action. Do not put `"/admin-oauth/*"` in the
+path set: the asterisk there is literal, so it will never match OAuth routes.
+For this deployment, the complete challenge expression is:
+
+```text
+not ((http.request.uri.path in {"/mcp" "/admin-mcp" "/.well-known/oauth-protected-resource" "/.well-known/oauth-protected-resource/mcp" "/.well-known/oauth-protected-resource/admin-mcp" "/.well-known/oauth-authorization-server" "/.well-known/oauth-authorization-server/mcp" "/.well-known/oauth-authorization-server/admin-mcp" "/.well-known/oauth-authorization-server/admin-oauth"}) or starts_with(http.request.uri.path, "/oauth/") or starts_with(http.request.uri.path, "/admin-oauth/")) and (cf.client.bot or len(http.user_agent) == 0 or (not http.request.headers["accept"][0] contains "text/html" and http.request.uri.path eq "/"))
+```
+
+For a new deployment without these two rules, create the Skip rule and either
+exclude these paths from any custom challenge rule or have the Skip action
+also skip **all remaining custom rules**. Keep other security protections
+unless you have verified that they block the connector.
 
 Scope it to those paths and no further. The rest of the site keeps its AI-bot
 blocking, and the paths being opened are ones designed to face unauthenticated
@@ -77,12 +90,41 @@ callers: `/oauth/register` is anonymous by necessity (it is what lets Claude on
 a phone connect), `/oauth/token` and `/admin-oauth/token` require PKCE, and both MCP endpoints require a connector
 token. Their own bounds are described in the README's AI Connections section.
 
-Apply the expression to **both staging and production hostnames** in Cloudflare when
-the corresponding deployment is ready. On a phone, open Cloudflare → Security →
-WAF → Custom rules, edit the existing connector rule, paste the expression above,
-save, then create each diagnostic connection from the URLs in Admin → AI Connections.
-If registration returns a 403, inspect the Cloudflare security event for
-`/admin-oauth/register`; an application error instead reaches the site's own logs.
+The current rules are zone-wide, so they cover both hostnames; deploy the
+admin MCP to production before connecting its production URL. On a phone,
+open Cloudflare → Security → WAF → Custom rules, edit **both** rules, save,
+then create each diagnostic connection from the URLs in Admin → AI Connections.
+Verify staging: unauthenticated `GET /admin-mcp` returns JSON 405, POST
+`/admin-mcp` returns 401 with admin resource metadata, the two admin
+`/.well-known/` discovery URLs return 200, and invalid POST
+`/admin-oauth/register` returns JSON 400. A Cloudflare HTML 403 means the
+request never reached the app; inspect its Ray ID in Security Events.
+
+### Add the admin diagnostic connections
+
+1. On staging, open **Admin → AI Connections** on your phone. Check that
+   **Allow AI connections** and the provider you will use are enabled.
+2. In ChatGPT's [Plugins web page](https://chatgpt.com/plugins), choose
+   **+ → Add custom MCP server**, name it **Epic Stocks Staging Admin**, and set
+   the public endpoint to `https://staging.epic-stocks.com/admin-mcp`. Choose
+   OAuth, acknowledge the warning, and create/install the plugin. ChatGPT's
+   iOS app cannot create custom MCP connections; a phone browser may expose
+   the web controls. Alternatively, in Claude use **Customize → Connectors →
+   Add → Custom → Web**, paste the same endpoint, choose OAuth and **Register
+   automatically**, then add it. Claude mobile installation is in beta.
+3. Sign in to **staging** with an account listed in staging's `ADMIN_EMAIL`,
+   approve the `admin:read` consent screen, and ask the newly named connector
+   for `admin_deployment_status`. Confirm it reports `staging` and the expected
+   API build. This completes the authenticated check that unauthenticated
+   probes cannot perform.
+4. Only **after the admin MCP is deployed to production**, repeat with a
+   separate **Epic Stocks Production Admin** connection pointed at
+   `https://epic-stocks.com/admin-mcp`. Sign in to production and confirm its
+   environment is `production`. The personal-data connector remains the
+   separate production `https://epic-stocks.com/mcp` connection.
+
+The [README's AI Connections section](README.md#ai-connections-admin) describes
+the four diagnostic tools and how to revoke a connection.
 
 If a deployment does **not** want AI connectors at all, the better lever is the
 admin switch (Admin → AI Connections → *Allow AI connections*), which turns the
@@ -101,7 +143,7 @@ The built-in privacy page (`/privacy`, `frontend/src/scaffold/pages/PrivacyPolic
 | VPS firewall locked to CF IPs only | ✅ Done |
 | `CLIENT_IP_HEADER=CF-Connecting-IP` set | ⬜ Check — see step 4 |
 | `/api/admin/client-ip` shows your real address | ⬜ Check — see step 5 |
-| WAF skip rule for `/oauth/*` and `/admin-oauth/*` (AI connectors) | ⬜ Check on both sites — ChatGPT registration 403s without it |
+| WAF connector Skip and custom challenge rules | ✅ Zone-wide paths corrected; staging admin discovery, auth challenge and registration reach the app. Check production admin after deploying it |
 
 ---
 

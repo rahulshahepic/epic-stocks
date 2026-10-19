@@ -62,22 +62,12 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
       </p>
 
       <div className="mt-3 rounded-md border border-cs-border bg-cs-raised p-3 text-xs">
-        <p className="font-medium text-cs-text">Admin diagnostics plugins</p>
-        <p className="mt-1 text-cs-muted">Download and upload one package per site in ChatGPT or Claude, then sign in as an admin on that site. These contain diagnostics only; the account-data plugin is separate in Settings.</p>
-        {(['staging', 'production'] as const).map(environment => (
-          <div key={environment} className="mt-3">
-            <p className="font-medium capitalize text-cs-text">{environment} diagnostics</p>
-            <div className="mt-1.5 flex flex-wrap gap-2">
-              {(['chatgpt', 'claude'] as const).map(platform => (
-                <a key={platform} href={`/api/admin/ai/plugin/${environment}/${platform}`}
-                  download={`epic-stocks-${environment}-admin-${platform}.zip`}
-                  className="rounded-md border border-cs-border-strong px-2.5 py-2 font-medium text-cs-text hover:bg-cs-base">
-                  Download {platform === 'chatgpt' ? 'ChatGPT' : 'Claude'} ZIP
-                </a>
-              ))}
-            </div>
-          </div>
-        ))}
+        <p className="font-medium text-cs-text">Admin MCP</p>
+        <p className="mt-1 text-cs-muted">Download for this site, upload the ZIP in ChatGPT or Claude, then sign in as an admin. It contains diagnostics only; the account-data plugin is separate in Settings.</p>
+        <a href="/api/admin/ai/plugin"
+          className="mt-3 inline-block rounded-md border border-cs-border-strong px-2.5 py-2 font-medium text-cs-text hover:bg-cs-base">
+          Download admin MCP
+        </a>
       </div>
 
       <div className="mt-3 flex items-center justify-between">

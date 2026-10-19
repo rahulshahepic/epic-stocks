@@ -62,14 +62,22 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
       </p>
 
       <div className="mt-3 rounded-md border border-cs-border bg-cs-raised p-3 text-xs">
-        <p className="font-medium text-cs-text">Separate connector addresses</p>
-        <p className="mt-1 text-cs-muted">Connect diagnostics twice in your assistant, once for each site. Each connection asks for admin access on that site.</p>
-        <p className="mt-2 text-cs-text">Staging diagnostics</p>
-        <code className="block break-all text-cs-text-2">https://staging.epic-stocks.com/admin-mcp</code>
-        <p className="mt-2 text-cs-text">Production diagnostics</p>
-        <code className="block break-all text-cs-text-2">https://epic-stocks.com/admin-mcp</code>
-        <p className="mt-2 text-cs-text">Production account data</p>
-        <code className="block break-all text-cs-text-2">https://epic-stocks.com/mcp</code>
+        <p className="font-medium text-cs-text">Admin diagnostics plugins</p>
+        <p className="mt-1 text-cs-muted">Download and upload one package per site in ChatGPT or Claude, then sign in as an admin on that site. These contain diagnostics only; the account-data plugin is separate in Settings.</p>
+        {(['staging', 'production'] as const).map(environment => (
+          <div key={environment} className="mt-3">
+            <p className="font-medium capitalize text-cs-text">{environment} diagnostics</p>
+            <div className="mt-1.5 flex flex-wrap gap-2">
+              {(['chatgpt', 'claude'] as const).map(platform => (
+                <a key={platform} href={`/api/admin/ai/plugin/${environment}/${platform}`}
+                  download={`epic-stocks-${environment}-admin-${platform}.zip`}
+                  className="rounded-md border border-cs-border-strong px-2.5 py-2 font-medium text-cs-text hover:bg-cs-base">
+                  Download {platform === 'chatgpt' ? 'ChatGPT' : 'Claude'} ZIP
+                </a>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
 
       <div className="mt-3 flex items-center justify-between">

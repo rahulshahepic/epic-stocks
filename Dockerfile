@@ -24,6 +24,7 @@ COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ ./
+COPY plugins/epic-stocks/ ./plugins/epic-stocks/
 
 # Copy built frontend into backend static dir
 COPY --from=frontend-build /app/frontend/dist ./static

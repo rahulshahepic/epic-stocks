@@ -119,6 +119,7 @@ def admin_plugin(admin: User = Depends(get_admin_user)):
         raise HTTPException(status_code=503, detail="Site domain is not configured")
     site = ("staging" if origin == STAGING else
             "production" if origin == PRODUCTION else origin.removeprefix("https://"))
+    display_site = site.title() if site in {"staging", "production"} else site
     return archive("admin", f"epic-stocks-{site.replace('.', '-')}-admin",
-                   f"Epic Stocks {site.title()} Admin — diagnostics only",
+                   f"Epic Stocks {display_site} Admin — diagnostics only",
                    f"{origin}/admin-mcp")

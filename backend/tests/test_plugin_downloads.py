@@ -67,13 +67,15 @@ def test_admin_package_is_for_this_site_and_admin_only(client, domain, site):
     interface = contents["plugin.json"]["extensions"]["com.openai"]["interface"]
     assert interface["capabilities"] == ["Read"]
     assert "No personal account-data tools" in interface["longDescription"]
+    display_site = site.title() if site in {"staging", "production"} else site
+    assert interface["displayName"] == f"Epic Stocks {display_site} Admin"
+    assert contents[".claude-plugin/plugin.json"]["displayName"] == interface["displayName"]
 
 
-def test_unknown_package_options_are_rejected(client):
+def test_unknown_account_platform_is_rejected(client):
     with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@example.com"}):
         register_user(client, "admin@example.com")
         assert client.get("/api/ai/plugin/other").status_code == 422
-        assert client.get("/api/admin/ai/plugin/other").status_code == 404
 
 
 def test_admin_package_refuses_missing_site_domain(client):

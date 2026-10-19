@@ -142,10 +142,9 @@ test.describe('Screenshots', () => {
     await authedPage(page, MOBILE, 'light')
     await navigateTo(page, 'Admin')
     await page.waitForLoadState('networkidle')
-    const heading = page.getByText('Admin diagnostics plugins')
+    const heading = page.getByText('Admin MCP', { exact: true })
     await heading.scrollIntoViewIfNeeded()
-    await expect(page.getByRole('link', { name: 'Download ChatGPT ZIP' })).toHaveCount(2)
-    await expect(page.getByRole('link', { name: 'Download Claude ZIP' })).toHaveCount(2)
+    await expect(page.getByRole('link', { name: 'Download admin MCP' })).toHaveCount(1)
     await shoot(page, 'admin-ai-plugin-downloads-light-mobile')
   })
 

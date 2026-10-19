@@ -8,7 +8,7 @@ import zipfile
 from enum import Enum
 from pathlib import Path
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 
 from scaffold.auth import get_admin_user, get_current_user
@@ -25,12 +25,10 @@ class Platform(str, Enum):
     claude = "claude"
 
 
-class Environment(str, Enum):
-    staging = "staging"
-    production = "production"
-
-
 def package_files(platform: str, name: str, description: str, url: str) -> dict[str, dict | str]:
+    if platform == "admin":
+        return {**package_files("chatgpt", name, description, url),
+                **package_files("claude", name, description, url)}
     if platform == "chatgpt":
         backend_root = Path(__file__).resolve().parents[2]
         source = backend_root.parent / "plugins" / "epic-stocks"
@@ -84,24 +82,28 @@ def archive(platform: str, name: str, description: str, url: str) -> Response:
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
         for path, value in package_files(platform, name, description, url).items():
             bundle.writestr(path, json.dumps(value, indent=2) + "\n" if isinstance(value, dict) else value)
+    filename = name if platform == "admin" else f"{name}-{platform}"
     return Response(
         content=output.getvalue(),
         media_type="application/zip",
         headers={
-            "Content-Disposition": f'attachment; filename="{name}-{platform}.zip"',
+            "Content-Disposition": f'attachment; filename="{filename}.zip"',
             "Cache-Control": "private, no-store",
             "X-Content-Type-Options": "nosniff",
         },
     )
 
 
-def account_origin() -> str:
+def site_origin() -> str | None:
     domain = os.getenv("DOMAIN", "").strip().lower()
-    if domain == "staging.epic-stocks.com":
-        return PRODUCTION
     if domain and re.fullmatch(r"[a-z0-9-]+(?:\.[a-z0-9-]+)+", domain):
         return f"https://{domain}"
-    return PRODUCTION
+    return None
+
+
+def account_origin() -> str:
+    origin = site_origin()
+    return PRODUCTION if origin == STAGING else origin or PRODUCTION
 
 
 @router.get("/api/ai/plugin/{platform}")
@@ -110,10 +112,13 @@ def account_plugin(platform: Platform, user: User = Depends(get_current_user)):
     return archive(platform.value, "epic-stocks", "Epic Stocks — account data", f"{account_origin()}/mcp")
 
 
-@router.get("/api/admin/ai/plugin/{environment}/{platform}")
-def admin_plugin(environment: Environment, platform: Platform,
-                 admin: User = Depends(get_admin_user)):
-    base = {Environment.staging: STAGING, Environment.production: PRODUCTION}[environment]
-    return archive(platform.value, f"epic-stocks-{environment.value}-admin",
-                   f"Epic Stocks {environment.value.title()} Admin — diagnostics only",
-                   f"{base}/admin-mcp")
+@router.get("/api/admin/ai/plugin")
+def admin_plugin(admin: User = Depends(get_admin_user)):
+    origin = site_origin()
+    if origin is None:
+        raise HTTPException(status_code=503, detail="Site domain is not configured")
+    site = ("staging" if origin == STAGING else
+            "production" if origin == PRODUCTION else origin.removeprefix("https://"))
+    return archive("admin", f"epic-stocks-{site.replace('.', '-')}-admin",
+                   f"Epic Stocks {site.title()} Admin — diagnostics only",
+                   f"{origin}/admin-mcp")

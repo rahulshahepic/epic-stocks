@@ -104,7 +104,7 @@ request never reached the app; inspect its Ray ID in Security Events.
 
 1. On staging, open **Admin → AI Connections** on your phone. Check that
    **Allow AI connections** and the provider you will use are enabled.
-2. Download **staging diagnostics → ChatGPT ZIP** or **Claude ZIP**. On a phone,
+2. Tap **Download admin MCP** on staging. On a phone,
    open ChatGPT's [Plugins web page](https://chatgpt.com/plugins) and use
    **+ → Upload plugin**, or Claude's **Customize → Plugins → Upload**. Select
    the ZIP from Files, review the connection, and proceed to sign-in. The
@@ -114,11 +114,11 @@ request never reached the app; inspect its Ray ID in Security Events.
    for `admin_deployment_status`. Confirm it reports `staging` and the expected
    API build. This completes the authenticated check that unauthenticated
    probes cannot perform.
-4. Only **after the admin MCP is deployed to production**, download the
-   **production diagnostics** ZIP and install it as a second plugin. Sign in to production and confirm its
+4. Only **after the admin MCP is deployed to production**, open **production's Admin → AI Connections**, download its
+   **admin MCP** ZIP and install it as a second plugin. Sign in to production and confirm its
    environment is `production`. The personal-data connector remains the
    separate production plugin downloaded from Settings → AI Connections.
-5. Phone acceptance: confirm both hosts accept their ZIP, complete OAuth,
+5. Phone acceptance: confirm both hosts accept the combined ZIP, complete OAuth,
    discover only the intended tools and keep staging/production separate.
    A passing package-shape test alone does not establish host compatibility.
 

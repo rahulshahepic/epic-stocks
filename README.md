@@ -747,7 +747,7 @@ Click any user in the list to open a detail card:
 
 Admin → **AI Connections** controls whether people can connect ChatGPT or Claude to their own accounts, and which providers are allowed to. Both were environment variables at first, which made "stop accepting connections from ChatGPT" a redeploy; they are policy, so they live in the database.
 
-![Separate staging and production diagnostic plugin downloads on mobile](screenshots/admin-ai-plugin-downloads-light-mobile.png)
+![Admin MCP download for the current site on mobile](screenshots/admin-ai-plugin-downloads-light-mobile.png)
 
 **Separate read-only diagnostic MCP.** The admin connector is a different MCP server and OAuth issuer from the account-data connector. Set up three named connections in your assistant:
 
@@ -757,8 +757,8 @@ Admin → **AI Connections** controls whether people can connect ChatGPT or Clau
 | Epic Stocks production diagnostics | `https://epic-stocks.com/admin-mcp` | `admin:read` on production |
 | Epic Stocks account data | `https://epic-stocks.com/mcp` | Personal data scopes on production only |
 
-1. On your phone, open **Admin → AI Connections** and download the **staging diagnostics** ZIP for ChatGPT or Claude. Upload it under **Plugins → + → Upload plugin** in ChatGPT or **Customize → Plugins** in Claude. Sign in to **staging** as an email in its `ADMIN_EMAIL` and approve the admin consent page. Only `admin:read` is requested; this connection has no equity tools.
-2. After the admin MCP is deployed to production, download and upload the **production diagnostics** ZIP as a second plugin, signing in to production. Keep personal account data in the separate production plugin from Settings; never use staging for personal data.
+1. On your phone, open **staging's Admin → AI Connections** and tap **Download admin MCP**. The single ZIP contains both ChatGPT and Claude manifests. Upload it under **Plugins → + → Upload plugin** in ChatGPT or **Customize → Plugins** in Claude. Sign in to **staging** as an email in its `ADMIN_EMAIL` and approve the admin consent page. Only `admin:read` is requested; this connection has no equity tools.
+2. After the admin MCP is deployed to production, open **production's Admin → AI Connections** and download its **admin MCP** ZIP as a second plugin, signing in to production. Each site generates a package for its own configured `DOMAIN`; staging cannot issue a production diagnostics package. Keep personal account data in the separate production plugin from Settings; never use staging for personal data.
 3. Ask the assistant to call `admin_deployment_status`, `admin_system_metrics`, or `admin_recent_errors` on each named diagnostic connection. For a specific error id, `admin_error_stack` returns file names, line numbers and functions without traceback source lines. Every answer identifies the API build and environment; scheduler due times and timestamps are UTC. Confirm the returned environment before comparing results.
 4. Revoke either diagnostic connector on that site's **Settings → AI Connections** page. Removing an email from `ADMIN_EMAIL` blocks admin tools on the next request. The two sites keep independent connection and audit histories.
 

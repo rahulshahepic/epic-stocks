@@ -138,15 +138,15 @@ test.describe('Screenshots', () => {
     await shoot(page, 'admin-dark-mobile')
   })
 
-  test('admin AI connector addresses - light - mobile', async ({ page }) => {
+  test('admin AI plugin downloads - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     await navigateTo(page, 'Admin')
     await page.waitForLoadState('networkidle')
-    const heading = page.getByText('Separate connector addresses')
+    const heading = page.getByText('Admin diagnostics plugins')
     await heading.scrollIntoViewIfNeeded()
-    await expect(page.getByText('https://staging.epic-stocks.com/admin-mcp')).toBeVisible()
-    await expect(page.getByText('https://epic-stocks.com/admin-mcp')).toBeVisible()
-    await shoot(page, 'admin-ai-connector-addresses-light-mobile')
+    await expect(page.getByRole('link', { name: 'Download ChatGPT ZIP' })).toHaveCount(2)
+    await expect(page.getByRole('link', { name: 'Download Claude ZIP' })).toHaveCount(2)
+    await shoot(page, 'admin-ai-plugin-downloads-light-mobile')
   })
 
   test('events page - light - mobile', async ({ page }) => {
@@ -471,7 +471,9 @@ test.describe('Screenshots', () => {
     await page.waitForTimeout(800)
     const heading = page.locator('h2, h3').filter({ hasText: 'AI Connections' }).first()
     await heading.scrollIntoViewIfNeeded()
-    await expect(heading).toBeInViewport()
+    await page.getByRole('link', { name: 'Download ChatGPT plugin' }).scrollIntoViewIfNeeded()
+    await expect(page.getByRole('link', { name: 'Download ChatGPT plugin' })).toBeInViewport()
+    await page.evaluate(() => window.scrollBy(0, 240))
     await shoot(page, 'settings-ai-connections-light-mobile')
   })
 
@@ -504,10 +506,10 @@ test.describe('Screenshots', () => {
     await page.waitForTimeout(800)
     const heading = page.locator('h2, h3').filter({ hasText: 'AI Connections' }).first()
     await heading.scrollIntoViewIfNeeded()
-    await expect(heading).toBeInViewport()
-    // The ChatGPT walkthrough is the one with the developer-mode caveat, so it
-    // is the half worth showing in the README.
+    // Keep the ChatGPT package download visible in the README screenshot.
     await page.getByRole('tab', { name: 'ChatGPT' }).click()
+    await page.getByRole('link', { name: 'Download ChatGPT plugin' }).scrollIntoViewIfNeeded()
+    await page.evaluate(() => window.scrollBy(0, 240))
     await page.waitForTimeout(300)
     await shoot(page, 'settings-ai-connections-dark-mobile')
   })

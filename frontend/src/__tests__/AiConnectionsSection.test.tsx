@@ -27,41 +27,38 @@ beforeEach(() => {
 })
 
 describe('AiConnectionsSection', () => {
-  it('shows the address to paste, and copies it', async () => {
+  it('downloads provider-specific plugins without asking for an address', async () => {
     vi.spyOn(api, 'getAiConnections').mockResolvedValue([])
-    const write = vi.fn().mockResolvedValue(undefined)
-    Object.assign(navigator, { clipboard: { writeText: write } })
-
     render(<AiConnectionsSection />)
-    const expected = `${window.location.origin}/mcp`
-    expect(await screen.findByText(expected)).toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole('button', { name: 'Copy' }))
-    expect(write).toHaveBeenCalledWith(expected)
-    await screen.findByRole('button', { name: 'Copied' })
+    const chatgpt = await screen.findByRole('link', { name: 'Download ChatGPT plugin' })
+    expect(chatgpt).toHaveAttribute('href', '/api/ai/plugin/chatgpt')
+    expect(chatgpt).toHaveAttribute('download', 'epic-stocks-chatgpt.zip')
+    expect(screen.queryByText('Your server address')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('tab', { name: 'Claude' }))
+    expect(screen.getByRole('link', { name: 'Download Claude plugin' })).toHaveAttribute('href', '/api/ai/plugin/claude')
   })
 
-  it('defaults to the Claude walkthrough, which is the shorter one', async () => {
+  it('defaults to the ChatGPT upload walkthrough', async () => {
     vi.spyOn(api, 'getAiConnections').mockResolvedValue([])
     render(<AiConnectionsSection />)
-    expect(await screen.findByText(/Add custom connector/)).toBeInTheDocument()
+    expect(await screen.findByText(/Upload plugin and select the ZIP/)).toBeInTheDocument()
   })
 
-  it('warns that ChatGPT needs developer mode, and where it lives', async () => {
+  it('explains the Claude upload flow', async () => {
     vi.spyOn(api, 'getAiConnections').mockResolvedValue([])
     render(<AiConnectionsSection />)
-
-    await userEvent.click(await screen.findByRole('tab', { name: 'ChatGPT' }))
-    expect(screen.getByText('Developer mode')).toBeInTheDocument()
-    expect(screen.getByText('Security and login')).toBeInTheDocument()
-    // The switch reads like something you should not touch. Say otherwise.
-    expect(screen.getByText(/sounds alarming and is not/)).toBeInTheDocument()
+    await userEvent.click(await screen.findByRole('tab', { name: 'Claude' }))
+    expect(screen.getByText(/Customize → Plugins and upload the ZIP/)).toBeInTheDocument()
   })
 
   it('explains Muse custom setup with this server and the callback prerequisite', async () => {
     vi.spyOn(api, 'getAiConnections').mockResolvedValue([])
+    const write = vi.fn().mockResolvedValue(undefined)
+    Object.assign(navigator, { clipboard: { writeText: write } })
     render(<AiConnectionsSection />)
     await userEvent.click(await screen.findByRole('tab', { name: 'Muse' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Copy Muse setup request' }))
+    expect(write).toHaveBeenCalledWith(expect.stringContaining(`${window.location.origin}/mcp`))
     expect(screen.getByRole('tab', { name: 'Muse' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByText(/Create a custom connector named Epic Stocks/)).toHaveTextContent(`${window.location.origin}/mcp`)
     expect(screen.getByText(/Create a custom connector named Epic Stocks/)).toHaveTextContent('OAuth with PKCE')

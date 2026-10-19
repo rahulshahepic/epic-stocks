@@ -33,6 +33,18 @@ beforeEach(() => {
 })
 
 describe('AiConnections', () => {
+  it('provides four separate admin-only plugin downloads', async () => {
+    vi.spyOn(api, 'adminGetMcp').mockResolvedValue(SETTINGS)
+    render(<AiConnections onError={() => {}} />)
+    await screen.findByText('Admin diagnostics plugins')
+    expect(screen.getAllByRole('link', { name: 'Download ChatGPT ZIP' }).map(a => a.getAttribute('href'))).toEqual([
+      '/api/admin/ai/plugin/staging/chatgpt', '/api/admin/ai/plugin/production/chatgpt',
+    ])
+    expect(screen.getAllByRole('link', { name: 'Download Claude ZIP' }).map(a => a.getAttribute('href'))).toEqual([
+      '/api/admin/ai/plugin/staging/claude', '/api/admin/ai/plugin/production/claude',
+    ])
+  })
+
   it('groups hosts under the product name an admin recognises', async () => {
     vi.spyOn(api, 'adminGetMcp').mockResolvedValue(SETTINGS)
     // No usage, so the only ChatGPT/Claude on the page is the provider list.

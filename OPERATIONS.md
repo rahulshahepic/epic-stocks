@@ -93,7 +93,7 @@ token. Their own bounds are described in the README's AI Connections section.
 The current rules are zone-wide, so they cover both hostnames; deploy the
 admin MCP to production before connecting its production URL. On a phone,
 open Cloudflare → Security → WAF → Custom rules, edit **both** rules, save,
-then create each diagnostic connection from the URLs in Admin → AI Connections.
+then create each diagnostic connection from the downloads in Admin → AI Connections.
 Verify staging: unauthenticated `GET /admin-mcp` returns JSON 405, POST
 `/admin-mcp` returns 401 with admin resource metadata, the two admin
 `/.well-known/` discovery URLs return 200, and invalid POST
@@ -104,24 +104,23 @@ request never reached the app; inspect its Ray ID in Security Events.
 
 1. On staging, open **Admin → AI Connections** on your phone. Check that
    **Allow AI connections** and the provider you will use are enabled.
-2. In ChatGPT's [Plugins web page](https://chatgpt.com/plugins), choose
-   **+ → Add custom MCP server**, name it **Epic Stocks Staging Admin**, and set
-   the public endpoint to `https://staging.epic-stocks.com/admin-mcp`. Choose
-   OAuth, acknowledge the warning, and create/install the plugin. ChatGPT's
-   iOS app cannot create custom MCP connections; a phone browser may expose
-   the web controls. Alternatively, in Claude use **Customize → Connectors →
-   Add → Custom → Web**, paste the same endpoint, choose OAuth and **Register
-   automatically**, then add it. Claude mobile installation is in beta.
+2. Download **staging diagnostics → ChatGPT ZIP** or **Claude ZIP**. On a phone,
+   open ChatGPT's [Plugins web page](https://chatgpt.com/plugins) and use
+   **+ → Upload plugin**, or Claude's **Customize → Plugins → Upload**. Select
+   the ZIP from Files, review the connection, and proceed to sign-in. The
+   package contains the exact endpoint; nobody needs to paste it.
 3. Sign in to **staging** with an account listed in staging's `ADMIN_EMAIL`,
    approve the `admin:read` consent screen, and ask the newly named connector
    for `admin_deployment_status`. Confirm it reports `staging` and the expected
    API build. This completes the authenticated check that unauthenticated
    probes cannot perform.
-4. Only **after the admin MCP is deployed to production**, repeat with a
-   separate **Epic Stocks Production Admin** connection pointed at
-   `https://epic-stocks.com/admin-mcp`. Sign in to production and confirm its
+4. Only **after the admin MCP is deployed to production**, download the
+   **production diagnostics** ZIP and install it as a second plugin. Sign in to production and confirm its
    environment is `production`. The personal-data connector remains the
-   separate production `https://epic-stocks.com/mcp` connection.
+   separate production plugin downloaded from Settings → AI Connections.
+5. Phone acceptance: confirm both hosts accept their ZIP, complete OAuth,
+   discover only the intended tools and keep staging/production separate.
+   A passing package-shape test alone does not establish host compatibility.
 
 The [README's AI Connections section](README.md#ai-connections-admin) describes
 the four diagnostic tools and how to revoke a connection.

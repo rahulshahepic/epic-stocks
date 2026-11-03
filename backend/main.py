@@ -638,6 +638,7 @@ _fastapi_app.include_router(mcp_transport.router)
 
 
 @_fastapi_app.get("/api/health")
+@_fastapi_app.head("/api/health")
 def health():
     return {"status": "ok"}
 

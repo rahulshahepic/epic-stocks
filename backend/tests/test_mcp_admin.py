@@ -11,7 +11,7 @@ from tests.test_mcp_tools import Mcp
 from tests.test_oauth_server import code_from, pkce_pair
 
 
-ADMIN_TOOLS = {"admin_deployment_status", "admin_system_metrics", "admin_recent_errors", "admin_error_stack"}
+ADMIN_TOOLS = {"admin_deployment_status", "admin_system_metrics", "admin_recent_errors", "admin_error_stack", "admin_host_diagnostics", "admin_scheduler_history", "admin_deploy_runs", "admin_edge_summary"}
 
 
 def test_admin_oauth_login_resumes_on_its_own_consent_page(client):

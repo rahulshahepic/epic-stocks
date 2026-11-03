@@ -55,6 +55,13 @@ _JOBS = (
 def _record_runner_state(values: dict[str, str]) -> None:
     db = database.SessionLocal()
     try:
+        previous = db.get(SystemSettings, "scheduled:runner:last_results")
+        try:
+            previous_results = json.loads(previous.value) if previous else {}
+            if not isinstance(previous_results, dict):
+                previous_results = {}
+        except (ValueError, TypeError):
+            previous_results = {}
         for name, value in values.items():
             key = f"scheduled:runner:{name}"
             row = db.get(SystemSettings, key)
@@ -62,6 +69,11 @@ def _record_runner_state(values: dict[str, str]) -> None:
                 db.add(SystemSettings(key=key, value=value))
             else:
                 row.value = value
+        if "last_results" in values:
+            from services.diagnostics import record_scheduler
+
+            # Read the previous runner result before replacing it above.
+            record_scheduler(db, json.loads(values["last_results"]), previous_results)
         db.commit()
     finally:
         db.close()

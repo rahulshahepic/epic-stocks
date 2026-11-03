@@ -48,6 +48,7 @@ class Tool:
     destructive: bool = False
     metadata: dict[str, Any] | None = None
     output_schema: dict[str, Any] | None = None
+    blocking_io: bool = False
 
     def describe(self) -> dict[str, Any]:
         return {

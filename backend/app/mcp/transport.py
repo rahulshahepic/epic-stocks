@@ -21,6 +21,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from database import get_db
 from scaffold.oauth import audit
@@ -140,8 +141,17 @@ async def mcp_post(request: Request, connector: Connector = Depends(require_conn
         return Response(status_code=202)
 
     try:
-        payload = _dispatch(method, params, request_id, ToolContext(connector=connector, db=db),
-                            admin=request.url.path == "/admin-mcp")
+        ctx = ToolContext(connector=connector, db=db)
+        name = params.get("name")
+        tool = REGISTRY.get(name) if method == "tools/call" and isinstance(name, str) else None
+        if tool and tool.blocking_io:
+            # Provider timeouts must leave the ASGI event loop available.
+            # Authorization and audit still happen inside _dispatch.
+            payload = await run_in_threadpool(
+                _dispatch, method, params, request_id, ctx, admin=request.url.path == "/admin-mcp",
+            )
+        else:
+            payload = _dispatch(method, params, request_id, ctx, admin=request.url.path == "/admin-mcp")
     except Exception:
         logger.exception("MCP method %s failed", method)
         payload = _error(request_id, INTERNAL_ERROR, "The server could not complete that request")
@@ -165,8 +175,10 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext, *, a
                 "instructions": (
                     "Read-only site diagnostics for this environment. Always identify the environment "
                     "and API build in results. No personal financial data or account tools are available. "
-                    "This server reads application telemetry only, not VPS, Cloudflare or GitHub logs; "
-                    "an empty error list does not clear those sources."
+                    "Use admin_host_diagnostics, admin_scheduler_history, admin_deploy_runs and "
+                    "admin_edge_summary for bounded host, scheduler, deploy and WAF metadata. "
+                    "Report source state, freshness, coverage and gaps. Stale or unavailable sources "
+                    "and empty records must never be interpreted as healthy. Raw logs are not exposed."
                 ),
             })
         return _result(request_id, {

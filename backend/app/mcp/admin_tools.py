@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from scaffold.models import ErrorLog, SystemMetric
 from scaffold.oauth.scopes import ADMIN_READ
 from scaffold.routers.admin import deployment_status
+from services import diagnostics, diagnostic_sources
 
 from .tools import Tool, ToolContext, object_schema, register
 
@@ -32,7 +33,9 @@ def _integer(args: dict, name: str, default: int, low: int, high: int) -> int:
 
 def _deployment(ctx: ToolContext, args: dict) -> dict:
     status = deployment_status(admin=ctx.user, db=ctx.db)
-    return {**_identity(), "scheduler": status.model_dump()}
+    return {**_identity(), "source": "scheduled_jobs", "collected_at_utc": status.last_checked_at,
+            "state": "unavailable" if not status.last_checked_at else "stale" if status.state == "stale" else "available",
+            "scheduler": status.model_dump()}
 
 
 def _metrics(ctx: ToolContext, args: dict) -> dict:
@@ -42,7 +45,10 @@ def _metrics(ctx: ToolContext, args: dict) -> dict:
             .filter(SystemMetric.timestamp >= cutoff)
             .order_by(SystemMetric.timestamp.desc()).limit(97).all())
     return {
-        **_identity(), "window_hours": hours, "max_samples": 96,
+        **_identity(), "source": "application_metrics",
+        "state": "unavailable" if not rows else "stale" if rows[0].timestamp.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc) - timedelta(minutes=35) else "available",
+        "collected_at_utc": rows[0].timestamp.isoformat() if rows else None,
+        "window_hours": hours, "max_samples": 96,
         "samples": [{
             "timestamp_utc": row.timestamp.isoformat(),
             "aggregated": bool(row.aggregated),
@@ -65,7 +71,10 @@ def _errors(ctx: ToolContext, args: dict) -> dict:
     rows = (ctx.db.query(ErrorLog).order_by(ErrorLog.timestamp.desc())
             .limit(limit + 1).all())
     return {
-        **_identity(), "max_records": limit,
+        **_identity(), "source": "application_errors", "state": "available",
+        "collected_at_utc": datetime.now(timezone.utc).isoformat(),
+        "coverage": "Persisted application exceptions only; empty records do not prove a healthy app or host",
+        "max_records": limit,
         "records": [{
             "id": row.id,
             "timestamp_utc": row.timestamp.isoformat() if row.timestamp else None,
@@ -98,7 +107,8 @@ def _error_stack(ctx: ToolContext, args: dict) -> dict:
         if re.fullmatch(r"[A-Za-z_][A-Za-z_0-9.]*\.py", filename):
             frames.append({"file": filename, "line": int(line), "function": function})
     return {
-        **_identity(), "error_id": error_id,
+        **_identity(), "source": "application_errors", "state": "available",
+        "collected_at_utc": datetime.now(timezone.utc).isoformat(), "error_id": error_id,
         "timestamp_utc": row.timestamp.isoformat() if row.timestamp else None,
         "error_type": row.error_type if row.error_type and row.error_type.isidentifier() else None,
         "frames": frames,
@@ -128,4 +138,36 @@ register(Tool(
     description="Get up to 12 Python file names, line numbers and functions for one error id returned by admin_recent_errors. Excludes source lines, exception messages, request paths, local variables and SQL parameters; full traceback stays in Admin → Errors.",
     input_schema=object_schema({"error_id": {"type": "integer", "minimum": 1}}, ["error_id"]),
     scope=ADMIN_READ, handler=_error_stack,
+))
+
+
+def _host(ctx: ToolContext, args: dict) -> dict:
+    return diagnostics.host_snapshot(_integer(args, "limit", 20, 1, 50))
+
+
+def _scheduler_history(ctx: ToolContext, args: dict) -> dict:
+    return diagnostics.scheduler_history(ctx.db, _integer(args, "limit", 20, 1, 50))
+
+
+for name, title, description, handler in (
+    ("admin_host_diagnostics", "Host diagnostic history",
+     "Read bounded container state, OOM/restart, disk and scheduler service failure/recovery history. Reports collector heartbeat, stale/unavailable sources and gaps; never raw host or container logs.", _host),
+    ("admin_scheduler_history", "Scheduled job failure history",
+     "Read safe job failure and recovery events retained for 72 hours (at most 96), plus runner freshness. An empty history does not prove the scheduler is healthy.", _scheduler_history),
+):
+    register(Tool(name=name, title=title, description=description,
+                  input_schema=object_schema({"limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 20}}),
+                  scope=ADMIN_READ, handler=handler))
+
+register(Tool(
+    name="admin_deploy_runs", title="Deployment workflow outcomes",
+    description="Read latest 20 Deploy workflow runs on this environment's branch, latest failed run and successful run matching the API build. No job log text. Missing source is explicit; results cached for two minutes.",
+    input_schema=object_schema({}), scope=ADMIN_READ,
+    handler=lambda ctx, args: diagnostic_sources.deployments(), blocking_io=True,
+))
+register(Tool(
+    name="admin_edge_summary", title="Cloudflare WAF summary",
+    description="Read sampled WAF action counts for this environment's exact hostname in a 30 minute window ending two minutes ago. Reports unavailable source if a scoped read credential is missing or denied. No IPs, cookies or request URLs. Cached two minutes.",
+    input_schema=object_schema({}), scope=ADMIN_READ,
+    handler=lambda ctx, args: diagnostic_sources.edge_summary(), blocking_io=True,
 ))

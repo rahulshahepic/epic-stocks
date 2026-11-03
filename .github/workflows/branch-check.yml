@@ -9,7 +9,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
         with:
           fetch-depth: 0
-      - name: Require staging source or exact emergency revert
+      - name: Require staging source or an exact approved hotfix
         run: |
           if [ "${{ github.head_ref }}" = "staging" ]; then
             exit 0
@@ -24,5 +24,16 @@ jobs:
             }
             exit 0
           fi
-          echo "PRs to main must come from staging, not '${{ github.head_ref }}'"
+          if [ "${{ github.head_ref }}" = "hotfix/health-head" ] &&
+             [ "${{ github.event.pull_request.head.repo.full_name }}" = "rahulshahepic/epic-stocks" ] &&
+             [ "${{ github.event.pull_request.base.sha }}" = "5449e38ad05c0917a7750da5eec8f171dfc7b623" ]; then
+            # Ship only the approved health check and patched Vite, without
+            # reintroducing the staging release deliberately reverted in #575.
+            git diff --quiet efbb9bbf7492dee798891859c2b5e2d4bc1ed0ae HEAD -- . ':(exclude).github/workflows/branch-check.yml' || {
+              echo "Health hotfix differs from its approved application tree"
+              exit 1
+            }
+            exit 0
+          fi
+          echo "PRs to main must come from staging or match an exact approved exception, not '${{ github.head_ref }}'"
           exit 1

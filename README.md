@@ -1213,7 +1213,7 @@ Cross-origin requests are accepted only from the native shell origins (`capacito
 | POST | `/api/me/reset` | Reset all financial data (keeps account) |
 | DELETE | `/api/me` | Delete account and all associated data |
 | GET | `/api/config` | Client config (VAPID key, email availability, etc.) |
-| GET | `/api/health` | Health check — always 200 |
+| GET, HEAD | `/api/health` | Public liveness check — 200 while the app is serving, including app-managed maintenance. GET returns `{"status":"ok"}`; HEAD returns the same headers without a body. |
 | GET | `/api/status` | Operational status `{"maintenance": bool}` — polled by SPA |
 | GET | `/api/dashboard` | Summary cards data |
 | GET | `/api/events` | Computed event timeline |

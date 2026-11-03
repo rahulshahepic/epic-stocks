@@ -290,6 +290,8 @@ On transition from a prior setup, the deploy script seeds `.secrets/` files from
 
 CI catches most failures (Caddyfile validation + health polling), but external monitoring catches anything that happens between deploys — server reboots, OOM kills, disk full, upstream issues.
 
+`/api/health` supports unauthenticated GET and HEAD: GET returns `200` with `{"status":"ok"}`; HEAD returns `200` with the same headers and no body. Use GET for a body/keyword check, or HEAD for a status-only check. This is an app liveness check, not a database or maintenance-readiness check. Behind Cloudflare, exempt GET/HEAD on this exact path from browser challenges so monitors reach the app; keep security checks on other routes. Verify through the public hostname with `curl -I https://<your-domain>/api/health`.
+
 ### Option A: UptimeRobot (free tier)
 
 1. Create an account at [uptimerobot.com](https://uptimerobot.com)

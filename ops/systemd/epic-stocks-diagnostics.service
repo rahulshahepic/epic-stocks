@@ -4,7 +4,7 @@ After=docker.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/python3 @DEPLOY_PATH@/ops/collect_diagnostics.py --environment @APP_ENV@
+ExecStart=/usr/bin/python3 /usr/local/lib/epic-stocks/collect_diagnostics.py --environment @APP_ENV@
 StateDirectory=epic-stocks-diagnostics
 StateDirectoryMode=0755
 UMask=0077

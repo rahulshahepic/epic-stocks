@@ -16,6 +16,8 @@ RUN npm run build
 
 # Stage 2: Python runtime
 FROM python:3.12-slim
+ARG COMMIT_SHA=dev
+LABEL org.opencontainers.image.revision=$COMMIT_SHA
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*

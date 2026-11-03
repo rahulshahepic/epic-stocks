@@ -165,8 +165,10 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext, *, a
                 "instructions": (
                     "Read-only site diagnostics for this environment. Always identify the environment "
                     "and API build in results. No personal financial data or account tools are available. "
-                    "This server reads application telemetry only, not VPS, Cloudflare or GitHub logs; "
-                    "an empty error list does not clear those sources."
+                    "Use admin_host_diagnostics, admin_scheduler_history, admin_deploy_runs and "
+                    "admin_edge_summary for bounded host, scheduler, deploy and WAF metadata. "
+                    "Report source state, freshness, coverage and gaps. Stale or unavailable sources "
+                    "and empty records must never be interpreted as healthy. Raw logs are not exposed."
                 ),
             })
         return _result(request_id, {

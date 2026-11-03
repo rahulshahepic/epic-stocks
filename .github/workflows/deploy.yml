@@ -139,7 +139,10 @@ jobs:
             TRUSTED_PROXY_HOPS=${{ vars.TRUSTED_PROXY_HOPS || '1' }}
             CLIENT_IP_HEADER=${{ vars.CLIENT_IP_HEADER }}
 
-            APP_ENV=${{ vars.APP_ENV || 'production' }}
+            APP_ENV=${{ github.ref_name == 'main' && 'production' || 'staging' }}
+            DIAGNOSTICS_GITHUB_REPOSITORY=${{ github.repository }}
+            DIAGNOSTICS_CF_ZONE_ID=${{ vars.DIAGNOSTICS_CF_ZONE_ID }}
+            DIAGNOSTICS_CF_API_TOKEN=${{ secrets.DIAGNOSTICS_CF_API_TOKEN }}
             EPIC_MODE=${{ vars.EPIC_MODE }}
             CACHE_INVALIDATE_SECRET=${CACHE_INVALIDATE_SECRET}
             ACME_EMAIL=${{ vars.ACME_EMAIL }}
@@ -193,6 +196,18 @@ jobs:
             systemctl daemon-reload
             systemctl enable epic-stocks-jobs.timer
             systemctl restart epic-stocks-jobs.timer
+
+            # A separate host unit has Docker/systemd read access. The web app
+            # receives only its bounded metadata snapshot, mounted read-only.
+            install -d -m 755 /var/lib/epic-stocks-diagnostics
+            sed -e "s|@DEPLOY_PATH@|${{ vars.DEPLOY_PATH }}|g" \
+              -e "s|@APP_ENV@|${{ github.ref_name == 'main' && 'production' || 'staging' }}|g" \
+              ops/systemd/epic-stocks-diagnostics.service \
+              > /etc/systemd/system/epic-stocks-diagnostics.service
+            cp ops/systemd/epic-stocks-diagnostics.timer /etc/systemd/system/
+            systemctl daemon-reload
+            systemctl enable --now epic-stocks-diagnostics.timer
+            systemctl start epic-stocks-diagnostics.service
 
             # ── Signal maintenance before taking the app down ────────────────
             # Write the sentinel file first so Caddy immediately starts serving

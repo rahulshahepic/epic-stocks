@@ -144,3 +144,21 @@ def test_maintenance_runs_all_three_steps(setup_db, monkeypatch):
 
     jobs._maintenance(_at(4).date())
     assert calls == ["metrics", "prices", "oauth"]
+
+
+def test_runner_retains_safe_failures_and_recovery(db_session, monkeypatch):
+    from services.diagnostics import SCHEDULER_HISTORY_KEY
+
+    def fail(_day):
+        raise RuntimeError('private-financial-data')
+
+    monkeypatch.setattr(jobs, '_JOBS', (('notifications', jobs.time(7), 555555555, fail),))
+    jobs.run_due(_at(8))
+    history = json.loads(db_session.get(SystemSettings, SCHEDULER_HISTORY_KEY).value)
+    assert history[-1]['event_code'] == 'notifications_failed'
+    assert 'private' not in json.dumps(history)
+    monkeypatch.setattr(jobs, '_JOBS', (('notifications', jobs.time(7), 555555555, lambda day: None),))
+    jobs.run_due(_at(8))
+    db_session.expire_all()
+    history = json.loads(db_session.get(SystemSettings, SCHEDULER_HISTORY_KEY).value)
+    assert [row['event_code'] for row in history] == ['notifications_failed', 'notifications_recovered']

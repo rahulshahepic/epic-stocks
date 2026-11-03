@@ -239,3 +239,41 @@ def test_running_service_does_not_report_success(tmp_path, monkeypatch):
     result = json.loads(path.read_text())
     assert result['states']['scheduler'] == 'scheduler_unavailable'
     assert not any(row['event_code'] in {'scheduler_succeeded', 'scheduler_recovered'} for row in result['events'])
+
+
+@pytest.mark.asyncio
+async def test_slow_provider_does_not_block_connector_ping(client, monkeypatch):
+    import asyncio
+    import threading
+    from main import app
+
+    started, release = threading.Event(), threading.Event()
+
+    def slow_provider():
+        started.set()
+        if not release.wait(3):
+            raise RuntimeError('provider wait timed out')
+        return {'source': 'github_actions', 'state': 'unavailable'}
+
+    monkeypatch.setattr(sources, 'deployments', slow_provider)
+    with patch.dict(os.environ, {'ADMIN_EMAIL': 'admin@example.com'}):
+        register_user(client, 'admin@example.com')
+        tokens = _connect_admin(client)
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://testserver',
+                                     headers={'Authorization': f"Bearer {tokens['access_token']}"}) as connection:
+            slow = asyncio.create_task(connection.post('/admin-mcp', json={
+                'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
+                'params': {'name': 'admin_deploy_runs', 'arguments': {}},
+            }))
+            try:
+                assert await asyncio.to_thread(started.wait, 2)
+                assert not slow.done(), 'provider call blocked the request loop'
+                ping = await asyncio.wait_for(connection.post('/admin-mcp', json={
+                    'jsonrpc': '2.0', 'id': 2, 'method': 'ping',
+                }), timeout=2)
+                assert ping.json()['result'] == {}
+                assert not slow.done()
+            finally:
+                release.set()
+                response = await slow
+            assert json.loads(response.json()['result']['content'][0]['text'])['state'] == 'unavailable'

@@ -21,6 +21,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from database import get_db
 from scaffold.oauth import audit
@@ -140,8 +141,12 @@ async def mcp_post(request: Request, connector: Connector = Depends(require_conn
         return Response(status_code=202)
 
     try:
-        payload = _dispatch(method, params, request_id, ToolContext(connector=connector, db=db),
-                            admin=request.url.path == "/admin-mcp")
+        # Handlers are synchronous (DB work and bounded provider HTTP calls).
+        # Preserve request context while leaving the ASGI event loop available.
+        payload = await run_in_threadpool(
+            _dispatch, method, params, request_id, ToolContext(connector=connector, db=db),
+            admin=request.url.path == "/admin-mcp",
+        )
     except Exception:
         logger.exception("MCP method %s failed", method)
         payload = _error(request_id, INTERNAL_ERROR, "The server could not complete that request")

@@ -152,7 +152,7 @@ def collector_module():
 def test_collector_failure_recovery_gaps_and_atomic_bounded_output(tmp_path, monkeypatch):
     collector = collector_module()
     path = tmp_path / 'host.json'
-    values = {'docker': '\"running\"|false|1|healthy|' + 'a' * 40, 'systemctl': 'Result=success\nExecMainStartTimestampMonotonic=123'}
+    values = {'docker': '\"running\"|false|1|healthy|' + 'a' * 40, 'systemctl': 'Result=success\nExecMainStartTimestampMonotonic=123\nActiveState=inactive'}
     monkeypatch.setattr(collector, 'command', lambda args: values[Path(args[0]).name])
     collector.collect('staging', path)
     assert oct(path.stat().st_mode & 0o777) == '0o644'
@@ -164,7 +164,7 @@ def test_collector_failure_recovery_gaps_and_atomic_bounded_output(tmp_path, mon
     data['collected_at_utc'] = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
     path.write_text(json.dumps(data))
     values['docker'] = '\"running\"|false|2|healthy|' + 'a' * 40
-    values['systemctl'] = 'Result=success\nExecMainStartTimestampMonotonic=456'
+    values['systemctl'] = 'Result=success\nExecMainStartTimestampMonotonic=456\nActiveState=inactive'
     collector.collect('staging', path)
     data = json.loads(path.read_text())
     assert data['events'][-1]['event_code'] == 'collector_gap'
@@ -212,7 +212,7 @@ def test_provider_transport_bounds_and_redirect_refusal(monkeypatch):
 
 def test_collector_has_no_scheduler_success_before_first_run(tmp_path, monkeypatch):
     collector = collector_module()
-    values = {'docker': None, 'systemctl': 'Result=success\nExecMainStartTimestampMonotonic=0'}
+    values = {'docker': None, 'systemctl': 'Result=success\nExecMainStartTimestampMonotonic=0\nActiveState=inactive'}
     monkeypatch.setattr(collector, 'command', lambda args: values[Path(args[0]).name])
     path = tmp_path / 'host.json'
     collector.collect('staging', path)
@@ -228,3 +228,14 @@ def test_not_due_job_does_not_falsely_report_recovery(db_session):
     diag.record_scheduler(db_session, {'notifications': 'completed'}, {'runner': 'failed'})
     db_session.commit()
     assert json.loads(db_session.get(SystemSettings, diag.SCHEDULER_HISTORY_KEY).value)[0]['event_code'] == 'runner_recovered'
+
+
+def test_running_service_does_not_report_success(tmp_path, monkeypatch):
+    collector = collector_module()
+    values = {'docker': None, 'systemctl': 'Result=success\nExecMainStartTimestampMonotonic=123\nActiveState=activating'}
+    monkeypatch.setattr(collector, 'command', lambda args: values[Path(args[0]).name])
+    path = tmp_path / 'host.json'
+    collector.collect('staging', path)
+    result = json.loads(path.read_text())
+    assert result['states']['scheduler'] == 'scheduler_unavailable'
+    assert not any(row['event_code'] in {'scheduler_succeeded', 'scheduler_recovered'} for row in result['events'])

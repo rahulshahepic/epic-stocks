@@ -72,11 +72,11 @@ def collect(environment, output):
         except (ValueError, TypeError):
             container = "container_unavailable"
     scheduler_raw = command(["/usr/bin/systemctl", "show", "epic-stocks-jobs.service",
-                             "--property=Result", "--property=ExecMainStartTimestampMonotonic"])
+                             "--property=Result", "--property=ExecMainStartTimestampMonotonic", "--property=ActiveState"])
     scheduler_fields = dict(line.split("=", 1) for line in (scheduler_raw or "").splitlines() if "=" in line)
     scheduler_result = scheduler_fields.get("Result")
     scheduler_ran = scheduler_fields.get("ExecMainStartTimestampMonotonic", "0") != "0"
-    scheduler = ("scheduler_succeeded" if scheduler_ran and scheduler_result == "success" else
+    scheduler = ("scheduler_succeeded" if scheduler_ran and scheduler_result == "success" and scheduler_fields.get("ActiveState") == "inactive" else
                  "scheduler_failed" if scheduler_ran and scheduler_result in {"exit-code", "timeout", "signal", "core-dump", "resources", "oom-kill", "start-limit-hit"}
                  else "scheduler_unavailable")
     usage = shutil.disk_usage(output.parent)

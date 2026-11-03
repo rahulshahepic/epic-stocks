@@ -163,11 +163,11 @@ register(Tool(
     name="admin_deploy_runs", title="Deployment workflow outcomes",
     description="Read latest 20 Deploy workflow runs on this environment's branch, latest failed run and successful run matching the API build. No job log text. Missing source is explicit; results cached for two minutes.",
     input_schema=object_schema({}), scope=ADMIN_READ,
-    handler=lambda ctx, args: diagnostic_sources.deployments(),
+    handler=lambda ctx, args: diagnostic_sources.deployments(), blocking_io=True,
 ))
 register(Tool(
     name="admin_edge_summary", title="Cloudflare WAF summary",
     description="Read sampled WAF action counts for this environment's exact hostname in a 30 minute window ending two minutes ago. Reports unavailable source if a scoped read credential is missing or denied. No IPs, cookies or request URLs. Cached two minutes.",
     input_schema=object_schema({}), scope=ADMIN_READ,
-    handler=lambda ctx, args: diagnostic_sources.edge_summary(),
+    handler=lambda ctx, args: diagnostic_sources.edge_summary(), blocking_io=True,
 ))

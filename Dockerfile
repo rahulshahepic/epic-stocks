@@ -16,8 +16,6 @@ RUN npm run build
 
 # Stage 2: Python runtime
 FROM python:3.12-slim
-ARG COMMIT_SHA=dev
-LABEL org.opencontainers.image.revision=$COMMIT_SHA
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
@@ -32,6 +30,8 @@ COPY plugins/epic-stocks/ ./plugins/epic-stocks/
 COPY --from=frontend-build /app/frontend/dist ./static
 
 RUN useradd -m -u 1000 appuser && chown -R appuser /app
+ARG COMMIT_SHA=dev
+LABEL org.opencontainers.image.revision=$COMMIT_SHA
 USER appuser
 
 EXPOSE 8000

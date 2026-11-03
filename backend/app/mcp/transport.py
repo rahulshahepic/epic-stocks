@@ -141,12 +141,17 @@ async def mcp_post(request: Request, connector: Connector = Depends(require_conn
         return Response(status_code=202)
 
     try:
-        # Handlers are synchronous (DB work and bounded provider HTTP calls).
-        # Preserve request context while leaving the ASGI event loop available.
-        payload = await run_in_threadpool(
-            _dispatch, method, params, request_id, ToolContext(connector=connector, db=db),
-            admin=request.url.path == "/admin-mcp",
-        )
+        ctx = ToolContext(connector=connector, db=db)
+        name = params.get("name")
+        tool = REGISTRY.get(name) if method == "tools/call" and isinstance(name, str) else None
+        if tool and tool.blocking_io:
+            # Provider timeouts must leave the ASGI event loop available.
+            # Authorization and audit still happen inside _dispatch.
+            payload = await run_in_threadpool(
+                _dispatch, method, params, request_id, ctx, admin=request.url.path == "/admin-mcp",
+            )
+        else:
+            payload = _dispatch(method, params, request_id, ctx, admin=request.url.path == "/admin-mcp")
     except Exception:
         logger.exception("MCP method %s failed", method)
         payload = _error(request_id, INTERNAL_ERROR, "The server could not complete that request")

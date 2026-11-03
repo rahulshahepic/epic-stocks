@@ -274,7 +274,13 @@ jobs:
         run: cd frontend && time npx playwright test
       - name: Dump backend logs on failure
         if: failure()
-        run: docker compose -f docker-compose.e2e.yml logs e2e-app
+        run: |
+          docker compose -f docker-compose.e2e.yml logs --tail 200 e2e-app e2e-db
+          # This database contains synthetic E2E accounts only. Capture blocking
+          # queries before teardown so login timeouts do not disappear without evidence.
+          timeout 15 docker compose -f docker-compose.e2e.yml exec -T e2e-db \
+            psql -U postgres -d vesting_e2e -c \
+            "SELECT pid, state, wait_event_type, wait_event, pg_blocking_pids(pid) AS blocked_by, left(query, 200) AS query FROM pg_stat_activity WHERE datname = current_database();" || true
       - name: Teardown
         if: always()
         run: docker compose -f docker-compose.e2e.yml down -v

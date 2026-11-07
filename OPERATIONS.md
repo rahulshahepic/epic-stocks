@@ -443,7 +443,13 @@ The script uses only the Python standard library plus the `age` binary, which th
 
 ### One-time setup (per environment)
 
-1. **Make the backup key pair on your own computer, not the server:** `age-keygen -o epic-stocks-backup-key.txt` (`brew install age` / `apt install age`). It prints the public key (`age1…`). Store the file in your password manager **and** one offline place. Without it the backups are unreadable — by design.
+Everything below works from a phone browser. GitHub's mobile app cannot edit environment secrets, so use github.com in the browser (request the desktop site if a settings page is missing).
+
+1. **Make the backup key pair — never on the server.** On a computer: `age-keygen -o epic-stocks-backup-key.txt` (`brew install age` / `apt install age`). **Phone only:** on github.com open this repo → **Code** → **Codespaces** → **Create codespace**, then in its terminal run
+   ```bash
+   sudo apt-get update -q && sudo apt-get install -y -q age && age-keygen
+   ```
+   It prints three lines: a comment, the private key (`AGE-SECRET-KEY-1…`) and `Public key: age1…`. Copy **all three** into a password-manager note named *Epic Stocks backup key*, then delete the codespace (**Codespaces** → … → **Delete**) so no copy is left behind. Without the private key the backups are unreadable — by design. One key serves both environments.
 2. **Turn on R2:** Cloudflare dashboard → **R2 Object Storage** → enable (Cloudflare asks for a payment method even for the free tier; nightly dumps of this app stay well inside the 10 GB free allowance).
 3. **Create the buckets:** `epic-stocks-backup-staging` and `epic-stocks-backup-production`, private, no public access.
 4. **Create one API token per bucket:** R2 → **Manage API tokens** → *Create Account API token* → **Object Read & Write**, applied to *that one bucket only*. Copy the Access Key ID and Secret Access Key. Per-bucket tokens mean staging can never touch production backups.
@@ -459,11 +465,29 @@ The script uses only the Python standard library plus the `age` binary, which th
    | `BACKUP_RETENTION_DAYS` | Variable | Optional, default 30 |
 
 6. **Deploy.** Until one backup succeeds, every deploy queues an immediate run. Within a few minutes `admin_host_diagnostics` should show `backup_succeeded`, and the bucket should hold one run.
-7. **Do a test restore** (below) into a scratch database once per environment, and again after any Postgres major-version upgrade.
+7. **Do a test restore** once per environment, and again after any Postgres major-version upgrade. From a phone, use [Test restore in a Codespace](#test-restore-in-a-codespace-phone-friendly) below; it never touches the server.
+
+### Test restore in a Codespace (phone-friendly)
+
+Proves a backup decrypts and loads, without touching the server. Create a codespace on this repo (as in setup step 1) and run in its terminal:
+
+```bash
+sudo apt-get update -q && sudo apt-get install -y -q age
+docker run -d --name pg -e POSTGRES_PASSWORD=scratch postgres:16-alpine && sleep 5
+export BACKUP_R2_ACCOUNT_ID=… BACKUP_BUCKET=epic-stocks-backup-staging \
+       BACKUP_ACCESS_KEY_ID=… BACKUP_SECRET_ACCESS_KEY=…
+python3 ops/backup_database.py fetch --environment staging --dest restore
+cat > key.txt   # paste the three lines from the password manager, then press Ctrl-D
+age -d -i key.txt restore/database.dump.age | docker exec -i pg pg_restore -U postgres -d postgres --no-owner
+docker exec pg psql -U postgres -c "select count(*) from users;"
+rm key.txt
+```
+
+The count should match the number of users in **Admin**. (Rows' financial columns stay encrypted — this proves the backup is complete, not that the KEK matches; a real restore checks that.) Delete the codespace afterwards; it held the private key.
 
 ### Restore procedure
 
-Run from your own computer, so the private key never goes to the server. The script needs only Python 3 and the same storage variables:
+This needs SSH to the server, so it is a computer task (or a codespace with the deploy SSH key). Run it from there, so the private key never goes to the server. The script needs only Python 3 and the same storage variables:
 
 ```bash
 export BACKUP_R2_ACCOUNT_ID=… BACKUP_BUCKET=epic-stocks-backup-production \

@@ -18,18 +18,18 @@ test.describe('Getting started', () => {
 
   test('add a grant, then move one vesting date for a leave', async ({ page }) => {
     await page.getByRole('link', { name: 'Add a grant' }).click()
-    await page.getByText('+ Bonus').click()
-    await page.getByLabel('Year').fill('2024')
-    await page.getByLabel('Shares').fill('1001')
-    await page.getByLabel('First vesting date').fill('2025-03-01')
-    await page.getByLabel('Number of yearly parts').fill('4')
+    await page.getByRole('button', { name: '+ Bonus' }).click()
+    await page.getByLabel('Year', { exact: true }).fill('2024')
+    await page.getByLabel('Shares', { exact: true }).fill('1001')
+    await page.getByLabel('Vest Start').fill('2025-03-01')
+    await page.getByLabel('Vest Periods').fill('4')
     await page.getByLabel('Exercise Date').fill('2024-12-31')
     await page.getByRole('button', { name: /^Save$/ }).click()
     // Each part rounded down, the rest on the last date.
     await expect(page.getByText(/250 on 2025-03-01, 250 on 2026-03-01, 250 on 2027-03-01, 251 on 2028-03-01/).first()).toBeVisible()
 
     await page.getByRole('button', { name: 'Edit' }).first().click()
-    await page.getByLabel('Vesting date 2').fill('2026-09-15')
+    await page.getByLabel('Vesting date 2', { exact: true }).fill('2026-09-15')
     await page.getByRole('button', { name: /^Save$/ }).click()
     await expect(page.getByText(/250 on 2026-09-15/).first()).toBeVisible()
 

@@ -60,7 +60,7 @@ describe('editing a grant', () => {
 
   it('sends a moved date as the schedule', async () => {
     await openEdit()
-    const second = screen.getByLabelText('Vesting date 2')
+    const second = screen.getByLabelText('Vesting date 2', { exact: true })
     await userEvent.clear(second)
     await userEvent.type(second, '2024-09-15')
     await userEvent.click(screen.getByRole('button', { name: /^Save$/ }))

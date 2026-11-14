@@ -472,8 +472,8 @@ export default function Grants() {
               onChange={vesting => setForm(f => ({ ...f, vesting }))} />
           ) : (
             <>
-              <Field label="First vesting date" type="date" value={form.vest_start} onChange={v => setForm(f => ({ ...f, vest_start: v }))} />
-              <Field label="Number of yearly parts" type="number" value={form.periods} onChange={v => setForm(f => ({ ...f, periods: +v }))} />
+              <Field label="Vest Start" type="date" value={form.vest_start} onChange={v => setForm(f => ({ ...f, vest_start: v }))} />
+              <Field label="Vest Periods" type="number" value={form.periods} onChange={v => setForm(f => ({ ...f, periods: +v }))} />
             </>
           )}
           <Field label="Exercise Date" type="date" value={form.exercise_date} onChange={v => setForm(f => ({ ...f, exercise_date: v }))} />

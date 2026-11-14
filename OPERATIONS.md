@@ -329,12 +329,6 @@ These are the only values that need to be set in GitHub. Cryptographic secrets (
 | `ACME_EMAIL` | Variable | Email for Let's Encrypt certificate notifications |
 | `DIAGNOSTICS_CF_ZONE_ID` | Variable | Optional Cloudflare zone ID for this environment's WAF summary |
 | `DIAGNOSTICS_CF_API_TOKEN` | Secret | Optional Analytics read token limited to the zone, never an edit/global token |
-| `BACKUP_R2_ACCOUNT_ID` | Variable | Optional Cloudflare account ID for off-site backups (§6) |
-| `BACKUP_BUCKET` | Variable | Optional R2 bucket for this environment's backups |
-| `BACKUP_AGE_RECIPIENT` | Variable | Optional `age1…` public key backups are encrypted to; the private key stays offline |
-| `BACKUP_RETENTION_DAYS` | Variable | Optional, default 30; the newest 7 runs are always kept |
-| `BACKUP_ACCESS_KEY_ID` | Secret | Optional R2 Object Read & Write key scoped to that one bucket |
-| `BACKUP_SECRET_ACCESS_KEY` | Secret | Its secret |
 | `VPS_HOST` | Variable | VPS hostname or IP |
 | `DOMAIN` | Variable | Your domain name |
 | `TRUSTED_PROXY_IPS` | Variable | Cloudflare IP ranges for real-IP forwarding |
@@ -418,111 +412,34 @@ Alert within **5 minutes** of downtime. All three options above achieve this on 
 
 ---
 
-## 6. Backups
+## 6. Backups (Infrastructure — not in this repo)
 
-Two layers, for two different failures:
+### Strategy: Hetzner server snapshots
 
-| Layer | Protects against | Where |
-|---|---|---|
-| **Nightly encrypted off-site backup** (`ops/backup_database.py`) | Losing the server, the disk, or the Hetzner account | Cloudflare R2, one private bucket per environment |
-| Hetzner server snapshots (optional) | Fast whole-machine rollback | Hetzner, same account as the server |
+The reference deployment uses **Hetzner automated backups** (daily, 7-day retention). A snapshot captures the entire server — disk image, Docker volumes (`pg_data`, `caddy_data`), and the `/opt/epic-stocks/.secrets/` directory containing the server-generated cryptographic keys.
+
+This is the primary backup and key-recovery mechanism. Because the secrets files and the database live on the same server, a snapshot always contains them together and in a consistent state. Restoring a snapshot to a new Hetzner server and running the deploy is sufficient for full recovery.
 
 > **Application-level snapshots** are also created automatically before each Excel import (last 3 kept per user, restorable via the API). These are not a substitute for server backups.
 
-### How the off-site backup works
+### Steps
 
-The Deploy workflow runs `ops/install_backup.sh`, which installs `epic-stocks-backup.timer` (nightly at 03:17 UTC plus up to 20 minutes of jitter, catching up after downtime) and writes the storage settings to root-only `/etc/epic-stocks/backup.env`. Like diagnostics, it is best-effort: a failure warns and the app release continues. Each run:
-
-1. Streams `pg_dump -Fc` from the `db` container straight into [`age`](https://github.com/FiloSottile/age), encrypted to a **public** key. The server can create backups but cannot read them, and no plaintext touches disk.
-2. Encrypts a tar of `.secrets/` the same way, **excluding `key_encryption_key`**. The KEK lives in GitHub (`secrets.KEY_ENCRYPTION_KEY`), so the backup key alone cannot read encrypted columns. JWT, VAPID and unsubscribe secrets are included so a restore doesn't sign everyone out, break push subscriptions or invalidate email links.
-3. Uploads `<env>/<UTC stamp>/database.dump.age`, `secrets.tar.age`, then `manifest.json` (time, commit, sizes, SHA-256s). Each upload is checked by size; a run without its manifest is incomplete and is never restored from.
-4. Prunes runs older than `BACKUP_RETENTION_DAYS` (default 30), always keeping the newest 7 complete runs, so a timer that stopped for months cannot empty the bucket. Incomplete runs are removed after 2 days.
-5. Writes `/var/lib/epic-stocks-backup/status.json` (times, result and safe error summaries). Once the manifest is uploaded and checked, a retention cleanup failure leaves the backup successful and records `prune_error` separately (`pruned_runs` is `null` because cleanup may be partial). Cleanup is retried on the next backup. The diagnostics collector turns the backup result into the `backup` state in `admin_host_diagnostics`: `backup_succeeded`, `backup_failed`, `backup_overdue` (no success in 26 hours), `backup_unconfigured` or `backup_unavailable`, with `backup_recovered` events. A missing backup is never reported as healthy.
-
-Encryption failures stop and reap the local dump/encryption processes and record a failed attempt. `age` error output goes to the service journal for both the database and secrets archive; inspect it with `journalctl -u epic-stocks-backup.service`. Retention failures also warn in that journal; the collector's `backup` state continues to report whether the backup itself succeeded.
-
-The script uses only the Python standard library plus the `age` binary, which the installer adds with `apt-get` if missing.
-
-### One-time setup (per environment)
-
-Everything below works from a phone browser. GitHub's mobile app cannot edit environment secrets, so use github.com in the browser (request the desktop site if a settings page is missing).
-
-1. **Make the backup key pair — never on the server.** On a computer: `age-keygen -o epic-stocks-backup-key.txt` (`brew install age` / `apt install age`). **Phone only:** on github.com open this repo → **Code** → **Codespaces** → **Create codespace**, then in its terminal run
-   ```bash
-   sudo apt-get update -q && sudo apt-get install -y -q age && age-keygen
-   ```
-   It prints three lines: a comment, the private key (`AGE-SECRET-KEY-1…`) and `Public key: age1…`. Copy **all three** into a password-manager note named *Epic Stocks backup key*, then delete the codespace (**Codespaces** → … → **Delete**) so no copy is left behind. Without the private key the backups are unreadable — by design. One key serves both environments.
-2. **Turn on R2:** Cloudflare dashboard → **R2 Object Storage** → enable (Cloudflare asks for a payment method even for the free tier; nightly dumps of this app stay well inside the 10 GB free allowance).
-3. **Create the buckets:** `epic-stocks-backup-staging` and `epic-stocks-backup-production`, private, no public access.
-4. **Create one API token per bucket:** R2 → **Manage API tokens** → *Create Account API token* → **Object Read & Write**, applied to *that one bucket only*. Copy the Access Key ID and Secret Access Key. Per-bucket tokens mean staging can never touch production backups.
-5. **Add to the GitHub environment** (Settings → Environments → staging, then production):
-
-   | Name | Kind | Value |
-   |---|---|---|
-   | `BACKUP_R2_ACCOUNT_ID` | Variable | Your Cloudflare account ID (R2 overview page) |
-   | `BACKUP_BUCKET` | Variable | `epic-stocks-backup-staging` / `-production` |
-   | `BACKUP_AGE_RECIPIENT` | Variable | The `age1…` public key from step 1 |
-   | `BACKUP_ACCESS_KEY_ID` | Secret | From step 4 |
-   | `BACKUP_SECRET_ACCESS_KEY` | Secret | From step 4 |
-   | `BACKUP_RETENTION_DAYS` | Variable | Optional, default 30 |
-
-6. **Deploy.** Until one backup succeeds, every deploy queues an immediate run. Within a few minutes `admin_host_diagnostics` should show `backup_succeeded`, and the bucket should hold one run.
-7. **Do a test restore** once per environment, and again after any Postgres major-version upgrade. From a phone, use [Test restore in a Codespace](#test-restore-in-a-codespace-phone-friendly) below; it never touches the server.
-
-### Test restore in a Codespace (phone-friendly)
-
-Proves a backup decrypts and loads, without touching the server. Create a codespace on this repo (as in setup step 1) and run in its terminal:
-
-```bash
-sudo apt-get update -q && sudo apt-get install -y -q age
-docker run -d --name pg -e POSTGRES_PASSWORD=scratch postgres:16-alpine && sleep 5
-export BACKUP_R2_ACCOUNT_ID=… BACKUP_BUCKET=epic-stocks-backup-staging \
-       BACKUP_ACCESS_KEY_ID=… BACKUP_SECRET_ACCESS_KEY=…
-python3 ops/backup_database.py fetch --environment staging --dest restore
-cat > key.txt   # paste the three lines from the password manager, then press Ctrl-D
-age -d -i key.txt restore/database.dump.age | docker exec -i pg pg_restore -U postgres -d postgres --no-owner
-docker exec pg psql -U postgres -c "select count(*) from users;"
-rm key.txt
-```
-
-The count should match the number of users in **Admin**. (Rows' financial columns stay encrypted — this proves the backup is complete, not that the KEK matches; a real restore checks that.) Delete the codespace afterwards; it held the private key.
+1. In the Hetzner Cloud Console, select the server → **Backups** → enable automatic backups
+2. Hetzner retains the last 7 daily backups automatically (billed at ~20% of server cost)
+3. Before any major change (schema migrations, infrastructure changes), take a **manual snapshot** from the console as an additional restore point
 
 ### Restore procedure
 
-This needs SSH to the server, so it is a computer task (or a codespace with the deploy SSH key). Run it from there, so the private key never goes to the server. The script needs only Python 3 and the same storage variables:
-
-```bash
-export BACKUP_R2_ACCOUNT_ID=… BACKUP_BUCKET=epic-stocks-backup-production \
-       BACKUP_ACCESS_KEY_ID=… BACKUP_SECRET_ACCESS_KEY=…
-python3 ops/backup_database.py list  --environment production
-python3 ops/backup_database.py fetch --environment production --run latest --dest ./restore
-```
-
-`fetch` checks both files against the manifest's SHA-256s. Then:
-
-1. **New or rebuilt server:** run the Deploy workflow once so the server has the checkout, `.env`, containers and an empty, migrated database. Then stop the app: `ssh root@HOST 'cd /opt/epic-stocks && docker compose stop app'`.
-2. **Restore the secrets** (skip if the server's own `.secrets/` survived):
-   `age -d -i epic-stocks-backup-key.txt restore/secrets.tar.age | ssh root@HOST 'tar -x -C /opt/epic-stocks/.secrets && chmod 600 /opt/epic-stocks/.secrets/*'`
-3. **Restore the database**, replacing what is there:
-   `age -d -i epic-stocks-backup-key.txt restore/database.dump.age | ssh root@HOST 'cd /opt/epic-stocks && docker compose exec -T db pg_restore -U postgres -d vesting --clean --if-exists --no-owner --single-transaction'`
-4. **Re-run the Deploy workflow.** It keeps the restored `.secrets/` files, rewrites `.env` from them, runs `alembic upgrade head` (in case the backup predates a migration) and starts the app. The KEK comes from GitHub as always.
-5. **Verify:** `curl https://<domain>/api/health`, sign in, and check that a dashboard shows the expected figures (decryption works only if the KEK matches).
-
-For a **scratch test restore**, restore into a separate database instead (`createdb -U postgres restore_test` inside the `db` container, then `-d restore_test` in step 3) and compare `select count(*) from users;` with production. Drop it afterwards.
-
-### Hetzner snapshots (optional)
-
-Hetzner automated backups (server → **Backups**, ~20% of server cost, 7 daily) restore the whole machine fastest, but sit in the same account as the server. Take a manual snapshot before risky infrastructure changes.
+1. In Hetzner Console → **Snapshots / Backups** → select the backup → **Rebuild** (creates new server from snapshot) or restore in place
+2. SSH in and run the deploy: `git push origin main` triggers CI which re-deploys from the now-running server state
+3. Verify: `curl https://<domain>/api/health`
 
 ### Reference deployment status
 
 | Step | Status |
 |------|--------|
-| Off-site backup code deployed | ⚠️ Pending (this change) |
-| R2 enabled, buckets and per-bucket tokens created | ⚠️ Pending |
-| Backup key generated and stored offline | ⚠️ Pending |
-| Staging test restore | ⚠️ Pending |
-| Production test restore | ⚠️ Pending |
+| Hetzner automated backups enabled | ⚠️ Pending |
+| Pre-migration manual snapshot habit | ⚠️ Pending |
 
 ---
 

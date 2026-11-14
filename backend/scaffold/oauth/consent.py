@@ -9,19 +9,22 @@ The stylesheet is served from /oauth/consent.css rather than inlined in a
 <style> block: the deployment's Content-Security-Policy is `style-src 'self'`,
 which blocks an inline style outright, and the page rendered as unstyled
 browser defaults on staging because of it. Adding a hash to the CSP would work
-until the next time this file is edited. There is no script on the page.
+until the next time this file is edited. The selection controls use a same-origin external script for the same reason.
 
 Colours are the app's own tokens rather than a generic palette, so the screen
 reads as part of the product a user just signed in to.
 """
 import html
 
+from . import scopes as scope_defs
+
 
 def _esc(value: str) -> str:
     return html.escape(value or "", quote=True)
 
 
-STYLESHEET_PATH = "/oauth/consent.css"
+STYLESHEET_PATH = "/oauth/consent.css?v=2"
+SCRIPT_PATH = "/oauth/consent.js"
 
 # The app's own tokens, so this does not look like a different product.
 STYLESHEET = """
@@ -46,7 +49,7 @@ STYLESHEET = """
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: var(--base); color: var(--text);
-  display: flex; align-items: center; justify-content: center;
+  display: flex; align-items: safe center; justify-content: center;
   min-height: 100vh; padding: 1rem; line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
@@ -59,8 +62,22 @@ h1 { font-size: 1.0625rem; font-weight: 600; line-height: 1.35; margin-bottom: .
 .origin { font-size: .8125rem; color: var(--muted); margin-bottom: 1.25rem; word-break: break-all; }
 .origin code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  background: var(--raised); border-radius: .25rem; padding: .0625rem .25rem;
+  background: var(--raised); color: var(--text-2); border-radius: .25rem; padding: .0625rem .25rem;
 }
+[hidden] { display: none !important; }
+fieldset { min-width: 0; border: 1px solid var(--border-strong); border-radius: .625rem;
+  padding: .25rem .75rem .5rem; margin: 0 0 1rem; }
+legend { font-size: .9375rem; font-weight: 600; padding: 0 .25rem; }
+.quick { display: flex; gap: .5rem; margin-bottom: .25rem; }
+.quick button { min-height: 44px; padding: .375rem .5rem; font-size: .8125rem;
+  color: var(--text); background: var(--raised); border-color: var(--border-strong); }
+.permission { display: flex; gap: .625rem; align-items: flex-start; min-height: 44px;
+  padding: .625rem 0; font-size: .875rem; color: var(--text-2); cursor: pointer; }
+.permission input { flex: none; width: 1.125rem; height: 1.125rem; margin-top: .125rem;
+  accent-color: var(--brand); }
+.permission small { display: block; color: var(--text-2); margin-top: .125rem; }
+.help { font-size: .8125rem; color: var(--text-2); margin-bottom: 1rem; }
+:focus-visible { outline: 3px solid var(--brand); outline-offset: 3px; }
 ul { list-style: none; margin: 0 0 1rem; }
 li {
   display: flex; gap: .625rem; padding: .4375rem 0; font-size: .875rem;
@@ -82,8 +99,8 @@ button {
   padding: .625rem 1rem; border-radius: .625rem; cursor: pointer;
   border: 1px solid transparent; transition: background-color .12s ease;
 }
-.allow { background: var(--brand); color: #fff; }
-.allow:hover { background: var(--brand-hover); }
+.allow { background: #C41230; color: #fff; }
+.allow:hover { background: #A80F28; }
 .deny { background: var(--surface); color: var(--text-2); border-color: var(--border-strong); }
 .deny:hover { background: var(--raised); }
 .err { font-size: .875rem; color: var(--text-2); }
@@ -95,79 +112,105 @@ button {
 .or { margin-bottom: .75rem; color: var(--muted); font-size: .8125rem; }
 """
 
-_CHECK = (
-    '<svg width="15" height="15" viewBox="0 0 20 20" fill="var(--ok)" aria-hidden="true">'
-    '<path fill-rule="evenodd" d="M16.7 5.3a1 1 0 010 1.4l-7.5 7.5a1 1 0 01-1.4 0L3.3 9.7a1 1 0 '
-    '011.4-1.4l3.8 3.8 6.8-6.8a1 1 0 011.4 0z" clip-rule="evenodd"/></svg>'
-)
-
-
 def _page(title: str, body: str) -> str:
     return (
         "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">"
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
         f"<title>{_esc(title)}</title>"
-        f"<link rel=\"stylesheet\" href=\"{STYLESHEET_PATH}\"></head>"
+        f"<link rel=\"stylesheet\" href=\"{STYLESHEET_PATH}\">"
+        f"<script src=\"{SCRIPT_PATH}\" defer></script></head>"
         f"<body><div class=\"card\">{body}</div></body></html>"
     )
 
 
 def render_consent(*, client_name: str, redirect_origin: str, account_email: str,
-                   scope_labels: list[str], request_token: str, csrf: str,
-                   read_only: bool = True, writes_directly: bool = False,
-                   equity_write: bool = False, action: str = "/oauth/authorize",
+                   requested_scopes: list[str], request_token: str, csrf: str,
+                   admin: bool = False, action: str = "/oauth/authorize",
                    app_name: str = "Epic Stocks") -> str:
-    items = "".join(f"<li>{_CHECK}<span>{_esc(label)}</span></li>" for label in scope_labels)
-    # The claim has to follow the scopes actually being granted. This is the one
-    # sentence on this screen a user is entitled to rely on, so there are three
-    # of them and not two: "read-only", "it can only prepare something you
-    # accept", and "it can change these things as soon as you ask it to" are
-    # three different promises.
-    if read_only:
-        note = (
-            "It will not be able to change anything — this connection is "
-            "read-only. You can disconnect it at any time in Settings."
+    groups = (("Diagnostics", scope_defs.ADMIN_SCOPES),) if admin else (
+        ("Equity", (scope_defs.EQUITY_READ, scope_defs.IMPORT_PROPOSE, scope_defs.EQUITY_WRITE)),
+        ("Compensation", (scope_defs.COMP_READ, scope_defs.COMP_WRITE)),
+    )
+    sections = []
+    for title, scopes in groups:
+        choices = "".join(
+            f'<label class="permission"><input type="checkbox" name="selected_scope" '
+            f'value="{_esc(scope)}"' + (' checked' if scope in requested_scopes else '') + '>'
+            f'<span>{_esc(scope_defs.SCOPE_LABELS[scope])}'
+            + ('<small>Requested by the app</small>' if scope in requested_scopes else '')
+            + '</span></label>'
+            for scope in scopes
         )
-    elif writes_directly and equity_write:
-        # The warning above the list already says what it can change.
-        note = "You can disconnect it at any time in Settings."
-    elif writes_directly:
-        note = (
-            "It will be able to change the things listed above as soon as you "
-            "ask it to, without a further prompt. Your grants, prices, loans "
-            "and sales cannot be changed by an assistant with these permissions. "
-            "You can disconnect it at any time in Settings."
-        )
-    else:
-        note = (
-            "It cannot change your data on its own. Anything it prepares waits "
-            "for you to review and accept it in the app. You can disconnect it "
-            "at any time in Settings."
+        sections.append(
+            f'<fieldset><legend>{title}</legend><div class="quick" hidden>'
+            f'<button type="button" data-select="all" aria-label="Select all {title.lower()} permissions">Select all</button>'
+            f'<button type="button" data-select="none" aria-label="Clear all {title.lower()} permissions">Clear all</button>'
+            '</div>' + ('<p class="help">Preparing imports and editing equity also require equity read access.</p>' if title == 'Equity' else '')
+            + f'{choices}</fieldset>'
         )
     body = (
-        f"<h1>{_esc(client_name)} wants to connect to {_esc(app_name)}</h1>"
-        f"<p class=\"origin\">It will return you to <code>{_esc(redirect_origin)}</code></p>"
-        + ("<p class=\"edits\"><strong>It can edit your data.</strong> When you ask "
-           "it to, it can add, change or remove your "
-           + ("grants, loans, prices, sales, " if equity_write else "")
-           + "salary and retirement balances straight away, without asking again "
-           "here. Tick <em>Read only</em> below if you only want it to look.</p>"
-           if writes_directly else "")
-        + f"<ul>{items}</ul>"
-        f"<p class=\"note\">{note}</p>"
-        f"<p class=\"who\">Signed in as {_esc(account_email)}</p>"
-        f"<form method=\"post\" action=\"{_esc(action)}\">"
-        f"<input type=\"hidden\" name=\"request\" value=\"{_esc(request_token)}\">"
-        f"<input type=\"hidden\" name=\"csrf\" value=\"{_esc(csrf)}\">"
-        + ("<label class=\"opt\"><input type=\"checkbox\" name=\"read_only\" "
-           "value=\"1\"><span><strong>Read only</strong> — don't let it change or "
-           "prepare anything</span></label>" if not read_only else "")
-        + "<div class=\"actions\">"
-        "<button class=\"deny\" type=\"submit\" name=\"decision\" value=\"deny\">Cancel</button>"
-        "<button class=\"allow\" type=\"submit\" name=\"decision\" value=\"allow\">Connect</button>"
-        "</div></form>"
+        f'<h1>{_esc(client_name)} wants to connect to {_esc(app_name)}</h1>'
+        f'<p class="origin">It will return you to <code>{_esc(redirect_origin)}</code></p>'
+        '<p class="help">Choose what this connection can do. Requested permissions start checked; '
+        'you can add or remove any permission below.</p>'
+        f'<form method="post" action="{_esc(action)}">'
+        f'<input type="hidden" name="request" value="{_esc(request_token)}">'
+        f'<input type="hidden" name="csrf" value="{_esc(csrf)}">'
+        '<input type="hidden" name="permission_selection" value="1">'
+        + ''.join(sections)
+        + '<p class="note" id="permission-summary" role="status" aria-live="polite">'
+        'Only checked permissions will be granted. Editing permissions let the app change those '
+        'records when you ask. You can disconnect at any time in Settings.</p>'
+        f'<p class="who">Signed in as {_esc(account_email)}</p>'
+        '<div class="actions">'
+        '<button class="deny" type="submit" name="decision" value="deny" formnovalidate>Cancel</button>'
+        '<button class="allow" type="submit" name="decision" value="allow">Connect</button>'
+        '</div></form>'
     )
     return _page(f"Connect {client_name}", body)
+
+
+SCRIPT = """
+'use strict';
+const form = document.querySelector('form');
+if (form) {
+  const choices = [...form.querySelectorAll('input[name="selected_scope"]')];
+  const summary = document.getElementById('permission-summary');
+  function update() {
+    const selected = new Set(choices.filter(input => input.checked).map(input => input.value));
+    for (const input of choices) input.setCustomValidity('');
+    if (!selected.size) choices[0].setCustomValidity('Select at least one permission, or cancel.');
+    const equityRead = choices.find(input => input.value === 'equity:read');
+    if ((selected.has('equity:write') || selected.has('import:propose')) && !selected.has('equity:read')) {
+      equityRead.setCustomValidity('To prepare imports or edit equity, also select Read your equity.');
+    }
+    if (selected.has('equity:write') || selected.has('comp:write')) {
+      const records = [];
+      if (selected.has('equity:write')) records.push('grants, prices, loans and sales');
+      if (selected.has('comp:write')) records.push('salary, bonus history and retirement balances');
+      summary.textContent = 'This selection lets the app edit your ' + records.join('; and ') +
+        ' when you ask, without another confirmation here. You can disconnect at any time in Settings.';
+    } else if (selected.has('import:propose')) {
+      summary.textContent = 'This selection lets the app prepare imports. Your records change only after you review and accept them. You can disconnect at any time in Settings.';
+    } else if (selected.size) {
+      summary.textContent = 'This selection is read-only. It cannot change your records or prepare imports. You can disconnect at any time in Settings.';
+    } else {
+      summary.textContent = 'Select at least one permission, or cancel.';
+    }
+  }
+  for (const controls of form.querySelectorAll('.quick')) controls.hidden = false;
+  for (const button of form.querySelectorAll('[data-select]')) {
+    button.addEventListener('click', () => {
+      for (const input of button.closest('fieldset').querySelectorAll('input[name="selected_scope"]')) {
+        input.checked = button.dataset.select === 'all';
+      }
+      update();
+    });
+  }
+  form.addEventListener('change', update);
+  update();
+}
+"""
 
 
 def render_error(title: str, message: str) -> str:

@@ -209,3 +209,35 @@ def test_admin_tool_bounds_reject_invalid_arguments(client):
                 "name": name, "arguments": args,
             })
             assert result["isError"] is True
+
+
+def test_admin_permission_picker_never_offers_or_grants_account_scopes(client, db_session):
+    from scaffold.oauth.models import OAuthAuthCode
+
+    with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@example.com"}):
+        register_user(client, "admin@example.com")
+        reg = client.post("/admin-oauth/register", json={"redirect_uris": [
+            "https://chatgpt.com/connector_platform_oauth_redirect",
+        ]}).json()
+        _, challenge = pkce_pair()
+        page = client.get("/admin-oauth/authorize", params={
+            "response_type": "code", "client_id": reg["client_id"],
+            "code_challenge": challenge, "code_challenge_method": "S256",
+        }).text
+        assert 'value="admin:read" checked>' in page
+        assert "equity:read" not in page and "comp:read" not in page
+        data = {
+            "request": page.split('name="request" value="')[1].split('"')[0],
+            "csrf": page.split('name="csrf" value="')[1].split('"')[0],
+            "decision": "allow", "permission_selection": "1",
+        }
+        refused = client.post("/admin-oauth/authorize", data={
+            **data, "selected_scope": ["admin:read", "equity:write"],
+        }, follow_redirects=False)
+        assert refused.status_code == 400
+        assert db_session.query(OAuthAuthCode).count() == 0
+        accepted = client.post("/admin-oauth/authorize", data={
+            **data, "selected_scope": ["admin:read"],
+        }, follow_redirects=False)
+        code_from(accepted)
+        assert db_session.query(OAuthAuthCode).one().scope == "admin:read"

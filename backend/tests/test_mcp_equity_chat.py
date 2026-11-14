@@ -284,3 +284,11 @@ def test_editing_a_loan_leaves_a_user_owned_payoff_sale_alone(assistant, client,
     assistant.call("save_equity", kind="loan", id=loan["id"],
                    values={"version": loan["version"], "amount": 3000})
     assert [s["shares"] for s in client.get("/api/sales").json()] == [claimed]
+
+
+def test_single_grant_addition_is_routed_to_save_equity_not_import(assistant):
+    guide = assistant.call("get_import_guide")
+    assert "save_equity" in guide["adding_one_grant"]
+    assert "Do NOT use stage_import" in guide["adding_one_grant"]
+    assert guide["start_here"].lstrip().startswith("0.")
+    assert "save_equity" in guide["how_to_submit"].split("stage_import")[0]

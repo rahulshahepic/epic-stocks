@@ -40,7 +40,7 @@ jobs:
 
             # ── Server-side secrets (generated once, persisted on disk) ──────
             # All secrets live in .secrets/.  None are stored in GitHub.
-            # Hetzner server snapshots are the backup strategy.
+            # Backed up nightly (except the KEK) by ops/backup_database.py; see OPERATIONS.md §6.
             SECRETS_DIR=${{ vars.DEPLOY_PATH }}/.secrets
             mkdir -p "$SECRETS_DIR" && chmod 700 "$SECRETS_DIR"
 
@@ -201,6 +201,18 @@ jobs:
             # Read the same resolved APP_ENV written above, including its override.
             if ! bash ops/install_diagnostics.sh "$(sed -n 's/^APP_ENV=//p' .env)"; then
               echo "::warning::Host diagnostics setup failed; deployment will continue. Check collector freshness after deployment."
+            fi
+
+            # Off-site backup failure must not prevent the app from deploying either;
+            # the collector reports a missing, failed or overdue backup to diagnostics.
+            if ! BACKUP_R2_ACCOUNT_ID='${{ vars.BACKUP_R2_ACCOUNT_ID }}' \
+                 BACKUP_BUCKET='${{ vars.BACKUP_BUCKET }}' \
+                 BACKUP_ACCESS_KEY_ID='${{ secrets.BACKUP_ACCESS_KEY_ID }}' \
+                 BACKUP_SECRET_ACCESS_KEY='${{ secrets.BACKUP_SECRET_ACCESS_KEY }}' \
+                 BACKUP_AGE_RECIPIENT='${{ vars.BACKUP_AGE_RECIPIENT }}' \
+                 BACKUP_RETENTION_DAYS='${{ vars.BACKUP_RETENTION_DAYS }}' \
+                 bash ops/install_backup.sh "$(sed -n 's/^APP_ENV=//p' .env)" "${{ vars.DEPLOY_PATH }}"; then
+              echo "::warning::Off-site backup setup failed; deployment will continue. Check backup state in Admin diagnostics."
             fi
 
             # ── Signal maintenance before taking the app down ────────────────

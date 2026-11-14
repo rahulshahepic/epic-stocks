@@ -1,0 +1,23 @@
+[Unit]
+Description=Encrypted off-site Epic Stocks database backup
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/epic-stocks/backup.env
+Environment=HOME=/var/lib/epic-stocks-backup DOCKER_CONFIG=/var/lib/epic-stocks-backup/docker
+ExecStart=/usr/bin/python3 /usr/local/lib/epic-stocks/backup_database.py run --environment @APP_ENV@ --deploy-path @DEPLOY_PATH@
+StateDirectory=epic-stocks-backup
+StateDirectoryMode=0755
+UMask=0077
+TimeoutStartSec=1h
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

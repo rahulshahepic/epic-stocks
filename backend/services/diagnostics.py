@@ -26,6 +26,12 @@ CODES = {
     "collector_gap": ("host", "warning"),
     "disk_pressure": ("host", "warning"),
     "disk_recovered": ("host", "info"),
+    "backup_succeeded": ("backup", "info"),
+    "backup_recovered": ("backup", "info"),
+    "backup_failed": ("backup", "error"),
+    "backup_overdue": ("backup", "error"),
+    "backup_unconfigured": ("backup", "warning"),
+    "backup_unavailable": ("backup", "warning"),
     **{f"{job}_{state}": ("scheduler", "error" if state == "failed" else "info")
        for job in ("maintenance", "notifications", "admin_digest", "runner")
        for state in ("failed", "recovered")},
@@ -80,7 +86,7 @@ def host_snapshot(limit=20):
     now = datetime.now(timezone.utc)
     result = {**identity(), "source": "vps_collector", "state": "unavailable",
               "collected_at_utc": None, "records": [], "retention_hours": RETENTION_HOURS,
-              "coverage": "Container state transitions, scheduler service result and disk pressure; not raw logs"}
+              "coverage": "Container state transitions, scheduler service result, disk pressure and nightly off-site backup result; not raw logs"}
     try:
         with Path(os.getenv("DIAGNOSTICS_HOST_FILE", "/run/epic-stocks-diagnostics/host.json")).open("rb") as stream:
             raw = stream.read(MAX_BYTES + 1)

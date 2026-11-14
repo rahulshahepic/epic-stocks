@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import Optional
 
 import redis
+from services.vesting import core_grant
 
 logger = logging.getLogger(__name__)
 
@@ -105,13 +106,7 @@ def _do_recompute(user_id: int) -> None:
         if not grants_db and not prices_db:
             return
 
-        grants = [{
-            "year": g.year, "type": g.type, "shares": g.shares, "price": g.price,
-            "vest_start": datetime.combine(g.vest_start, datetime.min.time()),
-            "periods": g.periods,
-            "exercise_date": datetime.combine(g.exercise_date, datetime.min.time()),
-            "dp_shares": g.dp_shares or 0,
-        } for g in grants_db]
+        grants = [core_grant(g) for g in grants_db]
         prices = [{"date": datetime.combine(p.effective_date, datetime.min.time()), "price": p.price} for p in prices_db]
         loans = [{
             "grant_yr": ln.grant_year, "grant_type": ln.grant_type,

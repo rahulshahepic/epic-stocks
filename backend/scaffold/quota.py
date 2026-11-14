@@ -11,6 +11,7 @@ from sqlalchemy import func
 
 ROW_QUOTAS = {
     "Grant": 1_000,
+    "GrantVesting": 40_000,
     "Loan": 5_000,
     "Price": 2_000,
     "Sale": 10_000,

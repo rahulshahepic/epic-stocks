@@ -28,6 +28,7 @@ from scaffold.auth import get_current_user
 from scaffold.models import TaxSettings, TrialDailyStat, User
 from app.content_service import load_content
 from app.core import compute_timeline, generate_all_events
+from services.vesting import core_grant
 from app.date_utils import to_date as _to_date
 from app.epic_import import build_skeleton, derive_draft, is_blocked, to_wizard_payload, validate_draft
 from app.routers.epic_import import (_PDF_MAGIC, _parse_files, _read_upload, _summary,
@@ -84,13 +85,8 @@ def _default_tax_settings() -> TaxSettingsRead:
 def _source_data(payload: dict):
     """The wizard_payload shape, converted into the plain dicts core.py expects."""
     grants_payload = sorted(payload["grants"], key=lambda g: (g["year"], g["type"]))
-    grants = [{
-        "year": g["year"], "type": g["type"], "shares": g["shares"], "price": g["price"],
-        "vest_start": datetime.combine(_to_date(g["vest_start"]), datetime.min.time()),
-        "periods": g["periods"],
-        "exercise_date": datetime.combine(_to_date(g["exercise_date"]), datetime.min.time()),
-        "dp_shares": g.get("dp_shares") or 0,
-    } for g in grants_payload]
+    grants = [core_grant({**g, "vest_start": _to_date(g["vest_start"]),
+                          "exercise_date": _to_date(g["exercise_date"])}) for g in grants_payload]
 
     prices_payload = sorted(payload["prices"], key=lambda p: p["effective_date"])
     prices = [{"date": datetime.combine(_to_date(p["effective_date"]), datetime.min.time()),

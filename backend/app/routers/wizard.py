@@ -18,6 +18,7 @@ from schemas import (DownPaymentShares, InputModel, MAX_BULK_ITEMS, MAX_LABEL_LE
 from scaffold.quota import check_row_count, check_row_quota
 from app import event_cache
 from services.price_state import price_values
+from services.vesting import epic_split, set_schedule
 
 router = APIRouter(prefix="/api/wizard", tags=["wizard"])
 
@@ -609,13 +610,15 @@ def _insert_prices(prices: list[WizardPrice], user_id: int, db: Session) -> int:
 def _insert_grants(grants: list[WizardGrant], user_id: int, db: Session) -> int:
     count = 0
     for g in grants:
-        db.add(Grant(
+        grant = Grant(
             user_id=user_id,
             year=g.year, type=g.type, shares=g.shares, price=g.price,
             vest_start=_to_date(g.vest_start), periods=g.periods,
             exercise_date=_to_date(g.exercise_date),
             dp_shares=g.dp_shares, election_83b=g.election_83b,
-        ))
+        )
+        set_schedule(grant, epic_split(g.shares, _to_date(g.vest_start), g.periods))
+        db.add(grant)
         count += 1
     return count
 
@@ -728,21 +731,24 @@ def _merge(
     for wg in body.grants:
         existing = existing_grants.get((wg.year, wg.type))
         if existing:
+            if (existing.shares, existing.vest_start, existing.periods) != (
+                    wg.shares, _to_date(wg.vest_start), wg.periods):
+                set_schedule(existing, epic_split(wg.shares, _to_date(wg.vest_start), wg.periods))
             existing.shares = wg.shares
             existing.price = wg.price
-            existing.vest_start = _to_date(wg.vest_start)
-            existing.periods = wg.periods
             existing.exercise_date = _to_date(wg.exercise_date)
             existing.dp_shares = wg.dp_shares
             existing.election_83b = wg.election_83b
         else:
-            db.add(Grant(
+            grant = Grant(
                 user_id=user_id, year=wg.year, type=wg.type,
                 shares=wg.shares, price=wg.price,
                 vest_start=_to_date(wg.vest_start), periods=wg.periods,
                 exercise_date=_to_date(wg.exercise_date),
                 dp_shares=wg.dp_shares, election_83b=wg.election_83b,
-            ))
+            )
+            set_schedule(grant, epic_split(wg.shares, _to_date(wg.vest_start), wg.periods))
+            db.add(grant)
         grant_count += 1
 
     db.flush()

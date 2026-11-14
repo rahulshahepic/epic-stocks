@@ -2,7 +2,6 @@
 Core event generation — pure functions, no I/O dependencies.
 Operates on plain dicts. Drop into any app.
 """
-from dateutil.relativedelta import relativedelta
 
 
 _TYPE_ORDER = {
@@ -49,15 +48,10 @@ def generate_dp_events(grants):
 
 
 def generate_vesting_events(grants):
-    """One vesting event per grant x period."""
+    """One vesting event per stored vesting date of each grant."""
     events = []
     for i, g in enumerate(grants):
-        shares = g['shares']
-        periods = g['periods']
-        base = shares // periods
-        remainder = shares % periods
-        for p in range(periods):
-            vest_date = g['vest_start'] + relativedelta(years=p)
+        for vest_date, shares in g['vesting']:
             events.append({
                 'date': vest_date,
                 'grant_year': g['year'],
@@ -66,7 +60,7 @@ def generate_vesting_events(grants):
                 'granted_shares': None,
                 'grant_price': g['price'],
                 'exercise_price': None,
-                'vested_shares': base + (1 if p < remainder else 0),
+                'vested_shares': shares,
                 'price_increase': 0.0,
                 'source': {'type': 'grant', 'index': i},
             })

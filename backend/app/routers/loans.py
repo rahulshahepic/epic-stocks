@@ -13,6 +13,7 @@ from scaffold.quota import check_row_quota
 from scaffold.auth import get_current_user
 from app import event_cache
 from scaffold.crud import apply_update, get_owned, version_conflict
+from services.vesting import core_grant
 
 router = APIRouter(prefix="/api/loans", tags=["loans"])
 lp_router = APIRouter(prefix="/api/loan-payments", tags=["loan-payments"])
@@ -67,13 +68,7 @@ def _build_timeline_for_user(user: User, db: Session) -> list:
     prices_db = db.query(Price).filter(Price.user_id == user.id).order_by(Price.effective_date).all()
     loans_db = db.query(Loan).filter(Loan.user_id == user.id).order_by(Loan.due_date).all()
 
-    grants = [{
-        "year": g.year, "type": g.type, "shares": g.shares, "price": g.price,
-        "vest_start": datetime.combine(g.vest_start, datetime.min.time()),
-        "periods": g.periods,
-        "exercise_date": datetime.combine(g.exercise_date, datetime.min.time()),
-        "dp_shares": g.dp_shares or 0,
-    } for g in grants_db]
+    grants = [core_grant(g) for g in grants_db]
     prices = [{"date": datetime.combine(p.effective_date, datetime.min.time()), "price": p.price} for p in prices_db]
     loans = [{
         "grant_yr": ln.grant_year, "grant_type": ln.grant_type,

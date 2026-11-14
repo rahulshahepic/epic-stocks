@@ -99,6 +99,27 @@ class Grant(Base):
             self.__dict__["dp_shares"] = -self.dp_shares
 
     user: Mapped["User"] = relationship(back_populates="grants")
+    # The schedule itself. vest_start/periods above are its summary (first date,
+    # number of dates), kept in step by services.vesting.set_schedule and used only
+    # for display, templates and the workbook columns.
+    vesting: Mapped[list["GrantVesting"]] = relationship(
+        back_populates="grant", cascade="all, delete-orphan", lazy="selectin",
+        order_by="GrantVesting.date")
+
+
+class GrantVesting(Base):
+    """One vesting date of one grant. A leave of absence moves a row; nothing
+    recomputes it from a formula once it is written."""
+    __tablename__ = "grant_vestings"
+    __table_args__ = (UniqueConstraint("grant_id", "date", name="uq_grant_vesting_date"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    grant_id: Mapped[int] = mapped_column(Integer, ForeignKey("grants.id", ondelete="CASCADE"), nullable=False, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+    shares: Mapped[int] = mapped_column(EncryptedInt, nullable=False)
+
+    grant: Mapped["Grant"] = relationship(back_populates="vesting")
 
 
 class Loan(Base):

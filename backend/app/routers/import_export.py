@@ -15,7 +15,7 @@ from scaffold.models import User, Grant, Loan, Price, Sale, LoanPayment, ImportB
 from scaffold.auth import get_current_user
 from scaffold.quota import check_row_count
 from scaffold.safe_workbook import WorkbookRejected, load_workbook_safely
-from app.excel_io import (FORMULA_LEADS, read_grants_from_excel, read_prices_from_excel, read_loans_from_excel,
+from app.excel_io import (FORMULA_LEADS, read_grants_from_excel, read_vesting_from_excel, read_prices_from_excel, read_loans_from_excel,
                       read_loan_payments_from_excel, read_sales_from_excel, write_events_to_excel)
 from services.timeline_cache import get_timeline
 from app.date_utils import to_date as _to_date
@@ -25,6 +25,7 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill
 from app import event_cache
 from services.price_state import price_values
+from services.vesting import check_schedule, core_grant, legacy_split, schedule_of, set_schedule, vested_by
 
 _MAX_BACKUPS_PER_USER = 3
 SALE_BACKUP_FIELDS = (
@@ -225,6 +226,7 @@ def import_excel(
     has_loans = "loans" in sheet_names
     has_loan_payments = "loanpayments" in sheet_names
     has_sales = "sales" in sheet_names
+    vesting_raw = []
 
     if not any([has_schedule, has_prices, has_loans, has_loan_payments, has_sales]):
         wb.close()
@@ -240,6 +242,8 @@ def import_excel(
     try:
         if has_schedule:
             grants_raw = read_grants_from_excel(_ws("schedule"))
+            if "vesting" in sheet_names:
+                vesting_raw = read_vesting_from_excel(_ws("vesting"))
         if has_prices:
             prices_raw = read_prices_from_excel(_ws("prices"))
         if has_loans:
@@ -331,18 +335,9 @@ def import_excel(
         db.query(Price).filter(Price.user_id == user.id).delete()
 
     for g in grants_raw:
-        db.add(Grant(
-            user_id=user.id,
-            year=g["year"],
-            type=g["type"],
-            shares=g["shares"],
-            price=g["price"],
-            vest_start=_to_date(g["vest_start"]),
-            periods=g["periods"],
-            exercise_date=_to_date(g["exercise_date"]),
-            dp_shares=g.get("dp_shares", 0),
-            election_83b=g.get("election_83b", False),
-        ))
+        key = (_to_year(g["year"]), str(g.get("type", "")).strip())
+        _add_grant(user.id, g, [(v["date"], v["shares"]) for v in vesting_raw
+                                if (v["year"], str(v["type"] or "").strip()) == key], db)
 
     for p in prices_raw:
         db.add(Price(
@@ -474,6 +469,23 @@ def import_excel(
 # BACKUP HELPERS & ENDPOINTS
 # ============================================================
 
+def _add_grant(user_id: int, g: dict, vesting: list, db: Session) -> None:
+    """A workbook or backup row. Without its own vesting dates it predates
+    stored schedules, so it gets the formula it was computed with then."""
+    grant = Grant(user_id=user_id, year=_to_year(g["year"]), type=str(g["type"]).strip(),
+                  shares=g["shares"], price=g["price"],
+                  vest_start=_to_date(g["vest_start"]), periods=g["periods"],
+                  exercise_date=_to_date(g["exercise_date"]), dp_shares=g.get("dp_shares", 0),
+                  election_83b=g.get("election_83b", False))
+    rows = ([(_to_date(d), int(n)) for d, n in vesting] if vesting
+            else legacy_split(int(g["shares"]), _to_date(g["vest_start"]), int(g["periods"])))
+    problem = check_schedule(rows, int(g["shares"]))
+    if problem:
+        raise HTTPException(status_code=400, detail=f"{grant.year} {grant.type}: {problem}")
+    set_schedule(grant, rows)
+    db.add(grant)
+
+
 def _save_import_backup(user_id: int, has_schedule: bool, has_prices: bool, has_loans: bool,
                         has_loan_payments: bool, has_sales: bool, db: Session):
     """Snapshot the affected data types before an import overwrites them."""
@@ -489,6 +501,7 @@ def _save_import_backup(user_id: int, has_schedule: bool, has_prices: bool, has_
                 "vest_start": str(g.vest_start), "periods": g.periods,
                 "exercise_date": str(g.exercise_date), "dp_shares": g.dp_shares or 0,
                 "election_83b": bool(g.election_83b),
+                "vesting": [[str(d), n] for d, n in schedule_of(g)],
             })
     if has_prices:
         for p in db.query(Price).filter(Price.user_id == user_id).all():
@@ -620,13 +633,7 @@ def restore_import_backup(
         db.query(Price).filter(Price.user_id == user.id).delete()
 
     for g in grants:
-        db.add(Grant(
-            user_id=user.id, year=g["year"], type=g["type"],
-            shares=g["shares"], price=g["price"],
-            vest_start=_to_date(g["vest_start"]), periods=g["periods"],
-            exercise_date=_to_date(g["exercise_date"]), dp_shares=g.get("dp_shares", 0),
-            election_83b=g.get("election_83b", False),
-        ))
+        _add_grant(user.id, g, g.get("vesting") or [], db)
     for p in prices:
         db.add(Price(user_id=user.id, price=p["price"], **price_values(p),
                      announcement_notified_at=datetime.fromisoformat(p["announcement_notified_at"]) if p.get("announcement_notified_at") else None))
@@ -1087,6 +1094,18 @@ def export_excel(
         ref_num = loan_id_to_num.get(ln.refinances_loan_id, "") if ln.refinances_loan_id else ""
         _body_cell(ws_loans, i, 9, ref_num or None)
 
+    # -- Vesting sheet: the schedule itself, one row per date --
+    ws_vest = wb.create_sheet("Vesting")
+    _write_headers(ws_vest, ["Year", "Type", "Date", "Shares"])
+    row_v = 2
+    for g in grants_db:
+        for d, n in schedule_of(g):
+            _body_cell(ws_vest, row_v, 1, g.year)
+            _body_cell(ws_vest, row_v, 2, g.type)
+            _body_cell(ws_vest, row_v, 3, d, "mm/dd/yyyy")
+            _body_cell(ws_vest, row_v, 4, n, "#,##0")
+            row_v += 1
+
     # -- LoanPayments sheet --
     ws_payments = wb.create_sheet("LoanPayments")
     _write_headers(ws_payments, _LOAN_PAYMENT_HEADERS)
@@ -1122,13 +1141,7 @@ def export_excel(
     _write_headers(ws_events, _EVENT_HEADERS)
 
     # Generate events for formula-based writing
-    grants_dicts = [{
-        "year": g.year, "type": g.type, "shares": g.shares, "price": g.price,
-        "vest_start": datetime.combine(g.vest_start, datetime.min.time()),
-        "periods": g.periods,
-        "exercise_date": datetime.combine(g.exercise_date, datetime.min.time()),
-        "dp_shares": g.dp_shares or 0,
-    } for g in grants_db]
+    grants_dicts = [core_grant(g) for g in grants_db]
 
     prices_dicts = [{"date": datetime.combine(p.effective_date, datetime.min.time()), "price": p.price} for p in prices_db]
 
@@ -1227,13 +1240,7 @@ def export_holdings_report(
     income_rate = (ts_row.federal_income_rate + ts_row.state_income_rate) if ts_row else 0
 
     # Build timeline for income/cap gains
-    grants_dicts = [{
-        "year": g.year, "type": g.type, "shares": g.shares, "price": g.price,
-        "vest_start": datetime.combine(g.vest_start, datetime.min.time()),
-        "periods": g.periods,
-        "exercise_date": datetime.combine(g.exercise_date, datetime.min.time()),
-        "dp_shares": g.dp_shares or 0,
-    } for g in grants_db]
+    grants_dicts = [core_grant(g) for g in grants_db]
     prices_dicts = [{"date": datetime.combine(p.effective_date, datetime.min.time()), "price": p.price} for p in prices_db]
     loans_dicts = [{
         "grant_yr": ln.grant_year, "grant_type": ln.grant_type,
@@ -1320,14 +1327,7 @@ def export_holdings_report(
 
     for g in grants_db:
         # Compute vested from schedule
-        vested = 0
-        if g.periods > 0:
-            base = g.shares // g.periods
-            rem = g.shares % g.periods
-            for p in range(g.periods):
-                vd = (datetime.combine(g.vest_start, datetime.min.time()) + relativedelta(years=p)).date()
-                if vd <= as_of_date:
-                    vested += base + (1 if p < rem else 0)
+        vested = vested_by(g, as_of_date)
         unvested = g.shares - vested
         unvested_value = unvested * (g.price or 0.0)
         held_vested = remaining_by_grant.get((g.year, g.type), 0)

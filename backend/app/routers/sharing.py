@@ -652,10 +652,9 @@ def shared_tax_settings(
     result.flexible_payoff_enabled = _flexible_payoff_enabled(db)
     grants = db.query(Grant).filter(Grant.user_id == owner.id).all()
     years: set[int] = set()
+    from services.vesting import vest_years
     for g in grants:
-        if g.vest_start and g.periods:
-            for i in range(g.periods):
-                years.add(g.vest_start.year + i)
+        years |= vest_years(g)
     result.taxable_years = sorted(years)
     return result
 

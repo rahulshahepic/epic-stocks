@@ -86,6 +86,11 @@ def _bootstrap_system():
     except Exception:
         logger.exception("Failed to backfill plaintext encryption")
     try:
+        from services.vesting import backfill_schedules
+        backfill_schedules(db)
+    except Exception:
+        logger.exception("Failed to store vesting schedules for existing grants")
+    try:
         seed_content_if_empty(db)
     except Exception:
         logger.exception("Failed to seed wizard content")

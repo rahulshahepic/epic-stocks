@@ -9,13 +9,18 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+from services.backup_protocol import backup_state as result_state, read_json, safe_status
+
 MAX_BYTES = 262_144
 MAX_EVENTS = 96
+BACKUP_STATUS = Path("/var/lib/epic-stocks-backup/status.json")
 
 
 def command(args):
@@ -25,7 +30,15 @@ def command(args):
         return None
 
 
-def collect(environment, output):
+def backup_state(environment, path, now):
+    """Reads only the backup unit's own status file: result and timestamps, never errors or names."""
+    try:
+        return "backup_" + result_state(safe_status(read_json(path), environment), now)
+    except (OSError, ValueError, TypeError, KeyError):
+        return "backup_unavailable"
+
+
+def collect(environment, output, backup_status=BACKUP_STATUS):
     now = datetime.now(timezone.utc)
     previous = {}
     try:
@@ -81,13 +94,23 @@ def collect(environment, output):
                  else "scheduler_unavailable")
     usage = shutil.disk_usage(output.parent)
     disk = "disk_pressure" if usage.used / usage.total >= .9 else "disk_recovered"
-    states = {"container": container, "scheduler": scheduler, "disk": disk}
+    states = {"container": container, "scheduler": scheduler, "disk": disk,
+              "backup": backup_state(environment, backup_status, now)}
+    try:
+        backup = safe_status(read_json(backup_status), environment)
+    except (OSError, ValueError):
+        backup = None
+    states["backup_retention"] = ("backup_retention_failed" if backup and backup.get("prune_error")
+                                  else "backup_retention_ok" if backup and backup.get("last_result") == "success"
+                                  else "backup_retention_unavailable")
     old_states = previous.get("states", {})
     if not isinstance(old_states, dict):
         old_states = {}
     for component, code in states.items():
         if old_states.get(component) != code:
-            event_code = "scheduler_recovered" if code == "scheduler_succeeded" and old_states.get(component) == "scheduler_failed" else code
+            event_code = ("scheduler_recovered" if code == "scheduler_succeeded" and old_states.get(component) == "scheduler_failed"
+                          else "backup_recovered" if code == "backup_succeeded" and old_states.get(component) in {"backup_failed", "backup_overdue"}
+                          else code)
             events.append(envelope(event_code, environment, now, build))
     if restarts is not None and type(previous.get("restarts")) is int and restarts > previous["restarts"]:
         events.append(envelope("container_restarted", environment, now, build))
@@ -99,7 +122,7 @@ def collect(environment, output):
         events.append(envelope("collector_gap", environment, now, build))
     snapshot = {"environment": environment, "collected_at_utc": now.isoformat(),
                 "history_started_at_utc": previous.get("history_started_at_utc", now.isoformat()),
-                "events": events[-MAX_EVENTS:], "states": states, "restarts": restarts}
+                "events": events[-MAX_EVENTS:], "states": states, "restarts": restarts, "backup": backup}
     raw = json.dumps(snapshot).encode()
     if len(raw) > MAX_BYTES:
         raise ValueError("Diagnostic snapshot too large")
@@ -124,6 +147,12 @@ _CODES = {
     "scheduler_succeeded": ("scheduler", "info"),
     "scheduler_unavailable": ("scheduler", "warning"), "collector_gap": ("host", "warning"),
     "disk_pressure": ("host", "warning"), "disk_recovered": ("host", "info"),
+    "backup_succeeded": ("backup", "info"), "backup_recovered": ("backup", "info"),
+    "backup_failed": ("backup", "error"), "backup_overdue": ("backup", "error"),
+    "backup_unconfigured": ("backup", "warning"), "backup_unavailable": ("backup", "warning"),
+    "backup_disabled": ("backup", "info"), "backup_running": ("backup", "info"),
+    "backup_retention_failed": ("backup_retention", "warning"), "backup_retention_ok": ("backup_retention", "info"),
+    "backup_retention_unavailable": ("backup_retention", "warning"),
 }
 
 

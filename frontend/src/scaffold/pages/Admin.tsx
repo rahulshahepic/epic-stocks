@@ -9,6 +9,7 @@ import { AiConnections } from './admin/AiConnections.tsx'
 import { TrialFunnel } from './admin/TrialFunnel.tsx'
 import { SystemHealth } from './admin/SystemHealth.tsx'
 import { DeploymentHealth } from './admin/DeploymentHealth.tsx'
+import { Backups } from './admin/Backups.tsx'
 import { DatabaseTables } from './admin/DatabaseTables.tsx'
 import { EmailLookup } from './admin/EmailLookup.tsx'
 import { UsersSection } from './admin/UsersSection.tsx'
@@ -170,6 +171,7 @@ export default function Admin() {
       {error && <p className="text-xs text-red-500">{error}</p>}
 
       <DeploymentHealth />
+      <Backups />
 
       <ToolsSection />
 

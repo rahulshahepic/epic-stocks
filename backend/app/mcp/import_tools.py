@@ -81,6 +81,7 @@ def _get_import_guide(ctx: ToolContext, args: dict):
     owner = resolve_account(ctx.user, args.get("account"), ctx.db)
     sk, skeleton_findings = _skeleton(ctx)
     return {
+        "adding_one_grant": guide.ADDING_ONE_GRANT,
         "start_here": guide.START_HERE,
         "talking_to_the_user": guide.TALKING_TO_THE_USER,
         "making_best_guesses": guide.MAKING_BEST_GUESSES,
@@ -108,6 +109,8 @@ def _get_import_guide(ctx: ToolContext, args: dict):
         ],
         "account_now": _account_now(owner, ctx.db),
         "how_to_submit": (
+            "To add or correct one grant, loan or price, use save_equity — "
+            "see adding_one_grant; stage_import is for whole-account setup. "
             "Once the person has confirmed the draft, call stage_import with "
             "it. That changes nothing — it leaves a draft for them to review "
             "and accept in the app. Grants you leave out are kept exactly as "
@@ -280,7 +283,9 @@ register(Tool(
     title="Prepare an import for review",
     description=(
         "Leave a prepared import for the person to review and accept in the "
-        "app. Takes the object get_import_guide describes; call it once they "
+        "app. For setting up or re-importing a whole account only: to add or "
+        "correct one grant, loan or price (e.g. from a new purchase offer), use "
+        "save_equity instead. Takes the object get_import_guide describes; call it once they "
         "have confirmed the draft with you. It changes nothing on its own, so "
         "never tell them it is done. Returns what accepting it would change "
         "(walk them through that) and the words to tell them next. Grants left "

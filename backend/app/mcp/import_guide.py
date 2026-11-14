@@ -21,7 +21,39 @@ assistant sets only after the person has confirmed the dates and whether they
 paid for the shares (C10, R1).
 """
 
+ADDING_ONE_GRANT = """\
+Adding or correcting ONE thing — a new grant from a purchase offer or grant
+letter, a loan, a price — is a direct edit, not an import. Use save_equity
+(kind "grant", then kind "loan" for its loan) once the person approves the
+exact values. Do NOT use stage_import or show_import for it: the import review
+rebuilds every grant's loans and generated payoff sales, which is far more than
+one new grant needs. Nothing else in the account is touched by save_equity.
+
+If save_equity is not among your tools, this connection was not granted
+editing. Tell the person to disconnect and reconnect the app with the Equity
+editing permissions ticked, rather than falling back to stage_import.
+
+Reading an Epic stock purchase offer ("Employee Stock Purchase Agreement"):
+- year: the grant year in the title. type: "Purchase".
+- shares: the number the person ELECTED to buy (the agreement states only the
+  maximum offered). Ask if you do not have their Notice of Stock Purchase.
+- price: the per-share price in section 2.
+- vest_start: the first date in the vesting table; periods: rows in the table;
+  exercise_date: the purchase date (ask; the end of the grant year if unknown,
+  recorded as a guess).
+- If they chose down payment + Epic loan: a Purchase loan for shares x price
+  minus the down payment, loan_year the grant year, due_date and rate from the
+  loan disclosures (otherwise the rate on record, marked as a guess). If the
+  down payment was paid by exchanging shares, set dp_shares to minus that
+  number. If they paid out of pocket, there is no loan.
+- Check list_prices has that year's price; if not, add it (not an estimate —
+  the agreement states it).
+"""
+
 START_HERE = """\
+0. Adding or correcting a single grant, loan or price? Stop here and follow
+   adding_one_grant instead. The steps below are for setting up or
+   re-importing a whole account.
 1. Ask the person for whatever they have: grant letters, the Eureka "Data
    for Stock Workbook" CSV, the Stock Loan Statement PDF, screenshots, or just
    what they remember. Any one of these is enough to start.

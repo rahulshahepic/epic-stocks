@@ -37,7 +37,7 @@ The last row is a deployment and host acceptance gate. A simulated MCP Apps host
 
 1. Deploy the branch to staging after review and CI pass. Keep the admin AI Connections switch on and ChatGPT allowed.
 2. Open [ChatGPT Plugins](https://chatgpt.com/plugins), add a custom MCP server with `https://YOUR-STAGING-DOMAIN/mcp`, select OAuth, create and install the plugin. For an existing connection, refresh its tool metadata from the plugin detail page.
-3. Sign in to Epic Stocks and review the scope consent. Select Read only to test this UI with no edit permissions.
+3. Sign in to Epic Stocks and review the scope consent. Leave only the read permissions checked to test without editing. Requested scopes start checked; every account permission remains selectable, with Select all / Clear all controls for Equity and Compensation. For imports, select equity read, prepare imports and equity editing to save.
 4. In a new conversation ask “Show my Epic Stocks portfolio.” Verify the values against Epic Stocks. Click every tab, filter events, refresh, and ask for an explanation. Test Expand and sidebar/thread entrypoints where available.
 5. Disconnect in Epic Stocks. The next UI refresh must refuse access. Connect another test account and verify it sees only its own data.
 6. Repeat on web and the mobile client. Extension availability varies by client; treat actual host checks as required before claiming support.

@@ -181,32 +181,39 @@ def test_authorize_shows_consent_to_a_signed_in_user(client):
     assert resp.status_code == 200
     assert "wants to connect" in resp.text
     assert "chatgpt.com" in resp.text
-    assert "read-only" in resp.text
+    assert "Choose what this connection can do" in resp.text
 
 
-def test_the_consent_screen_says_which_promise_it_is_making(client):
-    """Three scope sets, three different sentences. This is the one line on the
-    screen a user is entitled to rely on, so a connection that can change data
-    the moment it is asked must not read as one that only prepares a draft."""
+def test_the_consent_screen_offers_all_account_permissions_with_requested_checked(client):
+    from html.parser import HTMLParser
+
+    class Inputs(HTMLParser):
+        choices = None
+
+        def __init__(self):
+            super().__init__()
+            self.choices = []
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if tag == "input" and attrs.get("name") == "selected_scope":
+                self.choices.append(attrs)
+
     register_user(client)
     reg = register_client(client)
     _, challenge = pkce_pair()
-
-    reading = authorize(client, reg["client_id"], challenge,
-                        scope="equity:read comp:read").text
-    assert "read-only" in reading
-
-    staging = authorize(client, reg["client_id"], challenge,
-                        scope="equity:read import:propose").text
-    assert "read-only" not in staging
-    assert "waits" in staging and "accept it in the app" in staging
-
-    writing = authorize(client, reg["client_id"], challenge,
-                        scope="comp:read comp:write").text
-    assert "read-only" not in writing
-    assert "as soon as you ask it to" in writing
-    # And it still has to say what remains out of reach.
-    assert "cannot be changed by an assistant" in writing
+    page = authorize(client, reg["client_id"], challenge, scope="equity:read comp:read").text
+    parser = Inputs()
+    parser.feed(page)
+    choices = parser.choices
+    assert {c["value"] for c in choices} == {
+        "equity:read", "comp:read", "comp:write", "import:propose", "equity:write",
+    }
+    assert {c["value"] for c in choices if "checked" in c} == {"equity:read", "comp:read"}
+    assert 'name="permission_selection" value="1"' in page
+    assert "admin:read" not in page
+    assert page.count('data-select="all"') == 2
+    assert page.count('data-select="none"') == 2
 
 
 def test_the_consent_screen_names_the_write_permission(client):
@@ -703,7 +710,7 @@ def test_the_consent_page_links_its_stylesheet_rather_than_inlining_it(client):
     _, challenge = pkce_pair()
     page = authorize(client, reg["client_id"], challenge).text
 
-    assert '<link rel="stylesheet" href="/oauth/consent.css">' in page
+    assert '<link rel="stylesheet" href="/oauth/consent.css?v=2">' in page
     assert "<style" not in page, "an inline style block is blocked by the site CSP"
 
 
@@ -779,23 +786,75 @@ def _consent(client, scope, **extra):
     return page, tokens
 
 
-def test_a_client_naming_no_scope_is_told_plainly_it_can_edit(client):
+def test_no_scope_request_checks_the_default_permissions(client):
     register_user(client)
     page, tokens = _consent(client, "")
-    assert "It can edit your data." in page
-    assert "grants, loans, prices, sales" in page
-    assert 'name="read_only"' in page
+    assert page.count(' checked>') == 5
     assert "equity:write" in tokens["scope"].split()
 
 
-def test_ticking_read_only_drops_every_write(client):
+def test_legacy_read_only_form_still_drops_every_write(client):
     register_user(client)
     _, tokens = _consent(client, "", read_only="1")
     assert tokens["scope"].split() == ["equity:read", "comp:read"]
 
 
-def test_a_read_only_request_gets_no_edit_warning(client):
+def test_read_only_request_can_explicitly_opt_into_import_and_equity_edits(client, db_session):
     register_user(client)
-    page, _ = _consent(client, "equity:read comp:read")
-    assert "It can edit your data." not in page
-    assert 'name="read_only"' not in page
+    _, tokens = _consent(client, "equity:read comp:read", permission_selection="1",
+                         selected_scope=["equity:read", "import:propose", "equity:write"])
+    assert set(tokens["scope"].split()) == {"equity:read", "import:propose", "equity:write"}
+    listed = client.post("/mcp", headers={"Authorization": f"Bearer {tokens['access_token']}"},
+                         json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"}).json()
+    names = {tool["name"] for tool in listed["result"]["tools"]}
+    assert {"save_equity", "stage_import", "show_import"} <= names
+    assert "add_compensation" not in names
+    grant = db_session.query(OAuthGrant).one()
+    assert set(grant.scope.split()) == set(tokens["scope"].split())
+    refreshed = client.post("/oauth/token", data={
+        "grant_type": "refresh_token", "refresh_token": tokens["refresh_token"],
+        "client_id": grant.client_id,
+    })
+    assert refreshed.status_code == 200
+    assert refreshed.json()["scope"] == tokens["scope"]
+
+
+def test_all_requested_permissions_can_be_reduced_to_one(client):
+    register_user(client)
+    _, tokens = _consent(client, "", permission_selection="1", selected_scope=["comp:read"])
+    assert tokens["scope"] == "comp:read"
+
+
+@pytest.mark.parametrize("selected", [[], ["admin:read"], ["shared:read"], ["unknown"], ["equity:write"], ["import:propose"]])
+def test_invalid_or_empty_selection_never_mints_an_authorization_code(client, db_session, selected):
+    register_user(client)
+    reg = register_client(client)
+    _, challenge = pkce_pair()
+    page = authorize(client, reg["client_id"], challenge).text
+    response = client.post("/oauth/authorize", data={
+        "request": page.split('name="request" value="')[1].split('"')[0],
+        "csrf": page.split('name="csrf" value="')[1].split('"')[0],
+        "decision": "allow", "permission_selection": "1", "selected_scope": selected,
+    }, follow_redirects=False)
+    assert response.status_code == 400
+    assert db_session.query(OAuthAuthCode).count() == 0
+
+
+def test_permission_choices_survive_sign_in_resume(client):
+    reg = register_client(client)
+    _, challenge = pkce_pair()
+    login = authorize(client, reg["client_id"], challenge, scope="equity:read")
+    resume = parse_qs(urlparse(login.headers["location"]).query)["next"][0]
+    register_user(client)
+    page = client.get(resume)
+    assert page.status_code == 200
+    assert 'value="equity:read" checked>' in page.text
+    assert 'value="equity:write">' in page.text
+    assert 'name="permission_selection" value="1"' in page.text
+
+
+def test_consent_script_is_served_from_same_origin(client):
+    response = client.get("/oauth/consent.js")
+    assert response.status_code == 200
+    assert "javascript" in response.headers["content-type"]
+    assert "setCustomValidity" in response.text

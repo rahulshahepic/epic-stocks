@@ -214,21 +214,20 @@ def test_deleting_the_account_removes_the_proposal(mcp, client, db_session):
 
 # ── the promise on the consent screen ───────────────────────────────────────
 
-def test_the_consent_screen_stops_claiming_read_only_when_it_is_not(client):
+def test_consent_does_not_make_a_fixed_promise_before_user_chooses_permissions(client):
     from tests.test_oauth_server import authorize, pkce_pair, register_client
 
     register_user(client)
     reg = register_client(client)
     _, challenge = pkce_pair()
-
-    read_only = authorize(client, reg["client_id"], challenge, scope=READ_ONLY).text
-    assert "this connection is read-only" in read_only
-
-    proposing = authorize(client, reg["client_id"], challenge,
-                          scope="equity:read import:propose").text
-    assert "this connection is read-only" not in proposing
-    assert "waits for you to review" in proposing
-    assert "cannot change your data on its own" in proposing
+    for requested in (READ_ONLY, "equity:read import:propose"):
+        page = authorize(client, reg["client_id"], challenge, scope=requested).text
+        assert "Only checked permissions will be granted" in page
+        assert "this connection is read-only" not in page
+        assert '<script src="/oauth/consent.js" defer>' in page
+        assert 'id="permission-summary" role="status"' in page
+        expected = 'value="import:propose"' + (' checked' if 'import:propose' in requested else '') + '>'
+        assert expected in page
 
 
 def test_a_client_that_names_no_scope_gets_every_tool(client):

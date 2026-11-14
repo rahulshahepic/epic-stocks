@@ -94,6 +94,8 @@ def test_the_oauth_paths_are_exempt_from_form_action():
             f"{name}: the @oauth policy still restricts form-action, so the "
             f"consent screen's redirect back to the provider will be blocked\n  {policy}"
         )
+        assert "script-src 'self'" in policy
+        assert "'unsafe-inline'" not in policy and "'unsafe-eval'" not in policy
         assert "style-src 'self'" in policy, (
             f"{name}: the consent screen loads /oauth/consent.css, which needs "
             f"style-src 'self'\n  {policy}"

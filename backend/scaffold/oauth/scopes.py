@@ -9,7 +9,8 @@ produced.
 
 `comp:write` changes salary, bonus and retirement inputs. `equity:write` is
 separate and changes individual equity rows through the app's validated CRUD
-paths, only when explicitly granted. Neither is in the default scopes.
+paths, only when explicitly granted. The consent screen offers each account
+permission separately, with the requested permissions initially selected.
 
 The remaining write scopes are named here and advertised in the metadata
 document, but are not grantable until the tools behind them exist — a connector

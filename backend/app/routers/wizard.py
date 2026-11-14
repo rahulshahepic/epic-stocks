@@ -521,8 +521,10 @@ def submit(
     payoff_count = 0
     if body.generate_payoff_sales:
         from app.routers.loans import _compute_payoff_sale
+        owned = {s.loan_id for s in db.query(Sale).filter(
+            Sale.user_id == user.id, Sale.loan_id.isnot(None))}
         for loan, _ in loan_objects:
-            if loan.id not in refinanced_ids:
+            if loan.id not in refinanced_ids and loan.id not in owned:
                 try:
                     suggestion = _compute_payoff_sale(loan, user, db)
                     if suggestion["shares"] > 0 and suggestion["price_per_share"] > 0:
@@ -641,6 +643,16 @@ def _insert_loans(
     return count
 
 
+def _drop_loans(loan_ids: list[int], user_id: int, db: Session) -> None:
+    if not loan_ids:
+        return
+    sales = db.query(Sale).filter(Sale.user_id == user_id, Sale.loan_id.in_(loan_ids))
+    sales.filter(Sale.is_generated.is_(True)).delete(synchronize_session=False)
+    sales.update({Sale.loan_id: None}, synchronize_session=False)
+    db.query(Loan).filter(Loan.user_id == user_id, Loan.id.in_(loan_ids)).delete(
+        synchronize_session=False)
+
+
 def _merge(
     body: WizardSubmitRequest,
     user_id: int,
@@ -670,16 +682,18 @@ def _merge(
     }
     affected_loan_ids = [l.id for l in db.query(Loan).filter(Loan.user_id == user_id)
                          if (l.grant_year, l.grant_type) in affected_keys]
-    db.query(Sale).filter(Sale.user_id == user_id, Sale.loan_id.in_(affected_loan_ids)).delete()
+    # Only the app's own payoff sales are rebuilt. A sale the user edited is
+    # theirs: it survives the import (unlinked if its loan goes away).
+    if body.generate_payoff_sales:
+        db.query(Sale).filter(Sale.user_id == user_id, Sale.loan_id.in_(affected_loan_ids),
+                              Sale.is_generated.is_(True)).delete(synchronize_session=False)
 
     # Delete orphaned grants (not in wizard, not preserved) and their loans
     for key, g in existing_grants.items():
         if key not in wizard_grant_keys and g.id not in preserve_grant_ids:
-            db.query(Loan).filter(
-                Loan.user_id == user_id,
-                Loan.grant_year == g.year,
-                Loan.grant_type == g.type,
-            ).delete()
+            gone = [l.id for l in db.query(Loan).filter(
+                Loan.user_id == user_id, Loan.grant_year == g.year, Loan.grant_type == g.type)]
+            _drop_loans(gone, user_id, db)
             db.delete(g)
 
     # Delete orphaned prices
@@ -778,8 +792,7 @@ def _merge(
             loan_count += 1
 
         # Delete loans for this grant that weren't in the wizard
-        for l in existing_loans_for_grant:
-            if l.id not in processed_loan_ids:
-                db.delete(l)
+        _drop_loans([l.id for l in existing_loans_for_grant if l.id not in processed_loan_ids],
+                    user_id, db)
 
     return price_count, grant_count, loan_count

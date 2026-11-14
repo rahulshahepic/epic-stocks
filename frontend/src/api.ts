@@ -583,6 +583,13 @@ export const api = {
   // Admin
   adminStats: () => apiFetch<AdminStats>('/api/admin/stats'),
   adminDeploymentStatus: () => apiFetch<DeploymentStatus>('/api/admin/deployment-status'),
+  adminBackupStatus: () => apiFetch<BackupStatus>('/api/admin/backups'),
+  adminSaveBackupSettings: (settings: BackupSettings, expected_revision: string | null) =>
+    apiFetch<BackupStatus>('/api/admin/backups/settings', { method: 'PUT', body: JSON.stringify({ ...settings, expected_revision }) }),
+  adminRunBackup: () => apiFetch<{ queued: boolean }>('/api/admin/backups/run', { method: 'POST' }),
+  adminRecordRestoreTest: (run_id: string) => apiFetch<BackupStatus>('/api/admin/backups/restore-test', {
+    method: 'POST', body: JSON.stringify({ run_id, confirmed: true }),
+  }),
   adminUsers: (q = '', limit = 10, offset = 0) =>
     apiFetch<AdminUserListResponse>(`/api/admin/users?q=${encodeURIComponent(q)}&limit=${limit}&offset=${offset}`),
   adminDeleteUser: (id: number) => del(`/api/admin/users/${id}`),
@@ -767,6 +774,40 @@ export interface DeploymentStatus {
   last_started_at: string | null
   last_checked_at: string | null
   jobs: { name: string; due_utc: string; last_completed_day: string | null; last_completed_at: string | null; last_result: string | null }[]
+}
+
+export interface BackupSettings {
+  enabled: boolean
+  account_id: string
+  bucket: string
+  recipient: string
+  retention_days: number
+}
+
+export interface BackupStatus {
+  environment: string
+  controls_available: boolean
+  settings: BackupSettings
+  settings_source: 'admin' | 'deployment'
+  revision: string | null
+  state: 'disabled' | 'unconfigured' | 'unavailable' | 'invalid_settings' | 'pending' | 'running' | 'failed' | 'succeeded' | 'overdue'
+  collected_at_utc: string | null
+  backup: {
+    credentials_configured: boolean | null
+    last_attempt_utc: string | null
+    last_success_utc: string | null
+    last_success_run: string | null
+    last_result: string | null
+    database_plaintext_bytes: number | null
+    database_encrypted_bytes: number | null
+    secrets_encrypted_bytes: number | null
+    duration_seconds: number | null
+    last_success_duration_seconds: number | null
+    pruned_runs: number | null
+    error: string | null
+    prune_error: string | null
+  } | null
+  restore_test: { tested_at_utc: string; run_id: string; source: 'admin_recorded' } | null
 }
 
 export interface SystemMetricPoint {

@@ -1,0 +1,10 @@
+[Unit]
+Description=Apply Admin backup settings and requests
+
+[Path]
+PathChanged=/var/lib/epic-stocks-backup-config/settings.json
+PathChanged=/var/lib/epic-stocks-backup-config/request.json
+Unit=epic-stocks-backup.service
+
+[Install]
+WantedBy=multi-user.target

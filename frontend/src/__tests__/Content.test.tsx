@@ -113,6 +113,18 @@ describe('Content page', () => {
     })
   })
 
+  it('renders the modal at the body, above the fixed mobile nav', async () => {
+    mockApi(ADMIN_ME)
+    const { container } = renderContent()
+    await waitFor(() => expect(screen.getByText(/Grant-program content/)).toBeDefined())
+    await userEvent.click(screen.getByRole('button', { name: /Add template/ }))
+    const dialog = await screen.findByRole('dialog')
+    // Inside the page's z-[1] stacking context the nav (z-50) would cover Save.
+    expect(container.contains(dialog)).toBe(false)
+    expect(dialog.parentElement).toBe(document.body)
+    expect(dialog.className).toContain('z-[60]')
+  })
+
   it('opens an edit modal when a row is clicked and PUTs changes', async () => {
     const calls = mockApi(ADMIN_ME)
     renderContent()

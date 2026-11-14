@@ -1,5 +1,12 @@
 # CLAUDE.md
 
+## Collaboration and review
+
+Read and follow [REVIEW_POLICY.md](REVIEW_POLICY.md) for every PR. It requires
+review by ChatGPT/Codex or Claude, restricts required code-owner approval to
+`@rahulshahepic`, and allows Rahul or agents authenticated through his account to
+merge without a formal approving review. Existing CI rules still apply.
+
 ## Project Overview
 Equity vesting tracker PWA. See SPEC.md for full requirements.
 

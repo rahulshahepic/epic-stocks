@@ -95,7 +95,7 @@ def resplit(rows: list[tuple[date, int]], shares: int) -> list[tuple[date, int]]
     old = sum(n for _, n in rows)
     weights = [n for _, n in rows] if old else [1] * len(rows)
     total = sum(weights)
-    parts = [(d, w * shares // total) for (d, _), w in zip(rows, weights)]
+    parts = [(d, w * shares // total) for (d, _), w in zip(rows, weights, strict=True)]
     parts[-1] = (parts[-1][0], shares - sum(n for _, n in parts[:-1]))
     return parts
 

@@ -132,7 +132,6 @@ def _compute_projected_unrecorded_interest(loans_db, as_of_date, loan_payments=(
 
 def _compute_unvested_cost(grants, as_of_date) -> float:
     """Proceeds from selling unvested shares at cost basis (grant price)."""
-    from dateutil.relativedelta import relativedelta
     total_cost = 0.0
     for g in grants:
         total = g['shares']

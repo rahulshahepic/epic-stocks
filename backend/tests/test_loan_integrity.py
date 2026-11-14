@@ -7,7 +7,6 @@ charges one debt once per link — a four-link chain on one 76k loan reported
 invisible to the payoff schedule, the interest pool and the cost basis, yet
 still counted as money owed. Both were live on a real account.
 """
-import copy
 import os
 import sys
 from datetime import date

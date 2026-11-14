@@ -1219,7 +1219,6 @@ def export_holdings_report(
     from scaffold.rate_limit import check_rate
     check_rate(user.id, "export_holdings_report", max_calls=10, window_secs=300)
 
-    from dateutil.relativedelta import relativedelta
     from openpyxl.utils import get_column_letter
     from openpyxl.styles import Border, Side
 

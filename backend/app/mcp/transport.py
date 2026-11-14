@@ -30,7 +30,7 @@ from scaffold.auth import get_admin_emails
 from scaffold.oauth.resource import Connector, require_connector
 from scaffold.oauth.settings import mcp_enabled
 from scaffold.rate_limit import check_rate_shared
-from . import admin_tools, comp_tools, equity_tools, import_tools, read_tools, ui_tools, import_ui  # noqa: F401
+from . import admin_tools, comp_tools, equity_tools, import_tools, read_tools, ui_tools  # noqa: F401
 from .ui_tools import RESOURCE_URI, resource_contents, resource_descriptor
 from .tools import REGISTRY, ToolContext, as_result, visible_to
 
@@ -210,28 +210,17 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext, *, a
                 "as what the equity is or will be worth. Future vesting dates "
                 "and share counts are fixed and can be stated plainly; the "
                 "money attached to them cannot.\n\n"
-                "Helping someone enter or update their equity — from a grant "
-                "letter, a Eureka file, a screenshot or memory — is a "
-                "first-class use. Read get_import_guide and the existing "
-                "grants, loans, prices and sales first, draft it yourself, and "
-                "walk the person through it in plain words without financial "
-                "jargon, saying which figures you guessed. Company "
-                "schedules are starting points; custom grants and leave changes "
-                "need the user's explicit confirmation of the full schedule and "
-                "cost-basis treatment. To add or correct ONE grant, loan or "
-                "price — e.g. from a purchase offer the person uploads — use "
-                "save_equity directly after they approve the values; never "
-                "route a single addition through stage_import or show_import. "
-                "stage_import leaves a whole-account review draft in "
-                "the app. For ChatGPT's full plugin wizard, open show_import; "
-                "analyze_import_files tries the existing parsers, and "
-                "prepare_import_review rechecks corrections against retained "
-                "sources and displays the review. The user confirms and saves "
-                "in the UI, with separately granted equity:write. Do not call "
-                "the app-only accept_import_review from chat. With equity:write, save_equity "
-                "and remove_equity can complete a chat-only workflow after "
-                "the user approves the specific edits. Check the resulting "
-                "position with read tools afterward.\n\n"
+                "Entering or correcting someone's equity from their documents "
+                "— a purchase agreement, a loan statement, a Eureka file, a "
+                "screenshot or memory — is a first-class use. Read "
+                "get_import_guide and the account first. Then call "
+                "apply_changes without confirm to preview the exact edits, "
+                "walk the person through them in plain words saying what you "
+                "guessed, and once they agree call it again with the confirm "
+                "token. Company schedules are starting points; the person's "
+                "own paperwork wins, and a grant's vesting is a list of dated "
+                "rows. Never delete a row only because a document leaves it "
+                "out.\n\n"
                 "Salary, bonuses and retirement balances can be written "
                 "directly, and those writes are immediate. Read the matching "
                 "get_ tool first so you add to the history rather than "

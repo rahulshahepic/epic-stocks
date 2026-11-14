@@ -26,10 +26,10 @@ def test_trial_analyze_computes_a_timeline_without_an_account(client):
     assert all("cum_shares" in e and "cum_income" in e and "cum_cap_gains" in e
                for e in body["timeline"])
 
-    # wizard_payload is exactly what /api/wizard/submit accepts after signup
-    assert set(body["wizard_payload"].keys()) == {"grants", "prices", "sales"}
-    assert len(body["wizard_payload"]["grants"]) == 8
-    assert len(body["wizard_payload"]["prices"]) == 3
+    # The draft is what /api/epic-import/changes turns into edits after signup.
+    assert {"grants", "prices", "sales", "statement_date"} <= set(body["draft"].keys())
+    assert len(body["draft"]["grants"]) == 8
+    assert len(body["draft"]["prices"]) == 3
 
 
 def test_trial_analyze_returns_dashboard_shaped_data(client):
@@ -96,15 +96,16 @@ def test_a_misread_statement_blocks(client):
     assert "C1" in [f["code"] for f in body["findings"]]
 
 
-def test_trial_wizard_payload_round_trips_through_signup(client):
+def test_trial_draft_round_trips_through_signup(client):
     from tests.conftest import register_user
     trial_body = client.post("/api/trial/analyze", files=upload_files()).json()
 
     register_user(client)
-    resp = client.post("/api/wizard/submit", json={
-        **trial_body["wizard_payload"], "clear_existing": True,
-        "generate_payoff_sales": False})
-    assert resp.status_code == 201, resp.text
+    result = client.post("/api/epic-import/changes", json={"draft": trial_body["draft"]}).json()
+    assert not result["blocked"]
+    token = client.post("/api/changes/preview", json={"changes": result["changes"]}).json()["confirm"]
+    resp = client.post("/api/changes/apply", json={"changes": result["changes"], "confirm": token})
+    assert resp.status_code == 200, resp.text
     assert len(client.get("/api/grants").json()) == 8
     assert len(client.get("/api/loans").json()) == 9
     assert len(client.get("/api/prices").json()) == 3
@@ -271,7 +272,7 @@ def test_a_supplied_price_carries_into_signup(client):
     """Someone who tells us today's price should not have to tell us again."""
     body = client.post("/api/trial/analyze", files=upload_files(),
                        data={"current_price": "99.50"}).json()
-    prices = body["wizard_payload"]["prices"]
+    prices = body["draft"]["prices"]
     assert {"effective_date": date.today().isoformat(), "price": 99.50} in prices
 
 

@@ -103,6 +103,33 @@ class Mcp:
         assert result.get("isError"), f"{name} was expected to fail: {result}"
         return result["content"][0]["text"]
 
+    def save(self, kind, values, id=None):
+        """Preview one change, then apply it with the preview's token."""
+        change = {"kind": kind, "action": "update" if id else "create", "values": dict(values)}
+        if id:
+            change["id"], change["version"] = id, change["values"].pop("version")
+        preview = self.call("apply_changes", changes=[change])
+        assert preview["applied"] is False
+        done = self.call("apply_changes", changes=[change], confirm=preview["confirm"])
+        row = done["changes"][0]
+        model = {"grant": "grants", "loan": "loans", "price": "prices", "sale": "sales"}[kind]
+        listed = self.call(f"list_{model}", **({"include_projections": True} if kind == "price" else {}))
+        rows = listed[model] + listed.get("projected_prices", [])
+        match = next(r for r in rows if r["id"] == row["id"])
+        return {"id": row["id"], "version": match["version"]}
+
+    def save_error(self, kind, values, id=None, version=None):
+        change = {"kind": kind, "action": "update" if id else "create", "values": values}
+        if id:
+            change["id"], change["version"] = id, version if version is not None else values.get("version")
+            change["values"] = {k: v for k, v in values.items() if k != "version"}
+        return self.error("apply_changes", changes=[change])
+
+    def remove(self, kind, id, version):
+        change = {"kind": kind, "action": "delete", "id": id, "version": version}
+        preview = self.call("apply_changes", changes=[change])
+        return self.call("apply_changes", changes=[change], confirm=preview["confirm"])
+
 
 @pytest.fixture()
 def mcp(client):
@@ -116,16 +143,13 @@ def mcp(client):
 # The tools that leave something behind. Everything else must claim, and be,
 # read-only — a client decides how loudly to confirm from these annotations.
 WRITING_TOOLS = {
-    "stage_import",
     "add_compensation", "remove_compensation", "set_retirement_accounts",
-    "save_equity", "remove_equity",
-    "analyze_import_files", "prepare_import_review", "accept_import_review",
+    "apply_changes",
 }
 
-# Of those, the ones that can take something away. stage_import stages a
-# proposal the user accepts elsewhere and the two comp writers only add or
-# amend; deleting history is the one that destroys.
-DESTRUCTIVE_TOOLS = {"remove_compensation", "remove_equity", "accept_import_review"}
+# Of those, the ones that can take something away: the two comp writers only
+# add or amend; removing history, or a change set that may delete rows, destroys.
+DESTRUCTIVE_TOOLS = {"remove_compensation", "apply_changes"}
 
 
 def test_every_tool_is_listed_and_annotated_honestly(mcp):
@@ -156,8 +180,8 @@ def test_the_writing_tools_are_only_the_ones_we_meant_to_add(mcp):
 
 def test_no_tool_writes_equity(mcp):
     """Grants, prices, loans and sales feed core.py, and a wrong one there
-    restates the whole timeline. Entering equity goes through stage_import and
-    the wizard, so nothing under equity:read may write."""
+    restates the whole timeline. Entering equity goes through apply_changes
+    under equity:write, so nothing under equity:read may write."""
     for tool in mcp.list_tools():
         if tool["name"] in WRITING_TOOLS:
             assert REGISTRY[tool["name"]].scope != "equity:read", tool["name"]
@@ -514,7 +538,6 @@ def test_every_successful_tool_result_is_parseable_json(mcp, name, monkeypatch):
         "estimate_sale": {"price_per_share": 4.0, "shares": 10},
         "get_tax_breakdown": {"sale_id": None},
         "explain": {"topic": "vesting"},
-        "stage_import": {"payload": IMPORT_PAYLOAD},
         "add_compensation": {
             "entries": [{"type": "salary", "effective_date": "2024-01-01",
                          "amount": 180000}],
@@ -525,19 +548,8 @@ def test_every_successful_tool_result_is_parseable_json(mcp, name, monkeypatch):
     arguments = dict(required.get(name, {}))
     if name == "get_tax_breakdown":
         arguments["sale_id"] = mcp.call("list_sales")["sales"][0]["id"]
-    if name == "save_equity":
-        arguments = {"kind": "price", "values": {"effective_date": "2025-01-01", "price": 5.0}}
-    if name == "remove_equity":
-        row = mcp.call("list_sales")["sales"][0]
-        arguments = {"kind": "sale", "id": row["id"], "version": row["version"]}
-    if name == "analyze_import_files":
-        monkeypatch.setattr("app.mcp.import_ui.download_file", lambda ref: b"Synthetic award letter")
-        arguments = {"files": [{"file_id": "file-test", "download_url": "unused", "file_name": "letter.txt"}]}
-    if name in {"prepare_import_review", "accept_import_review"}:
-        from tests.test_mcp_chat_import import RETENTION
-        arguments = {"payload": {"grants": [RETENTION], "prices": []}}
-        if name == "accept_import_review":
-            review = mcp.call("prepare_import_review", **arguments)["data"]
-            arguments = {"review_token": review["review_token"], "confirmed": True}
+    if name == "apply_changes":
+        arguments = {"changes": [{"kind": "price", "action": "create",
+                                  "values": {"effective_date": "2025-01-01", "price": 5.0}}]}
     payload = mcp.call(name, **arguments)
     assert isinstance(payload, (dict, list))

@@ -207,17 +207,12 @@ def test_holdings_report_separates_vested_schedule_from_shares_held(client):
     assert sheet.cell(8, 5).value == 80
 
 
-def test_wizard_rejects_positive_down_payment_shares(client):
+def test_a_grant_rejects_positive_down_payment_shares(client):
     register_user(client)
-    response = client.post("/api/wizard/submit", json={
-        "grants": [{
-            "year": 2020, "type": "Purchase", "shares": 100, "price": 1,
-            "vest_start": "2021-01-01", "periods": 1,
-            "exercise_date": "2020-01-01", "dp_shares": 10,
-            "loans": [],
-        }],
-        "prices": [], "sales": [], "clear_existing": False,
-        "generate_payoff_sales": False,
+    response = client.post("/api/grants", json={
+        "year": 2020, "type": "Purchase", "shares": 100, "price": 1,
+        "vest_start": "2021-01-01", "periods": 1,
+        "exercise_date": "2020-01-01", "dp_shares": 10,
     })
     assert response.status_code == 422, response.text
 

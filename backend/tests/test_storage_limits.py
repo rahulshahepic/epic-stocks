@@ -97,11 +97,11 @@ def test_bulk_loan_creation_is_capped(client):
     assert client.post("/api/loans/bulk", json=items).status_code == 422
 
 
-def test_wizard_submit_list_is_capped(client):
+def test_a_change_set_is_capped(client):
+    from app.changes import MAX_CHANGES
     register_user(client)
-    resp = client.post("/api/wizard/submit", json={
-        "grants": [], "prices": [{"effective_date": "2020-01-01", "price": 1.0}] * (MAX_BULK_ITEMS + 1),
-    })
+    one = {"kind": "price", "action": "create", "values": {"effective_date": "2020-01-01", "price": 1.0}}
+    resp = client.post("/api/changes/preview", json={"changes": [one] * (MAX_CHANGES + 1)})
     assert resp.status_code == 422
 
 
@@ -153,16 +153,15 @@ def test_growth_prices_cannot_outrun_the_price_quota(client, monkeypatch):
     assert resp.status_code == 409
 
 
-def test_wizard_clear_existing_respects_the_quota(client, monkeypatch):
+def test_a_change_set_respects_the_quota(client, monkeypatch):
     import scaffold.quota as quota
     register_user(client)
     monkeypatch.setitem(quota.ROW_QUOTAS, "Price", 2)
-    resp = client.post("/api/wizard/submit", json={
-        "grants": [],
-        "prices": [{"effective_date": f"20{10 + i}-01-01", "price": 1.0} for i in range(3)],
-        "clear_existing": True,
-    })
-    assert resp.status_code == 409
+    changes = [{"kind": "price", "action": "create",
+                "values": {"effective_date": f"20{10 + i}-01-01", "price": 1.0}} for i in range(3)]
+    resp = client.post("/api/changes/preview", json={"changes": changes})
+    assert resp.status_code == 422 and resp.json()["detail"]["index"] == 2
+    assert client.get("/api/prices").json() == []
 
 
 # ── Mutation rate limit ──────────────────────────────────────────────────────

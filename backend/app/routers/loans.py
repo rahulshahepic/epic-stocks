@@ -664,6 +664,12 @@ def regenerate_all_payoff_sales(user: User = Depends(get_current_user), db: Sess
 @router.delete("/{loan_id}", status_code=204)
 def delete_loan(loan_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     loan = get_owned(db, Loan, loan_id, user, "Loan")
+    # Its own computed payoff sale goes with it; a sale the user owns is kept
+    # and unlinked. A loan that refinanced this one stops pointing at it.
+    db.query(Sale).filter(Sale.user_id == user.id, Sale.loan_id == loan.id,
+                          Sale.is_generated.is_(True)).delete(synchronize_session=False)
+    db.query(Loan).filter(Loan.user_id == user.id, Loan.refinances_loan_id == loan.id).update(
+        {Loan.refinances_loan_id: None}, synchronize_session=False)
     db.delete(loan)
     db.commit()
     event_cache.schedule_recompute(user.id)

@@ -13,7 +13,7 @@ from starlette.responses import FileResponse
 import database
 
 from scaffold.routers import auth_router, admin, backups, notifications, push, unsubscribe, reports, plugin_downloads
-from app.routers import grants, loans, prices, events, flows, import_export, epic_import, sales, cache as cache_router, tips, wizard, content, sharing, trial
+from app.routers import changes, grants, loans, prices, events, flows, import_export, epic_import, sales, cache as cache_router, tips, content, sharing, trial
 from app.routers.retirement import retirement_router, dashboard_prefs_router
 from scaffold.oauth import router as oauth_router
 from scaffold.oauth.router import well_known_router as oauth_well_known_router
@@ -354,7 +354,7 @@ class MaintenanceMiddleware:
 # Write methods that are blocked on epic-mode fact tables.
 _EPIC_WRITE_METHODS = frozenset({"POST", "PUT", "DELETE", "PATCH"})
 # Prefixes whose writes are blocked in epic mode (data owned by Epic's systems).
-_EPIC_BLOCKED_PREFIXES = ("/api/grants", "/api/prices", "/api/loans", "/api/import", "/api/wizard")
+_EPIC_BLOCKED_PREFIXES = ("/api/grants", "/api/prices", "/api/loans", "/api/import", "/api/changes")
 # Prefixes whose writes are always allowed (user-initiated actions).
 _EPIC_ALLOWED_PREFIXES = (
     "/api/internal/",
@@ -611,6 +611,7 @@ _fastapi_app.include_router(flows.router)
 _fastapi_app.include_router(import_export.router)
 _fastapi_app.include_router(epic_import.router)
 _fastapi_app.include_router(trial.router)
+_fastapi_app.include_router(changes.router)
 _fastapi_app.include_router(push.router)
 _fastapi_app.include_router(admin.router)
 _fastapi_app.include_router(backups.router)
@@ -621,7 +622,6 @@ _fastapi_app.include_router(sales.tax_router)
 _fastapi_app.include_router(loans.lp_router)
 _fastapi_app.include_router(cache_router.router)
 _fastapi_app.include_router(tips.router)
-_fastapi_app.include_router(wizard.router)
 _fastapi_app.include_router(sharing.router)
 _fastapi_app.include_router(unsubscribe.router)
 _fastapi_app.include_router(reports.router)
@@ -790,7 +790,6 @@ _BODY_LIMITS: tuple[tuple[str, int], ...] = (
     # share_csv + statement_pdf, and unauthenticated, so no more than it needs
     ("/api/trial/analyze", 2 * _FILE_MB + _MB),
     ("/api/import/excel", _FILE_MB + _MB),
-    ("/api/wizard/parse-file", _FILE_MB + _MB),
 )
 _DEFAULT_BODY_LIMIT = _MB
 

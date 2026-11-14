@@ -807,7 +807,7 @@ def test_read_only_request_can_explicitly_opt_into_import_and_equity_edits(clien
     listed = client.post("/mcp", headers={"Authorization": f"Bearer {tokens['access_token']}"},
                          json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"}).json()
     names = {tool["name"] for tool in listed["result"]["tools"]}
-    assert {"save_equity", "stage_import", "show_import"} <= names
+    assert {"apply_changes", "get_import_guide"} <= names
     assert "add_compensation" not in names
     grant = db_session.query(OAuthGrant).one()
     assert set(grant.scope.split()) == set(tokens["scope"].split())

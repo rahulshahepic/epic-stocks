@@ -257,6 +257,15 @@ def consent_stylesheet():
     )
 
 
+@router.get("/consent.js")
+def consent_script():
+    return Response(
+        content=consent_page.SCRIPT,
+        media_type="application/javascript",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
 @router.get("/authorize")
 @admin_router.get("/authorize")
 def authorize(request: Request, db: Session = Depends(get_db)):
@@ -340,10 +349,8 @@ def authorize(request: Request, db: Session = Depends(get_db)):
         client_name=client.client_name,
         redirect_origin=urlparse(redirect_uri).netloc,
         account_email=user.email,
-        scope_labels=[scope_defs.SCOPE_LABELS[s] for s in granted],
-        read_only=not scope_defs.writes_anything(granted),
-        writes_directly=scope_defs.writes_directly(granted),
-        equity_write=scope_defs.EQUITY_WRITE in granted,
+        requested_scopes=granted,
+        admin=_admin(request),
         action=f"/{'admin-oauth' if _admin(request) else 'oauth'}/authorize",
         request_token=request_token,
         csrf=_csrf_for(session_token, request_token),
@@ -392,10 +399,8 @@ def authorize_resume(request: Request, db: Session = Depends(get_db)):
         client_name=client.client_name,
         redirect_origin=urlparse(pending["ru"]).netloc,
         account_email=user.email,
-        scope_labels=[scope_defs.SCOPE_LABELS[s] for s in pending["sc"].split()],
-        read_only=not scope_defs.writes_anything(pending["sc"].split()),
-        writes_directly=scope_defs.writes_directly(pending["sc"].split()),
-        equity_write=scope_defs.EQUITY_WRITE in pending["sc"].split(),
+        requested_scopes=pending["sc"].split(),
+        admin=_admin(request),
         action=f"/{'admin-oauth' if _admin(request) else 'oauth'}/authorize",
         request_token=request_token,
         csrf=_csrf_for(session_token, request_token),
@@ -407,6 +412,8 @@ def authorize_resume(request: Request, db: Session = Depends(get_db)):
 def authorize_decide(request: Request, decision: str = Form(...),
                      request_token: str = Form(..., alias="request"),
                      csrf: str = Form(...), read_only: str | None = Form(default=None),
+                     permission_selection: str | None = Form(default=None),
+                     selected_scope: list[str] | None = Form(default=None),
                      db: Session = Depends(get_db)):
     if not _enabled():
         return _error_page("Not available", "AI connections are turned off on this server.", 404)
@@ -451,8 +458,25 @@ def authorize_decide(request: Request, decision: str = Form(...),
     if _admin(request):
         if not _is_site_admin(user):
             return _redirect_error(redirect_uri, state, "access_denied", "Site admin access required")
-    if read_only:
-        # The opt-out on the consent screen: keep the reads, drop every write.
+    if permission_selection is not None or selected_scope is not None:
+        # The signed request fixes the client, resource and initial selection.
+        # Only this session-authenticated, CSRF-checked consent may change it.
+        allowed = scope_defs.ADMIN_SCOPES if _admin(request) else scope_defs.SUPPORTED_SCOPES
+        if permission_selection != "1" or not selected_scope:
+            return _error_page("Choose permissions", "Select at least one permission, or cancel.", 400)
+        if len(selected_scope) > len(allowed) or any(s not in allowed for s in selected_scope):
+            return _error_page("Invalid permissions", "Choose only the permissions offered on this screen.", 400)
+        if scope_defs.IMPORT_PROPOSE in selected_scope and scope_defs.EQUITY_READ not in selected_scope:
+            return _error_page("Invalid permissions", "Preparing imports also requires equity read access.", 400)
+        try:
+            scope = scope_defs.format_scope(scope_defs.parse_scope(
+                " ".join(s for s in allowed if s in selected_scope), admin=_admin(request),
+            ))
+        except scope_defs.ScopeError as exc:
+            return _error_page("Invalid permissions", str(exc), 400)
+    elif read_only:
+        # Compatibility for a consent page opened before deployment.
+        # Keep the reads, drop every write.
         scope = scope_defs.format_scope(
             [s for s in scope.split() if s not in scope_defs.WRITING_SCOPES])
         if not scope:

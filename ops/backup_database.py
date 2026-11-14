@@ -174,18 +174,35 @@ def dump_command(deploy_path):
 def encrypted_dump(cmd, recipient, dest):
     """pg_dump stdout -> age stdin -> dest. Returns plaintext size; checks the PGDMP header."""
     with dest.open("wb") as out:
-        age = subprocess.Popen(["age", "-r", recipient], stdin=subprocess.PIPE, stdout=out, stderr=subprocess.DEVNULL)
-        dump = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        # Inherit stderr so age's setup/write errors reach the systemd journal.
+        age = subprocess.Popen(["age", "-r", recipient], stdin=subprocess.PIPE, stdout=out)
         size, head = 0, b""
         try:
-            while chunk := dump.stdout.read(CHUNK):
-                if len(head) < 5:
-                    head += chunk[:5]
-                size += len(chunk)
-                age.stdin.write(chunk)
+            dump = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            try:
+                while chunk := dump.stdout.read(CHUNK):
+                    if len(head) < 5:
+                        head += chunk[:5]
+                    size += len(chunk)
+                    age.stdin.write(chunk)
+                age.stdin.close()
+                dump_rc, age_rc = dump.wait(), age.wait()
+            finally:
+                # Stop a producer blocked on stdout before waiting for it.
+                dump.stdout.close()
+                if dump.poll() is None:
+                    dump.kill()
+                dump.wait()
+        except BrokenPipeError:
+            raise BackupError("age stopped accepting the database dump; see the journal") from None
         finally:
-            age.stdin.close()
-            dump_rc, age_rc = dump.wait(), age.wait()
+            if age.poll() is None:
+                age.kill()
+            try:
+                age.stdin.close()
+            except BrokenPipeError:
+                pass
+            age.wait()
     if dump_rc:
         raise BackupError(f"pg_dump exited {dump_rc}")
     if age_rc:
@@ -203,7 +220,7 @@ def encrypted_secrets(secrets_dir, recipient):
             if path.is_file() and not path.is_symlink() and path.name not in EXCLUDED_SECRETS:
                 tar.add(path, arcname=path.name)
                 names.append(path.name)
-    result = subprocess.run(["age", "-r", recipient], input=buf.getvalue(), capture_output=True, timeout=60)
+    result = subprocess.run(["age", "-r", recipient], input=buf.getvalue(), stdout=subprocess.PIPE, timeout=60)
     if result.returncode:
         raise BackupError(f"age exited {result.returncode}")
     return result.stdout, names
@@ -290,15 +307,21 @@ def run(environment, deploy_path, status_path=STATUS_FILE, env=os.environ, now=N
                         "secrets_encrypted_sha256": hashlib.sha256(secrets_blob).hexdigest(),
                         "secret_files": secret_names, "kek_included": False}
             store.put_bytes(f"{prefix}/manifest.json", json.dumps(manifest, indent=2).encode())
-        deleted = prune(store, environment, now, cfg["retention_days"])
     except (BackupError, OSError, ValueError, ET.ParseError) as exc:
         write_status(status_path, environment=environment, configured=True, last_attempt_utc=attempt,
                      last_result="failed", error=str(exc)[:120] if isinstance(exc, BackupError) else type(exc).__name__)
         raise
+    deleted, prune_error = None, None
+    try:
+        deleted = prune(store, environment, now, cfg["retention_days"])
+    except (BackupError, OSError, ValueError, ET.ParseError) as exc:
+        prune_error = str(exc)[:120] if isinstance(exc, BackupError) else type(exc).__name__
+        print(f"Backup uploaded; retention cleanup failed: {prune_error}", file=sys.stderr)
     write_status(status_path, environment=environment, configured=True, last_attempt_utc=attempt,
                  last_result="success", last_success_utc=attempt, last_run=stamp, error=None,
-                 database_plaintext_bytes=plain_size, pruned_runs=deleted)
-    print(f"Uploaded {prefix} ({plain_size} database bytes); pruned {deleted} old run(s).")
+                 database_plaintext_bytes=plain_size, pruned_runs=deleted, prune_error=prune_error)
+    print(f"Uploaded {prefix} ({plain_size} database bytes); "
+          + ("retention cleanup incomplete." if prune_error else f"pruned {deleted} old run(s)."))
     return 0
 
 

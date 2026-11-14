@@ -5,6 +5,7 @@ import io
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tarfile
@@ -192,6 +193,92 @@ def test_storage_failure_leaves_no_complete_run(host):
         backup.run("staging", deploy, status_path, env=env, now=NOW, cmd=dump_cmd())
     assert not any(k.endswith("manifest.json") for k in FakeS3.objects)
     assert json.loads(status_path.read_text())["last_result"] == "failed"
+
+
+@pytest.mark.parametrize("failure, payload", [
+    ("early", 'b"PGDMP" + b"x" * 200_000_000'),
+    ("early", 'b"PGDMP"'),
+    ("after_input", 'b"PGDMP" + b"x" * 300_000'),
+    ("missing_dump", None),
+])
+def test_dump_failure_reaps_children_records_failure_and_keeps_age_stderr(host, failure, payload):
+    deploy, env, status_path = host
+    age = Path(shutil.which("age"))
+    age.write_text(f"#!{sys.executable}\nimport sys\n"
+                   + ("sys.stdin.buffer.read()\n" if failure == "after_input" else "")
+                   + "sys.stderr.write('age: test encryption failure\\n')\nsys.exit(1)\n")
+    cmd = [str(deploy / "missing-pg-dump")] if failure == "missing_dump" else dump_cmd(payload)
+    script = textwrap.dedent('''
+        import json, sys
+        from pathlib import Path
+        sys.path.insert(0, sys.argv[1])
+        import backup_database as backup
+        processes = []
+        original = backup.subprocess.Popen
+        def track(*args, **kwargs):
+            process = original(*args, **kwargs)
+            processes.append(process)
+            return process
+        backup.subprocess.Popen = track
+        try:
+            backup.run("staging", Path(sys.argv[2]), Path(sys.argv[3]),
+                       env=json.loads(sys.argv[4]), cmd=json.loads(sys.argv[5]))
+        except (backup.BackupError, OSError):
+            pass
+        else:
+            raise AssertionError("backup unexpectedly succeeded")
+        assert processes and all(p.returncode is not None for p in processes), "unreaped child"
+        print("children reaped")
+    ''')
+    process = subprocess.Popen([sys.executable, "-c", script, str(REPO / "ops"), str(deploy),
+                                str(status_path), json.dumps(env), json.dumps(cmd)],
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+    try:
+        stdout, stderr = process.communicate(timeout=10)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+        process.communicate()
+        pytest.fail("backup hung after encryption/dump failure")
+    assert process.returncode == 0, stderr.decode()
+    assert b"children reaped" in stdout
+    if failure != "missing_dump":
+        assert b"age: test encryption failure" in stderr
+    status = json.loads(status_path.read_text())
+    assert status["last_result"] == "failed"
+    assert "TOP-SECRET-VALUE" not in status_path.read_text()
+    assert FakeS3.objects == {}
+
+
+def test_secrets_encryption_failure_keeps_stderr(host, capfd):
+    deploy, env, _ = host
+    Path(shutil.which("age")).write_text(f"#!{sys.executable}\nimport sys\n"
+                                        "sys.stderr.write('age: test secrets failure\\n')\nsys.exit(1)\n")
+    with pytest.raises(backup.BackupError, match="age exited 1"):
+        backup.encrypted_secrets(deploy / ".secrets", env["BACKUP_AGE_RECIPIENT"])
+    assert "age: test secrets failure" in capfd.readouterr().err
+
+
+@pytest.mark.parametrize("method", ["GET", "DELETE"])
+def test_prune_failure_preserves_complete_backup_and_success(host, method, capsys):
+    deploy, env, status_path = host
+    stale = "staging/20260101T000000Z/database.dump.age"
+    FakeS3.objects[stale] = b"partial"
+    FakeS3.fail = {method}
+    assert backup.run("staging", deploy, status_path, env=env, now=NOW, cmd=dump_cmd()) == 0
+    prefix = "staging/20261107T032000Z"
+    assert all(f"{prefix}/{name}" in FakeS3.objects
+               for name in ("database.dump.age", "secrets.tar.age", "manifest.json"))
+    status = json.loads(status_path.read_text())
+    assert status["last_result"] == "success" and status["last_success_utc"] == NOW.isoformat()
+    assert status["pruned_runs"] is None
+    assert status["prune_error"] == f"{method} failed: HTTP 500 InternalError"
+    assert "retention cleanup failed" in capsys.readouterr().err
+    assert "TOP-SECRET-VALUE" not in status_path.read_text()
+    assert collector.backup_state("staging", status_path, NOW) == "backup_succeeded"
+    FakeS3.fail = set()
+    assert backup.run("staging", deploy, status_path, env=env, now=NOW + timedelta(days=1), cmd=dump_cmd()) == 0
+    status = json.loads(status_path.read_text())
+    assert status["prune_error"] is None and status["pruned_runs"] == 1
 
 
 def test_unconfigured_reports_without_network(host):

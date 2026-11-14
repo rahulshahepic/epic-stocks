@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api } from '../../../api.ts'
 import type { AdminUser, UserDetail } from '../../../api.ts'
 import { formatDate } from './format.ts'
+import ModalPortal from '../../components/ModalPortal.tsx'
 
 /**
  * One user's record, and the actions an admin can take on it. Fetches its own
@@ -47,7 +48,7 @@ export function UserDetailModal({ user, onClose, onChanged, onNotify, onError }:
   }, [user.id])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => onClose()}>
+    <ModalPortal><div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => onClose()}>
       <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-lg bg-cs-surface p-5 shadow-xl " onClick={e => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
           <div>
@@ -281,6 +282,6 @@ export function UserDetailModal({ user, onClose, onChanged, onNotify, onError }:
           </div>
         )}
       </div>
-    </div>
+    </div></ModalPortal>
   )
 }

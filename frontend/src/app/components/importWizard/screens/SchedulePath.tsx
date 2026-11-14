@@ -33,9 +33,9 @@ export function ScheduleIntro({ onBack, onNext }: { onBack: () => void; onNext: 
           <span className="text-cs-text-2">Annual share prices</span>
           <span className="text-cs-muted">Epic stocks SharePoint</span>
           <span className="text-cs-text-2">Shares purchased / DP shares</span>
-          <span className="text-cs-muted">DocuSign or Shareworks</span>
+          <span className="text-cs-muted">DocuSign or Eureka</span>
           <span className="text-cs-text-2">Catch-up / bonus shares</span>
-          <span className="text-cs-muted">DocuSign or Shareworks</span>
+          <span className="text-cs-muted">DocuSign or Eureka</span>
           <span className="text-cs-text-2">Loan interest rate</span>
           <span className="text-cs-muted">Loan statement or DocuSign</span>
         </div>

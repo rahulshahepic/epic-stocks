@@ -55,11 +55,20 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
   return (
     <AdminSection title={<>AI Connections</>}>
       <p className="mt-1 text-xs text-cs-muted">
-        Lets people connect ChatGPT or Claude to their own account, read-only.
+        Lets people connect ChatGPT or Claude to their account or site diagnostics.
         {typeof settings?.connections === 'number'
           ? ` ${settings.connections} connection${settings.connections === 1 ? '' : 's'} active.`
           : ''}
       </p>
+
+      <div className="mt-3 rounded-md border border-cs-border bg-cs-raised p-3 text-xs">
+        <p className="font-medium text-cs-text">Admin MCP</p>
+        <p className="mt-1 text-cs-muted">Download for this site, upload the ZIP in ChatGPT or Claude, then sign in as an admin. It contains diagnostics only; the account-data plugin is separate in Settings.</p>
+        <a href="/api/admin/ai/plugin"
+          className="mt-3 inline-block rounded-md border border-cs-border-strong px-2.5 py-2 font-medium text-cs-text hover:bg-cs-base">
+          Download admin MCP
+        </a>
+      </div>
 
       <div className="mt-3 flex items-center justify-between">
         <div>

@@ -86,7 +86,7 @@ def test_the_oauth_paths_are_exempt_from_form_action():
     not only to the form's own action."""
     for name in ("app.caddy", "Caddyfile"):
         config = _read(name)
-        assert "@oauth path /oauth/*" in config, f"{name} has no /oauth matcher"
+        assert "@oauth path /oauth/* /admin-oauth/*" in config, f"{name} has no OAuth matcher for both MCP servers"
 
         policy = _policy_in_handle(config, "@oauth")
         assert policy, f"{name}: the @oauth handle serves no Content-Security-Policy"

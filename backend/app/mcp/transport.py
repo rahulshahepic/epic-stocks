@@ -21,13 +21,16 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from database import get_db
 from scaffold.oauth import audit
+from scaffold.oauth.scopes import ADMIN_READ
+from scaffold.auth import get_admin_emails
 from scaffold.oauth.resource import Connector, require_connector
 from scaffold.oauth.settings import mcp_enabled
 from scaffold.rate_limit import check_rate_shared
-from . import comp_tools, equity_tools, import_tools, read_tools, ui_tools, import_ui  # noqa: F401
+from . import admin_tools, comp_tools, equity_tools, import_tools, read_tools, ui_tools, import_ui  # noqa: F401
 from .ui_tools import RESOURCE_URI, resource_contents, resource_descriptor
 from .tools import REGISTRY, ToolContext, as_result, visible_to
 
@@ -93,6 +96,7 @@ def _refuse_when_disabled():
 
 
 @router.get("/mcp")
+@router.get("/admin-mcp")
 def mcp_get():
     return JSONResponse(
         {"detail": "This MCP server does not open server-initiated streams. Use POST."},
@@ -108,6 +112,7 @@ def _enforce_rate_limits(connector: Connector) -> None:
 
 
 @router.post("/mcp", dependencies=[Depends(_refuse_when_disabled)])
+@router.post("/admin-mcp", dependencies=[Depends(_refuse_when_disabled)])
 async def mcp_post(request: Request, connector: Connector = Depends(require_connector),
                    db: Session = Depends(get_db)):
     _enforce_rate_limits(connector)
@@ -136,7 +141,17 @@ async def mcp_post(request: Request, connector: Connector = Depends(require_conn
         return Response(status_code=202)
 
     try:
-        payload = _dispatch(method, params, request_id, ToolContext(connector=connector, db=db))
+        ctx = ToolContext(connector=connector, db=db)
+        name = params.get("name")
+        tool = REGISTRY.get(name) if method == "tools/call" and isinstance(name, str) else None
+        if tool and tool.blocking_io:
+            # Provider timeouts must leave the ASGI event loop available.
+            # Authorization and audit still happen inside _dispatch.
+            payload = await run_in_threadpool(
+                _dispatch, method, params, request_id, ctx, admin=request.url.path == "/admin-mcp",
+            )
+        else:
+            payload = _dispatch(method, params, request_id, ctx, admin=request.url.path == "/admin-mcp")
     except Exception:
         logger.exception("MCP method %s failed", method)
         payload = _error(request_id, INTERNAL_ERROR, "The server could not complete that request")
@@ -146,12 +161,26 @@ async def mcp_post(request: Request, connector: Connector = Depends(require_conn
     return JSONResponse(payload)
 
 
-def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext) -> dict | None:
+def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext, *, admin: bool = False) -> dict | None:
     connector = ctx.connector
 
     if method == "initialize":
         asked = params.get("protocolVersion")
         version = asked if asked in SUPPORTED_PROTOCOL_VERSIONS else PROTOCOL_VERSION
+        if admin:
+            return _result(request_id, {
+                "protocolVersion": version,
+                "capabilities": {"tools": {"listChanged": False}},
+                "serverInfo": {"name": "epic-stocks-admin", "title": "Epic Stocks diagnostics", "version": "1"},
+                "instructions": (
+                    "Read-only site diagnostics for this environment. Always identify the environment "
+                    "and API build in results. No personal financial data or account tools are available. "
+                    "Use admin_host_diagnostics, admin_scheduler_history, admin_deploy_runs and "
+                    "admin_edge_summary for bounded host, scheduler, deploy and WAF metadata. "
+                    "Report source state, freshness, coverage and gaps. Stale or unavailable sources "
+                    "and empty records must never be interpreted as healthy. Raw logs are not exposed."
+                ),
+            })
         return _result(request_id, {
             "protocolVersion": version,
             "capabilities": {"tools": {"listChanged": False}, "resources": {"listChanged": False}},
@@ -182,7 +211,7 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext) -> d
                 "and share counts are fixed and can be stated plainly; the "
                 "money attached to them cannot.\n\n"
                 "Helping someone enter or update their equity — from a grant "
-                "letter, a Shareworks file, a screenshot or memory — is a "
+                "letter, a Eureka file, a screenshot or memory — is a "
                 "first-class use. Read get_import_guide and the existing "
                 "grants, loans, prices and sales first, draft it yourself, and "
                 "walk the person through it in plain words without financial "
@@ -212,10 +241,13 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext) -> d
 
     if method == "tools/list":
         return _result(request_id, {
-            "tools": [tool.describe() for tool in visible_to(connector)],
+            "tools": [tool.describe() for tool in visible_to(connector)
+                      if (tool.scope == ADMIN_READ) == admin],
         })
 
     if method == "resources/list":
+        if admin:
+            return _result(request_id, {"resources": []})
         resources = [resource_descriptor()] if "equity:read" in connector.scopes else []
         return _result(request_id, {"resources": resources})
 
@@ -223,6 +255,8 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext) -> d
         return _result(request_id, {"resourceTemplates": []})
 
     if method == "resources/read":
+        if admin:
+            return _error(request_id, INVALID_PARAMS, "Unknown resource")
         if params.get("uri") != RESOURCE_URI:
             return _error(request_id, INVALID_PARAMS, "Unknown resource")
         if "equity:read" not in connector.scopes:
@@ -230,7 +264,7 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext) -> d
         return _result(request_id, {"contents": [resource_contents()]})
 
     if method == "tools/call":
-        return _call_tool(params, request_id, ctx)
+        return _call_tool(params, request_id, ctx, admin=admin)
 
     if method.startswith("notifications/"):
         return None
@@ -238,14 +272,14 @@ def _dispatch(method: str, params: dict, request_id: Any, ctx: ToolContext) -> d
     return _error(request_id, METHOD_NOT_FOUND, f"Unknown method '{method}'")
 
 
-def _call_tool(params: dict, request_id: Any, ctx: ToolContext) -> dict:
+def _call_tool(params: dict, request_id: Any, ctx: ToolContext, *, admin: bool = False) -> dict:
     connector = ctx.connector
     name = params.get("name")
     if not isinstance(name, str) or not name:
         return _error(request_id, INVALID_PARAMS, "A tool name is required")
 
     tool = REGISTRY.get(name)
-    if tool is None:
+    if tool is None or (tool.scope == ADMIN_READ) != admin:
         return _error(request_id, INVALID_PARAMS, f"Unknown tool '{name}'")
 
     # Recorded before it runs, so a read cannot happen without a record of it.
@@ -266,6 +300,10 @@ def _call_tool(params: dict, request_id: Any, ctx: ToolContext) -> dict:
             f"This connection was not granted the '{tool.scope}' permission. "
             "Reconnect it and allow that permission to use this tool.",
         )
+
+    if tool.scope == ADMIN_READ and connector.user.email.lower() not in get_admin_emails():
+        audit.finish_tool_call(ctx.db, entry, audit.DENIED)
+        return _tool_failure(request_id, "Site admin access has been revoked")
 
     arguments = params.get("arguments")
     if not isinstance(arguments, dict):

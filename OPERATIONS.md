@@ -38,10 +38,12 @@ The reference deployment uses **Cloudflare** in front of Caddy. Cloudflare's bui
 
 ### Cloudflare's AI-bot blocking breaks AI connectors
 
-Cloudflare blocks known AI agents — including OpenAI's `ChatGPT-User` — with a
-**403 before the request reaches the origin**. It carves out `/.well-known/*`
-and `/mcp` automatically, but **not `/oauth/*`**. The result is a connector that
-gets through discovery and then fails at the first real step:
+Cloudflare can challenge AI agents — including OpenAI's `ChatGPT-User` — with a
+**403 before the request reaches the origin**. This deployment has two custom
+WAF rules: `Bots MCP` skips Bot Fight Mode and UA blocking for connector paths,
+while `No bots on non mcp` challenges bot traffic outside those paths. Both
+rules must use the same path expression. A Skip rule that only skips Bot Fight
+Mode does **not** bypass a later custom challenge rule. The symptom is:
 
 > Error creating connector — Dynamic client registration failed: registration
 > endpoint returned 403
@@ -50,32 +52,78 @@ Nothing in the application logs shows it, because nothing reaches the
 application. Confirm it from any machine:
 
 ```bash
-# 403 with body "Your request was blocked." and no `via: 1.1 Caddy` header
-curl -i -X POST https://<your domain>/oauth/register \
+# A challenge is a Cloudflare HTML 403 with cf-mitigated: challenge.
+# Invalid metadata avoids registering a probe client; an app response is JSON 400.
+curl -i -X POST https://<your domain>/admin-oauth/register \
   -H 'Content-Type: application/json' \
   -A 'ChatGPT-User/1.0; +https://openai.com/bot' \
-  -d '{"client_name":"probe","redirect_uris":["https://chatgpt.com/cb"]}'
-
-# The same request without that user agent returns 201
+  -d '{}'
 ```
 
-The absence of `via: 1.1 Caddy` is the tell: our own responses always carry it,
-so a 403 without it came from the edge.
+**Fix — Cloudflare dashboard → Security → WAF → Custom rules.** Keep the
+existing `Bots MCP` Skip rule before `No bots on non mcp`. Set the Skip rule's
+expression to the following; its action skips **Bot Fight Mode**
+(`http_request_sbfm`) and **UA blocking** (`uaBlock`):
 
-**Fix — Cloudflare dashboard → Security → WAF → Custom rules.** Add a *Skip*
-rule, ordered above the bot rules:
+```text
+(http.request.uri.path in {"/mcp" "/admin-mcp" "/.well-known/oauth-protected-resource" "/.well-known/oauth-protected-resource/mcp" "/.well-known/oauth-protected-resource/admin-mcp" "/.well-known/oauth-authorization-server" "/.well-known/oauth-authorization-server/mcp" "/.well-known/oauth-authorization-server/admin-mcp" "/.well-known/oauth-authorization-server/admin-oauth"}) or starts_with(http.request.uri.path, "/oauth/") or starts_with(http.request.uri.path, "/admin-oauth/")
+```
 
-| Field | Value |
-|-------|-------|
-| Rule name | `Allow AI connector OAuth` |
-| Expression | `(starts_with(http.request.uri.path, "/oauth/")) or (http.request.uri.path eq "/mcp") or (starts_with(http.request.uri.path, "/.well-known/"))` |
-| Action | Skip → All remaining custom rules, Managed rules, **Bot Fight Mode / AI bot blocking** |
+Edit `No bots on non mcp` as well: its expression must be **not (the same
+allowed-path expression)**, joined with its existing bot-detection condition.
+Preserve its `managed_challenge` action. Do not put `"/admin-oauth/*"` in the
+path set: the asterisk there is literal, so it will never match OAuth routes.
+For this deployment, the complete challenge expression is:
+
+```text
+not ((http.request.uri.path in {"/mcp" "/admin-mcp" "/.well-known/oauth-protected-resource" "/.well-known/oauth-protected-resource/mcp" "/.well-known/oauth-protected-resource/admin-mcp" "/.well-known/oauth-authorization-server" "/.well-known/oauth-authorization-server/mcp" "/.well-known/oauth-authorization-server/admin-mcp" "/.well-known/oauth-authorization-server/admin-oauth"}) or starts_with(http.request.uri.path, "/oauth/") or starts_with(http.request.uri.path, "/admin-oauth/")) and (cf.client.bot or len(http.user_agent) == 0 or (not http.request.headers["accept"][0] contains "text/html" and http.request.uri.path eq "/"))
+```
+
+For a new deployment without these two rules, create the Skip rule and either
+exclude these paths from any custom challenge rule or have the Skip action
+also skip **all remaining custom rules**. Keep other security protections
+unless you have verified that they block the connector.
 
 Scope it to those paths and no further. The rest of the site keeps its AI-bot
 blocking, and the paths being opened are ones designed to face unauthenticated
 callers: `/oauth/register` is anonymous by necessity (it is what lets Claude on
-a phone connect), `/oauth/token` requires PKCE, and `/mcp` requires a connector
+a phone connect), `/oauth/token` and `/admin-oauth/token` require PKCE, and both MCP endpoints require a connector
 token. Their own bounds are described in the README's AI Connections section.
+
+The current rules are zone-wide, so they cover both hostnames; deploy the
+admin MCP to production before connecting its production URL. On a phone,
+open Cloudflare → Security → WAF → Custom rules, edit **both** rules, save,
+then create each diagnostic connection from the downloads in Admin → AI Connections.
+Verify staging: unauthenticated `GET /admin-mcp` returns JSON 405, POST
+`/admin-mcp` returns 401 with admin resource metadata, the two admin
+`/.well-known/` discovery URLs return 200, and invalid POST
+`/admin-oauth/register` returns JSON 400. A Cloudflare HTML 403 means the
+request never reached the app; inspect its Ray ID in Security Events.
+
+### Add the admin diagnostic connections
+
+1. On staging, open **Admin → AI Connections** on your phone. Check that
+   **Allow AI connections** and the provider you will use are enabled.
+2. Tap **Download admin MCP** on staging. On a phone,
+   open ChatGPT's [Plugins web page](https://chatgpt.com/plugins) and use
+   **+ → Upload plugin**, or Claude's **Customize → Plugins → Upload**. Select
+   the ZIP from Files, review the connection, and proceed to sign-in. The
+   package contains the exact endpoint; nobody needs to paste it.
+3. Sign in to **staging** with an account listed in staging's `ADMIN_EMAIL`,
+   approve the `admin:read` consent screen, and ask the newly named connector
+   for `admin_deployment_status`. Confirm it reports `staging` and the expected
+   API build. This completes the authenticated check that unauthenticated
+   probes cannot perform.
+4. Only **after the admin MCP is deployed to production**, open **production's Admin → AI Connections**, download its
+   **admin MCP** ZIP and install it as a second plugin. Sign in to production and confirm its
+   environment is `production`. The personal-data connector remains the
+   separate production plugin downloaded from Settings → AI Connections.
+5. Phone acceptance: confirm both hosts accept the combined ZIP, complete OAuth,
+   discover only the intended tools and keep staging/production separate.
+   A passing package-shape test alone does not establish host compatibility.
+
+The [README's AI Connections section](README.md#ai-connections-admin) describes
+the diagnostic tools and how to revoke a connection.
 
 If a deployment does **not** want AI connectors at all, the better lever is the
 admin switch (Admin → AI Connections → *Allow AI connections*), which turns the
@@ -94,7 +142,7 @@ The built-in privacy page (`/privacy`, `frontend/src/scaffold/pages/PrivacyPolic
 | VPS firewall locked to CF IPs only | ✅ Done |
 | `CLIENT_IP_HEADER=CF-Connecting-IP` set | ⬜ Check — see step 4 |
 | `/api/admin/client-ip` shows your real address | ⬜ Check — see step 5 |
-| WAF skip rule for `/oauth/*` (AI connectors) | ⬜ Needed — ChatGPT registration 403s without it |
+| WAF connector Skip and custom challenge rules | ✅ Zone-wide paths corrected; staging admin discovery, auth challenge and registration reach the app. Check production admin after deploying it |
 
 ---
 
@@ -220,7 +268,7 @@ Connects to the VPS via SSH (key stored in GitHub Actions secrets) and:
 1. Generates any missing server-side secrets (JWT, encryption key, VAPID keys, Postgres password) into `/opt/epic-stocks/.secrets/`, then writes `.env` from those files plus GitHub Secrets/Vars. Also writes `COMMIT_SHA=${{ github.sha }}` into `.env` so it is available as a Docker build arg.
 2. Creates a 2 GB swapfile if one doesn't exist (idempotent)
 3. `git fetch origin main && git reset --hard origin/main` — always matches the repo exactly; no local drift
-4. `docker compose build` — passes `COMMIT_SHA` and `APP_ENV` as build args to the frontend stage. `VITE_COMMIT_SHA` is displayed as a 7-char short hash in Admin and Settings. `VITE_APP_ENV=staging` activates the staging visual identity (amber icon, renamed PWA, amber header banner). `docker compose up -d`
+4. `docker compose build` — passes `COMMIT_SHA` and `APP_ENV` as build args to the frontend stage. `VITE_COMMIT_SHA` is displayed as a 7-char short hash in Admin and Settings. `VITE_APP_ENV=staging` activates the staging visual identity (amber icon, renamed PWA, amber header banner). After the image is built and before taking down the current app, the workflow installs and restarts `epic-stocks-jobs.timer` from `ops/systemd/`. It remains enabled if a later deployment step fails. After the database is healthy, a one-off app container runs `alembic upgrade head`. The web app starts with `RUN_MIGRATIONS_ON_STARTUP=0` so it does not rerun migrations. Local PostgreSQL starts still run them by default.
 5. Polls `http://localhost/api/health` every 5 seconds for up to 60 seconds
 
 **Step 3 — Health polling**
@@ -234,7 +282,37 @@ If `/api/health` returns `{"status": "ok"}` within 60 seconds, the deploy succee
 MANUAL ROLLBACK INSTRUCTIONS: ...
 ```
 
-No automatic rollback. Because Alembic migrations run on startup, reverting code after a schema migration requires manual review (see §7 Runbook).
+No automatic rollback. The deploy runs Alembic before starting the app; reverting code after a schema migration requires manual review (see §7 Runbook).
+
+### Daily jobs
+
+`epic-stocks-jobs.timer` starts a one-off app container every 15 minutes. The container runs `python -m scheduled_jobs`, not Uvicorn. It runs nightly maintenance after 03:00 UTC, and notifications and the admin digest as separate jobs after 07:00 UTC. If installed after those times, the next firing runs the jobs for the current UTC day. Successful UTC dates live in `system_settings` as `scheduled:maintenance:last_completed`, `scheduled:notifications:last_completed`, and `scheduled:admin_digest:last_completed`; the corresponding `last_completed_at` keys record actual UTC finish times. A failed or missed job is retried at the next timer firing on the same day without rerunning the others. Successful digest recipients have individual hashed-address completion markers, so a partial email failure retries only those still pending. The timer is installed by `.github/workflows/deploy.yml` on both VPS hosts before the old app is taken down. No host-side manual installation is needed.
+
+To inspect a deployment, check `systemctl status epic-stocks-jobs.timer`, `systemctl status epic-stocks-jobs.service`, and `journalctl -u epic-stocks-jobs.service -n 100`. Check the recorded days with `docker compose exec db psql -U postgres -d vesting -c "SELECT key, value FROM system_settings WHERE key LIKE 'scheduled:%:last_completed';"`. If the timer fails, fix the tracked service/timer or app code through a PR and redeploy; the next invocation catches up for the current UTC day. If a site is down past midnight, old notification days are intentionally not replayed. An external send can be repeated if the process dies after sending but before recording success; per-user `last_notified_at` limits repeat user notifications.
+
+Admins can check this from a phone in **Admin → Deployment**. The API returns the running backend build, environment, last runner start and finish, latest job results and completion timestamps. The panel shows each due time for the current UTC job day in the phone's timezone and labels the completed UTC day. A completed notifications or digest job may have had no eligible recipients, and the panel cannot prove provider delivery. Runs completed before timestamps were introduced show their UTC day with the time unavailable until the next successful run. The panel warns if the check is older than 35 minutes, a job failed, a due job remains incomplete, or the frontend and backend builds differ. The runner writes its heartbeat in `system_settings` on each invocation; this measures actual job execution, not merely an enabled systemd timer. If the database itself is unavailable, the panel shows an error instead. The separate `admin_deploy_runs` tool reads GitHub Actions outcomes; the browser panel continues to show scheduler status.
+
+For local development with no systemd timer, run `docker compose run --rm app python -m scheduled_jobs` to check due jobs. The Hetzner workflow writes `DB_POOL_SIZE=10` and `DB_MAX_OVERFLOW=20` into `.env` unless overridden by GitHub environment variables, preserving the prior VPS pool capacity. For request-based hosting, schedule the same CLI every 15 minutes, set `RUN_MIGRATIONS_ON_STARTUP=0` after a separate migration step, and set `SAMPLE_SYSTEM_METRICS=0`; size `DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, and maximum instance count together against the PostgreSQL connection limit.
+
+`APP_ENV` keeps its GitHub environment-variable override: `vars.APP_ENV` wins when set. Otherwise `main` defaults to `production` and every other ref defaults to `staging`, matching the existing Deploy job's environment selection. This includes a `workflow_dispatch` from a feature branch; it targets staging by default. The collector uses the exact resolved value from `.env`; it supports `staging` and `production`, and an unsupported override warns and leaves host diagnostics unavailable without blocking the app release.
+
+### Diagnostic sources and staging smoke test
+
+The VPS deploy calls `ops/install_diagnostics.sh` to install `epic-stocks-diagnostics.service` and its one-minute timer. The collector script is copied to the root-owned `/usr/local/lib/epic-stocks/collect_diagnostics.py`, so `ProtectHome=true` works even when the repository checkout is under `/root` or `/home`. The whole diagnostics setup is best-effort: an installation or systemd failure emits a workflow warning and the application deployment continues. The initial collection is queued with `systemctl start --no-block`. Verify the collector heartbeat after deployment; a successful app deployment does not establish that diagnostics are available. The host-only collector runs fixed `docker inspect` and `systemctl show` metadata commands and measures disk usage. It does not read request bodies, container logs, journal messages, process environments or SQL. The service is hardened with a read-only filesystem (except its state directory), no new privileges and Unix sockets only. Docker access remains privileged, but stays outside the web container. Only `/var/lib/epic-stocks-diagnostics/host.json` is exposed to the app through a read-only directory mount. Do not mount the Docker socket or journal into the app.
+
+The collector persists up to 96 event envelopes for 72 hours (UTC timestamp, environment, API build, component, severity, enumerated code and opaque reference). Snapshots are atomically replaced and capped at 256 KiB. The reader independently validates envelopes, environment, timestamp and limits. A heartbeat older than three minutes reports `stale`; a missing, oversized, malformed or wrong-environment snapshot reports `unavailable`. Gaps over three minutes add `collector_gap`. Collection samples transitions, so brief failures between samples can be missed. A failed scheduler service includes failures before the app can connect to the database; the scheduled-jobs CLI separately retains job failure/recovery metadata in `system_settings`, with a 35-minute freshness threshold.
+
+`admin_deploy_runs` reads only the connected environment's branch (`staging` or `main`) from the latest 20 public Deploy workflow runs. It reports run IDs, commit, status/conclusion, start and last-update times, a latest failed run and successful-run correlation for the running API build. GitHub's workflow metadata does not supply the exact deploy-job finish time: `last_updated_at_utc` is explicitly a metadata update, not a fabricated completion time. Follow the returned GitHub run link using the GitHub app for exact job timing and detailed logs. Missing/denied GitHub data is explicit; private forks need the connected GitHub app rather than an app credential.
+
+To enable `admin_edge_summary`, add `DIAGNOSTICS_CF_ZONE_ID` as a GitHub **environment variable**, and `DIAGNOSTICS_CF_API_TOKEN` as an **environment secret**, on staging first. Use an Analytics **Read** token restricted to the required Cloudflare zone; do not reuse the Cloudflare management connector's write credential or a global key. Configure production independently when promoting. No token is sent to MCP clients. The query filters the exact `DOMAIN` and returns only WAF action counts, never IPs, cookies, URLs or raw requests. Its sampled 30-minute window ends two minutes before collection to allow ingestion delay. Counts are not a complete HTTP log or proof that an origin is healthy. Missing credentials, permissions, plan support, provider failures and oversized responses return `unavailable`; successes and failures cache for two minutes. GitHub queries need no credential for this public repository.
+
+Before production promotion:
+
+1. Deploy the reviewed PR to **staging**. Confirm the collector timer is installed by the workflow and call all eight admin tools from the staging phone connection. Check `environment`, `api_build`, `source`, `state` and `collected_at_utc` on each source. Confirm `admin_deploy_runs` matches the running build once its Deploy run finishes (allow two minutes for cache expiry).
+2. Run `pytest backend/tests/test_diagnostics.py backend/tests/test_scheduled_jobs.py backend/tests/test_mcp_admin.py backend/tests/test_mcp_audit.py` locally/CI. These inject synthetic container OOM/restart, scheduler failure/recovery and collector gaps without affecting real user jobs. They verify redaction, retention, stale/missing sources, provider errors, per-call auditing and current-admin revocation.
+3. On staging, confirm actual `admin_host_diagnostics` heartbeats advance and `admin_scheduler_history` becomes available after the next 15-minute job invocation. Compare the returned build to the current staging deploy. A synthetic unit test alone does not prove the VPS unit runs.
+4. With staging's read token configured, compare `admin_edge_summary` to Cloudflare Security Events filtered to `staging.epic-stocks.com` and the returned UTC window. Confirm production traffic never appears in staging counts.
+5. Disconnect the staging diagnostic connection or remove its admin membership and confirm calls fail. Reconnect only as needed. Record the live staging results in the PR before promoting to production; repeat the phone checks on the separate production connection after its approved deployment.
 
 ### GitHub Actions secrets and variables required
 
@@ -249,11 +327,14 @@ These are the only values that need to be set in GitHub. Cryptographic secrets (
 | `RESEND_FROM` | Secret | Sender address for transactional email |
 | `OIDC_PROVIDERS` | Secret | JSON array of OIDC provider configs (see README for format) |
 | `ACME_EMAIL` | Variable | Email for Let's Encrypt certificate notifications |
+| `DIAGNOSTICS_CF_ZONE_ID` | Variable | Optional Cloudflare zone ID for this environment's WAF summary |
+| `DIAGNOSTICS_CF_API_TOKEN` | Secret | Optional Analytics read token limited to the zone, never an edit/global token |
 | `VPS_HOST` | Variable | VPS hostname or IP |
 | `DOMAIN` | Variable | Your domain name |
 | `TRUSTED_PROXY_IPS` | Variable | Cloudflare IP ranges for real-IP forwarding |
 | `CLIENT_IP_HEADER` | Variable | Header carrying the caller's address. `CF-Connecting-IP` behind Cloudflare. Only safe with the origin firewalled to the proxy. |
-| `APP_ENV` | Variable | Set to `staging` in the staging GitHub environment to enable staging visual identity (amber icon, "Epic Stocks (Staging)" PWA name, amber header banner). Omit or set to `production` for production — defaults to `production` if absent. |
+| `APP_ENV` | Variable | Optional override for the app, frontend and collector environment. Defaults by ref: `main` → `production`; every other ref, including feature-branch manual dispatches → `staging`. `staging` enables the amber icon, PWA name, banner and Admin label. Local Compose defaults to `production`. |
+| `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | Variable | Optional VPS pool limits. Defaults to `10` / `20` per app process when not set. |
 
 
 ### Multi-app network

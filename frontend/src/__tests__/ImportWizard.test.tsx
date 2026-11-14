@@ -123,23 +123,23 @@ async function fillValidPurchaseGrant(user: ReturnType<typeof userEvent.setup>) 
 }
 
 describe('ImportWizard', () => {
-  it('leads with the Shareworks import and keeps the slower paths available', () => {
+  it('leads with the Eureka import and keeps the slower paths available', () => {
     mockApi()
     renderWizard()
     expect(screen.getByText("Let's set up your equity tracker.")).toBeInTheDocument()
     // The fastest path is offered first and is the only one badged.
-    expect(screen.getByRole('button', { name: /Import from Shareworks/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Import from Eureka/i })).toBeInTheDocument()
     expect(screen.getByText('Fastest')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Enter it myself/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Import a Vesting.xlsx/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Manual entry/i })).toBeInTheDocument()
   })
 
-  it('sends someone choosing the Shareworks path to the import page', async () => {
+  it('sends someone choosing the Eureka path to the import page', async () => {
     mockApi()
     const user = userEvent.setup()
     renderWizard()
-    await user.click(screen.getByRole('button', { name: /Import from Shareworks/i }))
+    await user.click(screen.getByRole('button', { name: /Import from Eureka/i }))
     expect(mockNavigate).toHaveBeenCalledWith('/import')
   })
 
@@ -315,7 +315,7 @@ describe('ImportWizard', () => {
     await user.click(screen.getByRole('button', { name: /Enter it myself/i }))
     expect(screen.getByText("What you'll need")).toBeInTheDocument()
     expect(screen.getByText(/Epic stocks SharePoint/i)).toBeInTheDocument()
-    expect(screen.getAllByText(/DocuSign or Shareworks/i).length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText(/DocuSign or Eureka/i).length).toBeGreaterThanOrEqual(1)
   })
 
   it('schedule intro goes to prices then grants table', async () => {

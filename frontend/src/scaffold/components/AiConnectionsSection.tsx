@@ -2,16 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api, type AiActivityEntry, type AiConnection } from '../../api.ts'
 import { Card } from './ui/Card.tsx'
 
-/**
- * Connecting your own AI assistant, and cutting it off again.
- *
- * The instructions are most of this component, deliberately. Connecting is a
- * two-minute job in Claude and a slightly odd one in ChatGPT — the switch that
- * allows it is called "Developer mode" and lives under "Security and login",
- * which reads like something you are not supposed to touch. Saying that plainly
- * is what makes the difference between a feature people use and one they open
- * once.
- */
+/** Connecting your own AI assistant, and cutting it off again. */
 
 // Mirrors scaffold/oauth/scopes.py:SCOPE_LABELS. A scope with no entry falls
 // back to its raw id, which is readable but not English.
@@ -20,11 +11,13 @@ const SCOPE_LABELS: Record<string, string> = {
   'comp:read': 'Salary and retirement settings',
   'comp:write': 'Update salary, bonuses and retirement balances',
   'import:propose': 'Prepare an import for you to review',
+  'equity:write': 'Create, correct or remove grants, prices, loans and sales',
+  'admin:read': 'Site deployment, metrics and redacted application errors',
 }
 
 // The scopes that let an assistant leave something behind, so the summary
 // above can stop promising read-only for a connection that holds one.
-const WRITING_SCOPES = ['comp:write', 'import:propose']
+const WRITING_SCOPES = ['comp:write', 'import:propose', 'equity:write']
 
 function formatWhen(value: string | null): string {
   if (!value) return ''
@@ -66,11 +59,16 @@ export function AiConnectionsSection() {
   const [activity, setActivity] = useState<AiActivityEntry[]>([])
   const [showActivity, setShowActivity] = useState(false)
   const [error, setError] = useState('')
-  const [copied, setCopied] = useState(false)
-  const [guide, setGuide] = useState<'chatgpt' | 'claude'>('claude')
+  const [museCopied, setMuseCopied] = useState(false)
+  const [guide, setGuide] = useState<'chatgpt' | 'claude' | 'muse'>('chatgpt')
   const [confirmId, setConfirmId] = useState<number | null>(null)
 
-  const serverUrl = `${window.location.origin}/mcp`
+  const serverUrl = window.location.hostname === 'staging.epic-stocks.com'
+    ? 'https://epic-stocks.com/mcp' : `${window.location.origin}/mcp`
+  const musePrompt = `Create a custom connector named Epic Stocks for the remote MCP server at ${serverUrl}. ` +
+    'It uses Streamable HTTP and OAuth with PKCE and dynamic client registration. ' +
+    'Guide me through signing in to Epic Stocks and approving the connection. ' +
+    'Then list its tools, use get_dashboard to check the connection, and save it for future chats.'
 
   const load = useCallback(() => {
     api.getAiConnections()
@@ -90,16 +88,6 @@ export function AiConnectionsSection() {
     }
   }, [])
 
-  async function copyUrl() {
-    try {
-      await navigator.clipboard.writeText(serverUrl)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      setError('Could not copy — select the address and copy it by hand')
-    }
-  }
-
   async function disconnect(id: number) {
     setConfirmId(null)
     try {
@@ -114,7 +102,7 @@ export function AiConnectionsSection() {
     <Card as="section" pad="md" id="ai-connections">
       <h3 className="text-sm font-medium text-cs-text">AI Connections</h3>
       <p className="mt-1 text-xs text-cs-text-2">
-        Let ChatGPT or Claude read your equity data, so you can ask about vesting
+        Let ChatGPT, Claude or Muse read your equity data, so you can ask about vesting
         and tax alongside the rest of your finances — and set up your grants and
         loans for you from your paperwork, which you then review on the Import
         page. You can disconnect at any time.
@@ -126,33 +114,17 @@ export function AiConnectionsSection() {
         first. If anything goes wrong, fix the row or re-import.
       </p>
       <p className="mt-1.5 text-xs text-cs-muted">
-        Connecting means your figures are sent to OpenAI or Anthropic when the
+        Connecting means your figures are sent to OpenAI, Anthropic or Meta when the
         assistant asks for them. That is the same as pasting them into a chat,
         without the pasting.
       </p>
 
       {error && <p className="mt-2 text-xs text-red-500">{error}</p>}
 
-      {/* The address to paste */}
-      <div className="mt-3">
-        <p className="text-xs font-medium text-cs-text">Your server address</p>
-        <div className="mt-1 flex items-center gap-2">
-          <code className="min-w-0 flex-1 overflow-x-auto rounded-md bg-cs-raised px-2 py-1.5 font-mono text-xs text-cs-text">
-            {serverUrl}
-          </code>
-          <button
-            onClick={copyUrl}
-            className="shrink-0 rounded-md border border-cs-border-strong px-2.5 py-1.5 text-xs font-medium text-cs-text-2 hover:bg-cs-raised"
-          >
-            {copied ? 'Copied' : 'Copy'}
-          </button>
-        </div>
-      </div>
-
       {/* Walkthroughs */}
       <div className="mt-4">
         <div className="flex gap-1.5" role="tablist">
-          {(['claude', 'chatgpt'] as const).map((which) => (
+          {(['claude', 'chatgpt', 'muse'] as const).map((which) => (
             <button
               key={which}
               role="tab"
@@ -164,49 +136,79 @@ export function AiConnectionsSection() {
                   : 'border border-cs-border-strong text-cs-text-2 hover:bg-cs-raised'
               }`}
             >
-              {which === 'claude' ? 'Claude' : 'ChatGPT'}
+              {which === 'claude' ? 'Claude' : which === 'muse' ? 'Muse' : 'ChatGPT'}
             </button>
           ))}
         </div>
 
         {guide === 'claude' ? (
           <div>
+            <a className="mt-3 inline-block rounded-md bg-cs-brand px-3 py-2 text-xs font-semibold text-white"
+              href="/api/ai/plugin/claude" download="epic-stocks-claude.zip">
+              Download Claude plugin
+            </a>
             <ol className="mt-2.5 space-y-1.5 text-xs text-cs-text-2">
-              <Step n={1}>Open Claude → Settings → Connectors</Step>
-              <Step n={2}>Click <strong className="font-medium text-cs-text">Add custom connector</strong></Step>
-              <Step n={3}>Paste the address above</Step>
-              <Step n={4}>Sign in here and approve</Step>
+              <Step n={1}>Download the plugin above</Step>
+              <Step n={2}>In Claude, open Customize → Plugins and upload the ZIP</Step>
+              <Step n={3}>Sign in to Epic Stocks and approve the connection</Step>
             </ol>
             <p className="pt-1.5 text-xs text-cs-muted">
-              Needs a paid Claude plan. Works on web, desktop and mobile.
+              This connects to your production account. No server address to enter.
             </p>
+          </div>
+        ) : guide === 'muse' ? (
+          <div>
+            <button className="mt-3 rounded-md bg-cs-brand px-3 py-2 text-xs font-semibold text-white"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(musePrompt)
+                  setMuseCopied(true)
+                } catch {
+                  setError('Could not copy the Muse setup request')
+                }
+              }}>
+              {museCopied ? 'Setup request copied' : 'Copy Muse setup request'}
+            </button>
+            <ol className="mt-2.5 space-y-1.5 text-xs text-cs-text-2">
+              <Step n={1}>Copy the request above and send it in a Muse chat. The address is already included.</Step>
+            </ol>
+            <p className="mt-2 whitespace-pre-wrap break-words rounded-md bg-cs-raised p-2.5 text-xs text-cs-text">
+              {musePrompt}
+            </p>
+            <ol start={2} className="mt-2.5 space-y-1.5 text-xs text-cs-text-2">
+              <Step n={2}>Follow Muse&apos;s sign-in link, sign in here and review the permissions. Choose Read only if you only want answers.</Step>
+              <Step n={3}>Let Muse check the connection and save the custom connector for future chats.</Step>
+            </ol>
+            <p className="pt-1.5 text-xs text-cs-muted">
+              If registration says this server does not accept connections from a host,
+              send that error to this site&apos;s administrator. They need to verify
+              Muse&apos;s OAuth callback host and allow it in Admin → AI Connections, then you can retry.
+            </p>
+            <a className="mt-2 inline-block text-xs text-cs-brand underline" href="https://www.meta.com/help/artificial-intelligence/1687253048996149/" target="_blank" rel="noopener noreferrer">
+              Muse&apos;s custom connector instructions
+            </a>
           </div>
         ) : (
           <div>
+            <a className="mt-3 inline-block rounded-md bg-cs-brand px-3 py-2 text-xs font-semibold text-white"
+              href="/api/ai/plugin/chatgpt" download="epic-stocks-chatgpt.zip">
+              Download ChatGPT plugin
+            </a>
             <ol className="mt-2.5 space-y-1.5 text-xs text-cs-text-2">
-              <Step n={1}>
-                Open ChatGPT <strong className="font-medium text-cs-text">on the web</strong> → Settings →{' '}
-                <strong className="font-medium text-cs-text">Security and login</strong> → turn on{' '}
-                <strong className="font-medium text-cs-text">Developer mode</strong>
-              </Step>
-              <Step n={2}>Go to Plugins and click <strong className="font-medium text-cs-text">+</strong></Step>
-              <Step n={3}>Give it a name, then paste the address above as the endpoint</Step>
-              <Step n={4}>Sign in here and approve</Step>
-              <Step n={5}>Review the tools it found and create the connection</Step>
+              <Step n={1}>Download the plugin above</Step>
+              <Step n={2}>In ChatGPT, open Plugins → + → Upload plugin and select the ZIP</Step>
+              <Step n={3}>Sign in to Epic Stocks and approve the connection</Step>
             </ol>
             <p className="pt-1.5 text-xs text-cs-muted">
-              Developer mode sounds alarming and is not — it is just the switch
-              that allows connectors outside OpenAI&apos;s own directory. Needs a
-              paid plan, and the connector can only be <em>added</em> from a
-              browser; it works everywhere once added. On a work account an
-              admin may have to enable developer mode first.
+              This connects to your production account. No server address to enter.
+              Your ChatGPT workspace may restrict plugin uploads.
             </p>
           </div>
         )}
 
         <p className="mt-2 text-xs text-cs-muted">
           Once connected, name the assistant&apos;s connector when you ask a
-          question — both do better when told which tool to use than when left to
+          question — assistants do better when told which tool to use than when left to
           guess. Try &ldquo;what vests in the next six months?&rdquo;
         </p>
       </div>

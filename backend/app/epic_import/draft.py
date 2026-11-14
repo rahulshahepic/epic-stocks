@@ -43,7 +43,7 @@ _MAX_SALE_NOTE = 500
 # stay advisory: some are historic conversion rows, not grants to enter.
 BLOCKING_CHECKS = {"G0", "C1", "C2"}
 
-# Why the two documents disagree about loans more often than not. Shareworks
+# Why the two documents disagree about loans more often than not. Eureka
 # regenerates the loan statement on demand but the stock workbook is refreshed on
 # its own slower cycle, so a payoff or a refinance lands on the statement first
 # and the workbook still carries the old balance. That is the ordinary case

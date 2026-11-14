@@ -138,6 +138,16 @@ test.describe('Screenshots', () => {
     await shoot(page, 'admin-dark-mobile')
   })
 
+  test('admin AI plugin downloads - light - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    await navigateTo(page, 'Admin')
+    await page.waitForLoadState('networkidle')
+    const heading = page.getByText('Admin MCP', { exact: true })
+    await heading.scrollIntoViewIfNeeded()
+    await expect(page.getByRole('link', { name: 'Download admin MCP' })).toHaveCount(1)
+    await shoot(page, 'admin-ai-plugin-downloads-light-mobile')
+  })
+
   test('events page - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     await navigateTo(page, 'Events')
@@ -287,7 +297,7 @@ test.describe('Screenshots', () => {
     await shoot(page, 'try-dark-mobile', { fullPage: true })
   })
 
-  /** Upload the synthetic Shareworks fixtures and land on the computed preview. */
+  /** Upload the synthetic Eureka fixtures and land on the computed preview. */
   async function previewPage(page: Page, viewport: { width: number; height: number }, scheme: 'light' | 'dark') {
     await page.emulateMedia({ colorScheme: scheme })
     await page.setViewportSize(viewport)
@@ -460,8 +470,32 @@ test.describe('Screenshots', () => {
     await page.waitForTimeout(800)
     const heading = page.locator('h2, h3').filter({ hasText: 'AI Connections' }).first()
     await heading.scrollIntoViewIfNeeded()
-    await expect(heading).toBeInViewport()
+    await page.getByRole('link', { name: 'Download ChatGPT plugin' }).scrollIntoViewIfNeeded()
+    await expect(page.getByRole('link', { name: 'Download ChatGPT plugin' })).toBeInViewport()
+    await page.evaluate(() => window.scrollBy(0, 240))
     await shoot(page, 'settings-ai-connections-light-mobile')
+  })
+
+  test('admin diagnostics consent - light - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    const registration = await page.request.post('http://localhost:8000/admin-oauth/register', {
+      data: {
+        client_name: 'ChatGPT staging diagnostics',
+        redirect_uris: ['https://chatgpt.com/connector_platform_oauth_redirect'],
+        token_endpoint_auth_method: 'none',
+      },
+    })
+    expect(registration.ok()).toBeTruthy()
+    const { client_id } = await registration.json()
+    const query = new URLSearchParams({
+      response_type: 'code', client_id,
+      redirect_uri: 'https://chatgpt.com/connector_platform_oauth_redirect',
+      code_challenge: 'x'.repeat(43), code_challenge_method: 'S256',
+    })
+    await page.goto(`http://localhost:8000/admin-oauth/authorize?${query}`)
+    await expect(page.getByRole('button', { name: 'Connect', exact: true })).toBeVisible()
+    await expect(page.getByText('Read site deployment status')).toBeVisible()
+    await shoot(page, 'admin-diagnostics-consent-light-mobile', { fullPage: true })
   })
 
   test('settings ai connections - dark - mobile', async ({ page }) => {
@@ -471,12 +505,24 @@ test.describe('Screenshots', () => {
     await page.waitForTimeout(800)
     const heading = page.locator('h2, h3').filter({ hasText: 'AI Connections' }).first()
     await heading.scrollIntoViewIfNeeded()
-    await expect(heading).toBeInViewport()
-    // The ChatGPT walkthrough is the one with the developer-mode caveat, so it
-    // is the half worth showing in the README.
+    // Keep the ChatGPT package download visible in the README screenshot.
     await page.getByRole('tab', { name: 'ChatGPT' }).click()
+    await page.getByRole('link', { name: 'Download ChatGPT plugin' }).scrollIntoViewIfNeeded()
+    await page.evaluate(() => window.scrollBy(0, 240))
     await page.waitForTimeout(300)
     await shoot(page, 'settings-ai-connections-dark-mobile')
+  })
+
+  test('settings ai connections Muse - light - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    await navigateTo(page, 'Settings')
+    await page.waitForLoadState('networkidle')
+    await page.getByRole('tab', { name: 'Muse' }).click()
+    const section = page.locator('#ai-connections')
+    await section.scrollIntoViewIfNeeded()
+    await expect(section).toContainText('Create a custom connector named Epic Stocks')
+    await expect(section).toContainText('OAuth callback host')
+    await shoot(page, 'settings-ai-connections-muse-light-mobile', { fullPage: true })
   })
 
   test('invite landing page - light - mobile', async ({ page }) => {

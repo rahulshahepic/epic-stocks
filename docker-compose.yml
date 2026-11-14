@@ -59,6 +59,15 @@ services:
       start_period: 30s
     environment:
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@db:5432/vesting
+      - DIAGNOSTICS_GITHUB_REPOSITORY=${DIAGNOSTICS_GITHUB_REPOSITORY:-}
+      - DIAGNOSTICS_CF_ZONE_ID=${DIAGNOSTICS_CF_ZONE_ID:-}
+      - DIAGNOSTICS_CF_API_TOKEN=${DIAGNOSTICS_CF_API_TOKEN:-}
+      - RUN_MIGRATIONS_ON_STARTUP=${RUN_MIGRATIONS_ON_STARTUP:-1}
+      - COMMIT_SHA=${COMMIT_SHA:-dev}
+      - APP_ENV=${APP_ENV:-production}
+      - DB_POOL_SIZE=${DB_POOL_SIZE:-5}
+      - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-5}
+      - SAMPLE_SYSTEM_METRICS=${SAMPLE_SYSTEM_METRICS:-1}
       - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379/0
       - JWT_SECRET=${JWT_SECRET}
       - OIDC_PROVIDERS=${OIDC_PROVIDERS:-[]}
@@ -88,6 +97,8 @@ services:
       - APP_URL=${APP_URL:-}
       - CHATGPT_UI_ORIGIN=${CHATGPT_UI_ORIGIN:-}
       - DOMAIN=${DOMAIN:-}
+    volumes:
+      - /var/lib/epic-stocks-diagnostics:/run/epic-stocks-diagnostics:ro
     expose:
       - "8000"
     deploy:

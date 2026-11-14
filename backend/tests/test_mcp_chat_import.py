@@ -53,6 +53,8 @@ def test_the_guide_does_not_demand_a_bare_json_answer(mcp):
     conversation the assistant is meant to talk to the person, not reply with
     an object."""
     text = json.dumps(mcp.call("get_import_guide"))
+    assert "Eureka" in text
+    assert "Shareworks" not in text
     assert "ONE JSON object" not in text
     assert "Do not estimate anything" not in text
 

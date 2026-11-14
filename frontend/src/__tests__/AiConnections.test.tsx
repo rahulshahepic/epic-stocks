@@ -33,6 +33,13 @@ beforeEach(() => {
 })
 
 describe('AiConnections', () => {
+  it('provides one admin MCP download for this site', async () => {
+    vi.spyOn(api, 'adminGetMcp').mockResolvedValue(SETTINGS)
+    render(<AiConnections onError={() => {}} />)
+    await screen.findByText('Admin MCP')
+    expect(screen.getByRole('link', { name: 'Download admin MCP' })).toHaveAttribute('href', '/api/admin/ai/plugin')
+  })
+
   it('groups hosts under the product name an admin recognises', async () => {
     vi.spyOn(api, 'adminGetMcp').mockResolvedValue(SETTINGS)
     // No usage, so the only ChatGPT/Claude on the page is the provider list.

@@ -8,6 +8,7 @@ import { SmartTips } from './admin/SmartTips.tsx'
 import { AiConnections } from './admin/AiConnections.tsx'
 import { TrialFunnel } from './admin/TrialFunnel.tsx'
 import { SystemHealth } from './admin/SystemHealth.tsx'
+import { DeploymentHealth } from './admin/DeploymentHealth.tsx'
 import { DatabaseTables } from './admin/DatabaseTables.tsx'
 import { EmailLookup } from './admin/EmailLookup.tsx'
 import { UsersSection } from './admin/UsersSection.tsx'
@@ -167,6 +168,8 @@ export default function Admin() {
       <h2 className="text-lg font-semibold text-cs-text">Admin</h2>
 
       {error && <p className="text-xs text-red-500">{error}</p>}
+
+      <DeploymentHealth />
 
       <ToolsSection />
 

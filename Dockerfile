@@ -24,11 +24,14 @@ COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ ./
+COPY plugins/epic-stocks/ ./plugins/epic-stocks/
 
 # Copy built frontend into backend static dir
 COPY --from=frontend-build /app/frontend/dist ./static
 
 RUN useradd -m -u 1000 appuser && chown -R appuser /app
+ARG COMMIT_SHA=dev
+LABEL org.opencontainers.image.revision=$COMMIT_SHA
 USER appuser
 
 EXPOSE 8000

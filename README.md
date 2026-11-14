@@ -105,7 +105,7 @@ Everything in the app is derived from these four tables at request time:
 
 ### Getting Started
 
-Not ready to create an account? Go to **/try** and upload your **Data for Stock Workbook** and **Stock Loan Statement** straight from Shareworks — no sign-in, no email.
+Not ready to create an account? Go to **/try** and upload your **Data for Stock Workbook** and **Stock Loan Statement** straight from Eureka — no sign-in, no email.
 
 What you get is the app itself, running on your numbers in that browser tab:
 
@@ -131,7 +131,7 @@ The preview then says what an account adds that a one-off read cannot: notificat
    The app mark beside the name on this page and in the signed-in header uses the same artwork as the favicon.
 
 2. **Enter your data** — with no grants yet, the setup screen appears automatically on the dashboard, and is always reachable from the Import page. Options, fastest first:
-   - **Import from Shareworks** (fastest) — download **Data for Stock Workbook** and your latest **Stock Loan Statement** from the **Documents** tab in Shareworks and upload them as-is. Share counts, cost basis, loan balances, interest rates and due dates are read straight out of them, and you check the result in the wizard before anything is saved. See [Importing from Shareworks](#importing-from-shareworks) below.
+   - **Import from Eureka** (fastest) — download **Data for Stock Workbook** and your latest **Stock Loan Statement** from Eureka and upload them as-is. Share counts, cost basis, loan balances, interest rates and due dates are read straight out of them, and you check the result in the wizard before anything is saved. See [Importing from Eureka](#importing-from-eureka) below.
    - **Enter it myself** — no documents to hand? Epic's company-wide grant structure is pre-filled (vest dates, periods, exercise dates), so you fill in your share counts, annual market prices and loan details grant by grant. Catch-up grants are included by default for years ≤ 2021. The 2020 Bonus has an A/B/C vesting schedule selector matching your grant agreement. Developer Bonus Shares appear for the 2020 and 2021 cohorts with their cost basis fixed at $0 — leave the share count blank if you weren't offered them. If you already have data, the wizard pre-loads it on each screen — unmatched existing records appear at the bottom so you can keep or remove them. Nothing is written until you confirm at the final step.
    - **Import a Vesting.xlsx** — already have an export from this app, or a workbook someone shared? Upload it to pre-fill the wizard.
    - **Manual entry** — a blank slate, for grants that don't match the company schedule at all.
@@ -465,15 +465,15 @@ Sessions otherwise last 30 days, with a sliding refresh — the app silently ext
 
 ### Connecting Your Own AI
 
-You can let ChatGPT or Claude read your equity data, so you can ask about vesting and tax alongside the rest of your finances. It is off until you connect it, reading by default, and you can disconnect it at any time.
+You can let ChatGPT, Claude or Muse read your equity data, so you can ask about vesting and tax alongside the rest of your finances. It is off until you connect it, reading by default, and you can disconnect it at any time.
 
-**What this does and does not do.** The assistant can read your grants, vesting timeline, prices, loans, sales and tax estimates, and your salary and retirement settings if you allow that. Connecting means your figures are sent to OpenAI or Anthropic when the assistant asks for them — the same as pasting them into a chat, but without the pasting.
+**What this does and does not do.** The assistant can read your grants, vesting timeline, prices, loans, sales and tax estimates, and your salary and retirement settings if you allow that. Connecting means your figures are sent to OpenAI, Anthropic or Meta when the assistant asks for them — the same as pasting them into a chat, but without the pasting.
 
 **Connecting grants every permission.** The assistant can read your data, prepare an import for you to review (`import:propose`), and create, correct and remove individual grants, prices, loans and sales (`equity:write`) and salary and retirement figures (`comp:write`). The app is not the source of truth for your equity — anything wrong can be corrected or re-imported. The connect screen says so up front; tick **Read only** there if you only want the assistant to look. Those edits take effect immediately. Ask it to show you the exact values first, then check the saved rows and dashboard afterward. Disconnecting revokes access.
 
 **Letting it keep your salary and retirement numbers current.** Two things you type by hand *can* be written, if you tick that permission when you connect: your salary and bonus history, and the account balances the retirement simulator starts from. Then *"I got a raise to $205k in April"* or *"my 401(k) is at $850k now"* updates the app as you say it, instead of becoming a note to go and do it later. These are figures nothing else is computed from, and you are looking at them on the page — which is why they are the ones that are safe to write. Salary and bonus writes add to the history rather than replacing it, and repeating a request does not double a raise.
 
-**Getting your equity in by chatting — the easiest way in.** You don't need to know what a cost basis or a vesting schedule is. Connect ChatGPT or Claude with the import permission ticked, then share whatever you have — grant letters, the Shareworks CSV and loan statement, screenshots, or just what you remember. The Import page shows a **Let ChatGPT or Claude do it** card with a message to start the chat. The assistant reads `get_import_guide`, drafts your grants and loans, walks you through what it found in plain words (saying what it guessed), and calls `stage_import`. A grant Epic's published schedule doesn't cover — this year's, or a one-off award — keeps the dates you confirmed with the assistant. Adding one grant only adds one grant: grants the draft doesn't mention are kept exactly as they are, loans included, and the review shows what the guesses were and what accepting would change.
+**Getting your equity in by chatting — the easiest way in.** You don't need to know what a cost basis or a vesting schedule is. Connect ChatGPT or Claude with the import permission ticked, then share whatever you have — grant letters, the Eureka CSV and loan statement, screenshots, or just what you remember. The Import page shows a **Let ChatGPT or Claude do it** card with a message to start the chat. The assistant reads `get_import_guide`, drafts your grants and loans, walks you through what it found in plain words (saying what it guessed), and calls `stage_import`. A grant Epic's published schedule doesn't cover — this year's, or a one-off award — keeps the dates you confirmed with the assistant. Adding one grant only adds one grant: grants the draft doesn't mention are kept exactly as they are, loans included, and the review shows what the guesses were and what accepting would change.
 
 That does **not** save anything. It leaves a draft on the Import page, and you accept it in the same wizard an uploaded file goes through, with the same checks and the same diff. Confirmed custom grants and leave-adjusted dates appear in that review; older grants and prices outside the company schedule are kept unless you select them for removal. Unanswered sales remain visible for you to complete. If your assistant tells you staging finished the import, it is wrong — open the app and look. A draft you never accept expires after seven days.
 
@@ -512,25 +512,33 @@ And one that writes nothing of yours, under its own separate permission:
 |------|-----------------|
 | `stage_import` | Prepares an import for you to review, and reports what accepting it would change and what the assistant guessed. **Saves no grant, price or loan** — you accept it in the wizard (needs the import permission) |
 
-**In Claude** — Pro, Max, Team or Enterprise; works on web, desktop and mobile:
+**In Claude** — from Settings → AI Connections, download the Claude ZIP on your phone. In Claude, open **Customize → Plugins**, upload the file, and sign in to Epic Stocks. The ZIP contains the MCP address, not credentials; you do not type or paste an address. On the official staging site it targets production account data. A self-hosted fork with `DOMAIN` configured downloads a package for its own domain. Workspace policy may restrict custom plugin uploads.
 
-1. Settings → Connectors → **Add custom connector**
-2. Paste `https://<your-domain>/mcp`
-3. Sign in and approve
+**In Muse** — ask for a custom connector in a chat. A [standalone Muse setup guide](docs/muse-connector.md) includes the same steps:
 
-**In ChatGPT** — Plus, Pro, Business, Enterprise or Edu. Adding a connector is **web only**; once added it works everywhere:
+1. In **Settings → AI Connections → Muse**, send the pre-filled setup request. It already includes the correct address for this site, so there is no URL to look up or edit:
 
-1. Settings → **Security and login** → turn on **Developer mode**. It sounds alarming and is not — it is the switch that lets you add connectors that are not in OpenAI's directory.
-2. Plugins → **+** → give it a name and description
-3. Paste `https://<your-domain>/mcp` as the endpoint
-4. Sign in and approve
-5. Review the tools it found and create the connection
+   > Create a custom connector named Epic Stocks for the remote MCP server at https://YOUR-DOMAIN/mcp. It uses Streamable HTTP and OAuth with PKCE and dynamic client registration. Guide me through signing in to Epic Stocks and approving the connection. Then list its tools, use get_dashboard to check the connection, and save it for future chats.
+
+2. Follow Muse's sign-in link, sign in to Epic Stocks, and review the consent screen. Choose **Read only** if you only want answers; editing and import permissions allow changes.
+3. Let Muse check the connection and save it for future chats. Ask “Use Epic Stocks to show what vests in the next six months.” Manage the custom connector under Muse's **Settings → Connectors**, or revoke it here in **Settings → AI Connections**.
+
+**If Muse registration is blocked:** this server initially allows ChatGPT and Claude OAuth callback hosts. Send the error naming the refused host to the site administrator. In **Admin → AI Connections**, the administrator must verify that host belongs to Muse's OAuth flow, add it with the label **Muse**, and enable it before you retry. Do not allow a broad parent domain or disable redirect validation. The server address is this site's `/mcp`; the callback host is where Muse receives the OAuth response, and is a different address. No API key or account session token is needed.
+
+Muse's [official connector guide](https://www.meta.com/help/artificial-intelligence/1687253048996149/) documents asking in chat to create a custom connector and storing credentials securely. The prompt above supplies this server's MCP/OAuth details; Muse's exact sign-in UI can vary. This walkthrough has not yet been verified end to end in Muse. Meta does not review custom connectors.
+
+**In ChatGPT** — download the ChatGPT ZIP from **Settings → AI Connections** on your phone, then open [Plugins](https://chatgpt.com/plugins) in the browser. Availability depends on your plan and workspace policy:
+
+1. Tap **+ → Upload plugin** and select the downloaded ZIP.
+2. Review the package's MCP connection, sign in to Epic Stocks, approve the requested permissions and install it. The address is embedded, but no credential is; you do not copy or paste either.
+
+The two ZIP formats differ: ChatGPT uses the portable Agent Plugins manifest and MCP config with OAuth dynamic registration; Claude uses its own plugin manifest and HTTP MCP config. Downloads are generated by `backend/scaffold/routers/plugin_downloads.py` from the existing `plugins/epic-stocks/` source. Host-side upload and OAuth still need a phone acceptance test before calling either path verified.
 
 Then name the connector when you ask a question. Both assistants do better when told which tool to use than when left to guess.
 
-If your ChatGPT is provided by your employer, a workspace admin may have to enable developer mode before step 1. A personal account works either way.
+If your ChatGPT is provided by your employer, a workspace admin may need to enable **Create plugins with MCPs** for your role.
 
-> **Getting "registration endpoint returned 403" in ChatGPT?** That is the CDN in front of this site blocking OpenAI's agent, not the app — the request never arrives. Whoever operates the deployment needs the WAF skip rule in [OPERATIONS.md §1](OPERATIONS.md#cloudflares-ai-bot-blocking-breaks-ai-connectors). Claude is unaffected.
+> **Getting "registration endpoint returned 403"?** Check the Cloudflare security event for that request. A custom challenge rule can block `/oauth/register` or `/admin-oauth/register` before it reaches the app. See [OPERATIONS.md §1](OPERATIONS.md#cloudflares-ai-bot-blocking-breaks-ai-connectors).
 
 **Interactive ChatGPT portfolio.** Ask “Show my Epic Stocks portfolio” to open an inline card with the app's current net equity, shares, loans and upcoming events. Browse grants and loan history, narrow the event dates, refresh, or ask ChatGPT to explain the view. Expand, sidebar and conversation-panel entrypoints are available where the host supports them. Missing prices stay unknown and projected money is labelled. The card needs only `equity:read`; existing chat edits still require separate write permissions. After deploying this version, refresh the plugin's tools in ChatGPT or register your deployed `/mcp` URL as a custom OAuth plugin. See [the implementation plan, setup and host acceptance steps](docs/chatgpt-plugin.md) and [portable packaging](plugins/epic-stocks/README.md).
 
@@ -559,6 +567,8 @@ Plugin imports bound each file connection/transfer to 30 seconds after DNS resol
 | AI Connections (light) | ChatGPT walkthrough (dark) |
 |------------------------|----------------------------|
 | ![AI Connections settings](screenshots/settings-ai-connections-light-mobile.png) | ![ChatGPT walkthrough](screenshots/settings-ai-connections-dark-mobile.png) |
+
+![Muse custom connector walkthrough](screenshots/settings-ai-connections-muse-light-mobile.png)
 
 The section is hidden entirely if an administrator has switched AI connections off — instructions for something that cannot work are worse than no instructions.
 
@@ -592,24 +602,24 @@ The 83(b) flag is display-only — it doesn't change how events are computed. If
 
 ---
 
-### Importing from Shareworks
+### Importing from Eureka
 
 ![Import / Export](screenshots/import-export-mobile.png)
 
-Everything the tracker needs is already in two documents on Shareworks. Sign in there, open the **Documents** tab, and download:
+Download these two documents from Eureka:
 
 | Document | What is read from it |
 |----------|----------------------|
 | **Data for Stock Workbook** (.csv) | Shares granted and sold per grant, cost basis, 83(b) shares |
 | **Stock Loan Statement** (.pdf) — the latest one | Every loan: number, name, principal balance, interest rate, due date |
 
-Then go to **Import/Export → Import from Shareworks** and upload either or both, exactly as they downloaded. There is no need to open or edit them first.
+Then go to **Import/Export → Import from Eureka** and upload either or both, exactly as they downloaded. There is no need to open or edit them first.
 
 **Only your own figures come from the files.** Vest dates, vesting periods, exercise dates, loan rates and due dates are company-wide and come from the grant schedule a content admin maintains — see [For Content Admins](#for-content-admins). Nothing in an import can change them.
 
 **The files check each other.** Before anything is shown, the app verifies the statement adds up to its own printed subtotals and total, that the loans it attributes to each grant reproduce that grant's loan balance and annual interest in the CSV, and that share counts and rates agree with what is on record.
 
-**The two files disagreeing about loans is normal.** Shareworks regenerates the loan statement on demand but refreshes the stock workbook on its own slower cycle, so a payoff or a refinance lands on the statement while the workbook still carries the old balance. That is why the loan-balance and annual-interest checks (`C3`, `C4`) are warnings, not errors, and why their message says which cause to check first. Only the statement failing to add up to its *own* printed totals blocks an import — that means a row was misread, and nothing downstream can be trusted.
+**The two files disagreeing about loans is normal.** Epic regenerates the loan statement on demand but refreshes the stock workbook on its own slower cycle, so a payoff or a refinance lands on the statement while the workbook still carries the old balance. That is why the loan-balance and annual-interest checks (`C3`, `C4`) are warnings, not errors, and why their message says which cause to check first. Only the statement failing to add up to its *own* printed totals blocks an import — that means a row was misread, and nothing downstream can be trusted.
 
 **Shares Epic reports as sold are reconciled before they are called sales.** Epic's CSV puts shares handed back to cover a later purchase's down payment in the same `Shares Sold` column as shares actually sold, and never says which is which. The arithmetic does: the gap between a grant's cost basis and its purchase loan is the down payment, and one paid in stock is a whole number of shares at that year's price — the policy minimum rounded up to the next whole share. When those add up to exactly the shares reported gone, they are recorded as share exchanges at exercise (not taxable disposals, no sales created) and the import says which grants they paid for. A larger-than-minimum down payment, or a loan that has been paid down since, reads as unexplained shares rather than being quietly reclassified.
 
@@ -704,6 +714,7 @@ Site admins are designated via the `ADMIN_EMAIL` environment variable (semicolon
 - Total registered users and active users (last 30 days)
 - Aggregate counts: total grants, loans, prices across all users
 - **System Health** — CPU %, RAM %, and DB size with sparkline charts (24h / 72h / 7d / 30d windows). Sampled every 15 minutes; 30-day rolling retention.
+- **Deployment** — the web and API build hashes, environment, last scheduled-job check, and each job's actual completion time and UTC job day. Due times for the current UTC day and completion times are shown in your local timezone. A successful run can have no eligible notifications to send. The card refreshes every minute and warns when the runner has not checked in for 35 minutes, a job fails, a due job has not completed, or the web and API builds differ. This is visible on a phone; no VPS access is needed to spot a stopped scheduler.
 - **Database Tables** — per-table size breakdown (PostgreSQL only). Useful for diagnosing storage growth.
 - **Smart Tips Report** — aggregate-only view: total users who accepted a tip, total estimated savings, per-type breakdown. No individual financial data.
 - **No-account preview funnel** — how the `/try` preview converts: previews computed, saves pressed, signups that carried preview data, and the conversion rate, as anonymous daily totals over the last 30 days. The `trial_daily_stats` table holds exactly three integers keyed by date — no IP, no user agent, no per-visitor row — so this measures the feature without recording anything about a visitor. See the privacy policy's "Anonymous counts" section, which discloses it.
@@ -736,7 +747,26 @@ Click any user in the list to open a detail card:
 
 Admin → **AI Connections** controls whether people can connect ChatGPT or Claude to their own accounts, and which providers are allowed to. Both were environment variables at first, which made "stop accepting connections from ChatGPT" a redeploy; they are policy, so they live in the database.
 
-- **Allow AI connections** — the master switch. Off, nobody can authorize a new connection and every `/mcp` call gets a 503. It is a pause, not a disconnect: existing connections are left in place and start working again when you turn it back on. Disconnecting everyone would be a worse surprise than the pause.
+![Admin MCP download for the current site on mobile](screenshots/admin-ai-plugin-downloads-light-mobile.png)
+
+**Separate read-only diagnostic MCP.** The admin connector is a different MCP server and OAuth issuer from the account-data connector. Set up three named connections in your assistant:
+
+| Connection | URL | Permission |
+| --- | --- | --- |
+| Epic Stocks staging diagnostics | `https://staging.epic-stocks.com/admin-mcp` | `admin:read` on staging |
+| Epic Stocks production diagnostics | `https://epic-stocks.com/admin-mcp` | `admin:read` on production |
+| Epic Stocks account data | `https://epic-stocks.com/mcp` | Personal data scopes on production only |
+
+1. On your phone, open **staging's Admin → AI Connections** and tap **Download admin MCP**. The single ZIP contains both ChatGPT and Claude manifests. Upload it under **Plugins → + → Upload plugin** in ChatGPT or **Customize → Plugins** in Claude. Sign in to **staging** as an email in its `ADMIN_EMAIL` and approve the admin consent page. Only `admin:read` is requested; this connection has no equity tools.
+2. After the admin MCP is deployed to production, open **production's Admin → AI Connections** and download its **admin MCP** ZIP as a second plugin, signing in to production. Each site generates a package for its own configured `DOMAIN`; staging cannot issue a production diagnostics package. Keep personal account data in the separate production plugin from Settings; never use staging for personal data.
+3. Ask the assistant to call `admin_deployment_status`, `admin_host_diagnostics`, `admin_scheduler_history`, `admin_deploy_runs`, `admin_edge_summary`, `admin_system_metrics`, or `admin_recent_errors` on each named diagnostic connection. For a specific error id, `admin_error_stack` returns file names, line numbers and functions without traceback source lines. Every answer identifies the API build and environment; scheduler due times and timestamps are UTC. Confirm the returned environment before comparing results.
+4. Revoke either diagnostic connector on that site's **Settings → AI Connections** page. Removing an email from `ADMIN_EMAIL` blocks admin tools on the next request. The two sites keep independent connection and audit histories.
+
+The admin MCP advertises only `admin:read`, has its own `/admin-oauth` issuer, and issues tokens bound to `/admin-mcp`. The account MCP never lists or calls admin tools; a token from either endpoint gets a 401 at the other. Previously granted diagnostic access on the shared `/mcp` flow must be reconnected at `/admin-mcp`.
+
+These tools have no write actions and do not return financial rows, user reports, request paths, exception messages, stack traces, or user identifiers. `admin_recent_errors` provides timestamps, methods, exception class names and opaque error references; open **Admin → Errors** on the corresponding site for the sensitive traceback. Metrics are limited to 96 samples and errors to 50 records per call. Host diagnostics report container state transitions, OOM/restarts, disk pressure and the scheduler service result, collected by a separate systemd unit every minute. The app receives only a read-only snapshot; it has no Docker socket or journal access. Host and scheduler failure/recovery histories retain at most 96 safe events for 72 hours. The collector reports gaps and becomes stale after three minutes; the scheduler history becomes stale after 35 minutes. Deployment summaries read the latest 20 public GitHub Deploy workflow runs for staging or main, correlate successful runs with the running API build, and link to detailed logs. Cloudflare summaries query sampled WAF action counts for the exact site's hostname in a 30-minute window ending two minutes ago, using a server-side read token. External summaries cache successes and failures for two minutes. Every source reports availability and collection time; missing credentials, denied access or a stopped collector never appear as healthy. Raw journal, Docker, Actions and request logs stay in their original systems. See [the diagnostic setup and smoke test](OPERATIONS.md#diagnostic-sources-and-staging-smoke-test). The existing MCP audit logs every admin tool call by name and outcome.
+
+- **Allow AI connections** — the master switch. Off, nobody can authorize a new connection and every MCP call gets a 503. It is a pause, not a disconnect: existing connections are left in place and start working again when you turn it back on. Disconnecting everyone would be a worse surprise than the pause.
 - **Providers** — the allowlist of hosts an AI client may be redirected back to after authorizing. Seeded with ChatGPT (`chatgpt.com`) and Claude (`claude.ai`, `claude.com`), both on. Claude is two hostnames under one label so there is one thing to switch off, not two.
 
 This allowlist is a security control, not a convenience. Dynamic client registration is anonymous — it has to be, or Claude on a phone cannot connect — so without it a stranger could register a client whose redirect URI points at their own server and try to walk a signed-in user through the consent screen. Adding a host means trusting that provider with any account that authorizes it.
@@ -747,7 +777,7 @@ Paste a URL or type a bare hostname; either is stored as the hostname.
 
 **Usage.** The same panel reports calls in the last 24 hours, 7 and 30 days; failures and permission refusals over 7 days; a per-account table (assistants connected, last used, calls over 7/30 days); and the most-used tools. An account that has since disconnected still appears — hiding it would make the record vanish exactly when someone is looking into it. Counts and tool names only: the audit table holds no financial data, so this cannot show any.
 
-**Rate limits.** `/mcp` is capped per connection and per account (120 and 300 calls a minute, in `backend/app/mcp/transport.py`). Both are needed: the per-connection limit stops one runaway assistant starving another the same user has connected, and the per-account limit is what bounds one user's cost to the server. Nothing else covers this endpoint — the mutation rate limiter only inspects `/api/` paths, and an IP-keyed limit would count OpenAI's and Anthropic's servers rather than the user's.
+**Rate limits.** Both MCP endpoints are capped per connection and per account (120 and 300 calls a minute, in `backend/app/mcp/transport.py`). Both are needed: the per-connection limit stops one runaway assistant starving another the same user has connected, and the per-account limit is what bounds one user's cost to the server. Nothing else covers this endpoint — the mutation rate limiter only inspects `/api/` paths, and an IP-keyed limit would count OpenAI's and Anthropic's servers rather than the user's.
 
 **Retention.** A nightly job removes client registrations that never became a connection after 7 days, expired authorization codes, and audit entries past 90 days (or beyond 5,000 per account). Registration is anonymous by necessity, so without that first sweep the table would grow on its own.
 
@@ -758,13 +788,13 @@ Paste a URL or type a bare hostname; either is stored as the hostname.
 **Admin → Tools → Import diagnostics** (`/import-diagnostics`) checks the Epic file importer against real data. Upload:
 
 1. Your own export — either the `Vesting.xlsx` from **Import / Export** or a dashboard **holdings report** (see below), and
-2. **Data for Stock Workbook** and/or the **Stock Loan Statement** from Shareworks, **from the same date**.
+2. **Data for Stock Workbook** and/or the **Stock Loan Statement** from Eureka, **from the same date**.
 
-**Match the dates.** Shareworks documents are issued periodically, so the copy you have is usually months old, while an export is of today. Set the **as of** date on the Import / Export export to the statement date and the export leaves out grants, loans and prices dated after it — otherwise everything drawn in between reads as a difference. A grant is dated by its exercise date, a price by its effective date, a sale or payment by the day it happened; loans carry only the year they were drawn, so they are filtered by year.
+**Match the dates.** Eureka documents are issued periodically, so the copy you have is usually months old, while an export is of today. Set the **as of** date on the Import / Export export to the statement date and the export leaves out grants, loans and prices dated after it — otherwise everything drawn in between reads as a difference. A grant is dated by its exercise date, a price by its effective date, a sale or payment by the day it happened; loans carry only the year they were drawn, so they are filtered by year.
 
 Either export works as a baseline. The `Vesting.xlsx` is the full dataset. The dashboard holdings report is a formatted position statement rather than a dataset — it carries no loan numbers, no vesting schedule, and one share price instead of a history — so the report says once what it could not compare instead of listing those as differences on every row.
 
-The importer runs against the Shareworks files alone, and the result is diffed field by field against the export. Every difference is listed with the id of the rule that produced the value, so the report reads as "rule `G3` reads the cost basis wrong" rather than "the import is wrong". Download it as Markdown and hand it back as a bug report. Every id is explained in [`backend/app/epic_import/RULES.md`](backend/app/epic_import/RULES.md) — what it reads, what it produces, when it fires and whether it blocks.
+The importer runs against the Eureka files alone, and the result is diffed field by field against the export. Every difference is listed with the id of the rule that produced the value, so the report reads as "rule `G3` reads the cost basis wrong" rather than "the import is wrong". Download it as Markdown and hand it back as a bug report. Every id is explained in [`backend/app/epic_import/RULES.md`](backend/app/epic_import/RULES.md) — what it reads, what it produces, when it fires and whether it blocks.
 
 The page is read-only — it never touches the database, and it only ever reads the three files in the request, which is what makes it safe to run against a production export. It compares against the uploaded export, not against any stored user data, so it exposes no financial data the uploader did not already provide.
 
@@ -832,6 +862,13 @@ The backend creates `data/vesting.db` (SQLite) automatically on first run. The d
 | `OIDC_PROVIDERS` | Yes | JSON array of OIDC provider configs — see [OIDC Provider Configuration](#oidc-provider-configuration). |
 | `CHATGPT_UI_ORIGIN` | No | Unique HTTPS component origin for ChatGPT UI submission. Omit for development to use the host sandbox. |
 | `DATABASE_URL` | Yes (prod) | PostgreSQL DSN. Docker Compose sets this automatically from `POSTGRES_PASSWORD`. |
+| `RUN_MIGRATIONS_ON_STARTUP` | No | Defaults to `1` for local PostgreSQL development. The Hetzner deploy workflow sets it to `0` after running Alembic once in its isolated deploy step. Keep it `0` for any future autoscaled web deployment with a separate migration step. SQLite tests still create their tables. |
+| `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | No | PostgreSQL connections per app instance: defaults to 5 pooled and 5 extra at peak for local or request-based hosting. The Hetzner deploy writes 10 pooled and 20 extra (overridable with GitHub environment variables) to preserve its prior concurrency capacity. Keep the combined ceiling across web instances and jobs below the database's connection limit. |
+| `DIAGNOSTICS_GITHUB_REPOSITORY` | No | Public `owner/repo` for bounded Deploy run metadata. Set automatically to this repository by the VPS workflow; no GitHub token. Staging queries `staging`, production queries `main`. |
+| `DIAGNOSTICS_CF_ZONE_ID` | No | Cloudflare zone ID for hostname-scoped WAF summaries. Set as a GitHub environment variable. |
+| `DIAGNOSTICS_CF_API_TOKEN` | No | Server-side Cloudflare Analytics read token restricted to the relevant zone. Set as a GitHub environment secret; absent/denied credentials report source unavailable. Never use an edit or global token. |
+| `DIAGNOSTICS_HOST_FILE` | No | Optional local-test override of `/run/epic-stocks-diagnostics/host.json`; deployed app uses the read-only host snapshot mount. |
+| `SAMPLE_SYSTEM_METRICS` | No | Defaults to `1` for the Hetzner app's 15-minute CPU/RAM sampler. Set to `0` on request-billed, scale-to-zero hosts, whose process metrics are not comparable to VPS metrics. |
 | `REDIS_URL` | No | Redis connection string for the L2 timeline cache (e.g. `redis://redis:6379/0`). When set, computed timelines are cached and pre-warmed after data writes; survives restarts and is shared across replicas. The `redis` service in `docker-compose.yml` provides this automatically. |
 | `POSTGRES_PASSWORD` | Yes (local) | PostgreSQL password. **Auto-generated on production deploy.** |
 | `KEY_ENCRYPTION_KEY` | No | Enables per-user AES-256-GCM encryption. Set once, never changes. **Auto-generated on production deploy.** Wraps the operational master key stored in the database. |
@@ -860,7 +897,7 @@ The backend creates `data/vesting.db` (SQLite) automatically on first run. The d
 | `PUSH_ALLOWED_HOSTS` | No | Comma-separated hosts that may be used as push endpoints. Defaults to the browser push services (FCM, Mozilla autopush, Apple, WNS); an entry starting with `.` matches any subdomain. Set to `*` to accept any public host — only needed for a browser whose push service is not in the built-in list. |
 | `MCP_ACCESS_TOKEN_MINUTES` | No | Lifetime of a connector access token. Default `60`; refresh tokens carry the connection beyond that. Whether AI connections are on, and which providers may connect, are **not** environment variables — they are admin settings, see [AI Connections](#ai-connections-admin). |
 | `COMMIT_SHA` | No | Git commit SHA injected at Docker build time. Displayed as a 7-char short hash at the bottom of Admin and Settings pages. **Set automatically by the deploy workflow.** |
-| `APP_ENV` | No | Set to `staging` in the GitHub staging environment Variables tab to enable staging-specific UI: amber icon, PWA name "Epic Stocks (Staging)", and a persistent amber header banner. Defaults to `production` (no change). Injected as a Docker build arg at deploy time. |
+| `APP_ENV` | No | `staging` enables the amber staging icon, PWA name and header banner. The GitHub `vars.APP_ENV` override wins when set; otherwise the VPS workflow defaults `main` to `production` and other refs (including feature-branch manual dispatches) to `staging`. Local Compose defaults to `production`. The frontend, app and collector use the same resolved value. |
 
 ---
 
@@ -942,10 +979,13 @@ Set secrets as GitHub Actions variables — the deploy workflow writes `.env` au
 | `RESEND_FROM` | Secret | Sender address for transactional email |
 | `OIDC_PROVIDERS` | Secret | JSON array of OIDC provider configs |
 | `ACME_EMAIL` | Variable | Email for Let's Encrypt certificate notifications |
+| `DIAGNOSTICS_CF_ZONE_ID` | Variable | Optional Cloudflare zone for WAF summaries, configured per environment |
+| `DIAGNOSTICS_CF_API_TOKEN` | Secret | Optional zone-scoped Analytics read token; never a write/global token |
 | `VPS_HOST` | Variable | VPS hostname or IP |
 | `DOMAIN` | Variable | Your domain name |
 | `TRUSTED_PROXY_IPS` | Variable | Cloudflare IP ranges for real-IP forwarding |
 | `TRUSTED_PROXY_HOPS` | Variable | Reverse proxies in front of the app (default `1`; `2` with Cloudflare). Keys anonymous rate limits on the real caller. |
+| `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | Variable | Optional PostgreSQL connection limits on the VPS; default to `10` / `20` in the deploy workflow. Size against Postgres `max_connections` when changing them. |
 
 Cryptographic secrets (JWT, encryption key, VAPID keys, Postgres password) are generated on the server on first deploy and stored in `/opt/epic-stocks/.secrets/`. They never appear in GitHub.
 
@@ -1051,7 +1091,8 @@ epic-stocks/
 │   ├── main.py              # FastAPI app + router wiring + metrics sampler
 │   ├── database.py          # SQLAlchemy engine setup
 │   ├── schemas.py           # Shared Pydantic schemas
-│   ├── alembic/             # Alembic migrations (run automatically on startup)
+│   ├── alembic/             # Alembic migrations (isolated deploy step on Hetzner)
+│   ├── scheduled_jobs.py    # Daily job entry point shared by host schedulers
 │   ├── scaffold/            # Reusable auth/infra layer (keep when forking)
 │   │   ├── auth.py          # JWT creation/verification + admin checks
 │   │   ├── client_ip.py     # Real caller address behind a proxy (TRUSTED_PROXY_HOPS)
@@ -1088,7 +1129,7 @@ epic-stocks/
 │   │   ├── loan_state.py    # Refinance state (as_of is required) + accrual window + cycle validation
 │   │   ├── sales_engine.py  # FIFO cost-basis + tax + gross-up calculations
 │   │   ├── excel_io.py      # Excel read/write (openpyxl)
-│   │   ├── epic_import/     # Import from the Shareworks documents
+│   │   ├── epic_import/     # Import from the Eureka documents
 │   │   │   ├── pdf_statement.py # Stock Loan Statement PDF -> loan rows (pdfplumber)
 │   │   │   ├── share_csv.py     # Share summary CSV -> grant rows
 │   │   │   ├── skeleton.py      # Content tables -> structure an import may not invent
@@ -1106,6 +1147,7 @@ epic-stocks/
 │   │   │   ├── transport.py    # JSON-RPC over Streamable HTTP at POST /mcp + rate limits
 │   │   │   ├── tools.py        # The tool registry: schema, scope, handler, annotations
 │   │   │   ├── read_tools.py   # The reads — each a call through to the router's own service function
+│   │   │   ├── admin_tools.py  # Scoped deployment, metrics and redacted error diagnostics
 │   │   │   ├── comp_tools.py   # The writes: salary/bonus history and retirement balances (comp:write)
 │   │   │   ├── equity_tools.py # One-row grant/loan/price/sale writes, version-checked (equity:write)
 │   │   │   ├── import_tools.py # Import guide + staging a draft the user accepts in the wizard
@@ -1137,7 +1179,7 @@ epic-stocks/
 │   │   ├── scaffold/        # Reusable UI layer (keep when forking)
 │   │   │   ├── oidc.ts      # Shared OIDC PKCE start/complete (used by Login + InviteLanding)
 │   │   │   ├── pages/       # Login, AuthCallback, Admin, Settings, PrivacyPolicy, InviteLanding, Unsubscribe
-│   │   │   ├── pages/admin/ # The admin page's panels, one file each (Overview, SystemHealth, Users, DangerZone, …) plus its two dialogs
+│   │   │   ├── pages/admin/ # Admin panels (DeploymentHealth, Overview, SystemHealth, Users, DangerZone, …) plus dialogs
 │   │   │   ├── components/  # Layout shell, Toast, ErrorBoundary + ReportProblem (problem reporting), DisclaimerNotice + UnofficialBadge (affiliation notices)
 │   │   │   ├── components/ui/ # The shared primitives: Card (one card surface for the whole app — `pad` picks the inset, cardShell.ts has the classes for the few cards that are a button or a label), ChartCard, Segmented, icons, ConflictBanner (the 409 "changed elsewhere" notice), and Field/SelectField/PercentField (one input style for the whole app)
 │   │   │   ├── reportLog.ts # In-memory trail (routes, failed requests, JS errors) a report can attach
@@ -1197,7 +1239,7 @@ All authenticated endpoints accept a valid `session` cookie (set automatically b
 
 The Bearer header exists for a client that cannot use cookies — a native shell, whose WebView origin is not this server's, so the cookie is never attached. Such a client obtains the token by passing `return_token: true` to `POST /api/auth/callback`; the web app never asks, so no readable copy of the credential is handed to script on the page. Bearer tokens carry the same `session_version` check as cookies, so "sign out everywhere" revokes both.
 
-**Connector tokens are a separate kind.** A token issued by `/oauth/token` for an AI assistant carries `typ: "mcp"` and is accepted only at `/mcp`; a session token is accepted only at `/api/*`. Presenting either in the other's place is a 401. Without that split, one leaked assistant credential would be a full account session, admin endpoints included. Connector tokens are additionally bound to this server by an audience claim and checked against their grant row on every request, so disconnecting takes effect immediately rather than at the next expiry.
+**Connector tokens are a separate kind.** A token issued by an OAuth endpoint carries `typ: "mcp"` and is accepted only at its audience-bound `/mcp` or `/admin-mcp` endpoint; a session token is accepted only by app routes. Presenting either in the other's place is a 401. Without that split, one leaked assistant credential would be a full account session, admin endpoints included. Connector tokens are additionally bound to this server by an audience claim and checked against their grant row on every request, so disconnecting takes effect immediately rather than at the next expiry.
 
 Cross-origin requests are accepted only from the native shell origins (`capacitor://localhost`, `https://localhost`) with credentials disallowed — those clients authenticate by Bearer, never by cookie. The PWA is served from the same origin as the API and never reaches CORS at all.
 
@@ -1249,10 +1291,10 @@ Cross-origin requests are accepted only from the native shell origins (`capacito
 | POST | `/api/import/backups/{id}/restore` | Restore data from a backup snapshot |
 | GET | `/api/export/excel` | Download Vesting.xlsx with all data. `?as_of=YYYY-MM-DD` (optional) drops records dated after that day |
 | GET | `/api/export/holdings-report` | Download formatted Excel holdings report as of a given date |
-| POST | `/api/epic-import/analyze` | Read the Shareworks CSV + PDF, or check a repaired draft against them — returns a draft, what failed, and a prompt to paste out. Writes nothing |
+| POST | `/api/epic-import/analyze` | Read the Eureka CSV + PDF, or check a repaired draft against them — returns a draft, what failed, and a prompt to paste out. Writes nothing |
 | POST | `/api/epic-import/diff` | Diff the derivation against an uploaded Excel export — read-only |
 | POST | `/api/epic-import/diff.md` | The same report as a downloadable Markdown file |
-| POST | `/api/trial/analyze` | No-account preview: read the Shareworks CSV + PDF and return the computed timeline, dashboard-shaped grants/loans/prices, and the default tax rates. No auth, stores none of the uploaded data, IP rate-limited |
+| POST | `/api/trial/analyze` | No-account preview: read the Eureka CSV + PDF and return the computed timeline, dashboard-shaped grants/loans/prices, and the default tax rates. No auth, stores none of the uploaded data, IP rate-limited |
 | POST | `/api/trial/save-intent` | Add one to today's "pressed save" count. No auth, no body, IP rate-limited |
 | POST | `/api/trial/converted` | Add one to today's "signed up carrying preview data" count. Requires auth |
 | POST | `/api/wizard/parse-file` | Parse an uploaded Excel structure file for wizard pre-fill |
@@ -1268,10 +1310,11 @@ Cross-origin requests are accepted only from the native shell origins (`capacito
 | GET/POST | `/oauth/authorize` | Consent screen, server-rendered. Needs an app session; a signed-out user is sent through `/login?next=` and returned here |
 | POST | `/oauth/token` | `authorization_code` and `refresh_token`. PKCE `S256` required; refresh tokens rotate on use |
 | POST | `/oauth/revoke` | RFC 7009. Always 200 |
-| POST | `/mcp` | The MCP server: JSON-RPC over Streamable HTTP (`initialize`, `tools/list`, `tools/call`, `ping`). Read tools and separately scoped compensation, import proposal and equity write tools are listed under [Connecting Your Own AI](#connecting-your-own-ai). Requires a connector token, never a session one |
+| POST | `/mcp` | The account-data MCP server: JSON-RPC over Streamable HTTP (`initialize`, `tools/list`, `tools/call`, `ping`). Account read tools and separately scoped compensation, import proposal and equity write tools. Requires a connector token, never a session one |
 | GET | `/api/oauth/connections` | This account's live AI connections, for Settings |
 | DELETE | `/api/oauth/connections/{id}` | Disconnect. Deleting the grant row is the revocation — it takes effect on the next request |
 | GET | `/api/oauth/activity` | This account's last 50 connector events — tool names, outcomes and times, never figures |
+| POST | `/admin-mcp` | Read-only admin diagnostic MCP. Separate OAuth issuer `/admin-oauth`, `admin:read` only; no account tools or resources |
 | GET | `/api/admin/mcp/usage` | Admin: connector usage per account and per tool, plus totals. Counts only |
 | **Grant-program content** | | |
 | GET | `/api/content` | Global grant-program content blob — any logged-in user |
@@ -1317,6 +1360,7 @@ Cross-origin requests are accepted only from the native shell origins (`capacito
 | POST | `/api/admin/rotate-key` | SSE stream: rotate encryption master key (admin only) |
 | POST | `/api/admin/rotation-restore` | Restore DB from on-disk snapshot after a crashed rotation (admin only) |
 | GET | `/api/admin/stats` | Aggregate stats + latest CPU/RAM snapshot (admin only) |
+| GET | `/api/admin/deployment-status` | Build and scheduled-job heartbeat/completion status (admin only) |
 | GET | `/api/admin/users?q=&limit=10&offset=0` | User list with metadata, searchable + paginated (admin only) |
 | DELETE | `/api/admin/users/{id}` | Delete user + all data (admin only) |
 | GET/POST | `/api/admin/blocked` | List/block emails (admin only) |
@@ -1389,7 +1433,7 @@ The built-in privacy page (`/privacy`) lists the third-party services used by th
 - **Unreliable or incomplete grant details block an import.** Mismatched statement totals, malformed grants or sales, and a custom schedule the user has not confirmed stop acceptance. An unfamiliar file category is only a hint: historic conversion rows look like grant types and are not grants. Disagreement between files and unusual loan rates remain visible for review because Epic's paperwork can disagree with itself.
 - **Shares reported sold are reconciled, not assumed sold.** Epic reports a down-payment share exchange and a sale in the same column. Calling every one a sale invented taxable disposals; the down payment implied by each purchase loan is checkable arithmetic, and only an exact, unique match against the shares reported gone is acted on. Rule `G8`, checked back by `C11`.
 - **Unexplained shares are unclassified, not necessarily sold.** The user confirms exchanges and supplies each sale's quantity, date and price. `C12` keeps unknown details visible; the wizard checks edited exchanges against the reported total and shows omitted shares at sign-off. Re-import matches saved sales one-for-one rather than appending copies. The wizard's `sales.ts` contains the client-side reconciliation and review helpers.
-- **Two documents disagreeing is staleness, not a misread.** Shareworks regenerates the loan statement on demand and refreshes the stock workbook on a slower cycle, so the workbook routinely predates a payoff the statement already shows. `C3` and `C4` warn and name that cause rather than erroring: a user whose paperwork is merely out of step was being told their import had failed, twice in one evening, which is what prompted this.
+- **Two documents disagreeing is staleness, not a misread.** Epic regenerates the loan statement on demand and refreshes the stock workbook on a slower cycle, so the workbook routinely predates a payoff the statement already shows. `C3` and `C4` warn and name that cause rather than erroring: a user whose paperwork is merely out of step was being told their import had failed, twice in one evening, which is what prompted this.
 - **A refinance chain is inferred from the rate, not assumed.** The company-wide chain says what Epic did; the rate on a user's own statement says how much of it happened to them. Applying the whole chain to everyone silently invented history for anyone who did not refinance with the crowd, and rates are the one piece of evidence the documents do carry. `frontend/src/app/refiInference.ts`.
 - **Sign-off happens in the wizard, not on a file.** An import ends by prefilling the Setup Wizard, so what a user confirms is their rendered position. Asking someone to eyeball a CSV or a JSON blob is not validation.
 - **Every derived field records the rule that produced it.** Tagging each field with a rule id turns "the import is wrong" into "rule G3 reads the cost basis wrong", which is what the diagnostics report is for. The ids are documented in `backend/app/epic_import/RULES.md`, and a test pins that reference to the code: a rule the importer can report but the reference cannot explain fails the suite, which is the only way a document like that stays true.
@@ -1420,7 +1464,8 @@ The built-in privacy page (`/privacy`) lists the third-party services used by th
 - **The frontend never assumes it is same-origin with the API.** Every request resolves through `apiUrl()` in `frontend/src/config.ts`, and `apiFetchRaw` in `api.ts` is the only place `fetch` is called. `API_BASE` is empty by default, so the PWA keeps issuing relative `/api` requests exactly as before — a PWA deploy neither sets nor needs an API origin, and baking one in would tie the built image to one domain. The `VITE_API_BASE` build arg it reads is an internal detail of a future native-shell build, whose WebView origin is not the server; its value is always `https://$DOMAIN`, so it should be derived from the `DOMAIN` already set at deploy time rather than configured separately.
 - **Anything a native shell would have to do differently lives behind `frontend/src/platform/`.** Four capabilities — how a session is authenticated and stored, key-value storage, handing the user a file, and push registration — are interfaces with a browser implementation. Feature code calls `platform.files.saveBlob(...)` rather than building an `<a download>`, and `platform.auth.openAuthorizationUrl(...)` rather than assigning `window.location`. These are the exact points where a WebView behaves differently from a browser (blob downloads are inert, `PushManager` does not exist, OAuth in an embedded WebView is refused by identity providers), so isolating them keeps one codebase serving both targets.
 
-- **Schema migrations use Alembic.** Migrations live in `backend/alembic/versions/`. `alembic upgrade head` runs automatically on startup (PostgreSQL only; SQLite test environments use `create_all`). Create a new migration with `alembic revision --autogenerate -m "description"`.
+- **Schema migrations use Alembic.** Migrations live in `backend/alembic/versions/`. The Hetzner deploy runs `alembic upgrade head` before starting the app; local PostgreSQL defaults to running it on startup. SQLite test environments use `create_all`. Create a new migration with `alembic revision --autogenerate -m "description"`.
+- **Daily jobs run outside the web process.** `python -m scheduled_jobs` checks whether UTC maintenance (03:00), notifications (07:00), and the admin digest (07:00) are due. A newly installed timer catches up later on the current UTC day, even when the due hour passed before deployment. It stores a runner start/finish heartbeat and the last result of each check, plus the last successful UTC date and timestamp separately for each job in `system_settings`. Admin → Deployment shows the build and these records, warning after 35 minutes without a completed check. Failed jobs retry on the next invocation, and PostgreSQL advisory locks avoid overlap. Digest delivery also records success per admin so a failed recipient can be retried without resending to successful recipients. Hetzner invokes the command every 15 minutes via a systemd timer installed before the app is taken down for deployment. A future Cloud Run deployment can invoke the same command as a scheduled job. Cache prewarming after writes is best effort: a stopped web instance cannot make reads stale because the cache key includes the current inputs.
 
 **ChatGPT UI code:** `backend/app/mcp/import_ui.py` runs plugin parsing, review and wizard acceptance; `import_files.py` downloads bounded host file references with HTTPS, a host allowlist, public DNS pinned for the connection and no redirects. `backend/app/mcp/ui_tools.py` registers the scoped presentation tools and versioned resource; `portfolio.html` is the self-contained MCP Apps component. `plugins/epic-stocks/` holds the portable package source and `scripts/build-chatgpt-plugin.py` builds it for a deployment. Component host tests and synthetic screenshots live in `frontend/e2e/plugin-ui.spec.ts` and `plugin-host.ts`.
 
@@ -1429,3 +1474,5 @@ Price entry and tentative announcement on mobile:
 
 ![Share prices](screenshots/prices-light-mobile.png)
 ![Tentative price entry](screenshots/prices-tentative-light-mobile.png)
+
+Diagnostic implementation: `backend/services/diagnostics.py` defines safe event envelopes and bounded host/scheduler reads; `backend/services/diagnostic_sources.py` reads fixed GitHub/Cloudflare endpoints; `ops/collect_diagnostics.py` and `ops/systemd/epic-stocks-diagnostics.*` collect host metadata outside the app. The deploy workflow installs the collector under `/usr/local/lib/epic-stocks/` and mounts its output directory read-only. Diagnostics installation failures warn without blocking the app release, and first collection is asynchronous. `vars.APP_ENV` overrides the branch default (`main` → production; other refs, including manual feature-branch dispatches → staging); the collector reads that same resolved environment. Container images carry `org.opencontainers.image.revision` for correlation.

@@ -110,6 +110,8 @@ def test_well_known_paths_are_json_not_the_spa_shell(client):
     """
     for url in ("/.well-known/oauth-protected-resource",
                 "/.well-known/oauth-protected-resource/mcp",
+                "/.well-known/oauth-protected-resource/admin-mcp",
+                "/.well-known/oauth-authorization-server/admin-oauth",
                 "/.well-known/oauth-authorization-server"):
         resp = client.get(url)
         assert resp.status_code == 200, url
@@ -671,10 +673,10 @@ def test_the_encryption_key_is_in_context_for_a_connector_request(client, db_ses
     import app.mcp.transport as transport
     original = transport._dispatch
 
-    def _capture(method, params, request_id, connector):
+    def _capture(method, params, request_id, connector, **kwargs):
         seen["key"] = get_current_key()
         seen["user"] = connector.user.email
-        return original(method, params, request_id, connector)
+        return original(method, params, request_id, connector, **kwargs)
 
     transport._dispatch = _capture
     try:

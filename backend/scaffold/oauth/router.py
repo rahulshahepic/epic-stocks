@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from scaffold.auth import (
-    JWT_SECRET, decode_jwt, get_current_user, sign_jwt, token_type,
+    JWT_SECRET, decode_jwt, get_admin_emails, get_current_user, sign_jwt, token_type,
     TOKEN_TYPE_SESSION, _token_from_request,
 )
 from scaffold.client_ip import client_ip
@@ -51,7 +51,12 @@ logger = logging.getLogger(__name__)
 
 well_known_router = APIRouter(tags=["oauth"])
 router = APIRouter(prefix="/oauth", tags=["oauth"])
+admin_router = APIRouter(prefix="/admin-oauth", tags=["oauth"])
 api_router = APIRouter(prefix="/api/oauth", tags=["oauth"])
+
+
+def _admin(request: Request) -> bool:
+    return request.url.path.startswith("/admin-oauth/")
 
 # How long the browser has to sit on the consent screen before the pending
 # request goes stale. Long enough to sign in on the way through.
@@ -77,24 +82,25 @@ def _provider_still_allowed(redirect_uri: str) -> bool:
 
 # ── discovery ───────────────────────────────────────────────────────────────
 
-def _protected_resource_doc(request: Request) -> dict:
+def _protected_resource_doc(request: Request, *, admin: bool = False) -> dict:
     return {
-        "resource": canonical_resource(request),
-        "authorization_servers": [issuer(request)],
-        "scopes_supported": list(scope_defs.SUPPORTED_SCOPES),
+        "resource": canonical_resource(request, admin=admin),
+        "authorization_servers": [issuer(request, admin=admin)],
+        "scopes_supported": list(scope_defs.ADMIN_SCOPES if admin else scope_defs.SUPPORTED_SCOPES),
         "bearer_methods_supported": ["header"],
     }
 
 
-def _authorization_server_doc(request: Request) -> dict:
-    base = issuer(request)
+def _authorization_server_doc(request: Request, *, admin: bool = False) -> dict:
+    base = issuer(request, admin=admin)
+    endpoints = base if admin else f"{base}/oauth"
     return {
         "issuer": base,
-        "authorization_endpoint": f"{base}/oauth/authorize",
-        "token_endpoint": f"{base}/oauth/token",
-        "registration_endpoint": f"{base}/oauth/register",
-        "revocation_endpoint": f"{base}/oauth/revoke",
-        "scopes_supported": list(scope_defs.SUPPORTED_SCOPES),
+        "authorization_endpoint": f"{endpoints}/authorize",
+        "token_endpoint": f"{endpoints}/token",
+        "registration_endpoint": f"{endpoints}/register",
+        "revocation_endpoint": f"{endpoints}/revoke",
+        "scopes_supported": list(scope_defs.ADMIN_SCOPES if admin else scope_defs.SUPPORTED_SCOPES),
         "response_types_supported": ["code"],
         "grant_types_supported": ["authorization_code", "refresh_token"],
         "code_challenge_methods_supported": ["S256"],
@@ -113,11 +119,22 @@ def protected_resource_metadata(request: Request):
     return JSONResponse(_protected_resource_doc(request))
 
 
+@well_known_router.get("/.well-known/oauth-protected-resource/admin-mcp")
+def admin_resource_metadata(request: Request):
+    return JSONResponse(_protected_resource_doc(request, admin=True))
+
+
 @well_known_router.get("/.well-known/oauth-authorization-server")
 @well_known_router.get("/.well-known/oauth-authorization-server/mcp")
 def authorization_server_metadata(request: Request):
     """RFC 8414. What this authorization server supports."""
     return JSONResponse(_authorization_server_doc(request))
+
+
+@well_known_router.get("/.well-known/oauth-authorization-server/admin-oauth")
+@well_known_router.get("/.well-known/oauth-authorization-server/admin-mcp")
+def admin_server_metadata(request: Request):
+    return JSONResponse(_authorization_server_doc(request, admin=True))
 
 
 # ── dynamic client registration ─────────────────────────────────────────────
@@ -136,6 +153,7 @@ def _registration_error(message: str, code: str = "invalid_client_metadata") -> 
 
 
 @router.post("/register")
+@admin_router.post("/register")
 def register(body: RegisterRequest, request: Request, db: Session = Depends(get_db)):
     """RFC 7591. Anonymous by design — it is what makes Claude on a phone work."""
     if not _enabled():
@@ -146,7 +164,7 @@ def register(body: RegisterRequest, request: Request, db: Session = Depends(get_
         uris = body.redirect_uris or []
         if not uris:
             raise RegistrationError("At least one redirect_uri is required")
-        requested = scope_defs.parse_scope(body.scope)
+        requested = scope_defs.parse_scope(body.scope, admin=_admin(request))
         wants_secret = (body.token_endpoint_auth_method or "none") != "none"
         client, raw_secret = register_client(
             db,
@@ -195,6 +213,11 @@ def _optional_user(request: Request, db: Session) -> User | None:
     return user
 
 
+def _is_site_admin(user: User) -> bool:
+    # Check the live allowlist, not the flag cached at the last login.
+    return user.email.lower() in get_admin_emails()
+
+
 def _redirect_error(redirect_uri: str, state: str | None, error: str, description: str):
     params = {"error": error, "error_description": description}
     if state:
@@ -235,6 +258,7 @@ def consent_stylesheet():
 
 
 @router.get("/authorize")
+@admin_router.get("/authorize")
 def authorize(request: Request, db: Session = Depends(get_db)):
     if not _enabled():
         return _error_page("Not available", "AI connections are turned off on this server.", 404)
@@ -246,6 +270,8 @@ def authorize(request: Request, db: Session = Depends(get_db)):
             "Unknown application",
             "The application that sent you here is not registered with this server.",
         )
+    if (client.scope == scope_defs.ADMIN_READ) != _admin(request):
+        return _error_page("Wrong connector", "This client belongs to the other MCP server.")
 
     registered = client_redirect_uris(client)
     redirect_uri = q.get("redirect_uri") or (registered[0] if len(registered) == 1 else None)
@@ -278,12 +304,12 @@ def authorize(request: Request, db: Session = Depends(get_db)):
                                "code_challenge_method must be S256")
 
     try:
-        granted = scope_defs.parse_scope(q.get("scope"))
+        granted = scope_defs.parse_scope(q.get("scope"), admin=_admin(request))
     except scope_defs.ScopeError as exc:
         return _redirect_error(redirect_uri, state, "invalid_scope", str(exc))
 
     resource = q.get("resource")
-    if not resource_matches(resource, canonical_resource(request)):
+    if not resource_matches(resource, canonical_resource(request, admin=_admin(request))):
         return _redirect_error(redirect_uri, state, "invalid_target",
                                "The resource parameter does not name this server")
 
@@ -295,15 +321,19 @@ def authorize(request: Request, db: Session = Depends(get_db)):
         "sc": scope_defs.format_scope(granted),
         "cc": code_challenge,
         "st": state or "",
-        "res": resource or "",
+        "res": canonical_resource(request, admin=_admin(request)),
+        "ad": _admin(request),
     })
 
     user = _optional_user(request, db)
     if user is None:
         # Sign in, then come back to exactly this request. The SPA login honours
         # `next` for same-origin paths only.
-        nxt = f"/oauth/authorize/resume?request={request_token}"
+        nxt = f"/{'admin-oauth' if _admin(request) else 'oauth'}/authorize/resume?request={request_token}"
         return RedirectResponse(f"/login?next={quote(nxt, safe='')}", status_code=302)
+
+    if scope_defs.ADMIN_READ in granted and not _is_site_admin(user):
+        return _redirect_error(redirect_uri, state, "access_denied", "Site admin access required")
 
     session_token = _token_from_request(request) or ""
     return HTMLResponse(consent_page.render_consent(
@@ -314,12 +344,14 @@ def authorize(request: Request, db: Session = Depends(get_db)):
         read_only=not scope_defs.writes_anything(granted),
         writes_directly=scope_defs.writes_directly(granted),
         equity_write=scope_defs.EQUITY_WRITE in granted,
+        action=f"/{'admin-oauth' if _admin(request) else 'oauth'}/authorize",
         request_token=request_token,
         csrf=_csrf_for(session_token, request_token),
     ))
 
 
 @router.get("/authorize/resume")
+@admin_router.get("/authorize/resume")
 def authorize_resume(request: Request, db: Session = Depends(get_db)):
     """Where the SPA sends the browser after a sign-in that began at /oauth/authorize.
 
@@ -334,6 +366,8 @@ def authorize_resume(request: Request, db: Session = Depends(get_db)):
         pending = decode_jwt(request.query_params.get("request") or "")
         if pending.get("typ") != "authreq":
             raise ValueError("wrong token type")
+        if bool(pending.get("ad")) != _admin(request):
+            raise ValueError("wrong authorization server")
     except ValueError:
         return _error_page(
             "That took too long",
@@ -343,6 +377,10 @@ def authorize_resume(request: Request, db: Session = Depends(get_db)):
     user = _optional_user(request, db)
     if user is None:
         return _error_page("Not signed in", "Sign in and try connecting again.", 401)
+
+    if scope_defs.ADMIN_READ in pending["sc"].split() and not _is_site_admin(user):
+        return _redirect_error(pending["ru"], pending.get("st") or None,
+                               "access_denied", "Site admin access required")
 
     client = get_client(db, pending.get("cid"))
     if client is None or not redirect_uri_registered(client, pending.get("ru", "")):
@@ -358,12 +396,14 @@ def authorize_resume(request: Request, db: Session = Depends(get_db)):
         read_only=not scope_defs.writes_anything(pending["sc"].split()),
         writes_directly=scope_defs.writes_directly(pending["sc"].split()),
         equity_write=scope_defs.EQUITY_WRITE in pending["sc"].split(),
+        action=f"/{'admin-oauth' if _admin(request) else 'oauth'}/authorize",
         request_token=request_token,
         csrf=_csrf_for(session_token, request_token),
     ))
 
 
 @router.post("/authorize")
+@admin_router.post("/authorize")
 def authorize_decide(request: Request, decision: str = Form(...),
                      request_token: str = Form(..., alias="request"),
                      csrf: str = Form(...), read_only: str | None = Form(default=None),
@@ -375,6 +415,8 @@ def authorize_decide(request: Request, decision: str = Form(...),
         pending = decode_jwt(request_token)
         if pending.get("typ") != "authreq":
             raise ValueError("wrong token type")
+        if bool(pending.get("ad")) != _admin(request):
+            raise ValueError("wrong authorization server")
     except ValueError:
         return _error_page(
             "That took too long",
@@ -406,6 +448,9 @@ def authorize_decide(request: Request, decision: str = Form(...),
                                "The user declined the connection")
 
     scope = pending["sc"]
+    if _admin(request):
+        if not _is_site_admin(user):
+            return _redirect_error(redirect_uri, state, "access_denied", "Site admin access required")
     if read_only:
         # The opt-out on the consent screen: keep the reads, drop every write.
         scope = scope_defs.format_scope(
@@ -482,7 +527,7 @@ def _issue(db: Session, request: Request, grant: OAuthGrant, user: User) -> JSON
         user_id=user.id,
         session_version=int(user.session_version),
         scope=grant.scope,
-        audience=canonical_resource(request),
+        audience=canonical_resource(request, admin=_admin(request)),
         client_id=grant.client_id,
     )
     return JSONResponse(
@@ -498,6 +543,7 @@ def _issue(db: Session, request: Request, grant: OAuthGrant, user: User) -> JSON
 
 
 @router.post("/token")
+@admin_router.post("/token")
 def token(request: Request, grant_type: str = Form(...),
           code: str | None = Form(None), redirect_uri: str | None = Form(None),
           client_id: str | None = Form(None), code_verifier: str | None = Form(None),
@@ -507,6 +553,8 @@ def token(request: Request, grant_type: str = Form(...),
         return _token_error("invalid_request", "AI connections are turned off", 404)
 
     check_rate_ip_shared(client_ip(request), "oauth_token", 600, 900)
+    if resource and not resource_matches(resource, canonical_resource(request, admin=_admin(request))):
+        return _token_error("invalid_target", "The resource parameter does not name this MCP server")
     presented_secret = _client_secret_from(request, client_secret)
 
     if grant_type == "authorization_code":
@@ -548,10 +596,16 @@ def _exchange_code(db: Session, request: Request, raw_code: str | None,
         return _token_error("invalid_grant", "redirect_uri does not match the authorization")
     if not pkce_matches(stored["code_challenge"], verifier):
         return _token_error("invalid_grant", "PKCE verification failed")
+    if stored["resource"] != canonical_resource(request, admin=_admin(request)):
+        return _token_error("invalid_grant", "That code belongs to another MCP server")
+    if (stored["scope"] == scope_defs.ADMIN_READ) != _admin(request):
+        return _token_error("invalid_grant", "That code belongs to another MCP server")
 
     client = get_client(db, stored["client_id"])
     if client is None:
         return _token_error("invalid_client", "Unknown client", 401)
+    if (client.scope == scope_defs.ADMIN_READ) != _admin(request):
+        return _token_error("invalid_client", "Client belongs to another MCP server", 401)
     if not authenticate_client(client, presented_secret):
         return _token_error("invalid_client", "Client authentication failed", 401)
 
@@ -595,6 +649,8 @@ def _refresh(db: Session, request: Request, raw_refresh: str | None,
     ).first()
     if grant is None:
         return _token_error("invalid_grant", "That refresh token is not valid")
+    if (grant.scope == scope_defs.ADMIN_READ) != _admin(request):
+        return _token_error("invalid_grant", "That connection belongs to another MCP server")
     if grant.refresh_expires_at and _aware(grant.refresh_expires_at) < datetime.now(timezone.utc):
         return _token_error("invalid_grant", "That refresh token has expired")
     if client_id and client_id != grant.client_id:
@@ -603,6 +659,8 @@ def _refresh(db: Session, request: Request, raw_refresh: str | None,
     client = get_client(db, grant.client_id)
     if client is None:
         return _token_error("invalid_client", "Unknown client", 401)
+    if (client.scope == scope_defs.ADMIN_READ) != _admin(request):
+        return _token_error("invalid_client", "Client belongs to another MCP server", 401)
     if not authenticate_client(client, presented_secret):
         return _token_error("invalid_client", "Client authentication failed", 401)
     if not any(_provider_still_allowed(uri) for uri in client_redirect_uris(client)):
@@ -634,6 +692,7 @@ def code_verifier_of(raw: str) -> str:
 
 
 @router.post("/revoke")
+@admin_router.post("/revoke")
 def revoke(request: Request, token: str = Form(...),
            token_type_hint: str | None = Form(None), db: Session = Depends(get_db)):
     """RFC 7009. Always 200, so a caller cannot probe which tokens exist."""
@@ -647,6 +706,8 @@ def revoke(request: Request, token: str = Form(...),
                 grant = db.get(OAuthGrant, int(payload["gid"]))
         except (ValueError, KeyError, TypeError):
             grant = None
+    if grant is not None and (grant.scope == scope_defs.ADMIN_READ) != _admin(request):
+        grant = None
     if grant is not None:
         user_id, grant_id, name = grant.user_id, grant.id, grant.client_name
         db.delete(grant)

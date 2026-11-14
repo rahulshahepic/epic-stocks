@@ -39,14 +39,15 @@ class Connector:
             )
 
 
-def challenge_headers(request: Request) -> dict[str, str]:
+def challenge_headers(request: Request, *, admin: bool = False) -> dict[str, str]:
     """RFC 9728 §5.1 — the 401 that tells a client where to get a token."""
-    url = f"{issuer(request)}/.well-known/oauth-protected-resource"
+    suffix = "/admin-mcp" if admin else ""
+    url = f"{issuer(request)}/.well-known/oauth-protected-resource{suffix}"
     return {"WWW-Authenticate": f'Bearer resource_metadata="{url}"'}
 
 
 def _unauthorized(request: Request, detail: str) -> HTTPException:
-    return HTTPException(status_code=401, detail=detail, headers=challenge_headers(request))
+    return HTTPException(status_code=401, detail=detail, headers=challenge_headers(request, admin=request.url.path == '/admin-mcp'))
 
 
 def require_connector(request: Request, db: Session = Depends(get_db)) -> Connector:
@@ -66,13 +67,16 @@ def require_connector(request: Request, db: Session = Depends(get_db)) -> Connec
 
     # Audience binding: a token minted for some other resource must not be
     # spendable here, even though this server signed it.
-    if payload.get("aud") != canonical_resource(request):
+    admin = request.url.path == "/admin-mcp"
+    if payload.get("aud") != canonical_resource(request, admin=admin):
         raise _unauthorized(request, "This token was not issued for this server")
 
     grant = db.get(OAuthGrant, int(payload.get("gid") or 0))
     if grant is None:
         # Disconnected. The row is the revocation.
         raise _unauthorized(request, "This connection has been disconnected")
+    if (grant.scope == "admin:read") != admin:
+        raise _unauthorized(request, "This connection belongs to another MCP server")
 
     user = db.get(User, int(payload["sub"]))
     if user is None or grant.user_id != user.id:

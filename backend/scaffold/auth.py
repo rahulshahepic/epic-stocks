@@ -199,7 +199,7 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
         siat = int(payload.get("siat", 0))
     except (ValueError, KeyError):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from None
-    # A connector token authorizes an AI assistant against /mcp and nothing
+    # A connector token authorizes an AI assistant against its MCP resource and nothing
     # else. Presented here it is not a weaker session, it is the wrong
     # credential entirely.
     if token_type(payload) != TOKEN_TYPE_SESSION:

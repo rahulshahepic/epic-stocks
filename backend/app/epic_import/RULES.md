@@ -171,7 +171,7 @@ there is nothing to check against.
 
 ### `C3` — loans against the CSV's loan balance
 For each grant, the loans attributed to it must reproduce that grant's
-`Loan Balance` in the CSV. **Warning**: Shareworks regenerates the loan
+`Loan Balance` in the CSV. **Warning**: Epic regenerates the loan
 statement on demand but refreshes the stock workbook on its own slower cycle, so
 a payoff or refinance shows up on the statement while the workbook still carries
 the old balance. The two files disagreeing is the ordinary case, not a misread —

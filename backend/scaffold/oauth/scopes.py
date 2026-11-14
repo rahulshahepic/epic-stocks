@@ -21,9 +21,11 @@ COMP_READ = "comp:read"
 COMP_WRITE = "comp:write"
 IMPORT_PROPOSE = "import:propose"
 EQUITY_WRITE = "equity:write"
+ADMIN_READ = "admin:read"
 
 # Grantable today.
 SUPPORTED_SCOPES: tuple[str, ...] = (EQUITY_READ, COMP_READ, COMP_WRITE, IMPORT_PROPOSE, EQUITY_WRITE)
+ADMIN_SCOPES: tuple[str, ...] = (ADMIN_READ,)
 
 # Scopes that let a connector leave something behind. The consent screen must
 # stop calling the connection read-only once one is granted.
@@ -38,12 +40,13 @@ IMMEDIATE_WRITE_SCOPES: frozenset[str] = frozenset({COMP_WRITE, EQUITY_WRITE})
 # "not yet" rather than a bare invalid_scope.
 RESERVED_SCOPES: tuple[str, ...] = ("shared:read",)
 
-# What a client that names no scope gets: everything grantable. ChatGPT names
-# none, and a read-only default left people unable to find how to let it edit.
+# What a client that names no scope gets: ordinary account permissions. ChatGPT
+# names none, and a read-only default left people unable to find how to edit.
+# Site diagnostics require a separate action on the consent page.
 # The app is not the source of truth for anyone's equity — a wrong row is fixed
 # by editing it or re-importing — so the consent screen lists what is granted
 # and that is the check.
-DEFAULT_SCOPES: tuple[str, ...] = SUPPORTED_SCOPES
+DEFAULT_SCOPES: tuple[str, ...] = (EQUITY_READ, COMP_READ, COMP_WRITE, IMPORT_PROPOSE, EQUITY_WRITE)
 
 SCOPE_LABELS: dict[str, str] = {
     EQUITY_READ: "Read your equity — grants, vesting, prices, loans, sales and tax estimates",
@@ -51,6 +54,7 @@ SCOPE_LABELS: dict[str, str] = {
     COMP_WRITE: "Update your salary and bonus history and your retirement account balances",
     IMPORT_PROPOSE: "Prepare an import for you to review and accept in the app",
     EQUITY_WRITE: "Create, correct or remove your grants, prices, loans and sales directly",
+    ADMIN_READ: "Read site deployment status, system metrics and redacted application error records",
 }
 
 
@@ -67,7 +71,7 @@ class ScopeError(ValueError):
     """A requested scope cannot be granted. The message reaches the client."""
 
 
-def parse_scope(raw: str | None) -> list[str]:
+def parse_scope(raw: str | None, *, admin: bool = False) -> list[str]:
     """Space-delimited scope string to a validated, de-duplicated list.
 
     An empty or missing request means the default set, which is what most MCP
@@ -75,7 +79,7 @@ def parse_scope(raw: str | None) -> list[str]:
     do not narrow them.
     """
     if not raw or not raw.strip():
-        return list(DEFAULT_SCOPES)
+        return list(ADMIN_SCOPES if admin else DEFAULT_SCOPES)
 
     seen: list[str] = []
     for scope in raw.split():
@@ -85,7 +89,7 @@ def parse_scope(raw: str | None) -> list[str]:
             raise ScopeError(
                 f"The scope '{scope}' is not available yet"
             )
-        if scope not in SUPPORTED_SCOPES:
+        if scope not in (ADMIN_SCOPES if admin else SUPPORTED_SCOPES):
             raise ScopeError(f"Unknown scope '{scope}'")
         seen.append(scope)
     if not seen:

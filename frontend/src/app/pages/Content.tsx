@@ -15,6 +15,7 @@ import type {
 import { GRANT_TYPE_NAMES, type GrantTypeName } from '../grantTypes.ts'
 import { useMe } from '../../scaffold/hooks/useMe.ts'
 import { resetContentCache } from '../hooks/useContent.ts'
+import ModalPortal from '../../scaffold/components/ModalPortal.tsx'
 
 type Tab = 'templates' | 'variants' | 'rates' | 'refinances' | 'settings'
 type WrapFn = (fn: () => Promise<unknown>, successMsg: string) => Promise<void>
@@ -54,8 +55,8 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
     return () => document.removeEventListener('keydown', onKey)
   }, [onClose])
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+    <ModalPortal><div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -70,7 +71,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
         </div>
         {children}
       </div>
-    </div>
+    </div></ModalPortal>
   )
 }
 

@@ -151,8 +151,13 @@ def _preview_rows(draft: Draft) -> dict:
     that are not saved. Ids are negative so nothing mistakes them for saved rows."""
     grants, loans, prices = [], [], []
     for gi, g in enumerate(draft.grants, 1):
+        from services.vesting import schedule_of
         grants.append({"id": -gi, **g.as_dict(), "version": 1})
         grants[-1].pop("loans", None)
+        # The same split the server computes from, so the page cannot disagree.
+        grants[-1]["vesting"] = [{"date": d.isoformat(), "shares": n} for d, n in schedule_of(
+            g.vesting and {"vesting": [{"date": d, "shares": n} for d, n in g.vesting]}
+            or {"vest_start": g.vest_start, "periods": g.periods, "shares": g.shares})]
         for li, l in enumerate(g.loans, 1):
             loans.append({"id": -(gi * 1000 + li), "grant_year": g.year, "grant_type": g.type,
                           **l.as_dict(), "refinances_loan_id": None, "version": 1})

@@ -477,15 +477,14 @@ test.describe('Screenshots', () => {
         const compensation = page.getByRole('group', { name: 'Compensation', exact: true })
         await expect(equity.getByRole('checkbox', { name: /Read your equity/ })).toBeChecked()
         await expect(compensation.getByRole('checkbox', { name: /Read your salary/ })).toBeChecked()
-        await expect(equity.getByRole('checkbox', { name: /Create, correct/ })).not.toBeChecked()
+        await expect(equity.getByRole('checkbox', { name: /Add, correct/ })).not.toBeChecked()
         await expect(page.getByRole('status')).toContainText('read-only')
         await expect(page.getByText('Read site deployment status')).toHaveCount(0)
         await shoot(page, `oauth-permissions-${theme}-${size}`, { fullPage: true })
         await compensation.getByRole('button', { name: 'Clear all compensation permissions' }).click()
         await expect(compensation.getByRole('checkbox', { name: /Read your salary/ })).not.toBeChecked()
         await equity.getByRole('button', { name: 'Select all equity permissions' }).click()
-        await expect(equity.getByRole('checkbox', { name: /Prepare an import/ })).toBeChecked()
-        await expect(equity.getByRole('checkbox', { name: /Create, correct/ })).toBeChecked()
+        await expect(equity.getByRole('checkbox', { name: /Add, correct/ })).toBeChecked()
         await expect(page.getByRole('status')).toContainText('grants, prices, loans and sales')
         await expect(page.getByRole('status')).not.toContainText('salary')
         await equity.getByRole('checkbox', { name: /Read your equity/ }).uncheck()
@@ -507,13 +506,13 @@ test.describe('Screenshots', () => {
         } })
         expect(exchange.ok()).toBeTruthy()
         const tokens = await exchange.json()
-        expect(tokens.scope.split(' ').sort()).toEqual(['equity:read', 'equity:write', 'import:propose'])
+        expect(tokens.scope.split(' ').sort()).toEqual(['equity:read', 'equity:write'])
         const tools = await page.request.post('http://localhost:8000/mcp', {
           headers: { Authorization: `Bearer ${tokens.access_token}` },
           data: { jsonrpc: '2.0', id: 1, method: 'tools/list' },
         })
         const names = (await tools.json()).result.tools.map((tool: { name: string }) => tool.name)
-        expect(names).toEqual(expect.arrayContaining(['save_equity', 'stage_import', 'show_import']))
+        expect(names).toEqual(expect.arrayContaining(['apply_changes', 'get_import_guide']))
         expect(names).not.toContain('admin_deployment_status')
       })
     }

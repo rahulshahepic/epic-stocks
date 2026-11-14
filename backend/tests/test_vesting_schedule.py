@@ -102,3 +102,17 @@ def test_workbook_round_trip_keeps_a_moved_date(client):
 def test_split_rules():
     assert [n for _, n in epic_split(7, date(2027, 9, 30), 3)] == [2, 2, 3]
     assert [n for _, n in legacy_split(7, date(2027, 9, 30), 3)] == [3, 2, 2]
+
+
+def test_a_shared_view_shows_the_stored_schedule(client, make_client):
+    from tests.test_sharing import _invite
+    register_user(client, email="owner@example.com")
+    rows = [{"date": "2027-09-30", "shares": 500}, {"date": "2029-01-15", "shares": 501}]
+    client.post("/api/grants", json={**BASE, "vesting": rows})
+    _invite(client, "viewer@example.com")
+    code = client.get("/api/sharing/sent").json()[0]["short_code"]
+    with make_client("viewer@example.com") as viewer:
+        invitation = viewer.post("/api/sharing/accept", json={"code": code}).json()["invitation_id"]
+        shared = viewer.get(f"/api/sharing/view/{invitation}/grants")
+        assert shared.status_code == 200, shared.text
+        assert shared.json()[0]["vesting"] == rows

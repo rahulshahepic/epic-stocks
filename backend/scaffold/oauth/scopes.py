@@ -1,15 +1,12 @@
 """What a connector may ask for.
 
-Reads, plus separate permissions for proposing imports and writing data. `import:propose` is not quite a write: it
-lets an assistant prepare an import and leave it for the user to review, but
-writes no grant, price or loan — it stages a proposal that the wizard picks up,
-and the user accepts it there. `epic_import/` is explicit that acceptance goes
-through the wizard and never a file, and that holds however the draft was
-produced.
+Reads, plus separate permissions for writing data. `comp:write` changes salary,
+bonus and retirement inputs. `equity:write` is apply_changes: a change set the
+assistant previews, shows the person, and applies with the preview's token.
 
-`comp:write` changes salary, bonus and retirement inputs. `equity:write` is
-separate and changes individual equity rows through the app's validated CRUD
-paths, only when explicitly granted. The consent screen offers each account
+`import:propose` staged a draft for a review wizard that no longer exists. It is
+still accepted from a client that asks for it, so older connectors keep
+working, but it is no longer offered or granted by default and no tool needs it. The consent screen offers each account
 permission separately, with the requested permissions initially selected.
 
 The remaining write scopes are named here and advertised in the metadata
@@ -32,8 +29,7 @@ ADMIN_SCOPES: tuple[str, ...] = (ADMIN_READ,)
 # stop calling the connection read-only once one is granted.
 WRITING_SCOPES: frozenset[str] = frozenset({COMP_WRITE, IMPORT_PROPOSE, EQUITY_WRITE})
 
-# Of those, the ones that change stored data the moment the tool runs.
-# `import:propose` only stages a draft the user accepts in the wizard.
+# Of those, the ones that change stored data.
 IMMEDIATE_WRITE_SCOPES: frozenset[str] = frozenset({COMP_WRITE, EQUITY_WRITE})
 
 # Named but not yet grantable. Kept visible so the shape of the eventual
@@ -47,14 +43,14 @@ RESERVED_SCOPES: tuple[str, ...] = ("shared:read",)
 # The app is not the source of truth for anyone's equity — a wrong row is fixed
 # by editing it or re-importing — so the consent screen lists what is granted
 # and that is the check.
-DEFAULT_SCOPES: tuple[str, ...] = (EQUITY_READ, COMP_READ, COMP_WRITE, IMPORT_PROPOSE, EQUITY_WRITE)
+DEFAULT_SCOPES: tuple[str, ...] = (EQUITY_READ, COMP_READ, COMP_WRITE, EQUITY_WRITE)
 
 SCOPE_LABELS: dict[str, str] = {
     EQUITY_READ: "Read your equity — grants, vesting, prices, loans, sales and tax estimates",
     COMP_READ: "Read your salary and retirement settings",
     COMP_WRITE: "Update your salary and bonus history and your retirement account balances",
-    IMPORT_PROPOSE: "Prepare an import for you to review and accept in the app",
-    EQUITY_WRITE: "Create, correct or remove your grants, prices, loans and sales directly",
+    IMPORT_PROPOSE: "Prepare an import (no longer used)",
+    EQUITY_WRITE: "Add, correct or remove your grants, prices, loans and sales — shown to you first, saved when you agree",
     ADMIN_READ: "Read site deployment status, system metrics and redacted application error records",
 }
 

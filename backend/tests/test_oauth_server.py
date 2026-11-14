@@ -207,7 +207,7 @@ def test_the_consent_screen_offers_all_account_permissions_with_requested_checke
     parser.feed(page)
     choices = parser.choices
     assert {c["value"] for c in choices} == {
-        "equity:read", "comp:read", "comp:write", "import:propose", "equity:write",
+        "equity:read", "comp:read", "comp:write", "equity:write",
     }
     assert {c["value"] for c in choices if "checked" in c} == {"equity:read", "comp:read"}
     assert 'name="permission_selection" value="1"' in page
@@ -284,7 +284,7 @@ def test_authorize_offers_explicit_equity_write_permission(client):
     _, challenge = pkce_pair()
     resp = authorize(client, reg["client_id"], challenge, scope="equity:read equity:write")
     assert resp.status_code == 200
-    assert "Create, correct or remove" in resp.text
+    assert "Add, correct or remove" in resp.text
 
 
 def test_equity_write_without_read_is_refused(client):
@@ -789,7 +789,7 @@ def _consent(client, scope, **extra):
 def test_no_scope_request_checks_the_default_permissions(client):
     register_user(client)
     page, tokens = _consent(client, "")
-    assert page.count(' checked>') == 5
+    assert page.count(' checked>') == 4
     assert "equity:write" in tokens["scope"].split()
 
 
@@ -799,11 +799,11 @@ def test_legacy_read_only_form_still_drops_every_write(client):
     assert tokens["scope"].split() == ["equity:read", "comp:read"]
 
 
-def test_read_only_request_can_explicitly_opt_into_import_and_equity_edits(client, db_session):
+def test_read_only_request_can_explicitly_opt_into_equity_edits(client, db_session):
     register_user(client)
     _, tokens = _consent(client, "equity:read comp:read", permission_selection="1",
-                         selected_scope=["equity:read", "import:propose", "equity:write"])
-    assert set(tokens["scope"].split()) == {"equity:read", "import:propose", "equity:write"}
+                         selected_scope=["equity:read", "equity:write"])
+    assert set(tokens["scope"].split()) == {"equity:read", "equity:write"}
     listed = client.post("/mcp", headers={"Authorization": f"Bearer {tokens['access_token']}"},
                          json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"}).json()
     names = {tool["name"] for tool in listed["result"]["tools"]}

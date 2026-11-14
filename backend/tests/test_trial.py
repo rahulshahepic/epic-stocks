@@ -280,3 +280,13 @@ def test_a_price_no_newer_than_the_files_is_ignored(client):
     body = client.post("/api/trial/analyze", files=upload_files(),
                        data={"current_price": "0"}).json()
     assert len(body["prices"]) == 3
+
+
+def test_preview_rows_carry_the_split_the_timeline_used(client):
+    body = client.post("/api/trial/analyze", files=upload_files()).json()
+    vested = {(e["grant_year"], e["grant_type"], e["date"]): e["vested_shares"]
+              for e in body["timeline"] if e["event_type"] == "Vesting"}
+    for g in body["grants"]:
+        assert sum(v["shares"] for v in g["vesting"]) == g["shares"]
+        for v in g["vesting"]:
+            assert vested[(g["year"], g["type"], v["date"])] == v["shares"]

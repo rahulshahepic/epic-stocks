@@ -128,7 +128,7 @@ def render_consent(*, client_name: str, redirect_origin: str, account_email: str
                    admin: bool = False, action: str = "/oauth/authorize",
                    app_name: str = "Epic Stocks") -> str:
     groups = (("Diagnostics", scope_defs.ADMIN_SCOPES),) if admin else (
-        ("Equity", (scope_defs.EQUITY_READ, scope_defs.IMPORT_PROPOSE, scope_defs.EQUITY_WRITE)),
+        ("Equity", (scope_defs.EQUITY_READ, scope_defs.EQUITY_WRITE)),
         ("Compensation", (scope_defs.COMP_READ, scope_defs.COMP_WRITE)),
     )
     sections = []

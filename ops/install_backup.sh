@@ -25,15 +25,13 @@ for name in BACKUP_R2_ACCOUNT_ID BACKUP_BUCKET BACKUP_ACCESS_KEY_ID BACKUP_SECRE
   fi
 done
 
-if [ -n "${BACKUP_AGE_RECIPIENT:-}" ] && ! command -v age >/dev/null 2>&1; then
-  DEBIAN_FRONTEND=noninteractive apt-get install -y -q age >/dev/null \
-    || { apt-get update -q >/dev/null && DEBIAN_FRONTEND=noninteractive apt-get install -y -q age >/dev/null; }
-fi
-
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 install -d -m 755 /usr/local/lib/epic-stocks
 install -d -m 700 /etc/epic-stocks
+install -d -m 700 -o 1000 -g 1000 /var/lib/epic-stocks-backup-config
+install -d -m 755 /usr/local/lib/epic-stocks/services
 install -m 644 "$script_dir/backup_database.py" /usr/local/lib/epic-stocks/backup_database.py
+install -m 644 "$script_dir/../backend/services/backup_protocol.py" /usr/local/lib/epic-stocks/services/backup_protocol.py
 
 config_file=$(mktemp)
 unit_file=$(mktemp)
@@ -49,8 +47,15 @@ sed -e "s|@APP_ENV@|$backup_env|g" -e "s|@DEPLOY_PATH@|$deploy_path|g" \
   "$script_dir/systemd/epic-stocks-backup.service" > "$unit_file"
 install -m 644 "$unit_file" /etc/systemd/system/epic-stocks-backup.service
 install -m 644 "$script_dir/systemd/epic-stocks-backup.timer" /etc/systemd/system/epic-stocks-backup.timer
+install -m 644 "$script_dir/systemd/epic-stocks-backup.path" /etc/systemd/system/epic-stocks-backup.path
 systemctl daemon-reload
+if ! command -v age >/dev/null 2>&1; then
+  # Install before Admin can enable encryption later, with a bounded pre-deploy wait.
+  timeout 120 bash -c 'export DEBIAN_FRONTEND=noninteractive
+    apt-get install -y -q age >/dev/null || { apt-get update -q >/dev/null && apt-get install -y -q age >/dev/null; }'
+fi
 systemctl enable --now epic-stocks-backup.timer
+systemctl enable --now epic-stocks-backup.path
 # Until one backup has succeeded (first install, newly added credentials, a fix after a
 # failure), take one now rather than waiting for the night, without delaying the deploy.
 if ! grep -q '"last_result": "success"' /var/lib/epic-stocks-backup/status.json 2>/dev/null; then

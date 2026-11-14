@@ -12,6 +12,8 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 # Install only the collector into a fixed, root-owned path outside those trees.
 install -d -m 755 /usr/local/lib/epic-stocks /var/lib/epic-stocks-diagnostics
 install -m 644 "$script_dir/collect_diagnostics.py" /usr/local/lib/epic-stocks/collect_diagnostics.py
+install -d -m 755 /usr/local/lib/epic-stocks/services
+install -m 644 "$script_dir/../backend/services/backup_protocol.py" /usr/local/lib/epic-stocks/services/backup_protocol.py
 unit_file=$(mktemp)
 trap 'rm -f "$unit_file"' EXIT
 sed "s|@APP_ENV@|$diagnostics_env|g" "$script_dir/systemd/epic-stocks-diagnostics.service" > "$unit_file"

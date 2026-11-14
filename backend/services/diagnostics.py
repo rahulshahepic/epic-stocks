@@ -32,6 +32,11 @@ CODES = {
     "backup_overdue": ("backup", "error"),
     "backup_unconfigured": ("backup", "warning"),
     "backup_unavailable": ("backup", "warning"),
+    "backup_disabled": ("backup", "info"),
+    "backup_running": ("backup", "info"),
+    "backup_retention_failed": ("backup_retention", "warning"),
+    "backup_retention_ok": ("backup_retention", "info"),
+    "backup_retention_unavailable": ("backup_retention", "warning"),
     **{f"{job}_{state}": ("scheduler", "error" if state == "failed" else "info")
        for job in ("maintenance", "notifications", "admin_digest", "runner")
        for state in ("failed", "recovered")},

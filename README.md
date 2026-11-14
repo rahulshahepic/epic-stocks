@@ -753,6 +753,17 @@ Click any user in the list to open a detail card:
 | **Rotate encryption key** | Generates a new master key, re-wraps all per-user keys, smoke-tests, and persists to the database. Propagates to all replicas automatically within seconds — no deploy or env var change needed. A snapshot of old keys is saved before any changes and restored automatically on failure. |
 | **Restore from snapshot** | Appears when an interrupted rotation left a snapshot in the database. Recovers from a crash without SSH access. |
 
+### Backups (admin)
+
+Admin → **Backups** shows the last attempt and successful upload, backup age, encrypted sizes, duration, host-credential readiness and safe failure details. Retention failures have their own warning: a completed upload stays successful, while old backups may accumulate. Status becomes unavailable when the host collector is stale instead of displaying an old green result.
+
+**Configure backups** edits the Cloudflare account ID, bucket, public `age1…` encryption key, retention and enabled state without redeploying. **Back up now** requests a host run; it does not claim the backup completed. R2 access credentials stay in the environment's `BACKUP_ACCESS_KEY_ID` and `BACKUP_SECRET_ACCESS_KEY` GitHub secrets and are deployed to the host, never into the app. The private decryption key stays in your password manager. Deployment remains safe with none of these configured.
+
+Upload success and restore testing are separate. After following the [test-restore procedure](OPERATIONS.md#test-restore-in-a-codespace-phone-friendly), explicitly confirm the restored run in Admin. This is an admin-recorded test, not an automatic restore check; changing destination or encryption key invalidates the displayed confirmation.
+
+![Backup status and configuration on a phone](screenshots/admin-backups-light-mobile.png)
+![Backup status and configuration in dark mode](screenshots/admin-backups-dark-mobile.png)
+
 ### AI Connections (admin)
 
 Admin → **AI Connections** controls whether people can connect ChatGPT or Claude to their own accounts, and which providers are allowed to. Both were environment variables at first, which made "stop accepting connections from ChatGPT" a redeploy; they are policy, so they live in the database.
@@ -873,6 +884,7 @@ The backend creates `data/vesting.db` (SQLite) automatically on first run. The d
 | `CHATGPT_UI_ORIGIN` | No | Unique HTTPS component origin for ChatGPT UI submission. Omit for development to use the host sandbox. |
 | `DATABASE_URL` | Yes (prod) | PostgreSQL DSN. Docker Compose sets this automatically from `POSTGRES_PASSWORD`. |
 | `RUN_MIGRATIONS_ON_STARTUP` | No | Defaults to `1` for local PostgreSQL development. The Hetzner deploy workflow sets it to `0` after running Alembic once in its isolated deploy step. Keep it `0` for any future autoscaled web deployment with a separate migration step. SQLite tests still create their tables. |
+| `BACKUP_SETTINGS_DIR` | No | Non-secret host handoff directory for Admin backup controls. VPS Compose sets `/run/epic-stocks-backup-config`, backed by `/var/lib/epic-stocks-backup-config` on the host. Omit on deployments without the host job; backup controls are then read-only/unavailable and the rest of Admin still works. No R2 credentials belong here. |
 | `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | No | PostgreSQL connections per app instance: defaults to 5 pooled and 5 extra at peak for local or request-based hosting. The Hetzner deploy writes 10 pooled and 20 extra (overridable with GitHub environment variables) to preserve its prior concurrency capacity. Keep the combined ceiling across web instances and jobs below the database's connection limit. |
 | `DIAGNOSTICS_GITHUB_REPOSITORY` | No | Public `owner/repo` for bounded Deploy run metadata. Set automatically to this repository by the VPS workflow; no GitHub token. Staging queries `staging`, production queries `main`. |
 | `DIAGNOSTICS_CF_ZONE_ID` | No | Cloudflare zone ID for hostname-scoped WAF summaries. Set as a GitHub environment variable. |
@@ -991,7 +1003,7 @@ Set secrets as GitHub Actions variables — the deploy workflow writes `.env` au
 | `ACME_EMAIL` | Variable | Email for Let's Encrypt certificate notifications |
 | `DIAGNOSTICS_CF_ZONE_ID` | Variable | Optional Cloudflare zone for WAF summaries, configured per environment |
 | `DIAGNOSTICS_CF_API_TOKEN` | Secret | Optional zone-scoped Analytics read token; never a write/global token |
-| `BACKUP_R2_ACCOUNT_ID`, `BACKUP_BUCKET`, `BACKUP_AGE_RECIPIENT`, `BACKUP_RETENTION_DAYS` | Variable | Optional nightly encrypted off-site backup to Cloudflare R2; see [OPERATIONS.md §6](OPERATIONS.md#6-backups) |
+| `BACKUP_R2_ACCOUNT_ID`, `BACKUP_BUCKET`, `BACKUP_AGE_RECIPIENT`, `BACKUP_RETENTION_DAYS` | Variable | Optional deployment defaults for off-site backups. Admin → Backups overrides them after its first save; see [OPERATIONS.md §6](OPERATIONS.md#6-backups) |
 | `BACKUP_ACCESS_KEY_ID`, `BACKUP_SECRET_ACCESS_KEY` | Secret | R2 key scoped to that environment's backup bucket only |
 | `VPS_HOST` | Variable | VPS hostname or IP |
 | `DOMAIN` | Variable | Your domain name |
@@ -1489,4 +1501,4 @@ Price entry and tentative announcement on mobile:
 
 Diagnostic implementation: `backend/services/diagnostics.py` defines safe event envelopes and bounded host/scheduler reads; `backend/services/diagnostic_sources.py` reads fixed GitHub/Cloudflare endpoints; `ops/collect_diagnostics.py` and `ops/systemd/epic-stocks-diagnostics.*` collect host metadata outside the app. The deploy workflow installs the collector under `/usr/local/lib/epic-stocks/` and mounts its output directory read-only. Diagnostics installation failures warn without blocking the app release, and first collection is asynchronous. `vars.APP_ENV` overrides the branch default (`main` → production; other refs, including manual feature-branch dispatches → staging); the collector reads that same resolved environment. Container images carry `org.opencontainers.image.revision` for correlation.
 
-Off-site backups: `ops/backup_database.py` (stdlib only) streams `pg_dump` through `age` to Cloudflare R2 nightly, with `.secrets/` minus the KEK, and prunes to `BACKUP_RETENTION_DAYS`; `ops/install_backup.sh` and `ops/systemd/epic-stocks-backup.*` install it from the Deploy workflow, best-effort like diagnostics. Encryption failures stop the local child processes and leave `age` errors in the service journal. A retention failure after upload preserves backup success, records `prune_error` in the host's `status.json`, and warns in the journal. The same script lists and fetches runs for a restore. See [OPERATIONS.md §6](OPERATIONS.md#6-backups); tests in `backend/tests/test_backup.py`.
+Off-site backups: `ops/backup_database.py` streams `pg_dump` through `age` to Cloudflare R2 nightly, with `.secrets/` minus the KEK. `ops/install_backup.sh` installs the timer, settings watcher, `age` and stdlib-only `services/backup_protocol.py`. `services/backup_admin.py` and `scaffold/routers/backups.py` implement the Admin status/settings API; `Backups.tsx` renders the controls. The app can write only the non-secret handoff directory, while the collector snapshot is mounted read-only and R2 credentials remain host-only. Saving settings or requesting a run triggers a fixed systemd service via a path unit, without exposing Docker, systemd, credentials or arbitrary commands to the web container. Admin settings survive redeploys and override deployment defaults. The same script lists and fetches runs for a restore. See [OPERATIONS.md §6](OPERATIONS.md#6-backups); tests in `test_backup.py`, `test_backup_admin.py`, `Backups.test.tsx` and `admin-backups.spec.ts`.

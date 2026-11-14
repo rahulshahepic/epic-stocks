@@ -329,10 +329,10 @@ These are the only values that need to be set in GitHub. Cryptographic secrets (
 | `ACME_EMAIL` | Variable | Email for Let's Encrypt certificate notifications |
 | `DIAGNOSTICS_CF_ZONE_ID` | Variable | Optional Cloudflare zone ID for this environment's WAF summary |
 | `DIAGNOSTICS_CF_API_TOKEN` | Secret | Optional Analytics read token limited to the zone, never an edit/global token |
-| `BACKUP_R2_ACCOUNT_ID` | Variable | Optional Cloudflare account ID for off-site backups (§6) |
-| `BACKUP_BUCKET` | Variable | Optional R2 bucket for this environment's backups |
-| `BACKUP_AGE_RECIPIENT` | Variable | Optional `age1…` public key backups are encrypted to; the private key stays offline |
-| `BACKUP_RETENTION_DAYS` | Variable | Optional, default 30; the newest 7 runs are always kept |
+| `BACKUP_R2_ACCOUNT_ID` | Variable | Optional deployment default for the Cloudflare account ID; editable in Admin → Backups (§6) |
+| `BACKUP_BUCKET` | Variable | Optional deployment default for the R2 bucket; editable in Admin |
+| `BACKUP_AGE_RECIPIENT` | Variable | Optional deployment default for the `age1…` public key; editable in Admin; private key stays offline |
+| `BACKUP_RETENTION_DAYS` | Variable | Optional deployment default, 30; Admin can override it; newest 7 complete runs are always kept |
 | `BACKUP_ACCESS_KEY_ID` | Secret | Optional R2 Object Read & Write key scoped to that one bucket |
 | `BACKUP_SECRET_ACCESS_KEY` | Secret | Its secret |
 | `VPS_HOST` | Variable | VPS hostname or IP |
@@ -431,17 +431,21 @@ Two layers, for two different failures:
 
 ### How the off-site backup works
 
-The Deploy workflow runs `ops/install_backup.sh`, which installs `epic-stocks-backup.timer` (nightly at 03:17 UTC plus up to 20 minutes of jitter, catching up after downtime) and writes the storage settings to root-only `/etc/epic-stocks/backup.env`. Like diagnostics, it is best-effort: a failure warns and the app release continues. Each run:
+The Deploy workflow runs `ops/install_backup.sh`, which installs `epic-stocks-backup.timer` (nightly at 03:17 UTC plus up to 20 minutes of jitter, catching up after downtime), the `age` binary and `epic-stocks-backup.path`. Credentials and legacy deployment defaults go to root-only `/etc/epic-stocks/backup.env`. Like diagnostics, installation is best-effort: a failure warns and the app release continues. No backup settings or credentials are required to deploy the application.
+
+Admin saves the non-secret settings as an atomic, size-bounded `settings.json` in `/var/lib/epic-stocks-backup-config`, mounted read/write only at `/run/epic-stocks-backup-config` in the app (`BACKUP_SETTINGS_DIR`). This directory is owned by the app's UID 1000 with mode 0700; settings files use 0600. Once saved, these settings override the public deployment defaults, including an explicit disabled state. They survive redeploys. The path unit starts the fixed backup service on settings changes or a `request.json` written by **Back up now**. The host reads the same stdlib-only schema validator as the app; it rejects unknown fields, private keys, arbitrary endpoints, symlinks and environment mismatches. No shell command, Docker socket, host credentials or systemd access crosses into the app.
+
+Each run:
 
 1. Streams `pg_dump -Fc` from the `db` container straight into [`age`](https://github.com/FiloSottile/age), encrypted to a **public** key. The server can create backups but cannot read them, and no plaintext touches disk.
 2. Encrypts a tar of `.secrets/` the same way, **excluding `key_encryption_key`**. The KEK lives in GitHub (`secrets.KEY_ENCRYPTION_KEY`), so the backup key alone cannot read encrypted columns. JWT, VAPID and unsubscribe secrets are included so a restore doesn't sign everyone out, break push subscriptions or invalidate email links.
 3. Uploads `<env>/<UTC stamp>/database.dump.age`, `secrets.tar.age`, then `manifest.json` (time, commit, sizes, SHA-256s). Each upload is checked by size; a run without its manifest is incomplete and is never restored from.
-4. Prunes runs older than `BACKUP_RETENTION_DAYS` (default 30), always keeping the newest 7 complete runs, so a timer that stopped for months cannot empty the bucket. Incomplete runs are removed after 2 days.
-5. Writes `/var/lib/epic-stocks-backup/status.json` (times, result and safe error summaries). Once the manifest is uploaded and checked, a retention cleanup failure leaves the backup successful and records `prune_error` separately (`pruned_runs` is `null` because cleanup may be partial). Cleanup is retried on the next backup. The diagnostics collector turns the backup result into the `backup` state in `admin_host_diagnostics`: `backup_succeeded`, `backup_failed`, `backup_overdue` (no success in 26 hours), `backup_unconfigured` or `backup_unavailable`, with `backup_recovered` events. A missing backup is never reported as healthy.
+4. Prunes runs older than the Admin retention setting (default 30 days), always keeping the newest 7 complete runs, so a timer that stopped for months cannot empty the bucket. Incomplete runs are removed after 2 days.
+5. Writes `/var/lib/epic-stocks-backup/status.json` with credential readiness (a boolean), settings revision, attempt/success times, encrypted sizes and duration. Success metadata survives failed attempts. A retention failure leaves the backup successful and records a separate `prune_error`; `pruned_runs` is `null` because cleanup may be partial. The collector copies only bounded, allowlisted metadata into its read-only snapshot. Admin shows these details, warns when no successful upload occurred in 26 hours, and refuses to treat a stale collector snapshot as current. The diagnostic MCP retains its coarse backup state and now includes retention failure/recovery events, with no raw errors or secret values.
 
 Encryption failures stop and reap the local dump/encryption processes and record a failed attempt. `age` error output goes to the service journal for both the database and secrets archive; inspect it with `journalctl -u epic-stocks-backup.service`. Retention failures also warn in that journal; the collector's `backup` state continues to report whether the backup itself succeeded.
 
-The script uses only the Python standard library plus the `age` binary, which the installer adds with `apt-get` if missing.
+The host scripts and shared protocol use only the Python standard library plus the `age` binary. The installer adds `age` even before backup setup so enabling backups in Admin later needs no package installation or redeploy. Package installation has a two-minute timeout; failure warns without blocking the app release. A missing/unwritable handoff leaves Admin controls unavailable. On platforms without the VPS host job, leave `BACKUP_SETTINGS_DIR` unset.
 
 ### One-time setup (per environment)
 
@@ -455,19 +459,18 @@ Everything below works from a phone browser. GitHub's mobile app cannot edit env
 2. **Turn on R2:** Cloudflare dashboard → **R2 Object Storage** → enable (Cloudflare asks for a payment method even for the free tier; nightly dumps of this app stay well inside the 10 GB free allowance).
 3. **Create the buckets:** `epic-stocks-backup-staging` and `epic-stocks-backup-production`, private, no public access.
 4. **Create one API token per bucket:** R2 → **Manage API tokens** → *Create Account API token* → **Object Read & Write**, applied to *that one bucket only*. Copy the Access Key ID and Secret Access Key. Per-bucket tokens mean staging can never touch production backups.
-5. **Add to the GitHub environment** (Settings → Environments → staging, then production):
+5. **Add just the R2 credentials to the GitHub environment** (Settings → Environments → staging, then production):
 
    | Name | Kind | Value |
    |---|---|---|
-   | `BACKUP_R2_ACCOUNT_ID` | Variable | Your Cloudflare account ID (R2 overview page) |
-   | `BACKUP_BUCKET` | Variable | `epic-stocks-backup-staging` / `-production` |
-   | `BACKUP_AGE_RECIPIENT` | Variable | The `age1…` public key from step 1 |
    | `BACKUP_ACCESS_KEY_ID` | Secret | From step 4 |
    | `BACKUP_SECRET_ACCESS_KEY` | Secret | From step 4 |
-   | `BACKUP_RETENTION_DAYS` | Variable | Optional, default 30 |
 
-6. **Deploy.** Until one backup succeeds, every deploy queues an immediate run. Within a few minutes `admin_host_diagnostics` should show `backup_succeeded`, and the bucket should hold one run.
-7. **Do a test restore** once per environment, and again after any Postgres major-version upgrade. From a phone, use [Test restore in a Codespace](#test-restore-in-a-codespace-phone-friendly) below; it never touches the server.
+6. **Deploy** to install the credentials on the host. No destination or encryption settings are required yet. Admin → Backups should show whether the host reported credentials configured. Replacing the R2 credentials later also requires a redeploy; they are never submitted to the application.
+7. In **Admin → Backups → Configure backups**, enter the Cloudflare account ID, environment-specific bucket, the `age1…` **public** key and retention days. Check **Enable nightly backups** and save. The host starts a backup without another deploy. The panel may show waiting/in progress before reporting a result; use Refresh after about a minute. **Back up now** requests another run (at most one request per minute), and the nightly timer continues independently of the app. An already-running backup may finish before saved changes take effect.
+8. **Do a test restore** once per environment, after changing destination/encryption key, and after any Postgres major-version upgrade. Use [Test restore in a Codespace](#test-restore-in-a-codespace-phone-friendly), which never touches the server. Then confirm that specific run in Admin → Backups → Restore testing. This records your explicit confirmation of an offline test; the application does not decrypt or automatically verify a restore. Changing destination or encryption key removes the old confirmation from the panel.
+
+Existing `BACKUP_R2_ACCOUNT_ID`, `BACKUP_BUCKET`, `BACKUP_AGE_RECIPIENT` and `BACKUP_RETENTION_DAYS` GitHub variables remain supported until the first Admin save. After that, the Admin file takes precedence and deploys do not replace it. Retain or re-enter the non-secret destination settings when rebuilding a lost host; they and the test-restore confirmation live in the host handoff directory, not in the backed-up database.
 
 ### Test restore in a Codespace (phone-friendly)
 

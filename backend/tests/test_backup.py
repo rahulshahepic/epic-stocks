@@ -289,6 +289,20 @@ def test_unconfigured_reports_without_network(host):
     assert status["configured"] is False and status["last_result"] == "unconfigured"
 
 
+def test_failed_attempt_preserves_success_metrics_and_outstanding_retention_warning(host):
+    deploy, env, status_path = host
+    FakeS3.fail = {"GET"}
+    assert backup.run("staging", deploy, status_path, env=env, now=NOW, cmd=dump_cmd()) == 0
+    first = json.loads(status_path.read_text())
+    FakeS3.fail = {"HEAD"}
+    with pytest.raises(backup.BackupError):
+        backup.run("staging", deploy, status_path, env=env, now=NOW + timedelta(days=1), cmd=dump_cmd())
+    failed = json.loads(status_path.read_text())
+    assert failed["last_result"] == "failed"
+    for field in ("database_encrypted_bytes", "last_success_run", "last_success_utc", "last_success_duration_seconds", "prune_error"):
+        assert failed[field] == first[field]
+
+
 def test_invalid_recipient_is_a_failure_not_unconfigured(host):
     deploy, env, status_path = host
     with pytest.raises(backup.BackupError, match="age public key"):
@@ -300,6 +314,76 @@ def test_r2_endpoint_from_account_id():
     cfg = backup.config({"BACKUP_R2_ACCOUNT_ID": "abc123", "BACKUP_BUCKET": "b", "BACKUP_ACCESS_KEY_ID": "k",
                          "BACKUP_SECRET_ACCESS_KEY": "s", "BACKUP_AGE_RECIPIENT": RECIPIENT})
     assert cfg["endpoint"] == "https://abc123.r2.cloudflarestorage.com" and cfg["retention_days"] == 30
+
+
+def test_admin_settings_enable_host_backup_without_redeploy_and_status_returns_to_admin(host, tmp_path, monkeypatch, client):
+    from services import backup_admin
+    from tests.test_backup_admin import SETTINGS
+    deploy, env, status_path = host
+    controls = tmp_path / "controls"
+    controls.mkdir()
+    snapshot = tmp_path / "host.json"
+    monkeypatch.setenv("APP_ENV", "staging")
+    monkeypatch.setenv("ADMIN_EMAIL", "admin@example.com")
+    monkeypatch.setenv("BACKUP_SETTINGS_DIR", str(controls))
+    monkeypatch.setenv("DIAGNOSTICS_HOST_FILE", str(snapshot))
+    assert client.post("/api/auth/test-login", json={"email": "admin@example.com"}).status_code == 200
+    credentials = {key: env[key] for key in ("BACKUP_ACCESS_KEY_ID", "BACKUP_SECRET_ACCESS_KEY")}
+    # Installed but not set up: no dump, no network, successful no-op.
+    assert backup.run("staging", deploy, status_path, env=credentials, cmd=["missing-dump"],
+                      settings_path=controls / "settings.json") == 0
+    assert json.loads(status_path.read_text())["last_result"] == "unconfigured"
+    assert client.put("/api/admin/backups/settings", json=SETTINGS).status_code == 200
+    store_class = backup.Store
+    def local_store(endpoint, bucket, access_key, secret_key):
+        assert endpoint == "https://" + "a" * 32 + ".r2.cloudflarestorage.com"
+        assert bucket == SETTINGS["bucket"]
+        return store_class(env["BACKUP_S3_ENDPOINT"], bucket, access_key, secret_key)
+    monkeypatch.setattr(backup, "Store", local_store)
+    assert backup.run("staging", deploy, status_path, env=credentials, cmd=dump_cmd(),
+                      settings_path=controls / "settings.json") == 0
+    monkeypatch.setattr(collector, "command", lambda args: None)
+    collector.collect("staging", snapshot, status_path)
+    response = client.get("/api/admin/backups")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["state"] == "succeeded"
+    assert data["backup"]["credentials_configured"] is True
+    assert data["backup"]["database_encrypted_bytes"] > 0
+    assert data["backup"]["last_success_duration_seconds"] >= 0
+    assert data["backup"]["last_success_run"]
+    assert "TOP-SECRET-VALUE" not in response.text
+    assert "TOP-SECRET-VALUE" not in (controls / "settings.json").read_text()
+    assert backup_admin.status()["revision"] == data["revision"]
+    # Disable wins over credentials and old deployment defaults, immediately on the next firing.
+    assert client.put("/api/admin/backups/settings", json={**SETTINGS, "enabled": False,
+                                                          "expected_revision": data["revision"]}).status_code == 200
+    uploaded = list(FakeS3.log)
+    assert backup.run("staging", deploy, status_path, env=env, cmd=["missing-dump"],
+                      settings_path=controls / "settings.json") == 0
+    assert FakeS3.log == uploaded
+    assert json.loads(status_path.read_text())["last_result"] == "disabled"
+
+
+@pytest.mark.parametrize("fault", ["wrong_environment", "secret_field", "invalid_json", "symlink"])
+def test_invalid_admin_handoff_fails_closed_before_dump(host, tmp_path, fault):
+    from services.backup_protocol import EMPTY_SETTINGS
+    deploy, env, status_path = host
+    path = tmp_path / "settings.json"
+    document = {"version": 1, "environment": "staging", **EMPTY_SETTINGS}
+    if fault == "wrong_environment":
+        document["environment"] = "production"
+    if fault == "secret_field":
+        document["secret_access_key"] = "SHOULD-NOT-BE-READ"
+    if fault == "symlink":
+        path.symlink_to(tmp_path / "unknown-secret")
+    else:
+        path.write_text("not-json" if fault == "invalid_json" else json.dumps(document))
+    with pytest.raises((ValueError, OSError)):
+        backup.run("staging", deploy, status_path, env=env, cmd=["missing-dump"], settings_path=path)
+    assert FakeS3.log == []
+    assert json.loads(status_path.read_text())["last_result"] == "failed"
+    assert "SHOULD-NOT-BE-READ" not in status_path.read_text()
 
 
 def test_prune_keeps_newest_seven_and_retention_and_drops_stale_partials(s3):
@@ -419,7 +503,9 @@ root = Path(os.environ['HOST_ROOT'])
 if name == 'install':
     mode = args[args.index('-m') + 1]
     if '-d' in args:
-        for arg in args[args.index(mode) + 1:]:
+        for arg in args:
+            if not arg.startswith('/'):
+                continue
             (root / arg.lstrip('/')).mkdir(parents=True, exist_ok=True)
     else:
         target = root / args[-1].lstrip('/')
@@ -434,6 +520,8 @@ if name == 'systemctl' and args[0] == 'start' and '--no-block' not in args:
         (commands / name).chmod(0o755)
     checkout = tmp_path / "home" / "deployer" / "checkout"
     shutil.copytree(REPO / "ops", checkout / "ops")
+    (checkout / "backend/services").mkdir(parents=True)
+    shutil.copyfile(REPO / "backend/services/backup_protocol.py", checkout / "backend/services/backup_protocol.py")
     env = {**{k: v for k, v in os.environ.items() if not k.startswith("BACKUP_")},
            "PATH": f"{commands}:{os.environ['PATH']}", "HOST_ROOT": str(root), "COMMAND_LOG": str(log)}
     return checkout, root, log, env
@@ -454,7 +542,21 @@ def test_installer_writes_private_config_and_hardened_unit(fake_host):
     assert "ProtectSystem=strict" in unit and "ProtectHome=read-only" in unit
     commands = log.read_text()
     assert "systemctl enable --now epic-stocks-backup.timer" in commands
+    assert "systemctl enable --now epic-stocks-backup.path" in commands
     assert "systemctl start --no-block epic-stocks-backup.service" in commands
+
+
+def test_installed_job_runs_unconfigured_without_checkout_or_app_credentials(fake_host, tmp_path):
+    checkout, root, _, env = fake_host
+    subprocess.run(["bash", "ops/install_backup.sh", "staging", str(checkout)], cwd=checkout, env=env, check=True)
+    installed = root / "usr/local/lib/epic-stocks/backup_database.py"
+    status = tmp_path / "installed-status.json"
+    clean_env = {k: v for k, v in env.items() if not k.startswith("BACKUP_") and k != "PYTHONPATH"}
+    result = subprocess.run([sys.executable, str(installed), "run", "--environment", "staging", "--deploy-path", str(checkout),
+                             "--settings-file", str(tmp_path / "missing-settings.json"), "--status-file", str(status)],
+                            cwd=root, env=clean_env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(status.read_text())["last_result"] == "unconfigured"
 
 
 @pytest.mark.parametrize("args, variable", [

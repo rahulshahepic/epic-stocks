@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url'
 import AxeBuilder from '@axe-core/playwright'
 import { navigateTo } from './helpers.ts'
 import { pluginHost, importReviewSnapshot } from './plugin-host'
+import { backupStatus } from './backup-fixtures'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -137,6 +138,19 @@ test.describe('Screenshots', () => {
     await page.waitForTimeout(1000)
     await shoot(page, 'admin-dark-mobile')
   })
+
+  for (const theme of ['light', 'dark'] as const) {
+    test(`admin backups - ${theme} - mobile`, async ({ page }) => {
+      await page.route('**/api/admin/backups', route => route.fulfill({ json: backupStatus }))
+      await authedPage(page, MOBILE, theme)
+      await navigateTo(page, 'Admin')
+      const panel = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Backups', exact: true }) })
+      await panel.getByRole('button', { name: 'Configure backups' }).click()
+      await panel.scrollIntoViewIfNeeded()
+      await panel.screenshot({ path: `${OUT}/admin-backups-${theme}-mobile.png`,
+        style: '.sticky.top-0, nav[aria-label="Mobile navigation"] { visibility: hidden !important; }' })
+    })
+  }
 
   test('admin AI plugin downloads - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')

@@ -19,10 +19,14 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote, urlsplit
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+from services.backup_protocol import CONFIG_DIR, EMPTY_SETTINGS, destination_id, read_json, revision, validate_settings
 
 STATUS_FILE = Path("/var/lib/epic-stocks-backup/status.json")
 STAMP_FORMAT = "%Y%m%dT%H%M%SZ"
@@ -147,7 +151,14 @@ class Store:
 
 # ── Backup run ──────────────────────────────────────────────────────────────
 
-def config(env=os.environ):
+def config(env=os.environ, settings=None):
+    if settings is not None:
+        if not settings["enabled"]:
+            return None
+        env = {**env, "BACKUP_BUCKET": settings["bucket"], "BACKUP_R2_ACCOUNT_ID": settings["account_id"],
+               "BACKUP_AGE_RECIPIENT": settings["recipient"], "BACKUP_RETENTION_DAYS": str(settings["retention_days"])}
+        # An Admin save can only select Cloudflare R2, never an arbitrary endpoint.
+        env.pop("BACKUP_S3_ENDPOINT", None)
     required = ("BACKUP_BUCKET", "BACKUP_ACCESS_KEY_ID", "BACKUP_SECRET_ACCESS_KEY", "BACKUP_AGE_RECIPIENT")
     missing = [name for name in required if not env.get(name)]
     endpoint = env.get("BACKUP_S3_ENDPOINT") or (
@@ -266,7 +277,9 @@ def write_status(path, **fields):
             previous = {}
     except (OSError, ValueError):
         pass
-    status = {k: previous.get(k) for k in ("last_success_utc",)}
+    status = {k: previous.get(k) for k in ("last_success_utc", "last_success_run", "database_plaintext_bytes",
+                                         "database_encrypted_bytes", "secrets_encrypted_bytes", "last_success_duration_seconds",
+                                         "backup_destination_id", "prune_error", "pruned_runs")}
     status.update(fields)
     fd, tmp = tempfile.mkstemp(dir=path.parent)
     with os.fdopen(fd, "w") as stream:
@@ -275,29 +288,53 @@ def write_status(path, **fields):
     os.replace(tmp, path)
 
 
-def run(environment, deploy_path, status_path=STATUS_FILE, env=os.environ, now=None, cmd=None):
+def run(environment, deploy_path, status_path=STATUS_FILE, env=os.environ, now=None, cmd=None, settings_path=None):
+    started = time.monotonic()
     now = now or datetime.now(timezone.utc)
     attempt = now.isoformat()
+    settings, settings_revision = None, None
+    credentials_configured = bool(env.get("BACKUP_ACCESS_KEY_ID") and env.get("BACKUP_SECRET_ACCESS_KEY"))
     try:
-        cfg = config(env)
-    except (BackupError, ValueError) as exc:
+        if settings_path is not None:
+            try:
+                settings = validate_settings(read_json(settings_path), environment)
+                settings_revision = revision(settings)
+            except FileNotFoundError:
+                pass
+        cfg = config(env, settings)
+    except (BackupError, ValueError, OSError) as exc:
         write_status(status_path, environment=environment, configured=True, last_attempt_utc=attempt,
-                     last_result="failed", error=str(exc)[:120])
+                     credentials_configured=credentials_configured,
+                     last_result="failed", error=str(exc)[:120] if isinstance(exc, BackupError) else "Invalid backup settings")
         raise
+    if settings is None:
+        legacy = {"version": 1, "environment": environment, **EMPTY_SETTINGS,
+                  "enabled": cfg is not None, "account_id": env.get("BACKUP_R2_ACCOUNT_ID", ""),
+                  "bucket": env.get("BACKUP_BUCKET", ""), "recipient": env.get("BACKUP_AGE_RECIPIENT", ""),
+                  "retention_days": cfg["retention_days"] if cfg else 30}
+        try:
+            settings = validate_settings(legacy, environment)
+        except ValueError:
+            settings = None
+    context = {"environment": environment, "configured": cfg is not None, "credentials_configured": credentials_configured,
+               "enabled": settings["enabled"] if settings else cfg is not None,
+               "settings": settings, "settings_revision": settings_revision}
     if cfg is None:
-        write_status(status_path, environment=environment, configured=False, last_attempt_utc=attempt,
-                     last_result="unconfigured", error=None)
+        result = "disabled" if settings_revision and not settings["enabled"] else "unconfigured"
+        write_status(status_path, **context, last_attempt_utc=attempt, last_result=result, error=None)
         print("Backup storage is not configured; nothing uploaded.", file=sys.stderr)
         return 0
     store = Store(cfg["endpoint"], cfg["bucket"], cfg["access_key"], cfg["secret_key"])
     stamp = now.strftime(STAMP_FORMAT)
     prefix = f"{environment}/{stamp}"
+    write_status(status_path, **context, last_attempt_utc=attempt, last_result="running", error=None)
     try:
         with tempfile.TemporaryDirectory(prefix="epic-stocks-backup-") as tmp:
             os.chmod(tmp, 0o700)
             dump_path = Path(tmp) / "database.dump.age"
             plain_size = encrypted_dump(cmd or dump_command(deploy_path), cfg["recipient"], dump_path)
             dump_hash = sha256_file(dump_path)
+            encrypted_size = dump_path.stat().st_size
             secrets_blob, secret_names = encrypted_secrets(Path(deploy_path) / ".secrets", cfg["recipient"])
             store.put_file(f"{prefix}/database.dump.age", dump_path, dump_hash)
             store.put_bytes(f"{prefix}/secrets.tar.age", secrets_blob)
@@ -308,7 +345,7 @@ def run(environment, deploy_path, status_path=STATUS_FILE, env=os.environ, now=N
                         "secret_files": secret_names, "kek_included": False}
             store.put_bytes(f"{prefix}/manifest.json", json.dumps(manifest, indent=2).encode())
     except (BackupError, OSError, ValueError, ET.ParseError) as exc:
-        write_status(status_path, environment=environment, configured=True, last_attempt_utc=attempt,
+        write_status(status_path, **context, last_attempt_utc=attempt, duration_seconds=round(time.monotonic() - started, 3),
                      last_result="failed", error=str(exc)[:120] if isinstance(exc, BackupError) else type(exc).__name__)
         raise
     deleted, prune_error = None, None
@@ -317,9 +354,12 @@ def run(environment, deploy_path, status_path=STATUS_FILE, env=os.environ, now=N
     except (BackupError, OSError, ValueError, ET.ParseError) as exc:
         prune_error = str(exc)[:120] if isinstance(exc, BackupError) else type(exc).__name__
         print(f"Backup uploaded; retention cleanup failed: {prune_error}", file=sys.stderr)
-    write_status(status_path, environment=environment, configured=True, last_attempt_utc=attempt,
-                 last_result="success", last_success_utc=attempt, last_run=stamp, error=None,
-                 database_plaintext_bytes=plain_size, pruned_runs=deleted, prune_error=prune_error)
+    duration = round(time.monotonic() - started, 3)
+    write_status(status_path, **context, last_attempt_utc=attempt, last_result="success", last_success_utc=attempt,
+                 last_run=stamp, last_success_run=stamp, error=None, database_plaintext_bytes=plain_size,
+                 database_encrypted_bytes=encrypted_size, pruned_runs=deleted, prune_error=prune_error,
+                 secrets_encrypted_bytes=len(secrets_blob), duration_seconds=duration, last_success_duration_seconds=duration,
+                 backup_destination_id=destination_id(settings) if settings else None)
     print(f"Uploaded {prefix} ({plain_size} database bytes); "
           + ("retention cleanup incomplete." if prune_error else f"pruned {deleted} old run(s)."))
     return 0
@@ -343,6 +383,7 @@ def main(argv=None):
     p_run.add_argument("--environment", choices=("staging", "production"), required=True)
     p_run.add_argument("--deploy-path", type=Path, required=True)
     p_run.add_argument("--status-file", type=Path, default=STATUS_FILE)
+    p_run.add_argument("--settings-file", type=Path, default=CONFIG_DIR / "settings.json")
     p_list = sub.add_parser("list", help="List complete runs (for restores; needs the BACKUP_* storage variables)")
     p_list.add_argument("--environment", choices=("staging", "production"), required=True)
     p_fetch = sub.add_parser("fetch", help="Download one run's encrypted files")
@@ -352,7 +393,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         if args.command == "run":
-            return run(args.environment, args.deploy_path, args.status_file)
+            return run(args.environment, args.deploy_path, args.status_file, settings_path=args.settings_file)
         env = dict(os.environ)
         env.setdefault("BACKUP_AGE_RECIPIENT", "age1" + "q" * 58)  # listing and fetching never encrypt
         cfg = config(env)

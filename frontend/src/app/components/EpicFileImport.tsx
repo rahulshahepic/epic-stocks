@@ -1,12 +1,13 @@
-import { useState } from 'react'
-import ImportWizard from './ImportWizard.tsx'
+import { useMemo, useState } from 'react'
+import ChangeList from './ChangeList.tsx'
+import type { Change } from '../../api.ts'
 import FindingList, { ReportFindingsButton } from './FindingList.tsx'
 import { ReportableError } from '../../scaffold/components/ReportProblem.tsx'
 import StalePriceNotice from './StalePriceNotice.tsx'
 import { downloadText, epicImport, severityOf, type AnalyzeResponse } from '../epicImport.ts'
 import { platform } from '../../platform/index.ts'
 
-type Stage = 'idle' | 'analyzing' | 'result' | 'review'
+type Stage = 'idle' | 'analyzing' | 'result'
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -23,8 +24,8 @@ function Stat({ label, value }: { label: string; value: string }) {
  * The app parses them and checks the result against arithmetic the documents
  * assert about themselves. When that does not add up it hands you a prompt to
  * paste into whichever assistant you already use, and checks whatever comes
- * back the same way. You never sign off on a file — you sign off in the wizard,
- * looking at your own position.
+ * back the same way. What it would change is listed on one screen: untick
+ * anything you do not want, check, and save.
  */
 export default function EpicFileImport() {
   const [csv, setCsv] = useState<File | null>(null)
@@ -36,6 +37,16 @@ export default function EpicFileImport() {
   const [copied, setCopied] = useState(false)
   const [repricing, setRepricing] = useState(false)
   const [pricedAt, setPricedAt] = useState<number | null>(null)
+  const [answers, setAnswers] = useState<Record<number, { date: string; price: string }>>({})
+
+  const answered: Change[] = useMemo(() => (result?.unanswered_sales ?? []).flatMap((s, i) => {
+    const a = answers[i]
+    const price = Number(a?.price)
+    return a?.date && price > 0
+      ? [{ kind: 'sale' as const, action: 'create' as const, label: `Sale on ${a.date}`,
+        values: { date: a.date, shares: s.shares, price_per_share: price, notes: s.notes } }]
+      : []
+  }), [result, answers])
 
   const files = { shareCsv: csv, statementPdf: pdf }
   const busy = stage === 'analyzing'
@@ -80,27 +91,6 @@ export default function EpicFileImport() {
     }
   }
 
-  if (stage === 'review' && result) {
-    return (
-      <div className="rounded-lg border-2 border-cs-border bg-cs-surface p-4">
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <p className="text-sm font-semibold text-cs-text">Review your import</p>
-          <button
-            type="button"
-            onClick={() => setStage('result')}
-            className="rounded-md bg-gray-200 px-3 py-1 text-xs font-medium text-cs-text-2 hover:bg-gray-300"
-          >
-            Back
-          </button>
-        </div>
-        <p className="mb-3 text-xs text-cs-muted">
-          Check each step before submitting. The final screen confirms what was saved.
-        </p>
-        <ImportWizard prefill={result.wizard_prefill} />
-      </div>
-    )
-  }
-
   const draftPrices = (result?.draft?.prices as { effective_date: string; price: number }[] | undefined) ?? []
   const newest = draftPrices.length ? draftPrices[draftPrices.length - 1] : null
   const latestPrice = newest?.price ?? 0
@@ -119,8 +109,8 @@ export default function EpicFileImport() {
         download &mdash; no editing needed.
       </span>
       <span className="mt-2 text-xs text-cs-muted">
-        Vesting schedules come from the company grant schedule, so only your own
-        figures are read from the files.
+        Vesting dates start from the company grant schedule; you can change any
+        of them afterwards on the Grants page.
       </span>
 
       <div className="mt-3 space-y-3">
@@ -206,17 +196,37 @@ export default function EpicFileImport() {
           {pricedAt != null && (
             <p className="mt-3 text-xs text-cs-muted">
               Includes the {pricedAt.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 })} you
-              entered for today — it saves with the rest when you finish the wizard.
+              entered for today — it saves with the rest.
             </p>
           )}
 
+          {!result.blocked && result.unanswered_sales.length > 0 && (
+            <div className="mt-3 rounded-md border border-cs-border p-2.5">
+              <p className="text-xs font-semibold text-cs-text">Shares that left a grant</p>
+              <p className="mt-1 text-xs text-cs-muted">
+                Your files show these shares gone but not when or for how much. Fill in a
+                sale only if it was one; leave it blank otherwise.
+              </p>
+              {result.unanswered_sales.map((sale, i) => (
+                <div key={i} className="mt-2 grid grid-cols-[1fr_1fr_1fr] items-end gap-2 text-xs">
+                  <span className="text-cs-text">{sale.shares.toLocaleString()} shares</span>
+                  <label className="text-cs-muted">Date
+                    <input type="date" value={answers[i]?.date ?? ''}
+                      onChange={e => setAnswers(a => ({ ...a, [i]: { date: e.target.value, price: a[i]?.price ?? '' } }))}
+                      className="mt-0.5 block w-full rounded border border-cs-border bg-cs-surface px-1.5 py-1 text-cs-text" />
+                  </label>
+                  <label className="text-cs-muted">Price per share
+                    <input type="number" min="0" step="0.01" value={answers[i]?.price ?? ''}
+                      onChange={e => setAnswers(a => ({ ...a, [i]: { date: a[i]?.date ?? '', price: e.target.value } }))}
+                      className="mt-0.5 block w-full rounded border border-cs-border bg-cs-surface px-1.5 py-1 text-cs-text" />
+                  </label>
+                </div>
+              ))}
+            </div>
+          )}
+
           {!result.blocked && (
-            <button
-              type="button" onClick={() => setStage('review')}
-              className="mt-3 rounded-md bg-cs-brand px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
-            >
-              {counts.errors > 0 ? 'Review anyway' : 'Review and finish'}
-            </button>
+            <ChangeList key={JSON.stringify(result.changes)} changes={result.changes} extra={answered} />
           )}
 
           {needsHelp && (

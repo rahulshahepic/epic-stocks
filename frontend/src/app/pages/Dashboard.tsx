@@ -16,7 +16,7 @@ import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, GrantEntry, G
 import { platform } from '../../platform/index.ts'
 import ExitBreakdownCard from '../components/ExitBreakdownCard.tsx'
 import { useApiData } from '../hooks/useApiData.ts'
-import ImportWizard from '../components/ImportWizard.tsx'
+import GetStarted from '../components/GetStarted.tsx'
 import TipCarousel from '../components/TipCarousel.tsx'
 import { useViewing } from '../../scaffold/contexts/viewing.ts'
 import { HeroCard, IconTile, Eyebrow } from '../../scaffold/components/ui/Card.tsx'
@@ -331,7 +331,7 @@ export default function Dashboard() {
   const isEmpty = !events || events.length === 0
 
   if (isEmpty && !readOnly) {
-    return <ImportWizard onComplete={reloadEvents} />
+    return <GetStarted />
   }
 
   if (isEmpty && readOnly) {

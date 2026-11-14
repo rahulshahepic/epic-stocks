@@ -23,7 +23,7 @@ function event(over: Record<string, unknown>) {
 }
 
 const CLEAN = {
-  wizard_payload: {
+  draft: {
     grants: [{ year: 2020, type: 'Bonus', shares: 400, price: 0, vest_start: '2021-09-30', periods: 4, exercise_date: '2020-12-31', dp_shares: 0, election_83b: false, loans: [] }],
     prices: [{ effective_date: PAST, price: 10 }],
   },
@@ -303,9 +303,9 @@ describe('Try — preview', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: /Save my numbers/i }))
 
-    const stashed = await platform.storage.get('trial_wizard_payload')
+    const stashed = await platform.storage.get('trial_draft')
     expect(stashed).not.toBeNull()
-    expect(JSON.parse(stashed as string)).toEqual(CLEAN.wizard_payload)
+    expect(JSON.parse(stashed as string)).toEqual(CLEAN.draft)
   })
 
   it('counts the save press, carrying no payload with it', async () => {
@@ -327,7 +327,7 @@ describe('Try — preview', () => {
     await upload()
 
     await userEvent.click(await screen.findByRole('button', { name: /Save my numbers/i }))
-    expect(await platform.storage.get('trial_wizard_payload')).not.toBeNull()
+    expect(await platform.storage.get('trial_draft')).not.toBeNull()
   })
 
   it('offers the same save from the sticky header', async () => {
@@ -336,7 +336,7 @@ describe('Try — preview', () => {
     await upload()
 
     await userEvent.click(await screen.findByRole('button', { name: 'Save & sign up' }))
-    expect(await platform.storage.get('trial_wizard_payload')).not.toBeNull()
+    expect(await platform.storage.get('trial_draft')).not.toBeNull()
   })
 
   it('lets someone start over with different files', async () => {
@@ -355,6 +355,6 @@ describe('Try — preview', () => {
 
     expect(await screen.findByText(/doesn't add up to its own totals/)).toBeInTheDocument()
     expect(screen.getByText('C1')).toBeInTheDocument()
-    expect(screen.getByText(/Sign up to finish this in the full import wizard/)).toBeInTheDocument()
+    expect(screen.getByText(/Sign up to finish this on the Import page/)).toBeInTheDocument()
   })
 })

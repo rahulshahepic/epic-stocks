@@ -14,6 +14,7 @@ import { Field, FIELD_INPUT_CLASS } from '../../scaffold/components/ui/Field.tsx
 import { ConflictBanner } from '../../scaffold/components/ui/ConflictBanner.tsx'
 import { Card } from '../../scaffold/components/ui/Card.tsx'
 import { useToday } from '../dateUtils.ts'
+import ModalPortal from '../../scaffold/components/ModalPortal.tsx'
 
 type GrantForm = Omit<GrantEntry, 'id' | 'version'>
 type Mode = 'list' | 'add' | 'edit'
@@ -756,8 +757,8 @@ export default function Grants() {
 
       {/* Sell Shares Modal */}
       {sellModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-sm rounded-lg bg-cs-surface p-5 shadow-xl ">
+        <ModalPortal><div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm max-h-[90vh] overflow-y-auto rounded-lg bg-cs-surface p-5 shadow-xl ">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-cs-text">
                 Sell Shares — {sellModal.grantType} {sellModal.grantYear}
@@ -817,7 +818,7 @@ export default function Grants() {
               </div>
             </div>
           </div>
-        </div>
+        </div></ModalPortal>
       )}
     </div>
   )

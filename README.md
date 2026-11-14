@@ -33,6 +33,16 @@ The ChatGPT plugin uses the same price writes and shows applicable/announcement 
 
 Daily push/email notifications include confirmed price announcements for the price owner, identifying both the actual announcement and backdated applicable dates. Announcements recorded late or while notifications are disabled remain pending until a channel is enabled and a send succeeds; bulk imports suppress old historical announcements. Shared viewers receive dated equity events without a separate price-announcement alert. Other event notifications identify monetary values using a tentative price. Tentative price changes do not send confirmed-price alerts. Stale-price reminders wait until the expected announcement date. The shared `backend/services/price_state.py` handles status validation and price metadata; the Alembic migration adds announcement dates without changing encrypted price values.
 
+## Contributing and review
+
+Contributors and coding agents must read [AGENTS.md](AGENTS.md),
+[CLAUDE.md](CLAUDE.md), and [the PR review policy](REVIEW_POLICY.md).
+Open feature PRs against `staging`; production PRs must come from `staging`.
+Collaborator merges require Rahul's code-owner approval after review by
+ChatGPT/Codex or Claude. Rahul and agents using his authenticated account may
+merge without a formal approval; required CI still applies. The policy includes
+the exact GitHub ruleset setup and verification steps.
+
 ## Table of Contents
 
 - [Understanding Your Equity](#understanding-your-equity) — key concepts explained

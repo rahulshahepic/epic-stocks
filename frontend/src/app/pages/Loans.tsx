@@ -15,6 +15,7 @@ import { Field, SelectField, FIELD_INPUT_CLASS } from '../../scaffold/components
 import { ConflictBanner } from '../../scaffold/components/ui/ConflictBanner.tsx'
 import { Card } from '../../scaffold/components/ui/Card.tsx'
 import { useToday } from '../dateUtils.ts'
+import ModalPortal from '../../scaffold/components/ModalPortal.tsx'
 
 type LoanForm = Omit<LoanEntry, 'id' | 'version'>
 type Mode = 'list' | 'add' | 'edit'
@@ -542,7 +543,7 @@ export default function Loans() {
       <p className="text-xs text-cs-text-2">{loans.length} loans</p>
 
       {payoffModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={closePayoffModal}>
+        <ModalPortal><div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={closePayoffModal}>
           <div className="w-full max-w-sm max-h-[90vh] overflow-y-auto rounded-lg bg-cs-surface p-5 shadow-xl " onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-cs-text">Repay this loan early</h3>
@@ -611,7 +612,7 @@ export default function Loans() {
               </button>
             </div>
           </div>
-        </div>
+        </div></ModalPortal>
       )}
     </div>
   )

@@ -3,6 +3,7 @@ import { api } from '../../../api.ts'
 import type { TestNotifyResult } from '../../../api.ts'
 import { useConfig } from '../../hooks/useConfig.ts'
 import { useAppContext } from '../../contexts/AppContext.tsx'
+import ModalPortal from '../../components/ModalPortal.tsx'
 
 /**
  * Send one user a test push/email. Everything it edits — the template, the
@@ -40,8 +41,8 @@ export function NotifyModal({ user, onClose, onSent, onError }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-sm rounded-lg bg-cs-surface p-5 shadow-xl ">
+    <ModalPortal><div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-sm max-h-[90vh] overflow-y-auto rounded-lg bg-cs-surface p-5 shadow-xl ">
         <div className="mb-3 flex items-center justify-between">
           <div>
             <h3 className="text-sm font-semibold text-cs-text">
@@ -119,6 +120,6 @@ export function NotifyModal({ user, onClose, onSent, onError }: {
           )}
         </form>
       </div>
-    </div>
+    </div></ModalPortal>
   )
 }

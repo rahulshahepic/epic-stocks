@@ -4,6 +4,7 @@
  */
 import { test, expect, type Page } from '@playwright/test'
 import * as path from 'path'
+import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'url'
 import AxeBuilder from '@axe-core/playwright'
 import { navigateTo } from './helpers.ts'
@@ -489,6 +490,75 @@ test.describe('Screenshots', () => {
     await page.evaluate(() => window.scrollBy(0, 240))
     await shoot(page, 'settings-ai-connections-light-mobile')
   })
+
+  for (const theme of ['light', 'dark'] as const) {
+    for (const size of ['mobile', 'desktop'] as const) {
+      test(`permission consent - ${theme} - ${size}`, async ({ page }) => {
+        await authedPage(page, size === 'mobile' ? MOBILE : DESKTOP, theme)
+        const redirect = 'https://chatgpt.com/connector_platform_oauth_redirect'
+        const verifier = 'a'.repeat(64)
+        const challenge = createHash('sha256').update(verifier).digest('base64url')
+        const registration = await page.request.post('http://localhost:8000/oauth/register', {
+          data: { client_name: 'ChatGPT', redirect_uris: [redirect], token_endpoint_auth_method: 'none' },
+        })
+        expect(registration.ok()).toBeTruthy()
+        const { client_id } = await registration.json()
+        const query = new URLSearchParams({
+          response_type: 'code', client_id, redirect_uri: redirect,
+          scope: 'equity:read comp:read', code_challenge: challenge, code_challenge_method: 'S256',
+        })
+        await page.route('http://localhost:8000/oauth/authorize?**', async route => {
+          const response = await route.fetch()
+          await route.fulfill({ response, headers: { ...response.headers(),
+            'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; object-src 'none'",
+          } })
+        })
+        await page.goto(`http://localhost:8000/oauth/authorize?${query}`)
+        const equity = page.getByRole('group', { name: 'Equity', exact: true })
+        const compensation = page.getByRole('group', { name: 'Compensation', exact: true })
+        await expect(equity.getByRole('checkbox', { name: /Read your equity/ })).toBeChecked()
+        await expect(compensation.getByRole('checkbox', { name: /Read your salary/ })).toBeChecked()
+        await expect(equity.getByRole('checkbox', { name: /Create, correct/ })).not.toBeChecked()
+        await expect(page.getByRole('status')).toContainText('read-only')
+        await expect(page.getByText('Read site deployment status')).toHaveCount(0)
+        await shoot(page, `oauth-permissions-${theme}-${size}`, { fullPage: true })
+        await compensation.getByRole('button', { name: 'Clear all compensation permissions' }).click()
+        await expect(compensation.getByRole('checkbox', { name: /Read your salary/ })).not.toBeChecked()
+        await equity.getByRole('button', { name: 'Select all equity permissions' }).click()
+        await expect(equity.getByRole('checkbox', { name: /Prepare an import/ })).toBeChecked()
+        await expect(equity.getByRole('checkbox', { name: /Create, correct/ })).toBeChecked()
+        await expect(page.getByRole('status')).toContainText('grants, prices, loans and sales')
+        await expect(page.getByRole('status')).not.toContainText('salary')
+        await equity.getByRole('checkbox', { name: /Read your equity/ }).uncheck()
+        expect(await equity.getByRole('checkbox', { name: /Read your equity/ }).evaluate(
+          input => (input as HTMLInputElement).validationMessage)).toContain('also select')
+        await equity.getByRole('checkbox', { name: /Read your equity/ }).check()
+        const a11y = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()
+        expect(a11y.violations).toEqual([])
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+        await page.route(`${redirect}**`, route => route.fulfill({ contentType: 'text/html', body: 'Connection complete' }))
+        const submitted = page.waitForResponse(response => response.url().endsWith('/oauth/authorize') && response.request().method() === 'POST')
+        await page.getByRole('button', { name: 'Connect', exact: true }).click({ noWaitAfter: true })
+        const authorized = await submitted
+        expect(authorized.status()).toBe(302)
+        const code = new URL(authorized.headers().location).searchParams.get('code')
+        expect(code).toBeTruthy()
+        const exchange = await page.request.post('http://localhost:8000/oauth/token', { form: {
+          grant_type: 'authorization_code', code: code!, redirect_uri: redirect, client_id, code_verifier: verifier,
+        } })
+        expect(exchange.ok()).toBeTruthy()
+        const tokens = await exchange.json()
+        expect(tokens.scope.split(' ').sort()).toEqual(['equity:read', 'equity:write', 'import:propose'])
+        const tools = await page.request.post('http://localhost:8000/mcp', {
+          headers: { Authorization: `Bearer ${tokens.access_token}` },
+          data: { jsonrpc: '2.0', id: 1, method: 'tools/list' },
+        })
+        const names = (await tools.json()).result.tools.map((tool: { name: string }) => tool.name)
+        expect(names).toEqual(expect.arrayContaining(['save_equity', 'stage_import', 'show_import']))
+        expect(names).not.toContain('admin_deployment_status')
+      })
+    }
+  }
 
   test('admin diagnostics consent - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')

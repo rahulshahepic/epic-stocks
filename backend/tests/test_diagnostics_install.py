@@ -44,6 +44,8 @@ if name == 'systemctl' and args[0] == 'start' and '--no-block' not in args:
         path.chmod(0o755)
     checkout = tmp_path / 'home' / 'deployer' / 'checkout'
     shutil.copytree(REPO / 'ops', checkout / 'ops')
+    (checkout / 'backend/services').mkdir(parents=True)
+    shutil.copyfile(REPO / 'backend/services/backup_protocol.py', checkout / 'backend/services/backup_protocol.py')
     env = {**os.environ, 'PATH': f'{commands}:{os.environ["PATH"]}',
            'HOST_ROOT': str(root), 'COMMAND_LOG': str(log)}
     return checkout, root, log, env
@@ -59,6 +61,7 @@ def test_installer_uses_fixed_script_path_and_nonblocking_start(host, environmen
     assert 'ProtectHome=true' in unit
     assert str(checkout) not in unit and '@' not in unit
     assert (root / 'usr/local/lib/epic-stocks/collect_diagnostics.py').read_bytes() == (REPO / 'ops/collect_diagnostics.py').read_bytes()
+    assert (root / 'usr/local/lib/epic-stocks/services/backup_protocol.py').read_bytes() == (REPO / 'backend/services/backup_protocol.py').read_bytes()
     assert 'systemctl start --no-block epic-stocks-diagnostics.service' in log.read_text()
 
 

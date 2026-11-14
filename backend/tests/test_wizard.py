@@ -520,3 +520,30 @@ def test_submit_refuses_ambiguous_loan_number_references_atomically(client, refe
     assert client.get("/api/grants").json() == []
     assert client.get("/api/loans").json() == []
     assert client.get("/api/loan-payments").json() == []
+
+
+def test_merge_keeps_user_owned_payoff_sales(client):
+    """A payoff sale the user edited is theirs: re-importing its grant, or
+    dropping its loan, must not delete it."""
+    register_user(client)
+    loan = {"loan_number": "kept", "loan_type": "Purchase", "loan_year": 2021,
+            "amount": 100, "interest_rate": 0.03, "due_date": "2025-12-31"}
+    grant = {**MINIMAL_PAYLOAD["grants"][0], "loans": [loan]}
+    assert client.post("/api/wizard/submit", json={**MINIMAL_PAYLOAD, "grants": [grant]}).status_code == 201
+    payoff = next(s for s in client.get("/api/sales").json() if s["loan_id"])
+    edited = client.put(f"/api/sales/{payoff['id']}", json={
+        "shares": payoff["shares"] + 7, "version": payoff["version"]})
+    assert edited.status_code == 200, edited.text
+
+    again = client.post("/api/wizard/submit", json={
+        **MINIMAL_PAYLOAD, "clear_existing": False, "grants": [{**grant, "loans": [{**loan, "amount": 150}]}]})
+    assert again.status_code == 201
+    sales = client.get("/api/sales").json()
+    assert [s["shares"] for s in sales if s["id"] == payoff["id"]] == [payoff["shares"] + 7]
+    assert sum(1 for s in sales if s["loan_id"] == payoff["loan_id"]) == 1
+
+    dropped = client.post("/api/wizard/submit", json={
+        **MINIMAL_PAYLOAD, "clear_existing": False, "grants": [{**grant, "loans": []}]})
+    assert dropped.status_code == 201
+    survivor = [s for s in client.get("/api/sales").json() if s["id"] == payoff["id"]]
+    assert survivor and survivor[0]["loan_id"] is None

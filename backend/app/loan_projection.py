@@ -13,8 +13,8 @@ from 1 January after the last booked year, whichever is later); a group's
 first partial year rolls into the following 31 December, as Epic's statements
 do. A projected row is dropped as soon as a real Interest row covers its year
 (`booked_through`), so importing a statement replaces projections rather than
-adding to them. Projected Tax loans exist only for future vests with no real
-Tax row for that grant and year.
+adding to them. Projected Tax loans exist only for future vests of zero-basis
+grants without an 83(b) election, with no real Tax row for that grant and year.
 """
 from __future__ import annotations
 
@@ -268,7 +268,8 @@ def project(
             return out
 
         for g in grants:
-            if (g.get("price") or 0) > 0:
+            # A purchase has no vest income; an 83(b) grant was taxed at grant.
+            if (g.get("price") or 0) > 0 or g.get("election_83b") is True:
                 continue
             gy, gt = g["year"], g["type"]
             grp = group_of(gy, gt)

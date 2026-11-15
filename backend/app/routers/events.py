@@ -191,13 +191,13 @@ def _build_exit_summary(enriched, grants, loans_db, loan_payments, sales_db,
         })
     prior_sales_net = round(sum(s["net"] for s in prior_sales), 2)
 
-    # Ordinary income recognised at vesting (zero-basis grants, and purchase
-    # grants without an 83(b) election). Shown for reference; the cash side of
+    # Ordinary income: zero-basis grants at vest, or at grant (Exercise) for
+    # those with an 83(b) election. Shown for reference; the cash side of
     # it is the Tax loans, which the payoffs and the exit already pay.
     income_tax = round(sum(
         e.get("income", 0.0) * (ts_dict["federal_income_rate"] + ts_dict["state_income_rate"])
         for e in enriched
-        if e.get("event_type") == "Vesting" and _to_date(e["date"]) <= horizon_date
+        if e.get("event_type") in ("Vesting", "Exercise") and _to_date(e["date"]) <= horizon_date
     ), 2) if ts_dict else 0.0
 
     deduction_savings = 0.0

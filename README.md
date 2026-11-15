@@ -497,6 +497,8 @@ Sessions otherwise last 30 days, with a sliding refresh — the app silently ext
 
 ### Connecting Your Own AI
 
+Contributing a fix? Connect your own account first: an AI coding agent can then reproduce the problem against your real figures and check its fix against the same account, without anyone pasting numbers into a chat.
+
 You can let ChatGPT, Claude or Muse read your equity data, so you can ask about vesting and tax alongside the rest of your finances. It is off until you connect it, reading by default, and you can disconnect it at any time.
 
 **What this does and does not do.** The assistant can read your grants, vesting timeline, prices, loans, sales and tax estimates, and your salary and retirement settings if you allow that. Connecting means your figures are sent to OpenAI, Anthropic or Meta when the assistant asks for them — the same as pasting them into a chat, but without the pasting.
@@ -621,12 +623,10 @@ Both the inviter and the viewer can revoke access at any time. Invitation tokens
 
 ### 83(b) Election
 
-Flag the election in the grant editor (any grant type). For a grant bought at a price (Purchase, post-tax Bonus):
+Epic requires an 83(b) election with every purchase, so a grant bought at a price (Purchase, post-tax Bonus) is always treated as one: vesting is not a tax event, the cost basis is the price paid (less any gain deferred by shares exchanged as a down payment, whose basis carries into the new grant), and the holding period starts at exercise. The grant editor offers the checkbox only for grants you received for free, where the election is a real choice:
 
-- **With 83(b)** — vesting is not a tax event: no income and no gain at vest. The cost basis is the price paid, less any gain deferred by shares exchanged as a down payment (their basis carries into the new grant), and the holding period starts at exercise. The shares count toward unrealized gains from exercise.
-- **Without 83(b)** — section 83(a): the spread over the price paid at each vest is ordinary income, the basis steps up to the vest price, and the holding period starts at vest.
-
-New grants from the **New purchase** flow default to an election. Zero-basis grants are income at vest either way; on the Events page their 83(b) vests show as violet "unrealized cap gains" instead of green income.
+- **With 83(b)** — the value at grant is ordinary income on the grant date; nothing is taxed at vest, that value is the cost basis, and the holding period starts at grant. No Tax loan is projected at vest.
+- **Without it** — the value of each tranche is ordinary income when it vests, withheld through a Tax loan.
 
 ---
 

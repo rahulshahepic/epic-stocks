@@ -288,11 +288,13 @@ def test_dashboard_and_exit_use_the_same_accrual(client):
 
 GRANT_83 = {"year": 2020, "type": "Purchase", "shares": 1000, "price": 10.0,
             "vest_start": "2021-01-01", "periods": 2, "exercise_date": "2020-01-01", "dp_shares": 0}
+FREE_83 = {"year": 2020, "type": "Free", "shares": 1000, "price": 0.0,
+           "vest_start": "2021-01-01", "periods": 2, "exercise_date": "2020-01-01", "dp_shares": 0}
 
 
-def _toggle_account(client, e83):
+def _toggle_account(client, e83, grant=GRANT_83):
     register_user(client)
-    gid = client.post("/api/grants", json={**GRANT_83, "election_83b": e83}).json()["id"]
+    gid = client.post("/api/grants", json={**grant, "election_83b": e83}).json()["id"]
     client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 10.0})
     client.post("/api/prices", json={"effective_date": "2021-01-01", "price": 15.0})
     client.post("/api/prices", json={"effective_date": "2022-01-01", "price": 20.0})
@@ -300,29 +302,44 @@ def _toggle_account(client, e83):
     return gid
 
 
-def test_83b_vesting_is_not_a_tax_event(client):
-    _toggle_account(client, True)
+@pytest.mark.parametrize("flag", [True, False])
+def test_a_purchase_is_always_taxed_as_an_83b(client, flag):
+    """Epic requires an 83(b) with every purchase, so the flag changes
+    nothing: no income or gain at vest, basis is the price paid, held from
+    exercise."""
+    _toggle_account(client, flag)
     vests = [e for e in client.get("/api/events").json() if e["event_type"] == "Vesting"]
     assert all(e["income"] == 0 and e["vesting_cap_gains"] == 0 for e in vests)
     sale = next(s for s in client.get("/api/sales").json())
     tax = client.get(f"/api/sales/{sale['id']}/tax").json()
-    # Basis is the price paid, held since exercise: all long-term.
     assert tax["cost_basis"] == 5_000.0 and tax["lt_shares"] == 500 and tax["st_shares"] == 0
 
 
-def test_without_83b_the_spread_at_vest_is_income_and_basis_steps_up(client):
-    _toggle_account(client, False)
-    vests = [e for e in client.get("/api/events").json() if e["event_type"] == "Vesting"]
-    assert [e["income"] for e in vests] == [2_500.0, 5_000.0]  # ($15-$10)x500, ($20-$10)x500
-    assert all(e["vesting_cap_gains"] == 0 for e in vests)
+def test_a_free_grant_without_83b_is_income_at_each_vest(client):
+    _toggle_account(client, False, FREE_83)
+    events = client.get("/api/events").json()
+    assert [e["income"] for e in events if e["event_type"] == "Vesting"] == [7_500.0, 10_000.0]
+    assert next(e for e in events if e["event_type"] == "Exercise")["income"] == 0
     sale = next(s for s in client.get("/api/sales").json())
     tax = client.get(f"/api/sales/{sale['id']}/tax").json()
     # LIFO takes the 2022-01-01 lot: basis $20, held from vest, so short-term.
     assert tax["cost_basis"] == 10_000.0 and tax["st_shares"] == 500
 
 
-def test_toggling_83b_changes_the_figures(client):
-    gid = _toggle_account(client, False)
+def test_a_free_grant_with_83b_is_income_at_grant(client):
+    """The election pays tax on the value at grant ($10 x 1,000) instead of at
+    each vest; that value is the basis and the holding period starts then."""
+    _toggle_account(client, True, FREE_83)
+    events = client.get("/api/events").json()
+    assert next(e for e in events if e["event_type"] == "Exercise")["income"] == 10_000.0
+    assert all(e["income"] == 0 for e in events if e["event_type"] == "Vesting")
+    sale = next(s for s in client.get("/api/sales").json())
+    tax = client.get(f"/api/sales/{sale['id']}/tax").json()
+    assert tax["cost_basis"] == 5_000.0 and tax["lt_shares"] == 500
+
+
+def test_toggling_83b_on_a_free_grant_changes_the_figures(client):
+    gid = _toggle_account(client, False, FREE_83)
     client.put("/api/tax-settings", json={"lt_holding_days": 365})  # persist the account's rates
     sid = client.get("/api/sales").json()[0]["id"]
     before = client.get("/api/dashboard").json()
@@ -331,9 +348,16 @@ def test_toggling_83b_changes_the_figures(client):
     client.put(f"/api/grants/{gid}", json={"election_83b": True, "version": g["version"]})
     after = client.get("/api/dashboard").json()
     tax_after = client.get(f"/api/sales/{sid}/tax").json()["estimated_tax"]
-    assert (before["total_income"], after["total_income"]) == (7_500.0, 0.0)
+    assert (before["total_income"], after["total_income"]) == (17_500.0, 10_000.0)
     assert tax_before == 0 and tax_after > 0  # $20 basis vs $10 basis
     assert before["total_tax_paid"] != after["total_tax_paid"]
+
+
+def test_an_83b_free_grant_projects_no_tax_loan_at_vest():
+    grants = [_grant(2022, "Free", 60_000, 0.0, date(2022, 12, 31), [(date(2027, 9, 30), 60_000)], e83=True)]
+    proj = project(_group_2022(), grants, _prices((2027, 10.0)), today=date(2026, 11, 15),
+                   assumed_rate=0.038, tax_due_dates={(2022, "Free"): date(2031, 6, 30)})
+    assert not [p for p in proj.projected if p.loan_type == "Tax"]
 
 
 def test_down_payment_shares_carry_their_basis_into_the_new_grant(client):

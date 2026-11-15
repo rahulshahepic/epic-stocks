@@ -74,7 +74,7 @@ function TaxChart({ events, loans, taxSettings, c, range, hasFuturePrices }: {
         cumTaxPaid += e.estimated_tax
       }
       // Accumulate income tax on vesting events (RSU vesting without 83b) and grant events with income
-      if (e.income > 0 && ((e.event_type === 'Vesting' && !e.election_83b) || e.event_type === 'Grant')) {
+      if (e.income > 0 && ((e.event_type === 'Vesting' && !e.election_83b) || e.event_type === 'Grant' || e.event_type === 'Exercise')) {
         cumTaxPaid += e.income * incomeRate
       }
 

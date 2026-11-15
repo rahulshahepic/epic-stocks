@@ -46,16 +46,21 @@ def build_fifo_lots(
     # Pre-scan for exercise dates on Purchase grants (grant_price > 0).
     # For these grants the employee bought shares at exercise; the holding period
     # clock starts then, not at vesting (mirrors 83(b) restricted-stock treatment).
-    # A grant without an 83(b) election (election_83b False) is taxed under
-    # 83(a): the holding period starts at vest and the basis is the vest price.
+    # A zero-basis grant with an 83(b) election was taxed on its value at
+    # grant: that value is its basis and the holding period starts then.
     exercise_dates: dict = {}
     granted: dict = {}
+    basis_at_grant: dict = {}
     for e in timeline_events:
-        if e.get("event_type") == "Exercise" and (e.get("grant_price") or 0) > 0:
-            key = (e.get("grant_year"), e.get("grant_type"))
+        if e.get("event_type") != "Exercise":
+            continue
+        key = (e.get("grant_year"), e.get("grant_type"))
+        if (e.get("grant_price") or 0) > 0:
             granted[key] = e.get("granted_shares") or 0
-            if e.get("election_83b") is not False:
-                exercise_dates[key] = _to_date(e["date"])
+            exercise_dates[key] = _to_date(e["date"])
+        elif e.get("election_83b") is True:
+            exercise_dates[key] = _to_date(e["date"])
+            basis_at_grant[key] = e.get("share_price", 0.0)
 
     # Shares exchanged as a down payment carry their basis into the new grant
     # (a like-kind exchange of stock for stock): the gain they had is deferred,
@@ -89,12 +94,12 @@ def build_fifo_lots(
         if e["event_type"] == "Vesting" and vs > 0:
             gy = e.get("grant_year")
             gt = e.get("grant_type")
-            if (e.get("grant_price") or 0) > 0 and e.get("election_83b") is False:
-                basis = e.get("share_price", 0.0)
+            if (e.get("grant_price") or 0) > 0:
+                basis = max(0.0, e["grant_price"] - basis_carryover.get((gy, gt), 0.0))
+            elif (gy, gt) in basis_at_grant:
+                basis = basis_at_grant[(gy, gt)]
             else:
-                basis = e.get("grant_price") or e.get("share_price", 0.0)
-                if (e.get("grant_price") or 0) > 0:
-                    basis = max(0.0, basis - basis_carryover.get((gy, gt), 0.0))
+                basis = e.get("share_price", 0.0)
             hold_start = exercise_dates.get((gy, gt), edate)
             lots.append([edate, vs, basis, gy, gt, hold_start])
         elif vs < 0:

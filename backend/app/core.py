@@ -149,16 +149,19 @@ def compute_timeline(events, initial_price):
     income, cum_income, vesting_cap_gains, price_cap_gains,
     total_cap_gains, cum_cap_gains.
 
-    A grant bought at a price (grant_price > 0) is taxed by its 83(b) election:
-      - election_83b True: the shares are owned from exercise; vesting is not a
-        tax event. No income and no gain at vest; their appreciation is
-        unrealized gain as the price moves, vested or not.
-      - election_83b False: section 83(a) — the spread at each vest is
-        ordinary income, and the shares' basis steps up to the vest price.
-      - absent (a grant dict built without the flag): the original treatment,
-        spread at vest reported as vesting_cap_gains. Kept so the pure-core
-        fixture's known-good totals are unchanged.
-    Zero-basis grants are income at vest whatever the flag.
+    How vesting is taxed, for a grant dict that carries `election_83b`:
+      - Bought at a price (grant_price > 0): always as an 83(b) — Epic requires
+        one with every purchase, so the flag is not consulted. Vesting is not
+        a tax event: no income and no gain at vest. The shares are owned from
+        exercise, so their appreciation is unrealized gain as the price moves,
+        vested or not.
+      - Zero basis, election_83b True: the market value at grant is ordinary
+        income on the exercise date; nothing at vest; owned from then on.
+      - Zero basis, election_83b False: the market value of each tranche is
+        ordinary income at vest.
+    A grant dict without the key (the pure-core fixture) keeps the original
+    treatment: zero basis is income at vest, and a purchase's spread at vest
+    is reported as vesting_cap_gains. That is why its known-good totals hold.
     These are unrealized figures; realized gains come from the sale engine.
     """
     price = initial_price
@@ -182,17 +185,18 @@ def compute_timeline(events, initial_price):
         e83 = e.get('election_83b')
         is_vest = e['event_type'] == 'Vesting' and vs > 0
 
-        if e['event_type'] == 'Exercise' and cb > 0 and e83 is True:
-            owned_unvested += e['granted_shares'] or 0
-
+        tracked = e83 is not None
         income = 0.0
         vesting_cg = 0.0
-        if is_vest and cb == 0:
-            income = vs * price
-        elif is_vest and e83 is True:
+        if e['event_type'] == 'Exercise' and tracked and (cb > 0 or e83 is True):
+            granted = e['granted_shares'] or 0
+            owned_unvested += granted
+            if cb == 0:
+                income = granted * price
+        elif is_vest and tracked and (cb > 0 or e83 is True):
             owned_unvested -= vs
-        elif is_vest and e83 is False:
-            income = (price - cb) * vs
+        elif is_vest and cb == 0:
+            income = vs * price
         elif is_vest:
             vesting_cg = (price - cb) * vs
         price_cg = e['price_increase'] * (prev_cum_shares + prev_owned_unvested)

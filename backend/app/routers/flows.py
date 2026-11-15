@@ -31,8 +31,6 @@ class NewPurchaseRequest(InputModel):
     loan_rate: InterestRate | None = None
     loan_due_date: date | None = None
     loan_number: LoanNumber | None = None
-    # Epic's purchase grants are bought at market value with an 83(b) election.
-    election_83b: bool = True
     generate_payoff_sale: bool = True
     payoff_sale: PayoffSaleOptions | None = None
 
@@ -115,7 +113,7 @@ def new_purchase(body: NewPurchaseRequest, user: User = Depends(get_current_user
         user_id=user.id, year=body.year, type="Purchase",
         shares=body.shares, price=body.price,
         vest_start=body.vest_start, periods=body.periods,
-        exercise_date=body.exercise_date, dp_shares=dp_shares, election_83b=body.election_83b,
+        exercise_date=body.exercise_date, dp_shares=dp_shares,
     )
     set_schedule(grant, epic_split(body.shares, body.vest_start, body.periods))
     db.add(grant)

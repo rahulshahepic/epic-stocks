@@ -489,19 +489,19 @@ export default function Grants() {
               />
             </label>
           )}
-          <label className="col-span-2 flex items-start gap-2 pt-1">
-            <input
-              type="checkbox"
-              checked={!!form.election_83b}
-              onChange={e => setForm(f => ({ ...f, election_83b: e.target.checked }))}
-              className="mt-0.5 rounded border-cs-border-strong"
-            />
-            <span className="text-xs text-cs-text-2">
-              {form.price > 0
-                ? 'Filed an 83(b) election — vesting is not taxed and gains count from the purchase date. Without it, each vest’s value above the price paid is ordinary income.'
-                : 'Filed an 83(b) election — you pay income tax on the full grant now instead of at each vesting. Later growth is taxed as capital gains when you sell.'}
-            </span>
-          </label>
+          {!(form.price > 0) && (
+            <label className="col-span-2 flex items-start gap-2 pt-1">
+              <input
+                type="checkbox"
+                checked={!!form.election_83b}
+                onChange={e => setForm(f => ({ ...f, election_83b: e.target.checked }))}
+                className="mt-0.5 rounded border-cs-border-strong"
+              />
+              <span className="text-xs text-cs-text-2">
+                Filed an 83(b) election — you pay income tax on the full grant now instead of at each vesting. Later growth is taxed as capital gains when you sell.
+              </span>
+            </label>
+          )}
         </div>
 
         {mode === 'add' && (

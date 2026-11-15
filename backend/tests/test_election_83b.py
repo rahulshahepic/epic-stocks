@@ -77,18 +77,17 @@ def test_events_vesting_no_83b_flag_when_not_set(client):
         assert e.get("election_83b") is False, f"Expected election_83b=False: {e}"
 
 
-def test_83b_grant_still_has_income_in_core(client):
-    """Core.py still computes income for price=0 grants; the 83b flag is display-only."""
+def test_83b_on_a_zero_basis_grant_moves_the_income_to_the_grant_date(client):
+    """The election pays tax on the full grant at grant instead of at each vest."""
     register_user(client)
 
     client.post("/api/prices", json=PRICE_DATA)
     client.post("/api/flows/add-bonus", json={**BONUS_BASE, "election_83b": True})
 
-    resp = client.get("/api/events")
-    events = resp.json()
-    vesting_events = [e for e in events if e["event_type"] == "Vesting"]
-    # income is still populated (used as unrealized gain on frontend)
-    assert any(e["income"] > 0 for e in vesting_events)
+    events = client.get("/api/events").json()
+    assert all(e["income"] == 0 for e in events if e["event_type"] == "Vesting")
+    exercise = next(e for e in events if e["event_type"] == "Exercise")
+    assert exercise["income"] == BONUS_BASE["shares"] * PRICE_DATA["price"]
 
 
 def test_grant_list_returns_83b_field(client):

@@ -1,7 +1,7 @@
 import { StatCard as Card } from '../../components/StatCard.tsx'
 import { BreakdownRow, BreakdownShell } from './Breakdown.tsx'
 import { fmt$, fmtNum, fmtPrice } from '../../format.ts'
-import type { Breakdowns, CardValues } from '../Dashboard.math.ts'
+import type { Breakdowns, CardValues } from '../Dashboard.types.ts'
 
 /** Income and capital gains to date. */
 export function EarningsCards({ cv, breakdowns, openBreakdowns, toggleBreakdown }: {

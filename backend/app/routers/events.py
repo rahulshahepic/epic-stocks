@@ -835,8 +835,9 @@ def _get_events_data(user: User, db: Session) -> list:
 
 
 @router.get("/dashboard")
-def get_dashboard(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return _get_dashboard_data(user, db)
+def get_dashboard(as_of: date | None = Query(None), user: User = Depends(get_current_user),
+                  db: Session = Depends(get_db)):
+    return _get_dashboard_data(user, db, as_of=as_of, include_details=as_of is not None)
 
 
 def _as_of_view(payload: dict, as_of: date, timeline: list) -> dict:
@@ -871,22 +872,10 @@ def _as_of_view(payload: dict, as_of: date, timeline: list) -> dict:
     return payload
 
 
-def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> dict:
-    """Core dashboard logic, usable by both the direct endpoint and shared view.
-
-    `as_of` bounds the cumulative figures to a point on the timeline instead of
-    running to its end. The web app has always done this itself — it picks the
-    last event on or before the date in its picker and flags when that rests on
-    an estimated price — but the endpoint returned the *final* event, which on
-    an account with price projections is a decade out. That is fine for the app,
-    which only uses these as a placeholder until it computes its own, and wrong
-    for anything that reads them as the answer: `current_price` held a projected
-    2034 price.
-
-    Left as None the cumulative figures still run to the end of the timeline,
-    which is what the app expects. The position fields (`total_stock_value`,
-    `net_equity` and the figures they are built from) and `price_is_estimate`
-    are always a snapshot at `as_of`, or today when it is None.
+def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, include_details=False) -> dict:
+    """Shared accounting for HTTP, shared views and MCP. Dated HTTP snapshots
+    include server-prepared cards and breakdowns; undated callers retain their
+    legacy cumulative fields. Position fields always use the requested cutoff.
     """
     grants, prices, loans, loans_db, initial_price, _election_83b_map, estimated_price_dates = _user_source_data(user, db)
 
@@ -949,18 +938,32 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
         }
         # An empty account must not hand back a different shape from a full one,
         # or a caller reads `total_shares` here and `vested_shares` everywhere else.
+        if include_details:
+            from app.dashboard_view import dashboard_details
+            return {**empty, 'as_of': cutoff.isoformat(), **dashboard_details(empty, cutoff),
+                    'charts': {'tax': [], 'interest': []}}
         return _as_of_view(empty, as_of, []) if as_of is not None else empty
 
     timeline = get_timeline(user.id, grants, prices, loans, initial_price)
 
     # Add estimated tax from Sale events (FIFO, chronological order)
     ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
+    if ts_row is None:
+        from types import SimpleNamespace
+        from app.routers.loans import _get_tax_settings_dict
+        ts_row = SimpleNamespace(**{
+            **_get_tax_settings_dict(user, db),
+            'loan_payoff_method': 'epic_lifo', 'lot_selection_method': 'lifo',
+            'deduct_investment_interest': False, 'deduction_excluded_years': None,
+            'projected_loan_rate': None, 'tax_withholding_rate': None, 'exit_payoff_lag_days': 0,
+        })
     proj_settings = _projection_settings(ts_row)
     tax_due = _tax_due_dates(db)
     projection = _project(grants, prices, loans_db, loan_payments_db, sales_db, proj_settings, tax_due)
     from app.loan_projection import outstanding_at_stop
-    at_cutoff = outstanding_at_stop(_project(grants, prices, loans_db, loan_payments_db, sales_db,
-                                             proj_settings, tax_due, stop=cutoff))
+    snapshot_projection = _project(grants, prices, loans_db, loan_payments_db, sales_db,
+                                   proj_settings, tax_due, stop=cutoff)
+    at_cutoff = outstanding_at_stop(snapshot_projection)
     # Interest accrued and capitalised but not yet on a statement — the same
     # projection the payoffs and the exit use, so the three cannot disagree.
     position["accrued_unbooked_interest"] = round(at_cutoff["projected_interest"] + at_cutoff["accrued"], 2)
@@ -1002,6 +1005,7 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
     db.close()
 
     holdings_timeline = timeline
+    results = {}
     if sale_specs:
         from app.sale_tax import compute_all_sale_taxes
         results, holdings_timeline = compute_all_sale_taxes(
@@ -1127,4 +1131,27 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
                            if stock_value is not None else None),
         })
 
+    if include_details:
+        from app.dashboard_view import dashboard_details, dashboard_chart_data
+        # Charts cover the whole plan, independently of the card date. Reuse
+        # the same enriched/taxed event services as /events, including sales
+        # between core events and per-sale lot/rate overrides.
+        chart_events = _enrich_timeline(timeline, loans_db, loan_payments_db, sales_db, projection=projection)
+        if ts_row:
+            overrides, sale_loan_ids, lot_overrides = _sale_overrides(sales_db, ts_row)
+            _annotate_sale_taxes(chart_events, timeline, _ts_dict(ts_row),
+                                 loan_grant_by_id=loan_grant_by_id, loan_payoff_method=loan_payoff_method,
+                                 lot_selection_method=lot_selection_method,
+                                 flexible_payoff_enabled=flexible_payoff_enabled,
+                                 sale_overrides=overrides, sale_loan_ids=sale_loan_ids,
+                                 sale_lot_overrides=lot_overrides)
+            if ts_row.deduct_investment_interest:
+                _apply_interest_deduction(chart_events, projection.interest_paid_by_year(),
+                                          excluded_years=set(ts_row.deduction_excluded_years or []))
+        details = dashboard_details(payload, cutoff, grants=grants, timeline=timeline, next_timeline=chart_events,
+                                    holdings_timeline=holdings_timeline, holdings=holdings,
+                                    live_loans=live_loans, loans=loans_db, payments=payments_by_loan,
+                                    sales=sales_db, sale_results=results, projection=snapshot_projection)
+        charts = dashboard_chart_data(chart_events, loans_db, _ts_dict(ts_row), projection, today)
+        return {**payload, 'as_of': cutoff.isoformat(), **details, 'charts': charts}
     return _as_of_view(payload, as_of, timeline) if as_of is not None else payload

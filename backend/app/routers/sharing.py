@@ -504,12 +504,13 @@ def _get_shared_owner(invitation_id: int, viewer: User, db: Session) -> User:
 @router.get("/view/{invitation_id}/dashboard")
 def shared_dashboard(
     invitation_id: int,
+    as_of: date | None = Query(None),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     owner = _get_shared_owner(invitation_id, user, db)
     from app.routers.events import _get_dashboard_data
-    return _get_dashboard_data(owner, db)
+    return _get_dashboard_data(owner, db, as_of=as_of, include_details=as_of is not None)
 
 
 @router.get("/view/{invitation_id}/events")

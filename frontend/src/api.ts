@@ -1,3 +1,4 @@
+import type { DashboardSnapshot } from './app/pages/Dashboard.types.ts'
 import { apiUrl } from './config.ts'
 import { logApiFailure, noteErrorRef } from './scaffold/reportLog.ts'
 import { platform } from './platform/index.ts'
@@ -406,6 +407,7 @@ export const api = {
   logoutEverywhere: () => post<{ ok: boolean }>('/api/auth/logout-everywhere', {}),
 
   getDashboard: () => apiFetch<DashboardData>('/api/dashboard'),
+  getDashboardSnapshot: (asOf: string) => apiFetch<DashboardSnapshot>(`/api/dashboard?as_of=${encodeURIComponent(asOf)}`),
   getEvents: () => apiFetch<TimelineEvent[]>('/api/events'),
 
   // Grants
@@ -693,6 +695,7 @@ export const api = {
   },
 
   // Shared data view (read-only, viewing another user's data)
+  getSharedDashboardSnapshot: (invId: number, asOf: string) => apiFetch<DashboardSnapshot>(`/api/sharing/view/${invId}/dashboard?as_of=${encodeURIComponent(asOf)}`),
   getSharedDashboard: (invId: number) => apiFetch<DashboardData>(`/api/sharing/view/${invId}/dashboard`),
   getSharedEvents: (invId: number) => apiFetch<TimelineEvent[]>(`/api/sharing/view/${invId}/events`),
   getSharedGrants: (invId: number) => apiFetch<GrantEntry[]>(`/api/sharing/view/${invId}/grants`),

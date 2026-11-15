@@ -139,7 +139,26 @@ def test_edge_hostname_filter_redaction_and_permission_errors(monkeypatch):
     assert 'private' not in json.dumps(result)
     sources._cache.clear()
     monkeypatch.setattr(sources, '_json', lambda *a, **k: {'errors': [{'message': 'private-error'}]})
-    assert sources.edge_summary()['state'] == 'unavailable'
+    result = sources.edge_summary()
+    assert result['state'] == 'unavailable' and result['reason'] == 'rejected'
+    assert 'private' not in json.dumps(result)
+
+
+def test_edge_unavailable_reasons(monkeypatch):
+    assert sources.edge_summary()['reason'] == 'not_configured'
+    monkeypatch.setenv('DIAGNOSTICS_CF_ZONE_ID', 'c' * 32)
+    monkeypatch.setenv('DIAGNOSTICS_CF_API_TOKEN', 'private-token')
+    monkeypatch.setenv('DOMAIN', 'staging.epic-stocks.com')
+    request = httpx.Request('POST', 'https://api.cloudflare.com/client/v4/graphql')
+    for status, reason in ((403, 'denied'), (401, 'denied'), (500, 'provider_error')):
+        sources._cache.clear()
+        error = httpx.HTTPStatusError('private-token', request=request, response=httpx.Response(status, request=request))
+        with patch.object(sources, '_json', side_effect=error):
+            result = sources.edge_summary()
+        assert result['reason'] == reason and 'private' not in json.dumps(result)
+    sources._cache.clear()
+    with patch.object(sources, '_json', side_effect=httpx.ReadTimeout('private-token')):
+        assert sources.edge_summary()['reason'] == 'provider_error'
 
 
 def collector_module():
@@ -277,3 +296,25 @@ async def test_slow_provider_does_not_block_connector_ping(client, monkeypatch):
                 release.set()
                 response = await slow
             assert json.loads(response.json()['result']['content'][0]['text'])['state'] == 'unavailable'
+
+
+@pytest.mark.parametrize('previous_state', ['scheduler_succeeded', 'scheduler_failed'])
+def test_sample_during_run_keeps_last_finished_scheduler_state(tmp_path, monkeypatch, previous_state):
+    collector = collector_module()
+    values = {'docker': None, 'systemctl': 'Result=success\nExecMainStartTimestampMonotonic=0\nActiveState=inactive'}
+    monkeypatch.setattr(collector, 'command', lambda args: values[Path(args[0]).name])
+    path = tmp_path / 'host.json'
+    collector.collect('staging', path)
+    snapshot = json.loads(path.read_text())
+    snapshot['states']['scheduler'] = previous_state
+    snapshot['events'] = []
+    path.write_text(json.dumps(snapshot))
+    values['systemctl'] = 'Result=success\nExecMainStartTimestampMonotonic=123\nActiveState=activating'
+    collector.collect('staging', path)
+    result = json.loads(path.read_text())
+    assert result['states']['scheduler'] == previous_state
+    assert not any(row['component'] == 'scheduler' for row in result['events'])
+    values['systemctl'] = 'Result=success\nExecMainStartTimestampMonotonic=456\nActiveState=inactive'
+    collector.collect('staging', path)
+    codes = [row['event_code'] for row in json.loads(path.read_text())['events']]
+    assert codes == ([] if previous_state == 'scheduler_succeeded' else ['scheduler_recovered'])

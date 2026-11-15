@@ -796,3 +796,30 @@ def test_admin_client_ip_echoes_only_address_headers(client, monkeypatch):
 def test_admin_client_ip_requires_admin(client):
     register_user(client, "notadmin@example.com")
     assert client.get("/api/admin/client-ip").status_code == 403
+
+
+def test_edge_summary_is_admin_only_and_matches_connector_source(client, monkeypatch):
+    from services import diagnostic_sources as sources
+    sources._cache.clear()
+    with _admin_env():
+        register_user(client, "regular@test.com")
+        assert client.get("/api/admin/edge-summary").status_code == 403
+        _register_admin(client)
+        for key in ("DIAGNOSTICS_CF_ZONE_ID", "DIAGNOSTICS_CF_API_TOKEN"):
+            monkeypatch.delenv(key, raising=False)
+        body = client.get("/api/admin/edge-summary").json()
+        assert body["state"] == "unavailable" and body["reason"] == "not_configured" and body["records"] == []
+
+        monkeypatch.setenv("DIAGNOSTICS_CF_ZONE_ID", "c" * 32)
+        monkeypatch.setenv("DIAGNOSTICS_CF_API_TOKEN", "private-token")
+        monkeypatch.setenv("DOMAIN", "staging.epic-stocks.com")
+        rows = [{"count": 12, "dimensions": {"action": "block"}}, {"count": 3, "dimensions": {"action": "managed_challenge"}}]
+        monkeypatch.setattr(sources, "_json", lambda *a, **k: {"data": {"viewer": {"zones": [{"firewallEventsAdaptiveGroups": rows}]}}})
+        resp = client.get("/api/admin/edge-summary")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["state"] == "available" and body["reason"] is None
+        assert body["records"] == [{"action": "block", "count": 12}, {"action": "managed_challenge", "count": 3}]
+        assert body["window_start_utc"] and body["window_end_utc"]
+        assert "private" not in resp.text
+    sources._cache.clear()

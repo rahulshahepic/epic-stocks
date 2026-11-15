@@ -589,6 +589,7 @@ export const api = {
   // Admin
   adminStats: () => apiFetch<AdminStats>('/api/admin/stats'),
   adminDeploymentStatus: () => apiFetch<DeploymentStatus>('/api/admin/deployment-status'),
+  adminEdgeSummary: () => apiFetch<EdgeSummary>('/api/admin/edge-summary'),
   adminBackupStatus: () => apiFetch<BackupStatus>('/api/admin/backups'),
   adminSaveBackupSettings: (settings: BackupSettings, expected_revision: string | null) =>
     apiFetch<BackupStatus>('/api/admin/backups/settings', { method: 'PUT', body: JSON.stringify({ ...settings, expected_revision }) }),
@@ -777,6 +778,18 @@ export interface DeploymentStatus {
   last_started_at: string | null
   last_checked_at: string | null
   jobs: { name: string; due_utc: string; last_completed_day: string | null; last_completed_at: string | null; last_result: string | null }[]
+}
+
+export interface EdgeSummary {
+  environment: string
+  state: 'available' | 'unavailable'
+  reason: 'not_configured' | 'denied' | 'rejected' | 'provider_error' | null
+  collected_at_utc: string | null
+  window_start_utc: string | null
+  window_end_utc: string | null
+  records: { action: string; count: number }[]
+  record_limit_reached: boolean
+  cache_age_seconds: number | null
 }
 
 export interface BackupSettings {

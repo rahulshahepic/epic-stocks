@@ -26,6 +26,18 @@ def _json(method, url, **kwargs):
         return json.loads(raw)
 
 
+class _Rejected(ValueError):
+    """The provider answered but refused the query (bad token scope, wrong zone)."""
+
+
+def _reason(exc):
+    if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in (401, 403):
+        return "denied"
+    if isinstance(exc, _Rejected):
+        return "rejected"
+    return "provider_error"
+
+
 def _cached(key, source, action):
     # Cache failures too: a conversation must not hammer an unavailable provider.
     with _lock:
@@ -36,9 +48,9 @@ def _cached(key, source, action):
         try:
             result.update(action())
             result.update(state="available", collected_at_utc=datetime.now(timezone.utc).isoformat())
-        except (httpx.HTTPError, ImportError, ValueError, KeyError, TypeError, IndexError):
-            # Provider errors can contain credentials, URLs and raw messages.
-            pass
+        except (httpx.HTTPError, ImportError, ValueError, KeyError, TypeError, IndexError) as exc:
+            # Provider errors can contain credentials, URLs and raw messages; keep only a fixed code.
+            result["reason"] = _reason(exc)
         if len(_cache) >= 8:
             _cache.clear()
         _cache[key] = (now, result)
@@ -100,7 +112,8 @@ _ACTIONS = {"allow", "block", "challenge", "jschallenge", "managed_challenge", "
 def edge_summary():
     zone, token, host = (os.getenv(key, "") for key in ("DIAGNOSTICS_CF_ZONE_ID", "DIAGNOSTICS_CF_API_TOKEN", "DOMAIN"))
     if not re.fullmatch(r"[a-f0-9]{32}", zone) or not token or not re.fullmatch(r"[A-Za-z0-9.-]{1,253}", host):
-        return {**identity(), "source": "cloudflare_waf", "state": "unavailable", "collected_at_utc": None}
+        return {**identity(), "source": "cloudflare_waf", "state": "unavailable", "collected_at_utc": None,
+                "reason": "not_configured"}
 
     def fetch():
         end = datetime.now(timezone.utc) - timedelta(minutes=2)
@@ -110,10 +123,10 @@ def edge_summary():
                      json={"query": _EDGE_QUERY, "variables": {"zone": zone, "filter": {
                          "datetime_geq": start.isoformat(), "datetime_leq": end.isoformat(), "clientRequestHTTPHost": host}}})
         if data.get("errors"):
-            raise ValueError("Cloudflare source unavailable")
+            raise _Rejected("Cloudflare source unavailable")
         zones = data["data"]["viewer"]["zones"]
         if len(zones) != 1:
-            raise ValueError("Cloudflare zone unavailable")
+            raise _Rejected("Cloudflare zone unavailable")
         rows = zones[0]["firewallEventsAdaptiveGroups"]
         if not isinstance(rows, list) or len(rows) > 20:
             raise ValueError("Invalid edge response")

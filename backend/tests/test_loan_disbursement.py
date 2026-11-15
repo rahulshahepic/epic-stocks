@@ -119,3 +119,25 @@ def test_mcp_future_refinance_retains_old_balance(client, monkeypatch):
     assert rows[new["id"]]["status"] == "not_yet_drawn"
     assert sum(row["balance"] for row in rows.values()) == listed["total_outstanding"] == 1000
     assert mcp.call("get_dashboard")["total_loan_principal"] == 1000
+
+
+@pytest.mark.parametrize("day,expected", [("2026-11-15", 1000), ("2026-11-30", 1200)])
+def test_holdings_report_excludes_undrawn_refinance(client, day, expected):
+    from io import BytesIO
+    from openpyxl import load_workbook
+
+    register_user(client)
+    client.post("/api/grants", json=GRANT)
+    old = client.post("/api/loans?generate_payoff_sale=false", json=body(amount=1000)).json()
+    assert client.post("/api/loans?generate_payoff_sale=false", json=body(
+        amount=1200, loan_year=2026, disbursed_on="2026-11-30",
+        refinances_loan_id=old["id"])).status_code == 201
+    report = client.get("/api/export/holdings-report", params={"as_of": day})
+    assert report.status_code == 200
+    wb = load_workbook(BytesIO(report.content), data_only=True)
+    rows = list(wb.active.values)
+    holding = next(row for row in rows if row[0] == "2020 Purchase")
+    assert holding[9] == expected
+    active_header = next(i for i, row in enumerate(rows) if row[0] == "ACTIVE LOANS")
+    active = next(row for row in rows[active_header + 2:] if row[0] == "2020 Purchase")
+    assert active[4] == expected

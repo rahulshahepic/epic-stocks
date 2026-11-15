@@ -4,7 +4,7 @@
 
 “Show my Epic Stocks portfolio” opens an inline card with net equity, stock value, held vested shares, outstanding loans and accrued interest. Buttons browse grants, loan history and events. Expand requests fullscreen; the same tool declares sidebar and conversation-panel entrypoints for hosts supporting those extensions. “Explain this” sends a follow-up message. The normal connector tools remain available without a rendered component.
 
-The Import tab now runs file selection, deterministic parsing, conversational repair, editable grants/loans/prices/sales/payments, and confirmation inside the plugin. `show_import` opens it; `analyze_import_files` takes host-authorized file references; `prepare_import_review` rechecks corrections against retained sources; app-only `accept_import_review` applies the exact frozen review through the existing wizard service. The server still never calls an LLM. Compensation forms and retirement simulations remain future work.
+The plugin card is read-only: overview, grants with their vesting dates, loans and events. Entering equity happens in the conversation — attach documents and the assistant previews and applies edits with `apply_changes` (needs `equity:write`) after the person agrees.
 
 A grant need not map to a configured template. Use **Add a new grant type**, enter the complete schedule and cost basis, and explicitly confirm both. Similar names never authorize choosing a template. Blank cost basis cannot silently become zero. Any change to the schedule resets both confirmations. Leave-related schedule changes use this same custom path.
 
@@ -72,9 +72,9 @@ The normal `./e2e.sh` path remains Docker-based. The opt-in local path reuses th
 
 ## Import acceptance and host verification
 
-`show_import`, `analyze_import_files`, and `prepare_import_review` require both `equity:read` and `import:propose`. Save also requires `equity:write`; app visibility does not replace authorization. Review tokens bind a frozen wizard request to the connector grant, account content, and configured schedule. Excel imports preserve actual sales, refinance references and loan payments; the review supports transaction-only additions too. Repeated sales and payments are matched against existing history instead of duplicated. Payment and refinance references must identify one loan; duplicate matching loan numbers block review/save until corrected. They expire with the proposal, are consumed on save, and become invalid when restaged or when any account record changes. The component never accepts a model-supplied submit body at the final save step. Omitted grants are preserved by identity, including refinance chains, payments and payoff sales.
+`apply_changes` requires `equity:write`. Without `confirm` it only previews; the apply must carry the preview's token.
 
-`window.openai.uploadFile`, `selectFiles`, and `getFileDownloadUrl` are feature-detected. The file picker handles PDF, CSV, workbook, JSON and supporting evidence; ChatGPT can interpret formats the deterministic parser cannot read. Images are returned as MCP image content when first staged, without re-sending them on every review or reload. Repairs use `show_import` plus `get_import_guide`, then `prepare_import_review` with the current revision. Confirmations belong to the user.
+Documents are read by the assistant from the conversation; the card has no file picker.
 
 Before claiming deployment completion, test on the real ChatGPT host: local uploads, existing file selection, download host compatibility, a scanned PDF and screenshot, repair turns returning a fresh review, an unfamiliar grant, save permissions, and disconnect. Local tests exercise the actual HTML in a simulated host and do not establish mobile host feature availability. Refresh plugin tool metadata after deployment because the resource is now `portfolio-v2.html`.
 

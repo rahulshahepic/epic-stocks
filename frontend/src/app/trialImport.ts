@@ -3,12 +3,12 @@
  *
  * No session required — this is the on-ramp for someone who doesn't want to
  * create an account yet. Nothing here is written to a database; the response
- * carries a wizard_payload that /api/wizard/submit accepts as-is, once they
- * decide to sign up and save it.
+ * carries the draft, which after signing up becomes the edits that add it to
+ * the new account (/api/epic-import/changes, then /api/changes).
  */
 import { apiFetch } from '../api.ts'
 import type {
-  GrantEntry, LoanEntry, PriceEntry, TaxSettings, TimelineEvent, WizardSubmitPayload,
+  GrantEntry, LoanEntry, PriceEntry, TaxSettings, TimelineEvent,
 } from '../api.ts'
 import { platform } from '../platform/index.ts'
 
@@ -31,7 +31,7 @@ export interface TrialSummary {
 export interface TrialAnalyzeResponse {
   /** True when the newest price in the files is from an earlier year. */
   price_is_stale: boolean
-  wizard_payload: WizardSubmitPayload
+  draft: Record<string, unknown>
   /** The same shapes the signed-in app renders from — ids are negative, nothing is saved. */
   grants: GrantEntry[]
   loans: LoanEntry[]
@@ -71,19 +71,19 @@ export function pingConverted(): void {
   void apiFetch('/api/trial/converted', { method: 'POST' }).catch(() => {})
 }
 
-const STORAGE_KEY = 'trial_wizard_payload'
+const STORAGE_KEY = 'trial_draft'
 
 /** Stashed before redirecting to sign-in so signup can save it without a re-upload. */
-export async function stashTrialPayload(payload: WizardSubmitPayload): Promise<void> {
-  await platform.storage.set(STORAGE_KEY, JSON.stringify(payload))
+export async function stashTrialPayload(draft: Record<string, unknown>): Promise<void> {
+  await platform.storage.set(STORAGE_KEY, JSON.stringify(draft))
 }
 
-export async function takeStashedTrialPayload(): Promise<WizardSubmitPayload | null> {
+export async function takeStashedTrialPayload(): Promise<Record<string, unknown> | null> {
   const raw = await platform.storage.get(STORAGE_KEY)
   if (!raw) return null
   await platform.storage.remove(STORAGE_KEY)
   try {
-    return JSON.parse(raw) as WizardSubmitPayload
+    return JSON.parse(raw) as Record<string, unknown>
   } catch {
     return null
   }

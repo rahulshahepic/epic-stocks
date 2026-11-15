@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import EpicFileImport from '../components/EpicFileImport.tsx'
-import AssistantImport from '../components/AssistantImport.tsx'
+import ChatImportIntro from '../components/ChatImportIntro.tsx'
 import { apiFetch, apiFetchBlob } from '../../api.ts'
 import { platform } from '../../platform/index.ts'
 import { Card } from '../../scaffold/components/ui/Card.tsx'
@@ -150,21 +150,20 @@ export default function ImportExport() {
     <div className="space-y-4">
       <h2 className="text-lg font-semibold text-cs-text">Import / Export</h2>
 
-      {/* The fastest path leads, because it is what most people should do: a
-          draft waiting for review, or else how to have an assistant make one. */}
-      <AssistantImport showIntro={!!config?.ai_connections && !config?.epic_mode} />
+      {/* The fastest path leads: hand the documents to an assistant. */}
+      {config?.ai_connections && !config?.epic_mode && <ChatImportIntro />}
 
       <EpicFileImport />
 
       {/* Fallback for anyone without the documents to hand. */}
       <button
         type="button"
-        onClick={() => navigate('/wizard?mode=schedule')}
+        onClick={() => navigate('/grants')}
         className="flex w-full flex-col rounded-lg border-2 border-cs-border bg-cs-surface p-4 text-left hover:border-rose-400 hover:shadow-md "
       >
         <span className="text-sm font-semibold text-cs-text">Enter it myself</span>
         <span className="mt-1 text-xs text-cs-muted">
-          No Eureka documents to hand? Step through your grants one at a time — we know Epic's grant schedule, so you only fill in your own numbers.
+          No documents to hand? Add each grant on the Grants page — vesting dates start from Epic's usual schedule and every one can be changed.
         </span>
       </button>
 

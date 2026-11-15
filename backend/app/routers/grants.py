@@ -9,19 +9,15 @@ from scaffold.quota import check_row_quota
 from scaffold.auth import get_current_user
 from app import event_cache
 from scaffold.crud import apply_update, get_owned, version_conflict
+from services.vesting import check_schedule, core_grant, epic_split, resplit, schedule_of, set_schedule
+from scaffold.models import GrantVesting
 
 router = APIRouter(prefix="/api/grants", tags=["grants"])
 
 
 def _grants_as_dicts(grants) -> list:
     """Grants as core.py wants them. Takes ORM rows or submitted models alike."""
-    return [{
-        "year": g.year, "type": g.type, "shares": g.shares, "price": g.price,
-        "vest_start": datetime.combine(g.vest_start, datetime.min.time()),
-        "periods": g.periods,
-        "exercise_date": datetime.combine(g.exercise_date, datetime.min.time()),
-        "dp_shares": g.dp_shares or 0,
-    } for g in grants]
+    return [core_grant(g) for g in grants]
 
 
 def _check_dp_shares(dp_shares: int, exercise_date, grant_dicts: list, price_dicts: list, loan_dicts: list):
@@ -88,8 +84,7 @@ def create_grant(body: GrantCreate, user: User = Depends(get_current_user), db: 
         )
         _check_dp_shares(body.dp_shares, body.exercise_date, existing_grants, prices, loans)
     check_row_quota(db, Grant, user.id)
-    grant = Grant(**body.model_dump(), user_id=user.id)
-    db.add(grant)
+    grant = _new_grant(body, user, db)
     db.commit()
     db.refresh(grant)
     event_cache.schedule_recompute(user.id)
@@ -122,8 +117,7 @@ def bulk_create_grants(items: list[GrantCreate], user: User = Depends(get_curren
             # Validate against existing DB grants + all batch grants except this one
             other_batch = [d for j, d in enumerate(batch_dicts) if j != i]
             _check_dp_shares(g.dp_shares, g.exercise_date, existing_grants + other_batch, prices, loans)
-    grants = [Grant(**g.model_dump(), user_id=user.id) for g in items]
-    db.add_all(grants)
+    grants = [_new_grant(g, user, db) for g in items]
     db.commit()
     for g in grants:
         db.refresh(g)
@@ -160,11 +154,48 @@ def update_grant(grant_id: int, body: GrantUpdate, user: User = Depends(get_curr
             db.query(Grant).filter(Grant.user_id == user.id, Grant.id != grant_id).order_by(Grant.year).all()
         )
         _check_dp_shares(new_dp, new_exercise, other_grants, prices, loans)
-    apply_update(grant, body)
+    rows = _updated_schedule(grant, body)
+    apply_update(grant, GrantUpdate.model_validate(
+        body.model_dump(exclude_unset=True, exclude={"vesting", "vest_start", "periods"})))
+    if rows is not None:
+        set_schedule(grant, rows)
     db.commit()
     db.refresh(grant)
     event_cache.schedule_recompute(user.id)
     return grant
+
+
+def _new_grant(body: GrantCreate, user: User, db: Session) -> Grant:
+    rows = body.schedule()
+    check_row_quota(db, GrantVesting, user.id, adding=len(rows))
+    grant = Grant(**body.row_values(), user_id=user.id)
+    set_schedule(grant, rows)
+    db.add(grant)
+    return grant
+
+
+def _updated_schedule(grant: Grant, body: GrantUpdate):
+    """The schedule an edit asks for, or None to keep the stored one.
+
+    Explicit dates win. A first date or count alone re-splits into equal yearly
+    parts. A corrected share count alone keeps the dates — including any moved
+    for a leave — and re-splits the shares across them in the same proportions.
+    """
+    sent = body.model_fields_set
+    shares = body.shares if body.shares is not None else grant.shares
+    current = schedule_of(grant)
+    if "vesting" in sent and body.vesting:
+        rows = [(v.date, v.shares) for v in body.vesting]
+    elif sent & {"vest_start", "periods"}:
+        rows = epic_split(shares, body.vest_start or current[0][0], body.periods or len(current))
+    elif body.shares is not None and body.shares != sum(n for _, n in current):
+        rows = resplit(current, shares)
+    else:
+        return None
+    problem = check_schedule(rows, shares)
+    if problem:
+        raise HTTPException(status_code=422, detail=problem)
+    return rows
 
 
 def _check_no_attached_loans(grant, user, db):

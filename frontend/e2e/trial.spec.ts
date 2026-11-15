@@ -54,7 +54,7 @@ test.describe('No-account trial (/try)', () => {
     await page.getByRole('button', { name: 'Save & sign up' }).click()
 
     await expect(page).toHaveURL(/\/login$/)
-    const stashed = await page.evaluate(() => sessionStorage.getItem('trial_wizard_payload'))
+    const stashed = await page.evaluate(() => sessionStorage.getItem('trial_draft'))
     expect(stashed).not.toBeNull()
     const payload = JSON.parse(stashed as string)
     expect(payload.grants).toHaveLength(8)

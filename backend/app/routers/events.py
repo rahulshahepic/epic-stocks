@@ -10,6 +10,7 @@ from scaffold.auth import get_current_user
 from services.timeline_cache import get_timeline
 from app.sales_engine import compute_sale_tax
 from app.date_utils import to_date as _to_date
+from services.vesting import core_grant
 
 router = APIRouter(prefix="/api", tags=["events"])
 
@@ -19,13 +20,7 @@ def _user_source_data(user: User, db: Session):
     prices_db = db.query(Price).filter(Price.user_id == user.id).order_by(Price.effective_date).all()
     loans_db = db.query(Loan).filter(Loan.user_id == user.id).order_by(Loan.due_date).all()
 
-    grants = [{
-        "year": g.year, "type": g.type, "shares": g.shares, "price": g.price,
-        "vest_start": datetime.combine(g.vest_start, datetime.min.time()),
-        "periods": g.periods,
-        "exercise_date": datetime.combine(g.exercise_date, datetime.min.time()),
-        "dp_shares": g.dp_shares or 0,
-    } for g in grants_db]
+    grants = [core_grant(g) for g in grants_db]
 
     election_83b_map = {(g.year, g.type): bool(g.election_83b) for g in grants_db}
 
@@ -137,20 +132,10 @@ def _compute_projected_unrecorded_interest(loans_db, as_of_date, loan_payments=(
 
 def _compute_unvested_cost(grants, as_of_date) -> float:
     """Proceeds from selling unvested shares at cost basis (grant price)."""
-    from dateutil.relativedelta import relativedelta
     total_cost = 0.0
     for g in grants:
-        tp = g['periods']
-        if tp <= 0:
-            continue
         total = g['shares']
-        base = total // tp
-        rem = total % tp
-        vs = g['vest_start']
-        vested = 0
-        for p in range(tp):
-            if (vs + relativedelta(years=p)).date() <= as_of_date:
-                vested += base + (1 if p < rem else 0)
+        vested = sum(n for d, n in g['vesting'] if d.date() <= as_of_date)
         unvested = total - vested
         if unvested > 0 and (g['price'] or 0) > 0:
             total_cost += unvested * g['price']
@@ -681,12 +666,7 @@ def preview_deduction(
         this_year = date.today().year
         vest_years: set[int] = set()
         for g in grants:
-            vs = g.get('vest_start')
-            periods = g.get('periods', 0)
-            if vs and periods:
-                start_year = vs.year if hasattr(vs, 'year') else int(str(vs)[:4])
-                for i in range(periods):
-                    vest_years.add(start_year + i)
+            vest_years |= {d.year for d, _ in g['vesting']}
         excl = {y for y in vest_years if y < this_year}
     interest_deduction_total = 0.0
     tax_savings_from_deduction = 0.0

@@ -15,6 +15,7 @@ from database import SessionLocal
 from scaffold.models import User, Grant, Loan, Price, PushSubscription, EmailPreference, Sale, SystemSettings
 from services.timeline_cache import get_timeline
 from services.price_state import price_metadata, notification_details
+from services.vesting import core_grant
 
 logger = logging.getLogger(__name__)
 
@@ -33,13 +34,7 @@ def _user_source_data(user: User, db: Session):
     prices_db = db.query(Price).filter(Price.user_id == user.id).order_by(Price.effective_date).all()
     loans_db = db.query(Loan).filter(Loan.user_id == user.id).order_by(Loan.due_date).all()
 
-    grants = [{
-        "year": g.year, "type": g.type, "shares": g.shares, "price": g.price,
-        "vest_start": datetime.combine(g.vest_start, datetime.min.time()),
-        "periods": g.periods,
-        "exercise_date": datetime.combine(g.exercise_date, datetime.min.time()),
-        "dp_shares": g.dp_shares or 0,
-    } for g in grants_db]
+    grants = [core_grant(g) for g in grants_db]
 
     prices = [{"date": datetime.combine(p.effective_date, datetime.min.time()), "price": p.price} for p in prices_db]
 

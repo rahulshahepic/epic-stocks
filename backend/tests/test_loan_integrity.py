@@ -7,7 +7,6 @@ charges one debt once per link — a four-link chain on one 76k loan reported
 invisible to the payoff schedule, the interest pool and the cost basis, yet
 still counted as money owed. Both were live on a real account.
 """
-import copy
 import os
 import sys
 from datetime import date
@@ -18,7 +17,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from tests.conftest import register_user
 from tests.test_mcp_tools import Mcp
-from tests.test_wizard import MINIMAL_PAYLOAD
 
 GRANT = {"year": 2020, "type": "Purchase", "shares": 10000, "price": 1.5,
          "vest_start": "2021-03-01", "periods": 5, "exercise_date": "2020-12-31"}
@@ -102,46 +100,6 @@ def test_the_crud_path_refuses_a_self_reference(account):
                        json={"refinances_loan_id": created["id"], "version": created["version"]})
     assert resp.status_code == 400
     assert "itself" in resp.json()["detail"]
-
-
-def test_the_wizard_does_not_link_a_loan_to_itself(client):
-    """The bulk resolvers matched on loan_number and never compared ids. A row
-    naming its own number was dropped by the payoff schedule while the dashboard
-    still counted its principal — the loan was both settled and owed.
-    """
-    register_user(client)
-    payload = copy.deepcopy(MINIMAL_PAYLOAD)
-    payload["grants"][0]["loans"] = [{
-        "loan_number": "SELF", "loan_type": "Purchase", "loan_year": 2021,
-        "amount": 5000.0, "interest_rate": 0.03, "due_date": "2030-12-31",
-        "refinances_loan_number": "SELF",
-    }]
-    assert client.post("/api/wizard/submit", json=payload).status_code == 201
-
-    rows = client.get("/api/loans").json()
-    assert [r["refinances_loan_id"] for r in rows] == [None]
-    dash = client.get("/api/dashboard").json()
-    assert dash["total_loan_principal"] == 5000.0
-    assert dash["loan_payment_by_year"], "a live loan must appear in the schedule"
-
-
-def test_a_genuine_wizard_refinance_still_links(client):
-    """The guard compares ids; it must not drop a real chain."""
-    register_user(client)
-    payload = copy.deepcopy(MINIMAL_PAYLOAD)
-    payload["grants"][0]["loans"] = [
-        {"loan_number": "OLD", "loan_type": "Purchase", "loan_year": 2021,
-         "amount": 5000.0, "interest_rate": 0.03, "due_date": "2030-12-31",
-         "refinances_loan_number": ""},
-        {"loan_number": "NEW", "loan_type": "Purchase", "loan_year": 2022,
-         "amount": 5000.0, "interest_rate": 0.04, "due_date": "2030-12-31",
-         "refinances_loan_number": "OLD"},
-    ]
-    assert client.post("/api/wizard/submit", json=payload).status_code == 201
-
-    rows = {r["loan_number"]: r for r in client.get("/api/loans").json()}
-    assert rows["NEW"]["refinances_loan_id"] == rows["OLD"]["id"]
-    assert client.get("/api/dashboard").json()["total_loan_principal"] == 5000.0
 
 
 # ── every loan hangs off a grant ────────────────────────────────────────────

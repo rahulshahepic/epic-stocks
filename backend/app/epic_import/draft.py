@@ -97,6 +97,7 @@ class DraftGrant:
     dp_shares: int = 0
     election_83b: bool = False
     loans: list[DraftLoan] = field(default_factory=list)
+    vesting: list = field(default_factory=list)   # [(date, shares)] when stated
 
     @property
     def key(self) -> tuple[int, str]:
@@ -107,7 +108,9 @@ class DraftGrant:
                 "price": round(self.price, 4), "vest_start": self.vest_start.isoformat(),
                 "periods": self.periods, "exercise_date": self.exercise_date.isoformat(),
                 "dp_shares": self.dp_shares, "election_83b": self.election_83b,
-                "loans": [l.as_dict() for l in self.loans]}
+                "loans": [l.as_dict() for l in self.loans],
+                **({"vesting": [{"date": d.isoformat(), "shares": n} for d, n in self.vesting]}
+                   if self.vesting else {})}
 
 
 @dataclass
@@ -468,6 +471,32 @@ def _finite_int(v) -> int:
     return int(round(f))
 
 
+def _vesting_rows(raw, shares: int, subject: str, findings: list) -> list:
+    """Explicit vesting dates from a payload, or [] when absent or unusable."""
+    if raw in (None, []):
+        return []
+    rows = []
+    if isinstance(raw, list) and len(raw) <= 40:
+        for r in raw:
+            d = _d(r.get("date")) if isinstance(r, dict) else None
+            try:
+                n = _finite_int(r.get("shares")) if isinstance(r, dict) else None
+            except (TypeError, ValueError, OverflowError):
+                n = None
+            if d is None or n is None or n < 0:
+                rows = []
+                break
+            rows.append((d, n))
+    from services.vesting import check_schedule
+    problem = check_schedule(sorted(rows), shares) if rows else "unreadable"
+    if problem:
+        findings.append(Finding("R1", ERROR, subject,
+                                f"vesting must be a list of {{date, shares}} adding up to the grant's "
+                                f"shares ({problem})."))
+        return []
+    return sorted(rows)
+
+
 def draft_from_payload(payload: dict, sk: Skeleton, *, allow_empty_grants: bool = False) -> tuple[Draft, list[Finding]]:
     """Read a draft returned by an assistant. Tolerant about shape, strict about types.
 
@@ -514,51 +543,38 @@ def draft_from_payload(payload: dict, sk: Skeleton, *, allow_empty_grants: bool 
                                     f"{MAX_GRANT_YEAR}."))
             continue
 
-        # An individually changed schedule (for example a leave of absence) or
-        # an award the company tables do not know is deliberately custom. The
-        # assistant must collect the complete schedule and tax treatment from
-        # the user; similarity to a template is only a suggestion.
-        custom = raw.get("custom_schedule") is True
-        if custom:
-            start, exercise = _d(raw.get("vest_start")), _d(raw.get("exercise_date"))
-            try:
-                periods = _finite_int(raw["periods"])
-            except (KeyError, TypeError, ValueError, OverflowError):
-                periods = 0
-            if (not start or not exercise or periods <= 0 or periods > 100
-                    or "price" not in raw or start.year < year
-                    or raw.get("schedule_confirmed") is not True
-                    or raw.get("basis_confirmed") is not True):
-                findings.append(Finding("R1", ERROR, f"{year} {gtype}",
-                                        "Custom grant needs vest_start, exercise_date, 1–100 "
-                                        "periods, and explicit schedule_confirmed and "
-                                        "basis_confirmed acknowledgements from the user."))
-                continue
+        # The company schedule is a starting point, not a rule. Whatever the
+        # payload states — explicit vesting dates, or a first date and count, or
+        # an exercise date — is used; the template fills only what it leaves out,
+        # and C10 notes where the two differ so the person can see it.
+        vesting = _vesting_rows(raw.get("vesting"), shares, f"{year} {gtype}", findings)
+        start, exercise = _d(raw.get("vest_start")), _d(raw.get("exercise_date"))
+        try:
+            periods = _finite_int(raw["periods"]) if raw.get("periods") not in (None, "") else None
+        except (TypeError, ValueError, OverflowError):
+            findings.append(Finding("R1", WARNING, f"{year} {gtype}",
+                                    f"periods {raw['periods']!r} is not a number; ignored."))
+            periods = None
+        if periods is not None and not 1 <= periods <= 100:
+            findings.append(Finding("R1", WARNING, f"{year} {gtype}", "periods must be 1–100; ignored."))
+            periods = None
+        if vesting:
+            start, periods = vesting[0][0], len(vesting)
+        if start and periods and exercise:
             t = TemplateRow(year, gtype, start, periods, exercise)
+            template = sk.template(year, gtype)
         else:
-            t = _schedule_for(sk, year, gtype, findings)
-        supplied_dates = () if custom else (
-            (_d(raw.get("vest_start")), t.vest_start, "vest_start"),
-            (_d(raw.get("exercise_date")), t.exercise_date, "exercise_date"),
-        )
-        for supplied, ours, label in supplied_dates:
-            if supplied is not None and supplied != ours:
-                findings.append(Finding("C10", WARNING, f"{year} {gtype}",
-                                        f"{label} was changed to {supplied}; the company "
-                                        f"schedule says {ours} and that is what was used."))
-        if not custom and raw.get("periods") is not None:
-            try:
-                supplied_periods = _finite_int(raw["periods"])
-            except (TypeError, ValueError, OverflowError):
-                findings.append(Finding("R1", WARNING, f"{year} {gtype}",
-                                        f"periods {raw['periods']!r} is not a number; the "
-                                        f"company schedule's {t.periods} was used."))
-            else:
-                if supplied_periods != t.periods:
-                    findings.append(Finding("C10", WARNING, f"{year} {gtype}",
-                                            f"periods was changed to {supplied_periods}; the "
-                                            f"company schedule says {t.periods} and that is "
-                                            f"what was used."))
+            template = t = _schedule_for(sk, year, gtype, findings)
+            t = TemplateRow(year, gtype, start or t.vest_start, periods or t.periods,
+                            exercise or t.exercise_date)
+        if template is not None:
+            for label, ours, theirs in (("vest_start", t.vest_start, template.vest_start),
+                                        ("periods", t.periods, template.periods),
+                                        ("exercise_date", t.exercise_date, template.exercise_date)):
+                if ours != theirs:
+                    findings.append(Finding("C10", INFO, f"{year} {gtype}",
+                                            f"{label} is {ours}; the company schedule says "
+                                            f"{theirs}. Yours was kept."))
 
         raw_loans = raw.get("loans") or []
         if not isinstance(raw_loans, list):
@@ -606,7 +622,7 @@ def draft_from_payload(payload: dict, sk: Skeleton, *, allow_empty_grants: bool 
             year=year, type=gtype, shares=shares, price=price,
             vest_start=t.vest_start, periods=t.periods, exercise_date=t.exercise_date,
             dp_shares=dp_shares,
-            election_83b=bool(raw.get("election_83b")), loans=loans,
+            election_83b=bool(raw.get("election_83b")), loans=loans, vesting=vesting,
         ))
 
     raw_prices = payload.get("prices") or []
@@ -859,6 +875,8 @@ def to_wizard_payload(draft: Draft, include_unanswered_sales: bool = False) -> d
                        "loan_year": l.loan_year, "amount": round(l.amount, 2),
                        "interest_rate": l.interest_rate,
                        "due_date": l.due_date.isoformat()} for l in g.loans],
+            **({"vesting": [{"date": d.isoformat(), "shares": n} for d, n in g.vesting]}
+               if g.vesting else {}),
         } for g in draft.grants],
         "prices": [p.as_dict() for p in draft.prices],
         "sales": [s.as_dict() for s in draft.sales

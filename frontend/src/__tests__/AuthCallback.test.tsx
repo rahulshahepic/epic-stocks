@@ -139,28 +139,40 @@ describe('AuthCallback', () => {
     await waitFor(() => expect(navigate).toHaveBeenCalledWith('/', { replace: true }))
   })
 
-  it('saves a stashed /try import before navigating home, so signup skips the re-upload', async () => {
+  const ADD_GRANT = { kind: 'grant' as const, action: 'create' as const, values: { year: 2022 } }
+  const KEEP_GRANT = { kind: 'grant' as const, action: 'update' as const, id: 7, version: 2, values: { shares: 1 } }
+  const RESULT = { applied: true, changes: [], position_before: {}, position_after: {} }
+
+  it('adds a stashed /try import before navigating home, so signup skips the re-upload', async () => {
     vi.spyOn(api, 'exchangeCode').mockResolvedValue({ ok: true })
-    const submit = vi.spyOn(api, 'wizardSubmit').mockResolvedValue({ grants: 1, loans: 0, prices: 1, payoff_sales: 0, sales: 0 })
+    const draftChanges = vi.spyOn(api, 'draftChanges').mockResolvedValue(
+      { changes: [ADD_GRANT, KEEP_GRANT], findings: [], blocked: false })
+    const preview = vi.spyOn(api, 'previewChanges').mockResolvedValue({ ...RESULT, applied: false, confirm: 'tok' })
+    const apply = vi.spyOn(api, 'applyChanges').mockResolvedValue(RESULT)
     setCallbackUrl('?code=abc123&state=st-1')
     await seedPendingLogin('st-1')
-    const payload = { grants: [{ year: 2022, type: 'Bonus', shares: 100, price: 0, vest_start: '2023-09-30', periods: 3, exercise_date: '2022-12-31', dp_shares: 0, election_83b: false, loans: [] }], prices: [{ effective_date: '2024-01-01', price: 12.5 }] }
-    await platform.storage.set('trial_wizard_payload', JSON.stringify(payload))
+    const draft = { grants: [{ year: 2022, type: 'Bonus', shares: 100 }], prices: [] }
+    await platform.storage.set('trial_draft', JSON.stringify(draft))
 
     renderCallback()
 
     await waitFor(() => expect(navigate).toHaveBeenCalledWith('/', { replace: true }))
-    expect(submit).toHaveBeenCalledWith({ ...payload, clear_existing: true })
-    expect(await platform.storage.get('trial_wizard_payload')).toBeNull()
+    expect(draftChanges).toHaveBeenCalledWith(draft)
+    // Only additions: an account that already had data keeps every row it had.
+    expect(preview).toHaveBeenCalledWith([ADD_GRANT])
+    expect(apply).toHaveBeenCalledWith([ADD_GRANT], 'tok')
+    expect(await platform.storage.get('trial_draft')).toBeNull()
   })
 
   it('counts the conversion once the trial data is actually saved', async () => {
     vi.spyOn(api, 'exchangeCode').mockResolvedValue({ ok: true })
-    vi.spyOn(api, 'wizardSubmit').mockResolvedValue({ grants: 1, loans: 0, prices: 1, payoff_sales: 0, sales: 0 })
+    vi.spyOn(api, 'draftChanges').mockResolvedValue({ changes: [ADD_GRANT], findings: [], blocked: false })
+    vi.spyOn(api, 'previewChanges').mockResolvedValue({ ...RESULT, applied: false, confirm: 'tok' })
+    vi.spyOn(api, 'applyChanges').mockResolvedValue(RESULT)
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }))
     setCallbackUrl('?code=abc123&state=st-1')
     await seedPendingLogin('st-1')
-    await platform.storage.set('trial_wizard_payload', JSON.stringify({ grants: [], prices: [] }))
+    await platform.storage.set('trial_draft', JSON.stringify({ grants: [], prices: [] }))
 
     renderCallback()
 
@@ -171,11 +183,11 @@ describe('AuthCallback', () => {
 
   it('does not count a conversion when saving the trial data failed', async () => {
     vi.spyOn(api, 'exchangeCode').mockResolvedValue({ ok: true })
-    vi.spyOn(api, 'wizardSubmit').mockRejectedValue(new Error('save failed'))
+    vi.spyOn(api, 'draftChanges').mockRejectedValue(new Error('save failed'))
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }))
     setCallbackUrl('?code=abc123&state=st-1')
     await seedPendingLogin('st-1')
-    await platform.storage.set('trial_wizard_payload', JSON.stringify({ grants: [], prices: [] }))
+    await platform.storage.set('trial_draft', JSON.stringify({ grants: [], prices: [] }))
 
     renderCallback()
 
@@ -186,10 +198,10 @@ describe('AuthCallback', () => {
 
   it('still navigates home when saving the stashed /try import fails', async () => {
     vi.spyOn(api, 'exchangeCode').mockResolvedValue({ ok: true })
-    vi.spyOn(api, 'wizardSubmit').mockRejectedValue(new Error('save failed'))
+    vi.spyOn(api, 'draftChanges').mockRejectedValue(new Error('save failed'))
     setCallbackUrl('?code=abc123&state=st-1')
     await seedPendingLogin('st-1')
-    await platform.storage.set('trial_wizard_payload', JSON.stringify({ grants: [], prices: [] }))
+    await platform.storage.set('trial_draft', JSON.stringify({ grants: [], prices: [] }))
 
     renderCallback()
 

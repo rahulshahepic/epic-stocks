@@ -279,7 +279,7 @@ function grant(over: Partial<GrantEntry> = {}): GrantEntry {
   return {
     id: 1, version: 1, year: 2020, type: 'Purchase',
     shares: 10000, price: 10, vest_start: '2021-03-01', periods: 5,
-    exercise_date: '2020-09-01', dp_shares: 0, election_83b: false,
+    exercise_date: '2020-09-01', dp_shares: 0, election_83b: false, vesting: [],
     ...over,
   }
 }

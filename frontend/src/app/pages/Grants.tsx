@@ -15,6 +15,8 @@ import { ConflictBanner } from '../../scaffold/components/ui/ConflictBanner.tsx'
 import { Card } from '../../scaffold/components/ui/Card.tsx'
 import { useToday } from '../dateUtils.ts'
 import ModalPortal from '../../scaffold/components/ModalPortal.tsx'
+import VestingEditor from '../components/VestingEditor.tsx'
+import { scheduleProblem, vestingOf } from '../vesting.ts'
 
 type GrantForm = Omit<GrantEntry, 'id' | 'version'>
 type Mode = 'list' | 'add' | 'edit'
@@ -26,6 +28,7 @@ const empty: GrantForm = {
   price: 0,
   vest_start: '',
   periods: 4,
+  vesting: [],
   exercise_date: '',
   dp_shares: 0,
   election_83b: false,
@@ -72,6 +75,7 @@ export default function Grants() {
   const [form, setForm] = useState<GrantForm>(empty)
   const [editId, setEditId] = useState<number | null>(null)
   const [editVersion, setEditVersion] = useState(1)
+  const [savedVesting, setSavedVesting] = useState("[]")
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [conflict, setConflict] = useState(false)
@@ -142,7 +146,9 @@ export default function Grants() {
 
   function openEdit(g: GrantEntry) {
     const { id, version, ...rest } = g
-    setForm(rest)
+    const vesting = vestingOf(g)
+    setForm({ ...rest, vesting })
+    setSavedVesting(JSON.stringify(vesting))
     setEditId(id)
     setEditVersion(version)
     setError('')
@@ -234,7 +240,17 @@ export default function Grants() {
           })
         }
       } else if (mode === 'edit' && editId != null) {
-        await api.updateGrant(editId, { ...form, version: editVersion })
+        // Send the schedule only when it was edited: a first date and count
+        // would re-split it and undo dates moved for a leave.
+        const { vesting, vest_start: _vs, periods: _p, ...fields } = form
+        const scheduleEdited = JSON.stringify(vesting) !== savedVesting
+        if (scheduleEdited) {
+          const problem = scheduleProblem(vesting, form.shares)
+          if (problem) throw new Error(problem)
+        }
+        await api.updateGrant(editId, {
+          ...fields, ...(scheduleEdited ? { vesting } : {}), version: editVersion,
+        })
 
         if (form.type === 'Purchase') {
           let loanId = editLoanId
@@ -451,8 +467,15 @@ export default function Grants() {
               onChange={v => setForm(f => ({ ...f, price: +v }))}
             />
           )}
-          <Field label="Vest Start" type="date" value={form.vest_start} onChange={v => setForm(f => ({ ...f, vest_start: v }))} />
-          <Field label="Vest Periods" type="number" value={form.periods} onChange={v => setForm(f => ({ ...f, periods: +v }))} />
+          {mode === 'edit' ? (
+            <VestingEditor rows={form.vesting} shares={form.shares}
+              onChange={vesting => setForm(f => ({ ...f, vesting }))} />
+          ) : (
+            <>
+              <Field label="Vest Start" type="date" value={form.vest_start} onChange={v => setForm(f => ({ ...f, vest_start: v }))} />
+              <Field label="Vest Periods" type="number" value={form.periods} onChange={v => setForm(f => ({ ...f, periods: +v }))} />
+            </>
+          )}
           <Field label="Exercise Date" type="date" value={form.exercise_date} onChange={v => setForm(f => ({ ...f, exercise_date: v }))} />
           {form.type === 'Purchase' && (
             <label className="block">
@@ -623,7 +646,7 @@ export default function Grants() {
               </div>
               {/* Line 3: Vest details */}
               <div className="mt-1 text-cs-muted">
-                Vest: {g.vest_start} <span className="text-cs-muted">&middot;</span> {g.periods} periods
+                Vests: {vestingOf(g).map(v => `${fmtNum(v.shares)} on ${v.date}`).join(', ')}
                 {g.exercise_date && <> <span className="text-cs-muted">&middot;</span> Ex: {g.exercise_date}</>}
               </div>
               {/* Line 4: Loan status */}
@@ -750,7 +773,7 @@ export default function Grants() {
         <p className="px-3 py-6 text-center text-xs text-cs-text-2">
           {epicMode
             ? 'No grants yet.'
-            : <>No grants yet. Tap <span className="font-medium">+ Purchase</span> or <span className="font-medium">+ Bonus</span> above, or head to Import / Export to run the Setup Wizard.</>}
+            : <>No grants yet. Tap <span className="font-medium">+ Purchase</span> or <span className="font-medium">+ Bonus</span> above, or head to Import / Export to bring in your documents.</>}
         </p>
       )}
       <p className="text-xs text-cs-text-2">{grants.length} grants</p>

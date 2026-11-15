@@ -158,12 +158,7 @@ def get_tips(user: User = Depends(get_current_user), db: Session = Depends(get_d
         # Determine past years from grant vest schedules (matches taxable_years)
         vest_years: set[int] = set()
         for g in grants:
-            vs = g.get('vest_start')
-            periods = g.get('periods', 0)
-            if vs and periods:
-                start_yr = vs.year if hasattr(vs, 'year') else int(str(vs)[:4])
-                for i in range(periods):
-                    vest_years.add(start_yr + i)
+            vest_years |= {d.year for d, _ in g['vesting']}
         past_years = sorted(y for y in vest_years if y < this_year)
         excl_set = set(past_years)
         # Apply deduction only to non-excluded (current + future) years

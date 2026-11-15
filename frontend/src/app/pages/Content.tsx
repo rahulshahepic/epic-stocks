@@ -179,7 +179,7 @@ export default function Content() {
       <div>
         <h2 className="text-sm font-semibold text-cs-text">Grant-program content</h2>
         <p className="text-xs text-cs-text-2">
-          Edits here take effect immediately for all users on their next wizard load.
+          Edits here take effect immediately: they are the starting schedule for new grants.
         </p>
       </div>
 

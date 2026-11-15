@@ -434,43 +434,26 @@ def test_regenerate_skips_refinanced_loans(client, db_session):
     assert refi["id"] in loan_ids
 
 
-def test_wizard_creates_payoff_sales_for_interest_loans(client, db_session):
-    """Wizard submit generates payoff sales for interest loans, not just purchase."""
+def test_a_change_set_creates_payoff_sales_for_interest_loans(client, db_session):
+    """Every loan a change set creates gets its payoff sale, interest loans included."""
     register_user(client)
-    resp = client.post("/api/wizard/submit", json={
-        "grants": [{
+    loan = {"grant_year": 2018, "grant_type": "Purchase", "due_date": "2030-01-01"}
+    changes = [
+        {"kind": "grant", "action": "create", "values": {
             "year": 2018, "type": "Purchase", "shares": 10000, "price": 5.0,
-            "vest_start": "2019-01-01", "periods": 4, "exercise_date": "2018-01-01",
-            "loans": [
-                {
-                    "loan_type": "Purchase", "loan_year": 2018,
-                    "amount": 5000.0, "interest_rate": 0.05,
-                    "due_date": "2030-01-01",
-                },
-                {
-                    "loan_type": "Interest", "loan_year": 2019,
-                    "amount": 500.0, "interest_rate": 0.03,
-                    "due_date": "2030-01-01",
-                },
-            ],
-        }],
-        "prices": [{"effective_date": "2020-01-01", "price": 20.0}],
-        "generate_payoff_sales": True,
-    })
-    assert resp.status_code == 201
-    data = resp.json()
-    assert data["payoff_sales"] == 2  # both purchase AND interest
+            "vest_start": "2019-01-01", "periods": 4, "exercise_date": "2018-01-01"}},
+        {"kind": "price", "action": "create", "values": {"effective_date": "2020-01-01", "price": 20.0}},
+        {"kind": "loan", "action": "create", "values": {**loan, "loan_type": "Purchase", "loan_year": 2018,
+                                                         "amount": 5000.0, "interest_rate": 0.05}},
+        {"kind": "loan", "action": "create", "values": {**loan, "loan_type": "Interest", "loan_year": 2019,
+                                                         "amount": 500.0, "interest_rate": 0.03}},
+    ]
+    token = client.post("/api/changes/preview", json={"changes": changes}).json()["confirm"]
+    assert client.post("/api/changes/apply", json={"changes": changes, "confirm": token}).status_code == 200
 
     sales = client.get("/api/sales").json()
-    assert len(sales) == 2
-    loan_types = set()
-    loans = client.get("/api/loans").json()
-    sale_loan_ids = {s["loan_id"] for s in sales}
-    for loan in loans:
-        if loan["id"] in sale_loan_ids:
-            loan_types.add(loan["loan_type"])
-    assert "Purchase" in loan_types
-    assert "Interest" in loan_types
+    loans = {l["id"]: l["loan_type"] for l in client.get("/api/loans").json()}
+    assert {loans[s["loan_id"]] for s in sales} == {"Purchase", "Interest"}
 
 
 def test_payoff_sizing_covers_loan_after_actual_tax(client, db_session):

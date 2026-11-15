@@ -673,17 +673,17 @@ def test_the_same_checks_run_on_a_repaired_draft(skeleton, parsed):
     assert is_blocked(findings) is True
 
 
-def test_a_repaired_draft_cannot_change_the_vesting_schedule(skeleton, drafted):
+def test_a_repaired_draft_keeps_its_own_vesting_schedule(skeleton, drafted):
+    """The company schedule is a starting point: a stated schedule is kept, and
+    C10 says where it differs."""
     draft, _ = drafted
     payload = to_wizard_payload(draft)
-    payload["grants"][0]["periods"] = 99
-    payload["grants"][0]["vest_start"] = "1999-01-01"
+    payload["grants"][0]["periods"] = 3
+    payload["grants"][0]["vest_start"] = "2023-01-15"
     back, findings = draft_from_payload(payload, skeleton)
-    template = skeleton.template(back.grants[0].year, back.grants[0].type)
-    assert back.grants[0].periods == template.periods
-    assert back.grants[0].vest_start == template.vest_start
-    assert codes(findings, "warning").count("C10") == 2
-
+    assert back.grants[0].periods == 3
+    assert str(back.grants[0].vest_start) == "2023-01-15"
+    assert codes(findings, "info").count("C10") == 2
 
 def test_unreadable_json_says_what_is_wrong(skeleton):
     _, findings = draft_from_payload({"nope": 1}, skeleton)
@@ -790,6 +790,20 @@ def analyze(client, **extra):
     return resp.json()
 
 
+def submit(client, draft, sales=()):
+    """What the Import page does: the draft's changes, plus any sales the person
+    answered, previewed and then applied."""
+    result = client.post("/api/epic-import/changes", json={"draft": draft})
+    assert result.status_code == 200, result.text
+    changes = result.json()["changes"] + [
+        {"kind": "sale", "action": "create", "values": s} for s in sales]
+    preview = client.post("/api/changes/preview", json={"changes": changes})
+    if preview.status_code != 200:
+        return preview
+    return client.post("/api/changes/apply",
+                       json={"changes": changes, "confirm": preview.json()["confirm"]})
+
+
 def test_analyze_returns_a_draft_and_writes_nothing(client):
     register_user(client)
     body = analyze(client)
@@ -827,17 +841,17 @@ def test_a_misread_statement_blocks(client):
 def test_a_repaired_draft_can_be_pasted_back(client):
     register_user(client)
     first = analyze(client)
-    payload = first["wizard_payload"]
+    payload = first["draft"]
     payload["grants"][0]["shares"] = 4321
     second = analyze(client, data={"revised_json": json.dumps(payload)})
     assert second["origin"] == "supplied"
-    assert second["wizard_payload"]["grants"][0]["shares"] == 4321
+    assert second["draft"]["grants"][0]["shares"] == 4321
     assert "C8" in [f["code"] for f in second["findings"]]
 
 
 def test_a_repaired_draft_can_arrive_as_a_json_file(client):
     register_user(client)
-    payload = analyze(client)["wizard_payload"]
+    payload = analyze(client)["draft"]
     files = upload_files()
     files["revised_draft"] = ("fixed.json", json.dumps(payload).encode(), "application/json")
     resp = client.post("/api/epic-import/analyze", files=files)
@@ -848,9 +862,7 @@ def test_a_repaired_draft_can_arrive_as_a_json_file(client):
 def test_a_repaired_draft_can_arrive_as_the_apps_own_workbook(client):
     register_user(client)
     analyze(client)
-    client.post("/api/wizard/submit", json={
-        **analyze(client)["wizard_payload"], "clear_existing": True,
-        "generate_payoff_sales": False})
+    submit(client, analyze(client)["draft"])
     export = client.get("/api/export/excel").content
 
     files = upload_files()
@@ -869,82 +881,54 @@ def test_unparseable_paste_says_what_to_do(client):
     assert "starting at '{'" in resp.json()["detail"]
 
 
-def test_the_draft_can_be_submitted_through_the_wizard(client):
-    """Acceptance goes through the wizard, so what is signed off is the position."""
+def test_the_draft_is_applied_as_a_change_set(client):
     register_user(client)
-    payload = analyze(client)["wizard_payload"]
-    resp = client.post("/api/wizard/submit", json={
-        **payload, "clear_existing": True, "generate_payoff_sales": False})
-    assert resp.status_code == 201, resp.text
+    payload = analyze(client)["draft"]
+    resp = submit(client, payload)
+    assert resp.status_code == 200, resp.text
     assert len(client.get("/api/grants").json()) == 8
     assert len(client.get("/api/loans").json()) == 9
     assert len(client.get("/api/prices").json()) == 3
 
-
-def test_an_answered_sale_is_saved_by_the_wizard(client):
-    """The end of the loop the import starts: the file said how many shares went,
-    the user says when and for how much, and the wizard writes the sale."""
+def test_an_answered_sale_is_saved(client):
+    """The file said how many shares went, the person says when and for how much."""
     register_user(client)
-    payload = analyze(client)["wizard_payload"]
-    resp = client.post("/api/wizard/submit", json={
-        **payload, "clear_existing": True, "generate_payoff_sales": False,
-        "sales": [{"date": "2024-03-01", "shares": 10_000,
-                   "price_per_share": 12.5, "notes": "from the workbook"}]})
-    assert resp.status_code == 201, resp.text
-    assert resp.json()["sales"] == 1
-    saved = client.get("/api/sales").json()
+    resp = submit(client, analyze(client)["draft"], sales=[
+        {"date": "2024-03-01", "shares": 10_000, "price_per_share": 12.5, "notes": "from the workbook"}])
+    assert resp.status_code == 200, resp.text
+    saved = [s for s in client.get("/api/sales").json() if s["loan_id"] is None]
     assert [(s["shares"], s["price_per_share"]) for s in saved] == [(10_000, 12.5)]
 
-
-def test_the_wizard_refuses_a_sale_with_no_price(client):
-    """A sale with a blank price would land in capital gains as a zero. The
-    wizard is the last place it can be stopped, so it stops it."""
+def test_a_sale_with_no_price_is_refused(client):
+    """A blank price would land in capital gains as a zero."""
     register_user(client)
-    payload = analyze(client)["wizard_payload"]
-    resp = client.post("/api/wizard/submit", json={
-        **payload, "clear_existing": True,
-        "sales": [{"date": "2024-03-01", "shares": 10_000, "price_per_share": None}]})
+    resp = submit(client, analyze(client)["draft"], sales=[
+        {"date": "2024-03-01", "shares": 10_000, "price_per_share": None}])
     assert resp.status_code == 422
 
-
-def test_the_wizard_refuses_a_sale_with_an_unreadable_date(client):
-    """A 422 rather than an exception in the insert loop, which would be a 500
-    and an error_logs row."""
+def test_a_sale_with_an_unreadable_date_is_refused(client):
     register_user(client)
-    payload = analyze(client)["wizard_payload"]
-    resp = client.post("/api/wizard/submit", json={
-        **payload, "clear_existing": True,
-        "sales": [{"date": "last March", "shares": 10, "price_per_share": 1.0}]})
+    resp = submit(client, analyze(client)["draft"], sales=[
+        {"date": "last March", "shares": 10, "price_per_share": 1.0}])
     assert resp.status_code == 422
 
-
-def test_an_unanswered_sale_never_reaches_the_submit_payload(client):
-    """The draft carries the blank so the wizard can ask about it; the payload
-    the wizard would submit must not, or the blank rides in as a real sale."""
+def test_an_unanswered_sale_is_asked_about_not_saved(client):
+    """The draft carries the blank so the page can ask; it never becomes a change."""
     register_user(client)
     body = analyze(client)
-    assert body["wizard_payload"]["sales"] == []
-    unanswered = [s for s in body["wizard_prefill"]["sales"] if s["needs_input"]]
-    assert unanswered and unanswered[0]["shares"] == 10_000
+    assert not [c for c in body["changes"] if c["kind"] == "sale"]
+    assert body["unanswered_sales"] and body["unanswered_sales"][0]["shares"] == 10_000
 
-
-def test_an_answered_sale_survives_the_round_trip_to_the_wizard(client):
-    """to_wizard_payload output is posted to the wizard verbatim, so its sale
-    keys have to be the ones WizardSale declares — an unknown key is dropped
-    silently, which lost the note saying where the shares came from."""
+def test_an_answered_sale_keeps_its_note(client):
     register_user(client)
     body = analyze(client)
-    unanswered = [s for s in body["wizard_prefill"]["sales"] if s["needs_input"]]
-    assert unanswered, "fixture should leave shares no down payment explains"
-
-    payload = {**body["wizard_payload"], "clear_existing": True,
-               "generate_payoff_sales": False,
-               "sales": [{"date": "2024-03-01", "shares": unanswered[0]["shares"],
-                          "price_per_share": 12.5, "notes": unanswered[0]["notes"]}]}
-    assert client.post("/api/wizard/submit", json=payload).status_code == 201
-    saved = client.get("/api/sales").json()
-    assert saved[0]["notes"] == unanswered[0]["notes"] != ""
-
+    asked = body["unanswered_sales"][0]
+    assert asked["notes"]
+    resp = submit(client, body["draft"], sales=[
+        {"date": "2024-03-01", "shares": asked["shares"], "price_per_share": 12.5, "notes": asked["notes"]}])
+    assert resp.status_code == 200, resp.text
+    saved = [s for s in client.get("/api/sales").json() if s["loan_id"] is None]
+    assert saved[0]["notes"] == asked["notes"]
 
 def test_analyze_requires_authentication(client):
     assert client.post("/api/epic-import/analyze", files=upload_files()).status_code == 401
@@ -966,9 +950,8 @@ def diff_files(client, **overrides):
 
 def test_diff_finds_nothing_when_the_data_came_from_the_same_files(client):
     register_user(client)
-    payload = analyze(client)["wizard_payload"]
-    client.post("/api/wizard/submit", json={
-        **payload, "clear_existing": True, "generate_payoff_sales": False})
+    payload = analyze(client)["draft"]
+    submit(client, payload)
     report = client.post("/api/epic-import/diff", files=diff_files(client)).json()["report"]
     assert report["differences"] == []
 
@@ -977,9 +960,8 @@ def test_an_as_of_export_leaves_out_what_came_later(client):
     """Reconciling against a document dated months ago needs the data of that
     date. Nothing is versioned, so as-of is read off the dates each record has."""
     register_user(client)
-    payload = analyze(client)["wizard_payload"]
-    client.post("/api/wizard/submit", json={
-        **payload, "clear_existing": True, "generate_payoff_sales": False})
+    payload = analyze(client)["draft"]
+    submit(client, payload)
 
     everything = client.get("/api/export/excel")
     assert everything.status_code == 200
@@ -1028,9 +1010,8 @@ def test_the_dashboard_holdings_report_works_as_a_baseline(client):
     It is readable, and what it leaves out is said once rather than reported as
     a difference on every row."""
     register_user(client)
-    payload = analyze(client)["wizard_payload"]
-    client.post("/api/wizard/submit", json={
-        **payload, "clear_existing": True, "generate_payoff_sales": False})
+    payload = analyze(client)["draft"]
+    submit(client, payload)
 
     report = client.get("/api/export/holdings-report", params={"as_of": "2026-02-01"})
     assert report.status_code == 200, report.text
@@ -1070,9 +1051,8 @@ def test_a_workbook_that_is_neither_export_is_refused(client):
 
 def test_diff_names_the_rule_behind_each_difference(client):
     register_user(client)
-    payload = analyze(client)["wizard_payload"]
-    client.post("/api/wizard/submit", json={
-        **payload, "clear_existing": True, "generate_payoff_sales": False})
+    payload = analyze(client)["draft"]
+    submit(client, payload)
     g = next(x for x in client.get("/api/grants").json()
              if x["year"] == 2022 and x["type"] == "Purchase")
     client.put(f"/api/grants/{g['id']}", json={"shares": 999})
@@ -1085,9 +1065,8 @@ def test_diff_names_the_rule_behind_each_difference(client):
 
 def test_diff_writes_nothing(client):
     register_user(client)
-    payload = analyze(client)["wizard_payload"]
-    client.post("/api/wizard/submit", json={
-        **payload, "clear_existing": True, "generate_payoff_sales": False})
+    payload = analyze(client)["draft"]
+    submit(client, payload)
     before = client.get("/api/grants").json()
     client.post("/api/epic-import/diff", files=diff_files(client))
     assert client.get("/api/grants").json() == before
@@ -1108,21 +1087,16 @@ def test_diff_rejects_something_that_is_not_an_export(client):
     assert resp.status_code == 400
 
 
-def test_analyze_returns_the_draft_in_the_shape_the_wizard_loads(client):
-    """The wizard populates itself from grants/loans/prices; the draft arrives
-    in that shape so it can be reviewed there rather than as a file."""
+def test_analyze_returns_the_edits_for_an_empty_account(client):
     register_user(client)
-    prefill = analyze(client)["wizard_prefill"]
-    assert len(prefill["grants"]) == 8
-    assert len(prefill["loans"]) == 9
-    assert len(prefill["prices"]) == 3
-    assert all(g["id"] < 0 for g in prefill["grants"])       # never mistaken for saved rows
-    purchase = next(g for g in prefill["grants"]
-                    if g["year"] == 2021 and g["type"] == "Purchase")
-    assert purchase["shares"] == 200000
-    assert {l["loan_number"] for l in prefill["loans"] if l["grant_year"] == 2020
-            and l["grant_type"] == "Catch-Up"} == {"100003", "100004"}
-
+    changes = analyze(client)["changes"]
+    kinds = [(c["kind"], c["action"]) for c in changes]
+    assert kinds.count(("grant", "create")) == 8
+    assert kinds.count(("loan", "create")) == 9
+    assert kinds.count(("price", "create")) == 3
+    purchase = next(c for c in changes if c["kind"] == "grant"
+                    and c["values"]["year"] == 2021 and c["values"]["type"] == "Purchase")
+    assert purchase["values"]["shares"] == 200000 and purchase["selected"]
 
 # ============================================================
 # REGRESSIONS FOUND BY DRIVING THE REPAIR LOOP END TO END
@@ -1139,7 +1113,7 @@ def test_a_repaired_draft_clears_the_parse_errors_it_fixes(client):
     """A supplied draft supersedes the parse. Leaving the parse errors standing
     means a perfect repair still reads as failing and the loop never converges."""
     register_user(client)
-    good = analyze(client)["wizard_payload"]
+    good = analyze(client)["draft"]
 
     broken = {"share_csv": ("shares.csv", csv_bytes(), "text/csv"),
               "statement_pdf": ("s.pdf", make_pdf(with_extra_column(statement_lines())),
@@ -1401,19 +1375,16 @@ def test_a_down_payment_read_off_the_loan_is_a_real_disagreement(skeleton):
 
 
 def test_an_import_does_not_wipe_down_payment_shares(client):
-    """A draft carrying 0 means the files could not say, so prefilling the wizard
-    with it would erase a real figure the moment someone accepted."""
+    """A draft carrying 0 means the files could not say, so it must not erase a
+    real figure."""
     register_user(client)
     client.post("/api/grants", json={
         "year": 2021, "type": "Purchase", "shares": 1, "price": 1.0,
         "vest_start": "2022-09-30", "periods": 4, "exercise_date": "2021-12-31",
         "dp_shares": -4717,
     })
-    body = analyze(client)
-    kept = next(g for g in body["wizard_prefill"]["grants"]
-                if g["year"] == 2021 and g["type"] == "Purchase")
-    assert kept["dp_shares"] == -4717
-
+    edit = next(c for c in analyze(client)["changes"] if c["kind"] == "grant" and c["action"] == "update")
+    assert "dp_shares" not in edit["values"]
 
 def test_a_bonus_basis_that_is_not_the_year_price_means_taxed_at_vest(skeleton, parsed):
     """A fully vested bonus grant looks the same either way; the year's share
@@ -1429,26 +1400,17 @@ def test_a_bonus_basis_that_is_not_the_year_price_means_taxed_at_vest(skeleton, 
 
 
 def test_an_import_does_not_wipe_price_projections(client):
-    """The wizard deletes prices its payload omits. A draft only covers years with
-    a purchase grant, so forecasts past that would vanish on accept."""
+    """A draft only covers years with a purchase grant; a forecast past that stays."""
     register_user(client)
     client.post("/api/prices", json={"effective_date": "2030-01-01", "price": 9.66})
-    prefill = analyze(client)["wizard_prefill"]
-
-    years = {p["effective_date"][:4] for p in prefill["prices"]}
-    assert "2030" in years
-    kept = next(p for p in prefill["prices"] if p["effective_date"].startswith("2030"))
-    assert kept["id"] > 0          # the real row, so the wizard can preserve it
-
+    assert not [c for c in analyze(client)["changes"] if c["action"] == "delete" and c["kind"] == "price"]
 
 def test_an_import_does_not_wipe_grants_the_files_never_mention(client):
     register_user(client)
     client.post("/api/grants", json={
         "year": 2015, "type": "Bonus", "shares": 500, "price": 1.0,
         "vest_start": "2016-09-30", "periods": 3, "exercise_date": "2015-12-31"})
-    prefill = analyze(client)["wizard_prefill"]
-    assert any(g["year"] == 2015 and g["id"] > 0 for g in prefill["grants"])
-
+    assert not [c for c in analyze(client)["changes"] if c["kind"] == "grant" and c["action"] != "create"]
 
 # ── Current share price ──────────────────────────────────────────────────────
 # The documents carry only prices Epic has already announced. Between
@@ -1463,17 +1425,16 @@ def test_analyze_flags_a_stale_price(client):
     assert body["price_is_stale"] is True
 
 
-def test_a_supplied_current_price_reaches_the_wizard(client):
+def test_a_supplied_current_price_reaches_the_changes(client):
     register_user(client)
     body = client.post("/api/epic-import/analyze", files=upload_files(),
                        data={"current_price": "42.75"}).json()
 
     assert body["price_is_stale"] is False
     assert any(p["effective_date"] == f"{date.today().year}-01-01" and p["announced_date"] is None
-               and p["price"] == 42.75 for p in body["wizard_payload"]["prices"])
-    # And through the prefill the wizard actually renders from.
-    assert any(p["effective_date"] == f"{date.today().year}-01-01" and p["price"] == 42.75
-               for p in body["wizard_prefill"]["prices"])
+               and p["price"] == 42.75 for p in body["draft"]["prices"])
+    # And into the edits the page applies.
+    assert any(c["kind"] == "price" and c["values"]["price"] == 42.75 for c in body["changes"])
 
 
 def test_a_supplied_price_survives_into_saved_data(client):
@@ -1481,10 +1442,8 @@ def test_a_supplied_price_survives_into_saved_data(client):
     register_user(client)
     body = client.post("/api/epic-import/analyze", files=upload_files(),
                        data={"current_price": "42.75"}).json()
-    resp = client.post("/api/wizard/submit", json={
-        **body["wizard_payload"], "clear_existing": True,
-        "generate_payoff_sales": False})
-    assert resp.status_code == 201, resp.text
+    resp = submit(client, body["draft"])
+    assert resp.status_code == 200, resp.text
 
     saved = client.get("/api/prices").json()
     assert any(p["effective_date"] == f"{date.today().year}-01-01" and p["price"] == 42.75 for p in saved)
@@ -1499,43 +1458,19 @@ def test_a_price_older_than_the_files_is_ignored(client):
 
 def test_reimport_matches_existing_sales_one_for_one(client):
     register_user(client)
-    payload = analyze(client)['wizard_payload']
-    sale = {'date': '2024-03-01', 'shares': 500, 'price_per_share': 12.5,
-            'notes': 'original note'}
-    body = {**payload, 'sales': [sale, sale], 'clear_existing': False,
-            'generate_payoff_sales': False}
-    first = client.post('/api/wizard/submit', json=body)
-    assert first.status_code == 201, first.text
-    assert first.json()['sales'] == 2
-    body['sales'] = [{**sale, 'notes': 'different import note'}] * 2
-    second = client.post('/api/wizard/submit', json=body)
-    assert second.status_code == 201, second.text
-    assert second.json()['sales'] == 0
-    assert second.json()['existing_sales'] == 2
-    saved = client.get('/api/sales').json()
-    assert len(saved) == 2
-    assert all(s['notes'] == 'original note' for s in saved)
-    body['sales'].append({**sale, 'date': '2025-03-01'})
-    third = client.post('/api/wizard/submit', json=body)
-    assert third.json()['sales'] == 1
-    assert len(client.get('/api/sales').json()) == 3
-
-
-def test_manual_exchange_correction_cannot_also_import_those_shares(client):
-    register_user(client)
-    payload = analyze(client)['wizard_payload']
-    g = payload['grants'][0]
-    g['dp_shares'] = -1334
-    body = {**payload, 'reported_sold_shares': 1834,
-            'sale_grant_keys': [f"{g['year']}:{g['type']}"],
-            'generate_payoff_sales': False,
-            'sales': [{'date': '2024-03-01', 'shares': 1834, 'price_per_share': 12.5}]}
-    assert client.post('/api/wizard/submit', json=body).status_code == 422
-    assert client.get('/api/grants').json() == []
-    body['sales'][0]['shares'] = 500
-    assert client.post('/api/wizard/submit', json=body).status_code == 201
-    assert client.get('/api/sales').json()[0]['shares'] == 500
-
+    payload = analyze(client)['draft']
+    sale = {'date': '2024-03-01', 'shares': 500, 'price_per_share': 12.5, 'notes': 'original note'}
+    assert submit(client, {**payload, 'sales': [sale, sale]}).status_code == 200
+    manual = lambda: [s for s in client.get('/api/sales').json() if s['loan_id'] is None]
+    assert len(manual()) == 2
+    again = {**payload, 'sales': [{**sale, 'notes': 'different import note'}] * 2}
+    assert not [c for c in client.post('/api/epic-import/changes', json={'draft': again}).json()['changes']
+                if c['kind'] == 'sale']
+    assert all(s['notes'] == 'original note' for s in manual())
+    third = {**payload, 'sales': [sale, sale, {**sale, 'date': '2025-03-01'}]}
+    sales = [c for c in client.post('/api/epic-import/changes', json={'draft': third}).json()['changes']
+             if c['kind'] == 'sale']
+    assert [c['values']['date'] for c in sales] == ['2025-03-01']
 
 def test_mixed_exchanges_and_sales_remain_unclassified(skeleton):
     draft, findings = draft_from_files(skeleton, *one_grant_files(**{**STOCK_DP, 'sold': 1834}))
@@ -1544,17 +1479,6 @@ def test_mixed_exchanges_and_sales_remain_unclassified(skeleton):
     assert draft.sales[0].is_complete is False
     message = next(f.message for f in findings if f.code == 'G2')
     assert 'exchanges, sales, or both' in message
-
-
-def test_import_offers_saved_sales_without_assuming_they_are_in_the_workbook(client):
-    register_user(client)
-    payload = analyze(client)['wizard_payload']
-    sale = {'date': '2024-03-01', 'shares': 500, 'price_per_share': 12.5}
-    client.post('/api/wizard/submit', json={**payload, 'sales': [sale],
-                                          'generate_payoff_sales': False})
-    prefill = analyze(client)['wizard_prefill']
-    assert prefill['existing_sales'][0]['shares'] == 500
-    assert prefill['reported_sold_shares'] == 10000
 
 
 @pytest.mark.parametrize('price', [0, -1, 'Infinity', 'NaN', 1000001])

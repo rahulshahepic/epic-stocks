@@ -5,9 +5,10 @@
     POST /api/epic-import/diff      draft vs. an exported dataset, for checking
                                     the rules against real data
 
-Neither endpoint writes anything and neither calls a language model. Accepting
-an import happens in the wizard, through POST /api/wizard/submit, so what a user
-signs off on is their rendered position rather than a file.
+    POST /api/epic-import/changes   a draft -> the edits it implies for the account
+
+None of them writes anything and none calls a language model. The edits go to
+POST /api/changes/preview and /apply like every other change set.
 """
 import io
 import json
@@ -21,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from scaffold.auth import get_current_user
-from scaffold.models import Grant, Loan, Price, Sale, User
+from scaffold.models import Grant, User
 from scaffold.safe_workbook import WorkbookRejected, load_workbook_safely
 from app.content_service import load_content
 from app.date_utils import to_date as _to_date
@@ -30,7 +31,8 @@ from app.epic_import import (Draft, DraftPrice, StatementParserBusy,
                              build_skeleton, derive_draft, draft_from_payload,
                              extract_lines, is_blocked, parse_share_csv,
                              parse_statement_lines, reconcile, render_markdown,
-                             supersede_parse_findings, to_wizard_payload, validate_draft)
+                             supersede_parse_findings, validate_draft)
+from app.epic_import.to_changes import draft_changes
 from app.excel_io import (read_grants_from_excel, read_loans_from_excel,
                           read_prices_from_excel)
 
@@ -144,92 +146,24 @@ def _payload_from_xlsx(raw: bytes) -> dict:
 
 
 
-def _wizard_prefill(draft: Draft, db: Session | None = None,
-                    user_id: int | None = None) -> dict:
-    """The draft in the flat shape the wizard's own data loader consumes.
-
-    Ids are negative so nothing downstream mistakes these for saved rows.
-
-    Anything the user already has that the files do not cover is carried through
-    with its real id. The wizard deletes rows its payload omits, so a draft alone
-    would quietly remove price projections and grant categories the statement
-    knows nothing about the moment someone accepted the import.
-    """
+def _preview_rows(draft: Draft) -> dict:
+    """The draft in the flat row shapes the app renders, for a preview of rows
+    that are not saved. Ids are negative so nothing mistakes them for saved rows."""
     grants, loans, prices = [], [], []
     for gi, g in enumerate(draft.grants, 1):
-        grants.append({"id": -gi, "year": g.year, "type": g.type, "shares": g.shares,
-                       "price": g.price, "vest_start": g.vest_start.isoformat(),
-                       "periods": g.periods,
-                       "exercise_date": g.exercise_date.isoformat(),
-                       "dp_shares": g.dp_shares, "election_83b": g.election_83b,
-                       "version": 1})
+        from services.vesting import schedule_of
+        grants.append({"id": -gi, **g.as_dict(), "version": 1})
+        grants[-1].pop("loans", None)
+        # The same split the server computes from, so the page cannot disagree.
+        grants[-1]["vesting"] = [{"date": d.isoformat(), "shares": n} for d, n in schedule_of(
+            g.vesting and {"vesting": [{"date": d, "shares": n} for d, n in g.vesting]}
+            or {"vest_start": g.vest_start, "periods": g.periods, "shares": g.shares})]
         for li, l in enumerate(g.loans, 1):
-            loans.append({"id": -(gi * 1000 + li), "grant_year": g.year,
-                          "grant_type": g.type, "loan_type": l.loan_type,
-                          "loan_year": l.loan_year, "amount": round(l.amount, 2),
-                          "interest_rate": l.interest_rate,
-                          "due_date": l.due_date.isoformat(),
-                          "loan_number": l.loan_number, "refinances_loan_id": None,
-                          "version": 1})
+            loans.append({"id": -(gi * 1000 + li), "grant_year": g.year, "grant_type": g.type,
+                          **l.as_dict(), "refinances_loan_id": None, "version": 1})
     for pi, p in enumerate(draft.prices, 1):
-        prices.append({"id": -pi, "effective_date": p.effective_date.isoformat(),
-                       "price": p.price, "is_estimate": p.is_estimate if p.is_estimate is not None else False,
-                       "expected_announcement_date": p.expected_announcement_date.isoformat() if p.expected_announcement_date else None,
-                       "announced_date": p.announced_date.isoformat() if p.announced_date else None, "version": 1})
-
-    # Sales the files imply but cannot date or price. They travel incomplete on
-    # purpose: the wizard screen exists to ask for the blanks, and a sale the
-    # user has not answered is not submitted.
-    sales = [{"id": -si, "shares": s.shares,
-              "date": s.sale_date.isoformat() if s.sale_date else "",
-              "price_per_share": s.price_per_share,
-              "notes": s.notes, "needs_input": not s.is_complete, "version": 1}
-             for si, s in enumerate(draft.sales, 1)]
-
-    if db is not None and user_id is not None:
-        covered_years = {p.effective_date.year for p in draft.prices}
-        for p in db.query(Price).filter(Price.user_id == user_id).all():
-            if p.effective_date.year not in covered_years:
-                prices.append({"id": p.id, "effective_date": p.effective_date.isoformat(),
-                               "price": p.price, "is_estimate": bool(p.is_estimate),
-                               "expected_announcement_date": p.expected_announcement_date.isoformat() if p.expected_announcement_date else None,
-                               "announced_date": p.announced_date.isoformat() if p.announced_date else None,
-                               "version": p.version or 1})
-        covered_grants = {g.key for g in draft.grants}
-        # A grant carried through keeps its loans too. The wizard rebuilds each
-        # grant's loan set from this list, so leaving them out deleted every
-        # loan on a grant the draft did not mention — which is the ordinary case
-        # for an assistant adding one new grant to an existing account.
-        for l in db.query(Loan).filter(Loan.user_id == user_id).all():
-            if (l.grant_year, l.grant_type) not in covered_grants:
-                loans.append({"id": l.id, "grant_year": l.grant_year,
-                              "grant_type": l.grant_type, "loan_type": l.loan_type,
-                              "loan_year": l.loan_year, "amount": l.amount,
-                              "interest_rate": l.interest_rate,
-                              "due_date": l.due_date.isoformat(),
-                              "loan_number": l.loan_number,
-                              "refinances_loan_id": l.refinances_loan_id,
-                              "version": l.version or 1})
-        for g in db.query(Grant).filter(Grant.user_id == user_id).all():
-            if (g.year, g.type) not in covered_grants:
-                grants.append({"id": g.id, "year": g.year, "type": g.type,
-                               "shares": g.shares, "price": g.price,
-                               "vest_start": g.vest_start.isoformat(),
-                               "periods": g.periods,
-                               "exercise_date": g.exercise_date.isoformat(),
-                               "dp_shares": g.dp_shares or 0,
-                               "election_83b": bool(g.election_83b),
-                               "version": g.version or 1})
-    existing_sales = []
-    if db is not None and user_id is not None:
-        existing_sales = [{"date": s.date.isoformat(), "shares": s.shares,
-                           "price_per_share": s.price_per_share, "notes": s.notes or ""}
-                          for s in db.query(Sale).filter(
-                              Sale.user_id == user_id, Sale.loan_id.is_(None)).order_by(Sale.date, Sale.id)]
-    return {"grants": grants, "loans": loans, "prices": prices, "sales": sales,
-            "existing_sales": existing_sales,
-            "reported_sold_shares": draft.reported_sold_shares,
-            "sale_grant_keys": [f"{g.year}:{g.type}" for g in draft.grants]}
+        prices.append({"id": -pi, **p.as_dict(), "is_estimate": bool(p.is_estimate), "version": 1})
+    return {"grants": grants, "loans": loans, "prices": prices}
 
 
 def _summary(draft: Draft) -> dict:
@@ -251,8 +185,10 @@ class AnalyzeResponse(BaseModel):
     # announcements a position valued from them alone reads low, with nothing to
     # say so — the UI asks for the current one rather than imputing it.
     price_is_stale: bool = False
-    wizard_payload: dict
-    wizard_prefill: dict
+    # The edits this draft implies for the account, for app/changes.py.
+    changes: list[dict]
+    # Sales the files show but cannot date or price; the person supplies both.
+    unanswered_sales: list[dict] = []
     findings: list[dict]
     blocked: bool
     reconciles: bool
@@ -359,8 +295,8 @@ def analyze(
     return AnalyzeResponse(
         draft=draft.as_dict(),
         price_is_stale=price_is_stale,
-        wizard_payload=to_wizard_payload(draft),
-        wizard_prefill=_wizard_prefill(draft, db, user.id),
+        changes=draft_changes(draft, user.id, db),
+        unanswered_sales=[s.as_dict() for s in draft.sales if not s.is_complete],
         findings=[x.as_dict() for x in findings],
         blocked=blocked,
         reconciles=reconciles,
@@ -368,6 +304,21 @@ def analyze(
         summary=_summary(draft),
         origin=draft.origin,
     )
+
+
+class DraftChangesRequest(BaseModel):
+    draft: dict
+
+
+@router.post("/changes")
+def changes_for_draft(body: DraftChangesRequest, user: User = Depends(get_current_user),
+                      db: Session = Depends(get_db)):
+    """The edits a draft implies for this account — for a draft kept from an
+    earlier step, such as a preview made before signing in."""
+    sk, _ = _skeleton(db)
+    draft, findings = draft_from_payload(body.draft, sk, allow_empty_grants=True)
+    return {"changes": draft_changes(draft, user.id, db),
+            "findings": [f.as_dict() for f in findings], "blocked": is_blocked(findings)}
 
 
 # ============================================================

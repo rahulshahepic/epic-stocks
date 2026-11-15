@@ -38,14 +38,19 @@
     "globals": "^17.4.0",
     "jsdom": "^29.0.1",
     "typescript": "~5.9.3",
-    "typescript-eslint": "^8.57.0",
+    "typescript-eslint": "^8.72.2",
     "vite": "^8.1.6",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.12"
   },
   "overrides": {
     "brace-expansion": "^1.1.16",
     "postcss": "^8.5.18",
     "js-yaml": "^4.3.0",
-    "nanoid": "^3.3.17"
+    "nanoid": "^3.3.17",
+    "undici": "^7.30.1",
+    "zod": "^4.6.6",
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^11.0.1"
+    }
   }
 }

@@ -453,7 +453,7 @@ The dashboard automatically analyzes your settings and surfaces actionable tips 
 - **Investment interest deduction** — shown if enabling Form 4952 would save ≥ $500 going forward. Tap **Apply** to enable in one tap.
 - **Lot selection method** — shown if switching to a different method would save ≥ $1,000 vs. your current method. Tap **Apply** to update the setting.
 
-Each tip shows estimated savings. Tips can be dismissed for the session.
+Each tip shows estimated savings. Interest-deduction scenarios use the same projected interest and tax loans as the dashboard and payoff schedule, including interest not yet booked on a statement. Tips can be dismissed for the session.
 
 ---
 
@@ -585,7 +585,7 @@ If your ChatGPT is provided by your employer, a workspace admin may need to enab
 | --- | --- |
 | ![ChatGPT inline portfolio](screenshots/chatgpt-plugin-light-mobile.png) | ![ChatGPT portfolio in dark mode](screenshots/chatgpt-plugin-dark-desktop.png) |
 
-**One debt, counted once — as of the date you are asking about.** A recorded `disbursed_on` date keeps a loan out of outstanding principal and marks it `not_yet_drawn` until that date, including a draw later in the current year. Without a disbursement date, the loan year remains the fallback. A future refinance does not replace the existing debt before it is drawn. When a loan is refinanced the old row stays on file — it is history, not money still owed. Every total the app and the connector report counts only the live link in each chain. "Live" is judged against the date of the figure, though: a refinance scheduled for 2030 has not relieved anything you owe today, so it does not shrink today's totals, and interest keeps accruing on the old loan right up to the year the refinance lands rather than vanishing from the record. A loan the schedule replaces before its own maturity shows a $0 "Refinanced" step instead of a payoff, and never gets a payoff sale alongside it. A loan also has to hang off a grant you actually hold: the app refuses one that does not, whether you type it into the Loans form or bring it in on a spreadsheet, because a loan attached to nothing is invisible to your payoff schedule while still showing up as money you owe.
+**One debt, counted once — as of the date you are asking about.** A recorded `disbursed_on` date keeps a loan out of outstanding principal and marks it `not_yet_drawn` until that date, including a draw later in the current year. Without a disbursement date, the loan year remains the fallback. The dashboard requests one server snapshot for its selected **As of** date. The headline, cards, grant breakdowns and active loans use the same server accounting as the connector, including drawn dates, recorded payments, consumed share lots and accrued unbooked interest. Net worth subtracts both outstanding principal and accrued interest. Date changes hide the previous totals until the new snapshot arrives; a failed request offers **Retry** instead of showing old amounts under the new date. Shared viewers use the same dated endpoint and access checks. Interest and tax charts also receive server-prepared figures; interest uses the shared daily-accrual and compounding projection. A future refinance does not replace the existing debt before it is drawn. When a loan is refinanced the old row stays on file — it is history, not money still owed. Every total the app and the connector report counts only the live link in each chain. "Live" is judged against the date of the figure, though: a refinance scheduled for 2030 has not relieved anything you owe today, so it does not shrink today's totals, and interest keeps accruing on the old loan right up to the year the refinance lands rather than vanishing from the record. A loan the schedule replaces before its own maturity shows a $0 "Refinanced" step instead of a payoff, and never gets a payoff sale alongside it. A loan also has to hang off a grant you actually hold: the app refuses one that does not, whether you type it into the Loans form or bring it in on a spreadsheet, because a loan attached to nothing is invisible to your payoff schedule while still showing up as money you owe.
 
 **Your projections stay yours.** The future prices you enter are planning assumptions, and the app's own planner is where they belong. The connector will not hand one to an assistant as a valuation: `list_prices` reports the price in effect today and leaves projections out unless they are explicitly requested, `get_dashboard` reports today rather than the end of a timeline that may run a decade out, and future events or events using an estimated price come back marked `valuation_is_projected`. Each event also carries `price_is_estimate` to distinguish an explicit planning price from a real price carried forward. A real price remains valid after its effective date until replaced; completed events using it are not projections. `priced_to` reports the newest real price effective date, not an expiry date. Future vesting dates and share counts are facts and are reported plainly — it is the money attached to them that is an assumption.
 
@@ -1128,6 +1128,8 @@ Spins up a temporary backend + frontend with seeded sample data, runs all Playwr
 
 The codebase is split into **scaffold** (auth, admin, crypto, notifications — reusable across projects) and **app** (equity tracking domain logic — replaceable when forking). See [FORK_GUIDE.md](FORK_GUIDE.md) for forking instructions.
 
+Dashboard snapshot presentation is in `backend/app/dashboard_view.py`, fed by the shared accounting in `app/routers/events.py`. The browser response types are in `frontend/src/app/pages/Dashboard.types.ts`; `Dashboard.math.ts` contains only display/date helpers.
+
 ```
 epic-stocks/
 ├── backend/
@@ -1301,7 +1303,7 @@ Cross-origin requests are accepted only from the native shell origins (`capacito
 | GET | `/api/config` | Client config (VAPID key, email availability, etc.) |
 | GET, HEAD | `/api/health` | Public liveness check — 200 while the app is serving, including app-managed maintenance. GET returns `{"status":"ok"}`; HEAD returns the same headers without a body. |
 | GET | `/api/status` | Operational status `{"maintenance": bool}` — polled by SPA |
-| GET | `/api/dashboard` | Summary cards data |
+| GET | `/api/dashboard` | Legacy cumulative summary; `?as_of=YYYY-MM-DD` returns the dated position, server-prepared cards, grant/loan breakdowns and chart series |
 | GET | `/api/events` | Computed event timeline |
 | GET | `/api/preview-deduction?enabled=` | Preview investment interest deduction impact without saving |
 | GET | `/api/preview-exit?date=` | Preview full-liquidation scenario on a given date |

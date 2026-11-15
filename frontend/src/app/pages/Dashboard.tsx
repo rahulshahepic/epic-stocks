@@ -8,11 +8,11 @@ import { DashboardCharts } from './dashboard/DashboardCharts.tsx'
 import { EarningsCards } from './dashboard/EarningsCards.tsx'
 import { ShareCards } from './dashboard/ShareCards.tsx'
 import {
-  computeActiveLoans, computeBreakdowns, computeCardValues, computeGrantHoldings,
   findStalePrice, hasDivergentFuturePrice, lastTimelineDate, maxTimelineDate,
 } from './Dashboard.math.ts'
 import { api, apiFetchBlob } from '../../api.ts'
-import type { DashboardData, TimelineEvent, PriceEntry, LoanEntry, GrantEntry, GrantHoldingShares, TaxSettings, SaleEntry, ExitPreview, DeductionPreview } from '../../api.ts'
+import type { TimelineEvent, PriceEntry, LoanEntry, TaxSettings, ExitPreview, DeductionPreview } from '../../api.ts'
+import type { DashboardSnapshot } from './Dashboard.types.ts'
 import { platform } from '../../platform/index.ts'
 import ExitBreakdownCard from '../components/ExitBreakdownCard.tsx'
 import { useApiData } from '../hooks/useApiData.ts'
@@ -79,21 +79,15 @@ export default function Dashboard() {
   const readOnly = !!viewing
   const today = useToday()
 
-  const fetchDashboard = useCallback(() => vid ? api.getSharedDashboard(vid) : api.getDashboard(), [vid])
   const fetchEvents = useCallback(() => vid ? api.getSharedEvents(vid) : api.getEvents(), [vid])
   const fetchPrices = useCallback(() => vid ? api.getSharedPrices(vid) : api.getPrices(), [vid])
   const fetchLoans = useCallback(() => vid ? api.getSharedLoans(vid) : api.getLoans(), [vid])
-  const fetchGrants = useCallback(() => vid ? api.getSharedGrants(vid) : api.getGrants(), [vid])
   const fetchTaxSettings = useCallback(() => vid ? api.getSharedTaxSettings(vid) : api.getTaxSettings(), [vid])
-  const fetchSales = useCallback(() => vid ? api.getSharedSales(vid) : api.getSales(), [vid])
 
-  const { data: dash, loading: dashLoading, reload: reloadDash } = useApiData<DashboardData>(fetchDashboard)
   const { data: events, reload: reloadEvents } = useApiData<TimelineEvent[]>(fetchEvents)
   const { data: prices } = useApiData<PriceEntry[]>(fetchPrices)
   const { data: loans } = useApiData<LoanEntry[]>(fetchLoans)
-  const { data: grantsData } = useApiData<GrantEntry[]>(fetchGrants)
   const { data: taxSettings, reload: reloadTaxSettings } = useApiData<TaxSettings>(fetchTaxSettings)
-  const { data: sales } = useApiData<SaleEntry[]>(fetchSales)
   const c = useChartColors()
   const [rangeInterest, setRangeInterest] = useState<DateRange>({ mode: 'all', start: '', end: '' })
   const [rangeLoan, setRangeLoan] = useState<DateRange>({ mode: 'all', start: '', end: '' })
@@ -109,22 +103,25 @@ export default function Dashboard() {
     if (saved === 'today' || saved === 'last-event' || saved === 'custom') return saved
     return 'today'
   })
-  const [cardDate, setCardDate] = useState<string>(() => {
+  const lastEventDate = useMemo(() => lastTimelineDate(events), [events])
+  const [customCardDate, setCustomCardDate] = useState<string>(() => {
     const mode = localStorage.getItem('dashboard_dateMode')
     if (!mode || mode === 'today') return today
-    if (mode === 'last-event') return today // resolved after events load via effect
+    if (mode === 'last-event') return today // dynamic modes derive their date from the current data
     return localStorage.getItem('dashboard_cardDate') ?? today
   })
-  const [holdingsDate, setHoldingsDate] = useState(cardDate)
+  const cardDate = dateMode === 'today' ? today : dateMode === 'last-event' ? lastEventDate : customCardDate
+  const [snapshotDate, setSnapshotDate] = useState(cardDate)
   useEffect(() => {
-    const timer = setTimeout(() => setHoldingsDate(cardDate), 250)
+    const timer = setTimeout(() => setSnapshotDate(cardDate), 200)
     return () => clearTimeout(timer)
   }, [cardDate])
-  const fetchRemainingHoldings = useCallback(
-    () => vid ? api.getSharedRemainingHoldings(vid, holdingsDate) : api.getRemainingHoldings(holdingsDate),
-    [vid, holdingsDate],
-  )
-  const { data: remainingHoldings } = useApiData<GrantHoldingShares[]>(fetchRemainingHoldings)
+  const fetchDashboard = useCallback(async () => ({
+    ...await (vid ? api.getSharedDashboardSnapshot(vid, snapshotDate) : api.getDashboardSnapshot(snapshotDate)),
+    viewId: vid ?? 0,
+  }), [vid, snapshotDate])
+  const { data: dash, loading: dashLoading, error: dashError, reload: reloadDash } = useApiData<DashboardSnapshot & {viewId: number}>(fetchDashboard)
+  const snapshot = !dashLoading && !dashError && dash?.as_of === cardDate && dash.viewId === (vid ?? 0) ? dash : null
   const [exitBreakdownOpen, setExitBreakdownOpen] = useState(false)
   const [openBreakdowns, setOpenBreakdowns] = useState<Set<string>>(() => {
     try {
@@ -158,13 +155,14 @@ export default function Dashboard() {
       return
     }
     setExitPreview('loading')
+    let cancelled = false
     const timer = setTimeout(() => {
       const fetcher = vid ? api.getSharedPreviewExit(vid, cardDate) : api.previewExit(cardDate)
       fetcher
-        .then(result => setExitPreview(result))
-        .catch(() => setExitPreview(null))
+        .then(result => { if (!cancelled) setExitPreview(result) })
+        .catch(() => { if (!cancelled) setExitPreview(null) })
     }, 200)
-    return () => clearTimeout(timer)
+    return () => { cancelled = true; clearTimeout(timer) }
   }, [cardDate, showExitPreview, vid])
 
   // Investment interest deduction preview
@@ -247,7 +245,7 @@ export default function Dashboard() {
         const m = (prefs as Record<string, unknown>).dateMode
         if (m === 'today' || m === 'last-event' || m === 'custom') setDateMode(m)
         const cd = (prefs as Record<string, unknown>).cardDate
-        if (typeof cd === 'string' && cd.length === 10) setCardDate(cd)
+        if (typeof cd === 'string' && cd.length === 10) setCustomCardDate(cd)
         const rg = (prefs as Record<string, unknown>).range
         if (rg && typeof rg === 'object' && 'mode' in rg) setRange(rg as DateRange)
         const ob = (prefs as Record<string, unknown>).openBreakdowns
@@ -283,30 +281,6 @@ export default function Dashboard() {
   // this year's price.
   const stalePrice = useMemo(() => findStalePrice(prices), [prices])
 
-  // Date of the last event on the timeline, projections included
-  const lastEventDate = useMemo(() => lastTimelineDate(events), [events])
-
-  // Keep cardDate in sync when using a dynamic mode
-  useEffect(() => {
-    if (dateMode === 'today') setCardDate(today)
-    else if (dateMode === 'last-event') setCardDate(lastEventDate)
-  }, [dateMode, lastEventDate, today])
-
-  // Card values computed from local data as of cardDate
-  const cardValues = useMemo(() => computeCardValues(events, loans, sales, taxSettings, cardDate, prices), [events, loans, sales, taxSettings, cardDate, prices])
-
-  // Per-grant holdings breakdown as of cardDate
-  const grantHoldings = useMemo(
-    () => computeGrantHoldings(grantsData, events, loans, sales, taxSettings, cardDate, remainingHoldings),
-    [grantsData, events, loans, sales, taxSettings, cardDate, remainingHoldings],
-  )
-
-  // Active (non-settled, non-refinanced) loans as of cardDate
-  const activeLoans = useMemo(() => computeActiveLoans(loans, events, sales, cardDate), [loans, events, sales, cardDate])
-
-  // Breakdown data (Cash/Income/Cap Gains/Interest/Tax) computed as of cardDate.
-  const breakdowns = useMemo(() => computeBreakdowns(events, loans, sales, taxSettings, cardDate), [events, loans, sales, taxSettings, cardDate])
-
   const [downloading, setDownloading] = useState(false)
   async function downloadReport() {
     setDownloading(true)
@@ -320,15 +294,18 @@ export default function Dashboard() {
     setDownloading(false)
   }
 
-  if (dashLoading) {
+  if (dashLoading && !dash) {
     return <p className="p-6 text-center text-sm text-cs-text-2">Loading...</p>
   }
 
   if (!dash) {
-    return <p className="p-6 text-center text-sm text-red-500">Failed to load dashboard</p>
+    return <div role="alert" className="p-6 text-center text-sm text-red-500">
+      <p>Failed to load dashboard</p>
+      <button type="button" onClick={reloadDash} className="mt-2 underline">Retry</button>
+    </div>
   }
 
-  const isEmpty = !events || events.length === 0
+  const isEmpty = events?.length === 0
 
   if (isEmpty && !readOnly) {
     return <GetStarted />
@@ -338,33 +315,18 @@ export default function Dashboard() {
     return <p className="py-12 text-center text-sm text-cs-muted">This user has no data yet.</p>
   }
 
-  const cv = cardValues ?? {
-    current_price: dash.current_price,
-    total_shares: dash.total_shares,
-    total_income: dash.total_income,
-    total_cap_gains: dash.total_cap_gains,
-    total_loan_principal: dash.total_loan_principal,
-    total_tax_paid: dash.total_tax_paid ?? 0,
-    cash_received: dash.cash_received ?? 0,
-    interest_deduction_total: dash.interest_deduction_total ?? 0,
-    tax_savings_from_deduction: dash.tax_savings_from_deduction ?? 0,
-    next_event: dash.next_event,
-    next_event_detail: null as TimelineEvent | null,
-    total_interest: 0,
-    price_is_estimate: dash.price_is_estimate ?? false,
-  }
-  const hasInterestDeduction = (cv.interest_deduction_total ?? 0) > 0
+  const cv = snapshot?.cards
+  const grantHoldings = snapshot?.grant_holdings ?? null
+  const activeLoans = snapshot?.active_loans ?? null
+  const breakdowns = snapshot?.breakdowns ?? null
+  const hasInterestDeduction = (cv?.interest_deduction_total ?? 0) > 0
   const hasInterestLoans = loans?.some(l => l.loan_type === 'Interest' || l.loan_type === 'Purchase') ?? false
-  const showDeductionCard = hasInterestDeduction || hasInterestLoans
-
-  // Computed once and shared by the hero card and the Value Today card below — they used to
-  // each call grantHoldings.reduce() independently, which is how the two could silently drift
-  // apart if only one call site got a future fix.
-  const totalValue = grantHoldings ? grantHoldings.reduce((s, h) => s + h.totalValue, 0) : 0
+  const showDeductionCard = !!cv && (hasInterestDeduction || hasInterestLoans)
+  const totalValue = cv?.total_stock_value ?? null
 
   return (
     <div className="campus-dashboard space-y-5 sm:space-y-6">
-      {grantHoldings && (
+      {cv && grantHoldings && (
         <HeroCard
           className="campus-hero min-h-72 p-6 sm:min-h-64 sm:p-8"
         >
@@ -379,16 +341,17 @@ export default function Dashboard() {
             <div>
               <Eyebrow className="text-white">The view from here · {fmtFullDate(cardDate)}</Eyebrow>
               <p className="mt-2 font-serif text-4xl font-semibold tabular-nums tracking-tight sm:text-6xl">
-                {fmt$(totalValue - cv.total_loan_principal)}
+                {cv.net_equity === null ? '—' : fmt$(cv.net_equity)}
               </p>
               <p className="mt-2 text-sm font-semibold text-white">Net worth in Epic stock</p>
             </div>
             <div className="space-y-3 border-t border-white/35 pt-4 text-sm sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
               <p className="font-bold tabular-nums">
-                {fmt$(totalValue)} in shares − {fmt$(cv.total_loan_principal)} loans
+                {totalValue === null ? '—' : fmt$(totalValue)} in shares − {fmt$(cv.total_loan_principal)} loans
+                {cv.accrued_unbooked_interest > 0 && <> − {fmt$(cv.accrued_unbooked_interest)} accrued interest</>}
               </p>
               <p className="font-semibold tabular-nums">
-                {fmtNum(cv.total_shares)} vested shares · {fmtPrice(cv.current_price)}/share
+                {fmtNum(cv.total_shares)} vested shares · {(cv.current_price === null ? '—' : fmtPrice(cv.current_price))}/share
                 {cv.price_is_estimate ? ' tentative, awaiting announcement' : ''}
               </p>
               {cv.next_event && (
@@ -410,7 +373,7 @@ export default function Dashboard() {
             type="date"
             value={cardDate}
             max={maxDate}
-            onChange={e => { setDateMode('custom'); setCardDate(e.target.value) }}
+            onChange={e => { if (e.target.value) { setDateMode('custom'); setCustomCardDate(e.target.value) } }}
             className="h-7 flex-1 rounded border border-cs-border-strong bg-cs-surface px-2 text-xs text-cs-text"
           />
         </div>
@@ -451,8 +414,12 @@ export default function Dashboard() {
         {stalePrice && <StalePriceBanner latest={stalePrice} readOnly={readOnly} />}
       </div>
 
+      {!snapshot && <div role={dashError ? 'alert' : 'status'} className="text-sm text-cs-muted">
+        {dashError ? <>Could not load totals for {fmtFullDate(cardDate)}. <button type="button" onClick={reloadDash} className="underline">Retry</button></> : 'Loading totals…'}
+      </div>}
+
       {/* (F) aria-live so screen readers announce summary updates when cardDate changes */}
-      <div aria-live="polite" aria-atomic="true" className="space-y-3">
+      {cv && <div aria-live="polite" aria-atomic="true" className="space-y-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-cs-muted">Up to this date</p>
 
         <ShareCards cv={cv} cardDate={cardDate} grantHoldings={grantHoldings}
@@ -464,16 +431,16 @@ export default function Dashboard() {
         <CostCards cv={cv} activeLoans={activeLoans} breakdowns={breakdowns}
           hasInterestDeduction={hasInterestDeduction}
           openBreakdowns={openBreakdowns} toggleBreakdown={toggleBreakdown} />
-      </div>
+      </div>}
 
-      {showExitPreview && (
+      {snapshot && showExitPreview && (
         <div aria-live="polite" aria-atomic="true" className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-cs-muted">
             If you exited on this date
           </p>
           {exitPreview === 'loading' ? (
             <p className="text-xs text-cs-muted">Calculating…</p>
-          ) : exitPreview ? (
+          ) : exitPreview && exitPreview.date === cardDate ? (
             <>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <button
@@ -506,7 +473,7 @@ export default function Dashboard() {
 
       {showDeductionCard && !readOnly && (() => {
         const displayEnabled = pendingDeduction ?? savedDeduction
-        const currentSavings = cardValues?.tax_savings_from_deduction ?? dash.tax_savings_from_deduction ?? 0
+        const currentSavings = cv?.tax_savings_from_deduction ?? 0
         const previewSavings = pendingDeductionChanged
           ? (deductionPreview === 'loading' ? null : deductionPreview?.tax_savings_from_deduction ?? null)
           : null
@@ -572,12 +539,12 @@ export default function Dashboard() {
         )
       })()}
 
-      <DashboardCharts
-        events={events} prices={prices} loans={loans} dash={dash} taxSettings={taxSettings} c={c}
+      {snapshot && <DashboardCharts
+        events={events} prices={prices} dash={snapshot} c={c}
         range={range} setRange={setRange}
         rangeInterest={rangeInterest} setRangeInterest={setRangeInterest}
         rangeLoan={rangeLoan} setRangeLoan={setRangeLoan}
-        maxDate={maxDate} hasFuturePrices={hasFuturePrices} />
+        maxDate={maxDate} hasFuturePrices={hasFuturePrices} />}
     </div>
   )
 }

@@ -2,14 +2,14 @@ import { StatCard as Card } from '../../components/StatCard.tsx'
 import { BreakdownRow, BreakdownShell } from './Breakdown.tsx'
 import { useToday } from '../../dateUtils.ts'
 import { fmt$, fmtFullDate, fmtNum, fmtPrice } from '../../format.ts'
-import type { CardValues, GrantHolding } from '../Dashboard.math.ts'
+import type { CardValues, GrantHolding } from '../Dashboard.types.ts'
 
 /** What the person holds, and what it is worth on the chosen date. */
 export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakdowns, toggleBreakdown }: {
   cv: CardValues
   cardDate: string
   grantHoldings: GrantHolding[] | null
-  totalValue: number
+  totalValue: number | null
   openBreakdowns: Set<string>
   toggleBreakdown: (key: string) => void
 }) {
@@ -20,7 +20,7 @@ export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakd
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Card
           label={cardDate === today ? 'Value Today' : `Value on ${fmtFullDate(cardDate)}`}
-          value={grantHoldings ? fmt$(totalValue) : '—'}
+          value={totalValue !== null ? fmt$(totalValue) : '—'}
           variant="value"
           subtitle="Vested at FMV + unvested at cost basis"
           onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
@@ -29,26 +29,26 @@ export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakd
         />
         <Card
           label="Total Cost Basis"
-          value={grantHoldings ? fmt$(grantHoldings.reduce((s, h) => s + (h.vestedShares + h.unvestedShares) * h.costBasis, 0)) : '—'}
+          value={fmt$(cv.total_cost_basis)}
           variant="costbasis"
           subtitle="What you paid for all held shares"
           onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
           expanded={openBreakdowns.has('grants')}
         />
-        <Card label={cv.price_is_estimate ? 'Share Price (est.)' : 'Share Price'} value={fmtPrice(cv.current_price)} variant="price" subtitle="Price per share on this date" />
+        <Card label={cv.price_is_estimate ? 'Share Price (est.)' : 'Share Price'} value={(cv.current_price === null ? '—' : fmtPrice(cv.current_price))} variant="price" subtitle="Price per share on this date" />
         <Card
           label="Vested Shares"
           value={fmtNum(cv.total_shares)}
-          subvalue={fmt$(cv.total_shares * cv.current_price) + (cv.price_is_estimate ? ' (est.)' : '')}
+          subvalue={(cv.vested_stock_value === null ? '—' : fmt$(cv.vested_stock_value)) + (cv.price_is_estimate ? ' (est.)' : '')}
           variant="shares"
-          subtitle={`Value at ${fmtPrice(cv.current_price)}/share`}
+          subtitle={`Value at ${(cv.current_price === null ? '—' : fmtPrice(cv.current_price))}/share`}
           onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
           expanded={openBreakdowns.has('grants')}
         />
         <Card
           label="Unvested Shares"
-          value={fmtNum(grantHoldings?.reduce((s, h) => s + h.unvestedShares, 0) ?? 0)}
-          subvalue={grantHoldings ? fmt$(grantHoldings.reduce((s, h) => s + h.unvestedShares * h.costBasis, 0)) : undefined}
+          value={fmtNum(cv.unvested_shares)}
+          subvalue={fmt$(cv.purchased_unvested_stock_value)}
           variant="unvested"
           subtitle="Value at purchase price"
           onClick={grantHoldings && grantHoldings.length > 0 ? () => toggleBreakdown('grants') : undefined}
@@ -106,10 +106,10 @@ export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakd
                 <span className="text-cs-muted">Purchased <span className="font-medium text-cs-text">{fmtFullDate(h.exerciseDate)}</span></span>
                 <span className="text-cs-muted">Cost basis <span className="font-medium text-cs-text">{fmtPrice(h.costBasis)}</span></span>
                 <span className="text-cs-muted">Vested <span className="font-medium text-cs-text">{fmtNum(h.vestedShares)}</span></span>
-                <span className="text-cs-muted">Vested value <span className="font-medium text-cs-text">{fmt$(h.vestedValue)}</span></span>
+                <span className="text-cs-muted">Vested value <span className="font-medium text-cs-text">{(h.vestedValue === null ? '—' : fmt$(h.vestedValue))}</span></span>
                 <span className="text-cs-muted">Unvested <span className="font-medium text-cs-text">{fmtNum(h.unvestedShares)}</span></span>
                 <span className="text-cs-muted">Unvested value <span className="font-medium text-cs-text">{fmt$(h.unvestedValue)}</span></span>
-                <span className="text-cs-muted">Total value <span className="font-medium text-cs-text">{fmt$(h.totalValue)}</span></span>
+                <span className="text-cs-muted">Total value <span className="font-medium text-cs-text">{(h.totalValue === null ? '—' : fmt$(h.totalValue))}</span></span>
                 <span className="text-cs-muted">Taxes <span className="font-medium text-cs-text">{fmt$(h.totalTax)}</span></span>
                 <span className="text-cs-muted">Loans <span className="font-medium text-cs-text">{fmt$(h.totalLoan)}</span></span>
               </div>

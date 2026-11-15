@@ -63,9 +63,10 @@ def price_metadata(price, as_of: date | None = None) -> dict:
 def notification_details(events: list[dict]) -> list[str]:
     details = []
     for event in events:
-        if event.get("event_type") == "Price Announcement":
-            details.append(f"Share price confirmed, effective {event['price_effective_date']}" +
-                           (f" (announced {event['announced_date']})." if event.get("announced_date") else "."))
+        if event.get("event_type") == "Share Price Update":
+            details.append(f"Epic's share price effective {event['price_effective_date']} was expected "
+                           f"to be announced by {event['expected_announcement_date']}. If it has been, "
+                           "replace your estimate with the announced price.")
         elif event.get("price_is_estimate"):
             expected = event.get("expected_announcement_date")
             details.append("Monetary values use a tentative share price" +

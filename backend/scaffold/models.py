@@ -155,6 +155,8 @@ class Price(Base):
     is_estimate: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
     expected_announcement_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     announced_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # When the "enter the announced price" reminder was delivered; cleared when the
+    # expected announcement date moves or the price becomes an estimate again.
     announcement_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
     __mapper_args__ = {"version_id_col": version}

@@ -365,6 +365,9 @@ export default function Dashboard() {
                 <p className="border-t border-white/35 pt-3">
                   <span className="text-xs font-semibold uppercase tracking-wide">Next stop</span><br />
                   <span className="font-bold">{fmtFullDate(cv.next_event.date)}</span>
+                  {cv.next_event_detail?.event_type === 'Share Price' && cv.next_event_detail.price_is_estimate && (
+                    <span className="text-xs"> · estimated price change</span>
+                  )}
                 </p>
               )}
             </div>

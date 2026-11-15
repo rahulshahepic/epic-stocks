@@ -31,7 +31,7 @@ Share prices have an **applicable date**, an **expected announcement date**, and
 
 The ChatGPT plugin uses the same price writes and shows applicable/announcement dates in its portfolio and import review. A chat estimate must set `is_estimate: true`; recording `announced_date` confirms that row. Passing either date never confirms a guess. Excel exports retain tentative status and both announcement dates in optional columns after Date and Price; older two-column workbooks remain supported. Legacy confirmed prices keep their status with an unknown announcement date rather than inventing one.
 
-Daily push/email notifications include confirmed price announcements for the price owner, identifying both the actual announcement and backdated applicable dates. Announcements recorded late or while notifications are disabled remain pending until a channel is enabled and a send succeeds; bulk imports suppress old historical announcements. Shared viewers receive dated equity events without a separate price-announcement alert. Other event notifications identify monetary values using a tentative price. Tentative price changes do not send confirmed-price alerts. Stale-price reminders wait until the expected announcement date. The shared `backend/services/price_state.py` handles status validation and price metadata; the Alembic migration adds announcement dates without changing encrypted price values.
+Nothing is sent on a price's applicable date (January 1): Epic announces the price later and backdates it. Once a price's expected announcement date (March 1 by default) has passed and it is still a tentative estimate, the daily notification sends one **Update your share price** reminder that opens the Prices page; it is not sent if you have already confirmed the price, and moving the expected announcement date re-arms it. Several overdue estimates produce one reminder. A reminder that fails to deliver stays pending for the next run. Shared viewers do not get it. Other event notifications identify monetary values using a tentative price. On the dashboard, a **Next Event** that is an estimated price change reads *Share Price (est.)* with the expected announcement date. The shared `backend/services/price_state.py` handles status validation and price metadata; the Alembic migration adds announcement dates without changing encrypted price values.
 
 ## Contributing and review
 
@@ -480,7 +480,8 @@ Go to **Settings → Notifications** to configure.
 | Exercise | Yes |
 | Loan Payoff | Yes |
 | Planned sale (loan payoff) | Yes |
-| Share price update | No |
+| Share price update (applicable date) | No |
+| Tentative price still unconfirmed after its expected announcement date | Yes, once — asks you to enter the announced price |
 | Down payment exchange | No |
 
 **What the notification contains:** Only event counts and types — no dollar amounts, share counts, or any financial data. Example: *"You have 2 events today: 1 Loan Repayment, 1 Vesting."* Tapping the notification opens the relevant page.

@@ -170,3 +170,15 @@ def test_chart_endpoint_matches_full_snapshot(client):
     snapshot = client.get(f'/api/dashboard?as_of={date.today().isoformat()}').json()
     assert charts.status_code == 200
     assert charts.json() == {key: snapshot[key] for key in ('charts', 'loan_payment_by_year')}
+
+
+def test_next_share_price_event_says_it_is_an_estimate(client):
+    register_user(client)
+    post(client, 'grants', dict(year=2020, type='Purchase', shares=1000, price=10,
+        exercise_date='2020-01-01', vest_start='2021-01-01', periods=1))
+    post(client, 'prices', dict(effective_date='2020-01-01', price=10))
+    post(client, 'prices', dict(effective_date='2090-01-01', price=12, is_estimate=True))
+    detail = client.get('/api/dashboard?as_of=2026-11-15').json()['cards']['next_event_detail']
+    assert detail['event_type'] == 'Share Price' and detail['date'] == '2090-01-01'
+    assert detail['price_is_estimate'] is True
+    assert detail['expected_announcement_date'] == '2090-03-01'

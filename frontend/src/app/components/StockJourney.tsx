@@ -39,6 +39,11 @@ function eventDetail(group: TimelineEvent[], estimated: boolean) {
     const valueAdded = group.reduce((sum, e) => sum + e.vesting_cap_gains + e.income, 0)
     return `${estimated ? 'Est. ' : ''}${fmt$(marketValue)} market value · ${estimated ? 'est. ' : ''}${fmt$(valueAdded)} value added · ${group.length} tranche${group.length === 1 ? '' : 's'}`
   }
+  if (event.event_type === 'Share Price' && event.is_estimate) {
+    return event.expected_announcement_date
+      ? `Your estimate · announcement expected ~${shortDate(event.expected_announcement_date)}`
+      : 'Your estimate'
+  }
   if (event.event_type === 'Loan Payoff') {
     const due = group.reduce((sum, e) => sum + (e.cash_due ?? 0), 0)
     return group.some(e => e.cash_due != null) ? `${fmt$(due)} due` : null

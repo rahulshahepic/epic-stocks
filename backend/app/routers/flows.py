@@ -14,7 +14,7 @@ from schemas import (
 from scaffold.auth import get_current_user
 from scaffold.quota import check_row_quota
 from app import event_cache
-from services.vesting import epic_split, set_schedule
+from services.vesting import default_split, epic_split, set_schedule
 
 router = APIRouter(prefix="/api/flows", tags=["flows"])
 
@@ -237,7 +237,7 @@ def add_bonus(body: AddBonusRequest, user: User = Depends(get_current_user), db:
         exercise_date=body.exercise_date, dp_shares=0,
         election_83b=body.election_83b,
     )
-    set_schedule(grant, epic_split(body.shares, body.vest_start, body.periods))
+    set_schedule(grant, default_split("Bonus", body.year, body.shares, body.vest_start, body.periods))
     db.add(grant)
     db.commit()
     db.refresh(grant)

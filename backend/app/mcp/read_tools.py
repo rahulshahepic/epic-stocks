@@ -572,11 +572,17 @@ _TOPICS: dict[str, str] = {
     "taxes": (
         "Two taxable moments. First, for zero-basis grants, the market value of "
         "each vesting tranche is ordinary income on the vest date, and that value "
-        "becomes the cost basis. Purchase and post-tax bonus grants skip this — "
-        "their basis is what was paid. Second, selling above the cost basis is a "
-        "capital gain: long-term where the lot has been held at least the "
-        "configured holding period from its vest date, short-term otherwise, and "
-        "short-term is taxed at the ordinary income rate."
+        "becomes the cost basis; Epic withholds it through a Tax loan, which the "
+        "app projects at the account's withholding rate until a statement books "
+        "the real one. A purchase or post-tax bonus grant with an 83(b) election "
+        "is no tax event at vest: its basis is what was paid (less any gain "
+        "deferred by shares exchanged as a down payment) and its holding period "
+        "starts at exercise. Without the election, the spread at each vest is "
+        "ordinary income and the basis steps up to the vest price. Second, "
+        "selling above the cost basis is a capital gain: long-term where the lot "
+        "has been held at least the configured holding period, short-term "
+        "otherwise. Loan interest is deductible in the year it is paid, only "
+        "against gains realized that year, with the rest carried forward."
     ),
     "lots": (
         "A lot is the shares from one vesting event — one grant, one vest date, "

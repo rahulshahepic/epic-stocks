@@ -230,7 +230,7 @@ def _seed_data(client):
     grant = {
         "year": 2020, "type": "Purchase", "shares": 10000, "price": 1.99,
         "vest_start": "2021-03-01", "periods": 5,
-        "exercise_date": "2020-12-31", "dp_shares": -500,
+        "exercise_date": "2020-12-31", "dp_shares": -500, "election_83b": True,
     }
     bonus = {
         "year": 2020, "type": "Bonus", "shares": 5000, "price": 0.0,

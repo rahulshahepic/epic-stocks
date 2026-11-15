@@ -4,7 +4,7 @@ from datetime import date
 import pytest
 
 from tests.conftest import register_user
-from app.routers.events import _last_vesting_date, _compute_projected_unrecorded_interest
+from app.routers.events import _last_vesting_date
 
 
 # ============================================================
@@ -112,124 +112,8 @@ def test_preview_exit_invalid_date_returns_422(client):
     assert resp.status_code == 422
 
 
-# ============================================================
-# Unit tests for _compute_projected_unrecorded_interest
-# ============================================================
-
-class _FakeLoan:
-    def __init__(self, id, grant_year, grant_type, loan_type, loan_year, amount, interest_rate, due_date, refinances_loan_id=None):
-        self.id = id
-        self.grant_year = grant_year
-        self.grant_type = grant_type
-        self.loan_type = loan_type
-        self.loan_year = loan_year
-        self.amount = amount
-        self.interest_rate = interest_rate
-        self.due_date = due_date
-        self.refinances_loan_id = refinances_loan_id
-
-
-def test_projected_unrecorded_interest_no_interest_loans():
-    """All years between purchase loan_year+1 and exit year should be projected."""
-    purchase = _FakeLoan(1, 2020, "Purchase", "Purchase", 2020, 100_000, 0.05, date(2030, 12, 31))
-    # Exit in 2023: years 2021, 2022, 2023 are unrecorded → 3 × 5000 = 15000
-    result = _compute_projected_unrecorded_interest([purchase], date(2023, 6, 1))
-    assert result == pytest.approx(15_000.0)
-
-
-def test_projected_unrecorded_interest_some_recorded():
-    """Only gap years (no Interest loan row) are projected."""
-    purchase = _FakeLoan(1, 2020, "Purchase", "Purchase", 2020, 100_000, 0.05, date(2030, 12, 31))
-    interest_2021 = _FakeLoan(2, 2020, "Purchase", "Interest", 2021, 5_000, 0.05, date(2030, 12, 31))
-    # Exit 2023: 2021 recorded, 2022 and 2023 are gaps → 2 × 5000 = 10000
-    result = _compute_projected_unrecorded_interest([purchase, interest_2021], date(2023, 6, 1))
-    assert result == pytest.approx(10_000.0)
-
-
-def test_projected_unrecorded_interest_all_recorded():
-    """When every year has an Interest loan entry, projected amount is zero."""
-    purchase = _FakeLoan(1, 2020, "Purchase", "Purchase", 2020, 100_000, 0.05, date(2030, 12, 31))
-    int_2021 = _FakeLoan(2, 2020, "Purchase", "Interest", 2021, 5_000, 0.05, date(2030, 12, 31))
-    int_2022 = _FakeLoan(3, 2020, "Purchase", "Interest", 2022, 5_000, 0.05, date(2030, 12, 31))
-    result = _compute_projected_unrecorded_interest([purchase, int_2021, int_2022], date(2022, 12, 31))
-    assert result == pytest.approx(0.0)
-
-
-def test_projected_unrecorded_interest_capped_at_due_year():
-    """Interest stops accruing after the loan's due year."""
-    purchase = _FakeLoan(1, 2020, "Purchase", "Purchase", 2020, 100_000, 0.05, date(2022, 12, 31))
-    # Due in 2022; exit in 2025 — only 2021 and 2022 can accrue
-    result = _compute_projected_unrecorded_interest([purchase], date(2025, 1, 1))
-    assert result == pytest.approx(10_000.0)
-
-
-def test_projected_unrecorded_interest_stops_at_the_refinance_not_before_it():
-    """A refinance ends accrual from its own year; it does not unmake earlier years.
-
-    The old purchase ran from 2020 and was refinanced in 2022, so it accrued a
-    year of interest in 2021 that the borrower really owed. Dropping the loan
-    outright — which is what excluding every superseded id did — erased that
-    year from the deduction, and left this figure disagreeing with the interest
-    pool the deduction is drawn from.
-    """
-    old_purchase = _FakeLoan(1, 2020, "Purchase", "Purchase", 2020, 100_000, 0.05, date(2030, 12, 31))
-    new_purchase = _FakeLoan(2, 2020, "Purchase", "Purchase", 2022, 110_000, 0.05, date(2030, 12, 31), refinances_loan_id=1)
-    result = _compute_projected_unrecorded_interest([old_purchase, new_purchase], date(2023, 6, 1))
-    # old_purchase: 2021 only (2022 onward belongs to its successor).
-    # new_purchase: 2023 only (loan_year 2022, exit 2023).
-    assert result == pytest.approx(100_000.0 * 0.05 + 110_000.0 * 0.05)
-
-
-def test_projected_unrecorded_interest_ignores_a_refinance_that_has_not_happened():
-    """A 2030 refinance says nothing about interest accruing in 2026."""
-    purchase = _FakeLoan(1, 2020, "Purchase", "Purchase", 2020, 100_000, 0.05, date(2030, 12, 31))
-    future = _FakeLoan(2, 2020, "Purchase", "Purchase", 2030, 120_000, 0.05, date(2035, 12, 31), refinances_loan_id=1)
-    result = _compute_projected_unrecorded_interest([purchase, future], date(2023, 6, 1))
-    assert result == pytest.approx(3 * 100_000.0 * 0.05)  # 2021, 2022, 2023
-
-
-class _FakeRow:
-    def __init__(self, loan_id, d, amount=0.0):
-        self.loan_id = loan_id
-        self.date = d
-        self.amount = amount
-
-
-def test_projected_unrecorded_interest_stops_once_the_loan_is_prepaid():
-    """Repaid in June 2022: 2021 and 2022 accrued, nothing from 2023 on."""
-    purchase = _FakeLoan(1, 2020, "Purchase", "Purchase", 2020, 15_000, 0.03, date(2028, 12, 31))
-    paid = [_FakeRow(1, date(2022, 6, 1), 15_000)]
-    result = _compute_projected_unrecorded_interest([purchase], date(2026, 9, 26), paid)
-    assert result == pytest.approx(2 * 15_000 * 0.03)
-
-
-def test_projected_unrecorded_interest_follows_a_partial_prepayment():
-    purchase = _FakeLoan(1, 2020, "Purchase", "Purchase", 2020, 100_000, 0.05, date(2030, 12, 31))
-    paid = [_FakeRow(1, date(2022, 3, 1), 40_000)]
-    result = _compute_projected_unrecorded_interest([purchase], date(2023, 6, 1), paid)
-    # 2021 and 2022 on 100k (owed on 1 January), 2023 on the 60k left.
-    assert result == pytest.approx(2 * 5_000 + 3_000)
-
-
-def test_projected_unrecorded_interest_stops_after_a_payoff_sale():
-    purchase = _FakeLoan(1, 2020, "Purchase", "Purchase", 2020, 100_000, 0.05, date(2030, 12, 31))
-    sale = [_FakeRow(1, date(2022, 7, 1))]
-    assert _compute_projected_unrecorded_interest(
-        [purchase], date(2025, 1, 1), sales=sale) == pytest.approx(2 * 5_000)
-    # A payoff sale that has not happened yet ends nothing.
-    assert _compute_projected_unrecorded_interest(
-        [purchase], date(2021, 12, 31), sales=[_FakeRow(1, date(2026, 1, 1))]) == pytest.approx(5_000)
-
-
-def test_projected_unrecorded_interest_keeps_the_year_of_a_due_date_payoff():
-    """A payoff on 31 December settles a loan that was owed all year."""
-    purchase = _FakeLoan(1, 2020, "Purchase", "Purchase", 2020, 100_000, 0.05, date(2023, 12, 31))
-    payoff = [_FakeRow(1, date(2023, 12, 31))]
-    paid = [_FakeRow(1, date(2023, 12, 31), 100_000)]
-    assert _compute_projected_unrecorded_interest(
-        [purchase], date(2024, 6, 1), sales=payoff) == pytest.approx(3 * 5_000)
-    assert _compute_projected_unrecorded_interest(
-        [purchase], date(2024, 6, 1), paid) == pytest.approx(3 * 5_000)
+# The projection itself (daily accrual, 31 December capitalisation, refinances,
+# prepayments, payoff sales) is unit-tested in test_loan_projection.py.
 
 
 # ============================================================
@@ -269,24 +153,33 @@ def test_preview_exit_accrued_interest_nonzero_when_no_interest_loans(client):
 
     resp = client.get("/api/preview-exit?date=2023-06-01")
     data = resp.json()
-    # 2021, 2022, 2023 unrecorded → 3 × (100000 × 0.05) = 15000
-    assert data["outstanding_accrued_interest"] == pytest.approx(15_000.0)
+    # Bought 2020-01-01: each 31 December's interest becomes an Interest loan
+    # that accrues at the latest rate on record (5% here), and the exit pays
+    # those plus 2023's accrual to 1 June. Actual/365.
+    owed = 0.0
+    for year in (2020, 2021, 2022):
+        days = (date(year + 1, 1, 1) - date(year, 1, 1)).days
+        owed += (100_000 + owed) * 0.05 * days / 365
+    owed += (100_000 + owed) * 0.05 * (date(2023, 6, 1) - date(2023, 1, 1)).days / 365
+    assert data["outstanding_accrued_interest"] == pytest.approx(owed, abs=0.05)
 
 
 def test_preview_exit_accrued_interest_zero_when_fully_recorded(client):
-    """When all interest loans are entered, outstanding_accrued_interest is 0."""
+    """When every year through the exit is booked, outstanding_accrued_interest
+    is 0. A row for 2023 counts from 1 January 2024: before then the statement
+    booking it did not exist."""
     register_user(client)
     _seed_with_purchase_loan(client)
-    for yr in [2021, 2022, 2023]:
+    for yr in [2020, 2021, 2022, 2023]:
         client.post("/api/loans?generate_payoff_sale=false", json={
             "grant_year": 2020, "grant_type": "A", "loan_type": "Interest",
             "loan_year": yr, "amount": 5_000.0, "interest_rate": 0.05,
             "due_date": "2030-12-31",
         })
 
-    resp = client.get("/api/preview-exit?date=2023-06-01")
-    data = resp.json()
+    data = client.get("/api/preview-exit?date=2024-01-01").json()
     assert data["outstanding_accrued_interest"] == pytest.approx(0.0)
+    assert client.get("/api/preview-exit?date=2023-06-01").json()["outstanding_accrued_interest"] > 0
 
 
 def test_preview_exit_net_cash_reduced_by_accrued_interest(client):

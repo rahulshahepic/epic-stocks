@@ -30,6 +30,7 @@ const empty: LoanForm = {
   due_date: '',
   loan_number: null,
   refinances_loan_id: null,
+  disbursed_on: null,
 }
 
 function loanLabel(l: LoanEntry, refinancedIds?: Set<number>) {
@@ -65,6 +66,7 @@ export default function Loans() {
   const [payoffSaleChecked, setPayoffSaleChecked] = useState(true)
   const [saleRates, setSaleRates] = useState<TaxRates>(DEFAULT_RATES)
   const [regenerating, setRegenerating] = useState(false)
+  const [payoffDate, setPayoffDate] = useState('')
   const [payoffModal, setPayoffModal] = useState<{ loan: LoanEntry; suggestion: LoanPayoffSuggestion | null; existingSale: SaleEntry | null } | null>(null)
   const [payoffExecuting, setPayoffExecuting] = useState(false)
   const [payoffError, setPayoffError] = useState('')
@@ -182,14 +184,17 @@ export default function Loans() {
     setPayoffTranche(null)
   }
 
-  async function openPayoffModal(loan: LoanEntry) {
+  async function openPayoffModal(loan: LoanEntry, paidOn?: string) {
     const existingSale = sales?.find(s => s.loan_id === loan.id) ?? null
+    // A loan past its due date was usually collected then and never recorded.
+    const date = paidOn ?? (loan.due_date < today ? loan.due_date : today)
+    setPayoffDate(date)
     setPayoffModal({ loan, suggestion: null, existingSale })
     setPayoffError('')
     setPayoffTranche(null)
     setPayoffTrancheLoading(true)
     try {
-      const suggestion = await api.getLoanPayoffSuggestion(loan.id, today)
+      const suggestion = await api.getLoanPayoffSuggestion(loan.id, date)
       setPayoffModal({ loan, suggestion, existingSale })
       // Fetch same-tranche allocation using the suggestion's date and shares
       try {
@@ -227,7 +232,7 @@ export default function Loans() {
           version: existingSale.version,
         })
       } else {
-        await api.executePayoff(loan.id)
+        await api.executePayoff(loan.id, payoffDate || undefined)
       }
       broadcastChange('sales')
       reloadSales()
@@ -278,6 +283,7 @@ export default function Loans() {
           <Field label="Interest Rate (%)" type="number" step="0.01" value={+(form.interest_rate * 100).toFixed(4)} onChange={v => setForm(f => ({ ...f, interest_rate: +v / 100 }))} />
           <Field label="Due Date" type="date" value={form.due_date} onChange={v => setForm(f => ({ ...f, due_date: v }))} />
           <Field label="Loan Number" type="text" value={form.loan_number ?? ''} onChange={v => setForm(f => ({ ...f, loan_number: v || null }))} />
+          <Field label="Disbursed On (optional)" type="date" value={form.disbursed_on ?? ''} onChange={v => setForm(f => ({ ...f, disbursed_on: v || null }))} />
           <label className="col-span-2 block">
             <span className="text-xs text-cs-muted">Refinances loan (optional)</span>
             <select
@@ -546,7 +552,7 @@ export default function Loans() {
         <ModalPortal><div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={closePayoffModal}>
           <div className="w-full max-w-sm max-h-[90vh] overflow-y-auto rounded-lg bg-cs-surface p-5 shadow-xl " onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-cs-text">Repay this loan early</h3>
+              <h3 className="text-sm font-semibold text-cs-text">{payoffModal.loan.due_date < today ? "Record this loan's payoff" : "Repay this loan early"}</h3>
               <button onClick={closePayoffModal} aria-label="Close dialog" className="text-cs-text-2 hover:text-cs-text-2 ">✕</button>
             </div>
             <p className="mt-1 text-xs text-cs-muted">
@@ -556,6 +562,21 @@ export default function Loans() {
               <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
                 The existing repayment sale on {payoffModal.existingSale.date} will be updated.
               </p>
+            )}
+            {payoffModal.loan.due_date < today && !payoffModal.existingSale && (
+              <label className="mt-3 block">
+                <span className="text-xs text-cs-text-2">Paid on</span>
+                <input
+                  type="date"
+                  max={today}
+                  value={payoffDate}
+                  onChange={e => e.target.value && openPayoffModal(payoffModal.loan, e.target.value)}
+                  className={FIELD_INPUT_CLASS}
+                />
+                <span className="mt-1 block text-[11px] text-cs-text-2">
+                  Due {payoffModal.loan.due_date}. Epic collects on the due date unless the loan was extended — change this if it was paid later.
+                </span>
+              </label>
             )}
 
             {!payoffModal.suggestion && !payoffError && (

@@ -271,6 +271,12 @@ export interface ExitSummary {
   liquidation_tax: number
   outstanding_principal: number
   outstanding_accrued_interest: number
+  /** Projected Tax loans still open at the exit. */
+  outstanding_projected_loans?: number
+  /** Projected payoffs before the exit with no real loan to carry their sale. */
+  projected_payoffs_before_exit?: number
+  interest_paid_through_exit?: number
+  interest_deducted?: number
   prior_sales: ExitSaleSummary[]
   prior_sales_net: number
   income_tax: number
@@ -330,6 +336,8 @@ export interface LoanEntry {
   due_date: string
   loan_number: string | null
   refinances_loan_id: number | null
+  /** When the money was advanced, from the loan agreement; interest accrues from here. */
+  disbursed_on?: string | null
 }
 
 export interface SmartTip {
@@ -426,7 +434,7 @@ export const api = {
   deleteLoan: (id: number) => del(`/api/loans/${id}`),
   regenerateAllPayoffSales: () => apiFetch<{ updated: number; created: number; skipped_user_owned: number }>('/api/loans/regenerate-all-payoff-sales', { method: 'POST' }),
   getLoanPayoffSuggestion: (loanId: number, payoffDate?: string) => apiFetch<LoanPayoffSuggestion>(`/api/loans/${loanId}/payoff-sale-suggestion${payoffDate ? `?payoff_date=${payoffDate}` : ''}`),
-  executePayoff: (loanId: number) => apiFetch<SaleEntry>(`/api/loans/${loanId}/execute-payoff`, { method: 'POST' }),
+  executePayoff: (loanId: number, payoffDate?: string) => apiFetch<SaleEntry>(`/api/loans/${loanId}/execute-payoff${payoffDate ? `?payoff_date=${payoffDate}` : ''}`, { method: 'POST' }),
 
   // Loan Payments
   getLoanPayments: (loanId?: number) =>
@@ -1027,6 +1035,12 @@ export interface TaxSettings {
   prefer_stock_dp: boolean
   deduct_investment_interest: boolean
   deduction_excluded_years: number[] | null
+  /** Null means the 0.52 default. */
+  tax_withholding_rate?: number | null
+  /** Null means the latest Interest-loan rate on record (default_projected_loan_rate). */
+  projected_loan_rate?: number | null
+  exit_payoff_lag_days?: number
+  default_projected_loan_rate?: number | null
   taxable_years: number[]
 }
 

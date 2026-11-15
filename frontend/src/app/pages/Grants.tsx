@@ -489,7 +489,7 @@ export default function Grants() {
               />
             </label>
           )}
-          {form.type !== 'Purchase' && (
+          {!(form.price > 0) && (
             <label className="col-span-2 flex items-start gap-2 pt-1">
               <input
                 type="checkbox"

@@ -176,6 +176,23 @@ export default function AppSettingsSections() {
                   : 'Disabled'}
               </dd>
             </div>
+            <div className="flex justify-between col-span-2 border-t border-cs-border pt-2 ">
+              <dt className="text-cs-text-2">Withholding on zero-basis vests</dt>
+              <dd className="font-medium text-cs-text-2">{((taxSettings.tax_withholding_rate ?? 0.52) * 100).toFixed(2)}%</dd>
+            </div>
+            <div className="flex justify-between col-span-2">
+              <dt className="text-cs-text-2">Future interest-loan rate</dt>
+              <dd className="font-medium text-cs-text-2">
+                {(() => {
+                  const r = taxSettings.projected_loan_rate ?? taxSettings.default_projected_loan_rate
+                  return r == null ? '—' : `${(r * 100).toFixed(2)}%${taxSettings.projected_loan_rate == null ? ' (latest on record)' : ''}`
+                })()}
+              </dd>
+            </div>
+            <div className="flex justify-between col-span-2">
+              <dt className="text-cs-text-2">Loan payoff after exit</dt>
+              <dd className="font-medium text-cs-text-2">{taxSettings.exit_payoff_lag_days ?? 0}d</dd>
+            </div>
           </dl>
         )}
 
@@ -304,6 +321,45 @@ export default function AppSettingsSections() {
                   </details>
                 )}
               </div>
+              <p className="col-span-2 text-[11px] font-medium text-cs-text-2">
+                Projection assumptions — used until a statement books the real loans
+              </p>
+              <label className="block">
+                <span className="text-xs text-cs-text-2">Tax withholding on zero-basis vests (%)</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="52"
+                  value={taxForm.tax_withholding_rate == null ? '' : +(taxForm.tax_withholding_rate * 100).toFixed(4)}
+                  onChange={e => setTaxForm(f => f ? { ...f, tax_withholding_rate: e.target.value === '' ? null : +e.target.value / 100 } : f)}
+                  className={FIELD_INPUT_CLASS}
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs text-cs-text-2">Future interest-loan rate (%)</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder={taxSettings?.default_projected_loan_rate != null ? (taxSettings.default_projected_loan_rate * 100).toFixed(2) : ''}
+                  value={taxForm.projected_loan_rate == null ? '' : +(taxForm.projected_loan_rate * 100).toFixed(4)}
+                  onChange={e => setTaxForm(f => f ? { ...f, projected_loan_rate: e.target.value === '' ? null : +e.target.value / 100 } : f)}
+                  className={FIELD_INPUT_CLASS}
+                />
+              </label>
+              <label className="block col-span-2">
+                <span className="text-xs text-cs-text-2">Loan payoff after exit (days)</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={365}
+                  value={taxForm.exit_payoff_lag_days ?? 0}
+                  onChange={e => setTaxForm(f => f ? { ...f, exit_payoff_lag_days: +e.target.value } : f)}
+                  className={FIELD_INPUT_CLASS}
+                />
+                <p className="mt-1 text-[11px] text-cs-text-2">
+                  Interest keeps accruing until the loans are settled after you leave.
+                </p>
+              </label>
             </div>
             <div className="flex gap-2">
               <button

@@ -18,7 +18,7 @@ httpx==0.28.1
 python-multipart==0.0.32
 email-validator==2.3.0
 cryptography==50.0.1
-joserfc==1.7.5
+joserfc==1.7.6
 py-vapid==1.9.4
 pywebpush==2.5.0
 # Transitive via pywebpush, but scaffold/push_transport.py subclasses

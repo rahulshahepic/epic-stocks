@@ -428,9 +428,9 @@ def test_a_past_due_payoff_is_not_settled_automatically(client):
     assert client.get("/api/sales").json() == []
     event = next(e for e in client.get("/api/events").json() if e["event_type"] == "Loan Payoff")
     assert event["status"] == "past_due_unconfirmed"
-    # Confirming it is explicit, and sells today.
+    # Confirming it is explicit; by default it was paid on its due date.
     sale = client.post(f"/api/loans/{r.json()['id']}/execute-payoff").json()
-    assert sale["date"] == date.today().isoformat()
+    assert sale["date"] == "2025-07-15"
 
 
 # ── review follow-ups ───────────────────────────────────────────────────────
@@ -600,3 +600,52 @@ def test_a_failed_resize_is_retried_and_finished_ones_are_not(client, db_session
     assert loans_router.resize_generated_payoff_sales(db_session) == 1
     assert next(s for s in client.get("/api/sales").json() if s["id"] == sale_id)["shares"] == right
     assert loans_router.resize_generated_payoff_sales(db_session) == 0
+
+
+def test_a_long_past_due_loan_confirmed_at_its_due_date_carries_no_interest_to_the_exit(client):
+    """Imported years after Epic collected it: confirming the payoff defaults
+    to its due date, so neither it nor its grant's projected Interest loans
+    compound to the exit."""
+    register_user(client)
+    client.post("/api/grants", json={"year": 2012, "type": "Purchase", "shares": 50_000, "price": 2.0,
+                                     "vest_start": "2013-06-15", "periods": 2,
+                                     "exercise_date": "2012-12-31", "dp_shares": 0})
+    client.post("/api/prices", json={"effective_date": "2012-01-01", "price": 2.0})
+    client.post("/api/prices", json={"effective_date": "2021-01-01", "price": 6.0})
+    loan = client.post("/api/loans?generate_payoff_sale=false", json={
+        "grant_year": 2012, "grant_type": "Purchase", "loan_type": "Purchase", "loan_year": 2012,
+        "amount": 100_000.0, "interest_rate": 0.05, "due_date": "2021-07-15",
+        "disbursed_on": "2012-12-31"}).json()
+
+    unconfirmed = client.get("/api/preview-exit?date=2031-10-01").json()
+    assert unconfirmed["outstanding_accrued_interest"] > 100_000
+
+    sale = client.post(f"/api/loans/{loan['id']}/execute-payoff").json()
+    assert sale["date"] == "2021-07-15" and sale["price_per_share"] == 6.0
+    confirmed = client.get("/api/preview-exit?date=2031-10-01").json()
+    assert confirmed["outstanding_accrued_interest"] == 0
+    assert confirmed["outstanding_principal"] == 0
+    # The 2013-2021 interest went with the 2021 payoff.
+    paid = next(p for p in confirmed["prior_sales"] if p["date"] == "2021-07-15")
+    assert paid["loan_payoff"] > 100_000
+
+
+def test_execute_payoff_takes_the_date_it_was_paid(client):
+    register_user(client)
+    client.post("/api/grants", json={**GRANT_83, "election_83b": True})
+    client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 10.0})
+    loan = client.post("/api/loans?generate_payoff_sale=false", json={
+        "grant_year": 2020, "grant_type": "Purchase", "loan_type": "Purchase", "loan_year": 2020,
+        "amount": 1_000.0, "interest_rate": 0.05, "due_date": "2025-07-15"}).json()
+    future = date(date.today().year + 1, 1, 1).isoformat()
+    assert client.post(f"/api/loans/{loan['id']}/execute-payoff?payoff_date={future}").status_code == 422
+    r = client.post(f"/api/loans/{loan['id']}/execute-payoff?payoff_date=2026-01-15")
+    assert r.status_code == 201 and r.json()["date"] == "2026-01-15"  # an extended loan, paid late
+
+
+def test_a_loan_disbursed_after_a_snapshot_in_the_same_year_does_not_change_it():
+    stop = date(2024, 6, 1)
+    later = _loan(5, 2024, "Purchase", "Purchase", 2024, 100_000.0, 0.20, date(2033, 6, 30), date(2024, 12, 1))
+    a = outstanding_at_stop(project([_purchase_2020()], [], [], today=date(2026, 1, 1), stop=stop))
+    b = outstanding_at_stop(project([_purchase_2020(), later], [], [], today=date(2026, 1, 1), stop=stop))
+    assert a == b

@@ -434,7 +434,7 @@ export const api = {
   deleteLoan: (id: number) => del(`/api/loans/${id}`),
   regenerateAllPayoffSales: () => apiFetch<{ updated: number; created: number; skipped_user_owned: number }>('/api/loans/regenerate-all-payoff-sales', { method: 'POST' }),
   getLoanPayoffSuggestion: (loanId: number, payoffDate?: string) => apiFetch<LoanPayoffSuggestion>(`/api/loans/${loanId}/payoff-sale-suggestion${payoffDate ? `?payoff_date=${payoffDate}` : ''}`),
-  executePayoff: (loanId: number) => apiFetch<SaleEntry>(`/api/loans/${loanId}/execute-payoff`, { method: 'POST' }),
+  executePayoff: (loanId: number, payoffDate?: string) => apiFetch<SaleEntry>(`/api/loans/${loanId}/execute-payoff${payoffDate ? `?payoff_date=${payoffDate}` : ''}`, { method: 'POST' }),
 
   // Loan Payments
   getLoanPayments: (loanId?: number) =>

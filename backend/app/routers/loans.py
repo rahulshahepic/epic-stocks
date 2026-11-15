@@ -464,18 +464,33 @@ def get_payoff_sale_suggestion(loan_id: int, payoff_date: date | None = None, us
 
 
 @router.post("/{loan_id}/execute-payoff", response_model=SaleOut, status_code=201)
-def execute_payoff(loan_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def execute_payoff(
+    loan_id: int,
+    payoff_date: date | None = Query(default=None, description="When it was (or is) paid; not in the future"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """
-    Execute an early loan payoff: compute the suggested sale and persist it.
+    Record a loan's payoff: compute the suggested sale and persist it.
+
+    `payoff_date` is when it was paid. A loan past its due date defaults to
+    that due date — the usual case is that Epic collected it then and the
+    sale simply was never recorded; pass a later date for one that was
+    extended. Otherwise it defaults to today (an early payoff).
     Idempotent — if a payoff sale already exists for this loan, returns it unchanged.
     """
     loan = get_owned(db, Loan, loan_id, user, "Loan")
+    today = date.today()
+    if payoff_date is None:
+        payoff_date = loan.due_date if loan.due_date < today else today
+    if payoff_date > today:
+        raise HTTPException(status_code=422, detail="A payoff can be recorded for today or an earlier date")
 
     existing = db.query(Sale).filter(Sale.loan_id == loan.id, Sale.user_id == user.id).first()
-    if existing and existing.date <= date.today():
+    if existing and existing.date <= today:
         return existing
 
-    suggestion = _compute_payoff_sale(loan, user, db, date.today())
+    suggestion = _compute_payoff_sale(loan, user, db, payoff_date)
     if suggestion["shares"] <= 0 or suggestion["price_per_share"] <= 0:
         raise HTTPException(status_code=400, detail="Loan balance is zero — no sale needed")
 

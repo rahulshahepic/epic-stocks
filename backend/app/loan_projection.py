@@ -187,37 +187,7 @@ def project(
     (a confirmation date); without it, `stop`, else `today`.
     """
     loans = list(loans)
-    if stop:
-        # A snapshot sees only what existed by then: a refinance, an Interest
-        # row, a rate or a loan from a later year must not rewrite an earlier
-        # date.
-        loans = [l for l in loans if _get(l, "loan_year") <= stop.year
-                 and not (_get(l, "loan_type") == "Interest" and date(_get(l, "loan_year") + 1, 1, 1) > stop)]
-        sales = [s for s in sales if _d(_get(s, "date")) <= stop]
-        loan_payments = [lp for lp in loan_payments if _d(_get(lp, "date")) <= stop]
-    rate = assumed_rate if assumed_rate is not None else assumed_rate_from(loans)
-    group_of = _groups(loans)
     grant_by_key = {(g["year"], g["type"]): g for g in grants}
-
-    from app.loan_state import superseded_from_year
-    superseded_in = superseded_from_year(loans)
-
-    settled_on: dict[int, date] = {}
-    for s in sales:
-        lid = _get(s, "loan_id")
-        if lid is not None:
-            sd = _d(_get(s, "date"))
-            settled_on[lid] = min(sd, settled_on.get(lid, sd))
-    payments: dict[int, list] = {}
-    for lp in loan_payments:
-        payments.setdefault(_get(lp, "loan_id"), []).append((_d(_get(lp, "date")), float(_get(lp, "amount"))))
-
-    booked: dict[tuple, int] = {}
-    for l in loans:
-        if _get(l, "loan_type") == "Interest" and _get(l, "id") not in superseded_in:
-            g = group_of(_get(l, "grant_year"), _get(l, "grant_type"))
-            booked[g] = max(booked.get(g, 0), _get(l, "loan_year"))
-
     by_id = {_get(l, "id"): l for l in loans}
 
     def default_start(l, seen=()) -> date:
@@ -242,6 +212,36 @@ def project(
             if ex.year == ly:
                 return ex
         return date(ly, 1, 1)
+
+    if stop:
+        # A snapshot sees only what existed by then — a loan disbursed later
+        # (even the same year), an Interest row not yet booked, a refinance,
+        # sale or payment from after it — so none of them, nor their rates,
+        # can rewrite an earlier date.
+        loans = [l for l in loans if _get(l, "loan_year") <= stop.year and default_start(l) <= stop]
+        sales = [s for s in sales if _d(_get(s, "date")) <= stop]
+        loan_payments = [lp for lp in loan_payments if _d(_get(lp, "date")) <= stop]
+    rate = assumed_rate if assumed_rate is not None else assumed_rate_from(loans)
+    group_of = _groups(loans)
+
+    from app.loan_state import superseded_from_year
+    superseded_in = superseded_from_year(loans)
+
+    settled_on: dict[int, date] = {}
+    for s in sales:
+        lid = _get(s, "loan_id")
+        if lid is not None:
+            sd = _d(_get(s, "date"))
+            settled_on[lid] = min(sd, settled_on.get(lid, sd))
+    payments: dict[int, list] = {}
+    for lp in loan_payments:
+        payments.setdefault(_get(lp, "loan_id"), []).append((_d(_get(lp, "date")), float(_get(lp, "amount"))))
+
+    booked: dict[tuple, int] = {}
+    for l in loans:
+        if _get(l, "loan_type") == "Interest" and _get(l, "id") not in superseded_in:
+            g = group_of(_get(l, "grant_year"), _get(l, "grant_type"))
+            booked[g] = max(booked.get(g, 0), _get(l, "loan_year"))
 
     plist: list[PLoan] = []
     for l in loans:
@@ -281,8 +281,6 @@ def project(
             accrue_from=start, end=end, due=due, group=grp,
             payments=pays, superseded=sup, prepaid=prepaid,
         ))
-    if stop:
-        plist = [p for p in plist if p.accrue_from <= stop]
 
     # Projected Tax loans: future vests of zero-basis grants with no real Tax row.
     if withholding_rate:

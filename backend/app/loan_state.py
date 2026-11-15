@@ -12,7 +12,22 @@ but rows that predate that are still on file, so the predicate has to hold
 rather than assume they are gone.
 """
 
+from datetime import date, datetime
+
 from fastapi import HTTPException
+
+
+def loan_is_drawn(loan, as_of) -> bool:
+    """Explicit disbursement date, with the legacy loan-year fallback."""
+    if as_of is None:
+        return True
+    get = loan.get if isinstance(loan, dict) else lambda k: getattr(loan, k, None)
+    disbursed = get("disbursed_on")
+    if isinstance(disbursed, str):
+        disbursed = date.fromisoformat(disbursed)
+    elif isinstance(disbursed, datetime):
+        disbursed = disbursed.date()
+    return get("loan_year") <= as_of.year and (disbursed is None or disbursed <= as_of)
 
 
 def superseded_from_year(loans) -> dict[int, int]:
@@ -54,10 +69,9 @@ def refinanced_loan_ids(loans, as_of) -> set[int]:
     MCP connector tells a model the only difference between them is early
     payments.
     """
-    first_year = superseded_from_year(loans)
-    if as_of is None:
-        return set(first_year)
-    return {loan_id for loan_id, year in first_year.items() if year <= as_of.year}
+    return set(superseded_from_year(
+        [loan for loan in loans if loan_is_drawn(loan, as_of)]
+    ))
 
 
 def validate_refinance_graph(loans):

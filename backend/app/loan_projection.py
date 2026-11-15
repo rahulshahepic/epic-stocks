@@ -93,6 +93,7 @@ class Projection:
     payoffs: list          # [Payoff], chronological
     stop: date | None
     assumed_rate: float
+    accrued_by_key: dict = field(default_factory=dict)   # interest paid with each loan
 
     @property
     def projected(self) -> list:
@@ -103,6 +104,21 @@ class Projection:
 
     def payoff_for(self, loan_id: int) -> Payoff | None:
         return next((p for p in self.payoffs if p.anchor_id == loan_id), None)
+
+    def early_payoff_extra(self, loan_id: int) -> float:
+        """What repaying this one loan on `stop` owes beyond its balance: its
+        own accrual and, for a purchase loan, the grant's projected Interest
+        loans (Epic's fall due with it) and their accrual. Tax and booked
+        Interest loans of the same grant are not being repaid with it."""
+        loan = next((l for l in self.loans if l.loan_id == loan_id), None)
+        if loan is None:
+            return 0.0
+        extra = self.accrued_by_key.get(loan.key, 0.0)
+        if loan.loan_type == "Purchase":
+            for p in self.loans:
+                if p.projected and p.loan_type == "Interest" and p.group == loan.group and p.end == loan.end:
+                    extra += p.amount + self.accrued_by_key.get(p.key, 0.0)
+        return round(extra, 2)
 
     def orphan_payoffs(self) -> list:
         """Payoffs with no real row to carry them (a projected Tax loan on a
@@ -159,6 +175,7 @@ def project(
     tax_due_dates: dict | None = None,
     loan_payments=(),
     sales=(),
+    settle_on: date | None = None,
 ) -> Projection:
     """Simulate every live loan forward.
 
@@ -166,17 +183,23 @@ def project(
     optional). `grants` are core grant dicts. `prices` are core price dicts.
     `stop` ends every loan on that date, as a full exit does: whatever is owed
     then is paid then. Payoffs at `stop` therefore carry everything still open.
+    `settle_on` is when a past-due, unconfirmed loan is taken to be paid
+    (a confirmation date); without it, `stop`, else `today`.
     """
     loans = list(loans)
     rate = assumed_rate if assumed_rate is not None else assumed_rate_from(loans)
     group_of = _groups(loans)
     grant_by_key = {(g["year"], g["type"]): g for g in grants}
 
-    superseded_in: dict[int, int] = {}
-    for l in loans:
-        t = _get(l, "refinances_loan_id")
-        if t is not None and t != _get(l, "id"):
-            superseded_in[t] = min(superseded_in.get(t, 9999), _get(l, "loan_year"))
+    from app.loan_state import superseded_from_year
+    if stop:
+        # A snapshot sees only what existed by then: a refinance, an Interest
+        # row or a loan from a later year must not rewrite an earlier date.
+        loans = [l for l in loans if _get(l, "loan_year") <= stop.year
+                 and not (_get(l, "loan_type") == "Interest" and date(_get(l, "loan_year") + 1, 1, 1) > stop)]
+        sales = [s for s in sales if _d(_get(s, "date")) <= stop]
+        loan_payments = [lp for lp in loan_payments if _d(_get(lp, "date")) <= stop]
+    superseded_in = superseded_from_year(loans)
 
     settled_on: dict[int, date] = {}
     for s in sales:
@@ -231,6 +254,11 @@ def project(
             end = min(end, date(superseded_in[lid], 1, 1))
         if lid in settled_on:
             end = min(end, settled_on[lid])
+        elif not sup and due < today:
+            # Past due and never confirmed paid: Epic often extends these, so
+            # the debt stays open and keeps accruing until it is settled —
+            # through the exit, or to today for a payoff confirmed now.
+            end = max(due, settle_on or stop or today)
         pays = sorted(payments.get(lid, []))
         prepaid = False
         if pays:
@@ -250,6 +278,8 @@ def project(
             accrue_from=start, end=end, due=due, group=grp,
             payments=pays, superseded=sup, prepaid=prepaid,
         ))
+    if stop:
+        plist = [p for p in plist if p.accrue_from <= stop]
 
     # Projected Tax loans: future vests of zero-basis grants with no real Tax row.
     if withholding_rate:
@@ -304,7 +334,10 @@ def project(
     for p in plist:
         by_group.setdefault(p.group, []).append(p)
     for grp, members in by_group.items():
-        live = [m for m in members if not m.superseded and m.end > m.accrue_from]
+        # A refinanced row keeps accruing up to its refinance: the years before
+        # it still happened. Its interest is capitalised with the group, never
+        # paid out on its own, since the successor carries the debt on.
+        live = [m for m in members if m.end > m.accrue_from]
         if not live:
             continue
         accr: dict[str, float] = {}
@@ -323,10 +356,15 @@ def project(
             still = [m for m in live if m.end >= ye and m.accrue_from < ye]
             stub = not capitalised and all(m.accrue_from > ys for m in still)
             if still and not stub and y > booked.get(grp, 0):
-                amount = sum(accr.pop(m.key, 0.0) for m in still)
+                amount = sum(accr.values())
+                accr.clear()
                 if amount > 0:
                     due = max(purchase_due) if purchase_due and max(purchase_due) >= ye else max(m.due for m in still)
-                    end = min(due, stop) if stop else due
+                    # Due with loans already past due and unconfirmed: owed
+                    # until they are, like them.
+                    end = due if due >= today else max(ye, settle_on or stop or today)
+                    if stop:
+                        end = min(end, stop)
                     p = PLoan(
                         key=f"proj-int:{grp[0]}:{grp[1]}:{y}", loan_id=None, grant_year=grp[0],
                         grant_type=grp[1], loan_type="Interest", loan_year=y, amount=round(amount, 2),
@@ -373,7 +411,8 @@ def project(
         b.projected_principal = round(b.projected_principal, 2)
 
     payoffs = sorted(buckets.values(), key=lambda b: (b.date, b.group))
-    return Projection(loans=plist, payoffs=payoffs, stop=stop, assumed_rate=rate)
+    return Projection(loans=plist, payoffs=payoffs, stop=stop, assumed_rate=rate,
+                      accrued_by_key={k: round(v, 2) for k, v in paid_accrual.items()})
 
 
 def outstanding_at_stop(proj: Projection) -> dict:

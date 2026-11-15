@@ -193,6 +193,9 @@ def compute_timeline(events, initial_price):
             owned_unvested += granted
             if cb == 0:
                 income = granted * price
+            else:
+                # Bought below (or above) that day's price: unrealized from now.
+                vesting_cg = (price - cb) * granted
         elif is_vest and tracked and (cb > 0 or e83 is True):
             owned_unvested -= vs
         elif is_vest and cb == 0:

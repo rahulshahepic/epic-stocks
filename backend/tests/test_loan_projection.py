@@ -431,3 +431,125 @@ def test_a_past_due_payoff_is_not_settled_automatically(client):
     # Confirming it is explicit, and sells today.
     sale = client.post(f"/api/loans/{r.json()['id']}/execute-payoff").json()
     assert sale["date"] == date.today().isoformat()
+
+
+# ── review follow-ups ───────────────────────────────────────────────────────
+
+def _purchase_2020(**kw):
+    return _loan(1, 2020, "Purchase", "Purchase", 2020, 100_000.0, 0.05, date(2032, 12, 31),
+                 date(2020, 1, 1), **kw)
+
+
+def test_a_refinance_keeps_the_interest_of_the_years_before_it():
+    """Refinanced in 2028: 2026 and 2027 still accrue on the old loan."""
+    booked = _loan(2, 2020, "Purchase", "Interest", 2025, 5_000.0, 0.05, date(2032, 12, 31))
+    plain = project([_purchase_2020(), booked], [], [], today=date(2026, 1, 1), assumed_rate=0.05)
+    refi = project([_purchase_2020(), booked,
+                    _loan(3, 2020, "Purchase", "Purchase", 2028, 100_000.0, 0.05, date(2032, 12, 31), ref=1)],
+                   [], [], today=date(2026, 1, 1), assumed_rate=0.05)
+    rows = lambda p: {x.loan_year: x.amount for x in p.projected if x.loan_type == "Interest"}
+    assert rows(refi)[2026] == pytest.approx(rows(plain)[2026]) == pytest.approx(5_250.0)
+    assert rows(refi)[2027] == pytest.approx(rows(plain)[2027])
+    assert rows(refi)[2030] == pytest.approx(rows(plain)[2030], abs=0.01)
+    # The old row is never paid out on its own.
+    assert refi.payoff_for(1) is None
+
+
+def test_a_past_due_unconfirmed_loan_keeps_accruing_to_the_exit():
+    loan = _loan(1, 2020, "Purchase", "Purchase", 2025, 100_000.0, 0.05, date(2026, 1, 1), date(2025, 1, 1))
+    stop = date(2026, 12, 1)
+    proj = project([loan], [], [], today=date(2026, 11, 15), stop=stop, assumed_rate=0.05)
+    out = outstanding_at_stop(proj)
+    # 2025 capitalised on 31 December; 2026 accrues to the exit.
+    assert out["projected_interest"] == pytest.approx(5_000.0, abs=0.01)
+    assert out["accrued"] == pytest.approx(105_000 * 0.05 * _days(date(2026, 1, 1), stop) / 365, abs=0.01)
+    # Nothing is "paid" on the old due date: it is all paid at the exit.
+    assert set(proj.interest_paid_by_year()) == {2026}
+    assert [p.date for p in proj.payoffs] == [stop]
+
+
+def test_a_confirmed_payoff_of_a_past_due_loan_owes_interest_to_the_confirmation(client):
+    register_user(client)
+    client.post("/api/grants", json={**GRANT_83, "election_83b": True})
+    client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 10.0})
+    loan = client.post("/api/loans?generate_payoff_sale=false", json={
+        "grant_year": 2020, "grant_type": "Purchase", "loan_type": "Purchase", "loan_year": 2020,
+        "amount": 1_000.0, "interest_rate": 0.05, "due_date": "2025-07-15",
+        "disbursed_on": "2020-01-01"}).json()
+    at_due = client.get(f"/api/loans/{loan['id']}/payoff-sale-suggestion?payoff_date=2025-07-15").json()
+    now = client.get(f"/api/loans/{loan['id']}/payoff-sale-suggestion?payoff_date={date.today()}").json()
+    assert now["cash_due"] > at_due["cash_due"] > 1_000
+
+
+def test_a_snapshot_ignores_interest_rows_booked_after_it():
+    later = _loan(2, 2020, "Purchase", "Interest", 2025, 1.0, 0.05, date(2032, 12, 31))
+    stop = date(2024, 6, 1)
+    without = outstanding_at_stop(project([_purchase_2020()], [], [], today=date(2026, 1, 1), stop=stop))
+    with_row = outstanding_at_stop(project([_purchase_2020(), later], [], [], today=date(2026, 1, 1), stop=stop))
+    assert without == with_row
+    assert without["projected_interest"] + without["accrued"] > 20_000
+
+
+def test_a_snapshot_ignores_a_refinance_from_a_later_year():
+    stop = date(2024, 6, 1)
+    refi = _loan(3, 2020, "Purchase", "Purchase", 2025, 100_000.0, 0.05, date(2032, 12, 31), ref=1)
+    a = outstanding_at_stop(project([_purchase_2020()], [], [], today=date(2026, 1, 1), stop=stop))
+    b = outstanding_at_stop(project([_purchase_2020(), refi], [], [], today=date(2026, 1, 1), stop=stop))
+    assert a == b
+
+
+def test_an_early_payoff_repays_only_its_own_loan():
+    due = date(2032, 12, 31)
+    loans = [_purchase_2020(), _loan(4, 2020, "Catch-Up", "Tax", 2024, 50_000.0, 0.04, due, date(2024, 6, 15))]
+    stop = date(2026, 6, 30)
+    proj = project(loans, [], [], today=date(2026, 6, 30), stop=stop, assumed_rate=0.05)
+    extra = proj.early_payoff_extra(1)
+    group = proj.payoff_for(1).extra
+    tax_accrual = proj.accrued_by_key["loan:4"]
+    assert tax_accrual > 0
+    assert extra == pytest.approx(group - tax_accrual, abs=0.02)
+
+
+def test_a_purchase_bought_off_the_days_price_shows_the_difference_at_exercise(client):
+    register_user(client)
+    client.post("/api/grants", json={**GRANT_83, "price": 8.0, "election_83b": True})
+    client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 10.0})
+    ex = next(e for e in client.get("/api/events").json() if e["event_type"] == "Exercise")
+    assert ex["vesting_cap_gains"] == 2_000.0 and ex["income"] == 0
+
+
+def test_stale_generated_payoff_sales_are_resized_once(client, db_session):
+    from app.routers.loans import resize_generated_payoff_sales
+    from scaffold.models import Sale
+    loan = _api_account(client)
+    sale = next(s for s in client.get("/api/sales").json() if s["loan_id"] == loan["id"])
+    right = sale["shares"]
+    mine = client.post("/api/sales", json={"date": "2038-01-01", "shares": 7, "price_per_share": 5.0}).json()
+    from scaffold.models import User
+    from tests.conftest import user_key
+    user = db_session.query(User).one()
+
+    def shrink():  # as if sized before projections existed
+        with user_key(user):
+            db_session.get(Sale, sale["id"]).shares = 10
+            db_session.commit()
+    shrink()
+    assert resize_generated_payoff_sales(db_session) == 1
+    assert next(s for s in client.get("/api/sales").json() if s["id"] == sale["id"])["shares"] == right
+    assert next(s for s in client.get("/api/sales").json() if s["id"] == mine["id"])["shares"] == 7
+    shrink()
+    assert resize_generated_payoff_sales(db_session) == 0  # once
+
+
+def test_a_payoff_sale_on_its_due_date_still_carries_a_projected_tax_loan(client):
+    """Sizing a sale for its own due date must not move "today" to that date,
+    or every vest before it stops counting as future and its Tax loan drops."""
+    loan = _api_account(client)
+    client.post("/api/grants", json={"year": 2030, "type": "Free", "shares": 1_000, "price": 0.0,
+                                     "vest_start": "2036-09-30", "periods": 1,
+                                     "exercise_date": "2030-12-31", "dp_shares": 0})
+    s = client.get(f"/api/loans/{loan['id']}/payoff-sale-suggestion").json()
+    event = next(e for e in client.get("/api/events").json()
+                 if e["event_type"] == "Loan Payoff" and e.get("loan_db_id") == loan["id"])
+    assert event["projected_tax_loans"] == pytest.approx(1_000 * 4.0 * 0.52)
+    assert s["cash_due"] == pytest.approx(event["cash_due"], abs=0.01)

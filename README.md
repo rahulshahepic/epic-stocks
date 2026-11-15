@@ -237,7 +237,9 @@ Accrual is actual/365 from the loan's **Disbursed On** date (optional on the Loa
 | Future interest-loan rate | The latest Interest-loan rate on record | Rate on projected Interest and Tax loans |
 | Loan payoff after exit | 0 days | Interest keeps accruing this long after the exit date |
 
-A payoff whose due date has already passed is **not** settled automatically — Epic often extends these loans. The timeline marks it *past due* and **Execute payoff** on the Loans page is the explicit confirmation.
+A payoff whose due date has already passed is **not** settled automatically — Epic often extends these loans. The timeline marks it *past due*, the loan keeps accruing (an exit pays it with everything else), and **Execute payoff** on the Loans page is the explicit confirmation, owing interest up to that day.
+
+A dashboard or exit for a past date counts only what existed then: an Interest loan booked on a later statement, or a later refinance, does not change it. After a change to how payoff sales are sized, the nightly maintenance job re-sizes every account's app-owned future payoff sales once; sales you edited are left alone.
 
 #### Investment interest deduction toggle
 

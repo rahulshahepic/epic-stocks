@@ -124,7 +124,7 @@ def _projected_payoff_extra(loan: Loan, user: User, db: Session, payoff_date) ->
     """The projection's addition to this loan's payoff, on its own due date.
 
     Paying early (execute-payoff, a payoff_date before the due date) stops
-    accrual on that date, so the projection is cut there instead.
+    accrual on that date; paying a past-due loan late accrues to that date.
     """
     from app.routers.events import _user_source_data, _project, _projection_settings, _tax_due_dates
     grants, prices, _loans, loans_db, _ip, _m, _e = _user_source_data(user, db)
@@ -133,12 +133,13 @@ def _projected_payoff_extra(loan: Loan, user: User, db: Session, payoff_date) ->
     ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
     stop = payoff_date if payoff_date and payoff_date < loan.due_date else None
     proj = _project(grants, prices, loans_db, payments, sales, _projection_settings(ts_row),
-                    _tax_due_dates(db), stop=stop)
+                    _tax_due_dates(db), stop=stop, settle_on=payoff_date if payoff_date and payoff_date >= loan.due_date else None)
     if stop is None:
+        # On or after its due date. Past due and unconfirmed, it accrued to
+        # the confirmation date (`today` above), and that is what is owed.
         return proj.extra_for(loan.id)
-    # Early payoff: this loan's group pays what it owes on `stop`.
-    po = proj.payoff_for(loan.id)
-    return po.extra if po is not None and po.date == stop else 0.0
+    # Early payoff repays this loan alone, not the grant's other loans.
+    return proj.early_payoff_extra(loan.id)
 
 
 def _compute_payoff_sale(
@@ -684,6 +685,43 @@ def _regenerate_future_payoff_sales(user: User, db: Session, create_missing: boo
         db.commit()
     return {"updated": updated, "created": created,
             "skipped_user_owned": skipped_user_owned}
+
+
+PAYOFF_RESIZE_MARKER = "payoff_sales_sized:loan_projection_v1"
+
+
+def resize_generated_payoff_sales(db: Session) -> int:
+    """Once per deploy of a payoff-sizing change: re-size every account's
+    app-owned future payoff sales. Sales sized before unbooked interest and
+    tax loans were projected cover too little, and nothing else would touch
+    them until the account's next loan, price or settings write. User-owned
+    sales are left alone, as on every other path. Returns accounts refreshed."""
+    import logging
+    from scaffold.crypto import decrypt_user_key, encryption_enabled, set_current_key
+    from scaffold.models import SystemSettings
+    if db.get(SystemSettings, PAYOFF_RESIZE_MARKER):
+        return 0
+    user_ids = [uid for (uid,) in db.query(Sale.user_id).filter(
+        Sale.is_generated.is_(True), Sale.date >= date.today()).distinct().all()]
+    done = 0
+    for user_id in user_ids:
+        user = db.get(User, user_id)
+        try:
+            if encryption_enabled():
+                if not user or not user.encrypted_key:
+                    continue
+                set_current_key(decrypt_user_key(user.encrypted_key))
+            _regenerate_future_payoff_sales(user, db, create_missing=False)
+            event_cache.schedule_recompute(user_id)
+            done += 1
+        except Exception:
+            db.rollback()
+            logging.getLogger(__name__).exception("Could not re-size payoff sales for user %s", user_id)
+        finally:
+            set_current_key(None)
+    db.add(SystemSettings(key=PAYOFF_RESIZE_MARKER, value=date.today().isoformat()))
+    db.commit()
+    return done
 
 
 @router.post("/regenerate-all-payoff-sales")

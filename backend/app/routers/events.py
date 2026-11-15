@@ -63,13 +63,13 @@ def _projection_settings(ts_row) -> dict:
 
 
 def _project(grants, prices, loans_db, loan_payments, sales, settings: dict, tax_due: dict,
-             stop: date | None = None, today: date | None = None):
+             stop: date | None = None, today: date | None = None, settle_on: date | None = None):
     """The one projection of unbooked interest and tax loans (app/loan_projection.py)."""
     from app.loan_projection import project
     return project(
         loans_db, grants, prices, today=today or date.today(), stop=stop,
         assumed_rate=settings["assumed_rate"], withholding_rate=settings["withholding_rate"],
-        tax_due_dates=tax_due, loan_payments=loan_payments, sales=sales,
+        tax_due_dates=tax_due, loan_payments=loan_payments, sales=sales, settle_on=settle_on,
     )
 
 

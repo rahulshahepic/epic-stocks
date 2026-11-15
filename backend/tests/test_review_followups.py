@@ -12,7 +12,7 @@ import pytest
 from sqlalchemy import inspect as sa_inspect
 
 import schemas
-from app.loan_state import interest_accrual_end_year, refinanced_loan_ids, superseded_from_year
+from app.loan_state import refinanced_loan_ids, superseded_from_year
 from app.routers.events import _compute_outstanding_principal, _live_loans
 from scaffold.models import Sale, User
 
@@ -132,17 +132,15 @@ def test_a_self_pointing_row_supersedes_nothing_under_either_reading():
     assert _compute_outstanding_principal(rows, [], [], date(2030, 1, 1)) == 6432.84
 
 
-def test_interest_accrues_up_to_the_refinance_and_not_past_it():
+def test_a_refinance_is_dated_by_its_own_year():
+    """Interest up to and past the refinance is pinned in test_loan_projection.py."""
     loans = [
         SimpleNamespace(id=1, refinances_loan_id=None, loan_year=2020,
                         due_date=date(2030, 12, 31)),
         SimpleNamespace(id=2, refinances_loan_id=1, loan_year=2024,
                         due_date=date(2035, 12, 31)),
     ]
-    first = superseded_from_year(loans)
-    assert interest_accrual_end_year(loans[0], first) == 2023
-    assert interest_accrual_end_year(loans[1], first) == 2035
-    assert interest_accrual_end_year(loans[0], first, cap_year=2022) == 2022
+    assert superseded_from_year(loans) == {1: 2024}
 
 
 def test_a_loan_the_schedule_replaces_gets_no_payoff_sale(client):

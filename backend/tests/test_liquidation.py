@@ -165,7 +165,9 @@ def test_preview_exit_accrued_interest_nonzero_when_no_interest_loans(client):
 
 
 def test_preview_exit_accrued_interest_zero_when_fully_recorded(client):
-    """When all interest loans are entered, outstanding_accrued_interest is 0."""
+    """When every year through the exit is booked, outstanding_accrued_interest
+    is 0. A row for 2023 counts from 1 January 2024: before then the statement
+    booking it did not exist."""
     register_user(client)
     _seed_with_purchase_loan(client)
     for yr in [2020, 2021, 2022, 2023]:
@@ -175,9 +177,9 @@ def test_preview_exit_accrued_interest_zero_when_fully_recorded(client):
             "due_date": "2030-12-31",
         })
 
-    resp = client.get("/api/preview-exit?date=2023-06-01")
-    data = resp.json()
+    data = client.get("/api/preview-exit?date=2024-01-01").json()
     assert data["outstanding_accrued_interest"] == pytest.approx(0.0)
+    assert client.get("/api/preview-exit?date=2023-06-01").json()["outstanding_accrued_interest"] > 0
 
 
 def test_preview_exit_net_cash_reduced_by_accrued_interest(client):

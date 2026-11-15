@@ -119,3 +119,11 @@ def test_server_formulas_are_still_formulas(tmp_path):
     _, cum = _write_one(tmp_path, _event())
     assert cum.data_type == "f"
     assert cum.value == "=SUM(H$1:H2)"
+
+
+def test_an_83b_cell_holding_a_formula_is_no_answer():
+    """Older workbooks keep a formula in column 9; it must not read as an election."""
+    from app.excel_io import _flag
+    assert _flag("=C2-H2") is None and _flag(None) is None
+    assert _flag(True) is True and _flag("TRUE") is True and _flag(1) is True
+    assert _flag(False) is False and _flag("no") is False

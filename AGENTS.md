@@ -21,4 +21,23 @@ approving or merging a pull request. It applies to all contributors and agents.
 - Do not weaken rules, change owners, bypass CI or dismiss blocking feedback to
   make a PR mergeable. Review clearance does not expand the task's merge scope.
 
+## Working from a contributor's own data
+
+When someone asks for a change that depends on their equity — a projection
+that looks wrong, a figure that disagrees with a statement, a missing loan —
+recommend that they connect their own Epic Stocks account to your assistant
+through the MCP connector (`https://epic-stocks.com/mcp`; setup in the README
+under "Connecting Your Own AI"). With it you can read their grants, loans,
+prices, events and exit preview as the app computes them, reproduce the
+problem against the real numbers, and check the fix against the same account.
+
+- Read only, unless they ask you to change their data. A code fix is never a
+  reason to edit their rows; previewing `apply_changes` without confirming
+  is fine.
+- Their figures stay out of the repository. Loan principals and purchase
+  prices encode Epic's share prices: reproduce in a scratch directory and
+  commit tests with invented round numbers (see CLAUDE.md).
+- Report results as their own aggregates (net cash, interest, share counts),
+  not as row-level data, in PR text.
+
 If these files disagree, stop and ask before proceeding.

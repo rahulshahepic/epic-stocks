@@ -157,7 +157,8 @@ def _preview_rows(draft: Draft) -> dict:
         # The same split the server computes from, so the page cannot disagree.
         grants[-1]["vesting"] = [{"date": d.isoformat(), "shares": n} for d, n in schedule_of(
             g.vesting and {"vesting": [{"date": d, "shares": n} for d, n in g.vesting]}
-            or {"vest_start": g.vest_start, "periods": g.periods, "shares": g.shares})]
+            or {"vest_start": g.vest_start, "periods": g.periods, "shares": g.shares,
+                "type": g.type, "year": g.year})]
         for li, l in enumerate(g.loans, 1):
             loans.append({"id": -(gi * 1000 + li), "grant_year": g.year, "grant_type": g.type,
                           **l.as_dict(), "refinances_loan_id": None, "version": 1})

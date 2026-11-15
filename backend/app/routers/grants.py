@@ -9,7 +9,7 @@ from scaffold.quota import check_row_quota
 from scaffold.auth import get_current_user
 from app import event_cache
 from scaffold.crud import apply_update, get_owned, version_conflict
-from services.vesting import check_schedule, core_grant, epic_split, resplit, schedule_of, set_schedule
+from services.vesting import check_schedule, core_grant, default_split, resplit, schedule_of, set_schedule
 from scaffold.models import GrantVesting
 
 router = APIRouter(prefix="/api/grants", tags=["grants"])
@@ -177,8 +177,8 @@ def _new_grant(body: GrantCreate, user: User, db: Session) -> Grant:
 def _updated_schedule(grant: Grant, body: GrantUpdate):
     """The schedule an edit asks for, or None to keep the stored one.
 
-    Explicit dates win. A first date or count alone re-splits into equal yearly
-    parts. A corrected share count alone keeps the dates — including any moved
+    Explicit dates win. A first date or count alone re-splits by the grant's
+    default schedule (equal yearly parts; 34/33/rest for a three-year bonus). A corrected share count alone keeps the dates — including any moved
     for a leave — and re-splits the shares across them in the same proportions.
     """
     sent = body.model_fields_set
@@ -187,7 +187,8 @@ def _updated_schedule(grant: Grant, body: GrantUpdate):
     if "vesting" in sent and body.vesting:
         rows = [(v.date, v.shares) for v in body.vesting]
     elif sent & {"vest_start", "periods"}:
-        rows = epic_split(shares, body.vest_start or current[0][0], body.periods or len(current))
+        rows = default_split(grant.type, grant.year, shares, body.vest_start or current[0][0],
+                             body.periods or len(current))
     elif body.shares is not None and body.shares != sum(n for _, n in current):
         rows = resplit(current, shares)
     else:

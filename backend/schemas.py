@@ -298,6 +298,7 @@ class LoanCreate(InputModel):
     due_date: date
     loan_number: LoanNumber | None = None
     refinances_loan_id: int | None = None
+    disbursed_on: date | None = None
 
 
 class LoanUpdate(UpdateModel):
@@ -314,6 +315,7 @@ class LoanUpdate(UpdateModel):
     due_date: date | None = None
     loan_number: LoanNumber | None = None
     refinances_loan_id: int | None = None
+    disbursed_on: date | None = None
     version: int | None = None
 
 
@@ -526,6 +528,10 @@ class TaxSettingsRead(InputModel):
     prefer_stock_dp: bool = False
     deduct_investment_interest: bool = False
     deduction_excluded_years: list[int] | None = None
+    tax_withholding_rate: float | None = None
+    projected_loan_rate: float | None = None
+    exit_payoff_lag_days: int = 0
+    default_projected_loan_rate: float | None = None  # virtual: latest Interest-loan rate on record
     taxable_years: list[int] = []  # virtual field; populated by the endpoint
     model_config = {"from_attributes": True}
 
@@ -549,6 +555,9 @@ class TaxSettingsUpdate(UpdateModel):
     prefer_stock_dp: bool | None = None
     deduct_investment_interest: bool | None = None
     deduction_excluded_years: list[int] | None = None
+    tax_withholding_rate: TaxRate | None = None
+    projected_loan_rate: InterestRate | None = None
+    exit_payoff_lag_days: Annotated[int, Field(ge=0, le=365)] | None = None
 
 class LotSummary(InputModel):
     grant_year: int | None

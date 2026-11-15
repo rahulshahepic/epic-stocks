@@ -16,6 +16,7 @@ GRANT = {
     "periods": 4,
     "exercise_date": "2020-01-01",
     "dp_shares": 0,
+    "election_83b": True,
 }
 
 PRICE_INITIAL = {"effective_date": "2020-01-01", "price": 10.0}
@@ -69,6 +70,22 @@ def _setup_basic(client):
     # Create interest loans (skip payoff sale generation)
     client.post("/api/loans?generate_payoff_sale=false", json=INTEREST_LOAN_2021)
     client.post("/api/loans?generate_payoff_sale=false", json=INTEREST_LOAN_2022)
+    _sell(client)
+
+
+def _sell(client):
+    """Realized gains to deduct against. 83(b) lots carry a $10 basis held
+    since 2020-01-01. Each Interest loan is repaid by a sale on its due date
+    ($10 in 2022, so no gain; 250 shares at $20 in 2023, a $2,500 gain), and
+    an ordinary sale at $20 realizes $2,000 in 2022."""
+    loans = {l["loan_year"]: l["id"] for l in client.get("/api/loans").json()}
+    for body in (
+        {"date": "2022-01-01", "shares": 300, "price_per_share": 10.0, "loan_id": loans.get(2021)},
+        {"date": "2022-07-01", "shares": 200, "price_per_share": 20.0},
+        {"date": "2023-01-01", "shares": 250, "price_per_share": 20.0, "loan_id": loans.get(2022)},
+    ):
+        r = client.post("/api/sales", json=body)
+        assert r.status_code == 201, r.text
 
 
 # ----- Tax settings -----
@@ -120,69 +137,53 @@ def test_events_deduction_fields_when_enabled(client):
         assert "adjusted_cum_cap_gains" in e
 
 
-def test_events_deduction_reduces_cap_gains(client):
-    """Interest deduction should reduce cap gains only at Vesting/Sale events, not Share Price."""
+def test_events_deduction_applies_only_to_realized_gains(client):
+    """Vesting and Share Price events are not taxed, so no deduction lands
+    there; it lands on the sales, where gains are realized."""
     _setup_basic(client)
     client.put("/api/tax-settings", json=TAX_SETTINGS_WITH_DEDUCTION)
-
-    resp = client.get("/api/events")
-    assert resp.status_code == 200
-    events = resp.json()
-
-    # Share Price events must never have deduction applied (unrealized gains)
+    events = client.get("/api/events").json()
     for e in events:
-        if e["event_type"] == "Share Price":
-            assert e.get("interest_deduction_applied", 0) == 0, \
-                f"Share Price event {e['date']} should not have deduction applied"
-
-    # At least one Vesting event with vesting_cap_gains > 0 should have deduction applied.
-    # PRICE_RISE is 2022-06-01; vesting events after that date will have cap gains.
-    vesting_with_cg = [
-        e for e in events
-        if e["event_type"] == "Vesting" and e.get("vesting_cap_gains", 0) > 0
-    ]
-    if vesting_with_cg:
-        # The total deduction applied across all vesting events must be > 0
-        total_ded = sum(e.get("interest_deduction_applied", 0) for e in vesting_with_cg)
-        assert total_ded > 0
-        # Each event with deduction: adjusted_total_cap_gains < total_cap_gains
-        for e in vesting_with_cg:
-            if e.get("interest_deduction_applied", 0) > 0:
-                assert e["adjusted_total_cap_gains"] < e["total_cap_gains"]
+        if e["event_type"] in ("Share Price", "Vesting"):
+            assert e.get("interest_deduction_applied", 0) == 0, e
+    on_sales = [e for e in events if e["event_type"] == "Sale"]
+    assert sum(e["interest_deduction_applied"] for e in on_sales) > 0
 
 
-def test_events_deduction_carry_forward(client):
-    """Unused deduction in year X should carry forward and be applied at later Vesting events."""
+def test_83b_vests_carry_no_gain_to_deduct_against(client):
+    """With an 83(b) election, vesting is not a tax event: no vest gain, no
+    income, and with no sales there is nothing for the deduction to offset."""
     register_user(client)
     client.post("/api/grants", json=GRANT)
     client.post("/api/prices", json=PRICE_INITIAL)
-    # No price change in 2022; price change in mid-2023 so vesting events in 2024 have cap gains
-    client.post("/api/prices", json={"effective_date": "2023-03-01", "price": 20.0})
-    # $3000 deductible 2022, $4000 deductible 2023 — total $7000 available by 2023
+    client.post("/api/prices", json=PRICE_RISE)
     client.post("/api/loans?generate_payoff_sale=false", json=INTEREST_LOAN_2021)
-    client.post("/api/loans?generate_payoff_sale=false", json=INTEREST_LOAN_2022)
     client.put("/api/tax-settings", json=TAX_SETTINGS_WITH_DEDUCTION)
+    events = client.get("/api/events").json()
+    vests = [e for e in events if e["event_type"] == "Vesting"]
+    assert vests and all(e["vesting_cap_gains"] == 0 and e["income"] == 0 for e in vests)
+    assert sum(e.get("interest_deduction_applied", 0) for e in events) == 0
+    dash = client.get("/api/dashboard").json()
+    assert dash["tax_savings_from_deduction"] == 0
 
-    resp = client.get("/api/events")
-    assert resp.status_code == 200
-    events = resp.json()
 
-    # Share Price events must still have zero deduction
+def test_events_deduction_carry_forward(client):
+    """Interest is deductible in the year it is paid, against that year's
+    realized gains; what is left carries forward. $3,000 paid in 2022 meets
+    $2,000 of 2022 gains ($1,000 carries); 2023 has $1,000 + $4,000 against
+    $2,500 of gains."""
+    _setup_basic(client)
+    client.put("/api/tax-settings", json=TAX_SETTINGS_WITH_DEDUCTION)
+    events = client.get("/api/events").json()
+    by_year: dict[str, float] = {}
     for e in events:
-        if e["event_type"] == "Share Price":
-            assert e.get("interest_deduction_applied", 0) == 0
-
-    # Total deduction applied across all Vesting events should be
-    # min(total_deductible_pool, total_vesting_cap_gains)
-    total_pool = 3000.0 + 4000.0  # INTEREST_LOAN_2021 + INTEREST_LOAN_2022
-    vesting_cg_total = sum(
-        e.get("vesting_cap_gains", 0) for e in events if e["event_type"] == "Vesting"
-    )
-    expected_deduction = min(total_pool, vesting_cg_total)
-    actual_deduction = sum(
-        e.get("interest_deduction_applied", 0) for e in events if e["event_type"] == "Vesting"
-    )
-    assert abs(actual_deduction - expected_deduction) < 1.0
+        if e.get("interest_deduction_applied"):
+            by_year[e["date"][:4]] = by_year.get(e["date"][:4], 0) + e["interest_deduction_applied"]
+    assert by_year == {"2022": 2000.0, "2023": 2500.0}
+    sale_2022 = next(e for e in events if e["event_type"] == "Sale" and e["date"] == "2022-07-01")
+    # Long-term lots: the deduction offsets long-term gain.
+    assert sale_2022["interest_deduction_on_ltcg"] == 2000.0
+    assert sale_2022["interest_deduction_on_stcg"] == 0
 
 
 def test_events_adjusted_cum_cap_gains_monotone(client):
@@ -303,8 +304,8 @@ def test_events_deduction_skips_excluded_years(client):
     total_ded_all = sum(e.get("interest_deduction_applied", 0) for e in events_all)
     assert total_ded_all > 0, "Deduction should be applied when no years excluded"
 
-    # Now exclude 2022 — vesting events in 2022 should get zero deduction
-    # AND interest due in 2022 is forfeited (not carried forward)
+    # Now exclude 2022 — events in 2022 should get zero deduction
+    # AND interest paid in 2022 is forfeited (not carried forward)
     client.put("/api/tax-settings", json={
         **TAX_SETTINGS_WITH_DEDUCTION,
         "deduction_excluded_years": [2022],
@@ -312,7 +313,7 @@ def test_events_deduction_skips_excluded_years(client):
     resp_excl = client.get("/api/events")
     events_excl = resp_excl.json()
     for e in events_excl:
-        if e.get("event_type") == "Vesting" and e["date"][:4] == "2022":
+        if e["date"][:4] == "2022":
             assert e.get("interest_deduction_applied", 0) == 0, \
                 f"Event in excluded year 2022 should have zero deduction: {e['date']}"
 

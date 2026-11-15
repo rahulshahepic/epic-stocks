@@ -120,6 +120,28 @@ def _payoff_tax_settings(
     return settings
 
 
+def _projected_payoff_extra(loan: Loan, user: User, db: Session, payoff_date) -> float:
+    """The projection's addition to this loan's payoff, on its own due date.
+
+    Paying early (execute-payoff, a payoff_date before the due date) stops
+    accrual on that date; paying a past-due loan late accrues to that date.
+    """
+    from app.routers.events import _user_source_data, _project, _projection_settings, _tax_due_dates
+    grants, prices, _loans, loans_db, _ip, _m, _e = _user_source_data(user, db)
+    payments = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).all()
+    sales = [s for s in db.query(Sale).filter(Sale.user_id == user.id).all() if s.loan_id != loan.id]
+    ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
+    stop = payoff_date if payoff_date and payoff_date < loan.due_date else None
+    proj = _project(grants, prices, loans_db, payments, sales, _projection_settings(ts_row),
+                    _tax_due_dates(db), stop=stop, settle_on=payoff_date if payoff_date and payoff_date >= loan.due_date else None)
+    if stop is None:
+        # On or after its due date. Past due and unconfirmed, it accrued to
+        # the confirmation date (`today` above), and that is what is owed.
+        return proj.extra_for(loan.id)
+    # Early payoff repays this loan alone, not the grant's other loans.
+    return proj.early_payoff_extra(loan.id)
+
+
 def _compute_payoff_sale(
     loan: Loan,
     user: User,
@@ -135,6 +157,11 @@ def _compute_payoff_sale(
         lp.amount for lp in db.query(LoanPayment).filter(LoanPayment.loan_id == loan.id, LoanPayment.date <= payoff_date).all()
     )
     cash_due = max(0.0, loan.amount - early_paid)
+    # What the statements have not booked yet but this payoff will owe:
+    # projected Interest loans, interest since the last 31 December, and
+    # projected Tax loans due the same day (app/loan_projection.py).
+    projected_extra = _projected_payoff_extra(loan, user, db, payoff_date)
+    cash_due += projected_extra
 
     timeline = _build_timeline_for_user(user, db)
     # Use the price at the loan due date, not the final timeline price.
@@ -198,6 +225,7 @@ def _compute_payoff_sale(
         "loan_id": loan.id,
         "notes": f"Auto-generated payoff sale for loan {loan_label}",
         "cash_due": round(cash_due, 2),
+        "projected_extra": round(projected_extra, 2),
     }
 
 
@@ -219,6 +247,12 @@ def _upsert_generated_payoff_sale(
         Sale.loan_id == loan.id, Sale.user_id == user.id,
     ).first()
     if existing and not existing.is_generated:
+        return existing
+    if (payoff_date or loan.due_date) < date.today():
+        # A due date already behind us is not settled automatically: Epic
+        # often extends these loans, and a sale on a past date reads as
+        # something that happened. The timeline marks the payoff
+        # past_due_unconfirmed; execute-payoff is the explicit confirmation.
         return existing
 
     rates = _payoff_tax_settings(user, db, options)
@@ -430,18 +464,33 @@ def get_payoff_sale_suggestion(loan_id: int, payoff_date: date | None = None, us
 
 
 @router.post("/{loan_id}/execute-payoff", response_model=SaleOut, status_code=201)
-def execute_payoff(loan_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def execute_payoff(
+    loan_id: int,
+    payoff_date: date | None = Query(default=None, description="When it was (or is) paid; not in the future"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """
-    Execute an early loan payoff: compute the suggested sale and persist it.
+    Record a loan's payoff: compute the suggested sale and persist it.
+
+    `payoff_date` is when it was paid. A loan past its due date defaults to
+    that due date — the usual case is that Epic collected it then and the
+    sale simply was never recorded; pass a later date for one that was
+    extended. Otherwise it defaults to today (an early payoff).
     Idempotent — if a payoff sale already exists for this loan, returns it unchanged.
     """
     loan = get_owned(db, Loan, loan_id, user, "Loan")
+    today = date.today()
+    if payoff_date is None:
+        payoff_date = loan.due_date if loan.due_date < today else today
+    if payoff_date > today:
+        raise HTTPException(status_code=422, detail="A payoff can be recorded for today or an earlier date")
 
     existing = db.query(Sale).filter(Sale.loan_id == loan.id, Sale.user_id == user.id).first()
-    if existing and existing.date <= date.today():
+    if existing and existing.date <= today:
         return existing
 
-    suggestion = _compute_payoff_sale(loan, user, db, date.today())
+    suggestion = _compute_payoff_sale(loan, user, db, payoff_date)
     if suggestion["shares"] <= 0 or suggestion["price_per_share"] <= 0:
         raise HTTPException(status_code=400, detail="Loan balance is zero — no sale needed")
 
@@ -651,6 +700,61 @@ def _regenerate_future_payoff_sales(user: User, db: Session, create_missing: boo
         db.commit()
     return {"updated": updated, "created": created,
             "skipped_user_owned": skipped_user_owned}
+
+
+PAYOFF_RESIZE_MARKER = "payoff_sales_sized:loan_projection_v1"
+
+
+def resize_generated_payoff_sales(db: Session) -> int:
+    """Once per deploy of a payoff-sizing change: re-size every account's
+    app-owned future payoff sales. Sales sized before unbooked interest and
+    tax loans were projected cover too little, and nothing else would touch
+    them until the account's next loan, price or settings write. User-owned
+    sales are left alone, as on every other path.
+
+    Progress is kept per account (the marker row holds the ids done), so an
+    account that fails — a transient error, or no data key yet — is retried
+    on the next run rather than written off. Returns accounts refreshed."""
+    import json
+    import logging
+    from scaffold.crypto import decrypt_user_key, encryption_enabled, set_current_key
+    from scaffold.models import SystemSettings
+    marker = db.get(SystemSettings, PAYOFF_RESIZE_MARKER)
+    state = json.loads(marker.value) if marker else {"done": []}
+    if state.get("complete"):
+        return 0
+    done_ids = set(state.get("done", []))
+    user_ids = [uid for (uid,) in db.query(Sale.user_id).filter(
+        Sale.is_generated.is_(True), Sale.date >= date.today()).distinct().all()
+        if uid not in done_ids]
+    refreshed = 0
+    pending = False
+    for user_id in user_ids:
+        user = db.get(User, user_id)
+        try:
+            if encryption_enabled():
+                if not user or not user.encrypted_key:
+                    pending = True
+                    continue
+                set_current_key(decrypt_user_key(user.encrypted_key))
+            _regenerate_future_payoff_sales(user, db, create_missing=False)
+            event_cache.schedule_recompute(user_id)
+            done_ids.add(user_id)
+            refreshed += 1
+        except Exception:
+            db.rollback()
+            pending = True
+            logging.getLogger(__name__).exception("Could not re-size payoff sales for user %s", user_id)
+        finally:
+            set_current_key(None)
+    value = json.dumps({"done": sorted(done_ids), "complete": not pending})
+    marker = db.get(SystemSettings, PAYOFF_RESIZE_MARKER)
+    if marker is None:
+        db.add(SystemSettings(key=PAYOFF_RESIZE_MARKER, value=value))
+    else:
+        marker.value = value
+    db.commit()
+    return refreshed
 
 
 @router.post("/regenerate-all-payoff-sales")

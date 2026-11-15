@@ -121,7 +121,7 @@ export function computeCardValues(events: TimelineEvent[] | null, loans: LoanEnt
           .filter(e =>
             e.income > 0 &&
             e.date <= effectiveDate &&
-            ((e.event_type === 'Vesting' && !e.election_83b) || e.event_type === 'Grant')
+            ((e.event_type === 'Vesting' && !e.election_83b) || e.event_type === 'Grant' || e.event_type === 'Exercise')
           )
           .reduce((sum, e) => sum + e.income * incomeRate, 0)
 
@@ -273,7 +273,7 @@ export function computeGrantHoldings(grantsData: GrantEntry[] | null, events: Ti
       .filter(e =>
         e.grant_year === g.year && e.grant_type === g.type &&
         e.income > 0 && e.date <= effectiveDate &&
-        ((e.event_type === 'Vesting' && !e.election_83b) || e.event_type === 'Grant')
+        ((e.event_type === 'Vesting' && !e.election_83b) || e.event_type === 'Grant' || e.event_type === 'Exercise')
       )
       .reduce((sum, e) => sum + e.income * incomeRate, 0)
 
@@ -373,7 +373,7 @@ export function computeBreakdowns(events: TimelineEvent[] | null, loans: LoanEnt
   let incomeTotal = 0
   for (const e of events) {
     if (e.date > effectiveDate) break
-    if (e.income > 0 && ((e.event_type === 'Vesting' && !e.election_83b) || e.event_type === 'Grant')) {
+    if (e.income > 0 && ((e.event_type === 'Vesting' && !e.election_83b) || e.event_type === 'Grant' || e.event_type === 'Exercise')) {
       const key = `${e.grant_year}|${e.grant_type}`
       const grp = incomeByGrant.get(key) ?? {
         key,
@@ -476,7 +476,7 @@ export function computeBreakdowns(events: TimelineEvent[] | null, loans: LoanEnt
     .filter(e =>
       e.income > 0 &&
       e.date <= effectiveDate &&
-      ((e.event_type === 'Vesting' && !e.election_83b) || e.event_type === 'Grant'),
+      ((e.event_type === 'Vesting' && !e.election_83b) || e.event_type === 'Grant' || e.event_type === 'Exercise'),
     )
     .reduce((sum, e) => sum + e.income * incomeRate, 0)
   const cgTaxFromSales = events

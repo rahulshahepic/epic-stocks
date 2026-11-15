@@ -14,6 +14,18 @@ from openpyxl.styles import Font, PatternFill
 # READER
 # ============================================================
 
+def _flag(v):
+    """A yes/no cell, or None when the cell holds something else — older
+    workbooks keep a formula in this column, which is no answer at all."""
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, (int, float)) and v in (0, 1):
+        return bool(v)
+    if isinstance(v, str) and v.strip().lower() in ("true", "yes", "y", "x", "1", "false", "no", "n", "0"):
+        return v.strip().lower() in ("true", "yes", "y", "x", "1")
+    return None
+
+
 def read_grants_from_excel(ws):
     grants = []
     for i in range(2, 100):
@@ -30,7 +42,7 @@ def read_grants_from_excel(ws):
             'periods': int(ws.cell(row=i, column=6).value),
             'exercise_date': ws.cell(row=i, column=7).value,
             'dp_shares': int(ws.cell(row=i, column=8).value or 0),
-            'election_83b': bool(v83b) if v83b is not None else False,
+            'election_83b': _flag(v83b),
         })
     return grants
 

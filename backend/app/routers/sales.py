@@ -538,6 +538,9 @@ def get_tax_settings(user: User = Depends(get_current_user), db: Session = Depen
     for g in grants:
         years |= vest_years(g)
     result.taxable_years = sorted(years)
+    from app.loan_projection import assumed_rate_from
+    result.default_projected_loan_rate = assumed_rate_from(
+        db.query(Loan).filter(Loan.user_id == user.id).all()) or None
     return result
 
 
@@ -554,4 +557,4 @@ def update_tax_settings(body: TaxSettingsUpdate, user: User = Depends(get_curren
     # no longer applies. Same reasoning as the price-change refresh.
     from app.routers.loans import _regenerate_future_payoff_sales
     _regenerate_future_payoff_sales(user, db, create_missing=False)
-    return ts
+    return get_tax_settings(user, db)

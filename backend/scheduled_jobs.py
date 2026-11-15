@@ -36,11 +36,14 @@ def _maintenance(_day: date) -> None:
     from scaffold.oauth.cleanup import prune
 
     _aggregate_old_metrics()
+    from app.routers.loans import resize_generated_payoff_sales
+
     db = database.SessionLocal()
     try:
         _cleanup_epic_past_estimates(db)
         db.commit()
         prune(db)
+        resize_generated_payoff_sales(db)
     finally:
         db.close()
 

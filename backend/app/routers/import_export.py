@@ -430,6 +430,8 @@ def import_excel(
         from app.routers.loans import _compute_payoff_sale
         new_loans = db.query(Loan).filter(Loan.user_id == user.id).all()
         for ln in new_loans:
+            if ln.due_date < date.today():
+                continue  # past due: never settled automatically (see _upsert_generated_payoff_sale)
             try:
                 suggestion = _compute_payoff_sale(ln, user, db)
                 if suggestion["shares"] > 0 and suggestion["price_per_share"] > 0:
@@ -476,7 +478,7 @@ def _add_grant(user_id: int, g: dict, vesting: list, db: Session) -> None:
                   shares=g["shares"], price=g["price"],
                   vest_start=_to_date(g["vest_start"]), periods=g["periods"],
                   exercise_date=_to_date(g["exercise_date"]), dp_shares=g.get("dp_shares", 0),
-                  election_83b=g.get("election_83b", False))
+                  election_83b=bool(g.get("election_83b")))
     rows = ([(_to_date(d), int(n)) for d, n in vesting] if vesting
             else legacy_split(int(g["shares"]), _to_date(g["vest_start"]), int(g["periods"])))
     problem = check_schedule(rows, int(g["shares"]))
@@ -520,6 +522,7 @@ def _save_import_backup(user_id: int, has_schedule: bool, has_prices: bool, has_
                 "amount": ln.amount, "interest_rate": ln.interest_rate,
                 "due_date": str(ln.due_date), "loan_number": ln.loan_number or "",
                 "refinances_loan_number": loan_id_to_num.get(ln.refinances_loan_id, "") if ln.refinances_loan_id else "",
+                "disbursed_on": str(ln.disbursed_on) if ln.disbursed_on else None,
             })
     if has_loans or has_loan_payments:
         for lp in db.query(LoanPayment).filter(LoanPayment.user_id == user_id).all():
@@ -645,6 +648,7 @@ def restore_import_backup(
             loan_type=ln["loan_type"], loan_year=ln["loan_year"],
             amount=ln["amount"], interest_rate=ln["interest_rate"],
             due_date=_to_date(ln["due_date"]), loan_number=ln.get("loan_number", ""),
+            disbursed_on=_to_date(ln["disbursed_on"]) if ln.get("disbursed_on") else None,
         )
         db.add(loan_obj)
         inserted_loans.append((ln, loan_obj))

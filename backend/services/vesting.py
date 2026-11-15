@@ -24,6 +24,23 @@ def epic_split(shares: int, first: date, count: int) -> list[tuple[date, int]]:
     return rows
 
 
+def bonus_split(shares: int, first: date, count: int) -> list[tuple[date, int]]:
+    """34%, 33%, then the rest, each part rounded down — how the 2021-2025
+    bonus agreements word a three-year schedule. Other counts split evenly."""
+    if count != 3:
+        return epic_split(shares, first, count)
+    a, b = shares * 34 // 100, shares * 33 // 100
+    return [(first, a), (first + relativedelta(years=1), b), (first + relativedelta(years=2), shares - a - b)]
+
+
+def default_split(grant_type: str | None, year: int | None, shares: int, first: date,
+                  count: int) -> list[tuple[date, int]]:
+    """The schedule a first date and count become for this kind of grant."""
+    if grant_type == "Bonus" and (year or 0) >= 2021:
+        return bonus_split(shares, first, count)
+    return epic_split(shares, first, count)
+
+
 def legacy_split(shares: int, first: date, count: int) -> list[tuple[date, int]]:
     """The formula the app used before schedules were stored: the remainder
     goes one share at a time to the earliest dates. Only for rows written
@@ -49,8 +66,9 @@ def schedule_of(g) -> list[tuple[date, int]]:
     first, count, shares = get("vest_start"), get("periods"), get("shares")
     if not first or not count:
         return []
-    split = legacy_split if isinstance(g, Grant) else epic_split
-    return split(int(shares or 0), _day(first), int(count))
+    if isinstance(g, Grant):
+        return legacy_split(int(shares or 0), _day(first), int(count))
+    return default_split(get("type"), get("year"), int(shares or 0), _day(first), int(count))
 
 
 def check_schedule(rows: list[tuple[date, int]], shares: int) -> str | None:
@@ -114,6 +132,8 @@ def core_grant(g) -> dict:
         "vesting": [(as_dt(d), n) for d, n in rows],
         "exercise_date": as_dt(_day(get("exercise_date"))),
         "dp_shares": get("dp_shares") or 0,
+        # None (a dict without the flag) keeps core.py's original treatment.
+        "election_83b": None if get("election_83b") is None else bool(get("election_83b")),
     }
 
 

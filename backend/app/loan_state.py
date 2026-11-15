@@ -25,10 +25,11 @@ def superseded_from_year(loans) -> dict[int, int]:
     """
     first_year: dict[int, int] = {}
     for loan in loans:
-        target = loan.refinances_loan_id
-        if target is None or target == loan.id:
+        get = loan.get if isinstance(loan, dict) else lambda k, loan=loan: getattr(loan, k)
+        target = get("refinances_loan_id")
+        if target is None or target == get("id"):
             continue
-        year = loan.loan_year
+        year = get("loan_year")
         if target not in first_year or year < first_year[target]:
             first_year[target] = year
     return first_year
@@ -57,24 +58,6 @@ def refinanced_loan_ids(loans, as_of) -> set[int]:
     if as_of is None:
         return set(first_year)
     return {loan_id for loan_id, year in first_year.items() if year <= as_of.year}
-
-
-def interest_accrual_end_year(loan, first_year: dict[int, int], cap_year: int | None = None) -> int:
-    """Last year `loan` accrues interest on its own principal.
-
-    A refinance moves the principal to its successor, so the old row stops
-    accruing *from the refinance year on* — it does not retroactively stop
-    having accrued. Dropping a superseded loan from the projection entirely
-    erased the interest it really did accrue in the years before the refinance,
-    which is the deduction those years are owed.
-    """
-    end = loan.due_date.year
-    superseded_in = first_year.get(loan.id)
-    if superseded_in is not None:
-        end = min(end, superseded_in - 1)
-    if cap_year is not None:
-        end = min(end, cap_year)
-    return end
 
 
 def validate_refinance_graph(loans):

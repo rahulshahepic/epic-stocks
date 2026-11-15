@@ -17,6 +17,7 @@ from scaffold.oauth.scopes import COMP_READ, EQUITY_READ
 from .accounts import ACCOUNT_PROPERTY, resolve_account
 from .tools import Tool, ToolContext, object_schema, register
 from services.price_state import price_metadata
+from app.loan_state import loan_is_drawn
 
 MAX_EVENTS = 2000
 DEFAULT_EVENT_LIMIT = 500
@@ -297,12 +298,13 @@ def _list_loans(ctx: ToolContext, args: dict):
 
     paid: dict[int, float] = {}
     for payment in payments:
-        paid[payment.loan_id] = paid.get(payment.loan_id, 0.0) + payment.amount
+        if payment.date <= today:
+            paid[payment.loan_id] = paid.get(payment.loan_id, 0.0) + payment.amount
     # `ln.id != ln.refinances_loan_id`: a row pointing at itself supersedes
     # nothing, and reading it as superseded marked a live loan settled.
     successor = {
         ln.refinances_loan_id: ln.id for ln in loans_db
-        if ln.refinances_loan_id and ln.refinances_loan_id != ln.id
+        if ln.refinances_loan_id and ln.refinances_loan_id != ln.id and loan_is_drawn(ln, today)
     }
     settled_by_sale = {s.loan_id for s in sales if s.loan_id is not None and s.date <= today}
 
@@ -315,7 +317,7 @@ def _list_loans(ctx: ToolContext, args: dict):
             loan["status"] = "refinanced"
         elif loan["id"] in settled_by_sale:
             loan["status"] = "settled"
-        elif loan["loan_year"] > today.year:
+        elif not loan_is_drawn(loan, today):
             loan["status"] = "not_yet_drawn"
         else:
             loan["status"] = "outstanding"
@@ -334,7 +336,7 @@ def _list_loans(ctx: ToolContext, args: dict):
             "`status` says whether a loan is still owed. Only `outstanding` rows "
             "carry a balance; `refinanced` ones were settled by the loan named in "
             "`superseded_by_loan_id`, `settled` ones by a sale, and "
-            "`not_yet_drawn` ones start in a later year. Refinance history is "
+            "`not_yet_drawn` ones have a future disbursement date or loan year. Refinance history is "
             "kept, so never total `amount` across rows — that counts one debt "
             "once per link in its chain. total_outstanding nets early payments; "
             "get_dashboard's total_loan_principal is the gross principal of the "

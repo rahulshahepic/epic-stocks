@@ -23,6 +23,7 @@ from schemas import LOAN_TYPES
 
 import openpyxl
 from openpyxl.styles import Font, PatternFill
+from app.loan_state import loan_is_drawn
 from app import event_cache
 from services.price_state import price_values
 from services.vesting import check_schedule, core_grant, legacy_split, schedule_of, set_schedule, vested_by
@@ -1054,7 +1055,7 @@ def export_excel(
     if as_of_date is not None:
         grants_db = [g for g in grants_db if g.exercise_date <= as_of_date]
         kept = {(g.year, g.type) for g in grants_db}
-        loans_db = [ln for ln in loans_db if ln.loan_year <= as_of_date.year
+        loans_db = [ln for ln in loans_db if loan_is_drawn(ln, as_of_date)
                     and (ln.grant_year, ln.grant_type) in kept]
         # A refinance link pointing outside the window resolves to no number
         # through the lookup below, which is built from the loans that survive.
@@ -1231,7 +1232,6 @@ def export_holdings_report(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid date format, use YYYY-MM-DD") from None
 
-    as_of_year = as_of_date.year
 
     grants_db = db.query(Grant).filter(Grant.user_id == user.id).order_by(Grant.year).all()
     loans_db = db.query(Loan).filter(Loan.user_id == user.id).order_by(Loan.due_date).all()
@@ -1339,14 +1339,14 @@ def export_holdings_report(
         # Outstanding loans for this grant
         grant_loans = [ln for ln in loans_db
                        if ln.grant_year == g.year and ln.grant_type == g.type
-                       and ln.loan_year <= as_of_year
+                       and loan_is_drawn(ln, as_of_date)
                        and ln.id not in settled_ids and ln.id not in refinanced_ids]
         total_loan = sum(max(0, ln.amount - early_paid.get(ln.id, 0)) for ln in grant_loans)
 
         # Taxes: tax loans + income tax on vesting
         tax_loans = sum(ln.amount for ln in loans_db
                         if ln.loan_type == "Tax" and ln.grant_year == g.year
-                        and ln.grant_type == g.type and ln.loan_year <= as_of_year)
+                        and ln.grant_type == g.type and loan_is_drawn(ln, as_of_date))
         vesting_income_tax = 0.0
         for ev in timeline:
             ev_date = ev["date"]
@@ -1412,7 +1412,7 @@ def export_holdings_report(
 
     total_balance = 0.0
     active_loans = [ln for ln in loans_db
-                    if ln.loan_year <= as_of_year
+                    if loan_is_drawn(ln, as_of_date)
                     and ln.id not in settled_ids
                     and ln.id not in refinanced_ids]
     for ln in active_loans:

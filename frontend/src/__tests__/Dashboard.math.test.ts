@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import type { GrantEntry, LoanEntry, PriceEntry, SaleEntry, TimelineEvent } from '../api.ts'
 import {
-  computeActiveLoans, computeGrantHoldings, findStalePrice, hasDivergentFuturePrice, lastTimelineDate,
+  computeCardValues, computeActiveLoans, computeGrantHoldings, findStalePrice, hasDivergentFuturePrice, lastTimelineDate,
   loanStateAsOf, maxTimelineDate,
 } from '../app/pages/Dashboard.math.ts'
 
@@ -30,6 +30,34 @@ function event(over: Partial<TimelineEvent> & { date: string }): TimelineEvent {
 
 const PAYMENT = (date: string, loan_id: number, amount: number) =>
   event({ date, event_type: 'Early Loan Payment', loan_id, amount })
+
+describe('dashboard loan disbursement dates', () => {
+  const original = loan({ id: 1 })
+  const future = loan({ id: 2, loan_year: 2026, amount: 20_000, disbursed_on: '2026-11-30' })
+  const timeline = [event({ date: '2026-01-01', share_price: 10 })]
+
+  it.each([
+    ['2026-11-15', 10_000, [1]],
+    ['2026-11-30', 30_000, [1, 2]],
+    ['2026-12-01', 30_000, [1, 2]],
+  ])('uses the draw date on %s in the headline and loan list', (asOf, balance, ids) => {
+    const rows = [original, future]
+    expect(computeCardValues(timeline, rows, [], null, asOf, [])?.total_loan_principal).toBe(balance)
+    expect(computeActiveLoans(rows, timeline, [], asOf)?.map(l => l.id)).toEqual(ids)
+  })
+
+  it('keeps the original debt until a same-year refinance is drawn', () => {
+    const rows = [original, { ...future, refinances_loan_id: original.id }]
+    expect(computeCardValues(timeline, rows, [], null, '2026-11-15', [])?.total_loan_principal).toBe(10_000)
+    expect(computeCardValues(timeline, rows, [], null, '2026-11-30', [])?.total_loan_principal).toBe(20_000)
+  })
+
+  it('keeps the year fallback without an explicit date', () => {
+    const rows = [{ ...future, disbursed_on: null }]
+    expect(computeCardValues(timeline, rows, [], null, '2025-12-31', [])?.total_loan_principal).toBe(0)
+    expect(computeCardValues(timeline, rows, [], null, '2026-01-01', [])?.total_loan_principal).toBe(20_000)
+  })
+})
 
 describe('loanStateAsOf', () => {
   const loans = [

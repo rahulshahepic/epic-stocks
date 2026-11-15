@@ -10,6 +10,7 @@ from app.core import generate_all_events, compute_timeline
 from app.routers.events import (
     _user_source_data, _enrich_timeline, _annotate_sale_taxes,
     _apply_interest_deduction, _last_vesting_date,
+    _project, _projection_settings, _tax_due_dates,
 )
 
 router = APIRouter(prefix="/api/tips", tags=["tips"])
@@ -29,6 +30,7 @@ def _compute_scenario(
     loan_grant_by_id: dict | None = None,
     loan_payoff_method: str | None = None,
     flexible_payoff_enabled: bool = False,
+    projection=None,
 ) -> tuple[float, float]:
     """Return (total_tax, net_cash) for Sale/Liquidation events in the scenario.
 
@@ -38,14 +40,18 @@ def _compute_scenario(
     as they do outside a tip scenario.
     """
     timeline = compute_timeline(generate_all_events(grants, prices, loans), initial_price)
-    enriched = _enrich_timeline(timeline, loans_db, loan_payments, sales, horizon_date=horizon_date)
+    if projection is None:
+        projection = _project(grants, prices, loans_db, loan_payments, sales,
+                              _projection_settings(None), {})
+    enriched = _enrich_timeline(timeline, loans_db, loan_payments, sales,
+                                horizon_date=horizon_date, projection=projection)
     sale_loan_ids = {s.id: s.loan_id for s in sales}
     _annotate_sale_taxes(enriched, timeline, ts_dict,
                          loan_grant_by_id=loan_grant_by_id, loan_payoff_method=loan_payoff_method,
                          lot_selection_method=lot_order, flexible_payoff_enabled=flexible_payoff_enabled,
                          sale_loan_ids=sale_loan_ids)
     if deduct_interest:
-        _apply_interest_deduction(enriched, loans_db, excluded_years=excluded_years)
+        _apply_interest_deduction(enriched, projection.interest_paid_by_year(), excluded_years=excluded_years)
     sale_events = [
         e for e in enriched
         if e.get("event_type") in ("Sale", "Liquidation (projected)")
@@ -81,12 +87,14 @@ def _compute_scenario_tax(
     loan_grant_by_id: dict | None = None,
     loan_payoff_method: str | None = None,
     flexible_payoff_enabled: bool = False,
+    projection=None,
 ) -> float:
     tax, _ = _compute_scenario(
         grants, prices, loans, loans_db, initial_price,
         loan_payments, sales, ts_dict, lot_order, horizon_date, deduct_interest,
         excluded_years=excluded_years, loan_grant_by_id=loan_grant_by_id,
         loan_payoff_method=loan_payoff_method, flexible_payoff_enabled=flexible_payoff_enabled,
+        projection=projection,
     )
     return tax
 
@@ -107,6 +115,8 @@ def get_tips(user: User = Depends(get_current_user), db: Session = Depends(get_d
     flexible_payoff_enabled = _is_flexible_payoff_enabled(db)
     loan_grant_by_id = {ln.id: (ln.grant_year, ln.grant_type) for ln in loans_db}
     loan_payoff_method = ts_row.loan_payoff_method
+    projection = _project(grants, prices, loans_db, loan_payments, sales,
+                          _projection_settings(ts_row), _tax_due_dates(db))
     db.close()
 
     ts_dict = {
@@ -139,6 +149,7 @@ def get_tips(user: User = Depends(get_current_user), db: Session = Depends(get_d
         ts_dict, current_lot, scenario_horizon, current_deduct,
         excluded_years=current_excl, loan_grant_by_id=loan_grant_by_id,
         loan_payoff_method=loan_payoff_method, flexible_payoff_enabled=flexible_payoff_enabled,
+        projection=projection,
     )
     baseline = baseline_tax  # used by tips 2 & 3
 
@@ -149,7 +160,7 @@ def get_tips(user: User = Depends(get_current_user), db: Session = Depends(get_d
         this_year = date.today().year
         # Compute savings from deduction applied only to current + future years
         timeline_for_tip = compute_timeline(generate_all_events(grants, prices, loans), initial_price)
-        enriched_for_tip = _enrich_timeline(timeline_for_tip, loans_db, loan_payments, sales, horizon_date=scenario_horizon)
+        enriched_for_tip = _enrich_timeline(timeline_for_tip, loans_db, loan_payments, sales, horizon_date=scenario_horizon, projection=projection)
         sale_loan_ids_for_tip = {s.id: s.loan_id for s in sales}
         _annotate_sale_taxes(enriched_for_tip, timeline_for_tip, ts_dict,
                              loan_grant_by_id=loan_grant_by_id, loan_payoff_method=loan_payoff_method,
@@ -162,7 +173,7 @@ def get_tips(user: User = Depends(get_current_user), db: Session = Depends(get_d
         past_years = sorted(y for y in vest_years if y < this_year)
         excl_set = set(past_years)
         # Apply deduction only to non-excluded (current + future) years
-        _apply_interest_deduction(enriched_for_tip, loans_db, excluded_years=excl_set)
+        _apply_interest_deduction(enriched_for_tip, projection.interest_paid_by_year(), excluded_years=excl_set)
         stcg_rate = ts_dict["federal_st_cg_rate"] + ts_dict["niit_rate"] + ts_dict["state_st_cg_rate"]
         ltcg_rate = ts_dict["federal_lt_cg_rate"] + ts_dict["niit_rate"] + ts_dict["state_lt_cg_rate"]
         savings = round(sum(
@@ -199,6 +210,7 @@ def get_tips(user: User = Depends(get_current_user), db: Session = Depends(get_d
             ts_dict, lot_method, scenario_horizon, current_deduct,
             excluded_years=current_excl, loan_grant_by_id=loan_grant_by_id,
             loan_payoff_method=loan_payoff_method, flexible_payoff_enabled=flexible_payoff_enabled,
+            projection=projection,
         )
         savings = round(baseline - new_tax, 2)
         if savings > best_savings:

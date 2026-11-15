@@ -1,4 +1,4 @@
-import { refinancedLoanIds } from '../loanState.ts'
+import { loanIsDrawn, refinancedLoanIds } from '../loanState.ts'
 import type {
   GrantEntry, GrantHoldingShares, LoanEntry, PriceEntry, SaleEntry, TaxSettings, TimelineEvent,
 } from '../../api.ts'
@@ -34,11 +34,10 @@ export function loanStateAsOf(loans: LoanEntry[], events: TimelineEvent[], sales
       earlyPaidByLoan.set(e.loan_id, (earlyPaidByLoan.get(e.loan_id) ?? 0) + (e.amount ?? 0))
     }
   }
-  const asOfYear = parseInt(asOf.slice(0, 4), 10)
   return {
     earlyPaidByLoan,
     /** Issued by this date, and neither settled nor refinanced away. */
-    isOutstanding: (l: LoanEntry) => l.loan_year <= asOfYear && !settledIds.has(l.id) && !refinancedIds.has(l.id),
+    isOutstanding: (l: LoanEntry) => loanIsDrawn(l, asOf) && !settledIds.has(l.id) && !refinancedIds.has(l.id),
     /** What is left on a loan after any early payments. Never negative. */
     balanceOf: (l: LoanEntry) => Math.max(0, l.amount - (earlyPaidByLoan.get(l.id) ?? 0)),
     /** What a payoff sale actually cleared, for a sale that names a loan. */
@@ -126,20 +125,8 @@ export function computeCardValues(events: TimelineEvent[] | null, loans: LoanEnt
           .reduce((sum, e) => sum + e.income * incomeRate, 0)
 
   // Outstanding loan principal just before (or at) the liq date, ignoring the virtual liq sale
-  const outstandingPrincipal = (() => {
-    const refDate = effectiveDate
-    const refYear = parseInt(refDate.slice(0, 4), 10)
-    const settledIds = new Set(
-      (sales ?? []).filter(s => s.loan_id !== null && s.date <= refDate).map(s => s.loan_id)
-    )
-    const refinancedIds = refinancedLoanIds(loans, refDate)
-    const earlyPaidByLoan = new Map<number, number>()
-    events.filter(e => e.event_type === 'Early Loan Payment' && e.date <= refDate && e.loan_id != null)
-      .forEach(e => { earlyPaidByLoan.set(e.loan_id!, (earlyPaidByLoan.get(e.loan_id!) ?? 0) + (e.amount ?? 0)) })
-    return loans
-      .filter(l => l.loan_year <= refYear && !settledIds.has(l.id) && !refinancedIds.has(l.id))
-      .reduce((sum, l) => sum + Math.max(0, l.amount - (earlyPaidByLoan.get(l.id) ?? 0)), 0)
-  })()
+  const outstandingPrincipal = loans.filter(loanState.isOutstanding)
+    .reduce((sum, l) => sum + loanState.balanceOf(l), 0)
 
   // Map sale_id -> estimated_tax from timeline events so we can subtract it below
   const saleTaxBySaleId = new Map<number, number>()

@@ -5,7 +5,7 @@ from app.sales_engine import build_fifo_lots
 
 def dashboard_details(payload, cutoff, *, grants=(), timeline=(), next_timeline=None, holdings_timeline=(),
                       holdings=(), live_loans=(), loans=(), payments=None, sales=(), sale_results=None,
-                      projection=None, price_rows=(), today=None):
+                      projection=None, price_rows=()):
     payments, sale_results = payments or {}, sale_results or {}
     events = [e for e in timeline if to_date(e['date']) <= cutoff]
     following = next((e for e in (timeline if next_timeline is None else next_timeline)
@@ -14,13 +14,13 @@ def dashboard_details(payload, cutoff, *, grants=(), timeline=(), next_timeline=
                     for k, v in following.items() if k != 'source'} if following else None)
     if next_detail:
         # The next event's money rests on the price in effect on its date; say
-        # whether that price is still the user's estimate and when Epic is
-        # expected to announce the real one.
+        # whether that price was still an estimate as of the viewed date and
+        # when Epic is expected to announce the real one.
         from services.price_state import price_metadata
         when = to_date(next_detail['date'])
         row = next((p for p in reversed(price_rows) if p.effective_date <= when), None)
         if row is not None:
-            next_detail.update(price_metadata(row, today))
+            next_detail.update(price_metadata(row, cutoff))
     settled = {s.loan_id for s in sales if s.loan_id is not None and s.date <= cutoff}
     active = []
     for loan in live_loans:

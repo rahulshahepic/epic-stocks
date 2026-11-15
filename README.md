@@ -1524,6 +1524,12 @@ Price entry and tentative announcement on mobile:
 ![Share prices](screenshots/prices-light-mobile.png)
 ![Tentative price entry](screenshots/prices-tentative-light-mobile.png)
 
+An estimated price change as the next dashboard event, viewed the day before it applies:
+
+| Mobile | Desktop |
+|--------|---------|
+| ![Estimated next price change, mobile](screenshots/dashboard-estimated-price-light-mobile.png) | ![Estimated next price change, desktop](screenshots/dashboard-estimated-price-light-desktop.png) |
+
 Diagnostic implementation: `backend/services/diagnostics.py` defines safe event envelopes and bounded host/scheduler reads; `backend/services/diagnostic_sources.py` reads fixed GitHub/Cloudflare endpoints; `ops/collect_diagnostics.py` and `ops/systemd/epic-stocks-diagnostics.*` collect host metadata outside the app. The deploy workflow installs the collector under `/usr/local/lib/epic-stocks/` and mounts its output directory read-only. Diagnostics installation failures warn without blocking the app release, and first collection is asynchronous. `vars.APP_ENV` overrides the branch default (`main` → production; other refs, including manual feature-branch dispatches → staging); the collector reads that same resolved environment. Container images carry `org.opencontainers.image.revision` for correlation.
 
 Off-site backups: `ops/backup_database.py` streams `pg_dump` through `age` to Cloudflare R2 nightly, with `.secrets/` minus the KEK. `ops/install_backup.sh` installs the timer, settings watcher, `age` and stdlib-only `services/backup_protocol.py`. `services/backup_admin.py` and `scaffold/routers/backups.py` implement the Admin status/settings API; `Backups.tsx` renders the controls. The app can write only the non-secret handoff directory, while the collector snapshot is mounted read-only and R2 credentials remain host-only. Saving settings or requesting a run triggers a fixed systemd service via a path unit, without exposing Docker, systemd, credentials or arbitrary commands to the web container. Admin settings survive redeploys and override deployment defaults. The same script lists and fetches runs for a restore. See [OPERATIONS.md §6](OPERATIONS.md#6-backups); tests in `test_backup.py`, `test_backup_admin.py`, `Backups.test.tsx` and `admin-backups.spec.ts`.

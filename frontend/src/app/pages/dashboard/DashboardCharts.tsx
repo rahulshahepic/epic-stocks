@@ -14,10 +14,10 @@ import { fmt$, fmtDate, fmtFullDate } from '../../format.ts'
 import type {
   PriceEntry, TimelineEvent,
 } from '../../../api.ts'
-import type { DashboardSnapshot } from '../Dashboard.types.ts'
+import type { DashboardChartsData } from '../Dashboard.types.ts'
 
 function TaxChart({ rows, c, range }: {
-  rows: DashboardSnapshot['charts']['tax']; c: ChartColors; range: DateRange
+  rows: DashboardChartsData['charts']['tax']; c: ChartColors; range: DateRange
 }) {
   const [selected, setSelected] = useState<number | null>(null)
   const data = useMemo(() => filterByDateRange(rows, range, 'date').map((row, i) => ({
@@ -67,7 +67,7 @@ function TaxChart({ rows, c, range }: {
   )
 }
 
-function InterestChart({ rows, c, range }: { rows: DashboardSnapshot['charts']['interest']; c: ChartColors; range: DateRange }) {
+function InterestChart({ rows, c, range }: { rows: DashboardChartsData['charts']['interest']; c: ChartColors; range: DateRange }) {
   const [selected, setSelected] = useState<number | null>(null)
   const data = useMemo(() => rows.map(row => ({
     _date: row.date, _label: row.date.slice(0, 4), guaranteed: row.recorded, projected: row.projected || null,
@@ -155,7 +155,7 @@ export function DashboardCharts({
 }: {
   events: TimelineEvent[] | null
   prices: PriceEntry[] | null
-  dash: DashboardSnapshot
+  dash: DashboardChartsData
   c: ChartColors
   range: DateRange
   setRange: (r: DateRange) => void

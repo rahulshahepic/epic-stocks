@@ -200,8 +200,10 @@ class TestSharedAccess:
             assert own.json() == shared.json()
             assert shared.json()['as_of'] == '2025-06-30'
             assert shared.json()['cards']['total_stock_value'] > 0
+            assert alice.get('/api/dashboard/charts').json() == bob.get(f'/api/sharing/view/{inv_id}/dashboard/charts').json()
             alice.delete(f'/api/sharing/invite/{inv_id}')
             assert bob.get(f'/api/sharing/view/{inv_id}/dashboard?as_of=2025-06-30').status_code == 404
+            assert bob.get(f'/api/sharing/view/{inv_id}/dashboard/charts').status_code == 404
         finally:
             bob_cm.__exit__(None, None, None)
 

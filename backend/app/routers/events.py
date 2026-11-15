@@ -1,10 +1,11 @@
+from app.tax_settings import tax_settings_or_defaults
 from app.loan_state import loan_is_drawn, refinanced_loan_ids as _refinanced_loan_ids
 from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 
 from database import get_db
-from scaffold.models import User, Grant, Loan, Price, LoanPayment, Sale, TaxSettings
+from scaffold.models import User, Grant, Loan, Price, LoanPayment, Sale
 from scaffold.auth import get_current_user
 from services.timeline_cache import get_timeline
 from app.sales_engine import compute_sale_tax
@@ -692,7 +693,7 @@ def _projected_events(user: User, db: Session, *, horizon_date=None, deduction_e
     timeline = get_timeline(user.id, grants, prices, loans, initial_price)
     loan_payments = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).order_by(LoanPayment.date).all()
     sales = db.query(Sale).filter(Sale.user_id == user.id).all()
-    ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
+    ts_row = tax_settings_or_defaults(user, db)
     ts_dict = _ts_dict(ts_row)
     from app.routers.loans import _is_flexible_payoff_enabled
     flexible_payoff_enabled = _is_flexible_payoff_enabled(db)
@@ -741,7 +742,7 @@ def preview_deduction(
     db: Session = Depends(get_db),
 ):
     """Compute investment interest deduction impact without saving the setting."""
-    ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
+    ts_row = tax_settings_or_defaults(user, db)
     if not ts_row:
         return None
     excl = set(ts_row.deduction_excluded_years or [])
@@ -834,10 +835,20 @@ def _get_events_data(user: User, db: Session) -> list:
     return [_serialize_event(e) for e in enriched]
 
 
+def _get_dashboard_charts_data(user, db):
+    data = _get_dashboard_data(user, db, as_of=date.today(), include_details=True)
+    return {'charts': data['charts'], 'loan_payment_by_year': data.get('loan_payment_by_year', [])}
+
+
+@router.get('/dashboard/charts')
+def get_dashboard_charts(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return _get_dashboard_charts_data(user, db)
+
+
 @router.get("/dashboard")
-def get_dashboard(as_of: date | None = Query(None), user: User = Depends(get_current_user),
+def get_dashboard(as_of: date | None = Query(None), include_charts: bool = Query(True), user: User = Depends(get_current_user),
                   db: Session = Depends(get_db)):
-    return _get_dashboard_data(user, db, as_of=as_of, include_details=as_of is not None)
+    return _get_dashboard_data(user, db, as_of=as_of, include_details=as_of is not None, include_charts=include_charts)
 
 
 def _as_of_view(payload: dict, as_of: date, timeline: list) -> dict:
@@ -872,7 +883,7 @@ def _as_of_view(payload: dict, as_of: date, timeline: list) -> dict:
     return payload
 
 
-def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, include_details=False) -> dict:
+def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, include_details=False, include_charts=True) -> dict:
     """Shared accounting for HTTP, shared views and MCP. Dated HTTP snapshots
     include server-prepared cards and breakdowns; undated callers retain their
     legacy cumulative fields. Position fields always use the requested cutoff.
@@ -941,22 +952,13 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, i
         if include_details:
             from app.dashboard_view import dashboard_details
             return {**empty, 'as_of': cutoff.isoformat(), **dashboard_details(empty, cutoff),
-                    'charts': {'tax': [], 'interest': []}}
+                    **({'charts': {'tax': [], 'interest': []}} if include_charts else {})}
         return _as_of_view(empty, as_of, []) if as_of is not None else empty
 
     timeline = get_timeline(user.id, grants, prices, loans, initial_price)
 
     # Add estimated tax from Sale events (FIFO, chronological order)
-    ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
-    if ts_row is None:
-        from types import SimpleNamespace
-        from app.routers.loans import _get_tax_settings_dict
-        ts_row = SimpleNamespace(**{
-            **_get_tax_settings_dict(user, db),
-            'loan_payoff_method': 'epic_lifo', 'lot_selection_method': 'lifo',
-            'deduct_investment_interest': False, 'deduction_excluded_years': None,
-            'projected_loan_rate': None, 'tax_withholding_rate': None, 'exit_payoff_lag_days': 0,
-        })
+    ts_row = tax_settings_or_defaults(user, db)
     proj_settings = _projection_settings(ts_row)
     tax_due = _tax_due_dates(db)
     projection = _project(grants, prices, loans_db, loan_payments_db, sales_db, proj_settings, tax_due)
@@ -1137,7 +1139,7 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, i
         # the same enriched/taxed event services as /events, including sales
         # between core events and per-sale lot/rate overrides.
         chart_events = _enrich_timeline(timeline, loans_db, loan_payments_db, sales_db, projection=projection)
-        if ts_row:
+        if include_charts:
             overrides, sale_loan_ids, lot_overrides = _sale_overrides(sales_db, ts_row)
             _annotate_sale_taxes(chart_events, timeline, _ts_dict(ts_row),
                                  loan_grant_by_id=loan_grant_by_id, loan_payoff_method=loan_payoff_method,
@@ -1152,6 +1154,7 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, i
                                     holdings_timeline=holdings_timeline, holdings=holdings,
                                     live_loans=live_loans, loans=loans_db, payments=payments_by_loan,
                                     sales=sales_db, sale_results=results, projection=snapshot_projection)
-        charts = dashboard_chart_data(chart_events, loans_db, _ts_dict(ts_row), projection, today)
-        return {**payload, 'as_of': cutoff.isoformat(), **details, 'charts': charts}
+        if include_charts:
+            details['charts'] = dashboard_chart_data(chart_events, loans_db, _ts_dict(ts_row), projection, today)
+        return {**payload, 'as_of': cutoff.isoformat(), **details}
     return _as_of_view(payload, as_of, timeline) if as_of is not None else payload

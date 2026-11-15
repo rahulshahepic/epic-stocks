@@ -47,5 +47,10 @@ export interface DashboardSnapshot extends DashboardData {
   grant_holdings: GrantHolding[]
   active_loans: ActiveLoan[]
   breakdowns: Breakdowns
-  charts: {tax: {date: string; estimated: number; paid: number; projected: boolean}[]; interest: {date: string; recorded: number; projected: number}[]}
+  charts?: {tax: {date: string; estimated: number; paid: number; projected: boolean}[]; interest: {date: string; recorded: number; projected: number}[]}
+}
+
+export interface DashboardChartsData {
+  charts: NonNullable<DashboardSnapshot['charts']>
+  loan_payment_by_year: DashboardData['loan_payment_by_year']
 }

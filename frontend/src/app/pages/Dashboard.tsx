@@ -12,7 +12,7 @@ import {
 } from './Dashboard.math.ts'
 import { api, apiFetchBlob } from '../../api.ts'
 import type { TimelineEvent, PriceEntry, LoanEntry, TaxSettings, ExitPreview, DeductionPreview } from '../../api.ts'
-import type { DashboardSnapshot } from './Dashboard.types.ts'
+import type { DashboardSnapshot, DashboardChartsData } from './Dashboard.types.ts'
 import { platform } from '../../platform/index.ts'
 import ExitBreakdownCard from '../components/ExitBreakdownCard.tsx'
 import { useApiData } from '../hooks/useApiData.ts'
@@ -122,6 +122,12 @@ export default function Dashboard() {
   }), [vid, snapshotDate])
   const { data: dash, loading: dashLoading, error: dashError, reload: reloadDash } = useApiData<DashboardSnapshot & {viewId: number}>(fetchDashboard)
   const snapshot = !dashLoading && !dashError && dash?.as_of === cardDate && dash.viewId === (vid ?? 0) ? dash : null
+  const fetchCharts = useCallback(async () => ({
+    ...await (vid ? api.getSharedDashboardCharts(vid) : api.getDashboardCharts()),
+    viewId: vid ?? 0,
+  }), [vid])
+  const { data: chartData, error: chartsError, reload: reloadCharts } = useApiData<DashboardChartsData & {viewId: number}>(fetchCharts)
+  const charts = !chartsError && chartData?.viewId === (vid ?? 0) ? chartData : null
   const [exitBreakdownOpen, setExitBreakdownOpen] = useState(false)
   const [openBreakdowns, setOpenBreakdowns] = useState<Set<string>>(() => {
     try {
@@ -209,6 +215,7 @@ export default function Dashboard() {
       }
       await api.updateTaxSettings(update)
       reloadDash()
+      reloadCharts()
       reloadEvents()
       reloadTaxSettings()
     } finally {
@@ -410,7 +417,7 @@ export default function Dashboard() {
       {events && <StockJourney events={events} asOf={cardDate} />}
 
       <div className="grid gap-3 lg:grid-cols-2">
-        {!readOnly && <TipCarousel onApply={() => { reloadDash(); reloadEvents(); reloadTaxSettings() }} />}
+        {!readOnly && <TipCarousel onApply={() => { reloadDash(); reloadCharts(); reloadEvents(); reloadTaxSettings() }} />}
         {stalePrice && <StalePriceBanner latest={stalePrice} readOnly={readOnly} />}
       </div>
 
@@ -539,8 +546,9 @@ export default function Dashboard() {
         )
       })()}
 
-      {snapshot && <DashboardCharts
-        events={events} prices={prices} dash={snapshot} c={c}
+      {chartsError && <p role="alert" className="text-sm text-cs-muted">Could not load charts. <button type="button" onClick={reloadCharts} className="underline">Retry charts</button></p>}
+      {charts && <DashboardCharts
+        events={events} prices={prices} dash={charts} c={c}
         range={range} setRange={setRange}
         rangeInterest={rangeInterest} setRangeInterest={setRangeInterest}
         rangeLoan={rangeLoan} setRangeLoan={setRangeLoan}

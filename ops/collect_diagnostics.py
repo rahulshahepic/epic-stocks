@@ -89,8 +89,16 @@ def collect(environment, output, backup_status=BACKUP_STATUS):
     scheduler_fields = dict(line.split("=", 1) for line in (scheduler_raw or "").splitlines() if "=" in line)
     scheduler_result = scheduler_fields.get("Result")
     scheduler_ran = scheduler_fields.get("ExecMainStartTimestampMonotonic", "0") != "0"
-    scheduler = ("scheduler_succeeded" if scheduler_ran and scheduler_result == "success" and scheduler_fields.get("ActiveState") == "inactive" else
+    scheduler_active = scheduler_fields.get("ActiveState")
+    old_states = previous.get("states", {})
+    if not isinstance(old_states, dict):
+        old_states = {}
+    old_scheduler = old_states.get("scheduler")
+    # A sample taken mid-run keeps the last finished result; TimeoutStartSec turns a hung run into a failure.
+    scheduler = ("scheduler_succeeded" if scheduler_ran and scheduler_result == "success" and scheduler_active == "inactive" else
                  "scheduler_failed" if scheduler_ran and scheduler_result in {"exit-code", "timeout", "signal", "core-dump", "resources", "oom-kill", "start-limit-hit"}
+                 else old_scheduler if scheduler_active in {"activating", "active", "deactivating"}
+                 and old_scheduler in {"scheduler_succeeded", "scheduler_failed"}
                  else "scheduler_unavailable")
     usage = shutil.disk_usage(output.parent)
     disk = "disk_pressure" if usage.used / usage.total >= .9 else "disk_recovered"
@@ -103,9 +111,6 @@ def collect(environment, output, backup_status=BACKUP_STATUS):
     states["backup_retention"] = ("backup_retention_failed" if backup and backup.get("prune_error")
                                   else "backup_retention_ok" if backup and backup.get("last_result") == "success"
                                   else "backup_retention_unavailable")
-    old_states = previous.get("states", {})
-    if not isinstance(old_states, dict):
-        old_states = {}
     for component, code in states.items():
         if old_states.get(component) != code:
             event_code = ("scheduler_recovered" if code == "scheduler_succeeded" and old_states.get(component) == "scheduler_failed"

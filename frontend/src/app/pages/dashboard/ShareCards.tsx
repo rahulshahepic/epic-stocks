@@ -14,6 +14,8 @@ export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakd
   toggleBreakdown: (key: string) => void
 }) {
   const today = useToday()
+  const next = cv.next_event_detail
+  const estimatedPriceChange = next?.event_type === 'Share Price' && !!next.price_is_estimate
   return (
     <section className="space-y-3">
       <p className="text-[11px] font-semibold uppercase tracking-wide text-cs-muted">Your Shares</p>
@@ -56,9 +58,11 @@ export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakd
         />
         <Card
           label="Next Event"
-          value={cv.next_event ? `${cv.next_event.date} — ${cv.next_event.event_type}` : 'None'}
+          value={cv.next_event ? `${cv.next_event.date} — ${cv.next_event.event_type}${estimatedPriceChange ? ' (est.)' : ''}` : 'None'}
           variant="event"
-          subtitle="Your next vesting or price date"
+          subtitle={estimatedPriceChange
+            ? `Estimated price; announcement expected ~${next?.expected_announcement_date ? fmtFullDate(next.expected_announcement_date) : 'later'}`
+            : 'Your next vesting or price date'}
           onClick={cv.next_event_detail ? () => toggleBreakdown('nextEvent') : undefined}
           expanded={openBreakdowns.has('nextEvent')}
           className="col-span-2 sm:col-span-1"
@@ -78,7 +82,10 @@ export function ShareCards({ cv, cardDate, grantHoldings, totalValue, openBreakd
             <BreakdownRow label="Granted shares" value={fmtNum(cv.next_event_detail.granted_shares)} />
           )}
           {!!cv.next_event_detail.share_price && (
-            <BreakdownRow label="Share price" value={fmtPrice(cv.next_event_detail.share_price)} />
+            <BreakdownRow label="Share price" value={fmtPrice(cv.next_event_detail.share_price) + (cv.next_event_detail.price_is_estimate ? ' (est.)' : '')} />
+          )}
+          {cv.next_event_detail.price_is_estimate && cv.next_event_detail.expected_announcement_date && (
+            <BreakdownRow label="Announcement expected" value={fmtFullDate(cv.next_event_detail.expected_announcement_date)} />
           )}
           {!!cv.next_event_detail.income && (
             <BreakdownRow label="Income" value={fmt$(cv.next_event_detail.income)} />

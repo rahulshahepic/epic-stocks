@@ -99,7 +99,8 @@ def update_price(price_id: int, body: PriceUpdate, user: User = Depends(get_curr
         state = price_values(body.model_dump(exclude_unset=True), price)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
-    if state["announced_date"] != price.announced_date:
+    if (state["expected_announcement_date"] != price.expected_announcement_date
+            or (state["is_estimate"] and not price.is_estimate)):
         price.announcement_notified_at = None
     updates = apply_update(price, body)
     for key, value in state.items():

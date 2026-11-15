@@ -27,6 +27,7 @@ def _vapid_claims_email() -> str:
     return f"mailto:{first}" if first else "mailto:admin@localhost"
 
 NOTIFY_EVENT_TYPES = {"Vesting", "Loan Repayment", "Exercise", "Sale"}
+PRICE_REMINDER = "Share Price Update"
 
 
 def _user_source_data(user: User, db: Session):
@@ -70,12 +71,16 @@ def get_todays_events_for_user(user: User, db: Session, today: date | None = Non
     if applicable:
         for event in todays:
             event.update(price_metadata(applicable, today))
-    for price in price_rows:
-        if (not price.is_estimate and price.announced_date is not None
-                and price.announced_date <= today and price.announcement_notified_at is None):
-            todays.append({"event_type": "Price Announcement", "date": price.announced_date,
-                           "_announcement_price_id": price.id,
-                           **price_metadata(price, today)})
+    # Epic announces the new price some time after the date it applies from, so
+    # nothing is sent on that date. Once the expected announcement date passes
+    # with the price still an estimate, remind the user once to enter the real
+    # one. Overdue estimates collapse into one reminder for the latest.
+    overdue = [p for p in price_rows if p.is_estimate and p.announcement_notified_at is None
+               and price_metadata(p, today)["expected_announcement_date"] <= today.isoformat()]
+    if overdue:
+        todays.append({"event_type": PRICE_REMINDER, "date": today,
+                       "_reminder_price_ids": [p.id for p in overdue],
+                       **price_metadata(overdue[-1], today)})
 
     sales = db.query(Sale).filter(Sale.user_id == user.id, Sale.date == target_date).all()
     for s in sales:
@@ -93,15 +98,20 @@ def build_notification_payload(events: list[dict], target_date: date | None = No
     if not events:
         return None
     counts = Counter(e["event_type"] for e in events)
+    details = notification_details(events)
+    if set(counts) == {PRICE_REMINDER}:
+        payload: dict = {"title": "Update your share price", "body": " ".join(details)}
+        if target_date is not None:
+            payload["data"] = {"url": "/prices"}
+        return payload
     total = sum(counts.values())
     parts = [f"{count} {etype}" for etype, count in sorted(counts.items())]
     body = f"You have {total} event{'s' if total != 1 else ''} today: {', '.join(parts)}"
-    details = notification_details(events)
     if details:
         body += ". " + " ".join(details)
-    payload: dict = {"title": "Upcoming Events", "body": body}
+    payload = {"title": "Upcoming Events", "body": body}
     if target_date is not None:
-        url = ("/prices" if "Price Announcement" in counts else
+        url = ("/prices" if PRICE_REMINDER in counts else
                f"/events?date={target_date.isoformat()}&types={','.join(sorted(counts.keys()))}")
         payload["data"] = {"url": url}
     return payload
@@ -253,8 +263,8 @@ def send_daily_notifications(today: date | None = None):
                     announcement_sent |= bool(send_email(user.email, subject, text, html, headers=hdrs))
 
             if announcement_sent:
-                delivered_announcements.update(e["_announcement_price_id"] for e in events
-                                               if "_announcement_price_id" in e)
+                delivered_announcements.update(pid for e in events
+                                               for pid in e.get("_reminder_price_ids", ()))
             user.last_notified_at = datetime.now(timezone.utc)
 
         # ── Shared-data notifications ──────────────────────────────────────
@@ -289,7 +299,7 @@ def send_daily_notifications(today: date | None = None):
                 viewer_advance = all_prefs.get(viewer_id, 0)
                 shared_events = [event for event in get_todays_events_for_user(
                     owner, db, today, advance_days=viewer_advance)
-                    if event["event_type"] != "Price Announcement"]
+                    if event["event_type"] != PRICE_REMINDER]
                 if shared_events:
                     owner_name = owner.name or owner.email
                     if viewer_id not in viewer_events:

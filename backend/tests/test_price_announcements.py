@@ -78,23 +78,75 @@ def test_announcement_remains_tentative_as_of_january():
     assert not price_metadata(price, date(2027, 2, 27))["price_is_estimate"]
 
 
-def test_announced_price_notification_uses_announcement_not_applicable_date(client, db_session):
+def test_no_notification_on_applicable_date_reminder_after_expected_announcement(client, db_session):
     from scaffold.notifications import get_todays_events_for_user, build_notification_payload
     from scaffold.email_sender import build_event_email
     from scaffold.models import User
-    from tests.conftest import user_key
     register_user(client)
-    response = client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 110,
-        "announced_date": "2020-02-27"})
-    assert response.status_code == 201
+    client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 110, "is_estimate": True})
     user = db_session.query(User).first()
     with user_key(user):
         assert get_todays_events_for_user(user, db_session, date(2020, 1, 1)) == []
-        events = get_todays_events_for_user(user, db_session, date(2020, 2, 27))
-    assert len(events) == 1 and events[0]["event_type"] == "Price Announcement"
-    assert "confirmed, effective 2020-01-01" in build_notification_payload(events)["body"]
-    assert build_notification_payload(events, date(2020, 2, 27))["data"]["url"] == "/prices"
-    assert "confirmed, effective 2020-01-01" in build_event_email(events)[1]
+        assert get_todays_events_for_user(user, db_session, date(2020, 2, 29)) == []
+        events = get_todays_events_for_user(user, db_session, date(2020, 3, 1))
+    assert [e["event_type"] for e in events] == ["Share Price Update"]
+    payload = build_notification_payload(events, date(2020, 3, 1))
+    assert payload["title"] == "Update your share price"
+    assert "effective 2020-01-01" in payload["body"] and "2020-03-01" in payload["body"]
+    assert payload["data"]["url"] == "/prices"
+    from unittest.mock import patch
+    with patch("scaffold.email_sender.app_url", return_value="https://example.test"):
+        subject, text, html, _ = build_event_email(events)
+    assert subject == "Epic Stocks: update your share price"
+    assert "replace your estimate" in text
+    assert "Log in at https://example.test/prices" in text
+    assert 'href="https://example.test/prices"' in html
+
+
+def test_confirmed_price_sends_no_reminder(client, db_session):
+    from scaffold.notifications import get_todays_events_for_user
+    from scaffold.models import User
+    register_user(client)
+    client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 110,
+                                     "announced_date": "2020-02-27"})
+    user = db_session.query(User).first()
+    with user_key(user):
+        assert get_todays_events_for_user(user, db_session, date(2020, 3, 2)) == []
+
+
+def test_overdue_estimates_collapse_into_one_reminder_for_the_latest(client, db_session):
+    from scaffold.notifications import get_todays_events_for_user
+    from scaffold.models import User
+    register_user(client)
+    for year in (2019, 2020):
+        client.post("/api/prices", json={"effective_date": f"{year}-01-01", "price": 100 + year % 10,
+                                         "is_estimate": True})
+    user = db_session.query(User).first()
+    with user_key(user):
+        events = get_todays_events_for_user(user, db_session, date(2020, 3, 5))
+    assert len(events) == 1
+    assert events[0]["price_effective_date"] == "2020-01-01"
+    assert len(events[0]["_reminder_price_ids"]) == 2
+
+
+def test_moving_expected_date_rearms_reminder(client, db_session):
+    from datetime import datetime, timezone
+    from scaffold.notifications import get_todays_events_for_user
+    from scaffold.models import User, Price
+    register_user(client)
+    row = client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 110,
+                                           "is_estimate": True}).json()
+    user = db_session.query(User).first()
+    with user_key(user):
+        db_session.query(Price).update({Price.announcement_notified_at: datetime.now(timezone.utc)})
+        db_session.commit()
+        assert get_todays_events_for_user(user, db_session, date(2020, 3, 5)) == []
+    version = client.get("/api/prices").json()[0]["version"]
+    assert client.put(f'/api/prices/{row["id"]}', json={"expected_announcement_date": "2020-03-10",
+                                                        "version": version}).status_code == 200
+    with user_key(user):
+        assert get_todays_events_for_user(user, db_session, date(2020, 3, 9)) == []
+        assert len(get_todays_events_for_user(user, db_session, date(2020, 3, 10))) == 1
 
 
 def test_tentative_notification_qualifies_values():
@@ -197,19 +249,19 @@ def test_draft_rejects_invalid_announcement_without_exception(bad, db_session):
 
 
 @pytest.mark.parametrize("email_success", [True, False])
-def test_late_announcement_is_pending_until_daily_notification_marks_it(client, db_session, email_success):
+def test_reminder_is_pending_until_daily_notification_delivers_it(client, db_session, email_success):
     from scaffold.models import User, Price
     from scaffold.notifications import get_todays_events_for_user, send_daily_notifications
     from tests.conftest import user_key
     from unittest.mock import patch
     register_user(client)
     client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 110,
-                                   "announced_date": "2020-02-27"})
+                                   "is_estimate": True})
     user = db_session.query(User).first()
     with user_key(user):
         events = get_todays_events_for_user(user, db_session, date(2020, 3, 2))
-        assert len(events) == 1 and events[0]["announced_date"] == "2020-02-27"
-    # Daily dispatch records delivery state even when the announcement day passed.
+        assert len(events) == 1 and events[0]["expected_announcement_date"] == "2020-03-01"
+    # A failed delivery leaves the reminder pending for the next run.
     with (patch("scaffold.notifications.SessionLocal", return_value=db_session),
           patch("scaffold.email_sender.email_configured", return_value=True),
           patch("scaffold.email_sender.send_email", return_value=email_success) as send):
@@ -221,7 +273,7 @@ def test_late_announcement_is_pending_until_daily_notification_marks_it(client, 
         assert bool(get_todays_events_for_user(user, db_session, date(2020, 3, 3))) == (not email_success)
 
 
-def test_shared_viewer_delivery_does_not_clear_owners_pending_announcement(client, make_client, db_session):
+def test_shared_viewer_gets_no_reminder_and_owners_stays_pending(client, make_client, db_session):
     from datetime import datetime, timezone
     from unittest.mock import patch
     from scaffold.models import User, Price, EmailPreference, Invitation
@@ -229,7 +281,7 @@ def test_shared_viewer_delivery_does_not_clear_owners_pending_announcement(clien
 
     register_user(client, "owner@test.com")
     client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 110,
-                                     "announced_date": "2020-02-27"})
+                                     "is_estimate": True})
     with make_client("viewer@test.com"):
         owner = db_session.query(User).filter(User.email == "owner@test.com").one()
         viewer = db_session.query(User).filter(User.email == "viewer@test.com").one()

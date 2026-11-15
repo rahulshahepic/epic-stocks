@@ -121,6 +121,30 @@ test.describe('Screenshots', () => {
     await shoot(page, 'dashboard-dark-desktop')
   })
 
+  // An estimated Jan 1 price change as the next event, viewed the day before.
+  for (const [viewport, size] of [[MOBILE, 'mobile'], [DESKTOP, 'desktop']] as const) {
+    test(`dashboard estimated price - light - ${size}`, async ({ page }) => {
+      await authedPage(page, viewport, 'light')
+      const created = await page.request.post(`${BASE}/api/prices`, {
+        data: { effective_date: '2027-01-01', price: 9.5, is_estimate: true } })
+      expect(created.ok()).toBeTruthy()
+      const { id } = await created.json()
+      try {
+        await page.reload()
+        await page.waitForLoadState('networkidle')
+        await page.locator('input[type="date"]').first().fill('2026-12-31')
+        await page.waitForLoadState('networkidle')
+        const card = page.getByRole('button', { name: /Share Price \(est\.\)/ })
+        await expect(card).toBeVisible()
+        await card.click()
+        await page.getByText('Announcement expected', { exact: true }).scrollIntoViewIfNeeded()
+        await shoot(page, `dashboard-estimated-price-light-${size}`)
+      } finally {
+        await page.request.delete(`${BASE}/api/prices/${id}`)
+      }
+    })
+  }
+
   test('admin - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     await navigateTo(page, 'Admin')

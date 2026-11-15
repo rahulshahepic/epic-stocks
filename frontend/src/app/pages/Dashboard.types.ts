@@ -19,6 +19,7 @@ export interface CardValues {
   purchased_unvested_stock_value: number
   net_equity: number | null
   accrued_unbooked_interest: number
+  interest_status?: string
   total_cost_basis: number
   unvested_shares: number
 }

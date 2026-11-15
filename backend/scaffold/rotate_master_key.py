@@ -54,6 +54,7 @@ ENCRYPTED_COLUMNS: dict[str, list[str]] = {
         "state_income_rate", "state_lt_cg_rate", "state_st_cg_rate",
     ],
     "loan_payments": ["amount"],
+    "loan_interest_checkpoints": ["accrued_interest", "source"],
     "tax_settings":  [
         "federal_income_rate", "federal_lt_cg_rate", "federal_st_cg_rate",
         "niit_rate",

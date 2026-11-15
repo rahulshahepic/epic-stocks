@@ -33,6 +33,7 @@ class User(Base):
     is_admin: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     is_content_admin: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     last_notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    statement_reminder_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Bumped by "sign out everywhere" to invalidate all outstanding JWTs. Tokens
     # carry the value at issue time; mismatch = forced re-login.
     session_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
@@ -143,6 +144,25 @@ class Loan(Base):
     __mapper_args__ = {"version_id_col": version}
 
     user: Mapped["User"] = relationship(back_populates="loans")
+    interest_checkpoints: Mapped[list["LoanInterestCheckpoint"]] = relationship(
+        back_populates="loan", cascade="all, delete-orphan", lazy="selectin")
+
+
+class LoanInterestCheckpoint(Base):
+    __tablename__ = "loan_interest_checkpoints"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    loan_id: Mapped[int] = mapped_column(Integer, ForeignKey("loans.id", ondelete="CASCADE"), nullable=False, index=True)
+    statement_date: Mapped[date] = mapped_column(Date, nullable=False)
+    accrued_through: Mapped[date] = mapped_column(Date, nullable=False)
+    accrued_interest: Mapped[float] = mapped_column(EncryptedFloat, nullable=False)
+    source: Mapped[str | None] = mapped_column(EncryptedString, nullable=True)
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+    __mapper_args__ = {"version_id_col": version}
+    __table_args__ = (UniqueConstraint("loan_id", "accrued_through", name="uq_loan_interest_cutoff"),)
+    loan: Mapped["Loan"] = relationship(back_populates="interest_checkpoints")
+
 
 
 class Price(Base):

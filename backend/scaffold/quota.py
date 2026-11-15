@@ -16,6 +16,7 @@ ROW_QUOTAS = {
     "Price": 2_000,
     "Sale": 10_000,
     "LoanPayment": 10_000,
+    "LoanInterestCheckpoint": 60_000,
     # Connections to AI assistants. Twenty is already more assistants than
     # anyone has; the ceiling exists so an account cannot be walked up one
     # authorization at a time.

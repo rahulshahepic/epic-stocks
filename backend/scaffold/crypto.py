@@ -224,6 +224,8 @@ def backfill_plaintext_encryption(db) -> None:
         ("sales",         "id", "user_id", "lot_overrides"),
         ("loan_payments", "id", "user_id", "notes"),
         ("import_backups","id", "user_id", "data_json"),
+        ("loan_interest_checkpoints", "id", "user_id", "accrued_interest"),
+        ("loan_interest_checkpoints", "id", "user_id", "source"),
     ]
 
     for table, pk_col, uid_col, val_col in specs:

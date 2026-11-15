@@ -128,7 +128,8 @@ register(Tool(
         "Today's direct stock position: `total_stock_value` includes held vested "
         "shares at `stock_valuation_price` and already-purchased unvested shares "
         "at cost; `net_equity` subtracts `outstanding_loan_balance` and "
-        "`accrued_unbooked_interest`. Use these directly "
+        "`accrued_unbooked_interest`. `interest_reconciliation` says whether interest is calculated, "
+        "partially reconciled, or reconciled through a statement cutoff and estimated afterward. Use these directly "
         "for net worth, not vested_shares times price or future scheduled shares. "
         "Read `basis`: `vested_shares` includes shares since sold or exchanged; "
         "`held_vested_shares` is what remains. `shares_at_end_of_schedule` "
@@ -686,4 +687,22 @@ register(Tool(
     input_schema=_ACCOUNT_ONLY,
     scope=COMP_READ,
     handler=_get_retirement_params,
+))
+
+
+
+def _list_interest_checkpoints(ctx: ToolContext, args: dict):
+    from app.routers.interest_checkpoints import list_checkpoints
+    from schemas import LoanInterestCheckpointOut
+    owner = _account(ctx, args)
+    return {"checkpoints": [LoanInterestCheckpointOut.model_validate(row).model_dump(mode="json")
+                            for row in list_checkpoints(user=owner, db=ctx.db)]}
+
+
+register(Tool(
+    name="list_interest_checkpoints", title="Statement interest checkpoints", scope=EQUITY_READ,
+    description=("Statement-reconciled interest by loan: id, version, statement_date, accrued_through "
+                 "and accrued_interest. Read before saving a monthly statement; update an existing "
+                 "loan/cutoff instead of duplicating it. Other loans remain calculated estimates."),
+    input_schema=_ACCOUNT_ONLY, handler=_list_interest_checkpoints,
 ))

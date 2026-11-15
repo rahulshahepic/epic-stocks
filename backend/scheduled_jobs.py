@@ -21,7 +21,9 @@ logger = logging.getLogger(__name__)
 def _notifications(day: date) -> None:
     from scaffold.notifications import send_daily_notifications
 
-    send_daily_notifications(today=day)
+    from app.statement_reminders import statement_reminder_events
+
+    send_daily_notifications(today=day, extra_events=statement_reminder_events)
 
 
 def _admin_digest(day: date) -> None:

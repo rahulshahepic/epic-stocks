@@ -152,14 +152,19 @@ def build_event_email(events: list[dict], recipient_email: str = "") -> tuple[st
     from collections import Counter
     from services.price_state import notification_details
     details = notification_details(events)
+    details.extend(e["reminder_message"] for e in events if e.get("reminder_message"))
     counts = Counter(e["event_type"] for e in events)
     total = sum(counts.values())
     parts = [f"{count} {etype}" for etype, count in sorted(counts.items())]
     subject = f"Epic Stocks: {total} event{'s' if total != 1 else ''} today"
     if set(counts) == {"Share Price Update"}:
         subject = "Epic Stocks: update your share price"
+    if set(counts) == {"Loan Interest Statement"}:
+        subject = "Epic Stocks: reconcile your loan interest"
     url = app_url()
-    if url and "Share Price Update" in counts:
+    if url and "Loan Interest Statement" in counts:
+        url += "/settings"
+    elif url and "Share Price Update" in counts:
         url += "/prices"
     link_text = f' <a href="{url}">Log in to view details.</a>' if url else " Log in to view details."
     unsub_text = _unsubscribe_footer_text(recipient_email, "notify") if recipient_email else ""

@@ -96,7 +96,7 @@ def test_notifications_use_the_due_utc_date(monkeypatch):
     from scaffold import notifications
 
     calls = []
-    monkeypatch.setattr(notifications, "send_daily_notifications", lambda today: calls.append(today))
+    monkeypatch.setattr(notifications, "send_daily_notifications", lambda today, **kwargs: calls.append(today))
     monkeypatch.setattr(notifications, "send_admin_daily_digest", lambda today: calls.append(("digest", today)))
 
     jobs._notifications(_at(8).date())
@@ -109,7 +109,7 @@ def test_failed_digest_retries_without_resending_notifications(setup_db, db_sess
 
     sent = []
     attempts = []
-    monkeypatch.setattr(notifications, "send_daily_notifications", lambda today: sent.append(today))
+    monkeypatch.setattr(notifications, "send_daily_notifications", lambda today, **kwargs: sent.append(today))
 
     def digest(today):
         assert today == _at(8).date()

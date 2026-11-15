@@ -616,7 +616,7 @@ LOAN_DATA = {
     "loan_year": 2020,
     "amount": 10000.0,
     "interest_rate": 0.05,
-    "due_date": "2025-12-31",
+    "due_date": "2027-12-31",
 }
 
 
@@ -954,23 +954,26 @@ def test_payoff_sale_uses_price_at_loan_due_date_not_final_price(client):
     """
     register_user(client)
 
-    # Grant: 1000 shares, vesting 2021-01-01 (2 periods), exercise 2030-01-01
+    # Withholding off: this is about the price, not the projected tax loans.
+    client.put("/api/tax-settings", json={"tax_withholding_rate": 0})
+    # Grant: 1000 shares, vesting 2027-01-01 (2 periods), exercise 2036-01-01
     client.post("/api/grants", json={
         "year": 2020, "type": "Bonus", "shares": 1000, "price": 0.0,
-        "vest_start": "2021-01-01", "periods": 2, "exercise_date": "2030-01-01",
+        "vest_start": "2027-01-01", "periods": 2, "exercise_date": "2036-01-01",
         "dp_shares": 0,
     })
 
     # Price at loan due date: $10/share
-    client.post("/api/prices", json={"effective_date": "2021-01-01", "price": 10.0})
+    client.post("/api/prices", json={"effective_date": "2027-01-01", "price": 10.0})
     # Far-future price projection: $1/share (much lower — the bug would use this)
-    client.post("/api/prices", json={"effective_date": "2030-01-01", "price": 1.0})
+    client.post("/api/prices", json={"effective_date": "2036-01-01", "price": 1.0})
 
-    # Loan of $500, due 2022-01-01 (when 500 shares are vested at $10)
+    # Loan of $500, due 2028-01-01 (when 500 shares are vested at $10). Due
+    # dates in the past are no longer settled automatically.
     resp = client.post("/api/loans?generate_payoff_sale=true", json={
         "grant_year": 2020, "grant_type": "Bonus", "loan_type": "Purchase",
         "loan_year": 2020, "amount": 500.0, "interest_rate": 0.0,
-        "due_date": "2022-01-01",
+        "due_date": "2028-01-01",
     })
     assert resp.status_code == 201
 

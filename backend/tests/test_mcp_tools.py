@@ -8,6 +8,7 @@ whole surface has to turn nonsense into a readable tool error — never a 500,
 which would write an error_logs row and push real tracebacks out of the
 500-row window the nightly job keeps.
 """
+from datetime import date
 import json
 import os
 import sys
@@ -303,8 +304,17 @@ def test_net_equity_does_not_charge_interest_on_a_repaid_loan(mcp, client):
     assert paid.status_code == 201, paid.text
     dash = mcp.call("get_dashboard")
     assert dash["outstanding_loan_balance"] == 0
-    # Owed on 1 January of 2021 and 2022; nothing from 2023 on.
-    assert dash["accrued_unbooked_interest"] == round(2 * loan["amount"] * loan["interest_rate"], 2)
+    # Bought 2020-12-31: the one-day stub rolls into the 2021 Interest loan
+    # (31 December 2021), which stays owed after the principal is repaid and
+    # compounds at the latest rate on record (here the loan's own, 3%). The
+    # payment covered 2022's accrual; the principal accrues nothing after it.
+    rate = loan["interest_rate"]
+    owed = loan["amount"] * rate * 366 / 365
+    today = date.today()
+    for year in range(2022, today.year):
+        owed += owed * rate * (date(year + 1, 1, 1) - date(year, 1, 1)).days / 365
+    owed += owed * rate * (today - date(today.year, 1, 1)).days / 365
+    assert abs(dash["accrued_unbooked_interest"] - owed) < 0.05
     assert dash["net_equity"] == round(
         dash["total_stock_value"] - dash["accrued_unbooked_interest"], 2)
 

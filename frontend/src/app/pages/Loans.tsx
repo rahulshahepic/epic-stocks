@@ -30,6 +30,7 @@ const empty: LoanForm = {
   due_date: '',
   loan_number: null,
   refinances_loan_id: null,
+  disbursed_on: null,
 }
 
 function loanLabel(l: LoanEntry, refinancedIds?: Set<number>) {
@@ -278,6 +279,7 @@ export default function Loans() {
           <Field label="Interest Rate (%)" type="number" step="0.01" value={+(form.interest_rate * 100).toFixed(4)} onChange={v => setForm(f => ({ ...f, interest_rate: +v / 100 }))} />
           <Field label="Due Date" type="date" value={form.due_date} onChange={v => setForm(f => ({ ...f, due_date: v }))} />
           <Field label="Loan Number" type="text" value={form.loan_number ?? ''} onChange={v => setForm(f => ({ ...f, loan_number: v || null }))} />
+          <Field label="Disbursed On (optional)" type="date" value={form.disbursed_on ?? ''} onChange={v => setForm(f => ({ ...f, disbursed_on: v || null }))} />
           <label className="col-span-2 block">
             <span className="text-xs text-cs-muted">Refinances loan (optional)</span>
             <select

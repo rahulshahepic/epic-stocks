@@ -66,7 +66,7 @@ An equity **grant** is a promise from your employer to give you company shares u
 | **Purchase grant** | You buy shares at the current fair market value (the *grant price* or *purchase price*) — there's no discount; you pay the actual share price. The purchase settles on the *exercise date* a few weeks after the grant, usually funded by a loan from Epic. The shares then vest in tranches over several years; until each tranche vests, the shares stay valued at your purchase price (no income event) and you can't sell them. |
 | **Catch-up grant** | $0 cost basis; FMV at each vest is taxed as ordinary income. Offered for a few years starting in 2017 when Epic restarted its stock program after a period of issuing SARs instead (a switch driven by shareholder-count disclosure rules that later relaxed). The catch-up amount was a per-employee multiple of the purchase-grant shares, to compensate folks who missed out during the SARs era. |
 | **Free grant** | Same tax treatment as a catch-up grant — $0 cost basis, FMV at vest taxed as ordinary income. |
-| **Bonus / RSU grant** | Shares awarded as bonus compensation on a vesting schedule. The first bonus was issued pre-tax with $0 cost basis, so FMV at each vest is taxed as ordinary income. Later bonus grants were issued post-tax at FMV — effectively a purchase funded by your bonus — so the cost basis equals the grant-time price and vesting only lifts the sale restriction. |
+| **Bonus / RSU grant** | Shares awarded as bonus compensation on a vesting schedule. The first bonus was issued pre-tax with $0 cost basis, so FMV at each vest is taxed as ordinary income. Later bonus grants were issued post-tax at FMV — effectively a purchase funded by your bonus — so the cost basis equals the grant-time price and vesting only lifts the sale restriction. A three-year bonus from 2021 on vests 34%, 33%, then the rest, each part rounded down, as the agreements word it. |
 | **Developer Bonus Shares** | A developer-specific bonus offered to people who started in 2020 and 2021. $0 cost basis, so FMV at each vest is taxed as ordinary income. Vests 20% a year over five years; both cohorts share a first vest date of 30 September 2022. |
 
 ### Vesting
@@ -214,10 +214,30 @@ This section appears for today or any future date. It shows what would happen if
 
 - **Net Cash at Exit** — take-home after gross proceeds, loans paid off, and estimated divest tax
 - **Gross Proceeds** — total sale value at the current share price
-- **Loans Paid Off** — outstanding balances that would be repaid
+- **Loans Paid Off** — outstanding balances that would be repaid, plus the interest and tax loans your statements have not booked yet (see below)
 - **Est. Divest Tax** — estimated capital gains and income tax on liquidation
 
 Tap **Net Cash at Exit** to expand the full exit breakdown, including prior-sale contributions and any interest deduction tax savings.
+
+#### Unbooked interest and tax loans
+
+Epic books loan interest once a year: every 31 December the year's unpaid interest becomes a new Interest loan, due with that grant's purchase loan, and it accrues interest itself from then on. A vest of a zero-basis grant (Free, Catch-Up, pre-tax Bonus) is withheld through a Tax loan. Until a statement books those rows, the app projects them (`backend/app/loan_projection.py`), and the same projection feeds every figure:
+
+- **Payoffs** — a loan's payoff owes its principal plus the projected Interest loans for its grant, the interest accrued since the last 31 December, and any projected Tax loan due the same day. Generated payoff sales are sized for all of it; **Regen payoff sales** refreshes ones sized before.
+- **The exit** — *Accrued interest (projected)* is every projected Interest loan still open plus accrual through the exit date (and the payoff lag, below).
+- **The dashboard** — *accrued unbooked interest* is the same accrual as of today.
+
+Accrual is actual/365 from the loan's **Disbursed On** date (optional on the Loans form, from the loan agreement); without it, from the grant's exercise date for a new purchase loan, the vest date for a tax loan, and 1 January after the last booked Interest loan once a statement has booked one. A grant's first partial year rolls into the following 31 December, as the statements do. Importing a statement replaces projections rather than adding to them: a real Interest loan for a year covers that grant's whole projection through that year, and a real Tax loan for a grant and vest year replaces its projected one.
+
+**Settings → Tax Rates → Projection assumptions:**
+
+| Setting | Default | Used for |
+|---|---|---|
+| Tax withholding on zero-basis vests | 52% | Projected Tax loan = vest income × this rate, due on the grant schedule's tax due date |
+| Future interest-loan rate | The latest Interest-loan rate on record | Rate on projected Interest and Tax loans |
+| Loan payoff after exit | 0 days | Interest keeps accruing this long after the exit date |
+
+A payoff whose due date has already passed is **not** settled automatically — Epic often extends these loans. The timeline marks it *past due* and **Execute payoff** on the Loans page is the explicit confirmation.
 
 #### Investment interest deduction toggle
 
@@ -402,10 +422,10 @@ Toggle this on the **Dashboard** or change it in **Settings → Tax Rates**.
 
 **How the estimate works:**
 
-- Interest with `due_date = 1/1/YEAR` is deductible in that year (e.g. interest due 1/1/2025 → deductible in 2025).
-- The deductible pool is applied first to short-term gains, then long-term gains (minimizes tax since short-term gains are taxed higher).
-- Any unused deduction in a year carries forward indefinitely to future years with eligible gains.
-- Use **Settings → Tax Rates → Customize by year** to exclude years where you took the standard deduction.
+- Interest is deductible in the year it is **paid**: an Interest loan when it is repaid (with its purchase loan, or at an exit), accrued interest when its loan is. Projected interest counts the same way once paid.
+- It offsets only gains actually **realized** that year — sales, payoff sales and the projected liquidation. Vesting is not a realized gain (under 83(b) it is no tax event at all), so nothing is deducted against it.
+- It is applied first to short-term gains, then long-term, and saves the rate of the gain it offsets. Any unused amount carries forward indefinitely.
+- Use **Settings → Tax Rates → Customize by year** to exclude years where you took the standard deduction; interest paid in an excluded year is forfeited.
 
 **What changes on the dashboard when enabled:**
 
@@ -418,7 +438,7 @@ Toggle this on the **Dashboard** or change it in **Settings → Tax Rates**.
 
 - The "Cap Gains" column header changes to **"Cap Gains (adj.)"**.
 - Events where a deduction is applied show an "adj." badge with a tooltip showing the gross amount.
-- Expanding a vesting or price event shows the short-term/long-term capital gains split and how much of the interest pool was consumed.
+- Expanding a sale shows how much of the interest pool it consumed.
 
 > This is an estimate only, and only applies in years where you itemize deductions (not the standard deduction). Consult a tax advisor before making decisions based on it. Filing Form 4952 and electing to treat capital gains as investment income means those gains lose their preferential rate — whether this is beneficial depends on your specific situation.
 
@@ -601,9 +621,12 @@ Both the inviter and the viewer can revoke access at any time. Invitation tokens
 
 ### 83(b) Election
 
-If you filed an 83(b) election for a Bonus/RSU grant, flag it in the grant editor. This changes how the Events page displays that grant's vesting events — they show as violet "unrealized cap gains" (the amount that would have been ordinary income without the election) instead of green income, with a note showing the potential long-term cap gains tax at eventual sale.
+Flag the election in the grant editor (any grant type). For a grant bought at a price (Purchase, post-tax Bonus):
 
-The 83(b) flag is display-only — it doesn't change how events are computed. If you filed at a non-zero FMV, set the **Cost Basis** field to that price instead; the engine will treat it as a purchase grant automatically.
+- **With 83(b)** — vesting is not a tax event: no income and no gain at vest. The cost basis is the price paid, less any gain deferred by shares exchanged as a down payment (their basis carries into the new grant), and the holding period starts at exercise. The shares count toward unrealized gains from exercise.
+- **Without 83(b)** — section 83(a): the spread over the price paid at each vest is ordinary income, the basis steps up to the vest price, and the holding period starts at vest.
+
+New grants from the **New purchase** flow default to an election. Zero-basis grants are income at vest either way; on the Events page their 83(b) vests show as violet "unrealized cap gains" instead of green income.
 
 ---
 
@@ -1145,6 +1168,7 @@ epic-stocks/
 │   ├── app/                 # Equity tracking domain (replace when forking)
 │   │   ├── core.py          # Event generation logic (frozen)
 │   │   ├── loan_state.py    # Refinance state (as_of is required) + accrual window + cycle validation
+│   │   ├── loan_projection.py # Unbooked Interest/Tax loans: daily accrual, 31 Dec capitalisation, payoffs
 │   │   ├── sales_engine.py  # FIFO cost-basis + tax + gross-up calculations
 │   │   ├── excel_io.py      # Excel read/write (openpyxl)
 │   │   ├── epic_import/     # Import from the Eureka documents

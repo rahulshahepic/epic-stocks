@@ -13,7 +13,9 @@ function Row({ label, value, bold }: { label: string; value: string; bold?: bool
 export default function ExitBreakdownCard({ s }: { s: ExitSummary }) {
   const hasSales = s.prior_sales.length > 0
   const hasDeduction = s.deduction_savings > 0
-  const liqNet = Math.max(0, s.gross_vested + s.unvested_cost_proceeds - s.liquidation_tax - s.outstanding_principal - s.outstanding_accrued_interest)
+  const projectedLoans = s.outstanding_projected_loans ?? 0
+  const unfunded = s.projected_payoffs_before_exit ?? 0
+  const liqNet = Math.max(0, s.gross_vested + s.unvested_cost_proceeds - s.liquidation_tax - s.outstanding_principal - s.outstanding_accrued_interest - projectedLoans - unfunded)
   const yearsLabel = s.deduction_years.length > 0
     ? s.deduction_years.length === 1
       ? String(s.deduction_years[0])
@@ -36,6 +38,12 @@ export default function ExitBreakdownCard({ s }: { s: ExitSummary }) {
         )}
         {s.outstanding_accrued_interest > 0 && (
           <Row label="Accrued interest (projected)" value={`−${fmt$(s.outstanding_accrued_interest)}`} />
+        )}
+        {projectedLoans > 0 && (
+          <Row label="Tax loans (projected)" value={`−${fmt$(projectedLoans)}`} />
+        )}
+        {unfunded > 0 && (
+          <Row label="Earlier projected payoffs" value={`−${fmt$(unfunded)}`} />
         )}
         <div className="my-1.5 border-t border-cs-border-strong" />
         <Row label="Net from liquidation" value={fmt$(liqNet)} bold />
@@ -69,6 +77,11 @@ export default function ExitBreakdownCard({ s }: { s: ExitSummary }) {
           <p className="text-[10px] font-medium uppercase tracking-wider text-cs-muted">Interest Deduction</p>
           {hasDeduction && (
             <Row label={`Tax savings${yearsLabel ? ` (${yearsLabel})` : ''}`} value={`+${fmt$(s.deduction_savings)}`} />
+          )}
+          {hasDeduction && (s.interest_deducted ?? 0) > 0 && (
+            <p className="text-[10px] text-cs-muted">
+              {fmt$(s.interest_deducted ?? 0)} of interest paid by the exit, against gains realized in the year it was paid.
+            </p>
           )}
           {s.deduction_excluded_years.length > 0 && (
             <p className="text-[10px] text-cs-muted">

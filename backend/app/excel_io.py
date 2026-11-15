@@ -30,7 +30,7 @@ def read_grants_from_excel(ws):
             'periods': int(ws.cell(row=i, column=6).value),
             'exercise_date': ws.cell(row=i, column=7).value,
             'dp_shares': int(ws.cell(row=i, column=8).value or 0),
-            'election_83b': bool(v83b) if v83b is not None else False,
+            'election_83b': bool(v83b) if v83b is not None else None,
         })
     return grants
 

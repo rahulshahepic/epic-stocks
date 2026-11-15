@@ -14,20 +14,20 @@ from tests.conftest import register_user
 GRANT_DATA = {
     "year": 2018, "type": "Purchase", "shares": 10000, "price": 5.0,
     "vest_start": "2019-01-01", "periods": 4, "exercise_date": "2018-01-01",
-    "dp_shares": 0,
+    "dp_shares": 0, "election_83b": True,
 }
 
 GRANT_DATA2 = {
     "year": 2020, "type": "Purchase", "shares": 10000, "price": 8.0,
     "vest_start": "2021-01-01", "periods": 4, "exercise_date": "2020-01-01",
-    "dp_shares": 0,
+    "dp_shares": 0, "election_83b": True,
 }
 
 LOAN_DATA = {
     "grant_year": 2018, "grant_type": "Purchase",
     "loan_type": "Interest", "loan_year": 2019,
     "amount": 10000.0, "interest_rate": 0.03,
-    "due_date": "2025-01-01",
+    "due_date": "2027-01-01",
 }
 
 
@@ -184,7 +184,7 @@ def test_events_tax_matches_sale_tax_for_same_tranche_payoff(client, db_session)
         "grant_year": 2020, "grant_type": "Purchase",
         "loan_type": "Interest", "loan_year": 2021,
         "amount": 10000.0, "interest_rate": 0.03,
-        "due_date": "2025-01-01",
+        "due_date": "2027-01-01",
     })
     assert resp.status_code == 201
 
@@ -267,7 +267,7 @@ def test_payoff_falls_back_to_same_tranche_when_insufficient_coverage(client, db
     client.post("/api/grants", json={
         "year": 2018, "type": "Purchase", "shares": 10, "price": 5.0,
         "vest_start": "2019-01-01", "periods": 4, "exercise_date": "2018-01-01",
-        "dp_shares": 0,
+        "dp_shares": 0, "election_83b": True,
     })
     client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 20.0})
 
@@ -470,12 +470,12 @@ def test_payoff_sizing_covers_loan_after_actual_tax(client, db_session):
     client.post("/api/grants", json={
         "year": 2018, "type": "Purchase", "shares": 5000, "price": 2.0,
         "vest_start": "2018-06-01", "periods": 4, "exercise_date": "2018-01-01",
-        "dp_shares": 0,
+        "dp_shares": 0, "election_83b": True,
     })
     client.post("/api/grants", json={
         "year": 2020, "type": "Purchase", "shares": 5000, "price": 8.0,
         "vest_start": "2020-06-01", "periods": 4, "exercise_date": "2020-01-01",
-        "dp_shares": 0,
+        "dp_shares": 0, "election_83b": True,
     })
     client.post("/api/prices", json={"effective_date": "2018-01-01", "price": 10.0})
     client.post("/api/prices", json={"effective_date": "2024-01-01", "price": 20.0})
@@ -488,13 +488,13 @@ def test_payoff_sizing_covers_loan_after_actual_tax(client, db_session):
         "grant_year": 2018, "grant_type": "Purchase",
         "loan_type": "Purchase", "loan_year": 2018,
         "amount": 30000.0, "interest_rate": 0.03,
-        "due_date": "2024-06-30",
+        "due_date": "2027-06-30",
     })
     client.post("/api/loans?generate_payoff_sale=true", json={
         "grant_year": 2020, "grant_type": "Purchase",
         "loan_type": "Purchase", "loan_year": 2020,
         "amount": 30000.0, "interest_rate": 0.03,
-        "due_date": "2024-06-30",
+        "due_date": "2027-06-30",
     })
 
     sales = client.get("/api/sales").json()

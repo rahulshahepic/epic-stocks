@@ -136,6 +136,9 @@ class Loan(Base):
     due_date: Mapped[date] = mapped_column(Date, nullable=False)
     loan_number: Mapped[str] = mapped_column(EncryptedString, nullable=True)
     refinances_loan_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("loans.id"), nullable=True)
+    # When the money was actually advanced, from the loan agreement. Interest
+    # accrues from here; left empty, app/loan_projection.py infers it.
+    disbursed_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
     __mapper_args__ = {"version_id_col": version}
 
@@ -260,6 +263,11 @@ class TaxSettings(Base):
     prefer_stock_dp: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     deduct_investment_interest: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     deduction_excluded_years: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
+    # Projection assumptions (app/loan_projection.py). Null rate = the latest
+    # Interest-loan rate on record; null withholding = 0.52.
+    tax_withholding_rate: Mapped[float | None] = mapped_column(EncryptedFloat, nullable=True)
+    projected_loan_rate: Mapped[float | None] = mapped_column(EncryptedFloat, nullable=True)
+    exit_payoff_lag_days: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
     user: Mapped["User"] = relationship(back_populates="tax_settings")
 

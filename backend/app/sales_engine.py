@@ -46,11 +46,21 @@ def build_fifo_lots(
     # Pre-scan for exercise dates on Purchase grants (grant_price > 0).
     # For these grants the employee bought shares at exercise; the holding period
     # clock starts then, not at vesting (mirrors 83(b) restricted-stock treatment).
+    # A grant without an 83(b) election (election_83b False) is taxed under
+    # 83(a): the holding period starts at vest and the basis is the vest price.
     exercise_dates: dict = {}
+    granted: dict = {}
     for e in timeline_events:
         if e.get("event_type") == "Exercise" and (e.get("grant_price") or 0) > 0:
             key = (e.get("grant_year"), e.get("grant_type"))
-            exercise_dates[key] = _to_date(e["date"])
+            granted[key] = e.get("granted_shares") or 0
+            if e.get("election_83b") is not False:
+                exercise_dates[key] = _to_date(e["date"])
+
+    # Shares exchanged as a down payment carry their basis into the new grant
+    # (a like-kind exchange of stock for stock): the gain they had is deferred,
+    # so the new grant's basis is its price less that gain, spread per share.
+    basis_carryover: dict = {}
 
     for e in timeline_events:
         edate = _to_date(e["date"])
@@ -77,9 +87,14 @@ def build_fifo_lots(
         vs = e.get("vested_shares") or 0
 
         if e["event_type"] == "Vesting" and vs > 0:
-            basis = e.get("grant_price") or e.get("share_price", 0.0)
             gy = e.get("grant_year")
             gt = e.get("grant_type")
+            if (e.get("grant_price") or 0) > 0 and e.get("election_83b") is False:
+                basis = e.get("share_price", 0.0)
+            else:
+                basis = e.get("grant_price") or e.get("share_price", 0.0)
+                if (e.get("grant_price") or 0) > 0:
+                    basis = max(0.0, basis - basis_carryover.get((gy, gt), 0.0))
             hold_start = exercise_dates.get((gy, gt), edate)
             lots.append([edate, vs, basis, gy, gt, hold_start])
         elif vs < 0:
@@ -88,16 +103,25 @@ def build_fifo_lots(
                 # Consume lowest cost basis first: Bonus lots first, then oldest
                 ordered = sorted(lots, key=lambda l: (l[4] != 'Bonus', l[0]))
                 new_lots = []
+                given_basis = 0.0
+                given_shares = 0
                 for lot in ordered:
                     if to_reduce <= 0:
                         new_lots.append(lot)
                         continue
+                    take = min(lot[1], to_reduce)
+                    given_basis += take * lot[2]
+                    given_shares += take
                     if lot[1] <= to_reduce:
                         to_reduce -= lot[1]
                     else:
                         lot[1] -= to_reduce
                         to_reduce = 0
                         new_lots.append(lot)
+                key = (e.get("grant_year"), e.get("grant_type"))
+                deferred = given_shares * (e.get("share_price") or 0.0) - given_basis
+                if granted.get(key) and deferred > 0:
+                    basis_carryover[key] = basis_carryover.get(key, 0.0) + deferred / granted[key]
                 # Restore FIFO order for remaining lots
                 new_lots.sort(key=lambda l: l[0])
                 lots = deque(new_lots)

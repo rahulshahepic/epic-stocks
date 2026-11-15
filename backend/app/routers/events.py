@@ -1,6 +1,5 @@
-from app.loan_state import (interest_accrual_end_year, refinanced_loan_ids as _refinanced_loan_ids,
-                            superseded_from_year)
-from datetime import date, datetime
+from app.loan_state import refinanced_loan_ids as _refinanced_loan_ids
+from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 
@@ -38,6 +37,40 @@ def _user_source_data(user: User, db: Session):
 
     initial_price = prices[0]["price"] if prices else 0
     return grants, prices, loans, loans_db, initial_price, election_83b_map, estimated_price_dates
+
+
+def _tax_due_dates(db: Session) -> dict:
+    from scaffold.models import GrantTemplate
+    out = {}
+    for t in db.query(GrantTemplate).filter(GrantTemplate.default_tax_due_date.isnot(None)).all():
+        try:
+            out[(t.year, t.type)] = date.fromisoformat(t.default_tax_due_date)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _projection_settings(ts_row) -> dict:
+    from app.loan_projection import DEFAULT_WITHHOLDING_RATE
+    if ts_row is None:
+        return {"assumed_rate": None, "withholding_rate": DEFAULT_WITHHOLDING_RATE, "lag_days": 0}
+    w = ts_row.tax_withholding_rate
+    return {
+        "assumed_rate": ts_row.projected_loan_rate,
+        "withholding_rate": DEFAULT_WITHHOLDING_RATE if w is None else w,
+        "lag_days": int(ts_row.exit_payoff_lag_days or 0),
+    }
+
+
+def _project(grants, prices, loans_db, loan_payments, sales, settings: dict, tax_due: dict,
+             stop: date | None = None, today: date | None = None):
+    """The one projection of unbooked interest and tax loans (app/loan_projection.py)."""
+    from app.loan_projection import project
+    return project(
+        loans_db, grants, prices, today=today or date.today(), stop=stop,
+        assumed_rate=settings["assumed_rate"], withholding_rate=settings["withholding_rate"],
+        tax_due_dates=tax_due, loan_payments=loan_payments, sales=sales,
+    )
 
 
 def _serialize_event(e):
@@ -89,47 +122,6 @@ def _compute_outstanding_principal(loans_db, loan_payments, sales, as_of_date) -
     )
 
 
-def _compute_projected_unrecorded_interest(loans_db, as_of_date, loan_payments=(), sales=()) -> float:
-    """
-    Interest that has accrued on Purchase loans by as_of_date but hasn't been
-    recorded as Interest loan rows yet.  Mirrors the 'guaranteed' projection in
-    the InterestChart: purchase_principal × rate for each year in
-    [loan_year+1, min(exit_year, due_year)] that has no Interest loan entry.
-
-    Each year accrues on the principal owed when it starts, as
-    `annualInterestForYear` in CompCalculator.math.ts does: payments and payoff
-    sales before 1 January reduce or end it. Without that a loan repaid years
-    ago kept accruing to today.
-    """
-    purchase_loans = [l for l in loans_db if l.loan_type == 'Purchase']
-    interest_loans = [l for l in loans_db if l.loan_type == 'Interest']
-    recorded = {(il.grant_year, il.grant_type, il.loan_year) for il in interest_loans}
-    settled_on: dict[int, date] = {}
-    for s in sales:
-        if s.loan_id is not None and s.date <= as_of_date:
-            settled_on[s.loan_id] = min(s.date, settled_on.get(s.loan_id, s.date))
-    payments = [lp for lp in loan_payments if lp.date <= as_of_date]
-    # A refinance ends accrual on the old principal from its own year on; it does
-    # not unmake the years that accrued before it. Skipping the loan outright
-    # erased those years.
-    first_superseded = superseded_from_year(loans_db)
-    total = 0.0
-    for p in purchase_loans:
-        end_year = interest_accrual_end_year(p, first_superseded, cap_year=as_of_date.year)
-        for yr in range(p.loan_year + 1, end_year + 1):
-            if (p.grant_year, p.grant_type, yr) in recorded:
-                continue
-            year_start = date(yr, 1, 1)
-            if p.id in settled_on and settled_on[p.id] < year_start:
-                break
-            paid = sum(lp.amount for lp in payments if lp.loan_id == p.id and lp.date < year_start)
-            balance = p.amount - paid
-            if balance <= 0:
-                break
-            total += balance * p.interest_rate
-    return total
-
-
 def _compute_unvested_cost(grants, as_of_date) -> float:
     """Proceeds from selling unvested shares at cost basis (grant price)."""
     total_cost = 0.0
@@ -143,8 +135,18 @@ def _compute_unvested_cost(grants, as_of_date) -> float:
 
 
 def _build_exit_summary(enriched, grants, loans_db, loan_payments, sales_db,
-                        horizon_date, ts_dict, deduction_enabled, excluded_years) -> dict:
-    """Build a comprehensive exit breakdown for the liquidation detail card."""
+                        horizon_date, ts_dict, deduction_enabled, excluded_years,
+                        projection=None, exit_projection=None) -> dict:
+    """Build a comprehensive exit breakdown for the liquidation detail card.
+
+    Every loan is paid at the exit: the real rows' principal, plus what the
+    projection says the statements have not booked — Interest loans
+    capitalised each 31 December, interest accrued since then (through the
+    exit plus the payoff lag) and projected Tax loans. A projected payoff
+    falling before the exit with no real loan to carry its sale is paid from
+    the exit proceeds.
+    """
+    from app.loan_projection import outstanding_at_stop
     liq = next((e for e in enriched if e.get("event_type") == "Liquidation (projected)"), None)
     if not liq:
         return {}
@@ -176,6 +178,8 @@ def _build_exit_summary(enriched, grants, loans_db, loan_payments, sales_db,
         loan_payoff = 0.0
         if s and s.loan_id is not None:
             loan_payoff = max(0.0, loan_amount_by_id.get(s.loan_id, 0) - early_paid_by_loan.get(s.loan_id, 0.0))
+            if projection is not None:
+                loan_payoff += projection.extra_for(s.loan_id)
         prior_sales.append({
             "date": edate.isoformat(),
             "shares": abs(e.get("vested_shares") or 0),
@@ -187,37 +191,38 @@ def _build_exit_summary(enriched, grants, loans_db, loan_payments, sales_db,
         })
     prior_sales_net = round(sum(s["net"] for s in prior_sales), 2)
 
-    # Income tax from vesting events (Tax loans cover income tax at exercise)
+    # Ordinary income recognised at vesting (zero-basis grants, and purchase
+    # grants without an 83(b) election). Shown for reference; the cash side of
+    # it is the Tax loans, which the payoffs and the exit already pay.
     income_tax = round(sum(
         e.get("income", 0.0) * (ts_dict["federal_income_rate"] + ts_dict["state_income_rate"])
         for e in enriched
         if e.get("event_type") == "Vesting" and _to_date(e["date"]) <= horizon_date
     ), 2) if ts_dict else 0.0
 
-    # Interest deduction savings and applied years
     deduction_savings = 0.0
     deduction_years: list[int] = []
-    if deduction_enabled:
-        stcg_rate = ts_dict["federal_st_cg_rate"] + ts_dict["niit_rate"] + ts_dict["state_st_cg_rate"]
-        ltcg_rate = ts_dict["federal_lt_cg_rate"] + ts_dict["niit_rate"] + ts_dict["state_lt_cg_rate"]
-        years_seen: set[int] = set()
-        for e in enriched:
-            if _to_date(e["date"]) > horizon_date:
-                break
-            ded = e.get("interest_deduction_applied", 0.0)
-            if ded > 0:
-                deduction_savings += (
-                    e.get("interest_deduction_on_stcg", 0.0) * stcg_rate +
-                    e.get("interest_deduction_on_ltcg", 0.0) * ltcg_rate
-                )
-                edate = _to_date(e["date"])
-                years_seen.add(edate.year)
-        deduction_savings = round(deduction_savings, 2)
-        deduction_years = sorted(years_seen)
+    interest_deducted = 0.0
+    if deduction_enabled and ts_dict:
+        interest_deducted, deduction_savings = _deduction_totals(enriched, ts_dict, horizon_date)
+        deduction_years = sorted({_to_date(e["date"]).year for e in enriched
+                                  if _to_date(e["date"]) <= horizon_date
+                                  and e.get("interest_deduction_applied", 0.0) > 0})
 
-    accrued_interest = round(_compute_projected_unrecorded_interest(
-        loans_db, horizon_date, loan_payments, sales_db), 2)
-    liq_net = round(max(0.0, gross_vested + unvested_cost - liq_tax - outstanding - accrued_interest), 2)
+    at_exit = outstanding_at_stop(exit_projection) if exit_projection is not None else {
+        "projected_principal": 0.0, "projected_interest": 0.0, "accrued": 0.0, "real_interest": 0.0}
+    accrued_interest = round(at_exit["projected_interest"] + at_exit["accrued"], 2)
+    projected_loans = at_exit["projected_principal"]
+    unfunded = 0.0
+    if projection is not None:
+        unfunded = round(sum(p.extra for p in projection.orphan_payoffs()
+                             if date.today() <= p.date <= horizon_date), 2)
+    interest_paid_total = 0.0
+    if exit_projection is not None:
+        interest_paid_total = round(sum(p.interest_paid for p in exit_projection.payoffs
+                                        if date.today() <= p.date), 2)
+    liq_net = round(max(0.0, gross_vested + unvested_cost - liq_tax - outstanding
+                        - projected_loans - accrued_interest - unfunded), 2)
     net_cash = round(prior_sales_net + liq_net + deduction_savings, 2)
 
     return {
@@ -228,6 +233,10 @@ def _build_exit_summary(enriched, grants, loans_db, loan_payments, sales_db,
         "liquidation_tax": round(liq_tax, 2),
         "outstanding_principal": outstanding,
         "outstanding_accrued_interest": accrued_interest,
+        "outstanding_projected_loans": projected_loans,
+        "projected_payoffs_before_exit": unfunded,
+        "interest_paid_through_exit": interest_paid_total,
+        "interest_deducted": interest_deducted,
         "prior_sales": prior_sales,
         "prior_sales_net": prior_sales_net,
         "income_tax": income_tax,
@@ -239,11 +248,17 @@ def _build_exit_summary(enriched, grants, loans_db, loan_payments, sales_db,
 
 
 def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales: list,
-                     horizon_date=None) -> list:
+                     horizon_date=None, projection=None, today: date | None = None) -> list:
     """
     Enrich Loan Payoff events with cash_due / covered_by_sale.
     Inject Early Loan Payment events for user-recorded LoanPayments.
+
+    With a `projection`, a payoff's cash_due also carries what the statements
+    have not booked yet — projected Interest loans, interest accrued since the
+    last 31 December and projected Tax loans due the same day — and a projected
+    payoff with no real loan to carry it gets its own event.
     """
+    today = today or date.today()
     # Build lookup: loan_id → sum of early payments
     payments_by_loan: dict[int, float] = {}
     for lp in loan_payments:
@@ -267,13 +282,26 @@ def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales:
                     pass  # Loan was replaced by a later refinance — no event on the old due date
                 else:
                     early_paid = payments_by_loan.get(loan.id, 0.0)
-                    cash_due = round(max(0.0, loan.amount - early_paid), 2)
+                    cash_due = max(0.0, loan.amount - early_paid)
+                    extra = {}
+                    po = projection.payoff_for(loan.id) if projection else None
+                    if po is not None:
+                        cash_due += po.extra
+                        extra = {"projected_interest": po.projected_interest,
+                                 "projected_accrued_interest": po.accrued,
+                                 "projected_tax_loans": po.projected_principal}
+                    covered = loan.id in covered_loan_ids
+                    status = "covered" if covered else "planned"
+                    if not covered and loan.due_date < today:
+                        # Not settled automatically: Epic often extends these.
+                        status = "past_due_unconfirmed"
                     enriched.append({
                         **e,
+                        **extra,
                         "loan_db_id": loan.id,
-                        "cash_due": cash_due,
-                        "covered_by_sale": loan.id in covered_loan_ids,
-                        "status": "covered" if loan.id in covered_loan_ids else "planned",
+                        "cash_due": round(cash_due, 2),
+                        "covered_by_sale": covered,
+                        "status": status,
                     })
             else:
                 enriched.append(e)
@@ -336,6 +364,27 @@ def _enrich_timeline(timeline: list, loans_db: list, loan_payments: list, sales:
             else:
                 break
         return result
+
+    if projection is not None:
+        for po in projection.orphan_payoffs():
+            if po.date < today:
+                continue
+            enriched.append({
+                "date": datetime.combine(po.date, datetime.min.time()),
+                "event_type": "Loan Payoff",
+                "grant_year": po.group[0], "grant_type": po.group[1],
+                "granted_shares": None, "grant_price": None, "exercise_price": None,
+                "vested_shares": None, "price_increase": 0.0,
+                "share_price": price_at(po.date), "cum_shares": shares_at(po.date),
+                "income": 0.0, "cum_income": cum_income_at(po.date),
+                "vesting_cap_gains": 0.0, "price_cap_gains": 0.0, "total_cap_gains": 0.0,
+                "cum_cap_gains": cum_cap_gains_at(po.date),
+                "loan_db_id": None, "cash_due": round(po.extra, 2),
+                "projected_interest": po.projected_interest,
+                "projected_accrued_interest": po.accrued,
+                "projected_tax_loans": po.projected_principal,
+                "covered_by_sale": False, "status": "projected", "is_projected": True,
+            })
 
     # Inject LoanPayment records as "Early Loan Payment" events
     for lp in loan_payments:
@@ -508,6 +557,8 @@ def _annotate_sale_taxes(enriched: list, timeline: list, ts_dict: dict,
             continue
         e["estimated_tax"] = result["estimated_tax"]
         e["st_shares"] = result["st_shares"]
+        e["lt_gain"] = result["lt_gain"]
+        e["st_gain"] = result["st_gain"]
 
     # Annotate the projected liquidation event (if present), against
     # everything real that came before it.
@@ -523,91 +574,36 @@ def _annotate_sale_taxes(enriched: list, timeline: list, ts_dict: dict,
         result = compute_sale_tax(final_tl, {"date": liq_date, "shares": shares, "price_per_share": price_per_share}, ts_dict, lot_order=liq_lot_order)
         e["estimated_tax"] = result["estimated_tax"]
         e["st_shares"] = result["st_shares"]
+        e["lt_gain"] = result["lt_gain"]
+        e["st_gain"] = result["st_gain"]
 
 
-def _build_interest_pool(loans_db: list) -> dict[int, float]:
+# Events at which gains are realized. Vesting is not one: under 83(b) it is no
+# tax event, and without it the spread is ordinary income, not a capital gain.
+_TAXABLE_EVENT_TYPES = frozenset({'Sale', 'Liquidation (projected)'})
+
+
+def _apply_interest_deduction(enriched: list, interest_paid_by_year: dict[int, float],
+                              excluded_years: set[int] | None = None) -> None:
     """
-    Build the deductible investment-interest pool keyed by deductible year.
+    Annotate realized-gain events with the investment-interest deduction.
 
-    Interest accruing in year Y is deductible in year Y+1:
-    - Recorded Interest loans: deductible in loan_year + 1 (the year after
-      the interest accrued, regardless of the loan's due_date which may
-      match the parent purchase loan's far-future maturity).
-    - Projected for any year without a recorded loan: principal × rate
-      + compounding on existing interest loans for that grant.
+    Interest is deductible in the year it is paid — an Interest loan when it
+    is repaid, accrued interest when its loan is — and only against gains
+    actually realized that year (Form 4952); the unused part carries forward.
+    It offsets short-term gains first, then long-term, so each dollar saves
+    the rate of the gain it offsets. Interest paid in an excluded year (one
+    the user did not itemize) is forfeited.
+
+    `interest_paid_by_year` comes from `Projection.interest_paid_by_year()`.
+    Sale events need `st_gain`/`lt_gain` from `_annotate_sale_taxes`.
+
+    Adds to every event:
+      interest_deduction_applied, interest_deduction_on_stcg,
+      interest_deduction_on_ltcg, adjusted_total_cap_gains, adjusted_cum_cap_gains
     """
-    from collections import defaultdict
-    # A refinanced loan's principal is carried by its successor from the
-    # refinance year on, so projecting interest on both from that year charged
-    # the same debt twice — but the old row really did accrue interest in the
-    # years before, and dropping it outright lost that deduction. The window per
-    # purchase loan is closed below by `interest_accrual_end_year`; the recorded
-    # Interest rows a successor rolled up are still dropped whole, because those
-    # are amounts already charged rather than a projection over years.
-    first_superseded = superseded_from_year(loans_db)
-    superseded_ever = set(first_superseded)
-    purchase_loans = [l for l in loans_db if l.loan_type == 'Purchase']
-    interest_loans  = [l for l in loans_db
-                       if l.loan_type == 'Interest' and l.id not in superseded_ever]
-
-    # Index: (grant_year, grant_type) -> {loan_year: Loan}
-    interest_by_grant: dict = defaultdict(dict)
-    for il in interest_loans:
-        interest_by_grant[(il.grant_year, il.grant_type)][il.loan_year] = il
-
-    pool: dict[int, float] = {}
-
-    # Recorded interest loans — deductible the year after they accrued
-    for il in interest_loans:
-        deductible_yr = il.loan_year + 1
-        pool[deductible_yr] = pool.get(deductible_yr, 0.0) + il.amount
-
-    # Projected interest for years without a recorded loan
-    for p in purchase_loans:
-        recorded = interest_by_grant[(p.grant_year, p.grant_type)]
-        for yr in range(p.loan_year + 1,
-                        interest_accrual_end_year(p, first_superseded) + 1):
-            if yr in recorded:
-                continue
-            projected = p.amount * p.interest_rate
-            for il_yr, il in recorded.items():
-                if il_yr < yr:
-                    projected += il.amount * il.interest_rate
-            deductible_yr = yr + 1
-            pool[deductible_yr] = pool.get(deductible_yr, 0.0) + projected
-
-    return pool
-
-
-# Event types where capital gains are actually realized and taxed.
-# Share Price events are mark-to-market (unrealized) — no deduction consumed there.
-_TAXABLE_EVENT_TYPES = frozenset({'Vesting', 'Sale', 'Liquidation (projected)'})
-
-
-def _apply_interest_deduction(enriched: list, loans_db: list, excluded_years: set[int] | None = None) -> None:
-    """
-    Annotate realized-cap-gains events with an investment-interest deduction offset.
-
-    IRS Form 4952: investment interest paid is deductible against net investment
-    income in the year the interest is due.  Only applied at taxable events
-    (Vesting, Sale, Liquidation) — not at unrealized Share Price changes.
-
-    Uses full projected interest (matching Total Interest card): recorded Interest
-    loans where they exist, projected principal×rate for gaps, with carry-forward.
-
-    excluded_years: if provided, events in these years are skipped (no deduction
-    consumed or applied).  Interest due in excluded years is forfeited — if you
-    didn't itemize that year, you can't carry that interest forward.
-
-    Modifies events in-place; adds fields:
-      interest_deduction_applied      - amount used by this event
-      interest_deduction_on_stcg      - portion applied to vesting CG
-      interest_deduction_on_ltcg      - portion applied to price CG
-      adjusted_total_cap_gains        - total_cap_gains net of deduction
-      adjusted_cum_cap_gains          - running cumulative CG net of all deductions
-    """
-    pool = _build_interest_pool(loans_db)
-    sorted_years = sorted(pool.keys())
+    pool = interest_paid_by_year
+    sorted_years = sorted(pool)
     year_idx = 0
     available = 0.0
     cum_deduction = 0.0
@@ -625,24 +621,117 @@ def _apply_interest_deduction(enriched: list, loans_db: list, excluded_years: se
 
         ded_stcg = 0.0
         ded_ltcg = 0.0
-
-        if event.get('event_type') in _TAXABLE_EVENT_TYPES and event_year not in excl:
-            stcg = max(0.0, event.get('vesting_cap_gains', 0.0))
-            ltcg = max(0.0, event.get('price_cap_gains', 0.0))
-            if available > 0 and (stcg + ltcg) > 0:
-                ded_stcg = min(available, stcg)
-                available -= ded_stcg
-                ded_ltcg = min(available, ltcg)
-                available -= ded_ltcg
+        if event.get('event_type') in _TAXABLE_EVENT_TYPES and event_year not in excl and available > 0:
+            st = max(0.0, event.get('st_gain') or 0.0)
+            lt = max(0.0, event.get('lt_gain') or 0.0)
+            ded_stcg = min(available, st)
+            available -= ded_stcg
+            ded_ltcg = min(available, lt)
+            available -= ded_ltcg
 
         ded_total = ded_stcg + ded_ltcg
         cum_deduction += ded_total
-
         event['interest_deduction_applied'] = round(ded_total, 2)
         event['interest_deduction_on_stcg'] = round(ded_stcg, 2)
         event['interest_deduction_on_ltcg'] = round(ded_ltcg, 2)
         event['adjusted_total_cap_gains'] = round(event.get('total_cap_gains', 0.0) - ded_total, 2)
         event['adjusted_cum_cap_gains'] = round(event.get('cum_cap_gains', 0.0) - cum_deduction, 2)
+
+
+def _deduction_totals(enriched: list, ts: dict, cutoff: date | None = None) -> tuple[float, float]:
+    """(deduction used, tax it saves) over annotated events up to `cutoff`."""
+    st_rate = ts["federal_st_cg_rate"] + ts["niit_rate"] + ts["state_st_cg_rate"]
+    lt_rate = ts["federal_lt_cg_rate"] + ts["niit_rate"] + ts["state_lt_cg_rate"]
+    used = saved = 0.0
+    for e in enriched:
+        if cutoff is not None and _to_date(e["date"]) > cutoff:
+            break
+        used += e.get("interest_deduction_applied", 0.0)
+        saved += (e.get("interest_deduction_on_stcg", 0.0) * st_rate
+                  + e.get("interest_deduction_on_ltcg", 0.0) * lt_rate)
+    return round(used, 2), round(saved, 2)
+
+
+def _ts_dict(ts_row) -> dict | None:
+    if not ts_row:
+        return None
+    return {
+        "federal_income_rate": ts_row.federal_income_rate,
+        "federal_lt_cg_rate": ts_row.federal_lt_cg_rate,
+        "federal_st_cg_rate": ts_row.federal_st_cg_rate,
+        "niit_rate": ts_row.niit_rate,
+        "state_income_rate": ts_row.state_income_rate,
+        "state_lt_cg_rate": ts_row.state_lt_cg_rate,
+        "state_st_cg_rate": ts_row.state_st_cg_rate,
+        "lt_holding_days": ts_row.lt_holding_days,
+    }
+
+
+def _sale_overrides(sales, ts_row) -> tuple[dict, dict, dict]:
+    overrides, loan_ids, lots = {}, {}, {}
+    for s in sales:
+        loan_ids[s.id] = s.loan_id
+        if s.lot_overrides:
+            lots[s.id] = s.lot_overrides
+        if ts_row:
+            overrides[s.id] = {
+                k: (getattr(s, k) if getattr(s, k) is not None else getattr(ts_row, k))
+                for k in ("federal_income_rate", "federal_lt_cg_rate", "federal_st_cg_rate", "niit_rate",
+                          "state_income_rate", "state_lt_cg_rate", "state_st_cg_rate", "lt_holding_days")
+            }
+    return overrides, loan_ids, lots
+
+
+def _projected_events(user: User, db: Session, *, horizon_date=None, deduction_enabled=None,
+                      excluded_years=None):
+    """Grants, loans, sales and the enriched, taxed, deduction-annotated
+    timeline: one path for /events, /preview-exit, /preview-deduction and the
+    dashboard so none of them can disagree about a payoff or a deduction."""
+    grants, prices, loans, loans_db, initial_price, election_83b_map, estimated_price_dates = _user_source_data(user, db)
+    if not grants and not prices:
+        return None
+    timeline = get_timeline(user.id, grants, prices, loans, initial_price)
+    loan_payments = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).order_by(LoanPayment.date).all()
+    sales = db.query(Sale).filter(Sale.user_id == user.id).all()
+    ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
+    ts_dict = _ts_dict(ts_row)
+    from app.routers.loans import _is_flexible_payoff_enabled
+    flexible_payoff_enabled = _is_flexible_payoff_enabled(db)
+    settings = _projection_settings(ts_row)
+    tax_due = _tax_due_dates(db)
+    loan_grant_by_id = {ln.id: (ln.grant_year, ln.grant_type) for ln in loans_db}
+    overrides, sale_loan_ids, lot_overrides = _sale_overrides(sales, ts_row)
+    if deduction_enabled is None:
+        deduction_enabled = bool(ts_row and ts_row.deduct_investment_interest)
+    if excluded_years is None:
+        excluded_years = set(ts_row.deduction_excluded_years or []) if ts_row else set()
+    ctx = {
+        "grants": grants, "prices": prices, "loans_db": loans_db, "timeline": timeline,
+        "loan_payments": loan_payments, "sales": sales, "ts_row": ts_row, "ts_dict": ts_dict,
+        "election_83b_map": election_83b_map, "estimated_price_dates": estimated_price_dates,
+        "initial_price": initial_price, "settings": settings,
+        "deduction_enabled": deduction_enabled, "excluded_years": excluded_years,
+    }
+    proj = _project(grants, prices, loans_db, loan_payments, sales, settings, tax_due)
+    ctx["projection"] = proj
+    stop = None
+    if horizon_date is not None:
+        stop = horizon_date + timedelta(days=settings["lag_days"])
+        ctx["exit_projection"] = _project(grants, prices, loans_db, loan_payments, sales, settings, tax_due, stop=stop)
+    enriched = _enrich_timeline(timeline, loans_db, loan_payments, sales, horizon_date=horizon_date, projection=proj)
+    if ts_dict:
+        _annotate_sale_taxes(enriched, timeline, ts_dict,
+                             loan_grant_by_id=loan_grant_by_id,
+                             loan_payoff_method=ts_row.loan_payoff_method,
+                             lot_selection_method=ts_row.lot_selection_method,
+                             flexible_payoff_enabled=flexible_payoff_enabled,
+                             sale_overrides=overrides, sale_loan_ids=sale_loan_ids,
+                             sale_lot_overrides=lot_overrides)
+        if deduction_enabled:
+            paid = (ctx["exit_projection"] if horizon_date is not None else proj).interest_paid_by_year()
+            _apply_interest_deduction(enriched, paid, excluded_years=excluded_years)
+    ctx["enriched"] = enriched
+    return ctx
 
 
 @router.get("/preview-deduction")
@@ -653,56 +742,21 @@ def preview_deduction(
     db: Session = Depends(get_db),
 ):
     """Compute investment interest deduction impact without saving the setting."""
-    grants, prices, loans, loans_db, initial_price, _, _ = _user_source_data(user, db)
-    if not grants and not prices:
-        return None
     ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
     if not ts_row:
         return None
-    db.close()
-
     excl = set(ts_row.deduction_excluded_years or [])
     if exclude_past and not excl:
         this_year = date.today().year
-        vest_years: set[int] = set()
-        for g in grants:
-            vest_years |= {d.year for d, _ in g['vesting']}
-        excl = {y for y in vest_years if y < this_year}
-    interest_deduction_total = 0.0
-    tax_savings_from_deduction = 0.0
-    if enabled:
-        timeline = get_timeline(user.id, grants, prices, loans, initial_price)
-        pool_d = _build_interest_pool(loans_db)
-        stcg_rate = ts_row.federal_st_cg_rate + ts_row.niit_rate + ts_row.state_st_cg_rate
-        ltcg_rate = ts_row.federal_lt_cg_rate + ts_row.niit_rate + ts_row.state_lt_cg_rate
-        sorted_years_d = sorted(pool_d.keys())
-        year_idx_d = 0
-        available_d = 0.0
-        for ev in timeline:
-            if ev.get('event_type') not in _TAXABLE_EVENT_TYPES:
-                continue
-            ev_year = int(ev['date'].year) if hasattr(ev['date'], 'year') else int(str(ev['date'])[:4])
-            while year_idx_d < len(sorted_years_d) and sorted_years_d[year_idx_d] <= ev_year:
-                yr_d = sorted_years_d[year_idx_d]
-                if yr_d not in excl:
-                    available_d += pool_d[yr_d]
-                year_idx_d += 1
-            if ev_year in excl:
-                continue
-            stcg = max(0.0, ev.get('vesting_cap_gains', 0.0))
-            ltcg = max(0.0, ev.get('price_cap_gains', 0.0))
-            if available_d > 0 and (stcg + ltcg) > 0:
-                ded_s = min(available_d, stcg)
-                available_d -= ded_s
-                ded_l = min(available_d, ltcg)
-                available_d -= ded_l
-                interest_deduction_total += ded_s + ded_l
-                tax_savings_from_deduction += ded_s * stcg_rate + ded_l * ltcg_rate
-
-    return {
-        "interest_deduction_total": round(interest_deduction_total, 2),
-        "tax_savings_from_deduction": round(tax_savings_from_deduction, 2),
-    }
+        grants_db = db.query(Grant).filter(Grant.user_id == user.id).all()
+        from services.vesting import vest_years
+        excl = {y for g in grants_db for y in vest_years(g) if y < this_year}
+    ctx = _projected_events(user, db, deduction_enabled=enabled, excluded_years=excl)
+    db.close()
+    if ctx is None:
+        return None
+    used, saved = _deduction_totals(ctx["enriched"], ctx["ts_dict"]) if enabled else (0.0, 0.0)
+    return {"interest_deduction_total": used, "tax_savings_from_deduction": saved}
 
 
 def _preview_exit_data(user: User, db: Session, date_str: str):
@@ -715,52 +769,18 @@ def _preview_exit_data(user: User, db: Session, date_str: str):
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid date format") from None
 
-    grants, prices, loans, loans_db, initial_price, _, _ = _user_source_data(user, db)
-    if not grants and not prices:
-        return None
-
-    timeline = get_timeline(user.id, grants, prices, loans, initial_price)
-    loan_payments = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).order_by(LoanPayment.date).all()
-    sales = db.query(Sale).filter(Sale.user_id == user.id).all()
-    ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
-    ts_dict = {
-        "federal_income_rate": ts_row.federal_income_rate,
-        "federal_lt_cg_rate": ts_row.federal_lt_cg_rate,
-        "federal_st_cg_rate": ts_row.federal_st_cg_rate,
-        "niit_rate": ts_row.niit_rate,
-        "state_income_rate": ts_row.state_income_rate,
-        "state_lt_cg_rate": ts_row.state_lt_cg_rate,
-        "state_st_cg_rate": ts_row.state_st_cg_rate,
-        "lt_holding_days": ts_row.lt_holding_days,
-    } if ts_row else None
-    from app.routers.loans import _is_flexible_payoff_enabled
-    flexible_payoff_enabled = _is_flexible_payoff_enabled(db)
-    loan_grant_by_id = {ln.id: (ln.grant_year, ln.grant_type) for ln in loans_db}
-    sale_loan_ids = {s.id: s.loan_id for s in sales}
-    loan_payoff_method = ts_row.loan_payoff_method if ts_row else None
-    lot_selection_method = ts_row.lot_selection_method if ts_row else None
+    ctx = _projected_events(user, db, horizon_date=preview_date)
     db.close()
-
-    enriched = _enrich_timeline(timeline, loans_db, loan_payments, sales, horizon_date=preview_date)
-    if ts_dict:
-        _annotate_sale_taxes(enriched, timeline, ts_dict,
-                             loan_grant_by_id=loan_grant_by_id,
-                             loan_payoff_method=loan_payoff_method,
-                             lot_selection_method=lot_selection_method,
-                             flexible_payoff_enabled=flexible_payoff_enabled,
-                             sale_loan_ids=sale_loan_ids)
-    deduction_enabled = bool(ts_row and ts_row.deduct_investment_interest)
-    excl_years = set(ts_row.deduction_excluded_years or []) if ts_row else set()
-    if deduction_enabled:
-        _apply_interest_deduction(enriched, loans_db, excluded_years=excl_years)
-
+    if ctx is None:
+        return None
+    enriched = ctx["enriched"]
     liq = next((e for e in enriched if e.get("event_type") == "Liquidation (projected)"), None)
     if not liq:
         return None
-
     summary = _build_exit_summary(
-        enriched, grants, loans_db, loan_payments, sales,
-        preview_date, ts_dict, deduction_enabled, excl_years,
+        enriched, ctx["grants"], ctx["loans_db"], ctx["loan_payments"], ctx["sales"],
+        preview_date, ctx["ts_dict"], ctx["deduction_enabled"], ctx["excluded_years"],
+        projection=ctx["projection"], exit_projection=ctx["exit_projection"],
     )
     if not summary:
         return None
@@ -787,18 +807,13 @@ def get_events(user: User = Depends(get_current_user), db: Session = Depends(get
 
 def _get_events_data(user: User, db: Session) -> list:
     """Core events logic, usable by both the direct endpoint and shared view."""
-    grants, prices, loans, loans_db, initial_price, election_83b_map, estimated_price_dates = _user_source_data(user, db)
-    if not grants and not prices:
+    ctx = _projected_events(user, db)
+    if ctx is None:
         return []
-    timeline = get_timeline(user.id, grants, prices, loans, initial_price)
-
-    loan_payments = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).order_by(LoanPayment.date).all()
-    sales = db.query(Sale).filter(Sale.user_id == user.id).all()
-
-    enriched = _enrich_timeline(timeline, loans_db, loan_payments, sales)
-
+    enriched = ctx["enriched"]
     from services.price_state import price_metadata
     price_rows = db.query(Price).filter(Price.user_id == user.id).order_by(Price.effective_date).all()
+    db.close()
     current_row = price_rows[0] if price_rows else None
     price_index = 0
     for event in enriched:
@@ -813,68 +828,10 @@ def _get_events_data(user: User, db: Session) -> list:
     # Annotate Share Price events with is_estimate flag
     for e in enriched:
         if e["event_type"] == "Vesting":
-            e["election_83b"] = election_83b_map.get((e.get("grant_year"), e.get("grant_type")), False)
+            e["election_83b"] = ctx["election_83b_map"].get((e.get("grant_year"), e.get("grant_type")), False)
         elif e["event_type"] == "Share Price":
-            ev_date = e["date"]
-            if isinstance(ev_date, datetime):
-                ev_date = ev_date.date()
-            if ev_date in estimated_price_dates:
+            if _to_date(e["date"]) in ctx["estimated_price_dates"]:
                 e["is_estimate"] = True
-
-    ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
-    ts_dict = {
-        "federal_income_rate": ts_row.federal_income_rate,
-        "federal_lt_cg_rate": ts_row.federal_lt_cg_rate,
-        "federal_st_cg_rate": ts_row.federal_st_cg_rate,
-        "niit_rate": ts_row.niit_rate,
-        "state_income_rate": ts_row.state_income_rate,
-        "state_lt_cg_rate": ts_row.state_lt_cg_rate,
-        "state_st_cg_rate": ts_row.state_st_cg_rate,
-        "lt_holding_days": ts_row.lt_holding_days,
-    } if ts_row else None
-
-    from app.routers.loans import _is_flexible_payoff_enabled
-    flexible_payoff_enabled = _is_flexible_payoff_enabled(db)
-    loan_grant_by_id = {ln.id: (ln.grant_year, ln.grant_type) for ln in loans_db}
-    sale_overrides: dict = {}
-    sale_loan_ids: dict = {}
-    sale_lot_overrides: dict = {}
-    if ts_row:
-        for s in sales:
-            sale_overrides[s.id] = {
-                "federal_income_rate": s.federal_income_rate if s.federal_income_rate is not None else ts_row.federal_income_rate,
-                "federal_lt_cg_rate": s.federal_lt_cg_rate if s.federal_lt_cg_rate is not None else ts_row.federal_lt_cg_rate,
-                "federal_st_cg_rate": s.federal_st_cg_rate if s.federal_st_cg_rate is not None else ts_row.federal_st_cg_rate,
-                "niit_rate": s.niit_rate if s.niit_rate is not None else ts_row.niit_rate,
-                "state_income_rate": s.state_income_rate if s.state_income_rate is not None else ts_row.state_income_rate,
-                "state_lt_cg_rate": s.state_lt_cg_rate if s.state_lt_cg_rate is not None else ts_row.state_lt_cg_rate,
-                "state_st_cg_rate": s.state_st_cg_rate if s.state_st_cg_rate is not None else ts_row.state_st_cg_rate,
-                "lt_holding_days": s.lt_holding_days if s.lt_holding_days is not None else ts_row.lt_holding_days,
-            }
-            sale_loan_ids[s.id] = s.loan_id
-            if s.lot_overrides:
-                sale_lot_overrides[s.id] = s.lot_overrides
-
-    loan_payoff_method = ts_row.loan_payoff_method if ts_row else None
-    lot_selection_method = ts_row.lot_selection_method if ts_row else None
-
-    # All DB reads are done — release the connection back to the pool before
-    # CPU-heavy computation so we don't starve concurrent requests.
-    db.close()
-
-    if ts_dict:
-        _annotate_sale_taxes(enriched, timeline, ts_dict,
-                             loan_grant_by_id=loan_grant_by_id,
-                             loan_payoff_method=loan_payoff_method,
-                             lot_selection_method=lot_selection_method,
-                             flexible_payoff_enabled=flexible_payoff_enabled,
-                             sale_overrides=sale_overrides, sale_loan_ids=sale_loan_ids,
-                             sale_lot_overrides=sale_lot_overrides)
-
-    if ts_row and ts_row.deduct_investment_interest:
-        excl = set(ts_row.deduction_excluded_years or [])
-        _apply_interest_deduction(enriched, loans_db, excluded_years=excl)
-
     return [_serialize_event(e) for e in enriched]
 
 
@@ -958,9 +915,7 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
         "outstanding_loan_balance": round(
             _compute_outstanding_principal(loans_db, loan_payments_db, sales_db, cutoff), 2
         ),
-        "accrued_unbooked_interest": round(
-            _compute_projected_unrecorded_interest(loans_db, cutoff, loan_payments_db, sales_db), 2
-        ),
+        "accrued_unbooked_interest": None,
         "valuation_price": None,
     }
     for price in prices:
@@ -1001,6 +956,15 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
 
     # Add estimated tax from Sale events (FIFO, chronological order)
     ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
+    proj_settings = _projection_settings(ts_row)
+    tax_due = _tax_due_dates(db)
+    projection = _project(grants, prices, loans_db, loan_payments_db, sales_db, proj_settings, tax_due)
+    from app.loan_projection import outstanding_at_stop
+    at_cutoff = outstanding_at_stop(_project(grants, prices, loans_db, loan_payments_db, sales_db,
+                                             proj_settings, tax_due, stop=cutoff))
+    # Interest accrued and capitalised but not yet on a statement — the same
+    # projection the payoffs and the exit use, so the three cannot disagree.
+    position["accrued_unbooked_interest"] = round(at_cutoff["projected_interest"] + at_cutoff["accrued"], 2)
 
     covered_loan_ids = {s.loan_id for s in sales_db if s.loan_id is not None}
 
@@ -1061,11 +1025,19 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
         early_paid = payments_by_loan.get(ln.id, 0.0)
         cash_due = max(0.0, ln.amount - early_paid)
         if year not in loan_payment_by_year:
-            loan_payment_by_year[year] = {"year": year, "payoff_sale": 0.0, "cash_in": 0.0}
+            loan_payment_by_year[year] = {"year": year, "payoff_sale": 0.0, "cash_in": 0.0, "projected": 0.0}
+        # Unbooked interest and projected tax loans due with it, kept apart so
+        # the principal columns still reconcile to total_loan_principal.
+        loan_payment_by_year[year]["projected"] += projection.extra_for(ln.id)
         if ln.id in covered_loan_ids:
             loan_payment_by_year[year]["payoff_sale"] += cash_due
         else:
             loan_payment_by_year[year]["cash_in"] += cash_due
+
+    for po in projection.orphan_payoffs():
+        year = str(po.date.year)
+        row = loan_payment_by_year.setdefault(year, {"year": year, "payoff_sale": 0.0, "cash_in": 0.0, "projected": 0.0})
+        row["projected"] += po.extra
 
     if as_of is None:
         last = timeline[-1] if timeline else {}
@@ -1086,42 +1058,21 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None) -> d
             next_event = {"date": edate.isoformat(), "event_type": e["event_type"]}
             break
 
-    # Investment interest deduction — adjust total_cap_gains and estimate tax savings
+    # Investment interest deduction: interest actually paid by the cutoff,
+    # against gains actually realized by then (the sales above).
     interest_deduction_total = 0.0
     tax_savings_from_deduction = 0.0
-    if ts_row and ts_row.deduct_investment_interest:
-        excl_d = set(ts_row.deduction_excluded_years or [])
-        pool_d = _build_interest_pool(loans_db)
-        sorted_years_d = sorted(pool_d.keys())
-        year_idx_d = 0
-        available_d = 0.0
-        stcg_rate = ts_row.federal_st_cg_rate + ts_row.niit_rate + ts_row.state_st_cg_rate
-        ltcg_rate = ts_row.federal_lt_cg_rate + ts_row.niit_rate + ts_row.state_lt_cg_rate
-        for ev in timeline:
-            # Match the snapshot cutoff used by tax and cash figures above.
-            # Unbounded, this walks the whole projected lifetime and can subtract
-            # far more than the tax paid within the requested period.
-            if _to_date(ev['date']) > cutoff:
-                break
-            if ev.get('event_type') not in _TAXABLE_EVENT_TYPES:
-                continue
-            ev_year = int(ev['date'].year) if hasattr(ev['date'], 'year') else int(str(ev['date'])[:4])
-            while year_idx_d < len(sorted_years_d) and sorted_years_d[year_idx_d] <= ev_year:
-                yr_d = sorted_years_d[year_idx_d]
-                if yr_d not in excl_d:
-                    available_d += pool_d[yr_d]
-                year_idx_d += 1
-            if ev_year in excl_d:
-                continue
-            stcg = max(0.0, ev.get('vesting_cap_gains', 0.0))
-            ltcg = max(0.0, ev.get('price_cap_gains', 0.0))
-            if available_d > 0 and (stcg + ltcg) > 0:
-                ded_s = min(available_d, stcg)
-                available_d -= ded_s
-                ded_l = min(available_d, ltcg)
-                available_d -= ded_l
-                interest_deduction_total += ded_s + ded_l
-                tax_savings_from_deduction += ded_s * stcg_rate + ded_l * ltcg_rate
+    if ts_row and ts_row.deduct_investment_interest and sale_specs:
+        paid: dict[int, float] = {}
+        for po in projection.payoffs:
+            if po.date <= cutoff:
+                paid[po.date.year] = paid.get(po.date.year, 0.0) + po.interest_paid
+        realized = sorted(
+            ({"date": spec["date"], "event_type": "Sale",
+              "st_gain": results[spec["id"]]["st_gain"], "lt_gain": results[spec["id"]]["lt_gain"]}
+             for spec in sale_specs), key=lambda e: e["date"])
+        _apply_interest_deduction(realized, paid, excluded_years=set(ts_row.deduction_excluded_years or []))
+        interest_deduction_total, tax_savings_from_deduction = _deduction_totals(realized, _ts_dict(ts_row))
 
     # Whether the price these figures rest on is one the user projected rather
     # than a real valuation. The app shows this as a banner; anything reading

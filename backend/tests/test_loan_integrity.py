@@ -71,19 +71,30 @@ def test_tax_loans_count_the_debt_once_too(account):
     assert account.get("/api/dashboard").json()["total_tax_paid"] == PRINCIPAL
 
 
-def test_projected_interest_accrues_on_the_live_link_only(db_session, account):
-    """A superseded link's principal is carried by its successor, so projecting
-    interest on both charged the same debt twice."""
-    from app.routers.events import _build_interest_pool
-    from scaffold.models import Loan, User
+def _projected_interest_rows(db_session):
+    """The projection's capitalised Interest rows, by loan year."""
+    from datetime import date as _date
+    from app.loan_projection import project
+    from app.routers.events import _user_source_data
+    from scaffold.models import User
     from tests.conftest import user_key
-
-    chain(account, 2)
     user = db_session.query(User).one()
     with user_key(user):
-        pool = _build_interest_pool(db_session.query(Loan).filter(Loan.user_id == user.id).all())
-    assert pool, "a purchase loan should project interest"
-    assert set(pool.values()) == {PRINCIPAL * 0.03}
+        grants, prices, _l, loans_db, *_ = _user_source_data(user, db_session)
+        proj = project(loans_db, grants, prices, today=_date(2026, 1, 1), stop=_date(2024, 6, 1))
+    return {p.loan_year: p.amount for p in proj.projected if p.loan_type == "Interest"}
+
+
+def test_projected_interest_accrues_on_the_live_link_only(db_session, account):
+    """A superseded link's principal is carried by its successor, so projecting
+    interest on both charged the same debt twice. Each year's capitalised
+    interest is one loan's worth: 3% on the principal plus 3% on the interest
+    already capitalised (the stub from the 2020-12-31 purchase rolls into 2021)."""
+    chain(account, 2)
+    rows = _projected_interest_rows(db_session)
+    assert rows, "a purchase loan should project interest"
+    assert rows[2021] == pytest.approx(PRINCIPAL * 0.03 * 366 / 365, abs=0.01)
+    assert rows[2022] == pytest.approx((PRINCIPAL + rows[2021]) * 0.03, abs=0.01)
 
 
 def test_one_unrefinanced_loan_is_unaffected(account):
@@ -315,18 +326,12 @@ def test_a_self_referencing_tax_loan_still_counts(account, db_session):
 
 
 def test_it_still_accrues_projected_interest(db_session, account):
-    """`_build_interest_pool` walks the same exclusion set, so it was
-    understating the deduction by this loan's interest every year."""
-    from app.routers.events import _build_interest_pool
-    from scaffold.models import Loan, User
-    from tests.conftest import user_key
-
+    """The projection walks the same exclusion set, so a self-reference read
+    as supersession would understate interest (and the deduction) every year."""
     self_referencing_loan(account, db_session)
-    user = db_session.query(User).one()
-    with user_key(user):
-        pool = _build_interest_pool(db_session.query(Loan).filter(Loan.user_id == user.id).all())
-    assert pool, "a live purchase loan must project interest"
-    assert set(pool.values()) == {PRINCIPAL * 0.03}
+    rows = _projected_interest_rows(db_session)
+    assert rows, "a live purchase loan must project interest"
+    assert rows[2021] == pytest.approx(PRINCIPAL * 0.03 * 366 / 365, abs=0.01)
 
 
 def test_the_connector_does_not_report_it_as_refinanced(account, db_session):

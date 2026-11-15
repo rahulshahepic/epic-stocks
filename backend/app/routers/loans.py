@@ -120,6 +120,27 @@ def _payoff_tax_settings(
     return settings
 
 
+def _projected_payoff_extra(loan: Loan, user: User, db: Session, payoff_date) -> float:
+    """The projection's addition to this loan's payoff, on its own due date.
+
+    Paying early (execute-payoff, a payoff_date before the due date) stops
+    accrual on that date, so the projection is cut there instead.
+    """
+    from app.routers.events import _user_source_data, _project, _projection_settings, _tax_due_dates
+    grants, prices, _loans, loans_db, _ip, _m, _e = _user_source_data(user, db)
+    payments = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).all()
+    sales = [s for s in db.query(Sale).filter(Sale.user_id == user.id).all() if s.loan_id != loan.id]
+    ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
+    stop = payoff_date if payoff_date and payoff_date < loan.due_date else None
+    proj = _project(grants, prices, loans_db, payments, sales, _projection_settings(ts_row),
+                    _tax_due_dates(db), stop=stop)
+    if stop is None:
+        return proj.extra_for(loan.id)
+    # Early payoff: this loan's group pays what it owes on `stop`.
+    po = proj.payoff_for(loan.id)
+    return po.extra if po is not None and po.date == stop else 0.0
+
+
 def _compute_payoff_sale(
     loan: Loan,
     user: User,
@@ -135,6 +156,11 @@ def _compute_payoff_sale(
         lp.amount for lp in db.query(LoanPayment).filter(LoanPayment.loan_id == loan.id, LoanPayment.date <= payoff_date).all()
     )
     cash_due = max(0.0, loan.amount - early_paid)
+    # What the statements have not booked yet but this payoff will owe:
+    # projected Interest loans, interest since the last 31 December, and
+    # projected Tax loans due the same day (app/loan_projection.py).
+    projected_extra = _projected_payoff_extra(loan, user, db, payoff_date)
+    cash_due += projected_extra
 
     timeline = _build_timeline_for_user(user, db)
     # Use the price at the loan due date, not the final timeline price.
@@ -198,6 +224,7 @@ def _compute_payoff_sale(
         "loan_id": loan.id,
         "notes": f"Auto-generated payoff sale for loan {loan_label}",
         "cash_due": round(cash_due, 2),
+        "projected_extra": round(projected_extra, 2),
     }
 
 
@@ -219,6 +246,12 @@ def _upsert_generated_payoff_sale(
         Sale.loan_id == loan.id, Sale.user_id == user.id,
     ).first()
     if existing and not existing.is_generated:
+        return existing
+    if (payoff_date or loan.due_date) < date.today():
+        # A due date already behind us is not settled automatically: Epic
+        # often extends these loans, and a sale on a past date reads as
+        # something that happened. The timeline marks the payoff
+        # past_due_unconfirmed; execute-payoff is the explicit confirmation.
         return existing
 
     rates = _payoff_tax_settings(user, db, options)

@@ -84,6 +84,8 @@ def test_dashboard_total_tax_paid_reconciles_to_sale_breakdown(client, db_sessio
     })
     assert resp.status_code == 201
     loan_id = resp.json()["id"]
+    # A past due date is not settled automatically; confirming it sells today.
+    assert client.post(f"/api/loans/{loan_id}/execute-payoff").status_code == 201
 
     sales = client.get("/api/sales").json()
     sale = next(s for s in sales if s["loan_id"] == loan_id)

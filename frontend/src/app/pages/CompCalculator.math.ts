@@ -1,4 +1,4 @@
-import { refinancedLoanIds } from '../loanState.ts'
+import { loanIsDrawn, refinancedLoanIds } from '../loanState.ts'
 import { addCalendarYears } from '../dateUtils.ts'
 // Pure math helpers for the Total Comp Calculator.
 // `outstandingPrincipalAt` mirrors the Dashboard's client-side principal IIFE
@@ -32,7 +32,6 @@ export function outstandingPrincipalAt(
   sales: SaleEntry[],
   asOf: string,
 ): number {
-  const year = parseInt(asOf.slice(0, 4))
   const settled = new Set(
     sales.filter(s => s.loan_id != null && s.date <= asOf).map(s => s.loan_id as number),
   )
@@ -43,7 +42,7 @@ export function outstandingPrincipalAt(
   }
   let total = 0
   for (const l of loans) {
-    if (l.loan_year > year) continue
+    if (!loanIsDrawn(l, asOf)) continue
     if (settled.has(l.id) || refinanced.has(l.id)) continue
     total += Math.max(0, l.amount - (paid.get(l.id) ?? 0))
   }
@@ -71,9 +70,9 @@ export function annualInterestForYear(
 ): number {
   const superseded = refinancedLoanIds(loans, `${year}-12-31`)
   const settled = new Set(sales.filter(s => s.loan_id != null && s.date < `${year}-01-01`).map(s => s.loan_id))
-  const purchaseLoans = loans.filter(l => l.loan_type === 'Purchase' && !superseded.has(l.id) && !settled.has(l.id))
+  const purchaseLoans = loans.filter(l => l.loan_type === 'Purchase' && loanIsDrawn(l, `${year}-12-31`) && !superseded.has(l.id) && !settled.has(l.id))
   const interestLoans = loans.filter(
-    l => l.loan_type === 'Interest' && !superseded.has(l.id) && !settled.has(l.id),
+    l => l.loan_type === 'Interest' && loanIsDrawn(l, `${year}-12-31`) && !superseded.has(l.id) && !settled.has(l.id),
   )
 
   // Recorded interest loans for this year — sum amounts directly.
@@ -111,7 +110,6 @@ export function unvestedPrincipalAt(
   asOf: string,
   exitDate: string,
 ): number {
-  const year = parseInt(asOf.slice(0, 4))
   const settled = new Set(
     sales.filter(s => s.loan_id != null && s.date <= asOf).map(s => s.loan_id as number),
   )
@@ -130,7 +128,7 @@ export function unvestedPrincipalAt(
     for (const l of loans) {
       if (l.grant_year !== grant.year || l.grant_type !== grant.type) continue
       if (l.loan_type === 'Tax') continue
-      if (l.loan_year > year) continue
+      if (!loanIsDrawn(l, asOf)) continue
       if (settled.has(l.id) || refinanced.has(l.id)) continue
       total += fraction * Math.max(0, l.amount - (paid.get(l.id) ?? 0))
     }

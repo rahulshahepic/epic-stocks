@@ -119,11 +119,47 @@ beforeEach(() => {
   vi.restoreAllMocks()
 })
 
+function snapshotFor(asOf: string, sales = MOCK_SALES) {
+  const sold = sales.some(sale => sale.date <= asOf)
+  return {
+    ...MOCK_DASHBOARD, as_of: asOf,
+    cards: {
+      ...MOCK_DASHBOARD, total_shares: sold ? 0 : 150000,
+      total_loan_principal: sold ? 0 : 75000, total_interest: 1234,
+      interest_deduction_total: 0, tax_savings_from_deduction: 0,
+      next_event: {date: '2027-03-01', event_type: 'Vesting'}, next_event_detail: MOCK_EVENTS[2],
+      total_stock_value: sold ? 3000 : 20000, vested_stock_value: sold ? 0 : 17000,
+      purchased_unvested_stock_value: 3000, net_equity: sold ? 3000 : -55000,
+      accrued_unbooked_interest: 0, total_cost_basis: sold ? 3000 : 6980,
+      unvested_shares: 1000, price_is_estimate: false,
+    },
+    grant_holdings: [
+      {year: 2020, type: 'Purchase', exerciseDate: '2020-01-01', costBasis: 1.99,
+        vestedShares: sold ? 0 : 2000, unvestedShares: 0, vestedValue: sold ? 0 : 17000,
+        unvestedValue: 0, totalValue: sold ? 0 : 17000, totalTax: 0, totalLoan: sold ? 0 : 75000},
+      {year: 2030, type: 'Purchase', exerciseDate: '2025-12-31', costBasis: 3,
+        vestedShares: 0, unvestedShares: 1000, vestedValue: 0,
+        unvestedValue: 3000, totalValue: 3000, totalTax: 0, totalLoan: 0},
+    ],
+    charts: {tax: [{date: '2025-01-01', estimated: 1000, paid: 1000, projected: false}], interest: []},
+    active_loans: sold ? [] : [{id: 1, grantYear: 2020, grantType: 'Purchase', loanType: 'Purchase',
+      loanYear: 2020, dueDate: '2030-12-31', balance: 75000, interestRate: 0.05}],
+    breakdowns: {
+      cash: {sales: [], totals: {proceeds: 10000, tax: 0, loanPayoff: 0, net: 10000}},
+      income: {groups: [], total: 50000},
+      capGains: {vestingGroups: [], vestingTotal: 0, priceTotal: 200000, total: 200000},
+      interest: {rows: [{id: 'interest:1', label: 'Server projected interest', amount: 1234}], total: 1234},
+      tax: {taxLoans: 5000, vestingIncomeTax: 0, cgTaxFromSales: 0, deductionSavings: 0, total: 5000},
+    },
+  }
+}
+
 function mockApi(prices = MOCK_PRICES, sales = MOCK_SALES) {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url
     if (url.includes('/api/dashboard')) {
-      return new Response(JSON.stringify(MOCK_DASHBOARD), { status: 200 })
+      const asOf = new URL(url, 'http://localhost').searchParams.get('as_of') ?? ''
+      return new Response(JSON.stringify(snapshotFor(asOf, sales)), { status: 200 })
     }
     if (url.includes('/api/events')) {
       return new Response(JSON.stringify(MOCK_EVENTS), { status: 200 })
@@ -423,4 +459,90 @@ describe('Dashboard stale-price banner', () => {
     await screen.findByText(/Net worth/i)
     expect(screen.queryByText(/Your newest share price is from/)).not.toBeInTheDocument()
   })
+})
+
+describe('server dashboard snapshots', () => {
+  it('uses server-calculated interest instead of deriving it from raw loans', async () => {
+    mockApi()
+    renderDashboard()
+    expect(await screen.findByText('$1,234')).toBeInTheDocument()
+    expect(globalThis.fetch).toHaveBeenCalledWith(expect.stringContaining('/api/dashboard?as_of='), expect.anything())
+    expect(globalThis.fetch).not.toHaveBeenCalledWith(expect.stringContaining('/api/sales/holdings'), expect.anything())
+  })
+
+  it('hides previous totals while the chosen date loads and ignores late responses', async () => {
+    mockApi()
+    const original = vi.mocked(globalThis.fetch).getMockImplementation()!
+    const pending = new Map<string, (value: Response) => void>()
+    vi.mocked(globalThis.fetch).mockImplementation((input, init) => {
+      const url = String(input)
+      const when = new URL(url, 'http://localhost').searchParams.get('as_of')
+      if (url.includes('/api/dashboard?') && when?.startsWith('2028')) {
+        return new Promise(resolve => pending.set(when, resolve))
+      }
+      return original(input, init)
+    })
+    renderDashboard()
+    await screen.findByText('-$55,000')
+    const input = document.querySelector('input[type=date]')!
+    fireEvent.change(input, {target: {value: '2028-01-01'}})
+    expect(screen.queryByText('-$55,000')).not.toBeInTheDocument()
+    await waitFor(() => expect(pending.has('2028-01-01')).toBe(true))
+    fireEvent.change(input, {target: {value: '2028-02-01'}})
+    await waitFor(() => expect(pending.has('2028-02-01')).toBe(true))
+    await act(async () => pending.get('2028-02-01')!(new Response(JSON.stringify({
+      ...snapshotFor('2028-02-01'), cards: {...snapshotFor('2028-02-01').cards, net_equity: 123456},
+    }))))
+    await screen.findByText('$123,456')
+    await act(async () => pending.get('2028-01-01')!(new Response(JSON.stringify(snapshotFor('2028-01-01')))))
+    expect(screen.getByText('$123,456')).toBeInTheDocument()
+    expect(screen.queryByText('-$55,000')).not.toBeInTheDocument()
+    expect(input).toHaveValue('2028-02-01')
+  })
+
+  it('shows a retry instead of old totals after a dated request fails', async () => {
+    mockApi()
+    const original = vi.mocked(globalThis.fetch).getMockImplementation()!
+    let fail = true
+    vi.mocked(globalThis.fetch).mockImplementation((input, init) => {
+      if (String(input).includes('/api/dashboard?as_of=2028') && fail) return Promise.reject(new Error('Snapshot failed'))
+      return original(input, init)
+    })
+    renderDashboard()
+    await screen.findByText('-$55,000')
+    fireEvent.change(document.querySelector('input[type=date]')!, {target: {value: '2028-01-01'}})
+    await screen.findByRole('button', {name: 'Retry'})
+    expect(screen.queryByText('-$55,000')).not.toBeInTheDocument()
+    fail = false
+    fireEvent.click(screen.getByRole('button', {name: 'Retry'}))
+    await screen.findByText('-$55,000')
+  })
+})
+
+it('retries an initial failed snapshot request', async () => {
+  mockApi()
+  const original = vi.mocked(globalThis.fetch).getMockImplementation()!
+  let fail = true
+  vi.mocked(globalThis.fetch).mockImplementation((input, init) => {
+    if (String(input).includes('/api/dashboard?') && fail) return Promise.reject(new Error('First snapshot failed'))
+    return original(input, init)
+  })
+  renderDashboard()
+  await screen.findByText('Failed to load dashboard')
+  fail = false
+  fireEvent.click(screen.getByRole('button', {name: 'Retry'}))
+  await screen.findByText('-$55,000')
+})
+
+it('keeps charts mounted and does not refetch them when the card date changes', async () => {
+  mockApi()
+  renderDashboard()
+  const chart = await screen.findByText('Loan Payments by Due Year')
+  const chartFetchCount = () => vi.mocked(globalThis.fetch).mock.calls.filter(([input]) => String(input).includes('/api/dashboard/charts')).length
+  expect(chartFetchCount()).toBe(1)
+  fireEvent.change(document.querySelector('input[type=date]')!, {target: {value: '2026-11-30'}})
+  expect(screen.getByText('Loan Payments by Due Year')).toBe(chart)
+  await waitFor(() => expect(screen.getByText('Value on Nov 30, 2026')).toBeInTheDocument())
+  expect(screen.getByText('Loan Payments by Due Year')).toBe(chart)
+  expect(chartFetchCount()).toBe(1)
 })

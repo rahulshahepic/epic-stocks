@@ -1,7 +1,7 @@
 import { StatCard as Card } from '../../components/StatCard.tsx'
 import { BreakdownRow, BreakdownShell } from './Breakdown.tsx'
 import { fmt$, fmtFullDate } from '../../format.ts'
-import type { ActiveLoan, Breakdowns, CardValues } from '../Dashboard.math.ts'
+import type { ActiveLoan, Breakdowns, CardValues } from '../Dashboard.types.ts'
 
 /** What is owed: loan principal, interest and tax. */
 export function CostCards({ cv, activeLoans, breakdowns, hasInterestDeduction, openBreakdowns, toggleBreakdown }: {
@@ -73,7 +73,7 @@ export function CostCards({ cv, activeLoans, breakdowns, hasInterestDeduction, o
           <div className="my-1 border-t border-cs-border-strong" />
           <BreakdownRow label="Total" value={fmt$(breakdowns.interest.total)} bold />
           <p className="mt-2 text-[10px] text-cs-muted">
-            "Booked" rows are Interest-type loans you've already recorded; "estimated" rows project future interest on Purchase loans each year until due.
+            Booked rows are recorded Interest loans. Projected capitalised interest and daily accrual use the same server projection as the payoff schedule.
           </p>
         </BreakdownShell>
       )}

@@ -385,3 +385,25 @@ describe('rate helpers', () => {
     })).toBeCloseTo(0.288, 4)
   })
 })
+
+describe('explicit disbursement in compensation principal', () => {
+  const rows = [
+    loan({ id: 1, amount: 10000 }),
+    loan({ id: 2, amount: 20000, loan_year: 2026, refinances_loan_id: 1, disbursed_on: '2026-11-30' }),
+  ]
+  const grants = [{
+    id: 1, version: 1, year: 2020, type: 'Purchase', shares: 1000, price: 10,
+    exercise_date: '2020-01-01', vest_start: '2030-01-01', periods: 1, dp_shares: 0,
+    election_83b: true,
+  }] as GrantEntry[]
+
+  it.each([['2026-11-15', 10000], ['2026-11-30', 20000]])('counts only drawn principal on %s', (asOf, expected) => {
+    expect(outstandingPrincipalAt(rows, [], [], asOf)).toBe(expected)
+    expect(unvestedPrincipalAt(rows, [], [], grants, asOf, '2029-01-01')).toBe(expected)
+  })
+
+  it('does not accrue a replacement disbursed after the selected year', () => {
+    const later = [rows[0], { ...rows[1], loan_year: 2025, disbursed_on: '2027-01-01' }]
+    expect(annualInterestForYear(later, [], [], 2026)).toBe(400)
+  })
+})

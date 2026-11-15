@@ -191,6 +191,22 @@ class TestSharedAccess:
         finally:
             bob_cm.__exit__(None, None, None)
 
+    def test_dated_dashboard_snapshot_matches_owner_and_requires_access(self, client, make_client):
+        alice, bob, bob_cm, inv_id = self._setup_shared(client, make_client)
+        try:
+            own = alice.get('/api/dashboard?as_of=2025-06-30')
+            shared = bob.get(f'/api/sharing/view/{inv_id}/dashboard?as_of=2025-06-30')
+            assert own.status_code == shared.status_code == 200
+            assert own.json() == shared.json()
+            assert shared.json()['as_of'] == '2025-06-30'
+            assert shared.json()['cards']['total_stock_value'] > 0
+            assert alice.get('/api/dashboard/charts').json() == bob.get(f'/api/sharing/view/{inv_id}/dashboard/charts').json()
+            alice.delete(f'/api/sharing/invite/{inv_id}')
+            assert bob.get(f'/api/sharing/view/{inv_id}/dashboard?as_of=2025-06-30').status_code == 404
+            assert bob.get(f'/api/sharing/view/{inv_id}/dashboard/charts').status_code == 404
+        finally:
+            bob_cm.__exit__(None, None, None)
+
     def test_viewer_can_read_events(self, client, make_client):
         _, bob, bob_cm, inv_id = self._setup_shared(client, make_client)
         try:

@@ -4,6 +4,7 @@ A template or an agreement suggests a schedule; once written, the rows are the
 truth and core.py reads them as they are. `vest_start`/`periods` on Grant are
 their summary (first date, number of dates), kept in step here.
 """
+import logging
 from datetime import date, datetime
 
 from dateutil.relativedelta import relativedelta
@@ -149,8 +150,11 @@ def backfill_schedules(db) -> int:
                     done += 1
             db.commit()
         except Exception:
+            # One account failing (or another worker backfilling it first)
+            # must not stop the rest; its grants read through the same
+            # formula until a later boot stores them.
             db.rollback()
-            raise
+            logging.getLogger(__name__).exception("Could not store vesting rows for user %s", user_id)
         finally:
             set_current_key(None)
     return done

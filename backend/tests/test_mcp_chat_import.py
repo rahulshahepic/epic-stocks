@@ -106,3 +106,26 @@ def test_applying_the_changes_from_a_draft(account):
 def test_an_unchanged_price_is_not_proposed(account):
     account.post("/api/prices", json={"effective_date": "2021-01-01", "price": 2.0})
     assert changes(account, prices=[{"effective_date": "2021-01-01", "price": 2.0}])["changes"] == []
+
+
+def test_a_removal_that_would_take_history_with_it_starts_unticked(account):
+    """Removing a loan takes its payments, unlinks its sales and drops refinance
+    history, so a statement may offer it but never pre-ticks it."""
+    loans = {l["loan_number"]: l for l in account.get("/api/loans").json()}
+    account.post("/api/loan-payments", json={"loan_id": loans["222"]["id"], "date": "2024-01-01", "amount": 10})
+    restated = {"year": 2021, "type": "Purchase", "shares": 1000, "price": 2.0, "exercise_date": "2021-12-31",
+                "loans": [{"loan_number": "111", "loan_type": "Purchase", "loan_year": 2021,
+                           "amount": 1000.0, "interest_rate": 0.02, "due_date": "2030-12-31"}]}
+    removal = [c for c in changes(account, grants=[restated], statement_date="2026-10-31")["changes"]
+               if c["action"] == "delete"]
+    assert len(removal) == 1 and removal[0]["selected"] is False
+    assert "history" in removal[0]["detail"]
+
+
+def test_a_stated_schedule_survives_into_the_payload_a_draft_is_handed_on_in():
+    from app.epic_import.draft import Draft, DraftGrant, to_wizard_payload
+    from datetime import date
+    g = DraftGrant(year=2025, type="Retention", shares=3, price=0, vest_start=date(2026, 1, 1), periods=2,
+                   exercise_date=date(2025, 12, 31), vesting=[(date(2026, 1, 1), 1), (date(2027, 6, 1), 2)])
+    assert to_wizard_payload(Draft(grants=[g]))["grants"][0]["vesting"] == [
+        {"date": "2026-01-01", "shares": 1}, {"date": "2027-06-01", "shares": 2}]

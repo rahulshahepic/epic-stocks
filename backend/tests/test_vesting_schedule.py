@@ -116,3 +116,26 @@ def test_a_shared_view_shows_the_stored_schedule(client, make_client):
         shared = viewer.get(f"/api/sharing/view/{invitation}/grants")
         assert shared.status_code == 200, shared.text
         assert shared.json()[0]["vesting"] == rows
+
+
+def test_one_account_failing_the_backfill_does_not_stop_the_rest(client, db_session, monkeypatch):
+    import services.vesting as vesting
+    register_user(client, email="a@example.com")
+    register_user(client, email="b@example.com")
+    users = db_session.query(User).order_by(User.id).all()
+    for u in users:
+        with user_key(u):
+            db_session.add(Grant(user_id=u.id, year=2020, type="Purchase", shares=4, price=1.0,
+                                 vest_start=date(2021, 3, 1), periods=2, exercise_date=date(2020, 12, 31)))
+            db_session.commit()
+    real = vesting.legacy_split
+    calls = []
+
+    def failing(shares, d, n):
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("boom")
+        return real(shares, d, n)
+    monkeypatch.setattr(vesting, "legacy_split", failing)
+    assert vesting.backfill_schedules(db_session) == 1
+    assert db_session.query(GrantVesting).count() == 2

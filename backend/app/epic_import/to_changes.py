@@ -17,7 +17,7 @@ from collections import Counter
 
 from services.vesting import schedule_of
 
-from scaffold.models import Grant, Loan, Price, Sale
+from scaffold.models import Grant, Loan, LoanPayment, Price, Sale
 from .draft import Draft
 
 _TOL = 0.005
@@ -103,6 +103,8 @@ def draft_changes(draft: Draft, user_id: int, db) -> list[dict]:
     loans = db.query(Loan).filter(Loan.user_id == user_id).all()
     prices = {p.effective_date: p for p in db.query(Price).filter(Price.user_id == user_id)}
     sales = db.query(Sale).filter(Sale.user_id == user_id).all()
+    paid = {p.loan_id for p in db.query(LoanPayment).filter(LoanPayment.user_id == user_id)}
+    sold = {s.loan_id for s in sales if s.loan_id is not None and not s.is_generated}
 
     for price in sorted(draft.prices, key=lambda p: p.effective_date):
         old = prices.get(price.effective_date)
@@ -153,11 +155,18 @@ def draft_changes(draft: Draft, user_id: int, db) -> list[dict]:
         if draft.statement_date and g.loans:
             for s in stored:
                 if s.id not in matched:
+                    # Removing a loan takes its payments with it, unlinks sales
+                    # recorded against it and drops refinance history. Offer
+                    # that, but never pre-tick it.
+                    history = (s.id in paid or s.id in sold
+                               or any(l.refinances_loan_id == s.id and l.id != s.id for l in loans))
                     out.append(_change(
                         "loan", "delete",
                         f"{g.year} {g.type} {s.loan_type.lower()} loan" + (f" {s.loan_number}" if s.loan_number else ""),
                         f"{_money(s.amount)} — not on your statement of {_iso(draft.statement_date)} "
-                        f"(paid off or refinanced)", row=s, group="remove"))
+                        f"(paid off or refinanced)"
+                        + ("; it has payments, sales or refinance history that would go with it" if history else ""),
+                        row=s, group="remove", selected=not history))
 
     # Matched one for one, so two identical sales stay two and a re-import of
     # the same file adds none.

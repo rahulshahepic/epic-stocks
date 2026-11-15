@@ -137,6 +137,8 @@ async function throwForStatus(
         detail = body.detail
       } else if (Array.isArray(body.detail)) {
         detail = body.detail.map((e: { msg?: string }) => e.msg ?? JSON.stringify(e)).join('; ')
+      } else if (typeof body.detail.message === 'string') {
+        detail = body.detail.message
       } else {
         detail = JSON.stringify(body.detail)
       }

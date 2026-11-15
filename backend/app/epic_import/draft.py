@@ -875,6 +875,8 @@ def to_wizard_payload(draft: Draft, include_unanswered_sales: bool = False) -> d
                        "loan_year": l.loan_year, "amount": round(l.amount, 2),
                        "interest_rate": l.interest_rate,
                        "due_date": l.due_date.isoformat()} for l in g.loans],
+            **({"vesting": [{"date": d.isoformat(), "shares": n} for d, n in g.vesting]}
+               if g.vesting else {}),
         } for g in draft.grants],
         "prices": [p.as_dict() for p in draft.prices],
         "sales": [s.as_dict() for s in draft.sales

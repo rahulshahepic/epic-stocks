@@ -100,7 +100,7 @@ describe('computeGrantHoldings', () => {
     const grant = {
       id: 1, version: 1, year: 2030, type: 'Purchase', shares: 100, price: 2,
       vest_start: '2032-01-01', periods: 1, exercise_date: '2030-12-31',
-      dp_shares: 0, election_83b: false,
+      dp_shares: 0, election_83b: false, vesting: [],
     } satisfies GrantEntry
     const events = [event({ date: '2025-01-01', event_type: 'Share Price', share_price: 5 })]
     const holdings = [{ grant_year: 2030, grant_type: 'Purchase', vested_shares: 0 }]

@@ -140,15 +140,17 @@ The preview then says what an account adds that a one-off read cannot: notificat
    The welcome garden has separate phone and desktop compositions, each with resolution-aware WebP sizes. [Desktop preview](screenshots/login-light-desktop.png).
    The app mark beside the name on this page and in the signed-in header uses the same artwork as the favicon.
 
-2. **Enter your data** — with no grants yet, the setup screen appears automatically on the dashboard, and is always reachable from the Import page. Options, fastest first:
-   - **Import from Eureka** (fastest) — download **Data for Stock Workbook** and your latest **Stock Loan Statement** from Eureka and upload them as-is. Share counts, cost basis, loan balances, interest rates and due dates are read straight out of them, and you check the result in the wizard before anything is saved. See [Importing from Eureka](#importing-from-eureka) below.
-   - **Enter it myself** — no documents to hand? Epic's company-wide grant structure is pre-filled (vest dates, periods, exercise dates), so you fill in your share counts, annual market prices and loan details grant by grant. Catch-up grants are included by default for years ≤ 2021. The 2020 Bonus has an A/B/C vesting schedule selector matching your grant agreement. Developer Bonus Shares appear for the 2020 and 2021 cohorts with their cost basis fixed at $0 — leave the share count blank if you weren't offered them. If you already have data, the wizard pre-loads it on each screen — unmatched existing records appear at the bottom so you can keep or remove them. Nothing is written until you confirm at the final step.
-   - **Import a Vesting.xlsx** — already have an export from this app, or a workbook someone shared? Upload it to pre-fill the wizard.
-   - **Manual entry** — a blank slate, for grants that don't match the company schedule at all.
+2. **Enter your data** — with no grants yet, the dashboard shows **Get your stock in** with every way in on one screen, easiest first:
+   - **Let ChatGPT or Claude do it** — connect your assistant (Settings → AI Connections, with Equity editing ticked), then hand it your purchase agreement, loan statement, Eureka files or screenshots. It shows you exactly what it will add or change, in plain words, and saves only when you say yes. See [Connecting Your Own AI](#connecting-your-own-ai).
+   - **Import from Eureka** — upload **Data for Stock Workbook** and your latest **Stock Loan Statement** as they download. The app lists every change the files imply on one screen; untick anything you don't want, **Check**, then **Save**. See [Importing from Eureka](#importing-from-eureka).
+   - **Enter it yourself** — add each grant on the **Grants** page. Give the first vesting date and number of yearly parts and the app splits the shares the way Epic's agreements do: each part rounded down, the rest on the last date.
+   - **Restore a workbook** — upload a `Vesting.xlsx` exported from this app on the Import page.
 
-   | New user | Grant entry |
-   |----------|-------------|
-   | ![Setup options](screenshots/new-user-light-mobile.png) | ![Wizard Grant Entry](screenshots/wizard-grant-entry-light-mobile.png) |
+   **Vesting is a list of dates.** Each grant's schedule is stored as its own rows — one date and share count per vesting. Epic's usual schedule is only where a new grant starts: edit a grant and move any date (a leave of absence), change any split, or add and remove dates. Nothing recomputes them afterwards, and re-importing your Eureka files leaves a moved schedule alone.
+
+   | Get started | Vesting dates |
+   |-------------|---------------|
+   | ![Get started](screenshots/get-started-light-mobile.png) | ![Vesting editor](screenshots/vesting-editor-light-mobile.png) |
 
 3. **Add share prices** — go to **Prices** and enter the annual share price (Epic announces this each March). Without at least one price, no events can be computed. Use **+ Estimate** to project future prices at an annual % growth rate — useful for modeling expected increases before they're officially announced. Estimates appear in italics with an "est." badge and are automatically removed when the real price for that date is added.
 
@@ -479,30 +481,32 @@ You can let ChatGPT, Claude or Muse read your equity data, so you can ask about 
 
 **What this does and does not do.** The assistant can read your grants, vesting timeline, prices, loans, sales and tax estimates, and your salary and retirement settings if you allow that. Connecting means your figures are sent to OpenAI, Anthropic or Meta when the assistant asks for them — the same as pasting them into a chat, but without the pasting.
 
-**Connecting grants every permission.** The assistant can read your data, prepare an import for you to review (`import:propose`), and create, correct and remove individual grants, prices, loans and sales (`equity:write`) and salary and retirement figures (`comp:write`). The app is not the source of truth for your equity — anything wrong can be corrected or re-imported. The connect screen says so up front; tick **Read only** there if you only want the assistant to look. Those edits take effect immediately. Ask it to show you the exact values first, then check the saved rows and dashboard afterward. Disconnecting revokes access.
+**Connecting grants every permission.** The assistant can read your data, add, correct and remove grants, prices, loans, sales and loan payments (`equity:write`), and update salary and retirement figures (`comp:write`). The app is not the source of truth for your equity — anything wrong can be corrected or re-imported. The connect screen says so up front; tick **Read only** there if you only want the assistant to look. Equity edits are always previewed first: the assistant shows you what will change and saves only after you agree. Disconnecting revokes access.
 
 **Letting it keep your salary and retirement numbers current.** Two things you type by hand *can* be written, if you tick that permission when you connect: your salary and bonus history, and the account balances the retirement simulator starts from. Then *"I got a raise to $205k in April"* or *"my 401(k) is at $850k now"* updates the app as you say it, instead of becoming a note to go and do it later. These are figures nothing else is computed from, and you are looking at them on the page — which is why they are the ones that are safe to write. Salary and bonus writes add to the history rather than replacing it, and repeating a request does not double a raise.
 
-**Getting your equity in by chatting — the easiest way in.** You don't need to know what a cost basis or a vesting schedule is. Connect ChatGPT or Claude with the import permission ticked, then share whatever you have — grant letters, the Eureka CSV and loan statement, screenshots, or just what you remember. The Import page shows a **Let ChatGPT or Claude do it** card with a message to start the chat. The assistant reads `get_import_guide`, drafts your grants and loans, walks you through what it found in plain words (saying what it guessed), and calls `stage_import`. A grant Epic's published schedule doesn't cover — this year's, or a one-off award — keeps the dates you confirmed with the assistant. Adding one grant only adds one grant: grants the draft doesn't mention are kept exactly as they are, loans included, and the review shows what the guesses were and what accepting would change.
+**Getting your equity in by chatting — the easiest way in.** You don't need to know what a cost basis or a vesting schedule is. Connect ChatGPT or Claude with **Equity editing** ticked, then give it whatever you have — a purchase agreement Docusign, the Eureka CSV and loan statement, screenshots, or just what you remember. The Import page and the empty dashboard show a message to start the chat with.
 
-That does **not** save anything. It leaves a draft on the Import page, and you accept it in the same wizard an uploaded file goes through, with the same checks and the same diff. Confirmed custom grants and leave-adjusted dates appear in that review; older grants and prices outside the company schedule are kept unless you select them for removal. Unanswered sales remain visible for you to complete. If your assistant tells you staging finished the import, it is wrong — open the app and look. A draft you never accept expires after seven days.
+The assistant reads `get_import_guide` (how to read Epic's paperwork, the fields, Epic's usual schedule as a starting point, and what your account already holds), works out the edits, and calls `apply_changes` **without** a confirm token. That is a preview: every edit is checked exactly as the app would store it, nothing is saved, and it comes back with what would change and how your position moves. The assistant walks you through it in plain words, says what it guessed, and only after you say yes calls `apply_changes` again with the preview's token. The token ties the save to exactly what you were shown — if the edits or your account changed in between, it is refused and previewed again. Every edit lands together or not at all.
 
-**Chat-only setup and repair.** Grant `equity:write` when connecting, then upload your documents into ChatGPT or Claude and ask it to compare them with `list_grants`, `list_loans`, `list_prices` and `list_sales`. It can enter each verified item with `save_equity`, correct an existing item using its id and current version, or remove an incorrect item with `remove_equity`. It must ask before a specific write. An unknown grant name may resemble a standard award, but that is only a clue: confirm the award year, type, shares, first vesting date, number of annual vesting periods, exercise date, and whether the purchase cost basis is zero because vesting is income. For leave-related schedule changes, confirm the revised first vest date and periods. For sales, give the actual date, quantity and per-share proceeds for each transaction; shares missing from a statement alone do not establish a sale. Existing history stays put when you edit one item. The assistant should read back the saved rows and check the resulting dashboard and event timeline.
+- **One new grant is one new grant.** Nothing else in your account is touched, and nothing is removed because a document doesn't mention it.
+- **Your paperwork wins.** A grant Epic's published schedule doesn't cover — this year's, a one-off award, dates moved by a leave — keeps the dates your documents give.
+- **A loan statement is the current state.** The assistant updates each loan to its balance, rate and due date on the statement. Past refinance history doesn't need re-entering; a future refinance or an early payment comes from its own document.
 
-**What it can read:**
+**What it can read:****What it can read:**
 
 | Tool | What it answers |
 |------|-----------------|
 | `get_dashboard` | **Today's net Epic position**: `total_stock_value` values held vested shares at `stock_valuation_price` and already purchased unvested shares at cost; `outstanding_loan_balance` accounts for early payments and settled loans; `net_equity` subtracts that balance and accrued interest not yet booked as a separate loan. Also returns share counts, income and gains to date. A missing share price makes the stock value and net equity null; `price_is_estimate` flags an assumed price. `basis` explains the counts and loan totals |
 | `list_events` | The computed timeline — vesting, price changes, loan payments, payoffs, sales — filterable by date and type |
-| `list_grants` | Every grant: year, type, shares, purchase price, vesting schedule |
+| `list_grants` | Every grant: year, type, shares, purchase price, and its vesting dates as rows |
 | `list_loans` | Loans against equity, with early payments and balance outstanding. Refinanced loans stay on the list as history, marked and zero-balance, so a chain is never read as several debts |
 | `list_prices` | Real share price history and the price in effect today. Your own future estimates are kept out unless asked for, and labelled when they come |
 | `list_sales` | Sales recorded and planned |
 | `estimate_sale` | Models a sale without recording it — by share count, or working back from cash needed after tax |
 | `get_tax_breakdown` | The full working for one sale: lots consumed, income, short- and long-term gains |
 | `explain` | How this scheme works — vesting, grant types, tax, lots, the two prices. Worth asking for first; several ordinary RSU rules do not apply here |
-| `get_import_guide` | How to draft an import with you: plain-language walkthrough, what may be guessed, the exact shape, the company vesting schedule and loan rates on record, and what your account already holds |
+| `get_import_guide` | How to enter your equity from documents: how to read a purchase agreement, loan statement or Eureka file, the fields each row takes, Epic's usual schedule and loan rates as starting points, and what your account already holds |
 | `get_compensation` | Salary and bonus history (needs the compensation permission) |
 | `get_retirement_params` | Saved retirement simulator settings (needs the compensation permission) |
 
@@ -513,14 +517,7 @@ That does **not** save anything. It leaves a draft on the Import page, and you a
 | `add_compensation` | Adds salary-change and bonus entries to the compensation history. Adds rather than replaces, and skips an entry identical to one already stored |
 | `remove_compensation` | Deletes compensation entries by id, for correcting a mistake |
 | `set_retirement_accounts` | Sets the retirement simulator's starting balances: 401(k)/traditional IRA, Roth, taxable brokerage and its cost basis. Only the balances named are changed; the rest of your saved scenario is left alone |
-| `save_equity` | Under `equity:write`, creates or corrects one grant, loan, price or sale through the app's normal validations. Corrections require the latest row version |
-| `remove_equity` | Under `equity:write`, removes one specifically identified row after confirmation and a version check; a grant with attached loans cannot be removed |
-
-And one that writes nothing of yours, under its own separate permission:
-
-| Tool | What it changes |
-|------|-----------------|
-| `stage_import` | Prepares an import for you to review, and reports what accepting it would change and what the assistant guessed. **Saves no grant, price or loan** — you accept it in the wizard (needs the import permission) |
+| `apply_changes` | Under `equity:write`, adds, corrects or removes any number of grants, loans, prices, sales and loan payments in one all-or-nothing step, through the same checks as the app's own forms. Without a confirm token it only previews; saving needs the token from the preview you agreed to. Corrections and removals need each row's current version |
 
 **In Claude** — from Settings → AI Connections, download the Claude ZIP on your phone. In Claude, open **Customize → Plugins**, upload the file, and sign in to Epic Stocks. The ZIP contains the MCP address, not credentials; you do not type or paste an address. On the official staging site it targets production account data. A self-hosted fork with `DOMAIN` configured downloads a package for its own domain. Workspace policy may restrict custom plugin uploads.
 
@@ -542,7 +539,7 @@ Muse's [official connector guide](https://www.meta.com/help/artificial-intellige
 1. Tap **+ → Upload plugin** and select the downloaded ZIP.
 2. Review the package's MCP connection, sign in to Epic Stocks, choose the permissions you want and install it. The address is embedded, but no credential is; you do not copy or paste either.
 
-**Choose permissions when connecting.** The consent screen always offers every account permission, even if the assistant asks only for read access. Requested permissions start checked; the others start unchecked. Use **Select all / Clear all** above **Equity** or **Compensation**, or change each checkbox. Equity editing also needs equity read access. For the ChatGPT import workflow, select equity read, prepare imports and equity editing (to save). The connection grants exactly your selection, including after token refresh. Existing connections keep their permissions until you reconnect. Admin diagnostics belong to a separate MCP connection and never appear on the account consent screen.
+**Choose permissions when connecting.** The consent screen always offers every account permission, even if the assistant asks only for read access. Requested permissions start checked; the others start unchecked. Use **Select all / Clear all** above **Equity** or **Compensation**, or change each checkbox. Equity editing also needs equity read access. The connection grants exactly your selection, including after token refresh. Existing connections keep their permissions until you reconnect. Admin diagnostics belong to a separate MCP connection and never appear on the account consent screen.
 
 | Account permissions (mobile) | Account permissions (dark, desktop) |
 | --- | --- |
@@ -558,19 +555,11 @@ If your ChatGPT is provided by your employer, a workspace admin may need to enab
 
 **Interactive ChatGPT portfolio.** Ask “Show my Epic Stocks portfolio” to open an inline card with the app's current net equity, shares, loans and upcoming events. Browse grants and loan history, narrow the event dates, refresh, or ask ChatGPT to explain the view. Expand, sidebar and conversation-panel entrypoints are available where the host supports them. Missing prices stay unknown and projected money is labelled. The card needs only `equity:read`; existing chat edits still require separate write permissions. After deploying this version, refresh the plugin's tools in ChatGPT or register your deployed `/mcp` URL as a custom OAuth plugin. See [the implementation plan, setup and host acceptance steps](docs/chatgpt-plugin.md) and [portable packaging](plugins/epic-stocks/README.md).
 
-**Import entirely inside ChatGPT.** Open **Import** in the plugin or ask “Import my Epic Stocks documents.” Select local files or existing ChatGPT files, identify each as the stock workbook CSV, loan statement PDF, an Epic Stocks Excel workbook, a JSON draft, or supporting evidence. Parsing findings stay in the card. **Ask ChatGPT to help** uses the retained documents for repairs; the backend does not call an LLM. Edit grants, loans, prices, loan payments and actual sales in the card, then **Check changes**, review the diff and assumptions, and **Save confirmed import**. Import needs `equity:read` and `import:propose`; saving additionally needs `equity:write`. File helpers depend on host support; attaching files in chat remains available.
-
-Plugin imports bound each file connection/transfer to 30 seconds after DNS resolution. Image evidence is attached on initial parsing, and ambiguous payment/refinance loan numbers require correction before saving. See [plugin operations](docs/chatgpt-plugin.md#operations) for retained-source storage bounds.
-
-**New grant names do not need an administrator or template.** Click **Add a new grant type**, enter its name, year, shares, cost basis (explicitly zero when taxed at vest), first vest date, annual periods and exercise date. Confirm the schedule and cost basis. A similar prebuilt grant is only a hint. Schedule changes after a leave use the same custom path. Original files are retained with the encrypted proposal for up to seven days so repairs are rechecked against the same sources. Untouched grants, their loans and payoff sales, existing transactions and prices outside imported years are preserved. Any account change or draft correction requires another review before saving.
+**Import inside ChatGPT or Claude.** Attach your documents in the chat and ask the assistant to enter them; it previews with `apply_changes` and saves once you agree, as above. The portfolio card shows each grant's vesting dates.
 
 | Inline portfolio (synthetic, mobile) | Dark mode (synthetic, desktop) |
 | --- | --- |
 | ![ChatGPT inline portfolio](screenshots/chatgpt-plugin-light-mobile.png) | ![ChatGPT portfolio in dark mode](screenshots/chatgpt-plugin-dark-desktop.png) |
-
-| ChatGPT custom grant import | Import review in dark mode |
-|---|---|
-| ![Custom grant import](screenshots/chatgpt-import-light-mobile.png) | ![Import review](screenshots/chatgpt-import-dark-desktop.png) |
 
 **One debt, counted once — as of the date you are asking about.** When a loan is refinanced the old row stays on file — it is history, not money still owed. Every total the app and the connector report counts only the live link in each chain. "Live" is judged against the date of the figure, though: a refinance scheduled for 2030 has not relieved anything you owe today, so it does not shrink today's totals, and interest keeps accruing on the old loan right up to the year the refinance lands rather than vanishing from the record. A loan the schedule replaces before its own maturity shows a $0 "Refinanced" step instead of a payoff, and never gets a payoff sale alongside it. A loan also has to hang off a grant you actually hold: the app refuses one that does not, whether you type it into the Loans form or bring it in on a spreadsheet, because a loan attached to nothing is invisible to your payoff schedule while still showing up as money you owe.
 
@@ -631,7 +620,7 @@ Download these two documents from Eureka:
 
 Then go to **Import/Export → Import from Eureka** and upload either or both, exactly as they downloaded. There is no need to open or edit them first.
 
-**Only your own figures come from the files.** Vest dates, vesting periods, exercise dates, loan rates and due dates are company-wide and come from the grant schedule a content admin maintains — see [For Content Admins](#for-content-admins). Nothing in an import can change them.
+**Your figures come from the files; dates start from Epic's schedule.** Vest dates, vesting periods and exercise dates for a grant start from the schedule a content admin maintains — see [For Content Admins](#for-content-admins). Change any of them afterwards on the Grants page; a re-import leaves a moved schedule alone.
 
 **The files check each other.** Before anything is shown, the app verifies the statement adds up to its own printed subtotals and total, that the loans it attributes to each grant reproduce that grant's loan balance and annual interest in the CSV, and that share counts and rates agree with what is on record.
 
@@ -639,11 +628,9 @@ Then go to **Import/Export → Import from Eureka** and upload either or both, e
 
 **Shares Epic reports as sold are reconciled before they are called sales.** Epic's CSV puts shares handed back to cover a later purchase's down payment in the same `Shares Sold` column as shares actually sold, and never says which is which. The arithmetic does: the gap between a grant's cost basis and its purchase loan is the down payment, and one paid in stock is a whole number of shares at that year's price — the policy minimum rounded up to the next whole share. When those add up to exactly the shares reported gone, they are recorded as share exchanges at exercise (not taxable disposals, no sales created) and the import says which grants they paid for. A larger-than-minimum down payment, or a loan that has been paid down since, reads as unexplained shares rather than being quietly reclassified.
 
-**Account for shares that left.** An unmatched share count can include down-payment exchanges, several sales, or both. In the wizard, enter exchanges on the grants screen first, then split actual sales into rows with their own quantities, dates and prices. The remaining count updates after grant corrections; sales and exchanges cannot exceed the workbook total. Select a saved sale or enter matching details to keep it without adding a duplicate. Matching is one-for-one on date, quantity and price, preserving existing notes and allowing multiple identical transactions. Unknown rows and any unallocated balance stay unimported. Review and completion show new sales, existing matches and skipped shares. The assistant repair prompt asks the same classification and transaction questions.
+**Shares that left a grant.** An unexplained share count can be down-payment exchanges, sales, or both, and the files never give a sale's date or price. The import lists those shares and asks: fill in the date and price of each real sale and it is added with the rest; leave it blank and nothing is saved for it. Sales are matched one-for-one on date, quantity and price, so re-importing the same files adds none.
 
-![Import sales reconciliation](screenshots/wizard-sales-light-mobile.png)
-
-**Refinances are read from the rate you are paying.** Epic's documents never say when a loan was refinanced — a purchase loan is named "2018 Grant - Purchase Loan" however many times its terms have been rewritten. But a refinance is what changes the rate, so the rate on the statement is the rate of the last refinance the loan went through: the wizard matches it against the company-wide refinance chain (see [For Content Admins](#for-content-admins)) and builds only the steps up to it. A rate that matches the original one, or matches no step at all, means the loan was never refinanced and no chain is built. The refinance screen says which reading it took wherever that leaves out steps the company schedule has, and you can correct it there.
+**A loan statement is the current state of your loans.** Each loan on the statement updates the matching one in the app (by loan number) to its balance, rate and due date. A loan the app has under that grant that the statement no longer lists — paid off, or an earlier link of a refinance — is listed for removal on its own line, so you can untick it.
 
 #### When it does not add up
 
@@ -653,15 +640,16 @@ Your figures go to whichever assistant you choose, by your own hand and on your 
 
 The reply can come back three ways: pasted into the box, uploaded as a `.json` file, or as a filled copy of the app's own `Vesting.xlsx` workbook.
 
-#### Signing off
+#### Saving
 
-Acceptance happens in the **Setup Wizard**, prefilled with the draft — the same screens you would use to type the numbers yourself, showing grants, loans and prices as your own position. You never sign off on a file. Nothing is written until you finish the wizard.
+The import lists every change on one screen — grants and loans to add, figures to update, loans to remove — each with a tick box. Untick anything you don't want and press **Check**: the changes run exactly as they would be saved, nothing is written, and you see your stock value, loans and net equity before and after. **Save** then writes them together, or none of them if anything is refused. Grants the files don't mention are never touched.
 
-Two things worth knowing:
+| Changes to check | Checked, ready to save |
+|------------------|------------------------|
+| ![Import changes](screenshots/import-changes-light-mobile.png) | ![Import checked](screenshots/import-changes-checked-light-mobile.png) |
 
-- **Unreliable or incomplete grant details block acceptance.** A statement that does not match its own totals stops the import, and a malformed grant or sale cannot be accepted. An unfamiliar category is reported (with the configured type it resembles) and left out rather than guessed. Differences between the two files and unusual loan rates remain visible for review because Epic's paperwork can disagree with itself.
-- **There is no automatic check on share counts.** The CSV's `Shares Granted` is the only source for them, so nothing can be reconciled against. Loan balances, interest and cost basis all have arithmetic checks; share counts have you. That is why sign-off shows rendered figures rather than a row of green ticks.
-- **Shares Epic reports as sold** are reported but no sales are invented — the CSV carries no sale dates or prices. Record those on the **Sales** page.
+- **A misread statement blocks.** A statement that does not match its own totals stops the import — something was misread. Differences between the two files and unusual loan rates are shown but do not block, because Epic's paperwork can disagree with itself.
+- **There is no automatic check on share counts.** The CSV's `Shares Granted` is the only source for them, so you are the check: read the list before saving.
 
 ---
 
@@ -699,19 +687,19 @@ Your email address is always optional, and is only there so you can be reached a
 |-------|------|
 | ![Content Editor](screenshots/content-light-mobile.png) | ![Content Editor Dark](screenshots/content-dark-mobile.png) |
 
-Content admins edit the grant-program data that drives the Setup Wizard for all users. A site admin promotes users to this role from the Admin panel (the role persists across logins). Site admins are implicitly content admins.
+Content admins edit the grant-program data new grants start from for all users. A site admin promotes users to this role from the Admin panel (the role persists across logins). Site admins are implicitly content admins.
 
 Content admins see a **Content** nav link. From `/content` they can edit:
 
 | Section | What it controls |
 |---------|----------------|
-| **Grant templates** | The per-year, per-type grant schedule shown in the wizard: vest dates, periods, exercise dates |
+| **Grant templates** | The per-year, per-type schedule a new grant starts from: vest dates, periods, exercise dates. A grant's own dates can then be edited |
 | **Bonus vesting variants** | The A/B/C schedule options for the 2020 Bonus grant |
 | **Loan rates** | Interest rates, tax rates, and purchase-original rates by year |
-| **Loan refinance chains** | The sequence of refinance steps for purchase and tax loans. The wizard applies only the steps up to the rate a user's own loan carries |
+| **Loan refinance chains** | The sequence of refinance steps for purchase and tax loans, used by the projections |
 | **Program settings** | Fallback tax rates, minimum down-payment policy (percent + dollar cap), flexible loan-payoff toggle |
 
-Edits take effect immediately for all users on their next wizard load. The wizard automatically refreshes the cache after any content write.
+Edits take effect immediately. They change where new grants start, never a grant already saved.
 
 > **Grant types** (Purchase, Catch-Up, Bonus, Free, Developer Bonus Shares) are hard-coded and cannot be changed from the content editor — the core computation engine branches on those specific strings. Year ranges shown on the settings tab (price and rate bounds) are derived from the rates and templates tables and are read-only.
 
@@ -1173,15 +1161,16 @@ epic-stocks/
 │   │   ├── timeline_cache.py # L1 in-process memoized event computation
 │   │   ├── event_cache.py   # L2 Redis cache + background recompute
 │   │   ├── content_service.py # Seeder + load_content() for grant-program data
+│   │   ├── changes.py       # The one multi-row write path: a change set run through the routers in one transaction, previewed then applied
 │   │   ├── mcp/             # The MCP server an AI assistant connects to
 │   │   │   ├── transport.py    # JSON-RPC over Streamable HTTP at POST /mcp + rate limits
 │   │   │   ├── tools.py        # The tool registry: schema, scope, handler, annotations
 │   │   │   ├── read_tools.py   # The reads — each a call through to the router's own service function
 │   │   │   ├── admin_tools.py  # Scoped deployment, metrics and redacted error diagnostics
 │   │   │   ├── comp_tools.py   # The writes: salary/bonus history and retirement balances (comp:write)
-│   │   │   ├── equity_tools.py # One-row grant/loan/price/sale writes, version-checked (equity:write)
-│   │   │   ├── import_tools.py # Import guide + staging a draft the user accepts in the wizard
-│   │   │   ├── import_guide.py # What an assistant is told: plain words, best guesses, unusual grants
+│   │   │   ├── equity_tools.py # apply_changes: preview, then confirm-token apply of a change set (equity:write)
+│   │   │   ├── import_tools.py # get_import_guide: how to read documents, the fields, what the account holds
+│   │   │   ├── import_guide.py # What an assistant is told: Epic paperwork, plain words, best guesses
 │   │   │   └── accounts.py     # Whose data a tool reads — own account only today
 │   │   └── routers/
 │   │       ├── grants.py    # Grant CRUD + bulk
@@ -1190,11 +1179,11 @@ epic-stocks/
 │   │       ├── events.py    # Computed timeline + dashboard + preview-exit
 │   │       ├── flows.py     # Quick flows (new purchase, bonus, price)
 │   │       ├── import_export.py # Excel import/export + template
-│   │       ├── epic_import.py   # Epic CSV/PDF analyze loop + diagnostics diff
+│   │       ├── epic_import.py   # Epic CSV/PDF analyze loop, draft → changes, diagnostics diff
 │   │       ├── trial.py     # No-account preview: computed timeline + dashboard data, plus anonymous funnel counters
 │   │       ├── sales.py     # Sales CRUD + tax breakdown
 │   │       ├── tips.py      # Smart Tips: scenario tax comparisons + acceptance recording
-│   │       ├── wizard.py    # Setup Wizard: parse-file, preview (dry-run diff), submit
+│   │       ├── changes.py   # POST /api/changes/preview and /apply — the web's door to app/changes.py
 │   │       ├── retirement.py # Retirement Simulator: persist sim params + dashboard prefs
 │   │       └── content.py   # Grant-program content: GET (any user) + content-admin CRUD
 │   └── tests/               # pytest tests
@@ -1218,8 +1207,8 @@ epic-stocks/
 │   │   ├── app/             # Equity tracking UI (replace when forking)
 │   │   │   ├── dateUtils.ts  # Local-day clock + leap-safe calendar date arithmetic
 │   │   │   ├── pages/       # Dashboard, Events, Grants, Loans, Prices, Sales, ImportExport, ImportDiagnostics, Content, CompCalculator, Retirement, Try (no-account preview: upload → dashboard/events tabs)
-│   │   │   ├── components/  # ImportWizard, EpicFileImport, FindingList, TipCarousel, StockJourney, AppSettingsSections
-│   │   │   ├── components/importWizard/ # The wizard's parts: types, schedule (Epic's grant schedule → rows), rows (row maths), loans (tax/interest/refi generation), submit (validation + payload), fields.tsx (inputs, buttons, loan rows), screens/
+│   │   │   ├── components/  # GetStarted, EpicFileImport, ChangeList (one screen of edits: tick, check, save), ChatImportIntro, VestingEditor, FindingList, TipCarousel, StockJourney, AppSettingsSections
+│   │   │   ├── vesting.ts   # A grant's vesting rows, read the way the server stores them
 │   │   │   ├── pages/Dashboard.math.ts # The dashboard's sums as pure functions — card values, per-grant holdings, active loans, breakdowns
 │   │   │   ├── pages/dashboard/ # The dashboard's card rows (ShareCards, EarningsCards, CostCards), its Breakdown row and its charts
 │   │   │   ├── components/charts.tsx  # Shares / income / price charts + date-range plumbing (Dashboard + /try)
@@ -1227,7 +1216,6 @@ epic-stocks/
 │   │   │   ├── format.ts    # The one set of money / number / percent / date formatters
 │   │   │   ├── epicImport.ts # Client for the Epic importer endpoints
 │   │   │   ├── trialImport.ts # Client for the no-account trial preview + sessionStorage handoff to signup
-│   │   │   ├── refiInference.ts # How far down a refinance chain a loan's rate says it got
 │   │   │   ├── hooks/       # useApiData, useDataSync, useContent
 │   │   │   └── AppProvider.tsx  # Injects app name + unofficial badge, affiliation disclaimer, nav items, notify templates, privacy content into scaffold
 │   │   ├── App.tsx          # Router + layout wiring
@@ -1321,15 +1309,15 @@ Cross-origin requests are accepted only from the native shell origins (`capacito
 | POST | `/api/import/backups/{id}/restore` | Restore data from a backup snapshot |
 | GET | `/api/export/excel` | Download Vesting.xlsx with all data. `?as_of=YYYY-MM-DD` (optional) drops records dated after that day |
 | GET | `/api/export/holdings-report` | Download formatted Excel holdings report as of a given date |
-| POST | `/api/epic-import/analyze` | Read the Eureka CSV + PDF, or check a repaired draft against them — returns a draft, what failed, and a prompt to paste out. Writes nothing |
+| POST | `/api/epic-import/analyze` | Read the Eureka CSV + PDF, or check a repaired draft against them — returns the draft, the edits it implies for the account, shares needing a sale date and price, what failed, and a prompt to paste out. Writes nothing |
 | POST | `/api/epic-import/diff` | Diff the derivation against an uploaded Excel export — read-only |
 | POST | `/api/epic-import/diff.md` | The same report as a downloadable Markdown file |
 | POST | `/api/trial/analyze` | No-account preview: read the Eureka CSV + PDF and return the computed timeline, dashboard-shaped grants/loans/prices, and the default tax rates. No auth, stores none of the uploaded data, IP rate-limited |
 | POST | `/api/trial/save-intent` | Add one to today's "pressed save" count. No auth, no body, IP rate-limited |
 | POST | `/api/trial/converted` | Add one to today's "signed up carrying preview data" count. Requires auth |
-| POST | `/api/wizard/parse-file` | Parse an uploaded Excel structure file for wizard pre-fill |
-| POST | `/api/wizard/preview` | Dry-run diff — returns added/updated/removed/unchanged status, no changes written |
-| POST | `/api/wizard/submit` | Apply wizard data — merge mode: upserts by natural key, deletes unmatched |
+| POST | `/api/changes/preview` | Run a change set (grant/loan/price/sale/loan_payment creates, updates, deletes) through the app's own checks, roll it back, and return what would change, the position before and after, and a `confirm` token |
+| POST | `/api/changes/apply` | Apply the change set previewed with that `confirm` token, all or nothing. Refused if the changes or the account differ from the preview |
+| POST | `/api/epic-import/changes` | The edits a draft (from a file import or a `/try` preview) implies for the account. Writes nothing |
 | GET/PUT | `/api/tax-settings` | Get/set tax rate configuration and lot selection preferences |
 | GET | `/api/tips` | Smart tips: scenario-based tax savings recommendations |
 | POST | `/api/tips/accept` | Record acceptance of a tip recommendation |
@@ -1459,16 +1447,17 @@ The built-in privacy page (`/privacy`) lists the third-party services used by th
 
 - **Events are never stored.** Computed per-request from Grants + Prices + Loans. Eliminates sync issues entirely — changing a grant or price immediately recalculates everything.
 - **The app never calls a language model.** When a parse cannot be trusted it hands the user a prompt for their own assistant instead. That needs no API key, no cost cap, no billing, no secret to store, and no outbound request from the server — and the user's figures go where they choose rather than where the app decides. Whatever comes back is checked by exactly the same arithmetic that rejected the draft, so the repair path is no more trusted than the parser.
-- **Company templates are the starting point.** The file parser fills vest dates, periods and exercise dates from the content tables because the share summary does not reliably supply them. For an unfamiliar award or a leave-adjusted schedule, a repaired draft can carry a full user-confirmed custom schedule and cost-basis treatment. An unconfirmed change to a standard template is reported and ignored.
-- **Unreliable or incomplete grant details block an import.** Mismatched statement totals, malformed grants or sales, and a custom schedule the user has not confirmed stop acceptance. An unfamiliar file category is only a hint: historic conversion rows look like grant types and are not grants. Disagreement between files and unusual loan rates remain visible for review because Epic's paperwork can disagree with itself.
+- **A grant's vesting is stored rows, not a formula.** `grant_vestings` holds one dated row per vesting; `core.py` emits one event per row. `vest_start`/`periods` on a grant are its summary (first date, count). A first date and count become equal yearly parts, each rounded down with the rest on the last date — how Epic's agreements word it. Grants written before rows existed were backfilled on boot with the formula they were shown with (`services/vesting.py:backfill_schedules`), so no number moved. A leave of absence is an edit to one row; nothing recomputes it.
+- **Company templates are a starting point.** The file parser fills vest dates, periods and exercise dates from the content tables because the share summary does not supply them. Whatever a draft or a person states instead is kept; `C10` notes the difference.
+- **Unreliable grant details block an import.** Mismatched statement totals and malformed grants or sales stop it. An unfamiliar file category is only a hint: historic conversion rows look like grant types and are not grants. Disagreement between files and unusual loan rates remain visible for review because Epic's paperwork can disagree with itself.
 - **Shares reported sold are reconciled, not assumed sold.** Epic reports a down-payment share exchange and a sale in the same column. Calling every one a sale invented taxable disposals; the down payment implied by each purchase loan is checkable arithmetic, and only an exact, unique match against the shares reported gone is acted on. Rule `G8`, checked back by `C11`.
-- **Unexplained shares are unclassified, not necessarily sold.** The user confirms exchanges and supplies each sale's quantity, date and price. `C12` keeps unknown details visible; the wizard checks edited exchanges against the reported total and shows omitted shares at sign-off. Re-import matches saved sales one-for-one rather than appending copies. The wizard's `sales.ts` contains the client-side reconciliation and review helpers.
+- **Unexplained shares are unclassified, not necessarily sold.** The import lists them and asks for each real sale's date and price; a blank one is never saved. `C12` keeps them visible. Re-import matches saved sales one-for-one rather than appending copies.
 - **Two documents disagreeing is staleness, not a misread.** Epic regenerates the loan statement on demand and refreshes the stock workbook on a slower cycle, so the workbook routinely predates a payoff the statement already shows. `C3` and `C4` warn and name that cause rather than erroring: a user whose paperwork is merely out of step was being told their import had failed, twice in one evening, which is what prompted this.
-- **A refinance chain is inferred from the rate, not assumed.** The company-wide chain says what Epic did; the rate on a user's own statement says how much of it happened to them. Applying the whole chain to everyone silently invented history for anyone who did not refinance with the crowd, and rates are the one piece of evidence the documents do carry. `frontend/src/app/refiInference.ts`.
-- **Sign-off happens in the wizard, not on a file.** An import ends by prefilling the Setup Wizard, so what a user confirms is their rendered position. Asking someone to eyeball a CSV or a JSON blob is not validation.
+- **A loan statement is the current state, not a history to reconstruct.** Each statement row updates its loan in place; a stored loan under a covered grant that the statement no longer lists is offered for removal. Past refinance chains are not rebuilt from rates — the statement already says what is owed.
+- **There is one way to change several rows: preview, then apply.** `app/changes.py` runs a change set through the same router functions the forms use, inside one transaction. A preview rolls it back and returns a `confirm` token over the changes and the account's row versions; an apply must carry it, so nothing is saved that the person was not shown, and one refused edit saves none. The web import, the `/try` signup and the AI connector all use it; there is no separate review wizard.
 - **Every derived field records the rule that produced it.** Tagging each field with a rule id turns "the import is wrong" into "rule G3 reads the cost basis wrong", which is what the diagnostics report is for. The ids are documented in `backend/app/epic_import/RULES.md`, and a test pins that reference to the code: a rule the importer can report but the reference cannot explain fails the suite, which is the only way a document like that stays true.
-- **The wizard uses merge mode, not replace mode.** Grants are upserted by natural key (year + type) and prices by effective date. Records not in the wizard payload are deleted unless their ID appears in the preserve list. Auto-generated payoff sales are deleted and regenerated; manually-entered sales are never touched. Loan matching uses loan_number when available, falling back to (type, year).
-- **core.py is frozen.** The event generation logic is tested against known-good values: 89 events, cum_shares=558,500, cum_income=$144,325, cum_cap_gains=$1,224,195. Do not modify it.
+- **An import adds and updates; it never removes what a document leaves out.** Grants are matched by year + type, prices by effective date, loans by loan number then (type, year). Only a loan statement proposes removals, and only for loans under a grant it covers. Deleting a loan removes its own generated payoff sale and unlinks any refinance pointing at it; a sale the user owns is kept.
+- **core.py changes only with discussion.** The event generation logic is tested against known-good values: 89 events, cum_shares=558,500, cum_income=$144,325, cum_cap_gains=$1,224,195. Its one change since was reading stored vesting rows instead of computing equal parts.
 - **Excel import is per-sheet.** Only sheets present in the uploaded file are replaced. A backup snapshot is saved automatically before each import (last 3 kept per user). Restore via `GET /api/import/backups` + `POST /api/import/backups/{id}/restore`.
 - **Payoff sale share counts are stored, not recomputed.** Auto-generated share counts do not automatically update when you change lot selection or add prices. Use "Regen payoff sales" on the Loans page to refresh all future payoff sales at once — it skips any the user owns (`sales.is_generated` false, which includes every row written before that column existed) and reports how many it skipped.
 - **Down payment via stock exchange is non-taxable.** The `dp_shares` field on a grant records vested shares exchanged at exercise. They reduce the loan principal and generate no income or capital gains event. Shares are consumed in lowest-cost-basis order (Bonus lots first, then oldest Purchase lots by FIFO).
@@ -1497,7 +1486,7 @@ The built-in privacy page (`/privacy`) lists the third-party services used by th
 - **Schema migrations use Alembic.** Migrations live in `backend/alembic/versions/`. The Hetzner deploy runs `alembic upgrade head` before starting the app; local PostgreSQL defaults to running it on startup. SQLite test environments use `create_all`. Create a new migration with `alembic revision --autogenerate -m "description"`.
 - **Daily jobs run outside the web process.** `python -m scheduled_jobs` checks whether UTC maintenance (03:00), notifications (07:00), and the admin digest (07:00) are due. A newly installed timer catches up later on the current UTC day, even when the due hour passed before deployment. It stores a runner start/finish heartbeat and the last result of each check, plus the last successful UTC date and timestamp separately for each job in `system_settings`. Admin → Deployment shows the build and these records, warning after 35 minutes without a completed check. Failed jobs retry on the next invocation, and PostgreSQL advisory locks avoid overlap. Digest delivery also records success per admin so a failed recipient can be retried without resending to successful recipients. Hetzner invokes the command every 15 minutes via a systemd timer installed before the app is taken down for deployment. A future Cloud Run deployment can invoke the same command as a scheduled job. Cache prewarming after writes is best effort: a stopped web instance cannot make reads stale because the cache key includes the current inputs.
 
-**ChatGPT UI code:** `backend/app/mcp/import_ui.py` runs plugin parsing, review and wizard acceptance; `import_files.py` downloads bounded host file references with HTTPS, a host allowlist, public DNS pinned for the connection and no redirects. `backend/app/mcp/ui_tools.py` registers the scoped presentation tools and versioned resource; `portfolio.html` is the self-contained MCP Apps component. `plugins/epic-stocks/` holds the portable package source and `scripts/build-chatgpt-plugin.py` builds it for a deployment. Component host tests and synthetic screenshots live in `frontend/e2e/plugin-ui.spec.ts` and `plugin-host.ts`.
+**ChatGPT UI code:** `backend/app/mcp/ui_tools.py` registers the scoped presentation tools and versioned resource; `portfolio.html` is the self-contained MCP Apps component. `plugins/epic-stocks/` holds the portable package source and `scripts/build-chatgpt-plugin.py` builds it for a deployment. Component host tests and synthetic screenshots live in `frontend/e2e/plugin-ui.spec.ts` and `plugin-host.ts`.
 
 
 Price entry and tentative announcement on mobile:

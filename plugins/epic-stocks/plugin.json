@@ -2,13 +2,13 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "epic-stocks",
   "version": "1.1.0",
-  "description": "Browse Epic Stocks and import documents, repair drafts and confirm custom grants inside ChatGPT.",
+  "description": "Browse Epic Stocks, and enter grants, loans and prices from your documents with a preview you confirm.",
   "repository": "https://github.com/rahulshahepic/epic-stocks",
   "extensions": {
     "com.openai": {
       "interface": {
         "displayName": "Epic Stocks (Unofficial)",
-        "shortDescription": "Stocks, loans and imports",
+        "shortDescription": "Stocks, loans and vesting",
         "longDescription": "Browse your current equity, grants, loans and vesting events. Import PDFs, CSVs, Excel workbooks and other documents inside ChatGPT, review parsing findings, repair with ChatGPT and add new grant types without a built-in template. Confirm the exact changes in the plugin before saving. Connect your account with OAuth; saving needs edit permission. This is an independent app, not an official Epic product.",
         "developerName": "Epic Stocks contributors",
         "category": "Productivity",

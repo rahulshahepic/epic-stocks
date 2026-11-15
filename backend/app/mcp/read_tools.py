@@ -252,17 +252,23 @@ register(Tool(
 
 
 def _list_grants(ctx: ToolContext, args: dict):
+    from services.vesting import schedule_of
     owner = _account(ctx, args)
-    return {"grants": _rows(Grant, owner, ctx.db, Grant.year)}
+    rows = _rows(Grant, owner, ctx.db, Grant.year)
+    stored = {g.id: g for g in ctx.db.query(Grant).filter(Grant.user_id == owner.id)}
+    for r in rows:
+        r["vesting"] = [{"date": d.isoformat(), "shares": n} for d, n in schedule_of(stored[r["id"]])]
+    return {"grants": rows}
 
 
 register(Tool(
     name="list_grants",
     title="Equity grants",
     description=(
-        "Every grant on the account: year, type (Purchase, Catch-up, Free, "
-        "Bonus, Developer Bonus Shares), share count, purchase price per share, "
-        "vesting start and number of vesting periods, and exercise date. Use "
+        "Every grant on the account: id and version (for apply_changes), year, "
+        "type, share count, purchase price per share, exercise date, and its "
+        "vesting schedule as dated rows (`vesting`; vest_start/periods are its "
+        "first date and count). Use "
         "`explain` with topic 'grant_types' for what each type means for tax."
     ),
     input_schema=_ACCOUNT_ONLY,

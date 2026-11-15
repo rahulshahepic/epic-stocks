@@ -2,7 +2,8 @@ import { refinancedLoanIds } from '../loanState.ts'
 import type {
   GrantEntry, GrantHoldingShares, LoanEntry, PriceEntry, SaleEntry, TaxSettings, TimelineEvent,
 } from '../../api.ts'
-import { addCalendarYears, localToday } from '../dateUtils.ts'
+import { localToday } from '../dateUtils.ts'
+import { vestedBy } from '../vesting.ts'
 
 /**
  * Everything the dashboard works out from the user's timeline, loans and sales.
@@ -251,16 +252,7 @@ export function computeGrantHoldings(grantsData: GrantEntry[] | null, events: Ti
 
   return grantsData.map(g => {
     // Vested shares from schedule
-    let vested = 0
-    if (g.periods > 0) {
-      const base = Math.floor(g.shares / g.periods)
-      const rem = g.shares % g.periods
-      for (let p = 0; p < g.periods; p++) {
-        if (addCalendarYears(g.vest_start, p) <= effectiveDate) {
-          vested += base + (p < rem ? 1 : 0)
-        }
-      }
-    }
+    const vested = vestedBy(g, effectiveDate)
     const unvested = g.shares - vested
     // The backend lot engine is authoritative here: it has already consumed DP
     // exchanges and automatic/manual sales from the grants they actually used.

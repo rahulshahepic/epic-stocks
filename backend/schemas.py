@@ -171,21 +171,61 @@ class AuthResponse(InputModel):
 
 
 # Grant — type is free-form (Purchase, Bonus, Catch-Up, Free, etc.)
+class VestingDate(InputModel):
+    date: date
+    shares: Annotated[int, Field(ge=0, le=10_000_000)]
+
+
+def _vesting_list(v):
+    from services.vesting import MAX_VESTING_DATES
+    return bounded_list(v, MAX_VESTING_DATES, "vesting")
+
+
+VestingList = Annotated[list[VestingDate], BeforeValidator(_vesting_list)]
+
+
+def _schedule_problem(vesting, shares) -> str | None:
+    from services.vesting import check_schedule
+    return check_schedule([(v.date, v.shares) for v in vesting], shares)
+
+
 class GrantCreate(InputModel):
+    """A grant and its schedule. Send `vesting` (one row per date) for the
+    schedule as it actually is; or `vest_start` + `periods` for equal yearly
+    parts, each rounded down with the rest on the last date."""
     year: Year
     type: GrantTypeLabel
     shares: Shares
     price: CostBasis
-    vest_start: date
-    periods: Periods
+    vest_start: date | None = None
+    periods: Periods | None = None
+    vesting: VestingList | None = None
     exercise_date: date
     dp_shares: DownPaymentShares = 0
     election_83b: bool = False
 
+    @model_validator(mode="after")
+    def _has_schedule(self):
+        if self.vesting:
+            problem = _schedule_problem(self.vesting, self.shares)
+            if problem:
+                raise ValueError(problem)
+        elif not (self.vest_start and self.periods):
+            raise ValueError("Give the vesting dates, or a first vesting date and a number of yearly parts")
+        return self
+
+    def schedule(self) -> list[tuple[date, int]]:
+        from services.vesting import schedule_of
+        return schedule_of(self)
+
+    def row_values(self) -> dict:
+        return self.model_dump(exclude={"vesting", "vest_start", "periods"})
+
+
 class GrantUpdate(UpdateModel):
     non_nullable = {
         "dp_shares", "election_83b", "exercise_date", "periods", "price",
-        "shares", "type", "vest_start", "year",
+        "shares", "type", "vest_start", "year", "vesting",
     }
     year: Year | None = None
     type: GrantTypeLabel | None = None
@@ -193,12 +233,19 @@ class GrantUpdate(UpdateModel):
     price: CostBasis | None = None
     vest_start: date | None = None
     periods: Periods | None = None
+    vesting: VestingList | None = None
     exercise_date: date | None = None
     dp_shares: DownPaymentShares | None = None
     election_83b: bool | None = None
     version: int | None = None
 
-class GrantOut(GrantCreate):
+
+class VestingOut(BaseModel):
+    date: date
+    shares: int
+
+
+class GrantOut(BaseModel):
     """A stored grant on its way out.
 
     Every `*Out` model below re-declares its parent's constrained fields with
@@ -216,9 +263,28 @@ class GrantOut(GrantCreate):
     type: str
     shares: int
     price: float
+    vest_start: date | None = None
     periods: int
+    vesting: list[VestingOut] = []
+    exercise_date: date
     dp_shares: int
+    election_83b: bool = False
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="before")
+    @classmethod
+    def _schedule(cls, data):
+        from services.vesting import schedule_of
+        if isinstance(data, dict):
+            return data
+        rows = schedule_of(data)
+        return {"id": data.id, "version": data.version, "year": data.year, "type": data.type,
+                "shares": data.shares, "price": data.price,
+                "vest_start": rows[0][0] if rows else data.vest_start,
+                "periods": len(rows) or data.periods,
+                "vesting": [{"date": d, "shares": n} for d, n in rows],
+                "exercise_date": data.exercise_date, "dp_shares": data.dp_shares or 0,
+                "election_83b": bool(data.election_83b)}
 
 
 # Loan

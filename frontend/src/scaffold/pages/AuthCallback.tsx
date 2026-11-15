@@ -70,13 +70,18 @@ export default function AuthCallback() {
         }
       }
 
-      // A /try session stashed its computed grants/prices before sending the
-      // user here to sign up. A brand-new account has nothing to conflict
-      // with, so save it straight away instead of asking them to re-upload.
-      const trialPayload = await takeStashedTrialPayload()
-      if (trialPayload) {
+      // A /try session stashed its draft before sending the user here to sign
+      // up. Only what is new is added: an account that already has data keeps
+      // every row it had, and the Import page can bring in the rest.
+      const trialDraft = await takeStashedTrialPayload()
+      if (trialDraft) {
         try {
-          await api.wizardSubmit({ ...trialPayload, clear_existing: true })
+          const { changes, blocked } = await api.draftChanges(trialDraft)
+          const additions = changes.filter(c => c.action === 'create')
+          if (!blocked && additions.length) {
+            const preview = await api.previewChanges(additions)
+            if (preview.confirm) await api.applyChanges(additions, preview.confirm)
+          }
           pingConverted()
         } catch {
           // Save failed — they still have a working account; they can import again.

@@ -7,6 +7,7 @@ def _grants():
         "year": 2020, "type": "RSU", "shares": 100, "price": 0.0,
         "vest_start": datetime(2021, 1, 1), "periods": 4,
         "exercise_date": datetime(2020, 6, 1), "dp_shares": 0,
+        "vesting": [(datetime(2021 + i, 1, 1), 25) for i in range(4)],
     }]
 
 

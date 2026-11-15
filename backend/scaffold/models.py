@@ -99,6 +99,27 @@ class Grant(Base):
             self.__dict__["dp_shares"] = -self.dp_shares
 
     user: Mapped["User"] = relationship(back_populates="grants")
+    # The schedule itself. vest_start/periods above are its summary (first date,
+    # number of dates), kept in step by services.vesting.set_schedule and used only
+    # for display, templates and the workbook columns.
+    vesting: Mapped[list["GrantVesting"]] = relationship(
+        back_populates="grant", cascade="all, delete-orphan", lazy="selectin",
+        order_by="GrantVesting.date")
+
+
+class GrantVesting(Base):
+    """One vesting date of one grant. A leave of absence moves a row; nothing
+    recomputes it from a formula once it is written."""
+    __tablename__ = "grant_vestings"
+    __table_args__ = (UniqueConstraint("grant_id", "date", name="uq_grant_vesting_date"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    grant_id: Mapped[int] = mapped_column(Integer, ForeignKey("grants.id", ondelete="CASCADE"), nullable=False, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False)
+    shares: Mapped[int] = mapped_column(EncryptedInt, nullable=False)
+
+    grant: Mapped["Grant"] = relationship(back_populates="vesting")
 
 
 class Loan(Base):
@@ -554,40 +575,3 @@ class TrialDailyStat(Base):
     previews: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     save_clicked: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     signups_from_trial: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-
-
-class ImportProposal(Base):
-    """An import an AI assistant prepared, waiting for the user to review it.
-
-    `epic_import/` requires that acceptance goes through the wizard and never a
-    file, and that is the whole point of this row: a connector can prepare a
-    draft but not apply it. The user accepts it in the web or plugin wizard.
-    Plugin acceptance separately requires equity:write and a frozen review;
-    its retained source files and review state live in the same encrypted blob.
-
-    One per account — a second proposal replaces the first. Two assistants
-    racing is a confusing thing to build a list UI for, and the newer draft is
-    the one the user was just talking about.
-
-    Both blobs are encrypted: the payload is share counts and cost bases, and
-    the findings quote them back ("2021 Purchase: shares 100,000 does not match
-    ...").
-    """
-
-    __tablename__ = "import_proposals"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"),
-        unique=True, nullable=False, index=True,
-    )
-    # Which assistant prepared it, so the app can say "from ChatGPT".
-    client_name: Mapped[str] = mapped_column(String, nullable=False, server_default="")
-    # The wizard-shaped payload, as JSON text.
-    payload_json: Mapped[str] = mapped_column(EncryptedString, nullable=False)
-    # What validation said about it, as JSON text.
-    findings_json: Mapped[str] = mapped_column(EncryptedString, nullable=False, server_default="[]")
-    # True when a blocking rule failed — the app warns before opening the wizard.
-    blocked: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0", default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
-    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)

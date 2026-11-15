@@ -6,6 +6,7 @@ import { addCalendarYears } from '../dateUtils.ts'
 // (events.py:66). `_build_interest_pool` (events.py:493) is referenced for context.
 
 import type { GrantEntry, LoanEntry, LoanPaymentEntry, PriceEntry, SaleEntry } from '../../api.ts'
+import { vestingOf } from '../vesting.ts'
 
 export interface CompInputs {
   loanPrincipal: number       // L: outstanding loan principal (avg over window)
@@ -122,15 +123,8 @@ export function unvestedPrincipalAt(
 
   let total = 0
   for (const grant of grants) {
-    if (!grant.vest_start || grant.shares <= 0 || grant.periods <= 0) continue
-    const base = Math.floor(grant.shares / grant.periods)
-    const rem = grant.shares % grant.periods
-    let unvestedShares = 0
-    for (let p = 0; p < grant.periods; p++) {
-      if (shiftYears(grant.vest_start, p) > exitDate) {
-        unvestedShares += base + (p < rem ? 1 : 0)
-      }
-    }
+    if (grant.shares <= 0) continue
+    const unvestedShares = vestingOf(grant).reduce((n, v) => (v.date > exitDate ? n + v.shares : n), 0)
     const fraction = unvestedShares / grant.shares
     if (fraction <= 0) continue
     for (const l of loans) {

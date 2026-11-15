@@ -139,18 +139,18 @@ the import failed to produce.
 
 ### `P1` — purchase grant basis → annual share price
 A purchase grant's per-share cost basis is that year's share price, dated
-1 January to match how the wizard keys prices by year. **Warning** when no
+1 January, one price per year. **Warning** when no
 purchase grant carries a basis, because then no prices can be worked out at all.
 
 ### `S1` — the company grant schedule → vest_start, periods, exercise_date
-*`skeleton.py`.* Vest dates, vesting periods, exercise dates, loan rates, due
-dates and the down payment policy normally come from the admin-managed content
-tables. A user-confirmed custom award or leave adjustment supplies its own full
-schedule through a repaired draft. **Warning** when a template for a year is missing and the nearest
+*`skeleton.py`.* The admin-managed content tables are a starting point for vest
+dates, vesting periods, exercise dates, loan rates, due dates and the down
+payment policy; whatever a draft states itself (dates, periods, or explicit
+`vesting` rows) is kept. **Warning** when a template for a year is missing and the nearest
 one of the same type is shifted to fit (an admin should add the real one), when
 a template has no usable dates, or when no templates are configured at all.
-**Error** (blocking) when a grant has no template and none can be adapted;
-the user can supply a confirmed custom schedule instead.
+**Error** (blocking) when a grant states no schedule, has no template and none
+can be adapted — there is nothing to vest on.
 
 ---
 
@@ -204,10 +204,9 @@ tables. Purchase loans are exempt: they get refinanced, so the rate on record
 is the original one and no longer matches the current balance.
 
 ### `C10` — the vesting schedule against the company schedule
-**Warning** when a draft's `vest_start`, `periods` or `exercise_date` differs
-from the template. A repaired draft's changed dates are ignored unless it has
-`custom_schedule`, `schedule_confirmed` and `basis_confirmed` set to true, with
-complete dates and periods; a custom schedule is retained and warned about.
+**Info** when a draft's `vest_start`, `periods` or `exercise_date` differs from
+the template. The draft's own value is kept — a leave of absence or an award the
+tables do not know is ordinary — and the note says what the template had.
 
 ### `C12` — sales against the shares nothing else explains
 **Warning** when down-payment exchanges and drafted shares do not match the
@@ -215,9 +214,8 @@ workbook's `Shares Sold`, or a drafted row lacks a date or price. A row with
 unknown details is an unclassified balance, not proof of a sale. Failure to
 find one unique down-payment combination cannot distinguish exchanges from
 sales. Both repair routes ask the user to classify the balance and enter each
-actual transaction separately. The wizard recalculates the remaining balance
-after grant edits and refuses sales plus exchanges above the reported total.
-Unanswered or unallocated shares are explicitly shown as skipped at sign-off.
+actual transaction separately. Unanswered shares are listed on the import screen to be dated and priced, and
+are not saved until they are.
 
 ### `C11` — down-payment shares against the loan they paid
 **Warning** when a grant's `dp_shares` do not come to the gap between its cost
@@ -233,9 +231,11 @@ applies just as much to a figure a repaired draft supplied.
 *`draft_from_payload`.* Tolerant about shape, strict about types. **Error** for
 JSON that is not an object, has no `grants` array, or carries a grant or loan
 whose fields cannot be read; **warning** for a price row that has to be skipped.
-Structural fields are ignored unless a custom schedule is explicitly confirmed
-with all required fields. An incomplete custom schedule is an error, with its
-grant omitted; an ordinary override is `C10` and uses the company template.
+A grant's schedule may be stated as `vest_start` + `periods` (equal yearly
+parts, each rounded down, the rest on the last date) or as `vesting:
+[{date, shares}]`; rows that do not add up to the grant's shares, or repeat a
+date, are an error with the grant omitted. A stated schedule is kept (`C10`
+notes where it differs from the template).
 
 Parse complaints from an earlier round are demoted to **info** once a corrected
 draft supersedes them, prefixed "(before your correction)". Otherwise a repair

@@ -8,7 +8,7 @@ import StalePriceNotice from '../components/StalePriceNotice.tsx'
 import { StatCard } from '../components/StatCard.tsx'
 import { ChartBox, IncomeCapGainsChart, PriceChart, SharesChart } from '../components/charts.tsx'
 import { useChartColors, type DateRange } from '../components/chartAxes.ts'
-import { addCalendarYears, useToday } from '../dateUtils.ts'
+import { useToday } from '../dateUtils.ts'
 import { fmt$, fmtFullDate, fmtNum, fmtPrice } from '../format.ts'
 import { useAppContext } from '../../scaffold/contexts/AppContext.tsx'
 import DisclaimerNotice from '../../scaffold/components/DisclaimerNotice.tsx'
@@ -19,6 +19,7 @@ import {
   IconChatSpark,
 } from '../../scaffold/components/ui/icons.tsx'
 import { useConfig } from '../../scaffold/hooks/useConfig.ts'
+import { vestedBy } from '../vesting.ts'
 
 type Stage = 'upload' | 'analyzing' | 'preview'
 type Tab = 'dashboard' | 'events'
@@ -111,14 +112,7 @@ function valuesAsOf(r: TrialAnalyzeResponse, asOf: string): AsOfValues {
   let unvestedValue = 0
   let costBasis = 0
   for (const g of r.grants) {
-    let vested = 0
-    if (g.periods > 0) {
-      const base = Math.floor(g.shares / g.periods)
-      const rem = g.shares % g.periods
-      for (let p = 0; p < g.periods; p++) {
-        if (addCalendarYears(g.vest_start, p) <= asOf) vested += base + (p < rem ? 1 : 0)
-      }
-    }
+    const vested = vestedBy(g, asOf)
     const unvested = g.shares - vested
     // dp_shares is negative where shares were handed over as a down payment.
     const held = Math.max(0, vested + (g.dp_shares ?? 0))
@@ -475,7 +469,7 @@ export default function Try() {
     if (!result) return
     setSaving(true)
     try {
-      await stashTrialPayload(result.wizard_payload)
+      await stashTrialPayload(result.draft)
       pingSaveIntent()
       navigate('/login')
     } catch {
@@ -589,8 +583,8 @@ export default function Try() {
             </p>
             <FindingList findings={result.findings} />
             <p className="mt-3 text-xs text-cs-muted">
-              Sign up to finish this in the full import wizard — it has a repair
-              loop for exactly this kind of mismatch.
+              Sign up to finish this on the Import page — it can hand the mismatch to
+              your AI assistant to fix, and checks the answer the same way.
             </p>
             <p className="mt-2">
               <ReportFindingsButton findings={result.findings} blocked={result.blocked} />

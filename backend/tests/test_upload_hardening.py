@@ -136,28 +136,6 @@ def test_non_zip_is_left_to_the_caller():
 
 # ── The endpoints that parse workbooks ───────────────────────────────────────
 
-def test_wizard_parse_file_rejects_bomb(client):
-    from scaffold.safe_workbook import MAX_TOTAL_UNCOMPRESSED
-    register_user(client)
-    resp = client.post(
-        "/api/wizard/parse-file",
-        files={"file": ("bomb.xlsx", _zip_bomb(MAX_TOTAL_UNCOMPRESSED + 1024),
-                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
-    )
-    assert resp.status_code == 400
-    assert "decompressed" in resp.json()["detail"]
-
-
-def test_wizard_parse_file_still_takes_a_real_workbook(client):
-    register_user(client)
-    resp = client.post(
-        "/api/wizard/parse-file",
-        files={"file": ("ok.xlsx", _real_workbook(("Schedule", "Prices")),
-                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
-    )
-    assert resp.status_code == 200
-
-
 def test_import_excel_rejects_bomb(client):
     from scaffold.safe_workbook import MAX_TOTAL_UNCOMPRESSED
     register_user(client)

@@ -1,7 +1,7 @@
 """Session-only preview: parse Epic's own files and compute a timeline.
 
-    POST /api/trial/analyze   files -> computed timeline + a wizard_payload
-                              to hand to /api/wizard/submit after signup
+    POST /api/trial/analyze   files -> computed timeline + the draft, which
+                              after signup goes to /api/epic-import/changes
 
 No account and no auth — this is the no-signup on-ramp. None of the
 uploaded data is written anywhere; the only thing that touches the
@@ -28,10 +28,10 @@ from scaffold.auth import get_current_user
 from scaffold.models import TaxSettings, TrialDailyStat, User
 from app.content_service import load_content
 from app.core import compute_timeline, generate_all_events
+from services.vesting import core_grant
 from app.date_utils import to_date as _to_date
 from app.epic_import import build_skeleton, derive_draft, is_blocked, to_wizard_payload, validate_draft
-from app.routers.epic_import import (_PDF_MAGIC, _parse_files, _read_upload, _summary,
-                                     _wizard_prefill)
+from app.routers.epic_import import _PDF_MAGIC, _parse_files, _preview_rows, _read_upload, _summary
 
 logger = logging.getLogger(__name__)
 
@@ -84,13 +84,8 @@ def _default_tax_settings() -> TaxSettingsRead:
 def _source_data(payload: dict):
     """The wizard_payload shape, converted into the plain dicts core.py expects."""
     grants_payload = sorted(payload["grants"], key=lambda g: (g["year"], g["type"]))
-    grants = [{
-        "year": g["year"], "type": g["type"], "shares": g["shares"], "price": g["price"],
-        "vest_start": datetime.combine(_to_date(g["vest_start"]), datetime.min.time()),
-        "periods": g["periods"],
-        "exercise_date": datetime.combine(_to_date(g["exercise_date"]), datetime.min.time()),
-        "dp_shares": g.get("dp_shares") or 0,
-    } for g in grants_payload]
+    grants = [core_grant({**g, "vest_start": _to_date(g["vest_start"]),
+                          "exercise_date": _to_date(g["exercise_date"])}) for g in grants_payload]
 
     prices_payload = sorted(payload["prices"], key=lambda p: p["effective_date"])
     prices = [{"date": datetime.combine(_to_date(p["effective_date"]), datetime.min.time()),
@@ -114,7 +109,8 @@ def _serialize_event(e: dict) -> dict:
 
 
 class TrialAnalyzeResponse(BaseModel):
-    wizard_payload: dict
+    # The draft, kept by the browser until signup, then turned into changes.
+    draft: dict
     # The same flat grant/loan/price shapes the signed-in app renders from, so
     # the preview can show a real dashboard rather than a reduced summary. Ids
     # are negative — nothing here is a saved row.
@@ -173,7 +169,7 @@ def analyze(
 
     wizard_payload = to_wizard_payload(draft)
 
-    prefill = _wizard_prefill(draft)
+    prefill = _preview_rows(draft)
 
     # The files carry the prices Epic has already announced, and nothing newer.
     # Valuing a position at a price a year or more stale understates it badly, so
@@ -203,7 +199,7 @@ def analyze(
     _bump(db, "previews")
 
     return TrialAnalyzeResponse(
-        wizard_payload=wizard_payload,
+        draft={**wizard_payload, "statement_date": draft.statement_date.isoformat() if draft.statement_date else None},
         grants=prefill["grants"],
         loans=prefill["loans"],
         prices=prefill["prices"],

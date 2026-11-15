@@ -1,78 +1,66 @@
 """What an assistant is told when someone asks it to get their equity into the app.
 
-`epic_import/prompt.py` is a brief for *repairing* a parse of Epic's own files,
-pasted into a chat window by someone who already has the draft in front of
-them. That brief is strict on purpose — "use only figures present", "answer
-with one JSON object" — because the files are the source and the assistant is a
-second pair of eyes.
+The person hands their assistant whatever they have — a purchase agreement, a
+loan statement, the Eureka share summary, a screenshot, their memory — and the
+assistant turns it into concrete row edits, previews them with apply_changes,
+walks the person through them in plain words and applies them once they agree.
 
-A connector conversation is the other way round. The person may have a grant
-letter, a screenshot, a statement, or only their memory; they usually do not
-know what a cost basis is; and the assistant is the one doing the work. So this
-guide asks for the opposite posture: make a reasoned first draft, say plainly
-what was read and what was guessed, walk the person through it without jargon,
-and only then stage it. The review in the app is the backstop, not the first
-time anyone looks.
+`epic_import/prompt.py` is a different thing: a strict brief for repairing a
+parse of Epic's own files, pasted by someone using the web import without a
+connector. Don't merge the two.
 
-What does not move without the person's say-so is the company schedule.
-Vesting for a grant comes from the content tables unless the draft marks it
-`custom_schedule` with `schedule_confirmed` and `basis_confirmed` — which the
-assistant sets only after the person has confirmed the dates and whether they
-paid for the shares (C10, R1).
-"""
-
-ADDING_ONE_GRANT = """\
-Adding or correcting ONE thing — a new grant from a purchase offer or grant
-letter, a loan, a price — is a direct edit, not an import. Use save_equity
-(kind "grant", then kind "loan" for its loan) once the person approves the
-exact values. Do NOT use stage_import or show_import for it: the import review
-rebuilds every grant's loans and generated payoff sales, which is far more than
-one new grant needs. Nothing else in the account is touched by save_equity.
-
-If save_equity is not among your tools, this connection was not granted
-editing. Tell the person to disconnect and reconnect the app with the Equity
-editing permissions ticked, rather than falling back to stage_import.
-
-Reading an Epic stock purchase offer ("Employee Stock Purchase Agreement"):
-- year: the grant year in the title. type: "Purchase".
-- shares: the number the person ELECTED to buy (the agreement states only the
-  maximum offered). Ask if you do not have their Notice of Stock Purchase.
-- price: the per-share price in section 2.
-- vest_start: the first date in the vesting table; periods: rows in the table;
-  exercise_date: the purchase date (ask; the end of the grant year if unknown,
-  recorded as a guess).
-- If they chose down payment + Epic loan: a Purchase loan for shares x price
-  minus the down payment, loan_year the grant year, due_date and rate from the
-  loan disclosures (otherwise the rate on record, marked as a guess). If the
-  down payment was paid by exchanging shares, set dp_shares to minus that
-  number. If they paid out of pocket, there is no loan.
-- Check list_prices has that year's price; if not, add it (not an estimate —
-  the agreement states it).
+The company schedule is a starting point. What the person's own paperwork says
+wins; a grant's vesting is a list of dated rows and can say anything.
 """
 
 START_HERE = """\
-0. Adding or correcting a single grant, loan or price? Stop here and follow
-   adding_one_grant instead. The steps below are for setting up or
-   re-importing a whole account.
-1. Ask the person for whatever they have: grant letters, the Eureka "Data
-   for Stock Workbook" CSV, the Stock Loan Statement PDF, screenshots, or just
-   what they remember. Any one of these is enough to start.
-2. Look at account_now below (or list_grants / list_loans / list_prices) so you
-   know what the app already holds before you propose changes to it.
-3. Build a first draft yourself. Where a figure is not in front of you, make a
-   reasoned best guess from the company schedule, the loan rates on record and
-   what the documents imply — see making_best_guesses. Keep a list of every
-   guess.
-4. Walk the person through the draft one grant at a time, in plain words — see
-   talking_to_the_user. Say what you read and what you guessed, and ask them to
-   confirm or correct it. Ask few, concrete questions.
-5. When they are happy, call stage_import. Put every guess in `assumptions` so
-   the app shows it to them again during review.
-6. Read back what stage_import returns — `changes_vs_account` especially — in
-   plain words. If it would remove something they still have, fix the draft and
-   stage it again.
-7. Tell them it is not saved yet, using the `tell_the_user` text stage_import
-   returns. They review and save it in the app.
+1. Read what the person gives you. Any one document is enough to start; you do
+   not need every file, and nothing is removed because a document leaves it out.
+2. Read the account first (list_grants, list_loans, list_prices, list_sales, or
+   account_now below) so you add to it rather than duplicate it.
+3. Decide the concrete edits: which rows to create, which to update (by id and
+   version) and — only when the person says so — which to delete.
+4. Call apply_changes WITHOUT confirm. That checks every edit exactly as the app
+   would store it and saves nothing. Fix anything it refuses.
+5. Tell the person, in plain words, what will change and what you guessed — see
+   talking_to_the_user. Ask one concrete question at a time.
+6. When they say yes, call apply_changes again with the same changes and the
+   confirm token. Then read the account back and tell them where they stand.
+"""
+
+READING_DOCUMENTS = """\
+An Epic stock purchase offer (Docusign "Employee Stock Purchase Agreement" and
+its pages):
+- grant: year from the title, type "Purchase", price = the per-share price in
+  section 2, shares = the number they ELECTED on the Notice of Stock Purchase
+  (section 2 states only the maximum offered).
+- vesting: the dated table in section 3, as rows. "25% each year, all remaining
+  on the last date, rounded down" with N shares is vest_start + periods (the
+  app rounds each part down and puts the rest last); anything else, list the
+  rows.
+- exercise_date: the purchase date if stated; otherwise ask, or use the date
+  loan interest starts and say it is a guess.
+- dp_shares: minus the number of existing shares exchanged for the down
+  payment (Stock Purchase Payment Election page), 0 if paid in cash or payroll.
+- election_83b: true when they signed the 83(b) page.
+- loan: if they chose "Epic loan + down payment", one Purchase loan for the
+  "Loan amount" printed there, loan_year = the grant year, interest_rate = the
+  rate in the Stock Loan Agreement as a fraction, due_date = its principal due
+  date. Paid out of pocket: no loan.
+- price: that year's share price, effective January 1 of the grant year, if
+  list_prices does not already have it.
+
+A Stock Loan Statement is the current state of every loan: each row's balance,
+rate and due date as of the statement date. Update the matching stored loan in
+place (by loan number); a stored loan the statement no longer lists was paid off
+or refinanced — ask before deleting it. Past refinance history does not need
+re-creating. A future refinance or an early payment the person made is added
+from its own document.
+
+The Eureka "Data for Stock Workbook" CSV gives each grant's shares, cost basis
+(total; divide by shares for price) and shares sold. Shares sold may be real
+sales or shares exchanged for down payments — ask which, and record each real
+sale with its own date and price.
 """
 
 TALKING_TO_THE_USER = """\
@@ -80,8 +68,8 @@ Assume the person is not a finance person. Never lead with jargon. If you need
 one of these ideas, use the plain wording on the right:
 
   cost basis / price           → what you paid per share ($0 if you did not pay)
-  vest / vesting schedule      → when the shares become fully yours, e.g. "in 4
-                                 yearly chunks starting 30 Sep 2025"
+  vest / vesting schedule      → when the shares become fully yours, e.g. "a
+                                 quarter each 30 September from 2027"
   exercise date                → the date the purchase went through
   dp_shares / down payment     → shares you traded in to cover part of buying
                                  this grant
@@ -93,134 +81,57 @@ one of these ideas, use the plain wording on the right:
                                  tax bill
   83(b) election               → a tax form some people file when they buy
                                  shares ("not sure" is a fine answer)
-  interest_rate 0.037          → say 3.7%
+  interest_rate 0.0449         → say 4.49%
 
-Summarise each grant in a sentence or two using their own figures — for example
-"Your 2024 grant: <shares> shares you bought at <price> each, paid for with a
-loan from Epic of <amount> at <rate>, due <date>. They become fully yours in
-<n> yearly chunks starting <date>." Mark anything you guessed ("guessed — your
-letter did not say"). Ask one thing at a time. "I don't know" is an acceptable
-answer: keep your best guess and record it in `assumptions`. Do not give tax or
-investment advice while importing — the app's own screens are for that.
+Summarise each change in a sentence using their own figures, and say which
+figures you guessed. "I don't know" is an acceptable answer: keep your best
+guess, say so, and put it in that change's note. Do not give tax or investment
+advice while entering data.
 """
 
 MAKING_BEST_GUESSES = """\
 Fill gaps with a reasoned best guess rather than stopping — as long as you say
 it is a guess and the person confirms it.
 
-- Vesting for a grant listed in company_grant_schedule: it comes from there.
-  Do not ask and do not send it — unless a leave of absence moved it, in which
-  case confirm the new first vesting date and number of vestings with the
-  person and send them as a custom schedule (below).
-- Vesting for a grant NOT listed there (a year after the schedule ends, or a
-  special / one-off / retention award): read it from the paperwork. If the
-  paperwork does not say, propose the schedule of the most similar grant in the
-  table and say so. Once the person confirms the dates and whether they paid
-  for the shares, send vest_start, periods and exercise_date with
-  custom_schedule, schedule_confirmed and basis_confirmed all true. Without
-  those three flags the grant cannot be accepted.
+- Vesting: from the paperwork. If it does not say, company_grant_schedule below
+  is a reasonable starting point; say you used it.
+- A leave of absence moves vesting dates: update that grant's `vesting` rows to
+  the new dates the person gives you. Other rows stay as they are.
 - What they paid per share: a grant they bought is normally that year's share
   price; a grant given to them is 0. A total cost divided by the share count
-  gives it too. If you cannot tell, ask: "Did you pay for these shares, or were
-  they given to you?"
-- Loan rate and due date: from the statement; otherwise the rate on record for
-  that year and kind of loan, and ask about the due date.
+  gives it too.
+- Loan rate and due date: from the statement or loan agreement; otherwise the
+  rate on record below, and ask about the due date.
 - Never guess: how many shares they have (ask), the date or price of a sale
-  (ask; leave them null if they do not know), or a future share price. User-specified growth assumptions are allowed only as tentative prices with `is_estimate: true`.
-- Whether they filed an 83(b): false unless they say otherwise; note it.
-
-Every guess goes in `assumptions`, one short sentence each, e.g.
-{"subject": "2024 Purchase", "note": "Price per share taken as the 2024 share
-price; the letter did not state it."}
+  (ask), or a future share price. A price the person projects is saved with
+  is_estimate true.
 """
 
-UNUSUAL_GRANTS = """\
-Grants the schedule does not list are expected, not errors — a grant from this
-year before an admin adds its template, an award for a future year the person
-has already been told about, or a one-off bonus under its own name.
-
-- Include them. Use one of Purchase, Catch-Up, Bonus, Free or Developer Bonus
-  Shares when one fits; otherwise a short name from the paperwork
-  ("Retention"). The name is a label: what decides tax is `price` — 0 means the
-  value is taxed as it vests, above 0 means it was bought.
-- Send vest_start, periods and exercise_date with custom_schedule,
-  schedule_confirmed and basis_confirmed true once the person has confirmed
-  them (see making_best_guesses). They are listed as custom grants in the
-  review so the person checks them again.
-- Only include a grant the person has actually been awarded. A share price for
-  a year that has not been announced is never included.
-"""
-
-OUTPUT_FORMAT = """\
-Pass this object to stage_import as `payload`. Comments are explanation only.
-
-{
-  "grants": [
-    {
-      "year": 2024,
-      "type": "Purchase",          // Purchase | Catch-Up | Bonus | Free | Developer Bonus Shares | a short name
-      "shares": 3000,              // whole shares granted
-      "price": 0,                  // what they paid PER SHARE; 0 if given to them
-      "dp_shares": 0,              // shares traded in, negative or 0
-      "election_83b": false,
-      // Only for a grant NOT in company_grant_schedule, or one moved by leave,
-      // and only after the person confirmed the dates and what they paid:
-      "custom_schedule": true,
-      "schedule_confirmed": true,
-      "basis_confirmed": true,
-      "vest_start": "2025-09-30",
-      "periods": 4,                // how many vesting dates, one a year from vest_start
-      "exercise_date": "2024-12-31",
-      "loans": [
-        {
-          "loan_number": "",       // as printed on the statement, "" if unknown
-          "loan_type": "Purchase", // Purchase | Interest | Tax
-          "loan_year": 2024,
-          "amount": 0,             // current principal balance
-          "interest_rate": 0.0,    // decimal fraction, NOT a percentage
-          "due_date": "2033-12-31"
-        }
-      ]
-    }
-  ],
-  "prices": [
-    { "effective_date": "2024-01-01", "price": 0, "is_estimate": false, "announced_date": null } // applicable date; announced date only if known
-  ],
-  "sales": [
-    { "shares": 0, "date": null, "price_per_share": null, "notes": "" }
-  ],
-  "assumptions": [
-    { "subject": "2024 Purchase", "note": "one short sentence per guess" }
-  ]
+FIELDS = {
+    "grant": ("{year, type, shares, price (per share; 0 if taxed as it vests), exercise_date, "
+              "vesting: [{date, shares}] — or vest_start + periods for equal yearly parts — "
+              "dp_shares (0 or negative), election_83b}. The type is a label; any short name "
+              "from the paperwork is fine."),
+    "loan": ("{grant_year, grant_type, loan_type (Purchase|Interest|Tax), loan_year, amount "
+             "(current principal), interest_rate (fraction: 0.0449 means 4.49%), due_date, "
+             "loan_number?}"),
+    "price": ("{effective_date, price, is_estimate?, expected_announcement_date?, announced_date?}; "
+              "an estimate stays tentative until updated with the actual price and announced_date."),
+    "sale": "{date, shares, price_per_share, notes?} — one per real transaction.",
+    "loan_payment": "{loan_id or loan_number, date, amount, notes?} — money actually paid early.",
+    "update": "{kind, action: 'update', id, version, values: only the fields that change}",
+    "delete": "{kind, action: 'delete', id, version} — only when the person asked.",
 }
 
-The figures above are placeholders — use the person's own.
+EXAMPLE = """\
+apply_changes(changes=[
+  {"kind": "grant", "action": "create", "note": "2026 purchase agreement",
+   "values": {"year": 2026, "type": "Purchase", "shares": 1000, "price": 2.00,
+              "vest_start": "2027-09-30", "periods": 4, "exercise_date": "2026-11-30",
+              "dp_shares": -100, "election_83b": true}},
+  {"kind": "loan", "action": "create", "note": "2026 stock loan agreement",
+   "values": {"grant_year": 2026, "grant_type": "Purchase", "loan_type": "Purchase",
+              "loan_year": 2026, "amount": 1800.00, "interest_rate": 0.045,
+              "due_date": "2035-06-30"}}])
+The figures are placeholders — use the person's own.
 """
-
-RULES = """\
-1. Vesting for a grant in company_grant_schedule comes from there and is
-   ignored if you send it. A custom schedule (a grant the schedule does not
-   list, or one moved by leave) is used only with custom_schedule,
-   schedule_confirmed and basis_confirmed all true.
-2. interest_rate is a decimal fraction: 3.7% is 0.037.
-3. price is per share — divide a total cost by the shares granted. Catch-Up,
-   Free and Developer Bonus Shares grants are always 0.
-4. A grant you include replaces what the app holds for that grant, its loans
-   included — so include every loan it still has. Grants you leave out are kept
-   as they are. A price year you include replaces that year's price.
-5. Attribute every loan to exactly one grant. On an Epic statement loan names
-   read "<year> Grant|Bonus|Developer Bonus - Purchase|Interest|Tax Loan".
-6. A purchase is paid by a loan plus a down payment. When the down payment was
-   paid by trading in shares, set dp_shares on the grant being bought to minus
-   that number of shares (see down_payment_policy).
-7. Shares reported as sold may be trades-in, real sales, or both. Ask; list
-   each real sale separately with its own date and price, and leave date and
-   price null for any the person does not know.
-"""
-
-TELL_THE_USER = (
-    "Nothing has been saved yet. Open Epic Stocks and go to Import — you will see "
-    "\"{client} prepared an import\" at the top. Tap Review import, check each "
-    "screen (anything I guessed is listed first), and tap Submit at the end. You can "
-    "also discard it there."
-)

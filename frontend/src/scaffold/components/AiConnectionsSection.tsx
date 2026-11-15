@@ -10,7 +10,7 @@ const SCOPE_LABELS: Record<string, string> = {
   'equity:read': 'Equity — grants, vesting, prices, loans, sales, tax',
   'comp:read': 'Salary and retirement settings',
   'comp:write': 'Update salary, bonuses and retirement balances',
-  'import:propose': 'Prepare an import for you to review',
+  'import:propose': 'Prepare an import (no longer used)',
   'equity:write': 'Create, correct or remove grants, prices, loans and sales',
   'admin:read': 'Site deployment, metrics and redacted application errors',
 }

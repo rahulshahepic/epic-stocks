@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'url'
 import AxeBuilder from '@axe-core/playwright'
 import { navigateTo } from './helpers.ts'
-import { pluginHost, importReviewSnapshot } from './plugin-host'
+import { pluginHost } from './plugin-host'
 import { backupStatus } from './backup-fixtures'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -97,9 +97,6 @@ test.describe('Screenshots', () => {
         const widget = await pluginHost(page, { theme, fileHelpers:true })
         await expect(widget.getByText('$225,000')).toBeVisible()
         await shoot(page, `chatgpt-plugin-${theme}-${size}`, { fullPage: true })
-        await page.evaluate(snapshot=>window.frames[0].postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:{structuredContent:snapshot}},'*'),importReviewSnapshot)
-        await expect(widget.getByLabel('Grant name',{exact:true})).toHaveValue('Retention Award')
-        await shoot(page, `chatgpt-import-${theme}-${size}`, { fullPage: true })
       })
     }
   }
@@ -380,80 +377,42 @@ test.describe('Screenshots', () => {
     await page.request.post(`${BASE}/api/admin/epic-mode`, { data: { active: false } })
   })
 
-  test('wizard - welcome - light - mobile', async ({ page }) => {
-    // /wizard always shows the wizard (isPage=true) regardless of existing data
-    await authedPage(page, MOBILE, 'light')
-    await page.goto(`${BASE}/wizard`)
-    await page.waitForLoadState('networkidle')
-    await page.waitForTimeout(500)
-    await shoot(page, 'wizard-welcome-light-mobile', { fullPage: true })
-  })
+  for (const scheme of ['light', 'dark'] as const) {
+    test(`get started - ${scheme} - mobile`, async ({ page }) => {
+      await authedPage(page, MOBILE, scheme)
+      await page.request.post(`${BASE}/api/auth/test-login`, {
+        data: { email: `get-started-${scheme}@e2e.test`, name: 'New user' },
+      })
+      await page.goto(`${BASE}`)
+      await expect(page.getByRole('heading', { name: 'Get your stock in' })).toBeVisible()
+      await page.waitForTimeout(500)
+      await shoot(page, `get-started-${scheme}-mobile`, { fullPage: true })
+    })
+  }
 
-  test('wizard - welcome - dark - mobile', async ({ page }) => {
-    await authedPage(page, MOBILE, 'dark')
-    await page.goto(`${BASE}/wizard`)
-    await page.waitForLoadState('networkidle')
-    await page.waitForTimeout(500)
-    await shoot(page, 'wizard-welcome-dark-mobile', { fullPage: true })
-  })
-
-  test('wizard - grant entry - light - mobile', async ({ page }) => {
-    await authedPage(page, MOBILE, 'light')
-    await page.goto(`${BASE}/wizard`)
-    await page.waitForLoadState('networkidle')
-    // Welcome screen → Manual entry → prices → "Next: Add grants" → grant entry.
-    await page.click('text=Manual entry')
-    await page.waitForTimeout(300)
-    await page.click('text=Next: Add grants')
-    await page.waitForTimeout(300)
-    await shoot(page, 'wizard-grant-entry-light-mobile', { fullPage: true })
-  })
-
-  test('wizard sales - light - mobile', async ({ page }) => {
+  test('import changes - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     await page.request.post(`${BASE}/api/auth/test-login`, {
-      data: { email: 'sales-screenshot@e2e.test', name: 'Import example' },
+      data: { email: 'import-changes@e2e.test', name: 'Import example' },
     })
     await page.goto(`${BASE}/import`)
     await page.locator('#epic-csv').setInputFiles(TRIAL_CSV)
     await page.locator('#epic-pdf').setInputFiles(TRIAL_PDF)
     await page.getByRole('button', { name: 'Read my files' }).click()
-    await page.getByRole('button', { name: /Review and finish|Review anyway/ }).click()
-    await page.getByRole('button', { name: /Let's go/ }).click()
-    await page.getByRole('button', { name: /Next: Enter grants/ }).click()
-    await page.getByRole('button', { name: /Next: Review loans/ }).click()
-    await page.getByRole('button', { name: /Next: Refinances/ }).click()
-    await page.getByRole('button', { name: /Next: Interest loans/ }).click()
-    await page.getByRole('button', { name: /Next: Preferences/ }).click()
-    await page.getByRole('button', { name: 'Skip', exact: true }).click()
-    await expect(page.getByRole('heading', { name: 'Account for shares that left' })).toBeVisible()
-    await page.getByLabel('Shares sold', { exact: true }).fill('6000')
-    await page.getByLabel('Date sold', { exact: true }).fill('2024-03-01')
-    await page.getByLabel('Price per share', { exact: true }).fill('12.5')
-    await page.getByRole('button', { name: 'Add another sale' }).click()
-    await page.getByLabel('Shares sold', { exact: true }).nth(1).fill('3000')
-    await page.getByLabel('Date sold', { exact: true }).nth(1).fill('2025-03-01')
-    await page.getByLabel('Price per share', { exact: true }).nth(1).fill('15')
-    await expect(page.getByText(/1,000 shares will remain unimported/)).toBeVisible()
+    await expect(page.getByRole('button', { name: /Check \d+ changes/ })).toBeVisible({ timeout: 20_000 })
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
-    const accessibility = await new AxeBuilder({ page }).include('.campus-map-room').analyze()
-    expect(accessibility.violations).toEqual([])
-    await shoot(page, 'wizard-sales-light-mobile', { fullPage: true })
-    await page.getByRole('button', { name: /Next: review 2 new sales/ }).click()
-    await expect(page.getByRole('region', { name: 'Sales summary' })).toContainText('2 to import')
-    await shoot(page, 'wizard-sales-review-light-mobile', { fullPage: true })
-    await page.getByRole('button', { name: 'Submit →', exact: true }).click()
-    await expect(page.getByRole('heading', { name: 'Setup complete!' })).toBeVisible()
-    await expect(page.getByRole('region', { name: 'Sales summary' })).toContainText('2 imported')
-    await shoot(page, 'wizard-sales-done-light-mobile', { fullPage: true })
+    await shoot(page, 'import-changes-light-mobile', { fullPage: true })
+    await page.getByRole('button', { name: /Check \d+ changes/ }).click()
+    await expect(page.getByRole('button', { name: /Save \d+ changes/ })).toBeVisible()
+    await shoot(page, 'import-changes-checked-light-mobile', { fullPage: true })
   })
 
-  test('wizard page - light - mobile', async ({ page }) => {
+  test('vesting editor - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
-    await page.goto(`${BASE}/wizard`)
-    await page.waitForLoadState('networkidle')
-    await page.waitForTimeout(500)
-    await shoot(page, 'wizard-page-light-mobile', { fullPage: true })
+    await navigateTo(page, 'Grants')
+    await page.getByRole('button', { name: 'Edit' }).first().click()
+    await expect(page.getByText('Vesting dates')).toBeVisible()
+    await shoot(page, 'vesting-editor-light-mobile', { fullPage: true })
   })
 
   test('settings sharing section - light - mobile', async ({ page }) => {
@@ -518,15 +477,14 @@ test.describe('Screenshots', () => {
         const compensation = page.getByRole('group', { name: 'Compensation', exact: true })
         await expect(equity.getByRole('checkbox', { name: /Read your equity/ })).toBeChecked()
         await expect(compensation.getByRole('checkbox', { name: /Read your salary/ })).toBeChecked()
-        await expect(equity.getByRole('checkbox', { name: /Create, correct/ })).not.toBeChecked()
+        await expect(equity.getByRole('checkbox', { name: /Add, correct/ })).not.toBeChecked()
         await expect(page.getByRole('status')).toContainText('read-only')
         await expect(page.getByText('Read site deployment status')).toHaveCount(0)
         await shoot(page, `oauth-permissions-${theme}-${size}`, { fullPage: true })
         await compensation.getByRole('button', { name: 'Clear all compensation permissions' }).click()
         await expect(compensation.getByRole('checkbox', { name: /Read your salary/ })).not.toBeChecked()
         await equity.getByRole('button', { name: 'Select all equity permissions' }).click()
-        await expect(equity.getByRole('checkbox', { name: /Prepare an import/ })).toBeChecked()
-        await expect(equity.getByRole('checkbox', { name: /Create, correct/ })).toBeChecked()
+        await expect(equity.getByRole('checkbox', { name: /Add, correct/ })).toBeChecked()
         await expect(page.getByRole('status')).toContainText('grants, prices, loans and sales')
         await expect(page.getByRole('status')).not.toContainText('salary')
         await equity.getByRole('checkbox', { name: /Read your equity/ }).uncheck()
@@ -548,13 +506,13 @@ test.describe('Screenshots', () => {
         } })
         expect(exchange.ok()).toBeTruthy()
         const tokens = await exchange.json()
-        expect(tokens.scope.split(' ').sort()).toEqual(['equity:read', 'equity:write', 'import:propose'])
+        expect(tokens.scope.split(' ').sort()).toEqual(['equity:read', 'equity:write'])
         const tools = await page.request.post('http://localhost:8000/mcp', {
           headers: { Authorization: `Bearer ${tokens.access_token}` },
           data: { jsonrpc: '2.0', id: 1, method: 'tools/list' },
         })
         const names = (await tools.json()).result.tools.map((tool: { name: string }) => tool.name)
-        expect(names).toEqual(expect.arrayContaining(['save_equity', 'stage_import', 'show_import']))
+        expect(names).toEqual(expect.arrayContaining(['apply_changes', 'get_import_guide']))
         expect(names).not.toContain('admin_deployment_status')
       })
     }

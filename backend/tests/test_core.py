@@ -31,6 +31,9 @@ def _make_grant(**overrides):
         "exercise_date": datetime(2020, 12, 31), "dp_shares": 0,
     }
     base.update(overrides)
+    from services.vesting import legacy_split
+    base.setdefault("vesting", [(datetime.combine(d, datetime.min.time()), n) for d, n in
+                                legacy_split(base["shares"], base["vest_start"].date(), base["periods"])])
     return base
 
 
@@ -69,6 +72,13 @@ def test_vesting_even_split():
     g = _make_grant(shares=10, periods=5)
     events = generate_vesting_events([g])
     assert all(e["vested_shares"] == 2 for e in events)
+
+
+def test_vesting_events_follow_the_stored_dates():
+    """A moved date (a leave) and an uneven split are emitted exactly as stored."""
+    rows = [(datetime(2027, 9, 30), 250), (datetime(2028, 12, 15), 250), (datetime(2030, 9, 30), 501)]
+    events = generate_vesting_events([_make_grant(shares=1001, vesting=rows)])
+    assert [(e["date"], e["vested_shares"]) for e in events] == rows
 
 
 def test_vesting_single_period():

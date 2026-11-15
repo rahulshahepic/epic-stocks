@@ -11,6 +11,7 @@ from scaffold.quota import check_row_quota
 from app.sales_engine import compute_sale_tax, build_fifo_lots, compute_grossup_shares
 from app.sale_tax import compute_all_sale_taxes
 from scaffold.crud import apply_update, get_owned, version_conflict
+from services.vesting import core_grant, vest_years
 
 
 def _flexible_payoff_enabled(db: Session) -> bool:
@@ -49,13 +50,7 @@ def _build_timeline(user: User, db: Session) -> list:
     prices_db = db.query(Price).filter(Price.user_id == user.id).order_by(Price.effective_date).all()
     loans_db = db.query(Loan).filter(Loan.user_id == user.id).order_by(Loan.due_date).all()
 
-    grants = [{
-        "year": g.year, "type": g.type, "shares": g.shares, "price": g.price,
-        "vest_start": datetime.combine(g.vest_start, datetime.min.time()),
-        "periods": g.periods,
-        "exercise_date": datetime.combine(g.exercise_date, datetime.min.time()),
-        "dp_shares": g.dp_shares or 0,
-    } for g in grants_db]
+    grants = [core_grant(g) for g in grants_db]
     prices = [{"date": datetime.combine(p.effective_date, datetime.min.time()), "price": p.price} for p in prices_db]
     loans = [{
         "grant_yr": ln.grant_year, "grant_type": ln.grant_type,
@@ -541,10 +536,7 @@ def get_tax_settings(user: User = Depends(get_current_user), db: Session = Depen
     grants = db.query(Grant).filter(Grant.user_id == user.id).all()
     years: set[int] = set()
     for g in grants:
-        if g.vest_start and g.periods:
-            for i in range(g.periods):
-                vest_year = g.vest_start.year + i
-                years.add(vest_year)
+        years |= vest_years(g)
     result.taxable_years = sorted(years)
     return result
 

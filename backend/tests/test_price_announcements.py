@@ -109,10 +109,10 @@ def test_tentative_notification_qualifies_values():
 def test_plugin_can_save_and_confirm_backdated_estimate(client):
     register_user(client)
     mcp = Mcp(client)
-    saved = mcp.call("save_equity", kind="price", values={"effective_date": "2020-01-01",
+    saved = mcp.save("price", {"effective_date": "2020-01-01",
         "price": 110, "is_estimate": True, "expected_announcement_date": "2020-03-01"})
     assert mcp.call("list_prices", include_projections=True)["projected_prices"][0]["is_estimate"]
-    mcp.call("save_equity", kind="price", id=saved["id"], values={
+    mcp.save("price", id=saved["id"], values={
         "price": 112, "announced_date": "2020-02-27", "version": saved["version"]})
     prices = mcp.call("list_prices")["prices"]
     assert len(prices) == 1 and prices[0]["announced_date"] == "2020-02-27"
@@ -138,16 +138,18 @@ def test_workbook_roundtrip_preserves_tentative_status(client):
     assert prices[0]["announced_date"] is None
 
 
-def test_import_wizard_confirmation_changes_status_at_same_price(client):
+def test_an_import_confirms_an_estimate_at_the_same_price(client):
     register_user(client)
     client.post("/api/prices", json={"effective_date": "2020-01-01", "price": 110,
         "is_estimate": True})
-    payload = {"grants": [], "prices": [{"effective_date": "2020-01-01", "price": 110,
-        "announced_date": "2020-02-27"}], "clear_existing": False, "generate_payoff_sales": False}
-    response = client.post("/api/wizard/preview", json=payload)
+    draft = {"grants": [], "prices": [{"effective_date": "2020-01-01", "price": 110,
+        "is_estimate": False, "announced_date": "2020-02-27"}]}
+    response = client.post("/api/epic-import/changes", json={"draft": draft})
     assert response.status_code == 200, response.text
-    assert response.json()["prices"][0]["status"] == "updated"
-    assert client.post("/api/wizard/submit", json=payload).status_code == 201
+    changes = response.json()["changes"]
+    assert [(c["kind"], c["action"]) for c in changes] == [("price", "update")]
+    token = client.post("/api/changes/preview", json={"changes": changes}).json()["confirm"]
+    assert client.post("/api/changes/apply", json={"changes": changes, "confirm": token}).status_code == 200
     prices = client.get("/api/prices").json()
     assert len(prices) == 1 and prices[0]["is_estimate"] is False
 

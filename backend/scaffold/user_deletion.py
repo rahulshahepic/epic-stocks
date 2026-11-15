@@ -23,6 +23,7 @@ USER_OWNED_TABLES: list[tuple[str, str]] = [
     ("sales", "user_id"),
     ("loan_payments", "user_id"),
     ("loans", "user_id"),
+    ("grant_vestings", "user_id"),
     ("grants", "user_id"),
     ("prices", "user_id"),
     ("push_subscriptions", "user_id"),
@@ -41,8 +42,6 @@ USER_OWNED_TABLES: list[tuple[str, str]] = [
     # account rather than de-linked: it is that person's activity, not a
     # diagnostic someone else needs to keep.
     ("mcp_audit", "user_id"),
-    # A draft an assistant prepared and the user never accepted.
-    ("import_proposals", "user_id"),
 ]
 
 # Financial data only — what POST /api/me/reset clears, keeping the account.
@@ -50,6 +49,7 @@ FINANCIAL_TABLES: list[tuple[str, str]] = [
     ("sales", "user_id"),
     ("loan_payments", "user_id"),
     ("loans", "user_id"),
+    ("grant_vestings", "user_id"),
     ("grants", "user_id"),
     ("prices", "user_id"),
     ("import_backups", "user_id"),

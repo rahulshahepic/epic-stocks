@@ -6,7 +6,7 @@
  * they already use; whatever comes back is posted here and checked again.
  */
 import { apiFetch } from '../api.ts'
-import type { GrantEntry, LoanEntry, PriceEntry, WizardSale } from '../api.ts'
+import type { Change } from '../api.ts'
 import { platform } from '../platform/index.ts'
 
 export interface Finding {
@@ -25,34 +25,22 @@ export interface DraftSummary {
   grant_years: number[]
 }
 
-/** One sale as the import handed it over, before the user answered anything. */
-export interface PrefillSale {
+/** Shares the files show gone that no down payment explains. Only the person
+ *  knows the date and price, so the page asks before any sale is saved. */
+export interface UnansweredSale {
   shares: number
-  date: string
+  date: string | null
   price_per_share: number | null
   notes: string
-  needs_input: boolean
-}
-
-/** The draft in the shape the wizard's own data loader consumes. */
-export interface WizardPrefill {
-  grants: GrantEntry[]
-  loans: LoanEntry[]
-  prices: PriceEntry[]
-  /** Shares the files report gone that no down payment explains. `needs_input`
-   *  marks the ones with no date or price — the wizard's sales screen asks. */
-  sales?: PrefillSale[]
-  existing_sales?: WizardSale[]
-  reported_sold_shares?: number | null
-  sale_grant_keys?: string[]
 }
 
 export interface AnalyzeResponse {
   draft: Record<string, unknown>
   /** True when the newest price in the files is from an earlier year. */
   price_is_stale: boolean
-  wizard_payload: Record<string, unknown>
-  wizard_prefill: WizardPrefill
+  /** The edits this draft implies for the account. */
+  changes: Change[]
+  unanswered_sales: UnansweredSale[]
   findings: Finding[]
   /** True when we could not read the documents themselves — nothing else is trustworthy. */
   blocked: boolean

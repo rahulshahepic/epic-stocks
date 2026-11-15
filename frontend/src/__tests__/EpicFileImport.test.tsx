@@ -1,10 +1,8 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import EpicFileImport from '../app/components/EpicFileImport.tsx'
-import { resetContentCache, setContentCacheForTesting } from '../app/hooks/useContent.ts'
-import { MOCK_CONTENT } from './fixtures/content.ts'
 
 const CLEAN = {
   draft: {
@@ -13,8 +11,13 @@ const CLEAN = {
       { effective_date: '2021-01-01', price: 2.50 }],
   },
   price_is_stale: false,
-  wizard_payload: { grants: [], prices: [] },
-  wizard_prefill: { grants: [], loans: [], prices: [] },
+  changes: [
+    { kind: 'grant', action: 'create', label: '2026 Purchase grant', detail: '1,000 shares at $2.00',
+      values: { year: 2026 }, selected: true, group: 'add' },
+    { kind: 'loan', action: 'delete', id: 4, version: 1, label: '2021 Purchase interest loan 222',
+      detail: '$1,000.00 — not on your statement', selected: true, group: 'remove' },
+  ],
+  unanswered_sales: [],
   findings: [],
   blocked: false,
   reconciles: true,
@@ -60,7 +63,7 @@ function mockApi(...responses: unknown[]) {
 
 const csv = () => new File(['a,b'], 'shares.csv', { type: 'text/csv' })
 
-/** The card renders the wizard on handoff, and the wizard needs router context. */
+/** The card links elsewhere, which needs router context. */
 function renderCard() {
   return render(<MemoryRouter><EpicFileImport /></MemoryRouter>)
 }
@@ -92,7 +95,7 @@ describe('EpicFileImport', () => {
     mockApi(CLEAN)
     renderCard()
     await readFiles()
-    expect(await screen.findByRole('button', { name: 'Review and finish' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Check 2 changes' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Copy prompt' })).not.toBeInTheDocument()
   })
 
@@ -103,7 +106,7 @@ describe('EpicFileImport', () => {
     expect(await screen.findByText(/1 figure\(s\) do not agree/)).toBeInTheDocument()
     expect(screen.getByText('C3')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Copy prompt' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Review anyway' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Check 2 changes' })).toBeInTheDocument()
   })
 
   it('refuses to proceed when the statement itself was misread', async () => {
@@ -112,7 +115,7 @@ describe('EpicFileImport', () => {
     await readFiles()
     expect(await screen.findByText(/does not add up to its own totals/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Copy prompt' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Review/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Check \d+ change/ })).not.toBeInTheDocument()
   })
 
   it('says the figures go wherever the user chooses, not to the app', async () => {
@@ -161,15 +164,6 @@ describe('EpicFileImport', () => {
     expect(calls.length).toBe(3)
   })
 
-  it('hands off to the wizard rather than asking you to sign off on a file', async () => {
-    mockApi(CLEAN)
-    renderCard()
-    await readFiles()
-    await userEvent.click(await screen.findByRole('button', { name: 'Review and finish' }))
-    expect(await screen.findByText('Review your import')).toBeInTheDocument()
-    expect(screen.getByText(/The final screen confirms what was saved/)).toBeInTheDocument()
-  })
-
   it('surfaces a server error instead of a blank panel', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = typeof input === 'string' ? input : (input as Request).url
@@ -182,28 +176,54 @@ describe('EpicFileImport', () => {
   })
 })
 
-describe('EpicFileImport → wizard handoff', () => {
-  beforeEach(() => {
-    resetContentCache()
-    setContentCacheForTesting(MOCK_CONTENT)
-  })
-  afterEach(() => { vi.restoreAllMocks(); resetContentCache() })
+describe('EpicFileImport → one screen of changes', () => {
+  afterEach(() => { vi.restoreAllMocks() })
+  const PREVIEW = { applied: false, changes: [], confirm: 'tok',
+    position_before: { outstanding_loan_balance: 1000 }, position_after: { outstanding_loan_balance: 0 } }
+  const SAVED = { applied: true, changes: [{ kind: 'grant', action: 'create', id: 9, label: 'x' }],
+    position_before: {}, position_after: {} }
 
-  it('shows the reviewed figures, not a menu asking how to start', async () => {
-    // Someone who has just uploaded their documents has already chosen a path.
-    // Landing them back on "choose how you'd like to get started" strands them.
+  it('lists what would change, grouped, every row ticked', async () => {
     mockApi(CLEAN)
     renderCard()
-    await userEvent.upload(screen.getByLabelText(/Data for Stock Workbook/i), csv())
-    await userEvent.click(screen.getByRole('button', { name: 'Read my files' }))
-    await userEvent.click(await screen.findByRole('button', { name: 'Review and finish' }))
+    await readFiles()
+    expect(await screen.findByText('2026 Purchase grant')).toBeInTheDocument()
+    expect(screen.getByText(/not on your statement/)).toBeInTheDocument()
+    expect(screen.getAllByRole('checkbox').every(c => (c as HTMLInputElement).checked)).toBe(true)
+  })
 
-    expect(await screen.findByText('Review your import')).toBeInTheDocument()
-    // The wizard rendered, and it skipped straight past its own welcome menu.
-    await waitFor(() => {
-      expect(screen.queryByRole('button', { name: /Enter it myself/i })).not.toBeInTheDocument()
-    })
-    expect(screen.queryByText(/Choose how you|quickest way/i)).not.toBeInTheDocument()
+  it('checks, then saves exactly the ticked changes with the preview token', async () => {
+    const calls = mockApi(CLEAN, PREVIEW, SAVED)
+    renderCard()
+    await readFiles()
+    await userEvent.click(await screen.findByLabelText(/2021 Purchase interest loan 222/))
+    await userEvent.click(screen.getByRole('button', { name: 'Check 1 change' }))
+    expect(await screen.findByText('$1,000 → $0')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Save 1 change' }))
+    expect(await screen.findByText(/Saved 1 change/)).toBeInTheDocument()
+
+    const preview = JSON.parse(String(calls[1].body))
+    const apply = JSON.parse(String(calls[2].body))
+    expect(calls[1].url).toContain('/api/changes/preview')
+    expect(preview.changes.map((c: { label: string }) => c.label)).toEqual(['2026 Purchase grant'])
+    expect(calls[2].url).toContain('/api/changes/apply')
+    expect(apply.confirm).toBe('tok')
+    expect(apply.changes).toEqual(preview.changes)
+  })
+
+  it('adds a sale only once the person gives its date and price', async () => {
+    const calls = mockApi({ ...CLEAN, unanswered_sales: [{ shares: 500, date: null, price_per_share: null, notes: 'n' }] },
+      PREVIEW)
+    renderCard()
+    await readFiles()
+    expect(await screen.findByRole('button', { name: 'Check 2 changes' })).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText('Date'), '2024-03-01')
+    await userEvent.type(screen.getByLabelText('Price per share'), '12.5')
+    await userEvent.click(screen.getByRole('button', { name: 'Check 3 changes' }))
+    await waitFor(() => expect(calls.length).toBe(2))
+    const sent = JSON.parse(String(calls[1].body)).changes
+    expect(sent[2]).toMatchObject({ kind: 'sale', action: 'create',
+      values: { date: '2024-03-01', shares: 500, price_per_share: 12.5 } })
   })
 })
 

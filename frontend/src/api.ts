@@ -11,24 +11,6 @@ export interface AiConnection {
   last_used_at: string | null
 }
 
-export interface ImportProposal {
-  client_name: string
-  created_at: string
-  blocked: boolean
-  grants: number
-  prices: number
-  findings: { code: string; severity: 'error' | 'warning' | 'info'; subject: string; message: string }[]
-  wizard_prefill: { grants: GrantEntry[]; loans: LoanEntry[]; prices: PriceEntry[] }
-  /** What the assistant guessed rather than read, in its own words. */
-  assumptions?: { subject: string; note: string }[]
-  /** What accepting would do to the account, read when the page loads. */
-  changes?: Partial<Record<ProposalChangeKind, string[]>>
-}
-
-export type ProposalChangeKind =
-  | 'grants_added' | 'grants_updated' | 'grants_kept'
-  | 'loans_added' | 'loans_updated' | 'loans_removed' | 'prices_added' | 'prices_updated'
-
 export interface AiActivityEntry {
   id: number
   client_name: string
@@ -155,6 +137,8 @@ async function throwForStatus(
         detail = body.detail
       } else if (Array.isArray(body.detail)) {
         detail = body.detail.map((e: { msg?: string }) => e.msg ?? JSON.stringify(e)).join('; ')
+      } else if (typeof body.detail.message === 'string') {
+        detail = body.detail.message
       } else {
         detail = JSON.stringify(body.detail)
       }
@@ -303,12 +287,26 @@ export interface GrantEntry {
   type: string
   shares: number
   price: number
+  /** First vesting date and number of dates — the summary of `vesting`. */
   vest_start: string
   periods: number
+  /** The schedule itself: one row per vesting date. */
+  vesting: VestingDate[]
   exercise_date: string
   dp_shares: number
   election_83b: boolean
 }
+
+export interface VestingDate {
+  date: string
+  shares: number
+}
+
+/** A new grant: its schedule as rows, or a first date and count for equal yearly parts. */
+export type GrantInput = Omit<GrantEntry, 'id' | 'version' | 'vesting' | 'vest_start' | 'periods'> & (
+  { vesting: VestingDate[]; vest_start?: never; periods?: never } |
+  { vest_start: string; periods: number; vesting?: never }
+)
 
 export interface PriceEntry {
   id: number
@@ -404,8 +402,15 @@ export const api = {
 
   // Grants
   getGrants: () => apiFetch<GrantEntry[]>('/api/grants'),
-  createGrant: (data: Omit<GrantEntry, 'id' | 'version'>) => post<GrantEntry>('/api/grants', data),
+  createGrant: (data: GrantInput) => post<GrantEntry>('/api/grants', data),
   updateGrant: (id: number, data: Partial<Omit<GrantEntry, 'id'>>) => put<GrantEntry>(`/api/grants/${id}`, data),
+
+  // Change sets: several edits previewed, then applied all or nothing.
+  previewChanges: (changes: Change[]) => post<ChangeResult>('/api/changes/preview', { changes }),
+  applyChanges: (changes: Change[], confirm: string) =>
+    post<ChangeResult>('/api/changes/apply', { changes, confirm }),
+  draftChanges: (draft: Record<string, unknown>) =>
+    post<DraftChanges>('/api/epic-import/changes', { draft }),
   deleteGrant: (id: number) => del(`/api/grants/${id}`),
 
   // Loans
@@ -533,17 +538,6 @@ export const api = {
   previewDeduction: (enabled: boolean, excludePast = false) =>
     apiFetch<DeductionPreview | null>(`/api/preview-deduction?enabled=${enabled}${excludePast ? '&exclude_past=true' : ''}`),
 
-  // Wizard
-  wizardParseFile: (file: File) => {
-    const form = new FormData()
-    form.append('file', file)
-    return apiFetch<WizardParseResult>('/api/wizard/parse-file', { method: 'POST', body: form })
-  },
-  wizardPreview: (data: WizardSubmitPayload) =>
-    post<WizardPreviewResult>('/api/wizard/preview', data),
-  wizardSubmit: (data: WizardSubmitPayload) =>
-    post<WizardSubmitResult>('/api/wizard/submit', data),
-
   // Wizard content (read by any logged-in user; writes gated by content-admin)
   getContent: () => apiFetch<ContentBlob>('/api/content'),
   createGrantTemplate: (data: GrantTemplateCreate) =>
@@ -644,10 +638,6 @@ export const api = {
   getAiConnections: () => apiFetch<AiConnection[]>('/api/oauth/connections'),
   getAiActivity: () => apiFetch<AiActivityEntry[]>('/api/oauth/activity'),
 
-  // An import an AI assistant prepared. It changes nothing until the user
-  // accepts it in the wizard.
-  getImportProposal: () => apiFetch<ImportProposal | null>('/api/import/proposal'),
-  dismissImportProposal: () => apiFetch<void>('/api/import/proposal', { method: 'DELETE' }),
   disconnectAi: (id: number) =>
     apiFetch<void>(`/api/oauth/connections/${id}`, { method: 'DELETE' }),
 
@@ -1074,99 +1064,45 @@ export interface LotSummary {
   st_shares: number
 }
 
-// Wizard types
-export interface WizardGrantTemplate {
-  year: number | null
-  type: string | null
-  periods: number | null
-  vest_start: string | null
-  exercise_date: string | null
-  price: number | null
+// Change sets
+export type ChangeKind = 'grant' | 'loan' | 'price' | 'sale' | 'loan_payment'
+
+/** One edit. `label`, `detail`, `selected` and `group` are for display only. */
+export interface Change {
+  kind: ChangeKind
+  action: 'create' | 'update' | 'delete'
+  id?: number
+  version?: number
+  values?: Record<string, unknown>
+  note?: string
+  label?: string
+  detail?: string
+  selected?: boolean
+  group?: 'add' | 'update' | 'remove'
 }
 
-export interface WizardPriceTemplate {
-  effective_date: string
-  price: number | null
+export interface ChangePosition {
+  vested_shares?: number
+  held_vested_shares?: number
+  shares_at_end_of_schedule?: number
+  total_stock_value?: number | null
+  outstanding_loan_balance?: number
+  net_equity?: number | null
 }
 
-export interface WizardParseResult {
-  grants: WizardGrantTemplate[]
-  prices: WizardPriceTemplate[]
+export interface ChangeResult {
+  applied: boolean
+  changes: { kind: ChangeKind; action: string; id: number; label: string;
+    changes?: Record<string, { from: unknown; to: unknown }> }[]
+  position_before: ChangePosition
+  position_after: ChangePosition
+  confirm?: string
 }
 
-export interface WizardLoan {
-  loan_number: string
-  loan_type: 'Purchase' | 'Tax' | 'Interest'
-  loan_year: number
-  amount: number
-  interest_rate: number
-  due_date: string
-  refinances_loan_number: string
-}
-
-export interface WizardGrant {
-  year: number
-  type: string
-  shares: number
-  price: number
-  vest_start: string
-  periods: number
-  exercise_date: string
-  dp_shares: number
-  election_83b: boolean
-  loans: WizardLoan[]
-}
-
-export interface WizardSale {
-  date: string
-  shares: number
-  price_per_share: number
-  notes?: string
-}
-
-export interface WizardSubmitPayload {
-  grants: WizardGrant[]
-  prices: Omit<PriceEntry, 'id' | 'version'>[]
-  sales?: WizardSale[]
-  reported_sold_shares?: number | null
-  sale_grant_keys?: string[]
-  clear_existing?: boolean
-  generate_payoff_sales?: boolean
-  preserve_grant_ids?: number[]
-  preserve_price_ids?: number[]
-}
-
-export interface WizardSubmitResult {
-  grants: number
-  loans: number
-  prices: number
-  payoff_sales: number
-  sales: number
-  existing_sales?: number
-}
-
-export interface WizardPreviewGrant {
-  year: number
-  type: string
-  status: 'added' | 'updated' | 'removed' | 'unchanged'
-  id: number | null
-  shares: number | null
-  old_shares: number | null
-  loans: number
-  old_loans: number | null
-}
-
-export interface WizardPreviewPrice {
-  effective_date: string
-  status: 'added' | 'updated' | 'removed' | 'unchanged'
-  id: number | null
-  price: number | null
-  old_price: number | null
-}
-
-export interface WizardPreviewResult {
-  grants: WizardPreviewGrant[]
-  prices: WizardPreviewPrice[]
+export interface DraftChanges {
+  changes: Change[]
+  findings: { code: string; severity: 'error' | 'warning' | 'info'; subject: string; message: string }[]
+  blocked: boolean
 }
 
 export interface RotationEvent {

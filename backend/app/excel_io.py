@@ -2,7 +2,11 @@
 Excel I/O adapter for reading/writing Vesting.xlsx files.
 Translates between spreadsheet rows and the plain dicts that core.py expects.
 """
+from datetime import datetime
+
 import openpyxl
+
+from services.vesting import core_grant, legacy_split
 from openpyxl.styles import Font, PatternFill
 
 
@@ -29,6 +33,19 @@ def read_grants_from_excel(ws):
             'election_83b': bool(v83b) if v83b is not None else False,
         })
     return grants
+
+
+def read_vesting_from_excel(ws):
+    """Optional Vesting sheet: Year, Type, Date, Shares — one row per vesting date."""
+    rows = []
+    for i in range(2, 2000):
+        yr = ws.cell(row=i, column=1).value
+        if yr is None:
+            break
+        rows.append({'year': int(yr), 'type': ws.cell(row=i, column=2).value,
+                     'date': ws.cell(row=i, column=3).value,
+                     'shares': int(ws.cell(row=i, column=4).value)})
+    return rows
 
 
 def read_prices_from_excel(ws):
@@ -102,7 +119,11 @@ def read_sales_from_excel(ws):
 
 def read_all_from_excel(filepath):
     wb = openpyxl.load_workbook(filepath)
-    grants = read_grants_from_excel(wb['Schedule'])
+    grants = [core_grant(g) for g in read_grants_from_excel(wb['Schedule'])]
+    for g in grants:
+        # A workbook row without dates predates stored schedules.
+        g['vesting'] = [(datetime.combine(d, datetime.min.time()), n)
+                        for d, n in legacy_split(g['shares'], g['vest_start'].date(), g['periods'])]
     prices = read_prices_from_excel(wb['Prices'])
     loans = read_loans_from_excel(wb['Loans'])
     initial_price = prices[0]['price'] if prices else 0

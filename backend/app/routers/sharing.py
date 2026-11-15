@@ -12,6 +12,7 @@ from scaffold.auth import get_current_user
 from scaffold.models import (User, Invitation, InvitationOptOut, BlockedEmail,
                              InviteSendEvent, InviteSendingBlock)
 from scaffold.invite_tokens import code_verifier, seal_code, token_verifier, unseal_code
+from schemas import GrantOut
 
 logger = logging.getLogger(__name__)
 
@@ -534,7 +535,7 @@ def shared_holdings(
     return _remaining_holdings(owner, db, as_of)
 
 
-@router.get("/view/{invitation_id}/grants")
+@router.get("/view/{invitation_id}/grants", response_model=list[GrantOut])
 def shared_grants(
     invitation_id: int,
     user: User = Depends(get_current_user),
@@ -652,10 +653,9 @@ def shared_tax_settings(
     result.flexible_payoff_enabled = _flexible_payoff_enabled(db)
     grants = db.query(Grant).filter(Grant.user_id == owner.id).all()
     years: set[int] = set()
+    from services.vesting import vest_years
     for g in grants:
-        if g.vest_start and g.periods:
-            for i in range(g.periods):
-                years.add(g.vest_start.year + i)
+        years |= vest_years(g)
     result.taxable_years = sorted(years)
     return result
 

@@ -187,18 +187,19 @@ def project(
     (a confirmation date); without it, `stop`, else `today`.
     """
     loans = list(loans)
+    if stop:
+        # A snapshot sees only what existed by then: a refinance, an Interest
+        # row, a rate or a loan from a later year must not rewrite an earlier
+        # date.
+        loans = [l for l in loans if _get(l, "loan_year") <= stop.year
+                 and not (_get(l, "loan_type") == "Interest" and date(_get(l, "loan_year") + 1, 1, 1) > stop)]
+        sales = [s for s in sales if _d(_get(s, "date")) <= stop]
+        loan_payments = [lp for lp in loan_payments if _d(_get(lp, "date")) <= stop]
     rate = assumed_rate if assumed_rate is not None else assumed_rate_from(loans)
     group_of = _groups(loans)
     grant_by_key = {(g["year"], g["type"]): g for g in grants}
 
     from app.loan_state import superseded_from_year
-    if stop:
-        # A snapshot sees only what existed by then: a refinance, an Interest
-        # row or a loan from a later year must not rewrite an earlier date.
-        loans = [l for l in loans if _get(l, "loan_year") <= stop.year
-                 and not (_get(l, "loan_type") == "Interest" and date(_get(l, "loan_year") + 1, 1, 1) > stop)]
-        sales = [s for s in sales if _d(_get(s, "date")) <= stop]
-        loan_payments = [lp for lp in loan_payments if _d(_get(lp, "date")) <= stop]
     superseded_in = superseded_from_year(loans)
 
     settled_on: dict[int, date] = {}
@@ -253,7 +254,9 @@ def project(
         if sup:
             end = min(end, date(superseded_in[lid], 1, 1))
         if lid in settled_on:
-            end = min(end, settled_on[lid])
+            # Settled on the sale's own date — early, or late after an
+            # extension — never snapped back to the contractual due date.
+            end = min(settled_on[lid], end) if sup else settled_on[lid]
         elif not sup and due < today:
             # Past due and never confirmed paid: Epic often extends these, so
             # the debt stays open and keeps accruing until it is settled —
@@ -360,9 +363,16 @@ def project(
                 accr.clear()
                 if amount > 0:
                     due = max(purchase_due) if purchase_due and max(purchase_due) >= ye else max(m.due for m in still)
-                    # Due with loans already past due and unconfirmed: owed
-                    # until they are, like them.
-                    end = due if due >= today else max(ye, settle_on or stop or today)
+                    # Repaid with the grant's purchase loan when a payoff settles
+                    # it (early, late or at an exit). A principal-only payment
+                    # does not clear Interest loans: those stay due as before,
+                    # and past due and unconfirmed they stay owed.
+                    carriers = [m for m in still if m.loan_type == "Purchase" and not m.projected
+                                and not m.superseded and not m.prepaid]
+                    if carriers:
+                        end = max(m.end for m in carriers)
+                    else:
+                        end = due if due >= today else max(ye, settle_on or stop or today)
                     if stop:
                         end = min(end, stop)
                     p = PLoan(

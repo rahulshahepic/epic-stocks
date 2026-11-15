@@ -553,3 +553,50 @@ def test_a_payoff_sale_on_its_due_date_still_carries_a_projected_tax_loan(client
                  if e["event_type"] == "Loan Payoff" and e.get("loan_db_id") == loan["id"])
     assert event["projected_tax_loans"] == pytest.approx(1_000 * 4.0 * 0.52)
     assert s["cash_due"] == pytest.approx(event["cash_due"], abs=0.01)
+
+
+def test_a_late_payoff_once_recorded_settles_on_its_own_date():
+    """Confirmed (and sold) on 2026-11-15, a loan due 2026-01-01 is settled
+    then — not snapped back to the old due date with an orphan beside it."""
+    loan = _loan(1, 2020, "Purchase", "Purchase", 2025, 100_000.0, 0.05, date(2026, 1, 1), date(2025, 1, 1))
+    confirm = date(2026, 11, 15)
+    before = project([loan], [], [], today=confirm, assumed_rate=0.05, settle_on=confirm)
+    sale = {"loan_id": 1, "date": confirm}
+    after = project([loan], [], [], today=confirm, assumed_rate=0.05, sales=[sale])
+    assert after.payoff_for(1).date == confirm
+    assert before.extra_for(1) > 0
+    assert after.extra_for(1) == pytest.approx(before.extra_for(1), abs=0.01)
+    assert after.orphan_payoffs() == []
+    later = project([loan], [], [], today=date(2027, 6, 1), assumed_rate=0.05, sales=[sale])
+    assert later.extra_for(1) == pytest.approx(before.extra_for(1), abs=0.01)
+
+
+def test_a_later_loan_rate_does_not_rewrite_a_snapshot():
+    stop = date(2024, 6, 1)
+    later = _loan(2, 2020, "Purchase", "Interest", 2025, 1_000.0, 0.20, date(2032, 12, 31))
+    a = outstanding_at_stop(project([_purchase_2020()], [], [], today=date(2026, 1, 1), stop=stop))
+    b = outstanding_at_stop(project([_purchase_2020(), later], [], [], today=date(2026, 1, 1), stop=stop))
+    assert a == b
+
+
+def test_a_failed_resize_is_retried_and_finished_ones_are_not(client, db_session, monkeypatch):
+    import app.routers.loans as loans_router
+    from scaffold.models import Sale, User
+    from tests.conftest import user_key
+    loan = _api_account(client)
+    sale_id = next(s["id"] for s in client.get("/api/sales").json() if s["loan_id"] == loan["id"])
+    right = next(s["shares"] for s in client.get("/api/sales").json() if s["id"] == sale_id)
+    user = db_session.query(User).one()
+    with user_key(user):
+        db_session.get(Sale, sale_id).shares = 10
+        db_session.commit()
+
+    real = loans_router._regenerate_future_payoff_sales
+    def boom(*a, **k):
+        raise RuntimeError("transient")
+    monkeypatch.setattr(loans_router, "_regenerate_future_payoff_sales", boom)
+    assert loans_router.resize_generated_payoff_sales(db_session) == 0
+    monkeypatch.setattr(loans_router, "_regenerate_future_payoff_sales", real)
+    assert loans_router.resize_generated_payoff_sales(db_session) == 1
+    assert next(s for s in client.get("/api/sales").json() if s["id"] == sale_id)["shares"] == right
+    assert loans_router.resize_generated_payoff_sales(db_session) == 0

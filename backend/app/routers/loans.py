@@ -695,33 +695,51 @@ def resize_generated_payoff_sales(db: Session) -> int:
     app-owned future payoff sales. Sales sized before unbooked interest and
     tax loans were projected cover too little, and nothing else would touch
     them until the account's next loan, price or settings write. User-owned
-    sales are left alone, as on every other path. Returns accounts refreshed."""
+    sales are left alone, as on every other path.
+
+    Progress is kept per account (the marker row holds the ids done), so an
+    account that fails — a transient error, or no data key yet — is retried
+    on the next run rather than written off. Returns accounts refreshed."""
+    import json
     import logging
     from scaffold.crypto import decrypt_user_key, encryption_enabled, set_current_key
     from scaffold.models import SystemSettings
-    if db.get(SystemSettings, PAYOFF_RESIZE_MARKER):
+    marker = db.get(SystemSettings, PAYOFF_RESIZE_MARKER)
+    state = json.loads(marker.value) if marker else {"done": []}
+    if state.get("complete"):
         return 0
+    done_ids = set(state.get("done", []))
     user_ids = [uid for (uid,) in db.query(Sale.user_id).filter(
-        Sale.is_generated.is_(True), Sale.date >= date.today()).distinct().all()]
-    done = 0
+        Sale.is_generated.is_(True), Sale.date >= date.today()).distinct().all()
+        if uid not in done_ids]
+    refreshed = 0
+    pending = False
     for user_id in user_ids:
         user = db.get(User, user_id)
         try:
             if encryption_enabled():
                 if not user or not user.encrypted_key:
+                    pending = True
                     continue
                 set_current_key(decrypt_user_key(user.encrypted_key))
             _regenerate_future_payoff_sales(user, db, create_missing=False)
             event_cache.schedule_recompute(user_id)
-            done += 1
+            done_ids.add(user_id)
+            refreshed += 1
         except Exception:
             db.rollback()
+            pending = True
             logging.getLogger(__name__).exception("Could not re-size payoff sales for user %s", user_id)
         finally:
             set_current_key(None)
-    db.add(SystemSettings(key=PAYOFF_RESIZE_MARKER, value=date.today().isoformat()))
+    value = json.dumps({"done": sorted(done_ids), "complete": not pending})
+    marker = db.get(SystemSettings, PAYOFF_RESIZE_MARKER)
+    if marker is None:
+        db.add(SystemSettings(key=PAYOFF_RESIZE_MARKER, value=value))
+    else:
+        marker.value = value
     db.commit()
-    return done
+    return refreshed
 
 
 @router.post("/regenerate-all-payoff-sales")

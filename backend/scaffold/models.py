@@ -381,8 +381,9 @@ class SystemSettings(Base):
 
     Rows used by the application:
       maintenance_active  – 'true' / 'false' (app-level maintenance toggle)
-      payoff_sales_sized:loan_projection_v1 – date the one-time payoff-sale
-                            re-size ran (routers/loans.py)
+      payoff_sales_sized:loan_projection_v1 – JSON {done: [user ids],
+                            complete: bool} for the one-time payoff-sale
+                            re-size (routers/loans.py)
       master_key          – KEK-encrypted operational encryption master key
       master_key_version  – integer string, incremented on each key rotation
       rotation_snapshot   – JSON blob {uid: encrypted_key} written before rotation

@@ -784,6 +784,13 @@ Upload success and restore testing are separate. After following the [test-resto
 ![Backup status and configuration on a phone](screenshots/admin-backups-light-mobile.png)
 ![Backup status and configuration in dark mode](screenshots/admin-backups-dark-mobile.png)
 
+### Cloudflare edge (admin)
+
+Admin → **Cloudflare edge** shows sampled firewall action counts (blocked, challenged, skipped, …) for this environment's hostname over the last 30 minutes, ending two minutes ago. It reads the same source as the `admin_edge_summary` connector tool (`services/diagnostic_sources.py:edge_summary`) through `GET /api/admin/edge-summary`, cached for two minutes. It needs `DIAGNOSTICS_CF_ZONE_ID` (GitHub environment variable) and `DIAGNOSTICS_CF_API_TOKEN` (environment secret, an Analytics Read token for the zone), picked up on the next deploy. When the summary is unavailable the panel says why: not configured, token refused, query rejected (wrong zone, missing zone access or plan) or Cloudflare unreachable. The same `reason` code is returned to the connector. No IPs, URLs or provider error text are read or shown.
+
+![Cloudflare edge firewall counts on a phone](screenshots/admin-edge-light-mobile.png)
+![Cloudflare edge firewall counts in dark mode](screenshots/admin-edge-dark-mobile.png)
+
 ### AI Connections (admin)
 
 Admin → **AI Connections** controls whether people can connect ChatGPT or Claude to their own accounts, and which providers are allowed to. Both were environment variables at first, which made "stop accepting connections from ChatGPT" a redeploy; they are policy, so they live in the database.
@@ -1227,7 +1234,7 @@ epic-stocks/
 │   │   ├── scaffold/        # Reusable UI layer (keep when forking)
 │   │   │   ├── oidc.ts      # Shared OIDC PKCE start/complete (used by Login + InviteLanding)
 │   │   │   ├── pages/       # Login, AuthCallback, Admin, Settings, PrivacyPolicy, InviteLanding, Unsubscribe
-│   │   │   ├── pages/admin/ # Admin panels (DeploymentHealth, Overview, SystemHealth, Users, DangerZone, …) plus dialogs
+│   │   │   ├── pages/admin/ # Admin panels (DeploymentHealth, EdgeTraffic, Overview, SystemHealth, Users, DangerZone, …) plus dialogs
 │   │   │   ├── components/  # Layout shell, Toast, ErrorBoundary + ReportProblem (problem reporting), DisclaimerNotice + UnofficialBadge (affiliation notices)
 │   │   │   ├── components/ui/ # The shared primitives: Card (one card surface for the whole app — `pad` picks the inset, cardShell.ts has the classes for the few cards that are a button or a label), ChartCard, Segmented, icons, ConflictBanner (the 409 "changed elsewhere" notice), and Field/SelectField/PercentField (one input style for the whole app)
 │   │   │   ├── reportLog.ts # In-memory trail (routes, failed requests, JS errors) a report can attach

@@ -174,6 +174,24 @@ test.describe('Screenshots', () => {
     })
   }
 
+  for (const theme of ['light', 'dark'] as const) {
+    test(`admin cloudflare edge - ${theme} - mobile`, async ({ page }) => {
+      await page.route('**/api/admin/edge-summary', route => route.fulfill({ json: {
+        environment: 'production', state: 'available', reason: null, collected_at_utc: '2026-11-15T23:00:00Z',
+        window_start_utc: '2026-11-15T22:28:00Z', window_end_utc: '2026-11-15T22:58:00Z',
+        records: [{ action: 'block', count: 412 }, { action: 'managed_challenge', count: 37 }, { action: 'skip', count: 18 }],
+        record_limit_reached: false, cache_age_seconds: 0,
+      } }))
+      await authedPage(page, MOBILE, theme)
+      await navigateTo(page, 'Admin')
+      const panel = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Cloudflare edge', exact: true }) })
+      await panel.getByText('Blocked').waitFor()
+      await panel.scrollIntoViewIfNeeded()
+      await panel.screenshot({ path: `${OUT}/admin-edge-${theme}-mobile.png`,
+        style: '.sticky.top-0, nav[aria-label="Mobile navigation"] { visibility: hidden !important; }' })
+    })
+  }
+
   test('admin AI plugin downloads - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     await navigateTo(page, 'Admin')

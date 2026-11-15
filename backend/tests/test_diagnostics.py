@@ -139,7 +139,26 @@ def test_edge_hostname_filter_redaction_and_permission_errors(monkeypatch):
     assert 'private' not in json.dumps(result)
     sources._cache.clear()
     monkeypatch.setattr(sources, '_json', lambda *a, **k: {'errors': [{'message': 'private-error'}]})
-    assert sources.edge_summary()['state'] == 'unavailable'
+    result = sources.edge_summary()
+    assert result['state'] == 'unavailable' and result['reason'] == 'rejected'
+    assert 'private' not in json.dumps(result)
+
+
+def test_edge_unavailable_reasons(monkeypatch):
+    assert sources.edge_summary()['reason'] == 'not_configured'
+    monkeypatch.setenv('DIAGNOSTICS_CF_ZONE_ID', 'c' * 32)
+    monkeypatch.setenv('DIAGNOSTICS_CF_API_TOKEN', 'private-token')
+    monkeypatch.setenv('DOMAIN', 'staging.epic-stocks.com')
+    request = httpx.Request('POST', 'https://api.cloudflare.com/client/v4/graphql')
+    for status, reason in ((403, 'denied'), (401, 'denied'), (500, 'provider_error')):
+        sources._cache.clear()
+        error = httpx.HTTPStatusError('private-token', request=request, response=httpx.Response(status, request=request))
+        with patch.object(sources, '_json', side_effect=error):
+            result = sources.edge_summary()
+        assert result['reason'] == reason and 'private' not in json.dumps(result)
+    sources._cache.clear()
+    with patch.object(sources, '_json', side_effect=httpx.ReadTimeout('private-token')):
+        assert sources.edge_summary()['reason'] == 'provider_error'
 
 
 def collector_module():

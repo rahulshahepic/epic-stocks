@@ -1,4 +1,4 @@
-from app.loan_state import refinanced_loan_ids as _refinanced_loan_ids
+from app.loan_state import loan_is_drawn, refinanced_loan_ids as _refinanced_loan_ids
 from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
@@ -103,12 +103,11 @@ def _live_loans(loans_db, as_of) -> list:
     """
     superseded = _refinanced_loan_ids(loans_db, as_of)
     return [l for l in loans_db
-            if l.id not in superseded and (as_of is None or l.loan_year <= as_of.year)]
+            if l.id not in superseded and loan_is_drawn(l, as_of)]
 
 
 def _compute_outstanding_principal(loans_db, loan_payments, sales, as_of_date) -> float:
     """Outstanding loan principal as of a date, excluding settled/refinanced loans."""
-    year = as_of_date.year
     settled_ids = {s.loan_id for s in sales if s.loan_id is not None and s.date <= as_of_date}
     refinanced_ids = _refinanced_loan_ids(loans_db, as_of_date)
     early_paid: dict[int, float] = {}
@@ -118,7 +117,7 @@ def _compute_outstanding_principal(loans_db, loan_payments, sales, as_of_date) -
     return sum(
         max(0.0, l.amount - early_paid.get(l.id, 0.0))
         for l in loans_db
-        if l.loan_year <= year and l.id not in settled_ids and l.id not in refinanced_ids
+        if loan_is_drawn(l, as_of_date) and l.id not in settled_ids and l.id not in refinanced_ids
     )
 
 

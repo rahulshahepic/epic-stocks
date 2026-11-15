@@ -753,6 +753,30 @@ def admin_client_ip(request: Request, admin: User = Depends(get_admin_user)):
 # Maintenance mode
 # ============================================================
 
+class EdgeActionCount(BaseModel):
+    action: str
+    count: int
+
+
+class EdgeSummary(BaseModel):
+    environment: str
+    state: str
+    reason: str | None = None
+    collected_at_utc: str | None = None
+    window_start_utc: str | None = None
+    window_end_utc: str | None = None
+    records: list[EdgeActionCount] = []
+    record_limit_reached: bool = False
+    cache_age_seconds: int | None = None
+
+
+@router.get("/edge-summary", response_model=EdgeSummary)
+def admin_edge_summary(admin: User = Depends(get_admin_user)):
+    """Cloudflare WAF action counts for this hostname — the same read as the admin connector."""
+    from services.diagnostic_sources import edge_summary
+    return edge_summary()
+
+
 class MaintenanceStatus(BaseModel):
     active: bool
 

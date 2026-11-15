@@ -26,6 +26,7 @@ function mockFetch(responses: Record<string, unknown>) {
     // Default: return empty arrays for list endpoints
     if (url.includes('/api/admin/metrics')) return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
     if (url.includes('/api/admin/deployment-status')) return new Response(JSON.stringify(DEPLOYMENT_STATUS), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    if (url.includes('/api/admin/edge-summary')) return new Response(JSON.stringify(EDGE_UNCONFIGURED), { status: 200, headers: { 'Content-Type': 'application/json' } })
     if (url.includes('/api/admin/db-tables')) return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
     if (url.includes('/api/admin/errors')) return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
     if (url.includes('/api/admin/epic-mode')) return new Response(JSON.stringify({ active: false }), { status: 200, headers: { 'Content-Type': 'application/json' } })
@@ -51,6 +52,11 @@ const DEPLOYMENT_STATUS = {
     { name: 'notifications', due_utc: '07:00', last_completed_day: null, last_completed_at: null, last_result: null },
     { name: 'admin_digest', due_utc: '07:00', last_completed_day: null, last_completed_at: null, last_result: null },
   ],
+}
+
+const EDGE_UNCONFIGURED = {
+  environment: 'staging', state: 'unavailable', reason: 'not_configured', collected_at_utc: null,
+  window_start_utc: null, window_end_utc: null, records: [], record_limit_reached: false, cache_age_seconds: null,
 }
 
 const STATS_NO_METRICS = {
@@ -131,6 +137,38 @@ describe('Admin', () => {
     expect(screen.getByText(`Ran ${formatLocalTime('2026-10-17T21:45:00Z')}`)).toBeInTheDocument()
     expect(screen.getByText(/a successful run may have nothing to send/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Refresh deployment status' })).toBeInTheDocument()
+  })
+
+  it('shows Cloudflare firewall counts for this hostname', async () => {
+    mockFetch({
+      '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [],
+      '/api/admin/edge-summary': {
+        ...EDGE_UNCONFIGURED, state: 'available', reason: null, collected_at_utc: '2026-11-15T23:00:00Z',
+        window_start_utc: '2026-11-15T22:28:00Z', window_end_utc: '2026-11-15T22:58:00Z',
+        records: [{ action: 'block', count: 1200 }, { action: 'managed_challenge', count: 34 }],
+      },
+    })
+    renderPage()
+
+    expect(await screen.findByText('Blocked')).toBeInTheDocument()
+    expect(screen.getByText('Managed challenge')).toBeInTheDocument()
+    expect(screen.getByText((1234).toLocaleString())).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Refresh Cloudflare edge summary' })).toBeInTheDocument()
+  })
+
+  it('says why the Cloudflare summary is unavailable', async () => {
+    mockFetch({ '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [] })
+    renderPage()
+    expect(await screen.findByText(/Set DIAGNOSTICS_CF_ZONE_ID/)).toBeInTheDocument()
+  })
+
+  it('names a refused Cloudflare token', async () => {
+    mockFetch({
+      '/api/admin/stats': STATS, '/api/admin/users': USERS_RESPONSE, '/api/admin/blocked': [],
+      '/api/admin/edge-summary': { ...EDGE_UNCONFIGURED, reason: 'denied' },
+    })
+    renderPage()
+    expect(await screen.findByText(/Cloudflare refused the token/)).toBeInTheDocument()
   })
 
   it('renders stats overview', async () => {

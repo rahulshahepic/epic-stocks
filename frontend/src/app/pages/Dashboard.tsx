@@ -103,12 +103,14 @@ export default function Dashboard() {
     if (saved === 'today' || saved === 'last-event' || saved === 'custom') return saved
     return 'today'
   })
-  const [cardDate, setCardDate] = useState<string>(() => {
+  const lastEventDate = useMemo(() => lastTimelineDate(events), [events])
+  const [customCardDate, setCustomCardDate] = useState<string>(() => {
     const mode = localStorage.getItem('dashboard_dateMode')
     if (!mode || mode === 'today') return today
-    if (mode === 'last-event') return today // resolved after events load via effect
+    if (mode === 'last-event') return today // dynamic modes derive their date from the current data
     return localStorage.getItem('dashboard_cardDate') ?? today
   })
+  const cardDate = dateMode === 'today' ? today : dateMode === 'last-event' ? lastEventDate : customCardDate
   const [snapshotDate, setSnapshotDate] = useState(cardDate)
   useEffect(() => {
     const timer = setTimeout(() => setSnapshotDate(cardDate), 200)
@@ -243,7 +245,7 @@ export default function Dashboard() {
         const m = (prefs as Record<string, unknown>).dateMode
         if (m === 'today' || m === 'last-event' || m === 'custom') setDateMode(m)
         const cd = (prefs as Record<string, unknown>).cardDate
-        if (typeof cd === 'string' && cd.length === 10) setCardDate(cd)
+        if (typeof cd === 'string' && cd.length === 10) setCustomCardDate(cd)
         const rg = (prefs as Record<string, unknown>).range
         if (rg && typeof rg === 'object' && 'mode' in rg) setRange(rg as DateRange)
         const ob = (prefs as Record<string, unknown>).openBreakdowns
@@ -278,15 +280,6 @@ export default function Dashboard() {
   // are projections the user made themselves, so they do not count as knowing
   // this year's price.
   const stalePrice = useMemo(() => findStalePrice(prices), [prices])
-
-  // Date of the last event on the timeline, projections included
-  const lastEventDate = useMemo(() => lastTimelineDate(events), [events])
-
-  // Keep cardDate in sync when using a dynamic mode
-  useEffect(() => {
-    if (dateMode === 'today') setCardDate(today)
-    else if (dateMode === 'last-event') setCardDate(lastEventDate)
-  }, [dateMode, lastEventDate, today])
 
   const [downloading, setDownloading] = useState(false)
   async function downloadReport() {
@@ -380,7 +373,7 @@ export default function Dashboard() {
             type="date"
             value={cardDate}
             max={maxDate}
-            onChange={e => { if (e.target.value) { setDateMode('custom'); setCardDate(e.target.value) } }}
+            onChange={e => { if (e.target.value) { setDateMode('custom'); setCustomCardDate(e.target.value) } }}
             className="h-7 flex-1 rounded border border-cs-border-strong bg-cs-surface px-2 text-xs text-cs-text"
           />
         </div>

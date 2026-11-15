@@ -119,6 +119,8 @@ beforeEach(() => {
   vi.restoreAllMocks()
 })
 
+const MOCK_DASHBOARD_NEXT_OVERRIDE: {value: Record<string, unknown> | null} = {value: null}
+
 function snapshotFor(asOf: string, sales = MOCK_SALES) {
   const sold = sales.some(sale => sale.date <= asOf)
   return {
@@ -132,6 +134,7 @@ function snapshotFor(asOf: string, sales = MOCK_SALES) {
       purchased_unvested_stock_value: 3000, net_equity: sold ? 3000 : -55000,
       accrued_unbooked_interest: 0, total_cost_basis: sold ? 3000 : 6980,
       unvested_shares: 1000, price_is_estimate: false,
+      ...MOCK_DASHBOARD_NEXT_OVERRIDE.value,
     },
     grant_holdings: [
       {year: 2020, type: 'Purchase', exerciseDate: '2020-01-01', costBasis: 1.99,
@@ -410,6 +413,23 @@ describe('Dashboard', () => {
     await waitFor(() => {
       expect(screen.queryByText('Vesting shares')).not.toBeInTheDocument()
     })
+  })
+
+  it('marks an estimated price change as the next event', async () => {
+    mockApi()
+    const estimate = {...MOCK_EVENTS[1], date: '2027-01-01', price_is_estimate: true,
+      expected_announcement_date: '2027-03-01'}
+    const original = MOCK_DASHBOARD_NEXT_OVERRIDE.value
+    MOCK_DASHBOARD_NEXT_OVERRIDE.value = {next_event: {date: '2027-01-01', event_type: 'Share Price'}, next_event_detail: estimate}
+    try {
+      renderDashboard()
+      await waitFor(() => {
+        expect(screen.getByText('2027-01-01 — Share Price (est.)')).toBeInTheDocument()
+      })
+      expect(screen.getByText(/announcement expected/i)).toBeInTheDocument()
+    } finally {
+      MOCK_DASHBOARD_NEXT_OVERRIDE.value = original
+    }
   })
 
   it('renders without error when future price equals current price', async () => {

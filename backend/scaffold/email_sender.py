@@ -156,7 +156,11 @@ def build_event_email(events: list[dict], recipient_email: str = "") -> tuple[st
     total = sum(counts.values())
     parts = [f"{count} {etype}" for etype, count in sorted(counts.items())]
     subject = f"Epic Stocks: {total} event{'s' if total != 1 else ''} today"
+    if set(counts) == {"Share Price Update"}:
+        subject = "Epic Stocks: update your share price"
     url = app_url()
+    if url and "Share Price Update" in counts:
+        url += "/prices"
     link_text = f' <a href="{url}">Log in to view details.</a>' if url else " Log in to view details."
     unsub_text = _unsubscribe_footer_text(recipient_email, "notify") if recipient_email else ""
     unsub_html = _unsubscribe_footer_html(recipient_email, "notify") if recipient_email else ""

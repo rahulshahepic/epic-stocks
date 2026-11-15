@@ -66,4 +66,12 @@ describe('StockJourney', () => {
     rerender(<StockJourney asOf="2023-01-01" events={events} />)
     expect(within(screen.getAllByRole('listitem')[1]).getByText('$100 market value · $70 value added · 1 tranche')).toBeInTheDocument()
   })
+
+  it('says an estimated price change waits on the announcement', () => {
+    render(<StockJourney asOf="2026-11-15" events={[
+      event('2027-01-01', 'Share Price', { is_estimate: true, expected_announcement_date: '2027-03-01' }),
+    ]} />)
+    expect(screen.getByText('Estimated price')).toBeInTheDocument()
+    expect(screen.getByText('Your estimate · announcement expected ~Mar 1, 2027')).toBeInTheDocument()
+  })
 })

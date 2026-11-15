@@ -1153,7 +1153,9 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, i
         details = dashboard_details(payload, cutoff, grants=grants, timeline=timeline, next_timeline=chart_events,
                                     holdings_timeline=holdings_timeline, holdings=holdings,
                                     live_loans=live_loans, loans=loans_db, payments=payments_by_loan,
-                                    sales=sales_db, sale_results=results, projection=snapshot_projection)
+                                    sales=sales_db, sale_results=results, projection=snapshot_projection,
+                                    price_rows=db.query(Price).filter(Price.user_id == user.id)
+                                    .order_by(Price.effective_date).all())
         if include_charts:
             details['charts'] = dashboard_chart_data(chart_events, loans_db, _ts_dict(ts_row), projection, today)
         return {**payload, 'as_of': cutoff.isoformat(), **details}

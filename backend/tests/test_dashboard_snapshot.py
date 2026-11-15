@@ -141,3 +141,32 @@ def test_unsaved_tax_settings_use_existing_server_defaults(client, db_session):
     assert web['breakdowns']['cash']['sales'][0]['tax'] == web['cards']['total_tax_paid']
     sale_row = next(r for r in web['charts']['tax'] if r['date'] == '2026-11-10')
     assert sale_row['paid'] == web['cards']['total_tax_paid']
+    events = client.get('/api/events').json()
+    event_sale = next(e for e in events if e['event_type'] == 'Sale')
+    assert event_sale['estimated_tax'] == web['cards']['total_tax_paid']
+    tool_events = Mcp(client).call('list_events', event_types=['Sale'])['events']
+    assert tool_events[0]['estimated_tax'] == web['cards']['total_tax_paid']
+    assert client.get('/api/tips').status_code == 200
+    assert db_session.query(TaxSettings).count() == 0
+
+
+def test_dated_cards_can_skip_date_independent_chart_computation(client, monkeypatch):
+    seed(client)
+    from app import dashboard_view
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError('Dated cards must not recompute chart series')
+
+    monkeypatch.setattr(dashboard_view, 'dashboard_chart_data', forbidden)
+    result = client.get('/api/dashboard?as_of=2026-11-15&include_charts=false')
+    assert result.status_code == 200
+    assert 'charts' not in result.json()
+    assert result.json()['cards']['total_loan_principal'] == 9000
+
+
+def test_chart_endpoint_matches_full_snapshot(client):
+    seed(client)
+    charts = client.get('/api/dashboard/charts')
+    snapshot = client.get(f'/api/dashboard?as_of={date.today().isoformat()}').json()
+    assert charts.status_code == 200
+    assert charts.json() == {key: snapshot[key] for key in ('charts', 'loan_payment_by_year')}

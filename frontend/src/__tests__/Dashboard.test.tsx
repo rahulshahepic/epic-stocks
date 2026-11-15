@@ -533,3 +533,16 @@ it('retries an initial failed snapshot request', async () => {
   fireEvent.click(screen.getByRole('button', {name: 'Retry'}))
   await screen.findByText('-$55,000')
 })
+
+it('keeps charts mounted and does not refetch them when the card date changes', async () => {
+  mockApi()
+  renderDashboard()
+  const chart = await screen.findByText('Loan Payments by Due Year')
+  const chartFetchCount = () => vi.mocked(globalThis.fetch).mock.calls.filter(([input]) => String(input).includes('/api/dashboard/charts')).length
+  expect(chartFetchCount()).toBe(1)
+  fireEvent.change(document.querySelector('input[type=date]')!, {target: {value: '2026-11-30'}})
+  expect(screen.getByText('Loan Payments by Due Year')).toBe(chart)
+  await waitFor(() => expect(screen.getByText('Value on Nov 30, 2026')).toBeInTheDocument())
+  expect(screen.getByText('Loan Payments by Due Year')).toBe(chart)
+  expect(chartFetchCount()).toBe(1)
+})

@@ -4,8 +4,9 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
-from scaffold.models import User, LoanPayment, Sale, TaxSettings, TipAcceptance
+from scaffold.models import User, LoanPayment, Sale, TipAcceptance
 from scaffold.auth import get_current_user
+from app.tax_settings import tax_settings_or_defaults
 from app.core import generate_all_events, compute_timeline
 from app.routers.events import (
     _user_source_data, _enrich_timeline, _annotate_sale_taxes,
@@ -105,9 +106,7 @@ def get_tips(user: User = Depends(get_current_user), db: Session = Depends(get_d
     if not grants:
         return []
 
-    ts_row = db.query(TaxSettings).filter(TaxSettings.user_id == user.id).first()
-    if not ts_row:
-        return []
+    ts_row = tax_settings_or_defaults(user, db)
 
     loan_payments = db.query(LoanPayment).filter(LoanPayment.user_id == user.id).order_by(LoanPayment.date).all()
     sales = db.query(Sale).filter(Sale.user_id == user.id).all()

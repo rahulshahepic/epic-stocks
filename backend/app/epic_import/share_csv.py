@@ -97,6 +97,8 @@ def share_summary_text(raw: bytes) -> tuple[bytes, list[Finding]]:
         return b"", [Finding("G0", ERROR, "", "Data for Stock Workbook is not a readable spreadsheet.")]
     finally:
         wb.close()
+    if not out.getvalue().strip():
+        return b"", [Finding("G0", ERROR, "", "Data for Stock Workbook's first sheet is empty.")]
     return out.getvalue().encode("utf-8"), []
 
 

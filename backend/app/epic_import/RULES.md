@@ -64,7 +64,10 @@ shares the file plainly lists.
 
 Before any of that, a signed-in import resolves the label to the account's own
 grant of that type when it holds exactly one (**info**), so a year the person
-corrected is kept by every later import instead of proposing a second grant.
+corrected is kept by every later import instead of proposing a second grant. A year the
+file's own dated row of that type already holds is never chosen by any of these
+paths; when every template year is taken that way, the row is a **warning** and
+its shares are not imported.
 
 ### `G2` — Shares Granted → `grant.shares`, and shares nothing accounts for
 Straight read. Nothing in either file can check a share count against anything

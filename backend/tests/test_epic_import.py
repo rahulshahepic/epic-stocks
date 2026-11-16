@@ -1623,3 +1623,41 @@ def test_correcting_a_yearless_grant_then_reimporting_proposes_no_second_grant(c
     creates = [c for c in again["changes"]
                if c["kind"] == "grant" and c["action"] == "create"]
     assert creates == []
+
+
+def test_an_xlsx_with_an_empty_first_sheet_says_so():
+    wb = openpyxl.Workbook()
+    buf = io.BytesIO()
+    wb.save(buf)
+    rows, findings = parse_share_csv(buf.getvalue())
+    assert rows == [] and [(f.code, f.severity) for f in findings] == [("G0", "error")]
+
+
+@pytest.mark.parametrize("existing,statement_year", [
+    (None, None),                                         # earliest-template fallback
+    ({(2018, "Developer Bonus Shares")}, None),           # the account's grant
+    (None, 2018),                                         # the Loan Statement
+])
+def test_a_yearless_row_never_takes_a_year_a_dated_row_holds(existing, statement_year):
+    sk, _ = build_skeleton(_with_dev_bonus_templates(2018, 2019))
+    statement = None
+    if statement_year:
+        statement = Statement(statement_date=date(2026, 1, 1), account_number=None,
+                              total_principal=100.0, loans=[StatementLoan(
+            loan_number="L1", name=f"{statement_year} Developer Bonus - Tax Loan - 2021",
+            balance=100.0, interest_rate=0.04, interest_to_date=0.0,
+            due_date=date(2030, 7, 15))])
+    rows = [_one_row("2018 Developer Bonus Shares"), _one_row("Developer Bonus Shares", 500)]
+    draft, _ = derive_draft(statement, rows, sk, existing=existing)
+    keys = [g.key for g in draft.grants]
+    assert len(keys) == len(set(keys))
+    assert (2019, "Developer Bonus Shares") in keys
+
+
+def test_a_yearless_row_with_every_template_year_taken_is_not_imported():
+    sk, _ = build_skeleton(_with_dev_bonus_templates(2018))
+    rows = [_one_row("2018 Developer Bonus Shares"), _one_row("Developer Bonus Shares", 500)]
+    draft, findings = derive_draft(None, rows, sk)
+    assert [g.shares for g in draft.grants] == [17_750]
+    assert any(f.code == "G1" and f.severity == "warning" and "500 shares" in f.message
+               for f in findings)

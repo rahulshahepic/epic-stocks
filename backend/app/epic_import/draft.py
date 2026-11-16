@@ -303,6 +303,8 @@ def derive_draft(statement: Statement | None, rows: list[ShareRow],
 
     for row in rows:
         row.year, row.grant_type = classify_row(row.label)
+    # A yearless row must not land on a year a dated row of the file already holds.
+    dated = {(r.year, r.grant_type) for r in rows if r.year is not None}
 
     # A purchase grant's per-share basis is that year's share price, so work
     # those out first — they are what separates a bonus grant taxed at grant from
@@ -328,7 +330,8 @@ def derive_draft(statement: Statement | None, rows: list[ShareRow],
                                     f"No grant type mapping for this category — "
                                     f"{row.shares_granted:,} shares not imported.{hint}"))
             continue
-        owned = sorted({y for y, t in (existing or ()) if t == gtype})
+        taken = {y for y, t in dated if t == gtype}
+        owned = sorted({y for y, t in (existing or ()) if t == gtype} - taken)
         if year is None and len(owned) == 1:
             year = row.year = owned[0]
             findings.append(Finding("G1", INFO, row.label,
@@ -338,7 +341,15 @@ def derive_draft(statement: Statement | None, rows: list[ShareRow],
         if year is None:
             # A one-time award (rule G1): its label carries no year, so the
             # year comes from the company's own template for this type.
-            candidate_years = sorted({t.year for t in sk.templates if t.type == gtype})
+            template_years = sorted({t.year for t in sk.templates if t.type == gtype})
+            candidate_years = [y for y in template_years if y not in taken]
+            if template_years and not candidate_years:
+                findings.append(Finding("G1", WARNING, row.label,
+                                        f"This category's label carries no year, and the file "
+                                        f"already lists a {gtype} grant for every year a company "
+                                        f"template exists ({', '.join(map(str, template_years))}) "
+                                        f"— {row.shares_granted:,} shares not imported."))
+                continue
             if len(candidate_years) == 1:
                 year = row.year = candidate_years[0]
                 findings.append(Finding("G1", INFO, row.label,

@@ -15,17 +15,17 @@ from fastapi import HTTPException
 from fastapi.responses import Response
 from pydantic import ValidationError
 
-from scaffold.models import Grant, Loan, LoanPayment, Price, Sale, User
+from scaffold.models import Grant, Loan, LoanPayment, Price, Sale, User, LoanInterestCheckpoint
 
-KINDS = ("grant", "loan", "price", "sale", "loan_payment")
+KINDS = ("grant", "loan", "price", "sale", "loan_payment", "interest_checkpoint")
 ACTIONS = ("create", "update", "delete")
 MAX_CHANGES = 200
 # Deletes leave children first; creates and edits build parents first.
-_DELETE_ORDER = ("sale", "loan_payment", "loan", "grant", "price")
-_WRITE_ORDER = ("price", "grant", "loan", "loan_payment", "sale")
-_MODELS = {"grant": Grant, "loan": Loan, "price": Price, "sale": Sale, "loan_payment": LoanPayment}
+_DELETE_ORDER = ("sale", "interest_checkpoint", "loan_payment", "loan", "grant", "price")
+_WRITE_ORDER = ("price", "grant", "loan", "loan_payment", "sale", "interest_checkpoint")
+_MODELS = {"grant": Grant, "loan": Loan, "price": Price, "sale": Sale, "loan_payment": LoanPayment, "interest_checkpoint": LoanInterestCheckpoint}
 _SUMMARY = ("vested_shares", "held_vested_shares", "shares_at_end_of_schedule",
-            "total_stock_value", "outstanding_loan_balance", "net_equity", "current_price")
+            "total_stock_value", "outstanding_loan_balance", "net_equity", "current_price", "accrued_unbooked_interest", "interest_reconciliation")
 
 
 class ChangeError(ValueError):
@@ -52,9 +52,12 @@ class _Uncommitted:
 
 
 def _handlers():
-    from app.routers import grants, loans, prices, sales
+    from app.routers import grants, loans, prices, sales, interest_checkpoints
     import schemas as s
     return {
+        "interest_checkpoint": (s.LoanInterestCheckpointCreate, s.LoanInterestCheckpointUpdate,
+                                interest_checkpoints.create_checkpoint, interest_checkpoints.update_checkpoint,
+                                interest_checkpoints.delete_checkpoint),
         "grant": (s.GrantCreate, s.GrantUpdate, grants.create_grant, grants.update_grant, grants.delete_grant),
         "loan": (s.LoanCreate, s.LoanUpdate, loans.create_loan, loans.update_loan, loans.delete_loan),
         "price": (s.PriceCreate, s.PriceUpdate, prices.create_price, prices.update_price, prices.delete_price),
@@ -114,6 +117,8 @@ def _label(kind, row) -> str:
         return f"Share price from {row.effective_date.isoformat()}"
     if kind == "sale":
         return f"Sale on {row.date.isoformat()}"
+    if kind == "interest_checkpoint":
+        return f"Interest checkpoint for loan {row.loan_id} through {row.accrued_through.isoformat()}"
     return f"Loan payment on {row.date.isoformat()}"
 
 
@@ -150,7 +155,7 @@ def _position(user, db) -> dict:
 def _run(c, owner, db, handlers):
     create_model, update_model, create, update, delete = handlers[c["kind"]]
     kind, values = c["kind"], dict(c["values"])
-    if kind == "loan_payment" and "loan_id" not in values and values.get("loan_number"):
+    if kind in {"loan_payment", "interest_checkpoint"} and "loan_id" not in values and values.get("loan_number"):
         matches = db.query(Loan).filter(Loan.user_id == owner.id).all()
         hit = [l for l in matches if l.loan_number == values["loan_number"]]
         if len(hit) != 1:

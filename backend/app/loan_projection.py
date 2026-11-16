@@ -51,6 +51,7 @@ class PLoan:
     payments: list = field(default_factory=list)   # [(date, amount)]
     superseded: bool = False
     prepaid: bool = False   # repaid in full by the user's own payments
+    checkpoints: list = field(default_factory=list)
 
     def balance_at(self, d: date) -> float:
         return max(0.0, self.amount - sum(a for pd, a in self.payments if pd <= d))
@@ -163,6 +164,30 @@ def _groups(loans) -> dict:
     return group
 
 
+def loan_start_date(l, grant_by_key, by_id, seen=()) -> date:
+    disbursed = _get(l, "disbursed_on")
+    if disbursed:
+        return _d(disbursed)
+    ly, lt = _get(l, "loan_year"), _get(l, "loan_type")
+    g = grant_by_key.get((_get(l, "grant_year"), _get(l, "grant_type")))
+    if lt == "Interest":
+        return date(ly + 1, 1, 1)
+    if lt == "Tax" and g:
+        vests = [_d(d) for d, _ in g["vesting"] if _d(d).year == ly]
+        if vests:
+            return vests[0]
+    ref = _get(l, "refinances_loan_id")
+    if ref is not None and ref != _get(l, "id") and ref in by_id and ref not in seen:
+        # A refinance carries the same debt on: it accrues from where the
+        # loan it replaced did, or from 1 January of its own year.
+        return max(date(ly, 1, 1), loan_start_date(by_id[ref], grant_by_key, by_id, (*seen, _get(l, "id"))))
+    if lt == "Purchase" and g:
+        ex = _d(g["exercise_date"])
+        if ex.year == ly:
+            return ex
+    return date(ly, 1, 1)
+
+
 def project(
     loans,
     grants,
@@ -190,35 +215,12 @@ def project(
     grant_by_key = {(g["year"], g["type"]): g for g in grants}
     by_id = {_get(l, "id"): l for l in loans}
 
-    def default_start(l, seen=()) -> date:
-        disbursed = _get(l, "disbursed_on")
-        if disbursed:
-            return _d(disbursed)
-        ly, lt = _get(l, "loan_year"), _get(l, "loan_type")
-        g = grant_by_key.get((_get(l, "grant_year"), _get(l, "grant_type")))
-        if lt == "Interest":
-            return date(ly + 1, 1, 1)
-        if lt == "Tax" and g:
-            vests = [_d(d) for d, _ in g["vesting"] if _d(d).year == ly]
-            if vests:
-                return vests[0]
-        ref = _get(l, "refinances_loan_id")
-        if ref is not None and ref != _get(l, "id") and ref in by_id and ref not in seen:
-            # A refinance carries the same debt on: it accrues from where the
-            # loan it replaced did, or from 1 January of its own year.
-            return max(date(ly, 1, 1), default_start(by_id[ref], (*seen, _get(l, "id"))))
-        if lt == "Purchase" and g:
-            ex = _d(g["exercise_date"])
-            if ex.year == ly:
-                return ex
-        return date(ly, 1, 1)
-
     if stop:
         # A snapshot sees only what existed by then — a loan disbursed later
         # (even the same year), an Interest row not yet booked, a refinance,
         # sale or payment from after it — so none of them, nor their rates,
         # can rewrite an earlier date.
-        loans = [l for l in loans if _get(l, "loan_year") <= stop.year and default_start(l) <= stop]
+        loans = [l for l in loans if _get(l, "loan_year") <= stop.year and loan_start_date(l, grant_by_key, by_id) <= stop]
         sales = [s for s in sales if _d(_get(s, "date")) <= stop]
         loan_payments = [lp for lp in loan_payments if _d(_get(lp, "date")) <= stop]
     rate = assumed_rate if assumed_rate is not None else assumed_rate_from(loans)
@@ -271,7 +273,7 @@ def project(
                 if paid >= float(_get(l, "amount")) - 0.005 and pd < end:
                     end, prepaid = pd, True
                     break
-        start = default_start(l)
+        start = loan_start_date(l, grant_by_key, by_id)
         if grp in booked:
             start = max(start, date(booked[grp] + 1, 1, 1))
         plist.append(PLoan(
@@ -280,6 +282,10 @@ def project(
             amount=float(_get(l, "amount")), rate=float(_get(l, "interest_rate")),
             accrue_from=start, end=end, due=due, group=grp,
             payments=pays, superseded=sup, prepaid=prepaid,
+            checkpoints=[c for c in (_get(l, "interest_checkpoints") or [])
+                         if _d(_get(c, "accrued_through")) >= start
+                         and (_d(_get(c, "accrued_through")) < end if sup else
+                              _d(_get(c, "accrued_through")) <= end)],
         ))
 
     # Projected Tax loans: future vests of zero-basis grants with no real Tax row.
@@ -338,7 +344,7 @@ def project(
         # A refinanced row keeps accruing up to its refinance: the years before
         # it still happened. Its interest is capitalised with the group, never
         # paid out on its own, since the successor carries the debt on.
-        live = [m for m in members if m.end > m.accrue_from]
+        live = [m for m in members if m.end > m.accrue_from or (m.end == m.accrue_from and m.checkpoints)]
         if not live:
             continue
         accr: dict[str, float] = {}
@@ -350,7 +356,16 @@ def project(
         while y <= last:
             ys, ye = date(y, 1, 1), date(y + 1, 1, 1)
             for m in live:
-                if m.accrue_from < ye and m.end > ys:
+                anchors = [c for c in m.checkpoints
+                           if max(ys, m.accrue_from) <= _d(_get(c, "accrued_through")) < ye
+                           and _d(_get(c, "accrued_through")) <= m.end]
+                if anchors:
+                    anchor = max(anchors, key=lambda c: _d(_get(c, "accrued_through")))
+                    # Replace this loan's unbooked balance, including a carried
+                    # first-year stub. Capitalization below then consumes it once.
+                    accr[m.key] = float(_get(anchor, "accrued_interest")) + m.interest(
+                        _d(_get(anchor, "accrued_through")), min(ye, m.end))
+                elif m.accrue_from < ye and m.end > ys:
                     accr[m.key] = accr.get(m.key, 0.0) + m.interest(ys, ye)
                 if ys <= m.end < ye and not m.superseded:
                     paid_accrual[m.key] = paid_accrual.get(m.key, 0.0) + accr.pop(m.key, 0.0)
@@ -433,3 +448,21 @@ def outstanding_at_stop(proj: Projection) -> dict:
             out["accrued"] += p.accrued
             out["real_interest"] += p.real_interest
     return {k: round(v, 2) for k, v in out.items()}
+
+
+def reconciliation_status(proj: Projection) -> dict:
+    """Coverage of currently unbooked interest, never a claim about every loan."""
+    active = [p for p in proj.loans if not p.projected and not p.superseded and not p.prepaid
+              and (proj.stop is None or p.end >= proj.stop)]
+    dates = [max(_d(_get(c, "accrued_through")) for c in p.checkpoints
+                 if proj.stop is None or _d(_get(c, "accrued_through")) <= proj.stop)
+             for p in active if any(proj.stop is None or _d(_get(c, "accrued_through")) <= proj.stop
+                                    for c in p.checkpoints)]
+    through = min(dates).isoformat() if dates else None
+    complete = bool(active) and len(dates) == len(active)
+    label = (f"Reconciled through {through}; estimated afterward" if complete else
+             f"{len(dates)} of {len(active)} loans reconciled; remaining interest calculated" if dates else
+             "Calculated estimate")
+    return {"status": "reconciled" if complete else "partial" if dates else "calculated",
+            "reconciled_loan_count": len(dates), "loan_count": len(active),
+            "reconciled_through": through, "label": label}

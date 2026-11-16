@@ -241,6 +241,16 @@ A payoff whose due date has already passed is **not** settled automatically — 
 
 A dashboard or exit for a past date counts only what existed then: an Interest loan booked on a later statement, or a later refinance, does not change it. After a change to how payoff sales are sized, the nightly maintenance job re-sizes every account's app-owned future payoff sales once; sales you edited are left alone.
 
+#### Optional statement reconciliation
+
+Interest always calculates automatically; uploading statements is optional. Give any monthly or annual statement to your connected AI assistant to reconcile specific loans. The assistant previews changes, then saves a dated checkpoint only with your approval. Each checkpoint records the statement issue date, the explicit interest cutoff, the outstanding **uncapitalized** interest for that loan and an optional source label. If the cutoff is ambiguous, the assistant asks instead of assuming the issue date. It never treats an annual interest charge or interest already booked into principal as another accrued balance.
+
+From that cutoff the statement balance replaces the estimate for that loan, then Actual/365 accrual continues. Older dates keep their original calculation, newer statements replace older checkpoints from their own cutoff, and loans absent from a statement keep calculating. Annual capitalization and imported Interest loans consume the balance once. The dashboard and connector say whether interest is calculated, partially reconciled, or reconciled through a date and estimated afterward. Checkpoints are encrypted and included in account deletion, import backups, and Excel exports (`InterestCheckpoints`, referencing the same workbook’s Loans row; keep those sheets together).
+
+On December 31, with catch-up throughout January, the existing notification job sends one optional statement reminder per year **only** to an account with a live equity AI connection, outstanding loans, and enabled push or email. It skips accounts already reconciled through year end and records the year only after successful delivery. Disconnecting the AI or turning off notifications suppresses the reminder. No new setup or required upload. Statements shared at other times use the same reconciliation workflow.
+
+Implementation: `backend/app/routers/interest_checkpoints.py` provides owner-scoped HTTP CRUD; `apply_changes` supports `kind: "interest_checkpoint"` with version checks and `list_interest_checkpoints` reads the history. `backend/app/statement_reminders.py` supplies reminder eligibility to the existing scheduled notification batch. `loan_interest_checkpoints` and the user’s last delivered reminder year are added by Alembic.
+
 #### Investment interest deduction toggle
 
 The **investment interest deduction** toggle lives directly on the dashboard. Flip it to preview the estimated tax impact before applying — see [Investment Interest Deduction](#investment-interest-deduction) below.

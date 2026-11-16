@@ -99,6 +99,9 @@ def build_notification_payload(events: list[dict], target_date: date | None = No
         return None
     counts = Counter(e["event_type"] for e in events)
     details = notification_details(events)
+    details.extend(e["reminder_message"] for e in events if e.get("reminder_message"))
+    if set(counts) == {"Loan Interest Statement"}:
+        return {"title": "Reconcile your loan interest", "body": " ".join(details), "data": {"url": "/settings"}}
     if set(counts) == {PRICE_REMINDER}:
         payload: dict = {"title": "Update your share price", "body": " ".join(details)}
         if target_date is not None:
@@ -190,7 +193,7 @@ def _already_notified_today(user: User, today: date) -> bool:
     return user.last_notified_at.date() >= today
 
 
-def send_daily_notifications(today: date | None = None):
+def send_daily_notifications(today: date | None = None, *, extra_events=None):
     """Check all users and send push + email notifications as appropriate.
 
     Uses last_notified_at to ensure at most one notification batch per user per day.
@@ -240,6 +243,8 @@ def send_daily_notifications(today: date | None = None):
             advance_days = all_prefs.get(user.id, 0)
             target_date = today + timedelta(days=advance_days)
             events = get_todays_events_for_user(user, db, today, advance_days=advance_days)
+            if extra_events is not None:
+                events.extend(extra_events(user, db, today))
             if not events:
                 continue
 
@@ -263,6 +268,9 @@ def send_daily_notifications(today: date | None = None):
                     announcement_sent |= bool(send_email(user.email, subject, text, html, headers=hdrs))
 
             if announcement_sent:
+                for event in events:
+                    if "_statement_reminder_year" in event:
+                        user.statement_reminder_year = event["_statement_reminder_year"]
                 delivered_announcements.update(pid for e in events
                                                for pid in e.get("_reminder_price_ids", ()))
             user.last_notified_at = datetime.now(timezone.utc)

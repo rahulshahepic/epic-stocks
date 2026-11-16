@@ -287,6 +287,36 @@ class GrantOut(BaseModel):
                 "election_83b": bool(data.election_83b)}
 
 
+# A statement reports the uncapitalized balance as of an explicit cutoff.
+class LoanInterestCheckpointCreate(InputModel):
+    loan_id: int = Field(gt=0)
+    statement_date: date
+    accrued_through: date
+    accrued_interest: TaxPaid
+    source: Annotated[str, Field(max_length=MAX_NOTES_LEN)] | None = None
+
+
+class LoanInterestCheckpointUpdate(UpdateModel):
+    non_nullable = {"loan_id", "statement_date", "accrued_through", "accrued_interest"}
+    loan_id: int | None = Field(default=None, gt=0)
+    statement_date: date | None = None
+    accrued_through: date | None = None
+    accrued_interest: TaxPaid | None = None
+    source: Annotated[str, Field(max_length=MAX_NOTES_LEN)] | None = None
+    version: int | None = None
+
+
+class LoanInterestCheckpointOut(BaseModel):
+    id: int
+    version: int
+    loan_id: int
+    statement_date: date
+    accrued_through: date
+    accrued_interest: float
+    source: str | None = None
+    model_config = {"from_attributes": True}
+
+
 # Loan
 class LoanCreate(InputModel):
     grant_year: Year

@@ -93,6 +93,7 @@ def read_loans_from_excel(ws):
             'interest_rate': float(ws.cell(row=i, column=7).value),
             'due': ws.cell(row=i, column=8).value,
             'refinances_loan_number': str(ref).strip() if ref is not None else None,
+            'disbursed_on': ws.cell(row=i, column=10).value if str(ws.cell(row=1, column=10).value or '').lower() == 'disbursed on' else None,
         })
     return loans
 

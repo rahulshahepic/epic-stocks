@@ -94,7 +94,7 @@ def dashboard_details(payload, cutoff, *, grants=(), timeline=(), next_timeline=
             if accrued:
                 interest_rows.append(dict(id=f'accrued:{loan.key}', amount=accrued,
                     label=f'{loan.grant_year} {loan.grant_type} accrued interest',
-                    note='Actual/365 through this date or repayment'))
+                    note=payload.get('interest_reconciliation', {}).get('label', 'Actual/365 through this date or repayment')))
     total_interest = round(sum(r['amount'] for r in interest_rows), 2)
     total_cost_basis = round(sum(l[1] * l[2] for l in build_fifo_lots(holdings_timeline, cutoff))
                              + payload.get('purchased_unvested_stock_value', 0), 2)
@@ -105,6 +105,7 @@ def dashboard_details(payload, cutoff, *, grants=(), timeline=(), next_timeline=
         'total_stock_value', 'vested_stock_value', 'purchased_unvested_stock_value',
         'net_equity', 'accrued_unbooked_interest',
     )}
+    cards['interest_status'] = payload.get('interest_reconciliation', {}).get('label', 'Calculated estimate')
     cards['current_price'] = price
     cards['price_is_estimate'] = bool(payload.get('price_is_estimate', False))
     cards.update(total_shares=payload.get('held_vested_shares', 0),

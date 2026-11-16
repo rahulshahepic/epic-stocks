@@ -32,6 +32,7 @@ _TABLES = [
     "tax_settings",
     "sales",
     "loan_payments",
+    "loan_interest_checkpoints",
     "import_backups",
 ]
 

@@ -280,3 +280,68 @@ def test_sample_metrics_cleans_old_metrics(setup_db):
         db2.close()
 
     assert remaining is None
+
+
+class _RecordingSession:
+    """Stands in for a PostgreSQL session; fails the sample after the lock is taken."""
+
+    def __init__(self):
+        self.sql, self.rolled_back, self.closed = [], False, False
+
+    def execute(self, stmt):
+        self.sql.append(str(stmt))
+
+        class _R:
+            def scalar(self_inner):
+                return True
+        return _R()
+
+    def query(self, *a, **k):
+        raise RuntimeError("simulated database failure")
+
+    def rollback(self):
+        self.rolled_back = True
+
+    def close(self):
+        self.closed = True
+
+
+def test_sample_metrics_lock_cannot_leak_onto_pooled_connection(caplog):
+    """A failed PostgreSQL sample logs, rolls back and never holds a session-level lock."""
+    import database
+    import main
+
+    fake = _RecordingSession()
+    with patch.object(database, "_is_sqlite", False), \
+            patch.object(database, "SessionLocal", lambda: fake), \
+            caplog.at_level("ERROR", logger="main"):
+        main._sample_metrics()
+
+    assert any("pg_try_advisory_xact_lock(222222222)" in s for s in fake.sql)
+    assert not any("pg_try_advisory_lock(222222222)" in s or "pg_advisory_unlock(222222222)" in s for s in fake.sql)
+    assert fake.rolled_back and fake.closed
+    assert "System metrics sample failed" in caplog.text
+
+
+def test_sample_metrics_recovers_after_failure(setup_db):
+    """One failed sample does not stop the next one from being written."""
+    import database
+    from main import _sample_metrics
+    from scaffold.models import SystemMetric
+
+    with patch("psutil.virtual_memory", side_effect=RuntimeError("boom")):
+        _sample_metrics()
+
+    db = database.SessionLocal()
+    try:
+        before = db.query(SystemMetric).count()
+    finally:
+        db.close()
+
+    _sample_metrics()
+
+    db = database.SessionLocal()
+    try:
+        assert db.query(SystemMetric).count() == before + 1
+    finally:
+        db.close()

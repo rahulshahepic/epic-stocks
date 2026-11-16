@@ -114,9 +114,10 @@ def _sample_metrics():
 
     db = database.SessionLocal()
     try:
-        # Advisory lock: only one replica samples metrics at a time
+        # Transaction-scoped lock: one replica samples at a time, and a failed
+        # sample cannot leave the lock held on a pooled connection.
         if not database._is_sqlite:
-            acquired = db.execute(text("SELECT pg_try_advisory_lock(222222222)")).scalar()
+            acquired = db.execute(text("SELECT pg_try_advisory_xact_lock(222222222)")).scalar()
             if not acquired:
                 return
 
@@ -174,15 +175,9 @@ def _sample_metrics():
 
         db.commit()
     except Exception:
-        pass
+        logger.exception("System metrics sample failed")
+        db.rollback()
     finally:
-        # Explicitly release the advisory lock so it doesn't persist on pooled connections
-        if not database._is_sqlite:
-            try:
-                db.execute(text("SELECT pg_advisory_unlock(222222222)"))
-                db.commit()
-            except Exception:
-                pass
         db.close()
 
 

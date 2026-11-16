@@ -194,7 +194,10 @@ jobs:
             caddy:2 caddy validate --config /etc/caddy/Caddyfile
 
   e2e:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest is moving to 26.04, where the locked Playwright
+    # cannot install chromium ("does not support chromium on ubuntu26.04-x64").
+    # Move with a Playwright upgrade that supports the newer image.
+    runs-on: ubuntu-24.04
     # Playwright runs on the runner, not in a container. The old approach pulled
     # mcr.microsoft.com/playwright:v1.56.0-jammy (~1.3 GB) every build, which
     # dominated e2e wall clock because the GHA layer cache does not round-trip

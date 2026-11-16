@@ -651,7 +651,7 @@ Download these two documents from Eureka:
 
 | Document | What is read from it |
 |----------|----------------------|
-| **Data for Stock Workbook** (.csv) | Shares granted and sold per grant, cost basis, 83(b) shares |
+| **Data for Stock Workbook** (.csv, or the same sheet saved as .xlsx) | Shares granted and sold per grant, cost basis, 83(b) shares |
 | **Stock Loan Statement** (.pdf) — the latest one | Every loan: number, name, principal balance, interest rate, due date |
 
 Then go to **Import/Export → Import from Eureka** and upload either or both, exactly as they downloaded. There is no need to open or edit them first.

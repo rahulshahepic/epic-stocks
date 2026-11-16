@@ -1488,3 +1488,49 @@ def test_invalid_sale_price_stays_unanswered(skeleton, price):
         {'shares': 500, 'date': '2024-03-01', 'price_per_share': price}]}, skeleton)
     assert draft.sales[0].is_complete is False
     assert 'R1' in codes(findings)
+
+
+def xlsx_from_csv(raw: bytes) -> bytes:
+    """Data for Stock Workbook opened in Excel and saved as .xlsx: numbers become
+    numbers, and the sheet keeps Eureka's employee-number name."""
+    import csv as _csv
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "100000001 (2)"
+    for row in _csv.reader(io.StringIO(raw.decode("utf-8-sig"))):
+        out = []
+        for v in row:
+            try:
+                out.append(float(v) if v.strip() else None)
+            except ValueError:
+                out.append(v)
+        ws.append(out)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_share_summary_saved_as_xlsx_reads_like_the_csv():
+    from_csv, csv_findings = parse_share_csv(csv_bytes())
+    from_xlsx, xlsx_findings = parse_share_csv(xlsx_from_csv(csv_bytes()))
+    assert from_xlsx == from_csv
+    assert [f.code for f in xlsx_findings] == [f.code for f in csv_findings]
+
+
+def test_an_unreadable_share_workbook_is_a_finding_not_an_exception():
+    rows, findings = parse_share_csv(b"PK\x03\x04 not really a zip")
+    assert rows == []
+    assert [f.code for f in findings] == ["G0"]
+
+
+def test_analyze_accepts_the_share_summary_as_xlsx(client):
+    register_user(client)
+    expected = analyze(client)["summary"]
+    files = upload_files()
+    files["share_csv"] = ("Data for Stock Workbook.xlsx", xlsx_from_csv(csv_bytes()),
+                          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    resp = client.post("/api/epic-import/analyze", files=files)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["summary"] == expected
+    assert "Grant,Shares Granted" in body["prompt"]   # the brief quotes it as CSV

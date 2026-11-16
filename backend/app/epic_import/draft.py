@@ -285,7 +285,7 @@ def _year_for_yearless(row: ShareRow, gtype: str, candidates: list[int],
                             f"This category's label carries no year, and company templates "
                             f"exist for {', '.join(map(str, candidates))}. Imported as {year} "
                             f"({schedule(chosen)}); " + "; ".join(fixes) + " on the Grants "
-                            f"page. Later imports keep the year you set."))
+                            "page. Later imports keep the year you set."))
     return year
 
 

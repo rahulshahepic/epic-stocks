@@ -264,23 +264,40 @@ def _year_for_yearless(row: ShareRow, gtype: str, candidates: list[int],
                                 f"template was used."))
         return named[0]
     year = candidates[0]
-    others = " or ".join(str(y) for y in candidates[1:])
-    rows = [t for t in sk.templates if t.type == gtype and t.year in candidates]
-    same_vesting = len({(t.vest_start, t.periods) for t in rows}) == 1
-    consequence = ("Both schedules vest on the same dates, so only the grant's year and "
-                   "exercise date depend on it" if same_vesting else
-                   "The vesting dates differ by year, so check them")
+    by_year = {t.year: t for t in sk.templates if t.type == gtype and t.year in candidates}
+    chosen = by_year[year]
+
+    def schedule(t: TemplateRow) -> str:
+        return (f"exercise date {t.exercise_date.isoformat()}, vesting from "
+                f"{t.vest_start.isoformat()} over {t.periods} periods")
+
+    fixes = []
+    for y in candidates[1:]:
+        t = by_year[y]
+        edits = [f"year to {y}"]
+        if t.exercise_date != chosen.exercise_date:
+            edits.append(f"exercise date to {t.exercise_date.isoformat()}")
+        if (t.vest_start, t.periods) != (chosen.vest_start, chosen.periods):
+            edits.append(f"vesting to start {t.vest_start.isoformat()} over "
+                         f"{t.periods} periods")
+        fixes.append(f"if yours is {y}, change its " + ", ".join(edits))
     findings.append(Finding("G1", WARNING, row.label,
                             f"This category's label carries no year, and company templates "
-                            f"exist for {', '.join(map(str, candidates))}. Imported as {year}. "
-                            f"{consequence}; if yours is {others}, change the grant's year "
-                            f"after importing."))
+                            f"exist for {', '.join(map(str, candidates))}. Imported as {year} "
+                            f"({schedule(chosen)}); " + "; ".join(fixes) + " on the Grants "
+                            f"page. Later imports keep the year you set."))
     return year
 
 
 def derive_draft(statement: Statement | None, rows: list[ShareRow],
-                 sk: Skeleton) -> tuple[Draft, list[Finding]]:
-    """Build a draft from the files using the deterministic rules."""
+                 sk: Skeleton, existing: set[tuple[int, str]] | None = None
+                 ) -> tuple[Draft, list[Finding]]:
+    """Build a draft from the files using the deterministic rules.
+
+    `existing` is the (year, type) of every grant the account already holds. A
+    label with no year resolves to the account's own grant of that type when
+    there is exactly one, so a corrected year survives the next import.
+    """
     findings: list[Finding] = []
     draft = Draft(statement_date=statement.statement_date if statement else None)
 
@@ -311,6 +328,13 @@ def derive_draft(statement: Statement | None, rows: list[ShareRow],
                                     f"No grant type mapping for this category — "
                                     f"{row.shares_granted:,} shares not imported.{hint}"))
             continue
+        owned = sorted({y for y, t in (existing or ()) if t == gtype})
+        if year is None and len(owned) == 1:
+            year = row.year = owned[0]
+            findings.append(Finding("G1", INFO, row.label,
+                                    f"This category's label carries no year; your account "
+                                    f"already has a {year} {gtype} grant, so that year was "
+                                    f"used."))
         if year is None:
             # A one-time award (rule G1): its label carries no year, so the
             # year comes from the company's own template for this type.

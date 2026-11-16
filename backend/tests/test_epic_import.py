@@ -220,8 +220,12 @@ def test_yearless_developer_bonus_with_multiple_templates_imports_the_earliest()
         (2018, "Developer Bonus Shares", 17_750)]
     g1 = [f for f in findings if f.code == "G1"]
     assert [f.severity for f in g1] == ["warning"]
-    assert "Imported as 2018" in g1[0].message and "2019" in g1[0].message
-    assert "vesting dates differ" in g1[0].message
+    msg = g1[0].message
+    assert "Imported as 2018" in msg
+    # Changing the year alone keeps the stored schedule, so every field that
+    # differs is named.
+    assert ("if yours is 2019, change its year to 2019, exercise date to 2019-12-31, "
+            "vesting to start 2020-09-30 over 4 periods") in msg
 
 
 def test_yearless_developer_bonus_with_identical_schedules_says_only_the_year_differs():
@@ -232,7 +236,8 @@ def test_yearless_developer_bonus_with_identical_schedules_says_only_the_year_di
     sk, _ = build_skeleton(templates)
     _, findings = derive_draft(None, [_one_row("Developer Bonus Shares")], sk)
     g1 = next(f for f in findings if f.code == "G1")
-    assert "same dates" in g1.message
+    assert "change its year to 2021, exercise date to 2021-12-31 on" in g1.message
+    assert "vesting to start" not in g1.message
 
 
 def test_yearless_developer_bonus_takes_its_year_from_the_loan_statement():
@@ -1583,3 +1588,38 @@ def test_analyze_accepts_the_share_summary_as_xlsx(client):
     body = resp.json()
     assert body["summary"] == expected
     assert "Grant,Shares Granted" in body["prompt"]   # the brief quotes it as CSV
+
+
+def test_a_yearless_grant_keeps_the_year_the_account_already_has():
+    sk, _ = build_skeleton(_with_dev_bonus_templates(2018, 2019))
+    draft, findings = derive_draft(None, [_one_row("Developer Bonus Shares")], sk,
+                                   existing={(2019, "Developer Bonus Shares"),
+                                             (2019, "Purchase")})
+    assert [g.year for g in draft.grants] == [2019]
+    assert [f.severity for f in findings if f.code == "G1"] == ["info"]
+
+
+def test_correcting_a_yearless_grant_then_reimporting_proposes_no_second_grant(client):
+    """The default templates hold Developer Bonus Shares for 2020 and 2021. The
+    import picks 2020; the person corrects it to 2021; the same file again must
+    not propose the 2020 grant a second time."""
+    register_user(client)
+    raw = (b"Grant,Shares Granted,Shares Sold,Shares Remaining,83b Shares,"
+           b"Cost Basis of Shares,Loan Balance,Loan Due Year\n"
+           b"Developer Bonus Shares,1000,0,1000,,0,0,\n")
+    files = {"share_csv": ("shares.csv", raw, "text/csv")}
+
+    first = client.post("/api/epic-import/analyze", files=files).json()
+    assert first["draft"]["grants"][0]["year"] == 2020
+    assert submit(client, first["draft"]).status_code == 200
+
+    g = client.get("/api/grants").json()[0]
+    resp = client.put(f"/api/grants/{g['id']}", json={
+        "version": g["version"], "year": 2021, "exercise_date": "2021-12-31"})
+    assert resp.status_code == 200, resp.text
+
+    again = client.post("/api/epic-import/analyze", files=files).json()
+    assert [gr["year"] for gr in again["draft"]["grants"]] == [2021]
+    creates = [c for c in again["changes"]
+               if c["kind"] == "grant" and c["action"] == "create"]
+    assert creates == []

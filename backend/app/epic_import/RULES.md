@@ -56,9 +56,15 @@ that type instead: **info** when exactly one exists and is used, **error**
 when none exists (an admin must add one; the shares are not imported). When
 several exist (Developer Bonus Shares has 2020 and 2021), the Loan Statement
 decides if it names a loan on exactly one of those years (**info**); otherwise
-the grant is imported in the earliest year with a **warning** naming the other
-years and whether their vesting dates differ, so the person can change it.
-Importing nothing is never the answer for shares the file plainly lists.
+the grant is imported in the earliest year with a **warning** that names, for
+each other year, every field to change with it (year, exercise date and, when
+the templates differ, the vesting start and periods) — changing a grant's year
+alone keeps its stored schedule. Importing nothing is never the answer for
+shares the file plainly lists.
+
+Before any of that, a signed-in import resolves the label to the account's own
+grant of that type when it holds exactly one (**info**), so a year the person
+corrected is kept by every later import instead of proposing a second grant.
 
 ### `G2` — Shares Granted → `grant.shares`, and shares nothing accounts for
 Straight read. Nothing in either file can check a share count against anything

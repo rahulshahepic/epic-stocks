@@ -264,7 +264,9 @@ def analyze(
         findings = supersede_parse_findings(findings)
         draft, f = draft_from_payload(payload, sk)
     else:
-        draft, f = derive_draft(statement, rows, sk)
+        owned = {(g.year, g.type) for g in
+                 db.query(Grant.year, Grant.type).filter(Grant.user_id == user.id)}
+        draft, f = derive_draft(statement, rows, sk, existing=owned)
     findings += f
     draft.statement_date = draft.statement_date or (
         statement.statement_date if statement else None)

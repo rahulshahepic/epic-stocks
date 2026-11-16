@@ -17,7 +17,7 @@ from math import isfinite
 import re
 
 from .models import ERROR, INFO, WARNING, Finding, ShareRow, Statement
-from .rules import (attribute_loan, basis_per_share, classify_row,
+from .rules import (_DESCRIPTOR, _descriptor_type, attribute_loan, basis_per_share, classify_row,
                     down_payment_in_stock, is_vest_taxed, parse_loan_name,
                     reconcile_down_payments)
 from .skeleton import Skeleton, TemplateRow
@@ -235,14 +235,76 @@ def _schedule_for(sk: Skeleton, year: int, gtype: str,
                        periods=4, exercise_date=date(year, 12, 31))
 
 
+def _statement_years(statement: Statement | None, gtype: str) -> set[int]:
+    """Grant years the Loan Statement names for loans on a grant of this type."""
+    years = set()
+    for sl in (statement.loans if statement else []):
+        _, _, descriptors = parse_loan_name(sl.name)
+        for d in descriptors:
+            m = _DESCRIPTOR.match(d)
+            if m and _descriptor_type(m.group("kind")) == gtype:
+                years.add(int(m.group("year")))
+    return years
+
+
+def _year_for_yearless(row: ShareRow, gtype: str, candidates: list[int],
+                       statement: Statement | None, sk: Skeleton,
+                       findings: list[Finding]) -> int:
+    """Rule G1 for a one-time award with several company templates.
+
+    Importing nothing helps nobody, so the grant always comes through: in the
+    year the Loan Statement names when it names exactly one, otherwise in the
+    earliest year, with a warning the person can act on.
+    """
+    named = sorted(_statement_years(statement, gtype) & set(candidates))
+    if len(named) == 1:
+        findings.append(Finding("G1", INFO, row.label,
+                                f"This category's label carries no year; the Loan Statement "
+                                f"names a {named[0]} {gtype} loan, so the {named[0]} company "
+                                f"template was used."))
+        return named[0]
+    year = candidates[0]
+    by_year = {t.year: t for t in sk.templates if t.type == gtype and t.year in candidates}
+    chosen = by_year[year]
+
+    def schedule(t: TemplateRow) -> str:
+        return (f"exercise date {t.exercise_date.isoformat()}, vesting from "
+                f"{t.vest_start.isoformat()} over {t.periods} periods")
+
+    fixes = []
+    for y in candidates[1:]:
+        t = by_year[y]
+        edits = [f"year to {y}"]
+        if t.exercise_date != chosen.exercise_date:
+            edits.append(f"exercise date to {t.exercise_date.isoformat()}")
+        if (t.vest_start, t.periods) != (chosen.vest_start, chosen.periods):
+            edits.append(f"vesting to start {t.vest_start.isoformat()} over "
+                         f"{t.periods} periods")
+        fixes.append(f"if yours is {y}, change its " + ", ".join(edits))
+    findings.append(Finding("G1", WARNING, row.label,
+                            f"This category's label carries no year, and company templates "
+                            f"exist for {', '.join(map(str, candidates))}. Imported as {year} "
+                            f"({schedule(chosen)}); " + "; ".join(fixes) + " on the Grants "
+                            "page. Later imports keep the year you set."))
+    return year
+
+
 def derive_draft(statement: Statement | None, rows: list[ShareRow],
-                 sk: Skeleton) -> tuple[Draft, list[Finding]]:
-    """Build a draft from the files using the deterministic rules."""
+                 sk: Skeleton, existing: set[tuple[int, str]] | None = None
+                 ) -> tuple[Draft, list[Finding]]:
+    """Build a draft from the files using the deterministic rules.
+
+    `existing` is the (year, type) of every grant the account already holds. A
+    label with no year resolves to the account's own grant of that type when
+    there is exactly one, so a corrected year survives the next import.
+    """
     findings: list[Finding] = []
     draft = Draft(statement_date=statement.statement_date if statement else None)
 
     for row in rows:
         row.year, row.grant_type = classify_row(row.label)
+    # A yearless row must not land on a year a dated row of the file already holds.
+    dated = {(r.year, r.grant_type) for r in rows if r.year is not None}
 
     # A purchase grant's per-share basis is that year's share price, so work
     # those out first — they are what separates a bonus grant taxed at grant from
@@ -268,10 +330,26 @@ def derive_draft(statement: Statement | None, rows: list[ShareRow],
                                     f"No grant type mapping for this category — "
                                     f"{row.shares_granted:,} shares not imported.{hint}"))
             continue
+        taken = {y for y, t in dated if t == gtype}
+        owned = sorted({y for y, t in (existing or ()) if t == gtype} - taken)
+        if year is None and len(owned) == 1:
+            year = row.year = owned[0]
+            findings.append(Finding("G1", INFO, row.label,
+                                    f"This category's label carries no year; your account "
+                                    f"already has a {year} {gtype} grant, so that year was "
+                                    f"used."))
         if year is None:
             # A one-time award (rule G1): its label carries no year, so the
             # year comes from the company's own template for this type.
-            candidate_years = sorted({t.year for t in sk.templates if t.type == gtype})
+            template_years = sorted({t.year for t in sk.templates if t.type == gtype})
+            candidate_years = [y for y in template_years if y not in taken]
+            if template_years and not candidate_years:
+                findings.append(Finding("G1", WARNING, row.label,
+                                        f"This category's label carries no year, and the file "
+                                        f"already lists a {gtype} grant for every year a company "
+                                        f"template exists ({', '.join(map(str, template_years))}) "
+                                        f"— {row.shares_granted:,} shares not imported."))
+                continue
             if len(candidate_years) == 1:
                 year = row.year = candidate_years[0]
                 findings.append(Finding("G1", INFO, row.label,
@@ -286,13 +364,8 @@ def derive_draft(statement: Statement | None, rows: list[ShareRow],
                                         f"must add a template."))
                 continue
             else:
-                findings.append(Finding("G1", WARNING, row.label,
-                                        f"This category's label carries no year, and more than "
-                                        f"one company template exists for {gtype} "
-                                        f"({', '.join(map(str, candidate_years))}) — cannot "
-                                        f"tell which applies, so {row.shares_granted:,} shares "
-                                        f"were not imported."))
-                continue
+                year = row.year = _year_for_yearless(row, gtype, candidate_years,
+                                                     statement, sk, findings)
 
         if not year_in_range(year):
             # The label grammar takes any four digits, and every schedule below
@@ -373,7 +446,7 @@ def derive_draft(statement: Statement | None, rows: list[ShareRow],
             year_on_statement=lyear is not None,
         ))
 
-    _explain_shares_sold(draft, rows, sk, findings)
+    _explain_shares_sold(draft, rows, sk, findings, has_statement=statement is not None)
 
     # Rule P1 — a purchase grant's per-share basis is that year's share price.
     # Dated 1 January to match how the wizard keys prices by year.
@@ -388,7 +461,7 @@ def derive_draft(statement: Statement | None, rows: list[ShareRow],
 
 
 def _explain_shares_sold(draft: Draft, rows: list[ShareRow], sk: Skeleton,
-                         findings: list[Finding]) -> None:
+                         findings: list[Finding], has_statement: bool = False) -> None:
     """Rule G8. Account for the shares Epic reports gone from a grant.
 
     Epic reports shares handed back to cover a later purchase's down payment in
@@ -406,15 +479,24 @@ def _explain_shares_sold(draft: Draft, rows: list[ShareRow], sk: Skeleton,
     if not sold_total:
         return
 
+    # Without a Loan Statement, the workbook's own Loan Balance for the grant
+    # stands in for its purchase loan. down_payment_in_stock accepts only a
+    # whole number of shares at exactly the policy minimum, so a balance that
+    # also carries other loans, or has been paid down, matches nothing.
+    workbook_balance = {(r.year, r.grant_type): r.loan_balance for r in rows
+                        if r.year and r.loan_balance}
     candidates = []
     for g in draft.grants:
         if g.type != "Purchase" or g.price <= 0:
             continue
         purchase_loans = [l.amount for l in g.loans if l.loan_type == "Purchase"]
-        if not purchase_loans:
+        if purchase_loans:
+            balance = round(sum(purchase_loans), 2)
+        elif not has_statement and workbook_balance.get(g.key):
+            balance = workbook_balance[g.key]
+        else:
             continue
-        dp = down_payment_in_stock(g.year, g.type, g.shares, g.price,
-                                   round(sum(purchase_loans), 2),
+        dp = down_payment_in_stock(g.year, g.type, g.shares, g.price, balance,
                                    sk.dp_min_percent, sk.dp_min_cap)
         if dp is not None:
             candidates.append(dp)

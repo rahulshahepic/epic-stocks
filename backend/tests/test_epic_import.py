@@ -23,7 +23,7 @@ from app.epic_import import (build_prompt, build_skeleton, derive_draft, reconci
                              draft_from_payload, is_blocked, parse_share_csv,
                              parse_statement_lines, parse_statement_pdf,
                              to_wizard_payload, validate_draft)
-from app.epic_import.models import ShareRow
+from app.epic_import.models import ShareRow, Statement, StatementLoan
 from app.epic_import.rules import (DownPayment, attribute_loan, classify_row,
                                    down_payment_in_stock, is_vest_taxed,
                                    parse_loan_name, reconcile_down_payments)
@@ -213,11 +213,43 @@ def test_yearless_developer_bonus_with_no_template_is_an_error(skeleton):
     assert any(f.code == "G1" and f.severity == "error" for f in findings)
 
 
-def test_yearless_developer_bonus_with_multiple_templates_is_ambiguous():
+def test_yearless_developer_bonus_with_multiple_templates_imports_the_earliest():
     sk, _ = build_skeleton(_with_dev_bonus_templates(2018, 2019))
     draft, findings = derive_draft(None, [_one_row("Developer Bonus Shares")], sk)
-    assert draft.grants == []
-    assert any(f.code == "G1" and f.severity == "warning" for f in findings)
+    assert [(g.year, g.type, g.shares) for g in draft.grants] == [
+        (2018, "Developer Bonus Shares", 17_750)]
+    g1 = [f for f in findings if f.code == "G1"]
+    assert [f.severity for f in g1] == ["warning"]
+    msg = g1[0].message
+    assert "Imported as 2018" in msg
+    # Changing the year alone keeps the stored schedule, so every field that
+    # differs is named.
+    assert ("if yours is 2019, change its year to 2019, exercise date to 2019-12-31, "
+            "vesting to start 2020-09-30 over 4 periods") in msg
+
+
+def test_yearless_developer_bonus_with_identical_schedules_says_only_the_year_differs():
+    templates = _with_dev_bonus_templates(2020, 2021)
+    for t in templates["grant_templates"]:
+        if t["type"] == "Developer Bonus Shares":
+            t["vest_start"] = "2022-09-30"
+    sk, _ = build_skeleton(templates)
+    _, findings = derive_draft(None, [_one_row("Developer Bonus Shares")], sk)
+    g1 = next(f for f in findings if f.code == "G1")
+    assert "change its year to 2021, exercise date to 2021-12-31 on" in g1.message
+    assert "vesting to start" not in g1.message
+
+
+def test_yearless_developer_bonus_takes_its_year_from_the_loan_statement():
+    sk, _ = build_skeleton(_with_dev_bonus_templates(2018, 2019))
+    statement = Statement(statement_date=date(2026, 1, 1), account_number=None,
+                          total_principal=100.0, loans=[StatementLoan(
+        loan_number="L1", name="2019 Developer Bonus - Tax Loan - 2021", balance=100.0,
+        interest_rate=0.04, interest_to_date=0.0, due_date=date(2030, 7, 15))])
+    draft, findings = derive_draft(statement, [_one_row("Developer Bonus Shares")], sk)
+    assert [g.year for g in draft.grants] == [2019]
+    assert any(f.code == "G1" and f.severity == "info" and "Loan Statement" in f.message
+               for f in findings)
 
 
 def test_developer_bonus_loans_are_attributed_to_their_own_grant():
@@ -560,6 +592,28 @@ def test_a_loan_paid_down_since_is_not_read_as_a_down_payment(skeleton):
     assert grant(draft, 2022, "Purchase").dp_shares == 0
     assert "G2" in codes(findings, "warning")
     assert [s.shares for s in draft.sales] == [33_333]
+
+
+def workbook_only(skeleton, csv_raw):
+    rows, f1 = parse_share_csv(csv_raw)
+    draft, f2 = derive_draft(None, rows, skeleton)
+    return draft, f1 + f2 + validate_draft(draft, None, rows, skeleton)
+
+
+def test_without_a_statement_the_workbook_loan_balance_reads_the_down_payment(skeleton):
+    csv_raw, _ = one_grant_files(**STOCK_DP)
+    draft, findings = workbook_only(skeleton, csv_raw)
+    assert grant(draft, 2022, "Purchase").dp_shares == -1_334
+    assert "G8" in codes(findings, "info")
+    assert "G2" not in codes(findings) and draft.sales == []
+
+
+def test_without_a_statement_a_paid_down_balance_is_still_not_a_down_payment(skeleton):
+    csv_raw, _ = one_grant_files(shares=300_000, basis=4_500_000.0,
+                                 loan=4_000_005.0, sold=33_333)
+    draft, findings = workbook_only(skeleton, csv_raw)
+    assert grant(draft, 2022, "Purchase").dp_shares == 0
+    assert "G2" in codes(findings, "warning")
 
 
 def test_a_down_payment_in_cash_leaves_no_shares_to_explain(skeleton):
@@ -1488,3 +1542,122 @@ def test_invalid_sale_price_stays_unanswered(skeleton, price):
         {'shares': 500, 'date': '2024-03-01', 'price_per_share': price}]}, skeleton)
     assert draft.sales[0].is_complete is False
     assert 'R1' in codes(findings)
+
+
+def xlsx_from_csv(raw: bytes) -> bytes:
+    """Data for Stock Workbook opened in Excel and saved as .xlsx: numbers become
+    numbers, and the sheet keeps Eureka's employee-number name."""
+    import csv as _csv
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "100000001 (2)"
+    for row in _csv.reader(io.StringIO(raw.decode("utf-8-sig"))):
+        out = []
+        for v in row:
+            try:
+                out.append(float(v) if v.strip() else None)
+            except ValueError:
+                out.append(v)
+        ws.append(out)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_share_summary_saved_as_xlsx_reads_like_the_csv():
+    from_csv, csv_findings = parse_share_csv(csv_bytes())
+    from_xlsx, xlsx_findings = parse_share_csv(xlsx_from_csv(csv_bytes()))
+    assert from_xlsx == from_csv
+    assert [f.code for f in xlsx_findings] == [f.code for f in csv_findings]
+
+
+def test_an_unreadable_share_workbook_is_a_finding_not_an_exception():
+    rows, findings = parse_share_csv(b"PK\x03\x04 not really a zip")
+    assert rows == []
+    assert [f.code for f in findings] == ["G0"]
+
+
+def test_analyze_accepts_the_share_summary_as_xlsx(client):
+    register_user(client)
+    expected = analyze(client)["summary"]
+    files = upload_files()
+    files["share_csv"] = ("Data for Stock Workbook.xlsx", xlsx_from_csv(csv_bytes()),
+                          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    resp = client.post("/api/epic-import/analyze", files=files)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["summary"] == expected
+    assert "Grant,Shares Granted" in body["prompt"]   # the brief quotes it as CSV
+
+
+def test_a_yearless_grant_keeps_the_year_the_account_already_has():
+    sk, _ = build_skeleton(_with_dev_bonus_templates(2018, 2019))
+    draft, findings = derive_draft(None, [_one_row("Developer Bonus Shares")], sk,
+                                   existing={(2019, "Developer Bonus Shares"),
+                                             (2019, "Purchase")})
+    assert [g.year for g in draft.grants] == [2019]
+    assert [f.severity for f in findings if f.code == "G1"] == ["info"]
+
+
+def test_correcting_a_yearless_grant_then_reimporting_proposes_no_second_grant(client):
+    """The default templates hold Developer Bonus Shares for 2020 and 2021. The
+    import picks 2020; the person corrects it to 2021; the same file again must
+    not propose the 2020 grant a second time."""
+    register_user(client)
+    raw = (b"Grant,Shares Granted,Shares Sold,Shares Remaining,83b Shares,"
+           b"Cost Basis of Shares,Loan Balance,Loan Due Year\n"
+           b"Developer Bonus Shares,1000,0,1000,,0,0,\n")
+    files = {"share_csv": ("shares.csv", raw, "text/csv")}
+
+    first = client.post("/api/epic-import/analyze", files=files).json()
+    assert first["draft"]["grants"][0]["year"] == 2020
+    assert submit(client, first["draft"]).status_code == 200
+
+    g = client.get("/api/grants").json()[0]
+    resp = client.put(f"/api/grants/{g['id']}", json={
+        "version": g["version"], "year": 2021, "exercise_date": "2021-12-31"})
+    assert resp.status_code == 200, resp.text
+
+    again = client.post("/api/epic-import/analyze", files=files).json()
+    assert [gr["year"] for gr in again["draft"]["grants"]] == [2021]
+    creates = [c for c in again["changes"]
+               if c["kind"] == "grant" and c["action"] == "create"]
+    assert creates == []
+
+
+def test_an_xlsx_with_an_empty_first_sheet_says_so():
+    wb = openpyxl.Workbook()
+    buf = io.BytesIO()
+    wb.save(buf)
+    rows, findings = parse_share_csv(buf.getvalue())
+    assert rows == [] and [(f.code, f.severity) for f in findings] == [("G0", "error")]
+
+
+@pytest.mark.parametrize("existing,statement_year", [
+    (None, None),                                         # earliest-template fallback
+    ({(2018, "Developer Bonus Shares")}, None),           # the account's grant
+    (None, 2018),                                         # the Loan Statement
+])
+def test_a_yearless_row_never_takes_a_year_a_dated_row_holds(existing, statement_year):
+    sk, _ = build_skeleton(_with_dev_bonus_templates(2018, 2019))
+    statement = None
+    if statement_year:
+        statement = Statement(statement_date=date(2026, 1, 1), account_number=None,
+                              total_principal=100.0, loans=[StatementLoan(
+            loan_number="L1", name=f"{statement_year} Developer Bonus - Tax Loan - 2021",
+            balance=100.0, interest_rate=0.04, interest_to_date=0.0,
+            due_date=date(2030, 7, 15))])
+    rows = [_one_row("2018 Developer Bonus Shares"), _one_row("Developer Bonus Shares", 500)]
+    draft, _ = derive_draft(statement, rows, sk, existing=existing)
+    keys = [g.key for g in draft.grants]
+    assert len(keys) == len(set(keys))
+    assert (2019, "Developer Bonus Shares") in keys
+
+
+def test_a_yearless_row_with_every_template_year_taken_is_not_imported():
+    sk, _ = build_skeleton(_with_dev_bonus_templates(2018))
+    rows = [_one_row("2018 Developer Bonus Shares"), _one_row("Developer Bonus Shares", 500)]
+    draft, findings = derive_draft(None, rows, sk)
+    assert [g.shares for g in draft.grants] == [17_750]
+    assert any(f.code == "G1" and f.severity == "warning" and "500 shares" in f.message
+               for f in findings)

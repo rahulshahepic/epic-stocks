@@ -29,7 +29,7 @@ from app.date_utils import to_date as _to_date
 from app.epic_import import (Draft, DraftPrice, StatementParserBusy,
                              StatementUnreadable, build_prompt,
                              build_skeleton, derive_draft, draft_from_payload,
-                             extract_lines, is_blocked, parse_share_csv,
+                             extract_lines, is_blocked, parse_share_csv, share_summary_text,
                              parse_statement_lines, reconcile, render_markdown,
                              supersede_parse_findings, validate_draft)
 from app.epic_import.to_changes import draft_changes
@@ -81,6 +81,9 @@ def _parse_files(csv_bytes: bytes | None, pdf_bytes: bytes | None):
         findings += f
     csv_text = ""
     if csv_bytes is not None:
+        csv_bytes, f = share_summary_text(csv_bytes)
+        findings += f
+    if csv_bytes:
         try:
             csv_text = csv_bytes.decode("utf-8-sig")
         except UnicodeDecodeError:
@@ -261,7 +264,9 @@ def analyze(
         findings = supersede_parse_findings(findings)
         draft, f = draft_from_payload(payload, sk)
     else:
-        draft, f = derive_draft(statement, rows, sk)
+        owned = {(g.year, g.type) for g in
+                 db.query(Grant.year, Grant.type).filter(Grant.user_id == user.id)}
+        draft, f = derive_draft(statement, rows, sk, existing=owned)
     findings += f
     draft.statement_date = draft.statement_date or (
         statement.statement_date if statement else None)

@@ -113,7 +113,7 @@ export default function ImportDiagnostics() {
         <div className="space-y-3">
           {([
             ['diag-export', 'Your export (Vesting.xlsx)', '.xlsx', setExportFile],
-            ['diag-csv', 'Data for Stock Workbook (.csv)', '.csv,text/csv', setCsv],
+            ['diag-csv', 'Data for Stock Workbook (.csv or .xlsx)', '.csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', setCsv],
             ['diag-pdf', 'Stock Loan Statement (.pdf)', '.pdf,application/pdf', setPdf],
           ] as const).map(([id, label, accept, setter]) => (
             <div key={id}>

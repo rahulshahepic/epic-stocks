@@ -53,9 +53,12 @@ A bare `Developer Bonus Shares`, with no year at all, is a one-time award (a
 new-hire bonus, granted once) rather than an annual program — there is nothing
 to parse a year out of. The year comes from the company's own template for
 that type instead: **info** when exactly one exists and is used, **error**
-when none exists (an admin must add one), **warning** when more than one
-exists and which applies cannot be told — in the last two cases the shares are
-not imported.
+when none exists (an admin must add one; the shares are not imported). When
+several exist (Developer Bonus Shares has 2020 and 2021), the Loan Statement
+decides if it names a loan on exactly one of those years (**info**); otherwise
+the grant is imported in the earliest year with a **warning** naming the other
+years and whether their vesting dates differ, so the person can change it.
+Importing nothing is never the answer for shares the file plainly lists.
 
 ### `G2` — Shares Granted → `grant.shares`, and shares nothing accounts for
 Straight read. Nothing in either file can check a share count against anything

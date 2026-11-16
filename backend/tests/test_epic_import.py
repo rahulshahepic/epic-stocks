@@ -23,7 +23,7 @@ from app.epic_import import (build_prompt, build_skeleton, derive_draft, reconci
                              draft_from_payload, is_blocked, parse_share_csv,
                              parse_statement_lines, parse_statement_pdf,
                              to_wizard_payload, validate_draft)
-from app.epic_import.models import ShareRow
+from app.epic_import.models import ShareRow, Statement, StatementLoan
 from app.epic_import.rules import (DownPayment, attribute_loan, classify_row,
                                    down_payment_in_stock, is_vest_taxed,
                                    parse_loan_name, reconcile_down_payments)
@@ -213,11 +213,38 @@ def test_yearless_developer_bonus_with_no_template_is_an_error(skeleton):
     assert any(f.code == "G1" and f.severity == "error" for f in findings)
 
 
-def test_yearless_developer_bonus_with_multiple_templates_is_ambiguous():
+def test_yearless_developer_bonus_with_multiple_templates_imports_the_earliest():
     sk, _ = build_skeleton(_with_dev_bonus_templates(2018, 2019))
     draft, findings = derive_draft(None, [_one_row("Developer Bonus Shares")], sk)
-    assert draft.grants == []
-    assert any(f.code == "G1" and f.severity == "warning" for f in findings)
+    assert [(g.year, g.type, g.shares) for g in draft.grants] == [
+        (2018, "Developer Bonus Shares", 17_750)]
+    g1 = [f for f in findings if f.code == "G1"]
+    assert [f.severity for f in g1] == ["warning"]
+    assert "Imported as 2018" in g1[0].message and "2019" in g1[0].message
+    assert "vesting dates differ" in g1[0].message
+
+
+def test_yearless_developer_bonus_with_identical_schedules_says_only_the_year_differs():
+    templates = _with_dev_bonus_templates(2020, 2021)
+    for t in templates["grant_templates"]:
+        if t["type"] == "Developer Bonus Shares":
+            t["vest_start"] = "2022-09-30"
+    sk, _ = build_skeleton(templates)
+    _, findings = derive_draft(None, [_one_row("Developer Bonus Shares")], sk)
+    g1 = next(f for f in findings if f.code == "G1")
+    assert "same dates" in g1.message
+
+
+def test_yearless_developer_bonus_takes_its_year_from_the_loan_statement():
+    sk, _ = build_skeleton(_with_dev_bonus_templates(2018, 2019))
+    statement = Statement(statement_date=date(2026, 1, 1), account_number=None,
+                          total_principal=100.0, loans=[StatementLoan(
+        loan_number="L1", name="2019 Developer Bonus - Tax Loan - 2021", balance=100.0,
+        interest_rate=0.04, interest_to_date=0.0, due_date=date(2030, 7, 15))])
+    draft, findings = derive_draft(statement, [_one_row("Developer Bonus Shares")], sk)
+    assert [g.year for g in draft.grants] == [2019]
+    assert any(f.code == "G1" and f.severity == "info" and "Loan Statement" in f.message
+               for f in findings)
 
 
 def test_developer_bonus_loans_are_attributed_to_their_own_grant():

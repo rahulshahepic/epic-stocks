@@ -17,7 +17,7 @@ from math import isfinite
 import re
 
 from .models import ERROR, INFO, WARNING, Finding, ShareRow, Statement
-from .rules import (attribute_loan, basis_per_share, classify_row,
+from .rules import (_DESCRIPTOR, _descriptor_type, attribute_loan, basis_per_share, classify_row,
                     down_payment_in_stock, is_vest_taxed, parse_loan_name,
                     reconcile_down_payments)
 from .skeleton import Skeleton, TemplateRow
@@ -235,6 +235,49 @@ def _schedule_for(sk: Skeleton, year: int, gtype: str,
                        periods=4, exercise_date=date(year, 12, 31))
 
 
+def _statement_years(statement: Statement | None, gtype: str) -> set[int]:
+    """Grant years the Loan Statement names for loans on a grant of this type."""
+    years = set()
+    for sl in (statement.loans if statement else []):
+        _, _, descriptors = parse_loan_name(sl.name)
+        for d in descriptors:
+            m = _DESCRIPTOR.match(d)
+            if m and _descriptor_type(m.group("kind")) == gtype:
+                years.add(int(m.group("year")))
+    return years
+
+
+def _year_for_yearless(row: ShareRow, gtype: str, candidates: list[int],
+                       statement: Statement | None, sk: Skeleton,
+                       findings: list[Finding]) -> int:
+    """Rule G1 for a one-time award with several company templates.
+
+    Importing nothing helps nobody, so the grant always comes through: in the
+    year the Loan Statement names when it names exactly one, otherwise in the
+    earliest year, with a warning the person can act on.
+    """
+    named = sorted(_statement_years(statement, gtype) & set(candidates))
+    if len(named) == 1:
+        findings.append(Finding("G1", INFO, row.label,
+                                f"This category's label carries no year; the Loan Statement "
+                                f"names a {named[0]} {gtype} loan, so the {named[0]} company "
+                                f"template was used."))
+        return named[0]
+    year = candidates[0]
+    others = " or ".join(str(y) for y in candidates[1:])
+    rows = [t for t in sk.templates if t.type == gtype and t.year in candidates]
+    same_vesting = len({(t.vest_start, t.periods) for t in rows}) == 1
+    consequence = ("Both schedules vest on the same dates, so only the grant's year and "
+                   "exercise date depend on it" if same_vesting else
+                   "The vesting dates differ by year, so check them")
+    findings.append(Finding("G1", WARNING, row.label,
+                            f"This category's label carries no year, and company templates "
+                            f"exist for {', '.join(map(str, candidates))}. Imported as {year}. "
+                            f"{consequence}; if yours is {others}, change the grant's year "
+                            f"after importing."))
+    return year
+
+
 def derive_draft(statement: Statement | None, rows: list[ShareRow],
                  sk: Skeleton) -> tuple[Draft, list[Finding]]:
     """Build a draft from the files using the deterministic rules."""
@@ -286,13 +329,8 @@ def derive_draft(statement: Statement | None, rows: list[ShareRow],
                                         f"must add a template."))
                 continue
             else:
-                findings.append(Finding("G1", WARNING, row.label,
-                                        f"This category's label carries no year, and more than "
-                                        f"one company template exists for {gtype} "
-                                        f"({', '.join(map(str, candidate_years))}) — cannot "
-                                        f"tell which applies, so {row.shares_granted:,} shares "
-                                        f"were not imported."))
-                continue
+                year = row.year = _year_for_yearless(row, gtype, candidate_years,
+                                                     statement, sk, findings)
 
         if not year_in_range(year):
             # The label grammar takes any four digits, and every schedule below

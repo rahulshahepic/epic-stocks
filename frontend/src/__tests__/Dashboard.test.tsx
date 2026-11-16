@@ -132,7 +132,7 @@ function snapshotFor(asOf: string, sales = MOCK_SALES) {
       next_event: {date: '2027-03-01', event_type: 'Vesting'}, next_event_detail: MOCK_EVENTS[2],
       total_stock_value: sold ? 3000 : 20000, vested_stock_value: sold ? 0 : 17000,
       purchased_unvested_stock_value: 3000, net_equity: sold ? 3000 : -55000,
-      accrued_unbooked_interest: 0, total_cost_basis: sold ? 3000 : 6980,
+      accrued_unbooked_interest: 0, interest_status: 'Reconciled through 2026-03-01; estimated afterward', total_cost_basis: sold ? 3000 : 6980,
       unvested_shares: 1000, price_is_estimate: false,
       ...MOCK_DASHBOARD_NEXT_OVERRIDE.value,
     },
@@ -486,6 +486,7 @@ describe('server dashboard snapshots', () => {
     mockApi()
     renderDashboard()
     expect(await screen.findByText('$1,234')).toBeInTheDocument()
+    expect(screen.getByText('Interest: Reconciled through 2026-03-01; estimated afterward')).toBeInTheDocument()
     expect(globalThis.fetch).toHaveBeenCalledWith(expect.stringContaining('/api/dashboard?as_of='), expect.anything())
     expect(globalThis.fetch).not.toHaveBeenCalledWith(expect.stringContaining('/api/sales/holdings'), expect.anything())
   })

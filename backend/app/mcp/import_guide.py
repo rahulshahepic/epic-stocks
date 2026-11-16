@@ -57,6 +57,21 @@ or refinanced — ask before deleting it. Past refinance history does not need
 re-creating. A future refinance or an early payment the person made is added
 from its own document.
 
+If the person supplies a statement with accrued interest, optionally reconcile
+it with kind `interest_checkpoint` in apply_changes. Read
+list_interest_checkpoints first. Each row is {loan_id or loan_number,
+statement_date, accrued_through, accrued_interest, source?}. `accrued_interest`
+is the outstanding UNCAPITALIZED balance for that loan at the cutoff, not an
+annual interest charge or interest already included in principal. Match the
+loan number exactly. Keep statement_date and accrued_through separate: use an
+explicit interest cutoff in the statement; if only an issue date is given and
+coverage is ambiguous, ask the person to confirm the cutoff. Never guess it.
+Show the old calculation, statement balance and change before applying.
+A repeated loan/cutoff updates its existing id and version. Do not remove older
+checkpoints or loans absent from this statement. Calculation remains automatic
+without statements and for loans the statement does not cover.
+
+
 The Eureka "Data for Stock Workbook" CSV gives each grant's shares, cost basis
 (total; divide by shares for price) and shares sold. Shares sold may be real
 sales or shares exchanged for down payments — ask which, and record each real

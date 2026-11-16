@@ -31,13 +31,13 @@ def _apply(ctx: ToolContext, args: dict):
 register(Tool(
     name="apply_changes", title="Add, correct or remove equity records", scope=EQUITY_WRITE,
     description=(
-        "Change the person's grants, loans, share prices, sales and loan payments in one "
+        "Change the person's grants, loans, share prices, sales, loan payments and statement interest checkpoints in one "
         "all-or-nothing step. Call it first WITHOUT confirm: that previews — every change is "
         "checked exactly as the app would store it, nothing is saved — and returns each "
         "change, the position before and after, and a confirm token. Show the person what "
         "will change; when they agree, call again with the same changes and the token. "
         "Read get_import_guide first. Each change is {kind, action, id?, version?, values?, "
-        "note?}: kind is grant | loan | price | sale | loan_payment; action is create | update "
+        "note?}: kind is grant | loan | price | sale | loan_payment | interest_checkpoint; action is create | update "
         "| delete; update and delete need the row's id and version from the list tools; an "
         "update sends only the fields that change. A grant's schedule is `vesting`, a list "
         "of {date, shares} — or vest_start and periods for equal yearly parts. Loan "

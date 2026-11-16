@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
-from scaffold.models import User, Grant, Loan, Price, Sale, LoanPayment, ImportBackup, TaxSettings
+from scaffold.models import User, Grant, Loan, Price, Sale, LoanPayment, LoanInterestCheckpoint, ImportBackup, TaxSettings
 from scaffold.auth import get_current_user
 from scaffold.quota import check_row_count
 from scaffold.safe_workbook import WorkbookRejected, load_workbook_safely
@@ -19,7 +19,7 @@ from app.excel_io import (FORMULA_LEADS, read_grants_from_excel, read_vesting_fr
                       read_loan_payments_from_excel, read_sales_from_excel, write_events_to_excel)
 from services.timeline_cache import get_timeline
 from app.date_utils import to_date as _to_date
-from schemas import LOAN_TYPES
+from schemas import LOAN_TYPES, LoanInterestCheckpointCreate
 
 import openpyxl
 from openpyxl.styles import Font, PatternFill
@@ -109,6 +109,11 @@ def _validate_loan(ln: dict, row: int) -> list[str]:
         errors.append(f"Row {row}: interest_rate cannot be negative")
     elif float(rate) > 1:
         errors.append(f"Row {row}: interest_rate cannot exceed 1.0 (100%)")
+    if ln.get("disbursed_on") is not None:
+        try:
+            _to_date(ln["disbursed_on"])
+        except Exception:
+            errors.append(f"Row {row}: disbursed_on is not a valid date")
     due = ln.get("due")
     if due is None:
         errors.append(f"Row {row}: due_date is required")
@@ -228,6 +233,10 @@ def import_excel(
     has_loan_payments = "loanpayments" in sheet_names
     has_sales = "sales" in sheet_names
     vesting_raw = []
+    checkpoints_raw = set()
+    if "interestcheckpoints" in sheet_names and not has_loans:
+        wb.close()
+        raise HTTPException(400, "InterestCheckpoints requires the Loans sheet from the same export")
 
     if not any([has_schedule, has_prices, has_loans, has_loan_payments, has_sales]):
         wb.close()
@@ -253,6 +262,25 @@ def import_excel(
             loan_payments_raw = read_loan_payments_from_excel(_ws("loanpayments"))
         if has_sales:
             sales_raw = read_sales_from_excel(_ws("sales"))
+        if "interestcheckpoints" in sheet_names:
+            for row in _ws("interestcheckpoints").iter_rows(min_row=2, values_only=True):
+                if not any(v is not None for v in row):
+                    continue
+                loan_row, statement, cutoff, amount, source = (*row[:5], *([None] * max(0, 5 - len(row))))
+                if not isinstance(loan_row, (int, float)) or int(loan_row) != loan_row or not 2 <= loan_row < len(loans_raw) + 2:
+                    raise ValueError("InterestCheckpoints: invalid Loans row reference")
+                body = LoanInterestCheckpointCreate(loan_id=1, statement_date=_to_date(statement),
+                    accrued_through=_to_date(cutoff), accrued_interest=amount, source=source).model_dump(exclude={"loan_id"})
+                loan = loans_raw[int(loan_row) - 2]
+                start = _to_date(loan["disbursed_on"]) if loan.get("disbursed_on") else date(_to_year(loan["loan_year"]) + (loan["loan_type"] == "Interest"), 1, 1)
+                if not start <= body["accrued_through"] <= body["statement_date"] <= date.today():
+                    raise ValueError("InterestCheckpoints: invalid statement or interest cutoff date")
+                key = (int(loan_row), body["accrued_through"])
+                if key in checkpoints_raw:
+                    raise ValueError("InterestCheckpoints: duplicate loan and cutoff")
+                checkpoints_raw.add(key)
+                check_row_count(LoanInterestCheckpoint, len(checkpoints_raw))
+                loan.setdefault("interest_checkpoints", []).append(body)
     except Exception as e:
         wb.close()
         raise HTTPException(status_code=400, detail=f"Failed to parse Excel file: {e}") from e
@@ -318,6 +346,7 @@ def import_excel(
     check_row_count(Price, len(prices_raw))
     check_row_count(Loan, len(loans_raw))
     check_row_count(LoanPayment, len(loan_payments_raw))
+    check_row_count(LoanInterestCheckpoint, len(checkpoints_raw))
     check_row_count(Sale, len(sales_raw))
 
     # Snapshot current data before wiping (keep last 3 backups per user)
@@ -329,6 +358,7 @@ def import_excel(
     if has_loan_payments or has_loans:
         db.query(LoanPayment).filter(LoanPayment.user_id == user.id).delete()
     if has_loans:
+        db.query(LoanInterestCheckpoint).filter(LoanInterestCheckpoint.user_id == user.id).delete()
         db.query(Loan).filter(Loan.user_id == user.id).delete()
     if has_schedule:
         db.query(Grant).filter(Grant.user_id == user.id).delete()
@@ -362,7 +392,12 @@ def import_excel(
             interest_rate=ln["interest_rate"],
             due_date=_to_date(ln["due"]),
             loan_number=str(ln.get("loan_number") or ""),
+            disbursed_on=_to_date(ln["disbursed_on"]) if ln.get("disbursed_on") else None,
         )
+        loan_obj.interest_checkpoints = [LoanInterestCheckpoint(
+            user_id=user.id, **{**c, "statement_date": _to_date(c["statement_date"]),
+                               "accrued_through": _to_date(c["accrued_through"])})
+            for c in ln.get("interest_checkpoints", [])]
         db.add(loan_obj)
         inserted_loans.append((ln, loan_obj))
 
@@ -392,6 +427,16 @@ def import_excel(
     from app.loan_state import validate_refinance_graph
     validate_refinance_graph(db.query(Loan).filter(Loan.user_id == user.id).all())
     db.flush()
+    from app.loan_projection import loan_start_date
+    from app.loan_state import refinanced_loan_ids
+    imported_loans = {obj.id: obj for _, obj in inserted_loans}
+    imported_grants = {(g.year, g.type): core_grant(g) for g in db.query(Grant).filter(Grant.user_id == user.id)}
+    for _, obj in inserted_loans:
+        start = loan_start_date(obj, imported_grants, imported_loans)
+        cutoffs = [c.accrued_through for c in obj.interest_checkpoints]
+        if cutoffs and (min(cutoffs) < start or obj.id in refinanced_loan_ids(imported_loans.values(), max(cutoffs))):
+            raise HTTPException(400, "InterestCheckpoints: cutoff precedes disbursement or follows refinance")
+
 
     # Insert loan payments (loan_num_to_id already built above)
     payments_created = 0
@@ -524,6 +569,9 @@ def _save_import_backup(user_id: int, has_schedule: bool, has_prices: bool, has_
                 "due_date": str(ln.due_date), "loan_number": ln.loan_number or "",
                 "refinances_loan_number": loan_id_to_num.get(ln.refinances_loan_id, "") if ln.refinances_loan_id else "",
                 "disbursed_on": str(ln.disbursed_on) if ln.disbursed_on else None,
+                "interest_checkpoints": [{"statement_date": str(c.statement_date),
+                    "accrued_through": str(c.accrued_through), "accrued_interest": c.accrued_interest,
+                    "source": c.source} for c in ln.interest_checkpoints],
             })
     if has_loans or has_loan_payments:
         for lp in db.query(LoanPayment).filter(LoanPayment.user_id == user_id).all():
@@ -630,6 +678,7 @@ def restore_import_backup(
         db.query(LoanPayment).filter(LoanPayment.user_id == user.id).delete()
     if included.get("loans"):
         db.query(Loan).filter(Loan.user_id == user.id).update({Loan.refinances_loan_id: None})
+        db.query(LoanInterestCheckpoint).filter(LoanInterestCheckpoint.user_id == user.id).delete()
         db.query(Loan).filter(Loan.user_id == user.id).delete()
     if included.get("grants"):
         db.query(Grant).filter(Grant.user_id == user.id).delete()
@@ -651,6 +700,10 @@ def restore_import_backup(
             due_date=_to_date(ln["due_date"]), loan_number=ln.get("loan_number", ""),
             disbursed_on=_to_date(ln["disbursed_on"]) if ln.get("disbursed_on") else None,
         )
+        loan_obj.interest_checkpoints = [LoanInterestCheckpoint(
+            user_id=user.id, **{**c, "statement_date": _to_date(c["statement_date"]),
+                               "accrued_through": _to_date(c["accrued_through"])})
+            for c in ln.get("interest_checkpoints", [])]
         db.add(loan_obj)
         inserted_loans.append((ln, loan_obj))
 
@@ -751,7 +804,7 @@ def download_template():
     # Loans sheet
     ws_loans = wb.create_sheet("Loans")
     _write_headers(ws_loans, ["Loan #", "Grant Year", "Grant Type", "Loan Type", "Loan Year",
-                               "Amount", "Rate", "Due Date", "Refinances Loan #"])
+                               "Amount", "Rate", "Due Date", "Refinances Loan #", "Disbursed On"])
     _body_cell(ws_loans, 2, 1, "L001")
     _body_cell(ws_loans, 2, 2, 2020)
     _body_cell(ws_loans, 2, 3, "Purchase")
@@ -884,7 +937,7 @@ def download_sample():
     # ---- Loans sheet ----
     ws_loans = wb.create_sheet("Loans")
     _write_headers(ws_loans, ["Loan #", "Grant Year", "Grant Type", "Loan Type", "Loan Year",
-                               "Amount", "Rate", "Due Date", "Refinances Loan #"])
+                               "Amount", "Rate", "Due Date", "Refinances Loan #", "Disbursed On"])
 
     loan_header_comments = [
         (1, "Loan number from your Epic statement (e.g. 002001). Used to match payoff sales."),
@@ -981,7 +1034,7 @@ def download_sample():
 _SCHED_HEADERS = ["Year", "Type", "Shares", "Price", "Vest Start", "Periods",
                    "Exercise Date", "DP Shares", "83(b)"]
 _LOAN_HEADERS = ["Loan #", "Grant Year", "Grant Type", "Loan Type", "Loan Year",
-                  "Amount", "Rate", "Due Date", "Refinances Loan #"]
+                  "Amount", "Rate", "Due Date", "Refinances Loan #", "Disbursed On"]
 _PRICE_HEADERS = ["Date", "Price", "Is Estimate", "Expected Announcement Date", "Announced Date"]
 _LOAN_PAYMENT_HEADERS = ["Loan #", "Date", "Amount", "Notes"]
 _SALE_HEADERS = ["Date", "Shares", "Price", "Notes", "Loan #"]
@@ -1098,6 +1151,19 @@ def export_excel(
         _body_cell(ws_loans, i, 8, ln.due_date, "mm/dd/yyyy")
         ref_num = loan_id_to_num.get(ln.refinances_loan_id, "") if ln.refinances_loan_id else ""
         _body_cell(ws_loans, i, 9, ref_num or None)
+        _body_cell(ws_loans, i, 10, ln.disbursed_on, "mm/dd/yyyy")
+
+    ws_checkpoints = wb.create_sheet("InterestCheckpoints")
+    _write_headers(ws_checkpoints, ["Loans Row", "Statement Date", "Accrued Through", "Accrued Interest", "Source"])
+    cp_row = 2
+    for loan_row, loan in enumerate(loans_db, 2):
+        for checkpoint in loan.interest_checkpoints:
+            if as_of_date and checkpoint.accrued_through > as_of_date:
+                continue
+            for col, value in enumerate((loan_row, checkpoint.statement_date, checkpoint.accrued_through,
+                                         checkpoint.accrued_interest, checkpoint.source), 1):
+                _body_cell(ws_checkpoints, cp_row, col, value, "mm/dd/yyyy" if col in (2, 3) else None)
+            cp_row += 1
 
     # -- Vesting sheet: the schedule itself, one row per date --
     ws_vest = wb.create_sheet("Vesting")

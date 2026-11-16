@@ -21,6 +21,7 @@ from sqlalchemy import text
 # (table, user_id column) in FK-safe order: children before parents.
 USER_OWNED_TABLES: list[tuple[str, str]] = [
     ("sales", "user_id"),
+    ("loan_interest_checkpoints", "user_id"),
     ("loan_payments", "user_id"),
     ("loans", "user_id"),
     ("grant_vestings", "user_id"),
@@ -47,6 +48,7 @@ USER_OWNED_TABLES: list[tuple[str, str]] = [
 # Financial data only — what POST /api/me/reset clears, keeping the account.
 FINANCIAL_TABLES: list[tuple[str, str]] = [
     ("sales", "user_id"),
+    ("loan_interest_checkpoints", "user_id"),
     ("loan_payments", "user_id"),
     ("loans", "user_id"),
     ("grant_vestings", "user_id"),

@@ -357,6 +357,7 @@ export default function Dashboard() {
                 {totalValue === null ? '—' : fmt$(totalValue)} in shares − {fmt$(cv.total_loan_principal)} loans
                 {cv.accrued_unbooked_interest > 0 && <> − {fmt$(cv.accrued_unbooked_interest)} accrued interest</>}
               </p>
+              {cv.interest_status && <p className="text-sm text-white">Interest: {cv.interest_status}</p>}
               <p className="font-semibold tabular-nums">
                 {fmtNum(cv.total_shares)} vested shares · {(cv.current_price === null ? '—' : fmtPrice(cv.current_price))}/share
                 {cv.price_is_estimate ? ' tentative, awaiting announcement' : ''}

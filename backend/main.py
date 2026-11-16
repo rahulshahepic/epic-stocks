@@ -13,7 +13,7 @@ from starlette.responses import FileResponse
 import database
 
 from scaffold.routers import auth_router, admin, backups, notifications, push, unsubscribe, reports, plugin_downloads
-from app.routers import changes, grants, loans, prices, events, flows, import_export, epic_import, sales, cache as cache_router, tips, content, sharing, trial
+from app.routers import interest_checkpoints, changes, grants, loans, prices, events, flows, import_export, epic_import, sales, cache as cache_router, tips, content, sharing, trial
 from app.routers.retirement import retirement_router, dashboard_prefs_router
 from scaffold.oauth import router as oauth_router
 from scaffold.oauth.router import well_known_router as oauth_well_known_router
@@ -349,7 +349,7 @@ class MaintenanceMiddleware:
 # Write methods that are blocked on epic-mode fact tables.
 _EPIC_WRITE_METHODS = frozenset({"POST", "PUT", "DELETE", "PATCH"})
 # Prefixes whose writes are blocked in epic mode (data owned by Epic's systems).
-_EPIC_BLOCKED_PREFIXES = ("/api/grants", "/api/prices", "/api/loans", "/api/import", "/api/changes")
+_EPIC_BLOCKED_PREFIXES = ("/api/grants", "/api/prices", "/api/loans", "/api/loan-interest-checkpoints", "/api/import", "/api/changes")
 # Prefixes whose writes are always allowed (user-initiated actions).
 _EPIC_ALLOWED_PREFIXES = (
     "/api/internal/",
@@ -615,6 +615,7 @@ _fastapi_app.include_router(notifications.router)
 _fastapi_app.include_router(sales.router)
 _fastapi_app.include_router(sales.tax_router)
 _fastapi_app.include_router(loans.lp_router)
+_fastapi_app.include_router(interest_checkpoints.router)
 _fastapi_app.include_router(cache_router.router)
 _fastapi_app.include_router(tips.router)
 _fastapi_app.include_router(sharing.router)

@@ -962,7 +962,7 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, i
     proj_settings = _projection_settings(ts_row)
     tax_due = _tax_due_dates(db)
     projection = _project(grants, prices, loans_db, loan_payments_db, sales_db, proj_settings, tax_due)
-    from app.loan_projection import outstanding_at_stop
+    from app.loan_projection import outstanding_at_stop, reconciliation_status
     snapshot_projection = _project(grants, prices, loans_db, loan_payments_db, sales_db,
                                    proj_settings, tax_due, stop=cutoff)
     at_cutoff = outstanding_at_stop(snapshot_projection)
@@ -1126,6 +1126,7 @@ def _get_dashboard_data(user: User, db: Session, as_of: date | None = None, *, i
             "total_stock_value": stock_value,
             "outstanding_loan_balance": position["outstanding_loan_balance"],
             "accrued_unbooked_interest": position["accrued_unbooked_interest"],
+            "interest_reconciliation": reconciliation_status(snapshot_projection),
             "net_equity": (round(
                 stock_value - position["outstanding_loan_balance"]
                 - position["accrued_unbooked_interest"], 2

@@ -589,6 +589,28 @@ def test_a_loan_paid_down_since_is_not_read_as_a_down_payment(skeleton):
     assert [s.shares for s in draft.sales] == [33_333]
 
 
+def workbook_only(skeleton, csv_raw):
+    rows, f1 = parse_share_csv(csv_raw)
+    draft, f2 = derive_draft(None, rows, skeleton)
+    return draft, f1 + f2 + validate_draft(draft, None, rows, skeleton)
+
+
+def test_without_a_statement_the_workbook_loan_balance_reads_the_down_payment(skeleton):
+    csv_raw, _ = one_grant_files(**STOCK_DP)
+    draft, findings = workbook_only(skeleton, csv_raw)
+    assert grant(draft, 2022, "Purchase").dp_shares == -1_334
+    assert "G8" in codes(findings, "info")
+    assert "G2" not in codes(findings) and draft.sales == []
+
+
+def test_without_a_statement_a_paid_down_balance_is_still_not_a_down_payment(skeleton):
+    csv_raw, _ = one_grant_files(shares=300_000, basis=4_500_000.0,
+                                 loan=4_000_005.0, sold=33_333)
+    draft, findings = workbook_only(skeleton, csv_raw)
+    assert grant(draft, 2022, "Purchase").dp_shares == 0
+    assert "G2" in codes(findings, "warning")
+
+
 def test_a_down_payment_in_cash_leaves_no_shares_to_explain(skeleton):
     # 20,000.00 exactly: the minimum, but not a whole number of shares.
     draft, findings = draft_from_files(

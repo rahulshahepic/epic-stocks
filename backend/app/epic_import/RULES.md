@@ -99,6 +99,11 @@ account for the shares, in which case none are applied. A down payment above the
 policy minimum, or a loan paid down since — which widens the same gap — reads as
 unexplained shares and falls to `G2` rather than being quietly reclassified.
 
+The purchase loan comes from the Stock Loan Statement. With no statement
+uploaded, the workbook's own `Loan Balance` for the grant stands in for it; the
+same exact-minimum, whole-share test applies, so a balance that also carries
+other loans matches nothing and falls to `G2`.
+
 ---
 
 ## Reading the loan statement — `L*`

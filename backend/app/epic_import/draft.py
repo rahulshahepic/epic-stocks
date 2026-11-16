@@ -411,7 +411,7 @@ def derive_draft(statement: Statement | None, rows: list[ShareRow],
             year_on_statement=lyear is not None,
         ))
 
-    _explain_shares_sold(draft, rows, sk, findings)
+    _explain_shares_sold(draft, rows, sk, findings, has_statement=statement is not None)
 
     # Rule P1 — a purchase grant's per-share basis is that year's share price.
     # Dated 1 January to match how the wizard keys prices by year.
@@ -426,7 +426,7 @@ def derive_draft(statement: Statement | None, rows: list[ShareRow],
 
 
 def _explain_shares_sold(draft: Draft, rows: list[ShareRow], sk: Skeleton,
-                         findings: list[Finding]) -> None:
+                         findings: list[Finding], has_statement: bool = False) -> None:
     """Rule G8. Account for the shares Epic reports gone from a grant.
 
     Epic reports shares handed back to cover a later purchase's down payment in
@@ -444,15 +444,24 @@ def _explain_shares_sold(draft: Draft, rows: list[ShareRow], sk: Skeleton,
     if not sold_total:
         return
 
+    # Without a Loan Statement, the workbook's own Loan Balance for the grant
+    # stands in for its purchase loan. down_payment_in_stock accepts only a
+    # whole number of shares at exactly the policy minimum, so a balance that
+    # also carries other loans, or has been paid down, matches nothing.
+    workbook_balance = {(r.year, r.grant_type): r.loan_balance for r in rows
+                        if r.year and r.loan_balance}
     candidates = []
     for g in draft.grants:
         if g.type != "Purchase" or g.price <= 0:
             continue
         purchase_loans = [l.amount for l in g.loans if l.loan_type == "Purchase"]
-        if not purchase_loans:
+        if purchase_loans:
+            balance = round(sum(purchase_loans), 2)
+        elif not has_statement and workbook_balance.get(g.key):
+            balance = workbook_balance[g.key]
+        else:
             continue
-        dp = down_payment_in_stock(g.year, g.type, g.shares, g.price,
-                                   round(sum(purchase_loans), 2),
+        dp = down_payment_in_stock(g.year, g.type, g.shares, g.price, balance,
                                    sk.dp_min_percent, sk.dp_min_cap)
         if dp is not None:
             candidates.append(dp)

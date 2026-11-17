@@ -2,16 +2,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AiConnections } from '../scaffold/pages/admin/AiConnections.tsx'
-import { api } from '../api.ts'
+import { api, type McpRejectedRedirect } from '../api.ts'
 
 const SETTINGS = {
   enabled: true,
   connections: 2,
   hosts: [
-    { id: 1, label: 'ChatGPT', host: 'chatgpt.com', enabled: true },
-    { id: 2, label: 'Claude', host: 'claude.ai', enabled: true },
-    { id: 3, label: 'Claude', host: 'claude.com', enabled: false },
+    { id: 1, label: 'ChatGPT', pattern: 'https://chatgpt.com/connector_platform_oauth_redirect', match_type: 'exact' as const, enabled: true },
+    { id: 2, label: 'Claude', pattern: 'https://claude.ai/api/mcp/auth_callback', match_type: 'exact' as const, enabled: true },
+    { id: 3, label: 'Claude', pattern: 'https://claude.com/api/mcp/auth_callback', match_type: 'exact' as const, enabled: false },
   ],
+  rejected: [] as McpRejectedRedirect[],
 }
 
 const USAGE = {
@@ -52,8 +53,8 @@ describe('AiConnections', () => {
     await screen.findByText('ChatGPT')
     // Claude is two hostnames but one thing to switch off.
     expect(screen.getAllByText('Claude')).toHaveLength(1)
-    expect(screen.getByText('claude.ai')).toBeInTheDocument()
-    expect(screen.getByText('claude.com')).toBeInTheDocument()
+    expect(screen.getByText('https://claude.ai/api/mcp/auth_callback')).toBeInTheDocument()
+    expect(screen.getByText('https://claude.com/api/mcp/auth_callback')).toBeInTheDocument()
   })
 
   it('reports how many connections are live', async () => {
@@ -84,7 +85,7 @@ describe('AiConnections', () => {
     const toggle = vi.spyOn(api, 'adminToggleMcpHost').mockResolvedValue(SETTINGS)
     render(<AiConnections onError={() => {}} />)
 
-    await screen.findByText('chatgpt.com')
+    await screen.findByText('https://chatgpt.com/connector_platform_oauth_redirect')
     await userEvent.click(screen.getAllByRole('button', { name: 'Disable' })[0])
     expect(toggle).toHaveBeenCalledWith(1, false)
   })
@@ -95,10 +96,10 @@ describe('AiConnections', () => {
     render(<AiConnections onError={() => {}} />)
 
     await userEvent.type(await screen.findByPlaceholderText('Copilot'), 'Copilot')
-    await userEvent.type(screen.getByPlaceholderText('copilot.microsoft.com'), 'copilot.microsoft.com')
+    await userEvent.type(screen.getByPlaceholderText('https://copilot.microsoft.com/oauth/callback'), 'copilot.microsoft.com')
     await userEvent.click(screen.getByRole('button', { name: 'Add' }))
 
-    expect(add).toHaveBeenCalledWith('Copilot', 'copilot.microsoft.com')
+    expect(add).toHaveBeenCalledWith('Copilot', 'copilot.microsoft.com', undefined)
     await waitFor(() => {
       expect(screen.getByPlaceholderText('Copilot')).toHaveValue('')
     })
@@ -111,12 +112,67 @@ describe('AiConnections', () => {
     render(<AiConnections onError={onError} />)
 
     await userEvent.type(await screen.findByPlaceholderText('Copilot'), 'Again')
-    await userEvent.type(screen.getByPlaceholderText('copilot.microsoft.com'), 'chatgpt.com')
+    await userEvent.type(screen.getByPlaceholderText('https://copilot.microsoft.com/oauth/callback'), 'chatgpt.com')
     await userEvent.click(screen.getByRole('button', { name: 'Add' }))
 
     await waitFor(() => {
       expect(onError).toHaveBeenCalledWith('chatgpt.com is already on the list')
     })
+  })
+
+  it('passes the chosen match type when adding a rule', async () => {
+    vi.spyOn(api, 'adminGetMcp').mockResolvedValue(SETTINGS)
+    const add = vi.spyOn(api, 'adminAddMcpHost').mockResolvedValue(SETTINGS)
+    render(<AiConnections onError={() => {}} />)
+
+    await userEvent.type(await screen.findByPlaceholderText('Copilot'), 'Copilot')
+    await userEvent.type(screen.getByPlaceholderText('https://copilot.microsoft.com/oauth/callback'), 'https://copilot.microsoft.com/oauth/')
+    await userEvent.selectOptions(screen.getByLabelText('Match'), 'prefix')
+    await userEvent.click(screen.getByRole('button', { name: 'Add' }))
+    expect(add).toHaveBeenCalledWith('Copilot', 'https://copilot.microsoft.com/oauth/', 'prefix')
+  })
+
+  const REFUSED = {
+    id: 9, redirect_uri: 'https://copilot.microsoft.com/oauth/callback', client_name: 'Copilot',
+    reason: 'not accepted', attempts: 3, first_seen: '2026-11-01T00:00:00Z', last_seen: '2026-11-02T00:00:00Z',
+  }
+
+  it('lists refused redirect addresses and allows one exactly', async () => {
+    vi.spyOn(api, 'adminGetMcp').mockResolvedValue({ ...SETTINGS, rejected: [REFUSED] })
+    const add = vi.spyOn(api, 'adminAddMcpHost').mockResolvedValue(SETTINGS)
+    render(<AiConnections onError={() => {}} />)
+
+    expect(await screen.findByText(REFUSED.redirect_uri)).toBeInTheDocument()
+    expect(screen.getByText(/Copilot · 3 attempts/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Allow exactly' }))
+    expect(add).toHaveBeenCalledWith('copilot.microsoft.com', REFUSED.redirect_uri, 'exact')
+    await waitFor(() => expect(screen.queryByText(REFUSED.redirect_uri)).not.toBeInTheDocument())
+  })
+
+  it('never files an allowed address under the name the registrant chose', async () => {
+    const spoof = { ...REFUSED, client_name: 'Claude', redirect_uri: 'https://evil.example/cb' }
+    vi.spyOn(api, 'adminGetMcp').mockResolvedValue({ ...SETTINGS, rejected: [spoof] })
+    const add = vi.spyOn(api, 'adminAddMcpHost').mockResolvedValue(SETTINGS)
+    render(<AiConnections onError={() => {}} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Allow exactly' }))
+    expect(add).toHaveBeenCalledWith('evil.example', spoof.redirect_uri, 'exact')
+  })
+
+  it('dismisses a refused redirect address', async () => {
+    vi.spyOn(api, 'adminGetMcp').mockResolvedValue({ ...SETTINGS, rejected: [REFUSED] })
+    const dismiss = vi.spyOn(api, 'adminDismissRejectedRedirect').mockResolvedValue(SETTINGS)
+    render(<AiConnections onError={() => {}} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Dismiss' }))
+    expect(dismiss).toHaveBeenCalledWith(9)
+  })
+
+  it('loads a refused address into the form to edit as a rule', async () => {
+    vi.spyOn(api, 'adminGetMcp').mockResolvedValue({ ...SETTINGS, rejected: [REFUSED] })
+    render(<AiConnections onError={() => {}} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit as rule' }))
+    expect(screen.getByPlaceholderText('https://copilot.microsoft.com/oauth/callback')).toHaveValue(REFUSED.redirect_uri)
+    expect(screen.getByPlaceholderText('Copilot')).toHaveValue('copilot.microsoft.com')
+    expect(screen.getByLabelText('Match')).toHaveValue('prefix')
   })
 
   it('reports usage per account and per tool', async () => {

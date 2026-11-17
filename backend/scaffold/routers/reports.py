@@ -38,7 +38,7 @@ MAX_MESSAGE = 2000
 MAX_ERROR_MESSAGE = 500
 MAX_CLIENT_LOG = 8000
 MAX_USER_AGENT = 400
-SOURCES = {"manual", "toast", "crash", "import"}
+SOURCES = {"manual", "toast", "crash", "import", "request"}
 _ERROR_REF_RE = re.compile(r"^[A-Za-z0-9-]{1,32}$")
 
 

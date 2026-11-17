@@ -1,8 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { AiConnectionsSection } from '../scaffold/components/AiConnectionsSection.tsx'
+import { MemoryRouter } from 'react-router-dom'
+import { AiConnectionsSection as Section } from '../scaffold/components/AiConnectionsSection.tsx'
 import { api } from '../api.ts'
+
+function AiConnectionsSection(props: { showGuideLink?: boolean }) {
+  return <MemoryRouter><Section {...props} /></MemoryRouter>
+}
 
 const CONNECTED = [
   {
@@ -27,45 +32,17 @@ beforeEach(() => {
 })
 
 describe('AiConnectionsSection', () => {
-  it('downloads provider-specific plugins without asking for an address', async () => {
+  it('sends people to the Connect your AI page for setup', async () => {
     vi.spyOn(api, 'getAiConnections').mockResolvedValue([])
     render(<AiConnectionsSection />)
-    const chatgpt = await screen.findByRole('link', { name: 'Download ChatGPT plugin' })
-    expect(chatgpt).toHaveAttribute('href', '/api/ai/plugin/chatgpt')
-    expect(chatgpt).toHaveAttribute('download', 'epic-stocks-chatgpt.zip')
-    expect(screen.queryByText('Your server address')).not.toBeInTheDocument()
-    await userEvent.click(screen.getByRole('tab', { name: 'Claude' }))
-    expect(screen.getByRole('link', { name: 'Download Claude plugin' })).toHaveAttribute('href', '/api/ai/plugin/claude')
+    expect(await screen.findByRole('link', { name: 'Connect an assistant' })).toHaveAttribute('href', '/connect-ai')
   })
 
-  it('defaults to the ChatGPT upload walkthrough', async () => {
+  it('leaves the link out on the Connect your AI page itself', async () => {
     vi.spyOn(api, 'getAiConnections').mockResolvedValue([])
-    render(<AiConnectionsSection />)
-    expect(await screen.findByText(/Upload plugin and select the ZIP/)).toBeInTheDocument()
-  })
-
-  it('explains the Claude upload flow', async () => {
-    vi.spyOn(api, 'getAiConnections').mockResolvedValue([])
-    render(<AiConnectionsSection />)
-    await userEvent.click(await screen.findByRole('tab', { name: 'Claude' }))
-    expect(screen.getByText(/Customize → Plugins and upload the ZIP/)).toBeInTheDocument()
-  })
-
-  it('explains Muse custom setup with this server and the callback prerequisite', async () => {
-    vi.spyOn(api, 'getAiConnections').mockResolvedValue([])
-    const write = vi.fn().mockResolvedValue(undefined)
-    Object.assign(navigator, { clipboard: { writeText: write } })
-    render(<AiConnectionsSection />)
-    await userEvent.click(await screen.findByRole('tab', { name: 'Muse' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Copy Muse setup request' }))
-    expect(write).toHaveBeenCalledWith(expect.stringContaining(`${window.location.origin}/mcp`))
-    expect(screen.getByRole('tab', { name: 'Muse' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByText(/Create a custom connector named Epic Stocks/)).toHaveTextContent(`${window.location.origin}/mcp`)
-    expect(screen.getByText(/Create a custom connector named Epic Stocks/)).toHaveTextContent('OAuth with PKCE')
-    expect(screen.getByText(/Create a custom connector named Epic Stocks/)).toHaveTextContent('get_dashboard')
-    expect(screen.getByText(/verify Muse.*OAuth callback host/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Muse.*custom connector instructions/ })).toHaveAttribute('href', 'https://www.meta.com/help/artificial-intelligence/1687253048996149/')
-    expect(screen.getByText(/sent to OpenAI, Anthropic or Meta/)).toBeInTheDocument()
+    render(<AiConnectionsSection showGuideLink={false} />)
+    await screen.findByText('Nothing connected yet.')
+    expect(screen.queryByRole('link', { name: 'Connect an assistant' })).not.toBeInTheDocument()
   })
 
   it('lists a connection with what it can read and when it was last used', async () => {

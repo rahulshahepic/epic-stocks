@@ -24,6 +24,7 @@ import Prices from './app/pages/Prices.tsx'
 import ImportExport from './app/pages/ImportExport.tsx'
 import ImportDiagnostics from './app/pages/ImportDiagnostics.tsx'
 import Settings from './scaffold/pages/Settings.tsx'
+import ConnectAi from './scaffold/pages/ConnectAi.tsx'
 import Admin from './scaffold/pages/Admin.tsx'
 import Content from './app/pages/Content.tsx'
 import Sales from './app/pages/Sales.tsx'
@@ -83,6 +84,7 @@ export default function App() {
                       <Route path="import" element={<FinancialRoute><ImportExport /></FinancialRoute>} />
                       <Route path="wizard" element={<Navigate to="/import" replace />} />
                       <Route path="settings" element={<FinancialRoute><Settings /></FinancialRoute>} />
+                      <Route path="connect-ai" element={<ConnectAi />} />
                       <Route path="admin" element={<Admin />} />
                       <Route path="import-diagnostics" element={<ImportDiagnostics />} />
                       <Route path="content" element={<Content />} />

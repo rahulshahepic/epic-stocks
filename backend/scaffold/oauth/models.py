@@ -11,7 +11,8 @@ before anyone signs in, so a client row belongs to nobody. Grants and codes do
 belong to a user, and are listed in USER_OWNED_TABLES.
 
 oauth_redirect_hosts is admin policy, not user data: which AI providers may
-connect to this deployment at all.
+connect to this deployment at all. oauth_rejected_redirects records what that
+policy refused, so an admin can allow a new assistant.
 """
 from datetime import datetime, timezone
 
@@ -98,7 +99,7 @@ class OAuthGrant(Base):
 
 
 class OAuthRedirectHost(Base):
-    """A provider an assistant may be sent back to after authorizing.
+    """A rule saying where an assistant may be sent back to after authorizing.
 
     Dynamic client registration is anonymous, so without an allowlist a stranger
     could register a client whose redirect URI points at their own server and
@@ -106,17 +107,46 @@ class OAuthRedirectHost(Base):
     allowlist, and it is admin policy rather than deployment configuration —
     turning ChatGPT off should not need a redeploy.
 
-    `label` groups hosts by the product a person recognises: Claude is two
-    hosts, and an admin should see one thing to switch off, not two.
+    `match_type` says how `pattern` is compared with a registered redirect URI
+    (scaffold/oauth/settings.py:uri_allowed):
+      exact     the whole URI, character for character
+      prefix    the URI starts with the pattern (which must include a path)
+      host      any https URI on this host or a subdomain of it
+      loopback  http(s) on this loopback host, any port and path
+
+    `label` groups rules by the product a person recognises: Claude is two
+    callbacks, and an admin should see one thing to switch off, not two.
     """
 
     __tablename__ = "oauth_redirect_hosts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     label: Mapped[str] = mapped_column(String, nullable=False)
-    host: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    pattern: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    match_type: Mapped[str] = mapped_column(String, nullable=False, server_default="host", default="host")
     enabled: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1", default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class OAuthRejectedRedirect(Base):
+    """A redirect URI that dynamic registration refused, kept so an admin can allow it.
+
+    New assistants appear faster than anyone can look up their callbacks; the
+    refusal itself is the most reliable source. Registration is anonymous, so
+    the table is bounded: one row per URI (a repeat bumps `attempts`), the URI
+    clipped, and the oldest rows dropped past REJECTED_REDIRECT_CAP. No user is
+    attached — registration happens before anyone signs in.
+    """
+
+    __tablename__ = "oauth_rejected_redirects"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    redirect_uri: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    client_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1", default=1)
+    first_seen: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    last_seen: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
 class McpAudit(Base):

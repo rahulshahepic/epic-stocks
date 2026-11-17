@@ -54,8 +54,8 @@ export default function ChatImportIntro() {
             {connected
               ? 'Your assistant is connected but cannot edit. '
               : 'First connect your assistant — it takes two minutes. '}
-            <Link to="/settings#ai-connections" className="font-medium text-cs-brand hover:underline">
-              {connected ? 'Reconnect it with Equity editing ticked' : 'Connect ChatGPT or Claude'}
+            <Link to={connected ? '/settings#ai-connections' : '/connect-ai'} className="font-medium text-cs-brand hover:underline">
+              {connected ? 'Reconnect it with Equity editing ticked' : 'Connect your assistant'}
             </Link>
           </p>
         )

@@ -5,7 +5,8 @@ a phone connect without anyone copying a client id around. It also means a
 stranger can register a client naming any redirect URI they like, which is the
 open-redirect and confused-deputy surface. Three things close it:
 
-  * the host must be on the allowlist an admin maintains (settings.py),
+  * the URI must match a rule on the allowlist an admin maintains
+    (settings.py) — an exact callback for every provider that publishes one,
   * redirect URIs are matched exactly at authorize time, never by prefix,
   * consent is shown every time, and it shows the origin the browser will be
     returned to rather than the display name the client chose for itself.
@@ -22,7 +23,7 @@ from urllib.parse import urlparse
 from sqlalchemy.orm import Session
 
 from .models import OAuthClient
-from .settings import allowed_redirect_hosts, host_allowed
+from .settings import has_any_rule, host_covered, uri_allowed
 from .tokens import client_secret_verifier, new_secret
 
 MAX_REDIRECT_URIS = 5
@@ -52,39 +53,51 @@ def validate_redirect_uri(uri: str) -> None:
     """
     try:
         parsed = urlparse(uri)
+        _ = parsed.port  # raises on a malformed port
     except ValueError:
         raise RegistrationError("redirect_uri is not a valid URL") from None
 
     if parsed.fragment:
         raise RegistrationError("redirect_uri must not contain a fragment")
+    if "@" in parsed.netloc or "\\" in uri or any(ord(c) < 33 for c in uri):
+        raise RegistrationError("redirect_uri is not a valid URL")
     host = (parsed.hostname or "").lower()
     if not host:
         raise RegistrationError("redirect_uri must be absolute")
 
     if _is_loopback(host):
         # OAuth 2.1 allows http for loopback, which is how a locally run MCP
-        # client authorizes during development. Never on a real deployment,
-        # where an attacker's "localhost" is the victim's own machine.
+        # client authorizes. On a real deployment an attacker's "localhost" is
+        # the victim's own machine, so it is refused unless an admin has
+        # switched a loopback rule on (they are seeded off when DOMAIN is set).
         if parsed.scheme not in ("http", "https"):
             raise RegistrationError("redirect_uri must be http or https")
-        if os.getenv("DOMAIN") and not host_allowed(host):
+        if os.getenv("DOMAIN") and not uri_allowed(uri):
             raise RegistrationError("Loopback redirect URIs are not accepted on this server")
         return
 
     if parsed.scheme != "https":
         raise RegistrationError("redirect_uri must use https")
 
-    if not host_allowed(host):
-        allowed = allowed_redirect_hosts()
-        if not allowed:
+    if not uri_allowed(uri):
+        if not has_any_rule():
             raise RegistrationError(
                 "This server is not accepting AI connections from anywhere. "
                 "An administrator has to add a provider first."
             )
         raise RegistrationError(
-            f"This server does not accept connections from {host}. "
-            f"Allowed: {', '.join(sorted(allowed))}"
+            f"This server does not accept {uri} as a redirect address. "
+            "The site administrator has been told; it can be allowed in "
+            "Admin → AI Connections."
         )
+
+
+def provider_still_allowed(redirect_uri: str) -> bool:
+    """Whether the provider a registered client returns to is still switched on."""
+    host = (urlparse(redirect_uri).hostname or "").lower()
+    if _is_loopback(host) and not os.getenv("DOMAIN"):
+        return True
+    return host_covered(host)
 
 
 def register_client(db: Session, *, client_name: str, redirect_uris: list[str],
@@ -97,7 +110,12 @@ def register_client(db: Session, *, client_name: str, redirect_uris: list[str],
     for uri in redirect_uris:
         if not isinstance(uri, str):
             raise RegistrationError("redirect_uris must be strings")
-        validate_redirect_uri(uri)
+        try:
+            validate_redirect_uri(uri)
+        except RegistrationError as exc:
+            from .settings import record_rejection
+            record_rejection(db, uri, client_name, str(exc))
+            raise
 
     name = (client_name or "Unnamed client").strip()[:MAX_CLIENT_NAME_LEN]
 

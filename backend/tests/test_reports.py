@@ -103,6 +103,16 @@ def test_bad_source_falls_back_to_manual(client):
         assert client.get("/api/admin/reports").json()[0]["source"] == "manual"
 
 
+def test_a_request_for_an_unsupported_assistant_is_kept_as_such(client):
+    """The Connect your AI page sends "support my assistant" through the same
+    report path, tagged so the admin can tell it from a fault."""
+    client.post("/api/report", json=_report(source="request", message="Please support Copilot"))
+    with _admin_env():
+        register_user(client, ADMIN_EMAIL)
+        entry = client.get("/api/admin/reports").json()[0]
+    assert (entry["source"], entry["message"]) == ("request", "Please support Copilot")
+
+
 def test_malformed_error_ref_is_dropped(client):
     client.post("/api/report", json=_report(error_ref="not a ref!!"))
     with _admin_env():

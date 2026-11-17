@@ -327,3 +327,118 @@ def seed_defaults(db: Session) -> None:
 
     db.commit()
     invalidate()
+
+
+# ── shared rule writers (admin page, approval queue) ────────────────────────
+
+class RuleConflict(ValueError):
+    """The rule is already on the list."""
+
+
+def _normalize_host(raw: str) -> str:
+    """A bare hostname, however it was typed. Admins paste URLs."""
+    value = (raw or "").strip().lower()
+    if "//" in value:
+        value = urlparse(value).hostname or ""
+    value = value.split("/")[0].split(":")[0].strip().strip(".")
+    if value.startswith("*."):
+        value = value[2:]
+    if not value or " " in value or "." not in value:
+        raise ValueError(f"'{raw}' is not a hostname — try something like chatgpt.com")
+    return value
+
+
+# Quotes, angle brackets and backslashes never belong in a callback, and
+# accepting them lets a crafted address smuggle text past log scrubbing.
+_UNSAFE_CALLBACK_CHARS = frozenset("'\"<>\\`{}|^")
+
+
+def normalize_rule(raw: str, match_type: str | None) -> tuple[str, str]:
+    """(match_type, pattern) for what an admin typed. Raises ValueError.
+
+    With no match type given, a full URL is an exact callback and anything
+    else a host. A prefix must include a path, so it cannot run on into a
+    different host ("https://a.com" would admit "https://a.com.evil.net").
+    """
+    if not isinstance(raw, str):
+        raise ValueError("The callback must be text")
+    if match_type is not None and not isinstance(match_type, str):
+        raise ValueError(f"Match must be one of {', '.join(MATCH_TYPES)}")
+    value = raw.strip()
+    if not value or len(value) > REJECTED_URI_MAX:
+        raise ValueError(f"The callback must be 1 to {REJECTED_URI_MAX} characters")
+    kind = (match_type or ("exact" if "://" in value else "host")).strip().lower()
+    if kind not in MATCH_TYPES:
+        raise ValueError(f"Match must be one of {', '.join(MATCH_TYPES)}")
+
+    if kind == "host":
+        return kind, _normalize_host(value)
+    if kind == "loopback":
+        try:
+            host = (urlparse(value).hostname if "//" in value else value.split(":")[0]) or ""
+        except ValueError:
+            host = ""
+        host = host.strip().lower()
+        if host not in ("localhost", "127.0.0.1", "::1"):
+            raise ValueError("A loopback rule is localhost, 127.0.0.1 or ::1")
+        return kind, host
+
+    try:
+        parsed = urlparse(value)
+        _ = parsed.port
+    except ValueError:
+        raise ValueError(f"'{raw}' is not a URL") from None
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise ValueError("A callback must be a full https:// address")
+    if (parsed.fragment or "@" in parsed.netloc or len(value) > REJECTED_URI_MAX
+            or any(c in _UNSAFE_CALLBACK_CHARS or c.isspace() or not c.isprintable() for c in value)):
+        raise ValueError("That is not a usable callback address")
+    if kind == "prefix" and not parsed.path.startswith("/"):
+        raise ValueError("A prefix must include a path, e.g. https://example.com/oauth/")
+    return kind, value
+
+
+def add_redirect_rule(db: Session, label: str, kind: str, pattern: str, *, commit: bool = True):
+    """Add an enabled rule; refused URIs it now admits drop off the review list.
+
+    With commit=False the change is only flushed: the caller commits it
+    together with its own bookkeeping and then calls invalidate().
+    """
+    from .models import OAuthRedirectHost, OAuthRejectedRedirect
+
+    if db.query(OAuthRedirectHost).filter(OAuthRedirectHost.pattern == pattern).first():
+        raise RuleConflict(f"{pattern} is already on the list")
+    row = OAuthRedirectHost(label=(label or "").strip()[:60] or "Unlabelled",
+                            pattern=pattern, match_type=kind, enabled=1)
+    db.add(row)
+    for refused in db.query(OAuthRejectedRedirect).all():
+        if rule_matches(kind, pattern, refused.redirect_uri):
+            db.delete(refused)
+    db.flush()
+    if commit:
+        db.commit()
+        invalidate()
+    return row
+
+
+def set_rule_enabled(db: Session, rule_id: int, enabled: bool, *, commit: bool = True):
+    """Switch one rule. Returns the row, or None if there is no such rule."""
+    from .models import OAuthRedirectHost
+
+    row = db.get(OAuthRedirectHost, rule_id)
+    if row is None:
+        return None
+    row.enabled = 1 if enabled else 0
+    db.flush()
+    if commit:
+        db.commit()
+        invalidate()
+    return row
+
+
+def rule_state(row) -> dict | None:
+    """The safe journal view of a rule."""
+    if row is None:
+        return None
+    return {"id": row.id, "label": row.label, "match_type": row.match_type,
+            "pattern": row.pattern, "enabled": bool(row.enabled)}

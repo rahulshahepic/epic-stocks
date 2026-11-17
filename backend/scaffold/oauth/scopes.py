@@ -20,14 +20,18 @@ COMP_WRITE = "comp:write"
 IMPORT_PROPOSE = "import:propose"
 EQUITY_WRITE = "equity:write"
 ADMIN_READ = "admin:read"
+ADMIN_WRITE = "admin:write"
 
 # Grantable today.
 SUPPORTED_SCOPES: tuple[str, ...] = (EQUITY_READ, COMP_READ, COMP_WRITE, IMPORT_PROPOSE, EQUITY_WRITE)
-ADMIN_SCOPES: tuple[str, ...] = (ADMIN_READ,)
+ADMIN_SCOPES: tuple[str, ...] = (ADMIN_READ, ADMIN_WRITE)
+# What an admin connection gets when it names nothing: diagnostics only.
+# Writing is a separate tick on the admin consent page.
+ADMIN_DEFAULT_SCOPES: tuple[str, ...] = (ADMIN_READ,)
 
 # Scopes that let a connector leave something behind. The consent screen must
 # stop calling the connection read-only once one is granted.
-WRITING_SCOPES: frozenset[str] = frozenset({COMP_WRITE, IMPORT_PROPOSE, EQUITY_WRITE})
+WRITING_SCOPES: frozenset[str] = frozenset({COMP_WRITE, IMPORT_PROPOSE, EQUITY_WRITE, ADMIN_WRITE})
 
 # Of those, the ones that change stored data.
 IMMEDIATE_WRITE_SCOPES: frozenset[str] = frozenset({COMP_WRITE, EQUITY_WRITE})
@@ -52,7 +56,19 @@ SCOPE_LABELS: dict[str, str] = {
     IMPORT_PROPOSE: "Prepare an import (no longer used)",
     EQUITY_WRITE: "Add, correct or remove your grants, prices, loans and sales — shown to you first, saved when you agree",
     ADMIN_READ: "Read site deployment status, system metrics and redacted application error records",
+    ADMIN_WRITE: "Change site settings: triage reports, switch AI providers off, and file requests "
+                 "to widen access that you approve in Admin",
 }
+
+
+def is_admin_scope(scope) -> bool:
+    """Whether a grant, client or code belongs to the admin MCP server.
+
+    Takes a space-delimited scope string or a list. Admin and account scopes
+    never mix in one grant, so any admin scope decides it.
+    """
+    parts = scope.split() if isinstance(scope, str) else list(scope or ())
+    return any(s in ADMIN_SCOPES for s in parts)
 
 
 def writes_anything(scopes: list[str] | tuple[str, ...]) -> bool:
@@ -76,7 +92,7 @@ def parse_scope(raw: str | None, *, admin: bool = False) -> list[str]:
     do not narrow them.
     """
     if not raw or not raw.strip():
-        return list(ADMIN_SCOPES if admin else DEFAULT_SCOPES)
+        return list(ADMIN_DEFAULT_SCOPES if admin else DEFAULT_SCOPES)
 
     seen: list[str] = []
     for scope in raw.split():
@@ -91,6 +107,8 @@ def parse_scope(raw: str | None, *, admin: bool = False) -> list[str]:
         seen.append(scope)
     if not seen:
         raise ScopeError("No usable scope was requested")
+    if ADMIN_WRITE in seen and ADMIN_READ not in seen:
+        raise ScopeError("admin:write also requires admin:read")
     if EQUITY_WRITE in seen and EQUITY_READ not in seen:
         raise ScopeError("equity:write also requires equity:read to verify existing rows")
     return seen

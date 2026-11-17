@@ -186,3 +186,67 @@ class McpAudit(Base):
     # died mid-call, which is worth being able to see.
     outcome: Mapped[str] = mapped_column(String, nullable=False, server_default="pending")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
+
+
+class AdminActionRequest(Base):
+    """A change an admin's AI assistant asked for, waiting for the admin.
+
+    Anything that lets more assistants connect — a new redirect rule, a rule
+    switched back on, AI connections resumed — is never done by a tool call.
+    The assistant reads text strangers wrote (refused registrations, problem
+    reports), so a planted instruction could otherwise open the door by
+    itself. The tool files a row here; an admin approves it in the browser,
+    where the same validation runs again.
+
+    No user_id: the requester is a connection (`grant_id`, no foreign key so
+    the record outlives a disconnect), the decider is recorded by email. The
+    table is bounded (MAX_PENDING_REQUESTS) and pending rows expire.
+    """
+
+    __tablename__ = "admin_action_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    action: Mapped[str] = mapped_column(String, nullable=False)
+    payload: Mapped[str] = mapped_column(String, nullable=False)
+    reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="pending", index=True)
+    client_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    grant_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    outcome: Mapped[str | None] = mapped_column(String, nullable=True)
+    decided_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    requested_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class AdminActionJournal(Base):
+    """What an admin changed in AI connection settings, from the browser or an assistant.
+
+    The generic MCP audit says a tool ran; this says what it did to which row,
+    so "rule 4 switched off by Claude diagnostics at 10:02" is answerable. The
+    intent is written and committed before the change runs, so a change cannot
+    happen off the books; the outcome is filled in after.
+
+    Safe fields only: ids, labels, validated rule patterns, statuses and
+    scopes. Never tokens, report bodies, financial figures, tracebacks or a
+    refused (stranger-supplied) URL — those are referred to by id or host.
+    No user_id column: the actor is recorded by email and grant id, so the
+    history outlives a disconnect or a deleted account.
+    """
+
+    __tablename__ = "admin_action_journal"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
+    environment: Mapped[str | None] = mapped_column(String, nullable=True)
+    via: Mapped[str] = mapped_column(String, nullable=False)
+    actor_email: Mapped[str | None] = mapped_column(String, nullable=True)
+    grant_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    client_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    action: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    target_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    target_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    request_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    before: Mapped[str | None] = mapped_column(String, nullable=True)
+    after: Mapped[str | None] = mapped_column(String, nullable=True)
+    outcome: Mapped[str] = mapped_column(String, nullable=False, default="started")
+    detail: Mapped[str | None] = mapped_column(String, nullable=True)

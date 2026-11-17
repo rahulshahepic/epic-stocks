@@ -5,6 +5,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 
 from database import Base, engine, SessionLocal
 from scaffold.models import User, Grant, Loan, Price, Sale, Invitation
+from scaffold.oauth import admin_requests
+from scaffold.oauth.models import OAuthRedirectHost
+from scaffold.oauth.settings import seed_defaults
 from scaffold.auth import create_token
 from datetime import date, datetime, timezone
 
@@ -131,5 +134,22 @@ invitations = [
 db.add_all(invitations)
 
 db.commit()
+
+# Requests an admin's AI assistant filed, through the same service the admin
+# MCP uses, so the admin screenshot shows the real approval workflow.
+seed_defaults(db)
+grok = db.query(OAuthRedirectHost).filter(
+    OAuthRedirectHost.pattern == "https://grok.com/connectors/oauth/callback").one()
+grok.enabled = 0
+db.commit()
+admin_requests.file_request(
+    db, admin_requests.ADD_RULE,
+    {"label": "Example Assistant", "pattern": "https://assistant.example.com/oauth/callback", "match_type": "exact"},
+    reason="Refused three times today when connecting Example Assistant.",
+    client_name="Claude diagnostics", grant_id=None, actor_email="demo@example.com")
+admin_requests.file_request(
+    db, admin_requests.ENABLE_RULE, {"rule_id": grok.id},
+    reason=None, client_name="Claude diagnostics", grant_id=None, actor_email="demo@example.com")
+
 token = create_token(user.id)
 print(token)

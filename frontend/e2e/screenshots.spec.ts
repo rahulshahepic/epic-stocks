@@ -604,6 +604,18 @@ test.describe('Screenshots', () => {
     await shoot(page, 'connect-ai-muse-light-mobile')
   })
 
+  test('admin AI requests awaiting approval - light - mobile', async ({ page }) => {
+    await authedPage(page, MOBILE, 'light')
+    await navigateTo(page, 'Admin')
+    await page.waitForLoadState('networkidle')
+    const heading = page.getByRole('heading', { name: /Requests from AI assistants/ })
+    await heading.evaluate(el => el.scrollIntoView({ block: 'start' }))
+    await page.evaluate(() => window.scrollBy(0, -72))
+    await expect(page.getByText('https://assistant.example.com/oauth/callback')).toBeVisible()
+    await expect(page.getByText(/Assistant.s note — unverified/)).toBeVisible()
+    await shoot(page, 'admin-ai-requests-light-mobile')
+  })
+
   test('admin AI redirect rules - light - mobile', async ({ page }) => {
     await authedPage(page, MOBILE, 'light')
     // A registration from an assistant the allowlist does not know yet.

@@ -24,7 +24,7 @@ def _esc(value: str) -> str:
 
 
 STYLESHEET_PATH = "/oauth/consent.css?v=2"
-SCRIPT_PATH = "/oauth/consent.js"
+SCRIPT_PATH = "/oauth/consent.js?v=3"
 
 # The app's own tokens, so this does not look like a different product.
 STYLESHEET = """
@@ -123,6 +123,10 @@ def _page(title: str, body: str) -> str:
     )
 
 
+# Permissions a person must tick themselves, even when the client asks for them.
+NEVER_PRESELECTED = frozenset({scope_defs.ADMIN_WRITE})
+
+
 def render_consent(*, client_name: str, redirect_origin: str, account_email: str,
                    requested_scopes: list[str], request_token: str, csrf: str,
                    admin: bool = False, action: str = "/oauth/authorize",
@@ -135,9 +139,11 @@ def render_consent(*, client_name: str, redirect_origin: str, account_email: str
     for title, scopes in groups:
         choices = "".join(
             f'<label class="permission"><input type="checkbox" name="selected_scope" '
-            f'value="{_esc(scope)}"' + (' checked' if scope in requested_scopes else '') + '>'
+            f'value="{_esc(scope)}"' + (' checked' if scope in requested_scopes and scope not in NEVER_PRESELECTED else '') + '>'
             f'<span>{_esc(scope_defs.SCOPE_LABELS[scope])}'
-            + ('<small>Requested by the app</small>' if scope in requested_scopes else '')
+            + ('<small>Requested by the app — not selected unless you tick it</small>'
+               if scope in requested_scopes and scope in NEVER_PRESELECTED
+               else '<small>Requested by the app</small>' if scope in requested_scopes else '')
             + '</span></label>'
             for scope in scopes
         )
@@ -146,6 +152,9 @@ def render_consent(*, client_name: str, redirect_origin: str, account_email: str
             f'<button type="button" data-select="all" aria-label="Select all {title.lower()} permissions">Select all</button>'
             f'<button type="button" data-select="none" aria-label="Clear all {title.lower()} permissions">Clear all</button>'
             '</div>' + ('<p class="help">Preparing imports and editing equity also require equity read access.</p>' if title == 'Equity' else '')
+            + ('<p class="help">Changing settings also requires read access. Anything that would let '
+               'more assistants connect is filed as a request you approve in Admin, never done directly.</p>'
+               if title == 'Diagnostics' else '')
             + f'{choices}</fieldset>'
         )
     body = (
@@ -184,7 +193,15 @@ if (form) {
     if ((selected.has('equity:write') || selected.has('import:propose')) && !selected.has('equity:read')) {
       equityRead.setCustomValidity('To prepare imports or edit equity, also select Read your equity.');
     }
-    if (selected.has('equity:write') || selected.has('comp:write')) {
+    const adminRead = choices.find(input => input.value === 'admin:read');
+    if (selected.has('admin:write') && !selected.has('admin:read')) {
+      adminRead.setCustomValidity('To change settings, also select read access.');
+    }
+    if (selected.has('admin:write')) {
+      summary.textContent = 'This selection lets the assistant change site settings when you ask: ' +
+        'triage reports and switch AI providers off. Anything that lets more assistants connect ' +
+        'waits for your approval in Admin. You can disconnect at any time in Settings.';
+    } else if (selected.has('equity:write') || selected.has('comp:write')) {
       const records = [];
       if (selected.has('equity:write')) records.push('grants, prices, loans and sales');
       if (selected.has('comp:write')) records.push('salary, bonus history and retirement balances');
@@ -192,6 +209,8 @@ if (form) {
         ' when you ask, without another confirmation here. You can disconnect at any time in Settings.';
     } else if (selected.has('import:propose')) {
       summary.textContent = 'This selection lets the app prepare imports. Your records change only after you review and accept them. You can disconnect at any time in Settings.';
+    } else if (selected.size && adminRead) {
+      summary.textContent = 'This selection is read-only. It cannot change site settings. You can disconnect at any time in Settings.';
     } else if (selected.size) {
       summary.textContent = 'This selection is read-only. It cannot change your records or prepare imports. You can disconnect at any time in Settings.';
     } else {

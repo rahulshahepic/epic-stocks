@@ -36,8 +36,16 @@ async function importFixtureAs(page: import('@playwright/test').Page, email: str
   await navigateTo(page, 'Import')
   const fileInput = page.locator('#import-file')
   await fileInput.setInputFiles(FIXTURE_PATH)
-  await page.getByRole('button', { name: 'Import' }).click()
-  await page.waitForLoadState('networkidle')
+  // Wait for the import itself, not networkidle: the page is already idle when
+  // the button is clicked, so waitForLoadState('networkidle') returned at once
+  // and the test went on to open Grants/Loans while a first-time import was
+  // still uncommitted — an empty list on the first attempt, and a pass on the
+  // retry only because the earlier attempt's rows were by then on file.
+  const [resp] = await Promise.all([
+    page.waitForResponse(r => r.url().includes('/api/import/excel') && r.request().method() === 'POST'),
+    page.getByRole('button', { name: 'Import' }).click(),
+  ])
+  expect(resp.ok(), `import → HTTP ${resp.status()}`).toBeTruthy()
 }
 
 test.describe('Epic Mode', () => {

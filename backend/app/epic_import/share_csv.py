@@ -14,7 +14,15 @@ import csv
 import io
 import re
 
+from scaffold.safe_workbook import WorkbookRejected, load_workbook_safely
+
 from .models import ERROR, WARNING, Finding, ShareRow
+
+_XLSX_MAGIC = b"PK\x03\x04"
+# Rows read from a workbook. Epic lists ~45 categories; this only stops a
+# caller-supplied sheet from being turned into an unbounded CSV.
+_MAX_XLSX_ROWS = 2000
+_MAX_XLSX_COLS = 200
 
 # column -> what is lost without it
 _REQUIRED = {
@@ -51,9 +59,55 @@ def _int(v):
     return None if n is None else int(round(n))
 
 
+def _xlsx_cell(v) -> str:
+    if v is None:
+        return ""
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    return str(v)
+
+
+def share_summary_text(raw: bytes) -> tuple[bytes, list[Finding]]:
+    """Return the share summary as CSV bytes.
+
+    Opening Data for Stock Workbook in Excel and saving it keeps the same
+    columns in an .xlsx; its first sheet is read as if it were the CSV. Any
+    other upload is returned unchanged.
+    """
+    if not raw.startswith(_XLSX_MAGIC):
+        return raw, []
+    try:
+        wb = load_workbook_safely(raw, read_only=True, data_only=True)
+    except WorkbookRejected as e:
+        return b"", [Finding("G0", ERROR, "", f"Data for Stock Workbook could not be read: {e}.")]
+    except Exception:
+        return b"", [Finding("G0", ERROR, "", "Data for Stock Workbook is not a readable spreadsheet.")]
+    try:
+        if not wb.worksheets:
+            return b"", [Finding("G0", ERROR, "", "Data for Stock Workbook has no sheets.")]
+        out = io.StringIO()
+        writer = csv.writer(out, lineterminator="\n")
+        for n, row in enumerate(wb.worksheets[0].iter_rows(max_col=_MAX_XLSX_COLS,
+                                                           values_only=True)):
+            if n >= _MAX_XLSX_ROWS:
+                return b"", [Finding("G0", ERROR, "",
+                                     "Data for Stock Workbook has far more rows than Epic's.")]
+            writer.writerow([_xlsx_cell(v) for v in row])
+    except Exception:
+        return b"", [Finding("G0", ERROR, "", "Data for Stock Workbook is not a readable spreadsheet.")]
+    finally:
+        wb.close()
+    if not out.getvalue().strip():
+        return b"", [Finding("G0", ERROR, "", "Data for Stock Workbook's first sheet is empty.")]
+    return out.getvalue().encode("utf-8"), []
+
+
 def parse_share_csv(raw: bytes) -> tuple[list[ShareRow], list[Finding]]:
-    """Parse the CSV into ShareRows. Rows with no share count are dropped."""
-    findings: list[Finding] = []
+    """Parse the CSV (or the same sheet saved as .xlsx) into ShareRows.
+    Rows with no share count are dropped."""
+    raw, findings = share_summary_text(raw)
+    if findings:
+        return [], findings
     try:
         text = raw.decode("utf-8-sig")
     except UnicodeDecodeError:

@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import pytest
 
 from app.epic_import import (build_prompt, derive_draft, draft_from_payload, is_blocked,
-                             parse_share_csv, parse_statement_lines,
+                             parse_share_csv, parse_statement_lines, share_summary_text,
                              supersede_parse_findings, to_wizard_payload,
                              validate_draft)
 from app.epic_import.models import INFO
@@ -89,6 +89,17 @@ def extra_csv_column(lines, csv_raw):
     return lines, "\n".join(out).encode()
 
 
+def saved_as_xlsx(lines, csv_raw):
+    """The workbook opened in Excel and saved as .xlsx. Tolerated — a control case."""
+    from tests.test_epic_import import xlsx_from_csv
+    return lines, xlsx_from_csv(csv_raw)
+
+
+def xlsx_renamed_basis_column(lines, csv_raw):
+    """Saved as .xlsx and a column renamed: drift must still be caught through it."""
+    return saved_as_xlsx(*renamed_basis_column(lines, csv_raw))
+
+
 # case -> (mutation, codes that must fire, must it block?)
 CASES = {
     "money_format":         (money_format,         {"C1", "C2", "C3", "C4"}, True),
@@ -104,6 +115,8 @@ CASES = {
     "renamed_sold_column":  (renamed_sold_column,  {"G0"},                   False),
     "wider_loan_numbers":   (wider_loan_numbers,   set(),                    False),
     "extra_csv_column":     (extra_csv_column,     set(),                    False),
+    "saved_as_xlsx":        (saved_as_xlsx,        set(),                    False),
+    "xlsx_renamed_basis_column": (xlsx_renamed_basis_column, {"G0"},         True),
 }
 
 
@@ -137,7 +150,7 @@ def prompt_for(mutation, skeleton) -> str:
     statement, _ = parse_statement_lines(lines)
     draft, findings = analyse(mutation, skeleton)
     return build_prompt(draft, findings, statement, skeleton,
-                        "\n".join(lines), raw.decode())
+                        "\n".join(lines), share_summary_text(raw)[0].decode())
 
 
 def clean_draft(skeleton):
@@ -173,7 +186,7 @@ def test_a_correct_draft_converges_against_the_drifted_files(case, skeleton):
 
 def test_controls_need_no_repair_at_all(skeleton):
     """Widened loan numbers and an added CSV column are tolerated, not repaired."""
-    for case in ("wider_loan_numbers", "extra_csv_column"):
+    for case in ("wider_loan_numbers", "extra_csv_column", "saved_as_xlsx"):
         draft, findings = analyse(CASES[case][0], skeleton)
         assert [f.as_dict() for f in findings if f.severity == "error"] == [], case
         assert len(draft.all_loans) == 9, case

@@ -116,10 +116,10 @@ export default function EpicFileImport() {
       <div className="mt-3 space-y-3">
         <div>
           <label htmlFor="epic-csv" className="text-xs font-medium text-cs-text-2">
-            Data for Stock Workbook (.csv)
+            Data for Stock Workbook (.csv or .xlsx)
           </label>
           <input
-            id="epic-csv" type="file" accept=".csv,text/csv" disabled={busy}
+            id="epic-csv" type="file" accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={busy}
             onChange={e => { setCsv(e.target.files?.[0] ?? null); setResult(null); setStage('idle') }}
             className="mt-1 block w-full text-xs text-cs-muted file:mr-3 file:rounded-md file:border-0 file:bg-rose-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-cs-brand hover:file:bg-rose-100 disabled:opacity-50 dark:file:bg-rose-900/40 dark:file:text-rose-300"
           />

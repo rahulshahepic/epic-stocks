@@ -16,7 +16,7 @@ comes back is validated by the same checks.
 from .models import ERROR, INFO, WARNING, Finding, ShareRow, Statement, StatementLoan
 from .pdf_statement import (StatementParserBusy, StatementUnreadable, extract_lines,
                             parse_statement_lines, parse_statement_pdf)
-from .share_csv import parse_share_csv
+from .share_csv import parse_share_csv, share_summary_text
 from .skeleton import Skeleton, TemplateRow, build_skeleton
 from .draft import (BLOCKING_CHECKS, Draft, DraftGrant, DraftLoan, DraftPrice,
                     derive_draft, draft_from_payload, is_blocked, supersede_parse_findings,
@@ -27,7 +27,7 @@ from .reconcile import Difference, ReconcileReport, reconcile, render_markdown
 __all__ = [
     "ERROR", "INFO", "WARNING", "Finding", "ShareRow", "Statement", "StatementLoan",
     "StatementParserBusy", "StatementUnreadable", "extract_lines", "parse_statement_lines",
-    "parse_statement_pdf", "parse_share_csv",
+    "parse_statement_pdf", "parse_share_csv", "share_summary_text",
     "Skeleton", "TemplateRow", "build_skeleton",
     "BLOCKING_CHECKS", "Draft", "DraftGrant", "DraftLoan", "DraftPrice",
     "derive_draft", "draft_from_payload", "is_blocked", "supersede_parse_findings",

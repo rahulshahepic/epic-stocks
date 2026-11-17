@@ -53,9 +53,21 @@ A bare `Developer Bonus Shares`, with no year at all, is a one-time award (a
 new-hire bonus, granted once) rather than an annual program — there is nothing
 to parse a year out of. The year comes from the company's own template for
 that type instead: **info** when exactly one exists and is used, **error**
-when none exists (an admin must add one), **warning** when more than one
-exists and which applies cannot be told — in the last two cases the shares are
-not imported.
+when none exists (an admin must add one; the shares are not imported). When
+several exist (Developer Bonus Shares has 2020 and 2021), the Loan Statement
+decides if it names a loan on exactly one of those years (**info**); otherwise
+the grant is imported in the earliest year with a **warning** that names, for
+each other year, every field to change with it (year, exercise date and, when
+the templates differ, the vesting start and periods) — changing a grant's year
+alone keeps its stored schedule. Importing nothing is never the answer for
+shares the file plainly lists.
+
+Before any of that, a signed-in import resolves the label to the account's own
+grant of that type when it holds exactly one (**info**), so a year the person
+corrected is kept by every later import instead of proposing a second grant. A year the
+file's own dated row of that type already holds is never chosen by any of these
+paths; when every template year is taken that way, the row is a **warning** and
+its shares are not imported.
 
 ### `G2` — Shares Granted → `grant.shares`, and shares nothing accounts for
 Straight read. Nothing in either file can check a share count against anything
@@ -95,6 +107,11 @@ the grants and share counts. **Warning** when more than one combination would
 account for the shares, in which case none are applied. A down payment above the
 policy minimum, or a loan paid down since — which widens the same gap — reads as
 unexplained shares and falls to `G2` rather than being quietly reclassified.
+
+The purchase loan comes from the Stock Loan Statement. With no statement
+uploaded, the workbook's own `Loan Balance` for the grant stands in for it; the
+same exact-minimum, whole-share test applies, so a balance that also carries
+other loans matches nothing and falls to `G2`.
 
 ---
 

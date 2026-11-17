@@ -5,7 +5,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 
 from database import Base, engine, SessionLocal
 from scaffold.models import User, Grant, Loan, Price, Sale, Invitation
-import scaffold.oauth.models  # noqa: F401  (tables for the AI-request rows below)
+from scaffold.oauth import admin_requests
+from scaffold.oauth.models import OAuthRedirectHost
+from scaffold.oauth.settings import seed_defaults
 from scaffold.auth import create_token
 from datetime import date, datetime, timezone
 
@@ -135,9 +137,6 @@ db.commit()
 
 # Requests an admin's AI assistant filed, through the same service the admin
 # MCP uses, so the admin screenshot shows the real approval workflow.
-from scaffold.oauth import admin_requests
-from scaffold.oauth.models import OAuthRedirectHost
-from scaffold.oauth.settings import seed_defaults
 seed_defaults(db)
 grok = db.query(OAuthRedirectHost).filter(
     OAuthRedirectHost.pattern == "https://grok.com/connectors/oauth/callback").one()

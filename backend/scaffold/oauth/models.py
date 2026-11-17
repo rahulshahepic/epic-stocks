@@ -216,3 +216,37 @@ class AdminActionRequest(Base):
     decided_by: Mapped[str | None] = mapped_column(String, nullable=True)
     requested_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class AdminActionJournal(Base):
+    """What an admin changed in AI connection settings, from the browser or an assistant.
+
+    The generic MCP audit says a tool ran; this says what it did to which row,
+    so "rule 4 switched off by Claude diagnostics at 10:02" is answerable. The
+    intent is written and committed before the change runs, so a change cannot
+    happen off the books; the outcome is filled in after.
+
+    Safe fields only: ids, labels, validated rule patterns, statuses and
+    scopes. Never tokens, report bodies, financial figures, tracebacks or a
+    refused (stranger-supplied) URL — those are referred to by id or host.
+    No user_id column: the actor is recorded by email and grant id, so the
+    history outlives a disconnect or a deleted account.
+    """
+
+    __tablename__ = "admin_action_journal"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
+    environment: Mapped[str | None] = mapped_column(String, nullable=True)
+    via: Mapped[str] = mapped_column(String, nullable=False)
+    actor_email: Mapped[str | None] = mapped_column(String, nullable=True)
+    grant_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    client_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    action: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    target_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    target_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    request_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    before: Mapped[str | None] = mapped_column(String, nullable=True)
+    after: Mapped[str | None] = mapped_column(String, nullable=True)
+    outcome: Mapped[str] = mapped_column(String, nullable=False, default="started")
+    detail: Mapped[str | None] = mapped_column(String, nullable=True)

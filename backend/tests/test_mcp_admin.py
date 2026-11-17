@@ -13,8 +13,8 @@ from tests.test_mcp_tools import Mcp
 from tests.test_oauth_server import code_from, pkce_pair
 
 
-ADMIN_TOOLS = {"admin_deployment_status", "admin_system_metrics", "admin_recent_errors", "admin_error_stack", "admin_host_diagnostics", "admin_scheduler_history", "admin_deploy_runs", "admin_edge_summary", "admin_ai_connections", "admin_ai_usage", "admin_user_reports"}
-ADMIN_WRITE_TOOLS = {"admin_set_report_status", "admin_dismiss_refused_redirect", "admin_disable_redirect_rule", "admin_pause_ai_connections", "admin_request_redirect_rule", "admin_request_enable_redirect_rule"}
+ADMIN_TOOLS = {"admin_deployment_status", "admin_system_metrics", "admin_recent_errors", "admin_error_stack", "admin_host_diagnostics", "admin_scheduler_history", "admin_deploy_runs", "admin_edge_summary", "admin_ai_connections", "admin_ai_usage", "admin_user_reports", "admin_list_connections", "admin_audit_log", "admin_get_request"}
+ADMIN_WRITE_TOOLS = {"admin_set_report_status", "admin_dismiss_refused_redirect", "admin_disable_redirect_rule", "admin_pause_ai_connections", "admin_request_redirect_rule", "admin_request_enable_redirect_rule", "admin_revoke_connection", "admin_cancel_request"}
 
 
 def test_admin_oauth_login_resumes_on_its_own_consent_page(client):
@@ -402,7 +402,8 @@ def test_widening_access_waits_for_an_admin_in_the_browser(client):
         request = next(r for r in page["requests"] if r["id"] == filed["request"]["id"])
         assert request["status"] == "pending" and uri in request["description"]
         approved = client.post(f"/api/admin/mcp/requests/{request['id']}/approve").json()
-        assert next(r for r in approved["requests"] if r["id"] == request["id"])["decided_by"] == "admin@example.com"
+        assert next(r for r in approved["request_history"] if r["id"] == request["id"])["decided_by"] == "admin@example.com"
+        assert request["pattern"] == uri and request["match_type"] == "exact" and request["consequence"]
         assert ("Copilot", "exact", uri) in {(h["label"], h["match_type"], h["pattern"]) for h in approved["hosts"]}
         assert client.post("/oauth/register", json={
             "client_name": "Copilot", "redirect_uris": [uri]}).status_code == 201
@@ -416,7 +417,7 @@ def test_a_rejected_request_changes_nothing(client):
         client.post(f"/api/admin/mcp/requests/{filed['request']['id']}/reject")
         status = call("admin_ai_connections")
         assert "https://evil.example/cb" not in {r["pattern"] for r in status["redirect_rules"]}
-        assert next(r for r in status["requests"] if r["id"] == filed["request"]["id"])["status"] == "rejected"
+        assert next(r for r in status["recent_decisions"] if r["id"] == filed["request"]["id"])["status"] == "rejected"
 
 
 def test_re_enabling_a_rule_goes_through_approval(client):
@@ -473,7 +474,7 @@ def test_approval_fails_cleanly_when_the_rule_appeared_meanwhile(client):
         filed = call("admin_request_redirect_rule", {"label": "Copilot", "pattern": uri})
         client.post("/api/admin/mcp/hosts", json={"label": "Copilot", "pattern": uri})
         page = client.post(f"/api/admin/mcp/requests/{filed['request']['id']}/approve").json()
-        row = next(r for r in page["requests"] if r["id"] == filed["request"]["id"])
+        row = next(r for r in page["request_history"] if r["id"] == filed["request"]["id"])
         assert row["status"] == "failed" and "already on the list" in row["outcome"]
 
 
@@ -524,3 +525,263 @@ def test_every_admin_tool_survives_garbage_arguments(client):
                 result = _rpc(client, tokens["access_token"], "tools/call",
                               {"name": name, "arguments": arguments})
                 assert "content" in result, f"{name} {arguments} -> {result}"
+
+
+
+# ── review round 1: atomicity, request lifecycle, consent, revoke, journal ──
+
+def test_a_failure_after_the_change_rolls_the_change_back(client, db_session, monkeypatch):
+    """The rule change and the request's decision commit together, or not at all."""
+    from scaffold.oauth import admin_requests
+    from scaffold.oauth.models import AdminActionRequest, OAuthRedirectHost
+    uri = "https://copilot.microsoft.com/oauth/callback"
+    with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@example.com"}):
+        _, call = _admin_session(client, WRITE)
+        filed = call("admin_request_redirect_rule", {"label": "Copilot", "pattern": uri})
+        real = admin_requests._apply
+
+        def apply_then_crash(db, row):
+            real(db, row)
+            db.flush()
+            raise RuntimeError("database went away")
+        monkeypatch.setattr(admin_requests, "_apply", apply_then_crash)
+        client.post(f"/api/admin/mcp/requests/{filed['request']['id']}/approve")
+    db_session.expire_all()
+    assert db_session.query(OAuthRedirectHost).filter(OAuthRedirectHost.pattern == uri).count() == 0
+    row = db_session.get(AdminActionRequest, filed["request"]["id"])
+    assert row.status == "failed", "never left pending after a half-applied change"
+    assert client.post("/oauth/register", json={"client_name": "Copilot", "redirect_uris": [uri]}).status_code == 400
+
+
+def test_a_request_is_decided_once(client, db_session):
+    from scaffold.oauth import admin_requests
+    with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@example.com"}):
+        _, call = _admin_session(client, WRITE)
+        rid = call("admin_request_redirect_rule", {"label": "X", "pattern": "https://x.example/cb"})["request"]["id"]
+    admin_requests.decide(db_session, rid, approve=True, admin_email="a@example.com")
+    import pytest as _pytest
+    with _pytest.raises(admin_requests.NotPending):
+        admin_requests.decide(db_session, rid, approve=False, admin_email="b@example.com")
+    assert not admin_requests._claim(db_session, rid, "rejected", "c@example.com", None)
+    db_session.rollback()
+
+
+def test_an_old_pending_request_stays_visible_behind_newer_history(client, db_session):
+    from scaffold.oauth import admin_requests
+    with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@example.com"}):
+        _, call = _admin_session(client, WRITE)
+        oldest = call("admin_request_redirect_rule", {"label": "Old", "pattern": "https://old.example/cb"})["request"]["id"]
+        for i in range(21):
+            rid = call("admin_request_redirect_rule", {"label": "N", "pattern": f"https://n{i}.example/cb"})["request"]["id"]
+            admin_requests.decide(db_session, rid, approve=False, admin_email="admin@example.com")
+        page = client.get("/api/admin/mcp").json()
+        assert oldest in {r["id"] for r in page["requests"]}
+        assert oldest in {r["id"] for r in call("admin_ai_connections")["pending_requests"]}
+        followed = call("admin_get_request", {"request_id": oldest})
+        assert followed["request"]["status"] == "pending" and followed["filed_by_this_connection"]
+
+
+def test_the_filing_connection_can_withdraw_its_request_and_nobody_else_can(client):
+    with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@example.com"}):
+        _, mine = _admin_session(client, WRITE)
+        rid = mine("admin_request_redirect_rule", {"label": "X", "pattern": "https://x.example/cb"})["request"]["id"]
+        _, other = _admin_session(client, WRITE)
+        assert "filed by this connection" in other("admin_cancel_request", {"request_id": rid}, ok=False)
+        assert mine("admin_cancel_request", {"request_id": rid})["request"]["status"] == "cancelled"
+        assert client.post(f"/api/admin/mcp/requests/{rid}/approve").status_code == 409
+        assert "already cancelled" in mine("admin_cancel_request", {"request_id": rid}, ok=False)
+
+
+def _consent_page(client, scope=None, resume=False):
+    reg = client.post("/admin-oauth/register", json={
+        "redirect_uris": ["https://chatgpt.com/connector_platform_oauth_redirect"],
+        **({"scope": scope} if scope else {}),
+    }).json()
+    _, challenge = pkce_pair()
+    params = {"response_type": "code", "client_id": reg["client_id"],
+              "code_challenge": challenge, "code_challenge_method": "S256"}
+    if scope:
+        params["scope"] = scope
+    if resume:
+        login = client.get("/admin-oauth/authorize", params=params, follow_redirects=False)
+        nxt = parse_qs(urlparse(login.headers["location"]).query)["next"][0]
+        register_user(client, "admin@example.com")
+        return client.get(nxt).text
+    return client.get("/admin-oauth/authorize", params=params).text
+
+
+@pytest.mark.parametrize("resume", [False, True])
+def test_admin_write_is_never_preselected_even_when_requested(client, db_session, resume):
+    from scaffold.oauth.models import OAuthAuthCode
+    with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@example.com"}):
+        if not resume:
+            register_user(client, "admin@example.com")
+        page = _consent_page(client, "admin:read admin:write", resume=resume)
+        assert 'value="admin:write">' in page and 'value="admin:write" checked' not in page
+        assert 'value="admin:read" checked>' in page
+        form = {"request": page.split('name="request" value="')[1].split('"')[0],
+                "csrf": page.split('name="csrf" value="')[1].split('"')[0], "decision": "allow"}
+        # A legacy form (no explicit selection) must not grant admin:write.
+        code_from(client.post("/admin-oauth/authorize", data=form, follow_redirects=False))
+        assert db_session.query(OAuthAuthCode).one().scope == "admin:read"
+
+
+def test_targeted_revocation_contains_one_connection(client, db_session):
+    with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@example.com"}):
+        _, call = _admin_session(client, WRITE)
+        victim = _connect_admin(client)
+        bystander = _connect_admin(client)
+        listing = call("admin_list_connections", {"server": "admin"})
+        assert all("refresh_token" not in r and "access_token" not in r for r in listing["records"])
+        ids = {r["id"] for r in listing["records"]}
+        assert len(ids) == 3
+        target = max(ids) - 1
+        preview = call("admin_revoke_connection", {"connection_id": target})
+        assert preview["preview"]["id"] == target and not preview["this_connection"]
+        assert "does not match" in call("admin_revoke_connection",
+                                        {"connection_id": target, "confirm": "nope"}, ok=False)
+        call("admin_revoke_connection", {"connection_id": target, "confirm": preview["confirm"]})
+
+        def alive(tokens):
+            return client.post("/admin-mcp", headers={"Authorization": f"Bearer {tokens['access_token']}"},
+                               json={"jsonrpc": "2.0", "id": 1, "method": "ping"}).status_code == 200
+        revoked = victim if listing and target == min(ids) + 1 else victim
+        assert not alive(revoked)
+        assert client.post("/admin-oauth/token", data={
+            "grant_type": "refresh_token", "refresh_token": revoked["refresh_token"]}).status_code == 400
+        assert alive(bystander)
+        journal = call("admin_audit_log", {"action": "revoke_connection"})["records"][0]
+        assert (journal["target_id"], journal["outcome"], journal["via"]) == (target, "ok", "mcp")
+
+
+def test_revoking_this_connection_warns_first(client):
+    with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@example.com"}):
+        tokens, call = _admin_session(client, WRITE)
+        me = next(r for r in call("admin_list_connections")["records"] if r["is_this_connection"])
+        preview = call("admin_revoke_connection", {"connection_id": me["id"]})
+        assert preview["this_connection"] and "ends this session" in preview["warning"]
+        call("admin_revoke_connection", {"connection_id": me["id"], "confirm": preview["confirm"]})
+        assert client.post("/admin-mcp", headers={"Authorization": f"Bearer {tokens['access_token']}"},
+                           json={"jsonrpc": "2.0", "id": 1, "method": "ping"}).status_code == 401
+
+
+def test_admin_can_see_and_revoke_account_connections_without_crossing_servers(client):
+    from tests.test_oauth_server import connect
+    with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@example.com"}):
+        _, call = _admin_session(client, WRITE)
+        account = connect(client)
+        row = next(r for r in call("admin_list_connections", {"server": "account"})["records"])
+        assert row["server"] == "account" and "admin:read" not in row["scopes"]
+        preview = call("admin_revoke_connection", {"connection_id": row["id"]})
+        call("admin_revoke_connection", {"connection_id": row["id"], "confirm": preview["confirm"]})
+    assert client.post("/mcp", headers={"Authorization": f"Bearer {account['access_token']}"},
+                       json={"jsonrpc": "2.0", "id": 1, "method": "ping"}).status_code == 401
+
+
+def test_revoke_needs_admin_write(client):
+    with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@example.com"}):
+        _, call = _admin_session(client)
+        assert "not granted" in call("admin_revoke_connection", {"connection_id": 1}, ok=False)
+
+
+def test_the_journal_records_targets_before_and_after_from_both_surfaces(client, db_session):
+    from scaffold.models import UserReport
+    db_session.add(UserReport(message="secret report body 4111", source="manual", status="new"))
+    db_session.commit()
+    with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@example.com"}):
+        _, call = _admin_session(client, WRITE)
+        rules = call("admin_ai_connections")["redirect_rules"]
+        a, b = rules[0]["id"], rules[1]["id"]
+        call("admin_disable_redirect_rule", {"rule_id": a})
+        client.patch(f"/api/admin/mcp/hosts/{b}", json={"enabled": False})
+        report_id = call("admin_user_reports")["records"][0]["id"]
+        call("admin_set_report_status", {"report_id": report_id, "status": "resolved"})
+        rid = call("admin_request_redirect_rule", {"label": "X", "pattern": "https://x.example/cb"})["request"]["id"]
+        client.post(f"/api/admin/mcp/requests/{rid}/approve")
+
+        log = call("admin_audit_log", {"limit": 50})["records"]
+        disables = [e for e in log if e["action"] == "disable_redirect_rule"]
+        assert {(e["target_id"], e["via"]) for e in disables} == {(a, "mcp"), (b, "browser")}
+        assert all(e["before"]["enabled"] is True and e["after"]["enabled"] is False for e in disables)
+        triage = next(e for e in log if e["action"] == "set_report_status")
+        assert triage["before"] == {"id": report_id, "status": "new"} and triage["after"]["status"] == "resolved"
+        approval = next(e for e in log if e["action"] == "approve_add_redirect_rule")
+        assert approval["via"] == "browser" and approval["request_id"] == rid and approval["outcome"] == "ok"
+        assert next(e for e in log if e["action"] == "request_add_redirect_rule")["request_id"] == rid
+        assert "4111" not in json.dumps(log) and "secret report body" not in json.dumps(log)
+        assert call("admin_audit_log", {"via": "browser", "target_id": b})["records"][0]["target_id"] == b
+        assert client.get("/api/admin/mcp/journal").json()[0]["id"] == log[0]["id"]
+
+
+def test_journal_intent_fails_closed(client, monkeypatch):
+    from scaffold.oauth import admin_journal
+
+    def refuse(*args, **kwargs):
+        raise RuntimeError("journal unavailable")
+    with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@example.com"}):
+        tokens, call = _admin_session(client, WRITE)
+        rule = call("admin_ai_connections")["redirect_rules"][0]
+        monkeypatch.setattr(admin_journal, "begin", refuse)
+        body = client.post("/admin-mcp", headers={"Authorization": f"Bearer {tokens['access_token']}"},
+                           json={"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+                               "name": "admin_disable_redirect_rule", "arguments": {"rule_id": rule["id"]}}}).json()
+        assert "error" in body or body["result"].get("isError"), body
+        monkeypatch.undo()
+        assert next(r for r in call("admin_ai_connections")["redirect_rules"] if r["id"] == rule["id"])["enabled"]
+
+
+def test_a_refused_url_never_reaches_the_journal(client, db_session):
+    from scaffold.oauth.settings import record_rejection
+    with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@example.com"}):
+        _, call = _admin_session(client, WRITE)
+        record_rejection(db_session, "https://evil.example/cb?token=SECRET123", "X", "refused")
+        rid = call("admin_ai_connections")["refused_redirects"]["records"][0]["id"]
+        call("admin_dismiss_refused_redirect", {"refused_id": rid})
+        entry = call("admin_audit_log", {"action": "dismiss_refused_redirect"})["records"][0]
+        assert entry["before"]["host"] == "evil.example"
+        assert "SECRET123" not in json.dumps(entry)
+
+
+@pytest.mark.skipif(not os.getenv("TEST_POSTGRES_URL"), reason="needs TEST_POSTGRES_URL")
+def test_concurrent_decisions_on_postgres_apply_once():
+    """Two admins approve the same request at the same moment: one wins."""
+    import threading
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.orm import sessionmaker
+    from database import Base
+    from scaffold.oauth import admin_requests
+    from scaffold.oauth.models import AdminActionRequest, OAuthRedirectHost
+
+    engine = create_engine(os.environ["TEST_POSTGRES_URL"])
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    with Session() as db:
+        db.execute(text("INSERT INTO system_settings (key, value) VALUES ('mcp_enabled', 'true')"))
+        row = AdminActionRequest(action="add_redirect_rule", status="pending",
+                                 payload=json.dumps({"label": "X", "match_type": "exact",
+                                                     "pattern": "https://race.example/cb"}, sort_keys=True))
+        db.add(row)
+        db.commit()
+        rid = row.id
+    results, barrier = [], threading.Barrier(4)
+
+    def decide(approve):
+        with Session() as db:
+            barrier.wait()
+            try:
+                results.append(admin_requests.decide(db, rid, approve=approve, admin_email="a@x").status)
+            except admin_requests.NotPending:
+                results.append("lost")
+    threads = [threading.Thread(target=decide, args=(i % 2 == 0,)) for i in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    with Session() as db:
+        final = db.get(AdminActionRequest, rid).status
+        rules = db.query(OAuthRedirectHost).filter(OAuthRedirectHost.pattern == "https://race.example/cb").count()
+    assert results.count("lost") == 3, results
+    assert rules == (1 if final == "approved" else 0)
+    Base.metadata.drop_all(engine)
+    engine.dispose()

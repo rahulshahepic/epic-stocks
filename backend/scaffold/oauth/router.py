@@ -475,6 +475,10 @@ def authorize_decide(request: Request, decision: str = Form(...),
             ))
         except scope_defs.ScopeError as exc:
             return _error_page("Invalid permissions", str(exc), 400)
+    elif _admin(request) and scope_defs.ADMIN_WRITE in scope.split():
+        # Without an explicit selection (a consent form from before the
+        # checkboxes), admin:write is never granted just because it was asked for.
+        scope = scope_defs.format_scope([s for s in scope.split() if s != scope_defs.ADMIN_WRITE])
     elif read_only:
         # Compatibility for a consent page opened before deployment.
         # Keep the reads, drop every write.
@@ -734,11 +738,8 @@ def revoke(request: Request, token: str = Form(...),
     if grant is not None and scope_defs.is_admin_scope(grant.scope) != _admin(request):
         grant = None
     if grant is not None:
-        user_id, grant_id, name = grant.user_id, grant.id, grant.client_name
-        db.delete(grant)
-        db.commit()
-        audit.record(db, user_id=user_id, grant_id=grant_id,
-                     client_name=name, event=audit.DISCONNECTED)
+        from .connections import revoke_grant
+        revoke_grant(db, grant)
     return JSONResponse({}, status_code=200)
 
 
@@ -798,8 +799,5 @@ def disconnect(grant_id: int, user: User = Depends(get_current_user),
     ).first()
     if grant is None:
         raise HTTPException(404, "Connection not found")
-    name = grant.client_name
-    db.delete(grant)
-    db.commit()
-    audit.record(db, user_id=user.id, grant_id=grant_id,
-                 client_name=name, event=audit.DISCONNECTED)
+    from .connections import revoke_grant
+    revoke_grant(db, grant)

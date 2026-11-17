@@ -9,14 +9,9 @@ import re
 from datetime import datetime, timedelta, timezone
 
 from scaffold.models import ErrorLog, SystemMetric
-from fastapi import HTTPException
-
-from scaffold.oauth import admin_requests
+from scaffold.oauth import admin_actions, admin_requests
 from scaffold.oauth.scopes import ADMIN_READ, ADMIN_WRITE
-from scaffold.routers.admin import (
-    ReportStatusUpdate, _mcp_status, admin_reports, deployment_status, dismiss_rejected_redirect,
-    mcp_usage, update_report_status,
-)
+from scaffold.routers.admin import _mcp_status, admin_reports, deployment_status, mcp_usage
 from services import diagnostics, diagnostic_sources
 
 from .tools import Tool, ToolContext, object_schema, register
@@ -190,6 +185,13 @@ def _plain(value: str | None, limit: int) -> str | None:
     return "".join(c for c in value if c.isprintable())[:limit]
 
 
+def _request_view(row) -> dict:
+    data = admin_requests.as_dict(row)
+    data["proposed"] = data.pop("payload")
+    data["reason_is_untrusted"] = True
+    return data
+
+
 def _ai_connections(ctx: ToolContext, args: dict) -> dict:
     limit = _integer(args, "refused_limit", 20, 1, 50)
     status = _mcp_status(ctx.db)
@@ -212,9 +214,10 @@ def _ai_connections(ctx: ToolContext, args: dict) -> dict:
             } for r in status.rejected[:limit]],
             "record_limit_reached": len(status.rejected) > limit,
         },
-        "requests": [{
-            k: v for k, v in admin_requests.as_dict(row).items() if k != "payload"
-        } for row in admin_requests.recent(ctx.db, 20)],
+        # Every pending request, then recent decisions. An assistant's own
+        # reason text is its own and untrusted; admin_get_request follows one.
+        "pending_requests": [_request_view(row) for row in admin_requests.pending(ctx.db)],
+        "recent_decisions": [_request_view(row) for row in admin_requests.history(ctx.db, 10)],
         "change_location": "Admin → AI Connections in this environment",
     }
 
@@ -302,17 +305,24 @@ register(Tool(
 # from the admin page. Anything that would let more assistants connect is
 # filed with admin_requests and waits for a person to approve it in the
 # browser: these tools read text strangers wrote, and a planted instruction
-# must not be able to open the door by itself.
-
-def _http(call):
-    try:
-        return call()
-    except HTTPException as exc:
-        raise ValueError(str(exc.detail)) from None
-
+# must not be able to open the door by itself. Each write goes through the
+# same scaffold/oauth/admin_actions.py function as the admin page, which
+# journals intent before acting and the outcome after.
 
 def _id(args: dict, name: str) -> int:
     return _integer(args, name, 0, 1, 2_147_483_647)
+
+
+def _actor(ctx: ToolContext) -> admin_actions.Actor:
+    return admin_actions.Actor(via="mcp", email=ctx.user.email, grant_id=ctx.connector.grant.id,
+                               client_name=ctx.connector.grant.client_name)
+
+
+def _do(call):
+    try:
+        return call()
+    except admin_actions.NotFound as exc:
+        raise ValueError(str(exc).strip("'\"")) from None
 
 
 def _set_report_status(ctx: ToolContext, args: dict) -> dict:
@@ -320,25 +330,20 @@ def _set_report_status(ctx: ToolContext, args: dict) -> dict:
     status = args.get("status")
     if status not in ("new", "resolved"):
         raise ValueError("status must be new or resolved")
-    _http(lambda: update_report_status(report_id, ReportStatusUpdate(status=status),
-                                       admin=ctx.user, db=ctx.db))
+    _do(lambda: admin_actions.set_report_status(ctx.db, _actor(ctx), report_id, status))
     return {**_identity(), "report_id": report_id, "status": status,
             "undo": f"admin_set_report_status with status {'new' if status == 'resolved' else 'resolved'}"}
 
 
 def _dismiss_refused(ctx: ToolContext, args: dict) -> dict:
     refused_id = _id(args, "refused_id")
-    _http(lambda: dismiss_rejected_redirect(refused_id, admin=ctx.user, db=ctx.db))
+    _do(lambda: admin_actions.dismiss_refused(ctx.db, _actor(ctx), refused_id))
     return {**_identity(), "dismissed_refused_id": refused_id,
             "note": "The address is not allowed by this; it only leaves the review list."}
 
 
 def _disable_rule(ctx: ToolContext, args: dict) -> dict:
-    from scaffold.oauth.settings import set_rule_enabled
-
-    row = set_rule_enabled(ctx.db, _id(args, "rule_id"), False)
-    if row is None:
-        raise ValueError("No redirect rule with that id")
+    row = _do(lambda: admin_actions.set_rule_enabled(ctx.db, _actor(ctx), _id(args, "rule_id"), False))
     return {**_identity(), "rule": {"id": row.id, "label": row.label, "pattern": row.pattern,
                                     "match_type": row.match_type, "enabled": False},
             "effect": "New registrations and authorizations through this rule stop now; "
@@ -348,12 +353,10 @@ def _disable_rule(ctx: ToolContext, args: dict) -> dict:
 
 
 def _pause(ctx: ToolContext, args: dict) -> dict:
-    from scaffold.oauth.settings import set_mcp_enabled
-
     if args.get("confirm") is not True:
         raise ValueError("Set confirm to true. Pausing stops every AI connection, this one included, "
                          "until an admin turns them back on in Admin → AI Connections.")
-    set_mcp_enabled(ctx.db, False)
+    admin_actions.set_connections_enabled(ctx.db, _actor(ctx), False)
     return {**_identity(), "ai_connections_enabled": False,
             "effect": "Every MCP call, including this connection's next one, now gets 503. "
                       "Nothing is disconnected; turning the switch back on restores them.",
@@ -365,14 +368,179 @@ def _request(action: str):
         row, created = admin_requests.file_request(
             ctx.db, action, args, reason=args.get("reason"),
             client_name=ctx.connector.grant.client_name, grant_id=ctx.connector.grant.id,
+            actor_email=ctx.user.email,
         )
-        return {**_identity(), "request": {k: v for k, v in admin_requests.as_dict(row).items()
-                                           if k != "payload"},
-                "created": created,
+        return {**_identity(), "request": _request_view(row), "created": created,
                 "next_step": "Waiting for a site admin to approve or reject it in "
                              "Admin → AI Connections → Requests from AI assistants. "
-                             "Nothing changes until then; it expires after 7 days."}
+                             "Nothing changes until then; it expires after 7 days. "
+                             "Follow it with admin_get_request, or withdraw it with "
+                             "admin_cancel_request."}
     return handler
+
+
+def _get_request(ctx: ToolContext, args: dict) -> dict:
+    row = admin_requests.get(ctx.db, _id(args, "request_id"))
+    if row is None:
+        raise ValueError("No request with that id in this environment")
+    return {**_identity(), "request": _request_view(row),
+            "filed_by_this_connection": row.grant_id == ctx.connector.grant.id}
+
+
+def _cancel_request(ctx: ToolContext, args: dict) -> dict:
+    row = admin_requests.cancel(ctx.db, _id(args, "request_id"), grant_id=ctx.connector.grant.id,
+                                actor_email=ctx.user.email, client_name=ctx.connector.grant.client_name)
+    return {**_identity(), "request": _request_view(row)}
+
+
+# ── connections ─────────────────────────────────────────────────────────────
+
+def _connections(ctx: ToolContext, args: dict) -> dict:
+    from scaffold.models import User
+    from scaffold.oauth.connections import describe
+    from scaffold.oauth.models import OAuthGrant
+
+    limit = _integer(args, "limit", 50, 1, 200)
+    offset = _integer(args, "offset", 0, 0, 100_000)
+    q = ctx.db.query(OAuthGrant, User.email).join(User, User.id == OAuthGrant.user_id)
+    email = args.get("account_email")
+    if email is not None:
+        if not isinstance(email, str) or len(email) > 254:
+            raise ValueError("account_email must be an email address")
+        q = q.filter(User.email == email.strip().lower())
+    client = args.get("client_name_contains")
+    if client is not None:
+        if not isinstance(client, str) or len(client) > 120:
+            raise ValueError("client_name_contains must be short text")
+        q = q.filter(OAuthGrant.client_name.ilike(f"%{client.strip()}%"))
+    kind = args.get("server")
+    if kind not in (None, "account", "admin"):
+        raise ValueError("server must be account or admin")
+    if kind == "admin":
+        q = q.filter(OAuthGrant.scope.like("%admin:%"))
+    elif kind == "account":
+        q = q.filter(~OAuthGrant.scope.like("%admin:%"))
+    total = q.count()
+    rows = q.order_by(OAuthGrant.last_used_at.desc().nullslast(), OAuthGrant.id.desc()) \
+            .offset(offset).limit(limit).all()
+    from scaffold.oauth.scopes import is_admin_scope
+    records = []
+    for grant, owner in rows:
+        record = describe(grant, owner)
+        record["server"] = "admin" if is_admin_scope(grant.scope) else "account"
+        record["client_name"] = _plain(record["client_name"], 120)
+        record["is_this_connection"] = grant.id == ctx.connector.grant.id
+        records.append(record)
+    return {**_identity(), "source": "oauth_grants", "state": "available",
+            "collected_at_utc": datetime.now(timezone.utc).isoformat(),
+            "untrusted_fields": ["client_name"], "total_matching": total,
+            "offset": offset, "records": records,
+            "note": "No tokens or refresh-token verifiers are ever returned."}
+
+
+def _confirm_token(grant) -> str:
+    import hashlib
+    import hmac
+    from scaffold.auth import JWT_SECRET
+    stamp = grant.created_at.isoformat() if grant.created_at else ""
+    return hmac.new(JWT_SECRET.encode(), f"revoke:{grant.id}:{grant.user_id}:{stamp}".encode(),
+                    hashlib.sha256).hexdigest()[:24]
+
+
+def _revoke(ctx: ToolContext, args: dict) -> dict:
+    import hmac
+    from scaffold.models import User
+    from scaffold.oauth.connections import describe
+    from scaffold.oauth.models import OAuthGrant
+
+    grant_id = _id(args, "connection_id")
+    grant = ctx.db.get(OAuthGrant, grant_id)
+    if grant is None:
+        raise ValueError("No live connection with that id")
+    owner = ctx.db.get(User, grant.user_id)
+    preview = describe(grant, owner.email if owner else None)
+    preview["client_name"] = _plain(preview["client_name"], 120)
+    own = grant.id == ctx.connector.grant.id
+    token = _confirm_token(grant)
+    confirm = args.get("confirm")
+    if confirm is None:
+        return {**_identity(), "preview": preview, "this_connection": own,
+                "warning": ("This is the connection you are using: revoking it ends this "
+                            "session immediately.") if own else None,
+                "effect": "Its access token stops working on its next call and its refresh "
+                          "token is refused. Other connections, including the account's "
+                          "others, stay live. The person can reconnect.",
+                "confirm": token,
+                "next_step": "Show this to the admin. If they agree, call again with this confirm value."}
+    if not isinstance(confirm, str) or not hmac.compare_digest(confirm, token):
+        raise ValueError("That confirm value does not match this connection; preview it again")
+    _do(lambda: admin_actions.revoke_connection(ctx.db, _actor(ctx), grant_id))
+    return {**_identity(), "revoked": preview, "this_connection": own}
+
+
+# ── the journal ─────────────────────────────────────────────────────────────
+
+def _journal(ctx: ToolContext, args: dict) -> dict:
+    from scaffold.routers.admin import admin_journal_entries
+
+    limit = _integer(args, "limit", 30, 1, 100)
+    before_id = args.get("before_id")
+    if before_id is not None:
+        before_id = _id(args, "before_id")
+    for key in ("action", "via", "target_type"):
+        value = args.get(key)
+        if value is not None and (not isinstance(value, str) or len(value) > 60):
+            raise ValueError(f"{key} must be short text")
+    if args.get("via") not in (None, "browser", "mcp"):
+        raise ValueError("via must be browser or mcp")
+    target_id = _id(args, "target_id") if args.get("target_id") is not None else None
+    since = None
+    if args.get("since_hours") is not None:
+        since = datetime.now(timezone.utc) - timedelta(hours=_integer(args, "since_hours", 24, 1, 24 * 90))
+    rows = admin_journal_entries(ctx.db, limit=limit + 1, before_id=before_id,
+                                 action=args.get("action"), via=args.get("via"),
+                                 target_type=args.get("target_type"), target_id=target_id, since=since)
+    return {**_identity(), "source": "admin_action_journal", "state": "available",
+            "collected_at_utc": datetime.now(timezone.utc).isoformat(),
+            "coverage": "Admin changes to AI connection settings, reports and connections, from "
+                        "the browser and the admin MCP. Intent is recorded before each change; "
+                        "an entry left at 'started' means the outcome could not be recorded.",
+            "records": rows[:limit], "has_more": len(rows) > limit,
+            "next_before_id": rows[limit - 1]["id"] if len(rows) > limit else None}
+
+
+register(Tool(
+    name="admin_list_connections", title="Live AI connections",
+    description="List live AI connections, most recently used first: connection id, account id and email, client name (untrusted text), granted scopes, server (account or admin), created, last used and refresh expiry. Filter by account_email, client_name_contains or server; page with limit and offset. Never returns tokens.",
+    input_schema=object_schema({
+        "account_email": {"type": "string", "maxLength": 254},
+        "client_name_contains": {"type": "string", "maxLength": 120},
+        "server": {"type": "string", "enum": ["account", "admin"]},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
+        "offset": {"type": "integer", "minimum": 0, "default": 0},
+    }),
+    scope=ADMIN_READ, handler=_connections,
+))
+register(Tool(
+    name="admin_audit_log", title="Admin action history",
+    description="Read the admin action journal, newest first: who changed what (browser or MCP, actor email and connection), the target id, safe before/after state, outcome and any request id. Filter by action, via, target_type, target_id or since_hours; page with before_id. No tokens, report bodies or figures.",
+    input_schema=object_schema({
+        "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 30},
+        "before_id": {"type": "integer", "minimum": 1},
+        "action": {"type": "string", "maxLength": 60},
+        "via": {"type": "string", "enum": ["browser", "mcp"]},
+        "target_type": {"type": "string", "maxLength": 60},
+        "target_id": {"type": "integer", "minimum": 1},
+        "since_hours": {"type": "integer", "minimum": 1, "maximum": 2160},
+    }),
+    scope=ADMIN_READ, handler=_journal,
+))
+register(Tool(
+    name="admin_get_request", title="Follow a change request",
+    description="Read one change request by id: what it proposes, its consequence, status (pending, approved, rejected, expired, failed, cancelled), who decided and the outcome.",
+    input_schema=object_schema({"request_id": {"type": "integer", "minimum": 1}}, ["request_id"]),
+    scope=ADMIN_READ, handler=_get_request,
+))
 
 
 _ID = {"type": "integer", "minimum": 1}
@@ -393,6 +561,9 @@ for name, title, description, schema, required, handler, destructive in (
     ("admin_pause_ai_connections", "Pause all AI connections",
      "Turn the AI connections master switch off. Every MCP call, this connection's included, then gets 503 until an admin turns it back on in the browser. Nothing is disconnected. Requires confirm: true.",
      {"confirm": {"type": "boolean"}}, ["confirm"], _pause, True),
+    ("admin_revoke_connection", "Revoke one AI connection",
+     "Revoke one live connection by id from admin_list_connections. Call without confirm to preview it (account, client, scopes, and a warning if it is this connection); call again with the returned confirm value to revoke. Its access and refresh tokens stop working at once; other connections stay live.",
+     {"connection_id": _ID, "confirm": {"type": "string", "maxLength": 64}}, ["connection_id"], _revoke, True),
     ("admin_request_redirect_rule", "Request a new redirect rule",
      "File a request to allow a new OAuth redirect: an exact callback URL (preferred), a prefix with a path, a host, or loopback. A site admin approves or rejects it in Admin → AI Connections; nothing is allowed until then. Validated now and again on approval.",
      {"label": {"type": "string", "maxLength": 60}, "pattern": {"type": "string", "maxLength": 500},
@@ -401,8 +572,11 @@ for name, title, description, schema, required, handler, destructive in (
     ("admin_request_enable_redirect_rule", "Request a redirect rule be switched back on",
      "File a request to switch a disabled redirect rule back on. A site admin approves or rejects it in Admin → AI Connections.",
      {"rule_id": _ID, "reason": _REASON}, ["rule_id"], _request(admin_requests.ENABLE_RULE), False),
+    ("admin_cancel_request", "Withdraw a pending request",
+     "Withdraw a still-pending change request that this connection filed. It cannot approve anything.",
+     {"request_id": _ID}, ["request_id"], _cancel_request, False),
 ):
     register(Tool(name=name, title=title, description=description,
                   input_schema=object_schema(schema, required), scope=ADMIN_WRITE, handler=handler,
-                  read_only=False, idempotent=name != "admin_request_redirect_rule",
+                  read_only=False, idempotent=name not in ("admin_request_redirect_rule", "admin_revoke_connection"),
                   destructive=destructive))

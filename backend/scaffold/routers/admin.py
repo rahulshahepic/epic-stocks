@@ -439,13 +439,14 @@ def update_report_status(
     admin: User = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ):
+    from scaffold.oauth import admin_actions
+
     if body.status not in ("new", "resolved"):
         raise HTTPException(status_code=400, detail="Invalid status")
-    entry = db.get(UserReport, report_id)
-    if not entry:
-        raise HTTPException(status_code=404, detail="Report not found")
-    entry.status = body.status
-    db.commit()
+    try:
+        admin_actions.set_report_status(db, _browser(admin), report_id, body.status)
+    except admin_actions.NotFound:
+        raise HTTPException(status_code=404, detail="Report not found") from None
 
 
 @router.delete("/reports/{report_id}", status_code=204)
@@ -841,6 +842,11 @@ class McpActionRequestOut(BaseModel):
     id: int
     action: str
     description: str
+    consequence: str | None = None
+    label: str | None = None
+    match_type: str | None = None
+    pattern: str | None = None
+    rule_id: int | None = None
     reason: str | None
     status: str
     client_name: str | None
@@ -855,6 +861,7 @@ class McpStatus(BaseModel):
     hosts: list[McpHostOut]
     rejected: list[McpRejectedOut] = []
     requests: list[McpActionRequestOut] = []
+    request_history: list[McpActionRequestOut] = []
     connections: int
 
 
@@ -887,7 +894,14 @@ def _mcp_status(db: Session) -> McpStatus:
     ).all()
     from scaffold.oauth import admin_requests
 
-    requests = admin_requests.recent(db, 20)
+    def request_out(row):
+        data = admin_requests.as_dict(row)
+        payload = data.pop("payload") or {}
+        data.pop("grant_id", None)
+        return McpActionRequestOut(**data, label=payload.get("label"),
+                                   match_type=payload.get("match_type"),
+                                   pattern=payload.get("pattern"), rule_id=payload.get("rule_id"))
+
     rejected = db.query(OAuthRejectedRedirect).order_by(
         OAuthRejectedRedirect.last_seen.desc()
     ).limit(50).all()
@@ -904,8 +918,8 @@ def _mcp_status(db: Session) -> McpStatus:
                            first_seen=_iso(r.first_seen), last_seen=_iso(r.last_seen))
             for r in rejected
         ],
-        requests=[McpActionRequestOut(**{k: v for k, v in admin_requests.as_dict(row).items()
-                                         if k != "payload"}) for row in requests],
+        requests=[request_out(row) for row in admin_requests.pending(db)],
+        request_history=[request_out(row) for row in admin_requests.history(db, 20)],
         connections=db.query(OAuthGrant).count(),
     )
 
@@ -932,8 +946,8 @@ def set_mcp_enabled_endpoint(body: McpEnabledRequest, admin: User = Depends(get_
     connections because an admin wanted to stop new ones for an afternoon would
     be a worse surprise than the pause itself.
     """
-    from scaffold.oauth.settings import set_mcp_enabled
-    set_mcp_enabled(db, body.enabled)
+    from scaffold.oauth import admin_actions
+    admin_actions.set_connections_enabled(db, _browser(admin), body.enabled)
     return _mcp_status(db)
 
 
@@ -941,15 +955,15 @@ def set_mcp_enabled_endpoint(body: McpEnabledRequest, admin: User = Depends(get_
 def add_mcp_host(body: McpHostCreate, admin: User = Depends(get_admin_user),
                  db: Session = Depends(get_db)):
     """Add a redirect rule. Refused URIs it now admits drop off the review list."""
-    from scaffold.oauth.settings import RuleConflict, add_redirect_rule
+    from scaffold.oauth import admin_actions
 
     raw = body.pattern or body.host
     if not raw:
         raise HTTPException(422, "Enter a callback URL or hostname")
     kind, pattern = _normalize_rule(raw, body.match_type)
     try:
-        add_redirect_rule(db, body.label.strip(), kind, pattern)
-    except RuleConflict as exc:
+        admin_actions.add_rule(db, _browser(admin), body.label.strip(), kind, pattern)
+    except admin_actions.RuleConflict as exc:
         raise HTTPException(409, str(exc)) from None
     return _mcp_status(db)
 
@@ -960,26 +974,30 @@ def toggle_mcp_host(host_id: int, body: McpHostUpdate, admin: User = Depends(get
     """Switching a provider off stops new authorizations and kills existing
     connections at their next token refresh — within the hour, not whenever
     their refresh token would have expired."""
-    from scaffold.oauth.settings import set_rule_enabled
+    from scaffold.oauth import admin_actions
 
-    if set_rule_enabled(db, host_id, body.enabled) is None:
-        raise HTTPException(404, "Host not found")
+    try:
+        admin_actions.set_rule_enabled(db, _browser(admin), host_id, body.enabled)
+    except admin_actions.NotFound:
+        raise HTTPException(404, "Host not found") from None
     return _mcp_status(db)
 
 
 @router.delete("/mcp/hosts/{host_id}", response_model=McpStatus)
 def delete_mcp_host(host_id: int, admin: User = Depends(get_admin_user),
                     db: Session = Depends(get_db)):
-    from scaffold.oauth.models import OAuthRedirectHost
-    from scaffold.oauth.settings import invalidate
+    from scaffold.oauth import admin_actions
 
-    row = db.get(OAuthRedirectHost, host_id)
-    if row is None:
-        raise HTTPException(404, "Host not found")
-    db.delete(row)
-    db.commit()
-    invalidate()
+    try:
+        admin_actions.delete_rule(db, _browser(admin), host_id)
+    except admin_actions.NotFound:
+        raise HTTPException(404, "Host not found") from None
     return _mcp_status(db)
+
+
+def _browser(admin: User):
+    from scaffold.oauth.admin_actions import Actor
+    return Actor(via="browser", email=admin.email)
 
 
 def _decide_request(db: Session, request_id: int, admin: User, approve: bool) -> McpStatus:
@@ -1010,13 +1028,75 @@ def reject_mcp_request(request_id: int, admin: User = Depends(get_admin_user),
 @router.delete("/mcp/rejected/{rejected_id}", response_model=McpStatus)
 def dismiss_rejected_redirect(rejected_id: int, admin: User = Depends(get_admin_user),
                               db: Session = Depends(get_db)):
-    from scaffold.oauth.models import OAuthRejectedRedirect
+    from scaffold.oauth import admin_actions
 
-    row = db.get(OAuthRejectedRedirect, rejected_id)
-    if row is None:
-        raise HTTPException(404, "Not found")
-    db.delete(row)
-    db.commit()
+    try:
+        admin_actions.dismiss_refused(db, _browser(admin), rejected_id)
+    except admin_actions.NotFound:
+        raise HTTPException(404, "Not found") from None
+    return _mcp_status(db)
+
+
+class AdminJournalEntryOut(BaseModel):
+    id: int
+    at_utc: str | None
+    environment: str | None
+    via: str
+    actor_email: str | None
+    grant_id: int | None
+    client_name: str | None
+    action: str
+    target_type: str | None
+    target_id: int | None
+    request_id: int | None
+    before: dict | list | str | None
+    after: dict | list | str | None
+    outcome: str
+    detail: str | None
+
+
+def admin_journal_entries(db: Session, *, limit: int = 50, before_id: int | None = None,
+                          action: str | None = None, via: str | None = None,
+                          target_type: str | None = None, target_id: int | None = None,
+                          since=None) -> list[dict]:
+    """The admin action journal, newest first. Shared by the HTTP endpoint and the admin MCP."""
+    from scaffold.oauth.admin_journal import as_dict
+    from scaffold.oauth.models import AdminActionJournal as J
+
+    q = db.query(J)
+    if before_id:
+        q = q.filter(J.id < before_id)
+    if action:
+        q = q.filter(J.action == action)
+    if via:
+        q = q.filter(J.via == via)
+    if target_type:
+        q = q.filter(J.target_type == target_type)
+    if target_id is not None:
+        q = q.filter(J.target_id == target_id)
+    if since is not None:
+        q = q.filter(J.at >= since)
+    return [as_dict(row) for row in q.order_by(J.id.desc()).limit(limit).all()]
+
+
+@router.get("/mcp/journal", response_model=list[AdminJournalEntryOut])
+def get_admin_journal(limit: int = 50, before_id: int | None = None, action: str | None = None,
+                      via: str | None = None, admin: User = Depends(get_admin_user),
+                      db: Session = Depends(get_db)):
+    return admin_journal_entries(db, limit=max(1, min(limit, 200)), before_id=before_id,
+                                 action=action, via=via)
+
+
+@router.delete("/mcp/connections/{grant_id}", response_model=McpStatus)
+def admin_revoke_connection(grant_id: int, admin: User = Depends(get_admin_user),
+                            db: Session = Depends(get_db)):
+    """Revoke one person's AI connection — containment for a single compromised one."""
+    from scaffold.oauth import admin_actions
+
+    try:
+        admin_actions.revoke_connection(db, _browser(admin), grant_id)
+    except admin_actions.NotFound:
+        raise HTTPException(404, "Connection not found") from None
     return _mcp_status(db)
 
 

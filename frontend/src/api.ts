@@ -70,10 +70,15 @@ export interface McpRejectedRedirect {
 
 export interface McpActionRequest {
   id: number
-  action: string
+  action: 'add_redirect_rule' | 'enable_redirect_rule' | string
   description: string
+  consequence?: string | null
+  label?: string | null
+  match_type?: string | null
+  pattern?: string | null
+  rule_id?: number | null
   reason: string | null
-  status: 'pending' | 'approved' | 'rejected' | 'expired' | 'failed'
+  status: 'pending' | 'approved' | 'rejected' | 'expired' | 'failed' | 'cancelled'
   client_name: string | null
   outcome: string | null
   decided_by: string | null
@@ -86,6 +91,7 @@ export interface McpSettings {
   hosts: McpHost[]
   rejected: McpRejectedRedirect[]
   requests?: McpActionRequest[]
+  request_history?: McpActionRequest[]
   connections: number
 }
 

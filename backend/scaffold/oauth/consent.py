@@ -123,6 +123,10 @@ def _page(title: str, body: str) -> str:
     )
 
 
+# Permissions a person must tick themselves, even when the client asks for them.
+NEVER_PRESELECTED = frozenset({scope_defs.ADMIN_WRITE})
+
+
 def render_consent(*, client_name: str, redirect_origin: str, account_email: str,
                    requested_scopes: list[str], request_token: str, csrf: str,
                    admin: bool = False, action: str = "/oauth/authorize",
@@ -135,9 +139,11 @@ def render_consent(*, client_name: str, redirect_origin: str, account_email: str
     for title, scopes in groups:
         choices = "".join(
             f'<label class="permission"><input type="checkbox" name="selected_scope" '
-            f'value="{_esc(scope)}"' + (' checked' if scope in requested_scopes else '') + '>'
+            f'value="{_esc(scope)}"' + (' checked' if scope in requested_scopes and scope not in NEVER_PRESELECTED else '') + '>'
             f'<span>{_esc(scope_defs.SCOPE_LABELS[scope])}'
-            + ('<small>Requested by the app</small>' if scope in requested_scopes else '')
+            + ('<small>Requested by the app — not selected unless you tick it</small>'
+               if scope in requested_scopes and scope in NEVER_PRESELECTED
+               else '<small>Requested by the app</small>' if scope in requested_scopes else '')
             + '</span></label>'
             for scope in scopes
         )

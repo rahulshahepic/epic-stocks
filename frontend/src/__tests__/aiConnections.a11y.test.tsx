@@ -122,6 +122,25 @@ describe('AI connections accessibility', () => {
     expect(summarise(found)).toBe('')
   })
 
+  it('the admin panel is clean with pending AI requests and history (mobile width)', async () => {
+    window.innerWidth = 375
+    const pending = {
+      id: 4, action: 'add_redirect_rule', description: 'Allow exact redirect https://x.example/cb as “X”',
+      consequence: 'Assistants that register this redirect address can be sent sign-in codes.', label: 'X',
+      match_type: 'exact', pattern: 'https://x.example/cb', rule_id: null, reason: 'Seen in refusals',
+      status: 'pending' as const, client_name: 'Claude diagnostics', outcome: null, decided_by: null,
+      requested_at: '2026-11-17T18:00:00Z', decided_at: null,
+    }
+    vi.spyOn(api, 'adminGetMcp').mockResolvedValue({
+      ...SETTINGS, requests: [pending, { ...pending, id: 5, action: 'enable_redirect_rule', reason: null }],
+      request_history: [{ ...pending, id: 3, status: 'rejected' as const, decided_by: 'admin@example.com' }],
+    })
+    vi.spyOn(api, 'adminGetMcpUsage').mockResolvedValue(USAGE)
+    const { container } = render(<AiConnections onError={() => {}} />)
+    await screen.findByText(/2 waiting/)
+    expect(summarise(await violations(container))).toBe('')
+  })
+
   it('catches a list containing something that is not a list item', async () => {
     // The guard itself has to work, or the tests above pass by accident.
     const { container } = render(

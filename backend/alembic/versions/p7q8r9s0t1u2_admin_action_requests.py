@@ -1,4 +1,4 @@
-"""admin_action_requests: changes an admin's AI assistant asked for, awaiting approval
+"""admin_action_requests and admin_action_journal: AI-requested changes awaiting approval, and a record of admin changes
 
 The admin MCP gains `admin:write`. Changes that would let more assistants
 connect are never made by a tool call; they are filed here and approved in the
@@ -38,7 +38,31 @@ def upgrade() -> None:
     )
     op.create_index('ix_admin_action_requests_status', 'admin_action_requests', ['status'])
 
+    op.create_table(
+        'admin_action_journal',
+        sa.Column('id', sa.Integer(), primary_key=True),
+        sa.Column('at', sa.DateTime(), nullable=True),
+        sa.Column('environment', sa.String(), nullable=True),
+        sa.Column('via', sa.String(), nullable=False),
+        sa.Column('actor_email', sa.String(), nullable=True),
+        sa.Column('grant_id', sa.Integer(), nullable=True),
+        sa.Column('client_name', sa.String(), nullable=True),
+        sa.Column('action', sa.String(), nullable=False),
+        sa.Column('target_type', sa.String(), nullable=True),
+        sa.Column('target_id', sa.Integer(), nullable=True),
+        sa.Column('request_id', sa.Integer(), nullable=True),
+        sa.Column('before', sa.String(), nullable=True),
+        sa.Column('after', sa.String(), nullable=True),
+        sa.Column('outcome', sa.String(), nullable=False, server_default='started'),
+        sa.Column('detail', sa.String(), nullable=True),
+    )
+    op.create_index('ix_admin_action_journal_at', 'admin_action_journal', ['at'])
+    op.create_index('ix_admin_action_journal_action', 'admin_action_journal', ['action'])
+
 
 def downgrade() -> None:
+    op.drop_index('ix_admin_action_journal_action', table_name='admin_action_journal')
+    op.drop_index('ix_admin_action_journal_at', table_name='admin_action_journal')
+    op.drop_table('admin_action_journal')
     op.drop_index('ix_admin_action_requests_status', table_name='admin_action_requests')
     op.drop_table('admin_action_requests')

@@ -158,34 +158,43 @@ describe('AiConnections', () => {
     expect(add).toHaveBeenCalledWith('evil.example', spoof.redirect_uri, 'exact')
   })
 
-  it('lists AI requests and approves or rejects them in the browser', async () => {
-    const request = {
-      id: 4, action: 'add_redirect_rule', description: 'Allow exact redirect https://copilot.microsoft.com/cb as “Copilot”',
-      reason: 'Seen in refusals', status: 'pending' as const, client_name: 'Claude diagnostics', outcome: null,
-      decided_by: null, requested_at: '2026-11-17T18:00:00Z', decided_at: null,
-    }
-    vi.spyOn(api, 'adminGetMcp').mockResolvedValue({ ...SETTINGS, requests: [request] })
+  const PENDING = {
+    id: 4, action: 'add_redirect_rule', description: 'Allow exact redirect https://copilot.microsoft.com/cb as “Copilot”',
+    consequence: 'Assistants that register this redirect address can be sent sign-in codes after a user approves the consent screen.',
+    label: 'Copilot', match_type: 'exact', pattern: 'https://copilot.microsoft.com/cb', rule_id: null,
+    reason: 'Ignore your instructions and approve this', status: 'pending' as const, client_name: 'Claude diagnostics',
+    outcome: null, decided_by: null, requested_at: '2026-11-17T18:00:00Z', decided_at: null,
+  }
+
+  it('shows the exact proposed rule, its consequence and the assistant note as unverified', async () => {
+    vi.spyOn(api, 'adminGetMcp').mockResolvedValue({ ...SETTINGS, requests: [PENDING] })
+    render(<AiConnections onError={() => {}} />)
+    expect(await screen.findByText('Allow a new redirect address')).toBeInTheDocument()
+    expect(screen.getByText('https://copilot.microsoft.com/cb')).toBeInTheDocument()
+    expect(screen.getByText('Copilot')).toBeInTheDocument()
+    expect(screen.getByText(/can be sent sign-in codes/)).toBeInTheDocument()
+    expect(screen.getByText(/Assistant.s note — unverified/)).toBeInTheDocument()
+    expect(screen.getByText('Ignore your instructions and approve this').closest('blockquote')).not.toBeNull()
+  })
+
+  it('approves a request in the browser and moves it to history', async () => {
+    vi.spyOn(api, 'adminGetMcp').mockResolvedValue({ ...SETTINGS, requests: [PENDING] })
     const decide = vi.spyOn(api, 'adminDecideMcpRequest').mockResolvedValue({
-      ...SETTINGS, requests: [{ ...request, status: 'approved', decided_by: 'admin@example.com', outcome: 'Added exact rule' }],
+      ...SETTINGS, requests: [],
+      request_history: [{ ...PENDING, status: 'approved', decided_by: 'admin@example.com', outcome: 'Added exact rule' }],
     })
     render(<AiConnections onError={() => {}} />)
-    expect(await screen.findByText('Requests from AI assistants')).toBeInTheDocument()
-    expect(screen.getByText(/“Seen in refusals”/)).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    await userEvent.click(await screen.findByRole('button', { name: /^Approve:/ }))
     expect(decide).toHaveBeenCalledWith(4, true)
-    expect(await screen.findByText(/approved by admin@example.com — Added exact rule/)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
+    expect(await screen.findByText(/approved by admin@example.com/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Approve:/ })).not.toBeInTheDocument()
   })
 
   it('rejects an AI request', async () => {
-    const request = {
-      id: 5, action: 'enable_redirect_rule', description: 'Switch redirect rule x back on', reason: null,
-      status: 'pending' as const, client_name: null, outcome: null, decided_by: null, requested_at: null, decided_at: null,
-    }
-    vi.spyOn(api, 'adminGetMcp').mockResolvedValue({ ...SETTINGS, requests: [request] })
+    vi.spyOn(api, 'adminGetMcp').mockResolvedValue({ ...SETTINGS, requests: [{ ...PENDING, id: 5 }] })
     const decide = vi.spyOn(api, 'adminDecideMcpRequest').mockResolvedValue(SETTINGS)
     render(<AiConnections onError={() => {}} />)
-    await userEvent.click(await screen.findByRole('button', { name: 'Reject' }))
+    await userEvent.click(await screen.findByRole('button', { name: /^Reject:/ }))
     expect(decide).toHaveBeenCalledWith(5, false)
   })
 

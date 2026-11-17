@@ -386,22 +386,30 @@ def normalize_rule(raw: str, match_type: str | None) -> tuple[str, str]:
     return kind, value
 
 
-def add_redirect_rule(db: Session, label: str, kind: str, pattern: str) -> None:
-    """Add an enabled rule; refused URIs it now admits drop off the review list."""
+def add_redirect_rule(db: Session, label: str, kind: str, pattern: str, *, commit: bool = True):
+    """Add an enabled rule; refused URIs it now admits drop off the review list.
+
+    With commit=False the change is only flushed: the caller commits it
+    together with its own bookkeeping and then calls invalidate().
+    """
     from .models import OAuthRedirectHost, OAuthRejectedRedirect
 
     if db.query(OAuthRedirectHost).filter(OAuthRedirectHost.pattern == pattern).first():
         raise RuleConflict(f"{pattern} is already on the list")
-    db.add(OAuthRedirectHost(label=(label or "").strip()[:60] or "Unlabelled",
-                             pattern=pattern, match_type=kind, enabled=1))
-    for row in db.query(OAuthRejectedRedirect).all():
-        if rule_matches(kind, pattern, row.redirect_uri):
-            db.delete(row)
-    db.commit()
-    invalidate()
+    row = OAuthRedirectHost(label=(label or "").strip()[:60] or "Unlabelled",
+                            pattern=pattern, match_type=kind, enabled=1)
+    db.add(row)
+    for refused in db.query(OAuthRejectedRedirect).all():
+        if rule_matches(kind, pattern, refused.redirect_uri):
+            db.delete(refused)
+    db.flush()
+    if commit:
+        db.commit()
+        invalidate()
+    return row
 
 
-def set_rule_enabled(db: Session, rule_id: int, enabled: bool):
+def set_rule_enabled(db: Session, rule_id: int, enabled: bool, *, commit: bool = True):
     """Switch one rule. Returns the row, or None if there is no such rule."""
     from .models import OAuthRedirectHost
 
@@ -409,6 +417,16 @@ def set_rule_enabled(db: Session, rule_id: int, enabled: bool):
     if row is None:
         return None
     row.enabled = 1 if enabled else 0
-    db.commit()
-    invalidate()
+    db.flush()
+    if commit:
+        db.commit()
+        invalidate()
     return row
+
+
+def rule_state(row) -> dict | None:
+    """The safe journal view of a rule."""
+    if row is None:
+        return None
+    return {"id": row.id, "label": row.label, "match_type": row.match_type,
+            "pattern": row.pattern, "enabled": bool(row.enabled)}

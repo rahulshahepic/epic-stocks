@@ -926,3 +926,65 @@ def test_concurrent_filings_respect_the_cap_on_postgres(monkeypatch, same):
     assert kinds == (["created", "existing"] if same else ["created", "refused"]), outcomes
     Base.metadata.drop_all(engine)
     engine.dispose()
+
+
+
+# ── review round 3: delimiters cannot smuggle a secret past the scrubber ────
+
+SMUGGLED = [
+    f"https://a.example/cb?x='{SECRET}'",
+    f'https://a.example/cb?x="{SECRET}"',
+    f"https://a.example/cb?x=<{SECRET}>",
+    f"https://a.example/cb/{SECRET}\\x",
+    f"HTTPS://A.example:8443/cb?x=`{SECRET}`",
+]
+
+
+@pytest.mark.parametrize("uri", SMUGGLED)
+def test_scrub_replaces_the_whole_address_whatever_it_contains(uri):
+    from scaffold.oauth.admin_journal import scrub
+    for value in ({"pattern": uri}, {"after": {"nested": [{"pattern": uri}]}},
+                  f"Rule {uri} is already on the list", [f"see {uri}, then"]):
+        assert SECRET not in json.dumps(scrub(value)), value
+
+
+@pytest.mark.parametrize("uri", SMUGGLED[:4])
+def test_callbacks_with_quotes_or_brackets_are_refused_everywhere(client, uri):
+    from scaffold.oauth.settings import normalize_rule
+    with pytest.raises(ValueError):
+        normalize_rule(uri, "exact")
+    with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@example.com"}):
+        _, call = _admin_session(client, WRITE)
+        assert call("admin_request_redirect_rule", {"label": "X", "pattern": uri}, ok=False)
+        assert client.post("/api/admin/mcp/hosts", json={"label": "X", "pattern": uri}).status_code == 422
+        log = json.dumps(call("admin_audit_log", {"limit": 100}))
+        page = json.dumps(client.get("/api/admin/mcp/journal?limit=200").json())
+    assert SECRET not in log and SECRET not in page, "refused filings journal their failure without the address"
+
+
+def test_rows_stored_before_the_fix_are_scrubbed_on_read(client, db_session):
+    """A journal row written raw (by an older build) is never served raw."""
+    from scaffold.oauth.models import AdminActionJournal
+    for uri in SMUGGLED:
+        db_session.add(AdminActionJournal(
+            via="mcp", action="request_add_redirect_rule", outcome="ok",
+            before=json.dumps({"pattern": uri}), after=json.dumps({"pattern": uri, "x": [uri]}),
+            detail=f"Rule {uri} is already on the list"))
+    db_session.commit()
+    with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@example.com"}):
+        _, call = _admin_session(client, WRITE)
+        assert SECRET not in json.dumps(call("admin_audit_log", {"limit": 100}))
+        assert SECRET not in json.dumps(client.get("/api/admin/mcp/journal?limit=200").json())
+
+
+def test_the_fingerprint_is_keyed_and_stable(monkeypatch):
+    import hashlib
+    from scaffold.oauth import admin_journal
+    uri = f"https://a.example/cb?t={SECRET}"
+    first = admin_journal.safe_url(uri)
+    assert first == admin_journal.safe_url(uri), "same address, same fingerprint"
+    assert hashlib.sha256(uri.encode()).hexdigest()[:16] not in first, "not a plain, guessable hash"
+    assert admin_journal.safe_url(first) == first, "re-scrubbing a safe value is a no-op"
+    import scaffold.auth
+    monkeypatch.setattr(scaffold.auth, "JWT_SECRET", "another-deployment-secret-0123456789")
+    assert admin_journal.safe_url(uri) != first

@@ -348,6 +348,11 @@ def _normalize_host(raw: str) -> str:
     return value
 
 
+# Quotes, angle brackets and backslashes never belong in a callback, and
+# accepting them lets a crafted address smuggle text past log scrubbing.
+_UNSAFE_CALLBACK_CHARS = frozenset("'\"<>\\`{}|^")
+
+
 def normalize_rule(raw: str, match_type: str | None) -> tuple[str, str]:
     """(match_type, pattern) for what an admin typed. Raises ValueError.
 
@@ -385,8 +390,9 @@ def normalize_rule(raw: str, match_type: str | None) -> tuple[str, str]:
         raise ValueError(f"'{raw}' is not a URL") from None
     if parsed.scheme != "https" or not parsed.hostname:
         raise ValueError("A callback must be a full https:// address")
-    if parsed.fragment or "@" in parsed.netloc or " " in value or len(value) > REJECTED_URI_MAX:
-        raise ValueError(f"'{raw}' is not a usable callback address")
+    if (parsed.fragment or "@" in parsed.netloc or len(value) > REJECTED_URI_MAX
+            or any(c in _UNSAFE_CALLBACK_CHARS or c.isspace() or not c.isprintable() for c in value)):
+        raise ValueError("That is not a usable callback address")
     if kind == "prefix" and not parsed.path.startswith("/"):
         raise ValueError("A prefix must include a path, e.g. https://example.com/oauth/")
     return kind, value

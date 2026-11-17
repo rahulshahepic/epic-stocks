@@ -6,6 +6,7 @@ the change has already happened by then, and losing its outcome line is better
 than reporting a completed change as a failure.
 """
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -25,34 +26,50 @@ MAX_STATE_LEN = 1000
 STARTED, OK, FAILED = "started", "ok", "failed"
 
 
-_URL = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s\"'<>]+")
+# Free text: everything from a scheme to the next whitespace is one address.
+# Stopping at quotes or brackets would copy the rest of a crafted URL verbatim.
+_URL = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://\S+")
+# Fields that hold an address are replaced whole, never regex-matched.
+ADDRESS_FIELDS = frozenset({"pattern", "redirect_uri", "uri", "url", "address"})
+_SAFE = re.compile(r"^(?:[a-z][a-z0-9+.-]*://[a-z0-9.\-\[\]:]*/… |<address )#[0-9a-f]{16}>?$")
+
+
+def _fingerprint(value: str) -> str:
+    """Keyed, so a low-entropy secret cannot be confirmed by guessing offline."""
+    from scaffold.auth import JWT_SECRET
+    return hmac.new(f"journal:{JWT_SECRET}".encode(), value.encode(), hashlib.sha256).hexdigest()[:16]
 
 
 def safe_url(url: str) -> str:
-    """Scheme, host and port, plus a fingerprint of the whole address.
+    """Scheme, host and port, plus a keyed fingerprint of the whole address.
 
     Callback paths and queries can carry secrets, so neither is kept; the
-    fingerprint still tells two different addresses apart and matches the
-    same address across entries.
+    fingerprint still tells two addresses apart and matches the same address
+    across entries. Already-safe values pass through unchanged.
     """
-    digest = hashlib.sha256(url.encode()).hexdigest()[:12]
+    if _SAFE.match(url):
+        return url
+    digest = _fingerprint(url)
     try:
         parsed = urlparse(url)
-        host = (parsed.hostname or "").lower()
+        scheme = re.sub(r"[^a-z0-9+.-]", "", (parsed.scheme or "").lower())
+        host = re.sub(r"[^a-z0-9.\-\[\]:]", "", (parsed.hostname or "").lower())
         port = f":{parsed.port}" if parsed.port else ""
     except ValueError:
         return f"<address #{digest}>"
-    return f"{parsed.scheme}://{host}{port}/… #{digest}" if host else f"<address #{digest}>"
+    return f"{scheme}://{host}{port}/… #{digest}" if scheme and host else f"<address #{digest}>"
 
 
-def scrub(value):
-    """Replace every URL anywhere in a value with its safe form."""
+def scrub(value, key: str | None = None):
+    """Make a value safe to journal: address fields whole, URLs in free text."""
     if isinstance(value, str):
+        if key in ADDRESS_FIELDS and "://" in value:
+            return safe_url(value.strip())
         return _URL.sub(lambda m: safe_url(m.group(0)), value)
     if isinstance(value, dict):
-        return {k: scrub(v) for k, v in value.items()}
+        return {k: scrub(v, k) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
-        return [scrub(v) for v in value]
+        return [scrub(v, key) for v in value]
     return value
 
 
@@ -126,6 +143,8 @@ def as_dict(row: AdminActionJournal) -> dict:
         "environment": row.environment, "via": row.via, "actor_email": row.actor_email,
         "grant_id": row.grant_id, "client_name": row.client_name, "action": row.action,
         "target_type": row.target_type, "target_id": row.target_id, "request_id": row.request_id,
-        "before": load(row.before), "after": load(row.after),
-        "outcome": row.outcome, "detail": row.detail,
+        # Scrubbed again on the way out, so rows written before a scrubbing
+        # fix (or by any path that missed it) are never served raw.
+        "before": scrub(load(row.before)), "after": scrub(load(row.after)),
+        "outcome": row.outcome, "detail": scrub(row.detail) if row.detail else None,
     }

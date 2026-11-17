@@ -13,6 +13,7 @@ so the authorize and token endpoints do not pay a query each.
 """
 import json
 import logging
+import os
 import time
 from urllib.parse import urlparse
 
@@ -44,7 +45,10 @@ DEFAULT_REDIRECT_RULES: tuple[tuple[str, str, str], ...] = (
     # Mistral has not published the callback path; allow the host.
     ("Mistral Le Chat", "host", "callback.mistral.ai"),
     ("Manus", "exact", "https://manus.im/api/webhook/mcp/callback"),
-    # Locally run MCP clients (RFC 8252): any port, any path.
+    # Locally run MCP clients (RFC 8252): any port, any path. Seeded disabled
+    # on a real deployment (DOMAIN set): hosted assistants never use loopback,
+    # and an attacker's "localhost" is the victim's own machine, so an admin
+    # turns these on deliberately.
     ("Local clients", "loopback", "localhost"),
     ("Local clients", "loopback", "127.0.0.1"),
 )
@@ -158,7 +162,10 @@ def enabled_rules() -> tuple[tuple[str, str], ...]:
 
 
 def _host_of(pattern: str) -> str:
-    return (urlparse(pattern).hostname or "").lower()
+    try:
+        return (urlparse(pattern).hostname or "").lower()
+    except ValueError:
+        return ""
 
 
 def _on_host(host: str, pattern: str) -> bool:
@@ -166,9 +173,17 @@ def _on_host(host: str, pattern: str) -> bool:
 
 
 def rule_matches(match: str, pattern: str, uri: str) -> bool:
-    """Whether one rule admits this redirect URI. The caller has already
-    refused fragments, userinfo and backslashes (clients.validate_redirect_uri)."""
+    """Whether one rule admits this redirect URI. Never raises: refused URIs
+    from anonymous registrations reach here unparsed and may be malformed."""
+    try:
+        return _rule_matches(match, pattern, uri)
+    except ValueError:
+        return False
+
+
+def _rule_matches(match: str, pattern: str, uri: str) -> bool:
     parsed = urlparse(uri)
+    _ = parsed.port  # raises on a malformed or out-of-range port
     host = (parsed.hostname or "").lower()
     if match == "exact":
         return uri == pattern
@@ -294,7 +309,9 @@ def seed_defaults(db: Session) -> None:
         if pattern in seeded:
             continue
         if pattern not in present:
-            db.add(OAuthRedirectHost(label=label, match_type=match, pattern=pattern, enabled=1))
+            off = match == "loopback" and bool(os.getenv("DOMAIN"))
+            db.add(OAuthRedirectHost(label=label, match_type=match, pattern=pattern,
+                                     enabled=0 if off else 1))
             present.add(pattern)
         seeded.add(pattern)
         changed = True

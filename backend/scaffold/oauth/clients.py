@@ -67,8 +67,9 @@ def validate_redirect_uri(uri: str) -> None:
 
     if _is_loopback(host):
         # OAuth 2.1 allows http for loopback, which is how a locally run MCP
-        # client authorizes. On a real deployment only the loopback rules an
-        # admin keeps switched on admit it.
+        # client authorizes. On a real deployment an attacker's "localhost" is
+        # the victim's own machine, so it is refused unless an admin has
+        # switched a loopback rule on (they are seeded off when DOMAIN is set).
         if parsed.scheme not in ("http", "https"):
             raise RegistrationError("redirect_uri must be http or https")
         if os.getenv("DOMAIN") and not uri_allowed(uri):

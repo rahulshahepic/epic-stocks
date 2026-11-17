@@ -145,8 +145,17 @@ describe('AiConnections', () => {
     expect(await screen.findByText(REFUSED.redirect_uri)).toBeInTheDocument()
     expect(screen.getByText(/Copilot · 3 attempts/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Allow exactly' }))
-    expect(add).toHaveBeenCalledWith('Copilot', REFUSED.redirect_uri, 'exact')
+    expect(add).toHaveBeenCalledWith('copilot.microsoft.com', REFUSED.redirect_uri, 'exact')
     await waitFor(() => expect(screen.queryByText(REFUSED.redirect_uri)).not.toBeInTheDocument())
+  })
+
+  it('never files an allowed address under the name the registrant chose', async () => {
+    const spoof = { ...REFUSED, client_name: 'Claude', redirect_uri: 'https://evil.example/cb' }
+    vi.spyOn(api, 'adminGetMcp').mockResolvedValue({ ...SETTINGS, rejected: [spoof] })
+    const add = vi.spyOn(api, 'adminAddMcpHost').mockResolvedValue(SETTINGS)
+    render(<AiConnections onError={() => {}} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Allow exactly' }))
+    expect(add).toHaveBeenCalledWith('evil.example', spoof.redirect_uri, 'exact')
   })
 
   it('dismisses a refused redirect address', async () => {
@@ -162,6 +171,7 @@ describe('AiConnections', () => {
     render(<AiConnections onError={() => {}} />)
     await userEvent.click(await screen.findByRole('button', { name: 'Edit as rule' }))
     expect(screen.getByPlaceholderText('https://copilot.microsoft.com/oauth/callback')).toHaveValue(REFUSED.redirect_uri)
+    expect(screen.getByPlaceholderText('Copilot')).toHaveValue('copilot.microsoft.com')
     expect(screen.getByLabelText('Match')).toHaveValue('prefix')
   })
 

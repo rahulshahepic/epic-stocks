@@ -159,8 +159,6 @@ def test_the_switch_round_trips(admin):
     "https://enterprise.perplexity.ai/rest/connections/oauth_callback",
     "https://callback.mistral.ai/oauth/anything",
     "https://manus.im/api/webhook/mcp/callback",
-    "http://localhost:6274/oauth/callback",
-    "http://127.0.0.1:33418/",
 ])
 def test_every_default_callback_registers_on_a_real_deployment(admin, monkeypatch, uri):
     monkeypatch.setenv("DOMAIN", "epic-stocks.example")
@@ -610,3 +608,53 @@ def test_the_migration_turns_legacy_hosts_into_callbacks_and_back():
                 "SELECT label, host, enabled FROM oauth_redirect_hosts"))}
             assert rows == {("ChatGPT", "chatgpt.com", 0), ("Claude", "claude.ai", 1), ("Meta", "meta.ai", 1)}
     engine.dispose()
+
+
+def test_a_malformed_refused_uri_cannot_break_adding_a_rule(admin):
+    """Refused URIs are anonymous input stored unparsed; matching them against
+    a new rule must not raise."""
+    bad = admin.post("/oauth/register", json={
+        "client_name": "X", "redirect_uris": ["https://[not-ipv6/callback"]})
+    assert bad.status_code == 400
+    assert admin.get("/api/admin/mcp").json()["rejected"]
+    resp = admin.post("/api/admin/mcp/hosts", json={
+        "label": "Copilot", "pattern": "https://copilot.microsoft.com/oauth/callback"})
+    assert resp.status_code == 201, resp.text
+
+
+def test_rule_matching_never_raises_on_malformed_input():
+    from scaffold.oauth.settings import rule_matches
+    for match, pattern in (("exact", "https://a.example/cb"), ("prefix", "https://a.example/cb/"),
+                           ("host", "a.example"), ("loopback", "localhost")):
+        for uri in ("https://[not-ipv6/cb", "https://a.example:99999/cb", "http://[::1/cb"):
+            assert rule_matches(match, pattern, uri) is False
+
+
+def test_loopback_is_seeded_off_on_a_real_deployment(db_session, monkeypatch, client):
+    """Hosted assistants never use loopback, and on production an attacker's
+    localhost is the victim's machine: an admin turns it on deliberately."""
+    from scaffold.oauth import settings
+
+    db_session.query(OAuthRedirectHost).delete()
+    db_session.execute(settings.text("DELETE FROM system_settings WHERE key = :k"),
+                       {"k": settings.SEEDED_KEY})
+    db_session.commit()
+    monkeypatch.setenv("DOMAIN", "epic-stocks.example")
+    settings.seed_defaults(db_session)
+
+    loopback = db_session.query(OAuthRedirectHost).filter(
+        OAuthRedirectHost.match_type == "loopback").all()
+    assert loopback and not any(r.enabled for r in loopback)
+    assert all(r.enabled for r in db_session.query(OAuthRedirectHost).filter(
+        OAuthRedirectHost.match_type != "loopback"))
+    for uri in ("http://localhost:6274/oauth/callback", "http://127.0.0.1:33418/"):
+        resp = client.post("/oauth/register", json={"client_name": "X", "redirect_uris": [uri]})
+        assert resp.status_code == 400, uri
+
+
+def test_loopback_works_on_a_deployment_once_an_admin_enables_it(admin, db_session, monkeypatch):
+    monkeypatch.setenv("DOMAIN", "epic-stocks.example")
+    _set_provider(admin, db_session, "Local clients", True)
+    resp = admin.post("/oauth/register", json={
+        "client_name": "Inspector", "redirect_uris": ["http://localhost:6274/oauth/callback"]})
+    assert resp.status_code == 201, resp.text

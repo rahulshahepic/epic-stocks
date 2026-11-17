@@ -222,7 +222,10 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
                   <button
                     disabled={busy}
                     onClick={() => run(
-                      () => api.adminAddMcpHost((entry.client_name ?? 'Assistant').slice(0, 60), entry.redirect_uri, 'exact'),
+                      // Labelled by its host, never by the client's self-chosen
+                      // name: a registrant calling itself "Claude" must not land
+                      // in Claude's group.
+                      () => api.adminAddMcpHost(hostLabel(entry.redirect_uri), entry.redirect_uri, 'exact'),
                       'Failed to allow that address',
                     )}
                     className="rounded-md border border-cs-border px-2 py-1 text-xs text-cs-text hover:bg-cs-raised disabled:opacity-50"
@@ -231,7 +234,7 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
                   </button>
                   <button
                     disabled={busy}
-                    onClick={() => { setLabel(entry.client_name ?? ''); setHost(entry.redirect_uri); setMatchType('prefix') }}
+                    onClick={() => { setLabel(hostLabel(entry.redirect_uri)); setHost(entry.redirect_uri); setMatchType('prefix') }}
                     className="rounded-md border border-cs-border px-2 py-1 text-xs text-cs-text hover:bg-cs-raised disabled:opacity-50"
                   >
                     Edit as rule
@@ -321,6 +324,14 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
       )}
     </AdminSection>
   )
+}
+
+function hostLabel(uri: string): string {
+  try {
+    return new URL(uri).hostname.slice(0, 60) || 'Unlabelled'
+  } catch {
+    return 'Unlabelled'
+  }
 }
 
 function Stat({ label, value }: { label: string; value: number }) {

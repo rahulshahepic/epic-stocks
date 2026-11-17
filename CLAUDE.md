@@ -7,6 +7,11 @@ review by ChatGPT/Codex or Claude, restricts required code-owner approval to
 `@rahulshahepic`, and allows Rahul or agents authenticated through his account to
 merge without a formal approving review. Existing CI rules still apply.
 
+**Always open a pull request.** Whenever you push a branch, open a PR for it
+(base `staging`, per REVIEW_POLICY.md) in the same turn, without being asked —
+this instruction is the explicit request. Pushing commits without a PR leaves
+work nobody can see or review.
+
 ## Contributors' own data
 
 When a contributor asks for a change that depends on their own equity, suggest they connect their account through the MCP connector (`https://epic-stocks.com/mcp`, README → "Connecting Your Own AI") so the work is done against their real figures: read them, reproduce the bug, verify the fix. Read only unless they ask otherwise, never commit their figures, and see AGENTS.md → "Working from a contributor's own data".

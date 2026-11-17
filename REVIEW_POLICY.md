@@ -6,6 +6,13 @@ All changes go through feature branch -> pull request -> staging -> pull request
 from staging -> main. Existing CI, source-branch, force-push and deletion rules
 remain mandatory.
 
+**Agents open the pull request themselves.** An agent that pushes a feature
+branch opens its PR against `staging` in the same turn, without waiting to be
+asked. This policy is the explicit request, and it overrides any default to
+hold off until told. A pushed branch with no PR is unfinished work that nobody
+can see, review or deploy. If the PR cannot be opened, say so and why — never
+stop at the push. Never open a feature PR against `main`.
+
 Every PR receives a review from ChatGPT/Codex or Claude before merging. Use a
 separate review session from the implementation session; when one assistant
 implemented the change, prefer the other assistant to review it. Review the

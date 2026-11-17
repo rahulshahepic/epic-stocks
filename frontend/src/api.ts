@@ -68,10 +68,24 @@ export interface McpRejectedRedirect {
   last_seen: string | null
 }
 
+export interface McpActionRequest {
+  id: number
+  action: string
+  description: string
+  reason: string | null
+  status: 'pending' | 'approved' | 'rejected' | 'expired' | 'failed'
+  client_name: string | null
+  outcome: string | null
+  decided_by: string | null
+  requested_at: string | null
+  decided_at: string | null
+}
+
 export interface McpSettings {
   enabled: boolean
   hosts: McpHost[]
   rejected: McpRejectedRedirect[]
+  requests?: McpActionRequest[]
   connections: number
 }
 
@@ -676,6 +690,8 @@ export const api = {
     post<McpSettings>('/api/admin/mcp', { enabled }),
   adminAddMcpHost: (label: string, pattern: string, matchType?: McpMatchType) =>
     post<McpSettings>('/api/admin/mcp/hosts', { label, pattern, match_type: matchType ?? null }),
+  adminDecideMcpRequest: (id: number, approve: boolean) =>
+    post<McpSettings>(`/api/admin/mcp/requests/${id}/${approve ? 'approve' : 'reject'}`, {}),
   adminDismissRejectedRedirect: (id: number) =>
     apiFetch<McpSettings>(`/api/admin/mcp/rejected/${id}`, { method: 'DELETE' }),
   adminToggleMcpHost: (id: number, enabled: boolean) =>

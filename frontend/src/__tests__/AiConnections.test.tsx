@@ -158,6 +158,37 @@ describe('AiConnections', () => {
     expect(add).toHaveBeenCalledWith('evil.example', spoof.redirect_uri, 'exact')
   })
 
+  it('lists AI requests and approves or rejects them in the browser', async () => {
+    const request = {
+      id: 4, action: 'add_redirect_rule', description: 'Allow exact redirect https://copilot.microsoft.com/cb as “Copilot”',
+      reason: 'Seen in refusals', status: 'pending' as const, client_name: 'Claude diagnostics', outcome: null,
+      decided_by: null, requested_at: '2026-11-17T18:00:00Z', decided_at: null,
+    }
+    vi.spyOn(api, 'adminGetMcp').mockResolvedValue({ ...SETTINGS, requests: [request] })
+    const decide = vi.spyOn(api, 'adminDecideMcpRequest').mockResolvedValue({
+      ...SETTINGS, requests: [{ ...request, status: 'approved', decided_by: 'admin@example.com', outcome: 'Added exact rule' }],
+    })
+    render(<AiConnections onError={() => {}} />)
+    expect(await screen.findByText('Requests from AI assistants')).toBeInTheDocument()
+    expect(screen.getByText(/“Seen in refusals”/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    expect(decide).toHaveBeenCalledWith(4, true)
+    expect(await screen.findByText(/approved by admin@example.com — Added exact rule/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument()
+  })
+
+  it('rejects an AI request', async () => {
+    const request = {
+      id: 5, action: 'enable_redirect_rule', description: 'Switch redirect rule x back on', reason: null,
+      status: 'pending' as const, client_name: null, outcome: null, decided_by: null, requested_at: null, decided_at: null,
+    }
+    vi.spyOn(api, 'adminGetMcp').mockResolvedValue({ ...SETTINGS, requests: [request] })
+    const decide = vi.spyOn(api, 'adminDecideMcpRequest').mockResolvedValue(SETTINGS)
+    render(<AiConnections onError={() => {}} />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Reject' }))
+    expect(decide).toHaveBeenCalledWith(5, false)
+  })
+
   it('dismisses a refused redirect address', async () => {
     vi.spyOn(api, 'adminGetMcp').mockResolvedValue({ ...SETTINGS, rejected: [REFUSED] })
     const dismiss = vi.spyOn(api, 'adminDismissRejectedRedirect').mockResolvedValue(SETTINGS)

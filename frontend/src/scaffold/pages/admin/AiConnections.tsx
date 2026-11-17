@@ -57,6 +57,7 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
   // card, not every card below it.
   const hosts = Array.isArray(settings?.hosts) ? settings.hosts : []
   const rejected = Array.isArray(settings?.rejected) ? settings.rejected : []
+  const requests = Array.isArray(settings?.requests) ? settings.requests : []
   const groups = new Map<string, McpHost[]>()
   for (const entry of hosts) {
     groups.set(entry.label, [...(groups.get(entry.label) ?? []), entry])
@@ -201,6 +202,49 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
           Add
         </button>
       </form>
+
+      {requests.length > 0 && (
+        <>
+          <hr className="my-4 border-cs-border" />
+          <p className="text-xs font-medium text-cs-text">Requests from AI assistants</p>
+          <p className="mt-0.5 text-xs text-cs-muted">
+            Changes an admin&apos;s assistant asked for that would let more assistants connect.
+            Nothing changes until you approve. Approve only what you asked for yourself.
+          </p>
+          <ul className="mt-2 divide-y divide-cs-border">
+            {requests.map((entry) => (
+              <li key={entry.id} className="py-2">
+                <p className="break-all text-xs text-cs-text">{entry.description}</p>
+                {entry.reason && <p className="mt-0.5 break-words text-xs text-cs-text-2">&ldquo;{entry.reason}&rdquo;</p>}
+                <p className="mt-0.5 text-xs text-cs-muted">
+                  {entry.client_name ?? 'Assistant'}
+                  {entry.requested_at ? ` · ${new Date(entry.requested_at).toLocaleString()}` : ''}
+                  {entry.status !== 'pending' && ` · ${entry.status}${entry.decided_by ? ` by ${entry.decided_by}` : ''}`}
+                  {entry.outcome && entry.status !== 'pending' ? ` — ${entry.outcome}` : ''}
+                </p>
+                {entry.status === 'pending' && (
+                  <div className="mt-1 flex gap-2">
+                    <button
+                      disabled={busy}
+                      onClick={() => run(() => api.adminDecideMcpRequest(entry.id, true), 'Failed to approve')}
+                      className="rounded-md bg-cs-brand px-2.5 py-1 text-xs font-semibold text-white hover:bg-cs-brand-hover disabled:opacity-50"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      disabled={busy}
+                      onClick={() => run(() => api.adminDecideMcpRequest(entry.id, false), 'Failed to reject')}
+                      className="rounded-md border border-cs-border px-2.5 py-1 text-xs text-cs-text hover:bg-cs-raised disabled:opacity-50"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
 
       {rejected.length > 0 && (
         <>

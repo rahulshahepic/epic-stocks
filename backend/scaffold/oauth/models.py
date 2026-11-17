@@ -186,3 +186,33 @@ class McpAudit(Base):
     # died mid-call, which is worth being able to see.
     outcome: Mapped[str] = mapped_column(String, nullable=False, server_default="pending")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
+
+
+class AdminActionRequest(Base):
+    """A change an admin's AI assistant asked for, waiting for the admin.
+
+    Anything that lets more assistants connect — a new redirect rule, a rule
+    switched back on, AI connections resumed — is never done by a tool call.
+    The assistant reads text strangers wrote (refused registrations, problem
+    reports), so a planted instruction could otherwise open the door by
+    itself. The tool files a row here; an admin approves it in the browser,
+    where the same validation runs again.
+
+    No user_id: the requester is a connection (`grant_id`, no foreign key so
+    the record outlives a disconnect), the decider is recorded by email. The
+    table is bounded (MAX_PENDING_REQUESTS) and pending rows expire.
+    """
+
+    __tablename__ = "admin_action_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    action: Mapped[str] = mapped_column(String, nullable=False)
+    payload: Mapped[str] = mapped_column(String, nullable=False)
+    reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="pending", index=True)
+    client_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    grant_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    outcome: Mapped[str | None] = mapped_column(String, nullable=True)
+    decided_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    requested_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

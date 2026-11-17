@@ -327,3 +327,88 @@ def seed_defaults(db: Session) -> None:
 
     db.commit()
     invalidate()
+
+
+# ── shared rule writers (admin page, approval queue) ────────────────────────
+
+class RuleConflict(ValueError):
+    """The rule is already on the list."""
+
+
+def _normalize_host(raw: str) -> str:
+    """A bare hostname, however it was typed. Admins paste URLs."""
+    value = (raw or "").strip().lower()
+    if "//" in value:
+        value = urlparse(value).hostname or ""
+    value = value.split("/")[0].split(":")[0].strip().strip(".")
+    if value.startswith("*."):
+        value = value[2:]
+    if not value or " " in value or "." not in value:
+        raise ValueError(f"'{raw}' is not a hostname — try something like chatgpt.com")
+    return value
+
+
+def normalize_rule(raw: str, match_type: str | None) -> tuple[str, str]:
+    """(match_type, pattern) for what an admin typed. Raises ValueError.
+
+    With no match type given, a full URL is an exact callback and anything
+    else a host. A prefix must include a path, so it cannot run on into a
+    different host ("https://a.com" would admit "https://a.com.evil.net").
+    """
+    value = (raw or "").strip()
+    kind = (match_type or ("exact" if "://" in value else "host")).strip().lower()
+    if kind not in MATCH_TYPES:
+        raise ValueError(f"Match must be one of {', '.join(MATCH_TYPES)}")
+
+    if kind == "host":
+        return kind, _normalize_host(value)
+    if kind == "loopback":
+        try:
+            host = (urlparse(value).hostname if "//" in value else value.split(":")[0]) or ""
+        except ValueError:
+            host = ""
+        host = host.strip().lower()
+        if host not in ("localhost", "127.0.0.1", "::1"):
+            raise ValueError("A loopback rule is localhost, 127.0.0.1 or ::1")
+        return kind, host
+
+    try:
+        parsed = urlparse(value)
+        _ = parsed.port
+    except ValueError:
+        raise ValueError(f"'{raw}' is not a URL") from None
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise ValueError("A callback must be a full https:// address")
+    if parsed.fragment or "@" in parsed.netloc or " " in value or len(value) > REJECTED_URI_MAX:
+        raise ValueError(f"'{raw}' is not a usable callback address")
+    if kind == "prefix" and not parsed.path.startswith("/"):
+        raise ValueError("A prefix must include a path, e.g. https://example.com/oauth/")
+    return kind, value
+
+
+def add_redirect_rule(db: Session, label: str, kind: str, pattern: str) -> None:
+    """Add an enabled rule; refused URIs it now admits drop off the review list."""
+    from .models import OAuthRedirectHost, OAuthRejectedRedirect
+
+    if db.query(OAuthRedirectHost).filter(OAuthRedirectHost.pattern == pattern).first():
+        raise RuleConflict(f"{pattern} is already on the list")
+    db.add(OAuthRedirectHost(label=(label or "").strip()[:60] or "Unlabelled",
+                             pattern=pattern, match_type=kind, enabled=1))
+    for row in db.query(OAuthRejectedRedirect).all():
+        if rule_matches(kind, pattern, row.redirect_uri):
+            db.delete(row)
+    db.commit()
+    invalidate()
+
+
+def set_rule_enabled(db: Session, rule_id: int, enabled: bool):
+    """Switch one rule. Returns the row, or None if there is no such rule."""
+    from .models import OAuthRedirectHost
+
+    row = db.get(OAuthRedirectHost, rule_id)
+    if row is None:
+        return None
+    row.enabled = 1 if enabled else 0
+    db.commit()
+    invalidate()
+    return row

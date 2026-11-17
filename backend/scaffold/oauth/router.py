@@ -280,7 +280,7 @@ def authorize(request: Request, db: Session = Depends(get_db)):
             "Unknown application",
             "The application that sent you here is not registered with this server.",
         )
-    if (client.scope == scope_defs.ADMIN_READ) != _admin(request):
+    if scope_defs.is_admin_scope(client.scope) != _admin(request):
         return _error_page("Wrong connector", "This client belongs to the other MCP server.")
 
     registered = client_redirect_uris(client)
@@ -342,7 +342,7 @@ def authorize(request: Request, db: Session = Depends(get_db)):
         nxt = f"/{'admin-oauth' if _admin(request) else 'oauth'}/authorize/resume?request={request_token}"
         return RedirectResponse(f"/login?next={quote(nxt, safe='')}", status_code=302)
 
-    if scope_defs.ADMIN_READ in granted and not _is_site_admin(user):
+    if scope_defs.is_admin_scope(granted) and not _is_site_admin(user):
         return _redirect_error(redirect_uri, state, "access_denied", "Site admin access required")
 
     session_token = _token_from_request(request) or ""
@@ -386,7 +386,7 @@ def authorize_resume(request: Request, db: Session = Depends(get_db)):
     if user is None:
         return _error_page("Not signed in", "Sign in and try connecting again.", 401)
 
-    if scope_defs.ADMIN_READ in pending["sc"].split() and not _is_site_admin(user):
+    if scope_defs.is_admin_scope(pending["sc"]) and not _is_site_admin(user):
         return _redirect_error(pending["ru"], pending.get("st") or None,
                                "access_denied", "Site admin access required")
 
@@ -623,13 +623,13 @@ def _exchange_code(db: Session, request: Request, raw_code: str | None,
         return _token_error("invalid_grant", "PKCE verification failed")
     if stored["resource"] != canonical_resource(request, admin=_admin(request)):
         return _token_error("invalid_grant", "That code belongs to another MCP server")
-    if (stored["scope"] == scope_defs.ADMIN_READ) != _admin(request):
+    if scope_defs.is_admin_scope(stored["scope"]) != _admin(request):
         return _token_error("invalid_grant", "That code belongs to another MCP server")
 
     client = get_client(db, stored["client_id"])
     if client is None:
         return _token_error("invalid_client", "Unknown client", 401)
-    if (client.scope == scope_defs.ADMIN_READ) != _admin(request):
+    if scope_defs.is_admin_scope(client.scope) != _admin(request):
         return _token_error("invalid_client", "Client belongs to another MCP server", 401)
     if not authenticate_client(client, presented_secret):
         return _token_error("invalid_client", "Client authentication failed", 401)
@@ -674,7 +674,7 @@ def _refresh(db: Session, request: Request, raw_refresh: str | None,
     ).first()
     if grant is None:
         return _token_error("invalid_grant", "That refresh token is not valid")
-    if (grant.scope == scope_defs.ADMIN_READ) != _admin(request):
+    if scope_defs.is_admin_scope(grant.scope) != _admin(request):
         return _token_error("invalid_grant", "That connection belongs to another MCP server")
     if grant.refresh_expires_at and _aware(grant.refresh_expires_at) < datetime.now(timezone.utc):
         return _token_error("invalid_grant", "That refresh token has expired")
@@ -684,7 +684,7 @@ def _refresh(db: Session, request: Request, raw_refresh: str | None,
     client = get_client(db, grant.client_id)
     if client is None:
         return _token_error("invalid_client", "Unknown client", 401)
-    if (client.scope == scope_defs.ADMIN_READ) != _admin(request):
+    if scope_defs.is_admin_scope(client.scope) != _admin(request):
         return _token_error("invalid_client", "Client belongs to another MCP server", 401)
     if not authenticate_client(client, presented_secret):
         return _token_error("invalid_client", "Client authentication failed", 401)
@@ -731,7 +731,7 @@ def revoke(request: Request, token: str = Form(...),
                 grant = db.get(OAuthGrant, int(payload["gid"]))
         except (ValueError, KeyError, TypeError):
             grant = None
-    if grant is not None and (grant.scope == scope_defs.ADMIN_READ) != _admin(request):
+    if grant is not None and scope_defs.is_admin_scope(grant.scope) != _admin(request):
         grant = None
     if grant is not None:
         user_id, grant_id, name = grant.user_id, grant.id, grant.client_name

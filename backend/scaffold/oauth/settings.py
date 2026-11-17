@@ -355,7 +355,13 @@ def normalize_rule(raw: str, match_type: str | None) -> tuple[str, str]:
     else a host. A prefix must include a path, so it cannot run on into a
     different host ("https://a.com" would admit "https://a.com.evil.net").
     """
-    value = (raw or "").strip()
+    if not isinstance(raw, str):
+        raise ValueError("The callback must be text")
+    if match_type is not None and not isinstance(match_type, str):
+        raise ValueError(f"Match must be one of {', '.join(MATCH_TYPES)}")
+    value = raw.strip()
+    if not value or len(value) > REJECTED_URI_MAX:
+        raise ValueError(f"The callback must be 1 to {REJECTED_URI_MAX} characters")
     kind = (match_type or ("exact" if "://" in value else "host")).strip().lower()
     if kind not in MATCH_TYPES:
         raise ValueError(f"Match must be one of {', '.join(MATCH_TYPES)}")

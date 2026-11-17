@@ -5,9 +5,12 @@ nothing changes off the books. `finish` records the outcome and never raises:
 the change has already happened by then, and losing its outcome line is better
 than reporting a completed change as a failure.
 """
+import hashlib
 import json
 import logging
 import os
+import re
+from urllib.parse import urlparse
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
@@ -22,10 +25,41 @@ MAX_STATE_LEN = 1000
 STARTED, OK, FAILED = "started", "ok", "failed"
 
 
+_URL = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s\"'<>]+")
+
+
+def safe_url(url: str) -> str:
+    """Scheme, host and port, plus a fingerprint of the whole address.
+
+    Callback paths and queries can carry secrets, so neither is kept; the
+    fingerprint still tells two different addresses apart and matches the
+    same address across entries.
+    """
+    digest = hashlib.sha256(url.encode()).hexdigest()[:12]
+    try:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+        port = f":{parsed.port}" if parsed.port else ""
+    except ValueError:
+        return f"<address #{digest}>"
+    return f"{parsed.scheme}://{host}{port}/… #{digest}" if host else f"<address #{digest}>"
+
+
+def scrub(value):
+    """Replace every URL anywhere in a value with its safe form."""
+    if isinstance(value, str):
+        return _URL.sub(lambda m: safe_url(m.group(0)), value)
+    if isinstance(value, dict):
+        return {k: scrub(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [scrub(v) for v in value]
+    return value
+
+
 def _state(value) -> str | None:
     if value is None:
         return None
-    text = json.dumps(value, sort_keys=True, default=str)
+    text = json.dumps(scrub(value), sort_keys=True, default=str)
     return text if len(text) <= MAX_STATE_LEN else text[:MAX_STATE_LEN - 1] + "…"
 
 
@@ -57,7 +91,7 @@ def finish(db: Session, journal_id: int, *, outcome: str, before=None, after=Non
             row.before = _state(before)
         row.after = _state(after)
         if detail:
-            row.detail = detail[:300]
+            row.detail = scrub(detail)[:300]
         if target_id is not None:
             row.target_id = target_id
         if request_id is not None:

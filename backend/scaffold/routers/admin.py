@@ -1081,10 +1081,14 @@ def admin_journal_entries(db: Session, *, limit: int = 50, before_id: int | None
 
 @router.get("/mcp/journal", response_model=list[AdminJournalEntryOut])
 def get_admin_journal(limit: int = 50, before_id: int | None = None, action: str | None = None,
-                      via: str | None = None, admin: User = Depends(get_admin_user),
-                      db: Session = Depends(get_db)):
+                      via: str | None = None, target_type: str | None = None,
+                      target_id: int | None = None, since_hours: int | None = None,
+                      admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    since = (datetime.now(timezone.utc) - timedelta(hours=max(1, min(since_hours, 24 * 90)))
+             if since_hours else None)
     return admin_journal_entries(db, limit=max(1, min(limit, 200)), before_id=before_id,
-                                 action=action, via=via)
+                                 action=action, via=via, target_type=target_type,
+                                 target_id=target_id, since=since)
 
 
 @router.delete("/mcp/connections/{grant_id}", response_model=McpStatus)

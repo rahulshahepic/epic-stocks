@@ -9,6 +9,8 @@ page and records who decided.
 import json
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from . import admin_journal
@@ -48,12 +50,19 @@ def _clean(value, limit: int) -> str | None:
 
 
 def expire_stale(db: Session) -> None:
-    """Mark old pending requests expired and keep only recent decided ones."""
+    """Mark old pending requests expired and keep only recent decided ones.
+
+    Called from read paths too (admin:read tools included) on purpose: expiry
+    is housekeeping that must happen whether or not anyone writes, and each
+    expiry is journalled.
+    """
     cutoff = _now() - REQUEST_TTL
     changed = False
+    expired: list[int] = []
     for row in db.query(AdminActionRequest).filter(AdminActionRequest.status == PENDING).all():
         if _aware(row.requested_at) and _aware(row.requested_at) < cutoff:
             row.status, row.decided_at, row.outcome = EXPIRED, _now(), "Not decided within 7 days"
+            expired.append(row.id)
             changed = True
     decided = (db.query(AdminActionRequest.id)
                .filter(AdminActionRequest.status != PENDING)
@@ -65,6 +74,14 @@ def expire_stale(db: Session) -> None:
         changed = True
     if changed:
         db.commit()
+    for request_id in expired:
+        try:
+            journal_id = admin_journal.begin(db, via="system", action="expire_request",
+                                             actor_email=None, request_id=request_id)
+            admin_journal.finish(db, journal_id, outcome=admin_journal.OK,
+                                 after={"request_id": request_id, "status": EXPIRED})
+        except Exception:
+            db.rollback()
 
 
 CONSEQUENCES = {
@@ -100,6 +117,8 @@ def file_request(db: Session, action: str, args: dict, *, reason, client_name: s
                  grant_id: int | None, actor_email: str | None = None) -> tuple[AdminActionRequest, bool]:
     """Validate and queue a request. Returns (row, created). Raises ValueError."""
     expire_stale(db)
+    if reason is not None and not isinstance(reason, str):
+        raise ValueError("reason must be text")
     if action == ADD_RULE:
         label = _clean(args.get("label"), 60)
         if not label:
@@ -127,38 +146,75 @@ def file_request(db: Session, action: str, args: dict, *, reason, client_name: s
         raise ValueError(f"Unknown action '{action}'")
 
     body = json.dumps(payload, sort_keys=True)
-    existing = db.query(AdminActionRequest).filter(
-        AdminActionRequest.status == PENDING, AdminActionRequest.action == action,
-        AdminActionRequest.payload == body,
-    ).first()
-    if existing is not None:
-        return existing, False
-    if db.query(AdminActionRequest).filter(AdminActionRequest.status == PENDING).count() >= MAX_PENDING_REQUESTS:
-        raise ValueError(f"{MAX_PENDING_REQUESTS} requests are already waiting for approval in "
-                         "Admin → AI Connections; ask the admin to clear them first")
+    # Intent first (fails closed), committed before the lock is taken, so the
+    # journal's own commit cannot release the lock between check and insert.
     journal_id = admin_journal.begin(
         db, via="mcp", action=f"request_{action}", actor_email=actor_email, grant_id=grant_id,
         client_name=client_name, target_type="redirect_rule", target_id=payload.get("rule_id"),
     )
-    row = AdminActionRequest(action=action, payload=body, reason=_clean(reason, MAX_REASON_LEN),
-                             status=PENDING, client_name=_clean(client_name, 120),
-                             grant_id=grant_id, requested_at=_now())
-    db.add(row)
-    db.commit()
+    try:
+        _lock(db)
+        existing = db.query(AdminActionRequest).filter(
+            AdminActionRequest.status == PENDING, AdminActionRequest.action == action,
+            AdminActionRequest.payload == body,
+        ).first()
+        if existing is not None:
+            db.commit()
+            admin_journal.finish(db, journal_id, outcome=admin_journal.OK, request_id=existing.id,
+                                 detail="Already pending; no new request filed")
+            return existing, False
+        if db.query(AdminActionRequest).filter(AdminActionRequest.status == PENDING).count() >= MAX_PENDING_REQUESTS:
+            raise ValueError(f"{MAX_PENDING_REQUESTS} requests are already waiting for approval in "
+                             "Admin → AI Connections; ask the admin to clear them first")
+        row = AdminActionRequest(action=action, payload=body, reason=_clean(reason, MAX_REASON_LEN),
+                                 status=PENDING, client_name=_clean(client_name, 120),
+                                 grant_id=grant_id, requested_at=_now())
+        db.add(row)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        admin_journal.finish(db, journal_id, outcome=admin_journal.FAILED,
+                             detail=str(exc) if isinstance(exc, ValueError) else type(exc).__name__)
+        raise
     db.refresh(row)
     admin_journal.finish(db, journal_id, outcome=admin_journal.OK, request_id=row.id,
                          after={"request_id": row.id, "status": PENDING, **{
-                             k: payload[k] for k in ("label", "match_type", "pattern") if k in payload}})
+                             k: payload[k] for k in ("label", "match_type", "pattern", "rule_id")
+                             if k in payload}})
     return row, True
 
 
+LOCK_KEY = "admin_requests_lock"
+
+
+def _lock(db: Session) -> None:
+    """Serialize the pending-queue check and insert until the caller commits.
+
+    Updating one known row takes its row lock on PostgreSQL and the database
+    write lock on SQLite, so a second filer waits here and then sees the first
+    one's row. Without it two filers could both pass the cap check.
+    """
+    statement = text("UPDATE system_settings SET value = value WHERE key = :k")
+    if db.execute(statement, {"k": LOCK_KEY}).rowcount:
+        return
+    try:
+        db.execute(text("INSERT INTO system_settings (key, value) VALUES (:k, '0')"), {"k": LOCK_KEY})
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+    db.execute(statement, {"k": LOCK_KEY})
+
+
 def pending(db: Session) -> list[AdminActionRequest]:
-    """Every request still waiting — bounded by MAX_PENDING_REQUESTS, never paged
-    away by newer history."""
+    """Every request still waiting, never paged away by newer history.
+
+    Deliberately unlimited: file_request keeps the queue at MAX_PENDING_REQUESTS,
+    and if that were ever violated a limit here would hide real requests from
+    the only place they can be approved.
+    """
     expire_stale(db)
     return (db.query(AdminActionRequest).filter(AdminActionRequest.status == PENDING)
-            .order_by(AdminActionRequest.requested_at.desc(), AdminActionRequest.id.desc())
-            .limit(MAX_PENDING_REQUESTS).all())
+            .order_by(AdminActionRequest.requested_at.desc(), AdminActionRequest.id.desc()).all())
 
 
 def history(db: Session, limit: int = 20, before_id: int | None = None) -> list[AdminActionRequest]:

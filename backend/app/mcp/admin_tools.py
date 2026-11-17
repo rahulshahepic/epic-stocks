@@ -188,7 +188,9 @@ def _plain(value: str | None, limit: int) -> str | None:
 def _request_view(row) -> dict:
     data = admin_requests.as_dict(row)
     data["proposed"] = data.pop("payload")
-    data["reason_is_untrusted"] = True
+    data["reason"] = _plain(data.get("reason"), admin_requests.MAX_REASON_LEN)
+    data["client_name"] = _plain(data.get("client_name"), 120)
+    data["untrusted_fields"] = ["reason", "client_name"]
     return data
 
 
@@ -500,7 +502,10 @@ def _journal(ctx: ToolContext, args: dict) -> dict:
     rows = admin_journal_entries(ctx.db, limit=limit + 1, before_id=before_id,
                                  action=args.get("action"), via=args.get("via"),
                                  target_type=args.get("target_type"), target_id=target_id, since=since)
+    for row in rows:
+        row["client_name"] = _plain(row.get("client_name"), 120)
     return {**_identity(), "source": "admin_action_journal", "state": "available",
+            "untrusted_fields": ["client_name"],
             "collected_at_utc": datetime.now(timezone.utc).isoformat(),
             "coverage": "Admin changes to AI connection settings, reports and connections, from "
                         "the browser and the admin MCP. Intent is recorded before each change; "

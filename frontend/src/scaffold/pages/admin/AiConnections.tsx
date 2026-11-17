@@ -235,7 +235,7 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
                   </figure>
                 )}
                 <p className="mt-1.5 text-xs text-cs-muted">
-                  From {entry.client_name ?? 'an assistant'}
+                  From {entry.client_name ?? 'an assistant'}{entry.client_name ? ' (name chosen by the app)' : ''}
                   {entry.requested_at ? ` · ${new Date(entry.requested_at).toLocaleString()}` : ''}
                 </p>
                 <div className="mt-2 flex gap-2">

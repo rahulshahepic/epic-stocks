@@ -785,3 +785,144 @@ def test_concurrent_decisions_on_postgres_apply_once():
     assert rules == (1 if final == "approved" else 0)
     Base.metadata.drop_all(engine)
     engine.dispose()
+
+
+# ── review round 2: queue cap under concurrency, secrets, argument types ────
+
+SECRET = "SECRET628"
+
+
+def test_no_callback_secret_reaches_the_journal_on_any_path(client, db_session):
+    """The exact callback stays on the rule and the request; the journal keeps
+    scheme, host and a fingerprint only — on filing, approval, browser
+    add/toggle/delete and the conflict path."""
+    from scaffold.oauth.models import OAuthRedirectHost
+    filed_uri = f"https://safe.example/callback/{SECRET}/x?token={SECRET}"
+    browser_uri = f"https://other.example/{SECRET}?code={SECRET}"
+    with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@example.com"}):
+        _, call = _admin_session(client, WRITE)
+        rid = call("admin_request_redirect_rule", {"label": "Safe", "pattern": filed_uri})["request"]["id"]
+        dup = call("admin_request_redirect_rule", {"label": "Safe", "pattern": filed_uri})["request"]["id"]
+        assert dup == rid
+        # The approval page still shows the exact address an admin approves.
+        assert next(r for r in client.get("/api/admin/mcp").json()["requests"] if r["id"] == rid)["pattern"] == filed_uri
+        client.post(f"/api/admin/mcp/requests/{rid}/approve")
+        rule = db_session.query(OAuthRedirectHost).filter(OAuthRedirectHost.pattern == filed_uri).one()
+
+        client.post("/api/admin/mcp/hosts", json={"label": "Other", "pattern": browser_uri})
+        other = db_session.query(OAuthRedirectHost).filter(OAuthRedirectHost.pattern == browser_uri).one()
+        client.patch(f"/api/admin/mcp/hosts/{other.id}", json={"enabled": False})
+        client.delete(f"/api/admin/mcp/hosts/{other.id}")
+        # Conflict: approving a request for a rule that now exists.
+        rid2 = call("admin_request_redirect_rule", {"label": "Again", "pattern": browser_uri})["request"]["id"]
+        client.post("/api/admin/mcp/hosts", json={"label": "Other", "pattern": browser_uri})
+        client.post(f"/api/admin/mcp/requests/{rid2}/approve")
+        call("admin_disable_redirect_rule", {"rule_id": rule.id})
+
+        log = call("admin_audit_log", {"limit": 100})
+        page = client.get("/api/admin/mcp/journal?limit=200").json()
+        for text in (json.dumps(log), json.dumps(page)):
+            assert SECRET not in text
+            assert "safe.example" in text and "other.example" in text, "the host is still identifiable"
+        actions = {e["action"] for e in page}
+        assert {"request_add_redirect_rule", "approve_add_redirect_rule", "add_redirect_rule",
+                "disable_redirect_rule", "delete_redirect_rule"} <= actions
+        assert any(e["outcome"] == "failed" for e in page if e["action"] == "approve_add_redirect_rule")
+
+
+def test_safe_url_distinguishes_addresses_without_keeping_them():
+    from scaffold.oauth.admin_journal import safe_url, scrub
+    a, b = safe_url(f"https://h.example/a?t={SECRET}"), safe_url("https://h.example/b")
+    assert a != b and SECRET not in a and a.startswith("https://h.example/")
+    assert SECRET not in json.dumps(scrub({"x": [f"see https://h.example/{SECRET} now"]}))
+    assert safe_url("https://[bad/cb").startswith("<address #")
+
+
+@pytest.mark.parametrize("name,base,field,garbage", [
+    ("admin_request_redirect_rule", {"label": "X", "pattern": "https://x.example/cb"}, "match_type", ["exact"]),
+    ("admin_request_redirect_rule", {"label": "X", "pattern": "https://x.example/cb"}, "match_type", {"a": 1}),
+    ("admin_request_redirect_rule", {"label": "X", "pattern": "https://x.example/cb"}, "match_type", 7),
+    ("admin_request_redirect_rule", {"label": "X", "pattern": "https://x.example/cb"}, "reason", ["r"]),
+    ("admin_request_redirect_rule", {"label": "X", "pattern": "https://x.example/cb"}, "pattern", ["x"]),
+    ("admin_request_redirect_rule", {"label": "X", "pattern": "https://x.example/cb"}, "pattern", "x" * 600),
+    ("admin_request_redirect_rule", {"label": "X", "pattern": "https://x.example/cb"}, "label", {"x": 1}),
+    ("admin_request_enable_redirect_rule", {"rule_id": 1}, "reason", {"r": 1}),
+    ("admin_revoke_connection", {"connection_id": 1}, "confirm", ["x"]),
+    ("admin_audit_log", {}, "since_hours", "soon"),
+    ("admin_list_connections", {}, "account_email", ["a"]),
+])
+def test_malformed_optional_fields_are_tool_errors_not_crashes(client, name, base, field, garbage):
+    with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@example.com"}):
+        tokens, _ = _admin_session(client, WRITE)
+        body = client.post("/admin-mcp", headers={"Authorization": f"Bearer {tokens['access_token']}"},
+                           json={"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+                               "name": name, "arguments": {**base, field: garbage}}}).json()
+    assert "error" not in body, body
+    assert body["result"].get("isError") is True, body
+
+
+def test_pending_requests_are_never_hidden_even_past_the_cap(client, db_session):
+    """If the cap were ever exceeded, every pending row must still be listed."""
+    from scaffold.oauth.models import AdminActionRequest
+    for i in range(25):
+        db_session.add(AdminActionRequest(action="add_redirect_rule", status="pending", payload=json.dumps(
+            {"label": "X", "match_type": "exact", "pattern": f"https://p{i}.example/cb"}, sort_keys=True)))
+    db_session.commit()
+    with patch.dict(os.environ, {"ADMIN_EMAIL": "admin@example.com"}):
+        _, call = _admin_session(client, WRITE)
+        assert len(client.get("/api/admin/mcp").json()["requests"]) == 25
+        assert len(call("admin_ai_connections")["pending_requests"]) == 25
+
+
+@pytest.mark.skipif(not os.getenv("TEST_POSTGRES_URL"), reason="needs TEST_POSTGRES_URL")
+@pytest.mark.parametrize("same", [False, True])
+def test_concurrent_filings_respect_the_cap_on_postgres(monkeypatch, same):
+    """Two filers both past the journal intent at once: with a cap of 1, one
+    distinct request is refused; a duplicate pair yields one row."""
+    import threading
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.orm import sessionmaker
+    from database import Base
+    from scaffold.oauth import admin_journal, admin_requests
+    from scaffold.oauth.models import AdminActionRequest
+
+    engine = create_engine(os.environ["TEST_POSTGRES_URL"])
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    with Session() as db:
+        db.execute(text("INSERT INTO system_settings (key, value) VALUES ('mcp_enabled', 'true')"))
+        db.commit()
+    monkeypatch.setattr(admin_requests, "MAX_PENDING_REQUESTS", 1)
+    barrier = threading.Barrier(2)
+    real_begin = admin_journal.begin
+
+    def begin_then_wait(*args, **kwargs):
+        journal_id = real_begin(*args, **kwargs)
+        barrier.wait()  # both filers are now past intent and about to check the queue
+        return journal_id
+    monkeypatch.setattr(admin_journal, "begin", begin_then_wait)
+    outcomes = []
+
+    def file(i):
+        pattern = "https://same.example/cb" if same else f"https://d{i}.example/cb"
+        with Session() as db:
+            try:
+                row, created = admin_requests.file_request(
+                    db, admin_requests.ADD_RULE, {"label": "X", "pattern": pattern},
+                    reason=None, client_name="t", grant_id=i)
+                outcomes.append(("created" if created else "existing", row.id))
+            except ValueError:
+                outcomes.append(("refused", None))
+    threads = [threading.Thread(target=file, args=(i,)) for i in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    with Session() as db:
+        pending = db.query(AdminActionRequest).filter(AdminActionRequest.status == "pending").count()
+    kinds = sorted(k for k, _ in outcomes)
+    assert pending == 1, outcomes
+    assert kinds == (["created", "existing"] if same else ["created", "refused"]), outcomes
+    Base.metadata.drop_all(engine)
+    engine.dispose()

@@ -36,9 +36,10 @@ from . import consent as consent_page
 from . import scopes as scope_defs
 from .clients import (
     MAX_CLIENT_NAME_LEN, MAX_REDIRECT_URIS, RegistrationError, authenticate_client,
-    client_redirect_uris, get_client, redirect_uri_registered, register_client,
+    client_redirect_uris, get_client, provider_still_allowed, redirect_uri_registered,
+    register_client,
 )
-from .settings import host_allowed, mcp_enabled
+from .settings import mcp_enabled
 from . import audit
 from .models import OAuthAuthCode, OAuthGrant
 from .tokens import (
@@ -77,7 +78,7 @@ def _provider_still_allowed(redirect_uri: str) -> bool:
     who turns ChatGPT off means it, and a client registered while it was on
     would otherwise keep working for as long as its refresh token lasted.
     """
-    return host_allowed(urlparse(redirect_uri).hostname or "")
+    return provider_still_allowed(redirect_uri)
 
 
 # ── discovery ───────────────────────────────────────────────────────────────

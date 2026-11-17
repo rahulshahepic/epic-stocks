@@ -2,9 +2,20 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import axe from 'axe-core'
-import { AiConnectionsSection } from '../scaffold/components/AiConnectionsSection.tsx'
+import { MemoryRouter } from 'react-router-dom'
+import { AiConnectionsSection as Section } from '../scaffold/components/AiConnectionsSection.tsx'
+import { ASSISTANT_GUIDES } from '../scaffold/components/connectAiGuides.ts'
 import { AiConnections } from '../scaffold/pages/admin/AiConnections.tsx'
-import { api } from '../api.ts'
+import { api, type McpRejectedRedirect } from '../api.ts'
+import ConnectAi from '../scaffold/pages/ConnectAi.tsx'
+
+vi.mock('../scaffold/hooks/useConfig.ts', () => ({
+  useConfig: () => ({ ai_connections: true, epic_mode: false, vapid_public_key: '', email_notifications_available: false, resend_from: '' }),
+}))
+
+function AiConnectionsSection() {
+  return <MemoryRouter><Section /></MemoryRouter>
+}
 
 /**
  * Accessibility, checked here rather than only in the e2e suite.
@@ -53,9 +64,10 @@ const SETTINGS = {
   enabled: true,
   connections: 1,
   hosts: [
-    { id: 1, label: 'ChatGPT', host: 'chatgpt.com', enabled: true },
-    { id: 2, label: 'Claude', host: 'claude.ai', enabled: false },
+    { id: 1, label: 'ChatGPT', pattern: 'https://chatgpt.com/connector_platform_oauth_redirect', match_type: 'exact' as const, enabled: true },
+    { id: 2, label: 'Claude', pattern: 'https://claude.ai/api/mcp/auth_callback', match_type: 'exact' as const, enabled: false },
   ],
+  rejected: [] as McpRejectedRedirect[],
 }
 
 beforeEach(() => {
@@ -63,34 +75,20 @@ beforeEach(() => {
 })
 
 describe('AI connections accessibility', () => {
-  it('the Settings section is clean on the Claude walkthrough', async () => {
+  it('the Settings section is clean with a connection listed', async () => {
     vi.spyOn(api, 'getAiConnections').mockResolvedValue(CONNECTED)
     vi.spyOn(api, 'getAiActivity').mockResolvedValue(ACTIVITY)
     const { container } = render(<AiConnectionsSection />)
-    // A scope label rather than "ChatGPT", which also names a tab: waiting on
-    // that resolves before the connections list has rendered, so the audit
-    // would cover a loading state rather than the finished page.
     await screen.findByText(/Equity — grants, vesting/)
-
-    const found = await violations(container)
-    expect(summarise(found)).toBe('')
+    expect(summarise(await violations(container))).toBe('')
   })
 
-  it('the Settings section is clean on the ChatGPT walkthrough', async () => {
-    vi.spyOn(api, 'getAiConnections').mockResolvedValue(CONNECTED)
-    vi.spyOn(api, 'getAiActivity').mockResolvedValue(ACTIVITY)
-    const { container } = render(<AiConnectionsSection />)
-
-    await userEvent.click(await screen.findByRole('tab', { name: 'ChatGPT' }))
-    const found = await violations(container)
-    expect(summarise(found)).toBe('')
-  })
-
-  it('the Settings section is clean on the Muse walkthrough', async () => {
-    vi.spyOn(api, 'getAiConnections').mockResolvedValue(CONNECTED)
-    vi.spyOn(api, 'getAiActivity').mockResolvedValue(ACTIVITY)
-    const { container } = render(<AiConnectionsSection />)
-    await userEvent.click(await screen.findByRole('tab', { name: 'Muse' }))
+  it.each(ASSISTANT_GUIDES.map(g => [g.name, g.id]))('the Connect your AI page is clean for %s', async (_name, id) => {
+    vi.spyOn(api, 'getAiConnections').mockResolvedValue([])
+    vi.spyOn(api, 'getAiActivity').mockResolvedValue([])
+    const { container } = render(<MemoryRouter><ConnectAi /></MemoryRouter>)
+    await userEvent.selectOptions(await screen.findByLabelText('Your assistant'), id)
+    await screen.findByText('Nothing connected yet.')
     expect(summarise(await violations(container))).toBe('')
   })
 

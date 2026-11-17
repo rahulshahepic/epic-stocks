@@ -78,14 +78,14 @@ export function ReportDialog({
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label="Report a problem"
+      aria-label={prefill.title ?? 'Report a problem'}
     >
       <div
         className="max-h-[90vh] w-full max-w-md overflow-y-auto overscroll-contain rounded-2xl bg-cs-surface p-5 shadow-xl"
         onClick={e => e.stopPropagation()}
       >
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-cs-text">Report a problem</h3>
+          <h3 className="text-sm font-semibold text-cs-text">{prefill.title ?? 'Report a problem'}</h3>
           <button onClick={onClose} aria-label="Close dialog" className="text-cs-text-2 hover:text-cs-text">✕</button>
         </div>
 
@@ -122,14 +122,14 @@ export function ReportDialog({
             )}
 
             <label className="block">
-              <span className="text-xs text-cs-muted">What went wrong?</span>
+              <span className="text-xs text-cs-muted">{prefill.prompt ?? 'What went wrong?'}</span>
               <textarea
                 ref={textareaRef}
                 value={message}
                 onChange={e => setMessage(e.target.value)}
                 rows={3}
                 maxLength={2000}
-                placeholder="What were you doing when it broke?"
+                placeholder={prefill.placeholder ?? 'What were you doing when it broke?'}
                 className="mt-1 w-full resize-y rounded-lg border border-cs-border bg-cs-surface px-3 py-2 text-sm text-cs-text"
               />
             </label>

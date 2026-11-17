@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, type McpHost, type McpSettings, type McpUsageReport } from '../../../api.ts'
+import { api, type McpHost, type McpMatchType, type McpSettings, type McpUsageReport } from '../../../api.ts'
 import { AdminSection } from './AdminSection.tsx'
 
 /**
@@ -10,15 +10,24 @@ import { AdminSection } from './AdminSection.tsx'
  * so it belongs here — and an admin toggle is the version of "just change it on
  * the server" that survives the next deploy.
  *
- * Hosts are grouped by label because Claude is two hostnames and an admin
- * should see one thing to switch off, not two.
+ * Redirect rules are grouped by label because Claude is two callbacks and an
+ * admin should see one thing to switch off, not two. Refused redirect URIs are
+ * listed so a new assistant can be allowed from what it actually sent.
  */
+
+const MATCH_LABELS: Record<McpMatchType, string> = {
+  exact: 'exact',
+  prefix: 'prefix',
+  host: 'any path on host',
+  loopback: 'any port',
+}
 export function AiConnections({ onError }: { onError: (message: string) => void }) {
   const [settings, setSettings] = useState<McpSettings | null>(null)
   const [usage, setUsage] = useState<McpUsageReport | null>(null)
   const [busy, setBusy] = useState(false)
   const [label, setLabel] = useState('')
   const [host, setHost] = useState('')
+  const [matchType, setMatchType] = useState<McpMatchType | ''>('')
 
   useEffect(() => {
     api.adminGetMcp().then(setSettings).catch(() => onError('Failed to load AI connection settings'))
@@ -47,6 +56,7 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
   // middle of the admin page, and an unexpected response should cost its own
   // card, not every card below it.
   const hosts = Array.isArray(settings?.hosts) ? settings.hosts : []
+  const rejected = Array.isArray(settings?.rejected) ? settings.rejected : []
   const groups = new Map<string, McpHost[]>()
   for (const entry of hosts) {
     groups.set(entry.label, [...(groups.get(entry.label) ?? []), entry])
@@ -55,7 +65,7 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
   return (
     <AdminSection title={<>AI Connections</>}>
       <p className="mt-1 text-xs text-cs-muted">
-        Lets people connect ChatGPT or Claude to their account or site diagnostics.
+        Lets people connect Claude, ChatGPT, Gemini and other assistants to their account or site diagnostics.
         {typeof settings?.connections === 'number'
           ? ` ${settings.connections} connection${settings.connections === 1 ? '' : 's'} active.`
           : ''}
@@ -93,8 +103,8 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
 
       <p className="text-xs font-medium text-cs-text">Providers</p>
       <p className="mt-0.5 text-xs text-cs-muted">
-        Only these can be authorized. Switching one off blocks new connections and
-        ends existing ones within the hour.
+        The redirect addresses an assistant may register. Switching a provider&apos;s
+        rules off blocks new connections and ends existing ones within the hour.
       </p>
 
       {settings && hosts.length === 0 && (
@@ -109,9 +119,12 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
             <p className="text-xs font-medium text-cs-text">{groupLabel}</p>
             {entries.map((entry) => (
               <div key={entry.id} className="mt-1 flex items-center justify-between gap-3">
-                <code className={`font-mono text-xs ${entry.enabled ? 'text-cs-text-2' : 'text-cs-muted line-through'}`}>
-                  {entry.host}
-                </code>
+                <span className="min-w-0">
+                  <code className={`break-all font-mono text-xs ${entry.enabled ? 'text-cs-text-2' : 'text-cs-muted line-through'}`}>
+                    {entry.pattern}
+                  </code>
+                  <span className="ml-1.5 text-[10px] text-cs-muted">{MATCH_LABELS[entry.match_type] ?? entry.match_type}</span>
+                </span>
                 <div className="flex shrink-0 gap-2">
                   <button
                     disabled={busy}
@@ -140,9 +153,10 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
           e.preventDefault()
           if (!label.trim() || !host.trim()) return
           void run(async () => {
-            const next = await api.adminAddMcpHost(label.trim(), host.trim())
+            const next = await api.adminAddMcpHost(label.trim(), host.trim(), matchType || undefined)
             setLabel('')
             setHost('')
+            setMatchType('')
             return next
           }, 'Failed to add the provider')
         }}
@@ -157,13 +171,27 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
           />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-cs-muted">Hostname</span>
+          <span className="text-xs text-cs-muted">Callback URL or hostname</span>
           <input
             value={host}
             onChange={(e) => setHost(e.target.value)}
-            placeholder="copilot.microsoft.com"
-            className="w-52 rounded-md border border-cs-border bg-cs-base px-2 py-1 text-xs text-cs-text"
+            placeholder="https://copilot.microsoft.com/oauth/callback"
+            className="w-72 max-w-full rounded-md border border-cs-border bg-cs-base px-2 py-1 text-xs text-cs-text"
           />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-cs-muted">Match</span>
+          <select
+            value={matchType}
+            onChange={(e) => setMatchType(e.target.value as McpMatchType | '')}
+            className="rounded-md border border-cs-border bg-cs-base px-2 py-1 text-xs text-cs-text"
+          >
+            <option value="">Auto (URL exact, else host)</option>
+            <option value="exact">Exact URL</option>
+            <option value="prefix">URL prefix</option>
+            <option value="host">Any path on host</option>
+            <option value="loopback">Loopback, any port</option>
+          </select>
         </label>
         <button
           type="submit"
@@ -173,6 +201,54 @@ export function AiConnections({ onError }: { onError: (message: string) => void 
           Add
         </button>
       </form>
+
+      {rejected.length > 0 && (
+        <>
+          <hr className="my-4 border-cs-border" />
+          <p className="text-xs font-medium text-cs-text">Refused redirect addresses</p>
+          <p className="mt-0.5 text-xs text-cs-muted">
+            Assistants that tried to register and were turned away. Allow one only
+            if you recognise the provider — the address is where sign-in codes go.
+          </p>
+          <ul className="mt-2 divide-y divide-cs-border">
+            {rejected.map((entry) => (
+              <li key={entry.id} className="py-2">
+                <code className="block break-all font-mono text-xs text-cs-text-2">{entry.redirect_uri}</code>
+                <p className="mt-0.5 text-xs text-cs-muted">
+                  {entry.client_name ?? 'Unnamed client'} · {entry.attempts} attempt{entry.attempts === 1 ? '' : 's'}
+                  {entry.last_seen ? ` · last ${new Date(entry.last_seen).toLocaleDateString()}` : ''}
+                </p>
+                <div className="mt-1 flex gap-2">
+                  <button
+                    disabled={busy}
+                    onClick={() => run(
+                      () => api.adminAddMcpHost((entry.client_name ?? 'Assistant').slice(0, 60), entry.redirect_uri, 'exact'),
+                      'Failed to allow that address',
+                    )}
+                    className="rounded-md border border-cs-border px-2 py-1 text-xs text-cs-text hover:bg-cs-raised disabled:opacity-50"
+                  >
+                    Allow exactly
+                  </button>
+                  <button
+                    disabled={busy}
+                    onClick={() => { setLabel(entry.client_name ?? ''); setHost(entry.redirect_uri); setMatchType('prefix') }}
+                    className="rounded-md border border-cs-border px-2 py-1 text-xs text-cs-text hover:bg-cs-raised disabled:opacity-50"
+                  >
+                    Edit as rule
+                  </button>
+                  <button
+                    disabled={busy}
+                    onClick={() => run(() => api.adminDismissRejectedRedirect(entry.id), 'Failed to dismiss')}
+                    className="rounded-md px-2 py-1 text-xs text-cs-muted hover:bg-cs-raised disabled:opacity-50"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
 
       {usage && (
         <>
